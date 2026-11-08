@@ -62,8 +62,20 @@ import {
   type RailMotionInspectorPresentation,
 } from '../view/physicsPaintKeyRailPresentation';
 import { classifyLoopClipRailKind, type RotoRailKind } from '../view/physicsPaintWorkflowPresentation';
-import { resolveMotionChannelPresence } from '../view/TimelineMotionChannels';
+import { resolveMotionChannelPresence, type RailMotionDisplayLaneId } from '../view/TimelineMotionChannels';
 import { exitRailMotionEditing, railMotionSelectedChannel } from '../view/railMotionEditingMode';
+
+/**
+ * 261108-gh0 UAT: the representative channel a display lane folds to. Property
+ * mode has no selected key, so the motion-wide easing row reads the FIRST
+ * stored key of this channel; `set` still writes every key of the motion.
+ */
+const RAIL_MOTION_LANE_FIRST_CHANNEL = {
+  position: 'position-x',
+  scale: 'scale',
+  rotation: 'rotation',
+  opacity: 'opacity',
+} as const satisfies Record<RailMotionDisplayLaneId, PhysicPaintRotoRailMotionChannelId>;
 import {
   addMotionChannel as applyAddMotionChannel,
   animateRail,
@@ -3327,7 +3339,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
    * subscribes this computed; the modal is its only consumer.
    */
   const railMotionDialog = computed((): RailMotionDialogBundle | null => {
-    const propertySelected = railMotionSelectedChannel.value !== null;
+    const selectedLane = railMotionSelectedChannel.value;
+    const propertySelected = selectedLane !== null;
     const selection = railMotionSelectedKey.value;
     if (!propertySelected && selection === null) return null;
     const state = readActiveRailMotionState(input);
@@ -3364,6 +3377,21 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         ),
       })
       : null;
+    // 261108-gh0 UAT: property mode has no selected key to write, but the user
+    // still needs the easing settings. The row shows the selected lane's first
+    // stored key (falling back to the record's first channel) and `set` applies
+    // the choice to EVERY key of the motion — the same authority as the
+    // key-mode "Apply to all keys" button.
+    const motionEasing = propertySelected
+      ? Object.freeze({
+        easing: (state.record.channels.find(
+          (channel) => channel.id === RAIL_MOTION_LANE_FIRST_CHANNEL[selectedLane],
+        ) ?? state.record.channels[0])?.keys[0]?.easing ?? DEFAULT_RAIL_MOTION_EASING,
+        set: (easing: PhysicPaintRotoRailMotionEasing): string | null => (
+          commitMotionAllKeysEasing(easing)
+        ),
+      })
+      : null;
     // 261108-gh0: one Wiggle row per channel the rail CARRIES, in the fixed
     // D-13 order. Presence comes from the SAME `presentation.fields` flags the
     // numeric rows read — no second predicate — and the values are RAW model
@@ -3394,6 +3422,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       ),
       reset: (): string | null => resetRailMotionInspectorValues(presentation),
       keyEasing,
+      motionEasing,
       channels: Object.freeze(channels) as readonly RailMotionChannelWiggleRow[],
       applyEasingToAllKeys: keyMode
         ? (easing: PhysicPaintRotoRailMotionEasing): string | null => commitMotionAllKeysEasing(easing)

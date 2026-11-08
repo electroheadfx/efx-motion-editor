@@ -47,6 +47,13 @@ import {
   type TimelineRailType,
 } from './timelineRailDesign';
 
+/**
+ * The easing glyph IS the key marker on a motion lane, so it renders larger
+ * than the 6px column marker and overflows it symmetrically. Exported so the
+ * lane suite pins the glyph size instead of a magic number.
+ */
+export const TIMELINE_MOTION_KEY_ICON_SIZE = 12;
+
 export type RailMotionDisplayLaneId = 'position' | 'scale' | 'rotation' | 'opacity';
 
 /** The fixed display order (D-13): Position, Scale, Rotation, Opacity. */
@@ -333,13 +340,16 @@ export function TimelineMotionChannelLane({
     top: (laneHeight - TIMELINE_MOTION.keySize) / 2,
     width: TIMELINE_MOTION.keySize,
     height: TIMELINE_MOTION.keySize,
-    borderRadius: TIMELINE_MOTION.keyRadius,
+    // The key IS its easing icon: no filled box, no rim. The glyph renders
+    // larger than the 6px column marker and overflows it symmetrically, so the
+    // left/top/width/height geometry stays exactly where the column math put it.
+    borderRadius: 0,
     border: 'none',
     padding: 0,
-    background: palette.keyFill,
-    boxShadow: `0 0 0 ${TIMELINE_MOTION.keyRimWidth}px ${palette.keyRim}`,
-    // 261108-gh0: the easing icon is centred inside the 6px marker, so the
-    // icon never changes the key's left/top/width/height geometry.
+    background: 'transparent',
+    boxShadow: 'none',
+    overflow: 'visible',
+    color: palette.keyFill,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -433,10 +443,10 @@ export function TimelineMotionChannelLane({
               }}
           >
             <Icon
-              size={Math.max(4, TIMELINE_MOTION.keySize - 2)}
-              strokeWidth={3}
+              size={TIMELINE_MOTION_KEY_ICON_SIZE}
+              strokeWidth={2.25}
               aria-hidden="true"
-              style={{ pointerEvents: 'none', color: TIMELINE_SURFACE.motionLane }}
+              style={{ pointerEvents: 'none', color: palette.keyFill, flex: '0 0 auto' }}
             />
           </button>
         );

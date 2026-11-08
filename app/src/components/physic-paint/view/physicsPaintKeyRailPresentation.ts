@@ -345,6 +345,17 @@ export interface RailMotionDialogBundle {
    * the modal renders no apply-all button.
    */
   readonly applyEasingToAllKeys: ((easing: PhysicPaintRotoRailMotionEasing) => string | null) | null;
+  /**
+   * 261108-gh0 UAT: the MOTION-wide easing handle shown in property-only mode,
+   * where no single key is selected to write. Its `easing` is the selected
+   * channel's first stored key (what the motion currently eases with) and
+   * `set` applies the choice to every key of the motion. Null in key mode,
+   * where `keyEasing` owns the row.
+   */
+  readonly motionEasing: Readonly<{
+    readonly easing: PhysicPaintRotoRailMotionEasing;
+    readonly set: (easing: PhysicPaintRotoRailMotionEasing) => string | null;
+  }> | null;
 }
 
 export interface ResolvePhysicPaintPushAnchorInput {

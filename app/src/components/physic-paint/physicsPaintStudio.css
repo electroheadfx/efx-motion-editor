@@ -4497,10 +4497,13 @@ button.destructive {
   outline-offset: 1px;
 }
 
-/* One Compact Wiggle line: the stepper grows and the Global toggle hugs. */
+/* One Compact Wiggle line: the stepper grows and the Global toggle hugs.
+   The stepper is a two-row column (17px label row + 22px bar row), so the
+   toggle aligns to the BAR's baseline with flex-end — centring it against the
+   whole column is what made it ride high against the slider. */
 .physics-paint-motion-wiggle-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
 }
 
@@ -6183,6 +6186,9 @@ button.destructive {
   padding: 0 8px;
   gap: 5px;
   line-height: 1;
+  /* Opt out of the global `button { text-transform: uppercase }` rule: the
+     label is a word, not a caps tag. */
+  text-transform: none;
 }
 
 /* 261101-mvg: the Move/Edit "Preview stroke size" switch. It shares the 22px

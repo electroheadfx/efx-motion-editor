@@ -24,6 +24,7 @@ import {
   resolveKeylessMotionDisplayLanes,
   resolveMotionDisplayLanes,
   resolveVisibleMotionDisplayLanes,
+  TIMELINE_MOTION_KEY_ICON_SIZE,
   type RailMotionDisplayLaneView,
   type TimelineMotionChannelHeaderRowProps,
   type TimelineMotionChannelLaneProps,
@@ -401,9 +402,9 @@ describe('TimelineMotionChannelLane', () => {
     );
     expect(styleOf(dots[0]).width).toBe(TIMELINE_MOTION.keySize);
     expect(styleOf(dots[0]).height).toBe(TIMELINE_MOTION.keySize);
-    expect(String(styleOf(dots[0]).boxShadow)).toContain(
-      TIMELINE_RAIL_PALETTES.standard.selected.keyRim,
-    );
+    // 261108-gh0 UAT: the key IS its easing icon — no filled box, no rim.
+    expect(String(styleOf(dots[0]).boxShadow)).toBe('none');
+    expect(styleOf(dots[0]).background).toBe('transparent');
   });
 
   it('draws ONE curve for the grouped Position lane, never one per axis (261107)', () => {
@@ -604,12 +605,14 @@ describe('261108-gh0 lane marker easing icons', () => {
       expect(children, `frame ${key.frame} carries exactly one icon`).toHaveLength(1);
       const icon = children[0] as TestVNode;
       expect(icon.type).toBe(RAIL_MOTION_EASING_ICONS[key.easing]);
-      expect(icon.props.size).toBe(Math.max(4, TIMELINE_MOTION.keySize - 2));
+      // 261108-gh0 UAT: the glyph overflows the 6px column marker, so it reads
+      // as an icon rather than a dot inside a filled box.
+      expect(icon.props.size).toBe(TIMELINE_MOTION_KEY_ICON_SIZE);
       expect(icon.props['aria-hidden']).toBe('true');
-      expect(icon.props.strokeWidth).toBe(3);
+      expect(icon.props.strokeWidth).toBe(2.25);
       expect(styleOf(icon).pointerEvents).toBe('none');
-      // The icon reads as a cut-out against the marker fill.
-      expect(styleOf(icon).color).toBe(TIMELINE_SURFACE.motionLane);
+      // The glyph carries the palette colour itself; there is no marker fill.
+      expect(styleOf(icon).color).toBe(TIMELINE_RAIL_PALETTES.standard.selected.keyFill);
     });
   });
 
@@ -635,11 +638,12 @@ describe('261108-gh0 lane marker easing icons', () => {
       const style = styleOf(dot);
       expect(style.width).toBe(TIMELINE_MOTION.keySize);
       expect(style.height).toBe(TIMELINE_MOTION.keySize);
-      expect(style.borderRadius).toBe(TIMELINE_MOTION.keyRadius);
-      expect(style.background).toBe(TIMELINE_RAIL_PALETTES.standard.selected.keyFill);
-      expect(String(style.boxShadow)).toContain(
-        TIMELINE_RAIL_PALETTES.standard.selected.keyRim,
-      );
+      // 261108-gh0 UAT: no box at all — the column marker only positions the
+      // glyph, which overflows it symmetrically.
+      expect(style.borderRadius).toBe(0);
+      expect(style.background).toBe('transparent');
+      expect(String(style.boxShadow)).toBe('none');
+      expect(style.overflow).toBe('visible');
       // The icon is centred, so it never shifts the 6px marker.
       expect(style.display).toBe('inline-flex');
       expect(style.alignItems).toBe('center');

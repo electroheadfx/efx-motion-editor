@@ -195,11 +195,22 @@ export function PhysicsPaintRailMotionModal({
   }, [bundle]);
 
   if (bundle === null) return null;
-  // 261108-d5o: the bundle's key-mode easing handle. Property-only mode leaves
-  // it null and the sheet renders NO easing row — not even a disabled one.
+  // 261108-d5o: the bundle's key-mode easing handle.
   const keyEasing = bundle.keyEasing;
-  // 261108-gh0: the apply-all handle is key-mode-only too; both rows share the
-  // ONE gate, and the apply-all reuses the DISPLAYED easing token.
+  // 261108-gh0 UAT: property mode has no selected key, so it gets the
+  // motion-wide handle instead — the easing row is ALWAYS reachable now. Key
+  // mode still writes only the selected key.
+  const rowEasing = keyEasing !== null
+    ? { label: 'Easing', easing: keyEasing.easing, set: keyEasing.set }
+    : bundle.motionEasing !== null
+      ? {
+        label: 'Easing (all keys)',
+        easing: bundle.motionEasing.easing,
+        set: bundle.motionEasing.set,
+      }
+      : null;
+  // 261108-gh0: the explicit apply-all button stays key-mode-only; property
+  // mode already applies to all keys through `rowEasing.set`.
   const applyToAllKeys = bundle.applyEasingToAllKeys;
 
   const onHeaderPointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
@@ -378,17 +389,17 @@ export function PhysicsPaintRailMotionModal({
               </div>
             );
           })}
-        {keyEasing !== null ? (
+        {rowEasing !== null ? (
           <div
             class="physics-paint-motion-easing"
             role="group"
-            aria-label="Motion key easing"
+            aria-label="Motion easing"
           >
-            <span class="physics-paint-roto-key-icon-label">Easing</span>
+            <span class="physics-paint-roto-key-icon-label">{rowEasing.label}</span>
             <PhysicsPaintRailMotionEasingControl
-              value={keyEasing.easing}
+              value={rowEasing.easing}
               onSelect={(easing: PhysicPaintRotoRailMotionEasing) => {
-                reportReason(keyEasing.set(easing));
+                reportReason(rowEasing.set(easing));
               }}
               disabled={false}
             />

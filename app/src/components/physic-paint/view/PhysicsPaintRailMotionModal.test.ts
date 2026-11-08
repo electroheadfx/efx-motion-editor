@@ -211,6 +211,14 @@ function partialChannels(
   ];
 }
 
+/** 261108-gh0 UAT: the property-mode motion-wide easing handle. */
+function motionEasingHandle(
+  easing: PhysicPaintRotoRailMotionEasing = 'ease',
+  set: (easing: PhysicPaintRotoRailMotionEasing) => string | null = () => null,
+): NonNullable<RailMotionDialogBundle['motionEasing']> {
+  return { easing, set };
+}
+
 /** A rail carrying the Position pair and Scale; Rotation/Opacity absent. */
 function partialBundle(
   commit: RailMotionDialogBundle['commit'] = () => null,
@@ -231,6 +239,9 @@ function partialBundle(
     commit,
     reset,
     keyEasing: null,
+    // 261108-gh0 UAT: property mode has no key to write, so the sheet shows the
+    // MOTION-wide easing row instead — it must never be absent.
+    motionEasing: motionEasingHandle(),
     // 261108-gh0: one Wiggle row per PRESENT channel, in the fixed D-13 order.
     channels: partialChannels(),
     applyEasingToAllKeys: null,
@@ -254,6 +265,7 @@ function positionOnlyBundle(): RailMotionDialogBundle {
     commit: () => null,
     reset: () => null,
     keyEasing: null,
+    motionEasing: motionEasingHandle(),
     channels: [
       wiggleRow('position-x', 'Position X', 0, true),
       wiggleRow('position-y', 'Position Y', 0, true),
@@ -276,6 +288,9 @@ function keyModeBundle(
   return {
     ...partialBundle(),
     keyEasing: { frame: 5, easing, set },
+    // Key mode owns the row through `keyEasing`; the motion-wide handle is a
+    // property-mode-only fallback and stays null here.
+    motionEasing: null,
     applyEasingToAllKeys,
   };
 }
@@ -444,7 +459,7 @@ describe('261107-qgj floating Motion modal', () => {
     expect(collect(third).filter((node) => node.props?.role === 'alert')).toHaveLength(0);
   });
 
-  it('renders the shared easing control ONLY in key mode and selects through the bundle (261108-d5o)', () => {
+  it('renders the shared easing control in BOTH modes and writes through the right authority (261108-d5o/gh0)', () => {
     const set = vi.fn((): string | null => null);
     const dialog = signal<RailMotionDialogBundle | null>(keyModeBundle(set, 'hold'));
     const tree = renderModal({ dialog });
@@ -462,16 +477,34 @@ describe('261107-qgj floating Motion modal', () => {
     );
     expect(row).toBeDefined();
     expect(row!.props?.role).toBe('group');
-    expect(row!.props?.['aria-label']).toBe('Motion key easing');
+    expect(row!.props?.['aria-label']).toBe('Motion easing');
+    expect(collect(row).find(
+      (node) => node.props?.class === 'physics-paint-roto-key-icon-label',
+    )!.props?.children).toBe('Easing');
 
-    // Property-only mode renders NOTHING extra — no disabled row either.
-    const propertyOnly = renderModal({ dialog: signal(partialBundle()) });
-    expect(collect(propertyOnly).some(
+    // 261108-gh0 UAT: property-only mode ALSO shows the row — the motion-wide
+    // handle — and its selection applies to every key of the motion.
+    const propertySet = vi.fn((): string | null => null);
+    const propertyTree = renderModal({
+      dialog: signal({
+        ...partialBundle(),
+        motionEasing: motionEasingHandle('ease', propertySet),
+      }),
+    });
+    const propertyControl = collect(propertyTree).find(
       (node) => node.type === PhysicsPaintRailMotionEasingControl,
-    )).toBe(false);
-    expect(collect(propertyOnly).some(
+    );
+    expect(propertyControl, 'property mode still shows the easing row').toBeDefined();
+    expect(propertyControl!.props?.value).toBe('ease');
+    (propertyControl!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing) => void)('stop-motion');
+    expect(propertySet).toHaveBeenCalledWith('stop-motion');
+    const propertyRow = collect(propertyTree).find(
       (node) => node.props?.class === 'physics-paint-motion-easing',
-    )).toBe(false);
+    );
+    expect(propertyRow).toBeDefined();
+    expect(collect(propertyRow).find(
+      (node) => node.props?.class === 'physics-paint-roto-key-icon-label',
+    )!.props?.children).toBe('Easing (all keys)');
   });
 
   it('routes an easing rejection through the modal ONE role="alert" (261108-d5o)', () => {
