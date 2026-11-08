@@ -18,9 +18,10 @@ provides:
 affects: [physic-paint roto delete, rail cycles, physical-edit proposals, undo]
 
 actuals:
-  tokens: 6200
+  tokens: 8400
   tasks: 2
-  commits: 1
+  commits: 4
+  uat_approved: 2026-11-08
 
 key-files:
   created: []
@@ -30,6 +31,8 @@ key-files:
     - app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts
     - app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts
     - app/src/components/physic-paint/roto/physicsPaintRotoLoopGuards.test.ts
+    - app/src/lib/physicPaintBridge.ts
+    - app/src/lib/physicPaintBridge.test.ts
 ---
 
 **Deleting a key on a cycled rail now dissolves that cycle in the same atomic edit, and Delete on a repeated cycle cell is refused instead of suppressing the matching key in every repeat.**
@@ -55,10 +58,23 @@ key-files:
 
 - `npx tsc --noEmit -p app/tsconfig.json` — clean.
 - `npx vitest run src/components/physic-paint src/stores` — 257 files, 6337 tests pass.
-- Live UAT pending (user): delete a key on a cycled rail → the cycle disappears in one step and the
-  remaining keys survive; Delete on a dotted cycle cell → disabled with the new copy.
+- `npx vitest run src/lib src/components/physic-paint src/stores` after the bridge parity fix — 336 files,
+  7505 tests pass.
 - A rail already damaged by the old behavior is non-canonical, so its key delete refuses with the existing
   copy — delete the Rail once to rebuild it cleanly.
+
+## UAT
+
+Approved 2026-11-08 by the user after the live Studio pass ("All uat approved").
+
+Rows covered by the approval:
+
+1. Delete a real key on a rail carrying a cycle. Expected: the cycle dissolves in the same step and the
+   surviving keys stay on one continuous rail; one undo restores both.
+2. Delete on a dotted cycle cell. Expected: Delete is unavailable with "Delete is unavailable on a Rail
+   cycle frame. Delete the Rail, or a key inside it, instead."
+3. +Key on an interpolated frame of a cycled rail. Expected: applies — no parent rejection, no
+   `(loop-clips)` mismatch.
 
 ## Follow-up — parent rejection `(loop-clips)` (fixed)
 
