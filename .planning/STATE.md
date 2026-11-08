@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-08T10:05:36.620Z"
-last_activity: 2026-11-07
+last_updated: "2026-11-08T12:12:08.340Z"
+last_activity: 2026-11-08
 last_activity_desc: Phase 59 execution started
-state_head: 86cea6ebd1bb7e320fadbb1dc6d48ca0dea19c6a
+state_head: 0d71300faa5ad66b04e9b81717f868993ebe999e
 progress:
   total_phases: 4
   completed_phases: 0
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-08 - Completed quick task 261108-d5o: rail motion stop-motion + linear easings, stop-motion default, per-key easing in the Motion sheet (verified)
+Last activity: 2026-11-08 - Completed quick task 261108-gh0: rail motion lucide easing icons, per-channel whole-timeline wiggle + Global flag, apply-easing-to-all, Motion sheet consolidation (verified)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -242,6 +242,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261107-tfp | Size the Studio rail-motion canvas boundary box to the displayed drawing key's alpha ink (per key; generated keys use the flanking union), with the full-raster fallback for empty or unmeasurable keys (UAT approved; ink measured on opaque transmittance sheets) | 2026-11-07 | 68d7d1cc2 | [261107-tfp-ui-boundaries-from-phase-59-rail-motion-](./quick/261107-tfp-ui-boundaries-from-phase-59-rail-motion-/) |
 | 261107-ux2 | Rail motion first span never interpolated: add-channel seeded its opening key with easing hold, so frames between the first two paint keys held while later spans eased; the opening seed now eases (regression tests pin frame 2 = the exact midpoint) | 2026-11-07 | 3138361ad | [261107-ux2-rail-motion-first-span-never-interpolate](./quick/261107-ux2-rail-motion-first-span-never-interpolate/) |
 | 261108-d5o | Rail Motion: add stop-motion and linear easings, make stop-motion the default for new lanes and keys, expose per-key easing in the floating Motion sheet, and glyph all four easing buttons (supersedes 261107-ux2 ease seed) | 2026-11-08 | 86cea6ebd | [261108-d5o-new-ease-motion-from-phase-59-rail-motio](./quick/261108-d5o-new-ease-motion-from-phase-59-rail-motio/) |
+| 261108-gh0 | Rail Motion: lucide easing icons on the sheet and every lane key, tool-strip easing/wiggle removed, per-channel whole-timeline wiggle with a persisted Global flag, apply-easing-to-all-keys, labelled Reset | 2026-11-08 | 0d71300fa | [261108-gh0-rail-motion-follow-up-lucide-easing-icon](./quick/261108-gh0-rail-motion-follow-up-lucide-easing-icon/) |
 
 ## Roadmap Evolution
 
