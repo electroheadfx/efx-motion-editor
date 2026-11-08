@@ -286,8 +286,10 @@ const RAIL_MOTIONS: readonly PhysicPaintRotoRailMotionRecord[] = [
     channels: [
       {
         id: 'position-x',
-        wiggle: 0,
-        wiggleGlobal: true,
+        // 261108-gh0: a non-default channel wiggle pair travels the package
+        // leg too (2.5 is `n4004000000000000;`; global OFF is `0;`).
+        wiggle: 2.5,
+        wiggleGlobal: false,
         keys: [
           { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
           // 261108-d5o: a raw linear ramp in the frozen package fixture.

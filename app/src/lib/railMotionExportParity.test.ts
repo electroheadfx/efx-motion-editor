@@ -64,8 +64,11 @@ const MOTION_RECORD: PhysicPaintRotoRailMotionRecord = {
   channels: [
     {
       id: 'position-x',
-      wiggle: 0,
-      wiggleGlobal: true,
+      // 261108-gh0: non-default pair (2.5 / false). Global OFF keeps the
+      // export's per-key fallback (every per-key wiggle here is 0), so the
+      // sub-frame translateX pins still describe the same rendered motion.
+      wiggle: 2.5,
+      wiggleGlobal: false,
       keys: [
         { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
         { frame: 8, value: 80, easing: 'ease', wiggle: 0 },

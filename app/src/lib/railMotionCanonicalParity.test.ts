@@ -131,7 +131,44 @@ describe('rail motion canonical parity (TS half)', () => {
       'rail-motion-ordering',
       'rail-motion-exponent',
       'rail-motion-easings',
+      'rail-motion-channel-wiggle',
     ].join('|'));
+  });
+
+  // 261108-gh0: the channel wiggle pair is emitted between each channel id
+  // string and its key count. Every existing rail-motion document carries the
+  // defaults, so its source grows by exactly one `n0000000000000000;1;` per
+  // channel; the ninth document proves a non-default pair travels too.
+  it('freezes the channel wiggle term after every channel id', () => {
+    for (const name of ['rail-motion', 'rail-motion-ordering', 'rail-motion-exponent', 'rail-motion-easings']) {
+      const entry = FIXTURE.documents.find((candidate) => candidate.name === name);
+      expect(entry, name).toBeDefined();
+      const document = entry!.document as {
+        railMotions: readonly { channels: readonly { id: string }[] }[];
+      };
+      const channels = document.railMotions.flatMap((record) => record.channels);
+      expect(channels.length, name).toBeGreaterThan(0);
+      for (const channel of channels) {
+        expect(entry!.expectedSource, `${name}/${channel.id}`).toContain(
+          `s${channel.id.length}:${channel.id};n0000000000000000;1;`,
+        );
+      }
+      // One injected pair per channel, and nothing else: 20 bytes each.
+      const defaultPairs = entry!.expectedSource.split('n0000000000000000;1;').length - 1;
+      expect(defaultPairs, name).toBe(channels.length);
+    }
+
+    const wiggle = FIXTURE.documents.find((candidate) => candidate.name === 'rail-motion-channel-wiggle');
+    expect(wiggle).toBeDefined();
+    expect(
+      wiggle!.expectedSource,
+      'position-x must encode wiggle 12 / wiggleGlobal false',
+    ).toContain('s10:position-x;n4028000000000000;0;');
+    expect(
+      wiggle!.expectedSource,
+      'scale must encode wiggle 7 / wiggleGlobal true',
+    ).toContain('s5:scale;n401c000000000000;1;');
+    expect((wiggle!.document as { loopClips: readonly unknown[] }).loopClips).toEqual([]);
   });
 
   // 261108-d5o: the eighth frozen document carries both new easing tokens, so

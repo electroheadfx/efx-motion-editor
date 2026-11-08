@@ -1568,6 +1568,17 @@ struct CanonicalRailMotionKey {
     wiggle: f64,
 }
 
+// 261108-gh0: the channel carries a whole-timeline wiggle amplitude and the
+// mode flag that selects between it and the per-key fallback. Both members are
+// read TOLERANTLY (absent -> 0 / true) so a stored pre-261108-gh0 document
+// still opens; the encoder below always emits both.
+struct CanonicalRailMotionChannel<'a> {
+    id: &'a str,
+    wiggle: f64,
+    wiggle_global: bool,
+    keys: Vec<CanonicalRailMotionKey>,
+}
+
 fn rail_motion_channel_is_known(channel_id: &str) -> bool {
     RAIL_MOTION_CHANNEL_ORDER.contains(&channel_id)
 }
@@ -1597,6 +1608,11 @@ fn rail_motion_bounded_id(value: Option<&str>) -> Option<&str> {
     }
 }
 
+// 261108-gh0 provenance: Rust has NO unknown-member allowlist for rail-motion
+// channels, unlike the TS `RAIL_MOTION_CHANNEL_KEYS` check. That asymmetry
+// predates this quick and is intentionally NOT changed here: the locked spec's
+// "keep exact-member validation" lives on the TS side. Rust still validates
+// every KNOWN member it consumes and always emits both channel wiggle members.
 fn canonical_rail_motions(rail_motions: &[Value]) -> Result<String, String> {
     if rail_motions.len() > RAIL_MOTION_MAX_RECORDS {
         return Err(format!(
@@ -1646,7 +1662,7 @@ fn canonical_rail_motions(rail_motions: &[Value]) -> Result<String, String> {
             ));
         }
 
-        let mut parsed_channels: Vec<(&str, Vec<CanonicalRailMotionKey>)> = Vec::new();
+        let mut parsed_channels: Vec<CanonicalRailMotionChannel<'_>> = Vec::new();
         for channel in channels {
             let channel_object = channel
                 .as_object()
@@ -1662,12 +1678,39 @@ fn canonical_rail_motions(rail_motions: &[Value]) -> Result<String, String> {
             }
             if parsed_channels
                 .iter()
-                .any(|(seen_channel_id, _)| *seen_channel_id == channel_id)
+                .any(|seen| seen.id == channel_id)
             {
                 return Err(format!(
                     "Target physical document railMotions record {rail_id} duplicate channel id {channel_id}"
                 ));
             }
+            // 261108-gh0 tolerant read, mirroring the TS parser exactly:
+            // ABSENT -> default; PRESENT -> strict type and domain. `null` is
+            // present and therefore malformed, never a silent default.
+            let wiggle = match channel_object.get("wiggle") {
+                None => 0.0,
+                Some(value) => {
+                    let wiggle = value.as_f64().ok_or_else(|| {
+                        format!(
+                            "Target physical document railMotions channel {channel_id} in record {rail_id} wiggle is malformed"
+                        )
+                    })?;
+                    if !wiggle.is_finite() || !(0.0..=RAIL_MOTION_WIGGLE_LIMIT).contains(&wiggle) {
+                        return Err(format!(
+                            "Target physical document railMotions channel {channel_id} in record {rail_id} wiggle is outside 0..{RAIL_MOTION_WIGGLE_LIMIT}"
+                        ));
+                    }
+                    wiggle
+                }
+            };
+            let wiggle_global = match channel_object.get("wiggleGlobal") {
+                None => true,
+                Some(value) => value.as_bool().ok_or_else(|| {
+                    format!(
+                        "Target physical document railMotions channel {channel_id} in record {rail_id} wiggleGlobal is malformed"
+                    )
+                })?,
+            };
             let keys = channel_object
                 .get("keys")
                 .and_then(Value::as_array)
@@ -1744,7 +1787,12 @@ fn canonical_rail_motions(rail_motions: &[Value]) -> Result<String, String> {
                     wiggle,
                 });
             }
-            parsed_channels.push((channel_id, parsed_keys));
+            parsed_channels.push(CanonicalRailMotionChannel {
+                id: channel_id,
+                wiggle,
+                wiggle_global,
+                keys: parsed_keys,
+            });
         }
 
         // D-12 grouped Position: both axes present or both absent, and the
@@ -1752,12 +1800,14 @@ fn canonical_rail_motions(rail_motions: &[Value]) -> Result<String, String> {
         // written for the record, so a malformed pair fails deterministically.
         let position_x = parsed_channels
             .iter()
-            .find(|(channel_id, _)| *channel_id == "position-x");
+            .find(|channel| channel.id == "position-x");
         let position_y = parsed_channels
             .iter()
-            .find(|(channel_id, _)| *channel_id == "position-y");
+            .find(|channel| channel.id == "position-y");
         match (position_x, position_y) {
-            (Some((_, x_keys)), Some((_, y_keys))) => {
+            (Some(x_channel), Some(y_channel)) => {
+                let x_keys = &x_channel.keys;
+                let y_keys = &y_channel.keys;
                 let frames_match = x_keys.len() == y_keys.len()
                     && x_keys
                         .iter()
@@ -1781,13 +1831,17 @@ fn canonical_rail_motions(rail_motions: &[Value]) -> Result<String, String> {
         encoded.push_str(&canonical_string(anchor_key_id));
         encoded.push_str(&format!("{}:", parsed_channels.len()));
         for channel_id in RAIL_MOTION_CHANNEL_ORDER {
-            if let Some((_, keys)) = parsed_channels
+            if let Some(channel) = parsed_channels
                 .iter()
-                .find(|(seen_channel_id, _)| *seen_channel_id == channel_id)
+                .find(|candidate| candidate.id == channel_id)
             {
-                encoded.push_str(&canonical_string(channel_id));
-                encoded.push_str(&format!("{}:", keys.len()));
-                for key in keys {
+                encoded.push_str(&canonical_string(channel.id));
+                // 261108-gh0: channel wiggle amplitude then the mode boolean,
+                // immediately after the id and before the key count.
+                encoded.push_str(&canonical_number(channel.wiggle));
+                encoded.push_str(&canonical_boolean(channel.wiggle_global));
+                encoded.push_str(&format!("{}:", channel.keys.len()));
+                for key in &channel.keys {
                     encoded.push_str(&canonical_number(key.frame));
                     encoded.push_str(&canonical_number(key.value));
                     encoded.push_str(&canonical_string(&key.easing));
@@ -3328,8 +3382,9 @@ mod tests {
                 "rail-motion-ordering",
                 "rail-motion-exponent",
                 "rail-motion-easings",
+                "rail-motion-channel-wiggle",
             ],
-            "golden fixture must carry the eight frozen cross-language documents"
+            "golden fixture must carry the nine frozen cross-language documents"
         );
         for entry in documents {
             let name = entry["name"].as_str().expect("golden fixture name");
@@ -3459,10 +3514,14 @@ mod tests {
     fn scale_rotation_record(rail_id: &str, scale_first: bool) -> Value {
         let scale = json!({
             "id": "scale",
+            "wiggle": 0,
+            "wiggleGlobal": true,
             "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }]
         });
         let rotation = json!({
             "id": "rotation",
+            "wiggle": 0,
+            "wiggleGlobal": true,
             "keys": [{ "frame": 4, "value": 30, "easing": "hold", "wiggle": 0 }]
         });
         let channels = if scale_first {
@@ -3471,6 +3530,22 @@ mod tests {
             json!([rotation, scale])
         };
         rail_motion_record(rail_id, channels)
+    }
+
+    /// 261108-gh0: one scale channel with the given channel-level members
+    /// merged in, so a test can express "absent", "only wiggle",
+    /// "only wiggleGlobal", "both" and every present-but-invalid shape.
+    fn rail_motion_channel_with_members(members: Value) -> Value {
+        let mut channel = json!({
+            "id": "scale",
+            "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }]
+        });
+        if let (Some(target), Some(extra)) = (channel.as_object_mut(), members.as_object()) {
+            for (member, value) in extra {
+                target.insert(member.clone(), value.clone());
+            }
+        }
+        channel
     }
 
     #[test]
@@ -3496,11 +3571,136 @@ mod tests {
     fn canonical_rail_motions_emits_the_typescript_byte_format() {
         let document = rail_motion_document(json!([scale_rotation_record("rail", true)]));
         let source = canonical_physical_source(&document).expect("valid rail motion document");
-        let expected = "rail-motions:1:s4:rail;s2:k1;2:s5:scale;1:n0000000000000000;n3ff0000000000000;s4:ease;n0000000000000000;s8:rotation;1:n4010000000000000;n403e000000000000;s4:hold;n0000000000000000;";
+        // 261108-gh0: each channel id string is followed by the channel wiggle
+        // number and the wiggleGlobal boolean before the key count. Both halves
+        // here carry the defaults, so the inserted bytes are
+        // `n0000000000000000;1;`.
+        let expected = "rail-motions:1:s4:rail;s2:k1;2:s5:scale;n0000000000000000;1;1:n0000000000000000;n3ff0000000000000;s4:ease;n0000000000000000;s8:rotation;n0000000000000000;1;1:n4010000000000000;n403e000000000000;s4:hold;n0000000000000000;";
         assert!(
             source.contains(expected),
             "rail-motions term diverged from the TypeScript byte format: {source}"
         );
+    }
+
+    // 261108-gh0: absence is never a rejection. A stored pre-gh0 channel (no
+    // members) and every partial shape must open and re-encode with the
+    // defaults materialized, exactly like the TS tolerant read.
+    #[test]
+    fn canonical_rail_motions_tolerantly_defaults_absent_channel_wiggle_members() {
+        let default_expected = "s5:scale;n0000000000000000;1;1:";
+        let shapes: Vec<(&str, Value)> = vec![
+            ("omits both", rail_motion_channel_with_members(json!({}))),
+            (
+                "only wiggle",
+                rail_motion_channel_with_members(json!({ "wiggle": 0 })),
+            ),
+            (
+                "only wiggleGlobal",
+                rail_motion_channel_with_members(json!({ "wiggleGlobal": true })),
+            ),
+            (
+                "both at defaults",
+                rail_motion_channel_with_members(json!({ "wiggle": 0, "wiggleGlobal": true })),
+            ),
+        ];
+        for (label, channel) in shapes {
+            let document =
+                rail_motion_document(json!([rail_motion_record("rail", json!([channel]))]));
+            let source = canonical_physical_source(&document)
+                .unwrap_or_else(|error| panic!("{label}: absent members must be tolerated: {error}"));
+            assert!(
+                source.contains(default_expected),
+                "{label}: the encoder must materialize the default members: {source}"
+            );
+        }
+
+        // A partial shape keeps the PRESENT member and defaults only the absent one.
+        let partial = rail_motion_document(json!([rail_motion_record(
+            "rail",
+            json!([rail_motion_channel_with_members(json!({ "wiggle": 12 }))])
+        )]));
+        let partial_source =
+            canonical_physical_source(&partial).expect("partial wiggle must be tolerated");
+        assert!(
+            partial_source.contains("s5:scale;n4028000000000000;1;1:"),
+            "an absent wiggleGlobal must default to true: {partial_source}"
+        );
+
+        let global_off = rail_motion_document(json!([rail_motion_record(
+            "rail",
+            json!([rail_motion_channel_with_members(json!({ "wiggleGlobal": false }))])
+        )]));
+        let global_off_source =
+            canonical_physical_source(&global_off).expect("partial wiggleGlobal must be tolerated");
+        assert!(
+            global_off_source.contains("s5:scale;n0000000000000000;0;1:"),
+            "an absent wiggle must default to 0: {global_off_source}"
+        );
+    }
+
+    // 261108-gh0: the non-default pair uses the same canonical encoders the TS
+    // side uses: 12 -> n4028000000000000; and false -> 0;.
+    #[test]
+    fn canonical_rail_motions_emits_non_default_channel_wiggle_bytes() {
+        let non_default = rail_motion_document(json!([rail_motion_record(
+            "rail",
+            json!([rail_motion_channel_with_members(json!({ "wiggle": 12, "wiggleGlobal": false }))])
+        )]));
+        let source =
+            canonical_physical_source(&non_default).expect("non-default wiggle must encode");
+        assert!(
+            source.contains("s5:scale;n4028000000000000;0;1:"),
+            "wiggle 12 / wiggleGlobal false must encode n4028000000000000;0; after the id: {source}"
+        );
+
+        let default = rail_motion_document(json!([rail_motion_record(
+            "rail",
+            json!([rail_motion_channel_with_members(json!({ "wiggle": 0, "wiggleGlobal": true }))])
+        )]));
+        let default_source = canonical_physical_source(&default).expect("defaults must encode");
+        assert!(
+            default_source.contains("s5:scale;n0000000000000000;1;1:"),
+            "the default pair must encode n0000000000000000;1;: {default_source}"
+        );
+    }
+
+    // 261108-gh0: PRESENT wrong types and out-of-domain numbers are rejected,
+    // naming the record, the channel and the failing domain.
+    #[test]
+    fn canonical_rail_motions_rejects_present_invalid_channel_wiggle_members() {
+        let cases: Vec<(&str, Value, &str)> = vec![
+            ("negative wiggle", json!({ "wiggle": -1 }), "wiggle"),
+            ("wiggle above limit", json!({ "wiggle": 1_000_001 }), "wiggle"),
+            ("string wiggle", json!({ "wiggle": "12" }), "wiggle"),
+            ("null wiggle", json!({ "wiggle": null }), "wiggle"),
+            (
+                "string wiggleGlobal",
+                json!({ "wiggleGlobal": "true" }),
+                "wiggleGlobal",
+            ),
+            ("numeric wiggleGlobal", json!({ "wiggleGlobal": 1 }), "wiggleGlobal"),
+            ("null wiggleGlobal", json!({ "wiggleGlobal": null }), "wiggleGlobal"),
+        ];
+        for (label, members, domain) in cases {
+            let document = rail_motion_document(json!([rail_motion_record(
+                "rail",
+                json!([rail_motion_channel_with_members(members)])
+            )]));
+            let error = canonical_physical_source(&document)
+                .expect_err(&format!("{label} must fail closed"));
+            assert!(
+                error.contains(domain),
+                "{label}: error must name {domain}: {error}"
+            );
+            assert!(
+                error.contains("record rail"),
+                "{label}: error must name the record: {error}"
+            );
+            assert!(
+                error.contains("scale"),
+                "{label}: error must name the channel: {error}"
+            );
+        }
     }
 
     // 261108-d5o: both new easing tokens pass the validator and encode through
@@ -3509,7 +3709,7 @@ mod tests {
     fn canonical_rail_motions_accepts_linear_and_stop_motion_tokens() {
         let document = rail_motion_document(json!([rail_motion_record(
             "rail",
-            json!([{ "id": "scale", "keys": [
+            json!([{ "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": [
                 { "frame": 0, "value": 1, "easing": "linear", "wiggle": 0 },
                 { "frame": 4, "value": 2, "easing": "stop-motion", "wiggle": 0 }
             ] }])
@@ -3527,7 +3727,7 @@ mod tests {
 
         let rejected = rail_motion_document(json!([rail_motion_record(
             "rail",
-            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": 1, "easing": "bounce", "wiggle": 0 }] }])
+            json!([{ "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": [{ "frame": 0, "value": 1, "easing": "bounce", "wiggle": 0 }] }])
         )]));
         let error = canonical_physical_source(&rejected)
             .expect_err("an unknown easing token must fail closed");
@@ -3585,43 +3785,43 @@ mod tests {
         ]);
         let unknown_channel = json!([rail_motion_record(
             "rail",
-            json!([{ "id": "bogus", "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }] }])
+            json!([{ "id": "bogus", "wiggle": 0, "wiggleGlobal": true, "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }] }])
         )]);
         let empty_channel = json!([rail_motion_record(
             "rail",
-            json!([{ "id": "scale", "keys": [] }])
+            json!([{ "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": [] }])
         )]);
         let non_ascending_frame = json!([rail_motion_record(
             "rail",
-            json!([{ "id": "scale", "keys": [
+            json!([{ "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": [
                 { "frame": 4, "value": 1, "easing": "ease", "wiggle": 0 },
                 { "frame": 2, "value": 1, "easing": "ease", "wiggle": 0 }
             ] }])
         )]);
         let invalid_easing = json!([rail_motion_record(
             "rail",
-            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": 1, "easing": "bounce", "wiggle": 0 }] }])
+            json!([{ "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": [{ "frame": 0, "value": 1, "easing": "bounce", "wiggle": 0 }] }])
         )]);
         let non_numeric_value = json!([rail_motion_record(
             "rail",
-            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": "one", "easing": "ease", "wiggle": 0 }] }])
+            json!([{ "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": [{ "frame": 0, "value": "one", "easing": "ease", "wiggle": 0 }] }])
         )]);
         let invalid_wiggle = json!([rail_motion_record(
             "rail",
-            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": -1 }] }])
+            json!([{ "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": -1 }] }])
         )]);
         let ungrouped_position = json!([rail_motion_record(
             "rail",
-            json!([{ "id": "position-x", "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }] }])
+            json!([{ "id": "position-x", "wiggle": 0, "wiggleGlobal": true, "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }] }])
         )]);
         let mismatched_position_frames = json!([rail_motion_record(
             "rail",
             json!([
-                { "id": "position-x", "keys": [
+                { "id": "position-x", "wiggle": 0, "wiggleGlobal": true, "keys": [
                     { "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 },
                     { "frame": 4, "value": 2, "easing": "ease", "wiggle": 0 }
                 ] },
-                { "id": "position-y", "keys": [
+                { "id": "position-y", "wiggle": 0, "wiggleGlobal": true, "keys": [
                     { "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }
                 ] }
             ])
@@ -3638,12 +3838,12 @@ mod tests {
         let too_many_channels = json!([rail_motion_record(
             "rail",
             json!([
-                { "id": "scale", "keys": [] },
-                { "id": "scale", "keys": [] },
-                { "id": "rotation", "keys": [] },
-                { "id": "opacity", "keys": [] },
-                { "id": "position-x", "keys": [] },
-                { "id": "position-y", "keys": [] }
+                { "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": [] },
+                { "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": [] },
+                { "id": "rotation", "wiggle": 0, "wiggleGlobal": true, "keys": [] },
+                { "id": "opacity", "wiggle": 0, "wiggleGlobal": true, "keys": [] },
+                { "id": "position-x", "wiggle": 0, "wiggleGlobal": true, "keys": [] },
+                { "id": "position-y", "wiggle": 0, "wiggleGlobal": true, "keys": [] }
             ])
         )]);
         let too_many_keys: Vec<Value> = (0..4097)
@@ -3651,11 +3851,11 @@ mod tests {
             .collect();
         let too_many_keys = json!([rail_motion_record(
             "rail",
-            json!([{ "id": "scale", "keys": too_many_keys }])
+            json!([{ "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": too_many_keys }])
         )]);
         let unbounded_rail_id = json!([rail_motion_record(
             &"a".repeat(129),
-            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }] }])
+            json!([{ "id": "scale", "wiggle": 0, "wiggleGlobal": true, "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }] }])
         )]);
 
         let cases: Vec<(&str, Value, &str)> = vec![

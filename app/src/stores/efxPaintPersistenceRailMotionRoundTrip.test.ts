@@ -17,6 +17,8 @@
 
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { evaluateRailMotionChannel } from '../components/physic-paint/roto/railMotionEvaluator';
+import type { PhysicPaintRotoRailMotionRecord } from '../components/physic-paint/roto/railMotionModel';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -87,6 +89,45 @@ const RAIL_A = {
   ],
 };
 
+/**
+ * 261108-gh0: one canonical rail-motion record with NON-DEFAULT channel wiggle
+ * pairs — position-x at 12 / global OFF, scale at 7 / global ON. The grouped
+ * Position pair stays complete (both axes, identical frame sets).
+ */
+const RAIL_WIGGLE = {
+  railId: 'rail-wiggle',
+  anchorKeyId: 'key-1',
+  channels: [
+    {
+      id: 'position-x' as const,
+      wiggle: 12,
+      wiggleGlobal: false,
+      keys: [
+        { frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 },
+        { frame: 10, value: 100, easing: 'ease' as const, wiggle: 0 },
+      ],
+    },
+    {
+      id: 'position-y' as const,
+      wiggle: 0,
+      wiggleGlobal: true,
+      keys: [
+        { frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 },
+        { frame: 10, value: -50, easing: 'ease' as const, wiggle: 0 },
+      ],
+    },
+    {
+      id: 'scale' as const,
+      wiggle: 7,
+      wiggleGlobal: true,
+      keys: [
+        { frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 },
+        { frame: 10, value: 2, easing: 'ease' as const, wiggle: 0 },
+      ],
+    },
+  ],
+};
+
 describe('59-03: rail-motion persistence round-trip (save → reopen byte identity)', () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
@@ -138,6 +179,60 @@ describe('59-03: rail-motion persistence round-trip (save → reopen byte identi
     expect(reopened?.[0].channels[0].keys.map((key) => key.frame)).toEqual([0, 4]);
     expect(reopened?.[0].channels[0].keys.map((key) => key.value)).toEqual([0, 40]);
     expect(reopened?.[0].channels[1].keys.map((key) => key.value)).toEqual([0, -20]);
+  });
+
+  // 261108-gh0 (spec PERSISTENCE): the two new channel members cross the save
+  // boundary verbatim and the evaluated values are identical on both sides.
+  it('carries the non-default channel wiggle pair and evaluates identically after reopen', () => {
+    registerDocument(makeTrackDocument());
+    const installed = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER_ID,
+      TRACK_ID,
+      RECORDS,
+      INTERPOLATION,
+      32,
+    );
+    expect(installed.ok).toBe(true);
+    const motionSet = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER_ID, TRACK_ID, [RAIL_WIGGLE]);
+    expect(motionSet.ok).toBe(true);
+
+    const first = serializeRuntimeIntoDocument(LAYER_ID);
+    const firstJson = JSON.stringify(first);
+
+    const recordBefore = physicPaintStore.getRotoPhysicalRailMotions(LAYER_ID, TRACK_ID)[0];
+    expect(
+      recordBefore.channels.map((channel) => ({
+        id: channel.id,
+        wiggle: channel.wiggle,
+        wiggleGlobal: channel.wiggleGlobal,
+      })),
+    ).toEqual([
+      { id: 'position-x', wiggle: 12, wiggleGlobal: false },
+      { id: 'position-y', wiggle: 0, wiggleGlobal: true },
+      { id: 'scale', wiggle: 7, wiggleGlobal: true },
+    ]);
+    const frames = Array.from({ length: 13 }, (_, frame) => frame);
+    const sample = (record: PhysicPaintRotoRailMotionRecord) => frames.map((frame) => ({
+      x: evaluateRailMotionChannel(record, 'position-x', frame),
+      y: evaluateRailMotionChannel(record, 'position-y', frame),
+      scale: evaluateRailMotionChannel(record, 'scale', frame),
+    }));
+    const before = sample(recordBefore);
+
+    physicPaintStore.reset();
+    reset();
+    const parsed = parseEfxPaintDocument(first);
+    registerDocument(parsed);
+    hydrateRuntimeFromDocument(parsed, new Map<string, Map<number, PhysicPaintRenderedFrame>>());
+
+    const recordAfter = physicPaintStore.getRotoPhysicalRailMotions(LAYER_ID, TRACK_ID)[0];
+    expect(sample(recordAfter)).toEqual(before);
+
+    const second = serializeRuntimeIntoDocument(LAYER_ID);
+    // The non-default pair really is on the wire, not silently defaulted.
+    expect(firstJson).toContain('"wiggle":12');
+    expect(firstJson).toContain('"wiggleGlobal":false');
+    expect(JSON.stringify(second)).toBe(firstJson);
   });
 
   it('an untouched document stays byte-identical across the same round trip', () => {
