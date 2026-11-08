@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-08T15:02:02.931Z"
+last_updated: "2026-11-08T16:20:44.780Z"
 last_activity: 2026-11-08
 last_activity_desc: Phase 59 execution started
-state_head: 4128c27e6dd175b72c9b4713314aa36cb09d22b5
+state_head: 7de46add1d1ecd0d9fd68ea3368940bf6249566a
 progress:
   total_phases: 4
   completed_phases: 0
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-08 - Completed quick task 261108-kvw: canvas motion-path overlay for rail Position (UAT approved; 7/7 must-haves verified)
+Last activity: 2026-11-08 - Completed quick task 261108-nq0: + Key / paint inside a cycled one-key rail dissolves the Loop Clip and joins the new key instead of splitting the rail (automated-green; live UAT pending)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -245,6 +245,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261108-gh0 | Rail Motion: lucide easing icons on the sheet and every lane key, tool-strip easing/wiggle removed, per-channel whole-timeline wiggle with a persisted Global flag, Keys table with [Key N]/[All] targets, project-scaled wiggle sliders, sectioned auto-height sheet (UAT approved 2026-11-08) | 2026-11-08 | 94b246ed7 | [261108-gh0-rail-motion-follow-up-lucide-easing-icon](./quick/261108-gh0-rail-motion-follow-up-lucide-easing-icon/) |
 | 261108-kvw | Canvas motion-path overlay for rail Position: read-only dashed authored route, key dots and cursor marker in animate mode (UAT approved) | 2026-11-08 | 4893ee9ee | [261108-kvw-canvas-motion-path-overlay-for-rail-posi](./quick/261108-kvw-canvas-motion-path-overlay-for-rail-posi/) |
 | 14 | Deps bump: preact 11.2.0, xstate 6.0.0-beta.1; removed Matt Pocock skills and .efx-planning | 2026-11-08 | 4128c27e6 | — |
+| 261108-nq0 | Phase 59 cycle rail bug: + Key / paint inside a cycled one-key rail now dissolves the Loop Clip and lands the key joined to the rail (one continuous rail, no stale-document errors, no split) | 2026-11-08 | 7de46add1 | [261108-nq0-phase-59-cycle-rail-bug-adding-a-key-ins](./quick/261108-nq0-phase-59-cycle-rail-bug-adding-a-key-ins/) |
 
 ## Roadmap Evolution
 
