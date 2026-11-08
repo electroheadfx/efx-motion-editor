@@ -3200,9 +3200,9 @@ describe('261108-gh0: Motion easing and Wiggle left the tool strip (spec 3)', ()
     // and never an un-scoped aria-pressed rule.
     expect(getCssRuleBlock(styles, '.physics-paint-motion-easing-target'))
       .toContain('#2a3540');
-    // The pressed tint stays inside the existing #3a424c palette.
+    // 261108-gh0 UAT: the selected easing speaks the ORANGE selection language.
     expect(getCssRuleBlock(styles, '.physics-paint-motion-easing-target[aria-pressed="true"]'))
-      .toContain('#3a424c');
+      .toContain('#f59e0b');
     expect(styles).not.toMatch(/(^|\n)\[aria-pressed="true"\]/);
   });
 });

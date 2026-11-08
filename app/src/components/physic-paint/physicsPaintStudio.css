@@ -4463,7 +4463,9 @@ button.destructive {
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  margin: 15px 0;
+  /* 261108-gh0 UAT: bottom-only rhythm — the sheet's top padding seats the
+     first box, so a top margin would only double that gap. */
+  margin: 0 0 15px;
   border: 1px solid #3a4652;
   border-radius: 6px;
   background: rgba(42, 53, 64, 0.35);
@@ -4495,7 +4497,9 @@ button.destructive {
 .physics-paint-motion-easing-current {
   font-size: 10px;
   line-height: 1;
-  color: #6f90ff;
+  /* 261108-gh0 UAT: the selected easing speaks the ORANGE selection language
+     (#F59E0B family, the same one rail selection and the armed Push use). */
+  color: #fbbf24;
   text-align: center;
 }
 
@@ -4507,7 +4511,7 @@ button.destructive {
 }
 
 .physics-paint-motion-easing-row[data-active="true"] .physics-paint-motion-easing-icon {
-  color: #6f90ff;
+  color: #fbbf24;
 }
 
 .physics-paint-motion-easing-name {
@@ -4547,9 +4551,9 @@ button.destructive {
 }
 
 .physics-paint-motion-easing-target[aria-pressed="true"] {
-  border-color: #6f90ff;
-  background: #3a424c;
-  color: #ffffff;
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
 }
 
 .physics-paint-motion-easing-target[aria-disabled="true"] {

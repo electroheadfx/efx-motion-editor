@@ -5612,6 +5612,7 @@ describe('261107-qgj floating Motion modal projection and write', () => {
       readonly label: string;
       readonly wiggle: number;
       readonly wiggleGlobal: boolean;
+      readonly wiggleMax: number;
       readonly setWiggle: (wiggle: number) => string | null;
       readonly setWiggleGlobal: (wiggleGlobal: boolean) => string | null;
     }[];
@@ -5960,6 +5961,10 @@ describe('261107-qgj floating Motion modal projection and write', () => {
       expect(row.wiggle, 'the RAW model amplitude, never a UI value').toBe(0);
       expect(row.wiggleGlobal).toBe(true);
     }
+    // 261108-gh0 UAT: the slider ceiling is the PROJECT size for Position and
+    // the channel's own display span elsewhere — never the stored 0..1e6 cap.
+    // (This harness's launch carries no width/height, so the fallbacks apply.)
+    expect(bundle.channels.map((row) => row.wiggleMax)).toEqual([1920, 1080, 1]);
 
     const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
     const scaleRow = bundle.channels.find((row) => row.channelId === 'scale');

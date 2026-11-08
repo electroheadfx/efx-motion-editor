@@ -629,18 +629,22 @@ describe('projectRailMotionInspectorAtFrame (261107-qgj: property-mode projectio
  * setters that reach the one command authority.
  */
 describe('261108-gh0 RailMotionChannelWiggleRow and the bundle wiggle surface', () => {
-  it('carries exactly the six pinned members and keeps the raw model amplitude', () => {
+  it('carries exactly the seven pinned members and keeps the raw model amplitude', () => {
     const row: RailMotionChannelWiggleRow = {
       channelId: 'position-x',
       label: 'Position X',
       wiggle: 12,
       wiggleGlobal: false,
+      wiggleMax: 1920,
       setWiggle: () => null,
       setWiggleGlobal: () => null,
     };
 
     expect(Object.keys(row).sort()).toEqual(
-      ['channelId', 'label', 'setWiggle', 'setWiggleGlobal', 'wiggle', 'wiggleGlobal'].sort(),
+      [
+        'channelId', 'label', 'setWiggle', 'setWiggleGlobal',
+        'wiggle', 'wiggleGlobal', 'wiggleMax',
+      ].sort(),
     );
     expect(row.wiggle, 'the raw model amplitude, never a UI value').toBe(12);
     expect(row.wiggleGlobal).toBe(false);

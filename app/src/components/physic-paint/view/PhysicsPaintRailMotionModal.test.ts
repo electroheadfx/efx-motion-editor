@@ -195,8 +195,9 @@ function wiggleRow(
   wiggleGlobal: boolean,
   setWiggle: (wiggle: number) => string | null = () => null,
   setWiggleGlobal: (wiggleGlobal: boolean) => string | null = () => null,
+  wiggleMax = 1920,
 ): RailMotionChannelWiggleRow {
-  return { channelId, label, wiggle, wiggleGlobal, setWiggle, setWiggleGlobal };
+  return { channelId, label, wiggle, wiggleGlobal, wiggleMax, setWiggle, setWiggleGlobal };
 }
 
 /** The three channels the partial fixture rail carries. */
@@ -583,7 +584,10 @@ describe('261107-qgj floating Motion modal', () => {
     // Raw model amplitude — never a display-unit conversion.
     expect(steppers.map((node) => node.props?.value)).toEqual([12, 0, 3]);
     expect(steppers.every((node) => node.props?.min === 0)).toBe(true);
-    expect(steppers.every((node) => node.props?.max === 1000000)).toBe(true);
+    // 261108-gh0 UAT: the gesture range is the row's own wiggleMax, never the
+    // stored 0..1,000,000 cap.
+    expect(steppers.map((node) => node.props?.max)).toEqual([1920, 1920, 1920]);
+    expect(steppers.map((node) => node.props?.sliderMax)).toEqual([1920, 1920, 1920]);
     expect(steppers.every((node) => node.props?.step === 1)).toBe(true);
     expect(steppers.every((node) => node.props?.precision === 0)).toBe(true);
     expect(steppers.every((node) => node.props?.freeEntry === true)).toBe(true);
@@ -702,7 +706,10 @@ describe('261107-qgj floating Motion modal', () => {
     expect(style?.top).toBe('60px');
     expect(style?.right).toBe('12px');
     expect(style?.width).toBe('320px');
-    expect(style?.height, 'the bottom inset stays 12px').toBe('min(380px, calc(100% - 72px))');
+    // 261108-gh0 UAT: the FIRST open sizes to its sections; the bottom inset
+    // survives as the maxHeight clamp instead of a fixed height.
+    expect(style?.height, 'first open fits its content').toBe('auto');
+    expect(style?.maxHeight, 'the bottom inset stays 12px').toBe('calc(100% - 72px)');
     expect(
       tree.props?.onPointerDownCapture,
       'the root raises itself on capture-phase pointerdown',
@@ -815,7 +822,8 @@ describe('261107-qgj floating Motion modal', () => {
     resetRailMotionModalLayout();
     const cleared = renderModal({ dialog });
     expect(rootStyle(cleared)?.transform).toBe('translate(0px, 0px)');
-    expect(rootStyle(cleared)?.height).toBe('min(380px, calc(100% - 72px))');
+    // Reset returns to the content-fitting first-open height.
+    expect(rootStyle(cleared)?.height).toBe('auto');
   });
 
   it('pins the Studio close path and the removed sidebar in source (261107-qgj)', () => {

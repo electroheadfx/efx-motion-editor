@@ -79,6 +79,31 @@ const RAIL_MOTION_LANE_CHANNELS = {
   RailMotionDisplayLaneId,
   readonly PhysicPaintRotoRailMotionChannelId[]
 >;
+
+/**
+ * 261108-gh0 UAT: the Wiggle sliders are gestures, not storage. Position uses
+ * the project's own width/height; Scale and Opacity are ratios (1 = 100 %);
+ * Rotation is degrees. The stored 0..1,000,000 limit stays the parser's law.
+ */
+function railMotionWiggleSliderMax(
+  channelId: PhysicPaintRotoRailMotionChannelId,
+  projectWidth: number,
+  projectHeight: number,
+): number {
+  switch (channelId) {
+    case 'position-x':
+      return projectWidth;
+    case 'position-y':
+      return projectHeight;
+    case 'rotation':
+      return 180;
+    case 'scale':
+    case 'opacity':
+      return 1;
+    default:
+      return 1;
+  }
+}
 import {
   addMotionChannel as applyAddMotionChannel,
   animateRail,
@@ -3460,6 +3485,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     // numeric rows read — no second predicate — and the values are RAW model
     // amplitudes. Each setter forwards the OTHER current member so a one-field
     // edit can never reset its sibling.
+    // 261108-gh0 UAT: the slider ceiling comes from the project's own size, so
+    // a Position wiggle can express at most a full frame of drift.
+    const launch = input.getLaunchContext?.() ?? null;
+    const projectWidth = launch?.width ?? 1920;
+    const projectHeight = launch?.height ?? 1080;
     const channels: RailMotionChannelWiggleRow[] = [];
     for (const field of presentation.fields) {
       if (!field.present) continue;
@@ -3470,6 +3500,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         label: field.label,
         wiggle: channel.wiggle,
         wiggleGlobal: channel.wiggleGlobal,
+        wiggleMax: railMotionWiggleSliderMax(field.channelId, projectWidth, projectHeight),
         setWiggle: (wiggle: number): string | null => (
           commitSelectedMotionChannelWiggle(field.channelId, wiggle, channel.wiggleGlobal)
         ),

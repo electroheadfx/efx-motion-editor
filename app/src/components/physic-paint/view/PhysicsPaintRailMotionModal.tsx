@@ -317,7 +317,14 @@ export function PhysicsPaintRailMotionModal({
       style={{
         ...SURFACE_STYLE,
         zIndex: sheetZIndex(SHEET_ID_RAIL_MOTION),
-        height: resizedHeight === null ? SURFACE_STYLE.height : `${resizedHeight}px`,
+        // 261108-gh0 UAT: the FIRST open sizes itself to its sections; only a
+        // drag on the grip pins a height, and that pinned height wins after.
+        ...(resizedHeight === null
+          ? {
+            height: 'auto',
+            maxHeight: `calc(100% - ${SURFACE_TOP_INSET_PX + SURFACE_INSET_PX}px)`,
+          }
+          : { height: `${resizedHeight}px` }),
         transform: `translate(${applied?.dxPx ?? 0}px, ${applied?.dyPx ?? 0}px)`,
       }}
     >
@@ -428,7 +435,9 @@ export function PhysicsPaintRailMotionModal({
                     ariaLabel={`${row.label} wiggle`}
                     value={row.wiggle}
                     min={0}
-                    max={1000000}
+                    // 261108-gh0 UAT: a gesture range, not the stored 0..1e6 cap.
+                    max={row.wiggleMax}
+                    sliderMax={row.wiggleMax}
                     step={1}
                     precision={0}
                     freeEntry

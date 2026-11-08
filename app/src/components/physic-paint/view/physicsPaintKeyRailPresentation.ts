@@ -298,6 +298,12 @@ export interface RailMotionChannelWiggleRow {
   readonly label: string;
   readonly wiggle: number;
   readonly wiggleGlobal: boolean;
+  /**
+   * 261108-gh0 UAT: the sheet's slider ceiling in the CHANNEL's model unit —
+   * the project width/height for Position, the channel's own display span for
+   * the rest. The stored model limit (1,000,000) is not a usable gesture range.
+   */
+  readonly wiggleMax: number;
   readonly setWiggle: (wiggle: number) => string | null;
   readonly setWiggleGlobal: (wiggleGlobal: boolean) => string | null;
 }
