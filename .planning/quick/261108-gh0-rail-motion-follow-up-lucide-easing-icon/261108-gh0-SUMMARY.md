@@ -325,3 +325,23 @@ Automated-ready; live visible UAT is the remaining gate:
 - All six commits are ancestors of HEAD: `e6728eb07`, `ff52038ab`, `7a9daac69`, `73931266b`, `c22bda2fd`, `0d71300fa`.
 - The plan ledger measures 6 commits from `7224b43255e9feb76fbec97f970b42d7fd0118c0` to `0d71300faa5ad66b04e9b81717f868993ebe999e`.
 - Working tree contains only the pre-existing unstaged PLAN.md amendment and the new SUMMARY.md; the executor committed neither.
+
+---
+
+## UAT APPROVED — 2026-11-08
+
+The user ran the live UAT and approved. Four follow-up rounds landed after the
+initial verification, all driven by that UAT:
+
+| Commit | Change |
+|--------|--------|
+| `96730a069` | Icon-only lane keys (no filled box), motion-wide easing row reachable in property mode, title-case Reset, Global toggle aligned to the slider bar |
+| `b0aadda23` | The Keys TABLE — four rows, each with `[Key N]` and `[All]` targets; Position / Keys / Wiggle bordered sections; Reset at body-label metrics; filled lane glyphs |
+| `4d8d021d6` | Property mode targets the key under the PLAYHEAD, so `[Key N]` is live without a lane selection first |
+| `94b246ed7` | Wiggle sliders span the project width/height (Position) or the channel's display span (Scale/Opacity = 1, Rotation = 180°) instead of the stored 0..1,000,000 cap; sheet auto-heights its sections on first open; section margin bottom-only; selected easing uses the orange selection language |
+
+Superseded by those rounds: the single four-glyph button strip, the separate
+"Apply to all keys" button (now the per-row `[All]`), and the blue pressed tint.
+The locked laws from the plan are unchanged: stop-motion default, the sampled
+linear ramp at displayed real paint-key frames, per-channel `wiggle` +
+`wiggleGlobal`, and one easing write authority.
