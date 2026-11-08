@@ -5902,12 +5902,15 @@ describe('261107-qgj floating Motion modal projection and write', () => {
     expect(replaceSpy).not.toHaveBeenCalled();
   });
 
-  it('routes both easing surfaces through ONE write authority (261108-d5o)', () => {
+  it('routes the surviving easing surface through ONE write authority (261108-d5o)', () => {
     const authorityCalls = HOOK_SOURCE.split('applySetMotionKeyEasing(').length - 1;
     expect(authorityCalls, 'one applySetMotionKeyEasing call site').toBe(1);
     expect(HOOK_SOURCE).toContain('const commitSelectedMotionKeyEasing = useCallback(');
+    // 261108-gh0: the strip-only action that used to delegate was removed with
+    // its last consumer, so the dialog bundle is the ONE remaining delegate.
+    expect(HOOK_SOURCE).not.toContain('setSelectedMotionKeyEasing');
     const delegations = HOOK_SOURCE.split('commitSelectedMotionKeyEasing(').length - 1;
-    expect(delegations, 'the strip action and the dialog bundle both delegate').toBe(2);
+    expect(delegations, 'the dialog bundle is the ONE delegate').toBe(1);
   });
 
   it('exposes one raw wiggle row per present channel and writes through the bundle (261108-gh0)', () => {
@@ -6207,25 +6210,6 @@ describe('261108-d5o snap-frame threading through the hook', () => {
       .toBeCloseTo(20, 6);
   });
 
-  it('reads the accessor from setSelectedMotionKeyEasing', async () => {
-    seedSnapRail();
-    const snapSpy = vi.spyOn(physicPaintStore, 'getRotoRailMotionSnapFrames');
-    const harness = actionsHarness();
-    selectRailMotionKey({ railId: RAIL_ID, channelId: 'position-x', frame: 0 });
-
-    expect(await harness.actions.physicalActions.setSelectedMotionKeyEasing('linear')).toBe(true);
-    expect(snapSpy).toHaveBeenCalledWith(LAYER, TRACK, RAIL_ID);
-  });
-
-  it('reads the accessor from setSelectedMotionKeyWiggle', async () => {
-    seedSnapRail();
-    const snapSpy = vi.spyOn(physicPaintStore, 'getRotoRailMotionSnapFrames');
-    const harness = actionsHarness();
-    selectRailMotionKey({ railId: RAIL_ID, channelId: 'position-x', frame: 0 });
-
-    expect(await harness.actions.physicalActions.setSelectedMotionKeyWiggle(100)).toBe(true);
-    expect(snapSpy).toHaveBeenCalledWith(LAYER, TRACK, RAIL_ID);
-  });
 
   it('reads the accessor ONCE per reset and commits the whole reset in one store write', () => {
     seedSnapRail();
@@ -6275,8 +6259,10 @@ describe('261108-d5o hook source contract', () => {
 
   it('feeds the accessor to every key-creating callback', () => {
     const accessorCalls = source.split('physicPaintStore.getRotoRailMotionSnapFrames(').length - 1;
-    // Gizmo + setMotionKeyAtCursor + commitRailMotionInspectorValue + reset +
-    // easing + wiggle — one read each, never a second resolution.
-    expect(accessorCalls).toBe(6);
+    // Gizmo + setMotionKeyAtCursor + commitRailMotionInspectorValue + the
+    // key-mode easing commit + reset — one read each, never a second
+    // resolution. (261108-gh0 removed the strip-only per-key Wiggle callback,
+    // so the count dropped from 6 to 5.)
+    expect(accessorCalls).toBe(5);
   });
 });

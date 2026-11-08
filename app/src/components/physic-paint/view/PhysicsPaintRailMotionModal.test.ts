@@ -56,6 +56,7 @@ import {
   sheetZIndex,
 } from './floatingSheetStack';
 import type {
+  RailMotionChannelWiggleRow,
   RailMotionDialogBundle,
   RailMotionInspectorUnit,
 } from './physicsPaintKeyRailPresentation';
@@ -96,6 +97,29 @@ function click(node: TestVNode): void {
   onClick!();
 }
 
+/** 261108-gh0: Wiggle rows share the SliderStepper component, so the numeric
+ * fields are counted by ariaLabel and never by component identity alone. */
+function numericSteppers(tree: TestVNode): TestVNode[] {
+  return collect(tree).filter(
+    (node) => node.type === SliderStepper
+      && typeof node.props?.ariaLabel === 'string'
+      && !String(node.props.ariaLabel).endsWith(' wiggle'),
+  );
+}
+
+function wiggleSteppers(tree: TestVNode): TestVNode[] {
+  return collect(tree).filter(
+    (node) => node.type === SliderStepper
+      && String(node.props?.ariaLabel).endsWith(' wiggle'),
+  );
+}
+
+function globalToggles(tree: TestVNode): TestVNode[] {
+  return collect(tree).filter(
+    (node) => node.props?.['data-motion-wiggle-global'] !== undefined,
+  );
+}
+
 function renderModal(props: Parameters<typeof PhysicsPaintRailMotionModal>[0]): TestVNode {
   hooks.cursor = 0;
   return PhysicsPaintRailMotionModal(props) as unknown as TestVNode;
@@ -103,6 +127,11 @@ function renderModal(props: Parameters<typeof PhysicsPaintRailMotionModal>[0]): 
 
 const MODAL_SOURCE = readFileSync(
   fileURLToPath(new URL('./PhysicsPaintRailMotionModal.tsx', import.meta.url)),
+  'utf8',
+);
+
+const STUDIO_CSS = readFileSync(
+  fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)),
   'utf8',
 );
 
@@ -159,6 +188,29 @@ function field(
   return { channelId, label, unit, value, present };
 }
 
+function wiggleRow(
+  channelId: PhysicPaintRotoRailMotionChannelId,
+  label: string,
+  wiggle: number,
+  wiggleGlobal: boolean,
+  setWiggle: (wiggle: number) => string | null = () => null,
+  setWiggleGlobal: (wiggleGlobal: boolean) => string | null = () => null,
+): RailMotionChannelWiggleRow {
+  return { channelId, label, wiggle, wiggleGlobal, setWiggle, setWiggleGlobal };
+}
+
+/** The three channels the partial fixture rail carries. */
+function partialChannels(
+  setWiggle: (wiggle: number) => string | null = () => null,
+  setWiggleGlobal: (wiggleGlobal: boolean) => string | null = () => null,
+): RailMotionChannelWiggleRow[] {
+  return [
+    wiggleRow('position-x', 'Position X', 12, true, setWiggle, setWiggleGlobal),
+    wiggleRow('position-y', 'Position Y', 0, false, setWiggle, setWiggleGlobal),
+    wiggleRow('scale', 'Scale', 3, true, setWiggle, setWiggleGlobal),
+  ];
+}
+
 /** A rail carrying the Position pair and Scale; Rotation/Opacity absent. */
 function partialBundle(
   commit: RailMotionDialogBundle['commit'] = () => null,
@@ -179,9 +231,8 @@ function partialBundle(
     commit,
     reset,
     keyEasing: null,
-    // 261108-gh0: the bundle now always carries the per-channel Wiggle rows
-    // and the key-mode-only apply-all handle; the Task 5 rows populate them.
-    channels: [],
+    // 261108-gh0: one Wiggle row per PRESENT channel, in the fixed D-13 order.
+    channels: partialChannels(),
     applyEasingToAllKeys: null,
   };
 }
@@ -203,7 +254,10 @@ function positionOnlyBundle(): RailMotionDialogBundle {
     commit: () => null,
     reset: () => null,
     keyEasing: null,
-    channels: [],
+    channels: [
+      wiggleRow('position-x', 'Position X', 0, true),
+      wiggleRow('position-y', 'Position Y', 0, true),
+    ],
     applyEasingToAllKeys: null,
   };
 }
@@ -211,15 +265,18 @@ function positionOnlyBundle(): RailMotionDialogBundle {
 /**
  * 261108-d5o: key mode — a Motion key is selected, so the bundle carries the
  * required nullable `keyEasing` write handle (the property-only factories keep
- * it null and must render NO easing row at all).
+ * it null and must render NO easing row at all). 261108-gh0: key mode also
+ * carries the apply-all handle; property mode leaves it null.
  */
 function keyModeBundle(
   set: (easing: PhysicPaintRotoRailMotionEasing) => string | null = () => null,
   easing: PhysicPaintRotoRailMotionEasing = 'hold',
+  applyEasingToAllKeys: ((easing: PhysicPaintRotoRailMotionEasing) => string | null) = () => null,
 ): RailMotionDialogBundle {
   return {
     ...partialBundle(),
     keyEasing: { frame: 5, easing, set },
+    applyEasingToAllKeys,
   };
 }
 
@@ -259,9 +316,14 @@ describe('261107-qgj floating Motion modal', () => {
 
   it('renders ONLY present channels — no ghost row, no absent marker, no absent note', () => {
     const tree = renderModal({ dialog: signal(positionOnlyBundle()) });
-    const steppers = collect(tree).filter((node) => node.type === SliderStepper);
+    // 261108-gh0: count the NUMERIC fields by ariaLabel — the Wiggle rows share
+    // the same SliderStepper component and are asserted separately.
+    const steppers = numericSteppers(tree);
     expect(steppers).toHaveLength(2);
     expect(steppers.map((node) => node.props?.ariaLabel)).toEqual(['Position X', 'Position Y']);
+    expect(wiggleSteppers(tree).map((node) => node.props?.ariaLabel)).toEqual([
+      'Position X wiggle', 'Position Y wiggle',
+    ]);
 
     // The SliderStepper renders its own label cell (same as the Stroke settings
     // rows), so the copy lives on the vnode props, not in this tree walk.
@@ -275,7 +337,7 @@ describe('261107-qgj floating Motion modal', () => {
 
   it('shows each field label with its unit and the projected display value', () => {
     const tree = renderModal({ dialog: signal(partialBundle()) });
-    const steppers = collect(tree).filter((node) => node.type === SliderStepper);
+    const steppers = numericSteppers(tree);
     expect(steppers.map((node) => node.props?.ariaLabel)).toEqual([
       'Position X', 'Position Y', 'Scale',
     ]);
@@ -324,6 +386,11 @@ describe('261107-qgj floating Motion modal', () => {
     )!;
     const resetButton = findReset(first);
     expect(resetButton.props?.['aria-label']).toBe('Reset Motion values');
+    // 261108-gh0: the icon gained its visible word and the auto-width modifier.
+    expect(textOf(resetButton)).toBe('Reset');
+    expect(String(resetButton.props?.class)).toContain(
+      'physics-paint-stroke-settings-header-button--labelled',
+    );
     const stopPropagation = vi.fn();
     (resetButton.props?.onPointerDown as (event: unknown) => void)({ stopPropagation });
     expect(stopPropagation, 'the press never starts a header drag').toHaveBeenCalledTimes(1);
@@ -425,6 +492,160 @@ describe('261107-qgj floating Motion modal', () => {
     expect(collect(second).find(
       (node) => node.type === PhysicsPaintRailMotionEasingControl,
     )?.props?.value).toBe('hold');
+  });
+
+  it('renders Apply to all keys ONLY in key mode and commits the displayed token (261108-gh0)', () => {
+    const applyAll = vi.fn((): string | null => null);
+    const dialog = signal<RailMotionDialogBundle | null>(
+      keyModeBundle(() => null, 'linear', applyAll),
+    );
+    const tree = renderModal({ dialog });
+    const button = collect(tree).find(
+      (node) => node.props?.['data-testid'] === 'physics-rail-motion-apply-all-easing',
+    );
+    expect(button, 'key mode renders the apply-all row').toBeDefined();
+    expect(textOf(button!)).toBe('Apply to all keys');
+    click(button!);
+    expect(applyAll).toHaveBeenCalledTimes(1);
+    expect(applyAll).toHaveBeenCalledWith('linear');
+
+    // Property-only mode renders NOTHING extra — no disabled row either.
+    const propertyOnly = renderModal({ dialog: signal(partialBundle()) });
+    expect(collect(propertyOnly).some(
+      (node) => node.props?.['data-testid'] === 'physics-rail-motion-apply-all-easing',
+    )).toBe(false);
+  });
+
+  it('routes an apply-all rejection through the modal ONE role="alert" (261108-gh0)', () => {
+    const applyAll = vi.fn(() => 'There are no Motion keys to change.');
+    const dialog = signal<RailMotionDialogBundle | null>(
+      keyModeBundle(() => null, 'hold', applyAll),
+    );
+    const first = renderModal({ dialog });
+    click(collect(first).find(
+      (node) => node.props?.['data-testid'] === 'physics-rail-motion-apply-all-easing',
+    )!);
+
+    const second = renderModal({ dialog });
+    const alerts = collect(second).filter((node) => node.props?.role === 'alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].props?.children).toBe('There are no Motion keys to change.');
+    // The apply-all row survives the rejection.
+    expect(collect(second).some(
+      (node) => node.props?.['data-testid'] === 'physics-rail-motion-apply-all-easing',
+    )).toBe(true);
+  });
+
+  it('renders one Wiggle row per bundle channel with the raw amplitude contract (261108-gh0)', () => {
+    const tree = renderModal({ dialog: signal(partialBundle()) });
+    const steppers = wiggleSteppers(tree);
+
+    expect(steppers.map((node) => node.props?.ariaLabel)).toEqual([
+      'Position X wiggle', 'Position Y wiggle', 'Scale wiggle',
+    ]);
+    expect(steppers.map((node) => node.props?.label)).toEqual([
+      'Position X wiggle', 'Position Y wiggle', 'Scale wiggle',
+    ]);
+    // Raw model amplitude — never a display-unit conversion.
+    expect(steppers.map((node) => node.props?.value)).toEqual([12, 0, 3]);
+    expect(steppers.every((node) => node.props?.min === 0)).toBe(true);
+    expect(steppers.every((node) => node.props?.max === 1000000)).toBe(true);
+    expect(steppers.every((node) => node.props?.step === 1)).toBe(true);
+    expect(steppers.every((node) => node.props?.precision === 0)).toBe(true);
+    expect(steppers.every((node) => node.props?.freeEntry === true)).toBe(true);
+    expect(steppers.every((node) => node.props?.allowOutOfRangeEntry === true)).toBe(true);
+    expect(steppers.every((node) => node.props?.commitOnRelease === true)).toBe(true);
+    // Only channels the rail carries get a row.
+    expect(wiggleSteppers(renderModal({ dialog: signal(positionOnlyBundle()) })))
+      .toHaveLength(2);
+  });
+
+  it('commits each Wiggle row through its own setter, one reason channel (261108-gh0)', () => {
+    const setWiggle = vi.fn((): string | null => null);
+    const setWiggleGlobal = vi.fn((): string | null => null);
+    const dialog = signal<RailMotionDialogBundle | null>({
+      ...partialBundle(),
+      channels: partialChannels(setWiggle, setWiggleGlobal),
+    });
+    const tree = renderModal({ dialog });
+
+    (wiggleSteppers(tree)[1]!.props?.onChange as (value: number) => void)(250);
+    expect(setWiggle).toHaveBeenCalledTimes(1);
+    expect(setWiggle).toHaveBeenCalledWith(250);
+
+    // Scale starts Global ON, so the toggle offers the per-key fallback.
+    click(globalToggles(tree)[2]!);
+    expect(setWiggleGlobal).toHaveBeenCalledTimes(1);
+    expect(setWiggleGlobal).toHaveBeenCalledWith(false);
+
+    expect(collect(renderModal({ dialog })).filter((node) => node.props?.role === 'alert'))
+      .toHaveLength(0);
+  });
+
+  it('renders one Global toggle per channel reflecting wiggleGlobal (261108-gh0)', () => {
+    const tree = renderModal({ dialog: signal(partialBundle()) });
+    const toggles = globalToggles(tree);
+
+    expect(toggles.map((node) => node.props?.['data-motion-wiggle-global'])).toEqual([
+      'position-x', 'position-y', 'scale',
+    ]);
+    expect(toggles.map((node) => node.props?.['aria-pressed'])).toEqual([
+      'true', 'false', 'true',
+    ]);
+    // The existing icon-button chrome with a VISIBLE word, never icon-only.
+    expect(toggles.every(
+      (node) => String(node.props?.class).includes('physics-paint-roto-key-icon-button'),
+    )).toBe(true);
+    expect(toggles.map(textOf)).toEqual(['Global', 'Global', 'Global']);
+  });
+
+  it('routes a Wiggle rejection through the modal ONE role="alert" and keeps the document value (261108-gh0)', () => {
+    const setWiggle = vi.fn(() => 'Wiggle must be between 0 and 1,000,000.');
+    const dialog = signal<RailMotionDialogBundle | null>({
+      ...partialBundle(),
+      channels: partialChannels(setWiggle),
+    });
+    const first = renderModal({ dialog });
+    (wiggleSteppers(first)[0]!.props?.onChange as (value: number) => void)(-1);
+
+    const second = renderModal({ dialog });
+    const alerts = collect(second).filter((node) => node.props?.role === 'alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].props?.children).toBe('Wiggle must be between 0 and 1,000,000.');
+    // The rejected row remounts at the projected value — no clamp echo.
+    expect(wiggleSteppers(second)[0]!.props?.value).toBe(12);
+    // The rejection sequence keys the WHOLE row, so the toggle remounts too.
+    expect(MODAL_SOURCE).toContain('key={`${row.channelId}:${rejectionSeq}`}');
+  });
+
+  it('renders the body in the pinned order: fields, easing, apply-all, Wiggle rows, rejection (261108-gh0)', () => {
+    const setWiggle = vi.fn((): string | null => 'Wiggle must be between 0 and 1,000,000.');
+    const dialog = signal<RailMotionDialogBundle | null>({
+      ...keyModeBundle(() => null, 'hold'),
+      channels: partialChannels(setWiggle),
+    });
+    // Trigger one rejection so the alert is part of the same tree.
+    (wiggleSteppers(renderModal({ dialog }))[0]!.props?.onChange as (value: number) => void)(-5);
+
+    const nodes = collect(renderModal({ dialog }));
+    const indexOf = (predicate: (node: TestVNode) => boolean) => nodes.findIndex(predicate);
+    const scale = indexOf(
+      (node) => node.type === SliderStepper && node.props?.ariaLabel === 'Scale',
+    );
+    const easing = indexOf((node) => node.props?.class === 'physics-paint-motion-easing');
+    const applyAll = indexOf(
+      (node) => node.props?.['data-testid'] === 'physics-rail-motion-apply-all-easing',
+    );
+    const firstWiggle = indexOf(
+      (node) => node.type === SliderStepper && node.props?.ariaLabel === 'Position X wiggle',
+    );
+    const alert = indexOf((node) => node.props?.role === 'alert');
+
+    expect(scale).toBeGreaterThan(-1);
+    expect(scale).toBeLessThan(easing);
+    expect(easing).toBeLessThan(applyAll);
+    expect(applyAll).toBeLessThan(firstWiggle);
+    expect(firstWiggle).toBeLessThan(alert);
   });
 
   it('the close button calls the ONE close path and its pointerdown never starts a drag', () => {
@@ -594,5 +815,23 @@ describe('261107-qgj floating Motion modal', () => {
     expect(MODAL_SOURCE).toContain(
       'transform: `translate(${applied?.dxPx ?? 0}px, ${applied?.dyPx ?? 0}px)`,',
     );
+  });
+
+  it('pins the apply-all, Wiggle and labelled Reset surfaces in source and CSS (261108-gh0)', () => {
+    expect(MODAL_SOURCE).toContain('data-testid="physics-rail-motion-apply-all-easing"');
+    expect(MODAL_SOURCE).toContain('Apply to all keys');
+    expect(MODAL_SOURCE).toContain('applyToAllKeys(keyEasing.easing)');
+    expect(MODAL_SOURCE).toContain('data-motion-wiggle-global={row.channelId}');
+    expect(MODAL_SOURCE).toContain('row.setWiggle(value)');
+    expect(MODAL_SOURCE).toContain('row.setWiggleGlobal(!row.wiggleGlobal)');
+    expect(MODAL_SOURCE).toContain('physics-paint-stroke-settings-header-button--labelled');
+    // The sheet body rhythm is untouched (15px).
+    expect(MODAL_SOURCE).toContain("gap: '15px'");
+
+    expect(STUDIO_CSS).toContain('.physics-paint-stroke-settings-header-button--labelled {');
+    expect(STUDIO_CSS).toContain('.physics-paint-motion-apply-all {');
+    expect(STUDIO_CSS).toContain('.physics-paint-motion-wiggle-row {');
+    expect(STUDIO_CSS).toContain('.physics-paint-motion-wiggle-global {');
+    expect(STUDIO_CSS).toContain('.physics-paint-motion-wiggle-global[aria-pressed="true"]');
   });
 });

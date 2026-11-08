@@ -198,6 +198,9 @@ export function PhysicsPaintRailMotionModal({
   // 261108-d5o: the bundle's key-mode easing handle. Property-only mode leaves
   // it null and the sheet renders NO easing row — not even a disabled one.
   const keyEasing = bundle.keyEasing;
+  // 261108-gh0: the apply-all handle is key-mode-only too; both rows share the
+  // ONE gate, and the apply-all reuses the DISPLAYED easing token.
+  const applyToAllKeys = bundle.applyEasingToAllKeys;
 
   const onHeaderPointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -324,7 +327,7 @@ export function PhysicsPaintRailMotionModal({
         <span class="physics-paint-photo-reference-header-spacer" aria-hidden="true" />
         <button
           type="button"
-          class="physics-paint-stroke-settings-header-button"
+          class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-header-button--labelled"
           data-testid="physics-rail-motion-modal-reset"
           aria-label="Reset Motion values"
           title="Reset to default — Position 0, Scale 100%, Rotation 0°, Opacity 100% at this frame"
@@ -333,6 +336,7 @@ export function PhysicsPaintRailMotionModal({
           onClick={resetValues}
         >
           <RotateCcw size={12} aria-hidden="true" />
+          <span>Reset</span>
         </button>
         <button
           type="button"
@@ -390,6 +394,52 @@ export function PhysicsPaintRailMotionModal({
             />
           </div>
         ) : null}
+        {keyEasing !== null && applyToAllKeys !== null ? (
+          <button
+            type="button"
+            class="physics-paint-motion-apply-all"
+            data-testid="physics-rail-motion-apply-all-easing"
+            onClick={() => reportReason(applyToAllKeys(keyEasing.easing))}
+          >
+            Apply to all keys
+          </button>
+        ) : null}
+        {bundle.channels.map((row) => (
+          // The rejection sequence remounts the rejected row at the projected
+          // value, exactly like the numeric fields above.
+          <div
+            key={`${row.channelId}:${rejectionSeq}`}
+            class="physics-paint-motion-field physics-paint-motion-wiggle"
+          >
+            <div class="physics-paint-motion-wiggle-row">
+              <SliderStepper
+                label={`${row.label} wiggle`}
+                ariaLabel={`${row.label} wiggle`}
+                value={row.wiggle}
+                min={0}
+                max={1000000}
+                step={1}
+                precision={0}
+                freeEntry
+                allowOutOfRangeEntry
+                commitOnRelease
+                onChange={(value) => reportReason(row.setWiggle(value))}
+              />
+              <button
+                type="button"
+                class="physics-paint-roto-key-icon-button physics-paint-motion-wiggle-global"
+                data-motion-wiggle-global={row.channelId}
+                aria-pressed={row.wiggleGlobal ? 'true' : 'false'}
+                title={row.wiggleGlobal
+                  ? 'Wiggle applies to the whole rail — click for the per-key span wiggle'
+                  : 'Wiggle follows each key span — click to apply it to the whole rail'}
+                onClick={() => reportReason(row.setWiggleGlobal(!row.wiggleGlobal))}
+              >
+                Global
+              </button>
+            </div>
+          </div>
+        ))}
         {reason !== null ? (
           <p class="physics-paint-motion-rejection" role="alert">{reason}</p>
         ) : null}

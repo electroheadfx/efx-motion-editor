@@ -13,13 +13,12 @@ import {
   projectPhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
 import { buildRotoDeleteScopeLabel, type RotoDeleteTarget } from '../hooks/useRotoTimelineActions';
+import * as stripModule from './PhysicsPaintWorkflowStrip';
 import {
-  PhysicsPaintRotoMotionKeyControls,
   resolveRailIdentityForSelectedKey,
   resolveReorderInsertionIndex,
   resolveTrackRowLayout,
 } from './PhysicsPaintWorkflowStrip';
-import { PhysicsPaintRailMotionEasingControl } from './PhysicsPaintRailMotionEasingControl';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const legacyLanePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintLoopClipLane.tsx');
@@ -3134,147 +3133,41 @@ describe('59-11 Task 3: resolveReorderInsertionIndex — measured, block-aware r
   });
 });
 
-describe('59-12 Task 2: Motion-key commands exist only in the motion-key scope (MOTN-05, D-04)', () => {
-  interface VNodeLike {
-    type: unknown;
-    props: Record<string, unknown> | null;
-  }
-  function walkVNode(node: unknown, visit: (vnode: VNodeLike) => void): void {
-    if (node === null || node === undefined || typeof node === 'boolean') return;
-    if (Array.isArray(node)) {
-      for (const child of node) walkVNode(child, visit);
-      return;
-    }
-    if (typeof node !== 'object') return;
-    const candidate = node as Partial<VNodeLike>;
-    if (!('type' in candidate) || !('props' in candidate)) return;
-    const vnode = candidate as VNodeLike;
-    visit(vnode);
-    if (vnode.props?.children !== undefined) walkVNode(vnode.props.children, visit);
-  }
-  function collectVNodes(root: unknown): VNodeLike[] {
-    const collected: VNodeLike[] = [];
-    walkVNode(root, (vnode) => collected.push(vnode));
-    return collected;
-  }
-  function collectStrings(node: unknown, collected: string[] = []): string[] {
-    if (typeof node === 'string') {
-      collected.push(node);
-      return collected;
-    }
-    if (Array.isArray(node)) {
-      for (const child of node) collectStrings(child, collected);
-      return collected;
-    }
-    if (node && typeof node === 'object' && 'props' in (node as VNodeLike)) {
-      collectStrings((node as VNodeLike).props?.children, collected);
-    }
-    return collected;
-  }
-  function buildControls(
-    scope: 'rail' | 'drawing-key' | 'motion-key' | null,
-    overrides: Partial<Parameters<typeof PhysicsPaintRotoMotionKeyControls>[0]> = {},
-  ) {
-    return PhysicsPaintRotoMotionKeyControls({
-      scope,
-      easing: 'ease',
-      wiggle: 20,
-      canSetEasing: true,
-      canSetWiggle: true,
-      easingDisabledReason: null,
-      wiggleDisabledReason: null,
-      onSetEasing: () => {},
-      onSetWiggle: () => {},
-      ...overrides,
-    });
-  }
-  function findLabeled(root: unknown, label: string): VNodeLike | null {
-    return collectVNodes(root).find((vnode) => vnode.props?.['aria-label'] === label) ?? null;
-  }
-  function findEasingControl(root: unknown): VNodeLike | null {
-    return collectVNodes(root).find(
-      (vnode) => vnode.type === PhysicsPaintRailMotionEasingControl,
-    ) ?? null;
-  }
-
-  it('a motion-key scope renders the shared four-glyph easing control and the Wiggle field', () => {
-    const tree = buildControls('motion-key', { easing: 'hold', wiggle: 7 });
-    expect(tree).not.toBeNull();
-    expect(findLabeled(tree, 'Selected Motion key')).not.toBeNull();
-    // 261108-d5o: the Hold/Ease buttons moved into ONE shared control; the
-    // walker never invokes child components, so the control is found by
-    // identity and its props carry the state.
-    const easing = findEasingControl(tree);
-    expect(easing).not.toBeNull();
-    expect(easing?.props?.['value']).toBe('hold');
-    expect(easing?.props?.['disabled']).toBe(false);
-    // The four buttons themselves are pinned ONLY in the control's suite.
-    expect(findLabeled(tree, 'Hold motion key')).toBeNull();
-    expect(findLabeled(tree, 'Ease motion key')).toBeNull();
-    // The Wiggle field is the shared NumericStepper, addressed by its ariaLabel.
-    const wiggle = collectVNodes(tree).find((vnode) => vnode.props?.['ariaLabel'] === 'Motion key wiggle');
-    expect(wiggle).toBeDefined();
-    expect(wiggle?.props?.value).toBe(7);
-  });
-
-  it('forwards every easing token to the shared control (261108-d5o)', () => {
-    for (const easing of ['linear', 'hold', 'ease', 'stop-motion'] as const) {
-      const control = findEasingControl(buildControls('motion-key', { easing }));
-      expect(control?.props?.['value'], `value=${easing} reaches the control`).toBe(easing);
-    }
-  });
-
-  it('rail, drawing-key and unresolved selections render NO Hold/Ease/Wiggle controls', () => {
-    expect(buildControls('rail')).toBeNull();
-    expect(buildControls('drawing-key')).toBeNull();
-    expect(buildControls(null)).toBeNull();
-    // A motion-key scope without a resolved key (easing/wiggle null) fails closed
-    // rather than rendering a control that has no key to edit.
-    expect(buildControls('motion-key', { easing: null })).toBeNull();
-    expect(buildControls('motion-key', { wiggle: null })).toBeNull();
-  });
-
-  it('each disabled control surfaces the command-layer reason verbatim', () => {
-    const easingReason = 'Select a Motion key first.';
-    const wiggleReason = 'There is no Motion key at this frame.';
-    const tree = buildControls('motion-key', {
-      canSetEasing: false,
-      canSetWiggle: false,
-      easingDisabledReason: easingReason,
-      wiggleDisabledReason: wiggleReason,
-    });
-    const easing = findEasingControl(tree);
-    expect(easing?.props?.['disabled']).toBe(true);
-    expect(easing?.props?.['describedById']).toBe('roto-key-action-reason-motion-easing');
-    const wiggle = collectVNodes(tree).find((vnode) => vnode.props?.['ariaLabel'] === 'Motion key wiggle');
-    expect(wiggle?.props?.ariaDisabled).toBe(true);
-    expect(wiggle?.props?.ariaDescribedBy).toBe('roto-key-action-reason-motion-wiggle');
-    const text = collectStrings(tree);
-    expect(text).toContain(easingReason);
-    expect(text).toContain(wiggleReason);
-  });
-
-  it('styles the shared easing row and its pressed tint with scoped selectors (261108-d5o)', () => {
-    const styles = css();
-    expect(styles).toContain('.physics-paint-motion-easing {');
-    expect(styles).toContain(
-      '.physics-paint-roto-key-icon-button[data-rail-motion-easing][aria-pressed="true"]',
-    );
-    // The tint lives in the existing #3a424c button palette, never a new token
-    // and never an un-scoped aria-pressed rule.
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button[data-rail-motion-easing]'))
-      .toContain('#3a424c');
-    expect(styles).not.toMatch(/(^|\n)\[aria-pressed="true"\]/);
-  });
-
-  it('the strip answers the scope from the command layer and wires the lane callbacks', () => {
+describe('261108-gh0: Motion easing and Wiggle left the tool strip (spec 3)', () => {
+  it('deletes the control, its props interface, the call site and every dead local', () => {
     const code = source();
-    // One scope resolver — the strip never compares selections inline.
-    expect(code).toContain('const motionSelectionScope = resolveSelectionScope({');
-    expect(code).not.toContain("motionSelectionScope === 'motion-key'");
-    expect(code).not.toContain("motionSelectionScope === 'rail'");
-    // The resolved scope gates the Hold/Ease/Wiggle controls.
-    expect(code).toContain('scope={motionSelectionScope}');
+    expect(code).not.toContain('PhysicsPaintRotoMotionKeyControls');
+    expect(code).not.toContain('PhysicsPaintRailMotionEasingControl');
+    expect(code).not.toContain('data-roto-motion-key-controls');
+    expect(code).not.toContain('Selected Motion key');
+    expect(code).not.toContain('Motion key wiggle');
+    expect(code).not.toContain('data-rail-motion-easing');
+    // The scope plumbing existed only to gate the removed control.
+    expect(code).not.toContain('motionSelectionScope');
+    expect(code).not.toContain('contextualRotoCommands');
+    expect(code).not.toContain('motionKeyScopeActive');
+    expect(code).not.toContain('resolveContextualMotionCommands');
+    expect(code).not.toContain('resolveSelectionScope');
+    expect(code).not.toContain('setSelectedMotionKeyEasing');
+    expect(code).not.toContain('setSelectedMotionKeyWiggle');
+    expect(code).not.toContain('canSetSelectedMotionKeyEasing');
+    expect(code).not.toContain('canSetSelectedMotionKeyWiggle');
+    expect(code).not.toContain('setSelectedMotionKeyEasingDisabledReason');
+    expect(code).not.toContain('setSelectedMotionKeyWiggleDisabledReason');
+  });
+
+  it('the loaded module no longer exposes the removed controls', () => {
+    // A rendered-tree proof at the module boundary: the component that painted
+    // the easing buttons and the Wiggle field is not part of the surface any
+    // more, so no host can mount it.
+    expect('PhysicsPaintRotoMotionKeyControls' in stripModule).toBe(false);
+  });
+
+  it('keeps the tool strip, the lane wiring and the session motion selection intact', () => {
+    const code = source();
+    expect(code).toContain('class="physics-paint-roto-action-row"');
+    expect(code).toContain('<div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key tools for frame ${props.currentFrame}`}>');
+    expect(code).toContain('<TimelineMotionBlock');
     // The lane addresses the host with the channel the click hit, and the
     // cursor it reads is the rail-LOCAL frame the lane contract expects.
     expect(code).toContain('onSelectMotionKey={(frame, channelId) => {');
@@ -3289,19 +3182,36 @@ describe('59-12 Task 2: Motion-key commands exist only in the motion-key scope (
     expect(code).toContain('if (canSetMotionKeyAtCursor || canRemoveMotionKeyAtCursor) return {};');
     expect(code).toContain('const reason = setMotionKeyAtCursorDisabledReason ?? removeMotionKeyAtCursorDisabledReason;');
     expect(code).toContain('diamond: reason');
+    // The session key still feeds the row host and the lane selection.
+    expect(code).toContain('selectedMotionKey={selectedMotionKeyData === null ? null : selectedMotionKey}');
+    // NumericStepper survives for the other rows that use it.
+    expect(code).toContain("import { NumericStepper } from '../../shared/NumericStepper';");
     // Session key selection rides the action bundle, not a second store.
     const actions = timelineActionsSource();
     expect(actions).toContain('export const railMotionSelectedKey = signal<RailMotionKeySelection | null>(null);');
     expect(actions.split('physicPaintStore.replaceRotoPhysicalRailMotions(').length - 1).toBe(1);
   });
+
+  it('keeps the shared easing button styling for the Motion sheet host (261108-d5o)', () => {
+    const styles = css();
+    expect(styles).toContain('.physics-paint-motion-easing {');
+    expect(styles).toContain(
+      '.physics-paint-roto-key-icon-button[data-rail-motion-easing][aria-pressed="true"]',
+    );
+    // The tint lives in the existing #3a424c button palette, never a new token
+    // and never an un-scoped aria-pressed rule.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button[data-rail-motion-easing]'))
+      .toContain('#3a424c');
+    expect(styles).not.toMatch(/(^|\n)\[aria-pressed="true"\]/);
+  });
 });
 
 describe('59-12 Task 3: the action bar derives from the one scope table (MOTN-11)', () => {
-  it('gates the motion-key controls from the contextual command table, never inline', () => {
+  it('no strip control is gated from the contextual command table any more (261108-gh0)', () => {
     const code = source();
-    expect(code).toContain('const contextualRotoCommands = resolveContextualMotionCommands(motionSelectionScope);');
-    expect(code).toContain("const motionKeyScopeActive = contextualRotoCommands.includes('set-motion-key-easing');");
-    expect(code).toContain('{motionKeyScopeActive ? (');
+    expect(code).not.toContain('const contextualRotoCommands = resolveContextualMotionCommands(motionSelectionScope);');
+    expect(code).not.toContain("const motionKeyScopeActive = contextualRotoCommands.includes('set-motion-key-easing');");
+    expect(code).not.toContain('{motionKeyScopeActive ? (');
     expect(code).not.toContain("motionSelectionScope === 'motion-key'");
   });
 

@@ -1,18 +1,21 @@
 // ============================================================
-//  261108-d5o — the shared four-glyph easing control.
+//  261108-d5o / 261108-gh0 — the shared four-icon easing control.
 //
-//  ONE props-driven control is rendered by BOTH easing surfaces:
-//  the tool strip's "Selected Motion key" group and the floating
-//  Motion sheet's key-mode row. It owns no grouping element —
-//  each host supplies its own group label — and it reads nothing
-//  but its props: no store, no signal, no hook, no state.
+//  ONE props-driven control is rendered by every easing surface
+//  (the floating Motion sheet's key-mode row today). It owns no
+//  grouping element — each host supplies its own group label —
+//  and it reads nothing but its props: no store, no signal, no
+//  hook, no state.
 //
-//  Glyphs are ASCII and deliberately punctuation-only so the
-//  four easings stay scannable in a 26px button band:
-//    linear '<>'   hold '[]'   ease '()'   stop-motion '='
-//  Each glyph is aria-hidden; the accessible name is the word.
+//  261108-gh0: the ASCII glyphs became lucide icons and the
+//  mapping is exported once, so the lane markers reuse the SAME
+//  table instead of declaring a second token→icon map:
+//    linear -> Diamond   hold -> Square
+//    ease -> Squircle    stop-motion -> Triangle
+//  Each icon is aria-hidden; the accessible name is the word.
 // ============================================================
 
+import { Diamond, Square, Squircle, Triangle, type LucideIcon } from 'lucide-preact';
 import {
   RAIL_MOTION_EASING_ORDER,
   type PhysicPaintRotoRailMotionEasing,
@@ -31,11 +34,14 @@ export interface PhysicsPaintRailMotionEasingControlProps {
   readonly testIdPrefix?: string;
 }
 
-const EASING_GLYPH: Readonly<Record<PhysicPaintRotoRailMotionEasing, string>> = Object.freeze({
-  linear: '<>',
-  hold: '[]',
-  ease: '()',
-  'stop-motion': '=',
+/** The ONE easing→icon table; lane markers import this, never a copy. */
+export const RAIL_MOTION_EASING_ICONS: Readonly<
+  Record<PhysicPaintRotoRailMotionEasing, LucideIcon>
+> = Object.freeze({
+  linear: Diamond,
+  hold: Square,
+  ease: Squircle,
+  'stop-motion': Triangle,
 });
 
 const EASING_LABEL: Readonly<Record<PhysicPaintRotoRailMotionEasing, string>> = Object.freeze({
@@ -56,6 +62,7 @@ export function PhysicsPaintRailMotionEasingControl(
   props: PhysicsPaintRailMotionEasingControlProps,
 ) {
   return RAIL_MOTION_EASING_ORDER.map((token) => {
+    const Icon = RAIL_MOTION_EASING_ICONS[token];
     const disabledReasonId = props.disabled ? props.describedById : undefined;
     return (
       <button
@@ -74,7 +81,7 @@ export function PhysicsPaintRailMotionEasingControl(
           props.onSelect(token);
         }}
       >
-        <span aria-hidden="true">{EASING_GLYPH[token]}</span>
+        <Icon size={12} aria-hidden="true" />
       </button>
     );
   });

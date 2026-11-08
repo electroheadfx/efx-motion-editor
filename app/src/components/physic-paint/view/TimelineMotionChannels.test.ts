@@ -30,6 +30,8 @@ import {
   type TimelineMotionHeaderGroupProps,
   type TimelineMotionKeyDragPresentation,
 } from './TimelineMotionChannels';
+import { Diamond, Square, Squircle, Triangle } from 'lucide-preact';
+import { RAIL_MOTION_EASING_ICONS } from './PhysicsPaintRailMotionEasingControl';
 import { buildRailMotionCurvePath } from '../roto/railMotionEvaluator';
 import type {
   PhysicPaintRotoRailMotionChannel,
@@ -555,6 +557,135 @@ describe('TimelineMotionChannelLane', () => {
 
     clickOf(laneNode(tree))();
     expect(onSelectRail).toHaveBeenCalledWith('rail-a');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261108-gh0 — each lane marker carries its OWN easing icon           */
+/* ------------------------------------------------------------------ */
+
+const LANE_SOURCE = readFileSync(
+  fileURLToPath(new URL('./TimelineMotionChannels.tsx', import.meta.url)),
+  'utf8',
+);
+
+const EASING_LABELLED_KEYS: readonly PhysicPaintRotoRailMotionKey[] = [
+  { frame: 0, value: 0, easing: 'linear', wiggle: 0 },
+  { frame: 3, value: 10, easing: 'hold', wiggle: 0 },
+  { frame: 6, value: 20, easing: 'ease', wiggle: 0 },
+  { frame: 9, value: 30, easing: 'stop-motion', wiggle: 0 },
+];
+
+function easingLabelledLane(): RailMotionDisplayLaneView {
+  const channel: PhysicPaintRotoRailMotionChannel = {
+    id: 'position-x',
+    wiggle: 0,
+    wiggleGlobal: true,
+    keys: EASING_LABELLED_KEYS,
+  };
+  return {
+    id: 'position',
+    channels: [channel],
+    keys: EASING_LABELLED_KEYS,
+    keyCount: EASING_LABELLED_KEYS.length,
+  };
+}
+
+describe('261108-gh0 lane marker easing icons', () => {
+  it('maps each marker from THAT key easing through the ONE shared table', () => {
+    // The RAW tree keeps the lucide component identity: materialize() invokes
+    // the outer icon component, which only yields lucide's inner `Icon` leaf.
+    const raw = TimelineMotionChannelLane(laneProps({ lane: easingLabelledLane() })) as unknown;
+    const dots = findAll(raw, (vnode) => vnode.props['data-motion-key-frame'] !== undefined);
+
+    expect(dots).toHaveLength(EASING_LABELLED_KEYS.length);
+    dots.forEach((dot, index) => {
+      const key = EASING_LABELLED_KEYS[index]!;
+      const children = childrenOf(dot);
+      expect(children, `frame ${key.frame} carries exactly one icon`).toHaveLength(1);
+      const icon = children[0] as TestVNode;
+      expect(icon.type).toBe(RAIL_MOTION_EASING_ICONS[key.easing]);
+      expect(icon.props.size).toBe(Math.max(4, TIMELINE_MOTION.keySize - 2));
+      expect(icon.props['aria-hidden']).toBe('true');
+      expect(icon.props.strokeWidth).toBe(3);
+      expect(styleOf(icon).pointerEvents).toBe('none');
+      // The icon reads as a cut-out against the marker fill.
+      expect(styleOf(icon).color).toBe(TIMELINE_SURFACE.motionLane);
+    });
+  });
+
+  it('keeps the accessible name, gestures and 6px geometry of every marker', () => {
+    const onSelectKey = vi.fn();
+    const onPointerDownKey = vi.fn();
+    const tree = renderLane({
+      lane: easingLabelledLane(),
+      onSelectKey,
+      keyDrag: {
+        ghost: { active: false, left: 0, width: 0, blockedEdge: null },
+        onPointerDownKey,
+        consumeClickSuppression: () => false,
+      },
+    });
+    const dots = keyDots(tree);
+
+    dots.forEach((dot, index) => {
+      const key = EASING_LABELLED_KEYS[index]!;
+      expect(dot.props['aria-label']).toBe(`Motion key at frame ${key.frame}`);
+      expect(dot.props.onPointerDown).toBeTypeOf('function');
+      expect(dot.props.onClick).toBeTypeOf('function');
+      const style = styleOf(dot);
+      expect(style.width).toBe(TIMELINE_MOTION.keySize);
+      expect(style.height).toBe(TIMELINE_MOTION.keySize);
+      expect(style.borderRadius).toBe(TIMELINE_MOTION.keyRadius);
+      expect(style.background).toBe(TIMELINE_RAIL_PALETTES.standard.selected.keyFill);
+      expect(String(style.boxShadow)).toContain(
+        TIMELINE_RAIL_PALETTES.standard.selected.keyRim,
+      );
+      // The icon is centred, so it never shifts the 6px marker.
+      expect(style.display).toBe('inline-flex');
+      expect(style.alignItems).toBe('center');
+      expect(style.justifyContent).toBe('center');
+    });
+
+    (dots[1]!.props.onPointerDown as (event: unknown) => void)({ type: 'pointerdown' });
+    expect(onPointerDownKey).toHaveBeenCalledWith({ type: 'pointerdown' }, 3);
+    clickOf(dots[2]!)();
+    expect(onSelectKey).toHaveBeenCalledWith(6);
+  });
+
+  it('leaves the drag ghost icon-free', () => {
+    const tree = renderLane({
+      keyDrag: {
+        ghost: { active: true, left: 16, width: 6, blockedEdge: null },
+        onPointerDownKey: () => {},
+        consumeClickSuppression: () => false,
+      },
+    });
+    const ghosts = ghostNodes(tree);
+    expect(ghosts).toHaveLength(1);
+    expect(childrenOf(ghosts[0]!)).toHaveLength(0);
+  });
+
+  it('imports the mapping instead of declaring a second icon table', () => {
+    expect(LANE_SOURCE).toContain(
+      "import { RAIL_MOTION_EASING_ICONS } from './PhysicsPaintRailMotionEasingControl';",
+    );
+    // The four easing faces are NOT imported here — only the mapping is.
+    expect(LANE_SOURCE).not.toContain('Squircle');
+    expect(LANE_SOURCE).not.toContain('Triangle');
+    expect(LANE_SOURCE).not.toMatch(/\bSquare\b/);
+    // No token -> icon table can exist without one of those names.
+    expect(LANE_SOURCE).not.toMatch(
+      /\b(linear|hold|ease|'stop-motion')\s*:\s*(Diamond|Square|Squircle|Triangle)\b/,
+    );
+    expect(LANE_SOURCE).toContain('RAIL_MOTION_EASING_ICONS[key.easing]');
+  });
+
+  it('pins the shared table identities so a mapping swap cannot slip through', () => {
+    expect(RAIL_MOTION_EASING_ICONS.linear).toBe(Diamond);
+    expect(RAIL_MOTION_EASING_ICONS.hold).toBe(Square);
+    expect(RAIL_MOTION_EASING_ICONS.ease).toBe(Squircle);
+    expect(RAIL_MOTION_EASING_ICONS['stop-motion']).toBe(Triangle);
   });
 });
 

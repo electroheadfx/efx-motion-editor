@@ -35,6 +35,9 @@ import {
   type RailMotionRailView,
 } from '../roto/railMotionIdentity';
 import { buildRailMotionCurvePath } from '../roto/railMotionEvaluator';
+// 261108-gh0: the lane markers reuse the ONE easing→icon table declared by the
+// shared control; this module never declares a second token map.
+import { RAIL_MOTION_EASING_ICONS } from './PhysicsPaintRailMotionEasingControl';
 import {
   resolveMotionBlockOutlineRect,
   resolveTimelineRailPalette,
@@ -335,6 +338,11 @@ export function TimelineMotionChannelLane({
     padding: 0,
     background: palette.keyFill,
     boxShadow: `0 0 0 ${TIMELINE_MOTION.keyRimWidth}px ${palette.keyRim}`,
+    // 261108-gh0: the easing icon is centred inside the 6px marker, so the
+    // icon never changes the key's left/top/width/height geometry.
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     cursor: selectKeyState.disabled ? 'not-allowed' : keyDrag !== undefined ? 'grab' : 'pointer',
   });
 
@@ -392,35 +400,47 @@ export function TimelineMotionChannelLane({
         </svg>
       )}
 
-      {inBandKeys.map((key) => (
-        <button
-          key={`key-${key.frame}`}
-          type="button"
-          class="physics-paint-motion-lane-key"
-          data-motion-key-frame={key.frame}
-          data-tier={key.frame === cursorFrame ? 'current' : 'idle'}
-          data-selected={selectedKeyFrames?.includes(key.frame) ? 'true' : 'false'}
-          disabled={selectKeyState.disabled}
-          title={selectKeyState.reason ?? undefined}
-          aria-description={selectKeyState.reason ?? undefined}
-          aria-label={`Motion key at frame ${key.frame}`}
-          style={keyStyle(key.frame)}
-          onPointerDown={keyDrag === undefined
-            ? undefined
-            : (event) => keyDrag.onPointerDownKey(event, key.frame)}
-          onClick={selectKeyState.disabled
-            ? undefined
-            : (event) => {
-              // The drop's companion click must not re-select or bubble into
-              // the lane's rail selection.
-              if (keyDrag?.consumeClickSuppression() === true) {
-                event.stopPropagation();
-                return;
-              }
-              onSelectKey?.(key.frame);
-            }}
-        />
-      ))}
+      {inBandKeys.map((key) => {
+        // 261108-gh0: the marker shows ITS OWN easing through the shared table;
+        // the svg is pointer-transparent so drag and selection keep the button.
+        const Icon = RAIL_MOTION_EASING_ICONS[key.easing];
+        return (
+          <button
+            key={`key-${key.frame}`}
+            type="button"
+            class="physics-paint-motion-lane-key"
+            data-motion-key-frame={key.frame}
+            data-tier={key.frame === cursorFrame ? 'current' : 'idle'}
+            data-selected={selectedKeyFrames?.includes(key.frame) ? 'true' : 'false'}
+            disabled={selectKeyState.disabled}
+            title={selectKeyState.reason ?? undefined}
+            aria-description={selectKeyState.reason ?? undefined}
+            aria-label={`Motion key at frame ${key.frame}`}
+            style={keyStyle(key.frame)}
+            onPointerDown={keyDrag === undefined
+              ? undefined
+              : (event) => keyDrag.onPointerDownKey(event, key.frame)}
+            onClick={selectKeyState.disabled
+              ? undefined
+              : (event) => {
+                // The drop's companion click must not re-select or bubble into
+                // the lane's rail selection.
+                if (keyDrag?.consumeClickSuppression() === true) {
+                  event.stopPropagation();
+                  return;
+                }
+                onSelectKey?.(key.frame);
+              }}
+          >
+            <Icon
+              size={Math.max(4, TIMELINE_MOTION.keySize - 2)}
+              strokeWidth={3}
+              aria-hidden="true"
+              style={{ pointerEvents: 'none', color: TIMELINE_SURFACE.motionLane }}
+            />
+          </button>
+        );
+      })}
 
       {keyDrag !== undefined && keyDrag.ghost.active ? (
         <span

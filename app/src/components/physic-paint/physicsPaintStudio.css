@@ -4470,6 +4470,60 @@ button.destructive {
   color: #ffffff;
 }
 
+/* 261108-gh0: the sheet's apply-all row. A secondary button on the motion body
+   rhythm — same chrome family as the header buttons, full-width so it reads as
+   a row rather than a floating chip. */
+.physics-paint-motion-apply-all {
+  align-self: stretch;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid #3a4652;
+  border-radius: 6px;
+  background: #2a3540;
+  color: #b9c3ce;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.physics-paint-motion-apply-all:hover {
+  background: #35424f;
+  color: #e5edf8;
+}
+
+.physics-paint-motion-apply-all:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+/* One Compact Wiggle line: the stepper grows and the Global toggle hugs. */
+.physics-paint-motion-wiggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The Global toggle keeps the 22px button chrome and shows its word, so the
+   pressed state reads as a scoped toggle, not an icon-only mystery. */
+.physics-paint-motion-wiggle-global {
+  flex: 0 0 auto;
+  width: auto;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: none;
+}
+
+/* The ON state uses the same scoped button tint as the easing row. */
+.physics-paint-motion-wiggle-global[aria-pressed="true"] {
+  border-color: #6f90ff;
+  background: #3a424c;
+  color: #ffffff;
+}
+
 /* 43.5-05 armed Push tint (D-06, UX7 smoke revision): the armed Push button
    uses the ORANGE selection language (#F59E0B family — the same family as rail
    selection), not the generic blue active-toggle tint. The user's native smoke
@@ -6119,6 +6173,16 @@ button.destructive {
 .physics-paint-stroke-settings-header-button:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* 261108-gh0: the Motion sheet's Reset carries its word beside the icon. The
+   modifier only relaxes the fixed 22px square; every colour, hover, focus and
+   disabled rule above still applies. */
+.physics-paint-stroke-settings-header-button--labelled {
+  width: auto;
+  padding: 0 8px;
+  gap: 5px;
+  line-height: 1;
 }
 
 /* 261101-mvg: the Move/Edit "Preview stroke size" switch. It shares the 22px
