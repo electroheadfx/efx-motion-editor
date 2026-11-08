@@ -13,7 +13,7 @@ XState and Effect enter a flow only when the flow is a mapped sensitive path or 
 
 ## 2. Library placement is measured, never assumed
 
-`xstate` and `effect` imports live only in modules behind the lazy `PhysicsPaintStudio` boundary; the main chunk stays library-free and the chunk-budget test fails otherwise. When adding an import, run the production build and confirm which chunk took the bytes — placement is verified by measurement, not by intention. Pinned versions: `xstate` 6.0.0-alpha.53, `effect` 4.0.0-rc.115 (exact pins, no range operators). The audited v6 import surface is `setup, createActor, createAsyncLogic, checkStateIn, types` plus `Effect, Queue, Fiber, Duration`; verify any new name against the installed declarations — where third-party guidance disagrees with the installed `.d.ts`, the installed surface wins.
+`xstate` and `effect` imports live only in modules behind the lazy `PhysicsPaintStudio` boundary; the main chunk stays library-free and the chunk-budget test fails otherwise. When adding an import, run the production build and confirm which chunk took the bytes — placement is verified by measurement, not by intention. Pinned versions: `xstate` 6.0.0-beta.1, `effect` 4.0.0-rc.115 (exact pins, no range operators). The audited v6 import surface is `setup, createActor, createAsyncLogic, checkStateIn, types` plus `Effect, Queue, Fiber, Duration`; verify any new name against the installed declarations — where third-party guidance disagrees with the installed `.d.ts`, the installed surface wins.
 
 ## 3. One machine owns one lifecycle — declared, not re-derived
 

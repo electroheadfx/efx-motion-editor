@@ -52,7 +52,7 @@ const PHASE_MODULES: readonly string[] = Object.freeze([
 ]);
 
 /**
- * `app/package.json` `dependencies` frozen at the phase start (724bb6194).
+ * `app/package.json` `dependencies` pinned baseline.
  * Versions are part of the pin: a silent major swap is a dependency change too.
  */
 const FROZEN_APP_DEPENDENCIES: Readonly<Record<string, string>> = Object.freeze({
@@ -74,11 +74,11 @@ const FROZEN_APP_DEPENDENCIES: Readonly<Record<string, string>> = Object.freeze(
   'lucide-preact': '^1.57.0',
   'p5.brush': '2.1.3-beta',
   'perfect-freehand': '^1.2.3',
-  preact: '11.1.1',
+  preact: '11.2.0',
   sortablejs: '^1.15.7',
   'stackblur-canvas': '^3.0.0',
   tinykeys: '^3.0.0',
-  xstate: '6.0.0-alpha.53',
+  xstate: '6.0.0-beta.1',
 });
 
 const DEP_FIELDS = [
