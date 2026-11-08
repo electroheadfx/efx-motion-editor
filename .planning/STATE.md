@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-08T12:12:08.340Z"
+last_updated: "2026-11-08T14:47:06.213Z"
 last_activity: 2026-11-08
 last_activity_desc: Phase 59 execution started
-state_head: 0d71300faa5ad66b04e9b81717f868993ebe999e
+state_head: 4893ee9ee78838de732a75ba7699c364fb1c17b8
 progress:
   total_phases: 4
   completed_phases: 0
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-08 - Completed quick task 261108-gh0: rail motion easing table, per-channel whole-timeline wiggle, project-scaled sliders, sectioned auto-height Motion sheet (UAT approved)
+Last activity: 2026-11-08 - Completed quick task 261108-kvw: canvas motion-path overlay for rail Position (automated verification passed, 7/7 must-haves; live UAT pending)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -243,6 +243,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261107-ux2 | Rail motion first span never interpolated: add-channel seeded its opening key with easing hold, so frames between the first two paint keys held while later spans eased; the opening seed now eases (regression tests pin frame 2 = the exact midpoint) | 2026-11-07 | 3138361ad | [261107-ux2-rail-motion-first-span-never-interpolate](./quick/261107-ux2-rail-motion-first-span-never-interpolate/) |
 | 261108-d5o | Rail Motion: add stop-motion and linear easings, make stop-motion the default for new lanes and keys, expose per-key easing in the floating Motion sheet, and glyph all four easing buttons (supersedes 261107-ux2 ease seed; UAT approved 2026-11-08) | 2026-11-08 | 86cea6ebd | [261108-d5o-new-ease-motion-from-phase-59-rail-motio](./quick/261108-d5o-new-ease-motion-from-phase-59-rail-motio/) |
 | 261108-gh0 | Rail Motion: lucide easing icons on the sheet and every lane key, tool-strip easing/wiggle removed, per-channel whole-timeline wiggle with a persisted Global flag, Keys table with [Key N]/[All] targets, project-scaled wiggle sliders, sectioned auto-height sheet (UAT approved 2026-11-08) | 2026-11-08 | 94b246ed7 | [261108-gh0-rail-motion-follow-up-lucide-easing-icon](./quick/261108-gh0-rail-motion-follow-up-lucide-easing-icon/) |
+| 261108-kvw | Canvas motion-path overlay for rail Position: read-only dashed authored route, key dots and cursor marker in animate mode | 2026-11-08 | 4893ee9ee | [261108-kvw-canvas-motion-path-overlay-for-rail-posi](./quick/261108-kvw-canvas-motion-path-overlay-for-rail-posi/) |
 
 ## Roadmap Evolution
 
