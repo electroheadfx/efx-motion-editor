@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-08T17:04:27.819Z"
+last_updated: "2026-11-08T17:59:38.107Z"
 last_activity: 2026-11-08
 last_activity_desc: Phase 59 execution started
-state_head: bf4d80e28c09c06a1f60da783b5ad56cdf5136b8
+state_head: e066b97b9adfd897719717a1d0a8c71b93721c67
 progress:
   total_phases: 4
   completed_phases: 0
@@ -248,6 +248,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261108-nq0 | Phase 59 cycle rail bug: + Key / paint inside a cycled one-key rail now dissolves the Loop Clip and lands the key joined to the rail (one continuous rail, no stale-document errors, no split; UAT approved 2026-11-08) | 2026-11-08 | 7de46add1 | [261108-nq0-phase-59-cycle-rail-bug-adding-a-key-ins](./quick/261108-nq0-phase-59-cycle-rail-bug-adding-a-key-ins/) |
 | 261108-o9d | Cycle create is serialized behind a still-settling physical edit instead of dropping with 'Group update was not dispatched.'; clamp and validators unchanged (UAT approved 2026-11-08) | 2026-11-08 | bf4d80e28 | [261108-o9d-creating-a-cycle-with-10-frames-fails-wi](./quick/261108-o9d-creating-a-cycle-with-10-frames-fails-wi/) |
 | 261108-pmc | Rail cycle delete: Delete on a cycle (repeat) cell is refused; deleting a real key on a cycled rail dissolves the Loop Clip in the same atomic edit instead of leaving a suppressed key; the parent bounds canonical clips like the child, closing the `(loop-clips)` parent rejection (UAT approved 2026-11-08) | 2026-11-08 | ae54c7502 | [261108-pmc-cycle-delete-on-rail-does-not-update-cyc](./quick/261108-pmc-cycle-delete-on-rail-does-not-update-cyc/) |
+| 18 | Onion tab sliders use the shared SliderStepper (native ranges overflowed the right sidebar) | 2026-11-08 | e066b97b9 | — |
 
 ## Roadmap Evolution
 
