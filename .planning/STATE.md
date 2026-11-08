@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
-current_phase: 59
-current_phase_name: Rail Motion Channels & v7 Interface
-status: verifying
-stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-08T17:59:38.107Z"
+current_phase: 60
+current_phase_name: Studio Timeline Horizontal Zoom
+status: planning
+stopped_at: Phase 59 complete, ready to plan Phase 60
+last_updated: "2026-11-08T18:52:12.582Z"
 last_activity: 2026-11-08
-last_activity_desc: Phase 59 execution started
-state_head: e066b97b9adfd897719717a1d0a8c71b93721c67
+last_activity_desc: Phase 59 complete, transitioned to Phase 60
+state_head: 5a3063542bb03d720b6a758591404610631c1dcc
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 25
   completed_plans: 25
-  percent: 0
+  percent: 25
 ---
 
 # Project State
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 59 — Rail Motion Channels & v7 Interface
+**Current focus:** Phase 60 — Studio Timeline Horizontal Zoom
 
 ## Current Position
 
-Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 25 of 25
-Status: Phase complete — ready for verification
-Last activity: 2026-11-08 - Completed quick task 261108-pmc: Delete on a Rail cycle cell is refused; deleting a real key on a cycled rail dissolves the cycle in the same atomic edit; the parent now bounds canonical clips like the child stages them (UAT approved)
+Phase: 60 — Studio Timeline Horizontal Zoom
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-08 — Phase 59 complete, transitioned to Phase 60
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Progress: [░░░░░░░░░░] 0%
 | 60. Studio Timeline Horizontal Zoom | TBD | - | - |
 | 61. Vector Painting Tool | TBD | - | - |
 | 62. Painted-Stroke Curve Editing | TBD | - | - |
+| 59 | 25 | - | - |
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -259,11 +260,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-07T10:30:18.157Z
-Stopped at: Completed 59-25-PLAN.md
+Last session: 2026-11-08T18:55:00.000Z
+Stopped at: Phase 59 complete, ready to plan Phase 60
 Resume file: None
 
 ## Operator Next Steps
 
-- `/gsd-discuss-phase 59`, then `/gsd-plan-phase 59`. The Phase 59 plan must answer Gates A-D and commit to the 59.1-59.6 build order.
-- Phase 59 is the only phase in this milestone that changes `.mce`; do not start Phase 60 before Phase 59's UAT is approved.
+- Phase 59 is complete (25/25 plans, live UAT 15/15, verification 21/21). Next: `/gsd-discuss-phase 60`, then `/gsd-plan-phase 60` — Studio timeline horizontal zoom (frame density only, session-only, no document/schema/export change).
+- Phase 59 was the only phase in this milestone that changes `.mce`; Phase 60 must not touch the schema.

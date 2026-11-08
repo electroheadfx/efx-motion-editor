@@ -169,10 +169,16 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Edit Rail is reachable for a selected/double-clicked Key Rail and converts it to a provenance-free Standard cycle (cycle count + Infinity, prefill 1, cancel is a no-op, one undo restores the Key Rail) — v2.0.1 Phase 58 (RAIL-01..05)
 - ✓ Single-key drag works on Motion/Static/Reveal loop clips under Law A (exactly one independent cycle); shared linked cycles keep D-11 and never move silently — v2.0.1 Phase 58 (RAIL-06/07)
 - ✓ Studio timeline ships the approved v7 rail interface (types, cells, geometry, header accent, blue playhead); no motion channels — v2.0.1 quick 261104-bop (VIS-01..08)
+- ✓ Any rail animates — Standard, Motion, Static, Reveal and bare Key Rails take independent Motion keys with no conversion and no cycle value; Motion keys never touch drawing keys — v2.1.0 Phase 59 (MOTN-01..03)
+- ✓ Motion channels open on demand one at a time (Position grouped, Scale, Rotation, Opacity), rail-local time survives moving/repeating the rail, repeat holds at the last key — v2.1.0 Phase 59 (MOTN-04..06)
+- ✓ One compositor transform per track per frame: integer content raster, fractional transform, seeded Wiggle deterministic at export; edit view, Play and export agree — v2.1.0 Phase 59 (MOTN-07..10, REL-04)
+- ✓ Three independent selection scopes (rail / drawing key / motion key) and save→close→reopen round-trips byte-identically with per-operation undo/redo — v2.1.0 Phase 59 (MOTN-11/12, REL-02)
+- ✓ Motion joins the canonical revision; sampled values never enter the flattened cache key; no new runtime dependencies — v2.1.0 Phase 59 (REL-01/03)
+- ✓ v7 Motion chrome ships: coloured chevron / grey minus, 18px lanes, 6×6 keys, rounded selected outline, one open block at a time, aligned header while scrolling — v2.1.0 Phase 59 (MUI-01..06)
 
 ### Active
 
-**v2.1.0 scope (defined 2026-11-06 — see `.planning/REQUIREMENTS.md`):** rail motion channels with the v7 interface (Phase 59), Studio timeline horizontal zoom (Phase 60), vector painting tool (Phase 61), painted-script/stroke curve editing (Phase 62).
+**v2.1.0 scope (defined 2026-11-06 — see `.planning/REQUIREMENTS.md`):** Studio timeline horizontal zoom (Phase 60), vector painting tool (Phase 61), painted-script/stroke curve editing (Phase 62). Phase 59 (rail motion channels + v7 interface) shipped 2026-11-08.
 
 **Carried forward (not scheduled in v2.1.0):**
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
@@ -433,4 +439,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-06 after opening milestone v2.1.0 — rail motion channels with the v7 interface, Studio timeline horizontal zoom, vector painting tool, and painted-script curve editing; global phase numbering continues at 59 (Phase 57 retired, never reused). Previous: v2.0.1 shipped 2026-11-05 (tag `v2.0.1` → `49b5f7e57`, 15/15 requirements, audit `tech_debt` with 0 gaps).*
+*Last updated: 2026-11-08 after Phase 59 (rail motion channels + v7 interface) — 25/25 plans, live UAT 15/15, verification passed 21/21 must-haves. Next: Phase 60 Studio timeline horizontal zoom. Previous: v2.0.1 shipped 2026-11-05 (tag `v2.0.1` → `49b5f7e57`, 15/15 requirements, audit `tech_debt` with 0 gaps).*
