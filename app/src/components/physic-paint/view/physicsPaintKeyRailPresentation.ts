@@ -287,6 +287,22 @@ export function projectRailMotionInspectorAtFrame(
 }
 
 /**
+ * 261108-gh0: one whole-timeline Wiggle row per channel the rail CARRIES.
+ * `wiggle` is the RAW model amplitude (0..1,000,000) — this projection owns no
+ * display conversion. Each setter passes the OTHER current member to the one
+ * command authority, so a single edit can never reset the sibling field, and
+ * returns that authority's rejection sentence verbatim, or null on success.
+ */
+export interface RailMotionChannelWiggleRow {
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly label: string;
+  readonly wiggle: number;
+  readonly wiggleGlobal: boolean;
+  readonly setWiggle: (wiggle: number) => string | null;
+  readonly setWiggleGlobal: (wiggleGlobal: boolean) => string | null;
+}
+
+/**
  * 261107-qgj: what the floating Motion modal receives. `commit` is BOUND to
  * `presentation.frame` — the frame the fields displayed — and returns the
  * command layer's rejection sentence verbatim, or null on success.
@@ -316,6 +332,19 @@ export interface RailMotionDialogBundle {
     readonly easing: PhysicPaintRotoRailMotionEasing;
     readonly set: (easing: PhysicPaintRotoRailMotionEasing) => string | null;
   }> | null;
+  /**
+   * 261108-gh0: one Wiggle row per channel the rail carries, in the
+   * presentation's fixed D-13 order. The rows are keyed off the SAME
+   * `presentation.fields` presence flags the numeric rows read — never a
+   * second presence predicate — so an absent channel shows no Wiggle row.
+   */
+  readonly channels: readonly RailMotionChannelWiggleRow[];
+  /**
+   * 261108-gh0: "Apply to all keys" — one model edit, one commit. Present
+   * ONLY in key mode, mirroring `keyEasing`; null in property-only mode, where
+   * the modal renders no apply-all button.
+   */
+  readonly applyEasingToAllKeys: ((easing: PhysicPaintRotoRailMotionEasing) => string | null) | null;
 }
 
 export interface ResolvePhysicPaintPushAnchorInput {

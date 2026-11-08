@@ -179,6 +179,10 @@ function partialBundle(
     commit,
     reset,
     keyEasing: null,
+    // 261108-gh0: the bundle now always carries the per-channel Wiggle rows
+    // and the key-mode-only apply-all handle; the Task 5 rows populate them.
+    channels: [],
+    applyEasingToAllKeys: null,
   };
 }
 
@@ -199,6 +203,8 @@ function positionOnlyBundle(): RailMotionDialogBundle {
     commit: () => null,
     reset: () => null,
     keyEasing: null,
+    channels: [],
+    applyEasingToAllKeys: null,
   };
 }
 

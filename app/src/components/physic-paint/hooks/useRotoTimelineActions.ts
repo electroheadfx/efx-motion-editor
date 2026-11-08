@@ -57,6 +57,7 @@ import {
   deriveKeyRailSegments,
   projectRailMotionInspector,
   projectRailMotionInspectorAtFrame,
+  type RailMotionChannelWiggleRow,
   type RailMotionDialogBundle,
   type RailMotionInspectorPresentation,
 } from '../view/physicsPaintKeyRailPresentation';
@@ -73,6 +74,8 @@ import {
   resolveMotionGizmoAvailability,
   resolveMotionKeyAtFrame,
   resolveSelectedRailView,
+  setMotionAllKeysEasing as applySetMotionAllKeysEasing,
+  setMotionChannelWiggle as applySetMotionChannelWiggle,
   setMotionKeyAtCursor as applySetMotionKeyAtCursor,
   setMotionKeyEasing as applySetMotionKeyEasing,
   setMotionKeyWiggle as applySetMotionKeyWiggle,
@@ -3283,6 +3286,66 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }, [input]);
 
   /**
+   * 261108-gh0: the Motion sheet's whole-timeline wiggle write authority. It
+   * re-reads the live motion state (a stale modal must never address a rail
+   * that moved on), applies the ONE pure channel edit and commits the result
+   * exactly ONCE through `commitRailMotionRecords` — one click is one history
+   * entry. A no-op submission is never special-cased here: the existing commit
+   * path still sees it. Returns the rejection sentence verbatim, or null.
+   */
+  const commitSelectedMotionChannelWiggle = useCallback((
+    channelId: PhysicPaintRotoRailMotionChannelId,
+    wiggle: number,
+    wiggleGlobal: boolean,
+  ): string | null => {
+    const fail = (reason: string): string => {
+      publishMotionFailure(input, reason);
+      return reason;
+    };
+    const state = readActiveRailMotionState(input);
+    if (state === null || state.record === null) return fail('Select a rail with Motion first.');
+    const result = applySetMotionChannelWiggle({
+      records: state.records,
+      railId: state.record.railId,
+      channelId,
+      wiggle,
+      wiggleGlobal,
+    });
+    if (!result.ok) return fail(result.reason);
+    const written = commitRailMotionRecords(state, result.records, input);
+    if (!written.ok) return fail(written.error);
+    input.publishStatus?.('Motion wiggle changed.');
+    return null;
+  }, [input]);
+
+  /**
+   * 261108-gh0: "Apply to all keys" — ONE model edit over every key of every
+   * channel of the active rail's motion, so one click is one undo step. The
+   * command validates the token and the key count; this helper only routes the
+   * accepted edit to the same single commit path as every other Motion write.
+   */
+  const commitMotionAllKeysEasing = useCallback((
+    easing: PhysicPaintRotoRailMotionEasing,
+  ): string | null => {
+    const fail = (reason: string): string => {
+      publishMotionFailure(input, reason);
+      return reason;
+    };
+    const state = readActiveRailMotionState(input);
+    if (state === null || state.record === null) return fail('Select a rail with Motion first.');
+    const result = applySetMotionAllKeysEasing({
+      records: state.records,
+      railId: state.record.railId,
+      easing,
+    });
+    if (!result.ok) return fail(result.reason);
+    const written = commitRailMotionRecords(state, result.records, input);
+    if (!written.ok) return fail(written.error);
+    input.publishStatus?.('Motion easing applied to all keys.');
+    return null;
+  }, [input]);
+
+  /**
    * 261107-qgj: the floating Motion modal's props-driven bundle. Open when a
    * property is selected in the pinned header (animate mode) OR a Motion key
    * is selected; the property wins when both are set. Property mode projects
@@ -3310,12 +3373,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         })
         : null);
     if (presentation === null) return null;
-    // 261108-d5o: the easing row exists ONLY in key mode — a property
-    // selection is never eased, so property mode renders no row at all. The
-    // displayed easing is the selected key's stored value; `set` re-reads the
-    // selection signal inside the shared authority, never through this closure.
-    const keyEasing = !propertySelected && selection !== null
-      && selection.railId === state.record.railId
+    // 261108-d5o / 261108-gh0: both key-mode rows share ONE open condition —
+    // a Motion key selected in key mode on this rail. Property mode renders
+    // neither row, and the displayed easing is the selected key's stored
+    // value; `set` re-reads the selection signal inside the shared authority,
+    // never through this closure.
+    const keyMode = !propertySelected && selection !== null
+      && selection.railId === state.record.railId;
+    const keyEasing = keyMode
       ? Object.freeze({
         frame: selection.frame,
         easing: state.record.channels
@@ -3327,6 +3392,29 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         ),
       })
       : null;
+    // 261108-gh0: one Wiggle row per channel the rail CARRIES, in the fixed
+    // D-13 order. Presence comes from the SAME `presentation.fields` flags the
+    // numeric rows read — no second predicate — and the values are RAW model
+    // amplitudes. Each setter forwards the OTHER current member so a one-field
+    // edit can never reset its sibling.
+    const channels: RailMotionChannelWiggleRow[] = [];
+    for (const field of presentation.fields) {
+      if (!field.present) continue;
+      const channel = state.record.channels.find((entry) => entry.id === field.channelId);
+      if (channel === undefined) continue;
+      channels.push(Object.freeze({
+        channelId: field.channelId,
+        label: field.label,
+        wiggle: channel.wiggle,
+        wiggleGlobal: channel.wiggleGlobal,
+        setWiggle: (wiggle: number): string | null => (
+          commitSelectedMotionChannelWiggle(field.channelId, wiggle, channel.wiggleGlobal)
+        ),
+        setWiggleGlobal: (wiggleGlobal: boolean): string | null => (
+          commitSelectedMotionChannelWiggle(field.channelId, channel.wiggle, wiggleGlobal)
+        ),
+      }));
+    }
     return Object.freeze({
       presentation,
       commit: (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number): string | null => (
@@ -3334,6 +3422,10 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       ),
       reset: (): string | null => resetRailMotionInspectorValues(presentation),
       keyEasing,
+      channels: Object.freeze(channels) as readonly RailMotionChannelWiggleRow[],
+      applyEasingToAllKeys: keyMode
+        ? (easing: PhysicPaintRotoRailMotionEasing): string | null => commitMotionAllKeysEasing(easing)
+        : null,
     }) as RailMotionDialogBundle;
   });
 

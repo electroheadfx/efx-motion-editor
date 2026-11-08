@@ -353,6 +353,22 @@ export interface SetMotionKeyWiggleInput {
   readonly snapFrames?: readonly number[];
 }
 
+/** 261108-gh0: the whole-timeline wiggle pair of ONE channel. */
+export interface SetMotionChannelWiggleInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly railId: string;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly wiggle: number;
+  readonly wiggleGlobal: boolean;
+}
+
+/** 261108-gh0: rewrite the easing of EVERY key of EVERY channel of one rail. */
+export interface SetMotionAllKeysEasingInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly railId: string;
+  readonly easing: PhysicPaintRotoRailMotionEasing;
+}
+
 /**
  * The three independent selection scopes (MOTN-11) live with the rail-set
  * selection authority; re-exported here so the command layer stays the one
@@ -756,6 +772,63 @@ export function setMotionKeyWiggle(input: SetMotionKeyWiggleInput): RailMotionCo
     'The Motion key wiggle could not be changed.',
     input.snapFrames,
   );
+}
+
+/**
+ * 261108-gh0: sets the whole-timeline wiggle pair on ONE channel. Not a
+ * `RailMotionCommandId`: this quick does not touch the strip action bar.
+ */
+export function setMotionChannelWiggle(input: SetMotionChannelWiggleInput): RailMotionCommandResult {
+  const { records, railId, channelId, wiggle, wiggleGlobal } = input;
+  if (!isRailMotionWiggleValue(wiggle)) {
+    return failure('Wiggle must be between 0 and 1,000,000.');
+  }
+  if (typeof wiggleGlobal !== 'boolean') {
+    return failure('The Global wiggle flag must be on or off.');
+  }
+  if (!isBoundedId(railId)) return failure('Select a rail first.');
+  const record = findRailMotionRecord(records, railId);
+  if (record === null) return failure('This rail has no Motion to edit yet.');
+  if (!record.channels.some((entry) => entry.id === channelId)) {
+    return failure('This Motion channel is no longer present.');
+  }
+
+  try {
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-channel-wiggle',
+      railId,
+      channel: channelId,
+      wiggle,
+      wiggleGlobal,
+    });
+    return success(next);
+  } catch {
+    return failure('The Motion wiggle could not be changed.');
+  }
+}
+
+/** 261108-gh0: sets one easing token on every key of every channel of a rail. */
+export function setMotionAllKeysEasing(input: SetMotionAllKeysEasingInput): RailMotionCommandResult {
+  const { records, railId, easing } = input;
+  if (!isRailMotionEasing(easing)) {
+    return failure('Easing must be Linear, Hold, Ease or Stop Motion.');
+  }
+  if (!isBoundedId(railId)) return failure('Select a rail first.');
+  const record = findRailMotionRecord(records, railId);
+  if (record === null) return failure('This rail has no Motion to edit yet.');
+  const keyCount = record.channels.reduce((count, channel) => count + channel.keys.length, 0);
+  if (keyCount === 0) return failure('There are no Motion keys to change.');
+
+  try {
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-easing-all-keys',
+      railId,
+      easing,
+    });
+    return success(next);
+  } catch {
+    return failure('The Motion easing could not be changed.');
+  }
 }
 
 /** The commands the 59-12 action bar can publish. */

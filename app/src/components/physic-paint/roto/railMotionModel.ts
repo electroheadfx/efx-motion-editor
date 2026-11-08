@@ -118,6 +118,23 @@ export type PhysicPaintRotoRailMotionEdit =
     readonly kind: 'remove-channel';
     readonly railId: string;
     readonly channel: PhysicPaintRotoRailMotionChannelId;
+  }
+  | {
+    /**
+     * 261108-gh0: set the whole-timeline wiggle pair on exactly ONE channel.
+     * Every key object and every other channel stay untouched.
+     */
+    readonly kind: 'set-channel-wiggle';
+    readonly railId: string;
+    readonly channel: PhysicPaintRotoRailMotionChannelId;
+    readonly wiggle: number;
+    readonly wiggleGlobal: boolean;
+  }
+  | {
+    /** 261108-gh0: rewrite the easing of EVERY key of EVERY channel of one rail. */
+    readonly kind: 'set-easing-all-keys';
+    readonly railId: string;
+    readonly easing: PhysicPaintRotoRailMotionEasing;
   };
 
 /** Position values are bounded to plus or minus one million pixels. */
@@ -912,6 +929,68 @@ function applyRemoveChannelEdit(
   return replaceRailMotionRecord(records, recordIndex, { ...record, channels: remaining });
 }
 
+function applySetChannelWiggleEdit(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  edit: Extract<PhysicPaintRotoRailMotionEdit, { kind: 'set-channel-wiggle' }>,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  if (!isBoundedRailMotionId(edit.railId)) {
+    throw new Error('PhysicPaintRotoRailMotions: invalid railId in set-channel-wiggle edit.');
+  }
+  assertRailMotionEditChannel(edit.channel);
+  if (!isRailMotionWiggle(edit.wiggle)) {
+    throw new Error(`PhysicPaintRotoRailMotions: wiggle ${String(edit.wiggle)} in set-channel-wiggle edit is outside 0..${RAIL_MOTION_WIGGLE_LIMIT}.`);
+  }
+  if (typeof edit.wiggleGlobal !== 'boolean') {
+    throw new Error('PhysicPaintRotoRailMotions: wiggleGlobal must be a boolean in set-channel-wiggle edit.');
+  }
+
+  const recordIndex = records.findIndex((entry) => entry.railId === edit.railId);
+  if (recordIndex < 0) {
+    throw new Error(`PhysicPaintRotoRailMotions: no record for rail "${edit.railId}" in set-channel-wiggle edit.`);
+  }
+  const record = records[recordIndex];
+  if (!record.channels.some((entry) => entry.id === edit.channel)) {
+    throw new Error(`PhysicPaintRotoRailMotions: rail "${edit.railId}" has no "${edit.channel}" channel in set-channel-wiggle edit.`);
+  }
+
+  // Only the addressed channel's wiggle pair moves; every key and every sibling
+  // channel keeps its content, and the fixed channel order is canonicalized.
+  const channels = record.channels.map((entry) => (entry.id === edit.channel
+    ? { ...entry, wiggle: edit.wiggle, wiggleGlobal: edit.wiggleGlobal }
+    : entry));
+  return replaceRailMotionRecord(records, recordIndex, { ...record, channels });
+}
+
+function applySetEasingAllKeysEdit(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  edit: Extract<PhysicPaintRotoRailMotionEdit, { kind: 'set-easing-all-keys' }>,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  if (!isBoundedRailMotionId(edit.railId)) {
+    throw new Error('PhysicPaintRotoRailMotions: invalid railId in set-easing-all-keys edit.');
+  }
+  if (!isRailMotionEasing(edit.easing)) {
+    throw new Error(`PhysicPaintRotoRailMotions: invalid easing "${String(edit.easing)}" in set-easing-all-keys edit.`);
+  }
+
+  const recordIndex = records.findIndex((entry) => entry.railId === edit.railId);
+  if (recordIndex < 0) {
+    throw new Error(`PhysicPaintRotoRailMotions: no record for rail "${edit.railId}" in set-easing-all-keys edit.`);
+  }
+  const record = records[recordIndex];
+  const keyCount = record.channels.reduce((count, channel) => count + channel.keys.length, 0);
+  if (keyCount === 0) {
+    throw new Error(`PhysicPaintRotoRailMotions: rail "${edit.railId}" carries no keys in set-easing-all-keys edit.`);
+  }
+
+  // ONLY `easing` changes: frame, value and per-key wiggle survive, and the
+  // grouped Position pair keeps its identical frame sets.
+  const channels = record.channels.map((entry) => ({
+    ...entry,
+    keys: entry.keys.map((key) => ({ ...key, easing: edit.easing })),
+  }));
+  return replaceRailMotionRecord(records, recordIndex, { ...record, channels });
+}
+
 /**
  * Applies one pure edit to the rail motion collection.
  *
@@ -937,6 +1016,10 @@ export function applyRailMotionEditToCollection(
       return applyAddChannelEdit(records, edit);
     case 'remove-channel':
       return applyRemoveChannelEdit(records, edit);
+    case 'set-channel-wiggle':
+      return applySetChannelWiggleEdit(records, edit);
+    case 'set-easing-all-keys':
+      return applySetEasingAllKeysEdit(records, edit);
     default:
       throw new Error(`PhysicPaintRotoRailMotions: unknown edit kind "${String((edit as { kind?: unknown }).kind)}".`);
   }

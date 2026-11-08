@@ -1420,3 +1420,148 @@ describe('261108-gh0 channel wiggle fields', () => {
     }
   });
 });
+
+describe('261108-gh0 set-channel-wiggle and set-easing-all-keys edits', () => {
+  it('set-channel-wiggle touches exactly one channel and keeps every key byte-identical', () => {
+    const records = [
+      record('rail-a', [
+        channel('position-x', [key(0, 0, 'ease', 2), key(4, 10, 'hold', 1)], 12, false),
+        channel('position-y', [key(0, 0, 'ease', 0), key(4, 20, 'hold', 0)], 7, true),
+        channel('scale', [key(0, 1), key(4, 2)], 0, true),
+      ]),
+      record('rail-b', [channel('scale', [key(0, 1)])]),
+    ];
+    const before = records[0];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-channel-wiggle',
+      railId: 'rail-a',
+      channel: 'scale',
+      wiggle: 500,
+      wiggleGlobal: false,
+    });
+
+    expect(next).not.toBe(records);
+    expect(next[0].channels.map((entry) => entry.id)).toEqual(['position-x', 'position-y', 'scale']);
+    const addressed = next[0].channels.find((entry) => entry.id === 'scale');
+    expect({ wiggle: addressed?.wiggle, wiggleGlobal: addressed?.wiggleGlobal })
+      .toEqual({ wiggle: 500, wiggleGlobal: false });
+    // Every key object of the addressed channel survives unchanged, frames,
+    // values, easing AND per-key wiggle included.
+    expect(addressed?.keys).toEqual(before.channels[2].keys);
+    expect(addressed?.keys).toEqual([
+      key(0, 1, 'stop-motion', 0),
+      key(4, 2, 'stop-motion', 0),
+    ]);
+    // Sibling channels keep their stored pairs; the untouched record survives.
+    for (const [index, expected] of [
+      [0, { wiggle: 12, wiggleGlobal: false }],
+      [1, { wiggle: 7, wiggleGlobal: true }],
+    ] as const) {
+      const entry = next[0].channels[index];
+      expect(entry.id).toBe(index === 0 ? 'position-x' : 'position-y');
+      expect({ wiggle: entry.wiggle, wiggleGlobal: entry.wiggleGlobal }).toEqual(expected);
+    }
+    expect(next[1]).toEqual(records[1]);
+    // The input collection is never mutated.
+    expect({ wiggle: before.channels[2].wiggle, wiggleGlobal: before.channels[2].wiggleGlobal })
+      .toEqual({ wiggle: 0, wiggleGlobal: true });
+  });
+
+  it('set-channel-wiggle rejects a non-finite/out-of-domain wiggle, a non-boolean flag, an unknown channel and a missing record/channel', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 0)]),
+      channel('position-y', [key(0, 0)]),
+      channel('scale', [key(0, 1)]),
+    ])];
+
+    for (const wiggle of [-1, RAIL_MOTION_WIGGLE_LIMIT + 1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => applyRailMotionEditToCollection(records, {
+        kind: 'set-channel-wiggle', railId: 'rail-a', channel: 'scale', wiggle, wiggleGlobal: true,
+      })).toThrow(/wiggle .*set-channel-wiggle edit is outside/);
+    }
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-channel-wiggle',
+      railId: 'rail-a',
+      channel: 'scale',
+      wiggle: 1,
+      wiggleGlobal: 'yes' as unknown as boolean,
+    })).toThrow(/wiggleGlobal must be a boolean/);
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-channel-wiggle',
+      railId: 'rail-a',
+      channel: 'mask' as unknown as PhysicPaintRotoRailMotionChannelId,
+      wiggle: 1,
+      wiggleGlobal: true,
+    })).toThrow(/unknown channel id/);
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-channel-wiggle', railId: 'rail-missing', channel: 'scale', wiggle: 1, wiggleGlobal: true,
+    })).toThrow(/no record for rail "rail-missing"/);
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-channel-wiggle', railId: 'rail-a', channel: 'opacity', wiggle: 1, wiggleGlobal: true,
+    })).toThrow(/has no "opacity" channel/);
+  });
+
+  it('set-easing-all-keys rewrites ONLY the easing of every key of every channel of that rail', () => {
+    const records = [
+      record('rail-a', [
+        channel('position-x', [key(0, 5, 'ease', 2), key(6, 15, 'hold', 1)], 12, false),
+        channel('position-y', [key(0, 7, 'ease', 0), key(6, 9, 'stop-motion', 3)], 7, true),
+        channel('scale', [key(0, 1, 'linear', 4)], 0, true),
+      ]),
+      record('rail-b', [channel('scale', [key(0, 1, 'hold', 0)])]),
+    ];
+    const before = records[0].channels.map((entry) => entry.keys.map((key) => ({ ...key })));
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-easing-all-keys',
+      railId: 'rail-a',
+      easing: 'linear',
+    });
+
+    expect(next).not.toBe(records);
+    // Fixed D-13 order and identical key counts: nothing was added or removed.
+    expect(next[0].channels.map((entry) => entry.id)).toEqual(['position-x', 'position-y', 'scale']);
+    expect(next[0].channels.map((entry) => entry.keys.length)).toEqual([2, 2, 1]);
+    // Every key keeps its frame, value and PER-KEY wiggle; only easing moved.
+    for (const [channelIndex, channelEntry] of next[0].channels.entries()) {
+      expect(channelEntry.keys.map((keyEntry) => keyEntry.easing))
+        .toEqual(before[channelIndex].map(() => 'linear'));
+      expect(channelEntry.keys.map((keyEntry) => ({
+        frame: keyEntry.frame,
+        value: keyEntry.value,
+        wiggle: keyEntry.wiggle,
+      }))).toEqual(before[channelIndex].map((original) => ({
+        frame: original.frame,
+        value: original.value,
+        wiggle: original.wiggle,
+      })));
+    }
+    // Channel wiggle pairs survive, the grouped Position pair stays in lockstep
+    // and the other record is untouched.
+    expect({ wiggle: next[0].channels[0].wiggle, wiggleGlobal: next[0].channels[0].wiggleGlobal })
+      .toEqual({ wiggle: 12, wiggleGlobal: false });
+    expect(next[0].channels[0].keys.map((keyEntry) => keyEntry.frame))
+      .toEqual(next[0].channels[1].keys.map((keyEntry) => keyEntry.frame));
+    expect(next[1]).toEqual(records[1]);
+    // No input mutation.
+    expect(before[0][0]).toEqual(key(0, 5, 'ease', 2));
+  });
+
+  it('set-easing-all-keys throws for a missing record, zero keys and an invalid token', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1)])])];
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-easing-all-keys', railId: 'rail-missing', easing: 'linear',
+    })).toThrow(/no record for rail "rail-missing"/);
+    expect(() => applyRailMotionEditToCollection([
+      { railId: 'rail-empty', anchorKeyId: 'anchor', channels: [] } as PhysicPaintRotoRailMotionRecord,
+    ], {
+      kind: 'set-easing-all-keys', railId: 'rail-empty', easing: 'linear',
+    })).toThrow(/carries no keys/);
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-easing-all-keys',
+      railId: 'rail-a',
+      easing: 'bounce' as unknown as PhysicPaintRotoRailMotionEasing,
+    })).toThrow(/invalid easing "bounce"/);
+  });
+});

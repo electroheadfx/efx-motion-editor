@@ -22,6 +22,7 @@ import {
   PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
   railMotionValueToUi,
   type PhysicPaintRotoRailMotionChannelId,
+  type PhysicPaintRotoRailMotionEasing,
   type PhysicPaintRotoRailMotionRecord,
 } from '../roto/railMotionModel';
 import { evaluateRailMotionChannel } from '../roto/railMotionEvaluator';
@@ -5605,6 +5606,17 @@ describe('261107-qgj floating Motion modal projection and write', () => {
       readonly easing: string;
       readonly set: (easing: string) => string | null;
     } | null;
+    /** 261108-gh0: one RAW wiggle row per PRESENT channel, in D-13 order. */
+    readonly channels: readonly {
+      readonly channelId: string;
+      readonly label: string;
+      readonly wiggle: number;
+      readonly wiggleGlobal: boolean;
+      readonly setWiggle: (wiggle: number) => string | null;
+      readonly setWiggleGlobal: (wiggleGlobal: boolean) => string | null;
+    }[];
+    /** 261108-gh0: key-mode-only apply-all, mirroring `keyEasing`. */
+    readonly applyEasingToAllKeys: ((easing: string) => string | null) | null;
   }
 
   interface RailMotionDialogPort {
@@ -5896,6 +5908,135 @@ describe('261107-qgj floating Motion modal projection and write', () => {
     expect(HOOK_SOURCE).toContain('const commitSelectedMotionKeyEasing = useCallback(');
     const delegations = HOOK_SOURCE.split('commitSelectedMotionKeyEasing(').length - 1;
     expect(delegations, 'the strip action and the dialog bundle both delegate').toBe(2);
+  });
+
+  it('exposes one raw wiggle row per present channel and writes through the bundle (261108-gh0)', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const port = requireRailMotionDialogPort(harness.actions);
+
+    selectRailMotionChannel('scale');
+    const bundle = port.railMotionDialog.value;
+    if (bundle === null) throw new Error('expected an open Motion dialog');
+
+    // Only the channels the rail CARRIES, in the fixed D-13 order: Rotation and
+    // Opacity are absent from the record and must show no wiggle row.
+    expect(bundle.channels.map((row) => row.channelId))
+      .toEqual(['position-x', 'position-y', 'scale']);
+    expect(bundle.channels.map((row) => row.label))
+      .toEqual(['Position X', 'Position Y', 'Scale']);
+    for (const row of bundle.channels) {
+      expect(row.wiggle, 'the RAW model amplitude, never a UI value').toBe(0);
+      expect(row.wiggleGlobal).toBe(true);
+    }
+
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    const scaleRow = bundle.channels.find((row) => row.channelId === 'scale');
+    if (scaleRow === undefined) throw new Error('missing the scale wiggle row');
+    expect(scaleRow.setWiggle(12)).toBeNull();
+    expect(replaceSpy, 'one accepted wiggle edit is one store commit').toHaveBeenCalledTimes(1);
+    expect(storedChannel('scale').wiggle).toBe(12);
+    expect(storedChannel('scale').wiggleGlobal, 'the sibling flag is forwarded, never reset').toBe(true);
+    expect(harness.publishStatus).toHaveBeenCalledWith('Motion wiggle changed.');
+
+    // The live projection re-reads the stored pair; the Global toggle passes
+    // the CURRENT amplitude, so toggling never resets the wiggle.
+    const nextRow = port.railMotionDialog.value?.channels.find((row) => row.channelId === 'scale');
+    if (nextRow === undefined) throw new Error('missing the re-projected scale row');
+    expect(nextRow.wiggle).toBe(12);
+    expect(nextRow.wiggleGlobal).toBe(true);
+    expect(nextRow.setWiggleGlobal(false)).toBeNull();
+    expect(replaceSpy).toHaveBeenCalledTimes(2);
+    expect(storedChannel('scale').wiggle).toBe(12);
+    expect(storedChannel('scale').wiggleGlobal).toBe(false);
+  });
+
+  it('returns the wiggle rejection sentence and commits nothing (261108-gh0)', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const port = requireRailMotionDialogPort(harness.actions);
+    selectRailMotionChannel('scale');
+    const bundle = port.railMotionDialog.value;
+    if (bundle === null) throw new Error('expected an open Motion dialog');
+    const scaleRow = bundle.channels.find((row) => row.channelId === 'scale');
+    if (scaleRow === undefined) throw new Error('missing the scale wiggle row');
+
+    // Payload rejections answer before the store is touched.
+    expect(scaleRow.setWiggle(-1)).toBe('Wiggle must be between 0 and 1,000,000.');
+    expect(scaleRow.setWiggleGlobal('yes' as unknown as boolean))
+      .toBe('The Global wiggle flag must be on or off.');
+
+    // The rail record goes: the helper re-reads the live state and refuses.
+    const removed = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, []);
+    expect(removed.ok).toBe(true);
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    expect(scaleRow.setWiggle(7)).toBe('Select a rail with Motion first.');
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
+  it('applies one easing token to every key of every channel in ONE commit (261108-gh0)', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const port = requireRailMotionDialogPort(harness.actions);
+
+    // Property-only mode renders no apply-all, mirroring the easing row.
+    selectRailMotionChannel('scale');
+    expect(port.railMotionDialog.value?.applyEasingToAllKeys).toBeNull();
+
+    // A key selection while a property is also selected stays property mode.
+    selectRailMotionKey({ railId: RAIL_ID, channelId: 'scale', frame: 10 });
+    expect(port.railMotionDialog.value?.applyEasingToAllKeys).toBeNull();
+
+    // Key mode: apply-all opens beside the per-key easing row.
+    exitRailMotionEditing();
+    const bundle = port.railMotionDialog.value;
+    if (bundle === null || bundle.applyEasingToAllKeys === null) {
+      throw new Error('expected the key-mode apply-all');
+    }
+
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    expect(bundle.applyEasingToAllKeys('linear')).toBeNull();
+    expect(replaceSpy, 'apply-all is ONE model edit and ONE commit').toHaveBeenCalledTimes(1);
+    expect(harness.publishStatus).toHaveBeenCalledWith('Motion easing applied to all keys.');
+    for (const channel of liveRecord().channels) {
+      expect(channel.keys.every((key) => key.easing === 'linear')).toBe(true);
+    }
+    // Frames, values and key counts are untouched.
+    expect(liveRecord().channels.map((channel) => channel.keys.map((key) => key.frame)))
+      .toEqual([[0, 10], [0, 10], [0, 10]]);
+
+    // The same token again is still one commit: no no-op special case.
+    expect(bundle.applyEasingToAllKeys('linear')).toBeNull();
+    expect(replaceSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns the apply-all rejection sentence and commits nothing (261108-gh0)', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const port = requireRailMotionDialogPort(harness.actions);
+    selectRailMotionKey({ railId: RAIL_ID, channelId: 'scale', frame: 10 });
+    const bundle = port.railMotionDialog.value;
+    if (bundle === null || bundle.applyEasingToAllKeys === null) {
+      throw new Error('expected the key-mode apply-all');
+    }
+
+    expect(bundle.applyEasingToAllKeys('bounce' as unknown as PhysicPaintRotoRailMotionEasing))
+      .toBe('Easing must be Linear, Hold, Ease or Stop Motion.');
+
+    const removed = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, []);
+    expect(removed.ok).toBe(true);
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    expect(bundle.applyEasingToAllKeys('linear')).toBe('Select a rail with Motion first.');
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
+  it('routes the wiggle rows and apply-all through ONE command authority each (261108-gh0)', () => {
+    expect(HOOK_SOURCE).toContain('const commitSelectedMotionChannelWiggle = useCallback(');
+    expect(HOOK_SOURCE).toContain('const commitMotionAllKeysEasing = useCallback(');
+    expect(HOOK_SOURCE.split('applySetMotionChannelWiggle(').length - 1,
+      'one applySetMotionChannelWiggle call site').toBe(1);
+    expect(HOOK_SOURCE.split('applySetMotionAllKeysEasing(').length - 1,
+      'one applySetMotionAllKeysEasing call site').toBe(1);
   });
 
   it('clears both selections through the one close path without touching the paint tool', () => {

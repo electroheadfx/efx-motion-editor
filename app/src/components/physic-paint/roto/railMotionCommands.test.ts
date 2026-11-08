@@ -25,6 +25,8 @@ import {
   resolveMotionKeyAtFrame,
   resolveSelectionScope,
   resolveSelectedRailView,
+  setMotionAllKeysEasing,
+  setMotionChannelWiggle,
   setMotionKeyAtCursor,
   setMotionKeyEasing,
   setMotionKeyWiggle,
@@ -2119,5 +2121,155 @@ describe('261108-d5o: snap-frame creation-path seeding', () => {
 
     const record = recordOf(result.records);
     expect(channelOf(record, 'position-y').keys.find((key) => key.frame === 3)?.value).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261108-gh0 — channel wiggle and apply-all commands                  */
+/* ------------------------------------------------------------------ */
+
+describe('261108-gh0 rail motion commands — channel wiggle and apply-all', () => {
+  function wiggleInput(
+    overrides: Partial<Parameters<typeof setMotionChannelWiggle>[0]> = {},
+  ): Parameters<typeof setMotionChannelWiggle>[0] {
+    return {
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'scale',
+      wiggle: 1,
+      wiggleGlobal: true,
+      ...overrides,
+    };
+  }
+
+  /**
+   * A stored record whose SIBLING channel carries an out-of-domain wiggle. It
+   * passes the command's presence pre-checks and throws inside the reducer's
+   * canonicalization — the only way to reach the catch branch.
+   */
+  function corruptSiblingRecord(): PhysicPaintRotoRailMotionRecord {
+    return motionRecord({
+      channels: Object.freeze([
+        motionChannel('scale', [motionKey(0, 1)], -1, true),
+        motionChannel('rotation', [motionKey(0, 0)]),
+      ]),
+    });
+  }
+
+  it('sets the wiggle pair on exactly one channel and keeps every key and sibling', () => {
+    const records = [motionRecord()];
+    const result = setMotionChannelWiggle(wiggleInput({ wiggle: 12, wiggleGlobal: false }));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    const baseline = recordOf(records);
+    const scale = channelOf(record, 'scale');
+    expect({ wiggle: scale.wiggle, wiggleGlobal: scale.wiggleGlobal })
+      .toEqual({ wiggle: 12, wiggleGlobal: false });
+    expect(scale.keys).toEqual(channelOf(baseline, 'scale').keys);
+    for (const id of ['position-x', 'position-y', 'rotation'] as const) {
+      const entry = channelOf(record, id);
+      expect({ wiggle: entry.wiggle, wiggleGlobal: entry.wiggleGlobal })
+        .toEqual({ wiggle: 0, wiggleGlobal: true });
+      expect(entry.keys).toEqual(channelOf(baseline, id).keys);
+    }
+    // The input collection stays untouched.
+    expect(channelOf(baseline, 'scale').wiggle).toBe(0);
+  });
+
+  it('pins every rejection sentence of the channel wiggle command', () => {
+    const cases: readonly [Parameters<typeof setMotionChannelWiggle>[0], string][] = [
+      [wiggleInput({ wiggle: -1 }), 'Wiggle must be between 0 and 1,000,000.'],
+      [wiggleInput({ wiggle: 1_000_001 }), 'Wiggle must be between 0 and 1,000,000.'],
+      [wiggleInput({ wiggle: Number.NaN }), 'Wiggle must be between 0 and 1,000,000.'],
+      [wiggleInput({ wiggle: Number.POSITIVE_INFINITY }), 'Wiggle must be between 0 and 1,000,000.'],
+      [
+        wiggleInput({ wiggleGlobal: 'yes' as unknown as boolean }),
+        'The Global wiggle flag must be on or off.',
+      ],
+      [wiggleInput({ railId: '' }), 'Select a rail first.'],
+      [wiggleInput({ railId: 'rail-missing' }), 'This rail has no Motion to edit yet.'],
+      [wiggleInput({ records: [] }), 'This rail has no Motion to edit yet.'],
+      [wiggleInput({ channelId: 'opacity' }), 'This Motion channel is no longer present.'],
+      [
+        wiggleInput({ records: [corruptSiblingRecord()], channelId: 'rotation' }),
+        'The Motion wiggle could not be changed.',
+      ],
+    ];
+
+    for (const [input, reason] of cases) {
+      const result = setMotionChannelWiggle(input);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe(reason);
+    }
+  });
+
+  it('applies one easing token to every key of every channel without touching frames, values or wiggles', () => {
+    const staged: PhysicPaintRotoRailMotionRecord = Object.freeze({
+      railId: 'rail-1',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        motionChannel('position-x', [
+          motionKey(0, 0, 'ease', 2),
+          motionKey(6, 60, 'hold', 1),
+        ], 12, false),
+        motionChannel('position-y', [
+          motionKey(0, 0, 'ease', 0),
+          motionKey(6, 60, 'stop-motion', 3),
+        ], 7, true),
+        motionChannel('scale', [motionKey(0, 1, 'linear', 4)], 0, true),
+      ]),
+    });
+    const result = setMotionAllKeysEasing({ records: [staged], railId: 'rail-1', easing: 'ease' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    expect(record.channels.map((entry) => entry.id)).toEqual(['position-x', 'position-y', 'scale']);
+    expect(record.channels.map((entry) => entry.keys.map((key) => key.easing))).toEqual([
+      ['ease', 'ease'],
+      ['ease', 'ease'],
+      ['ease'],
+    ]);
+    expect(record.channels.map((entry) => entry.keys.map((key) => ({
+      frame: key.frame,
+      value: key.value,
+      wiggle: key.wiggle,
+    })))).toEqual([
+      [{ frame: 0, value: 0, wiggle: 2 }, { frame: 6, value: 60, wiggle: 1 }],
+      [{ frame: 0, value: 0, wiggle: 0 }, { frame: 6, value: 60, wiggle: 3 }],
+      [{ frame: 0, value: 1, wiggle: 4 }],
+    ]);
+    // The channel wiggle pairs survive the rewrite.
+    expect(record.channels.map((entry) => [entry.wiggle, entry.wiggleGlobal])).toEqual([
+      [12, false],
+      [7, true],
+      [0, true],
+    ]);
+    expect(staged.channels[0].keys[0].easing).toBe('ease');
+  });
+
+  it('pins every rejection sentence of the apply-all command', () => {
+    const cases: readonly [Parameters<typeof setMotionAllKeysEasing>[0], string][] = [
+      [
+        { records: [motionRecord()], railId: 'rail-1', easing: 'bounce' as unknown as PhysicPaintRotoRailMotionEasing },
+        'Easing must be Linear, Hold, Ease or Stop Motion.',
+      ],
+      [{ records: [motionRecord()], railId: '', easing: 'linear' }, 'Select a rail first.'],
+      [{ records: [], railId: 'rail-1', easing: 'linear' }, 'This rail has no Motion to edit yet.'],
+      [{ records: [motionRecord({ channels: Object.freeze([]) })], railId: 'rail-1', easing: 'linear' },
+        'There are no Motion keys to change.'],
+      [
+        { records: [corruptSiblingRecord()], railId: 'rail-1', easing: 'linear' },
+        'The Motion easing could not be changed.',
+      ],
+    ];
+
+    for (const [input, reason] of cases) {
+      const result = setMotionAllKeysEasing(input);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe(reason);
+    }
   });
 });

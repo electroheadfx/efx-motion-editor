@@ -6,6 +6,7 @@ import {
   buildSelectedKeyRailCopy,
   deriveKeyRailSegments,
   resolvePhysicPaintPushAnchor,
+  type RailMotionChannelWiggleRow,
 } from './physicsPaintKeyRailPresentation';
 import * as keyRailPresentationModule from './physicsPaintKeyRailPresentation';
 import type { PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
@@ -618,5 +619,53 @@ describe('projectRailMotionInspectorAtFrame (261107-qgj: property-mode projectio
     const projection = requireProjectMotionInspectorAtFrame()({ record, railLocalFrame: 3 });
 
     expect(projection.fields.find((field) => field.channelId === 'position-x')?.value).toBe(0);
+  });
+});
+
+/**
+ * 261108-gh0: the Motion dialog bundle's per-channel Wiggle rows. The row is
+ * a plain projection: one member per channel the rail CARRIES, a RAW model
+ * amplitude (this module never converts wiggle to a display value) and the two
+ * setters that reach the one command authority.
+ */
+describe('261108-gh0 RailMotionChannelWiggleRow and the bundle wiggle surface', () => {
+  it('carries exactly the six pinned members and keeps the raw model amplitude', () => {
+    const row: RailMotionChannelWiggleRow = {
+      channelId: 'position-x',
+      label: 'Position X',
+      wiggle: 12,
+      wiggleGlobal: false,
+      setWiggle: () => null,
+      setWiggleGlobal: () => null,
+    };
+
+    expect(Object.keys(row).sort()).toEqual(
+      ['channelId', 'label', 'setWiggle', 'setWiggleGlobal', 'wiggle', 'wiggleGlobal'].sort(),
+    );
+    expect(row.wiggle, 'the raw model amplitude, never a UI value').toBe(12);
+    expect(row.wiggleGlobal).toBe(false);
+    expect(row.setWiggle(1)).toBeNull();
+    expect(row.setWiggleGlobal(true)).toBeNull();
+  });
+
+  it('declares both new bundle members and documents presence as the ONE source', () => {
+    expect(keyRailPresentationSource).toContain('export interface RailMotionChannelWiggleRow {');
+    for (const member of ['channelId', 'label', 'wiggle', 'wiggleGlobal']) {
+      expect(keyRailPresentationSource).toMatch(new RegExp(`readonly ${member}:`));
+    }
+    expect(keyRailPresentationSource).toMatch(
+      /readonly setWiggle: \(wiggle: number\) => string \| null;/,
+    );
+    expect(keyRailPresentationSource).toMatch(
+      /readonly setWiggleGlobal: \(wiggleGlobal: boolean\) => string \| null;/,
+    );
+    expect(keyRailPresentationSource).toContain(
+      'readonly channels: readonly RailMotionChannelWiggleRow[];',
+    );
+    expect(keyRailPresentationSource).toContain(
+      'readonly applyEasingToAllKeys: ((easing: PhysicPaintRotoRailMotionEasing) => string | null) | null;',
+    );
+    // The rows re-use the numeric fields' presence flags — never a second test.
+    expect(keyRailPresentationSource).toContain('`presentation.fields` presence flags');
   });
 });
