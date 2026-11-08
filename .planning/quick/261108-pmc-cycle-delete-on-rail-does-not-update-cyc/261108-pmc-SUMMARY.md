@@ -60,14 +60,18 @@ key-files:
 - A rail already damaged by the old behavior is non-canonical, so its key delete refuses with the existing
   copy — delete the Rail once to rebuild it cleanly.
 
-## Follow-up (pending repro)
+## Follow-up — parent rejection `(loop-clips)` (fixed)
 
 A live +Key on an interpolated frame of a cycled rail was rejected by the parent with
-"Submitted physical document does not match the canonical parent-resolved edit." The parent's canonical
-re-resolution accepted the intent; the submitted document diverged afterwards. Not caused by the delete
-law (delete-key is not on the +Key path). The rejection now names the first divergent field
-(`records`, `group-override-records`, `loop-clips`, `interpolation-breaks`, `selected-key`,
-`selected-frame`, `interpolation-*`, `revision`) so the next occurrence identifies the authority.
-Leading suspect: the child stages `reconcilePhysicPaintRotoGroupFrames` output while the parent compares
-the resolver's unreconciled `nextLoopClips` — a stale clip (stored end past its source extent) would
-diverge on every edit of that rail.
+"Submitted physical document does not match the canonical parent-resolved edit (loop-clips)." Not caused
+by the delete law (delete-key is not on the +Key path).
+
+Root cause (confirmed, pinned by a bridge test): the CHILD bounds every staged edit to the source-derived
+extent via `reconcilePhysicPaintRotoGroupFrames` (58-09 G-01), but the PARENT compared the resolver's
+unbounded collection. A stale clip — `originalEndExclusive` past the extent its surviving source keys
+prove — therefore diverged on every edit of that track, with records still equal. The parent now applies
+the same reconciliation before comparing and before building the revision
+(`6ebcf075f`); the pin fails with the user's exact `(loop-clips)` message when the call is removed.
+
+Side effect: the first edit after this fix persists the bounded clip, so the rail's cycle stops at its
+surviving source extent (the 58-09 G-01 law) and the track stops failing.
