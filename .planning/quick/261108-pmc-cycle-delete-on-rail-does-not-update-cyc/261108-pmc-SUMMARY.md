@@ -59,3 +59,15 @@ key-files:
   remaining keys survive; Delete on a dotted cycle cell → disabled with the new copy.
 - A rail already damaged by the old behavior is non-canonical, so its key delete refuses with the existing
   copy — delete the Rail once to rebuild it cleanly.
+
+## Follow-up (pending repro)
+
+A live +Key on an interpolated frame of a cycled rail was rejected by the parent with
+"Submitted physical document does not match the canonical parent-resolved edit." The parent's canonical
+re-resolution accepted the intent; the submitted document diverged afterwards. Not caused by the delete
+law (delete-key is not on the +Key path). The rejection now names the first divergent field
+(`records`, `group-override-records`, `loop-clips`, `interpolation-breaks`, `selected-key`,
+`selected-frame`, `interpolation-*`, `revision`) so the next occurrence identifies the authority.
+Leading suspect: the child stages `reconcilePhysicPaintRotoGroupFrames` output while the parent compares
+the resolver's unreconciled `nextLoopClips` — a stale clip (stored end past its source extent) would
+diverge on every edit of that rail.
