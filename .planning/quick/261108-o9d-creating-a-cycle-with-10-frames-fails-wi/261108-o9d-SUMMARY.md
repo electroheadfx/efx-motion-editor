@@ -19,6 +19,7 @@ actuals:
   tokens: 6759
   tasks: 2
   commits: 2
+  uat_approved: 2026-11-08
 plan_head_before: e48b273312919859887688d069e73bb269d9c242
 plan_head_after: bf4d80e28c09c06a1f60da783b5ad56cdf5136b8
 
@@ -174,10 +175,23 @@ Task 1 reproduced the **serialize gate** (`setConciseMessage: 'A Roto physical e
 
 None - no external service configuration required.
 
+## UAT
+
+Approved 2026-11-08 by the user after the live Studio pass: the reported gesture (Create Cycle = 10 on a Key Rail) applies without the "Group update was not dispatched." copy.
+
+Rows covered by the approval:
+
+1. Right after a prior edit settles, Create Cycle with Cycle = 10. Expected: applies on the first confirm (span 0..10), no red status.
+2. Cycle = 9. Expected: applies identically (control).
+3. Re-open the created rail and raise Cycle to 10. Expected: applies, unchanged.
+4. Cycle = 100 on a short timeline. Expected: the clip is shortened to the available capacity and applies — never refused, never grown.
+5. Confirm twice in rapid succession. Expected: exactly one cycle is created; the second confirm is refused by the existing phase guard.
+
 ## Next Phase Readiness
 
 - Automated gates all green: targeted coordinator suite (106), controller suite (284), typecheck, full suite (403 files, 8233 passed, 0 failed), scope tripwire lists only the five plan paths.
-- Live UAT (user-run) remains: Cycle 10 applies on the first confirm right after a prior edit settles; Cycle 9 control; re-edit raised to 10; Cycle 100 clamps; double-confirm creates exactly one cycle.
+- UAT approved; the quick task is closed.
+- No blockers, no schema or persisted-document change, no dependency change.
 
 ## Self-Check: PASSED
 
