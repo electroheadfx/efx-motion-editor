@@ -1190,9 +1190,29 @@ function validateIdentities(
   };
 }
 
+/** One lifecycle clip's bounded, visible ownership of a physical frame. */
+function clipOwnsFrame(
+  clip: PhysicPaintRotoLoopClip,
+  appFrame: number,
+  identities: ValidatedIdentities,
+  capacity: number,
+): boolean {
+  if (clip.phaseOrigin === undefined || clip.originalEndExclusive === undefined) return false;
+  const extent = resolvePhysicPaintRotoLoopSourceExtent(clip, identities.ordered, capacity);
+  const endExclusive = extent === null
+    ? clip.originalEndExclusive
+    : Math.min(clip.originalEndExclusive, extent.endExclusive);
+  if (appFrame < clip.phaseOrigin || appFrame >= endExclusive) return false;
+  return clip.visibleRanges === undefined
+    || clip.visibleRanges.some((range) => appFrame >= range.start && appFrame < range.endExclusive);
+}
+
 /**
  * 58-09 (G-01) ownership parity: a real key whose frame a lifecycle Group owns
- * may only be removed through the Group frame. Ownership follows the same
+ * is never removed as a plain key while the Group still renders that frame. A
+ * single-key delete dissolves a complete canonical rail in the same edit
+ * (261108-pmc); every other shape — and every multi-key or rail delete — fails
+ * closed here. Ownership follows the same
  * source-derived bound as the loop derivation — the stored end is intent, the
  * surviving source cycle is truth; dangling sources and Infinity keep the
  * stored end, matching every Group proposer. A frame outside the clip's
@@ -1208,16 +1228,30 @@ function isGroupOwnedKeyFrame(
 ): boolean {
   const appFrame = identities.framesByKeyId.get(keyId);
   if (appFrame === undefined) return false;
-  return loopClips.some((clip) => {
-    if (clip.phaseOrigin === undefined || clip.originalEndExclusive === undefined) return false;
-    const extent = resolvePhysicPaintRotoLoopSourceExtent(clip, identities.ordered, capacity);
-    const endExclusive = extent === null
-      ? clip.originalEndExclusive
-      : Math.min(clip.originalEndExclusive, extent.endExclusive);
-    if (appFrame < clip.phaseOrigin || appFrame >= endExclusive) return false;
-    return clip.visibleRanges === undefined
-      || clip.visibleRanges.some((range) => appFrame >= range.start && appFrame < range.endExclusive);
-  });
+  return loopClips.some((clip) => clipOwnsFrame(clip, appFrame, identities, capacity));
+}
+
+/**
+ * 261108-pmc: the one complete canonical lifecycle rail that owns this key's
+ * frame, when deleting the key may dissolve that rail in the same edit.
+ * Returns null when no rail owns the frame or more than one does — the caller
+ * keeps the existing refusals for those shapes.
+ */
+function resolveDeleteDissolveClip(
+  keyId: string,
+  identities: ValidatedIdentities,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  capacity: number,
+): PhysicPaintRotoLifecycleLoopClip | null {
+  const appFrame = identities.framesByKeyId.get(keyId);
+  if (appFrame === undefined) return null;
+  const covering = loopClips.filter((clip) => clipOwnsFrame(clip, appFrame, identities, capacity));
+  if (covering.length !== 1) return null;
+  const candidate = covering[0]!;
+  // Same eligibility as the approved +Key dissolve (261108-nq0): a complete
+  // canonical rail only. A gapped or painted rail keeps the existing refusals
+  // so no visible range or painted override is silently dropped.
+  return isCompleteCanonicalLifecycleRailClip(candidate) ? candidate : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -5254,6 +5288,38 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     if (!identities.keyIds.has(intent.selectedKeyId)) {
       return fail('unknown-operation-identity', operationKind, `Delete targets unknown identity "${intent.selectedKeyId}".`);
+    }
+    // 261108-pmc: a real key owned by a Rail cycle deletes by DISSOLVING that
+    // cycle in the same atomic edit (the approved +Key law shape, 261108-nq0).
+    // Only a uniquely-owned key qualifies — a cycle shared with another clip
+    // keeps the locked D-07 refusal so no clip is left dangling.
+    const dissolveClip = resolveDeleteDissolveClip(intent.selectedKeyId, identities, loopClips, input.capacity);
+    if (dissolveClip !== null) {
+      const referencingClips = loopClips.filter((clip) => clip.sourceKeyIds.includes(intent.selectedKeyId));
+      if (referencingClips.every((clip) => clip.loopId === dissolveClip.loopId)) {
+        const sourceKeyIds = new Set(dissolveClip.sourceKeyIds);
+        const firstSourceKeyId = dissolveClip.sourceKeyIds[0];
+        const nextLoopClips = Object.freeze(loopClips.filter((clip) => clip.loopId !== dissolveClip.loopId));
+        const nextBreaks = incomingInterpolationBreakKeyIds.filter((keyId) => (
+          keyId !== intent.selectedKeyId
+          && (keyId === firstSourceKeyId || !sourceKeyIds.has(keyId))
+        ));
+        const candidate: Candidate = {
+          ...buildDeleteCandidate(
+            identities,
+            intent.selectedKeyId,
+            new Set(nextLoopClips.flatMap((clip) => clip.sourceKeyIds)),
+          ),
+          nextLoopClips,
+          nextIncomingInterpolationBreakKeyIds: Object.freeze(nextBreaks),
+        };
+        const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+        if (!finalized.ok) return finalized.resolution;
+        return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+      }
+      if (referencingClips.length > 0) {
+        return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingClips.length));
+      }
     }
     // D-07: source-cycle key deletion is rejected while any loop references
     // the cycle — fail-closed with the locked copy (Cut-tool precedent).

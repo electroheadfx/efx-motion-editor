@@ -1535,13 +1535,17 @@ const GROUP_OWNED_RECORDS = () => [
 ];
 
 describe('Phase 58 G-01 Group-owned key delete refusal', () => {
-  it('rejects delete-key on a real key whose frame a lifecycle Group owns', () => {
-    const resolution = resolveEdit({
+  // 261108-pmc: a real key inside a SOLE canonical cycle now deletes by
+  // dissolving that cycle in the same edit (the approved +Key law shape).
+  it('dissolves the owning lifecycle cycle when a real key inside it deletes', () => {
+    const resolution = expectOk(resolveEdit({
       records: GROUP_OWNED_RECORDS(),
       intent: { kind: 'delete-key', selectedKeyId: 'X' },
       loopClips: [lifecycleGroupClip()],
-    });
-    expectFailure(resolution, 'group-owned-key-delete-rejected', 'delete-key', GROUP_OWNED_KEY_TEXT);
+    }));
+    expect(resolution.mapping.has('X')).toBe(false);
+    expect(resolution.nextLoopClips).toEqual([]);
+    expect(Object.fromEntries(resolution.mapping)).toEqual({ S1: 0, S2: 1, S3: 2, G: 29, H: 30 });
   });
 
   it('rejects delete-key-group as a whole when any member frame is Group-owned', () => {
@@ -1597,13 +1601,21 @@ describe('Phase 58 G-01 Group-owned key delete refusal', () => {
     );
   });
 
-  it('keeps the D-07 source-key refusal ahead of the Group-owned refusal', () => {
+  it('keeps the D-07 source-key refusal ahead of the dissolve when the cycle is shared', () => {
+    const shared: PhysicPaintRotoLoopClip = {
+      ...lifecycleGroupClip(),
+      loopId: 'L-group-linked',
+      placementStart: 10,
+      phaseOrigin: 10,
+      originalEndExclusive: 16,
+      visibleRanges: [{ start: 10, endExclusive: 16 }],
+    };
     const resolution = resolveEdit({
       records: GROUP_OWNED_RECORDS(),
       intent: { kind: 'delete-key', selectedKeyId: 'S2' },
-      loopClips: [lifecycleGroupClip()],
+      loopClips: [lifecycleGroupClip(), shared],
     });
-    expectFailure(resolution, 'loop-source-key-delete-rejected', 'delete-key', D07_TEXT(1));
+    expectFailure(resolution, 'loop-source-key-delete-rejected', 'delete-key', D07_TEXT(2));
   });
 
   it('still deletes keys past the surviving extent and ordinary Groups and rails', () => {

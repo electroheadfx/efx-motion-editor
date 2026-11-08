@@ -11,6 +11,7 @@ import {
   createPhysicPaintRotoPasteKeyGroupIntent,
   derivePhysicPaintPushSet,
   derivePhysicPaintRailSetMove,
+  GROUP_OWNED_KEY_DELETE_REJECTED_TEXT,
   projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoPhysicalEdit,
   resolvePhysicPaintRotoRailDissolveTarget,
@@ -8057,5 +8058,111 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
     expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'spacing-on-set', members: [{ kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a1', 'a0'] }], emptyFrames: 1 })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'spacing-on-set', members: [{ kind: 'key-rail', firstKeyId: 'a0', keyIds: ['a0', 'a0'] }], emptyFrames: 1 })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'spacing-on-set', members: [{ kind: 'loop', loopId: 'loop-G' }, { kind: 'loop', loopId: 'loop-G' }], emptyFrames: 1 })).toBe(false);
+  });
+});
+
+describe('resolvePhysicPaintRotoPhysicalEdit — delete-key dissolves a sole Rail cycle (261108-pmc)', () => {
+  // Canonical merged Standard rail: source G1A@0, G1B@1, repeat 2, owning [0,4).
+  const cycleClip: PhysicPaintRotoLoopClip = {
+    loopId: 'cycle-1',
+    placementStart: 0,
+    sourceKeyIds: ['G1A', 'G1B'],
+    repeat: 2,
+    mode: 'progressive',
+    syncState: 'modified',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: 4,
+    visibleRanges: [{ start: 0, endExclusive: 4 }],
+    frameOverrides: [],
+  };
+  const recordsFrom = (identities: readonly PhysicPaintRotoKeyIdentity[]): PhysicPaintRotoRealKeyRecord[] =>
+    identities.map(({ keyId, appFrame }) => ({
+      kind: 'real-key' as const,
+      keyId,
+      appFrame,
+      payload: { frameIndex: 0, appFrame, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
+    }));
+
+  it('drops the owning cycle in the same edit and ripples the survivors', () => {
+    const identities: PhysicPaintRotoKeyIdentity[] = [
+      { keyId: 'G1A', appFrame: 0 },
+      { keyId: 'G1B', appFrame: 1 },
+      { keyId: 'X', appFrame: 5 },
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      records: recordsFrom(identities),
+      intent: { kind: 'delete-key', selectedKeyId: 'G1B' },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [cycleClip],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('A sole-owner cycle key delete must resolve');
+    expect(resolution.proposal.removedKeyIds).toEqual(['G1B']);
+    expect(resolution.proposal.nextLoopClips).toEqual([]);
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ G1A: 0, X: 4 });
+  });
+
+  it('refuses with the D-07 copy when another clip shares the source cycle', () => {
+    const linked: PhysicPaintRotoLoopClip = {
+      ...cycleClip,
+      loopId: 'cycle-1-linked',
+      placementStart: 16,
+      phaseOrigin: 16,
+      originalEndExclusive: 20,
+      visibleRanges: [{ start: 16, endExclusive: 20 }],
+    };
+    const identities: PhysicPaintRotoKeyIdentity[] = [
+      { keyId: 'G1A', appFrame: 0 },
+      { keyId: 'G1B', appFrame: 1 },
+      { keyId: 'X', appFrame: 5 },
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      records: recordsFrom(identities),
+      intent: { kind: 'delete-key', selectedKeyId: 'G1A' },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [cycleClip, linked],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('A shared source cycle must fail closed');
+    expect(resolution.failure.code).toBe('loop-source-key-delete-rejected');
+    expect(resolution.failure.text).toBe(
+      'This key belongs to a source cycle used by 2 linked loop(s). Unlink the loop(s) before deleting it.',
+    );
+  });
+
+  it('keeps the G-01 refusal for a local key inside a non-canonical rail', () => {
+    const partial: PhysicPaintRotoLoopClip = {
+      ...cycleClip,
+      loopId: 'cycle-partial',
+      frameOverrides: [{ appFrame: 1, keyId: 'override-1' }],
+    };
+    const identities: PhysicPaintRotoKeyIdentity[] = [
+      { keyId: 'G1A', appFrame: 0 },
+      { keyId: 'G1B', appFrame: 1 },
+      { keyId: 'local', appFrame: 3 },
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      records: recordsFrom(identities),
+      intent: { kind: 'delete-key', selectedKeyId: 'local' },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [partial],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('A non-canonical rail must fail closed');
+    expect(resolution.failure.code).toBe('group-owned-key-delete-rejected');
+    expect(resolution.failure.text).toBe(GROUP_OWNED_KEY_DELETE_REJECTED_TEXT);
   });
 });
