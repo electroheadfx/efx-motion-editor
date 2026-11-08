@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-08 - Completed quick task 261108-o9d: Cycle create is serialized behind a still-settling physical edit instead of dropping with 'Group update was not dispatched.'; clamp and validators unchanged (UAT approved)
+Last activity: 2026-11-08 - Completed quick task 261108-pmc: Delete on a Rail cycle cell is refused; deleting a real key on a cycled rail dissolves the cycle in the same atomic edit (UAT pending)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -247,6 +247,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 14 | Deps bump: preact 11.2.0, xstate 6.0.0-beta.1; removed Matt Pocock skills and .efx-planning | 2026-11-08 | 4128c27e6 | — |
 | 261108-nq0 | Phase 59 cycle rail bug: + Key / paint inside a cycled one-key rail now dissolves the Loop Clip and lands the key joined to the rail (one continuous rail, no stale-document errors, no split; UAT approved 2026-11-08) | 2026-11-08 | 7de46add1 | [261108-nq0-phase-59-cycle-rail-bug-adding-a-key-ins](./quick/261108-nq0-phase-59-cycle-rail-bug-adding-a-key-ins/) |
 | 261108-o9d | Cycle create is serialized behind a still-settling physical edit instead of dropping with 'Group update was not dispatched.'; clamp and validators unchanged (UAT approved 2026-11-08) | 2026-11-08 | bf4d80e28 | [261108-o9d-creating-a-cycle-with-10-frames-fails-wi](./quick/261108-o9d-creating-a-cycle-with-10-frames-fails-wi/) |
+| 261108-pmc | Rail cycle delete: Delete on a cycle (repeat) cell is refused; deleting a real key on a cycled rail dissolves the Loop Clip in the same atomic edit instead of leaving a suppressed key (UAT pending) | 2026-11-08 | ae54c7502 | [261108-pmc-cycle-delete-on-rail-does-not-update-cyc](./quick/261108-pmc-cycle-delete-on-rail-does-not-update-cyc/) |
 
 ## Roadmap Evolution
 
