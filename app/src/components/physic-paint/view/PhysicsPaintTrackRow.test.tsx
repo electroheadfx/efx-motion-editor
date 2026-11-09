@@ -185,6 +185,10 @@ function render(overrides: Partial<Parameters<typeof PhysicsPaintTrackRow>[0]> =
     trackId: TRACK,
     layerId: LAYER,
     frameCells: FRAME_CELLS,
+    // Phase 60 (ZOOM-05): the row's column pitch and gap are required props;
+    // the 1x defaults keep every pre-zoom expectation byte-identical.
+    framePitch: TIMELINE_GEOMETRY.cellPitch,
+    frameGap: TIMELINE_GEOMETRY.cellGap,
     ...overrides,
   }));
 }
@@ -219,6 +223,37 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(String(rails[0].props.class)).toContain('physics-paint-rail-target');
     expect(String(rails[0].props.class)).toContain('boundary-start');
     expect(findAll(rails[0], (vnode) => hasClass(vnode, 'physics-paint-key-rail-segment'))).toHaveLength(1);
+  });
+
+  it('scales the cells grid and the read-only rail with the passed pitch and gap (Phase 60 ZOOM-05)', () => {
+    seedTrack(TRACK, [
+      makeRecord('k0', 2, 'a@2'),
+      makeRecord('k1', 5, 'a@5'),
+    ]);
+
+    const railAt = (pitch: number, gap: number): Record<string, unknown> => {
+      const rows = findAll(
+        render({ framePitch: pitch, frameGap: gap }),
+        (vnode) => hasClass(vnode, 'physics-paint-track-row-rail'),
+      );
+      expect(rows).toHaveLength(1);
+      return (rows[0]!.props.style ?? {}) as Record<string, unknown>;
+    };
+
+    // Frames 2..5 (4 cells) → left 2 × pitch, width 4 × pitch − gap.
+    expect(railAt(36, 4)).toMatchObject({ left: '72px', width: '140px' });
+    expect(railAt(72, 8)).toMatchObject({ left: '144px', width: '280px' });
+
+    // The cells grid follows the same live pitch.
+    const cellsRows = findAll(
+      render({ framePitch: 36, frameGap: 4 }),
+      (vnode) => hasClass(vnode, 'physics-paint-track-row-cells'),
+    );
+    expect(cellsRows).toHaveLength(1);
+    const cellsStyle = (cellsRows[0]!.props.style ?? {}) as Record<string, unknown>;
+    expect(cellsStyle.gridTemplateColumns).toBe(`repeat(${FRAME_CELLS.length}, 36px)`);
+    // Vertical law untouched (ZOOM-03): no pitch-sized row height anywhere.
+    expect(JSON.stringify(cellsStyle)).not.toContain('rowHeight');
   });
 
   it('re-renders fresh store state per render: removing the moved rail drops the line and empties the cells', () => {

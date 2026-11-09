@@ -1257,6 +1257,48 @@ describe('Phase 60 (ZOOM-05) scaled rail gap contract', () => {
   });
 });
 
+describe('Phase 60 (ZOOM-05) track-row and motion-block pitch contract', () => {
+  const rowPath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintTrackRow.tsx');
+  const rowSource = () => readFileSync(rowPath, 'utf8');
+
+  it('passes the live pitch and gap to both non-active rows and the active motion block', () => {
+    const code = source();
+
+    // Both PhysicsPaintTrackRow renders (the non-active paint row and the fixed
+    // Background row) carry the live pair beside the strip's one metrics read.
+    const rowStarts: number[] = [];
+    for (
+      let index = code.indexOf('<PhysicsPaintTrackRow');
+      index !== -1;
+      index = code.indexOf('<PhysicsPaintTrackRow', index + 1)
+    ) {
+      rowStarts.push(index);
+    }
+    expect(rowStarts).toHaveLength(2);
+    for (const start of rowStarts) {
+      const block = code.slice(start, code.indexOf('/>', start));
+      expect(block).toContain('framePitch={timelineMetrics.pitch}');
+      expect(block).toContain('frameGap={timelineMetrics.cellGap}');
+    }
+
+    // The active track's expanded motion block carries the same pair.
+    const motionStart = code.indexOf('<TimelineMotionBlock');
+    expect(motionStart).toBeGreaterThanOrEqual(0);
+    const motionBlock = code.slice(motionStart, code.indexOf('/>', motionStart));
+    expect(motionBlock).toContain('framePitch={timelineMetrics.pitch}');
+    expect(motionBlock).toContain('frameGap={timelineMetrics.cellGap}');
+  });
+
+  it('requires the pair on the row and the motion block, and declares no row pitch constant', () => {
+    const row = rowSource();
+    expect(row).toContain('readonly framePitch: number;');
+    expect(row).toContain('readonly frameGap: number;');
+    // Phase 60 (ZOOM-05): the module-private 18px authority is gone.
+    expect(row).not.toContain('ROW_CELL_WIDTH_PX');
+    expect(row).not.toMatch(/const\s+[A-Z_]*(CELL_WIDTH|PITCH)[A-Z_]*\s*=/);
+  });
+});
+
 function getMediaQueryBlock(styles: string, query: string): string {
   const start = styles.indexOf(query);
   if (start === -1) return '';
