@@ -14,7 +14,6 @@ import {
   registerTimelineZoomScrollPort,
   resolvePlayheadAnchorLocalX,
   resolveRulerStep,
-  resolveTimelineFitScale,
   resolveTimelineMetrics,
   resolveTimelineViewportFrames,
   timelineZoom,
@@ -353,14 +352,13 @@ describe('Phase 60 zoom matrix — interaction geometry at every level', () => {
     }
   });
 
-  it('keeps the empty document exact: no scaled cell, the ruler floor and the fit default', () => {
+  it('keeps the empty document exact: no scaled cell and the ruler floor', () => {
     expect(resolveRulerStep(0)).toBe(TIMELINE_RULER_MIN_STEP);
     expect(resolveRulerStep(0)).toBe(3);
     expect(resolveTimelineMetrics(0).scale).toBe(0.25);
     expect(resolveTimelineMetrics(0).cellWidth).toBe(4);
     expect(resolveTimelineMetrics(0).cellGap).toBe(0.5);
     expect(resolveTimelineMetrics(0).pitch).toBe(4.5);
-    expect(resolveTimelineFitScale(0, 360)).toBe(1);
     expect(resolveTimelineViewportFrames(0, 0, 0)).toBeNull();
   });
 
@@ -503,7 +501,7 @@ const EDGE_PROBE_ROWS: readonly EdgeProbeRow[] = Object.freeze([
     requirement: 'ZOOM/SC4',
     category: 'empty',
     owner:
-      '60-06 task 2 empty block (resolveTimelineFitScale(0, 360) is 1, resolveRulerStep(0) is 3 and resolveTimelineMetrics(0) is the 0.25 entry - an empty document never produces a scaled cell)',
+      '60-06 task 2 empty block (resolveRulerStep(0) is 3 and resolveTimelineMetrics(0) is the 0.25 entry - an empty document never produces a scaled cell)',
   },
   {
     id: 12,
@@ -629,7 +627,7 @@ describe('Phase 60 zoom matrix — store gestures', () => {
     expect(setScrollLeft).not.toHaveBeenCalled();
   });
 
-  it('fits the whole range once and clamps the anchored write at 0 (D-04)', async () => {
+  it('returns to 100% and anchors the write on the playhead centre (UAT 2026-11-09)', async () => {
     const { port, setScrollLeft } = makePort({
       scrollLeft: 0,
       scrollerLeft: 0,
@@ -639,20 +637,20 @@ describe('Phase 60 zoom matrix — store gestures', () => {
     });
     registerTimelineZoomScrollPort(port);
 
-    timelineZoom.fit();
-    expect(timelineZoom.scale.value).toBe(0.49166666666666664);
-    expect(timelineZoom.percent.value).toBe(49);
+    timelineZoom.setScale(0.49166666666666664);
+    timelineZoom.resetTo100();
+    expect(timelineZoom.scale.value).toBe(1);
+    expect(timelineZoom.percent.value).toBe(100);
     // The anchored write is deferred one frame (CR-02): it must land after the
     // new pitch renders, never against the pre-zoom scrollWidth.
     await flushAnchoredScroll();
     expect(setScrollLeft).toHaveBeenCalledTimes(1);
-    expect(setScrollLeft).toHaveBeenCalledWith(0);
   });
 
-  it('is a safe no-op when Fit runs with no registered port', () => {
+  it('is a safe no-op when the 100% reset runs with no registered port', () => {
     timelineZoom.setScale(2);
-    expect(() => timelineZoom.fit()).not.toThrow();
-    expect(timelineZoom.scale.value).toBe(2);
+    expect(() => timelineZoom.resetTo100()).not.toThrow();
+    expect(timelineZoom.scale.value).toBe(1);
   });
 
   it('resets the session to 1x on Studio open (ZOOM-04)', () => {

@@ -164,17 +164,6 @@ export function resolveTimelineViewportFrames(
 }
 
 /**
- * D-04: the one-shot Fit scale — the whole frame range inside the viewport,
- * clamped into 0.25–4. A very long document can still overflow at the floor.
- */
-export function resolveTimelineFitScale(frameCount: number, clientWidth: number): number {
-  if (!Number.isFinite(frameCount) || frameCount <= 0) return 1;
-  if (!Number.isFinite(clientWidth) || clientWidth <= 0) return 1;
-  const raw = (clientWidth - TIMELINE_LANE_ORIGIN_PX) / (frameCount * TIMELINE_GEOMETRY.cellPitch);
-  return clampTimelineZoomScale(raw);
-}
-
-/**
  * D-06: the first ladder value strictly beyond `current` (direction 1 = in,
  * -1 = out). The current value is never rounded into a preset first, so 1.37
  * steps up to 1.5 and down to 1. A boundary step returns the clamped current
@@ -412,20 +401,25 @@ export const timelineZoom = {
     stepPreset(-1);
   },
 
-  /** D-04: a one-shot action — it never re-fits on a later resize. */
-  fit(): void {
+  /**
+   * UAT 2026-11-09: the pill's fourth control is a 100% reset, not a Fit — it
+   * returns the timeline to the base density, anchored on the playhead centre
+   * like minus/plus so the playhead stays in view.
+   */
+  resetTo100(): void {
+    const current = scaleSignal.peek();
+    if (Math.abs(1 - current) <= TIMELINE_ZOOM_EPSILON) return;
+    const oldPitch = resolveTimelineMetrics(current).pitch;
+    const newPitch = resolveTimelineMetrics(1).pitch;
     const port = scrollPort;
-    if (!port) return;
-    const next = resolveTimelineFitScale(port.getFrameCount(), port.getClientWidth());
-    if (Math.abs(next - scaleSignal.peek()) <= TIMELINE_ZOOM_EPSILON) return;
-    const oldPitch = resolveTimelineMetrics(scaleSignal.peek()).pitch;
-    const newPitch = resolveTimelineMetrics(next).pitch;
-    const target = anchoredTarget(
-      (scrollLeft, clientWidth, pitch) => resolvePlayheadAnchorLocalX(scrollLeft, clientWidth, port.getPlayheadFrame(), pitch),
-      oldPitch,
-      newPitch,
-    );
-    applyScale(next, target);
+    const target = port
+      ? anchoredTarget(
+          (scrollLeft, clientWidth, pitch) => resolvePlayheadAnchorLocalX(scrollLeft, clientWidth, port.getPlayheadFrame(), pitch),
+          oldPitch,
+          newPitch,
+        )
+      : null;
+    applyScale(1, target);
   },
 
   /**

@@ -19,7 +19,6 @@ import {
   resolveCursorAnchorLocalX,
   resolvePlayheadAnchorLocalX,
   resolveRulerStep,
-  resolveTimelineFitScale,
   resolveTimelineMetrics,
   resolveTimelineViewportFrames,
   resolveTimelineZoomPercent,
@@ -257,18 +256,7 @@ describe('physicsPaintTimelineZoom — preset stepping (D-06)', () => {
   });
 });
 
-describe('physicsPaintTimelineZoom — fit, percent and boundary inputs', () => {
-  it('computes a one-shot fit scale clamped into 0.25–4 and defaults to 1 on unusable input', () => {
-    // (1000 - 6) / (120 x 18)
-    expect(resolveTimelineFitScale(120, 1000)).toBeCloseTo(0.4601851, 6);
-    expect(resolveTimelineFitScale(0, 1000)).toBe(1);
-    expect(resolveTimelineFitScale(120, 0)).toBe(1);
-    expect(resolveTimelineFitScale(Number.NaN, 1000)).toBe(1);
-    // A very long range still clamps at the floor; a very short one at the ceiling.
-    expect(resolveTimelineFitScale(100000, 1000)).toBe(TIMELINE_ZOOM_MIN);
-    expect(resolveTimelineFitScale(1, 1000)).toBe(TIMELINE_ZOOM_MAX);
-  });
-
+describe('physicsPaintTimelineZoom — percent and boundary inputs', () => {
   it('reads the rounded integer percent (D-03)', () => {
     expect(resolveTimelineZoomPercent(1)).toBe(100);
     expect(resolveTimelineZoomPercent(1.37)).toBe(137);
@@ -396,15 +384,24 @@ describe('physicsPaintTimelineZoom — store', () => {
     expect(readScrollLeft()).toBeCloseTo(1700, 9);
   });
 
-  it('fits the whole range once and clamps the anchored write at 0', async () => {
-    const { port, readScrollLeft } = makePort({ scrollLeft: 0, clientWidth: 360, playheadFrame: 10, frameCount: 40 });
+  it('returns to 100% anchored on the playhead centre (UAT 2026-11-09)', async () => {
+    // Scrolled well to the right so the 100% target stays positive (zooming out
+    // near the start correctly clamps at 0).
+    const { port, readScrollLeft } = makePort({ scrollLeft: 2000, scrollerLeft: 200, clientWidth: 800, playheadFrame: 10 });
     registerTimelineZoomScrollPort(port);
-    timelineZoom.setScale(1);
-    timelineZoom.fit();
-    expect(timelineZoom.scale.value).toBeCloseTo(0.49166666666666664, 12);
+    timelineZoom.setScale(3);
+    timelineZoom.resetTo100();
+    expect(timelineZoom.scale.value).toBe(1);
     await flushAnchoredScroll();
-    // -95.5666... clamps at 0 so a negative never reaches the DOM.
-    expect(readScrollLeft()).toBe(0);
+    // The playhead frame stays put through the scale change.
+    expect(readScrollLeft()).toBeGreaterThan(0);
+    expect(timelineZoom.percent.value).toBe(100);
+
+    // Pressing it at 100% is a no-op — no write, no re-render.
+    const before = readScrollLeft();
+    timelineZoom.resetTo100();
+    await flushAnchoredScroll();
+    expect(readScrollLeft()).toBe(before);
   });
 
   it('is a no-op on scroll writes with no registered port and never throws', () => {
@@ -414,10 +411,10 @@ describe('physicsPaintTimelineZoom — store', () => {
       timelineZoom.setScaleAtCursor(1.5, 500);
       timelineZoom.zoomIn();
       timelineZoom.zoomOut();
-      timelineZoom.fit();
+      timelineZoom.resetTo100();
     }).not.toThrow();
-    // The scale writes still happen (1 -> 1.5 -> 2 -> 1.5); only scroll writes are skipped.
-    expect(timelineZoom.scale.value).toBeCloseTo(1.5, 12);
+    // The scale writes still happen (1 -> 1.5 -> 2 -> 1.5 -> 1); only scroll writes are skipped.
+    expect(timelineZoom.scale.value).toBe(1);
   });
 
   it('writes the scale exactly once per setScaleAtCursor call', async () => {

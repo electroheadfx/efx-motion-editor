@@ -9,9 +9,9 @@ updated: 2026-11-09T17:30:00Z
 ## Current Test
 
 number: 4
-name: Fit action renders the square-dimensions icon in the timeline zoom pill
+name: The fourth pill control shows the timeline at 100% zoom
 expected: |
-  The fourth control in the pill is the lucide square-dimensions icon with no text label, matched to the minus/plus nav-button treatment, and pressing it still fits the whole frame range
+  The control is the lucide square-dimensions icon with no text label, matched to the minus/plus nav-button treatment; its tooltip reads "Show timeline at 100% zoom" and pressing it returns the density to 100% with the playhead kept in view
 awaiting: user response
 
 ## Tests
@@ -35,12 +35,12 @@ why_human: CSS inheritance and visual composition are not visible to the node ma
 result: issue — the in-between "-" glyph sat left of centre above 100%. Fixed in 7c55ea4c4 (dash centred and proportionally wide on the live cell); needs a re-check.
 fixed_in: 7c55ea4c4
 
-### 4. Fit control as the square-dimensions icon
-test: Look at the timeline zoom pill and press the last control
-expected: The control is the lucide square-dimensions icon (no "Fit" text), wears the same nav-button treatment as minus/plus, and pressing it still fits the whole frame range
-why_human: Icon choice and pill composition are visual
+### 4. Fourth pill control = "Show timeline at 100% zoom"
+test: Hover the last control in the timeline zoom pill, then press it from a non-100% level
+expected: The control is the lucide square-dimensions icon (no "Fit" text), wears the same nav-button treatment as minus/plus, its tooltip reads "Show timeline at 100% zoom", and pressing it returns the density to exactly 100% with the playhead kept in view
+why_human: Icon choice, tooltip wording and pill composition are visual
 result: [pending]
-fixed_in: 7c55ea4c4
+fixed_in: 7c55ea4c4, superseded by the 100% reset rework
 
 ### 5. Zoom persists per paint layer across close/reopen
 test: Zoom a paint layer's timeline to a non-100% level, close the Studio, reopen the same paint layer; then open a different paint layer

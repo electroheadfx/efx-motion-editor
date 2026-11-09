@@ -48,9 +48,9 @@ export function PhysicsPaintTimelineZoomBar() {
       <button
         type="button"
         class="physics-paint-nav-button"
-        aria-label="Show the whole frame range"
-        title="Show the whole frame range"
-        onClick={() => timelineZoom.fit()}
+        aria-label="Show timeline at 100% zoom"
+        title="Show timeline at 100% zoom"
+        onClick={() => timelineZoom.resetTo100()}
       >
         <SquareDimensions size={14} aria-hidden="true" />
       </button>

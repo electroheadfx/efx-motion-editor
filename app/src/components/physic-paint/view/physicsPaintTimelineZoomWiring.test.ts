@@ -187,27 +187,28 @@ describe('Timeline zoom wiring — header pill (D-01..D-04)', () => {
     expect(bar).toContain('onClick={() => timelineZoom.zoomIn()}');
   });
 
-  it('keeps the percent display-only and Fit a one-shot action', () => {
+  it('keeps the percent display-only and the 100% reset a one-shot action', () => {
     const percentStart = bar.indexOf('class="physics-paint-canvas-zoom-percent"');
     expect(percentStart).toBeGreaterThanOrEqual(0);
     const percentSpan = bar.slice(percentStart, bar.indexOf('</span>', percentStart));
     expect(percentSpan).toContain('{percent}%');
     expect(percentSpan).not.toContain('onClick');
-    const fitStart = bar.indexOf('title="Show the whole frame range"');
-    expect(fitStart).toBeGreaterThanOrEqual(0);
-    const fitButton = bar.slice(fitStart, bar.indexOf('</button>', fitStart));
-    expect(fitButton).toContain('onClick={() => timelineZoom.fit()}');
-    expect(fitButton).not.toContain('aria-pressed');
+    const resetStart = bar.indexOf('title="Show timeline at 100% zoom"');
+    expect(resetStart).toBeGreaterThanOrEqual(0);
+    const resetButton = bar.slice(resetStart, bar.indexOf('</button>', resetStart));
+    expect(resetButton).toContain('onClick={() => timelineZoom.resetTo100()}');
+    expect(resetButton).not.toContain('aria-pressed');
   });
 
-  it('renders the Fit action as a square-dimensions icon in the nav-button treatment (UAT 2026-11-09)', () => {
+  it('renders the 100% reset as a square-dimensions icon in the nav-button treatment (UAT 2026-11-09)', () => {
     expect(bar).toContain('SquareDimensions');
     expect(bar).toContain('<SquareDimensions size={14} aria-hidden="true" />');
     expect(bar).not.toContain('physics-paint-canvas-zoom-text-button');
-    expect(bar).not.toContain('>\n        Fit\n      <');
-    const fitStart = bar.indexOf('title="Show the whole frame range"');
-    const fitButtonStart = bar.lastIndexOf('<button', fitStart);
-    expect(bar.slice(fitButtonStart, fitStart)).toContain('class="physics-paint-nav-button"');
+    expect(bar).not.toContain('>Fit<');
+    const resetStart = bar.indexOf('title="Show timeline at 100% zoom"');
+    const resetButtonStart = bar.lastIndexOf('<button', resetStart);
+    expect(bar.slice(resetButtonStart, resetStart)).toContain('class="physics-paint-nav-button"');
+    expect(bar).not.toContain('Show the whole frame range');
   });
 
   it('wears the pill modifier with the navigation treatment', () => {
