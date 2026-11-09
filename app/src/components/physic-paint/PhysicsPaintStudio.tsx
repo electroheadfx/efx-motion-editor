@@ -323,6 +323,15 @@ import {
   pushAquarelleLiftPreviewDab,
   revertAquarelleLiftPreview,
 } from './roto/aquarelleLiftPreview';
+import {
+  AQUARELLE_CAPTURE_INK_UNMEASURABLE,
+  AQUARELLE_CAPTURE_SAMPLE_SIZE,
+  AQUARELLE_MIN_CAPTURE_INK,
+  AQUARELLE_MIN_CAPTURE_LOCAL_INK,
+  measureAquarelleCaptureInk,
+  passesAquarelleCaptureInkGate,
+  type AquarelleCaptureInkMeasurement,
+} from './roto/aquarelleCaptureInk';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
 // quick-261023-l35 (T-261023-l35-05): the close path waits at most this long
@@ -668,26 +677,30 @@ function mergeImageLibraries(main: readonly MceImageRef[], studio: readonly MceI
 // scored 1.32-1.81 — the 1 floor sat inside the real-paint band, so leaving a
 // frame quickly dropped the stroke entirely. 0.3 still keeps a 2.5x margin
 // over the blank-sheet maximum (0.12).
-const AQUARELLE_MIN_CAPTURE_INK = 0.3;
-function measureAquarelleCanvasInk(canvas: HTMLCanvasElement): number {
+// quick-261109-uj0 (2026-11-09): the packaged beta2 build still rejected a
+// faint wash that dev accepted at the same 0.3 constant. The global mean is a
+// mean over every one of the sampled pixels, so it falls with canvas coverage
+// and depends on when the sheet is sampled; the decision cannot rest on it
+// alone. The shared module also reads the densest 12x12 sampling window with a
+// per-pixel darkening cap, and it OWNS every capture ink threshold — the
+// Studio declares none of its own.
+function measureAquarelleCanvasInk(canvas: HTMLCanvasElement): AquarelleCaptureInkMeasurement {
   try {
     const sample = document.createElement('canvas');
-    sample.width = 48;
-    sample.height = 48;
+    sample.width = AQUARELLE_CAPTURE_SAMPLE_SIZE;
+    sample.height = AQUARELLE_CAPTURE_SAMPLE_SIZE;
     const context = sample.getContext('2d', { willReadFrequently: true });
-    if (!context) return Number.POSITIVE_INFINITY;
-    context.drawImage(canvas, 0, 0, 48, 48);
-    const data = context.getImageData(0, 0, 48, 48).data;
-    let ink = 0;
-    for (let index = 0; index < data.length; index += 4) {
-      const luminance = 0.2126 * data[index]! + 0.7152 * data[index + 1]! + 0.0722 * data[index + 2]!;
-      ink += Math.max(0, 248 - luminance);
-    }
-    return (ink / (255 * (data.length / 4))) * 1000;
+    if (!context) return AQUARELLE_CAPTURE_INK_UNMEASURABLE;
+    context.drawImage(canvas, 0, 0, AQUARELLE_CAPTURE_SAMPLE_SIZE, AQUARELLE_CAPTURE_SAMPLE_SIZE);
+    const data = context.getImageData(0, 0, AQUARELLE_CAPTURE_SAMPLE_SIZE, AQUARELLE_CAPTURE_SAMPLE_SIZE).data;
+    return measureAquarelleCaptureInk(data, AQUARELLE_CAPTURE_SAMPLE_SIZE, AQUARELLE_CAPTURE_SAMPLE_SIZE);
   } catch {
     // Measurement must never block a legitimate capture.
-    return Number.POSITIVE_INFINITY;
+    return AQUARELLE_CAPTURE_INK_UNMEASURABLE;
   }
+}
+function roundAquarelleInk(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 /**
@@ -2099,12 +2112,13 @@ export function PhysicsPaintStudio() {
     flushSourcePublication: (appFrame) => rotoPersistence.flushLivePixels(appFrame),
     // SAVE PATH (261026-nvq): the live aquarelle sheet for the Save Script
     // thumbnail. Read eagerly by the clipboard port (the sheet is frame-scoped),
-    // ink-gated with the SAME floor as the cache capture so a blank/cleared
-    // sheet can never become a blank row — the engine canvas stays the source.
+    // gated by the SAME predicate as the cache capture (quick-261109-uj0: the
+    // shared gate, never a duplicated floor) so a blank/cleared sheet can never
+    // become a blank row — the engine canvas stays the source.
     captureAquarelleCanvas: () => {
       const canvas = aquarelleSnapshotRef.current?.() ?? null;
       if (!canvas) return null;
-      return measureAquarelleCanvasInk(canvas) >= AQUARELLE_MIN_CAPTURE_INK ? canvas : null;
+      return passesAquarelleCaptureInkGate(measureAquarelleCanvasInk(canvas)) ? canvas : null;
     },
     // 261018: aquarelle Apply — replay through the fluid engine and publish
     // the wash onto the target key (engine-1 draws only the guide line).
@@ -9385,17 +9399,31 @@ export function PhysicsPaintStudio() {
     }
     // A cleared sheet still exports an opaque, near-uniform white texture tens
     // of KB large. Never let such a capture take ownership of the frame's cache.
+    // quick-261109-uj0: the ONE shared predicate decides — the historical
+    // global floor OR the densest capped sampling window.
     const ink = measureAquarelleCanvasInk(liveAlphaCanvas);
+    const passesInkGate = passesAquarelleCaptureInkGate(ink);
     recordAquarelleRenderSplitEvent('studio-capture-entry', {
       playFrame,
       operationId: launch.operationId,
       launchStartFrame: launch.startFrame,
-      stage: ink >= AQUARELLE_MIN_CAPTURE_INK ? 'accepted' : 'ink-gate',
-      ink: Math.round(ink * 100) / 100,
+      stage: passesInkGate ? 'accepted' : 'ink-gate',
+      ink: roundAquarelleInk(ink.globalInk),
       minInk: AQUARELLE_MIN_CAPTURE_INK,
-      passesInkGate: ink >= AQUARELLE_MIN_CAPTURE_INK,
+      localInk: roundAquarelleInk(ink.localInk),
+      minLocalInk: AQUARELLE_MIN_CAPTURE_LOCAL_INK,
+      inkPixels: ink.inkPixels,
+      passesInkGate,
     });
-    if (ink < AQUARELLE_MIN_CAPTURE_INK) return;
+    if (!passesAquarelleCaptureInkGate(ink)) {
+      // quick-261109-uj0: production-visible ON PURPOSE. The DEV-gated event
+      // above writes nothing in a packaged build, and the packaged beta2
+      // rejection left no trace at all — this line is the evidence the next
+      // reproduction needs. Exactly one line per rejection; no file, no async
+      // work, no per-pixel loop.
+      console.warn(`[aquarelle-capture] ink-gate rejected blank sheet frame=${playFrame} startFrame=${launch.startFrame} op=${launch.operationId} layer=${launch.layerId} track=${captureTrackId ?? 'active'} globalInk=${roundAquarelleInk(ink.globalInk)} localInk=${roundAquarelleInk(ink.localInk)} inkPixels=${ink.inkPixels} minInk=${AQUARELLE_MIN_CAPTURE_INK} minLocalInk=${AQUARELLE_MIN_CAPTURE_LOCAL_INK}`);
+      return;
+    }
     const operationId = launch.operationId;
     const seq = ++aquarelleCaptureSeqRef.current;
     aquarelleLatestCaptureSeqByFrameRef.current.set(playFrame, seq);

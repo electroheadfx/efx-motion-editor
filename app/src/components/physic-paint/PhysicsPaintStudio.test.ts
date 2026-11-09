@@ -2315,17 +2315,23 @@ describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
       : studio.slice(captureStart, studio.indexOf('const flushAquarellePixels = useCallback(', captureStart));
     const snapshotIndex = captureBlock.indexOf('const liveAlphaCanvas = snapshot()');
     const inkIndex = captureBlock.indexOf('measureAquarelleCanvasInk(liveAlphaCanvas)');
-    const guardIndex = captureBlock.indexOf('if (ink < AQUARELLE_MIN_CAPTURE_INK) return');
+    const guardIndex = captureBlock.indexOf('if (!passesAquarelleCaptureInkGate(ink))');
+    const warnIndex = captureBlock.indexOf('console.warn(`[aquarelle-capture] ink-gate rejected');
     const seqIndex = captureBlock.indexOf('const seq = ++aquarelleCaptureSeqRef.current');
     expect(snapshotIndex).toBeGreaterThan(-1);
     expect(inkIndex).toBeGreaterThan(snapshotIndex);
     expect(guardIndex).toBeGreaterThan(inkIndex);
+    expect(warnIndex).toBeGreaterThan(guardIndex);
     expect(seqIndex).toBeGreaterThan(guardIndex);
-    // Calibrated on saved payloads: painted sheets score 4.6-11.3, blank
-    // textured sheets 0.05-0.12 on this per-mille scale. The floor is 0.3
-    // (quick-261109-pwt): wet washes measured 0.71-0.94 when captured before
-    // the engine settles — a 1 floor rejected real paint.
-    expect(studio).toContain('const AQUARELLE_MIN_CAPTURE_INK = 0.3;');
+    // quick-261109-uj0: a rejection must be readable from a packaged build, so
+    // the diagnostic cannot sit behind import.meta.env and must appear once.
+    const guardSlice = captureBlock.slice(guardIndex, seqIndex);
+    expect(guardSlice).not.toContain('import.meta.env');
+    expect(guardSlice.split('console.warn(').length - 1).toBe(1);
+    // The shared module owns every capture ink threshold — calibrated on saved
+    // payloads (painted 4.6-11.3, blank 0.05-0.12; wet washes 0.71-0.94 at the
+    // 261109-pwt trace). The Studio imports the predicate and declares no floor.
+    expect(studio).toContain("from './roto/aquarelleCaptureInk'");
   });
 
   it('keeps a non-flushed outcome visible to the facade and the unmount teardown intact', () => {

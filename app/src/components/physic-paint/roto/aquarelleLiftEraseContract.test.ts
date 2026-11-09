@@ -573,8 +573,8 @@ describe('Lift copy and untouched laws (261028-k03)', () => {
     expect(layer).toContain("toolForSelection() === 'lift'");
   });
 
-  it('leaves the capture ink gate literal untouched', () => {
-    expect(studio).toContain('if (ink < AQUARELLE_MIN_CAPTURE_INK) return');
+  it('still applies the capture ink gate at the capture entry', () => {
+    expect(studio).toContain('if (!passesAquarelleCaptureInkGate(ink))');
   });
 
   it('adds the ten durable-base set sites (3 base + scripted + recovery x2 + empty + raster + known-empty pin + rail key script)', () => {
