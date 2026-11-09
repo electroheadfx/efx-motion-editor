@@ -1,16 +1,18 @@
 ---
 phase: 60-studio-timeline-horizontal-zoom
-reviewed: 2026-11-09T16:52:00Z
-depth: standard
-files_reviewed: 7
+reviewed: 2026-11-09T20:14:15Z
+depth: deep
+files_reviewed: 9
 files_reviewed_list:
+  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
+  - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
   - app/src/components/physic-paint/physicsPaintStudio.css
-  - app/src/components/physic-paint/view/PhysicsPaintTimelineZoomBar.tsx
-  - app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx
-  - app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.zoomMatrix.test.ts
-  - app/src/components/physic-paint/view/physicsPaintTimelineZoom.test.ts
-  - app/src/components/physic-paint/view/physicsPaintTimelineZoom.ts
-  - app/src/components/physic-paint/view/physicsPaintTimelineZoomWiring.test.ts
+  - app/src/components/physic-paint/hooks/useRotoFramePersistenceCoordinator.ts
+  - app/src/components/physic-paint/hooks/useRotoFramePersistenceCoordinator.test.ts
+  - app/src/components/physic-paint/roto/rotoLivePixelCacheTransactions.test.ts
+  - app/src/components/physic-paint/view/PhysicsPaintReferenceTransform.ts
+  - app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx
+  - app/src/components/physic-paint/view/physicsPaintRailEditCursorSeat.test.ts
 findings:
   critical: 0
   warning: 2
@@ -20,85 +22,109 @@ findings:
 status: issues_found
 ---
 
-# Phase 60: Code Review Report (incremental)
+# Phase 60: Code Review Report
 
-**Reviewed:** 2026-11-09T16:52:00Z
-**Depth:** standard
-**Files Reviewed:** 7
+**Reviewed:** 2026-11-09T20:14:15Z
+**Depth:** deep
+**Files Reviewed:** 9
 **Status:** issues_found
 
 ## Summary
 
-Incremental review of the two commits since the deep-review baseline `c9f73b2f1` (`abfe299a3`, `7c55ea4c4`, +205/−85 across the seven files). Scope: the per-layer zoom persistence path, the deferred anchored-scroll coalescer, the Fit→100% reset conversion, and the strip's new scroller variable and `[props.layerId]` effect dependency.
+**Scope status: `degraded`.** The evaluation scope was resolved from `e88a33204` to HEAD; the phase's own task commits did not delimit it, so the range also contains the interleaved quick-task and debug-session commits that touched these files. The reviewable delta across the nine files is 391 insertions / 8 deletions, produced by four commits: `9f6b0c9e3` (cursor seats on the rail-edit chain), `22662b433` (pending destination capture settle), `26e0e7cd9` (per-identity pending test), `8b1508db8` (capture ink floor 1 → 0.3). Findings are attributed to those commits below. Each file's current state was read at deep depth, including the pre-existing machinery the delta depends on (`buildRailMotionEditCss`, `getRailMotionBounds`, `createRotoReferenceLoader`, `rotoLivePixelCacheTransactions.flush/hasPending`, `findCachedRotoDisplayFrame`).
 
-Both prior criticals verify fixed in this range and are not re-raised: the current-frame marker now takes its width inline from the live cell width and the CSS rule no longer pins 16px (`PhysicsPaintWorkflowStrip.tsx:6049-6057`, `physicsPaintStudio.css:8150-8164`), and the anchored write is deferred one frame through `commitAnchoredScroll` so it lands after Preact's microtask render (`physicsPaintTimelineZoom.ts:298-343`). The prior open findings (WR-01, WR-02, IN-01..IN-04) are unchanged and remain recorded in `60-REVIEW-DISPOSITION.md`; they are deliberately not repeated here.
+Two warnings. The cursor-seat fix (`9f6b0c9e3`) is correct for the case it was written for — a pure rail translation — but its stated premise, "`cursorX/Y` are content coordinates", holds only for a translation: the values are measured against the shell's transformed `getBoundingClientRect`, and the ring size is derived from that same transformed height, so the seat's re-application of the chain double-counts rail **scale** (and its AABB-origin arithmetic breaks under rotation). The settle effect (`22662b433`) re-checks `rotoNavigationGeneration` and the propagated `startFrame` after its unbounded await, but not `rotoCachedPlayback.isActive`, which its own comment declares part of the same invariant. Three info items: an unhandled-rejection tail outside the settle effect's try/catch, the residual sub-sample band of the 48×48 ink mean, and two new pins that assert wiring/substrings rather than the geometry or the post-await guard, so neither warning has a failing test.
 
-Focus-area verdicts:
+Verified sound in the delta: the destination arm is sampled before the synchronous cached-base load and a propagation cannot interleave (the nav path from `setCachedRotoReferenceUrl(null)` through the load is synchronous); the arm is consumed before the await so a re-run cannot double-flush; the post-await generation and `startFrame` guards correctly reject superseded navigation; the byte-carrier comparison is a true content identity for committed records; `loadCachedRotoReferenceFrame` mirrors `cachedRotoRepaintBaseFrame` synchronously (`useRotoReferenceController.ts:231`), so the comparison sees the destination record, not the previous frame; group-frame captures never arm because they queue no parent payload (`useRotoFramePersistenceCoordinator.ts:555-559`); the forced reload matches the existing generated post-flush repaint sequence (`PhysicsPaintStudio.tsx:5563-5566`); the ink floor is applied consistently at both gate sites and is well supported by the recorded measurements.
 
-- **localStorage persistence.** Read and write are both inside try/catch, so a throwing access (private mode, disabled storage) degrades to an in-memory session rather than failing the zoom (`physicsPaintTimelineZoom.ts:240-264`). Stored values are filtered to finite numbers and clamped on read (`:247-249`); a non-object root is rejected; `__proto__`/constructor keys cannot pollute because `JSON.parse` and `Object.fromEntries` create own data properties. No cross-layer read leakage: `resetForStudioOpen` sets `activeLayerId` before any write and reads only the new layer's key (`:430-437`). The residual defect is the eviction policy (WR-03).
-- **Deferred coalescer.** Newest target wins, one write per animation frame, discarded on `resetForStudioOpen` and on port unregister, and a target of exactly 0 is preserved (`:306-343`). The deferral lands after the scale signal's render microtask, which is what keeps CR-02 fixed. No dropped or duplicated legitimate write was found. The rAF-vs-`setTimeout` cancellation guard asymmetry (`:309-314` vs `:331-333`) is unreachable because `cancelPendingScrollFrame` is only called from `discardPendingScroll`, and no runtime exposes one scheduler without its canceller.
-- **100% reset anchoring.** The reset is an epsilon no-op at 100%, anchors on the playhead centre with the viewport-centre fallback, and clamps at 0 (`:409-423`). The 6px gutter cancels exactly in the anchored law: `resolvePlayheadAnchorLocalX` and the playhead itself are both measured in the same gutter-less frame space, so dropping the gutter from `localX` does not move the fixed point. The defect is test coverage, not math (WR-04).
-- **Strip `[props.layerId]` effect.** The dep is a string, hence identity-stable; the reset precedes registration; cleanup unregisters and discards the queued write (`PhysicsPaintWorkflowStrip.tsx:2778-2792`). The one-shot open-positioning effect (`:5056-5081`) peeks the metrics signal in the same effect flush after the reset, but on a fresh open it runs before the async launch settle supplies cells (it parks and retries on `props.rotoPhysicalCells.length`), and on a view remount the first render already carries the current module scale, so no inconsistent-geometry path was provable. The wheel coalescer cancels itself independently (`:5541-5547`).
-- **CSS.** `--timeline-cell-width` is published once from the live metrics (`:6325`) and matches the per-row value (`framePitch - frameGap`, all five sites receive both live). The ruler and marker consume it correctly. One sub-cell-scale width discrepancy at 0.25x (IN-07).
+No Critical findings. The previously recorded disposition rows (WR-01, WR-02, IN-01..IN-04 open; CR-01, CR-02, WR-03, WR-04, IN-05..IN-07 fixed) are deliberately not re-raised, and no recorded ID is reused: numbering continues at WR-05 / IN-08 so the disposition gate cannot silently drop an open row on ID collision. The necessity rubric (`necessity-review.md`) was read and applied; it produced zero findings — the new guards defend live states (pending captures, playback runs, superseded navigation), and the seat helper has two real instantiations, so nothing here qualifies as an impossible-state guard, already-defended-elsewhere, cargo cult, lapsed requirement or uninstantiated generality. No `<structural_findings>` payload was supplied, so there is no Structural Findings section.
 
-Findings: 0 critical, 2 warnings, 3 info. Necessity: 0 — the `necessity-review.md` rubric was applied; the new branches are trust-boundary handling (storage access, wheel-event values), type-guard defaults, and dead code (explicitly category 3, not necessity), and the port/store surface exists as the project's test seam (explicitly excluded from necessity).
+## Narrative Findings (AI reviewer)
 
-The three zoom test files pass as written (`vitest run`: 3 files, 125 tests); that is not treated as evidence of the defects below, since every finding here is in behavior the suites do not assert.
+Ordered by severity: Critical (none) → Warnings → Info.
 
-## Warnings
+### WR-05: Rail-edit cursor seats re-apply a chain whose result the cursor coordinates and ring size already contain — both overlays detach under rail scale and the ring renders s× too large
 
-### WR-03: Per-layer zoom memory evicts by first-seen order, so actively used layers silently lose their remembered density
+**File:** `app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx:425-465` (spreads at `:434` and `:459`); helper `app/src/components/physic-paint/view/PhysicsPaintReferenceTransform.ts:205-209`
+**Originating commit:** `9f6b0c9e3` — `fix(physic-paint): seat paint cursors on the rail-edit chain (studio-paint-motion-offset)`
+**Issue:** The fix's premise — stated in the new view comment (`PhysicsPaintStudioView.tsx:418-424`), the CSS comment (`physicsPaintStudio.css:8545-8550`) and the new pin's header (`physicsPaintRailEditCursorSeat.test.ts:11-24`) — is that `cursorX/cursorY` are content coordinates. They are not: they are `clientX - rect.left` / `clientY - rect.top` measured against the **transformed** `getBoundingClientRect` of the live layer (`engine/AquarelleCanvasLayer.tsx:905-916`, `:918-927`), i.e. the transformed AABB origin. That origin equals the content origin only when the rail chain is a pure translation. The same transformed rect feeds the ring size: `cursorLayerHeight = rect.height` (`AquarelleCanvasLayer.tsx:906-907`, `:922-924`) → `footprintCssSize` → `2 * radiusDoc * layer` (`engine/aquarelleFootprint.ts:176`), so the ring's CSS size already contains the rail `scale(s)`. The seat (`buildRailMotionEditSeatStyle`, `PhysicsPaintReferenceTransform.ts:205-209`) then applies the full chain `translate(pivot + offset) rotate scale translate(-pivot)` (`:173-191`), which:
 
-**File:** `app/src/components/physic-paint/view/physicsPaintTimelineZoom.ts:237-238` (key, cap), `:257-264` (`writeStoredScales`), `:280-283` (write on change), `:430-437` (restore)
-**Issue:** `writeStoredScales` serializes `[...scaleByLayer.entries()].slice(-MAX_REMEMBERED_LAYERS)`. A `Map` keeps a key's original insertion position when that key is re-set, and nothing ever re-inserts a layer on use: `setScaleSignal` calls `scaleByLayer.set(activeLayerId, clamped)` only (`:281`), and `resetForStudioOpen` only reads. The 64-slot window is therefore FIFO by first-ever zoom, not least-recently-used. A layer the artist works in daily but first zoomed long ago drifts toward the tail window as new layers are zoomed and is dropped on the next write; a fresh `resetForStudioOpen` for a layer with no entry also appends that layer (it persists the restored default `1` whenever the session's current scale differs from 1), so newly touched layers consume slots even without a zoom. The map itself is never trimmed, so eviction is invisible for the rest of that Studio session and only surfaces after the next close/reopen — the exact UAT row 5 promise ("returns to the level it was left at") failing silently. The blob is global to every project (layer ids are per-document UUIDs, so no collision, but all projects compete for the same 64 slots), and the cap is untested: no test in `physicsPaintTimelineZoom.test.ts` exercises more than three layers.
-**Fix:** Promote on touch and keep memory and storage in agreement:
+1. **Size:** multiplies the ring by `s` a second time — the ring renders `s²` while the composited paint it must match renders `s`, because the seat's `scale` is the same value the shell already applied to the rect the height was read from.
+2. **Position:** the pivot term cancels inside the AABB subtraction, so the seat maps a content offset `d` from the shell origin to `s²·d` where the shell maps it to `s·d`; the overlay drifts by `(s² − s)·d` — ≈312 px at `d = 1000 px` with `s = 1.25`. Under rotation the AABB origin is not the content origin at all, so the same subtraction is wrong on both axes.
+3. The picker visor shares the defect (`AquarellePickerVisor.tsx:23` places the tip at `left + cursorX`, then the seat re-transforms that point) and additionally has its fixed 20 px glyph rotated/scaled by the rail chain — the tip position is the defect; the glyph transform is a design question.
+
+This is reachable whenever the active rail's evaluated motion at the current frame carries `scale ≠ 1` (or rotation): the producer only excludes playback and identity (`PhysicsPaintStudio.tsx:10063-10076`), so any Position+Scale/Rotation rail exposes it. The new pin cannot catch it: it asserts the CSS string and the two wiring sites only, never the geometry.
+**Fix:** Make the overlay coordinates document-space and the footprint transform-free, then let the seat provide the screen mapping.
+
+- Derive the footprint from the untransformed layout height (`(event.currentTarget as HTMLElement).offsetHeight`) instead of `getBoundingClientRect().height` in `AquarelleCanvasLayer.tsx:905-907` and `:922-924`. Under an identity rail this is the same number, so the no-rail path is unchanged.
+- Un-project the pointer through the inverse of the rail chain before writing `cursorX/cursorY`. Add one helper next to the chain it inverts (`PhysicsPaintReferenceTransform.ts`):
+
 ```ts
-scaleSignal.value = clamped;
-if (activeLayerId !== null && scaleByLayer.get(activeLayerId) !== clamped) {
-  scaleByLayer.delete(activeLayerId);
-  scaleByLayer.set(activeLayerId, clamped); // re-insert = newest
-  while (scaleByLayer.size > MAX_REMEMBERED_LAYERS) {
-    const oldest = scaleByLayer.keys().next();
-    if (oldest.done) break;
-    scaleByLayer.delete(oldest.value);
-  }
-  writeStoredScales();
+/** Screen point (client coords) -> content point of the transformed shell. */
+export function projectRailMotionScreenPoint(
+  clientX: number,
+  clientY: number,
+  origin: { left: number; top: number },
+  transform: { translateX: number; translateY: number; scale: number; rotationRadians: number; pivotX: number; pivotY: number },
+  canvasWidth: number,
+  canvasHeight: number,
+  zoom: number,
+): { x: number; y: number } {
+  const px = transform.pivotX * canvasWidth;
+  const py = transform.pivotY * canvasHeight;
+  const dx = clientX - origin.left - px - transform.translateX * zoom;
+  const dy = clientY - origin.top - py - transform.translateY * zoom;
+  const cos = Math.cos(-transform.rotationRadians);
+  const sin = Math.sin(-transform.rotationRadians);
+  const s = transform.scale === 0 ? 1 : transform.scale;
+  return { x: px + (dx * cos - dy * sin) / s, y: py + (dx * sin + dy * cos) / s };
 }
 ```
-and add a test that fills 65 layers, re-touches the first, and asserts the first survives a `vi.resetModules()` rebuild while the least-recently-used is gone.
 
-### WR-04: The 100% reset test exercises only the off-screen fallback, and neither test file pins the anchored value
+  Wire it at the pointer handlers (the rail transform inputs must reach the mount, or the projection is computed in the view and written to the existing cursor signals). Keep the identity path byte-identical (no transform → today's `clientX - rect.left`).
+- Correct the "cursorX/Y are content coords" claims in the view/CSS/pin comments, since that premise is what produced the gap.
+- Add a geometry pin: screen→content round-trip through `buildRailMotionEditCss` at `scale` 0.5 / 1 / 1.25 and `rotationRadians` 0.3, including a non-centered pivot.
 
-**File:** `app/src/components/physic-paint/view/physicsPaintTimelineZoom.test.ts:386-397`, `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.zoomMatrix.test.ts:630-648`
-**Issue:** The store test is named "returns to 100% anchored on the playhead centre", but its fixture (`scrollLeft: 2000`, `playheadFrame: 10`, old scale 3) puts the playhead's content centre at 6 + 540 + 26 = 572px, far outside the visible 2000..2800 window, so `resolvePlayheadAnchorLocalX` takes the viewport-centre fallback and the playhead-centre branch of `resetTo100` is never executed; the only assertion on the written value is `readScrollLeft()).toBeGreaterThan(0)`. The matrix test was rewritten from Fit and now asserts `toHaveBeenCalledTimes(1)` only — the old `toHaveBeenCalledWith(0)` was deleted and no value replaced it. Both suites pass for a wrong anchor: anchoring at localX 0 would write 666.67 in the store fixture and 0 in the matrix fixture. The headline behavior of the new pill control therefore has no regression pin beyond live UAT.
-**Fix:** Pin the values the law produces. Store fixture (off-screen fallback): `expect(readScrollLeft()).toBeCloseTo(400, 9)`. Matrix fixture (on-screen playhead at 91.925px): read `const [[written]] = setScrollLeft.mock.calls;` and `expect(written).toBeCloseTo(95.041102, 4)`. Add one store case with an on-screen playhead (e.g. `scrollLeft: 0`, `playheadFrame: 10`, old scale 3) so the playhead-centre branch is pinned too.
+### WR-06: The settle effect's own "an active run owns the display" guard is read only before an unbounded await, so a playback started mid-flush is overwritten
 
-## Info
+**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:5603-5606` (pre-await guard) vs `:5609-5633` (post-await tail)
+**Originating commit:** `22662b433` — `fix(261109-pwt): settle a cached destination's pending capture after display`
+**Issue:** The effect documents the invariant "An active run owns the display" and refuses to settle while `rotoCachedPlayback.isActive` (`:5603-5606`). That read is a render-time closure value — `isActive` is `useState` in the playback hook (`hooks/useRotoCachedPlayback.ts:89`), and the comment itself notes the controller object identity changes every render, which is why it is deliberately not a dependency (`:5601-5602`). The await at `:5612` (`flushLivePixels`, which can wait out a WebP encode plus parent delivery and a bounded retry turn) is unbounded; if the user presses Play during it, the tail still runs `setCachedRotoReferenceUrl(null)` / `clearPreviewBaseImage(true)` / `resetBackground(true)` / `loadCachedRotoReferenceFrame(...)` at `:5629-5632` while the playback run owns the display. The tail re-checks generation (`:5618`) and the propagated `startFrame` (`:5619`) — the two guards that can be re-read live — but not playback. Whether the overwrite is visible depends on playback asset/CSS coverage, which is why this is a warning rather than a blocker; the guard gap itself is provable from the code.
+**Fix:** Mirror the controller into a ref updated every render (`rotoCachedPlaybackRef.current = rotoCachedPlayback`, the same pattern as `cachedRotoRepaintBaseFrameRef` / `launchContextRef` already used here) and re-check it after the await, before touching the base:
 
-### IN-05: `getFrameCount` died with `fit()` but is still a required port member, still pinned by the wiring test
-
-**File:** `app/src/components/physic-paint/view/physicsPaintTimelineZoom.ts:60`, `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx:2727-2730`, `:2789`, `:3097`, `app/src/components/physic-paint/view/physicsPaintTimelineZoomWiring.test.ts:61`
-**Issue:** `fit()` was the only reader of `getFrameCount()`. After the 100% reset replaced it, the interface member, the strip's registration (`:2789`), the `timelineFrameCountRef` declaration (`:2730`) and its per-render assignment (`:3097`) exist only to satisfy the two test stubs, and the wiring test actively enforces the dead registration as a requirement. The declaration comment still says "Fit action reads it". A repository-wide search finds no production read.
-**Fix:** Remove `getFrameCount()` from `TimelineZoomScrollPort`, the registration line, the ref and its assignment, and the wiring-test pin; delete the member from the two test ports.
-
-### IN-06: Stale "Fit" documentation where the fourth pill control is now a 100% reset
-
-**File:** `app/src/components/physic-paint/view/PhysicsPaintTimelineZoomBar.tsx:10-11`, `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx:1944`, `:2729`, `:2773`
-**Issue:** The bar's contract comment still reads "Fit is a ONE-SHOT action (D-04) — it never re-fits on a later resize, so it carries no aria-pressed and is never a mode", and the strip still lists "Fit" among the port's consumers and says the frame-extent ref exists because the "Fit action reads it". `fit()`, `resolveTimelineFitScale` and the Fit button no longer exist (replaced by `resetTo100`, UAT 2026-11-09), and D-04 is no longer the decision behind this control; a maintainer is pointed at a removed action and decision id. (Line 2671's "Fit to view" is the Studio audio modal's viewport fit and is correct — leave it.)
-**Fix:** Reword the bar docstring to the reset semantics ("a one-shot return to 100%, anchored on the playhead centre, never a mode; no aria-pressed") and drop the Fit references at strip lines 1944, 2729 and 2773.
-
-### IN-07: The interp dash is clipped at 0.25x, so the new comment's "75% of the cell" does not hold at the floor
-
-**File:** `app/src/components/physic-paint/physicsPaintStudio.css:8020-8036` (dash), `:7889-7906` (cell box)
-**Issue:** The new rule centres the dash (`left: 50%`, `transform: translateX(-50%)`) and sizes it `calc(var(--timeline-cell-width, 16px) * 0.75)`, with a comment claiming it "reads the same at 25% and 400%". The cell is `box-sizing: border-box` with a fixed 1px border and `overflow: hidden`, so its padding box is `cellWidth - 2px`. At 0.25x the cell is 4px but the padding box is 2px while the dash is 3px: the dash is clipped at the padding edge to 2px (50% of the cell), not 3px (75%). Centring is exact at every level (the dash's centre is the border-box centre); only the width claim fails at the floor. 1x (12/16), 0.5x (6/8) and 4x (48/64) are exact.
-**Fix:** Either accept the floor and correct the comment, or make the width padding-box-aware:
-```css
-width: min(calc(var(--timeline-cell-width, 16px) * 0.75), calc(var(--timeline-cell-width, 16px) - 2px));
+```ts
+if (rotoCachedPlaybackRef.current.isActive) return; // after the flush, before the byte comparison
 ```
-(`min()` leaves 12/16, 6/8 and 48/64 unchanged and clamps 0.25x to the 2px padding box.)
+
+Leave the deps array unchanged (`:5634`) — the ref read preserves the run-time semantics the existing comment asks for.
+
+### IN-08: The settle effect's async IIFE leaves its post-await tail outside the try/catch
+
+**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:5609-5633`
+**Issue:** In `void (async () => { try { ...flush... } catch (error) { console.error(...) } ... })()` the `try` covers only the flush. Everything after it — the store lookup at `:5620`, the preview ports and `loadCachedRotoReferenceFrame` at `:5629-5632` — runs outside the handler, and the IIFE's promise is discarded with `void`, so a synchronous throw there becomes an unhandled promise rejection instead of a logged fault.
+**Fix:** Attach a terminal handler to the IIFE or move the whole tail inside the existing `try`:
+
+```ts
+void (async () => { /* whole body */ })().catch((error) => {
+  console.error('[PhysicsPaintStudio] pending destination settle failed', error);
+});
+```
+
+### IN-09: The 48×48 ink mean leaves a sub-sample band where real marks are still dropped at capture
+
+**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:665-690`; gates at `:2104-2108` and `:9398`
+**Originating commit:** `8b1508db8` — `fix(261109-pwt): stop the capture ink gate from dropping faint wet washes`
+**Issue:** Lowering the floor from 1 to 0.3 is well supported by the recorded measurements (blank 0.05–0.12 vs live rejected washes 0.71–0.94) and is a strict improvement, but the metric is a mean over a 48×48 downsample (`:678-686`), so one fully-dark sample contributes only ≈0.4 per-mille. On a 2000×2000 sheet a sample covers ≈1736 px², so the 0.3 floor still rejects any mark with less than about one dark sample — e.g. a single ~20 px-radius dab (≈1257 px²) scores ≈0.29 and is discarded when the frame is left, the same silent loss the commit set out to remove, now confined to small marks. This is a residual limit of the metric, not a regression of the change.
+**Fix:** Keep the mean floor and add an absolute-coverage clause so a small, genuinely inked mark cannot fall under it — count samples with `248 - luminance >= 32` and accept when `inkedSamples >= 1` (or `>= 2`) in addition to `ink >= AQUARELLE_MIN_CAPTURE_INK`. Blank textured sheets measured 0.05–0.12 mean, so a per-sample threshold well above paper grain will not trip.
+
+### IN-10: The two new pins assert wiring and guard substrings, so neither warning above has a failing test
+
+**File:** `app/src/components/physic-paint/view/physicsPaintRailEditCursorSeat.test.ts:45-76`; `app/src/components/physic-paint/PhysicsPaintStudio.test.ts:6276-6305`
+**Issue:** The seat pin verifies the CSS string, the identity no-op and the two `...buildRailMotionEditSeatStyle(railEditCss)` call sites — it cannot observe that the coordinates and height fed to the seat already include the chain, so WR-05 ships green. The settle pin asserts the arm ordering, consume-before-await, the generation/startFrame/playback guard **strings**, and the deps tail — but not the post-await playback re-read (its `not.toContain('rotoCachedPlayback.isActive,')` pins the deps array only, so a ref-based fix keeps it true), so WR-06 also ships green.
+**Fix:** Add a pure-function pin for the geometry helper introduced by the WR-05 fix (round-trip through `buildRailMotionEditCss` at scale 0.5/1/1.25 and rotation 0.3 rad with a non-centered pivot), and extend the settle pin to require the playback re-check between the `await flushLivePixels` line and the `setCachedRotoReferenceUrl(null)` force-reload line.
 
 ---
 
-_Reviewed: 2026-11-09T16:52:00Z_
+_Reviewed: 2026-11-09T20:14:15Z_
 _Reviewer: Claude (gsd-code-reviewer)_
-_Depth: standard_
+_Depth: deep_
