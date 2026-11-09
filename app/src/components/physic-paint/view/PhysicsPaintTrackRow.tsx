@@ -574,6 +574,12 @@ export interface TimelineMotionBlockProps {
   readonly laneCount: number;
   /** The playhead in the rail's LOCAL frame space. */
   readonly cursorFrame: number;
+  /** Phase 60 (ZOOM-05): the session column pitch for the lanes and the
+   *  outline. Required — a missed host call site is a type error, never a
+   *  silent 1x render. No default. */
+  readonly framePitch: number;
+  /** Phase 60 (ZOOM-05): the session cell gap; the drawn cell is pitch − gap. */
+  readonly frameGap: number;
   /**
    * 261108-d5o: the rail's displayed-real frames in rail-local space. Resolved
    * ONCE by the host through the store accessor and threaded into every lane,
@@ -623,6 +629,8 @@ export function TimelineMotionBlock({
   view,
   laneCount,
   cursorFrame,
+  framePitch,
+  frameGap,
   snapFrames,
   onSelectMotionKey,
   onSelectMotionRail,
@@ -645,8 +653,9 @@ export function TimelineMotionBlock({
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
-          // Lanes live at the rail's own extent (SPECS §2), never at x = 0.
-          marginLeft: railStartFrame * TIMELINE_GEOMETRY.cellPitch,
+          // Lanes live at the rail's own extent (SPECS §2), never at x = 0 —
+          // on the session pitch (Phase 60 ZOOM-05).
+          marginLeft: railStartFrame * framePitch,
         }}
       >
         {lanes.map((lane) => {
@@ -668,6 +677,8 @@ export function TimelineMotionBlock({
             selected: railSelected,
             railFrameCount,
             cursorFrame,
+            framePitch,
+            frameGap,
             snapFrames,
             selectedKeyFrames: laneSelectedKeyFrames,
             disabledReasons,
@@ -692,6 +703,8 @@ export function TimelineMotionBlock({
         laneCount={laneCount}
         railStartFrame={railStartFrame}
         railFrameCount={railFrameCount}
+        framePitch={framePitch}
+        frameGap={frameGap}
         selected
         lineColor={resolveTimelineRailPalette(railType, 'selected').line}
       />

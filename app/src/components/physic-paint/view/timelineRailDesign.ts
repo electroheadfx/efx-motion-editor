@@ -167,6 +167,10 @@ export interface TimelineMotionBlockOutlineInput {
   readonly railStartFrame: number;
   /** Occurrence length in frames. */
   readonly railFrameCount: number;
+  /** Phase 60 (ZOOM-05): the session cell pitch; the 1x token when absent. */
+  readonly cellPitch?: number;
+  /** Phase 60 (ZOOM-05): the session cell gap; the 1x token when absent. */
+  readonly cellGap?: number;
 }
 
 /**
@@ -190,14 +194,16 @@ export function resolveMotionBlockOutlineRect(
     ? Math.max(0, Math.floor(input.railFrameCount))
     : 0;
   if (laneCount === 0 || frameCount === 0) return null;
+  // Phase 60 (ZOOM-05): the outline hugs the rail's live frame extent — the
+  // session pitch and gap, never a second authority. The defaults keep the
+  // pre-zoom contract for callers that do not pass them.
+  const cellPitch = input.cellPitch ?? TIMELINE_GEOMETRY.cellPitch;
+  const cellGap = input.cellGap ?? TIMELINE_GEOMETRY.cellGap;
   const half = TIMELINE_GEOMETRY.outlineWidth / 2;
   return Object.freeze({
-    left: startFrame * TIMELINE_GEOMETRY.cellPitch + half,
+    left: startFrame * cellPitch + half,
     top: input.rowTop,
-    width:
-      frameCount * TIMELINE_GEOMETRY.cellPitch -
-      TIMELINE_GEOMETRY.cellGap -
-      TIMELINE_GEOMETRY.outlineWidth,
+    width: frameCount * cellPitch - cellGap - TIMELINE_GEOMETRY.outlineWidth,
     height:
       input.rowHeight +
       laneCount * TIMELINE_MOTION.laneHeight +

@@ -20,7 +20,7 @@ import {
   resolveInBandMotionKeys,
   type TimelineMotionChannelLaneProps,
 } from './TimelineMotionChannels';
-import { TIMELINE_GEOMETRY, TIMELINE_MOTION } from './timelineRailDesign';
+import { TIMELINE_MOTION } from './timelineRailDesign';
 
 /** One key, one destination rail-local frame — never a batch. */
 export interface MotionKeyDragRequest {
@@ -64,8 +64,11 @@ export function TimelineMotionKeyDragLane({
   const drag = usePhysicsPaintKeyRailDrag<RotoMotionKeyDragPublication>({
     projectDestination: ({ originClientX, clientX }) => {
       const armed = armedFrameRef.current ?? 0;
-      // Frame delta over the lane's own column pitch: no measure is inlined.
-      return armed + Math.round((clientX - originClientX) / TIMELINE_GEOMETRY.cellPitch);
+      // Frame delta over the lane's OWN column pitch (Phase 60 ZOOM-05), read
+      // through the latest-value ref: no measure is inlined and doubling the
+      // pitch halves the frame delta.
+      const pitch = latestRef.current.laneProps.framePitch;
+      return armed + Math.round((clientX - originClientX) / pitch);
     },
     clampDestination: (proposedFrame) => {
       const current = latestRef.current;
@@ -75,11 +78,14 @@ export function TimelineMotionKeyDragLane({
         proposedFrame,
         frameCount: current.frameCount,
       });
+      // Phase 60 (ZOOM-05): the drop ghost centres on the scaled cell — the
+      // drawn cell width is the lane's pitch minus its gap.
+      const cellWidth = current.laneProps.framePitch - current.laneProps.frameGap;
       return {
         destination: clamped.frame,
         left:
-          clamped.frame * TIMELINE_GEOMETRY.cellPitch +
-          (TIMELINE_MOTION.cellWidth - TIMELINE_MOTION.keySize) / 2,
+          clamped.frame * current.laneProps.framePitch +
+          (cellWidth - TIMELINE_MOTION.keySize) / 2,
         width: TIMELINE_MOTION.keySize,
         blockedEdge: clamped.blockedEdge,
       };

@@ -1397,8 +1397,13 @@ describe('TimelineMotionChannels source contract', () => {
     const source = moduleSource();
 
     expect(source).toMatch(/from '\.\/timelineRailDesign'/);
-    expect(source).toMatch(/TIMELINE_GEOMETRY/);
     expect(source).toMatch(/TIMELINE_MOTION/);
+    // Phase 60 (ZOOM-05): the horizontal pitch and gap are REQUIRED props —
+    // the module reads no static pitch token (repointed from the pre-zoom
+    // `TIMELINE_GEOMETRY` presence assertion, whose referent this plan removes).
+    expect(source).toMatch(/readonly framePitch: number;/);
+    expect(source).toMatch(/readonly frameGap: number;/);
+    expect(source).not.toMatch(/TIMELINE_GEOMETRY\.cellPitch|TIMELINE_GEOMETRY\.cellGap/);
     // No literal that duplicates a locked token: 18 (pitch/lane), 16 (cell
     // width), 6 (key size) or 1.5 (curve width).
     expect(source).not.toMatch(/\b1\.5\b/);

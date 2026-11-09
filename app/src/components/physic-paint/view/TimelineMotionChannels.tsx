@@ -41,7 +41,6 @@ import { RAIL_MOTION_EASING_ICONS } from './PhysicsPaintRailMotionEasingControl'
 import {
   resolveMotionBlockOutlineRect,
   resolveTimelineRailPalette,
-  TIMELINE_GEOMETRY,
   TIMELINE_MOTION,
   TIMELINE_SURFACE,
   type TimelineRailType,
@@ -97,6 +96,14 @@ export interface TimelineMotionChannelLaneProps {
   readonly selected: boolean;
   readonly railFrameCount: number;
   readonly cursorFrame: number;
+  /**
+   * Phase 60 (ZOOM-05): the session column pitch handed down as a REQUIRED
+   * prop. The lane holds no pitch of its own — the strip's one render-body
+   * metrics read is the only authority (D-12). No default.
+   */
+  readonly framePitch: number;
+  /** Phase 60 (ZOOM-05): the session cell gap; the drawn cell is pitch − gap. */
+  readonly frameGap: number;
   /**
    * 261108-d5o: the rail's displayed-real frames, in rail-local space. The lane
    * computes NOTHING — the host resolves the list through the store accessor
@@ -308,6 +315,8 @@ export function TimelineMotionChannelLane({
   selected,
   railFrameCount,
   cursorFrame,
+  framePitch,
+  frameGap,
   snapFrames,
   selectedKeyFrames,
   onSelectRail,
@@ -320,7 +329,10 @@ export function TimelineMotionChannelLane({
   const frameCount = Number.isFinite(railFrameCount)
     ? Math.max(0, Math.floor(railFrameCount))
     : 0;
-  const laneWidth = frameCount * TIMELINE_GEOMETRY.cellPitch;
+  const laneWidth = frameCount * framePitch;
+  // Phase 60 (ZOOM-05): the drawn motion cell is the session pitch minus the
+  // session gap — never the fixed 16px token (D-12).
+  const cellWidth = framePitch - frameGap;
 
   const inBandKeys = resolveInBandMotionKeys(lane.keys, frameCount);
 
@@ -334,9 +346,7 @@ export function TimelineMotionChannelLane({
   const keyStyle = (frame: number): CSSProperties => ({
     position: 'absolute',
     // Centred on the frame column: frame × pitch + (cell − key) / 2.
-    left:
-      frame * TIMELINE_GEOMETRY.cellPitch +
-      (TIMELINE_MOTION.cellWidth - TIMELINE_MOTION.keySize) / 2,
+    left: frame * framePitch + (cellWidth - TIMELINE_MOTION.keySize) / 2,
     top: (laneHeight - TIMELINE_MOTION.keySize) / 2,
     width: TIMELINE_MOTION.keySize,
     height: TIMELINE_MOTION.keySize,
@@ -358,9 +368,9 @@ export function TimelineMotionChannelLane({
 
   const cellStyle = (frame: number): CSSProperties => ({
     position: 'absolute',
-    left: frame * TIMELINE_GEOMETRY.cellPitch,
+    left: frame * framePitch,
     top: 0,
-    width: TIMELINE_MOTION.cellWidth,
+    width: cellWidth,
     height: TIMELINE_MOTION.cellHeight,
     borderRadius: TIMELINE_MOTION.cellRadius,
     background: TIMELINE_SURFACE.emptyCellFill,
@@ -400,6 +410,8 @@ export function TimelineMotionChannelLane({
               d={buildRailMotionCurvePath(lane.channels[0], frameCount, laneHeight, {
                 railId,
                 snapFrames,
+                // Phase 60 (ZOOM-05): the curve's x scale is the session pitch.
+                cellPitch: framePitch,
               })}
               fill="none"
               stroke={palette.line}
@@ -727,6 +739,9 @@ export interface TimelineMotionBlockOutlineProps {
   /** App frame where the rail starts — the outline hugs the rail's extent. */
   readonly railStartFrame: number;
   readonly railFrameCount: number;
+  /** Phase 60 (ZOOM-05): the session pitch/gap the outline hugs; required, no default. */
+  readonly framePitch: number;
+  readonly frameGap: number;
   readonly selected: boolean;
   /** The rail's bright line; the host resolves it from the rail type. */
   readonly lineColor?: string;
@@ -793,6 +808,8 @@ export function TimelineMotionBlockOutline({
   laneCount,
   railStartFrame,
   railFrameCount,
+  framePitch,
+  frameGap,
   selected,
   lineColor,
 }: TimelineMotionBlockOutlineProps) {
@@ -802,6 +819,8 @@ export function TimelineMotionBlockOutline({
     laneCount,
     railStartFrame,
     railFrameCount,
+    cellPitch: framePitch,
+    cellGap: frameGap,
   });
   if (rect === null) return null;
   return (
