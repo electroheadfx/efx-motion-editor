@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TIMELINE_GEOMETRY } from '../view/timelineRailDesign';
 
 const hookRuntime = vi.hoisted(() => ({
   refs: [] as Array<{ current: unknown }>,
@@ -102,12 +106,15 @@ function createHarness(options: {
   const ruler = new RulerDouble(options.rectLeft ?? 40);
   const onSeek = vi.fn();
   const frameCount = options.frameCount ?? 10;
+  // Phase 60 (ZOOM-05): the hook holds no pitch default, so the harness owns
+  // the 1x value explicitly — the base token, never a literal.
+  const cellWidthPx = options.cellWidthPx ?? TIMELINE_GEOMETRY.cellPitch;
   const render = () => {
     hookRuntime.cursor = 0;
     return usePhysicsPaintRulerScrub({
       frameCount: () => frameCount,
       onSeek,
-      cellWidthPx: options.cellWidthPx,
+      cellWidthPx,
       windowLike,
       onScrubStart: options.onScrubStart,
       onScrubEnd: options.onScrubEnd,
@@ -352,5 +359,31 @@ describe('usePhysicsPaintRulerScrub', () => {
     api.onPointerDown(pointerEvent(harness.ruler, { pointerId: 9, clientX: harness.ruler.rectLeft + 90 }));
     expect(harness.onSeek).toHaveBeenCalledTimes(1);
     expect(harness.ruler.captured).toEqual([7]);
+  });
+});
+
+describe('usePhysicsPaintRulerScrub cell-width authority (Phase 60 ZOOM-05)', () => {
+  const hookSourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'usePhysicsPaintRulerScrub.ts');
+  const hookSource = () => readFileSync(hookSourcePath, 'utf8');
+
+  it('requires an explicit cell width and declares no local pitch default', () => {
+    const code = hookSource();
+    // The option is REQUIRED: a caller that forgets it fails to compile rather
+    // than silently measuring at the retired 18px default.
+    expect(code).toContain('readonly cellWidthPx: number;');
+    expect(code).not.toContain('DEFAULT_CELL_WIDTH_PX');
+    expect(code).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(code).not.toContain('options.cellWidthPx ??');
+    // The doc comment names the live timeline pitch, never a retired constant.
+    expect(code).toMatch(/live timeline pitch/i);
+  });
+
+  it('divides client x by the explicitly supplied cell width, not a fallback', () => {
+    stubAnimationFrame();
+    const harness = createHarness({ cellWidthPx: TIMELINE_GEOMETRY.cellPitch * 2 });
+    const api = harness.render();
+    // rectLeft 40, 36px pitch: 40 + 36*3 + 2 = 150 → frame 3.
+    api.onPointerDown(pointerEvent(harness.ruler, { clientX: 150 }));
+    expect(harness.onSeek).toHaveBeenCalledWith(3);
   });
 });
