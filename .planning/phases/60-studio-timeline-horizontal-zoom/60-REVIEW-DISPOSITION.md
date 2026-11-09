@@ -3,6 +3,26 @@ phase: 60
 review: 60-REVIEW.md
 titles: json
 findings:
+  - id: WR-03
+    severity: warning
+    disposition: fixed
+    title: "Per-layer zoom memory evicts by first-seen order, so actively used layers silently lose their remembered density"
+  - id: WR-04
+    severity: warning
+    disposition: fixed
+    title: "The 100% reset test exercises only the off-screen fallback, and neither test file pins the anchored value"
+  - id: IN-05
+    severity: info
+    disposition: fixed
+    title: "`getFrameCount` died with `fit()` but is still a required port member, still pinned by the wiring test"
+  - id: IN-06
+    severity: info
+    disposition: fixed
+    title: "Stale \"Fit\" documentation where the fourth pill control is now a 100% reset"
+  - id: IN-07
+    severity: info
+    disposition: fixed
+    title: "The interp dash is clipped at 0.25x, so the new comment's \"75% of the cell\" does not hold at the floor"
   - id: CR-01
     severity: critical
     disposition: fixed
@@ -36,22 +56,27 @@ findings:
     disposition: open
     title: "Dead exported helpers `frameToPx`, `pxToFrame`, `resolveTimelineViewportFrames`"
 open: 6
-total: 8
-recorded: 2026-11-09T13:49:25.548Z
+total: 13
+recorded: 2026-11-09T16:53:34.574Z
 ---
 
 # Phase 60: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | fixed | e37f7e49d (fixed during phase verification) |
-| CR-02 | critical | fixed | e37f7e49d (fixed during phase verification) |
-| WR-01 | warning | open | - |
-| WR-02 | warning | open | - |
-| IN-01 | info | open | - |
-| IN-02 | info | open | - |
-| IN-03 | info | open | - |
-| IN-04 | info | open | - |
+| WR-03 | warning | fixed | e88a33204 (fixed during phase verification) |
+| WR-04 | warning | fixed | e88a33204 (fixed during phase verification) |
+| IN-05 | info | fixed | e88a33204 (fixed during phase verification) |
+| IN-06 | info | fixed | e88a33204 (fixed during phase verification) |
+| IN-07 | info | fixed | e88a33204 (fixed during phase verification) |
+| CR-01 | critical | fixed | e37f7e49d (fixed during phase verification) (not in the current review) |
+| CR-02 | critical | fixed | e37f7e49d (fixed during phase verification) (not in the current review) |
+| WR-01 | warning | open | - (not in the current review) |
+| WR-02 | warning | open | - (not in the current review) |
+| IN-01 | info | open | - (not in the current review) |
+| IN-02 | info | open | - (not in the current review) |
+| IN-03 | info | open | - (not in the current review) |
+| IN-04 | info | open | - (not in the current review) |
 
 Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
 Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
