@@ -193,7 +193,15 @@ Plans:
   4. Row, lane, and cell heights stay fixed at every zoom level — only horizontal frame density scales — and no frame→pixel consumer multiplies a local `18`.
   5. Zoom is session-only: it resets when the Studio closes and changes no document, `.mce`, schema, persistence, or export output.
 
-**Plans**: TBD
+**Plans:** 6 plans
+
+Plans:
+- [ ] 60-01-PLAN.md — the pitch authority module, the strip wiring (wheel, ruler, playhead, lanes) and the zoom pill
+- [ ] 60-02-PLAN.md — event-time projections, ghosts and previews onto the live pitch
+- [ ] 60-03-PLAN.md — sound leaves, viewport getter, open/reveal positioning and the scaled rail gap
+- [ ] 60-04-PLAN.md — track rows and motion lanes onto required pitch/gap props
+- [ ] 60-05-PLAN.md — retire the last local pitch default and land the zero-literal authority audit
+- [ ] 60-06-PLAN.md — the five-level zoom acceptance matrix, written after the audit is green
 
 **Prerequisite**: the literal-`18` audit reaches zero before the zoom matrix test is written. The v2.0.1 VIS-02 30-vs-31 row-height drift is not part of this phase.
 
