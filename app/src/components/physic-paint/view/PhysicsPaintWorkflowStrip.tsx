@@ -118,6 +118,13 @@ import {
   type TimelineCellPresentation,
   type TimelineRailType,
 } from './timelineRailDesign';
+import {
+  nextTimelineZoomWheelScale,
+  registerTimelineZoomScrollPort,
+  resolveRulerStep,
+  TIMELINE_LANE_ORIGIN_PX,
+  timelineZoom,
+} from './physicsPaintTimelineZoom';
 import type {
   RotoDragPublication,
   RotoDragPreparationResult,
@@ -640,13 +647,14 @@ export interface PhysicsPaintWorkflowStripProps {
   revealRequest?: { frame: number; nonce: number } | null;
 }
 
+/** Phase 60 (D-10): the ruler never subdivides below this many frames. */
 const RULER_STEP = 3;
-/* 47-01 UAT round 5: 18px-wide × 22px-tall frames (user test request). This
-   drives lane width, ruler ticks, drag/scroll math, and the per-cell grid; one
-   ruler tick spans RULER_STEP cells (3 × 18px = 54px). */
+/* 47-01 UAT round 5: 18px-wide × 22px-tall frames (user test request) at the
+   BASE 1x zoom. Phase 60 (D-12) makes this the scaffold pitch only: the live
+   pitch comes from `timelineZoom.metrics` (18 × scale, 0.25x–4x) and drives
+   lane width, ruler ticks, drag/scroll math and the per-cell grid. The
+   constant survives for the drag projection (raw pointer pixels -> frames). */
 const ROTO_CELL_WIDTH_PX = 18;
-/** One ruler tick spans RULER_STEP abutting cells (3 × 18px = 54px). */
-const RULER_TICK_WIDTH_PX = RULER_STEP * ROTO_CELL_WIDTH_PX;
 
 /* 47-01 UAT round 3: flexible strip height. The fixed chrome bands are
    46 (header) + 1 (strip border) + 1 (timeline border) + 36 (ruler, the
@@ -820,8 +828,12 @@ const EMPTY_RAIL_SET_MOVE_MEMBERS: readonly PhysicPaintRailSetMoveMember[] = [];
 const EMPTY_RAIL_SET_GAP_PREVIEW_FRAMES: ReadonlySet<number> = new Set<number>();
 const NOOP_KEY_RAIL_SELECTION = (_selection: RotoKeyRailSelection): void => {};
 
-function buildRulerTicks(frameCells: number[]): number[] {
-  return frameCells.filter((frame) => frame % RULER_STEP === 0);
+/** D-09: the step is adaptive (smallest multiple of RULER_STEP leaving ≥40px). */
+function buildRulerTicks(frameCells: number[], step: number): number[] {
+  // D-10: never subdivide below the minimum step — the guard doubles as the
+  // fallback when a bad pitch reaches the filter.
+  const resolvedStep = Number.isFinite(step) && step >= RULER_STEP ? step : RULER_STEP;
+  return frameCells.filter((frame) => frame % resolvedStep === 0);
 }
 
 interface RotoTimelineStructuralIndex {
@@ -1173,10 +1185,12 @@ function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; scrubFra
     ? (props.playbackTick?.value?.appFrame ?? props.currentFrame.value)
     : (props.scrubFrame?.value ?? props.currentFrame.value);
   const clampedFrame = Math.max(0, Math.min(frame, Math.max(0, props.frameCount - 1)));
-  // 6 = the v2.0.1 timeline-scroll content gutter (README §3 — the ruler/cell
-  // origin sits 2px further in than the retired 4px padding); +8 = half a cell
-  // (18/2 = 9) minus half the 2px line → the bar centers on the frame.
-  const left = 6 + clampedFrame * ROTO_CELL_WIDTH_PX + 8;
+  // Phase 60 (D-13): the bar follows the live pitch. TIMELINE_LANE_ORIGIN_PX is
+  // the v2.0.1 timeline-scroll content gutter (README §3 — the ruler/cell
+  // origin); + pitch/2 − 1 = half a cell minus half the 2px line, so the bar
+  // centres on the frame. At scale 1 this is exactly the former 6 + f*18 + 8.
+  const pitch = timelineZoom.metrics.value.pitch;
+  const left = TIMELINE_LANE_ORIGIN_PX + clampedFrame * pitch + pitch / 2 - 1;
   return (
     <>
       <div class="physics-paint-playhead-bar" aria-hidden="true" style={{ left: `${left}px` }}>
@@ -2706,15 +2720,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   >(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
+  // Phase 60: the live frame extent for the zoom store's scroll port (the
+  // Fit action reads it). A ref keeps the mount effect's `[]` deps honest.
+  const timelineFrameCountRef = useRef(0);
+  // Phase 60 (D-05): the modifier wheel coalescer — one pending target and one
+  // animation frame, flushed outside every render body.
+  const wheelZoomRafRef = useRef(0);
+  const pendingWheelZoomRef = useRef<{ scale: number; clientX: number } | null>(null);
   // 261010-ht0 F5: register the stable viewport getter (module-level read, no
   // per-scroll signal). Unregister on unmount so a closed Studio never leaks.
+  // Phase 60 (D-12): the visible window is read in FRAMES, so it divides by the
+  // LIVE pitch — the 1x constant would be off by the scale factor.
   useEffect(() => {
     registerTimelineViewportGetter(() => {
       const el = timelineScrollRef.current;
       if (!el) return null;
+      const pitch = timelineZoom.metrics.peek().pitch;
       return {
-        visStart: el.scrollLeft / ROTO_CELL_WIDTH_PX,
-        visEnd: (el.scrollLeft + el.clientWidth) / ROTO_CELL_WIDTH_PX,
+        visStart: el.scrollLeft / pitch,
+        visEnd: (el.scrollLeft + el.clientWidth) / pitch,
       };
     });
     return () => registerTimelineViewportGetter(null);
@@ -2740,6 +2764,26 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const lastFocusedRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
+  // Phase 60: the zoom store drives scrollLeft through this port (anchored
+  // wheel, pill stepping, Fit). Reset the session scale on every Studio open
+  // (and view remount inside one document) so nothing leaks across documents;
+  // unregister on unmount. The playhead frame is read at call time from the
+  // strip's own signal — never captured at mount.
+  useEffect(() => {
+    timelineZoom.resetForStudioOpen();
+    registerTimelineZoomScrollPort({
+      getScrollLeft: () => timelineScrollRef.current?.scrollLeft ?? 0,
+      getScrollerLeft: () => timelineScrollRef.current?.getBoundingClientRect().left ?? 0,
+      getClientWidth: () => timelineScrollRef.current?.clientWidth ?? 0,
+      setScrollLeft: (value: number) => {
+        const el = timelineScrollRef.current;
+        if (el) el.scrollLeft = value;
+      },
+      getPlayheadFrame: () => currentFrameSignal.peek(),
+      getFrameCount: () => timelineFrameCountRef.current,
+    });
+    return () => registerTimelineZoomScrollPort(null);
+  }, []);
   // 47-01 header column: the active lane's header cell shows the active
   // track's name (UI-SPEC header column layout — every row gets a label).
   // 47-01 mockup redesign: edit-in-place rename state. The header column is
@@ -3039,7 +3083,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     [currentPhysicalCells, cachedRotoFrames, acceptedGroupDocument],
   );
   const { frameCells, physicalCellByAppFrame, generatedRotoFrames, cachedFrameByAppFrame, realCachedFrameSet, lifecycleTargetByAppFrame } = structuralIndex;
-  const rotoLaneWidthPx = frameCells.length * ROTO_CELL_WIDTH_PX;
+  // Phase 60 (D-12): ONE render-body read of the live horizontal metrics. The
+  // pitch drives the lane extent, the cells grid, the ruler ticks and every
+  // rail; the cell width rides the CSS custom property. Vertical geometry is
+  // deliberately absent from `TimelineMetrics`.
+  const timelineMetrics = timelineZoom.metrics.value;
+  timelineFrameCountRef.current = frameCells.length;
+  const rotoLaneWidthPx = frameCells.length * timelineMetrics.pitch;
+  const rotoRulerStep = resolveRulerStep(timelineMetrics.pitch);
+  const rotoRulerTickWidthPx = rotoRulerStep * timelineMetrics.pitch;
   /* 52.5-01b Task 3 (D-04/E3): the stain reads the shared peaks cache. The
      revision read subscribes the strip ONLY to cache mutations (import /
      reopen-ensure — never per frame), per efx-preact-reactivity rule 5. No
@@ -3070,7 +3122,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const soundDuplicateClip = soundDuplicatePreview.value;
   // 261105-cgl UAT: the ruler tick labels follow the Frame/Seconds switch.
   const timelineUnitMode = getTimelineUnitMode();
-  const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
+  const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells, rotoRulerStep), [frameCells, rotoRulerStep]);
   // Phase 43 loop resolution (Pitfall 7, D-32): the lazy per-frame contract
   // is queried for exactly the represented physical extent (frameCells) — one
   // query per capacity-bounded frame, never proportional to any loop's effective range. Null
@@ -5417,15 +5469,46 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   useLayoutEffect(() => {
     const el = timelineScrollRef.current;
     if (!el) return;
+    // Phase 60 (D-05/D-08): the modifier wheel coalesces into ONE animation
+    // frame — accumulate from the previously queued target (never the live
+    // scale twice), then flush a single anchored write. Mirrors the shipped
+    // canvas viewport coalescer. The flush never runs from a render body.
+    const flushTimelineZoom = () => {
+      wheelZoomRafRef.current = 0;
+      const job = pendingWheelZoomRef.current;
+      pendingWheelZoomRef.current = null;
+      if (job !== null) timelineZoom.setScaleAtCursor(job.scale, job.clientX);
+    };
+    const queueTimelineZoom = (event: WheelEvent) => {
+      const base = pendingWheelZoomRef.current?.scale ?? timelineZoom.scale.peek();
+      const next = nextTimelineZoomWheelScale(base, event.deltaY, event.deltaMode);
+      pendingWheelZoomRef.current = { scale: next, clientX: event.clientX };
+      if (wheelZoomRafRef.current !== 0) return;
+      wheelZoomRafRef.current = window.requestAnimationFrame(flushTimelineZoom);
+    };
     const handleTimelineWheel = (event: WheelEvent) => {
       if (!mountedRef.current) return;
+      // Phase 60 (D-07): Cmd/Ctrl+wheel (and the trackpad pinch that arrives as
+      // a ctrlKey wheel) zooms the timeline around the cursor.
+      if (event.metaKey || event.ctrlKey) {
+        event.preventDefault();
+        queueTimelineZoom(event);
+        return;
+      }
       if (event.shiftKey) return;
       if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       event.preventDefault();
       el.scrollLeft += event.deltaY * (event.deltaMode === 1 ? 16 : 1);
     };
     el.addEventListener('wheel', handleTimelineWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleTimelineWheel);
+    return () => {
+      el.removeEventListener('wheel', handleTimelineWheel);
+      if (wheelZoomRafRef.current !== 0) {
+        window.cancelAnimationFrame(wheelZoomRafRef.current);
+        wheelZoomRafRef.current = 0;
+      }
+      pendingWheelZoomRef.current = null;
+    };
   }, []);
 
   function handleTimelineScrollbarPointerDown(event: PointerEvent) {
@@ -5632,7 +5715,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   <PhysicsPaintKeyRail
                     segments={keyRailSegments}
                     visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
-                    framePitch={ROTO_CELL_WIDTH_PX}
+                    framePitch={timelineMetrics.pitch}
                     selectedKeyRail={props.selectedRotoKeyRail ?? null}
                     railSetMemberKeyRailIds={props.railSetMemberKeyRailIds ?? []}
                     railSetMoveMemberKeyRailIds={railSetMoveMemberKeyRailIds}
@@ -5664,7 +5747,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     ranges={loopResolutionContext.ranges}
                     presentations={props.rotoLoopPresentations ?? EMPTY_LOOP_PRESENTATIONS}
                     visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
-                    framePitch={ROTO_CELL_WIDTH_PX}
+                    framePitch={timelineMetrics.pitch}
                     selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
                     railSetMemberLoopIds={props.railSetMemberLoopIds ?? []}
                     railSetMoveMemberLoopIds={railSetMoveMemberLoopIds}
@@ -5694,7 +5777,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <div
                   class="physics-paint-roto-cells"
                   role="row"
-                  style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}
+                  style={{
+                    gridTemplateColumns: `repeat(${frameCells.length}, ${timelineMetrics.pitch}px)`,
+                    '--timeline-cell-width': `${timelineMetrics.cellWidth}px`,
+                  }}
                 >
                   {frameCells.map(frame => {
                     const semanticCell = physicalCellByAppFrame.get(frame) ?? null;
@@ -6233,7 +6319,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 />
               ) : null}
               {rotoRulerTicks.map(frame => (
-                <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${RULER_TICK_WIDTH_PX}px` }}>
+                <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${rotoRulerTickWidthPx}px` }}>
                   <span class="physics-paint-ruler-label">
                     {timelineUnitMode === 'seconds'
                       ? formatRulerSecondsLabel(framesToSeconds(frame, props.projectFps ?? 1))

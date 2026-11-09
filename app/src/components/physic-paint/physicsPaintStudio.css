@@ -5145,11 +5145,8 @@ button.destructive {
 
 .physics-paint-ruler-tick {
   position: relative;
-  /* 47-01 UAT round 5: one tick spans RULER_STEP (3) abutting 18px cells, so
-     its flex basis is 3 × 18px = 54px — the label stays centered on its 3-frame
-     group as the pitch grows. (The strip also sets the same basis inline from
-     RULER_STEP × ROTO_CELL_WIDTH_PX; this rule is the CSS-level fallback.) */
-  flex: 0 0 54px;
+  /* Phase 60 (D-09): the flex basis is ADAPTIVE — the strip sets it inline
+     from the resolved ruler step × live pitch. No fixed basis lives here. */
   box-sizing: border-box;
   align-self: stretch;
   /* v2.0.1 v7: the number is centred on the tick, which is centred on the
@@ -7885,8 +7882,10 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   box-sizing: border-box;
   /* v2.0.1 v7: 16px x 22px radius-3 cells on the 18px pitch — the 2px
      track gap (cellPitch - cellWidth) is the breathing room; the cell
-     aligns to the start of its 18px grid column. */
-  width: 16px;
+     aligns to the start of its 18px grid column. Phase 60 (D-12): the
+     WIDTH scales with the live pitch via the strip's custom property;
+     the height stays fixed (lane geometry never scales). */
+  width: var(--timeline-cell-width, 16px);
   justify-self: start;
   min-width: 0;
   height: 22px;

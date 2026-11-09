@@ -623,7 +623,10 @@ describe('localized render contract', () => {
   it('preserves the wheel and drag cleanup contracts while observer ownership changes', () => {
     const code = source();
     expect(code).toContain("el.addEventListener('wheel', handleTimelineWheel, { passive: false });");
-    expect(code).toContain("return () => el.removeEventListener('wheel', handleTimelineWheel);");
+    // Phase 60: the cleanup is a block now — it drops the listener AND cancels
+    // the coalescer's pending animation frame.
+    expect(code).toContain("el.removeEventListener('wheel', handleTimelineWheel);");
+    expect(code).toContain('window.cancelAnimationFrame(wheelZoomRafRef.current);');
     expect(code).toContain("window.removeEventListener('pointermove', handlePointerMove);");
     expect(code).toContain("window.removeEventListener('keydown', handleEscape, true);");
     expect(code).toContain('if (session.rafId !== null) window.cancelAnimationFrame(session.rafId);');
@@ -943,7 +946,8 @@ describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task
     expect(code).toContain('const currentPhysicalCells = props.rotoPhysicalCells;');
     expect(code).toContain('buildRotoTimelineStructuralIndex(currentPhysicalCells, cachedRotoFrames, acceptedGroupDocument)');
     expect(code).toContain('if (!cell || cell.appFrame !== appFrame) {');
-    expect(code).toContain('const rotoLaneWidthPx = frameCells.length * ROTO_CELL_WIDTH_PX;');
+    // Phase 60: the extent is the live pitch (18px × scale), never the 1x constant.
+    expect(code).toContain('const rotoLaneWidthPx = frameCells.length * timelineMetrics.pitch;');
     expect(code).not.toContain('buildPhysicsPaintRotoFrameCells');
     expect(code).not.toContain('VIRTUAL_TIMELINE_FRAME_COUNT');
     expect(code).not.toContain('fallbackFrameCells');
@@ -952,26 +956,31 @@ describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task
     const rulerTagEnd = code.indexOf('aria-hidden="true"', rulerIndex);
     const rulerTag = code.slice(rulerIndex, rulerTagEnd === -1 ? code.length : rulerTagEnd);
     expect(rulerTag).toContain('rotoLaneWidthPx');
-    expect(code).toContain('style={{ gridTemplateColumns: `repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)` }}');
+    // Phase 60: the grid columns come from the live pitch and carry the
+    // cell-width custom property the CSS consumes.
+    expect(code).toContain('gridTemplateColumns: `repeat(${frameCells.length}, ${timelineMetrics.pitch}px)`,');
+    expect(code).toContain("'--timeline-cell-width': `${timelineMetrics.cellWidth}px`,");
   });
 
-  it('locks the dynamically sized cells grid to 18px abutting columns with zero gap', () => {
+  it('locks the dynamically sized cells grid to the live pitch with zero gap', () => {
     const styles = css();
     const cells = getCssRuleBlock(styles, '.physics-paint-roto-cells {');
     expect(cells).not.toContain('grid-template-columns');
     expect(cells).toContain('gap: 0');
-    expect(source()).toContain('repeat(${frameCells.length}, ${ROTO_CELL_WIDTH_PX}px)');
+    expect(source()).toContain('repeat(${frameCells.length}, ${timelineMetrics.pitch}px)');
   });
 
-  it('keeps extent out of CSS while preserving fixed-pitch 54px ruler ticks', () => {
+  it('keeps extent out of CSS while the ruler tick basis stays adaptive (no fixed 54px)', () => {
     const styles = css();
     expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).not.toContain('2160px');
     const lane = getCssRuleBlock(styles, '.physics-paint-lane {');
     expect(lane).not.toContain('grid-template-columns');
     expect(lane).not.toContain('min-width: 2160px');
+    // Phase 60 (D-09): the tick basis is inline (resolved step × live pitch).
     const tick = getCssRuleBlock(styles, '.physics-paint-ruler-tick {');
-    expect(tick).toContain('54px');
-    expect(tick).not.toContain('flex: 1 1 0');
+    expect(tick).not.toContain('54px');
+    expect(tick).not.toContain('flex:');
+    expect(source()).toContain('flex: `0 0 ${rotoRulerTickWidthPx}px`');
   });
 
   it('restyles the timeline scrollbar as a 14px band', () => {
@@ -1429,7 +1438,8 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
     expect(lane).not.toContain('grid-template-columns');
     expect(lane).not.toContain('padding-left');
     expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).not.toContain('padding-left');
-    expect(getCssRuleBlock(styles, '.physics-paint-ruler-tick {')).toContain('54px');
+    // Phase 60 (D-09): the tick basis is resolved in the strip, never fixed here.
+    expect(getCssRuleBlock(styles, '.physics-paint-ruler-tick {')).not.toContain('54px');
   });
 
   it('locks the 34px action-row band with the dynamic strip shell and every other band unchanged', () => {

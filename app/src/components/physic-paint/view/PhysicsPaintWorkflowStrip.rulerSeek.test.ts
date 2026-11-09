@@ -57,14 +57,14 @@ describe('PhysicsPaintPlayheadBar contract', () => {
     expect(playheadRender).toBeGreaterThan(rowsRegionTail);
   });
 
-  it('positions the bar with the 6px scroll-padding-inclusive cell-center offset', () => {
+  it('positions the bar from the 6px origin and the live pitch, centred by half a pitch minus one', () => {
     const block = getPlayheadComponentBlock(source());
-    // 6 = the timeline-scroll padding-left (the v2.0.1 v7 content gutter and
-    // ruler/cell origin); the pitch is ROTO_CELL_WIDTH_PX; +8 centers the
-    // 2px line on the 18px cell.
-    expect(block).toContain('6 +');
-    expect(block).toContain('ROTO_CELL_WIDTH_PX');
-    expect(block).toContain('+ 8');
+    // Phase 60 (D-13): the origin is TIMELINE_LANE_ORIGIN_PX (the 6px content
+    // gutter); the pitch is the LIVE metric (18 × scale), and pitch/2 − 1
+    // centres the 2px line. At scale 1 this is the former 6 + f*18 + 8.
+    expect(block).toContain('const pitch = timelineZoom.metrics.value.pitch;');
+    expect(block).toContain('const left = TIMELINE_LANE_ORIGIN_PX + clampedFrame * pitch + pitch / 2 - 1;');
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
   });
 
   it('reads the per-tick playback signal ONLY inside a playback-active guard', () => {
