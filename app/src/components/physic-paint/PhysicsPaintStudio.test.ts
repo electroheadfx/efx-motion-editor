@@ -6309,3 +6309,67 @@ describe('quick 261109-pwt — pending destination capture settles after the des
     expect(settle).not.toContain('rotoCachedPlayback.isActive,');
   });
 });
+
+// quick-261109-uj0: the localized gate changes the blank-sheet DECISION only.
+// The eager snapshot, the single early exit before the sequence assignment,
+// the Save-thumbnail port and the promotion/flush/settle laws around it stay
+// exactly as 261109-pwt left them.
+describe('quick 261109-uj0 — capture laws stay intact around the localized gate', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const CAPTURE_START = 'const handleAquarelleCaptureFrame = useCallback(';
+  const CAPTURE_END = 'const flushAquarellePixels = useCallback(';
+  const MEASURE_MARKER = 'measureAquarelleCanvasInk(liveAlphaCanvas)';
+  const GATE_MARKER = 'if (!passesAquarelleCaptureInkGate(ink))';
+  const SEQ_MARKER = 'const seq = ++aquarelleCaptureSeqRef.current';
+
+  it('keeps the eager snapshot before the measurement and the measurement before the gate', () => {
+    const capture = regionOf(studio, CAPTURE_START, CAPTURE_END);
+    const snapshotAt = capture.indexOf('const liveAlphaCanvas = snapshot()');
+    const measureAt = capture.indexOf(MEASURE_MARKER);
+    const gateAt = capture.indexOf(GATE_MARKER);
+    expect(snapshotAt).toBeGreaterThan(-1);
+    expect(measureAt).toBeGreaterThan(snapshotAt);
+    expect(gateAt).toBeGreaterThan(measureAt);
+  });
+
+  it('leaves exactly one early return between the measurement and the sequence assignment', () => {
+    const capture = regionOf(studio, CAPTURE_START, CAPTURE_END);
+    const measureAt = capture.indexOf(MEASURE_MARKER);
+    const seqAt = capture.indexOf(SEQ_MARKER);
+    expect(measureAt).toBeGreaterThan(-1);
+    expect(seqAt).toBeGreaterThan(measureAt);
+    // The gate's rejection is the ONLY exit in the guarded slice, so no new
+    // early return can appear (or disappear) beside it.
+    expect(capture.slice(measureAt, seqAt).split('return;').length - 1).toBe(1);
+  });
+
+  it('still gates the Save-thumbnail port through the shared predicate', () => {
+    const savePort = regionOf(studio, 'captureAquarelleCanvas: () => {', 'applyAquarelleEvents: async');
+    expect(savePort).toContain('passesAquarelleCaptureInkGate(measureAquarelleCanvasInk(canvas)) ? canvas : null');
+  });
+
+  it('emits exactly one production-visible warn in the guard block', () => {
+    const capture = regionOf(studio, CAPTURE_START, CAPTURE_END);
+    const gateAt = capture.indexOf(GATE_MARKER);
+    const seqAt = capture.indexOf(SEQ_MARKER);
+    expect(gateAt).toBeGreaterThan(-1);
+    expect(seqAt).toBeGreaterThan(gateAt);
+    const guard = capture.slice(gateAt, seqAt);
+    expect(guard.split('console.warn(').length - 1).toBe(1);
+    // A DEV gate would compile the only packaged-build diagnostic away.
+    expect(guard).not.toContain('import.meta.env');
+  });
+
+  it('keeps the promotion, flush and destination-settle laws verbatim', () => {
+    expect(studio).toContain("pending.source !== 'auto-key-paint'");
+    expect(studio).toContain('aquarelleCapturesInFlightRef.current.add(run)');
+    expect(studio).toContain("// quick-261109-pwt: settle the destination frame's pending cache capture once it is displayed.");
+  });
+});
