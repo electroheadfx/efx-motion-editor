@@ -175,10 +175,13 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Three independent selection scopes (rail / drawing key / motion key) and save→close→reopen round-trips byte-identically with per-operation undo/redo — v2.1.0 Phase 59 (MOTN-11/12, REL-02)
 - ✓ Motion joins the canonical revision; sampled values never enter the flattened cache key; no new runtime dependencies — v2.1.0 Phase 59 (REL-01/03)
 - ✓ v7 Motion chrome ships: coloured chevron / grey minus, 18px lanes, 6×6 keys, rounded selected outline, one open block at a time, aligned header while scrolling — v2.1.0 Phase 59 (MUI-01..06)
+- ✓ Cmd/Ctrl+wheel zooms the Studio timeline's frame density with the frame under the cursor fixed, and the pill offers minus / percent / plus / 100% reset over 0.25×–4× — v2.1.0 Phase 60 (ZOOM-01/02)
+- ✓ Row, lane and cell heights never move with zoom; every frame→pixel consumer (playhead, ruler, hit-testing, drag, scrub, selection, paste, sound stains, rails) reads one pitch authority with no local `× 18` — v2.1.0 Phase 60 (ZOOM-03/05)
+- ✓ The timeline density is a UI preference remembered per paint layer across Studio reopen, never written to the document, schema, project persistence or export — v2.1.0 Phase 60 (ZOOM-04)
 
 ### Active
 
-**v2.1.0 scope (defined 2026-11-06 — see `.planning/REQUIREMENTS.md`):** Studio timeline horizontal zoom (Phase 60), vector painting tool (Phase 61), painted-script/stroke curve editing (Phase 62). Phase 59 (rail motion channels + v7 interface) shipped 2026-11-08.
+**v2.1.0 scope (defined 2026-11-06 — see `.planning/REQUIREMENTS.md`):** Studio timeline horizontal zoom (Phase 60), vector painting tool (Phase 61), painted-script/stroke curve editing (Phase 62). Phase 59 (rail motion channels + v7 interface) shipped 2026-11-08; Phase 60 (timeline horizontal zoom) shipped 2026-11-09.
 
 **Carried forward (not scheduled in v2.1.0):**
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
@@ -195,7 +198,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 **Target features:**
 
 - **Phase 59 — Rail motion + v7 interface.** Motion keys are independent of drawing keys; three selection scopes (rail / drawing key / motion key); channels opened on demand one at a time — Position (two modes: grouped whole-position, or split X + Y as in Maya/Softimage), Scale, Rotation, Opacity; rail-local time with repeat = hold or fit-to-span; transform applied at the compositor (1 raster per track per frame, content cycles while motion continues, no re-bake); seeded wiggle deterministic at export; v7 chrome (18px lanes, header chevron minus/right/down, lane-header nav cluster, 6×6 Motion keys, rounded selected-rail outline). Gates A–D are answered in the phase plan. **Any rail animates** — Standard, Motion, Static, Reveal, and bare Key Rails — with no cycle value required or changed.
-- **Phase 60 — Studio timeline horizontal zoom.** Frame density only (row, lane and cell heights stay fixed); Cmd/Ctrl+wheel plus a zoom pill; 0.25×–4× with Fit; session-only, no document/schema/export change.
+- **Phase 60 — Studio timeline horizontal zoom.** Frame density only (row, lane and cell heights stay fixed); Cmd/Ctrl+wheel plus a zoom pill (minus / percent / plus / 100% reset); 0.25×–4×, with the density remembered per paint layer as a UI preference — no document/schema/export change. **Shipped 2026-11-09** (UAT 5/5).
 - **Phase 61 — Vector painting tool.** `pen-tool` / `spline-pointer`, per-vertex paint properties, curve-type choice, wireframe preview.
 - **Phase 62 — Painted script/stroke curve editing.**
 
@@ -439,4 +442,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-08 after Phase 59 (rail motion channels + v7 interface) — 25/25 plans, live UAT 15/15, verification passed 21/21 must-haves. Next: Phase 60 Studio timeline horizontal zoom. Previous: v2.0.1 shipped 2026-11-05 (tag `v2.0.1` → `49b5f7e57`, 15/15 requirements, audit `tech_debt` with 0 gaps).*
+*Last updated: 2026-11-09 after Phase 60 (Studio timeline horizontal zoom) — 6/6 plans, live UAT 5/5, verification passed 20/20 must-haves. Next: Phase 61 Vector painting tool. Previous: v2.0.1 shipped 2026-11-05 (tag `v2.0.1` → `49b5f7e57`, 15/15 requirements, audit `tech_debt` with 0 gaps).*

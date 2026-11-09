@@ -2,39 +2,39 @@
 gsd_state_version: "1.0"
 milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
-current_phase: 60
-current_phase_name: Studio Timeline Horizontal Zoom
-status: verifying
-stopped_at: Completed 60-06-PLAN.md
-last_updated: "2026-11-09T13:17:05.437Z"
+current_phase: 61
+current_phase_name: Vector Painting Tool
+status: planning
+stopped_at: Phase 60 complete, ready to plan Phase 61
+last_updated: "2026-11-09T17:04:09.052Z"
 last_activity: 2026-11-09
-last_activity_desc: Phase 60 execution started
-state_head: 8a32537b23a03db6836644bc8568b75111a04a1d
+last_activity_desc: Phase 60 complete, transitioned to Phase 61
+state_head: 6c366e572428d90515e0ed1c5b3b9215ab322b44
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 31
   completed_plans: 31
-  percent: 25
+  percent: 50
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
+See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 60 — Studio Timeline Horizontal Zoom
+**Current focus:** Phase 61 — Vector Painting Tool
 
 ## Current Position
 
-Phase: 60 (Studio Timeline Horizontal Zoom) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
-Last activity: 2026-11-09 — Phase 60 execution started
+Phase: 61 — Vector Painting Tool
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-09 — Phase 60 complete, transitioned to Phase 61
 
-Progress: [███░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -51,6 +51,7 @@ Progress: [███░░░░░░░] 25%
 | 61. Vector Painting Tool | TBD | - | - |
 | 62. Painted-Stroke Curve Editing | TBD | - | - |
 | 59 | 25 | - | - |
+| 60 | 6 | - | - |
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -117,6 +118,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: The rail-motions ordinal is asserted on the Rust-computed source, so a wrong-branch insertion fails even if the fixture were regenerated
 - [Phase 59]: Render-source contentRevision field carries the raster revision; the structural entry and getRotoPhysicalContentRevision stay canonical
 - [Phase 59]: Coordinator stages rail motion like loop clips (replay target else launch read) and hashes it into stagedRevision, the deferred document and the payload
+- [Phase 60]: One session pitch authority (`physicsPaintTimelineZoom.ts`) owns pitch/cellWidth/cellGap/ruler step/anchoring; every consumer reads it, and a fail-closed source audit forbids a local `x 18`
+- [Phase 60]: The anchored scroll write is deferred one frame — the browser clamps `scrollLeft` against the pre-render width, so a same-task write loses the anchor near the right edge
+- [Phase 60]: Cell widths ride the `--timeline-cell-width` custom property (scroller publishes it) so cells, ruler offsets, the in-between dash and the current-frame marker all scale from one value
+- [Phase 60]: Zoom density is a UI preference remembered per paint layer in localStorage (the Studio webview is destroyed on close), LRU-capped at 64 layers; it never enters the document
 - [Phase 59]: Requirements MOTN-01/02/12/REL-03 left pending per the 59-01/02/03/06 precedent; 59-08/59-12 and live UAT close them
 - [Phase 59]: Motion lanes fold five model channels into four fixed display lanes; grouped Position exposes the first present axis's shared frames as ONE key set (three shared frames -> three dots and a 3-key header, never six)
 - [Phase 59]: Key dots are centred on the frame column (left = frame x cellPitch + (cellWidth - keySize)/2 = +5) per SPECS §2; the plan's 'at frame x cellPitch' is the column anchor, not the literal left edge
@@ -292,10 +297,10 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-11-09T13:17:04.464Z
-Stopped at: Completed 60-06-PLAN.md
+Stopped at: Phase 60 complete, ready to plan Phase 61
 Resume file: None
 
 ## Operator Next Steps
 
-- Phase 59 is complete (25/25 plans, live UAT 15/15, verification 21/21). Next: `/gsd-discuss-phase 60`, then `/gsd-plan-phase 60` — Studio timeline horizontal zoom (frame density only, session-only, no document/schema/export change).
-- Phase 59 was the only phase in this milestone that changes `.mce`; Phase 60 must not touch the schema.
+- Phase 60 is complete (6/6 plans, live UAT 5/5, verification 20/20 must-haves, security threats_open 0). Next: `/gsd-discuss-phase 61`, then `/gsd-plan-phase 61` — Vector painting tool.
+- Open review findings for Phase 60 (non-blocking): WR-02 (6px gutter omitted from three pointer→frame projections — pre-existing) and IN-01..04 (info). ROADMAP SC2/SC5 wording still cites the superseded "Fit / session-only" contract; REQUIREMENTS.md is authoritative until the milestone close.

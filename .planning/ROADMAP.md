@@ -87,7 +87,7 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
 **Milestone Goal:** Turn every rail into an animatable object — independent Motion keys driving a compositor-level transform — then add frame-density timeline zoom, a vector painting tool, and painted-stroke curve editing.
 
 - [x] **Phase 59: Rail Motion Channels & v7 Interface** - Any rail animates through independent Motion keys applied at the compositor, with the v7 channel lanes (completed 2026-11-08)
-- [ ] **Phase 60: Studio Timeline Horizontal Zoom** - Frame density zooms 0.25×-4× from one pitch authority with all vertical geometry fixed
+- [x] **Phase 60: Studio Timeline Horizontal Zoom** - Frame density zooms 0.25×-4× from one pitch authority with all vertical geometry fixed (completed 2026-11-09)
 - [ ] **Phase 61: Vector Painting Tool** - Pen-drawn vector strokes with per-vertex width, per-stroke style, wireframe preview, persistence, and export
 - [ ] **Phase 62: Painted-Stroke Curve Editing** - A selected painted stroke reshapes as a curve and re-bakes from its pre-script base across every loop occurrence
 
@@ -193,7 +193,7 @@ Plans:
   4. Row, lane, and cell heights stay fixed at every zoom level — only horizontal frame density scales — and no frame→pixel consumer multiplies a local `18`.
   5. Zoom is session-only: it resets when the Studio closes and changes no document, `.mce`, schema, persistence, or export output.
 
-**Plans:** 6/6 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 **Wave 1**
@@ -272,7 +272,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 59. Rail Motion Channels & v7 Interface | 25/25 | Complete    | 2026-11-08 |
-| 60. Studio Timeline Horizontal Zoom | 6/6 | In Progress | - |
+| 60. Studio Timeline Horizontal Zoom | 6/6 | Complete    | 2026-11-09 |
 | 61. Vector Painting Tool | 0/TBD | Not started | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
 
