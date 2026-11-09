@@ -5,8 +5,10 @@ import {
   projectPhysicsPaintBackgroundClipPresentation,
   projectPhysicsPaintGroupAcceptedFeedback,
   projectPhysicsPaintGroupProductReason,
+  projectPhysicsPaintLoopClipGeometry,
   projectPhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
+import { TIMELINE_GEOMETRY } from './timelineRailDesign';
 
 function range(overrides: Partial<PhysicPaintRotoLoopRange> = {}): PhysicPaintRotoLoopRange {
   return {
@@ -565,6 +567,41 @@ describe('261031-vbo Standard merged-rail presentation', () => {
       groupTypeLabel: 'Static Rail',
       lifecycle: 'synchronized',
     });
+  });
+});
+
+describe('Phase 60 (ZOOM-05) loop-clip rail width follows the scaled gap', () => {
+  const visibleAll = { startFrame: 12, endFrameExclusive: 24 };
+  const threeFrames = range({ placementStart: 12, effectiveEnd: 15 });
+
+  it('keeps the 1x baseline: three frames at pitch 18 with gap 2 gives 52', () => {
+    expect(projectPhysicsPaintLoopClipGeometry(threeFrames, visibleAll, 18, 2)).toEqual({ left: 0, width: 52 });
+  });
+
+  it('scales the gap with the pitch: 208 at 4x (72/8) and 13 at 0.25x (4.5/0.5)', () => {
+    expect(projectPhysicsPaintLoopClipGeometry(threeFrames, visibleAll, 72, 8)).toEqual({ left: 0, width: 208 });
+    expect(projectPhysicsPaintLoopClipGeometry(threeFrames, visibleAll, 4.5, 0.5)).toEqual({ left: 0, width: 13 });
+  });
+
+  it('ignores the gap when the viewport clips the rail end (the rail reads as continuing)', () => {
+    const clippedWindow = { startFrame: 12, endFrameExclusive: 14 };
+    expect(projectPhysicsPaintLoopClipGeometry(
+      range({ placementStart: 12, effectiveEnd: 24 }),
+      clippedWindow,
+      18,
+      2,
+    )).toEqual({ left: 0, width: 36 });
+    expect(projectPhysicsPaintLoopClipGeometry(
+      range({ placementStart: 12, effectiveEnd: 24 }),
+      clippedWindow,
+      72,
+      8,
+    )).toEqual({ left: 0, width: 144 });
+  });
+
+  it('defaults the gap to the canonical TIMELINE_GEOMETRY cell gap', () => {
+    expect(projectPhysicsPaintLoopClipGeometry(threeFrames, visibleAll, 18))
+      .toEqual(projectPhysicsPaintLoopClipGeometry(threeFrames, visibleAll, 18, TIMELINE_GEOMETRY.cellGap));
   });
 });
 

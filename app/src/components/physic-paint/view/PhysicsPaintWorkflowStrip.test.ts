@@ -942,7 +942,10 @@ describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task
     const code = source();
     const props = getWorkflowStripPropsInterface(code);
     expect(props).toContain('rotoPhysicalCells: readonly RotoPhysicalTimelineCell[];');
-    expect(code).toContain('ROTO_CELL_WIDTH_PX = 18');
+    // Phase 60 (ZOOM-05): the strip declares no pitch constant — every
+    // consumer reads the session metrics.
+    expect(code).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(code).toContain('timelineZoom.metrics');
     expect(code).toContain('const currentPhysicalCells = props.rotoPhysicalCells;');
     expect(code).toContain('buildRotoTimelineStructuralIndex(currentPhysicalCells, cachedRotoFrames, acceptedGroupDocument)');
     expect(code).toContain('if (!cell || cell.appFrame !== appFrame) {');
@@ -1234,6 +1237,23 @@ describe('Phase 60 (ZOOM-05) interaction-surface conversion contract', () => {
     const ghostRegion = getActiveLaneRenderBlock(code);
     expect(ghostRegion).not.toContain('ROTO_CELL_WIDTH_PX');
     expect(ghostRegion).toContain('timelineMetrics.pitch');
+  });
+});
+
+describe('Phase 60 (ZOOM-05) scaled rail gap contract', () => {
+  it('passes the scaled cell gap to both rails alongside the live pitch', () => {
+    const code = source();
+    expect(code.split('frameGap={timelineMetrics.cellGap}').length - 1).toBe(2);
+    const keyRailStart = code.indexOf('<PhysicsPaintKeyRail');
+    const loopRailStart = code.indexOf('<PhysicsPaintLoopClipRail');
+    expect(keyRailStart).toBeGreaterThanOrEqual(0);
+    expect(loopRailStart).toBeGreaterThan(keyRailStart);
+    const keyRailBlock = code.slice(keyRailStart, code.indexOf('/>', keyRailStart));
+    const loopRailBlock = code.slice(loopRailStart, code.indexOf('/>', loopRailStart));
+    for (const block of [keyRailBlock, loopRailBlock]) {
+      expect(block).toContain('framePitch={timelineMetrics.pitch}');
+      expect(block).toContain('frameGap={timelineMetrics.cellGap}');
+    }
   });
 });
 
