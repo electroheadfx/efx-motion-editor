@@ -4082,10 +4082,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       const startFrame = source?.startFrame ?? 0;
       const requested = startFrame + proposedDelta;
       const destination = Math.max(0, Math.min(frameCells.length - 1, requested));
+      // Phase 60 (ZOOM-05): the ghost geometry rides the live pitch peeked at
+      // event time; the one-cell floor is the live pitch too (D-12/D-13), so a
+      // one-frame clip stays visible at every zoom.
+      const pitch = timelineZoom.metrics.peek().pitch;
       return {
         destination,
-        left: destination * ROTO_CELL_WIDTH_PX,
-        width: Math.max(ROTO_CELL_WIDTH_PX, durationFrames * ROTO_CELL_WIDTH_PX),
+        left: destination * pitch,
+        width: Math.max(pitch, durationFrames * pitch),
         blockedEdge: destination === requested
           ? null
           : requested > destination ? 'right' : 'left',
@@ -4155,20 +4159,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     clampFrame: (proposedFrame) => {
       const source = backgroundResizeSourceRef.current;
       if (!source) return { frame: proposedFrame, left: 0, width: 0, blockedEdge: null };
+      // Phase 60 (ZOOM-05): both ghost branches size from the live pitch
+      // peeked at event time, with a one-cell live-pitch floor (D-12/D-13).
+      const pitch = timelineZoom.metrics.peek().pitch;
       if (source.edge === 'start') {
         const frame = Math.max(0, Math.min(source.endFrame - 1, proposedFrame));
         return {
           frame,
-          left: frame * ROTO_CELL_WIDTH_PX,
-          width: Math.max(ROTO_CELL_WIDTH_PX, (source.endFrame - frame) * ROTO_CELL_WIDTH_PX),
+          left: frame * pitch,
+          width: Math.max(pitch, (source.endFrame - frame) * pitch),
           blockedEdge: frame === proposedFrame ? null : (proposedFrame > frame ? 'right' : 'left'),
         };
       }
       const frame = Math.max(source.startFrame + 1, Math.min(frameCells.length, proposedFrame));
       return {
         frame,
-        left: source.startFrame * ROTO_CELL_WIDTH_PX,
-        width: Math.max(ROTO_CELL_WIDTH_PX, (frame - source.startFrame) * ROTO_CELL_WIDTH_PX),
+        left: source.startFrame * pitch,
+        width: Math.max(pitch, (frame - source.startFrame) * pitch),
         blockedEdge: frame === proposedFrame ? null : (proposedFrame > frame ? 'right' : 'left'),
       };
     },
@@ -5640,8 +5647,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (preview === null || preview.blockedEdge === null || preview.collidingMemberId === null) return null;
     const rail = railSetMoveGhostRails.find((candidate) => candidate.id === preview.collidingMemberId);
     if (rail === undefined) return null;
-    const ghostLeft = (rail.intervalStart + preview.delta - frameCells[0]) * ROTO_CELL_WIDTH_PX;
-    const ghostWidth = Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX);
+    // Phase 60 (ZOOM-05): the bar rides the same live render-body pitch as the
+    // ghost it annotates, with the one-cell live-pitch floor (D-12/D-13).
+    const ghostLeft = (rail.intervalStart + preview.delta - frameCells[0]) * timelineMetrics.pitch;
+    const ghostWidth = Math.max(timelineMetrics.pitch, (rail.intervalEndExclusive - rail.intervalStart) * timelineMetrics.pitch);
     return preview.blockedEdge === 'left' ? ghostLeft : ghostLeft + ghostWidth - 2;
   })();
   /**
@@ -6030,7 +6039,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   && props.currentFrame <= frameCells[frameCells.length - 1]! ? (
                   <div
                     class="physics-paint-current-frame-outline"
-                    style={{ left: `${(props.currentFrame - frameCells[0]!) * ROTO_CELL_WIDTH_PX}px` }}
+                    style={{ left: `${(props.currentFrame - frameCells[0]!) * timelineMetrics.pitch}px` }}
                     aria-hidden="true"
                   />
                 ) : null}
@@ -6044,8 +6053,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     <span
                       class={`physics-paint-push-hover-rail${pushHoverRailKindClass(pushArmedAnchorRail)}`}
                       style={{
-                        left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
-                        width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                        left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * timelineMetrics.pitch}px`,
+                        width: `${Math.max(timelineMetrics.pitch, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * timelineMetrics.pitch)}px`,
                       }}
                     />
                   </div>
@@ -6060,8 +6069,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 {pushDragGhost.active ? (
                   <div class="physics-paint-push-ghost-layer" aria-hidden="true">
                     {pushSessionRef.current?.movedRails.map((rail) => {
-                      const left = (rail.intervalStart + pushDragGhost.deltaFrames - frameCells[0]) * ROTO_CELL_WIDTH_PX;
-                      const width = Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX);
+                      const left = (rail.intervalStart + pushDragGhost.deltaFrames - frameCells[0]) * timelineMetrics.pitch;
+                      const width = Math.max(timelineMetrics.pitch, (rail.intervalEndExclusive - rail.intervalStart) * timelineMetrics.pitch);
                       return (
                         <span
                           key={rail.id}
@@ -6076,10 +6085,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                         style={{
                           left: `${(pushDragGhost.blockedEdge === 'left'
                             ? pushSessionRef.current.movedSetBounds.firstFrame
-                            : pushSessionRef.current.movedSetBounds.lastEndExclusive) * ROTO_CELL_WIDTH_PX
-                            + pushDragGhost.deltaFrames * ROTO_CELL_WIDTH_PX
+                            : pushSessionRef.current.movedSetBounds.lastEndExclusive) * timelineMetrics.pitch
+                            + pushDragGhost.deltaFrames * timelineMetrics.pitch
                             - (pushDragGhost.blockedEdge === 'right' ? 2 : 0)
-                            - frameCells[0] * ROTO_CELL_WIDTH_PX}px`,
+                            - frameCells[0] * timelineMetrics.pitch}px`,
                         }}
                       />
                     ) : null}
@@ -6099,8 +6108,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                         key={rail.id}
                         class={`physics-paint-rail-set-ghost${railSetGhostRailKindClass(rail)}`}
                         style={{
-                          left: `${(rail.intervalStart + railSetDragPreview.delta - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
-                          width: `${Math.max(ROTO_CELL_WIDTH_PX, (rail.intervalEndExclusive - rail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                          left: `${(rail.intervalStart + railSetDragPreview.delta - frameCells[0]) * timelineMetrics.pitch}px`,
+                          width: `${Math.max(timelineMetrics.pitch, (rail.intervalEndExclusive - rail.intervalStart) * timelineMetrics.pitch)}px`,
                         }}
                       />
                     ))}
@@ -6123,8 +6132,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     class="physics-paint-push-anchor-capsule"
                     aria-hidden="true"
                     style={{
-                      left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * ROTO_CELL_WIDTH_PX}px`,
-                      width: `${Math.max(ROTO_CELL_WIDTH_PX, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * ROTO_CELL_WIDTH_PX)}px`,
+                      left: `${(pushArmedAnchorRail.intervalStart - frameCells[0]) * timelineMetrics.pitch}px`,
+                      width: `${Math.max(timelineMetrics.pitch, (pushArmedAnchorRail.intervalEndExclusive - pushArmedAnchorRail.intervalStart) * timelineMetrics.pitch)}px`,
                     }}
                   />
                 ) : null}
