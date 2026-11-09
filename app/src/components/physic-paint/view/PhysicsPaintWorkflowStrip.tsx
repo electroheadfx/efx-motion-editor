@@ -3671,8 +3671,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       // Raw SIGNED frame delta (positive = right, negative = left). The hook
       // derives the drag direction from the sign and clamps to the locked
       // direction — the resolver clamp consumes frame deltas, never raw CSS
-      // pixels (divide by the 18px frame pitch and round).
-      return Math.round((clientX - originClientX) / ROTO_CELL_WIDTH_PX);
+      // pixels (divide by the LIVE pitch and round). Phase 60 (ZOOM-05): the
+      // handler peeks the authority so N frames of travel stay N frames at
+      // every zoom level, without subscribing the drag to the zoom signal.
+      return Math.round((clientX - originClientX) / timelineZoom.metrics.peek().pitch);
     },
     clampDestination: (proposedDeltaFrames, direction) => {
       const session = pushSessionRef.current;
@@ -3818,8 +3820,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // canceller so a click-then-drag cannot collapse or mutate the set mid-drag.
   const railClickSequenceCancellersRef = useRef(new Set<() => void>());
   const railSetDragApi = usePhysicsPaintRailSetDrag<RotoRailSetMovePublication>({
+    // Phase 60 (ZOOM-05): the same pointer travel must address the same frame
+    // count at every zoom level — divide by the live pitch, peeked at event
+    // time so the batch drag never subscribes to the zoom signal.
     projectDelta: ({ originClientX, clientX }) => (
-      Math.round((clientX - originClientX) / ROTO_CELL_WIDTH_PX)
+      Math.round((clientX - originClientX) / timelineZoom.metrics.peek().pitch)
     ),
     clampDelta: (proposedDelta) => {
       const members = railSetMoveMembersRef.current;
@@ -3975,7 +3980,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     getCaptureElement: () => rowsRegionRef.current,
     getContentLeft: () => timelineScrollRef.current?.getBoundingClientRect().left ?? 0,
     getScrollLeft: () => timelineScrollRef.current?.scrollLeft ?? 0,
-    framePitch: ROTO_CELL_WIDTH_PX,
+    // Phase 60 (ZOOM-05, RESEARCH Pitfall 6): pass the ALREADY-scaled pitch as
+    // `framePitch` and leave the hook's optional `zoom` undefined (defaults to
+    // 1), so the pitch is applied exactly once — never pitch².
+    framePitch: timelineZoom.metrics.peek().pitch,
     // The rows only render with a layer, so an empty fallback never commits
     // (a session cannot start without a resolved row element).
     layerId: props.layerId ?? '',
@@ -4056,8 +4064,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     projectDestination: ({ originClientX, clientX }) => {
       const contentLeft = timelineScrollRef.current?.getBoundingClientRect().left ?? 0;
       const scrollLeft = timelineScrollRef.current?.scrollLeft ?? 0;
-      const originFrame = Math.round((originClientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
-      const currentFrame = Math.round((clientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
+      // Phase 60 (ZOOM-05): both ends of the pointer travel map through the
+      // live pitch, so the delta stays in frames at any zoom.
+      const pitch = timelineZoom.metrics.peek().pitch;
+      const originFrame = Math.round((originClientX - contentLeft + scrollLeft) / pitch);
+      const currentFrame = Math.round((clientX - contentLeft + scrollLeft) / pitch);
       return currentFrame - originFrame;
     },
     clampDestination: (proposedDelta) => {
@@ -4137,7 +4148,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     projectFrame: ({ clientX }) => {
       const contentLeft = timelineScrollRef.current?.getBoundingClientRect().left ?? 0;
       const scrollLeft = timelineScrollRef.current?.scrollLeft ?? 0;
-      return Math.round((clientX - contentLeft + scrollLeft) / ROTO_CELL_WIDTH_PX);
+      // Phase 60 (ZOOM-05): the resize handle lands on the frame under the
+      // pointer at the live pitch.
+      return Math.round((clientX - contentLeft + scrollLeft) / timelineZoom.metrics.peek().pitch);
     },
     clampFrame: (proposedFrame) => {
       const source = backgroundResizeSourceRef.current;
@@ -4202,7 +4215,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // rAF-batched, so flushLivePixels never runs per pointer event).
   const rulerScrub = usePhysicsPaintRulerScrub({
     frameCount: () => frameCells.length,
-    cellWidthPx: ROTO_CELL_WIDTH_PX,
+    // Phase 60 (ZOOM-05): the scrub maps clientX through the live pitch, so the
+    // same pointer x seeks the same frame at every zoom level.
+    cellWidthPx: timelineZoom.metrics.peek().pitch,
     onSeek: (frame) => props.onNavigateToSyncedFrame?.(frame),
     onScrubStart: () => props.onScrubStart?.(),
     onScrubEnd: (frame) => props.onScrubEnd?.(frame),
@@ -4321,7 +4336,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       session.armed = true;
     }
     event.stopPropagation();
-    const delta = Math.round(dx / ROTO_CELL_WIDTH_PX);
+    // Phase 60 (ZOOM-05): the sound gesture's frame delta divides by the live
+    // pitch too — a 36px drag is two frames at 1x and one frame at 2x.
+    const delta = Math.round(dx / timelineZoom.metrics.peek().pitch);
     if (isReposition) {
       // UAT round 5: the reposition bound is the START (the body may overhang
       // the parent end) — a full-width clip used to be pinned at frame 0.
@@ -4622,7 +4639,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       const laneElement = timelineContentRef.current;
       if (laneElement && frameCells.length > 0) {
         const relativeX = event.clientX - laneElement.getBoundingClientRect().left;
-        const frame = Math.floor(relativeX / ROTO_CELL_WIDTH_PX);
+        // Phase 60 (ZOOM-05): the armed-click seek lands on the frame under the
+        // pointer at the live pitch (floored, unchanged rounding direction).
+        const frame = Math.floor(relativeX / timelineZoom.metrics.peek().pitch);
         if (frame >= 0 && frame < frameCells.length) {
           props.onNavigateToSyncedFrame?.(frame);
         }
