@@ -68,6 +68,18 @@ function makePort(options: {
   return { port, readScrollLeft: () => scrollLeft };
 }
 
+/**
+ * The anchored scroll write is deferred one frame (it must land after the new
+ * pitch renders — see commitAnchoredScroll). Node has no rAF, so the store
+ * schedules a macrotask there; wait for both so this holds in either env.
+ */
+async function flushAnchoredScroll(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  if (typeof requestAnimationFrame === 'function') {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+}
+
 describe('physicsPaintTimelineZoom — the locked ladder and clamp', () => {
   it('exposes the locked eight-preset ladder, strictly increasing', () => {
     expect([...TIMELINE_ZOOM_PRESETS]).toEqual([...PRESETS]);
@@ -267,49 +279,77 @@ describe('physicsPaintTimelineZoom — fit, percent and boundary inputs', () => 
 });
 
 describe('physicsPaintTimelineZoom — store', () => {
-  it('writes the anchored scrollLeft for a cursor zoom', () => {
+  it('writes the anchored scrollLeft for a cursor zoom', async () => {
     const { port, readScrollLeft } = makePort({ scrollLeft: 100, scrollerLeft: 200, clientWidth: 800 });
     registerTimelineZoomScrollPort(port);
     timelineZoom.setScale(1);
     timelineZoom.setScaleAtCursor(1.5, 500);
     expect(timelineZoom.scale.value).toBeCloseTo(1.5, 12);
+    await flushAnchoredScroll();
     // localX = 500 - 200 - 6 = 294; (100 + 294) / 18 x 27 - 294 = 297.
     expect(readScrollLeft()).toBeCloseTo(297, 9);
   });
 
-  it('anchors zoomIn and zoomOut on the playhead centre', () => {
+  it('defers the anchored write so it is never clamped against the pre-zoom width (CR-02)', async () => {
+    const { port, readScrollLeft } = makePort({ scrollLeft: 100, scrollerLeft: 200, clientWidth: 800, playheadFrame: 10 });
+    registerTimelineZoomScrollPort(port);
+    timelineZoom.setScale(1);
+    timelineZoom.zoomIn();
+    // Same task: the browser would still see the OLD scrollWidth, so the write
+    // must not have landed yet.
+    expect(readScrollLeft()).toBe(100);
+    await flushAnchoredScroll();
+    expect(readScrollLeft()).toBeCloseTo(194, 9);
+  });
+
+  it('discards a queued anchored write when the Studio resets', async () => {
+    const { port, readScrollLeft } = makePort({ scrollLeft: 100, scrollerLeft: 200, clientWidth: 800, playheadFrame: 10 });
+    registerTimelineZoomScrollPort(port);
+    timelineZoom.setScale(1);
+    timelineZoom.zoomIn();
+    timelineZoom.resetForStudioOpen();
+    await flushAnchoredScroll();
+    expect(timelineZoom.scale.value).toBe(1);
+    expect(readScrollLeft()).toBe(100);
+  });
+
+  it('anchors zoomIn and zoomOut on the playhead centre', async () => {
     const { port, readScrollLeft } = makePort({ scrollLeft: 100, scrollerLeft: 200, clientWidth: 800, playheadFrame: 10 });
     registerTimelineZoomScrollPort(port);
     timelineZoom.setScale(1);
     timelineZoom.zoomIn();
     expect(timelineZoom.scale.value).toBeCloseTo(1.5, 12);
+    await flushAnchoredScroll();
     expect(readScrollLeft()).toBeCloseTo(194, 9);
   });
 
-  it('anchors zoomOut one step down on the playhead centre', () => {
+  it('anchors zoomOut one step down on the playhead centre', async () => {
     const { port, readScrollLeft } = makePort({ scrollLeft: 100, scrollerLeft: 200, clientWidth: 800, playheadFrame: 10 });
     registerTimelineZoomScrollPort(port);
     timelineZoom.setScale(1);
     timelineZoom.zoomOut();
     expect(timelineZoom.scale.value).toBeCloseTo(0.75, 12);
+    await flushAnchoredScroll();
     expect(readScrollLeft()).toBeCloseTo(53, 9);
   });
 
-  it('falls back to the viewport centre when the playhead is offscreen', () => {
+  it('falls back to the viewport centre when the playhead is offscreen', async () => {
     const { port, readScrollLeft } = makePort({ scrollLeft: 1000, scrollerLeft: 200, clientWidth: 800, playheadFrame: 10 });
     registerTimelineZoomScrollPort(port);
     timelineZoom.setScale(1);
     timelineZoom.zoomIn();
     expect(timelineZoom.scale.value).toBeCloseTo(1.5, 12);
+    await flushAnchoredScroll();
     expect(readScrollLeft()).toBeCloseTo(1700, 9);
   });
 
-  it('fits the whole range once and clamps the anchored write at 0', () => {
+  it('fits the whole range once and clamps the anchored write at 0', async () => {
     const { port, readScrollLeft } = makePort({ scrollLeft: 0, clientWidth: 360, playheadFrame: 10, frameCount: 40 });
     registerTimelineZoomScrollPort(port);
     timelineZoom.setScale(1);
     timelineZoom.fit();
     expect(timelineZoom.scale.value).toBeCloseTo(0.49166666666666664, 12);
+    await flushAnchoredScroll();
     // -95.5666... clamps at 0 so a negative never reaches the DOM.
     expect(readScrollLeft()).toBe(0);
   });

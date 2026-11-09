@@ -8148,7 +8148,8 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   position: absolute;
   top: 6px;
   box-sizing: border-box;
-  width: 16px;
+  /* Width is set inline from the live cell width (Phase 60 ZOOM-05) — a fixed
+     16px covers a quarter cell at 4x and 3.5 frames at 0.25x. */
   height: 22px;
   border: 1px solid #EAF0FF;
   border-radius: 3px;

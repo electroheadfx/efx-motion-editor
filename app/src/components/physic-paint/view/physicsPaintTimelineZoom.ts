@@ -228,6 +228,8 @@ const isAtMaxSignal = computed(() => scaleSignal.value >= TIMELINE_ZOOM_MAX - TI
 let scrollPort: TimelineZoomScrollPort | null = null;
 
 export function registerTimelineZoomScrollPort(port: TimelineZoomScrollPort | null): void {
+  // Unregistering (unmount) drops any queued write — it would target a dead scroller.
+  if (port === null) discardPendingScroll();
   scrollPort = port;
 }
 
@@ -258,13 +260,51 @@ function anchoredTarget(resolveLocalX: (scrollLeft: number, clientWidth: number,
   return Math.max(0, resolveAnchoredScrollLeft(scrollLeft, localX, oldPitch, newPitch));
 }
 
+/**
+ * The anchored scroll write lands one frame AFTER the scale signal: Preact
+ * commits the render on a microtask, and the browser clamps `scrollLeft` to
+ * the scrollWidth it sees at write time. Written in the same task the target
+ * is clamped against the PRE-zoom lane extent, so an anchor near the right
+ * edge silently slides on every zoom-in. Writing after the render lets layout
+ * reflect the new extent first.
+ */
+let pendingScrollFrame: ReturnType<typeof setTimeout> | null = null;
+let pendingScrollTarget: number | null = null;
+
+function cancelPendingScrollFrame(): void {
+  if (pendingScrollFrame === null) return;
+  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pendingScrollFrame as unknown as number);
+  else clearTimeout(pendingScrollFrame);
+  pendingScrollFrame = null;
+}
+
+function discardPendingScroll(): void {
+  cancelPendingScrollFrame();
+  pendingScrollTarget = null;
+}
+
+function commitAnchoredScroll(target: number): void {
+  // Coalesce: the newest target wins, one write per frame.
+  pendingScrollTarget = target;
+  if (pendingScrollFrame !== null) return;
+  const flush = () => {
+    pendingScrollFrame = null;
+    const next = pendingScrollTarget;
+    pendingScrollTarget = null;
+    if (next !== null && scrollPort) scrollPort.setScrollLeft(next);
+  };
+  pendingScrollFrame = typeof requestAnimationFrame === 'function'
+    ? (requestAnimationFrame(flush) as unknown as ReturnType<typeof setTimeout>)
+    : setTimeout(flush, 0);
+}
+
 /** The single write path: scale + anchored scrollLeft, one call per input. */
 function applyScale(nextScale: number, target: number | null): void {
   const clamped = clampTimelineZoomScale(nextScale);
   const current = scaleSignal.peek();
   if (Math.abs(clamped - current) <= TIMELINE_ZOOM_EPSILON) return;
   setScaleSignal(clamped);
-  if (target !== null && scrollPort) scrollPort.setScrollLeft(target);
+  if (target !== null && scrollPort) commitAnchoredScroll(target);
 }
 
 function stepPreset(direction: 1 | -1): void {
@@ -344,6 +384,9 @@ export const timelineZoom = {
 
   /** Studio open (and a view remount inside one document) always lands on 1x. */
   resetForStudioOpen(): void {
+    // A queued anchored write from the outgoing session must never land on the
+    // fresh 1x view.
+    discardPendingScroll();
     setScaleSignal(1);
   },
 };

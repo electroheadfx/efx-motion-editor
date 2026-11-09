@@ -233,6 +233,12 @@ describe('Timeline zoom wiring — CSS split (D-12, D-14)', () => {
     }
   });
 
+  it('sizes the current-frame marker from the live cell width, not a fixed 16px', () => {
+    const rule = ruleBody(css, '.physics-paint-current-frame-outline');
+    expect(rule).not.toContain('width: 16px');
+    expect(strip).toContain('width: `${timelineMetrics.cellWidth}px`');
+  });
+
   it('publishes the cell width on the scroller so the ruler inherits the live pitch', () => {
     expect(strip).toContain("'--timeline-cell-width': `${timelineMetrics.cellWidth}px`");
     const scrollerStart = strip.indexOf('class="physics-paint-timeline-scroll"');

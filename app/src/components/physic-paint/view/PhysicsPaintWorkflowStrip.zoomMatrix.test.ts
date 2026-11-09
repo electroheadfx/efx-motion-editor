@@ -570,6 +570,14 @@ function makePort(
   return { port, setScrollLeft };
 }
 
+/** The anchored write is deferred one frame — see commitAnchoredScroll (CR-02). */
+async function flushAnchoredScroll(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  if (typeof requestAnimationFrame === 'function') {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+}
+
 describe('Phase 60 zoom matrix — store gestures', () => {
   beforeEach(() => {
     registerTimelineZoomScrollPort(null);
@@ -621,7 +629,7 @@ describe('Phase 60 zoom matrix — store gestures', () => {
     expect(setScrollLeft).not.toHaveBeenCalled();
   });
 
-  it('fits the whole range once and clamps the anchored write at 0 (D-04)', () => {
+  it('fits the whole range once and clamps the anchored write at 0 (D-04)', async () => {
     const { port, setScrollLeft } = makePort({
       scrollLeft: 0,
       scrollerLeft: 0,
@@ -634,6 +642,9 @@ describe('Phase 60 zoom matrix — store gestures', () => {
     timelineZoom.fit();
     expect(timelineZoom.scale.value).toBe(0.49166666666666664);
     expect(timelineZoom.percent.value).toBe(49);
+    // The anchored write is deferred one frame (CR-02): it must land after the
+    // new pitch renders, never against the pre-zoom scrollWidth.
+    await flushAnchoredScroll();
     expect(setScrollLeft).toHaveBeenCalledTimes(1);
     expect(setScrollLeft).toHaveBeenCalledWith(0);
   });

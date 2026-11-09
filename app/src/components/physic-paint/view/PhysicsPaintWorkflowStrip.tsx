@@ -6047,7 +6047,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   && props.currentFrame <= frameCells[frameCells.length - 1]! ? (
                   <div
                     class="physics-paint-current-frame-outline"
-                    style={{ left: `${(props.currentFrame - frameCells[0]!) * timelineMetrics.pitch}px` }}
+                    // Phase 60 (ZOOM-05): the marker scales with the cell it rings —
+                    // a fixed 16px covers a quarter cell at 4x and 3.5 frames at 0.25x.
+                    style={{
+                      left: `${(props.currentFrame - frameCells[0]!) * timelineMetrics.pitch}px`,
+                      width: `${timelineMetrics.cellWidth}px`,
+                    }}
                     aria-hidden="true"
                   />
                 ) : null}
