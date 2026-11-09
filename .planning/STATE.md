@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 Phase: 61 — Vector Painting Tool
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-09 — Quick task 261109-uj0 CLOSED with rollback (global-only gate 0c0520917, keyboard repro gone on the 22:21 build); packaged faint-wash bug remains open pending the warn's measured values
+Last activity: 2026-11-09 — Quick task 261109-uj0 follow-up 9e0bd2597: color-aware capture gate (paper-relative pigment, floor 0.5) fixes lost yellow/orange washes; packaged UAT pending
 
 Progress: [█████░░░░░] 50%
 
@@ -288,7 +288,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261108-pmc | Rail cycle delete: Delete on a cycle (repeat) cell is refused; deleting a real key on a cycled rail dissolves the Loop Clip in the same atomic edit instead of leaving a suppressed key; the parent bounds canonical clips like the child, closing the `(loop-clips)` parent rejection (UAT approved 2026-11-08) | 2026-11-08 | ae54c7502 | [261108-pmc-cycle-delete-on-rail-does-not-update-cyc](./quick/261108-pmc-cycle-delete-on-rail-does-not-update-cyc/) |
 | 18 | Onion tab sliders use the shared SliderStepper (native ranges overflowed the right sidebar) | 2026-11-08 | e066b97b9 | — |
 | 261109-pwt | Phase 60 cached-key paint: first return to a key that already had cached paint now shows paint added since the last cache commit (settle the pending destination capture once the destination is displayed; faint wet washes no longer dropped by the capture ink gate; UAT approved 2026-11-09) | 2026-11-09 | 8b1508db8 | [261109-pwt-phase-60-issue-with-paint-on-cached-key-](./quick/261109-pwt-phase-60-issue-with-paint-on-cached-key-/) |
-| 261109-uj0 | Phase 60 cached-key paint, compiled-build regression: localized capture gate FAILED packaged UAT (near-blank snapshots overwrote fresh paint, including keyboard-arrow navigation); acceptance reverted to the global-only 0.3 mean in 0c0520917, with the localized 12x12 measurement and a non-DEV console.warn kept as rejection diagnostics; quick CLOSED as rollback+diagnostic (22:21 rebuild verified, keyboard repro gone); residual packaged faint-wash bug carried as an open item pending the warn's measured values | 2026-11-09 | 0c0520917 | [261109-uj0-phase-60-issue-the-faint-wet-wash-captur](./quick/261109-uj0-phase-60-issue-the-faint-wet-wash-captur/) |
+| 261109-uj0 | Phase 60 cached-key paint, compiled-build regression: localized capture gate FAILED packaged UAT (near-blank snapshots overwrote fresh paint, including keyboard-arrow navigation); acceptance reverted to the global-only 0.3 mean in 0c0520917, with the localized 12x12 measurement and a non-DEV console.warn kept as rejection diagnostics; quick CLOSED as rollback+diagnostic (22:21 rebuild verified, keyboard repro gone). Follow-up 9e0bd2597 makes the gate color-aware (paper-relative per-channel pigment path, floor 0.5) because luminance rejected yellow/orange washes while red/blue passed; packaged UAT pending | 2026-11-09 | 9e0bd2597 | [261109-uj0-phase-60-issue-the-faint-wet-wash-captur](./quick/261109-uj0-phase-60-issue-the-faint-wet-wash-captur/) |
 
 ## Roadmap Evolution
 

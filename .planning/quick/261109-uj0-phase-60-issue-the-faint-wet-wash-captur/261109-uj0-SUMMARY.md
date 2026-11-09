@@ -211,6 +211,14 @@ Consequence: the original packaged-build symptom (a faint wash lost on first ret
 
 Closed as **rollback + diagnostic**, not as a fix. The user rebuilt the packaged app at 22:21 (`PhysicsPaintStudio-C07rVsmA.js`; the compiled gate is global-only, verified in the bundle) and could no longer reproduce the keyboard-arrow fresh-paint loss. That confirms the keyboard symptom was the localized gate committing a near-blank snapshot, not a separate navigation defect. The original packaged-build faint-wash loss remains OPEN and is carried outside this quick; the retained non-DEV warn line is the evidence channel for the next reproduction.
 
+## Follow-up — color-blind gate (2026-11-09, after closure)
+
+Compiled-build UAT isolated the remaining pattern: fresh paint is lost for **yellow/orange** on both mouse and keyboard navigation, red/blue never, and painting the same stroke twice saves it. Root cause: the gate measured pure luminance. Yellow/orange pigment mostly absorbs blue and stays luminance-bright, so a visible wash scored below 0.3 (synthetic yellow fixture: luminance ink 0.14) and was rejected as blank; a second pass deposited enough pigment to cross the floor. Alpha cannot decide: MODE.transparent stores opaque transmittance (alpha 255) everywhere, so the RGB channels are the only pigment signal.
+
+Fix `9e0bd2597`: add a paper-relative **pigment** metric — each pixel's per-channel deficit below the sample's 99th-percentile paper baseline, global mean at the same per-mille scale, floor 0.5. A uniform cleared sheet of any paper color scores 0 by construction; yellow (1.84), orange (2.45) and red/blue (10.72) score their real absorption; the blank/fleck stress fixtures stay at or below 0.42. Acceptance is global on either the legacy luminance path or the pigment path; the localized window remains diagnostic-only. The production warn now also prints `pigmentInk`, `pigmentPixels` and `minPigmentInk`.
+
+Automated: typecheck clean; the targeted suites (388 tests) and the full suite (409 files, 8,437 passed) are green. Packaged UAT pending: a single yellow/orange stroke, red/blue control, cleared-sheet control, and a tinted-paper control.
+
 ## Self-Check: PASSED
 
 - All five planned files and this SUMMARY exist on disk.
