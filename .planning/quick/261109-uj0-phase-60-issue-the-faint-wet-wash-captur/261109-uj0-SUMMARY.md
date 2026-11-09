@@ -197,6 +197,16 @@ None.
 - Native UAT rows 1-5 from the plan remain pending on the compiled build (faint wash survives the first return, cleared sheet never overwrites, diagnostic line on any residual rejection, Save Script thumbnail, dev control). Those rows are the user's; no dev server was started and no `.test.tsx` was added.
 - Phase 61 and the beta2 release verification are otherwise unaffected; the capture pipeline after the gate is unchanged.
 
+## UAT round 1 (2026-11-09, compiled build) — FAILED, ROLLED BACK
+
+The user built the packaged app at 22:15 (`PhysicsPaintStudio-Bj3P0avt.js`) and reproduced on the compiled beta2 surface. Result: **all fresh paint was lost on every frame leave, whether waiting for the watercolor to settle or not** — a severe regression relative to the previous global-only gate, which kept normal paint and lost only faint wet washes.
+
+The localized acceptance was the only change that could admit additional captures, so it accepted near-blank snapshots (paper texture reads as local coverage in the densest window) and committed them over fresh paint.
+
+Rollback `0c0520917`: `passesAquarelleCaptureInkGate` is global-only again (the historical 0.3 mean). The localized measurement and the non-DEV rejection warn stay as diagnostics; no capture-pipeline law changed. Tests were updated to pin the global-only decision while keeping the localized measurements as evidence. Typecheck and the full suite are green (409 files, 8,433 passed).
+
+Consequence: the original packaged-build symptom (a faint wash lost on first return) is back until the packaged blank sheet is actually measured. The warn now reports `globalInk`, `localInk` and `inkPixels` on every rejection; the next compiled-build reproduction must provide those values before any gate change.
+
 ## Self-Check: PASSED
 
 - All five planned files and this SUMMARY exist on disk.
