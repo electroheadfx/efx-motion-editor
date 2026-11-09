@@ -145,6 +145,12 @@ Both register entries were mitigated as planned: the flush is identity-scoped an
 
 None. `pnpm --filter efx-motion-editor run typecheck`, the three targeted suites, and the full `vitest run` (408 files passed, 2 skipped; 8417 tests passed, 1 skipped, 96 todo) all pass. No `.test.tsx` was added and no dev server was started.
 
+## Follow-up — UAT round 2 (2026-11-09)
+
+UAT found a second, independent loss mode: painting a faint wash and leaving the frame before the watercolor simulation settles still dropped the stroke entirely. The live trace (`/tmp/efx-aquarelle-render-split.json`) shows the capture was invoked with `hasPaint: true` but rejected by the Studio's `AQUARELLE_MIN_CAPTURE_INK` floor: real wet strokes measured 0.71/0.93/0.94 while accepted captures scored 1.32–1.81 — the floor of 1 sat inside the real-paint band. The sheet is wiped on frame leave, so the rejected capture lost the paint for good.
+
+Fix `8b1508db8`: the floor is now 0.3, still 2.5x above the measured blank-sheet maximum (0.05–0.12) but below every observed real capture. The guard literal and the settle path from this quick are unchanged; the source pin was updated to the new constant.
+
 ## Known Stubs
 
 None.
