@@ -6,10 +6,10 @@ current_phase: 61
 current_phase_name: Vector Painting Tool
 status: planning
 stopped_at: Phase 60 complete, ready to plan Phase 61
-last_updated: "2026-11-09T20:20:56.600Z"
+last_updated: "2026-11-09T21:13:13.371Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 60 complete, transitioned to Phase 61
-state_head: d2fafa5e5951f9c829bcd1e6c45c015f1df255ea
+state_head: 7860637008161faebe597a26026fc82350c32b07
 progress:
   total_phases: 4
   completed_phases: 2
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 Phase: 61 — Vector Painting Tool
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-09 — Quick task 261109-pwt UAT approved: cached-key first return shows new paint, including faint wet washes
+Last activity: 2026-11-09 — Completed quick task 261109-uj0: localized blank-sheet ink gate for the compiled-build faint-wet-wash regression (compiled-build UAT pending)
 
 Progress: [█████░░░░░] 50%
 
@@ -288,6 +288,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261108-pmc | Rail cycle delete: Delete on a cycle (repeat) cell is refused; deleting a real key on a cycled rail dissolves the Loop Clip in the same atomic edit instead of leaving a suppressed key; the parent bounds canonical clips like the child, closing the `(loop-clips)` parent rejection (UAT approved 2026-11-08) | 2026-11-08 | ae54c7502 | [261108-pmc-cycle-delete-on-rail-does-not-update-cyc](./quick/261108-pmc-cycle-delete-on-rail-does-not-update-cyc/) |
 | 18 | Onion tab sliders use the shared SliderStepper (native ranges overflowed the right sidebar) | 2026-11-08 | e066b97b9 | — |
 | 261109-pwt | Phase 60 cached-key paint: first return to a key that already had cached paint now shows paint added since the last cache commit (settle the pending destination capture once the destination is displayed; faint wet washes no longer dropped by the capture ink gate; UAT approved 2026-11-09) | 2026-11-09 | 8b1508db8 | [261109-pwt-phase-60-issue-with-paint-on-cached-key-](./quick/261109-pwt-phase-60-issue-with-paint-on-cached-key-/) |
+| 261109-uj0 | Phase 60 cached-key paint, compiled-build regression: the blank-sheet capture gate is now localized (historical global 0.3 mean OR the densest capped 12x12 window at 2.5) so a faint wet wash is accepted in the packaged app, and every rejection emits one production-visible console.warn with the measured inks/floors; capture/settle/retry laws unchanged; compiled-build UAT pending | 2026-11-09 | 786063700 | [261109-uj0-phase-60-issue-the-faint-wet-wash-captur](./quick/261109-uj0-phase-60-issue-the-faint-wet-wash-captur/) |
 
 ## Roadmap Evolution
 

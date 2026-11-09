@@ -1,0 +1,10 @@
+{
+  "command": "pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/roto/aquarelleCaptureInk.test.ts",
+  "exitCode": 1,
+  "output": "\n RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app\n\n ❯ src/components/physic-paint/roto/aquarelleCaptureInk.test.ts (0 test)\n\n⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  src/components/physic-paint/roto/aquarelleCaptureInk.test.ts [ src/components/physic-paint/roto/aquarelleCaptureInk.test.ts ]\nError: Failed to load url ./aquarelleCaptureInk (resolved id: ./aquarelleCaptureInk) in /Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/roto/aquarelleCaptureInk.test.ts. Does the file exist?\n ❯ loadAndTransform ../node_modules/.pnpm/vite@5.4.21_@types+node@24.12.2_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51969:17\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n Test Files  1 failed (1)\n      Tests  no tests\n   Start at  22:08:45\n   Duration  203ms (transform 16ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 27ms)\n\nundefined\n/Users/lmarques/Dev/efx-motion-editor/app:\n ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/components/physic-paint/roto/aquarelleCaptureInk.test.ts\n",
+  "targetTest": "quick 261109-uj0 — localized aquarelle capture ink",
+  "targetFile": "app/src/components/physic-paint/roto/aquarelleCaptureInk.test.ts",
+  "expected": "11 passing behavior tests over the localized capture ink measurement and gate",
+  "actual": "Failed to load url ./aquarelleCaptureInk — the module did not exist at RED time; zero tests discovered",
+  "semanticAssessment": "Intentional RED per the plan: the suite is authored before the module and cannot execute until GREEN creates it. The 11 assertions are behavior-level over raw RGBA fixtures; GREEN must make every one pass on the planned arithmetic."
+}
