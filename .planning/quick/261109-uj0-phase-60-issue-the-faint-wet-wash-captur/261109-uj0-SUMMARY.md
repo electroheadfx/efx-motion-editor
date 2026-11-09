@@ -207,6 +207,10 @@ Rollback `0c0520917`: `passesAquarelleCaptureInkGate` is global-only again (the 
 
 Consequence: the original packaged-build symptom (a faint wash lost on first return) is back until the packaged blank sheet is actually measured. The warn now reports `globalInk`, `localInk` and `inkPixels` on every rejection; the next compiled-build reproduction must provide those values before any gate change.
 
+## Closure (2026-11-09)
+
+Closed as **rollback + diagnostic**, not as a fix. The user rebuilt the packaged app at 22:21 (`PhysicsPaintStudio-C07rVsmA.js`; the compiled gate is global-only, verified in the bundle) and could no longer reproduce the keyboard-arrow fresh-paint loss. That confirms the keyboard symptom was the localized gate committing a near-blank snapshot, not a separate navigation defect. The original packaged-build faint-wash loss remains OPEN and is carried outside this quick; the retained non-DEV warn line is the evidence channel for the next reproduction.
+
 ## Self-Check: PASSED
 
 - All five planned files and this SUMMARY exist on disk.
