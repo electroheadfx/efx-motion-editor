@@ -5071,8 +5071,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (!scroller) return;
     // Content not yet covering the frame: park WITHOUT flipping the guard —
     // the rotoPhysicalCells.length dep retries once the extent grows.
-    if (scroller.scrollWidth < (frame + 1) * ROTO_CELL_WIDTH_PX) return;
-    const target = frame * ROTO_CELL_WIDTH_PX + ROTO_CELL_WIDTH_PX / 2 - scroller.clientWidth / 2;
+    // Peeked, never subscribed: the deps stay zoom-free (Pitfall 13).
+    const pitch = timelineZoom.metrics.peek().pitch;
+    if (scroller.scrollWidth < (frame + 1) * pitch) return;
+    const target = frame * pitch + pitch / 2 - scroller.clientWidth / 2;
     const maxScroll = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
     scroller.scrollLeft = Math.min(Math.max(0, target), maxScroll);
     updateScrollbar();
@@ -5095,8 +5097,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (!Number.isInteger(frame) || frame < 0) return;
     const scroller = timelineScrollRef.current;
     if (!scroller) return;
-    if (scroller.scrollWidth < (frame + 1) * ROTO_CELL_WIDTH_PX) return;
-    const target = frame * ROTO_CELL_WIDTH_PX + ROTO_CELL_WIDTH_PX / 2 - scroller.clientWidth / 2;
+    // Peeked, never subscribed: the deps stay zoom-free (Pitfall 13).
+    const pitch = timelineZoom.metrics.peek().pitch;
+    if (scroller.scrollWidth < (frame + 1) * pitch) return;
+    const target = frame * pitch + pitch / 2 - scroller.clientWidth / 2;
     const maxScroll = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
     scroller.scrollLeft = Math.min(Math.max(0, target), maxScroll);
     revealHandledNonceRef.current = request.nonce;
