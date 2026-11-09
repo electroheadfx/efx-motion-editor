@@ -3,9 +3,9 @@ phase: "60"
 slug: "studio-timeline-horizontal-zoom"
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
 # audit-milestone §5.5 distinguishes NOT-VALIDATED (draft) from PARTIAL (validated + nyquist_compliant: false) (#2117)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: "2026-11-09"
 ---
 
@@ -44,16 +44,16 @@ Task IDs are assigned by the PLANNER; this map binds each requirement to its req
 
 | Requirement | Behavior | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |-------------|----------|------------|-----------------|-----------|-------------------|-------------|--------|
-| ZOOM-01 | `resolveAnchoredScrollLeft` keeps `pxToFrame(scrollLeft + localX)` invariant across a scale change (incl. the 6px gutter) | T-60-01 | Non-finite delta clamped before any write | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/view/physicsPaintTimelineZoom.test.ts -t "anchored"` | ❌ W0 | ⬜ pending |
-| ZOOM-01 | Wheel factor `exp(-delta*0.001)` normalized for `deltaMode===1`; clamped 0.25–4 | T-60-01 | `Number.isFinite` + clamp to `[0.25, 4]` | unit | `… vitest run …/physicsPaintTimelineZoom.test.ts -t "wheel factor"` | ❌ W0 | ⬜ pending |
-| ZOOM-02 | Presets `[0.25,0.5,0.75,1,1.5,2,3,4]`; `nextTimelineZoomPreset(1.37,+1)=1.5`, `(1.37,-1)=1`; ends disabled | — | — | unit | `… -t "preset"` | ❌ W0 | ⬜ pending |
-| ZOOM-02 | Fit = `clamp(viewportFrames / frameCount)`, one-shot, clamped into range | — | — | unit | `… -t "fit"` | ❌ W0 | ⬜ pending |
-| ZOOM-02 | Pill host + display-only percent + Fit aria-pressed (source contract) | — | No `innerHTML`; numeric-only style strings | source-string | `… vitest run …/physicsPaintTimelineZoomWiring.test.ts` | ❌ W0 | ⬜ pending |
-| ZOOM-03 | At every preset pitch changes while row/lane/cell heights do not | — | — | unit | `… -t "vertical fixed"` | ❌ W0 | ⬜ pending |
-| ZOOM-04 | `resetForStudioOpen()` returns scale to 1; wiring pins the call at the Studio mount seam | — | No cross-document zoom leakage | unit + source-string | `… -t "reset"` + wiring test | ❌ W0 | ⬜ pending |
-| ZOOM-05 | Zoom matrix at 0.25/0.5/1/2/4: playhead centre, hit-test frame, ruler extent, sound stain left/width, Loop Clip extent, audio visible range | — | Bounded 4× prevents layout DoS | unit (pure helpers) | `… vitest run …/PhysicsPaintWorkflowStrip.zoomMatrix.test.ts` | ❌ W0 (write LAST, after literal-`18` audit = 0) | ⬜ pending |
-| ZOOM-05 | No local `× 18`: source audit finds zero pitch literals outside the module and the base tokens | — | — | source-string | `… -t "single authority"` | ❌ W0 | ⬜ pending |
-| ZOOM-05 | Repointed pins: strip no longer contains `ROTO_CELL_WIDTH_PX = 18`; ruler/playhead/grid assertions target the authority | — | — | source-string | repointed `PhysicsPaintWorkflowStrip.test.ts` / `.rulerSeek.test.ts` | ✅ repoint | ⬜ pending |
+| ZOOM-01 | `resolveAnchoredScrollLeft` keeps `pxToFrame(scrollLeft + localX)` invariant across a scale change (incl. the 6px gutter) | T-60-01 | Non-finite delta clamped before any write | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/view/physicsPaintTimelineZoom.test.ts -t "anchored"` | ✅ | ✅ green |
+| ZOOM-01 | Wheel factor `exp(-delta*0.001)` normalized for `deltaMode===1`; clamped 0.25–4 | T-60-01 | `Number.isFinite` + clamp to `[0.25, 4]` | unit | `… vitest run …/physicsPaintTimelineZoom.test.ts -t "wheel factor"` | ✅ | ✅ green |
+| ZOOM-02 | Presets `[0.25,0.5,0.75,1,1.5,2,3,4]`; `nextTimelineZoomPreset(1.37,+1)=1.5`, `(1.37,-1)=1`; ends disabled | — | — | unit | `… -t "preset"` | ✅ | ✅ green |
+| ZOOM-02 | Fit = `clamp(viewportFrames / frameCount)`, one-shot, clamped into range | — | — | unit | `… -t "fit"` | ✅ | ✅ green |
+| ZOOM-02 | Pill host + display-only percent + Fit aria-pressed (source contract) | — | No `innerHTML`; numeric-only style strings | source-string | `… vitest run …/physicsPaintTimelineZoomWiring.test.ts` | ✅ | ✅ green |
+| ZOOM-03 | At every preset pitch changes while row/lane/cell heights do not | — | — | unit | `… -t "vertical fixed"` | ✅ | ✅ green |
+| ZOOM-04 | `resetForStudioOpen()` returns scale to 1; wiring pins the call at the Studio mount seam | — | No cross-document zoom leakage | unit + source-string | `… -t "reset"` + wiring test | ✅ | ✅ green |
+| ZOOM-05 | Zoom matrix at 0.25/0.5/1/2/4: playhead centre, hit-test frame, ruler extent, sound stain left/width, Loop Clip extent, audio visible range | — | Bounded 4× prevents layout DoS | unit (pure helpers) | `… vitest run …/PhysicsPaintWorkflowStrip.zoomMatrix.test.ts` | ✅ | ✅ green |
+| ZOOM-05 | No local `× 18`: source audit finds zero pitch literals outside the module and the base tokens | — | — | source-string | `… -t "single authority"` | ✅ | ✅ green |
+| ZOOM-05 | Repointed pins: strip no longer contains `ROTO_CELL_WIDTH_PX = 18`; ruler/playhead/grid assertions target the authority | — | — | source-string | repointed `PhysicsPaintWorkflowStrip.test.ts` / `.rulerSeek.test.ts` | ✅ repoint | ✅ green |
 
 **Matrix predicates (the acceptance surface):** with `P = 18·s`, `CW = 16·s`, `G = 2·s` —
 - playhead centre: `6 + f·P + P/2 − 1` (equals `6 + f·18 + 8` at s = 1)
@@ -69,11 +69,11 @@ Task IDs are assigned by the PLANNER; this map binds each requirement to its req
 
 ## Wave 0 Requirements
 
-- [ ] `app/src/components/physic-paint/view/physicsPaintTimelineZoom.test.ts` — module math, presets, ruler step, fit, anchor, viewport frames (ZOOM-01/02/04)
-- [ ] `app/src/components/physic-paint/view/physicsPaintTimelineZoomWiring.test.ts` — reset seam, pill host, display-only percent, wheel-branch source contract (mirrors `physicsPaintCanvasZoomWiring.test.ts` shape)
-- [ ] `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.zoomMatrix.test.ts` — the five-level matrix (write LAST, after the literal audit reaches zero)
-- [ ] Repoint the 9 existing pin assertions listed in PITFALLS.md Pitfall 8 / RESEARCH.md
-- [ ] No framework install needed — vitest is present
+- [x] `app/src/components/physic-paint/view/physicsPaintTimelineZoom.test.ts` — module math, presets, ruler step, fit, anchor, viewport frames (ZOOM-01/02/04)
+- [x] `app/src/components/physic-paint/view/physicsPaintTimelineZoomWiring.test.ts` — reset seam, pill host, display-only percent, wheel-branch source contract (mirrors `physicsPaintCanvasZoomWiring.test.ts` shape)
+- [x] `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.zoomMatrix.test.ts` — the five-level matrix (write LAST, after the literal audit reaches zero)
+- [x] Repoint the 9 existing pin assertions listed in PITFALLS.md Pitfall 8 / RESEARCH.md
+- [x] No framework install needed — vitest is present
 
 ---
 
@@ -88,11 +88,19 @@ Task IDs are assigned by the PLANNER; this map binds each requirement to its req
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 90s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 90s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated 2026-11-09 — 10/10 map rows green (140 tests across the 5 coverage files); 2 behaviors remain manual-only (pinch feel, scroll-snap settle) and are deferred to the phase's live UAT.
+
+## Validation Audit 2026-11-09
+
+| Metric | Count |
+|---|---|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
