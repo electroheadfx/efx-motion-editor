@@ -1057,6 +1057,89 @@ describe('Phase 60 (ZOOM-05) ghost and preview geometry contract', () => {
   });
 });
 
+describe('Phase 60 (ZOOM-05) sound leaves read the live pitch', () => {
+  const sliceComponent = (code: string, startMarker: string, endMarker: string): string => {
+    const start = code.indexOf(startMarker);
+    expect(start, `${startMarker} definition`).toBeGreaterThanOrEqual(0);
+    const end = code.indexOf(endMarker, start);
+    expect(end, `${startMarker} end`).toBeGreaterThan(start);
+    return code.slice(start, end);
+  };
+
+  it('places and sizes the stain from the pitch it reads in its own body', () => {
+    const block = sliceComponent(
+      source(),
+      'export function PhysicsPaintSoundClipStain',
+      'export function PhysicsPaintSoundClipEdges',
+    );
+    // Narrow leaf (efx-preact-reactivity rule 5): the stain subscribes to the
+    // metrics in ITS body — the strip body gains no zoom read for it.
+    expect(block).toContain('const pitch = timelineZoom.metrics.value.pitch;');
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(block).toContain('soundStainLeftPx(clip.startFrame, pitch)');
+    expect(block).toContain('soundStainWidthPx(clip.inFrame, clip.outFrame, pitch)');
+    // Source-space waveform geometry follows the same pitch.
+    expect(block).toContain('sourceFrames * pitch');
+    expect(block).toContain('(clip.inFrame + clip.slipOffset) * pitch');
+  });
+
+  it('sizes the edge handles from the live pitch while their own footprint stays fixed', () => {
+    const block = sliceComponent(
+      source(),
+      'export function PhysicsPaintSoundClipEdges',
+      'export function PhysicsPaintSoundDuplicateGhost',
+    );
+    expect(block).toContain('const pitch = timelineZoom.metrics.value.pitch;');
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(block).toContain('soundStainLeftPx(clip.startFrame, pitch)');
+    expect(block).toContain('soundStainWidthPx(clip.inFrame, clip.outFrame, pitch)');
+    // D-13 spirit: the handle keeps its own 5-8px footprint — only the stain
+    // geometry scales.
+    expect(block).toContain('left: `${leftPx - 3}px`');
+    expect(block).toContain('leftPx + Math.max(0, widthPx - 5)');
+  });
+
+  it('sizes the duplicate ghost from the live pitch in its own body', () => {
+    const block = sliceComponent(
+      source(),
+      'export function PhysicsPaintSoundDuplicateGhost',
+      'const SOUND_DUPLICATE_PREVIEW_ELS_KEY',
+    );
+    expect(block).toContain('const pitch = timelineZoom.metrics.value.pitch;');
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(block).toContain('soundStainLeftPx(clip.startFrame, pitch)');
+    expect(block).toContain('soundStainWidthPx(clip.inFrame, clip.outFrame, pitch)');
+    expect(block).toContain('sourceFrames * pitch');
+    expect(block).toContain('(clip.inFrame + clip.slipOffset) * pitch');
+  });
+
+  it('moves the live sound placement preview through the pitch peeked at event time', () => {
+    const block = sliceComponent(
+      source(),
+      'const applySoundBandPreview = (clipId: string, next: SoundBandValues): void => {',
+      'const startSoundBandGesture = (',
+    );
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(block).toContain('timelineZoom.metrics.peek().pitch');
+    // The preview shares the stain's placement law, at the same pitch.
+    expect(block).toContain('soundStainLeftPx(next.startFrame, pitch)');
+    expect(block).toContain('soundStainWidthPx(next.inFrame, next.outFrame, pitch)');
+    expect(block).toContain('next.inFrame * pitch');
+  });
+
+  it('documents the viewport getter as dividing by the live pitch, not the 1x constant', () => {
+    const code = source();
+    expect(code).not.toContain('/ ROTO_CELL_WIDTH_PX');
+    const docStart = code.indexOf('261010-ht0 F5 — module-level timeline viewport getter');
+    expect(docStart).toBeGreaterThanOrEqual(0);
+    const docEnd = code.indexOf('export type TimelineViewportFrames', docStart);
+    expect(docEnd).toBeGreaterThan(docStart);
+    const doc = code.slice(docStart, docEnd);
+    expect(doc).toContain('live pitch');
+    expect(doc).not.toContain('ROTO_CELL_WIDTH_PX');
+  });
+});
+
 describe('Phase 60 (ZOOM-05) interaction-surface conversion contract', () => {
   it('every converted projection, hook input and ghost region reads the live pitch and no legacy strip pitch constant', () => {
     const code = source();
