@@ -1,6 +1,6 @@
 [package]
 name = "efx-motion-editor"
-version = "2.1.0-beta1"
+version = "2.1.0-beta2"
 description = "EFX Motion Editor"
 authors = ["EFX Lab"]
 license = "GPL-3.0-or-later"
