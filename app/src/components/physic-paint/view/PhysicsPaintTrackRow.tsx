@@ -71,7 +71,6 @@ import {
   resolveTimelineRailType,
   resolveTrackAccentColor,
   timelineRailCellStyle,
-  TIMELINE_GEOMETRY,
   TIMELINE_MOTION,
   TIMELINE_SURFACE,
   type TimelineRailType,
