@@ -1057,6 +1057,47 @@ describe('Phase 60 (ZOOM-05) ghost and preview geometry contract', () => {
   });
 });
 
+describe('Phase 60 (ZOOM-05) interaction-surface conversion contract', () => {
+  it('every converted projection, hook input and ghost region reads the live pitch and no legacy strip pitch constant', () => {
+    const code = source();
+    const sliceBetween = (startMarker: string, endMarker: string): string => {
+      const start = code.indexOf(startMarker);
+      expect(start, `${startMarker} definition`).toBeGreaterThanOrEqual(0);
+      const end = code.indexOf(endMarker, start);
+      expect(end, `${startMarker} end`).toBeGreaterThan(start);
+      const block = code.slice(start, end);
+      expect(block, startMarker).not.toContain('ROTO_CELL_WIDTH_PX');
+      return block;
+    };
+
+    // ZOOM-05: the push and batch-move projections divide pointer travel by
+    // the live pitch, peeked at event time (never a subscribed read).
+    expect(sliceBetween(
+      'const pushDragApi = usePhysicsPaintPushDrag<RotoPushPublication>({',
+      'clampDestination: (proposedDeltaFrames, direction) => {',
+    )).toContain('timelineZoom.metrics.peek().pitch');
+    expect(sliceBetween(
+      'const railSetDragApi = usePhysicsPaintRailSetDrag<RotoRailSetMovePublication>({',
+      'clampDelta: (proposedDelta) => {',
+    )).toContain('timelineZoom.metrics.peek().pitch');
+
+    // RESEARCH Pitfall 6: the cross-track port receives the already-scaled
+    // pitch and no `zoom`, so the hook applies the pitch exactly once.
+    const crossTrackInput = sliceBetween(
+      'const crossTrackDrag = usePhysicsPaintCrossTrackDrag({',
+      "layerId: props.layerId ?? '',",
+    );
+    expect(crossTrackInput).toContain('framePitch: timelineZoom.metrics.peek().pitch,');
+    expect(crossTrackInput).not.toContain('zoom:');
+
+    // The ghost region (current-frame outline + every drag ghost) rides the
+    // render-body metrics read, not the 1x constant.
+    const ghostRegion = getActiveLaneRenderBlock(code);
+    expect(ghostRegion).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(ghostRegion).toContain('timelineMetrics.pitch');
+  });
+});
+
 function getMediaQueryBlock(styles: string, query: string): string {
   const start = styles.indexOf(query);
   if (start === -1) return '';
