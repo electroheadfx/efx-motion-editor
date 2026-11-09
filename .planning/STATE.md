@@ -4,17 +4,17 @@ milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
 current_phase: 60
 current_phase_name: Studio Timeline Horizontal Zoom
-status: executing
-stopped_at: Completed 60-05-PLAN.md
-last_updated: "2026-11-09T13:08:23.820Z"
+status: verifying
+stopped_at: Completed 60-06-PLAN.md
+last_updated: "2026-11-09T13:17:05.437Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 60 execution started
-state_head: a903c7c2c81a224071269849b31359f72a319ee8
+state_head: 8a32537b23a03db6836644bc8568b75111a04a1d
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 31
-  completed_plans: 30
+  completed_plans: 31
   percent: 25
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 
 Phase: 60 (Studio Timeline Horizontal Zoom) — EXECUTING
 Plan: 6 of 6
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-09 — Phase 60 execution started
 
 Progress: [███░░░░░░░] 25%
@@ -87,6 +87,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 60 P03 | 4min | 3 tasks | 9 files |
 | Phase 60 P04 | 12min | 3 tasks | 12 files |
 | Phase 60 P05 | 9min | 3 tasks | 6 files |
+| Phase 60 P06 | 3 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -195,6 +196,12 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 60]: The audit runs every rule on comment-stripped code and proves each against a seeded positive plus a comment-only negative
 - [Phase 60]: Every named consumer has a presence block with exact counts where enumerable (five strip pitch/gap sites); the wave-4 >= 2 pins returned to toBe(5)
 - [Phase 60]: The ruler-scrub cellWidthPx is required with no fallback; the strip passes timelineZoom.metrics.peek().pitch at event time
+- [Phase 60]: Expected values live only in the frozen five-level table; helpers produce actual values only, so the implementation is never its own oracle
+- [Phase 60]: toBe for exactly-pinned values; toBeCloseTo(...,10) only on the documented non-exact audio range; wheel factors compare against Math.exp
+- [Phase 60]: Scroll-to-frame has no helper: the matrix restates the centring law and (frame+1)x pitch guard as a literal local predicate, cross-linked to 60-03's source pin
+- [Phase 60]: Store block resets scale in beforeEach and unregisters the port before and after every test
+- [Phase 60]: Selection/paste compare frame indices; their pixel surface is the rail/ghost geometry already pinned by 60-02 task 3, recorded in the header instead of a fabricated row
+- [Phase 60]: 13-row edge-probe table is literal data with exact-length, exact-id and non-empty-owner assertions, both unclassified rows owned
 
 ### Pending Todos
 
@@ -284,8 +291,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-09T13:08:22.838Z
-Stopped at: Completed 60-05-PLAN.md
+Last session: 2026-11-09T13:17:04.464Z
+Stopped at: Completed 60-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
