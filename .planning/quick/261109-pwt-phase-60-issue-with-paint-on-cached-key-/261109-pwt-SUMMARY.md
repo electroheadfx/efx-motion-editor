@@ -79,7 +79,10 @@ coverage:
   - id: D4
     description: "First return to a cached key shows paint added since that key's last cache commit, with no second click, on the live native build"
     requirement: QUICK-261109-PWT
-    verification: []
+    verification:
+      - kind: manual
+        ref: "Native UAT approved 2026-11-09 — first-return, fast-leave faint wash, blank-leave and normal-paint rows confirmed"
+        status: pass
     human_judgment: true
     rationale: "The reported symptom is a live WKWebView display surface (destination cached base loaded before its pending capture commits); only the six native UAT rows can confirm the visible first-return behavior and the no-delay/no-flash controls."
 
@@ -150,6 +153,8 @@ None. `pnpm --filter efx-motion-editor run typecheck`, the three targeted suites
 UAT found a second, independent loss mode: painting a faint wash and leaving the frame before the watercolor simulation settles still dropped the stroke entirely. The live trace (`/tmp/efx-aquarelle-render-split.json`) shows the capture was invoked with `hasPaint: true` but rejected by the Studio's `AQUARELLE_MIN_CAPTURE_INK` floor: real wet strokes measured 0.71/0.93/0.94 while accepted captures scored 1.32–1.81 — the floor of 1 sat inside the real-paint band. The sheet is wiped on frame leave, so the rejected capture lost the paint for good.
 
 Fix `8b1508db8`: the floor is now 0.3, still 2.5x above the measured blank-sheet maximum (0.05–0.12) but below every observed real capture. The guard literal and the settle path from this quick are unchanged; the source pin was updated to the new constant.
+
+**Native UAT approved 2026-11-09** — first return, fast-leave faint wash, blank-leave and normal-paint rows all confirmed.
 
 ## Known Stubs
 
