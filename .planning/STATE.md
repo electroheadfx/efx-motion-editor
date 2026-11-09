@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 60
 current_phase_name: Studio Timeline Horizontal Zoom
 status: executing
-stopped_at: Completed 60-02-PLAN.md
-last_updated: "2026-11-09T12:32:56.968Z"
+stopped_at: Completed 60-03-PLAN.md
+last_updated: "2026-11-09T12:42:39.073Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 60 execution started
-state_head: 6b8fad8c08691db36dcf53ff3ae48637fdc06f1d
+state_head: c34c76cf19908f641ced7f051dda14549795222d
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 31
-  completed_plans: 27
+  completed_plans: 28
   percent: 25
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 60 (Studio Timeline Horizontal Zoom) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 60 execution started
 
@@ -84,6 +84,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 59 P25 | 12min | 2 tasks | 4 files |
 | Phase 60 P01 | 11min | 3 tasks | 9 files |
 | Phase 60 P02 | 6 | 3 tasks | 3 files |
+| Phase 60 P03 | 4min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -180,6 +181,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 60]: D-12 interaction consumers: pointer handlers peek the 60-01 pitch authority at event time; only the render body subscribes; ghosts use live-pitch one-cell floors
 - [Phase 60]: Cross-track drag port receives the pre-scaled framePitch with zoom undefined (Pitfall 6), so the pitch applies exactly once
 - [Phase 60]: ZOOM-05 stays open after 60-02: sound stains, open/reveal scroll, rail geometry and the motion-lane insertion line remain for 60-03/04/05
+- [Phase 60]: Sound leaves subscribe to the metrics in their own bodies while the live band preview peeks at event time; the strip body gains no zoom read for them
+- [Phase 60]: Open-frame and reveal positioning peek the live pitch inside their effect bodies and keep dependency arrays byte-identical to HEAD (Pitfall 13)
+- [Phase 60]: frameGap is an optional parameter defaulting to TIMELINE_GEOMETRY.cellGap at every new seam; the strip always passes timelineMetrics.cellGap to both rails
+- [Phase 60]: ROTO_CELL_WIDTH_PX is retired from the strip; RULER_STEP remains the ruler's no-subdivide floor
 
 ### Pending Todos
 
@@ -269,8 +274,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-09T12:32:55.999Z
-Stopped at: Completed 60-02-PLAN.md
+Last session: 2026-11-09T12:42:38.095Z
+Stopped at: Completed 60-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

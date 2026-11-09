@@ -38,7 +38,7 @@ Each maps to exactly one roadmap phase.
 - [x] **ZOOM-02**: A zoom pill offers minus / percent / plus / Fit; presets are 0.25×, 0.5×, 0.75×, 1×, 1.5×, 2×, 3×, 4×; 100% equals the 18px pitch; pill and Fit keep the playhead frame fixed, falling back to viewport centre
 - [x] **ZOOM-03**: Row, lane, and cell heights stay fixed — only horizontal frame density scales
 - [x] **ZOOM-04**: Zoom is session-only and resets when the Studio closes; it changes no document, schema, persistence, or export output
-- [ ] **ZOOM-05**: Every frame→pixel consumer (playhead, ruler, hit-testing, drag, scrub, selection, paste, sound stains, scroll-to-frame, rail geometry) reads one pitch authority — no local `× 18`
+- [x] **ZOOM-05**: Every frame→pixel consumer (playhead, ruler, hit-testing, drag, scrub, selection, paste, sound stains, scroll-to-frame, rail geometry) reads one pitch authority — no local `× 18`
 
 ### Vector painting tool (Phase 61)
 
@@ -127,7 +127,7 @@ Deferred to a later milestone. Not in the current roadmap.
 | ZOOM-02 | Phase 60 | Complete |
 | ZOOM-03 | Phase 60 | Complete |
 | ZOOM-04 | Phase 60 | Complete |
-| ZOOM-05 | Phase 60 | Pending |
+| ZOOM-05 | Phase 60 | Complete |
 | VEC-01 | Phase 61 | Pending |
 | VEC-02 | Phase 61 | Pending |
 | VEC-03 | Phase 61 | Pending |
