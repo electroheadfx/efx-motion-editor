@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 60
 current_phase_name: Studio Timeline Horizontal Zoom
 status: executing
-stopped_at: Completed 60-03-PLAN.md
-last_updated: "2026-11-09T12:42:39.073Z"
+stopped_at: Completed 60-04-PLAN.md
+last_updated: "2026-11-09T12:57:01.223Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 60 execution started
-state_head: c34c76cf19908f641ced7f051dda14549795222d
+state_head: c7208ed4d41c954bcdf75abd9f9f0cdac81786fe
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 31
-  completed_plans: 28
+  completed_plans: 29
   percent: 25
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 60 (Studio Timeline Horizontal Zoom) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 60 execution started
 
@@ -85,6 +85,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 60 P01 | 11min | 3 tasks | 9 files |
 | Phase 60 P02 | 6 | 3 tasks | 3 files |
 | Phase 60 P03 | 4min | 3 tasks | 9 files |
+| Phase 60 P04 | 12min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -185,6 +186,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 60]: Open-frame and reveal positioning peek the live pitch inside their effect bodies and keep dependency arrays byte-identical to HEAD (Pitfall 13)
 - [Phase 60]: frameGap is an optional parameter defaulting to TIMELINE_GEOMETRY.cellGap at every new seam; the strip always passes timelineMetrics.cellGap to both rails
 - [Phase 60]: ROTO_CELL_WIDTH_PX is retired from the strip; RULER_STEP remains the ruler's no-subdivide floor
+- [Phase 60]: framePitch/frameGap stay required with no default in the lane, drag leaf, block and row so TypeScript enumerates every consumer
+- [Phase 60]: The outline resolver keeps optional cellPitch/cellGap defaulting to the base tokens, preserving existing callers while the block forwards live values
+- [Phase 60]: The key-drag leaf reads laneProps.framePitch through the existing latestRef and adds no hook or subscription
+- [Phase 60]: Pre-existing exact-count source pins were repointed to >= 2 when three legitimate pitch consumers joined, not deleted
 
 ### Pending Todos
 
@@ -274,8 +279,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-09T12:42:38.095Z
-Stopped at: Completed 60-03-PLAN.md
+Last session: 2026-11-09T12:57:00.276Z
+Stopped at: Completed 60-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
