@@ -1140,6 +1140,62 @@ describe('Phase 60 (ZOOM-05) sound leaves read the live pitch', () => {
   });
 });
 
+describe('Phase 60 (ZOOM-05) open-frame and reveal positioning peek the live pitch', () => {
+  const effectBlock = (code: string, startMarker: string, endMarker: string): string => {
+    const start = code.indexOf(startMarker);
+    expect(start, `${startMarker} definition`).toBeGreaterThanOrEqual(0);
+    const end = code.indexOf(endMarker, start);
+    expect(end, `${startMarker} end`).toBeGreaterThan(start);
+    return code.slice(start, end + endMarker.length);
+  };
+
+  it('centres the Studio-open frame on the pitch peeked inside the effect body', () => {
+    const block = effectBlock(
+      source(),
+      'const timelineOpenPositionedRef = useRef(false);',
+      '}, [props.timelineOpenFrame, props.rotoPhysicalCells.length, updateScrollbar]);',
+    );
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(block).toContain('const pitch = timelineZoom.metrics.peek().pitch;');
+    expect(block).toContain('scroller.scrollWidth < (frame + 1) * pitch');
+    expect(block).toContain('frame * pitch + pitch / 2');
+  });
+
+  it('re-uses the same peeked pitch for the reveal request', () => {
+    const block = effectBlock(
+      source(),
+      'const revealHandledNonceRef = useRef<number | null>(null);',
+      '}, [props.revealRequest?.nonce, updateScrollbar]);',
+    );
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(block).toContain('const pitch = timelineZoom.metrics.peek().pitch;');
+    expect(block).toContain('scroller.scrollWidth < (frame + 1) * pitch');
+    expect(block).toContain('frame * pitch + pitch / 2');
+  });
+
+  it('leaves both dependency arrays byte-identical to HEAD with no zoom reference (Pitfall 13)', () => {
+    const code = source();
+    const openBlock = effectBlock(
+      code,
+      'const timelineOpenPositionedRef = useRef(false);',
+      '}, [props.timelineOpenFrame, props.rotoPhysicalCells.length, updateScrollbar]);',
+    );
+    const openDep = openBlock.slice(openBlock.lastIndexOf('}, ['));
+    expect(openDep).toBe('}, [props.timelineOpenFrame, props.rotoPhysicalCells.length, updateScrollbar]);');
+    expect(openDep).not.toContain('timelineZoom');
+    expect(openDep).not.toContain('metrics');
+    const revealBlock = effectBlock(
+      code,
+      'const revealHandledNonceRef = useRef<number | null>(null);',
+      '}, [props.revealRequest?.nonce, updateScrollbar]);',
+    );
+    const revealDep = revealBlock.slice(revealBlock.lastIndexOf('}, ['));
+    expect(revealDep).toBe('}, [props.revealRequest?.nonce, updateScrollbar]);');
+    expect(revealDep).not.toContain('timelineZoom');
+    expect(revealDep).not.toContain('metrics');
+  });
+});
+
 describe('Phase 60 (ZOOM-05) interaction-surface conversion contract', () => {
   it('every converted projection, hook input and ghost region reads the live pitch and no legacy strip pitch constant', () => {
     const code = source();
