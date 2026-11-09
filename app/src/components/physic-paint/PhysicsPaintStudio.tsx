@@ -328,6 +328,7 @@ import {
   AQUARELLE_CAPTURE_SAMPLE_SIZE,
   AQUARELLE_MIN_CAPTURE_INK,
   AQUARELLE_MIN_CAPTURE_LOCAL_INK,
+  AQUARELLE_MIN_CAPTURE_PIGMENT_INK,
   measureAquarelleCaptureInk,
   passesAquarelleCaptureInkGate,
   type AquarelleCaptureInkMeasurement,
@@ -677,11 +678,14 @@ function mergeImageLibraries(main: readonly MceImageRef[], studio: readonly MceI
 // scored 1.32-1.81 — the 1 floor sat inside the real-paint band, so leaving a
 // frame quickly dropped the stroke entirely. 0.3 still keeps a 2.5x margin
 // over the blank-sheet maximum (0.12).
-// quick-261109-uj0 (2026-11-09): the shared module measures the densest 12x12
-// sampling window with a per-pixel darkening cap as a DIAGNOSTIC, but acceptance
-// stays global-only: the packaged-build UAT showed paper texture can push a
-// near-blank sheet over the local floor, and accepting on it committed blank
-// pixels over fresh paint. The module OWNS every capture ink threshold — the
+// quick-261109-uj0 (2026-11-09): the shared module measures the historical
+// luminance ink AND a color-aware pigment deficit against the sheet's own paper
+// baseline. Acceptance is GLOBAL on either path: the localized 12x12 window is
+// diagnostic only (accepting on it committed near-blank snapshots over fresh
+// paint in the packaged-build UAT). The pigment path exists because yellow and
+// orange pigment mostly absorbs blue, so a visible wash can stay luminance-bright
+// and be rejected as "blank"; alpha cannot help because the sheet is OPAQUE
+// transmittance (alpha 255). The module OWNS every capture ink threshold — the
 // Studio declares none of its own.
 function measureAquarelleCanvasInk(canvas: HTMLCanvasElement): AquarelleCaptureInkMeasurement {
   try {
@@ -9398,9 +9402,11 @@ export function PhysicsPaintStudio() {
     }
     // A cleared sheet still exports an opaque, near-uniform white texture tens
     // of KB large. Never let such a capture take ownership of the frame's cache.
-    // quick-261109-uj0: the ONE shared predicate decides on the historical
-    // global floor; the densest capped sampling window is diagnostic only
-    // (localized acceptance wiped fresh paint in the packaged build UAT).
+    // quick-261109-uj0: the shared predicate decides on the global luminance
+    // floor OR the color-aware pigment deficit against the sheet's own paper
+    // baseline (yellow/orange are luminance-bright and would otherwise read as
+    // blank). The densest capped window remains diagnostic only (localized
+    // acceptance wiped fresh paint in the packaged build UAT).
     const ink = measureAquarelleCanvasInk(liveAlphaCanvas);
     const passesInkGate = passesAquarelleCaptureInkGate(ink);
     recordAquarelleRenderSplitEvent('studio-capture-entry', {
@@ -9410,6 +9416,9 @@ export function PhysicsPaintStudio() {
       stage: passesInkGate ? 'accepted' : 'ink-gate',
       ink: roundAquarelleInk(ink.globalInk),
       minInk: AQUARELLE_MIN_CAPTURE_INK,
+      pigmentInk: roundAquarelleInk(ink.pigmentInk),
+      pigmentPixels: ink.pigmentPixels,
+      minPigmentInk: AQUARELLE_MIN_CAPTURE_PIGMENT_INK,
       localInk: roundAquarelleInk(ink.localInk),
       minLocalInk: AQUARELLE_MIN_CAPTURE_LOCAL_INK,
       inkPixels: ink.inkPixels,
@@ -9421,7 +9430,7 @@ export function PhysicsPaintStudio() {
       // rejection left no trace at all — this line is the evidence the next
       // reproduction needs. Exactly one line per rejection; no file, no async
       // work, no per-pixel loop.
-      console.warn(`[aquarelle-capture] ink-gate rejected blank sheet frame=${playFrame} startFrame=${launch.startFrame} op=${launch.operationId} layer=${launch.layerId} track=${captureTrackId ?? 'active'} globalInk=${roundAquarelleInk(ink.globalInk)} localInk=${roundAquarelleInk(ink.localInk)} inkPixels=${ink.inkPixels} minInk=${AQUARELLE_MIN_CAPTURE_INK} minLocalInk=${AQUARELLE_MIN_CAPTURE_LOCAL_INK}`);
+      console.warn(`[aquarelle-capture] ink-gate rejected blank sheet frame=${playFrame} startFrame=${launch.startFrame} op=${launch.operationId} layer=${launch.layerId} track=${captureTrackId ?? 'active'} globalInk=${roundAquarelleInk(ink.globalInk)} pigmentInk=${roundAquarelleInk(ink.pigmentInk)} pigmentPixels=${ink.pigmentPixels} localInk=${roundAquarelleInk(ink.localInk)} inkPixels=${ink.inkPixels} minInk=${AQUARELLE_MIN_CAPTURE_INK} minPigmentInk=${AQUARELLE_MIN_CAPTURE_PIGMENT_INK} minLocalInk=${AQUARELLE_MIN_CAPTURE_LOCAL_INK}`);
       return;
     }
     const operationId = launch.operationId;

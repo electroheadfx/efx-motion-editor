@@ -21,10 +21,25 @@
 //  measured, only the historical global floor may decide — the
 //  local ink is logged so the next reproduction carries evidence.
 //
-//  The global floor keeps its historical diagnostic meaning:
-//  48x48 sample against white 248, per-mille scale. Every
-//  measurement failure is fail-open (a missing measurement must
-//  never block a legitimate capture).
+//  The global floor keeps its historical LUMINANCE meaning:
+//  48x48 sample against white 248, per-mille scale. Luminance is
+//  blind to a hue that keeps the canvas bright: yellow/orange
+//  pigment mostly absorbs blue, so a visible wash can score below
+//  0.3 and be rejected as "blank" (painting the stroke twice was
+//  the user's workaround). Red/blue absorb strongly and pass.
+//
+//  The PIGMENT path fixes that without re-opening the blank hole:
+//  it measures each pixel's per-channel deficit against the sheet's
+//  OWN paper baseline (the 99th percentile of each channel in the
+//  sample). A uniform cleared sheet of ANY paper color scores 0 by
+//  construction; a yellow/orange wash deviates in blue and scores
+//  its actual absorption. Acceptance is global (coverage mean), not
+//  the dangerous localized window. The alpha channel cannot help:
+//  MODE.transparent stores OPAQUE transmittance (alpha 255), so
+//  alpha is constant and the RGB channels carry the pigment.
+//
+//  Every measurement failure is fail-open (a missing measurement
+//  must never block a legitimate capture).
 // ============================================================
 
 export const AQUARELLE_CAPTURE_SAMPLE_SIZE = 48;
@@ -33,6 +48,15 @@ export const AQUARELLE_CAPTURE_SAMPLE_SIZE = 48;
 // Blank textured sheets measured 0.05-0.12; accepted wet captures
 // 1.32-1.81 (261109-pwt). Meaning and value are unchanged.
 export const AQUARELLE_MIN_CAPTURE_INK = 0.3;
+
+// Color-aware floor, same per-mille scale, measured against the
+// sheet's own paper baseline. A uniform blank scores 0 regardless of
+// paper color; the stress blank fixtures (paper flecks) stayed at or
+// below 0.42, while a faint yellow wash on white measured 1.84 and a
+// yellow wash on tinted paper 0.92 (their luminance ink was 0.14 /
+// 0.00, which the legacy floor rejected). 0.5 keeps a margin over
+// colored paper grain while still passing a genuinely faint wash.
+export const AQUARELLE_MIN_CAPTURE_PIGMENT_INK = 0.5;
 
 export const AQUARELLE_CAPTURE_LOCAL_WINDOW = 12;
 export const AQUARELLE_CAPTURE_LOCAL_STRIDE = 4;
@@ -46,27 +70,40 @@ export const AQUARELLE_CAPTURE_PIXEL_DARKENING_CAP = 8;
 export const AQUARELLE_MIN_CAPTURE_LOCAL_INK = 2.5;
 
 export interface AquarelleCaptureInkMeasurement {
-  /** Historical global mean over every sample pixel (per-mille scale). */
+  /** Historical luminance mean over every sample pixel (per-mille scale). */
   globalInk: number;
   /** Densest 12x12 window, capped per pixel, in the same per-mille scale. */
   localInk: number;
-  /** Sample pixels whose darkening is greater than zero. */
+  /** Sample pixels whose luminance darkening is greater than zero. */
   inkPixels: number;
+  /** Color-aware mean per-channel deficit below the sheet's paper baseline. */
+  pigmentInk: number;
+  /** Sample pixels whose pigment deficit vs the paper baseline is greater than zero. */
+  pigmentPixels: number;
 }
 
-/** Fail-open measurement: both inks read Infinity, so the gate passes. */
+/** Fail-open measurement: every ink reads Infinity, so the gate passes. */
 export const AQUARELLE_CAPTURE_INK_UNMEASURABLE: Readonly<AquarelleCaptureInkMeasurement> = Object.freeze({
   globalInk: Number.POSITIVE_INFINITY,
   localInk: Number.POSITIVE_INFINITY,
   inkPixels: 0,
+  pigmentInk: Number.POSITIVE_INFINITY,
+  pigmentPixels: 0,
 });
 
 const INK_SCALE = 1000 / 255;
 
+function percentile(values: readonly number[], quantile: number): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * quantile)));
+  return sorted[index] ?? 0;
+}
+
 /**
- * Measures the historical global ink and the densest capped window
- * from raw RGBA data. The alpha channel is deliberately ignored,
- * matching the existing sheet readback.
+ * Measures the historical luminance ink and the color-aware pigment
+ * ink from raw RGBA data. The alpha channel is deliberately ignored:
+ * MODE.transparent stores OPAQUE transmittance (alpha 255), so only
+ * the RGB channels carry pigment.
  */
 export function measureAquarelleCaptureInk(
   data: ArrayLike<number>,
@@ -76,18 +113,48 @@ export function measureAquarelleCaptureInk(
   const pixelCount = width * height;
   if (pixelCount < 1) return AQUARELLE_CAPTURE_INK_UNMEASURABLE;
   const darkening = new Array<number>(pixelCount);
+  const reds = new Array<number>(pixelCount);
+  const greens = new Array<number>(pixelCount);
+  const blues = new Array<number>(pixelCount);
   let globalSum = 0;
   let inkPixels = 0;
   for (let pixel = 0; pixel < pixelCount; pixel += 1) {
     const index = pixel * 4;
+    const red = data[index] ?? 0;
+    const green = data[index + 1] ?? 0;
     const blue = data[index + 2] ?? 0;
-    const luminance = 0.2126 * (data[index] ?? 0) + 0.7152 * (data[index + 1] ?? 0) + 0.0722 * blue;
+    reds[pixel] = red;
+    greens[pixel] = green;
+    blues[pixel] = blue;
+    const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
     const value = Math.max(0, 248 - luminance);
     darkening[pixel] = value;
     globalSum += value;
     if (value > 0) inkPixels += 1;
   }
   const globalInk = (globalSum / pixelCount) * INK_SCALE;
+
+  // The paper baseline is the 99th percentile of each channel: the sheet's
+  // brightest pixels are the unpainted paper. A uniform cleared sheet of ANY
+  // color scores zero deficit; any hue that deviates from the paper (yellow
+  // absorbing blue, red absorbing green/blue, blue absorbing red/green) scores
+  // its real absorption even when luminance barely moves.
+  const paperRed = percentile(reds, 0.99);
+  const paperGreen = percentile(greens, 0.99);
+  const paperBlue = percentile(blues, 0.99);
+  let pigmentSum = 0;
+  let pigmentPixels = 0;
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    const deficit = Math.max(
+      paperRed - (reds[pixel] ?? 0),
+      paperGreen - (greens[pixel] ?? 0),
+      paperBlue - (blues[pixel] ?? 0),
+      0,
+    );
+    pigmentSum += deficit;
+    if (deficit > 0) pigmentPixels += 1;
+  }
+  const pigmentInk = (pigmentSum / pixelCount) * INK_SCALE;
 
   // A sample smaller than the window uses ONE window over the whole
   // sample; otherwise sliding windows (stride 4) guarantee that any
@@ -115,15 +182,17 @@ export function measureAquarelleCaptureInk(
   }
   const localInk = (densestWindowSum / (windowWidth * windowHeight)) * INK_SCALE;
 
-  return { globalInk, localInk, inkPixels };
+  return { globalInk, localInk, inkPixels, pigmentInk, pigmentPixels };
 }
 
 /**
- * The ONE capture decision: the historical global floor only.
- * Localized acceptance is reverted (it committed near-blank snapshots
- * over real paint in the packaged build); `localInk` stays available
- * for the rejection diagnostic.
+ * The ONE capture decision. Two GLOBAL paths, both paper-relative in
+ * spirit: the historical luminance floor, OR the color-aware per-channel
+ * pigment deficit against the sheet's own paper baseline. The localized
+ * window is diagnostic only — its acceptance reverted after it committed
+ * near-blank snapshots over real paint in the packaged build.
  */
 export function passesAquarelleCaptureInkGate(measurement: AquarelleCaptureInkMeasurement): boolean {
-  return measurement.globalInk >= AQUARELLE_MIN_CAPTURE_INK;
+  return measurement.globalInk >= AQUARELLE_MIN_CAPTURE_INK
+    || measurement.pigmentInk >= AQUARELLE_MIN_CAPTURE_PIGMENT_INK;
 }
