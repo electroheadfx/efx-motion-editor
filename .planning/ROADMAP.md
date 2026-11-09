@@ -196,11 +196,22 @@ Plans:
 **Plans:** 6 plans
 
 Plans:
+**Wave 1**
 - [ ] 60-01-PLAN.md — the pitch authority module, the strip wiring (wheel, ruler, playhead, lanes) and the zoom pill
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 60-02-PLAN.md — event-time projections, ghosts and previews onto the live pitch
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 60-03-PLAN.md — sound leaves, viewport getter, open/reveal positioning and the scaled rail gap
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 60-04-PLAN.md — track rows and motion lanes onto required pitch/gap props
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 60-05-PLAN.md — retire the last local pitch default and land the zero-literal authority audit
+
+**Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 60-06-PLAN.md — the five-level zoom acceptance matrix, written after the audit is green
 
 **Prerequisite**: the literal-`18` audit reaches zero before the zoom matrix test is written. The v2.0.1 VIS-02 30-vs-31 row-height drift is not part of this phase.
