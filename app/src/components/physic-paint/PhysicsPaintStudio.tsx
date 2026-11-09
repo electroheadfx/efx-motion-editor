@@ -662,7 +662,13 @@ function mergeImageLibraries(main: readonly MceImageRef[], studio: readonly MceI
 // measure ink against the white point; painted sheets measured 4.6-11.3 on
 // this scale, blank textured sheets 0.05-0.12. Anything below the floor is a
 // blank capture — committing it would overwrite real pixels.
-const AQUARELLE_MIN_CAPTURE_INK = 1;
+// quick-261109-pwt follow-up (2026-11-09): the floor was 1, but a WET wash
+// captured before the engine settles is far fainter than its baked look.
+// Live trace: real strokes rejected at 0.71/0.93/0.94 while accepted ones
+// scored 1.32-1.81 — the 1 floor sat inside the real-paint band, so leaving a
+// frame quickly dropped the stroke entirely. 0.3 still keeps a 2.5x margin
+// over the blank-sheet maximum (0.12).
+const AQUARELLE_MIN_CAPTURE_INK = 0.3;
 function measureAquarelleCanvasInk(canvas: HTMLCanvasElement): number {
   try {
     const sample = document.createElement('canvas');

@@ -2322,8 +2322,10 @@ describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
     expect(guardIndex).toBeGreaterThan(inkIndex);
     expect(seqIndex).toBeGreaterThan(guardIndex);
     // Calibrated on saved payloads: painted sheets score 4.6-11.3, blank
-    // textured sheets 0.05-0.12 on this per-mille scale.
-    expect(studio).toContain('const AQUARELLE_MIN_CAPTURE_INK = 1;');
+    // textured sheets 0.05-0.12 on this per-mille scale. The floor is 0.3
+    // (quick-261109-pwt): wet washes measured 0.71-0.94 when captured before
+    // the engine settles — a 1 floor rejected real paint.
+    expect(studio).toContain('const AQUARELLE_MIN_CAPTURE_INK = 0.3;');
   });
 
   it('keeps a non-flushed outcome visible to the facade and the unmount teardown intact', () => {
