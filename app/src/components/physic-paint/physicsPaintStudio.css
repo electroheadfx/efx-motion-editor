@@ -8542,6 +8542,18 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
 }
 
+/* studio-paint-motion-offset: the visor's seat while the active rail's edit
+   mirror is on. The visor positions itself in CONTENT coordinates (cursorX/Y
+   are content coords), so the seat carries the same rail-edit chain as the
+   shell; without it the pipette rendered untransformed and lagged the sheet
+   by the rail delta. Rendered only for a non-identity rail transform — the
+   identity path keeps the seatless visor markup. */
+.physics-paint-picker-visor-seat {
+  position: absolute;
+  z-index: 60;
+  pointer-events: none;
+}
+
 .physics-paint-picker-visor svg {
   display: block;
   /* lucide viewBox 24 → tip at (2,22); at 20px the tip lands 2px left / 18px

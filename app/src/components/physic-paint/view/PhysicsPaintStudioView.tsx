@@ -40,7 +40,7 @@ import type { StrokeSettingsDialogBundle } from './strokeSettingsModel';
 import type { RotoRailConversionDialogBundle } from '../hooks/useRotoTimelineActions';
 import { clearScriptStrokeSelection, scriptSelectedStrokeIds } from './scriptStrokeEdition';
 import { shouldClearSelectionOnCanvasRegionPointerDown } from './scriptSelectionDeselect';
-import { buildRailMotionEditCss } from './PhysicsPaintReferenceTransform';
+import { buildRailMotionEditCss, buildRailMotionEditSeatStyle } from './PhysicsPaintReferenceTransform';
 
 interface PhysicsPaintCanvasStackViewProps {
   canvasKey: string;
@@ -414,20 +414,55 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
       ) : null}
       {/* 261030-cnq: the brush ring, moved out of the isolated tracks group so
           the reference overlay can no longer bury it. Same shell-relative
-          coordinates as before (the layer is inset:0 in the shell). */}
+          coordinates as before (the layer is inset:0 in the shell).
+          studio-paint-motion-offset: the seat must carry the SAME rail-edit
+          chain as the shell. The ring reads CONTENT coordinates (cursorX/Y are
+          `clientX - transformed rect.left`), so without the chain it renders
+          untransformed while the sheet is CSS-translated by the 59-12 mirror —
+          the ring lags the committed stroke (which does land under the
+          pointer) by exactly the rail delta. Identity (railEditCss null) never
+          takes this branch: the style object is byte-identical. */}
       {canvasBounds ? (
         <div
           class="physics-paint-brush-ring-seat"
           aria-hidden="true"
-          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
+          style={{
+            left: canvasBounds.left,
+            top: canvasBounds.top,
+            width: canvasBounds.width,
+            height: canvasBounds.height,
+            ...buildRailMotionEditSeatStyle(railEditCss),
+          }}
         >
           <AquarelleBrushCursor />
         </div>
       ) : null}
       {/* 261030-cnq: the picker pointer. A direct child of the stack (never of
           the isolated tracks group) so it stays above a 100%-opacity reference
-          photo; it renders only while the picker is armed. */}
-      {canvasBounds ? <AquarellePickerVisor left={canvasBounds.left} top={canvasBounds.top} /> : null}
+          photo; it renders only while the picker is armed.
+          studio-paint-motion-offset: same content-space readout as the ring —
+          under a rail-edit mirror the visor rides a seat carrying the same
+          chain (left/top become content-relative 0,0), so the pipette tip
+          stays on the sampled pixel. Identity keeps today's exact markup. */}
+      {canvasBounds
+        ? railEditCss === null
+          ? <AquarellePickerVisor left={canvasBounds.left} top={canvasBounds.top} />
+          : (
+            <div
+              class="physics-paint-picker-visor-seat"
+              aria-hidden="true"
+              style={{
+                left: canvasBounds.left,
+                top: canvasBounds.top,
+                width: canvasBounds.width,
+                height: canvasBounds.height,
+                ...buildRailMotionEditSeatStyle(railEditCss),
+              }}
+            >
+              <AquarellePickerVisor left={0} top={0} />
+            </div>
+          )
+        : null}
     </div>
   );
 }

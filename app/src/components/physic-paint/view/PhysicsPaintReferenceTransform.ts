@@ -189,3 +189,21 @@ export function buildRailMotionEditCss(
   const y = pivotY + transform.translateY * zoom;
   return `translate(${x}px, ${y}px) rotate(${transform.rotationRadians}rad) scale(${transform.scale}) translate(${-pivotX}px, ${-pivotY}px)`;
 }
+
+/**
+ * studio-paint-motion-offset: the seat style for the two cursor overlays that
+ * read CONTENT coordinates (the brush ring and the picker visor). Their seats
+ * share the shell's LAYOUT box, so under the rail-edit mirror they must carry
+ * the SAME chain as the shell with the layout-box origin. Without it the
+ * overlays render untransformed while the sheet is CSS-translated — the
+ * visible paint cursor lags the correctly-placed stroke by the rail delta.
+ *
+ * Identity (`railEditCss === null`) returns null so the spread contributes no
+ * properties and the seat style object stays byte-identical to the pre-59-12
+ * markup.
+ */
+export function buildRailMotionEditSeatStyle(
+  railEditCss: string | null,
+): { transform: string; transformOrigin: string } | null {
+  return railEditCss === null ? null : { transform: railEditCss, transformOrigin: '0 0' };
+}
