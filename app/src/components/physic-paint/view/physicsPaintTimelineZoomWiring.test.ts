@@ -128,9 +128,10 @@ describe('Timeline zoom wiring — live geometry (D-09, D-12, D-14)', () => {
   it('drives the cells grid and both rails from the live pitch, carrying the cell-width variable', () => {
     expect(strip).toContain('gridTemplateColumns: `repeat(${frameCells.length}, ${timelineMetrics.pitch}px)`,' );
     expect(strip).toContain("'--timeline-cell-width': `${timelineMetrics.cellWidth}px`,");
-    // Plan 60-04 threads the same live pitch into the motion block and both
-    // track rows as well; the two rails this pin originally counted remain.
-    expect(strip.split('framePitch={timelineMetrics.pitch}').length - 1).toBeGreaterThanOrEqual(2);
+    // Phase 60 (ZOOM-05): exactly five render sites consume the live pitch —
+    // both rails, the active motion block and both track rows. The authority
+    // audit pins the same count, so a sixth site (or a dropped one) fails both.
+    expect(strip.split('framePitch={timelineMetrics.pitch}').length - 1).toBe(5);
     // D-14: no density threshold — every frame cell still renders.
     expect(strip).not.toContain('timelineMetrics.pitch <');
   });

@@ -1243,10 +1243,10 @@ describe('Phase 60 (ZOOM-05) interaction-surface conversion contract', () => {
 describe('Phase 60 (ZOOM-05) scaled rail gap contract', () => {
   it('passes the scaled cell gap to both rails alongside the live pitch', () => {
     const code = source();
-    // Phase 60 (ZOOM-05) 60-04: the gap now also rides both track rows and the
-    // active motion block, so the global occurrence count is no longer exactly
-    // two — the per-rail blocks below stay the pin.
-    expect(code.split('frameGap={timelineMetrics.cellGap}').length - 1).toBeGreaterThanOrEqual(2);
+    // Phase 60 (ZOOM-05): the real consumer set is EXACTLY five render sites —
+    // both rails, the active motion block and both track rows. The authority
+    // audit pins the same count, so a sixth site (or a dropped one) fails both.
+    expect(code.split('frameGap={timelineMetrics.cellGap}').length - 1).toBe(5);
     const keyRailStart = code.indexOf('<PhysicsPaintKeyRail');
     const loopRailStart = code.indexOf('<PhysicsPaintLoopClipRail');
     expect(keyRailStart).toBeGreaterThanOrEqual(0);
