@@ -4,12 +4,21 @@ import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalR
 import { projectPhysicsPaintLoopClipGeometry } from './physicsPaintLoopClipPresentation';
 import {
   TIMELINE_LANE_ORIGIN_PX,
+  TIMELINE_RULER_MIN_STEP,
+  frameToPx,
+  pxToFrame,
   resolvePlayheadAnchorLocalX,
   resolveRulerStep,
+  resolveTimelineFitScale,
   resolveTimelineMetrics,
+  resolveTimelineViewportFrames,
 } from './physicsPaintTimelineZoom';
 import { soundStainLeftPx, soundStainWidthPx } from './soundBandGeometry';
-import { TIMELINE_GEOMETRY, TIMELINE_MOTION } from './timelineRailDesign';
+import {
+  TIMELINE_GEOMETRY,
+  TIMELINE_MOTION,
+  projectTimelineRailLineWidth,
+} from './timelineRailDesign';
 
 /**
  * Phase 60 — the five-level zoom acceptance matrix (ZOOM-01..05).
@@ -46,6 +55,13 @@ interface ZoomLevel {
   readonly loopLeftFrame2: number;
   readonly loopVisibleWidth3: number;
   readonly loopClippedWidth4: number;
+  readonly hitTestClientXFrame7: number;
+  readonly adjacencyGap: number;
+  readonly adjacentRailStart3: number;
+  readonly dragFramesAt72: number;
+  readonly fourFrameDragPx: number;
+  readonly scrollToFrame100Target: number;
+  readonly scrollToFrame100Guard: number;
 }
 
 /**
@@ -68,6 +84,13 @@ const ZOOM_LEVELS: readonly ZoomLevel[] = Object.freeze([
     loopLeftFrame2: 9,
     loopVisibleWidth3: 13,
     loopClippedWidth4: 18,
+    hitTestClientXFrame7: 137.5,
+    adjacencyGap: 0.5,
+    adjacentRailStart3: 13.5,
+    dragFramesAt72: 16,
+    fourFrameDragPx: 18,
+    scrollToFrame100Target: 302.25,
+    scrollToFrame100Guard: 454.5,
   },
   {
     scale: 0.5,
@@ -82,6 +105,13 @@ const ZOOM_LEVELS: readonly ZoomLevel[] = Object.freeze([
     loopLeftFrame2: 18,
     loopVisibleWidth3: 26,
     loopClippedWidth4: 36,
+    hitTestClientXFrame7: 169,
+    adjacencyGap: 1,
+    adjacentRailStart3: 27,
+    dragFramesAt72: 8,
+    fourFrameDragPx: 36,
+    scrollToFrame100Target: 754.5,
+    scrollToFrame100Guard: 909,
   },
   {
     scale: 1,
@@ -96,6 +126,13 @@ const ZOOM_LEVELS: readonly ZoomLevel[] = Object.freeze([
     loopLeftFrame2: 36,
     loopVisibleWidth3: 52,
     loopClippedWidth4: 72,
+    hitTestClientXFrame7: 232,
+    adjacencyGap: 2,
+    adjacentRailStart3: 54,
+    dragFramesAt72: 4,
+    fourFrameDragPx: 72,
+    scrollToFrame100Target: 1659,
+    scrollToFrame100Guard: 1818,
   },
   {
     scale: 2,
@@ -110,6 +147,13 @@ const ZOOM_LEVELS: readonly ZoomLevel[] = Object.freeze([
     loopLeftFrame2: 72,
     loopVisibleWidth3: 104,
     loopClippedWidth4: 144,
+    hitTestClientXFrame7: 358,
+    adjacencyGap: 4,
+    adjacentRailStart3: 108,
+    dragFramesAt72: 2,
+    fourFrameDragPx: 144,
+    scrollToFrame100Target: 3468,
+    scrollToFrame100Guard: 3636,
   },
   {
     scale: 4,
@@ -124,6 +168,13 @@ const ZOOM_LEVELS: readonly ZoomLevel[] = Object.freeze([
     loopLeftFrame2: 144,
     loopVisibleWidth3: 208,
     loopClippedWidth4: 288,
+    hitTestClientXFrame7: 610,
+    adjacencyGap: 8,
+    adjacentRailStart3: 216,
+    dragFramesAt72: 1,
+    fourFrameDragPx: 288,
+    scrollToFrame100Target: 7086,
+    scrollToFrame100Guard: 7272,
   },
 ]);
 
@@ -241,6 +292,248 @@ describe('Phase 60 zoom matrix — render geometry at every level', () => {
       for (const key of Object.keys(resolveTimelineMetrics(level.scale))) {
         expect(key).not.toMatch(/height|row|lane|header|band|top|bottom/i);
       }
+    }
+  });
+});
+
+describe('Phase 60 zoom matrix — interaction geometry at every level', () => {
+  it.each(ZOOM_LEVELS)('at $scale× round-trips the hit-test at a fixed content x', (level) => {
+    // Scroller left 200, scrollLeft 100: client x = 100 + frameToPx(7, pitch).
+    const clientX = 100 + frameToPx(7, level.pitch);
+    expect(clientX).toBe(level.hitTestClientXFrame7);
+    expect(pxToFrame(clientX, 200, 100, level.pitch)).toBe(7);
+    // Mid-cell travel never crosses a frame boundary.
+    expect(pxToFrame(clientX + level.pitch / 2, 200, 100, level.pitch)).toBe(7);
+    expect(pxToFrame(clientX + level.pitch - 0.001, 200, 100, level.pitch)).toBe(7);
+    expect(pxToFrame(clientX + level.pitch, 200, 100, level.pitch)).toBe(8);
+  });
+
+  it.each(ZOOM_LEVELS)('at $scale× reports the audio visible range in frames', (level) => {
+    const frames = resolveTimelineViewportFrames(100, 200, level.pitch);
+    expect(frames).not.toBeNull();
+    expect(frames?.visStart).toBeCloseTo(100 / level.pitch, 10);
+    expect(frames?.visEnd).toBeCloseTo(300 / level.pitch, 10);
+  });
+
+  it.each(ZOOM_LEVELS)(
+    'at $scale× leaves exactly one scaled gap between adjacent rails',
+    (level) => {
+      // A three-frame rail starting at frame 0 ends on the last cell's right edge...
+      const railEnd = projectTimelineRailLineWidth(3, level.pitch, true, level.cellGap);
+      expect(railEnd).toBe(level.loopVisibleWidth3);
+      // ...and the adjacent rail at frame 3 starts exactly one gap later.
+      const nextRail = projectPhysicsPaintLoopClipGeometry(
+        loopRange({ placementStart: 3, effectiveEnd: 6 }),
+        FULL_WINDOW,
+        level.pitch,
+        level.cellGap,
+      );
+      expect(nextRail?.left).toBe(level.adjacentRailStart3);
+      expect((nextRail?.left ?? 0) - railEnd).toBe(level.adjacencyGap);
+    },
+  );
+
+  it('orders the ladder: pitch strictly increases and the ruler extent never decreases', () => {
+    let previousPitch = 0;
+    let previousExtent = 0;
+    for (const level of ZOOM_LEVELS) {
+      const pitch = resolveTimelineMetrics(level.scale).pitch;
+      expect(pitch).toBeGreaterThan(previousPitch);
+      const extent = resolveRulerStep(pitch) * pitch;
+      expect(extent).toBeGreaterThanOrEqual(previousExtent);
+      previousPitch = pitch;
+      previousExtent = extent;
+    }
+  });
+
+  it('keeps the empty document exact: no scaled cell, the ruler floor and the fit default', () => {
+    expect(resolveRulerStep(0)).toBe(TIMELINE_RULER_MIN_STEP);
+    expect(resolveRulerStep(0)).toBe(3);
+    expect(resolveTimelineMetrics(0).scale).toBe(0.25);
+    expect(resolveTimelineMetrics(0).cellWidth).toBe(4);
+    expect(resolveTimelineMetrics(0).cellGap).toBe(0.5);
+    expect(resolveTimelineMetrics(0).pitch).toBe(4.5);
+    expect(resolveTimelineFitScale(0, 360)).toBe(1);
+    expect(resolveTimelineViewportFrames(0, 0, 0)).toBeNull();
+  });
+
+  it.each(ZOOM_LEVELS)('at $scale× resolves a 72px drag to $dragFramesAt72 frames', (level) => {
+    expect(Math.round(72 / level.pitch)).toBe(level.dragFramesAt72);
+    expect(4 * level.pitch).toBe(level.fourFrameDragPx);
+  });
+
+  it.each(ZOOM_LEVELS)('at $scale× projects the ruler scrub onto frame 7', (level) => {
+    // The scrub surface (the ruler's own rect) starts where the scroller does.
+    const clientX = 106 + 7 * level.pitch;
+    expect(clientX).toBe(level.hitTestClientXFrame7);
+    expect(pxToFrame(clientX, 200, 100, level.pitch)).toBe(7);
+    expect(pxToFrame(clientX + level.pitch / 2, 200, 100, level.pitch)).toBe(7);
+    expect(pxToFrame(clientX + level.pitch - 0.001, 200, 100, level.pitch)).toBe(7);
+    expect(pxToFrame(clientX + level.pitch, 200, 100, level.pitch)).toBe(8);
+  });
+
+  /**
+   * The documented scroll-to-frame law. No exported helper exists, so this local
+   * predicate is the explicit substitute for a five-level call: it restates the
+   * centring target and the `scrollWidth < (frame + 1) * pitch` no-op guard that
+   * 60-03 task 2 pins on both positioning effects (peeked pitch, unchanged
+   * dependency arrays). The expected values stay literal in the level table.
+   */
+  function scrollToFramePlan(
+    frame: number,
+    clientWidth: number,
+    pitch: number,
+    scrollWidth: number,
+  ): { readonly target: number; readonly proceeds: boolean } {
+    return {
+      target: frame * pitch + pitch / 2 - clientWidth / 2,
+      proceeds: scrollWidth >= (frame + 1) * pitch,
+    };
+  }
+
+  it.each(ZOOM_LEVELS)(
+    'at $scale× centres frame 100 at $scrollToFrame100Target px with its guard at $scrollToFrame100Guard',
+    (level) => {
+      expect((100 + 1) * level.pitch).toBe(level.scrollToFrame100Guard);
+      const justBelow = scrollToFramePlan(100, 300, level.pitch, level.scrollToFrame100Guard - 1);
+      expect(justBelow.target).toBe(level.scrollToFrame100Target);
+      expect(justBelow.proceeds).toBe(false);
+      const atThreshold = scrollToFramePlan(100, 300, level.pitch, level.scrollToFrame100Guard);
+      expect(atThreshold.target).toBe(level.scrollToFrame100Target);
+      expect(atThreshold.proceeds).toBe(true);
+    },
+  );
+});
+
+interface EdgeProbeRow {
+  readonly id: number;
+  readonly requirement: string;
+  readonly category:
+    | 'unclassified'
+    | 'boundary'
+    | 'adjacency'
+    | 'empty'
+    | 'ordering'
+    | 'precision';
+  readonly owner: string;
+}
+
+/**
+ * The phase's spec-less edge probe: eleven rows across the five categories plus
+ * two unclassified review rows. Each row names the predicate that owns it. A row
+ * that loses its home fails red here instead of vanishing.
+ */
+const EDGE_PROBE_ROWS: readonly EdgeProbeRow[] = Object.freeze([
+  {
+    id: 1,
+    requirement: 'ZOOM/SC1',
+    category: 'unclassified',
+    owner:
+      '60-01 task 1 cursor anchor (localX 294, anchored 494, wheel factor) plus 60-01 task 2 wiring (modifier branch before the shift guard)',
+  },
+  {
+    id: 2,
+    requirement: 'ZOOM/SC2',
+    category: 'boundary',
+    owner:
+      '60-01 task 1 clamp table at 0.25 / 4 and one step beyond, plus 60-06 task 3 end-step cases',
+  },
+  {
+    id: 3,
+    requirement: 'ZOOM/SC2',
+    category: 'adjacency',
+    owner: '60-01 task 1 wheel-epsilon no-op, plus 60-06 task 3 no-write at the current scale',
+  },
+  {
+    id: 4,
+    requirement: 'ZOOM/SC2',
+    category: 'empty',
+    owner:
+      '60-01 task 1 port-absent contract (every action is a scroll no-op, never throws), plus 60-06 task 3 Fit with no port',
+  },
+  {
+    id: 5,
+    requirement: 'ZOOM/SC2',
+    category: 'ordering',
+    owner: '60-01 task 1 strictly increasing ladder, plus 60-06 task 2 ordering block',
+  },
+  {
+    id: 6,
+    requirement: 'ZOOM/SC2',
+    category: 'precision',
+    owner:
+      '60-01 task 1 percent rounding (137 / 100 / 50), plus 60-06 task 3 Fit literal 0.49166666666666664 -> percent 49',
+  },
+  {
+    id: 7,
+    requirement: 'ZOOM/SC3',
+    category: 'adjacency',
+    owner:
+      '60-06 task 2 adjacency block (a 3-frame rail ends at 3 x pitch - gap, the next starts at 3 x pitch, visible gap 0.5 / 1 / 2 / 4 / 8)',
+  },
+  {
+    id: 8,
+    requirement: 'ZOOM/SC3',
+    category: 'empty',
+    owner:
+      '60-06 task 2 empty block (resolveRulerStep(0) is 3, resolveTimelineMetrics(0) is the 0.25 entry, zero pitch returns a null viewport)',
+  },
+  {
+    id: 9,
+    requirement: 'ZOOM/SC3',
+    category: 'ordering',
+    owner: '60-06 task 2 ordering block (pitch strictly increases, ruler extent never decreases)',
+  },
+  {
+    id: 10,
+    requirement: 'ZOOM/SC4',
+    category: 'adjacency',
+    owner:
+      '60-06 task 1 vertical-token block (lane and cell heights stay at their 1x values, so adjacent lanes neither overlap nor separate with zoom)',
+  },
+  {
+    id: 11,
+    requirement: 'ZOOM/SC4',
+    category: 'empty',
+    owner:
+      '60-06 task 2 empty block (resolveTimelineFitScale(0, 360) is 1, resolveRulerStep(0) is 3 and resolveTimelineMetrics(0) is the 0.25 entry - an empty document never produces a scaled cell)',
+  },
+  {
+    id: 12,
+    requirement: 'ZOOM/SC4',
+    category: 'ordering',
+    owner:
+      '60-06 task 1 vertical-token block (the fixed vertical tokens are scale-invariant, so their order cannot change)',
+  },
+  {
+    id: 13,
+    requirement: 'ZOOM/SC5',
+    category: 'unclassified',
+    owner:
+      '60-01 task 2/3 wiring (resetForStudioOpen at the mount seam, no document import) plus 60-06 task 3 reset to scale 1, percent 100, flags false/false',
+  },
+]);
+
+describe('Phase 60 zoom matrix — edge-probe row ownership', () => {
+  it('carries exactly the thirteen rows the phase edge probe raised', () => {
+    expect(EDGE_PROBE_ROWS).toHaveLength(13);
+    expect(EDGE_PROBE_ROWS.map((row) => row.id)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+    ]);
+    expect(new Set(EDGE_PROBE_ROWS.map((row) => row.category))).toEqual(
+      new Set(['unclassified', 'boundary', 'adjacency', 'empty', 'ordering', 'precision']),
+    );
+  });
+
+  it('assigns a named owner to every row and owns both unclassified rows explicitly', () => {
+    for (const row of EDGE_PROBE_ROWS) {
+      expect(row.owner.trim().length).toBeGreaterThan(0);
+    }
+    const unclassified = EDGE_PROBE_ROWS.filter((row) => row.category === 'unclassified');
+    expect(unclassified).toHaveLength(2);
+    expect(unclassified.map((row) => row.id)).toEqual([1, 13]);
+    for (const row of unclassified) {
+      expect(row.owner).toMatch(/^60-0[1-6] task/);
     }
   });
 });
