@@ -201,3 +201,157 @@ describe('Phase 60 (ZOOM-05) timeline zoom single-authority audit', () => {
     ).toEqual([]);
   });
 });
+
+/* ------------------------------------------------------------------------ */
+/* Presence half (ZOOM-05): every consumer must READ the session pitch —     */
+/* none owns one. Each block names the file it proves and pins the           */
+/* structural fact that makes the read live: a required prop declaration, a  */
+/* parameter, or a composition/division on the supplied value. Assertions    */
+/* are substrings over comment-stripped, whitespace-collapsed code, so they  */
+/* never depend on formatting or on a documentation mention.                 */
+/* ------------------------------------------------------------------------ */
+
+/** Collapse whitespace runs so a multi-line call matches as one string. */
+function compact(text: string): string {
+  return text.replace(/\s+/g, ' ');
+}
+
+/** Comment-stripped, whitespace-normalised source for one consumer file. */
+function consumerCode(relativePath: string): string {
+  return compact(stripComments(sourceByPath(relativePath).text));
+}
+
+/** The compacted text from `marker` forward, bounded so a pin stays local. */
+function sliceFrom(text: string, marker: string, length = 900): string {
+  const index = text.indexOf(marker);
+  if (index === -1) throw new Error(`Presence proof: marker not found: ${marker}`);
+  return text.slice(index, index + length);
+}
+
+function occurrences(text: string, needle: string): number {
+  return text.split(needle).length - 1;
+}
+
+describe('Phase 60 (ZOOM-05) per-consumer presence proof', () => {
+  it('view/PhysicsPaintWorkflowStrip.tsx reads the live metrics once and threads pitch/gap into both rails, the motion block and both rows', () => {
+    const code = consumerCode('view/PhysicsPaintWorkflowStrip.tsx');
+    // D-12: exactly ONE render-body read; event-time paths measure through peek
+    // so a gesture never subscribes the strip to the zoom signal.
+    expect(occurrences(code, 'const timelineMetrics = timelineZoom.metrics.value;')).toBe(1);
+    expect(code).toContain('const rotoLaneWidthPx = frameCells.length * timelineMetrics.pitch;');
+    expect(code).toContain('const rotoRulerStep = resolveRulerStep(timelineMetrics.pitch);');
+    expect(code).toContain('const rotoRulerTickWidthPx = rotoRulerStep * timelineMetrics.pitch;');
+    expect(code).toContain('gridTemplateColumns: `repeat(${frameCells.length}, ${timelineMetrics.pitch}px)`');
+    // Exactly five render sites: key rail, loop rail, motion block, both rows.
+    expect(occurrences(code, 'framePitch={timelineMetrics.pitch}')).toBe(5);
+    expect(occurrences(code, 'frameGap={timelineMetrics.cellGap}')).toBe(5);
+    for (const tag of [
+      '<PhysicsPaintKeyRail',
+      '<PhysicsPaintLoopClipRail',
+      '<TimelineMotionBlock',
+      '<PhysicsPaintTrackRow',
+    ]) {
+      const openingTag = sliceFrom(code, tag);
+      expect(openingTag, `${tag} must receive the live pitch`).toContain('framePitch={timelineMetrics.pitch}');
+      expect(openingTag, `${tag} must receive the live gap`).toContain('frameGap={timelineMetrics.cellGap}');
+    }
+    // Event-time projections and the ruler-scrub port read peek, never value.
+    expect(code).toContain('cellWidthPx: timelineZoom.metrics.peek().pitch,');
+    expect(code).toContain('framePitch: timelineZoom.metrics.peek().pitch,');
+    expect(code).toContain('const pitch = timelineZoom.metrics.value.pitch;');
+    expect(code).toContain('const pitch = timelineZoom.metrics.peek().pitch;');
+    // The sound band and its live preview scale through the same pitch.
+    expect(code).toContain('soundStainLeftPx(clip.startFrame, pitch)');
+    expect(code).toContain('soundStainWidthPx(clip.inFrame, clip.outFrame, pitch)');
+    expect(code).toContain('soundStainLeftPx(next.startFrame, pitch)');
+    expect(code).toContain('soundStainWidthPx(next.inFrame, next.outFrame, pitch)');
+  });
+
+  it('view/PhysicsPaintTrackRow.tsx declares required pitch/gap props and derives every row projection from them', () => {
+    const code = consumerCode('view/PhysicsPaintTrackRow.tsx');
+    // Required on all three row prop surfaces (paint row, motion lane, bg target).
+    expect(occurrences(code, 'readonly framePitch: number;')).toBe(3);
+    expect(occurrences(code, 'readonly frameGap: number;')).toBe(2);
+    expect(code).not.toContain('readonly framePitch?: number;');
+    expect(code).not.toContain('readonly frameGap?: number;');
+    expect(code).toContain('gridTemplateColumns: `repeat(${frameCells.length}, ${framePitch}px)`');
+    expect(code).toContain('minWidth: `${frameCells.length * framePitch}px`');
+    expect(code).toContain('left: `${segment.firstKeyFrame * framePitch}px`');
+    expect(code).toContain('left: `${crossInsertionFrame * framePitch}px`');
+    expect(code).toContain('Math.round(props.width / props.framePitch)');
+    expect(code).toContain('resolveTrackRowLoopVisuals(layerId, trackId, frameCells, framePitch, frameGap)');
+    // Both loop-geometry calls forward the live pitch AND gap.
+    expect(occurrences(code, 'framePitch, frameGap, )')).toBe(2);
+    expect(code).toContain('Math.max(1, Math.round(geometry.width / framePitch))');
+  });
+
+  it('view/TimelineMotionChannels.tsx declares required pitch/gap props and scales the lane, cell, key, curve and outline', () => {
+    const code = consumerCode('view/TimelineMotionChannels.tsx');
+    expect(occurrences(code, 'readonly framePitch: number;')).toBe(2);
+    expect(occurrences(code, 'readonly frameGap: number;')).toBe(2);
+    expect(code).toContain('const laneWidth = frameCount * framePitch;');
+    expect(code).toContain('const cellWidth = framePitch - frameGap;');
+    expect(code).toContain('left: frame * framePitch + (cellWidth - TIMELINE_MOTION.keySize) / 2,');
+    expect(code).toContain('left: frame * framePitch,');
+    expect(occurrences(code, 'cellPitch: framePitch,')).toBe(2);
+    expect(code).toContain('cellGap: frameGap,');
+  });
+
+  it('view/TimelineMotionKeyDrag.tsx divides pointer travel by the lane framePitch through its latest-value ref', () => {
+    const code = consumerCode('view/TimelineMotionKeyDrag.tsx');
+    expect(code).toContain('const pitch = latestRef.current.laneProps.framePitch;');
+    expect(code).toContain('Math.round((clientX - originClientX) / pitch)');
+    expect(code).toContain('const cellWidth = current.laneProps.framePitch - current.laneProps.frameGap;');
+    expect(code).toContain('clamped.frame * current.laneProps.framePitch +');
+  });
+
+  it('view/PhysicsPaintKeyRail.tsx forwards the pitch and the live gap into the shared rail-width law', () => {
+    const code = consumerCode('view/PhysicsPaintKeyRail.tsx');
+    expect(code).toContain('readonly framePitch: number;');
+    expect(code).toContain('frameGap: number = TIMELINE_GEOMETRY.cellGap,');
+    expect(code).toContain('left: (clippedStart - visibleFrameWindow.startFrame) * framePitch,');
+    expect(code).toContain('width: projectTimelineRailLineWidth(clippedEnd - clippedStart, framePitch, showEndBoundary, frameGap),');
+    // The drag preview and the accepted rail both carry the live gap.
+    expect(occurrences(code, 'props.frameGap ?? TIMELINE_GEOMETRY.cellGap,')).toBe(2);
+    expect(code).toContain('frameGap={props.frameGap}');
+  });
+
+  it('view/PhysicsPaintLoopClipRail.tsx forwards the live pitch and gap into the loop geometry', () => {
+    const code = consumerCode('view/PhysicsPaintLoopClipRail.tsx');
+    expect(code).toContain('readonly framePitch: number;');
+    expect(code).toContain('readonly frameGap?: number;');
+    expect(code).toContain(
+      'projectPhysicsPaintLoopClipGeometry( continuousRange, props.visibleFrameWindow, props.framePitch, props.frameGap, )',
+    );
+  });
+
+  it('view/physicsPaintLoopClipPresentation.ts takes the gap as a parameter and forwards it to the rail-width law', () => {
+    const code = consumerCode('view/physicsPaintLoopClipPresentation.ts');
+    expect(code).toContain('frameGap: number = TIMELINE_GEOMETRY.cellGap,');
+    expect(code).toContain('left: (clippedStart - visibleFrameWindow.startFrame) * framePitch,');
+    expect(code).toContain('width: projectTimelineRailLineWidth(clippedEnd - clippedStart, framePitch, endVisible, frameGap),');
+  });
+
+  it('view/soundBandGeometry.ts takes the cell width as a parameter in both placement helpers', () => {
+    const code = consumerCode('view/soundBandGeometry.ts');
+    expect(code).toContain('export function soundStainLeftPx(startFrame: number, cellWidthPx: number): number {');
+    expect(code).toContain('return startFrame * cellWidthPx;');
+    expect(code).toContain('export function soundStainWidthPx(inFrame: number, outFrame: number, cellWidthPx: number): number {');
+    expect(code).toContain('return soundSpanFrames(inFrame, outFrame) * cellWidthPx;');
+  });
+
+  it('hooks/usePhysicsPaintRulerScrub.ts requires cellWidthPx and divides client x by it with no fallback', () => {
+    const code = consumerCode('hooks/usePhysicsPaintRulerScrub.ts');
+    expect(code).toContain('readonly cellWidthPx: number;');
+    expect(code).toContain('const cellWidthPx = options.cellWidthPx;');
+    expect(code).toContain('Math.floor((clientX - rectLeft) / cellWidthPx)');
+    expect(code).not.toContain('options.cellWidthPx ??');
+  });
+
+  it('hooks/usePhysicsPaintCrossTrackDrag.ts resolves the pointer frame by the supplied framePitch', () => {
+    const code = consumerCode('hooks/usePhysicsPaintCrossTrackDrag.ts');
+    expect(code).toContain('readonly framePitch: number;');
+    expect(code).toContain('const pitch = framePitch * zoom;');
+    expect(code).toContain('Math.floor((pointerX + scrollLeft) / pitch)');
+  });
+});
