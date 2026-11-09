@@ -8024,7 +8024,9 @@ input[type="range"].physics-paint-photo-reference-slider-input {
      1x ratio) so it reads the same at 25% and 400%. */
   top: 9px;
   left: 50%;
-  width: calc(var(--timeline-cell-width, 16px) * 0.75);
+  /* Clamped to the cell's 2px padding box (1px border + overflow hidden), so the
+     3px dash at 0.25x is not clipped to half its width. */
+  width: min(calc(var(--timeline-cell-width, 16px) * 0.75), calc(var(--timeline-cell-width, 16px) - 2px));
   height: 2px;
   border: 0;
   border-radius: 1px;

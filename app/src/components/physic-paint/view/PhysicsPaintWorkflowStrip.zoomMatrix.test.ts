@@ -563,7 +563,6 @@ function makePort(
     getClientWidth: () => options.clientWidth ?? 360,
     setScrollLeft,
     getPlayheadFrame: () => options.playheadFrame ?? 10,
-    getFrameCount: () => options.frameCount ?? 40,
   };
   return { port, setScrollLeft };
 }
@@ -645,6 +644,9 @@ describe('Phase 60 zoom matrix — store gestures', () => {
     // new pitch renders, never against the pre-zoom scrollWidth.
     await flushAnchoredScroll();
     expect(setScrollLeft).toHaveBeenCalledTimes(1);
+    // Exact anchor: playhead 10 at the 0.49167x pitch (8.85) sits at local x
+    // 10*8.85 + 4.425 − 1 = 91.925; (91.925 / 8.85) * 18 − 91.925 = 95.0411.
+    expect(setScrollLeft.mock.calls[0]?.[0]).toBeCloseTo(95.0411017, 6);
   });
 
   it('is a safe no-op when the 100% reset runs with no registered port', () => {

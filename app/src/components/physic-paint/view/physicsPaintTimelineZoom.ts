@@ -11,8 +11,10 @@ import { TIMELINE_GEOMETRY } from './timelineRailDesign';
  * 0.25x to 4x.
  *
  * The view metrics never enter the document: no `.mce` field, no schema, no
- * revision, no cache key, no export surface. `resetForStudioOpen()` returns the
- * scale to 1 each time the Studio opens, so nothing leaks across documents.
+ * revision, no cache key, no export surface. `resetForStudioOpen(layerId)`
+ * restores that paint layer's remembered density (a localStorage UI preference,
+ * because closing the Studio destroys its webview) and defaults to 1, so no
+ * document or other layer ever inherits this one's zoom.
  *
  * Only HORIZONTAL geometry scales. Row height, lane height, cell height, the
  * ruler band and the header column are fixed and deliberately absent from
@@ -57,7 +59,6 @@ export interface TimelineZoomScrollPort {
   getClientWidth(): number;
   setScrollLeft(value: number): void;
   getPlayheadFrame(): number;
-  getFrameCount(): number;
 }
 
 function finiteOr(value: number, fallback: number): number {
@@ -254,10 +255,25 @@ function readStoredScales(): Map<string, number> {
   return out;
 }
 
+/**
+ * The window is RECENCY-ordered, not first-seen: a layer touched again is
+ * re-inserted at the end, so the cap evicts the least recently used layer
+ * rather than the one zoomed longest ago. Without the touch, an actively used
+ * layer would silently revert to 1x after the next close/reopen.
+ */
+function rememberScale(layerId: string, scale: number): void {
+  scaleByLayer.delete(layerId);
+  scaleByLayer.set(layerId, scale);
+  while (scaleByLayer.size > MAX_REMEMBERED_LAYERS) {
+    const oldest = scaleByLayer.keys().next();
+    if (oldest.done) break;
+    scaleByLayer.delete(oldest.value);
+  }
+}
+
 function writeStoredScales(): void {
   try {
-    const entries = [...scaleByLayer.entries()].slice(-MAX_REMEMBERED_LAYERS);
-    localStorage.setItem(SCALE_BY_LAYER_STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
+    localStorage.setItem(SCALE_BY_LAYER_STORAGE_KEY, JSON.stringify(Object.fromEntries(scaleByLayer)));
   } catch {
     // Storage can be unavailable — persistence degrades, nothing else does.
   }
@@ -278,7 +294,7 @@ function setScaleSignal(next: number): boolean {
   if (Math.abs(clamped - current) <= TIMELINE_ZOOM_EPSILON) return false;
   scaleSignal.value = clamped;
   if (activeLayerId !== null && scaleByLayer.get(activeLayerId) !== clamped) {
-    scaleByLayer.set(activeLayerId, clamped);
+    rememberScale(activeLayerId, clamped);
     writeStoredScales();
   }
   return true;
@@ -431,8 +447,12 @@ export const timelineZoom = {
     // A queued anchored write from the outgoing session must never land on the
     // incoming view.
     discardPendingScroll();
-    activeLayerId = layerId ?? null;
-    const remembered = activeLayerId === null ? undefined : scaleByLayer.get(activeLayerId);
+    const remembered = layerId == null ? undefined : scaleByLayer.get(layerId);
+    // Restore before adopting the layer id: opening a layer must never RECORD
+    // the restored value as a fresh touch, or every first open would consume a
+    // slot in the recency window.
+    activeLayerId = null;
     setScaleSignal(remembered ?? 1);
+    activeLayerId = layerId ?? null;
   },
 };

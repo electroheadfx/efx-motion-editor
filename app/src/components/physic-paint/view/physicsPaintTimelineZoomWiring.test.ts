@@ -58,9 +58,7 @@ describe('Timeline zoom wiring — mount seam (D-05, D-12)', () => {
     expect(strip).toContain('getClientWidth: () => timelineScrollRef.current?.clientWidth ?? 0,');
     expect(strip).toContain('if (el) el.scrollLeft = value;');
     expect(strip).toContain('getPlayheadFrame: () => currentFrameSignal.peek(),');
-    expect(strip).toContain('getFrameCount: () => timelineFrameCountRef.current,');
     // The live extent is refreshed once per render, never captured at mount.
-    expect(strip).toContain('timelineFrameCountRef.current = frameCells.length;');
   });
 });
 
@@ -249,7 +247,7 @@ describe('Timeline zoom wiring — CSS split (D-12, D-14)', () => {
     const rule = ruleBody(css, '.physics-paint-roto-cell[data-cell-kind="interp"]::before');
     expect(rule).toContain('left: 50%;');
     expect(rule).toContain('transform: translateX(-50%);');
-    expect(rule).toContain('width: calc(var(--timeline-cell-width, 16px) * 0.75);');
+    expect(rule).toContain('width: min(calc(var(--timeline-cell-width, 16px) * 0.75), calc(var(--timeline-cell-width, 16px) - 2px));');
     expect(rule).not.toContain('left: 1px;');
     expect(rule).not.toContain('width: 12px;');
   });

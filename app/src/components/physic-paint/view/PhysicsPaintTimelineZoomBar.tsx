@@ -7,8 +7,8 @@ import { timelineZoom } from './physicsPaintTimelineZoom';
  * The percent is DISPLAY-ONLY (D-02/D-03): it is a span with no click handler
  * and no button role. Minus and plus step the preset ladder one step per press
  * from the current value (never rounded into a preset first) and disable at the
- * 0.25 / 4 ends. Fit is a ONE-SHOT action (D-04) — it never re-fits on a later
- * resize, so it carries no aria-pressed and is never a mode.
+ * 0.25 / 4 ends. The fourth control is a ONE-SHOT 100% reset — it returns the
+ * density to the base pitch, so it carries no aria-pressed and is never a mode.
  *
  * Narrow subscriber: it reads exactly three signals in its own body (percent,
  * isAtMin, isAtMax) and drives only store actions — no scale, no metrics, no

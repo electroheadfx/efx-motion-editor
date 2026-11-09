@@ -1941,7 +1941,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
             hook only; the PROJECT fps store is never touched here. */}
       </div>
       {/* Phase 60 (D-01): the timeline zoom pill — always visible between
-          playback and the live status; percent display-only, Fit one-shot. */}
+          playback and the live status; percent display-only, 100% reset one-shot. */}
       <PhysicsPaintTimelineZoomBar />
       <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} warmProgress={props.warmProgress} />
       {/* quick-261025-awl (D-04): Raster sits immediately before Tools. Rendered
@@ -2725,9 +2725,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   >(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
-  // Phase 60: the live frame extent for the zoom store's scroll port (the
-  // Fit action reads it). A ref keeps the mount effect's `[]` deps honest.
-  const timelineFrameCountRef = useRef(0);
   // Phase 60 (D-05): the modifier wheel coalescer — one pending target and one
   // animation frame, flushed outside every render body.
   const wheelZoomRafRef = useRef(0);
@@ -2770,7 +2767,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
   // Phase 60: the zoom store drives scrollLeft through this port (anchored
-  // wheel, pill stepping, Fit). Every Studio open (and view remount inside one
+  // wheel, pill stepping, 100% reset). Every Studio open (and view remount inside one
   // document) restores THIS layer's remembered density (UAT 2026-11-09) and
   // never carries another layer's scale across; unregister on unmount. The
   // playhead frame is read at call time from the strip's own signal — never
@@ -2786,7 +2783,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         if (el) el.scrollLeft = value;
       },
       getPlayheadFrame: () => currentFrameSignal.peek(),
-      getFrameCount: () => timelineFrameCountRef.current,
     });
     return () => registerTimelineZoomScrollPort(null);
   }, [props.layerId]);
@@ -3094,7 +3090,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // rail; the cell width rides the CSS custom property. Vertical geometry is
   // deliberately absent from `TimelineMetrics`.
   const timelineMetrics = timelineZoom.metrics.value;
-  timelineFrameCountRef.current = frameCells.length;
   const rotoLaneWidthPx = frameCells.length * timelineMetrics.pitch;
   const rotoRulerStep = resolveRulerStep(timelineMetrics.pitch);
   const rotoRulerTickWidthPx = rotoRulerStep * timelineMetrics.pitch;

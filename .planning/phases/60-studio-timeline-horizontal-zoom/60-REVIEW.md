@@ -1,144 +1,104 @@
 ---
 phase: 60-studio-timeline-horizontal-zoom
-reviewed: 2026-11-09T13:44:29Z
-depth: deep
-files_reviewed: 23
+reviewed: 2026-11-09T16:52:00Z
+depth: standard
+files_reviewed: 7
 files_reviewed_list:
-  - app/src/components/physic-paint/hooks/usePhysicsPaintCrossTrackDrag.test.ts
-  - app/src/components/physic-paint/hooks/usePhysicsPaintRulerScrub.test.ts
-  - app/src/components/physic-paint/hooks/usePhysicsPaintRulerScrub.ts
   - app/src/components/physic-paint/physicsPaintStudio.css
-  - app/src/components/physic-paint/view/PhysicsPaintKeyRail.tsx
-  - app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.tsx
   - app/src/components/physic-paint/view/PhysicsPaintTimelineZoomBar.tsx
-  - app/src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx
-  - app/src/components/physic-paint/view/PhysicsPaintTrackRow.tsx
-  - app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.rulerSeek.test.ts
-  - app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts
   - app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx
   - app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.zoomMatrix.test.ts
-  - app/src/components/physic-paint/view/TimelineMotionChannels.test.ts
-  - app/src/components/physic-paint/view/TimelineMotionChannels.tsx
-  - app/src/components/physic-paint/view/TimelineMotionKeyDrag.tsx
-  - app/src/components/physic-paint/view/physicsPaintLoopClipPresentation.test.ts
-  - app/src/components/physic-paint/view/physicsPaintLoopClipPresentation.ts
+  - app/src/components/physic-paint/view/physicsPaintTimelineZoom.test.ts
   - app/src/components/physic-paint/view/physicsPaintTimelineZoom.ts
   - app/src/components/physic-paint/view/physicsPaintTimelineZoomWiring.test.ts
-  - app/src/components/physic-paint/view/timelineMotionSurface.contract.test.ts
-  - app/src/components/physic-paint/view/timelineRailDesign.ts
-  - app/src/components/physic-paint/view/timelineZoomAuthorityAudit.test.ts
 findings:
-  critical: 2
+  critical: 0
   warning: 2
-  info: 4
-  total: 8
+  info: 3
+  total: 5
   necessity: 0
 status: issues_found
 ---
 
-# Phase 60: Code Review Report
+# Phase 60: Code Review Report (incremental)
 
-**Reviewed:** 2026-11-09T13:44:29Z
-**Depth:** deep
-**Files Reviewed:** 23
+**Reviewed:** 2026-11-09T16:52:00Z
+**Depth:** standard
+**Files Reviewed:** 7
 **Status:** issues_found
 
 ## Summary
 
-Phase 60 introduces one session-only pitch authority (`physicsPaintTimelineZoom.ts`) and converts every horizontal consumer to it: the lane extent and cells grid, the adaptive ruler, the playhead, both rail families, the motion lanes, the track rows, the Bg filmstrip, the ruler scrub, the cross-track drag, and the Bg drag/resize projections. The pure authority math is sound when it is fed the committed layout: `resolveTimelineMetrics`, `resolveRulerStep`, the anchored-scroll law, the preset ladder (no rounding into presets, clamped no-ops at the ends), the exponential wheel factor, the fit scale, and the percentage readout all behave per the locked decisions, and the five `framePitch`/`frameGap` render sites are complete and consistently sourced from one render-body read. The mount reset/register/unregister pair, the RAF wheel coalescer, and its cancel-on-unmount are correct, and the two earlier fixed defects (no pitch² double-scaling in the cross-track drag; mount reset before port registration) verify.
+Incremental review of the two commits since the deep-review baseline `c9f73b2f1` (`abfe299a3`, `7c55ea4c4`, +205/−85 across the seven files). Scope: the per-layer zoom persistence path, the deferred anchored-scroll coalescer, the Fit→100% reset conversion, and the strip's new scroller variable and `[props.layerId]` effect dependency.
 
-The defects are at the DOM and CSS seams rather than in the math. Two are release-blocking: the current-frame marker still carries a fixed 16px width while its position scales (so it is wrong at every zoom level except 1x), and the anchored scroll write lands before Preact commits the new pitch, so the browser clamps zoom-in targets against the pre-zoom scrollable width and the cursor anchor is lost. Two warnings cover the mandatory CSS scroll-snap quantizing the fractional anchored offsets and the 6px content gutter being omitted from three pointer-to-frame projections. Four info items cover a playhead/ruler centring divergence, ruler tick overhang, a stale constant reference, and dead exported helpers.
+Both prior criticals verify fixed in this range and are not re-raised: the current-frame marker now takes its width inline from the live cell width and the CSS rule no longer pins 16px (`PhysicsPaintWorkflowStrip.tsx:6049-6057`, `physicsPaintStudio.css:8150-8164`), and the anchored write is deferred one frame through `commitAnchoredScroll` so it lands after Preact's microtask render (`physicsPaintTimelineZoom.ts:298-343`). The prior open findings (WR-01, WR-02, IN-01..IN-04) are unchanged and remain recorded in `60-REVIEW-DISPOSITION.md`; they are deliberately not repeated here.
 
-Necessity: 0 findings. The `necessity-review.md` rubric was applied; every default/fallback left in the changed files (1x token defaults in helper signatures, the optional `frameGap` prop on the rails) serves test harnesses or external render callers rather than guarding an impossible state, and no dead production branch was provable.
+Focus-area verdicts:
 
-## Critical Issues
+- **localStorage persistence.** Read and write are both inside try/catch, so a throwing access (private mode, disabled storage) degrades to an in-memory session rather than failing the zoom (`physicsPaintTimelineZoom.ts:240-264`). Stored values are filtered to finite numbers and clamped on read (`:247-249`); a non-object root is rejected; `__proto__`/constructor keys cannot pollute because `JSON.parse` and `Object.fromEntries` create own data properties. No cross-layer read leakage: `resetForStudioOpen` sets `activeLayerId` before any write and reads only the new layer's key (`:430-437`). The residual defect is the eviction policy (WR-03).
+- **Deferred coalescer.** Newest target wins, one write per animation frame, discarded on `resetForStudioOpen` and on port unregister, and a target of exactly 0 is preserved (`:306-343`). The deferral lands after the scale signal's render microtask, which is what keeps CR-02 fixed. No dropped or duplicated legitimate write was found. The rAF-vs-`setTimeout` cancellation guard asymmetry (`:309-314` vs `:331-333`) is unreachable because `cancelPendingScrollFrame` is only called from `discardPendingScroll`, and no runtime exposes one scheduler without its canceller.
+- **100% reset anchoring.** The reset is an epsilon no-op at 100%, anchors on the playhead centre with the viewport-centre fallback, and clamps at 0 (`:409-423`). The 6px gutter cancels exactly in the anchored law: `resolvePlayheadAnchorLocalX` and the playhead itself are both measured in the same gutter-less frame space, so dropping the gutter from `localX` does not move the fixed point. The defect is test coverage, not math (WR-04).
+- **Strip `[props.layerId]` effect.** The dep is a string, hence identity-stable; the reset precedes registration; cleanup unregisters and discards the queued write (`PhysicsPaintWorkflowStrip.tsx:2778-2792`). The one-shot open-positioning effect (`:5056-5081`) peeks the metrics signal in the same effect flush after the reset, but on a fresh open it runs before the async launch settle supplies cells (it parks and retries on `props.rotoPhysicalCells.length`), and on a view remount the first render already carries the current module scale, so no inconsistent-geometry path was provable. The wheel coalescer cancels itself independently (`:5541-5547`).
+- **CSS.** `--timeline-cell-width` is published once from the live metrics (`:6325`) and matches the per-row value (`framePitch - frameGap`, all five sites receive both live). The ruler and marker consume it correctly. One sub-cell-scale width discrepancy at 0.25x (IN-07).
 
-### CR-01: Current-frame marker keeps a fixed 16px width while its position scales
+Findings: 0 critical, 2 warnings, 3 info. Necessity: 0 — the `necessity-review.md` rubric was applied; the new branches are trust-boundary handling (storage access, wheel-event values), type-guard defaults, and dead code (explicitly category 3, not necessity), and the port/store surface exists as the project's test seam (explicitly excluded from necessity).
 
-**File:** `app/src/components/physic-paint/physicsPaintStudio.css:8147-8158` (rule), `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx:6046-6053` (render)
-**Issue:** The outline's `left` is computed from the live pitch (`style={{ left: `${(props.currentFrame - frameCells[0]!) * timelineMetrics.pitch}px` }}`), but the CSS rule still pins `width: 16px` (line 8151). The live cell width is `TIMELINE_GEOMETRY.cellWidth × scale`, i.e. 4px at 0.25x and 64px at 4x, so the marker is only correct at 1x. At 0.25x a 16px marker over a 4px cell spans roughly three and a half frames; at 4x it decorates a quarter of the current cell. The playhead and the ruler were both converted to live geometry, so the white current-frame marker is the one horizontal overlay left behind.
-**Fix:** Consume the live cell width. The scroller already publishes it as `--timeline-cell-width` (`PhysicsPaintWorkflowStrip.tsx:6326` region), so the CSS-only change keeps 1x byte-identical:
-```css
-.physics-paint-current-frame-outline {
-  position: absolute;
-  top: 6px;
-  box-sizing: border-box;
-  width: var(--timeline-cell-width, 16px);
-  height: 22px;
-  /* ...unchanged... */
-}
-```
-(The same variable resolves on the outline because it is rendered inside the scroller.) If you prefer explicitness, set `width: `${timelineMetrics.cellWidth}px`` inline beside the existing `left`.
-
-### CR-02: Anchored zoom-in scroll is clamped against the pre-render layout, losing the cursor anchor
-
-**File:** `app/src/components/physic-paint/view/physicsPaintTimelineZoom.ts:262-268` (`applyScale`), `:306-319` (`setScaleAtCursor`); port write at `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx:2783-2786`
-**Issue:** `applyScale` writes the scale signal and then immediately calls `scrollPort.setScrollLeft(target)` in the same synchronous task:
-```ts
-setScaleSignal(clamped);
-if (target !== null && scrollPort) scrollPort.setScrollLeft(target);
-```
-Preact signal writes schedule the component re-render in a microtask (no `debounceRendering` override exists in `app/src`), so at the moment of the write the DOM still carries the OLD pitch: the rows' inline `gridTemplateColumns`, the lane `minWidth`, and the cells grid all describe the previous scale. The browser clamps `el.scrollLeft = target` to the stale `scrollWidth - clientWidth`. Any anchored target above the old maximum therefore lands short, and the re-render then widens the content without re-applying the target. This fires on every zoom-in whose anchor sits right of the scaled position: with a 1 → 1.5 pill step and the cursor near the right edge it always fires, and with a 1 → 4 step it fires for anything past roughly a quarter of the scroll range. Zoom-out (target smaller) is unaffected, which is why the failure is intermittent rather than constant. The store tests use a `makePort` stub whose setter records the value without clamping (`PhysicsPaintWorkflowStrip.zoomMatrix.test.ts:552-574`), so the defect is invisible to the suite.
-**Fix:** Apply the scroll write after the new pitch is committed. Minimal form, ordered behind Preact's render microtask:
-```ts
-setScaleSignal(clamped);
-if (target !== null && scrollPort) {
-  queueMicrotask(() => scrollPort.setScrollLeft(target));
-}
-```
-More robust: keep a module-level `pendingScrollLeft`, set it in `applyScale`, and consume it in the strip via a `useLayoutEffect` keyed on `timelineMetrics.pitch` (`useLayoutEffect` runs after DOM mutation and before paint, so the layout is guaranteed current and the write is not observable as a jump). Either way, add a test whose port clamps to `scrollWidth - clientWidth` so the regression is pinned.
+The three zoom test files pass as written (`vitest run`: 3 files, 125 tests); that is not treated as evidence of the defects below, since every finding here is in behavior the suites do not assert.
 
 ## Warnings
 
-### WR-01: Mandatory scroll-snap quantizes the anchored fractional scroll writes
+### WR-03: Per-layer zoom memory evicts by first-seen order, so actively used layers silently lose their remembered density
 
-**File:** `app/src/components/physic-paint/physicsPaintStudio.css:5111` (`scroll-snap-type: x mandatory`), `:5112` (`scroll-padding-left: 6px`), `:7916` (`scroll-snap-align: start`); anchored law at `app/src/components/physic-paint/view/physicsPaintTimelineZoom.ts:129-140`
-**Issue:** `resolveAnchoredScrollLeft` deliberately produces an arbitrary fractional `scrollLeft` so the frame under the cursor keeps its on-screen x. The scroller, however, is a mandatory x snap container whose snap positions are the cell starts (every `.physics-paint-roto-cell` carries `scroll-snap-align: start`), and `scroll-padding-left: 6px` aligns those positions to the gutter. A programmatic `scrollLeft` assignment is a scroll operation, so the container must end on a snap position; the browser also re-snaps the current offset when the pitch change reflows the snap positions. The anchored offset is therefore rounded to a pitch boundary: up to ±`pitch/2` of positional error (36px at 4x) and, for a cursor near a cell boundary, a flip to the neighbouring frame. The zoom matrix tests exercise pure functions and a stub port, so the snap interaction is unmodelled.
-**Fix:** Preserve the pre-existing cell-snapped plain-wheel scrolling (47-01 UAT) but exempt the zoom write: toggle a modifier class around the zoom (e.g. add `physics-paint-timeline-scroll--zooming` with `scroll-snap-type: none` before the write and drop it once the post-zoom layout has settled, such as one rAF after the pitch commit), or accept snap-quantized anchoring as the contract and re-derive/pin the accepted tolerance. Silent divergence between the math and the CSS is the one outcome to avoid.
-
-### WR-02: The 6px content gutter is omitted from three pointer-to-frame projections
-
-**File:** `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx:3982` (`getContentLeft`), `:4066-4072` (Bg clip drag delta), `:4154-4158` (Bg resize `projectFrame`); gutter at `app/src/components/physic-paint/physicsPaintStudio.css:5103`
-**Issue:** The scroller pads its content by 6px (`padding-left: 6px`, the lane origin), so client-space content x is `clientX - scrollerRect.left + scrollLeft - 6`. The canonical helper gets this right (`pxToFrame` subtracts `TIMELINE_LANE_ORIGIN_PX`, `physicsPaintTimelineZoom.ts:148-152`), but these three sites treat the scroller's bounding-rect left as the content origin and never subtract the gutter. Every projected frame is biased by `6 / pitch` frames: +0.33 frame at 1x, +0.67 at 0.5x, +1.33 at 0.25x. `computeInsertionFrame` floors (`app/src/components/physic-paint/hooks/usePhysicsPaintCrossTrackDrag.ts:196-205`), so a cross-track drop or same-row slide lands one frame late at 0.25x, and even at 1x a pointer in the last third of a cell computes as the following frame; the insertion line at `PhysicsPaintTrackRow.tsx:1393` renders that biased frame. The Bg drag delta is biased by the difference of two independently rounded endpoints, so it can jump by one frame when the endpoints straddle a rounding boundary. Phase 60 made these sites pitch-aware but left their origin wrong.
-**Fix:** Subtract the gutter at each site, or route all three through `pxToFrame`:
+**File:** `app/src/components/physic-paint/view/physicsPaintTimelineZoom.ts:237-238` (key, cap), `:257-264` (`writeStoredScales`), `:280-283` (write on change), `:430-437` (restore)
+**Issue:** `writeStoredScales` serializes `[...scaleByLayer.entries()].slice(-MAX_REMEMBERED_LAYERS)`. A `Map` keeps a key's original insertion position when that key is re-set, and nothing ever re-inserts a layer on use: `setScaleSignal` calls `scaleByLayer.set(activeLayerId, clamped)` only (`:281`), and `resetForStudioOpen` only reads. The 64-slot window is therefore FIFO by first-ever zoom, not least-recently-used. A layer the artist works in daily but first zoomed long ago drifts toward the tail window as new layers are zoomed and is dropped on the next write; a fresh `resetForStudioOpen` for a layer with no entry also appends that layer (it persists the restored default `1` whenever the session's current scale differs from 1), so newly touched layers consume slots even without a zoom. The map itself is never trimmed, so eviction is invisible for the rest of that Studio session and only surfaces after the next close/reopen — the exact UAT row 5 promise ("returns to the level it was left at") failing silently. The blob is global to every project (layer ids are per-document UUIDs, so no collision, but all projects compete for the same 64 slots), and the cap is untested: no test in `physicsPaintTimelineZoom.test.ts` exercises more than three layers.
+**Fix:** Promote on touch and keep memory and storage in agreement:
 ```ts
-// e.g. the cross-track port
-getContentLeft: () => (timelineScrollRef.current?.getBoundingClientRect().left ?? 0) + TIMELINE_LANE_ORIGIN_PX,
+scaleSignal.value = clamped;
+if (activeLayerId !== null && scaleByLayer.get(activeLayerId) !== clamped) {
+  scaleByLayer.delete(activeLayerId);
+  scaleByLayer.set(activeLayerId, clamped); // re-insert = newest
+  while (scaleByLayer.size > MAX_REMEMBERED_LAYERS) {
+    const oldest = scaleByLayer.keys().next();
+    if (oldest.done) break;
+    scaleByLayer.delete(oldest.value);
+  }
+  writeStoredScales();
+}
 ```
-and in the two Bg projections replace `clientX - contentLeft + scrollLeft` with the canonical `clientX - scrollerLeft - TIMELINE_LANE_ORIGIN_PX + scrollLeft`.
+and add a test that fills 65 layers, re-touches the first, and asserts the first survives a `vi.resetModules()` rebuild while the least-recently-used is gone.
+
+### WR-04: The 100% reset test exercises only the off-screen fallback, and neither test file pins the anchored value
+
+**File:** `app/src/components/physic-paint/view/physicsPaintTimelineZoom.test.ts:386-397`, `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.zoomMatrix.test.ts:630-648`
+**Issue:** The store test is named "returns to 100% anchored on the playhead centre", but its fixture (`scrollLeft: 2000`, `playheadFrame: 10`, old scale 3) puts the playhead's content centre at 6 + 540 + 26 = 572px, far outside the visible 2000..2800 window, so `resolvePlayheadAnchorLocalX` takes the viewport-centre fallback and the playhead-centre branch of `resetTo100` is never executed; the only assertion on the written value is `readScrollLeft()).toBeGreaterThan(0)`. The matrix test was rewritten from Fit and now asserts `toHaveBeenCalledTimes(1)` only — the old `toHaveBeenCalledWith(0)` was deleted and no value replaced it. Both suites pass for a wrong anchor: anchoring at localX 0 would write 666.67 in the store fixture and 0 in the matrix fixture. The headline behavior of the new pill control therefore has no regression pin beyond live UAT.
+**Fix:** Pin the values the law produces. Store fixture (off-screen fallback): `expect(readScrollLeft()).toBeCloseTo(400, 9)`. Matrix fixture (on-screen playhead at 91.925px): read `const [[written]] = setScrollLeft.mock.calls;` and `expect(written).toBeCloseTo(95.041102, 4)`. Add one store case with an on-screen playhead (e.g. `scrollLeft: 0`, `playheadFrame: 10`, old scale 3) so the playhead-centre branch is pinned too.
 
 ## Info
 
-### IN-01: Playhead centres on half the PITCH while the ruler centres on half the CELL
+### IN-05: `getFrameCount` died with `fit()` but is still a required port member, still pinned by the wiring test
 
-**File:** `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx:1187-1192` (bar), `app/src/components/physic-paint/physicsPaintStudio.css:5177-5196` (ruler label/tick), `app/src/components/physic-paint/view/physicsPaintTimelineZoom.ts:110-122` (`resolvePlayheadAnchorLocalX`)
-**Issue:** The bar is placed at `TIMELINE_LANE_ORIGIN_PX + frame * pitch + pitch / 2 - 1` and its comment claims that term is "half a cell minus half the 2px line". It equals half a cell only at 1x (18/2 − 1 = 8 = 16/2). The ruler label and tick use `calc(var(--timeline-cell-width) / 2)`, which is half a cell at every scale. At 4x the 2px playhead sits 3px right of the corresponding ruler tick centre; at 0.25x it sits 0.75px left. The same half-pitch expression is used for the playhead-anchored scroll in `resolvePlayheadAnchorLocalX`, so pill/Fit zooming anchors on a point 1px-class off the true frame centre (scaling with zoom).
-**Fix:** Use the live cell half-width, which keeps the pinned 1x figure of 194px:
-```ts
-const left = TIMELINE_LANE_ORIGIN_PX + clampedFrame * pitch + (pitch - timelineMetrics.cellGap) / 2;
+**File:** `app/src/components/physic-paint/view/physicsPaintTimelineZoom.ts:60`, `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx:2727-2730`, `:2789`, `:3097`, `app/src/components/physic-paint/view/physicsPaintTimelineZoomWiring.test.ts:61`
+**Issue:** `fit()` was the only reader of `getFrameCount()`. After the 100% reset replaced it, the interface member, the strip's registration (`:2789`), the `timelineFrameCountRef` declaration (`:2730`) and its per-render assignment (`:3097`) exist only to satisfy the two test stubs, and the wiring test actively enforces the dead registration as a requirement. The declaration comment still says "Fit action reads it". A repository-wide search finds no production read.
+**Fix:** Remove `getFrameCount()` from `TimelineZoomScrollPort`, the registration line, the ref and its assignment, and the wiring-test pin; delete the member from the two test ports.
+
+### IN-06: Stale "Fit" documentation where the fourth pill control is now a 100% reset
+
+**File:** `app/src/components/physic-paint/view/PhysicsPaintTimelineZoomBar.tsx:10-11`, `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx:1944`, `:2729`, `:2773`
+**Issue:** The bar's contract comment still reads "Fit is a ONE-SHOT action (D-04) — it never re-fits on a later resize, so it carries no aria-pressed and is never a mode", and the strip still lists "Fit" among the port's consumers and says the frame-extent ref exists because the "Fit action reads it". `fit()`, `resolveTimelineFitScale` and the Fit button no longer exist (replaced by `resetTo100`, UAT 2026-11-09), and D-04 is no longer the decision behind this control; a maintainer is pointed at a removed action and decision id. (Line 2671's "Fit to view" is the Studio audio modal's viewport fit and is correct — leave it.)
+**Fix:** Reword the bar docstring to the reset semantics ("a one-shot return to 100%, anchored on the playhead centre, never a mode; no aria-pressed") and drop the Fit references at strip lines 1944, 2729 and 2773.
+
+### IN-07: The interp dash is clipped at 0.25x, so the new comment's "75% of the cell" does not hold at the floor
+
+**File:** `app/src/components/physic-paint/physicsPaintStudio.css:8020-8036` (dash), `:7889-7906` (cell box)
+**Issue:** The new rule centres the dash (`left: 50%`, `transform: translateX(-50%)`) and sizes it `calc(var(--timeline-cell-width, 16px) * 0.75)`, with a comment claiming it "reads the same at 25% and 400%". The cell is `box-sizing: border-box` with a fixed 1px border and `overflow: hidden`, so its padding box is `cellWidth - 2px`. At 0.25x the cell is 4px but the padding box is 2px while the dash is 3px: the dash is clipped at the padding edge to 2px (50% of the cell), not 3px (75%). Centring is exact at every level (the dash's centre is the border-box centre); only the width claim fails at the floor. 1x (12/16), 0.5x (6/8) and 4x (48/64) are exact.
+**Fix:** Either accept the floor and correct the comment, or make the width padding-box-aware:
+```css
+width: min(calc(var(--timeline-cell-width, 16px) * 0.75), calc(var(--timeline-cell-width, 16px) - 2px));
 ```
-(either read `timelineZoom.metrics.value` in the leaf, or pass `cellWidth` down), and mirror the change in `resolvePlayheadAnchorLocalX` if the same centre is intended there.
-
-### IN-02: Ruler tick row overhangs the lane when the frame count is not a multiple of the step
-
-**File:** `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx:831-836` (`buildRulerTicks`), `:6326-6377` (ruler render, tick basis at `:6370`); `app/src/components/physic-paint/physicsPaintStudio.css:5140-5152`
-**Issue:** `buildRulerTicks` emits every frame where `frame % step === 0` — `ceil(N / step)` ticks — and each tick is `flex: 0 0 step × pitch` inside a ruler whose width is fixed to `frameCount × pitch`. When `N % step !== 0` the last tick overhangs the lane by up to `(step − 1) × pitch`, and the ruler has no `overflow` clip, so the overhang contributes to the scroller's scrollable overflow. Example: 10 frames at step 3 gives four ticks of 54px (216px) in a 180px ruler at 1x, adding 36px of empty scroll past the last frame; at 4x the same shape is 864px in a 720px ruler, adding 144px. The defect pre-dates Phase 60 at 1x but scales with the zoom.
-**Fix:** Size the last tick to the remaining frames (`Math.min(step, frameCount - frame) × pitch`) instead of a fixed step basis, or clip the ruler with `overflow: hidden` if the label straddle still fits.
-
-### IN-03: Stale `ROTO_CELL_WIDTH_PX` reference in the audio controller port contract
-
-**File:** `app/src/components/physic-paint/view/physicsPaintAudioController.ts:64`
-**Issue:** The `getTimelineViewport` port documentation still defines its content space as `scrollLeft / ROTO_CELL_WIDTH_PX .. (scrollLeft + clientWidth) / ROTO_CELL_WIDTH_PX`. That constant no longer exists anywhere in the codebase; the real getter divides by the live pitch (`PhysicsPaintWorkflowStrip.tsx:2739-2748`). A maintainer reading the port contract is pointed at a removed authority.
-**Fix:** Reword to "scrollLeft / live pitch .. (scrollLeft + clientWidth) / live pitch (the Phase 60 timeline zoom authority)".
-
-### IN-04: Dead exported helpers `frameToPx`, `pxToFrame`, `resolveTimelineViewportFrames`
-
-**File:** `app/src/components/physic-paint/view/physicsPaintTimelineZoom.ts:142-164`
-**Issue:** All three are exported and unit-tested but have no production consumer — a repository-wide search finds only the definitions and test references. The documented consumer of `resolveTimelineViewportFrames` (the Studio audio "Fit to view") actually goes through the strip's registered getter, which inlines the same division at `PhysicsPaintWorkflowStrip.tsx:2740-2748`. Dead production code next to the live path invites drift (and the gutter-correct `pxToFrame` is exactly the helper WR-02's sites should be using).
-**Fix:** Either route the strip viewport getter and the three projection sites through these helpers, or delete the unused exports and their tests.
+(`min()` leaves 12/16, 6/8 and 48/64 unchanged and clamps 0.25x to the 2px padding box.)
 
 ---
 
-_Reviewed: 2026-11-09T13:44:29Z_
+_Reviewed: 2026-11-09T16:52:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
-_Depth: deep_
+_Depth: standard_

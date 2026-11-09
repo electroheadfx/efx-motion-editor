@@ -62,7 +62,6 @@ function makePort(options: {
       scrollLeft = value;
     },
     getPlayheadFrame: () => options.playheadFrame ?? 0,
-    getFrameCount: () => options.frameCount ?? 120,
   };
   return { port, readScrollLeft: () => scrollLeft };
 }
@@ -343,6 +342,30 @@ describe('physicsPaintTimelineZoom — store', () => {
     }
   });
 
+  it('evicts the least recently used layer, not the first-seen (WR-03)', () => {
+    const open = (id: string) => timelineZoom.resetForStudioOpen(id);
+    const fill = (prefix: string, count: number) => {
+      for (let index = 0; index < count; index += 1) {
+        open(`${prefix}-${index}`);
+        timelineZoom.setScale(2);
+      }
+    };
+
+    // Normalize the module-level window, then seed the layer that will be touched.
+    fill('lru-pad', 70);
+    open('lru-live');
+    timelineZoom.setScale(3);
+    fill('lru-a', 63); // window is full and lru-live is now the OLDEST entry
+
+    open('lru-live'); // restore …
+    timelineZoom.setScale(4); // … and TOUCH it: recency moves it to the newest slot
+    fill('lru-b', 3); // three insertions evict the three oldest
+
+    open('lru-live');
+    // Survives with 4. Under first-seen ordering it would have been evicted.
+    expect(timelineZoom.scale.value).toBe(4);
+  });
+
   it('discards a queued anchored write when the Studio resets', async () => {
     const { port, readScrollLeft } = makePort({ scrollLeft: 100, scrollerLeft: 200, clientWidth: 800, playheadFrame: 10 });
     registerTimelineZoomScrollPort(port);
@@ -385,16 +408,16 @@ describe('physicsPaintTimelineZoom — store', () => {
   });
 
   it('returns to 100% anchored on the playhead centre (UAT 2026-11-09)', async () => {
-    // Scrolled well to the right so the 100% target stays positive (zooming out
-    // near the start correctly clamps at 0).
-    const { port, readScrollLeft } = makePort({ scrollLeft: 2000, scrollerLeft: 200, clientWidth: 800, playheadFrame: 10 });
+    // Playhead 40 at 3x sits at 40*54 + 27 − 1 = 2186 content px, i.e. local x
+    // 186 inside the 2000..2800 window: the ON-SCREEN anchor branch.
+    const { port, readScrollLeft } = makePort({ scrollLeft: 2000, scrollerLeft: 200, clientWidth: 800, playheadFrame: 40 });
     registerTimelineZoomScrollPort(port);
     timelineZoom.setScale(3);
     timelineZoom.resetTo100();
     expect(timelineZoom.scale.value).toBe(1);
     await flushAnchoredScroll();
-    // The playhead frame stays put through the scale change.
-    expect(readScrollLeft()).toBeGreaterThan(0);
+    // (2000 + 186) / 54 * 18 − 186 = 542.666…: the playhead keeps its on-screen x.
+    expect(readScrollLeft()).toBeCloseTo(542.6666667, 4);
     expect(timelineZoom.percent.value).toBe(100);
 
     // Pressing it at 100% is a no-op — no write, no re-render.
@@ -402,6 +425,17 @@ describe('physicsPaintTimelineZoom — store', () => {
     timelineZoom.resetTo100();
     await flushAnchoredScroll();
     expect(readScrollLeft()).toBe(before);
+  });
+
+  it('falls back to the viewport centre when the playhead is offscreen at 100%', async () => {
+    // Playhead 10 at 3x is at 566 — left of the 2000 window start.
+    const { port, readScrollLeft } = makePort({ scrollLeft: 2000, scrollerLeft: 200, clientWidth: 800, playheadFrame: 10 });
+    registerTimelineZoomScrollPort(port);
+    timelineZoom.setScale(3);
+    timelineZoom.resetTo100();
+    await flushAnchoredScroll();
+    // Fallback local x = 800 / 2; (2000 + 400) / 54 * 18 − 400 = 400.
+    expect(readScrollLeft()).toBeCloseTo(400, 9);
   });
 
   it('is a no-op on scroll writes with no registered port and never throws', () => {
