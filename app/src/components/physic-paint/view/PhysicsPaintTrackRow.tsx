@@ -1157,6 +1157,10 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           style={{
             // Phase 60 (ZOOM-05): the cells grid rides the session pitch.
             gridTemplateColumns: `repeat(${frameCells.length}, ${framePitch}px)`,
+            // Phase 60 (ZOOM-05): `.physics-paint-roto-cell` sizes itself from this
+            // property (fallback 16px = the 1x cell). Without it the row's cells keep
+            // the 1x width inside live-pitch columns.
+            '--timeline-cell-width': `${framePitch - frameGap}px`,
             /* 47-01 UAT round 2: the cells lane must never shrink below the
                full frame capacity, so the track's frames stay scrollable to
                the last cell like the active lane (the rows-region carries the

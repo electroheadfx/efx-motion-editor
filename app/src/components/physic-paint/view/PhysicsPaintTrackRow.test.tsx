@@ -252,6 +252,10 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(cellsRows).toHaveLength(1);
     const cellsStyle = (cellsRows[0]!.props.style ?? {}) as Record<string, unknown>;
     expect(cellsStyle.gridTemplateColumns).toBe(`repeat(${FRAME_CELLS.length}, 36px)`);
+    // The cells themselves ride the same authority (ZOOM-05): `.physics-paint-roto-cell`
+    // takes its width from this custom property, whose fallback is the 1× 16px. Without
+    // the live value the cells overlap at 0.25× and leave dead hit areas at 4×.
+    expect(cellsStyle['--timeline-cell-width']).toBe('32px');
     // Vertical law untouched (ZOOM-03): no pitch-sized row height anywhere.
     expect(JSON.stringify(cellsStyle)).not.toContain('rowHeight');
   });
