@@ -64,3 +64,11 @@ No accepted risks.
 - [x] All threats have a disposition (mitigate / accept / transfer)
 - [x] Accepted risks documented in Accepted Risks Log
 - [x] `threats_open: 0` confirmed
+
+## Security Audit 2026-11-09
+
+| Metric | Count |
+|---|---|
+| Threats found | 5 |
+| Closed | 5 |
+| Open | 0 |
