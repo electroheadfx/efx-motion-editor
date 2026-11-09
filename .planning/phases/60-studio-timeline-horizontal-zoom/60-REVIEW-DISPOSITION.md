@@ -3,6 +3,26 @@ phase: 60
 review: 60-REVIEW.md
 titles: json
 findings:
+  - id: WR-05
+    severity: warning
+    disposition: open
+    title: "Rail-edit cursor seats re-apply a chain whose result the cursor coordinates and ring size already contain — both overlays detach under rail scale and the ring renders s× too large"
+  - id: WR-06
+    severity: warning
+    disposition: open
+    title: "The settle effect's own \"an active run owns the display\" guard is read only before an unbounded await, so a playback started mid-flush is overwritten"
+  - id: IN-08
+    severity: info
+    disposition: open
+    title: "The settle effect's async IIFE leaves its post-await tail outside the try/catch"
+  - id: IN-09
+    severity: info
+    disposition: open
+    title: "The 48×48 ink mean leaves a sub-sample band where real marks are still dropped at capture"
+  - id: IN-10
+    severity: info
+    disposition: open
+    title: "The two new pins assert wiring and guard substrings, so neither warning above has a failing test"
   - id: WR-03
     severity: warning
     disposition: fixed
@@ -55,20 +75,25 @@ findings:
     severity: info
     disposition: open
     title: "Dead exported helpers `frameToPx`, `pxToFrame`, `resolveTimelineViewportFrames`"
-open: 6
-total: 13
-recorded: 2026-11-09T16:53:34.574Z
+open: 11
+total: 18
+recorded: 2026-11-09T20:15:41.714Z
 ---
 
 # Phase 60: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| WR-03 | warning | fixed | e88a33204 (fixed during phase verification) |
-| WR-04 | warning | fixed | e88a33204 (fixed during phase verification) |
-| IN-05 | info | fixed | e88a33204 (fixed during phase verification) |
-| IN-06 | info | fixed | e88a33204 (fixed during phase verification) |
-| IN-07 | info | fixed | e88a33204 (fixed during phase verification) |
+| WR-05 | warning | open | - |
+| WR-06 | warning | open | - |
+| IN-08 | info | open | - |
+| IN-09 | info | open | - |
+| IN-10 | info | open | - |
+| WR-03 | warning | fixed | e88a33204 (fixed during phase verification) (not in the current review) |
+| WR-04 | warning | fixed | e88a33204 (fixed during phase verification) (not in the current review) |
+| IN-05 | info | fixed | e88a33204 (fixed during phase verification) (not in the current review) |
+| IN-06 | info | fixed | e88a33204 (fixed during phase verification) (not in the current review) |
+| IN-07 | info | fixed | e88a33204 (fixed during phase verification) (not in the current review) |
 | CR-01 | critical | fixed | e37f7e49d (fixed during phase verification) (not in the current review) |
 | CR-02 | critical | fixed | e37f7e49d (fixed during phase verification) (not in the current review) |
 | WR-01 | warning | open | - (not in the current review) |
