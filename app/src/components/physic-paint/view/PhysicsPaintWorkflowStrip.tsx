@@ -2485,8 +2485,9 @@ interface PhysicsPaintSoundClipEdgesProps extends PhysicsPaintSoundClipChildProp
 
 export function PhysicsPaintSoundClipStain(props: PhysicsPaintSoundClipStainProps) {
   const clip = props.clip;
-  const leftPx = soundStainLeftPx(clip.startFrame, ROTO_CELL_WIDTH_PX);
-  const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, ROTO_CELL_WIDTH_PX);
+  const pitch = timelineZoom.metrics.value.pitch;
+  const leftPx = soundStainLeftPx(clip.startFrame, pitch);
+  const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, pitch);
   // UAT round 4: the waveform is drawn once in SOURCE space and windowed by
   // the SVG viewBox to [in, out] — trimming reveals the cut live.
   // 261010 UAT: the window starts at the AUDIBLE source frame (in + slip), so
@@ -2494,8 +2495,8 @@ export function PhysicsPaintSoundClipStain(props: PhysicsPaintSoundClipStainProp
   const sourceFrames = clip.sourceFrames
     ?? audioPeaksCache.getSourceFrames(clip.sourceId)
     ?? clip.outFrame;
-  const sourceWidthPx = sourceFrames * ROTO_CELL_WIDTH_PX;
-  const inPx = (clip.inFrame + clip.slipOffset) * ROTO_CELL_WIDTH_PX;
+  const sourceWidthPx = sourceFrames * pitch;
+  const inPx = (clip.inFrame + clip.slipOffset) * pitch;
   const peaks = selectSoundPeaks(audioPeaksCache.get(clip.sourceId), sourceWidthPx);
   // 261010 UAT: display-only x1..x4 amplification so subtle audio is visible.
   const waveformGain = audioWaveformGain.value;
@@ -2563,8 +2564,9 @@ export function PhysicsPaintSoundClipStain(props: PhysicsPaintSoundClipStainProp
 
 export function PhysicsPaintSoundClipEdges(props: PhysicsPaintSoundClipEdgesProps) {
   const clip = props.clip;
-  const leftPx = soundStainLeftPx(clip.startFrame, ROTO_CELL_WIDTH_PX);
-  const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, ROTO_CELL_WIDTH_PX);
+  const pitch = timelineZoom.metrics.value.pitch;
+  const leftPx = soundStainLeftPx(clip.startFrame, pitch);
+  const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, pitch);
   const isSelected = props.selectedSoundId.value === clip.id;
   const selectedClass = isSelected ? ' is-selected' : '';
   // Paired element closes (not self-closing) so the source contract's
@@ -2607,15 +2609,16 @@ interface PhysicsPaintSoundDuplicateGhostProps {
 
 export function PhysicsPaintSoundDuplicateGhost(props: PhysicsPaintSoundDuplicateGhostProps) {
   const clip = props.clip;
-  const leftPx = soundStainLeftPx(clip.startFrame, ROTO_CELL_WIDTH_PX);
-  const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, ROTO_CELL_WIDTH_PX);
+  const pitch = timelineZoom.metrics.value.pitch;
+  const leftPx = soundStainLeftPx(clip.startFrame, pitch);
+  const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, pitch);
   // 261010 UAT: same source-space window as the live stain — slip slides the
   // waveform under a stationary bar.
   const sourceFrames = clip.sourceFrames
     ?? audioPeaksCache.getSourceFrames(clip.sourceId)
     ?? clip.outFrame;
-  const sourceWidthPx = sourceFrames * ROTO_CELL_WIDTH_PX;
-  const inPx = (clip.inFrame + clip.slipOffset) * ROTO_CELL_WIDTH_PX;
+  const sourceWidthPx = sourceFrames * pitch;
+  const inPx = (clip.inFrame + clip.slipOffset) * pitch;
   const peaks = selectSoundPeaks(audioPeaksCache.get(clip.sourceId), sourceWidthPx);
   // 261010 UAT: display-only x1..x4 amplification so subtle audio is visible.
   const waveformGain = audioWaveformGain.value;
@@ -2669,8 +2672,8 @@ const EMPTY_DOCUMENT_AUDIOS: readonly DocumentSoundClip[] = Object.freeze([]);
  * 261010-ht0 F5 — module-level timeline viewport getter registered by the
  * strip on mount. The Studio audio modal's Fit to view reads it through the
  * controller port. No signal bumped per scroll — a plain function read at
- * click time. Same content-space origin as soundStainLeftPx
- * (scrollLeft / ROTO_CELL_WIDTH_PX).
+ * click time. Same content-space origin as soundStainLeftPx — it divides the
+ * scroller offset by the live pitch peeked at call time.
  */
 export type TimelineViewportFrames = { readonly visStart: number; readonly visEnd: number };
 let timelineViewportGetter: (() => TimelineViewportFrames | null) | null = null;
@@ -4266,9 +4269,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const applySoundBandPreview = (clipId: string, next: SoundBandValues): void => {
     const els = soundClipElsRef.current.get(clipId);
     if (!els) return;
-    const leftPx = soundStainLeftPx(next.startFrame, ROTO_CELL_WIDTH_PX);
-    const widthPx = soundStainWidthPx(next.inFrame, next.outFrame, ROTO_CELL_WIDTH_PX);
-    const inPx = next.inFrame * ROTO_CELL_WIDTH_PX;
+    const pitch = timelineZoom.metrics.peek().pitch;
+    const leftPx = soundStainLeftPx(next.startFrame, pitch);
+    const widthPx = soundStainWidthPx(next.inFrame, next.outFrame, pitch);
+    const inPx = next.inFrame * pitch;
     const left = `${leftPx}px`;
     const width = `${widthPx}px`;
     const stain = els.stain;
