@@ -165,10 +165,11 @@ describe('quick 261109-uj0 — localized aquarelle capture ink', () => {
   });
 
   it('accepts a normal paint control on the global path', () => {
-    // Twenty percent coverage at luminance 210: mean darkening 7.6, 29.8.
+    // 20% coverage at luminance 210 (461 of 2304 pixels): mean darkening
+    // 7.603, i.e. 29.817 on the historical per-mille scale.
     const data = rgbaFixture((x, y) => ((y * SIZE + x) % 5 === 0 ? 210 : 252));
     const measurement = measureAquarelleCaptureInk(data, SIZE, SIZE);
-    expect(measurement.globalInk).toBeCloseTo(29.8, 2);
+    expect(measurement.globalInk).toBeCloseTo(29.82, 2);
     expect(measurement.globalInk).toBeGreaterThanOrEqual(AQUARELLE_MIN_CAPTURE_INK);
     expect(passesAquarelleCaptureInkGate(measurement)).toBe(true);
   });
