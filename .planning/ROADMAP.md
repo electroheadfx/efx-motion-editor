@@ -193,11 +193,11 @@ Plans:
   4. Row, lane, and cell heights stay fixed at every zoom level — only horizontal frame density scales — and no frame→pixel consumer multiplies a local `18`.
   5. Zoom is session-only: it resets when the Studio closes and changes no document, `.mce`, schema, persistence, or export output.
 
-**Plans:** 6 plans
+**Plans:** 1/6 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 60-01-PLAN.md — the pitch authority module, the strip wiring (wheel, ruler, playhead, lanes) and the zoom pill
+- [x] 60-01-PLAN.md — the pitch authority module, the strip wiring (wheel, ruler, playhead, lanes) and the zoom pill
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 60-02-PLAN.md — event-time projections, ghosts and previews onto the live pitch
@@ -272,7 +272,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 59. Rail Motion Channels & v7 Interface | 25/25 | Complete    | 2026-11-08 |
-| 60. Studio Timeline Horizontal Zoom | 0/TBD | Not started | - |
+| 60. Studio Timeline Horizontal Zoom | 1/6 | In Progress | - |
 | 61. Vector Painting Tool | 0/TBD | Not started | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
 

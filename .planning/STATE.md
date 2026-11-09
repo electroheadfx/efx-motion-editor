@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 60
 current_phase_name: Studio Timeline Horizontal Zoom
 status: executing
-stopped_at: Phase 60 context gathered
-last_updated: "2026-11-09T11:55:19.214Z"
-last_activity: 2026-11-08
-last_activity_desc: Phase 59 complete, transitioned to Phase 60
-state_head: 14b319230370a0e4238226e12bbb4b240a5d7afd
+stopped_at: Completed 60-01-PLAN.md
+last_updated: "2026-11-09T12:21:09.055Z"
+last_activity: 2026-11-09
+last_activity_desc: Phase 60 execution started
+state_head: bdd7b4392240dfc4045c03cb4b58702fcd1be210
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 31
-  completed_plans: 25
+  completed_plans: 26
   percent: 25
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 
 ## Current Position
 
-Phase: 60 (Studio Timeline Horizontal Zoom) — READY TO EXECUTE
-Plan: Not started
+Phase: 60 (Studio Timeline Horizontal Zoom) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-11-08 — Phase 59 complete, transitioned to Phase 60
+Last activity: 2026-11-09 — Phase 60 execution started
 
 Progress: [███░░░░░░░] 25%
 
@@ -82,6 +82,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 59 P23 | 6 | 2 tasks | 7 files |
 | Phase 59 P24 | 6min | 2 tasks | 6 files |
 | Phase 59 P25 | 12min | 2 tasks | 4 files |
+| Phase 60 P01 | 11min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -171,6 +172,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: Golden fixture Loop Clips must carry the explicit six-member persisted lifecycle block: the TS encoder resolves it unconditionally while Rust emits it only under syncState, so a lifecycle-less shared entry would diverge on the loops term.
 - [Phase 59-rail-motion-channels-v7-interface]: Grouped Position easing/Wiggle fan out through one per-axis helper: the submitted axis gates the command and is edited first, every follower is re-resolved from the previous edit, and no pairedValue is passed so a keyless sibling is seeded by D-12 from its own stepped value (WR-04).
 - [Phase 59-rail-motion-channels-v7-interface]: Every rendered motion-lane curve is built with the lane's own { railId } so the drawn wiggle seed is the compositor's seed; the test asserts the two seeds differ before asserting which one rendered (WR-03).
+- [Phase 60]: D-12: one render-body metrics read in the strip; lane extent, cells grid, ruler step/tick basis, both rails and playhead derive from the live pitch
+- [Phase 60]: D-05/D-08: continuous exponential wheel zoom with one-frame rAF coalescing and epsilon no-op writes; wheel anchors on the cursor, pill/Fit on the playhead centre
+- [Phase 60]: D-01/D-04: the zoom pill lives in the always-visible static chrome; percent is display-only and Fit is a one-shot action with no aria-pressed
+- [Phase 60]: The registered viewport getter divides by peeked live pitch (60-03's intended end state landed early); the legacy strip constant stays as the 1x drag scaffold until 60-02/60-03 convert
 
 ### Pending Todos
 
@@ -260,9 +265,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-09T10:31:26.082Z
-Stopped at: Phase 60 context gathered
-Resume file: .planning/phases/60-studio-timeline-horizontal-zoom/60-CONTEXT.md
+Last session: 2026-11-09T12:21:08.089Z
+Stopped at: Completed 60-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

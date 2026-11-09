@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 2
+open_count: 4
 waived_count: 18
 fixed_count: 91
-total_count: 111
-last_updated: 2026-11-07T18:34:20.061Z
+total_count: 113
+last_updated: 2026-11-09T12:21:19.947Z
 ---
 
 # Broken Windows Ledger
@@ -126,6 +126,8 @@ last_updated: 2026-11-07T18:34:20.061Z
 | 109 | 59 | deviation | app/src-tauri/src/services/script_library.rs |  | Rule 2: a present non-array railMotions fails closed instead of taking the plan snippet's silent-skip path | fixed |  | 2026-11-06T13:47:57.981Z | 2026-11-06T13:48:11.828Z |
 | 110 | 261107-qgj | deviation | app/src/components/shared/NumericStepper.test.tsx |  | Rule 1: retargeted the Motion-inspector NumericStepper exception allow-list from the retired Scripts panel to PhysicsPaintRailMotionModal.tsx | open |  | 2026-11-07T18:34:19.857Z |  |
 | 111 | 261107-qgj | deviation | app/src/components/physic-paint/view/railMotionBoundaryTool.test.ts |  | Rule 1: updated the railMotionEditingMode import pin to the combined exitRailMotionEditing + railMotionSelectedChannel import | open |  | 2026-11-07T18:34:20.061Z |  |
+| 112 | 60 | deviation | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Viewport getter converted to peeked live pitch early (60-03's intended end state); Rule 2 pre-emptive fix | open |  | 2026-11-09T12:21:19.771Z |  |
+| 113 | 60 | deviation | app/src/components/physic-paint/physicsPaintStudio.css | 5150 | Ruler tick mark/label offset stays literal 8px (plan says keep positioning); drifts from cell centre above 1x - revisit in 60-05 | open |  | 2026-11-09T12:21:19.947Z |  |
 
 ````json
 [
@@ -1497,6 +1499,32 @@ last_updated: 2026-11-07T18:34:20.061Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-07T18:34:20.061Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 112,
+    "kind": "deviation",
+    "phase": "60",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx",
+    "line": null,
+    "description": "Viewport getter converted to peeked live pitch early (60-03's intended end state); Rule 2 pre-emptive fix",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-09T12:21:19.771Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 113,
+    "kind": "deviation",
+    "phase": "60",
+    "file": "app/src/components/physic-paint/physicsPaintStudio.css",
+    "line": 5150,
+    "description": "Ruler tick mark/label offset stays literal 8px (plan says keep positioning); drifts from cell centre above 1x - revisit in 60-05",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-09T12:21:19.947Z",
     "resolved_at": null,
     "milestone": "v2.1.0"
   }

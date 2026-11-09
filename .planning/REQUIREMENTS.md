@@ -34,10 +34,10 @@ Each maps to exactly one roadmap phase.
 
 ### Timeline zoom (Phase 60)
 
-- [ ] **ZOOM-01**: Cmd/Ctrl+wheel zooms timeline frame density, keeping the frame under the cursor fixed
-- [ ] **ZOOM-02**: A zoom pill offers minus / percent / plus / Fit; presets are 0.25×, 0.5×, 0.75×, 1×, 1.5×, 2×, 3×, 4×; 100% equals the 18px pitch; pill and Fit keep the playhead frame fixed, falling back to viewport centre
-- [ ] **ZOOM-03**: Row, lane, and cell heights stay fixed — only horizontal frame density scales
-- [ ] **ZOOM-04**: Zoom is session-only and resets when the Studio closes; it changes no document, schema, persistence, or export output
+- [x] **ZOOM-01**: Cmd/Ctrl+wheel zooms timeline frame density, keeping the frame under the cursor fixed
+- [x] **ZOOM-02**: A zoom pill offers minus / percent / plus / Fit; presets are 0.25×, 0.5×, 0.75×, 1×, 1.5×, 2×, 3×, 4×; 100% equals the 18px pitch; pill and Fit keep the playhead frame fixed, falling back to viewport centre
+- [x] **ZOOM-03**: Row, lane, and cell heights stay fixed — only horizontal frame density scales
+- [x] **ZOOM-04**: Zoom is session-only and resets when the Studio closes; it changes no document, schema, persistence, or export output
 - [ ] **ZOOM-05**: Every frame→pixel consumer (playhead, ruler, hit-testing, drag, scrub, selection, paste, sound stains, scroll-to-frame, rail geometry) reads one pitch authority — no local `× 18`
 
 ### Vector painting tool (Phase 61)
@@ -123,10 +123,10 @@ Deferred to a later milestone. Not in the current roadmap.
 | MUI-04 | Phase 59 | Complete |
 | MUI-05 | Phase 59 | Complete |
 | MUI-06 | Phase 59 | Complete |
-| ZOOM-01 | Phase 60 | Pending |
-| ZOOM-02 | Phase 60 | Pending |
-| ZOOM-03 | Phase 60 | Pending |
-| ZOOM-04 | Phase 60 | Pending |
+| ZOOM-01 | Phase 60 | Complete |
+| ZOOM-02 | Phase 60 | Complete |
+| ZOOM-03 | Phase 60 | Complete |
+| ZOOM-04 | Phase 60 | Complete |
 | ZOOM-05 | Phase 60 | Pending |
 | VEC-01 | Phase 61 | Pending |
 | VEC-02 | Phase 61 | Pending |
