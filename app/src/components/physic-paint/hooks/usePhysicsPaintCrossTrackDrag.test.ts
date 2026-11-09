@@ -219,6 +219,25 @@ describe('computeInsertionFrame (47-05 Task 1, TML-05/D-16)', () => {
   });
 });
 
+describe('computeInsertionFrame under the live session pitch (60-02 Task 1, ZOOM-05)', () => {
+  it('halves the frame delta when the pitch doubles for the same pointer travel', () => {
+    // 36px of travel is two 18px frames at 1x and one 36px frame at 2x.
+    expect(computeInsertionFrame(36, 0, 1, 18)).toBe(2);
+    expect(computeInsertionFrame(36, 0, 1, 36)).toBe(1);
+    expect(computeInsertionFrame(72, 0, 1, 18)).toBe(4);
+    expect(computeInsertionFrame(72, 0, 1, 36)).toBe(2);
+  });
+
+  it('applies a scaled framePitch exactly once when no zoom is supplied (no doubling)', () => {
+    // The strip passes the ALREADY-scaled pitch as `framePitch` and leaves the
+    // optional `zoom` at its default of 1. The same frame must resolve as on the
+    // equivalent zoom-multiplied path — never pitch².
+    expect(computeInsertionFrame(36, 0, 1, 36)).toBe(1);
+    expect(computeInsertionFrame(36, 0, 2, 18)).toBe(computeInsertionFrame(36, 0, 1, 36));
+    expect(computeInsertionFrame(50, 22, 1, 36)).toBe(computeInsertionFrame(50, 22, 2, 18));
+  });
+});
+
 describe('cross-track move copy (47-05 Task 2, TML-05/D-17/D-14)', () => {
   it('builds the English success capsule line with singular/plural counts', () => {
     expect(buildCrossTrackMoveSuccessMessage(1)).toBe('Moved 1 key to another track.');

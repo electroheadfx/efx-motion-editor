@@ -2022,16 +2022,20 @@ describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push t
     const projectStart = code.indexOf('projectDestination:');
     const project = code.slice(projectStart, code.indexOf('clampDestination:', projectStart));
     // The resolver clamp consumes FRAME deltas; raw CSS-pixel travel must be
-    // converted by the 18px frame pitch before clamping.
-    expect(project).toContain('ROTO_CELL_WIDTH_PX');
+    // converted by the LIVE session pitch (18px × zoom) before clamping — the
+    // 1x constant would move double the intended frames at 2x. Event-time read:
+    // the handler peeks, it never subscribes.
+    expect(project).toContain('timelineZoom.metrics.peek().pitch');
     expect(project).toContain('Math.round');
+    expect(project).not.toContain('ROTO_CELL_WIDTH_PX');
   });
 
   it('A4: projectDestination returns a raw SIGNED frame delta — the hook derives the direction from the drag sign', () => {
     const code = source();
     const projectStart = code.indexOf('projectDestination:');
     const project = code.slice(projectStart, code.indexOf('clampDestination:', projectStart));
-    expect(project).toContain('ROTO_CELL_WIDTH_PX');
+    expect(project).toContain('timelineZoom.metrics.peek().pitch');
+    expect(project).not.toContain('ROTO_CELL_WIDTH_PX');
     // No directional clamping at projection time — the direction is chosen by
     // the drag and locked in the hook.
     expect(project).not.toContain("direction === 'right'");
