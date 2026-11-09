@@ -5438,6 +5438,10 @@ export function PhysicsPaintStudio() {
       if (settled) rotoCachedPlayback.toggle();
     });
   }, [rotoCachedPlayback.toggle, settleDraftScript]);
+  // quick-261109-pwt: the destination frame whose frame-leave capture was still
+  // pending when this navigation loaded its cached base; consumed by the settle
+  // effect below.
+  const pendingDestinationCaptureRef = useRef<{ frame: number; generation: number } | null>(null);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();
@@ -5509,6 +5513,15 @@ export function PhysicsPaintStudio() {
       recordPhysicsPaintPerformance({ stage: 'nav.snapshotLivePixels', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       const flushPromise = rotoPersistence.flushLivePixels(currentFrame);
       setCachedRotoReferenceUrl(null);
+      // quick-261109-pwt: sample the destination's pending capture BEFORE the
+      // synchronous destination load below. `flushLivePixels` opens the queue
+      // gate globally, so a capture refused mid-navigation may still be retried
+      // — the arm is what repairs a destination loaded pre-capture. A
+      // destination that is already the displayed frame needs no arm: the
+      // navigation's own flush is that identity's flush.
+      pendingDestinationCaptureRef.current = frame !== currentFrame && rotoPersistenceRef.current.hasPendingLivePixelsForFrame(frame)
+        ? { frame, generation }
+        : null;
       const clearAndLoadStartedAtMs = performance.now();
       // 261027-klx: the app-owned preview base replaces engine-1's surface —
       // wipe the cached base, then load the destination's cached pixels.
@@ -5569,6 +5582,50 @@ export function PhysicsPaintStudio() {
     }
     return true;
   }, [applyFrameModuleState, bridgeMode, currentFrame, launchContext, loadCachedRotoReferenceFrame, previewBasePort, rotoCachedPlayback, rotoMutationPort, rotoNavigationGeneration, rotoPersistence, rotoKeyRecords, scheduleRotoStartFramePropagation, selectedKeyId, setCachedRotoReferenceUrl, settleDraftScript]);
+  // quick-261109-pwt: settle the destination frame's pending cache capture once it is displayed.
+  useEffect(() => {
+    const armed = pendingDestinationCaptureRef.current;
+    // `currentFrame` moving to the destination is what marks it displayed
+    // (startFrame is propagated one rAF after the navigation).
+    if (armed === null || armed.frame !== currentFrame) return;
+    if (!rotoNavigationGeneration.isLatest(armed.generation)) {
+      pendingDestinationCaptureRef.current = null;
+      return;
+    }
+    // Run-time read: the playback object's identity changes every render, so it
+    // must not be a dependency. An active run owns the display.
+    if (rotoCachedPlayback.isActive) {
+      pendingDestinationCaptureRef.current = null;
+      return;
+    }
+    // Consume the arm BEFORE any await so a re-run can never double-flush.
+    pendingDestinationCaptureRef.current = null;
+    void (async () => {
+      try {
+        if (rotoPersistenceRef.current.hasPendingLivePixelsForFrame(armed.frame)) {
+          await rotoPersistenceRef.current.flushLivePixels(armed.frame);
+        }
+      } catch (error) {
+        // The commit may already have landed; continue to the comparison.
+        console.error('[PhysicsPaintStudio] pending destination capture flush failed', error);
+      }
+      if (!rotoNavigationGeneration.isLatest(armed.generation)) return;
+      if ((launchContextRef.current?.startFrame ?? -1) !== armed.frame) return;
+      const displayed = findCachedRotoDisplayFrame(armed.frame);
+      const applied = cachedRotoRepaintBaseFrameRef.current;
+      if (displayed === null && applied === null) return;
+      // The store keeps a payload's byte carrier stable between commits, so
+      // reference equality IS content identity — same bytes never reload.
+      if (displayed !== null && applied !== null && displayed.bytes === applied.bytes) return;
+      // The loader's plain-refresh guard refuses an explicit base reload for the
+      // same frame, so force the same sequence the generated post-flush repaint
+      // uses.
+      setCachedRotoReferenceUrl(null);
+      previewBasePort.clearPreviewBaseImage(true);
+      previewBasePort.resetBackground(true);
+      loadCachedRotoReferenceFrame(armed.frame, previewBasePort);
+    })();
+  }, [currentFrame, findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame, previewBasePort, rotoNavigationGeneration, setCachedRotoReferenceUrl]);
   // 47-01 (TML-03): the canvas reference image is track-scoped. The document's
   // active track can change with no runtime content mutation (row click,
   // addTrack, duplicateTrack) and its visibility can flip through

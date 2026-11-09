@@ -6241,3 +6241,63 @@ describe('58-05 Key Rail inspector Studio wiring (RAIL-01)', () => {
     expect(deps).toContain('handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleOpenRotoKeyRailCycleEdit, handleCloseRotoKeyRail,');
   });
 });
+
+// quick-261109-pwt: a destination whose frame-leave capture is still pending
+// must be settled ONCE it is the displayed frame, and reloaded only when the
+// applied byte carrier actually changes.
+describe('quick 261109-pwt — pending destination capture settles after the destination is displayed', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const settleMarker = '// quick-261109-pwt: settle the destination frame\'s pending cache capture once it is displayed.';
+
+  it('arms the destination before the synchronous destination load', () => {
+    const nav = regionOf(studio, 'const navigateToSyncedPhysicalFrame', settleMarker);
+    const probeAt = nav.indexOf('rotoPersistenceRef.current.hasPendingLivePixelsForFrame(frame)');
+    expect(probeAt, 'the destination pending probe is sampled in the navigation').toBeGreaterThan(-1);
+    const loadAt = nav.indexOf('loadCachedRotoReferenceFrame(frame, previewBasePort);');
+    expect(loadAt, 'the synchronous destination load still runs').toBeGreaterThan(-1);
+    // The sample MUST precede the load: the destination base is painted
+    // synchronously, so an arm taken afterwards cannot repair it.
+    expect(probeAt).toBeLessThan(loadAt);
+    // A destination that is already displayed needs no arm — the navigation's
+    // own flush is that identity's flush.
+    expect(nav).toContain('frame !== currentFrame');
+  });
+
+  it('flushes the armed identity once, then reloads only on a byte change', () => {
+    const settle = regionOf(studio, settleMarker, 'const lastReferenceDisplayStateRef');
+    expect(settle.length).toBeGreaterThan(0);
+    // The arm is consumed before the await so a re-run can never double-flush.
+    const consumeAt = settle.indexOf('pendingDestinationCaptureRef.current = null;');
+    const flushAt = settle.indexOf('await rotoPersistenceRef.current.flushLivePixels(armed.frame);');
+    expect(consumeAt).toBeGreaterThan(-1);
+    expect(flushAt).toBeGreaterThan(consumeAt);
+    // Only the armed identity, and only while it has pending work.
+    expect(settle).toContain('hasPendingLivePixelsForFrame(armed.frame)');
+    // Superseded navigation, unpropagated startFrame and active playback all
+    // leave the display alone.
+    expect(settle).toContain('rotoNavigationGeneration.isLatest(armed.generation)');
+    expect(settle).toContain('launchContextRef.current?.startFrame ?? -1');
+    expect(settle).toContain('!== armed.frame');
+    // The reload decision is a byte-carrier comparison, never a blank reload.
+    expect(settle).toContain('cachedRotoRepaintBaseFrameRef.current');
+    expect(settle).toContain('displayed.bytes === applied.bytes');
+    // The loader's plain-refresh guard refuses an explicit base reload for the
+    // same frame, so the post-flush sequence is forced.
+    expect(settle).toContain('setCachedRotoReferenceUrl(null);');
+    expect(settle).toContain('previewBasePort.clearPreviewBaseImage(true);');
+    expect(settle).toContain('previewBasePort.resetBackground(true);');
+    expect(settle).toContain('loadCachedRotoReferenceFrame(armed.frame, previewBasePort);');
+    // Only `currentFrame` plus stable callbacks drive the effect.
+    const depsAt = settle.indexOf('}, [currentFrame');
+    expect(depsAt, 'the effect deps begin with the displayed frame').toBeGreaterThan(-1);
+    expect(settle.slice(depsAt, settle.indexOf(']);', depsAt))).toContain('findCachedRotoDisplayFrame');
+    expect(settle).not.toContain('rotoCachedPlayback.isActive,');
+  });
+});

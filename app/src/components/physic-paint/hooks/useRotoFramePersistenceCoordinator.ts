@@ -849,6 +849,19 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     livePixelTransactionsRef.current.snapshot(identity);
   }, [resolveFrameIdentityInput]);
 
+  // quick-261109-pwt: the navigation settle probe. It resolves the SAME
+  // identity every capture/flush uses, then only READS the pending maps for
+  // that identity (including the parent-delivery chain) — never drains, never
+  // flushes, never throws.
+  const hasPendingLivePixelsForFrame = useCallback((appFrame: number, trackId?: string): boolean => {
+    const identity = resolveFrameIdentityInput(appFrame, trackId);
+    if (!identity) return false;
+    const key = `${identity.launchId}:${identity.layerId}:${identity.keyId}`;
+    return livePixelTransactionsRef.current.hasPending(identity)
+      || parentDeliveryRef.current.has(key)
+      || parentDeliveryErrorRef.current.has(key);
+  }, [resolveFrameIdentityInput]);
+
   const flushLivePixels = useCallback(async (appFrame?: number, trackId?: string): Promise<void> => {
     const identity = appFrame === undefined ? undefined : resolveFrameIdentityInput(appFrame, trackId) ?? undefined;
     await livePixelTransactionsRef.current.flush(identity);
@@ -922,6 +935,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     captureLivePixels,
     invalidateLivePixels,
     snapshotLivePixels,
+    hasPendingLivePixelsForFrame,
     flushLivePixels,
     drainLivePixelQueue,
     interruptLivePixels,

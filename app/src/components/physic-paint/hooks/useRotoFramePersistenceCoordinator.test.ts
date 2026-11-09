@@ -566,6 +566,30 @@ describe('52.2-15 delivery retry scheduler (D-16, sensitivity-map row 4)', () =>
   });
 });
 
+// quick-261109-pwt: the settle effect needs a per-frame pending read that never
+// drains the queue — the arm is sampled BEFORE the synchronous destination
+// load, so it must be a pure map lookup.
+describe('261109-pwt destination pending probe', () => {
+  const probeSource = (() => {
+    const start = coordinatorSource.indexOf('const hasPendingLivePixelsForFrame = useCallback(');
+    return start === -1 ? '' : coordinatorSource.slice(start, coordinatorSource.indexOf('const flushLivePixels = useCallback(', start));
+  })();
+
+  it('reads the identity-scoped pending maps without draining or flushing', () => {
+    expect(probeSource.length).toBeGreaterThan(0);
+    expect(probeSource).toContain('livePixelTransactionsRef.current.hasPending(identity)');
+    expect(probeSource).toContain('parentDeliveryRef.current.has(key)');
+    expect(probeSource).toContain('parentDeliveryErrorRef.current.has(key)');
+    // Read-only: no await, no flush — an arm must never mutate the queue.
+    expect(probeSource).not.toContain('await');
+    expect(probeSource).not.toContain('.flush(');
+  });
+
+  it('exposes the probe on the hook return next to the flush', () => {
+    expect(coordinatorSource).toContain('\n    hasPendingLivePixelsForFrame,\n');
+  });
+});
+
 // 261029-lsr (D-03): the script epoch is stamped SYNCHRONOUSLY at
 // `captureLivePixels` entry and re-read from the SAME port at produce and at
 // commit. The hook cannot be mounted (no preact test renderer), so the shape is
