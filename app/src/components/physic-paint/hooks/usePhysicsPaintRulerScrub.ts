@@ -46,8 +46,12 @@ export interface PhysicsPaintRulerScrubOptions {
    * when scrub mode had armed — the final position for the audio re-anchor.
    */
   readonly onScrubEnd?: (finalFrame: number) => void;
-  /** Cell pitch in CSS pixels (the strip passes ROTO_CELL_WIDTH_PX = 18). */
-  readonly cellWidthPx?: number;
+  /**
+   * Cell pitch in CSS pixels — the live timeline pitch (Phase 60 ZOOM-05).
+   * Required: the caller owns the zoom authority, so a missed call site is a
+   * compile error rather than a silent 1x measurement.
+   */
+  readonly cellWidthPx: number;
   /**
    * UAT round 3: the coordinate-space element for clientX -> frame. Defaults
    * to the pointer-down target (the ruler). The playhead's scrub handle drives
@@ -74,8 +78,6 @@ interface RulerScrubSession {
   cleanup: () => void;
 }
 
-const DEFAULT_CELL_WIDTH_PX = 18;
-
 /**
  * 260827-s52 Task 1: NLE-style ruler seek/scrub gesture session. A pointer-down
  * on the time ruler seeks the playhead synchronously (seek on press — NLE law);
@@ -93,7 +95,7 @@ export function usePhysicsPaintRulerScrub(
 ): PhysicsPaintRulerScrubApi {
   const sessionRef = useRef<RulerScrubSession | null>(null);
   const win = options.windowLike ?? (typeof window !== 'undefined' ? window : undefined);
-  const cellWidthPx = options.cellWidthPx ?? DEFAULT_CELL_WIDTH_PX;
+  const cellWidthPx = options.cellWidthPx;
 
   const onPointerDown = (event: PointerEvent) => {
     if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
