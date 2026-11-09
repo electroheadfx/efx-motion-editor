@@ -1,17 +1,24 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
 import { projectPhysicsPaintLoopClipGeometry } from './physicsPaintLoopClipPresentation';
 import {
   TIMELINE_LANE_ORIGIN_PX,
   TIMELINE_RULER_MIN_STEP,
+  TIMELINE_ZOOM_MAX,
+  TIMELINE_ZOOM_MIN,
   frameToPx,
+  nextTimelineZoomPreset,
+  nextTimelineZoomWheelScale,
   pxToFrame,
+  registerTimelineZoomScrollPort,
   resolvePlayheadAnchorLocalX,
   resolveRulerStep,
   resolveTimelineFitScale,
   resolveTimelineMetrics,
   resolveTimelineViewportFrames,
+  timelineZoom,
+  type TimelineZoomScrollPort,
 } from './physicsPaintTimelineZoom';
 import { soundStainLeftPx, soundStainWidthPx } from './soundBandGeometry';
 import {
@@ -535,5 +542,126 @@ describe('Phase 60 zoom matrix — edge-probe row ownership', () => {
     for (const row of unclassified) {
       expect(row.owner).toMatch(/^60-0[1-6] task/);
     }
+  });
+});
+
+/** A fresh stub port per test: every action reads it, and the setter is a spy. */
+function makePort(
+  options: {
+    scrollLeft?: number;
+    scrollerLeft?: number;
+    clientWidth?: number;
+    playheadFrame?: number;
+    frameCount?: number;
+  } = {},
+) {
+  let scrollLeft = options.scrollLeft ?? 0;
+  const setScrollLeft = vi.fn((value: number) => {
+    scrollLeft = value;
+  });
+  const port: TimelineZoomScrollPort = {
+    getScrollLeft: () => scrollLeft,
+    getScrollerLeft: () => options.scrollerLeft ?? 0,
+    getClientWidth: () => options.clientWidth ?? 360,
+    setScrollLeft,
+    getPlayheadFrame: () => options.playheadFrame ?? 10,
+    getFrameCount: () => options.frameCount ?? 40,
+  };
+  return { port, setScrollLeft };
+}
+
+describe('Phase 60 zoom matrix — store gestures', () => {
+  beforeEach(() => {
+    registerTimelineZoomScrollPort(null);
+    timelineZoom.resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    registerTimelineZoomScrollPort(null);
+  });
+
+  it('steps the preset ladder from the current value, never from a rounded preset (D-06)', () => {
+    timelineZoom.setScale(1.37);
+    timelineZoom.zoomIn();
+    expect(timelineZoom.scale.value).toBe(1.5);
+    expect(nextTimelineZoomPreset(1.37, 1)).toBe(1.5);
+
+    timelineZoom.setScale(1.37);
+    timelineZoom.zoomOut();
+    expect(timelineZoom.scale.value).toBe(1);
+    expect(nextTimelineZoomPreset(1.37, -1)).toBe(1);
+  });
+
+  it('holds the clamped ends: minus at 0.25 and plus at 4 are no-ops (ZOOM-02)', () => {
+    timelineZoom.setScale(TIMELINE_ZOOM_MIN);
+    timelineZoom.zoomOut();
+    expect(timelineZoom.scale.value).toBe(TIMELINE_ZOOM_MIN);
+    expect(timelineZoom.scale.value).toBe(0.25);
+    expect(nextTimelineZoomPreset(TIMELINE_ZOOM_MIN, -1)).toBe(TIMELINE_ZOOM_MIN);
+
+    timelineZoom.setScale(TIMELINE_ZOOM_MAX);
+    timelineZoom.zoomIn();
+    expect(timelineZoom.scale.value).toBe(TIMELINE_ZOOM_MAX);
+    expect(timelineZoom.scale.value).toBe(4);
+    expect(nextTimelineZoomPreset(TIMELINE_ZOOM_MAX, 1)).toBe(TIMELINE_ZOOM_MAX);
+  });
+
+  it('does not write scroll when the scale is unchanged (D-08)', () => {
+    const { port, setScrollLeft } = makePort({ scrollLeft: 100 });
+    registerTimelineZoomScrollPort(port);
+
+    timelineZoom.setScale(1.37);
+    expect(timelineZoom.percent.value).toBe(137);
+    timelineZoom.setScale(1.37);
+    expect(timelineZoom.percent.value).toBe(137);
+
+    // The epsilon guard returns before any write: the setter itself stays uncalled.
+    timelineZoom.setScaleAtCursor(1.37, 500);
+    expect(timelineZoom.scale.value).toBe(1.37);
+    expect(setScrollLeft).not.toHaveBeenCalled();
+  });
+
+  it('fits the whole range once and clamps the anchored write at 0 (D-04)', () => {
+    const { port, setScrollLeft } = makePort({
+      scrollLeft: 0,
+      scrollerLeft: 0,
+      clientWidth: 360,
+      playheadFrame: 10,
+      frameCount: 40,
+    });
+    registerTimelineZoomScrollPort(port);
+
+    timelineZoom.fit();
+    expect(timelineZoom.scale.value).toBe(0.49166666666666664);
+    expect(timelineZoom.percent.value).toBe(49);
+    expect(setScrollLeft).toHaveBeenCalledTimes(1);
+    expect(setScrollLeft).toHaveBeenCalledWith(0);
+  });
+
+  it('is a safe no-op when Fit runs with no registered port', () => {
+    timelineZoom.setScale(2);
+    expect(() => timelineZoom.fit()).not.toThrow();
+    expect(timelineZoom.scale.value).toBe(2);
+  });
+
+  it('resets the session to 1x on Studio open (ZOOM-04)', () => {
+    timelineZoom.setScale(2.5);
+    expect(timelineZoom.isAtMin.value).toBe(false);
+    expect(timelineZoom.isAtMax.value).toBe(false);
+
+    timelineZoom.resetForStudioOpen();
+    expect(timelineZoom.scale.value).toBe(1);
+    expect(timelineZoom.percent.value).toBe(100);
+    expect(timelineZoom.isAtMin.value).toBe(false);
+    expect(timelineZoom.isAtMax.value).toBe(false);
+  });
+
+  it('keeps the wheel factor continuous and clamps it at both ends (D-05)', () => {
+    expect(nextTimelineZoomWheelScale(1, -100, 0)).toBeCloseTo(Math.exp(0.1), 12);
+    expect(nextTimelineZoomWheelScale(1, 100, 0)).toBeCloseTo(Math.exp(-0.1), 12);
+    // Line-mode wheels normalize at 16px per line before applying the factor.
+    expect(nextTimelineZoomWheelScale(1, -10, 1)).toBeCloseTo(Math.exp(0.16), 12);
+    expect(nextTimelineZoomWheelScale(TIMELINE_ZOOM_MAX, -1000, 0)).toBe(TIMELINE_ZOOM_MAX);
+    expect(nextTimelineZoomWheelScale(TIMELINE_ZOOM_MIN, 1000, 0)).toBe(TIMELINE_ZOOM_MIN);
   });
 });
