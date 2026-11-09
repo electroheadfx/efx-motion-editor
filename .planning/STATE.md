@@ -214,7 +214,8 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 59 planning must answer Gates A-D before 59.1: rail identity for motion-bearing bare Key Rails, rail-local time + repeat, quality at scale (measured), and the sub-frame law for motion-blur export.
+- [Phase 60] Two zoom findings remain open advisory after the 2026-11-09 re-verification: WR-01 (mandatory `scroll-snap` may quantize the anchored fractional scroll write) and WR-02 (the 6px content gutter is omitted from three pointer-to-frame projections). Both are non-blocking; live UAT passed 5/5 and the full suite is green.
+- [post-Phase 60] Code review of the interleaved quick/debug commits raised WR-05 (cursor seat re-applies the rail transform to already-transformed coordinates — ring renders `s²` when rail scale ≠ 1) and WR-06 (roto settle can force-reload the base mid-playback). Not phase-60 scope; unverified by UAT.
 - `.mce` paint-field enforcement does not exist yet — `mceFieldContract.test.ts` covers `Mce*` interfaces only while the paint document rides as `HashMap<String, Value>`; motion persistence needs a dedicated load → save byte-identical round-trip pin.
 - Four persistence carriers must move as one change or motion silently fails: `serializeRuntimeIntoDocument`, `encodeValidatedEfxPaintTrackContent`, `buildEfxPaintDocumentSyncFingerprint`, and the layer change token (this defect class already cost PKG-06 and BKG-09).
 - Phase 61 is spike-gated: per-vertex watercolour feasibility (segment runs vs payload extension) before the data model is locked.
@@ -297,7 +298,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-09T13:17:04.464Z
+Last session: 2026-11-09T20:25:00.000Z
 Stopped at: Phase 60 complete, ready to plan Phase 61
 Resume file: None
 
