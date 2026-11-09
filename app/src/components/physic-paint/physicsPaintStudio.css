@@ -5177,7 +5177,9 @@ button.destructive {
 .physics-paint-ruler-label {
   position: absolute;
   top: 0;
-  left: 8px;
+  /* Phase 60 (ZOOM-05): half a LIVE cell, not the 1x 8px — the number stays
+     centred on the cell as the pitch scales (2px at 0.25x, 32px at 4x). */
+  left: calc(var(--timeline-cell-width, 16px) / 2);
   transform: translateX(-50%);
   line-height: 36px;
   white-space: nowrap;
@@ -5185,7 +5187,7 @@ button.destructive {
 
 .physics-paint-ruler-tick::after {
   position: absolute;
-  left: 8px;
+  left: calc(var(--timeline-cell-width, 16px) / 2);
   bottom: 0;
   width: 1px;
   height: 7px;

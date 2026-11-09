@@ -6309,7 +6309,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             // body consumes.
             motionHeader: activeMotionHeader,
           })}
-          <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
+          <div
+            ref={timelineScrollRef}
+            class="physics-paint-timeline-scroll"
+            tabIndex={-1}
+            onScroll={updateScrollbar}
+            // Phase 60 (ZOOM-05): the ONE cell-width property for everything in the
+            // scroller — the ruler's half-cell offsets inherit it from here.
+            style={{ '--timeline-cell-width': `${timelineMetrics.cellWidth}px` }}
+          >
             {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks
                 the playhead cursor-only (usePhysicsPaintRulerScrub). No
                 role="slider": without a live aria-valuenow that would be an

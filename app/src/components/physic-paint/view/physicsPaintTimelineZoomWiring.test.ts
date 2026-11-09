@@ -226,4 +226,18 @@ describe('Timeline zoom wiring — CSS split (D-12, D-14)', () => {
     expect(ruleBody(css, '.physics-paint-timeline-scroll')).toContain('padding-left: 6px');
     expect(ruleBody(css, '.physics-paint-ruler')).toContain('height: 36px');
   });
+
+  it('centres the ruler label and tick on the live half-cell, not the 1x 8px', () => {
+    for (const selector of ['.physics-paint-ruler-label', '.physics-paint-ruler-tick::after']) {
+      expect(ruleBody(css, selector)).toContain('left: calc(var(--timeline-cell-width, 16px) / 2);');
+    }
+  });
+
+  it('publishes the cell width on the scroller so the ruler inherits the live pitch', () => {
+    expect(strip).toContain("'--timeline-cell-width': `${timelineMetrics.cellWidth}px`");
+    const scrollerStart = strip.indexOf('class="physics-paint-timeline-scroll"');
+    expect(scrollerStart).toBeGreaterThanOrEqual(0);
+    const scroller = strip.slice(scrollerStart, strip.indexOf('>', scrollerStart) + 1);
+    expect(scroller).toContain("'--timeline-cell-width': `${timelineMetrics.cellWidth}px`");
+  });
 });
