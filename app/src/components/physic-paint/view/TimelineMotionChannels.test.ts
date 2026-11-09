@@ -177,6 +177,10 @@ function laneProps(
     railFrameCount: RAIL_FRAME_COUNT,
     cursorFrame: 3,
     snapFrames: [],
+    // Phase 60 (ZOOM-05): the lane's column pitch and gap are required props;
+    // the 1x defaults keep every pre-zoom expectation byte-identical.
+    framePitch: TIMELINE_GEOMETRY.cellPitch,
+    frameGap: TIMELINE_GEOMETRY.cellGap,
     selectedKeyFrames: [],
     onSelectRail: () => {},
     onSelectKey: () => {},
@@ -518,6 +522,56 @@ describe('TimelineMotionChannelLane', () => {
     });
     // The footprint is not the drawing-key cell.
     expect(TIMELINE_MOTION.cellHeight).not.toBe(TIMELINE_GEOMETRY.cellHeight);
+  });
+
+  it('scales the lane grid, key centring and curve x with the passed pitch (ZOOM-05)', () => {
+    const framePitch = 36;
+    const frameGap = 4;
+    const tree = renderLane({ framePitch, frameGap });
+
+    // The lane is exactly frameCount columns of the passed pitch.
+    expect(styleOf(laneNode(tree)).width).toBe(RAIL_FRAME_COUNT * framePitch);
+
+    const cells = findAll(
+      tree,
+      (vnode) => vnode.props['data-motion-cell-frame'] !== undefined,
+    );
+    expect(cells).toHaveLength(RAIL_FRAME_COUNT);
+    cells.forEach((cell, index) => {
+      const style = styleOf(cell);
+      expect(style.left).toBe(index * framePitch);
+      // The drawn cell is pitch − gap (D-12), never the fixed 16px token.
+      expect(style.width).toBe(framePitch - frameGap);
+      // Vertical tokens stay at their 1x values at every scale (ZOOM-03).
+      expect(style.height).toBe(TIMELINE_MOTION.cellHeight);
+    });
+
+    const dots = keyDots(tree);
+    expect(dots.map((dot) => styleOf(dot).left)).toEqual(
+      [0, 3, 6].map(
+        (frame) => frame * framePitch + (framePitch - frameGap - TIMELINE_MOTION.keySize) / 2,
+      ),
+    );
+    // The plan's literal: a key at frame 3 sits at 3 × 36 + 13.
+    expect(styleOf(dots[1]).left).toBe(121);
+
+    // The curve's x scale is the lane's pitch: the last point lands on
+    // (frameCount − 1) × pitch.
+    const paths = findAll(tree, (vnode) => vnode.type === 'path');
+    expect(paths).toHaveLength(1);
+    expect(String(paths[0]!.props.d)).toBe(
+      buildRailMotionCurvePath(
+        POSITION_CHANNELS[0]!,
+        RAIL_FRAME_COUNT,
+        TIMELINE_GEOMETRY.motionLaneHeight,
+        { railId: 'rail-a', cellPitch: framePitch },
+      ),
+    );
+    const path = String(paths[0]!.props.d);
+    const lastPoint = path.slice(path.lastIndexOf(' L') + 2);
+    expect(Number(lastPoint.slice(0, lastPoint.indexOf(',')))).toBe(
+      (RAIL_FRAME_COUNT - 1) * framePitch,
+    );
   });
 
   it('marks the key at the cursor frame as the current tier', () => {
@@ -1127,6 +1181,8 @@ describe('TimelineMotionBlockOutline', () => {
       laneCount: 0,
       railStartFrame: 0,
       railFrameCount: 12,
+      framePitch: TIMELINE_GEOMETRY.cellPitch,
+      frameGap: TIMELINE_GEOMETRY.cellGap,
       selected: true,
     });
 
@@ -1150,6 +1206,8 @@ describe('TimelineMotionBlockOutline', () => {
         laneCount: 3,
         railStartFrame: 0,
         railFrameCount: 12,
+        framePitch: TIMELINE_GEOMETRY.cellPitch,
+        frameGap: TIMELINE_GEOMETRY.cellGap,
         selected: true,
       }),
     );
@@ -1188,12 +1246,47 @@ describe('TimelineMotionBlockOutline', () => {
         laneCount: 2,
         railStartFrame: 6,
         railFrameCount: 9,
+        framePitch: TIMELINE_GEOMETRY.cellPitch,
+        frameGap: TIMELINE_GEOMETRY.cellGap,
         selected: true,
       }),
     );
     const node = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-block-outline'))[0]!;
     expect(styleOf(node).left).toBe(rect?.left);
     expect(styleOf(node).width).toBe(rect?.width);
+  });
+
+  it('scales the outline with the passed pitch and gap (ZOOM-05)', () => {
+    // 6 × 36 + 1.5/2 and 9 × 36 − 4 − 1.5 (SPECS §2 at 2x, gap scaled).
+    const rect = resolveMotionBlockOutlineRect({
+      rowTop: 0,
+      rowHeight: 30,
+      laneCount: 2,
+      railStartFrame: 6,
+      railFrameCount: 9,
+      cellPitch: 36,
+      cellGap: 4,
+    });
+    expect(rect?.left).toBe(216.75);
+    expect(rect?.width).toBe(318.5);
+
+    const tree = materialize(
+      TimelineMotionBlockOutline({
+        rowTop: 0,
+        rowHeight: 30,
+        laneCount: 2,
+        railStartFrame: 6,
+        railFrameCount: 9,
+        framePitch: 36,
+        frameGap: 4,
+        selected: true,
+      }),
+    );
+    const node = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-block-outline'))[0]!;
+    expect(styleOf(node).left).toBe(216.75);
+    expect(styleOf(node).width).toBe(318.5);
+    // Vertical geometry is untouched at every scale (ZOOM-03).
+    expect(styleOf(node).height).toBe(30 + 2 * TIMELINE_MOTION.laneHeight + TIMELINE_MOTION.postBlockGap);
   });
 });
 
