@@ -114,16 +114,21 @@ describe('the assembled surface reads its geometry from timelineRailDesign', () 
       'TIMELINE_MOTION.keyRadius',
       'TIMELINE_MOTION.keyRimWidth',
       'TIMELINE_MOTION.curveWidth',
-      'TIMELINE_MOTION.cellWidth',
       'TIMELINE_MOTION.cellHeight',
       'TIMELINE_MOTION.cellRadius',
       'TIMELINE_MOTION.laneHeight',
       'TIMELINE_MOTION.laneLabelGap',
       'TIMELINE_MOTION.headerClusterWidth',
-      'TIMELINE_GEOMETRY.cellPitch',
     ]) {
       expect(source, `${LANE_COMPONENT} must read ${token}`).toContain(token);
     }
+    // Phase 60 (ZOOM-05): the horizontal grid arrives as REQUIRED props — the
+    // drawn cell is pitch − gap, never the static 16px width, and the static
+    // pitch token is not read at all.
+    expect(source).toContain('readonly framePitch: number;');
+    expect(source).toContain('readonly frameGap: number;');
+    expect(source).toContain('const cellWidth = framePitch - frameGap;');
+    expect(source).not.toContain('TIMELINE_GEOMETRY.cellPitch');
     // The lane file carries NO bare copy of the measures it draws: the whole
     // component's numbers come from tokens (checked by absence, which is the
     // half a value-only test cannot see).
@@ -144,6 +149,12 @@ describe('the assembled surface reads its geometry from timelineRailDesign', () 
     expect(source).toContain('TIMELINE_SURFACE.motionToggleInactive');
     expect(source).toContain("resolveTimelineRailPalette(motionLineType, 'selected').line");
     expect(source).toContain('TIMELINE_MOTION.postBlockGap');
+    // Phase 60 (ZOOM-05): the row's horizontal grid arrives as REQUIRED props;
+    // the module declares no pitch constant and reads no static pitch token.
+    expect(source).toContain('readonly framePitch: number;');
+    expect(source).toContain('readonly frameGap: number;');
+    expect(source).not.toContain('ROW_CELL_WIDTH_PX');
+    expect(source).not.toContain('TIMELINE_GEOMETRY.cellPitch');
     // Neither the grey token nor the four selected line colours may appear as
     // literals in the row: that is exactly how a token copy drifts.
     for (const literal of ['#58616B', '#A6D334', '#F5A623', '#8B5CF6', '#2F9BFF']) {
@@ -176,7 +187,12 @@ describe('the assembled surface reads its geometry from timelineRailDesign', () 
     expect(drag).toContain("from '../hooks/usePhysicsPaintKeyRailDrag'");
     expect(drag).toContain('usePhysicsPaintKeyRailDrag');
     expect(drag).toContain('clampRailMotionKeyDragFrame');
-    expect(drag).toContain('TIMELINE_GEOMETRY.cellPitch');
+    // Phase 60 (ZOOM-05): the projection divisor and the drop ghost read the
+    // lane's OWN pitch and gap through the latest-value ref, never the static
+    // pitch token.
+    expect(drag).toContain('laneProps.framePitch');
+    expect(drag).toContain('laneProps.frameGap');
+    expect(drag).not.toContain('TIMELINE_GEOMETRY.cellPitch');
     expect(drag).toContain('keyDrag={{');
     // The leaf owns NO listener, capture or move handler of its own.
     expect(drag).not.toContain('addEventListener');
@@ -214,6 +230,25 @@ describe('the assembled surface reads its geometry from timelineRailDesign', () 
     expect(strip).toContain('aria-label="Animate — motion channels"');
     expect(strip).toContain('TimelineMotionChannelMenuOverlay');
     expect(strip.match(/<TimelineMotionChannelMenuOverlay/g) ?? []).toHaveLength(1);
+  });
+
+  it('Phase 60 (ZOOM-05): no surface module reintroduces a pitch constant or the static pitch token', () => {
+    // One authority: the lane, the key-drag leaf and the track row all draw
+    // from the pitch their caller passes. A re-declared 18 or a quiet read of
+    // the static token would be a second authority, and only a source read can
+    // catch it. The pattern is the assignment form so `D-18` prose references
+    // in the row's comments do not trip it.
+    for (const [name, file] of [
+      ['lane', LANE_COMPONENT],
+      ['drag leaf', KEY_DRAG_COMPONENT],
+      ['row', ROW_COMPONENT],
+    ] as const) {
+      const source = componentSource(file);
+      expect(source, `${name} must not declare a pitch literal`).not.toMatch(/=\s*18\b/);
+      expect(source, `${name} must not read TIMELINE_GEOMETRY.cellPitch`).not.toContain(
+        'TIMELINE_GEOMETRY.cellPitch',
+      );
+    }
   });
 });
 
