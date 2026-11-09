@@ -6431,6 +6431,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                 railSelected={activeRailSetIdentity !== null}
                                 laneCount={activeMotionLaneCount}
                                 cursorFrame={activeMotionLocalCursorFrame}
+                                framePitch={timelineMetrics.pitch}
+                                frameGap={timelineMetrics.cellGap}
                                 snapFrames={activeMotionSnapFrames}
                                 disabledReasons={motionLaneDisabledReasons}
                                 selectedMotionKey={selectedMotionKeyData === null ? null : selectedMotionKey}
@@ -6474,6 +6476,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           trackId={track.id}
                           layerId={props.layerId!}
                           frameCells={frameCells}
+                          framePitch={timelineMetrics.pitch}
+                          frameGap={timelineMetrics.cellGap}
                           visible={track.visible}
                           // 261023-bji: this row is ALWAYS a non-target track —
                           // the Solo focus is the active track, rendered by
@@ -6506,6 +6510,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       trackId={props.background.id}
                       layerId={props.layerId!}
                       frameCells={frameCells}
+                      framePitch={timelineMetrics.pitch}
+                      frameGap={timelineMetrics.cellGap}
                       kind="background"
                       background={props.background}
                       backgroundResolutionContext={backgroundResolutionContext}

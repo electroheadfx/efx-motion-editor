@@ -86,9 +86,6 @@ import type { BackgroundClipResizeApi } from '../hooks/usePhysicsPaintBackground
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import { countRender } from '../performance/renderCounters';
 
-/** 47-01 geometry: the same 18px frame pitch as the active track. */
-const ROW_CELL_WIDTH_PX = 18;
-
 /**
  * 49-06 (UAT round 9): the filmstrip cap — a Bg rail shows the source image on
  * at most this many cells. The images are already decoded in the runtime
@@ -133,6 +130,13 @@ export interface PhysicsPaintTrackRowProps {
   readonly layerId: string;
   /** The strip-level shared horizontal extent (frameCells), mapped 1:1 per row. */
   readonly frameCells: readonly number[];
+  /** Phase 60 (ZOOM-05): the session column pitch handed down as a REQUIRED
+   *  prop — the row holds no pitch of its own. No default, so a missed host
+   *  call site is a type error rather than a silent 1x render. */
+  readonly framePitch: number;
+  /** Phase 60 (ZOOM-05): the session cell gap; every rail width is
+   *  frames × pitch − gap. */
+  readonly frameGap: number;
   /** 'background' renders the darkened Bg row skeleton. */
   readonly kind?: PhysicsPaintTrackRowKind;
   /**
@@ -156,7 +160,7 @@ export interface PhysicsPaintTrackRowProps {
   readonly crossDestination?: boolean;
   /** 47-05 Task 1 (TML-05, D-16): the live insertion preview frame inside
    *  this row, or null — read-only frame-position indicator rendered at the
-   *  same 18px pitch as the frame cells. */
+   *  same live pitch as the frame cells. */
   readonly crossInsertionFrame?: number | null;
   /**
    * 47-01 UAT round 7: clicking a frame cell on a NON-active track activates
@@ -762,6 +766,8 @@ function resolveTrackRowLoopVisuals(
   layerId: string,
   trackId: string,
   frameCells: readonly number[],
+  framePitch: number,
+  frameGap: number,
 ): TrackRowLoopVisuals {
   const capacity = frameCells.length;
   const loopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId);
@@ -795,7 +801,14 @@ function resolveTrackRowLoopVisuals(
   }
   for (const { range, resolvedEnd } of authorityByLoop.values()) {
     const continuousRange = { ...range, placementStart: range.phaseOrigin, effectiveEnd: resolvedEnd };
-    const geometry = projectPhysicsPaintLoopClipGeometry(continuousRange, { startFrame: 0, endFrameExclusive: capacity }, 18);
+    // Phase 60 (ZOOM-05): the rail geometry rides the session pitch and gap,
+    // never a literal 1x measure.
+    const geometry = projectPhysicsPaintLoopClipGeometry(
+      continuousRange,
+      { startFrame: 0, endFrameExclusive: capacity },
+      framePitch,
+      frameGap,
+    );
     if (!geometry) continue;
     const clip = loopClips.find((candidate) => candidate.loopId === range.loopId);
     lines.push({
@@ -852,6 +865,8 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
   readonly presentation: PhysicsPaintBackgroundClipPresentation;
   readonly left: number;
   readonly width: number;
+  /** Phase 60 (ZOOM-05): the live pitch, for the filmstrip's cell count. */
+  readonly framePitch: number;
   /** 49-06 (UAT round 2): true when this clip is the selected Bg clip — the
    *  cells paint the orange selection treatment (timeline selection contract). */
   readonly selected: boolean;
@@ -892,7 +907,7 @@ interface PhysicsPaintBackgroundClipRailTargetProps {
 function PhysicsPaintBackgroundClipRailTarget(props: PhysicsPaintBackgroundClipRailTargetProps) {
   const tooltip = useStyledTooltip();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
-  const cellCount = Math.max(1, Math.round(props.width / ROW_CELL_WIDTH_PX));
+  const cellCount = Math.max(1, Math.round(props.width / props.framePitch));
   // 49-06 (UAT round 8): the track-rail selection pattern — the click owns
   // selection, and a click that follows a real drag/resize is swallowed by the
   // hooks' consumeClickSuppression so it never toggles selection.
@@ -998,6 +1013,8 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     trackId,
     layerId,
     frameCells,
+    framePitch,
+    frameGap,
     kind = 'paint',
     visible = true,
     soloDimmed = false,
@@ -1041,7 +1058,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     ? resolveTrackRowRailSegments(layerId, trackId)
     : EMPTY_TRACK_ROW_RAIL_SEGMENTS;
   const loopVisuals = kind === 'paint' && layerId
-    ? resolveTrackRowLoopVisuals(layerId, trackId, frameCells)
+    ? resolveTrackRowLoopVisuals(layerId, trackId, frameCells, framePitch, frameGap)
     : EMPTY_TRACK_ROW_LOOP_VISUALS;
   const ghostSourceKeyIds = kind === 'paint' && layerId
     ? resolveGhostSourceKeyIds(layerId, trackId)
@@ -1139,12 +1156,13 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           class="physics-paint-track-row-cells"
           role="row"
           style={{
-            gridTemplateColumns: `repeat(${frameCells.length}, ${ROW_CELL_WIDTH_PX}px)`,
+            // Phase 60 (ZOOM-05): the cells grid rides the session pitch.
+            gridTemplateColumns: `repeat(${frameCells.length}, ${framePitch}px)`,
             /* 47-01 UAT round 2: the cells lane must never shrink below the
                full frame capacity, so the track's frames stay scrollable to
                the last cell like the active lane (the rows-region carries the
                matching full width from the strip). */
-            minWidth: `${frameCells.length * ROW_CELL_WIDTH_PX}px`,
+            minWidth: `${frameCells.length * framePitch}px`,
           }}
         >
           {frameCells.map((frame) => {
@@ -1239,13 +1257,14 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             data-rail-type="standard"
             data-rail-key-ids={segment.keyIds.join(',')}
             style={{
-              left: `${segment.firstKeyFrame * ROW_CELL_WIDTH_PX}px`,
+              left: `${segment.firstKeyFrame * framePitch}px`,
               /* v2.0.1 (README §4): the shared rail-line width rule — the line
-                 ends on the last cell's right edge, so the 2px gap is inset. */
+                 ends on the last cell's right edge, so the live gap is inset. */
               width: `${projectTimelineRailLineWidth(
                 segment.lastKeyFrame + 1 - segment.firstKeyFrame,
-                ROW_CELL_WIDTH_PX,
+                framePitch,
                 true,
+                frameGap,
               )}px`,
             }}
             role="button"
@@ -1313,10 +1332,13 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
               const geometry = projectPhysicsPaintLoopClipGeometry(
                 range,
                 { startFrame: 0, endFrameExclusive: frameCells.length },
-                ROW_CELL_WIDTH_PX,
+                framePitch,
+                frameGap,
               );
               if (!geometry) return null;
-              const cellCount = Math.max(1, Math.round(geometry.width / ROW_CELL_WIDTH_PX));
+              // Phase 60 (ZOOM-05): the filmstrip's cell count derives from
+              // the scaled pitch, so one cell still equals one frame.
+              const cellCount = Math.max(1, Math.round(geometry.width / framePitch));
               const cellImages = resolveBackgroundClipCellImages(clip, cellCount);
               return (
                 <PhysicsPaintBackgroundClipRailTarget
@@ -1326,6 +1348,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                   presentation={presentation}
                   left={geometry.left}
                   width={geometry.width}
+                  framePitch={framePitch}
                   selected={selectedBackgroundClipId === clip.id}
                   onSelect={onSelectBackgroundClip}
                   consumeClickSuppression={() => {
@@ -1359,12 +1382,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
         ) : null}
         {/* 47-05 Task 1 (TML-05, D-16): the live insertion preview — a 2px
             accent line at the frame position where the dragged content lands
-            inside this destination row (left = frame × the 18px pitch). Pure
+            inside this destination row (left = frame × the live pitch). Pure
             feedback: the gesture never mutates the row until release. */}
         {crossInsertionFrame !== null ? (
           <span
             class="physics-paint-track-row-insertion-preview"
-            style={{ left: `${crossInsertionFrame * ROW_CELL_WIDTH_PX}px` }}
+            style={{ left: `${crossInsertionFrame * framePitch}px` }}
             aria-hidden="true"
           />
         ) : null}
@@ -1379,6 +1402,8 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           view={motionView}
           laneCount={motionLaneCount}
           cursorFrame={motionCursorFrame}
+          framePitch={framePitch}
+          frameGap={frameGap}
           snapFrames={motionSnapFrames}
           onSelectMotionKey={onSelectMotionKey}
         />
