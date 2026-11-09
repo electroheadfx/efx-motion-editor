@@ -193,7 +193,7 @@ Plans:
   4. Row, lane, and cell heights stay fixed at every zoom level — only horizontal frame density scales — and no frame→pixel consumer multiplies a local `18`.
   5. Zoom is session-only: it resets when the Studio closes and changes no document, `.mce`, schema, persistence, or export output.
 
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -209,7 +209,7 @@ Plans:
 - [x] 60-04-PLAN.md — track rows and motion lanes onto required pitch/gap props
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 60-05-PLAN.md — retire the last local pitch default and land the zero-literal authority audit
+- [x] 60-05-PLAN.md — retire the last local pitch default and land the zero-literal authority audit
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 60-06-PLAN.md — the five-level zoom acceptance matrix, written after the audit is green
@@ -272,7 +272,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 59. Rail Motion Channels & v7 Interface | 25/25 | Complete    | 2026-11-08 |
-| 60. Studio Timeline Horizontal Zoom | 4/6 | In Progress | - |
+| 60. Studio Timeline Horizontal Zoom | 5/6 | In Progress | - |
 | 61. Vector Painting Tool | 0/TBD | Not started | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
 

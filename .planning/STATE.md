@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 60
 current_phase_name: Studio Timeline Horizontal Zoom
 status: executing
-stopped_at: Completed 60-04-PLAN.md
-last_updated: "2026-11-09T12:57:01.223Z"
+stopped_at: Completed 60-05-PLAN.md
+last_updated: "2026-11-09T13:08:23.820Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 60 execution started
-state_head: c7208ed4d41c954bcdf75abd9f9f0cdac81786fe
+state_head: a903c7c2c81a224071269849b31359f72a319ee8
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 31
-  completed_plans: 29
+  completed_plans: 30
   percent: 25
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 60 (Studio Timeline Horizontal Zoom) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 60 execution started
 
@@ -86,6 +86,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 60 P02 | 6 | 3 tasks | 3 files |
 | Phase 60 P03 | 4min | 3 tasks | 9 files |
 | Phase 60 P04 | 12min | 3 tasks | 12 files |
+| Phase 60 P05 | 9min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -190,6 +191,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 60]: The outline resolver keeps optional cellPitch/cellGap defaulting to the base tokens, preserving existing callers while the block forwards live values
 - [Phase 60]: The key-drag leaf reads laneProps.framePitch through the existing latestRef and adds no hook or subscription
 - [Phase 60]: Pre-existing exact-count source pins were repointed to >= 2 when three legitimate pitch consumers joined, not deleted
+- [Phase 60]: ZOOM-05 is executable: timelineZoomAuthorityAudit scans view/ and hooks/, permits exactly two owners, and fails on a third allowlist entry
+- [Phase 60]: The audit runs every rule on comment-stripped code and proves each against a seeded positive plus a comment-only negative
+- [Phase 60]: Every named consumer has a presence block with exact counts where enumerable (five strip pitch/gap sites); the wave-4 >= 2 pins returned to toBe(5)
+- [Phase 60]: The ruler-scrub cellWidthPx is required with no fallback; the strip passes timelineZoom.metrics.peek().pitch at event time
 
 ### Pending Todos
 
@@ -279,8 +284,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-09T12:57:00.276Z
-Stopped at: Completed 60-04-PLAN.md
+Last session: 2026-11-09T13:08:22.838Z
+Stopped at: Completed 60-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
