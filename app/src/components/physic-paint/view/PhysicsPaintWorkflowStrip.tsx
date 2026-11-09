@@ -2770,12 +2770,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
   // Phase 60: the zoom store drives scrollLeft through this port (anchored
-  // wheel, pill stepping, Fit). Reset the session scale on every Studio open
-  // (and view remount inside one document) so nothing leaks across documents;
-  // unregister on unmount. The playhead frame is read at call time from the
-  // strip's own signal — never captured at mount.
+  // wheel, pill stepping, Fit). Every Studio open (and view remount inside one
+  // document) restores THIS layer's remembered density (UAT 2026-11-09) and
+  // never carries another layer's scale across; unregister on unmount. The
+  // playhead frame is read at call time from the strip's own signal — never
+  // captured at mount.
   useEffect(() => {
-    timelineZoom.resetForStudioOpen();
+    timelineZoom.resetForStudioOpen(props.layerId ?? null);
     registerTimelineZoomScrollPort({
       getScrollLeft: () => timelineScrollRef.current?.scrollLeft ?? 0,
       getScrollerLeft: () => timelineScrollRef.current?.getBoundingClientRect().left ?? 0,
@@ -2788,7 +2789,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       getFrameCount: () => timelineFrameCountRef.current,
     });
     return () => registerTimelineZoomScrollPort(null);
-  }, []);
+  }, [props.layerId]);
   // 47-01 header column: the active lane's header cell shows the active
   // track's name (UI-SPEC header column layout — every row gets a label).
   // 47-01 mockup redesign: edit-in-place rename state. The header column is

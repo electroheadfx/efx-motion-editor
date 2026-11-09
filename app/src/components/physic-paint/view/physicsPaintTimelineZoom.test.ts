@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { effect } from '@preact/signals';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   TIMELINE_LANE_ORIGIN_PX,
   TIMELINE_RULER_MIN_STEP,
@@ -300,6 +300,59 @@ describe('physicsPaintTimelineZoom — store', () => {
     expect(readScrollLeft()).toBe(100);
     await flushAnchoredScroll();
     expect(readScrollLeft()).toBeCloseTo(194, 9);
+  });
+
+  it('remembers the density per paint layer across a close/reopen (UAT 2026-11-09)', () => {
+    const { port } = makePort({ scrollLeft: 0, clientWidth: 800 });
+    registerTimelineZoomScrollPort(port);
+
+    timelineZoom.resetForStudioOpen('layer-a');
+    expect(timelineZoom.scale.value).toBe(1);
+    timelineZoom.setScale(2);
+    expect(timelineZoom.scale.value).toBe(2);
+
+    // Another layer opens at its own default and never inherits layer-a's 2x.
+    timelineZoom.resetForStudioOpen('layer-b');
+    expect(timelineZoom.scale.value).toBe(1);
+    timelineZoom.setScale(0.5);
+
+    // Reopening either layer restores what it was left at.
+    timelineZoom.resetForStudioOpen('layer-a');
+    expect(timelineZoom.scale.value).toBe(2);
+    timelineZoom.resetForStudioOpen('layer-b');
+    expect(timelineZoom.scale.value).toBe(0.5);
+
+    // The no-argument form is still the plain 1x reset.
+    timelineZoom.resetForStudioOpen();
+    expect(timelineZoom.scale.value).toBe(1);
+  });
+
+  it('persists the density per layer across a rebuilt Studio webview (UAT 2026-11-09)', async () => {
+    const backing = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => backing.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        backing.set(key, value);
+      },
+    });
+    try {
+      timelineZoom.resetForStudioOpen('layer-persist');
+      timelineZoom.setScale(3);
+      timelineZoom.setScaleAtCursor(2.5, 100);
+      const raw = backing.get('efx-timeline-zoom-by-layer');
+      expect(raw, 'the layer scale is written to storage').toBeTruthy();
+      expect(JSON.parse(raw as string)).toMatchObject({ 'layer-persist': 2.5 });
+
+      // Closing the Studio destroys the webview: a fresh module instance is the
+      // reopen, and it must restore what the layer was left at.
+      vi.resetModules();
+      const reopened = await import('./physicsPaintTimelineZoom');
+      expect(reopened.timelineZoom.scale.value).toBe(1);
+      reopened.timelineZoom.resetForStudioOpen('layer-persist');
+      expect(reopened.timelineZoom.scale.value).toBe(2.5);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('discards a queued anchored write when the Studio resets', async () => {

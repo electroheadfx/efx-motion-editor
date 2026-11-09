@@ -236,6 +236,48 @@ export function registerTimelineZoomScrollPort(port: TimelineZoomScrollPort | nu
 // --- Store helpers -------------------------------------------------------
 
 /**
+ * UAT 2026-11-09: the density is remembered PER PAINT LAYER, so closing and
+ * reopening a layer returns to the zoom the artist left it at.
+ *
+ * localStorage, not module state — closing the Studio DESTROYS its window and
+ * reopening BUILDS a new webview, so a module-level map would be wiped every
+ * time (the same constraint `components/shared/activeModule.ts` records). This
+ * is a UI preference only: it never reaches the document, .mce, schema,
+ * revision, cache or export surface.
+ */
+const SCALE_BY_LAYER_STORAGE_KEY = 'efx-timeline-zoom-by-layer';
+const MAX_REMEMBERED_LAYERS = 64;
+
+function readStoredScales(): Map<string, number> {
+  const out = new Map<string, number>();
+  try {
+    const raw = localStorage.getItem(SCALE_BY_LAYER_STORAGE_KEY);
+    if (!raw) return out;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return out;
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'number' && Number.isFinite(value)) out.set(id, clampTimelineZoomScale(value));
+    }
+  } catch {
+    // Storage can be unavailable (private mode) or hold a stale shape — the
+    // in-memory map still works for this webview.
+  }
+  return out;
+}
+
+function writeStoredScales(): void {
+  try {
+    const entries = [...scaleByLayer.entries()].slice(-MAX_REMEMBERED_LAYERS);
+    localStorage.setItem(SCALE_BY_LAYER_STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // Storage can be unavailable — persistence degrades, nothing else does.
+  }
+}
+
+const scaleByLayer = readStoredScales();
+let activeLayerId: string | null = null;
+
+/**
  * Compare-then-write: identical values and anything inside TIMELINE_ZOOM_EPSILON
  * of the current scale write nothing, so a no-op wheel tick causes no re-render
  * (D-08, reactivity rule 3).
@@ -246,6 +288,10 @@ function setScaleSignal(next: number): boolean {
   if (Object.is(current, clamped)) return false;
   if (Math.abs(clamped - current) <= TIMELINE_ZOOM_EPSILON) return false;
   scaleSignal.value = clamped;
+  if (activeLayerId !== null && scaleByLayer.get(activeLayerId) !== clamped) {
+    scaleByLayer.set(activeLayerId, clamped);
+    writeStoredScales();
+  }
   return true;
 }
 
@@ -382,11 +428,17 @@ export const timelineZoom = {
     applyScale(next, target);
   },
 
-  /** Studio open (and a view remount inside one document) always lands on 1x. */
-  resetForStudioOpen(): void {
+  /**
+   * Studio open (and a view remount inside one document). With a layer id the
+   * store restores that layer's remembered density (UAT 2026-11-09); without
+   * one it lands on 1x, which is also the first-open default.
+   */
+  resetForStudioOpen(layerId?: string | null): void {
     // A queued anchored write from the outgoing session must never land on the
-    // fresh 1x view.
+    // incoming view.
     discardPendingScroll();
-    setScaleSignal(1);
+    activeLayerId = layerId ?? null;
+    const remembered = activeLayerId === null ? undefined : scaleByLayer.get(activeLayerId);
+    setScaleSignal(remembered ?? 1);
   },
 };

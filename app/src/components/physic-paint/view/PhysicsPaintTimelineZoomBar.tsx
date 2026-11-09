@@ -1,4 +1,4 @@
-import { Minus, Plus } from 'lucide-preact';
+import { Minus, Plus, SquareDimensions } from 'lucide-preact';
 import { timelineZoom } from './physicsPaintTimelineZoom';
 
 /**
@@ -47,11 +47,12 @@ export function PhysicsPaintTimelineZoomBar() {
       </button>
       <button
         type="button"
-        class="physics-paint-canvas-zoom-text-button"
-        title="Fit the whole frame range"
+        class="physics-paint-nav-button"
+        aria-label="Show the whole frame range"
+        title="Show the whole frame range"
         onClick={() => timelineZoom.fit()}
       >
-        Fit
+        <SquareDimensions size={14} aria-hidden="true" />
       </button>
     </div>
   );

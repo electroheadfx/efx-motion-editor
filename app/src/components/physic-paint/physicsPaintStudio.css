@@ -8019,14 +8019,17 @@ input[type="range"].physics-paint-photo-reference-slider-input {
 
 .physics-paint-roto-cell[data-cell-kind="interp"]::before {
   position: absolute;
-  /* The 1px border leaves a 14x20 padding box; 1/9px centres the 12x2 dash. */
+  /* Phase 60 UAT (2026-11-09): the dash rides the LIVE cell, not the 1x 12px
+     offset — centred on the cell and proportionally wide (75% of the cell, the
+     1x ratio) so it reads the same at 25% and 400%. */
   top: 9px;
-  left: 1px;
-  width: 12px;
+  left: 50%;
+  width: calc(var(--timeline-cell-width, 16px) * 0.75);
   height: 2px;
   border: 0;
   border-radius: 1px;
   background: var(--rail-line, #6C8A35);
+  transform: translateX(-50%);
   content: '';
 }
 

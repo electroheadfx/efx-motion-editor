@@ -41,7 +41,8 @@ function wheelHandlerBlock(): string {
 
 describe('Timeline zoom wiring — mount seam (D-05, D-12)', () => {
   it('resets the session scale and registers the scroll port, unregistering both on cleanup', () => {
-    const resetIndex = strip.indexOf('timelineZoom.resetForStudioOpen();');
+    // UAT 2026-11-09: the mount seam restores THIS layer's density.
+    const resetIndex = strip.indexOf('timelineZoom.resetForStudioOpen(props.layerId ?? null);');
     const registerIndex = strip.indexOf('registerTimelineZoomScrollPort({');
     const unregisterIndex = strip.indexOf('registerTimelineZoomScrollPort(null)');
     expect(resetIndex).toBeGreaterThanOrEqual(0);
@@ -192,11 +193,21 @@ describe('Timeline zoom wiring — header pill (D-01..D-04)', () => {
     const percentSpan = bar.slice(percentStart, bar.indexOf('</span>', percentStart));
     expect(percentSpan).toContain('{percent}%');
     expect(percentSpan).not.toContain('onClick');
-    const fitStart = bar.indexOf('title="Fit the whole frame range"');
+    const fitStart = bar.indexOf('title="Show the whole frame range"');
     expect(fitStart).toBeGreaterThanOrEqual(0);
     const fitButton = bar.slice(fitStart, bar.indexOf('</button>', fitStart));
     expect(fitButton).toContain('onClick={() => timelineZoom.fit()}');
     expect(fitButton).not.toContain('aria-pressed');
+  });
+
+  it('renders the Fit action as a square-dimensions icon in the nav-button treatment (UAT 2026-11-09)', () => {
+    expect(bar).toContain('SquareDimensions');
+    expect(bar).toContain('<SquareDimensions size={14} aria-hidden="true" />');
+    expect(bar).not.toContain('physics-paint-canvas-zoom-text-button');
+    expect(bar).not.toContain('>\n        Fit\n      <');
+    const fitStart = bar.indexOf('title="Show the whole frame range"');
+    const fitButtonStart = bar.lastIndexOf('<button', fitStart);
+    expect(bar.slice(fitButtonStart, fitStart)).toContain('class="physics-paint-nav-button"');
   });
 
   it('wears the pill modifier with the navigation treatment', () => {
@@ -231,6 +242,15 @@ describe('Timeline zoom wiring — CSS split (D-12, D-14)', () => {
     for (const selector of ['.physics-paint-ruler-label', '.physics-paint-ruler-tick::after']) {
       expect(ruleBody(css, selector)).toContain('left: calc(var(--timeline-cell-width, 16px) / 2);');
     }
+  });
+
+  it('centres the in-between dash on the live cell instead of the 1x 12px offset (UAT 2026-11-09)', () => {
+    const rule = ruleBody(css, '.physics-paint-roto-cell[data-cell-kind="interp"]::before');
+    expect(rule).toContain('left: 50%;');
+    expect(rule).toContain('transform: translateX(-50%);');
+    expect(rule).toContain('width: calc(var(--timeline-cell-width, 16px) * 0.75);');
+    expect(rule).not.toContain('left: 1px;');
+    expect(rule).not.toContain('width: 12px;');
   });
 
   it('sizes the current-frame marker from the live cell width, not a fixed 16px', () => {
