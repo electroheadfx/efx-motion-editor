@@ -7,9 +7,14 @@
 //  4.6-11.3 (261019-mj2) and accepted wet captures 1.32-1.81
 //  (261109-pwt). The global mean falls with canvas coverage and
 //  sampling timing, so the packaged beta2 build rejected a
-//  dev-passing faint wash at the same 0.3 constant. The fixtures
-//  below reproduce the measured bands and pin the densest
-//  sampling window that decides the gate.
+//  dev-passing faint wash at the same 0.3 constant.
+//
+//  The localized window is pinned as a DIAGNOSTIC, not a gate: the
+//  packaged-build UAT of 2026-11-09 showed paper texture can score a
+//  near-blank sheet over the local floor, so localized acceptance
+//  overwrote fresh paint. Acceptance is global-only; the fixtures
+//  below keep the localized measurements pinned for the rejection
+//  diagnostic.
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
@@ -78,7 +83,7 @@ function blankBaseline(): Uint8ClampedArray {
   return data;
 }
 
-describe('quick 261109-uj0 — localized aquarelle capture ink', () => {
+describe('quick 261109-uj0 — capture ink measurement and global-only gate', () => {
   it('measures a uniform cleared sheet as inkless and rejects it', () => {
     const measurement = measureAquarelleCaptureInk(rgbaFixture(() => 252), SIZE, SIZE);
     expect(measurement).toEqual({ globalInk: 0, localInk: 0, inkPixels: 0 });
@@ -129,24 +134,27 @@ describe('quick 261109-uj0 — localized aquarelle capture ink', () => {
     expect(passesAquarelleCaptureInkGate(measurement)).toBe(false);
   });
 
-  it('accepts a faint localized wet wash whose global ink is below the floor', () => {
+  it('measures a faint localized wet wash whose global ink is below the floor, but the global-only gate rejects it', () => {
     const data = rgbaFixture(() => 252);
     paintRect(data, 20, 20, 6, 6, 244);
     const measurement = measureAquarelleCaptureInk(data, SIZE, SIZE);
     expect(measurement.globalInk).toBeCloseTo(0.245, 2);
     expect(measurement.globalInk).toBeLessThan(AQUARELLE_MIN_CAPTURE_INK);
+    // Diagnostic evidence only: the localized signal would have accepted it,
+    // which is exactly why the packaged-build blank sheet must be measured
+    // before localized acceptance can ever decide again.
     expect(measurement.localInk).toBeCloseTo(3.92, 2);
     expect(measurement.localInk).toBeGreaterThanOrEqual(AQUARELLE_MIN_CAPTURE_LOCAL_INK);
-    expect(passesAquarelleCaptureInkGate(measurement)).toBe(true);
+    expect(passesAquarelleCaptureInkGate(measurement)).toBe(false);
   });
 
-  it('accepts the same wash when it straddles the sampling-window grid', () => {
+  it('keeps the same rejection when the wash straddles the sampling-window grid', () => {
     const data = rgbaFixture(() => 252);
     paintRect(data, 14, 20, 6, 6, 244);
     const measurement = measureAquarelleCaptureInk(data, SIZE, SIZE);
     expect(measurement.globalInk).toBeCloseTo(0.245, 2);
     expect(measurement.localInk).toBeCloseTo(3.92, 2);
-    expect(passesAquarelleCaptureInkGate(measurement)).toBe(true);
+    expect(passesAquarelleCaptureInkGate(measurement)).toBe(false);
   });
 
   it('caps a single extreme sample so amplitude cannot impersonate coverage', () => {

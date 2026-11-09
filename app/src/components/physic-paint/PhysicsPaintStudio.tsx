@@ -677,12 +677,11 @@ function mergeImageLibraries(main: readonly MceImageRef[], studio: readonly MceI
 // scored 1.32-1.81 — the 1 floor sat inside the real-paint band, so leaving a
 // frame quickly dropped the stroke entirely. 0.3 still keeps a 2.5x margin
 // over the blank-sheet maximum (0.12).
-// quick-261109-uj0 (2026-11-09): the packaged beta2 build still rejected a
-// faint wash that dev accepted at the same 0.3 constant. The global mean is a
-// mean over every one of the sampled pixels, so it falls with canvas coverage
-// and depends on when the sheet is sampled; the decision cannot rest on it
-// alone. The shared module also reads the densest 12x12 sampling window with a
-// per-pixel darkening cap, and it OWNS every capture ink threshold — the
+// quick-261109-uj0 (2026-11-09): the shared module measures the densest 12x12
+// sampling window with a per-pixel darkening cap as a DIAGNOSTIC, but acceptance
+// stays global-only: the packaged-build UAT showed paper texture can push a
+// near-blank sheet over the local floor, and accepting on it committed blank
+// pixels over fresh paint. The module OWNS every capture ink threshold — the
 // Studio declares none of its own.
 function measureAquarelleCanvasInk(canvas: HTMLCanvasElement): AquarelleCaptureInkMeasurement {
   try {
@@ -9399,8 +9398,9 @@ export function PhysicsPaintStudio() {
     }
     // A cleared sheet still exports an opaque, near-uniform white texture tens
     // of KB large. Never let such a capture take ownership of the frame's cache.
-    // quick-261109-uj0: the ONE shared predicate decides — the historical
-    // global floor OR the densest capped sampling window.
+    // quick-261109-uj0: the ONE shared predicate decides on the historical
+    // global floor; the densest capped sampling window is diagnostic only
+    // (localized acceptance wiped fresh paint in the packaged build UAT).
     const ink = measureAquarelleCanvasInk(liveAlphaCanvas);
     const passesInkGate = passesAquarelleCaptureInkGate(ink);
     recordAquarelleRenderSplitEvent('studio-capture-entry', {

@@ -12,11 +12,14 @@
 //  depends on when the sheet is sampled, so the decision can no
 //  longer rest on that coverage-dependent statistic alone.
 //
-//  The localized signal is the densest 12x12 sampling window,
-//  with a per-pixel darkening cap. A wash is an AREA phenomenon
-//  while paper specks are an AMPLITUDE phenomenon, so a few
-//  extreme samples must not impersonate coverage — the cap makes
-//  isolated specks a coverage question too.
+//  The localized signal (densest 12x12 sampling window, with a
+//  per-pixel darkening cap) is DIAGNOSTIC ONLY. Its acceptance
+//  path was reverted after the packaged-build UAT of 2026-11-09:
+//  the local window admitted near-blank snapshots (paper texture
+//  reads as local coverage) and committed them over fresh paint,
+//  losing every stroke. Until the packaged build's blank sheet is
+//  measured, only the historical global floor may decide — the
+//  local ink is logged so the next reproduction carries evidence.
 //
 //  The global floor keeps its historical diagnostic meaning:
 //  48x48 sample against white 248, per-mille scale. Every
@@ -35,9 +38,11 @@ export const AQUARELLE_CAPTURE_LOCAL_WINDOW = 12;
 export const AQUARELLE_CAPTURE_LOCAL_STRIDE = 4;
 export const AQUARELLE_CAPTURE_PIXEL_DARKENING_CAP = 8;
 
-// The densest window must hold real coverage before it can carry a
-// faint wash: blank-plus-flecks stayed at or below 1.85, a 6x6
-// darkening-4 wash measured 3.92.
+// DIAGNOSTIC-ONLY floor (never an acceptance path): the packaged
+// build showed paper texture can push a blank sheet's densest window
+// over this value, so accepting on it wiped fresh paint (UAT
+// 2026-11-09). Keep measuring and logging it until the packaged
+// blank sheet's localized ink is actually measured.
 export const AQUARELLE_MIN_CAPTURE_LOCAL_INK = 2.5;
 
 export interface AquarelleCaptureInkMeasurement {
@@ -113,8 +118,12 @@ export function measureAquarelleCaptureInk(
   return { globalInk, localInk, inkPixels };
 }
 
-/** The ONE capture decision: either the historical global path or the localized window. */
+/**
+ * The ONE capture decision: the historical global floor only.
+ * Localized acceptance is reverted (it committed near-blank snapshots
+ * over real paint in the packaged build); `localInk` stays available
+ * for the rejection diagnostic.
+ */
 export function passesAquarelleCaptureInkGate(measurement: AquarelleCaptureInkMeasurement): boolean {
-  return measurement.globalInk >= AQUARELLE_MIN_CAPTURE_INK
-    || measurement.localInk >= AQUARELLE_MIN_CAPTURE_LOCAL_INK;
+  return measurement.globalInk >= AQUARELLE_MIN_CAPTURE_INK;
 }
