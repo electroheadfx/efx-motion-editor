@@ -28,7 +28,9 @@
 | `app/src/components/physic-paint/view/timelineRailDesign.test.ts` | test (unit) | transform | itself — default-pitch pins | extend |
 | `app/src/components/physic-paint/hooks/usePhysicsPaintCrossTrackDrag.test.ts` | test (unit) | transform | itself — `computeInsertionFrame(…, 18)` pins | extend |
 
-**Reference-only (must NOT be edited by this phase):** `view/PhysicsPaintKeyRail.tsx`, `view/PhysicsPaintLoopClipRail.tsx`, `view/soundBandGeometry.ts`, `hooks/usePhysicsPaintRulerScrub.ts`, `hooks/usePhysicsPaintCrossTrackDrag.ts`, `roto/railMotionEvaluator.ts`, `view/physicsPaintTrackHeaderColumn.tsx`.
+**Reference-only (must NOT be edited by this phase):** `view/soundBandGeometry.ts`, `hooks/usePhysicsPaintCrossTrackDrag.ts`, `roto/railMotionEvaluator.ts`, `view/physicsPaintTrackHeaderColumn.tsx`.
+
+**Read as an analog, then edited deliberately by this phase:** `view/PhysicsPaintKeyRail.tsx` and `view/PhysicsPaintLoopClipRail.tsx` (60-03 task 3 threads the scaled `frameGap` through them), and `hooks/usePhysicsPaintRulerScrub.ts` (60-05 task 1 makes `cellWidthPx` required and deletes `DEFAULT_CELL_WIDTH_PX`). Their pitch-prop and parameter patterns remain the template.
 
 ---
 

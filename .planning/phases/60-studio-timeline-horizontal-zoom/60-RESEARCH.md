@@ -622,21 +622,21 @@ export function PhysicsPaintTimelineZoomBar() {
 | A5 | The pill can sit between the playback pill and the status capsule without breaking the header order pins (`navigation < playback < capsule < Close`) | Architecture Patterns | Pin repoint/placement adjustment only |
 | A6 | Fit should divide by the scroller client width minus the 6px gutter, using the whole frame range (`frameCells.length`) | Architecture Patterns | Fit lands 1–5% off; UAT-visible only |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Where exactly in the header row does the pill go?** (Claude's discretion, D-01.)
+1. **Where exactly in the header row does the pill go?** (Claude's discretion, D-01.) — RESOLVED: 60-01 task 3 inserts it immediately after the playback pill and before `<PhysicsPaintWorkflowLiveStatus>`; the pinned header order still holds.
    - What we know: the header order is pinned as navigation → playback → capsule → Close (`PhysicsPaintWorkflowStrip.test.ts:1103-1116`); the capsule is `flex: 1 1 auto` (`css:3923`).
    - Recommendation: insert immediately after the playback pill (`.physics-paint-pill--playback`) and before `<PhysicsPaintWorkflowLiveStatus>`; the pinned inequalities still hold.
 
-2. **Module API shape: signals + `timelineMetrics()` vs a pure metrics function only?**
+2. **Module API shape: signals + `timelineMetrics()` vs a pure metrics function only?** — RESOLVED: 60-01 task 1 exports the store object plus pure helpers.
    - What we know: CONTEXT leaves the shape open; the canvas precedent exports a store object plus pure helpers; consumers include module-level stain components.
-   - Recommendation: export the store object (`scale`, `percent`, `isAtMin`, `isAtMax`, `metrics` computed) plus pure helpers (`resolveTimelineMetrics`, `resolveRulerStep`, `resolveAnchoredScrollLeft`, `frameToPx`, `pxToFrame`, `resolveTimelineViewportFrames`); keep pure functions pure for the matrix test.
+   - Recommendation: export the store object (`scale`, `percent`, `isAtMin`, `isAtMax`, `metrics` computed) plus pure helpers (`resolveTimelineMetrics`, `resolveRulerStep`, `resolveAnchoredScrollLeft`, `resolveCursorAnchorLocalX`, `resolvePlayheadAnchorLocalX`, `frameToPx`, `pxToFrame`, `resolveTimelineViewportFrames`); keep pure functions pure for the matrix test.
 
-3. **Does the header column need any change?**
+3. **Does the header column need any change?** — RESOLVED: no change; 60-04 keeps every vertical token and edits no header-column file.
    - What we know: grep finds no horizontal pitch in `physicsPaintTrackHeaderColumn.tsx`; rows are vertical only.
    - Recommendation: no pitch change; only confirm the row-height lockstep note (VIS-02 untouched).
 
-4. **Should `TimelineMotionChannels` read the module or take a prop?**
+4. **Should `TimelineMotionChannels` read the module or take a prop?** — RESOLVED: 60-04 task 1 makes `framePitch` and `frameGap` required props with no defaults.
    - What we know: it is rendered from `PhysicsPaintTrackRow` (`:1364`) and its lane/key geometry is fully pitch-derived; unit tests render it directly.
    - Recommendation: prop (`framePitch`) with no default, so tests stay explicit and module state never leaks into pure component tests.
 
