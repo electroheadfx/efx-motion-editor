@@ -26,7 +26,7 @@ import {
   RAIL_LANE_SELECTOR,
   roveRailTargetFocus,
 } from './physicsPaintRailKeyboardNavigation';
-import { projectTimelineRailLineWidth } from './timelineRailDesign';
+import { projectTimelineRailLineWidth, TIMELINE_GEOMETRY } from './timelineRailDesign';
 
 /** 58-03 D-02: the fast double-click window reused from the Loop Rail idiom. */
 export const ROTO_KEY_RAIL_FAST_DOUBLE_CLICK_MS = 220;
@@ -42,6 +42,9 @@ export function projectPhysicsPaintKeyRailGeometry(
   segment: KeyRailSegment,
   visibleFrameWindow: { readonly startFrame: number; readonly endFrameExclusive: number },
   framePitch: number,
+  /** Phase 60 (ZOOM-05): the gap scales with the pitch; the default keeps the
+   *  pre-zoom contract for callers that do not pass the live value. */
+  frameGap: number = TIMELINE_GEOMETRY.cellGap,
 ): PhysicsPaintKeyRailGeometry | null {
   const segmentEndExclusive = segment.lastKeyFrame + 1;
   if (
@@ -56,7 +59,7 @@ export function projectPhysicsPaintKeyRailGeometry(
     left: (clippedStart - visibleFrameWindow.startFrame) * framePitch,
     // v2.0.1 (README §3): a visible rail end lands on the last cell's right
     // edge (frames × pitch − 2px); a clipped rail keeps the full extent.
-    width: projectTimelineRailLineWidth(clippedEnd - clippedStart, framePitch, showEndBoundary),
+    width: projectTimelineRailLineWidth(clippedEnd - clippedStart, framePitch, showEndBoundary, frameGap),
     showStartBoundary: segment.firstKeyFrame >= visibleFrameWindow.startFrame,
     showEndBoundary,
   };
@@ -69,6 +72,8 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
     readonly endFrameExclusive: number;
   };
   readonly framePitch: number;
+  /** Phase 60 (ZOOM-05): the scaled cell gap; defaults to the 1x constant. */
+  readonly frameGap?: number;
   readonly selectedKeyRail: RotoKeyRailSelection | null;
   /** Key Rails that are members of the session rail-set (43.6 D-01); they
    *  paint the same orange selection line as single selection — no new color. */
@@ -137,6 +142,7 @@ interface PhysicsPaintKeyRailTargetProps extends SelectedKeyRailCopyAvailability
   readonly geometry: PhysicsPaintKeyRailGeometry;
   readonly visibleFrameWindow: PhysicsPaintKeyRailProps['visibleFrameWindow'];
   readonly framePitch: number;
+  readonly frameGap?: number;
   readonly selected: boolean;
   readonly isSetMember: boolean;
   readonly isSetAnchor: boolean;
@@ -220,6 +226,7 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
           spanFrames,
           props.framePitch,
           destination + spanFrames <= props.visibleFrameWindow.endFrameExclusive,
+          props.frameGap ?? TIMELINE_GEOMETRY.cellGap,
         ),
         blockedEdge: destination === proposedDestination
           ? null
@@ -405,6 +412,7 @@ export function PhysicsPaintKeyRail(props: PhysicsPaintKeyRailProps) {
         segment,
         props.visibleFrameWindow,
         props.framePitch,
+        props.frameGap ?? TIMELINE_GEOMETRY.cellGap,
       );
       return geometry ? [{ segment, geometry }] : [];
     });
@@ -419,6 +427,7 @@ export function PhysicsPaintKeyRail(props: PhysicsPaintKeyRailProps) {
           geometry={geometry}
           visibleFrameWindow={props.visibleFrameWindow}
           framePitch={props.framePitch}
+          frameGap={props.frameGap}
           selected={sameKeyRailSelection(props.selectedKeyRail, segment)
             || (props.railSetMemberKeyRailIds?.includes(segment.firstKeyId) ?? false)}
           isSetMember={props.railSetMemberKeyRailIds?.includes(segment.firstKeyId) ?? false}

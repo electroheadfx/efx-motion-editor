@@ -650,12 +650,10 @@ export interface PhysicsPaintWorkflowStripProps {
 
 /** Phase 60 (D-10): the ruler never subdivides below this many frames. */
 const RULER_STEP = 3;
-/* 47-01 UAT round 5: 18px-wide × 22px-tall frames (user test request) at the
-   BASE 1x zoom. Phase 60 (D-12) makes this the scaffold pitch only: the live
-   pitch comes from `timelineZoom.metrics` (18 × scale, 0.25x–4x) and drives
-   lane width, ruler ticks, drag/scroll math and the per-cell grid. The
-   constant survives for the drag projection (raw pointer pixels -> frames). */
-const ROTO_CELL_WIDTH_PX = 18;
+/* Phase 60 (ZOOM-05): there is no module-private pitch constant any more.
+   Every pitch consumer reads the session authority (`timelineZoom.metrics`,
+   18 × scale in 0.25x–4x); the cell GAP scales with it and rides the same
+   metrics record into both rail types. */
 
 /* 47-01 UAT round 3: flexible strip height. The fixed chrome bands are
    46 (header) + 1 (strip border) + 1 (timeline border) + 36 (ruler, the
@@ -5756,6 +5754,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     segments={keyRailSegments}
                     visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
                     framePitch={timelineMetrics.pitch}
+                    frameGap={timelineMetrics.cellGap}
                     selectedKeyRail={props.selectedRotoKeyRail ?? null}
                     railSetMemberKeyRailIds={props.railSetMemberKeyRailIds ?? []}
                     railSetMoveMemberKeyRailIds={railSetMoveMemberKeyRailIds}
@@ -5788,6 +5787,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     presentations={props.rotoLoopPresentations ?? EMPTY_LOOP_PRESENTATIONS}
                     visibleFrameWindow={{ startFrame: frameCells[0]!, endFrameExclusive: frameCells[frameCells.length - 1]! + 1 }}
                     framePitch={timelineMetrics.pitch}
+                    frameGap={timelineMetrics.cellGap}
                     selectedLoopClipIds={props.selectedRotoLoopClipIds ?? []}
                     railSetMemberLoopIds={props.railSetMemberLoopIds ?? []}
                     railSetMoveMemberLoopIds={railSetMoveMemberLoopIds}

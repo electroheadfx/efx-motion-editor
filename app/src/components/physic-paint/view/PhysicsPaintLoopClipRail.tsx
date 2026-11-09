@@ -38,6 +38,8 @@ export interface PhysicsPaintLoopClipRailProps {
     readonly endFrameExclusive: number;
   };
   readonly framePitch: number;
+  /** Phase 60 (ZOOM-05): the scaled cell gap; defaults to the 1x constant. */
+  readonly frameGap?: number;
   readonly selectedLoopClipIds: readonly string[];
   /** Loop Rails that are members of the session rail-set (43.6 D-01); they
    *  paint the same orange selection line as single selection — no new color. */
@@ -429,6 +431,7 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
       continuousRange,
       props.visibleFrameWindow,
       props.framePitch,
+      props.frameGap,
     );
     const actionLinked = props.linkedLoopClipIds?.includes(range.loopId) ?? false;
     const linkedActionName = actionLinked ? props.linkedActionName?.trim() : null;

@@ -6,7 +6,7 @@ import {
   STANDARD_RAIL_STATUS_COPY,
 } from '../roto/physicsPaintRotoRunScriptStacking';
 import { classifyLoopClipRailKind, type RotoRailKind } from './physicsPaintWorkflowPresentation';
-import { projectTimelineRailLineWidth } from './timelineRailDesign';
+import { projectTimelineRailLineWidth, TIMELINE_GEOMETRY } from './timelineRailDesign';
 
 export type PhysicsPaintGroupLifecycle =
   | 'synchronized'
@@ -387,6 +387,10 @@ export function projectPhysicsPaintLoopClipGeometry(
   loop: PhysicPaintRotoLoopRange,
   visibleFrameWindow: { readonly startFrame: number; readonly endFrameExclusive: number },
   framePitch: number,
+  /** Phase 60 (ZOOM-05): the cell gap scales with the pitch; the strip always
+   *  passes the live value, the default keeps the 1x contract for callers that
+   *  predate the session zoom. */
+  frameGap: number = TIMELINE_GEOMETRY.cellGap,
 ): PhysicsPaintLoopClipGeometry | null {
   if (
     loop.effectiveEnd <= visibleFrameWindow.startFrame
@@ -401,7 +405,7 @@ export function projectPhysicsPaintLoopClipGeometry(
   const endVisible = loop.effectiveEnd <= visibleFrameWindow.endFrameExclusive;
   return {
     left: (clippedStart - visibleFrameWindow.startFrame) * framePitch,
-    width: projectTimelineRailLineWidth(clippedEnd - clippedStart, framePitch, endVisible),
+    width: projectTimelineRailLineWidth(clippedEnd - clippedStart, framePitch, endVisible, frameGap),
   };
 }
 
