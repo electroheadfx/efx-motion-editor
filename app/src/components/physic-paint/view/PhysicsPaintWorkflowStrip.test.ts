@@ -996,6 +996,67 @@ describe('PhysicsPaintWorkflowStrip strip geometry pitch contract (36.15-06 task
   });
 });
 
+function getActiveLaneRenderBlock(code: string): string {
+  const start = code.indexOf('const renderActiveLane = (): ComponentChildren => (');
+  expect(start, 'renderActiveLane definition').toBeGreaterThanOrEqual(0);
+  const end = code.indexOf('\n  return (\n    <section', start);
+  expect(end, 'renderActiveLane end').toBeGreaterThan(start);
+  return code.slice(start, end);
+}
+
+function getBackgroundClipDragInputBlock(code: string): string {
+  const start = code.indexOf('const backgroundClipDrag = usePhysicsPaintBackgroundClipDrag({');
+  expect(start, 'background clip drag hook').toBeGreaterThanOrEqual(0);
+  const end = code.indexOf('const backgroundResizeSourceRef', start);
+  expect(end, 'background clip drag input end').toBeGreaterThan(start);
+  return code.slice(start, end);
+}
+
+function getBackgroundClipResizeInputBlock(code: string): string {
+  const start = code.indexOf('const backgroundClipResize = usePhysicsPaintBackgroundClipResize({');
+  expect(start, 'background clip resize hook').toBeGreaterThanOrEqual(0);
+  const end = code.indexOf('// Read the tick so the strip re-renders', start);
+  expect(end, 'background clip resize input end').toBeGreaterThan(start);
+  return code.slice(start, end);
+}
+
+describe('Phase 60 (ZOOM-05) ghost and preview geometry contract', () => {
+  it('sizes every frame-scoped render ghost from the live render-body pitch, with a one-cell live-pitch floor', () => {
+    const block = getActiveLaneRenderBlock(source());
+    // The current-frame outline, both push armed-anchor spans, the push drag
+    // ghost, the push blocked edge, the rail-set ghost and the anchor capsule
+    // all cover the same frame span as the rail they preview at every zoom.
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(block).toContain('timelineMetrics.pitch');
+    // A minimum width stays ONE CELL at the live pitch — never a pixel floor.
+    expect(block).toContain('Math.max(timelineMetrics.pitch,');
+  });
+
+  it('sizes the background clip drag ghost from the live pitch peeked at event time', () => {
+    const block = getBackgroundClipDragInputBlock(source());
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(block).toContain('const pitch = timelineZoom.metrics.peek().pitch;');
+    expect(block).toContain('Math.max(pitch,');
+  });
+
+  it('sizes both background resize ghost branches from the live pitch peeked at event time', () => {
+    const block = getBackgroundClipResizeInputBlock(source());
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(block).toContain('const pitch = timelineZoom.metrics.peek().pitch;');
+    expect(block).toContain('Math.max(pitch,');
+  });
+
+  it('places the rail-set blocked-edge bar from the live pitch too', () => {
+    const code = source();
+    const start = code.indexOf('const railSetBlockedEdgeLeftPx = ((): number | null => {');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end = code.indexOf('})();', start);
+    const block = code.slice(start, end);
+    expect(block).not.toContain('ROTO_CELL_WIDTH_PX');
+    expect(block).toContain('timelineMetrics.pitch');
+  });
+});
+
 function getMediaQueryBlock(styles: string, query: string): string {
   const start = styles.indexOf(query);
   if (start === -1) return '';
