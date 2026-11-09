@@ -426,6 +426,8 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       trackId: TRACK,
       layerId: LAYER,
       frameCells: FRAME_CELLS,
+      framePitch: TIMELINE_GEOMETRY.cellPitch,
+      frameGap: TIMELINE_GEOMETRY.cellGap,
       onSelectTrackFrame,
     }) as TestVNode;
     const row = findAll(materialize(tree), (vnode) => hasClass(vnode, 'physics-paint-track-row'))[0];
@@ -446,6 +448,8 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       trackId: 'bg-row',
       layerId: LAYER,
       frameCells: FRAME_CELLS,
+      framePitch: TIMELINE_GEOMETRY.cellPitch,
+      frameGap: TIMELINE_GEOMETRY.cellGap,
       kind: 'background',
       onSelectBackgroundFrame,
     }) as TestVNode;
@@ -641,6 +645,8 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       trackId: TRACK,
       layerId: LAYER,
       frameCells: FRAME_CELLS,
+      framePitch: TIMELINE_GEOMETRY.cellPitch,
+      frameGap: TIMELINE_GEOMETRY.cellGap,
       onSelectTrackRail,
     }));
     const keyRails = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-rail')
