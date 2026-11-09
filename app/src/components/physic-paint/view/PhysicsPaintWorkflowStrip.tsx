@@ -125,6 +125,7 @@ import {
   TIMELINE_LANE_ORIGIN_PX,
   timelineZoom,
 } from './physicsPaintTimelineZoom';
+import { PhysicsPaintTimelineZoomBar } from './PhysicsPaintTimelineZoomBar';
 import type {
   RotoDragPublication,
   RotoDragPreparationResult,
@@ -1941,6 +1942,9 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
             unchanged — onPlaybackFpsChange → setRotoPlaybackFps → playback
             hook only; the PROJECT fps store is never touched here. */}
       </div>
+      {/* Phase 60 (D-01): the timeline zoom pill — always visible between
+          playback and the live status; percent display-only, Fit one-shot. */}
+      <PhysicsPaintTimelineZoomBar />
       <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} warmProgress={props.warmProgress} />
       {/* quick-261025-awl (D-04): Raster sits immediately before Tools. Rendered
           only when the Studio supplies the ownership signal (older render-only

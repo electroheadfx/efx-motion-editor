@@ -20,6 +20,7 @@ import {
  */
 
 const strip = readFileSync(fileURLToPath(new URL('./PhysicsPaintWorkflowStrip.tsx', import.meta.url)), 'utf8');
+const bar = readFileSync(fileURLToPath(new URL('./PhysicsPaintTimelineZoomBar.tsx', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
 
 function ruleBody(source: string, selector: string): string {
@@ -149,6 +150,57 @@ describe('Timeline zoom wiring — live geometry (D-09, D-12, D-14)', () => {
     expect(strip).toContain('const pitch = timelineZoom.metrics.peek().pitch;');
     expect(strip).toContain('visStart: el.scrollLeft / pitch,');
     expect(strip).toContain('visEnd: (el.scrollLeft + el.clientWidth) / pitch,');
+  });
+});
+
+describe('Timeline zoom wiring — header pill (D-01..D-04)', () => {
+  it('imports and renders the pill exactly once, after playback and before the live status', () => {
+    expect(strip).toContain("import { PhysicsPaintTimelineZoomBar } from './PhysicsPaintTimelineZoomBar';");
+    expect(strip.split('<PhysicsPaintTimelineZoomBar />').length - 1).toBe(1);
+    const playbackIndex = strip.indexOf('physics-paint-pill--playback');
+    const barIndex = strip.indexOf('<PhysicsPaintTimelineZoomBar />');
+    const liveStatusIndex = strip.indexOf('<PhysicsPaintWorkflowLiveStatus', barIndex);
+    expect(playbackIndex).toBeGreaterThanOrEqual(0);
+    expect(barIndex).toBeGreaterThan(playbackIndex);
+    expect(liveStatusIndex).toBeGreaterThan(barIndex);
+  });
+
+  it('reads only the three display signals in its own body', () => {
+    expect(bar).toContain('const percent = timelineZoom.percent.value;');
+    expect(bar).toContain('const isAtMin = timelineZoom.isAtMin.value;');
+    expect(bar).toContain('const isAtMax = timelineZoom.isAtMax.value;');
+    expect(bar).not.toContain('timelineZoom.scale');
+    expect(bar).not.toContain('timelineZoom.metrics');
+    expect(bar).not.toContain('registerTimelineZoomScrollPort');
+  });
+
+  it('binds minus/plus to the end signals and steps the ladder', () => {
+    expect(bar).toContain('aria-label="Zoom out"');
+    expect(bar).toContain('disabled={isAtMin}');
+    expect(bar).toContain('onClick={() => timelineZoom.zoomOut()}');
+    expect(bar).toContain('aria-label="Zoom in"');
+    expect(bar).toContain('disabled={isAtMax}');
+    expect(bar).toContain('onClick={() => timelineZoom.zoomIn()}');
+  });
+
+  it('keeps the percent display-only and Fit a one-shot action', () => {
+    const percentStart = bar.indexOf('class="physics-paint-canvas-zoom-percent"');
+    expect(percentStart).toBeGreaterThanOrEqual(0);
+    const percentSpan = bar.slice(percentStart, bar.indexOf('</span>', percentStart));
+    expect(percentSpan).toContain('{percent}%');
+    expect(percentSpan).not.toContain('onClick');
+    const fitStart = bar.indexOf('title="Fit the whole frame range"');
+    expect(fitStart).toBeGreaterThanOrEqual(0);
+    const fitButton = bar.slice(fitStart, bar.indexOf('</button>', fitStart));
+    expect(fitButton).toContain('onClick={() => timelineZoom.fit()}');
+    expect(fitButton).not.toContain('aria-pressed');
+  });
+
+  it('wears the pill modifier with the navigation treatment', () => {
+    expect(bar).toContain('physics-paint-pill physics-paint-pill--timeline-zoom');
+    const rule = ruleBody(css, '.physics-paint-pill--timeline-zoom');
+    expect(rule).toContain('border-color: #575e66');
+    expect(rule).toContain('background: #34383c');
   });
 });
 

@@ -4000,6 +4000,14 @@ button.destructive {
   background: #34383c;
 }
 
+/* Phase 60 (D-01/D-02): the timeline zoom pill reuses the navigation pill's
+   border/background treatment and the shipped zoom button classes — no new
+   button vocabulary. */
+.physics-paint-pill--timeline-zoom {
+  border-color: #575e66;
+  background: #34383c;
+}
+
 .physics-paint-pill--apply-spacing {
   border-color: #575e66;
 }
