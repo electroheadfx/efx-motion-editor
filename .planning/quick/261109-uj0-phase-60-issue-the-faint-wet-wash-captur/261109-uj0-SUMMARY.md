@@ -217,7 +217,7 @@ Compiled-build UAT isolated the remaining pattern: fresh paint is lost for **yel
 
 Fix `9e0bd2597`: add a paper-relative **pigment** metric — each pixel's per-channel deficit below the sample's 99th-percentile paper baseline, global mean at the same per-mille scale, floor 0.5. A uniform cleared sheet of any paper color scores 0 by construction; yellow (1.84), orange (2.45) and red/blue (10.72) score their real absorption; the blank/fleck stress fixtures stay at or below 0.42. Acceptance is global on either the legacy luminance path or the pigment path; the localized window remains diagnostic-only. The production warn now also prints `pigmentInk`, `pigmentPixels` and `minPigmentInk`.
 
-Automated: typecheck clean; the targeted suites (388 tests) and the full suite (409 files, 8,437 passed) are green. Packaged UAT pending: a single yellow/orange stroke, red/blue control, cleared-sheet control, and a tinted-paper control.
+Automated: typecheck clean; the targeted suites (388 tests) and the full suite (409 files, 8,437 passed) are green. **Packaged UAT passed 2026-11-09** — the user rebuilt the packaged app and confirmed the fix works (yellow/orange fresh paint is kept). The cleared-sheet and tinted-paper controls remain the recommended watch rows, since the pigment path's safety rests on the paper-relative baseline.
 
 ## Self-Check: PASSED
 
