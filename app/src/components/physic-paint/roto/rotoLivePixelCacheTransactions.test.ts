@@ -442,3 +442,80 @@ describe('Roto live pixel cache transactions — gesture-idle gating', () => {
     expect(commit).toHaveBeenCalledWith('pixels');
   });
 });
+
+// quick-261109-pwt: the Studio settles ONE destination identity after a
+// navigation. The probe the arm uses is per identity — flushing A must leave B
+// pending, and the global probe clears only when every capture has settled.
+describe('261109-pwt per-identity pending probe', () => {
+  const identityA = {
+    launchId: 'launch-pwt',
+    layerId: 'layer-pwt',
+    keyId: 'key-pwt-a',
+    contentRevision: 'rev-pwt',
+    appFrame: 3,
+  };
+  const identityB = {
+    launchId: 'launch-pwt',
+    layerId: 'layer-pwt',
+    keyId: 'key-pwt-b',
+    contentRevision: 'rev-pwt',
+    appFrame: 9,
+  };
+  const identityNeverCaptured = {
+    launchId: 'launch-pwt',
+    layerId: 'layer-pwt',
+    keyId: 'key-pwt-never',
+    contentRevision: 'rev-pwt',
+    appFrame: 12,
+  };
+
+  it('keeps another identity pending while one identity settles', async () => {
+    const producedA = deferred<string>();
+    const producedB = deferred<string>();
+    const commitA = vi.fn();
+    const commitB = vi.fn();
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    // Two captures, two identities, both produce steps still suspended.
+    const workA = transactions.capture({
+      identity: identityA,
+      resolveCurrent: () => identityA,
+      produce: () => producedA.promise,
+      commit: commitA,
+    });
+    const workB = transactions.capture({
+      identity: identityB,
+      resolveCurrent: () => identityB,
+      produce: () => producedB.promise,
+      commit: commitB,
+    });
+
+    // Test 1: both identities are pending, the global probe sees both, and an
+    // identity that never captured anything reports false.
+    expect(transactions.hasPending(identityA)).toBe(true);
+    expect(transactions.hasPending(identityB)).toBe(true);
+    expect(transactions.hasPending()).toBe(true);
+    expect(transactions.hasPending(identityNeverCaptured)).toBe(false);
+
+    // Test 2: flushing A settles A only — B's produce is still suspended.
+    const flushA = transactions.flush(identityA);
+    producedA.resolve('pixels-a');
+    await flushA;
+    expect(transactions.hasPending(identityA)).toBe(false);
+    expect(transactions.hasPending(identityB)).toBe(true);
+
+    // Test 3: settling B clears every probe, and each commit received its own
+    // produced value with its own identity.
+    producedB.resolve('pixels-b');
+    await transactions.flush(identityB);
+    expect(transactions.hasPending(identityA)).toBe(false);
+    expect(transactions.hasPending(identityB)).toBe(false);
+    expect(transactions.hasPending()).toBe(false);
+    await expect(workA).resolves.toBe(true);
+    await expect(workB).resolves.toBe(true);
+    expect(commitA).toHaveBeenCalledOnce();
+    expect(commitA).toHaveBeenCalledWith('pixels-a', identityA);
+    expect(commitB).toHaveBeenCalledOnce();
+    expect(commitB).toHaveBeenCalledWith('pixels-b', identityB);
+  });
+});
