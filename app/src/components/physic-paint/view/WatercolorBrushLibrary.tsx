@@ -1,6 +1,6 @@
 // ============================================================
-//  WatercolorBrushLibrary — the 15-card playground brush grid
-//  (261017-xa0 I-03; chalk added by 261027-gh9).
+//  WatercolorBrushLibrary — the playground brush grid
+//  (261017-xa0 I-03; chalk added by 261027-gh9, the ribbon by 61-07).
 //
 //  Exactly the BRUSH_PRESETS catalog (chalk … stipple), nothing
 //  else: no category filter, no search, no import affordance, no

@@ -17,6 +17,7 @@ import {
   buildBrush,
   hexToRgb,
   type Brush,
+  type BrushPreset,
 } from '@efxlab/efx-watercolor';
 
 /** Card thumb box (oracle BrushLibrary contract). */
@@ -78,9 +79,27 @@ function prepare(canvas: HTMLCanvasElement) {
   return { ctx, w, h };
 }
 
+/** 61-07 (D-12): the two preview laws a thumb can paint. */
+export type ThumbMode = 'wet' | 'crisp-sweep';
+
+/**
+ * The preview law is a pure function of the preset's `renderMode`: a ribbon
+ * preset previews the clean sweep it deposits, every wet preset keeps the
+ * bloom. No parameter value is inspected — a zero grain or scatter never
+ * selects the branch, exactly as the engine's stamp branch selects on
+ * `stroke.renderMode` alone.
+ */
+export function resolveThumbMode(preset: Pick<BrushPreset, 'renderMode'>): ThumbMode {
+  return preset.renderMode === 'simple-ribbon' ? 'crisp-sweep' : 'wet';
+}
+
 /** A short pressure-shaped stroke painted with the brush's dab rules. */
 export function drawStroke(canvas: HTMLCanvasElement, b: Brush, hex: string): void {
   const { ctx, w, h } = prepare(canvas);
+  if (resolveThumbMode(b) === 'crisp-sweep') {
+    drawCrispSweep(ctx, b, hex, w, h);
+    return;
+  }
   const img = tipImage(b, hex);
   // scale so the biggest brushes fit and the smallest stay visible
   const R = Math.min(h * 0.42, Math.max(3.5, 15 * Math.sqrt(b.size[1] / 0.05)));
@@ -141,6 +160,46 @@ export function drawStroke(canvas: HTMLCanvasElement, b: Brush, hex: string): vo
     }
   }
   ctx.globalAlpha = 1;
+}
+
+/**
+ * 61-07 (D-12): the clean-sweep preview. One opaque core with a single
+ * antialiased rim — no wet bloom, no grain, no scatter and no per-dab
+ * randomness, because the ribbon mode deposits a sweep, not a wash. The
+ * silhouette follows the same swaying spine as the wet branch so the row
+ * still reads as a brush stroke rather than a bar.
+ */
+function drawCrispSweep(
+  ctx: CanvasRenderingContext2D,
+  b: Brush,
+  hex: string,
+  w: number,
+  h: number,
+): void {
+  const x0 = 10;
+  const x1 = w - 10;
+  const ym = h / 2;
+  const point = (t: number) => ({
+    x: x0 + (x1 - x0) * t,
+    y: ym + Math.sin(t * Math.PI * 2) * h * 0.14,
+  });
+  const R = Math.min(h * 0.42, Math.max(3.5, 15 * Math.sqrt(b.size[1] / 0.05)));
+  ctx.save();
+  ctx.strokeStyle = hex;
+  ctx.lineWidth = Math.max(2, R * 1.5);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  const SAMPLES = 48;
+  for (let index = 0; index <= SAMPLES; index++) {
+    const p = point(index / SAMPLES);
+    if (index === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  // One full-alpha pass: the canvas antialiases the single rim.
+  ctx.stroke();
+  ctx.restore();
 }
 
 /**

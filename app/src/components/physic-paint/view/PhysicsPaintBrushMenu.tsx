@@ -15,7 +15,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { Maximize2 } from 'lucide-preact';
-import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import {
   aquarelleBrushMenuAnchor,
@@ -32,6 +31,7 @@ import {
 // sits UNDER the Settings sheet, so click-to-front alone can never reach it.
 import { SHEET_ID_BRUSHES, bringSheetToFront } from './floatingSheetStack';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
+import { brushMenuPresets } from './brushMenuPresets';
 
 export function PhysicsPaintBrushMenu() {
   const open = aquarelleBrushMenuOpen.value;
@@ -115,13 +115,15 @@ export function PhysicsPaintBrushMenu() {
     >
       {menuTarget === 'lift' ? (
         // 261029-hy2 menu-branch:lift
-        // The Eraser popover: the same 15 painted shapes, NO "Open modal" (the
+        // The Eraser popover: the shipped painted shapes, NO "Open modal" (the
         // catalog's cards route through the BRUSH pick path, which would flip
         // the tool back to Brush) and no separator. A pick writes the lift tip
         // through setAquarelleLiftTipId — never the brush seam.
+        // 61-07 (D-12): an eraser picks a tip shape, not a render mode — the
+        // ribbon preset is filtered out of this branch by brushMenuPresets.
         <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
           <div ref={listRef} class="physics-paint-brush-menu-list">
-            {BRUSH_PRESETS.map((preset) => {
+            {brushMenuPresets('lift').map((preset) => {
               const selected = preset.id === liftTipId;
               return (
                 <button
@@ -168,7 +170,9 @@ export function PhysicsPaintBrushMenu() {
           <div class="physics-paint-brush-menu-separator" aria-hidden="true" />
           <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
             <div ref={listRef} class="physics-paint-brush-menu-list">
-              {BRUSH_PRESETS.map((preset) => {
+              {/* 61-07 (D-12): the brush branch lists every preset — picking
+                  the ribbon row selects the clean sweep for the next stroke. */}
+              {brushMenuPresets('brush').map((preset) => {
                 const selected = preset.id === selectedId;
                 return (
                   <button
