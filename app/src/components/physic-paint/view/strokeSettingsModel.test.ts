@@ -27,6 +27,10 @@ import { PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  AQUARELLE_ANCHOR_WIDTH_DEFAULT,
+  AQUARELLE_ANCHOR_WIDTH_MAX,
+  AQUARELLE_ANCHOR_WIDTH_MIN,
+  AQUARELLE_ANCHOR_WIDTH_STEP,
   BRUSH_SETTINGS_FIELDS,
   PATH_EDIT_LABEL,
   PATH_EDIT_MULTI_DISABLED_REASON,
@@ -38,6 +42,8 @@ import {
   STROKE_ROTATION_RANGE,
   STROKE_SCALE_RANGE,
   WATERCOLOR_SETTINGS_FIELDS,
+  anchorWidthEffectivePx,
+  anchorWidthPatchValue,
   buildAppearancePatch,
   buildColorPatch,
   buildPaintSeedVariationPatch,
@@ -47,6 +53,7 @@ import {
   listStrokeTipOptions,
   listStrokeToolOptions,
   matchesStrokeTypeFilter,
+  readAnchorWidthReading,
   readColorField,
   readNumericField,
   readPaintSeedVariation,
@@ -3509,5 +3516,79 @@ describe('61-11 path-edit gate (Edit path header button)', () => {
     expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: false })).toBe(true);
     expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: true })).toBe(false);
     expect(shouldExitPathEdit({ pathEditActive: false, gateEnabled: false })).toBe(false);
+  });
+});
+
+// ── Task 2: the Anchor width reading (E4) ───────────────────────────
+//
+//  The factor is a PER-ANCHOR multiplier of the stroke's brush Size
+//  (D-09), so the reading has to say three things at once: the
+//  representative value, whether the selected anchors disagree, and how
+//  many of them the path actually carries. The effective-px readout is
+//  Size x factor — never the clamped `scriptScale` (T-61-39).
+
+describe('61-11 Anchor width reading (Paint tab)', () => {
+  const anchor = (width?: number) => ({
+    x: 0,
+    y: 0,
+    kind: 'auto' as const,
+    ...(width === undefined ? {} : { width }),
+  });
+
+  it('pins the band constants and reads an empty anchor selection at 1.0', () => {
+    expect(AQUARELLE_ANCHOR_WIDTH_MIN).toBe(0.2);
+    expect(AQUARELLE_ANCHOR_WIDTH_MAX).toBe(2);
+    expect(AQUARELLE_ANCHOR_WIDTH_STEP).toBe(0.1);
+    expect(AQUARELLE_ANCHOR_WIDTH_DEFAULT).toBe(1);
+    expect(readAnchorWidthReading([], [])).toEqual({ value: 1, mixed: false, count: 0 });
+    // Indices the path does not carry are dropped, never counted.
+    expect(readAnchorWidthReading([anchor(1.8)], [0, 3])).toEqual({
+      value: 1.8,
+      mixed: false,
+      count: 1,
+    });
+  });
+
+  it('reads an absent width as 1.0 and reports mixed across differing factors', () => {
+    const anchors = [anchor(1.8), anchor(), anchor(1.8)];
+    expect(readAnchorWidthReading(anchors, [0, 1])).toEqual({
+      value: 1.8,
+      mixed: true,
+      count: 2,
+    });
+    // Non-mixed stays absolute even when the representative is a stored factor.
+    expect(readAnchorWidthReading(anchors, [2])).toEqual({
+      value: 1.8,
+      mixed: false,
+      count: 1,
+    });
+  });
+
+  it('takes the FIRST selected index as the representative value', () => {
+    const anchors = [anchor(), anchor(1.8)];
+    expect(readAnchorWidthReading(anchors, [1, 0])).toEqual({
+      value: 1.8,
+      mixed: true,
+      count: 2,
+    });
+  });
+
+  it('computes the effective px from Size x the anchor factor, never a scale', () => {
+    expect(anchorWidthEffectivePx(20, 1.8)).toBe(36);
+    expect(anchorWidthEffectivePx(20, 1)).toBe(20);
+    // The readout is the ONE composition the Paint row renders.
+    expect(`→ ${anchorWidthEffectivePx(20, 1.8)} px`).toBe('→ 36 px');
+    // One decimal: a fractional radius never prints a float tail.
+    expect(anchorWidthEffectivePx(20, 0.555)).toBe(11.1);
+  });
+
+  it('clamps a typed factor into the band and keeps 1.0 as the sparse default', () => {
+    expect(anchorWidthPatchValue(2.5)).toBe(2);
+    expect(anchorWidthPatchValue(0.1)).toBe(0.2);
+    expect(anchorWidthPatchValue(1.8)).toBe(1.8);
+    // Exactly 1 means "drop the key" at the commit, so the value must survive.
+    expect(anchorWidthPatchValue(1)).toBe(1);
+    // A non-finite entry resolves to the default instead of reaching a document.
+    expect(anchorWidthPatchValue(Number.NaN)).toBe(1);
   });
 });

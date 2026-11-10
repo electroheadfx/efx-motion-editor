@@ -6463,6 +6463,47 @@ describe('61-10 vector path edit wiring in the Studio', () => {
   });
 });
 
+// 61-11 Task 2: the Anchor width bundle members. The dialog never touches the
+// record store — `readVectorAnchors` is the ONE read seam (the gate and the
+// Paint row share it), and `applyAnchorWidths` builds the WHOLE next list and
+// commits it through ONE path edit, so a three-anchor change is one undo entry
+// (T-61-38) and never one entry per anchor.
+describe('61-11 Anchor width bundle wiring in the Studio', () => {
+  const BUNDLE_START = 'const bundle: StrokeSettingsDialogBundle = {';
+  const BUNDLE_END = 'return bundle;';
+
+  function bundleRegion(): string {
+    const start = studio.indexOf(BUNDLE_START);
+    expect(start, `missing start marker: ${BUNDLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(BUNDLE_END, start + BUNDLE_START.length);
+    expect(end, `missing end marker: ${BUNDLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('supplies readVectorAnchors from the record seam, refusing not-quite-one vector stroke', () => {
+    const bundle = bundleRegion();
+    expect(bundle).toContain('readVectorAnchors: (ids) => {');
+    expect(bundle).toContain('if (ids.length !== 1) return null;');
+    expect(bundle).toContain('if (!stroke) return null;');
+    expect(bundle).toContain('return normaliseAquarelleAnchors(stroke.anchors) ?? null;');
+  });
+
+  it('commits every selected anchor in exactly ONE path edit', () => {
+    const bundle = bundleRegion();
+    expect(bundle).toContain('applyAnchorWidths: (ids, value) => {');
+    // The list is built BEFORE the edit and over the LIVE anchor selection.
+    expect(bundle).toContain('const next = buildAnchorWidthCommit(');
+    expect(bundle).toContain('vectorPathSession.vectorAnchorSelection.peek(),');
+    expect(bundle).toContain('return beginAquarellePathEdit(ids[0]!, next) !== null;');
+    // ONE edit wrapper for the whole selection: no per-anchor commit site.
+    expect(bundle.split('beginAquarellePathEdit(').length - 1).toBe(1);
+  });
+
+  it('composes the pure width commit from the shared handle module', () => {
+    expect(studio).toContain("import { buildAnchorWidthCommit } from './view/vectorPathHandles';");
+  });
+});
+
 // 61-13 Task 1: the wireframe latch (D-16). Wireframe is a session-only VIEW
 // latch that GENERALISES Draft: ON forces Draft on BEFORE the latch flips (the
 // settle needs Draft to exist), OFF clears only the latch and hands the re-bake
