@@ -6719,9 +6719,35 @@ describe('61-11 Anchor width bundle wiring in the Studio', () => {
     // The list is built BEFORE the edit and over the LIVE anchor selection.
     expect(bundle).toContain('const next = buildAnchorWidthCommit(');
     expect(bundle).toContain('vectorPathSession.vectorAnchorSelection.peek(),');
-    expect(bundle).toContain('return beginAquarellePathEdit(ids[0]!, next) !== null;');
-    // ONE edit wrapper for the whole selection: no per-anchor commit site.
-    expect(bundle.split('beginAquarellePathEdit(').length - 1).toBe(1);
+    // 61-19 (G-5) REPLACES the 61-11 `ids[0]` pin: the write is resolved
+    // through the shared path-edit commit, never a second edit wrapper. The
+    // bundle owns no begin call of its own.
+    expect(bundle).toContain('commitAquarelleVectorPathEdit(target, next)');
+    expect(bundle.split('beginAquarellePathEdit(').length - 1).toBe(0);
+  });
+
+  it('resolves the write target from the open path edit, never from ids[0]', () => {
+    const bundle = bundleRegion();
+    // The ONE target decision: the open edit's session id must name the single
+    // selected stroke, or the commit is refused (G-5 / T-61-63).
+    expect(bundle).toContain('const target = resolveAnchorWidthTarget({');
+    expect(bundle).toContain('pathEditMutationId: vectorPathSession.pathEditMutationId.peek(),');
+    expect(bundle).toContain('if (target === null) return false;');
+    // The recorded stroke read follows the TARGET, not the dialog selection.
+    expect(bundle).toContain('const stroke = getRecordedAquarelleStroke(target);');
+    // ONE shared writer for the whole gesture; a null edit id resolves false.
+    expect(bundle).toContain('return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);');
+    expect(bundle.split('commitAquarelleVectorPathEdit(').length - 1).toBe(1);
+    // The Studio's ONE begin lives in the shared commit — exactly one in the
+    // whole file, and it belongs to that commit, not to this bundle.
+    const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
+    const commitStart = studio.indexOf(COMMIT_START);
+    const commitEnd = studio.indexOf('const handleAquarelleVectorPathEdit = useCallback(', commitStart);
+    expect(commitStart).toBeGreaterThan(-1);
+    expect(commitEnd).toBeGreaterThan(commitStart);
+    const commit = studio.slice(commitStart, commitEnd);
+    expect(commit.split('beginAquarellePathEdit(').length - 1).toBe(1);
+    expect(studio.split('beginAquarellePathEdit(').length - 1).toBe(1);
   });
 
   it('composes the pure width commit from the shared handle module', () => {

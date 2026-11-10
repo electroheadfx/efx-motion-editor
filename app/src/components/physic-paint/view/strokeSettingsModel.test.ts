@@ -40,6 +40,7 @@ import {
   SIMPLE_RIBBON_WET_NOTE,
   readRenderMode,
   readSimpleRibbonGlobal,
+  resolveAnchorWidthTarget,
   resolvePathEditGate,
   shouldExitPathEdit,
   FRESH_STROKE_GEOMETRY_SESSION,
@@ -3521,6 +3522,37 @@ describe('61-11 path-edit gate (Edit path header button)', () => {
     expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: false })).toBe(true);
     expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: true })).toBe(false);
     expect(shouldExitPathEdit({ pathEditActive: false, gateEnabled: false })).toBe(false);
+  });
+});
+
+// 61-19 (G-5): the width commit's ONE target decision. The anchor indices come
+// from the OVERLAY's selection, which belongs to the open path edit — so the
+// stroke written must be the stroke that edit names, never merely the dialog's
+// current selection. Every disagreement fails closed.
+describe('61-19 anchor-width target (the width commit writes one named path)', () => {
+  it('targets nothing for an empty selection', () => {
+    expect(resolveAnchorWidthTarget({ ids: [], pathEditMutationId: '7' })).toBeNull();
+  });
+
+  it('targets nothing when no path edit is open', () => {
+    expect(resolveAnchorWidthTarget({ ids: [7], pathEditMutationId: null })).toBeNull();
+  });
+
+  it('targets nothing when the open edit names a different stroke', () => {
+    expect(resolveAnchorWidthTarget({ ids: [7], pathEditMutationId: '8' })).toBeNull();
+  });
+
+  it('targets the selected stroke when the open edit names it', () => {
+    expect(resolveAnchorWidthTarget({ ids: [7], pathEditMutationId: '7' })).toBe(7);
+  });
+
+  it('targets nothing for a multi-selection', () => {
+    expect(resolveAnchorWidthTarget({ ids: [7, 8], pathEditMutationId: '7' })).toBeNull();
+  });
+
+  it('targets nothing for a non-integer id or an empty session id', () => {
+    expect(resolveAnchorWidthTarget({ ids: [7.5], pathEditMutationId: '7.5' })).toBeNull();
+    expect(resolveAnchorWidthTarget({ ids: [7], pathEditMutationId: '' })).toBeNull();
   });
 });
 
