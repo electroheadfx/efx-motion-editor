@@ -69,6 +69,7 @@ import {
   VectorPathOverlay,
   handleVectorPathEditKey,
   handleVectorPathKey,
+  handleVectorPathWindowKey,
   vectorPathEditDrag,
   type VectorPathGestureHandlers,
 } from './VectorPathOverlay';
@@ -612,7 +613,7 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
     expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
   });
 
-  it('stores exactly ONE history entry for one changed anchor and refuses while in flight', () => {
+  it('stores exactly ONE edit snapshot for one changed anchor, restores it in one undo, and refuses while in flight', () => {
     const originalAnchors = editedStroke().anchors;
     const revisionBefore = aquarelleStrokesRevision.value;
     const nextAnchors: readonly VectorAnchor[] = [auto(0.25, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
@@ -621,7 +622,9 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
     expect(editId).not.toBeNull();
     expect(getRecordedAquarelleStroke(EDIT_ID)!.anchors).toEqual(nextAnchors);
 
-    // ONE entry for the whole gesture: a single undo restores the pre-drag path.
+    // ONE edit snapshot for the whole gesture: a single undo restores the
+    // pre-drag path. (The ledger entry itself is the Studio's business and is
+    // pinned by 61-15's stack-length test, not here.)
     expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
     expect(getRecordedAquarelleStroke(EDIT_ID)!.anchors).toEqual(originalAnchors);
 
@@ -899,7 +902,7 @@ describe('VectorPathOverlay — handle drag, insert, delete, width (task 2)', ()
     expect(anchors).toHaveLength(2);
   });
 
-  it('writes a three-anchor width commit in ONE history entry', () => {
+  it('writes a three-anchor width commit as ONE edit snapshot that one undo restores', () => {
     const originalAnchors = editedStroke().anchors as readonly VectorAnchor[];
     const revisionBefore = aquarelleStrokesRevision.value;
     const next = buildAnchorWidthCommit(originalAnchors, [0, 1, 2], 1.8);
@@ -1072,6 +1075,115 @@ describe('VectorPathOverlay — the pointer-capture law (61-16)', () => {
     // The commit is unaffected by the lost capture.
     expect(onPathEdit).toHaveBeenCalledTimes(1);
     expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+});
+
+// 61-16 (G-4 / CR-02): the window keydown listener is a CAPTURE-phase listener
+// on `window`, so it sees every keystroke in the Studio — including the ones the
+// user aims at a focused input. The dispatcher yields to any text-entry target
+// before either pure key handler runs: Enter submits the dialog, Backspace edits
+// the text, and no `preventDefault` is called. Everywhere else the vector keys
+// act exactly as before.
+describe('VectorPathOverlay — the text-entry key guard (61-16)', () => {
+  const EDIT_ID = 96002;
+
+  function editedStroke(): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  it('stands down on Enter while a dialog text field has focus', () => {
+    const onCommitPath = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    // Two presses build a committable draft, so only the target guard can
+    // refuse the Enter below.
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+    expect(draftAnchors()).toHaveLength(2);
+
+    const event = {
+      key: 'Enter',
+      target: { tagName: 'INPUT' },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(
+      event,
+      { onCommitPath, onCancelPath: () => {} },
+      { getRecordedStrokes: () => new Map(), onPathEdit: () => {} },
+    );
+
+    expect(onCommitPath).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(event.stopPropagation).not.toHaveBeenCalled();
+    // The draft is untouched: leaving the input and pressing Enter still commits.
+    expect(draftAnchors()).toHaveLength(2);
+  });
+
+  it('still commits the draft when focus sits outside a text field', () => {
+    const onCommitPath = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+
+    const event = {
+      key: 'Enter',
+      target: { tagName: 'DIV' },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(
+      event,
+      { onCommitPath, onCancelPath: () => {} },
+      { getRecordedStrokes: () => new Map(), onPathEdit: () => {} },
+    );
+
+    expect(onCommitPath).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it('stands down on Backspace in a textarea and still deletes on the canvas', () => {
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([0]);
+    const onPathEdit = vi.fn();
+    const editHandlers = {
+      getRecordedStrokes: () => new Map([[EDIT_ID, editedStroke()]]),
+      onPathEdit,
+    };
+    const draftHandlers = { onCommitPath: () => {}, onCancelPath: () => {} };
+
+    const inText = {
+      key: 'Backspace',
+      target: { tagName: 'TEXTAREA' },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(inText, draftHandlers, editHandlers);
+    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(inText.preventDefault).not.toHaveBeenCalled();
+    expect(vectorAnchorSelection.peek()).toEqual([0]);
+
+    const onCanvas = {
+      key: 'Backspace',
+      target: { tagName: 'DIV' },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(onCanvas, draftHandlers, editHandlers);
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(anchors).toHaveLength(2);
   });
 });
 
