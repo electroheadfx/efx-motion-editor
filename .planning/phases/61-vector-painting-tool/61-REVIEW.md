@@ -1,250 +1,268 @@
 ---
 phase: 61-vector-painting-tool
-reviewed: 2026-11-10T18:10:32Z
+reviewed: 2026-11-10T22:24:25Z
 depth: deep
-files_reviewed: 15
+files_reviewed: 25
 files_reviewed_list:
-  - app/src-tauri/src/models/project.rs
+  - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx
+  - app/src/components/physic-paint/engine/PhysicsPaintCanvasMount.tsx
+  - app/src/components/physic-paint/engine/VectorPathOverlay.test.ts
   - app/src/components/physic-paint/engine/VectorPathOverlay.tsx
-  - app/src/components/physic-paint/performance/scriptTimelineCodec.ts
-  - app/src/components/physic-paint/view/aquarelleRecordState.ts
+  - app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts
+  - app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx
+  - app/src/components/physic-paint/view/PhysicsPaintToolRail.test.ts
+  - app/src/components/physic-paint/view/PhysicsPaintToolRail.tsx
+  - app/src/components/physic-paint/view/aquarelleColorPicker.test.ts
+  - app/src/components/physic-paint/view/aquarelleColorPicker.ts
+  - app/src/components/physic-paint/view/aquarelleStrokeSelection.test.ts
   - app/src/components/physic-paint/view/aquarelleStrokeSelection.ts
+  - app/src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts
+  - app/src/components/physic-paint/view/aquarelleVectorPathCommit.ts
+  - app/src/components/physic-paint/view/scriptStrokeEdition.test.ts
+  - app/src/components/physic-paint/view/scriptStrokeEdition.ts
+  - app/src/components/physic-paint/view/shortcutTextTarget.test.ts
+  - app/src/components/physic-paint/view/shortcutTextTarget.ts
+  - app/src/components/physic-paint/view/strokeSettingsModel.test.ts
   - app/src/components/physic-paint/view/strokeSettingsModel.ts
-  - app/src/components/physic-paint/view/vectorPathHandles.ts
+  - app/src/components/physic-paint/view/vectorPathLatches.test.ts
+  - app/src/components/physic-paint/view/vectorPathLatches.ts
+  - app/src/components/physic-paint/view/vectorPathSession.test.ts
   - app/src/components/physic-paint/view/vectorPathSession.ts
-  - packages/efx-watercolor/src/payload/vectorPath.ts
-  - packages/efx-watercolor/src/payload/codec.ts
-  - packages/efx-watercolor/src/payload/toStudioStroke.ts
-  - packages/efx-watercolor/src/playground/Engine.ts
-  - packages/efx-watercolor/src/vector/spine.ts
-  - app/src/types/project.ts
 findings:
-  critical: 6
+  critical: 2
   warning: 5
   info: 3
-  total: 14
-  necessity: 1
+  total: 10
+  necessity: 0
 status: issues_found
 ---
 
 # Phase 61: Code Review Report
 
-**Reviewed:** 2026-11-10T18:10:32Z
+**Reviewed:** 2026-11-10T22:24:25Z
 **Depth:** deep
-**Files Reviewed:** 15
+**Files Reviewed:** 25
 **Status:** issues_found
 
 ## Summary
 
-Adversarial deep review of the Phase 61 "Vector Painting Tool" implementation, scoped to the 15 files above and cross-checked against the phase plans, `61-UI-SPEC.md` and the shipped seams they extend.
+Gap-closure review of the six plans 61-15..61-20 against the previous review (`2025f3ef3`). All five original blockers are genuinely closed in the current source. CR-01: pointer capture on both drag branches, honoured `hasPointerCapture`, release AFTER the commit decision, release on cancel. CR-02: one capture-phase `handleVectorPathWindowKey` dispatcher plus a dependency-free `isTextEntryTarget`. CR-03: `setDraftMode` refuses to leave under `draftPixelsDirty`/`wireframeMode`, `setWireframeMode(true)` forces Draft, Select entry is refused under wireframe, and the rail, paint keys, picker and Dry are all gated. CR-04: the draw route records then bakes; the path-edit route records exactly once (defer branch XOR `onSuccess`, never both) and a failed bake restores the pre-edit snapshot. CR-05: `resolveAnchorWidthTarget` fails closed to null unless the single selected stroke IS the open edit, and the control reads empty with a stated reason. The CR-06-class input-surface exclusivity is closed too (`setAquarelleSelectMode(true)` releases the pen and the path edit; picker entry and paint-tool presses do likewise).
 
-Confirmed sound (no finding): the AQTL version law (`scriptTimelineCodec.ts:964-968` refuses every version other than 2, no v1 reader, plus body-length, trailing-byte and summed-point-count reconciliation); the C-03 trap (the `scriptScale` clamp at `Engine.ts:888` still carries no width, `scriptWidthFactor` bounds `Sample.w` to 0.2..2, and `sizeMult` at `Engine.ts:1620` multiplies the factor AFTER `scriptScale`; the ribbon branch is selected explicitly at `Engine.ts:1804`); the spine/handle math and the nearest-sample width mapping in `packages/efx-watercolor/src/vector/spine.ts`; the fail-closed payload normalisation in `packages/efx-watercolor/src/payload/vectorPath.ts`; the absence of any persistence of the wireframe/Draft session latches; Rust/TS declaration parity in `app/src-tauri/src/models/project.rs` vs `app/src/types/project.ts`; and that no runtime dependency was added.
+Two regressions remain in the new seams. The first is a stranded path-edit drag: the overlay's drag state is cleared only by its own pointer-up/cancel handlers, and those handlers unbind the moment the path edit closes — so a drag interrupted by a rail key, the picker, a paint tool or the sheet's close leaves `vectorPathEditDrag` and `dragRef` alive, the stroke renders at the uncommitted position, and the next path edit on that stroke can commit an edit the user never made (an empty-space press plus release is enough, because `startEditDrag` returns without clearing the stale drag). The second is in the new commit seam: it guards the shared in-flight latch, then awaits `ensureAquarelleDurableBaseRef` before claiming it — the exact anti-pattern the file's own WR-01 comment (lines 5952-5956) forbids. A concurrent commit inside that window writes the script through `beginAquarellePathEdit`, is then refused by `runAquarelleScriptRebake`'s fail-closed branch (which calls no terminal callback), and returns null with the edit still in the document and no ledger entry.
 
-The six blockers below cluster in the two seams the plans treat as load-bearing but which no test exercises end-to-end: the overlay's gesture surface (pointer and keyboard) and the draw/edit commit path into the bake. Four of them are reachable on the first ordinary interaction with the pen or with an open path edit.
+Confirmed sound and deliberately not reported: the bake seam never double-applies (one latch, reset → apply → exactly one terminal callback, `finally` releases); the Draft settle joins its single flight and closes both its success and failure paths; `runWireframeOffTransition` clears `wireframeSettleInFlight` in a `finally`, so no refusal leaks a spinner or a stuck latch; every new latch writer is compare-then-write and every handler reads with `.peek()` (no render-body signal writes — the one render-body write is 61-11's documented plain-flag marker); and the wireframe/pen coexistence is coherent (the pen's draw routes through `defer-pixels`, so nothing bakes behind the construction view).
 
 ## Narrative Findings (AI reviewer)
 
 ### Critical Issues
 
-#### CR-01: Path-edit drags never capture the pointer — releasing outside the overlay silently loses the edit
+#### CR-01: An interrupted path-edit drag is never cleared — deleted anchors come back and a stranded drag commits a phantom edit
 
 **Severity:** BLOCKER
-**File:** `app/src/components/physic-paint/engine/VectorPathOverlay.tsx:746-815` (start), `:852-874` (finish/cancel), `:876-891` (root div handlers)
+**File:** `app/src/components/physic-paint/engine/VectorPathOverlay.tsx:942-967` (the only clears), `:981-984` (handlers bound only while `editInteractive`), `:700-702` (stale preview wins over the recorded anchors), `:899-900` (empty-space press returns without clearing `dragRef`)
 
-**Issue:** `startEditDrag` opens an anchor or a handle drag by writing `dragRef.current` and `vectorPathEditDrag.value`, but never calls `setPointerCapture`. The only `pointerup` / `pointercancel` handlers that can finish the gesture are the root `<div>`'s props (`:890-891`); the overlay registers no window-level pointer listener at all (its only `addEventListener` is the capture-phase `keydown` at `:606`). If the pointer is released outside the overlay rectangle — over the tool rail, over the floating Stroke Settings sheet, or outside the window — the browser dispatches `pointerup` to a different element, `finishEditDrag` never runs, and both `dragRef` and `vectorPathEditDrag` stay live. Consequences: the gesture produces **zero undo entries for a non-zero edit** (direct violation of the phase's one-gesture-one-entry law), the anchor/handle preview keeps following later hovers, and the next press starts a new drag from a `drag.moved` state it never asked for. The shipped `ScriptStrokeOverlay` captures for exactly this reason (`ScriptStrokeOverlay.tsx:200`, `:252`, release at `:300-321`).
+**Category:** bug
 
-**Fix:** capture on press in both branches of `startEditDrag`, release on both exits:
+**Issue:** `dragRef.current` and the `vectorPathEditDrag` signal are cleared ONLY in `finishEditDrag` (pointer-up) and `cancelEditDrag` (pointer-cancel), and both handlers are attached only while `editInteractive` is true (`onPointerMove`/`onPointerUp`/`onPointerCancel` become `undefined` the instant `pathEditMutationId` goes null). Neither `exitPathEdit` (`view/vectorPathLatches.ts:91-94`) nor `resetForStudioOpen` (`view/vectorPathSession.ts:101-106`) touches the overlay's gesture state, and the overlay does not unmount while any vector stroke remains on the frame (`:721`). Two consequences:
+
+1. **Resurrection.** While a drag is live its snapshot `anchorsAtStart` is frozen. `handleVectorPathEditKey` (`:300-327`) commits Delete/Backspace against the REAL recorded anchors without clearing or rebasing the drag. Under Draft (the normal watercolor mode) that commit is synchronous, so the next `continueEditDrag` rebuilds from `anchorsAtStart` — the deleted anchor is back in the preview — and `finishEditDrag` commits `drag.latest` (`:949-950`), re-inserting the anchor the user just deleted.
+2. **Phantom commit.** Any action that closes the path edit mid-drag (V / A / I / B / W / P / E via `physicsPaintStudioKeyboard.ts:386-393` and `PhysicsPaintStudio.tsx:2613-2624` → `exitPathEdit()`; the sheet's close at `PhysicsPaintStrokeSettingsDialog.tsx:623`; picker entry `aquarelleColorPicker.ts:45`) leaves the drag alive and the stroke drawing at the uncommitted position. Reopening a path edit re-binds the handlers: a plain hover runs `continueEditDrag` with the stale snapshot (setting `moved` past the threshold), a press on empty canvas returns at `:900` WITHOUT clearing the stale drag, and the release runs `finishEditDrag` → `onPathEdit(drag.mutationId, drag.latest)` on a stroke the user may not even be editing. `handleAquarelleVectorPathEdit` (`PhysicsPaintStudio.tsx:10184-10196`) accepts any recorded mutationId, so the phantom edit lands in the script (and, under Draft, in the ledger).
+
+**Fix:** Terminate the drag whenever the open edit changes, and never act on a drag whose target is not the current edit. In `VectorPathOverlay`:
 
 ```ts
-// in startEditDrag, before returning from each branch
-const target = event.currentTarget as HTMLElement;
-if (target.setPointerCapture && !target.hasPointerCapture?.(event.pointerId)) {
-  target.setPointerCapture(event.pointerId);
-}
-// in finishEditDrag / cancelEditDrag, before clearing the ref
-try { (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId); } catch { /* already released */ }
+const captureTargetRef = useRef<EventTarget | null>(null);
+useEffect(() => {
+  if (editMutationId !== null) return;
+  const drag = dragRef.current;
+  dragRef.current = null;
+  vectorPathEditDrag.value = null;
+  if (drag !== null) releasePointerCapture(captureTargetRef.current as never, drag.pointerId);
+}, [editMutationId]);
 ```
 
-`onPointerCancel` must remain wired as the backstop. Add a test that starts a drag, dispatches `pointerup` on `document.body`, and asserts exactly one `onPathEdit` call.
+and guard both continuations: `if (drag.mutationId !== editTargetMutationId) { dragRef.current = null; vectorPathEditDrag.value = null; return; }` at the top of `continueEditDrag` and `finishEditDrag`. Also clear `dragRef` at the START of `startEditDrag`, so an empty-space press can never inherit one. (Clearing `vectorPathEditDrag` from the session exit is the alternative, but the overlay is its only writer today, which is why the effect is the minimal fix.)
 
-#### CR-02: Un-guarded window capture-phase key listener mutates the path from inside dialog inputs
+#### CR-02: The path-edit commit claims the in-flight latch only after `ensureAquarelleDurableBaseRef` — a concurrent commit writes the script with no ledger entry and no rollback
 
 **Severity:** BLOCKER
-**File:** `app/src/components/physic-paint/engine/VectorPathOverlay.tsx:597-611` (listener), `:214-229` (`handleVectorPathKey`), `:244-269` (`handleVectorPathEditKey`)
+**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:10115-10166` (guard at 10118, await at 10120, `beginAquarellePathEdit` at 10124, `runAquarelleScriptRebake` at 10139), `app/src/components/physic-paint/view/aquarelleVectorPathCommit.ts:48-49`, `app/src/components/physic-paint/view/aquarelleStrokeSelection.ts:939-951`
 
-**Issue:** While the pen is latched or a path edit is open, the overlay binds `keydown` on `window` in the **capture** phase and neither handler checks the event target. `handleVectorPathKey` treats `Enter`/`Escape` as "finish/cancel the draft" whenever a draft exists; `handleVectorPathEditKey` treats `Delete`/`Backspace` as "delete the selected anchors" whenever an anchor selection exists, then calls `preventDefault`/`stopPropagation` and commits an undoable edit. Both are reachable from ordinary dialog typing: path edit is entered from the Stroke Settings sheet, whose `SliderStepper` fields (`allowOutOfRangeEntry`, e.g. Size and the new Anchor width) are text inputs. Select an anchor on the canvas, click into the width field, press Backspace to correct the number → the selected anchor is deleted from the stroke and an edit is stored. Typing Enter in any Studio text field while a draft is pending finishes the path. The shipped dispatcher guards every equivalent shortcut with `isPhysicsPaintShortcutTarget` (`physicsPaintStudioKeyboard.ts:110-116`); this one does not.
+**Category:** bug
 
-**Fix:** bail out before either handler runs when the event target is a text entry surface:
+**Issue:** `commitAquarelleVectorPathEdit` checks `isAquarelleScriptEditInFlight()` and THEN awaits the durable-base recovery, which can run a real base bake. `beginAquarellePathEdit` mutates the script synchronously but only READS the flag (it never claims it), and the flag is not set until `runAquarelleScriptRebake` runs `beginInFlight()`. So two commits — e.g. a pointer-up drag commit followed by an Anchor-width stepper commit, or a Delete key commit while a drag commit is settling — can both pass the guard and both write the script. The loser then hits `runAquarelleScriptRebake`'s fail-closed `if (sequence.isInFlight()) return false;`, which deliberately calls NO terminal callback, so `commitAquarelleVectorPathEdit` returns `null` with:
+
+- its `updateAquarellePathInScript` write still in the document,
+- no `rotoMoveHistory.recordAquarelleScriptEdit` entry (the ledger is written only in the defer branch or `onSuccess`),
+- no rollback (the fail-closed branch never reaches `onFailure`).
+
+The same file already states the correct law for this exact seam — "WR-01: hold the in-flight flag across the WHOLE replay (set after the guard so a re-entrant call still refuses itself, before the first await)" at lines 5952-5956 — so this violates an in-repo precedent rather than a new design choice. Secondary damage: if the winner's rebake then FAILS, its `onFailure` restore is authority-checked (`aquarelleStrokeSelection.ts:1057` compares `aquarelleStrokesRevision`), and the loser's write bumped that revision — so the rollback silently no-ops while the capsule publishes "…the path edit was restored." (see WR-02).
+
+**Fix:** Claim the latch BEFORE the first await and release it on every exit, mirroring the replay seam:
 
 ```ts
-const target = event.target as HTMLElement | null;
-if (target && (target.isContentEditable
-  || target.closest('input, textarea, select, [contenteditable="true"]'))) return;
-if (event.isComposing) return;
+if (isPhysicalMutationLocked()) return null;
+if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return null;
+if (isAquarelleScriptEditInFlight()) return null;
+setAquarelleScriptEditInFlight(true);          // claim before the await
+try {
+  const playFrame = launchContextRef.current?.startFrame ?? 0;
+  await ensureAquarelleDurableBaseRef.current(playFrame);
+  ...                                          // beginAquarellePathEdit / defer branch unchanged
+  const ok = await applyDirectly(playFrame);   // the reset/apply half, without re-claiming
+  ...
+} finally { setAquarelleScriptEditInFlight(false); }
 ```
 
-Reuse `isPhysicsPaintShortcutTarget` if it is importable without a cycle; otherwise extract that predicate to a shared leaf module.
+If the direct apply stays inside `runAquarelleScriptRebake`, give the sequence an explicit "already held" mode so the fail-closed branch cannot fire after a write; alternatively make that branch call `sequence.onFailure?.()` so the caller can restore.
 
-#### CR-03: Wireframe ON and Draft OFF can coexist — Select and Shift+A escape the Draft suppression
+### Warnings
 
-**Severity:** BLOCKER
-**File:** `app/src/components/physic-paint/view/PhysicsPaintToolRail.tsx:209-220`; `app/src/components/physic-paint/PhysicsPaintStudio.tsx:2692-2700`, `:2709-2719`; `app/src/components/physic-paint/view/aquarelleStrokeSelection.ts:355`; `app/src/components/physic-paint/view/scriptStrokeEdition.ts:157-161`; capture gate `PhysicsPaintStudio.tsx:5992`; settle early return `:5382`
+#### WR-01: Shift+A writes a stroke selection while Select entry is refused under wireframe
 
-**Issue:** `setWireframeMode(true)` (`scriptStrokeEdition.ts:185-189`) forces Draft ON, which is the D-16 mechanism. But the three Select entry points are not wireframe-gated — the rail Select button is disabled only by `railDisabled || !selectAvailable.value`, and bare `A` / Shift+A reach `setAquarelleSelectMode(true)` with no `wireframeMode` check — and `setAquarelleSelectMode` calls `setDraftMode(false)` on the off→on edge (`aquarelleStrokeSelection.ts:355`). `setDraftMode` only refuses to leave while `draftPixelsDirty` is set (`scriptStrokeEdition.ts:157-161`); entering wireframe forces Draft ON while the sheet is clean, so the refusal does not trigger and Draft turns **OFF under wireframe**. Effects: (a) the Stroke Settings Draft switch renders OFF + disabled, contradicting `61-UI-SPEC.md:325` ("forces the Draft switch ON and disabled"); (b) the capture gate `!draftMode.peek()` at `PhysicsPaintStudio.tsx:5992` now passes, so pixels can be captured and strokes re-baked (move/transform/delete take their Live branch) while wireframe is on — the exact D-16 prohibition; (c) when the user turns wireframe OFF, `runWireframeOffTransition` hands the settle to `settleDraftScript`, which early-returns at `:5382` because Draft is already off and pixels are not dirty, so the promised re-bake never runs.
+**Severity:** WARNING
+**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:2717-2727`; `app/src/components/physic-paint/view/aquarelleStrokeSelection.ts:341`
 
-**Fix:** make the Draft suppression authoritative rather than caller-discipline. Two minimal changes:
+**Category:** bug
+
+**Issue:** `setAquarelleSelectMode(true)` returns EARLY when `wireframeMode.peek()` is on (61-17's refusal), but `handleToggleSelectAllAquarelleStrokes` treats that call as unconditional and then always writes `setAquarelleStrokeSelection(...)`. Under wireframe, Shift+A therefore mutates `scriptSelectedStrokeIds` while select mode stays off. Nothing renders the selection (`ScriptStrokeOverlay` returns null at `ScriptStrokeOverlay.tsx:146` without `selectMode`), and `setScriptSelectMode(false)` clears only on an actual transition (`scriptStrokeEdition.ts:321-330`), which never happens here — so the selection survives the wireframe session, appears the next time Select is entered, and the stroke-settings sheet (which follows `selection.size`, `PhysicsPaintStrokeSettingsDialog.tsx:501`) opens in multi-selection mode from a shortcut that appeared to do nothing.
+
+**Fix:** Refuse up front, before any write:
 
 ```ts
-// scriptStrokeEdition.ts — Draft cannot leave while the wireframe latch is on
-export function setDraftMode(on: boolean): void {
-  if (!on && (draftPixelsDirty.value || wireframeMode.peek())) return;
+const handleToggleSelectAllAquarelleStrokes = useCallback(() => {
+  if (wireframeMode.peek()) return;             // 61-17: no selection surface under wireframe
+  if (!aquarelleSelectMode.peek()) {
+    if (!watercolorMoveAvailable.peek()) return;
+    setAquarelleSelectMode(true);
+    if (!aquarelleSelectMode.peek()) return;    // defense: the entry choke point is authoritative
+  }
+  ...
+}, []);
+```
+
+#### WR-02: A failed path-edit bake rolls back through the authority-checked restore — an interleaved bump skips the rollback while the capsule says it succeeded
+
+**Severity:** WARNING
+**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:10153-10164`; `app/src/components/physic-paint/view/aquarelleStrokeSelection.ts:1049-1061`, `:1124-1135`
+
+**Category:** bug
+
+**Issue:** `onFailure` calls `restoreAquarelleEditSnapshot(editId, 'undo')` and ignores its return. That restore is revision-authoritative: it returns `null` without touching the script whenever `aquarelleStrokesRevision` moved past the edit's `after` side. A failed re-bake is precisely the case the module documents for the raw rollback ("a failed re-bake must restore the pre-attempt script it just left", `:1063-1069`), and the repo already ships the remedy for a stale attempt: `reanchorAquarelleEditFromLiveContent(editId, 'undo')` re-seats the revision only when the live content is still provably the attempted side (`:1115-1135`). Here neither is used, so after any interleaved script mutation the path edit is left half-applied (script written, pixels not) while the user is told "the path edit was restored."
+
+**Fix:**
+
+```ts
+onFailure: () => {
+  // Re-seat the attempted side at the live revision when the content still
+  // matches, so the rollback cannot fail closed on a foreign bump.
+  reanchorAquarelleEditFromLiveContent(editId, 'undo');
+  restoreAquarelleEditSnapshot(editId, 'undo');
   ...
 }
 ```
 
-and gate the Select entries on wireframe (`disabled={railDisabled || wireframeActive || !selectAvailable.value}`, plus `if (wireframeMode.peek()) return;` in `handleToggleAquarelleSelect` / `handleToggleSelectAllAquarelleStrokes`), matching the existing paint-tool and picker gates. Add a regression test for the wireframe→Select→Draft sequence.
+#### WR-03: The draw-site bake refuses silently and its result is discarded
 
-#### CR-04: A drawn vector path and every path edit are recorded but never baked
+**Severity:** WARNING
+**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:8807`; `app/src/components/physic-paint/view/aquarelleVectorPathCommit.ts:48-49`
 
-**Severity:** BLOCKER
-**File:** `app/src/components/physic-paint/engine/AquarelleCanvasLayer.tsx:495-509`; `app/src/components/physic-paint/PhysicsPaintStudio.tsx:8624-8742` (stroke end), `:10044-10056` (path edit); reference implementations at `:8879-8974` (move) and `:9064-9127` (render mode)
+**Category:** bug
 
-**Issue:** `handleVectorCommit` builds a `StudioStroke` and forwards it to the existing `onStrokeEnd` seam. `handleAquarelleStrokeEnd` then only records it (`recordAquarelleStrokeWhenEnabled` at `:8707`, `applyFrameModuleState`, the lift arm) — it never paints, because every shipped caller relies on the engine having painted live during the gesture. A vector stroke has no live gesture in the engine: the overlay only draws its spine, so after commit the stroke exists in the script and in the overlay chrome but **no pigment exists on the live sheet**, and nothing triggers a replay. Synchronously after drawing, the frame is visually unchanged; the path only appears at the next unrelated settle / frame-leave / reopen. `handleAquarelleVectorPathEdit` is worse: it calls `beginAquarellePathEdit` and returns, with no `ensureAquarelleDurableBaseRef`, no `setDraftPixelsDirty(true)` in Draft, and no reset + `applyAquarelleTimeline` in Live — so a drag moves the overlay spine while the painted sheet keeps the old shape. This contradicts `beginAquarellePathEdit`'s own docblock ("path update + its re-bake = ONE aquarelle-script ledger command", `aquarelleStrokeSelection.ts:912-919`) and `61-09-PLAN.md:51-63`. A second consequence: with Script Off, `recordsScript` is false, so a drawn path is neither recorded nor painted — the pen becomes a silent no-op with no feedback, unlike every other tool.
+**Issue:** `if (isVectorAquarelleStroke(stroke)) void bakeAquarelleVectorCommit();` discards the boolean, and `runAquarelleScriptRebake`'s in-flight branch calls neither `onSuccess` nor `onFailure`. If a vector path is drawn while another aquarelle script edit is still baking (the pen can be latched and the overlay drawn on immediately after leaving a path edit, whose rebake is async), the stroke is recorded in the timeline but the sheet is never re-rendered and nothing is published: no message, no dirty flag. The overlay still draws the path from the registry, so the user sees the geometry, but any capture/save before a later settle freezes pixels without it. `draftPixelsDirty` is the existing retry mechanism — the defer route already uses it — and it is not set here.
 
-**Fix:** give both commit seams the same shape as `handleAquarelleMoveStrokes`:
+**Fix:** Distinguish "skipped because another edit holds the lock" from "applied", and arm the retry:
 
 ```ts
-await ensureAquarelleDurableBaseRef.current(playFrame);
-const draft = draftMode.peek();               // AFTER the await (WR-03 precedent)
-const editId = beginAquarelleVectorCommit(...); // record + ledger
-if (editId === null) return;
-if (draft) { recordAquarelleScriptEdit(editId); setDraftPixelsDirty(true); return; }
-setAquarelleScriptEditInFlight(true);
-try {
-  aquarelleResetSheetRef.current?.();
-  const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
-  if (!ok) { restoreAquarelleEditSnapshot(editId, 'undo'); /* refusal message */ }
-} finally { setAquarelleScriptEditInFlight(false); }
+if (isVectorAquarelleStroke(stroke)) {
+  void bakeAquarelleVectorCommit().then((baked) => {
+    if (baked) return;
+    // A concurrent script edit held the latch: the record landed, the pixels did not.
+    setDraftPixelsDirty(true);
+  });
+}
 ```
 
-A newly drawn stroke needs the same replay (or a direct single-stroke paint) so the committed path is visible immediately.
+(The same treatment applies to `commitAquarelleVectorPathEdit`'s in-flight refusal at line 10118: no script write happened there, so a message rather than a dirty flag is appropriate.)
 
-#### CR-05: The path-edit target can diverge from the selection — Anchor width then writes to the wrong stroke
+#### WR-04: An open path edit survives the selection moving to a different vector stroke
 
-**Severity:** BLOCKER
-**File:** `app/src/components/physic-paint/view/strokeSettingsModel.ts:839-866`; `app/src/components/physic-paint/PhysicsPaintStudio.tsx:11388-11410`; `app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx:532-548`, `:1669-1717`
+**Severity:** WARNING
+**File:** `app/src/components/physic-paint/view/strokeSettingsModel.ts:886-888`; `app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx:1274-1300`, `:637-659`
 
-**Issue:** `resolvePathEditGate` derives `enabled` from the selection only (`selectionSize === 1 && vectorStrokeCount === 1`) and `shouldExitPathEdit` only compares `pathEditActive && !gateEnabled`. Neither compares the path-edit target id with the selected id. Selecting another vector stroke while a path edit is open therefore keeps the gate enabled (1 selection, 1 vector stroke) and the lifecycle effect (`deps [open, bundle, pathEditGateEnabled]`) never re-runs, so the edit on stroke A stays open. The dialog then resolves `selectedVectorAnchors` from the **current selection B** while the anchor selection indices in `vectorAnchorSelection` come from the canvas session on **A**, and `applyAnchorWidths` (`PhysicsPaintStudio.tsx:11398-11410`) commits those indices onto B via `beginAquarellePathEdit(ids[0]!, next)`. The result is a wrong-target mutation stored as a normal undo entry, with no refusal and no visible cue (path edit's own chrome stays on A, so the user believes they are editing A). Closing the sheet is the only exit the user is likely to find.
+**Category:** bug
 
-**Fix:** make `shouldExitPathEdit` target-aware:
+**Issue:** `shouldExitPathEdit` only asks whether the path edit is active and the gate closed. The gate is `selectionSize === 1 && vectorStrokeCount === 1` (`strokeSettingsModel.ts:840`) — it never compares the selected id with the open edit's id. With stroke A's path edit open, clicking stroke B's row in the stroke list (`selectAquarelleStroke` at `:1298`) keeps the gate enabled, so the edit stays on A: the sheet shows B's settings while every canvas drag still edits A's anchors and handles, and the header button correctly flips to unpressed (`pressed` compares the ids). CR-05's wrong width write is prevented (`resolveAnchorWidthTarget` returns null and the control reads empty), but the edit surface and the sheet now name different strokes.
+
+**Fix:** Make the exit predicate target-aware, using ids both sides already read:
 
 ```ts
 export interface PathEditExitArgs {
   readonly pathEditActive: boolean;
   readonly gateEnabled: boolean;
-  /** String(form) of the stroke the open path edit targets. */
-  readonly pathEditTarget: string | null;
   readonly selectedMutationId: number | null;
+  readonly pathEditMutationId: string | null;
 }
 export function shouldExitPathEdit(args: PathEditExitArgs): boolean {
   if (!args.pathEditActive) return false;
   if (!args.gateEnabled) return true;
-  return args.selectedMutationId === null
-    || args.pathEditTarget !== String(args.selectedMutationId);
+  return args.pathEditMutationId !== String(args.selectedMutationId);
 }
 ```
 
-and pass `pathEditMutationId.value` plus `selectedMutationId` from the dialog. Alternatively re-target the width commit to the path-edit target instead of the selection, but the exit is the safer law.
-
-#### CR-06: Select entry does not release the vector pen — both surfaces stay latched and the overlay swallows selection clicks
-
-**Severity:** BLOCKER
-**File:** `app/src/components/physic-paint/view/PhysicsPaintToolRail.tsx:209-220`; `app/src/components/physic-paint/PhysicsPaintStudio.tsx:2692-2700`; `app/src/components/physic-paint/view/aquarelleStrokeSelection.ts:330-360`; `app/src/components/physic-paint/view/vectorPathSession.ts:105-121`; `app/src/components/physic-paint/engine/VectorPathOverlay.tsx:647-649` (surface ownership), `:103` (z-index 41 vs the select overlay's 40)
-
-**Issue:** the mutual-exclusion direction that the code documents ("the four input surfaces are mutually exclusive", `PhysicsPaintToolRail.tsx:154-155`) is implemented in only one direction: `enterVectorPen` clears Select, the picker and path edit, but neither `setAquarelleSelectMode(true)` nor `handleToggleAquarelleSelect` / `handleToggleSelectAllAquarelleStrokes` calls `exitVectorPen()`. With the pen latched, pressing Select (or `A`, or Shift+A) leaves **both** latched. `drawInteractive` is still true, the vector overlay is at a higher z-index than the stroke-selection overlay, and its root div keeps `pointerEvents: 'auto'`, so every canvas click appends a draft anchor instead of selecting a stroke: the Select button renders amber but the surface is inert, and a stray draft geometry is accumulated. The stale draft then survives the tool switch (`exitVectorPen` deliberately leaves the draft alone, `vectorPathSession.ts:113-115`) and commits when the pen is re-latched and Enter is pressed.
-
-**Fix:** centralise entry in one direction-agnostic helper, or minimally add `exitVectorPen()` at the top of `setAquarelleSelectMode` when `on && !was` (it is already the single choke point for Select entry, and it must run before `setScriptSelectMode` for the same early-return reason the Draft reset does). Also decide the draft's fate on a paint-tool press; see WR-05.
-
-### Warnings
-
-#### WR-01: `VectorDrawDraft.cursor` is written and never read — dead session state
+#### WR-05: The capture-phase key guard only knows text fields — Enter on a focused button is swallowed by the draft handler
 
 **Severity:** WARNING
-**Category:** necessity
-**File:** `app/src/components/physic-paint/view/vectorPathSession.ts:31-34`, `:138-143`, `:146-156`; no production reader anywhere else
+**File:** `app/src/components/physic-paint/engine/VectorPathOverlay.tsx:337-350`; `app/src/components/physic-paint/view/shortcutTextTarget.ts:13`, `:23-40`
 
-**Issue:** `beginVectorDraft` and `appendVectorDraftAnchor` both write `cursor: { x: anchor.x, y: anchor.y }`, and the field is read only by `vectorPathSession.test.ts:139/144` (which asserts the value it just wrote). The overlay's render body reads `draft.anchors` only (`VectorPathOverlay.tsx:573`, `:634-642`). This is state with no consumer — the written value is also degenerate (it always equals the last anchor, so it could not drive a rubber band even if a reader existed). It is needed only if the missing rubber band (WR-02) is implemented; otherwise it should be deleted rather than carried as a phantom field.
+**Category:** bug (accessibility)
 
-**Fix:** either delete `cursor` from `VectorDrawDraft` and its two write sites, or implement WR-02 against it and update the tests to assert a distinct cursor position.
+**Issue:** The `window` capture listener runs before the focused element and calls `preventDefault()`/`stopPropagation()`. `isTextEntryTarget` refuses only INPUT/TEXTAREA/SELECT/contenteditable, so a focused BUTTON is not spared: while a vector draft exists (`handleVectorPathKey` only acts when `vectorDrawDraft.peek() !== null`), pressing Enter on a focused rail or sheet button commits the draft instead of activating the button — the button's click is suppressed. This is the same class as the closed CR-02, just with the remaining focusable target set.
 
-#### WR-02: Draw mode has no live rubber-band spine to the cursor
+**Fix:** Broaden the predicate (or add a parallel `isInteractiveTarget`) to `button, a[href], [role="button"], [role="menuitem"], [role="link"]`, included in the same `closest()` walk:
 
-**Severity:** WARNING
-**File:** `app/src/components/physic-paint/engine/VectorPathOverlay.tsx:889` (`onPointerMove` bound only for `editInteractive`), `:634-642` (draft path built from anchors only)
-
-**Issue:** `61-UI-SPEC.md:287` specifies that in draw mode the canvas shows "anchors placed so far + a live rubber-band spine to the cursor". The overlay binds `onPointerMove` only when `editInteractive`, so while drawing, the rendered `draftPath` is just the polyline through the already-placed anchors; nothing follows the pointer between clicks. `61-UI-REVIEW.md:21/31/108` already records this as missing in the live UI. The dead `cursor` field (WR-01) shows where the intent was lost.
-
-**Fix:** bind a draw-mode pointermove that only updates the draft's cursor (never the anchors), and render one extra span from the last anchor to the cursor through `projectVectorPath` so the preview matches the committed handle law.
-
-#### WR-03: Encoder lookup tables accept inherited `Object.prototype` keys — the fail-closed checks can be bypassed
-
-**Severity:** WARNING
-**File:** `app/src/components/physic-paint/performance/scriptTimelineCodec.ts:498-502`, `:537-543`, `:561`
-
-**Issue:** `VECTOR_KIND_CODE` and `VECTOR_RENDER_MODE_CODE` are plain object literals, so `VECTOR_KIND_CODE['toString']` (or `'constructor'`, `'__proto__'`) resolves to an inherited function, not `undefined`. The guards `if (kindCode === undefined) fail(...)` and `if (VECTOR_RENDER_MODE_CODE[renderMode] === undefined) fail(...)` therefore pass, and `writer.u8(<function>)` coerces to 0 — silently encoding `auto` / `watercolor` instead of refusing. The same shape exists at the pre-existing `TOOL_CODE_BY_NAME[engine.tool]` (`:574`). Today every caller feeds normalised anchors, so this is a defense-in-depth hole at the persistence boundary, not a live corruption path — but it is exactly the kind of input the codec exists to reject.
-
-**Fix:** use null-prototype tables (`const VECTOR_KIND_CODE = Object.assign(Object.create(null), { auto: 0, bezier: 1 })`) or `Object.hasOwn(VECTOR_KIND_CODE, kind)` before reading.
-
-#### WR-04: The codec's anchor width domain is inconsistent with the payload's — a decoded out-of-domain width silently strips the whole path
-
-**Severity:** WARNING
-**File:** `app/src/components/physic-paint/performance/scriptTimelineCodec.ts:507-509` (encode), `:777-778` (decode); payload domain at `packages/efx-watercolor/src/payload/vectorPath.ts` (`canonicalAnchor`, width 0.2..2)
-
-**Issue:** the encoder asserts only `assertFinite(width)` and the decoder likewise accepts any finite f32, while the payload layer refuses anything outside 0.2..2. An out-of-domain width therefore round-trips through AQTL "successfully" and then fails `normaliseAquarelleAnchors` at restore, where `aquarelleRecordState.ts:1600-1604` deliberately **omits the malformed anchor list**: the stroke comes back as a hand-painted stroke, its path silently disappears, and it can no longer be path-edited or re-exported as a vector. The domain is validated on neither side of the persistence boundary that the payload layer treats as authoritative.
-
-**Fix:** enforce `width >= 0.2 && width <= 2` in `encodeAnchor` (fail `invalid-value`) and in `decodeAnchor` (fail `invalid-value`), importing the constants from the payload module so the two domains can never drift.
-
-#### WR-05: The draw draft is not tied to its origin frame or tool — it survives navigation and commits onto whatever frame is current
-
-**Severity:** WARNING
-**File:** `app/src/components/physic-paint/view/vectorPathSession.ts:113-115`, `:146-161`; commit seam `app/src/components/physic-paint/engine/AquarelleCanvasLayer.tsx:495-509` (`playFrame: getPlayFrameRef.current()`)
-
-**Issue:** neither frame navigation, track switching, nor a paint-tool press clears the draft (`exitVectorPen` explicitly leaves it, and `clearVectorDraft` is documented as "a tool toggle deliberately does not" drop it). A user who starts a path, presses `B` (or navigates to another frame) and later re-latches the pen and presses Enter commits a stroke whose anchors were drawn on a different frame — `handleVectorCommit` stamps the **current** play frame. In the meantime the stale draft keeps rendering as non-interactive chrome (`draftPath !== null` defeats the overlay's null return at `:640-642`), so the canvas carries phantom anchors with no way to tell where they will land.
-
-**Fix:** record the origin frame in `VectorDrawDraft` and either refuse the commit when `getPlayFrameRef.current()` differs or clear the draft on frame/track change. Clearing on any `exitVectorPen` call is the simplest coherent law; if the draft must survive a tool switch, tie it to `(frame, track)` identity.
+```ts
+const NON_TEXT_INTERACTIVE_SELECTOR = 'button, a[href], [role="button"], [role="menuitem"], [role="link"]';
+```
 
 ### Info
 
-#### IN-01: Two different `projectVectorPath` functions in the same feature
+#### IN-01: `VectorDrawDraft.cursor` is still written and never read (repeat of the previous WR-01/WR-02)
 
 **Severity:** INFO
-**File:** `app/src/components/physic-paint/view/vectorPathHandles.ts:329-350` vs `packages/efx-watercolor/src/payload/vectorPath.ts:207-218`
+**File:** `app/src/components/physic-paint/view/vectorPathSession.ts:42`, `:78`, `:91`; only readers are `vectorPathSession.test.ts:139`, `:144`
 
-**Issue:** the view module exports `projectVectorPath(anchors, width, height, options)` (screen-space geometry) while the payload module exports `projectVectorPath(anchors)` (payload projection that drops an exact-1 width). Both are imported across the feature, and a future import mix-up compiles cleanly while changing semantics (screen-space callers would receive anchors, payload callers would receive geometry).
+**Category:** code quality
 
-**Fix:** rename the geometry helper (`projectVectorPathToScreen`) or the payload one (`projectVectorPathPayload`).
+**Issue:** The field is maintained on every anchor placement and is used by no production code; the draft is drawn from `anchors` alone (`VectorPathOverlay.tsx:714-719`), so there is still no rubber-band to the cursor. Either the field is the seed of the missing preview or it is dead payload in a session object.
 
-#### IN-02: `updateAquarellePathInScript` silently coerces an unknown render mode to watercolor
+**Fix:** Draw the rubber band from `cursor`, or remove the field and the two test assertions that pin it.
 
-**Severity:** INFO
-**File:** `app/src/components/physic-paint/view/aquarelleRecordState.ts:1005`
-
-**Issue:** `nextMode = renderMode === undefined ? currentMode : resolveAquarelleRenderMode(renderMode)` is a lenient fallback, unlike every other input on this path (`normaliseAquarelleAnchors` fails closed). No current caller passes an unvalidated mode — `beginAquarellePathEdit`'s callers all derive it from a validated source — so this is latent, but a future caller passing a stale string would silently flip a `simple-ribbon` stroke to watercolor inside an otherwise normal undo entry.
-
-**Fix:** fail closed (`return 0` or throw) when `renderMode !== undefined && !isAquarelleRenderMode(renderMode)`.
-
-#### IN-03: Non-wireframe chrome is drawn for every recorded vector stroke regardless of tool state
+#### IN-02: `settleDraftScript` refuses silently when a mutation holds the gates, and `switchActiveTrack` assumes a message was surfaced
 
 **Severity:** INFO
-**File:** `app/src/components/physic-paint/engine/VectorPathOverlay.tsx:613-632` (all strokes of the play frame), `:344-352` (envelope in the accent colour), `:392-412` (accent spine for every path)
+**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:5402-5407`; comment at `:5496-5498`
 
-**Issue:** whenever the current frame holds any vector stroke, the overlay renders each one's spine, anchors and handles — including the `#38bdf8` accent spine that `61-UI-SPEC.md:157` reserves for "the selected spine and the auto-smooth anchor. Never chrome." With no tool armed this is inert visually noisy chrome over the painting; the spec describes these marks only for draw mode, the spline-pointer edit state, and wireframe. Either the persistent chrome is intended (then the accent reservation needs restating) or the render should gate on `penActive || editInteractive || wireframe`.
+**Category:** code quality
 
-**Fix:** confirm intent with the UI review; if unintended, gate `renderPath` for non-selected, non-wireframe strokes.
+**Issue:** The wireframe/settle-message branches publish a bounded refusal, but the physical-lock / applying / mutation-locked / script-edit-in-flight branch resolves `false` with no message and no status change. `switchActiveTrack` explicitly relies on "the settle has already surfaced its refusal message" before aborting, which is untrue on this branch: the track switch silently does nothing. Adding `isAquarelleScriptEditInFlight()` to this gate widened that window.
+
+**Fix:** Publish a bounded refusal (e.g. "Another edit is settling — try again.") before `return Promise.resolve(false)`, or return a discriminated result so callers can distinguish "refused" from "blocked".
+
+#### IN-03: The Anchor width commit's result is discarded, so a refusal is indistinguishable from a success
+
+**Severity:** INFO
+**File:** `app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx:1713-1718`
+
+**Category:** code quality
+
+**Issue:** `void bundle.applyAnchorWidths?.(ids, …)` ignores the boolean. `applyAnchorWidths` returns false for the wrong or missing target, a missing stroke, an unreadable path, and an in-flight refusal; in every case the stepper simply snaps back to the document reading with no explanation — and in the CR-02 race the document may in fact hold the new value.
+
+**Fix:** Await the result and publish a bounded caption or status on `false` (the sheet already renders a refusal caption for the empty case), or at minimum surface it through the shared status capsule.
 
 ---
 
-_Reviewed: 2026-11-10T18:10:32Z_
+_Reviewed: 2026-11-10T22:24:25Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
