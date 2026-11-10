@@ -16,6 +16,8 @@
 // ============================================================
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { effect } from '@preact/signals';
 import {
   aquarelleSelectMode,
@@ -31,6 +33,7 @@ import {
   draftPixelsDirty,
   frozenCacheVisible,
   hitsScriptStroke,
+  runWireframeOffTransition,
   scriptSelectedStrokeId,
   scriptSelectedStrokeIds,
   scriptSelectMode,
@@ -49,11 +52,13 @@ import {
   setScriptStrokeSelection,
   setScriptStrokeTransform,
   setStrokeSizePreview,
+  setWireframeMode,
   strokeSizePreview,
   toggleScriptStrokeSelection,
   type CanvasPoint,
   type ScriptStrokeEditionPort,
   type SelectableScriptStroke,
+  wireframeMode,
 } from './scriptStrokeEdition';
 import type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
@@ -104,6 +109,9 @@ afterEach(() => {
   clearScriptStrokeSelection();
   clearScriptStrokeTransform();
   setScriptSelectMode(false);
+  // 61-18: the wireframe latch must clear BEFORE the Draft reset — while it is
+  // on, the leave guard makes that reset a silent no-op.
+  setWireframeMode(false);
   // 261101-o2m: the Draft session signals are module-level too — clear the
   // invariant FIRST (the leave guard would refuse the mode reset otherwise).
   setDraftPixelsDirty(false);
@@ -437,6 +445,93 @@ describe('scriptStrokeEdition — Draft mode session law', () => {
     setScriptSelectMode(true);
     setScriptSelectMode(false);
     expect(draftMode.value).toBe(true);
+  });
+});
+
+// 61-18 (D-16): the wireframe view GENERALISES Draft — it is never a second
+// engine-suppression path. While the latch is on, Draft can never leave (the
+// capture gate must stay closed), and the OFF transition still clears the
+// latch FIRST so the settle it hands to the Studio can leave Draft in one pass.
+describe('scriptStrokeEdition — wireframe holds Draft (61-18)', () => {
+  it('refuses to leave Draft while the wireframe view is on', () => {
+    setWireframeMode(true);
+    expect(wireframeMode.value).toBe(true);
+    expect(draftMode.value).toBe(true);
+
+    let runs = 0;
+    const dispose = effect(() => {
+      void draftMode.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      // The leave guard: a silent no-op — no write, no notification, and the
+      // latch still holds the capture gate closed.
+      setDraftMode(false);
+      expect(draftMode.value).toBe(true);
+      expect(wireframeMode.value).toBe(true);
+      expect(runs).toBe(before);
+    } finally {
+      dispose();
+    }
+  });
+
+  it('never refuses the ON edge while the wireframe view is on', () => {
+    setWireframeMode(true);
+    // Force the raw signal OFF behind the setter to prove the ON edge re-enters.
+    draftMode.value = false;
+    let runs = 0;
+    const dispose = effect(() => {
+      void draftMode.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      setDraftMode(true);
+      expect(draftMode.value).toBe(true);
+      expect(runs).toBe(before + 1);
+    } finally {
+      dispose();
+    }
+  });
+
+  it('clears the wireframe latch before the OFF settle runs, so the settle can leave Draft', async () => {
+    setWireframeMode(true);
+    const latchAtSettle: boolean[] = [];
+    const settled = await runWireframeOffTransition(async () => {
+      latchAtSettle.push(wireframeMode.value);
+      // The settle's real order (clear the invariant, then leave Draft) must
+      // be able to complete — the latch was already cleared before this ran.
+      setDraftPixelsDirty(false);
+      setDraftMode(false);
+      return true;
+    });
+    expect(settled).toBe(true);
+    expect(latchAtSettle).toEqual([false]);
+  });
+
+  it('completes the OFF transition with the latch and Draft both off', async () => {
+    setWireframeMode(true);
+    setDraftPixelsDirty(true);
+    const settled = await runWireframeOffTransition(async () => {
+      setDraftPixelsDirty(false);
+      setDraftMode(false);
+      return true;
+    });
+    expect(settled).toBe(true);
+    expect(wireframeMode.value).toBe(false);
+    expect(draftMode.value).toBe(false);
+    expect(draftPixelsDirty.value).toBe(false);
+  });
+
+  it('ships the settle refusal as one fixed, non-interpolated string', () => {
+    const source = readFileSync(resolve(__dirname, './scriptStrokeEdition.ts'), 'utf8');
+    const DECLARATION =
+      "export const WIREFRAME_SETTLE_REFUSED_MESSAGE = 'Draft recompute refused — wireframe is on. Turn wireframe off to re-render.';";
+    expect(source).toContain(DECLARATION);
+    // One declaration, one fixed single-quoted string: no template literal and
+    // no interpolation anywhere in the constant's declaration.
+    expect(source.split('export const WIREFRAME_SETTLE_REFUSED_MESSAGE =').length - 1).toBe(1);
   });
 });
 

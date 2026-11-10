@@ -6616,6 +6616,76 @@ describe('61-15 vector draw bake seam in the Studio', () => {
   });
 });
 
+// 61-18 (D-16, T-61-62): while the wireframe view is up, the ONE Draft settle
+// must refuse BEFORE its clean no-op return — no route may reset or re-bake the
+// sheet behind the construction view — and the save/export flush must keep
+// treating a refusal as a cancelled save instead of capturing the view.
+describe('61-18 the wireframe settle refusal in the Studio', () => {
+  const SETTLE_START = 'const settleDraftScript = useCallback(';
+  const SETTLE_END = '// 61-13 (D-16): the wireframe latch.';
+
+  function settleRegion(): string {
+    const start = studio.indexOf(SETTLE_START);
+    expect(start, `missing start marker: ${SETTLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(SETTLE_END, start + SETTLE_START.length);
+    expect(end, `missing end marker: ${SETTLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('refuses the settle while wireframe is on, ahead of the clean no-op return', () => {
+    const settle = settleRegion();
+    const GUARD = 'if (wireframeMode.peek()) {';
+    const NOOP = 'if (!draftMode.peek() && !draftPixelsDirty.peek()) return Promise.resolve(true);';
+    const SINGLE_FLIGHT = 'if (draftSettlePromiseRef.current) return draftSettlePromiseRef.current;';
+    const guardAt = settle.indexOf(GUARD);
+    expect(guardAt).toBeGreaterThan(-1);
+    const noopAt = settle.indexOf(NOOP);
+    const singleFlightAt = settle.indexOf(SINGLE_FLIGHT);
+    expect(noopAt).toBeGreaterThan(-1);
+    expect(singleFlightAt).toBeGreaterThan(-1);
+    // The refusal is the FIRST statement: the clean no-op and the single-flight
+    // join must never answer for a settle behind the wireframe view.
+    expect(guardAt).toBeLessThan(noopAt);
+    expect(guardAt).toBeLessThan(singleFlightAt);
+    const guardBlock = settle.slice(guardAt, settle.indexOf('\n    }', guardAt));
+    expect(guardBlock).toContain('setApplyMessage(WIREFRAME_SETTLE_REFUSED_MESSAGE);');
+    expect(guardBlock).toContain("setApplyStatus('error');");
+    expect(guardBlock).toContain('return Promise.resolve(false);');
+    // A refusal, not a failed apply: neither the console line nor the owned
+    // refusal flag belongs to this branch.
+    expect(guardBlock).not.toContain('setLastError');
+    expect(guardBlock).not.toContain('scriptApplyRefusalOwnedRef');
+    // ONE copy of the copy: declared by the leaf and imported through the
+    // session seam, never redeclared in the Studio.
+    expect(studio).toContain('  WIREFRAME_SETTLE_REFUSED_MESSAGE,');
+    expect(studio).not.toContain('const WIREFRAME_SETTLE_REFUSED_MESSAGE');
+    // The guard reads the latch with `.peek()` inside the handler — never a
+    // render-body subscription (rule 5).
+    expect(studio).toContain('if (wireframeMode.peek()) {');
+  });
+
+  it('keeps the save/export flush cancelling on a refused settle, before any capture', () => {
+    const start = studio.indexOf('flushStudioStateRef.current = async () => {');
+    expect(start, 'missing the flush pipeline').toBeGreaterThan(-1);
+    const end = studio.indexOf('useEffect(() => {\n    let unlisten', start);
+    expect(end, 'missing the flush pipeline end').toBeGreaterThan(start);
+    const flush = studio.slice(start, end);
+    expect(flush).toContain('await runStudioFlush([');
+    const SETTLE_STEP = 'if (await settleDraftScript()) return;';
+    const THROW_STEP = "throw new Error('Draft recompute refused — save/export cancelled.');";
+    const settleAt = flush.indexOf(SETTLE_STEP);
+    const throwAt = flush.indexOf(THROW_STEP);
+    const captureAt = flush.indexOf('flushAquarellePixels()');
+    const pushAt = flush.indexOf('pushLiveProjection(');
+    expect(settleAt, 'the flush still consults the ONE settle').toBeGreaterThan(-1);
+    expect(throwAt, 'a refused settle still cancels the save/export').toBeGreaterThan(settleAt);
+    // The throwing step aborts the drain before the capture and the document
+    // push: a wireframe refusal never serializes the construction view.
+    expect(captureAt).toBeGreaterThan(throwAt);
+    expect(pushAt).toBeGreaterThan(throwAt);
+  });
+});
+
 // 61-11 Task 2: the Anchor width bundle members. The dialog never touches the
 // record store — `readVectorAnchors` is the ONE read seam (the gate and the
 // Paint row share it), and `applyAnchorWidths` builds the WHOLE next list and
