@@ -6438,7 +6438,7 @@ describe('61-10 vector path edit wiring in the Studio', () => {
     expect(handler).toContain('getRecordedAquarelleStroke(mutationId)');
     const guardAt = handler.indexOf('normaliseAquarelleAnchors(stroke.anchors) === undefined');
     const publishAt = handler.indexOf('setApplyMessage(VECTOR_PATH_REJECTION_MESSAGE)');
-    const commitAt = handler.indexOf('return beginAquarellePathEdit(mutationId, anchors);');
+    const commitAt = handler.indexOf('return commitAquarelleVectorPathEdit(mutationId, anchors);');
     expect(guardAt).toBeGreaterThan(-1);
     expect(publishAt).toBeGreaterThan(guardAt);
     expect(commitAt).toBeGreaterThan(publishAt);
@@ -6448,8 +6448,8 @@ describe('61-10 vector path edit wiring in the Studio', () => {
     // unchanged gesture) falls through without touching the capsule.
     expect(handler.split('setApplyMessage(').length - 1).toBe(1);
     expect(handler.split("setApplyStatus('error')").length - 1).toBe(1);
-    // Identity-stable callback: no reactive dependency can re-create it.
-    expect(handler).toContain('    [],');
+    // Identity-stable delegator: its ONE dependency is the shared commit.
+    expect(handler).toContain('    [commitAquarelleVectorPathEdit],');
   });
 
   it('forwards the handler into the mount memo and its props object', () => {
@@ -6461,10 +6461,60 @@ describe('61-10 vector path edit wiring in the Studio', () => {
 
   it('threads the mount prop into the layer seam through one ref', () => {
     expect(canvasMount).toContain("import type { AquarelleStroke, VectorAnchor } from '@efxlab/efx-watercolor';");
-    expect(canvasMount).toContain('onAquarelleVectorPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => number | null;');
+    expect(canvasMount).toContain('onAquarelleVectorPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => Promise<number | null>;');
     expect(canvasMount).toContain('const onAquarelleVectorPathEditRef = useRef(props.onAquarelleVectorPathEdit);');
     expect(canvasMount).toContain('onAquarelleVectorPathEditRef.current = props.onAquarelleVectorPathEdit;');
     expect(canvasMount).toContain('onEditVectorPath={(mutationId, anchors) => onAquarelleVectorPathEditRef.current?.(mutationId, anchors)}');
+  });
+
+  it('commits a readable edit through one async seam: guards, post-await Draft read, restore on failure', () => {
+    const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
+    const start = studio.indexOf(COMMIT_START);
+    const end = studio.indexOf(HANDLER_START, start + COMMIT_START.length);
+    expect(start, `missing start marker: ${COMMIT_START}`).toBeGreaterThan(-1);
+    // Declared BEFORE the read-and-refuse handler, so the 61-10 region slice
+    // keeps its exactly-one publication pin.
+    expect(end).toBeGreaterThan(start);
+    const commit = studio.slice(start, end);
+    expect(commit).toContain('async (mutationId: number, anchors: readonly AquarelleAnchor[]): Promise<number | null> => {');
+    // Guards mirror the move seam: locked / applying / in-flight fail closed.
+    expect(commit).toContain('if (isPhysicalMutationLocked()) return null;');
+    expect(commit).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return null;');
+    expect(commit).toContain('if (isAquarelleScriptEditInFlight()) return null;');
+    // The base recovery is AWAITED before the Draft read (the WR-03 precedent):
+    // a stale `true` would skip the re-render over fresh pixels.
+    const baseAt = commit.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);');
+    const draftAt = commit.indexOf('const draft = draftMode.peek();');
+    expect(baseAt).toBeGreaterThan(-1);
+    expect(draftAt).toBeGreaterThan(baseAt);
+    // ONE write wrapper for the whole gesture; a null id (in-flight or
+    // unchanged) exits before any bake.
+    expect(commit.split('beginAquarellePathEdit(').length - 1).toBe(1);
+    expect(commit).toContain('const editId = beginAquarellePathEdit(mutationId, anchors);');
+    expect(commit).toContain('if (editId === null) return null;');
+    // Defer route: mark the pixels dirty, publish nothing, reset/apply nothing.
+    const deferAt = commit.indexOf('if (draft || wireframe) {');
+    const rebakeAt = commit.indexOf('runAquarelleScriptRebake({');
+    expect(deferAt).toBeGreaterThan(-1);
+    expect(rebakeAt).toBeGreaterThan(deferAt);
+    const defer = commit.slice(deferAt, rebakeAt);
+    expect(defer).toContain('setDraftPixelsDirty(true);');
+    expect(defer).toContain('setLastError(null);');
+    expect(defer).toContain('clearOwnedScriptApplyRefusal();');
+    expect(defer).toContain('return editId;');
+    expect(defer).not.toContain('aquarelleResetSheetRef');
+    expect(defer).not.toContain('applyAquarelleTimeline');
+    // Rebake route: ONE reset + ONE apply, the edit id on success...
+    expect(commit).toContain('aquarelleResetSheetRef.current?.()');
+    expect(commit).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
+    // ...and on failure the pre-edit script is restored BEFORE the capsule
+    // publishes, then the gesture reports null so no ledger entry is taken.
+    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo');");
+    const publishAt = commit.indexOf('setApplyMessage(message);');
+    expect(restoreAt).toBeGreaterThan(-1);
+    expect(publishAt).toBeGreaterThan(restoreAt);
+    expect(commit).toContain('scriptApplyRefusalOwnedRef.current = true;');
+    expect(commit).toContain('return ok ? editId : null;');
   });
 });
 
