@@ -7217,4 +7217,53 @@ describe('61-20 G-8: a vector path edit is exactly one undo entry', () => {
     expect(deps).toContain('\n    rotoMoveHistory.recordAquarelleScriptEdit,\n');
     expect(deps).not.toContain('\n    rotoMoveHistory,\n');
   });
+
+  // Task 2 — the defer route records once, failure records nothing, and every
+  // delegating vector route stays record-free. The defer branch is sliced by
+  // its own structural marker (`if (draft || wireframe) {`): the commit does
+  // not contain a `'defer-pixels'` literal — that route string belongs to
+  // `bakeAquarelleVectorCommit`'s `resolveVectorCommitRoute` call.
+  it('records exactly once on the defer route, before the dirty flag', () => {
+    const commit = commitRegion();
+    const defer = regionOf(commit, 'if (draft || wireframe) {', 'runAquarelleScriptRebake({');
+    expect(defer.split(RECORD).length - 1).toBe(1);
+    const recordAt = defer.indexOf(RECORD);
+    const dirtyAt = defer.indexOf('setDraftPixelsDirty(true);');
+    expect(recordAt).toBeGreaterThan(-1);
+    expect(dirtyAt).toBeGreaterThan(-1);
+    // The script commit IS the edit; the dirty flag only schedules pixels.
+    expect(recordAt).toBeLessThan(dirtyAt);
+  });
+
+  it('totals exactly two record sites, both before the failure restore', () => {
+    const commit = commitRegion();
+    // One per success route — the defer route and the re-bake onSuccess tail.
+    expect(commit.split(RECORD).length - 1).toBe(2);
+    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo');");
+    expect(restoreAt).toBeGreaterThan(-1);
+    const sites: number[] = [];
+    for (let at = commit.indexOf('rotoMoveHistory.recordAquarelleScriptEdit('); at !== -1; at = commit.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(', at + 1)) {
+      sites.push(at);
+    }
+    expect(sites).toHaveLength(2);
+    for (const site of sites) expect(site).toBeLessThan(restoreAt);
+  });
+
+  it('records nothing on the failure route', () => {
+    const commit = commitRegion();
+    // The callback body only: the dependency array that follows the rebake
+    // call legitimately names the recorder, and a source pin that ran past
+    // it would be asserting the dependency, not the failure route.
+    const failure = regionOf(commit, 'onFailure:', '  }, [');
+    expect(failure).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
+  });
+
+  it('keeps every delegating vector route record-free', () => {
+    const widthBundle = regionOf(studio, 'applyAnchorWidths:', 'reorderStroke:');
+    expect(widthBundle).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
+    const handler = regionOf(studio, COMMIT_END, 'const canvasMount = canvasMountPropsMemo.resolve(');
+    expect(handler).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
+    const drawBake = regionOf(studio, 'const bakeAquarelleVectorCommit = useCallback(', 'const handleAquarelleStrokeEnd = useCallback(');
+    expect(drawBake).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
+  });
 });
