@@ -324,9 +324,10 @@ import {
   resolveVectorCommitRoute,
   runAquarelleScriptRebake,
 } from './view/aquarelleVectorPathCommit';
-import type {
-  ScriptStrokeAppearancePatch,
-  StrokeSettingsDialogBundle,
+import {
+  resolveAnchorWidthTarget,
+  type ScriptStrokeAppearancePatch,
+  type StrokeSettingsDialogBundle,
 } from './view/strokeSettingsModel';
 import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
@@ -11480,6 +11481,9 @@ export function PhysicsPaintStudio() {
       // the ONE recompute. Stable useCallbacks, so the memo identity holds.
       settleDraftScript,
       armDraftBase,
+      // 61-19 (G-8): the Anchor width write now routes through the shared
+      // path-edit commit, so that stable useCallback joins the bundle's deps.
+      commitAquarelleVectorPathEdit,
     ],
     () => {
       const playFrame = launchContextRef.current?.startFrame ?? 0;
@@ -11519,13 +11523,18 @@ export function PhysicsPaintStudio() {
           if (!stroke) return null;
           return normaliseAquarelleAnchors(stroke.anchors) ?? null;
         },
-        // 61-11 (VEC-03 / T-61-38): the Anchor width commit. The whole next
-        // list is built from the LIVE anchor selection and driven through ONE
-        // path edit, so a multi-anchor change is one undo entry — never one
-        // per anchor.
+        // 61-11 (VEC-03 / T-61-38) + 61-19 (G-5): the Anchor width commit. The
+        // target comes from the OPEN path edit — never `ids[0]` — because the
+        // anchor indices belong to that edit; a mismatch or absent edit refuses.
+        // The write routes through the shared path-edit commit so a multi-anchor
+        // change is ONE undo entry and ONE re-bake — never one per anchor.
         applyAnchorWidths: (ids, value) => {
-          if (ids.length !== 1) return false;
-          const stroke = getRecordedAquarelleStroke(ids[0]!);
+          const target = resolveAnchorWidthTarget({
+            ids,
+            pathEditMutationId: vectorPathSession.pathEditMutationId.peek(),
+          });
+          if (target === null) return false;
+          const stroke = getRecordedAquarelleStroke(target);
           if (!stroke) return false;
           const anchors = normaliseAquarelleAnchors(stroke.anchors);
           if (!anchors) return false;
@@ -11534,7 +11543,7 @@ export function PhysicsPaintStudio() {
             vectorPathSession.vectorAnchorSelection.peek(),
             value,
           );
-          return beginAquarellePathEdit(ids[0]!, next) !== null;
+          return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);
         },
         reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
         // 261101-jmm: the sheet's row/global trash uses the SAME handler as

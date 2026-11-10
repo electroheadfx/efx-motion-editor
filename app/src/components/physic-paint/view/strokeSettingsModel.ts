@@ -644,7 +644,7 @@ export interface StrokeSettingsDialogBundle {
    * one undo entry rather than one per anchor. Returns true only when the edit
    * was accepted. Absent hides the Anchor width block.
    */
-  readonly applyAnchorWidths?: (ids: readonly number[], value: number) => boolean;
+  readonly applyAnchorWidths?: (ids: readonly number[], value: number) => boolean | Promise<boolean>;
   /**
    * 61-12 (VEC-04 / T-61-41): write one render mode on EVERY selected paint
    * stroke as ONE history entry, so the whole batch is one undo step. The mode
@@ -851,6 +851,28 @@ export function resolvePathEditGate(args: PathEditGateArgs): PathEditGate {
   };
 }
 
+/** 61-19 (G-5): the width commit's target inputs. */
+export interface AnchorWidthTargetArgs {
+  readonly ids: readonly number[];
+  readonly pathEditMutationId: string | null;
+}
+
+/**
+ * 61-19 (G-5): the ONE stroke the width commit may write. The dialog's
+ * selection decides `ids`, but the anchor indices belong to the OPEN path
+ * edit — so the write is legal only when exactly one stroke is selected AND
+ * that stroke IS the open edit. A mismatch, a missing edit, an empty session
+ * id or a non-integer id all fail closed to null, and the commit refuses.
+ */
+export function resolveAnchorWidthTarget(args: AnchorWidthTargetArgs): number | null {
+  if (args.ids.length !== 1) return null;
+  const id = args.ids[0]!;
+  if (!Number.isInteger(id)) return null;
+  const sessionId = args.pathEditMutationId;
+  if (typeof sessionId !== 'string' || sessionId === '') return null;
+  return sessionId === String(id) ? id : null;
+}
+
 export interface PathEditExitArgs {
   readonly pathEditActive: boolean;
   readonly gateEnabled: boolean;
@@ -884,6 +906,21 @@ export interface AnchorWidthReading {
 }
 
 /**
+ * 61-19 (G-5): the reading when nothing is measurable — no listed anchor, or
+ * no open path edit to write to. One constant keeps the "present but empty"
+ * state, and the control's disabled reason, stated exactly once.
+ */
+export const ANCHOR_WIDTH_EMPTY_READING: AnchorWidthReading = {
+  value: AQUARELLE_ANCHOR_WIDTH_DEFAULT,
+  mixed: false,
+  count: 0,
+};
+
+/** 61-19 (G-5): why the Anchor width control is inert when no path edit is open. */
+export const ANCHOR_WIDTH_NO_EDIT_REASON =
+  'Open Edit path on this stroke to set anchor widths.';
+
+/**
  * The Paint row's reading. `value` is the FIRST selected anchor's factor (the
  * first-selected precedent every numeric field follows), `mixed` when any
  * listed anchor disagrees, and `count` how many of the listed indices the path
@@ -904,7 +941,7 @@ export function readAnchorWidthReading(
     );
   }
   if (factors.length === 0) {
-    return { value: AQUARELLE_ANCHOR_WIDTH_DEFAULT, mixed: false, count: 0 };
+    return ANCHOR_WIDTH_EMPTY_READING;
   }
   const first = factors[0]!;
   return { value: first, mixed: factors.some((factor) => factor !== first), count: factors.length };
