@@ -24,7 +24,9 @@ import {
 } from '@efxlab/efx-watercolor/brushes';
 import {
   isAquarelleDryEvent,
+  type AquarelleAnchor,
   type AquarellePayloadEvent,
+  type AquarelleRenderMode,
   type AquarelleStroke,
   type AquarelleStrokePayload,
   type AquarelleTool,
@@ -85,6 +87,7 @@ import {
   stepAquarelleStrokeInScript,
   transformAquarelleStrokesInScript,
   translateAquarelleStrokesInScript,
+  updateAquarellePathInScript,
   updateAquarelleStrokesInScript,
   type AquarelleStackStepDirection,
   type AquarelleStrokeRegistrySnapshot,
@@ -875,6 +878,33 @@ export function beginAquarelleAppearanceEdit(
   // any other appearance commit on an ON stroke re-rolls it too. OFF strokes
   // skip inside the bump and keep their exact seed.
   bumpAquarellePaintSeedSalts(ids);
+  const after = captureAquarelleSnapshot();
+  return storeAquarelleEdit({ before, after });
+}
+
+/**
+ * 61-10 (VEC-02 / VEC-07): one completed path-edit gesture as a single edit
+ * (path update + its re-bake = ONE `aquarelle-script` ledger command). A drag,
+ * a handle move, an insert, a delete and a width commit all pass the FULL next
+ * anchor list through this one wrapper, so there is never one history entry
+ * per anchor (T-61-33). Same ghost clear, in-flight guard and snapshot pair as
+ * move/appearance; a zero-change path stores nothing.
+ *
+ * Deliberately does NOT call `bumpAquarellePaintSeedSalts`: a geometry edit
+ * must not re-roll the paint — re-rolling on every anchor nudge would change
+ * the rendered texture under the user's hand. The seed salt is a paint
+ * appearance concern.
+ */
+export function beginAquarellePathEdit(
+  mutationId: number,
+  anchors: readonly AquarelleAnchor[],
+  renderMode?: AquarelleRenderMode,
+): number | null {
+  clearAquarelleStrokeDrag();
+  if (aquarelleScriptEditInFlight) return null;
+  if (!Number.isFinite(mutationId)) return null;
+  const before = captureAquarelleSnapshot();
+  if (updateAquarellePathInScript(mutationId, anchors, renderMode) === 0) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }

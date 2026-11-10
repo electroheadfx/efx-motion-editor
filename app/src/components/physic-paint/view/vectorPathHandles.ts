@@ -28,6 +28,7 @@
 import {
   isUniformWidthProfile,
   normaliseVectorAnchors,
+  resolveAnchorHandles,
   sampleVectorPath,
   sampleVectorWidths,
   type AquarelleRenderMode,
@@ -337,6 +338,89 @@ export function projectVectorPath(
     widths,
     envelope,
   };
+}
+
+// --- Edit helpers (61-10, VEC-02) ----------------------------------------
+
+/**
+ * D-03: grabbing an `auto` anchor promotes it to `bezier` PERMANENTLY, with
+ * the derived handles frozen at their pre-drag values. There is no
+ * auto-with-override state — the moment the user takes control, they own it.
+ * An already-bezier anchor is carried untouched (same anchor object), and the
+ * input list is never mutated.
+ */
+export function promoteAnchorForDrag(
+  anchors: readonly VectorAnchor[],
+  index: number,
+): readonly VectorAnchor[] {
+  const anchor = anchors[index];
+  if (anchor === undefined || anchor.kind === 'bezier') return [...anchors];
+  const resolved = resolveAnchorHandles(anchors)[index];
+  if (resolved === undefined) return [...anchors];
+  const promoted: VectorAnchor = {
+    ...anchor,
+    kind: 'bezier',
+    in: { x: resolved.in.x, y: resolved.in.y },
+    out: { x: resolved.out.x, y: resolved.out.y },
+  };
+  const next = [...anchors];
+  next[index] = promoted;
+  return next;
+}
+
+/**
+ * Move one anchor by a document-uv delta, carrying every STORED handle
+ * endpoint by the same delta. An `auto` anchor stores no handles, so none are
+ * invented; every other anchor keeps its exact identity.
+ */
+export function moveAnchorBy(
+  anchors: readonly VectorAnchor[],
+  index: number,
+  dx: number,
+  dy: number,
+): readonly VectorAnchor[] {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return [...anchors];
+  const anchor = anchors[index];
+  if (anchor === undefined) return [...anchors];
+  const moved: VectorAnchor = {
+    ...anchor,
+    x: anchor.x + dx,
+    y: anchor.y + dy,
+    ...(anchor.in !== undefined ? { in: { x: anchor.in.x + dx, y: anchor.in.y + dy } } : {}),
+    ...(anchor.out !== undefined ? { out: { x: anchor.out.x + dx, y: anchor.out.y + dy } } : {}),
+  };
+  const next = [...anchors];
+  next[index] = moved;
+  return next;
+}
+
+/**
+ * The handle drag: move one handle endpoint of a `bezier` anchor. Unless the
+ * coupling is broken (the Alt modifier), the partner handle is mirrored about
+ * the anchor so the pair stays collinear and equal-length. With the coupling
+ * broken the partner is carried byte-identical for this drag only — the anchor
+ * stays `bezier` either way.
+ */
+export function moveHandleTo(
+  anchors: readonly VectorAnchor[],
+  index: number,
+  side: 'in' | 'out',
+  pointUv: Vec2,
+  breakCoupling: boolean,
+): readonly VectorAnchor[] {
+  const anchor = anchors[index];
+  if (anchor === undefined || anchor.kind !== 'bezier') return [...anchors];
+  if (!Number.isFinite(pointUv.x) || !Number.isFinite(pointUv.y)) return [...anchors];
+  const moved = { x: pointUv.x, y: pointUv.y };
+  const mirrored = { x: 2 * anchor.x - moved.x, y: 2 * anchor.y - moved.y };
+  const movedAnchor: VectorAnchor = breakCoupling
+    ? (side === 'in' ? { ...anchor, in: moved } : { ...anchor, out: moved })
+    : (side === 'in'
+      ? { ...anchor, in: moved, out: mirrored }
+      : { ...anchor, in: mirrored, out: moved });
+  const next = [...anchors];
+  next[index] = movedAnchor;
+  return next;
 }
 
 // --- The commit's stroke half --------------------------------------------

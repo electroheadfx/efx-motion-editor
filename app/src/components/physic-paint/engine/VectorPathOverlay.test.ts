@@ -665,7 +665,7 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
   it('commits nothing on a grab-and-release of an already-bezier anchor', () => {
     resetAquarelleRecordState();
     const anchors: readonly VectorAnchor[] = [
-      bezier(0.2, 0.5, { x: 0.15, y: 0.5 }, { x: 0.25, y: 0.5 }),
+      { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.15, y: 0.5 }, out: { x: 0.25, y: 0.5 } },
       auto(0.5, 0.5),
       auto(0.8, 0.5),
     ];

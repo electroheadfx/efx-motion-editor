@@ -32,7 +32,12 @@ import {
   type PaperPreset,
   type Tool,
 } from '@efxlab/efx-watercolor';
-import type { AquarellePoint, AquarelleStroke, AquarelleTool } from '@efxlab/efx-watercolor';
+import type {
+  AquarellePoint,
+  AquarelleStroke,
+  AquarelleTool,
+  VectorAnchor,
+} from '@efxlab/efx-watercolor';
 import {
   aquarelleActiveTipId,
   aquarelleActiveTool,
@@ -415,6 +420,12 @@ export function AquarelleCanvasLayer(props: {
    */
   onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
   /**
+   * 61-10 (VEC-02): one completed path-edit gesture. The overlay asks for the
+   * edit; the Studio owns the history entry and the refusal. The layer only
+   * forwards the numeric id and the FULL next anchor list.
+   */
+  onEditVectorPath?: (mutationId: number, anchors: readonly VectorAnchor[]) => void;
+  /**
    * ENGINE PORT (261027-klx Wave 3, Option A): the ONE narrow typed surface
    * Roto + the Studio may hold over the watercolor engine. Published once per
    * engine instance after construction; nulled on cleanup. Consumers must keep
@@ -445,6 +456,7 @@ export function AquarelleCanvasLayer(props: {
   const onDeleteStrokesRef = useRef(props.onDeleteStrokes);
   const onMoveStrokesRef = useRef(props.onMoveStrokes);
   const onTransformStrokesRef = useRef(props.onTransformStrokes);
+  const onEditVectorPathRef = useRef(props.onEditVectorPath);
   const onEnginePortReadyRef = useRef(props.onEnginePortReady);
   disabledRef.current = props.disabled ?? false;
   colorRef.current = props.color ?? '#103c65';
@@ -466,6 +478,7 @@ export function AquarelleCanvasLayer(props: {
   onDeleteStrokesRef.current = props.onDeleteStrokes;
   onMoveStrokesRef.current = props.onMoveStrokes;
   onTransformStrokesRef.current = props.onTransformStrokes;
+  onEditVectorPathRef.current = props.onEditVectorPath;
   onEnginePortReadyRef.current = props.onEnginePortReady;
 
   // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
@@ -1035,6 +1048,7 @@ export function AquarelleCanvasLayer(props: {
         getRecordedStrokes={getRecordedAquarelleStrokeEntries}
         onCommitPath={handleVectorCommit}
         onCancelPath={clearVectorDraft}
+        onPathEdit={(mutationId, anchors) => onEditVectorPathRef.current?.(mutationId, anchors)}
       />
       {/* 261030-cnq: the brush ring is mounted by the canvas stack — above the
           reference overlay, which used to cover it inside this group. */}

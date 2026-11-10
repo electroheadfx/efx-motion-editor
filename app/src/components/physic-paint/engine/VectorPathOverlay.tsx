@@ -4,10 +4,11 @@
 //
 //  Scoped by the 61-08 session signals: the pen latch
 //  (`vectorPenActive`) opens the draw surface; an open path edit
-//  (`pathEditMutationId`) keeps the surface out of the pointer's
-//  way. Every recorded vector stroke of the edit frame draws its
-//  spine, its width envelope and one marker per anchor; a draft
-//  draws the same geometry while it is being placed.
+//  (`pathEditMutationId`) instead owns the surface for anchor
+//  editing (D-06 — the two states are mutually exclusive). Every
+//  recorded vector stroke of the edit frame draws its spine, its
+//  width envelope and one marker per anchor; a draft draws the
+//  same geometry while it is being placed.
 //
 //  AUTHORITY BOUNDARY (T-61-31): the overlay owns GESTURE ONLY.
 //  It never bakes, never records and never imports an engine or
@@ -15,7 +16,9 @@
 //  `VectorPathCommit`; AquarelleCanvasLayer assembles the stroke
 //  and forwards it to the ONE existing stroke-end seam, so a
 //  vector stroke costs exactly one revision bump — the same cost
-//  as a hand-painted one.
+//  as a hand-painted one. A completed path EDIT likewise leaves
+//  as ONE `onPathEdit(mutationId, anchors)` call; the Studio owns
+//  the history entry and the refusal (61-10).
 //
 //  GEOMETRY: every curve, handle and width factor comes from the
 //  61-02 spine module through `vectorPathHandles`; every chrome
@@ -27,6 +30,7 @@
 //  (`efx-preact-reactivity`).
 // ============================================================
 
+import { signal } from '@preact/signals';
 import type { JSX, TargetedPointerEvent } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import {
@@ -48,11 +52,15 @@ import type { CanvasPoint } from '../view/scriptStrokeEdition';
 import {
   ANCHOR_BODY_PX,
   ANCHOR_CORE_RADIUS_PX,
+  DRAG_THRESHOLD_PX,
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
   buildDraftPath,
+  hitTestVectorPath,
   isAdjacentToLast,
+  moveAnchorBy,
   projectVectorPath,
+  promoteAnchorForDrag,
   screenToUv,
   uvToScreen,
   type VectorPathCommit,
@@ -95,6 +103,34 @@ export interface VectorPathOverlayProps {
   getRecordedStrokes: () => ReadonlyMap<number, AquarelleStroke>;
   onCommitPath: (commit: VectorPathCommit) => void;
   onCancelPath: () => void;
+  /**
+   * 61-10: one completed path-edit gesture. The overlay hands the numeric
+   * mutationId and the FULL next anchor list; history and the refusal live in
+   * the Studio (the overlay never imports a record or selection module).
+   */
+  onPathEdit: (mutationId: number, anchors: readonly VectorAnchor[]) => void;
+}
+
+/**
+ * The live anchor-drag preview. Gesture-local display state written ONLY by
+ * the pointer handlers and cleared BEFORE the commit runs (the T-61-30
+ * clear-before-commit law), so a same-tick repeat gesture finds nothing. This
+ * leaf's render body is the only subscriber.
+ */
+export const vectorPathEditDrag = signal<{
+  readonly mutationId: number;
+  readonly anchors: readonly VectorAnchor[];
+} | null>(null);
+
+/** One in-flight anchor drag (path edit): where it started and its latest list. */
+interface AnchorDragState {
+  readonly mutationId: number;
+  readonly index: number;
+  readonly startUv: Vec2;
+  readonly anchorsAtStart: readonly VectorAnchor[];
+  readonly wasPromoted: boolean;
+  moved: boolean;
+  latest: readonly VectorAnchor[];
 }
 
 /** One path the overlay draws: its anchors, resolved handles and projection. */
@@ -319,6 +355,9 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     onCommitPath: props.onCommitPath,
     onCancelPath: props.onCancelPath,
   };
+  // The in-flight anchor drag (path edit). A ref so the pointer handlers never
+  // re-render the surface mid-gesture; the visual preview travels on a signal.
+  const dragRef = useRef<AnchorDragState | null>(null);
 
   // Narrow reads: this leaf is the only subscriber to the session latches.
   const penActive = vectorPenActive.value;
@@ -329,6 +368,25 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   // Counter-scaling law: screen-pixel chrome divides by the effective zoom.
   const scale = finiteScale(physicsPaintCanvasZoom.effectiveScale.value);
   const draft = vectorDrawDraft.value;
+  const editDrag = vectorPathEditDrag.value;
+
+  // Path edit (61-10): resolve the stroke the session names. The id is a
+  // session string and the registry is keyed by number, so the match is
+  // explicit and fails closed when it cannot be read.
+  const recordedStrokes = props.getRecordedStrokes();
+  let editTargetMutationId: number | null = null;
+  let editTargetAnchors: readonly VectorAnchor[] | null = null;
+  if (editMutationId !== null) {
+    for (const [mutationId, candidate] of recordedStrokes) {
+      if (String(mutationId) !== editMutationId) continue;
+      if (isAquarelleStrokeDeleted(mutationId)) continue;
+      const candidateAnchors = candidate.anchors;
+      if (candidateAnchors === undefined || candidateAnchors.length === 0) continue;
+      editTargetMutationId = mutationId;
+      editTargetAnchors = candidateAnchors;
+      break;
+    }
+  }
 
   useEffect(() => {
     if (!penActive) return;
@@ -343,11 +401,14 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
 
   const playFrame = props.getPlayFrame();
   const recorded: DrawnVectorPath[] = [];
-  for (const [mutationId, stroke] of props.getRecordedStrokes()) {
+  for (const [mutationId, stroke] of recordedStrokes) {
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
     // The vector-ness law: no anchors = a hand-painted stroke, nothing drawn.
-    const anchors = stroke.anchors;
+    // The live drag preview replaces the edited stroke's own anchors.
+    const anchors = editDrag !== null && editDrag.mutationId === mutationId
+      ? editDrag.anchors
+      : stroke.anchors;
     if (anchors === undefined || anchors.length === 0) continue;
     const drawn = drawnPathOf(`stroke-${mutationId}`, anchors, props.width, props.height);
     if (drawn === null) continue;
@@ -357,9 +418,16 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     ? null
     : drawnPathOf('draft', draft.anchors, props.width, props.height);
 
-  if (recorded.length === 0 && draftPath === null && !penActive) return null;
+  if (recorded.length === 0 && draftPath === null && !penActive && editTargetMutationId === null) {
+    return null;
+  }
 
-  const interactive = penActive && editMutationId === null;
+  // Draw and path edit are mutually exclusive (D-06): the pen owns the surface
+  // while it is latched with no path edit open; an open path edit owns it
+  // otherwise, even with the pen released.
+  const drawInteractive = penActive && editMutationId === null;
+  const editInteractive = editTargetMutationId !== null && editTargetAnchors !== null;
+  const interactive = drawInteractive || editInteractive;
 
   const canvasPointOf = (event: TargetedPointerEvent<HTMLDivElement>): CanvasPoint | null => {
     const target = event.currentTarget as HTMLElement | null;
@@ -425,6 +493,79 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     finishVectorPath(handlersRef.current);
   };
 
+  // --- Path edit (61-10): the anchor drag ---------------------------------
+
+  const startEditDrag = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    if (editTargetMutationId === null || editTargetAnchors === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const pointerUv = pointerUvOf(event);
+    if (pointerUv === null) return;
+    const handles = resolveAnchorHandles(editTargetAnchors);
+    const target = hitTestVectorPath(
+      editTargetAnchors,
+      handles,
+      pointerUv,
+      props.width,
+      props.height,
+      scale,
+    );
+    if (target === null || target.kind !== 'anchor') return;
+    const current = editTargetAnchors[target.index];
+    if (current === undefined) return;
+    // D-03: the grab owns the anchor — promote BEFORE any movement, so a
+    // grab-and-release still commits the promoted shape.
+    const promoted = promoteAnchorForDrag(editTargetAnchors, target.index);
+    dragRef.current = {
+      mutationId: editTargetMutationId,
+      index: target.index,
+      startUv: pointerUv,
+      anchorsAtStart: promoted,
+      wasPromoted: current.kind !== 'bezier',
+      moved: false,
+      latest: promoted,
+    };
+    vectorPathEditDrag.value = { mutationId: editTargetMutationId, anchors: promoted };
+  };
+
+  const continueEditDrag = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (drag === null) return;
+    const pointerUv = pointerUvOf(event);
+    if (pointerUv === null) return;
+    // Absolute delta from the gesture start — never accumulated per move, so a
+    // dropped pointer event cannot drift the anchor.
+    const dx = pointerUv.x - drag.startUv.x;
+    const dy = pointerUv.y - drag.startUv.y;
+    const distancePx = Math.hypot(dx * props.width, dy * props.height) * scale;
+    const next = moveAnchorBy(drag.anchorsAtStart, drag.index, dx, dy);
+    drag.latest = next;
+    if (distancePx > DRAG_THRESHOLD_PX) drag.moved = true;
+    vectorPathEditDrag.value = { mutationId: drag.mutationId, anchors: next };
+  };
+
+  const finishEditDrag = () => {
+    const drag = dragRef.current;
+    if (drag === null) return;
+    dragRef.current = null;
+    // Clear BEFORE the commit so a same-tick repeat gesture finds nothing
+    // (the T-61-30 clear-before-commit law).
+    vectorPathEditDrag.value = null;
+    if (drag.moved) {
+      props.onPathEdit(drag.mutationId, drag.latest);
+      return;
+    }
+    // A grab-and-release still commits the promotion (D-03); an already-bezier
+    // anchor that did not move is a no-op and commits nothing.
+    if (drag.wasPromoted) props.onPathEdit(drag.mutationId, drag.anchorsAtStart);
+  };
+
+  const cancelEditDrag = () => {
+    dragRef.current = null;
+    vectorPathEditDrag.value = null;
+  };
+
   return (
     <div
       data-testid="vector-path-overlay"
@@ -432,14 +573,17 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
         position: 'absolute',
         inset: '0',
         zIndex: VECTOR_PATH_Z_INDEX,
-        // Pass-through unless the pen owns the surface AND no path edit is
-        // open — the two states are mutually exclusive (D-06).
+        // Pass-through unless the pen or an open path edit owns the surface —
+        // the two states are mutually exclusive (D-06).
         pointerEvents: interactive ? 'auto' : 'none',
-        cursor: interactive ? 'crosshair' : 'default',
+        cursor: drawInteractive ? 'crosshair' : 'default',
       }}
-      onPointerDown={interactive ? handlePointerDown : undefined}
+      onPointerDown={interactive ? (editInteractive ? startEditDrag : handlePointerDown) : undefined}
+      onPointerMove={editInteractive ? continueEditDrag : undefined}
+      onPointerUp={editInteractive ? finishEditDrag : undefined}
+      onPointerCancel={editInteractive ? cancelEditDrag : undefined}
       // Preact's DOM event prop is `onDblClick`; it binds the real `dblclick`.
-      onDblClick={interactive ? handleDoubleClick : undefined}
+      onDblClick={drawInteractive ? handleDoubleClick : undefined}
     >
       <svg
         width="100%"

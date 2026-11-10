@@ -14,14 +14,18 @@ import { signal } from '@preact/signals';
 import {
   DIFFUSION_CAP,
   PAINT_SEED_SALT_PARAM,
+  anchorsEqual,
   createDryEvent,
   isAquarelleDryEvent,
   normaliseAquarelleAnchors,
   paintSeedSaltOf,
+  projectVectorPath,
   resolveAquarelleRenderMode,
   toStudioStroke,
+  type AquarelleAnchor,
   type AquarelleDryEvent,
   type AquarellePayloadEvent,
+  type AquarelleRenderMode,
   type AquarelleStroke,
   type AquarelleStrokePayload,
   type AquarelleTool,
@@ -782,6 +786,52 @@ export function updateAquarelleStrokesInScript(
   }
   bumpAquarelleStrokesRevision();
   return targets.length;
+}
+
+/**
+ * 61-10 (VEC-02 / VEC-07): replace the path of one recorded stroke and its
+ * payload-timeline entry.
+ *
+ * The translate/update law applies unchanged: validate the id and resolve the
+ * target BEFORE mutating, normalise the incoming list (`normaliseAquarelleAnchors`
+ * refuses a malformed list — T-61-32), REPLACE the stroke and regenerate its
+ * entry through the ONE projection, and write it at the SAME timeline index.
+ * Every other field is carried through the spread, so points, params,
+ * diffusionFrames, timestamp and playFrame survive the path write.
+ *
+ * Idempotent: an unchanged anchor list and render mode store nothing, bump
+ * nothing and return 0. The persisted form drops a width factor equal to 1
+ * (D-10), so a drag can never leave width residue behind.
+ */
+export function updateAquarellePathInScript(
+  mutationId: number,
+  anchors: readonly AquarelleAnchor[],
+  renderMode?: AquarelleRenderMode,
+): number {
+  if (!Number.isFinite(mutationId)) return 0;
+  const stroke = recordedStrokes.get(mutationId);
+  const entry = recordedStrokeEntries.get(mutationId);
+  if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) return 0;
+  const index = payloadTimeline.indexOf(entry);
+  if (index < 0) return 0;
+  const normalised = normaliseAquarelleAnchors(anchors);
+  if (normalised === undefined) return 0;
+  const nextAnchors = projectVectorPath(normalised);
+  const currentMode = resolveAquarelleRenderMode(stroke.renderMode);
+  const nextMode = renderMode === undefined ? currentMode : resolveAquarelleRenderMode(renderMode);
+  if (anchorsEqual(stroke.anchors ?? [], nextAnchors) && currentMode === nextMode) return 0;
+  const nextStroke: AquarelleStroke = renderMode === undefined
+    ? { ...stroke, anchors: nextAnchors }
+    : { ...stroke, anchors: nextAnchors, renderMode: nextMode };
+  // Regenerate through the ONE projection so the payload's opaque engine block
+  // carries the same anchors the stroke holds (T-61-34).
+  const nextEntry = toStudioStroke(nextStroke);
+  recordedStrokes.set(mutationId, nextStroke);
+  recordedStrokeEntries.set(mutationId, nextEntry);
+  // SAME index — replay order is preserved (replace only, never splice).
+  payloadTimeline[index] = nextEntry;
+  bumpAquarelleStrokesRevision();
+  return 1;
 }
 
 /**
