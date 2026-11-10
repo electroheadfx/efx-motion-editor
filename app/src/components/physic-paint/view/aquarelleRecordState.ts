@@ -605,11 +605,41 @@ export function restoreAquarelleStrokeRegistry(
 }
 
 /**
+ * 61-10 (VEC-02 / T-61-34): the ONE anchor map a whole-stroke move shares with
+ * its points. An absent list stays absent (a hand-painted stroke gains no
+ * `anchors` key), `kind` and `width` are carried verbatim (width is a paint
+ * property, never a geometry one), and only the handles the anchor STORED are
+ * mapped — an auto anchor gains no invented `in`/`out` key.
+ */
+function mapAnchorList(
+  anchors: readonly AquarelleAnchor[] | undefined,
+  mapPoint: (x: number, y: number) => { x: number; y: number },
+): readonly AquarelleAnchor[] | undefined {
+  if (anchors === undefined) return undefined;
+  return anchors.map((anchor) => {
+    const mapped = mapPoint(anchor.x, anchor.y);
+    return {
+      x: mapped.x,
+      y: mapped.y,
+      kind: anchor.kind,
+      ...(anchor.in !== undefined ? { in: mapPoint(anchor.in.x, anchor.in.y) } : {}),
+      ...(anchor.out !== undefined ? { out: mapPoint(anchor.out.x, anchor.out.y) } : {}),
+      ...(anchor.width !== undefined ? { width: anchor.width } : {}),
+    };
+  });
+}
+
+/**
  * 261022-tv1 / 261024-mz5: translate one recorded stroke OR the whole
  * selection (and its payload-timeline entry) by a document-UV delta.
  * Everything else — ticks, recordedOrder, cuisson, traceSeed, playFrame,
  * params, the record clock — is untouched. Returns the number of changed
  * strokes; unknown/deleted ids are ignored and an empty batch bumps nothing.
+ *
+ * 61-10: the stroke's vector anchors (and every stored handle endpoint) move
+ * through the SAME delta as the points, and the entry's opaque
+ * `engine.anchors` is rebuilt from the same mapped list — a stale copy would
+ * make the payload disagree with the stroke (T-61-34).
  *
  * Objects are REPLACED, never mutated in place: an aquarelle script snapshot
  * keeps the live event references (that is what lets a measured cuisson patch
@@ -645,6 +675,7 @@ export function translateAquarelleStrokesInScript(
   if (targets.length === 0) return 0;
 
   for (const { mutationId, stroke, entry, index } of targets) {
+    const nextAnchors = mapAnchorList(stroke.anchors, (x, y) => ({ x: x + dxUv, y: y + dyUv }));
     const movedStroke: AquarelleStroke = {
       ...stroke,
       points: stroke.points.map((strokePoint) => ({
@@ -655,6 +686,7 @@ export function translateAquarelleStrokesInScript(
         ty: strokePoint.ty,
         tw: strokePoint.tw,
       })),
+      ...(nextAnchors === undefined ? {} : { anchors: nextAnchors }),
     };
     const movedEntry: ReturnType<typeof toStudioStroke> = {
       ...entry,
@@ -663,6 +695,7 @@ export function translateAquarelleStrokesInScript(
         x: strokePoint.x + dxUv,
         y: strokePoint.y + dyUv,
       })),
+      ...(nextAnchors === undefined ? {} : { engine: { ...entry.engine, anchors: nextAnchors } }),
     };
 
     recordedStrokes.set(mutationId, movedStroke);
@@ -1003,6 +1036,9 @@ export function transformAquarelleStrokesInScript(
   };
 
   for (const { mutationId, stroke, entry, index } of targets) {
+    // 61-10: anchors and handles go through the SAME map as the points; the
+    // width factor is scale-invariant and `kind` never changes.
+    const nextAnchors = mapAnchorList(stroke.anchors, mapPoint);
     const transformedStroke: AquarelleStroke = {
       ...stroke,
       points: stroke.points.map((strokePoint) => {
@@ -1017,6 +1053,7 @@ export function transformAquarelleStrokesInScript(
           tw: strokePoint.tw,
         };
       }),
+      ...(nextAnchors === undefined ? {} : { anchors: nextAnchors }),
     };
     const transformedEntry: ReturnType<typeof toStudioStroke> = {
       ...entry,
@@ -1024,6 +1061,7 @@ export function transformAquarelleStrokesInScript(
         const mapped = mapPoint(strokePoint.x, strokePoint.y);
         return { ...strokePoint, x: mapped.x, y: mapped.y };
       }),
+      ...(nextAnchors === undefined ? {} : { engine: { ...entry.engine, anchors: nextAnchors } }),
     };
 
     recordedStrokes.set(mutationId, transformedStroke);

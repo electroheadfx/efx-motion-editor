@@ -280,6 +280,7 @@ import {
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
   beginAquarellePaintSeedRerollEdit,
+  beginAquarellePathEdit,
   beginAquarellePlaceEdit,
   beginAquarelleReorderEdit,
   beginAquarelleStrokeUndoEdit,
@@ -316,7 +317,7 @@ import type {
 } from './view/strokeSettingsModel';
 import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
-import { isAquarelleDryEvent, toStudioStroke, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import {
   beginAquarelleLiftPreview,
@@ -352,6 +353,9 @@ const AQUARELLE_LIFT_FAILURE_MESSAGE = 'The erase did not commit — the picture
 // Without it every Draft commit would diverge from pixels whose base was never
 // decided, and the settle's apply would fail closed (`durable-base-unknown`).
 const DRAFT_ARM_REFUSAL_MESSAGE = 'Could not prepare this frame for Draft — the watercolor base could not be recovered.';
+// 61-10 (VEC-02, T-61-34): the fixed path-edit refusal line (UI-SPEC E10).
+// Copy is never interpolated with user text, and the stroke is left unchanged.
+const VECTOR_PATH_REJECTION_MESSAGE = "Vector path rejected — this stroke's path could not be read. The stroke was left unchanged.";
 /**
  * 261028-k03 D2 preflight. `normal` = the live-sheet path owns this stroke (no
  * committed paint to punch, or Script is off with no script to protect);
@@ -9932,6 +9936,24 @@ export function PhysicsPaintStudio() {
     setApplyStatus('error');
     setLastError(message);
   }, []);
+  // 61-10 (VEC-02 / T-61-34): the ONE path-edit seam. The overlay hands the
+  // full next anchor list; this handler is the only writer. A missing stroke or
+  // an unreadable path is refused WHOLE — nothing is written and the existing
+  // status capsule publishes the fixed line. A null edit id for a READABLE path
+  // is an in-flight or unchanged gesture, which must publish nothing.
+  const handleAquarelleVectorPathEdit = useCallback(
+    (mutationId: number, anchors: readonly AquarelleAnchor[]): number | null => {
+      const stroke = getRecordedAquarelleStroke(mutationId);
+      if (!stroke || normaliseAquarelleAnchors(stroke.anchors) === undefined) {
+        setApplyMessage(VECTOR_PATH_REJECTION_MESSAGE);
+        setApplyStatus('error');
+        setLastError(VECTOR_PATH_REJECTION_MESSAGE);
+        return null;
+      }
+      return beginAquarellePathEdit(mutationId, anchors);
+    },
+    [],
+  );
 
   // 261027-klx: the mount's prop surface is the watercolor surface alone —
   // `PhysicsPaintCanvasMount` renders `AquarelleCanvasLayer` (+ the cached base
@@ -9939,7 +9961,7 @@ export function PhysicsPaintStudio() {
   // completion/performance/input telemetry, beforeEngineDestroy, stroke
   // metadata, the brush script overlay) are gone; `onEnginePortReady` is the
   // Wave 3 D8 narrow port the frame-editing controller consumes.
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -9976,6 +9998,7 @@ export function PhysicsPaintStudio() {
       onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,
       onAquarelleMoveStrokes: handleAquarelleMoveStrokes,
       onAquarelleTransformStrokes: handleAquarelleTransformStrokes,
+      onAquarelleVectorPathEdit: handleAquarelleVectorPathEdit,
       onEnginePortReady: handleAquarelleEnginePortReady,
     };
   });

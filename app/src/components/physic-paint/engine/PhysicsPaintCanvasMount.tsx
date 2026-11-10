@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { AquarelleStroke } from '@efxlab/efx-watercolor';
+import type { AquarelleStroke, VectorAnchor } from '@efxlab/efx-watercolor';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { physicsPaintCanvasZoom } from '../view/physicsPaintCanvasZoom';
@@ -66,6 +66,10 @@ export function PhysicsPaintCanvasMount(props: {
   onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void;
   onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
   onAquarelleTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
+  /** 61-10 (VEC-02): one completed path-edit gesture, forwarded from the
+   *  layer's ONE overlay seam. Returns the stored edit id (null = refused or
+   *  no-op); the Studio owns history and the refusal publication. */
+  onAquarelleVectorPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => number | null;
   /** Wave 3 D8: the ONE narrow engine port, forwarded from the layer. */
   onEnginePortReady?: (port: AquarelleEnginePort | null) => void;
 }) {
@@ -83,6 +87,7 @@ export function PhysicsPaintCanvasMount(props: {
   const onAquarelleDeleteStrokesRef = useRef(props.onAquarelleDeleteStrokes);
   const onAquarelleMoveStrokesRef = useRef(props.onAquarelleMoveStrokes);
   const onAquarelleTransformStrokesRef = useRef(props.onAquarelleTransformStrokes);
+  const onAquarelleVectorPathEditRef = useRef(props.onAquarelleVectorPathEdit);
   const onEnginePortReadyRef = useRef(props.onEnginePortReady);
   const getAquarellePlayFrameRef = useRef(props.getAquarellePlayFrame);
   const getAquarellePaperIdRef = useRef(props.getAquarellePaperId);
@@ -102,6 +107,7 @@ export function PhysicsPaintCanvasMount(props: {
   onAquarelleDeleteStrokesRef.current = props.onAquarelleDeleteStrokes;
   onAquarelleMoveStrokesRef.current = props.onAquarelleMoveStrokes;
   onAquarelleTransformStrokesRef.current = props.onAquarelleTransformStrokes;
+  onAquarelleVectorPathEditRef.current = props.onAquarelleVectorPathEdit;
   onEnginePortReadyRef.current = props.onEnginePortReady;
   getAquarellePlayFrameRef.current = props.getAquarellePlayFrame;
   getAquarellePaperIdRef.current = props.getAquarellePaperId;
@@ -225,6 +231,7 @@ export function PhysicsPaintCanvasMount(props: {
         onDeleteStrokes={(mutationIds) => onAquarelleDeleteStrokesRef.current?.(mutationIds)}
         onMoveStrokes={(mutationIds, dxPx, dyPx) => onAquarelleMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}
         onTransformStrokes={(mutationIds, transform) => onAquarelleTransformStrokesRef.current?.(mutationIds, transform)}
+        onEditVectorPath={(mutationId, anchors) => onAquarelleVectorPathEditRef.current?.(mutationId, anchors)}
         onEnginePortReady={(port) => onEnginePortReadyRef.current?.(port)}
       />
       {mountError ? <p class="demo-error">{mountError}</p> : null}
