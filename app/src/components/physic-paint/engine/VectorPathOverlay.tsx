@@ -691,8 +691,14 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   }, [penActive, editMutationId]);
 
   const playFrame = props.getPlayFrame();
+  // 61-UAT: spines, anchors, handles and rungs are CONSTRUCTION chrome, never
+  // part of the render. Drawing them whenever a frame holds vector strokes put
+  // every path's skeleton on top of the painted result, so there was no view of
+  // the final frame at all. They are shown only in the three states that are
+  // about construction: drawing a path, editing one, or the wireframe view.
+  const showStructure = penActive || editTargetMutationId !== null || wireframe;
   const recorded: DrawnVectorPath[] = [];
-  for (const [mutationId, stroke] of recordedStrokes) {
+  for (const [mutationId, stroke] of (showStructure ? recordedStrokes : [])) {
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
     // The vector-ness law: no anchors = a hand-painted stroke, nothing drawn.

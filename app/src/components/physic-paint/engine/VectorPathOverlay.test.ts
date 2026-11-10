@@ -270,6 +270,9 @@ describe('VectorPathOverlay — rendered geometry (task 1)', () => {
   });
 
   it('draws one spine polyline and exactly one marker per anchor', () => {
+    // 61-UAT: the structure is construction chrome — it renders only while the
+    // pen is drawing, a path edit is open, or the wireframe view is on.
+    vectorPenActive.value = true;
     const tree = render(VectorPathOverlay(propsWith([[11, vectorStroke()]])));
     expect(nodesWithTestId(tree, 'vector-path-spine')).toHaveLength(1);
     expect(nodesWithTestId(tree, 'vector-path-anchor')).toHaveLength(3);
@@ -278,6 +281,7 @@ describe('VectorPathOverlay — rendered geometry (task 1)', () => {
   });
 
   it('draws two handle markers for a bezier anchor and none for an auto anchor', () => {
+    vectorPenActive.value = true;
     const tree = render(
       VectorPathOverlay(
         propsWith([
@@ -294,6 +298,14 @@ describe('VectorPathOverlay — rendered geometry (task 1)', () => {
     expect(nodesWithTestId(tree, 'vector-path-handle')).toHaveLength(2);
   });
 
+  it('draws no structure on an idle frame, so the render stays unobstructed', () => {
+    // 61-UAT: every vector path's spine sat on top of the painted result with no
+    // way to see the final frame. The chrome belongs to the construction states.
+    expect(VectorPathOverlay(propsWith([[11, vectorStroke()]]))).toBeNull();
+    wireframeMode.value = true;
+    expect(VectorPathOverlay(propsWith([[11, vectorStroke()]]))).not.toBeNull();
+  });
+
   it('skips strokes painted on another frame', () => {
     expect(
       VectorPathOverlay(propsWith([[12, vectorStroke({ playFrame: FRAME + 1 })]])),
@@ -307,9 +319,10 @@ describe('VectorPathOverlay — rendered geometry (task 1)', () => {
     expect(root!.props['onPointerDown']).toBeTypeOf('function');
   });
 
-  it('passes pointer events through unless the pen is active and no path edit is open', () => {
-    const idle = render(VectorPathOverlay(propsWith([[11, vectorStroke()]])));
-    expect(idle!.props['style']).toMatchObject({ pointerEvents: 'none' });
+  it('mounts no pointer surface at all while idle, and one while the pen is active', () => {
+    // 61-UAT: an idle frame mounts nothing, so the final render is untouched by
+    // both the chrome and the pointer surface.
+    expect(VectorPathOverlay(propsWith([[11, vectorStroke()]]))).toBeNull();
     vectorPenActive.value = true;
     const active = render(VectorPathOverlay(propsWith([[11, vectorStroke()]])));
     expect(active!.props['style']).toMatchObject({ pointerEvents: 'auto' });
