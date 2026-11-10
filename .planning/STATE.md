@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-02-PLAN.md
-last_updated: "2026-11-10T12:39:20.150Z"
+stopped_at: Completed 61-08-PLAN.md
+last_updated: "2026-11-10T12:52:16.530Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: d5c9c33413af0190ee5ce34bfd18c928cd4c308e
+state_head: 090e96f990085bf670606652af1df2fdbaa1e820
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 33
+  completed_plans: 34
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 3 of 14
+Plan: 4 of 14
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -91,6 +91,7 @@ Progress: [█████░░░░░] 50%
 | Phase 60 P06 | 3 | 3 tasks | 1 files |
 | Phase 61 P01 | 19min | 3 tasks | 4 files |
 | Phase 61 P02 | 3min | 3 tasks | 3 files |
+| Phase 61 P08 | 9min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -215,6 +216,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: Vector auto handles are (n·P ∓ Δ)/n with n = 6 interior and n = 3 at the endpoints — one rounding per handle pins the golden rationals (4/6, 8/6) and keeps hydrate re-derivation bit-identical
 - [Phase 61]: anchorWidthAt reads an absent factor as the default 1 at that anchor's own station, so interpolation, the hold-at-ends law and D-10's sparse storage are one definition
 - [Phase 61]: The determinism contract scans src/vector with a zero-file guard naming spine.ts; spine.ts imports nothing, so REL-01 and the engine-1 direction pins are untouched
+- [Phase 61]: The vector pen is a host tool: vectorPathSession signals live outside AquarelleTool, paint tool presses clear the pen at the two input seams (rail onClick, Studio handleSelectAquarelleTool) to avoid an aquarelleRecordState -> vectorPathSession -> aquarelleStrokeSelection import cycle.
+- [Phase 61]: WatercolorRail is exported for the plain .test.ts vnode walk because vitest collects only src/**/*.test.ts; the pen also joins the one-active-surface law (!penActive) in the paint row.
 
 ### Pending Todos
 
@@ -307,8 +310,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T12:39:20.081Z
-Stopped at: Completed 61-02-PLAN.md
+Last session: 2026-11-10T12:52:15.297Z
+Stopped at: Completed 61-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
