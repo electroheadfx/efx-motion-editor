@@ -52,6 +52,7 @@ import {
   setScriptStrokeSelection,
   strokeSizePreview,
   toggleScriptStrokeSelection,
+  wireframeMode,
   type CanvasPoint,
   type ScriptStrokeBounds,
   type ScriptStrokeDrag,
@@ -60,6 +61,7 @@ import {
 } from './scriptStrokeEdition';
 import { disarmAquarellePicker } from './aquarelleColorPicker';
 import { exitRailMotionEditing } from './railMotionEditingMode';
+import { exitPathEdit, exitVectorPen } from './vectorPathLatches';
 import {
   buildLiftRibbonCached,
   liftRibbonBoundsPx,
@@ -332,6 +334,11 @@ export function setAquarelleSelectMode(
   filter: AquarelleStrokeTypeFilter = AQUARELLE_STROKE_FILTER_DEFAULT,
 ): void {
   const was = scriptSelectMode.peek();
+  // 61-17 (G-6 / D-16): the wireframe view is a no-capture view — Select entry
+  // is refused OUTRIGHT while it is on, before any write, so the wireframe
+  // cannot be given a selection surface it would swallow. Leaving Select is
+  // never refused.
+  if (on && wireframeMode.peek()) return;
   // 261030-cnq: entering Move/Edit leaves the color picker (Select owns Alt —
   // the Alt+click stroke-delete law). Exiting does not arm it.
   // 261107 UAT: entering Move/Edit also leaves ANIMATE MODE — the rail-motion
@@ -339,6 +346,13 @@ export function setAquarelleSelectMode(
   if (on) {
     disarmAquarellePicker();
     exitRailMotionEditing();
+    // 61-17 (G-6): Select entry also releases the vector pen and closes any
+    // open path edit — the vector overlay draws ABOVE the Select overlay, so a
+    // latched pen would swallow every selection click. ENTRY EDGE ONLY:
+    // `enterVectorPen` clears Select through this same function, and the pen
+    // it just latched must survive that exit.
+    exitVectorPen();
+    exitPathEdit();
   }
   setAquarelleStrokeTypeFilter(on ? filter : AQUARELLE_STROKE_FILTER_DEFAULT);
   // 261031-euf: the finer list filters never survive a select-mode

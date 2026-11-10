@@ -11,11 +11,20 @@
 // Draft policy (61-08 Task 3): a draw draft survives a tool toggle — it is
 // cleared only by Escape, by finishing the path, and by resetForStudioOpen.
 //
+// 61-17 (G-6): the pen / path-edit / anchor-selection latches and their exit
+// actions live in the dependency-free leaf `vectorPathLatches` so the Select
+// and picker entry choke points can import them without a cycle. This module
+// RE-EXPORTS every moved symbol, so the signals below are the same objects and
+// every shipped import path keeps working unchanged.
+//
 // Preact reactivity: module-level signals with compare-then-write setters
 // (`efx-preact-reactivity`), `.peek()` in handlers, never a render-body write.
-import { signal, type Signal } from '@preact/signals';
+import { signal } from '@preact/signals';
 import { disarmAquarellePicker } from './aquarelleColorPicker';
 import { setAquarelleSelectMode } from './aquarelleStrokeSelection';
+import { clearVectorAnchorSelection, exitPathEdit, exitVectorPen, pathEditMutationId, vectorPenActive, writeIfChanged } from './vectorPathLatches';
+
+export * from './vectorPathLatches';
 
 /** One anchor of the in-progress draw session — structurally the 61-02 VectorAnchor. */
 export interface VectorDraftAnchor {
@@ -33,69 +42,8 @@ export interface VectorDrawDraft {
   readonly cursor: { readonly x: number; readonly y: number } | null;
 }
 
-/** The vector pen latch — a HOST tool: latching it never changes `aquarelleActiveTool`. */
-export const vectorPenActive = signal(false);
-
-/** The stroke being path-edited, or null while no path edit is open (D-06, distinct from draw). */
-export const pathEditMutationId = signal<string | null>(null);
-
 /** The draw draft in progress; survives a tool toggle and clears only on Escape / finish / reset. */
 export const vectorDrawDraft = signal<VectorDrawDraft | null>(null);
-
-/**
- * 61-10: the open path edit's anchor selection — the ONE selection signal.
- * The overlay writes it through `selectAnchor`; the dialog plan (61-11) reads
- * it. Never a second copy.
- */
-export const vectorAnchorSelection = signal<readonly number[]>([]);
-
-/** Deduplicated, ascending selection; unknown indices are dropped. */
-function normaliseAnchorSelection(indices: readonly number[]): readonly number[] {
-  const kept = new Set<number>();
-  for (const index of indices) {
-    if (Number.isInteger(index) && index >= 0) kept.add(index);
-  }
-  return [...kept].sort((a, b) => a - b);
-}
-
-function sameAnchorSelection(a: readonly number[], b: readonly number[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let index = 0; index < a.length; index += 1) {
-    if (a[index] !== b[index]) return false;
-  }
-  return true;
-}
-
-/** Write the selection; an identical value notifies zero effects. */
-export function setVectorAnchorSelection(indices: readonly number[]): void {
-  const next = normaliseAnchorSelection(indices);
-  if (sameAnchorSelection(vectorAnchorSelection.peek(), next)) return;
-  vectorAnchorSelection.value = next;
-}
-
-/** Toggle one anchor in/out of the selection, keeping it ascending. */
-export function toggleVectorAnchorSelection(index: number): void {
-  if (!Number.isInteger(index) || index < 0) return;
-  const current = vectorAnchorSelection.peek();
-  const next = current.includes(index)
-    ? current.filter((value) => value !== index)
-    : [...current, index].sort((a, b) => a - b);
-  if (sameAnchorSelection(current, next)) return;
-  vectorAnchorSelection.value = next;
-}
-
-/** Drop the selection; an already-empty selection notifies nothing. */
-export function clearVectorAnchorSelection(): void {
-  if (vectorAnchorSelection.peek().length === 0) return;
-  vectorAnchorSelection.value = [];
-}
-
-/** Compare-then-write: an identical value notifies zero effects (idempotent setters). */
-function writeIfChanged<T>(target: Signal<T>, next: T): boolean {
-  if (target.peek() === next) return false;
-  target.value = next;
-  return true;
-}
 
 /**
  * Latch the vector pen. Clears the sibling input surfaces through their own
@@ -107,11 +55,6 @@ export function enterVectorPen(): void {
   setAquarelleSelectMode(false);
   disarmAquarellePicker();
   exitPathEdit();
-}
-
-/** Release the vector pen. Arms nothing and leaves the paint tool and the draft alone. */
-export function exitVectorPen(): void {
-  writeIfChanged(vectorPenActive, false);
 }
 
 /** The rail button and the bare-V key share this one toggle. */
@@ -126,12 +69,6 @@ export function enterPathEdit(mutationId: string): void {
   exitVectorPen();
   setAquarelleSelectMode(false);
   disarmAquarellePicker();
-}
-
-/** Close path edit. Re-arms nothing and drops the anchor selection with the edit. */
-export function exitPathEdit(): void {
-  writeIfChanged(pathEditMutationId, null);
-  clearVectorAnchorSelection();
 }
 
 /** Start a draft from its first anchor; the cursor starts at that anchor. */

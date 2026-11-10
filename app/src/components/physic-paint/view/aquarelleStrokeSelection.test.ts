@@ -101,8 +101,6 @@ import { paintRadiusDocFor } from './aquarelleStrokeBand';
 import {
   enterPathEdit,
   enterVectorPen,
-  exitPathEdit,
-  exitVectorPen,
   pathEditMutationId,
   resetForStudioOpen,
   setVectorAnchorSelection,
