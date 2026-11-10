@@ -7191,17 +7191,22 @@ describe('61-20 G-8: a vector path edit is exactly one undo entry', () => {
 
   it('records after the bake resolved and before any failure restore', () => {
     const commit = commitRegion();
-    const recordAt = commit.indexOf(RECORD);
+    const success = regionOf(commit, 'onSuccess:', 'onFailure:');
     const successAt = commit.indexOf('onSuccess:');
+    // The re-bake route's record, not whichever site the source lists first:
+    // the defer route owns the other (and only other) site after 61-20 Task 2.
+    const recordAt = success.indexOf(RECORD);
+    const rebakeAt = commit.indexOf('runAquarelleScriptRebake({');
     const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo');");
     const beginAt = commit.indexOf('beginAquarellePathEdit(');
     expect(recordAt).toBeGreaterThan(-1);
     expect(successAt).toBeGreaterThan(-1);
+    expect(rebakeAt).toBeGreaterThan(-1);
     expect(restoreAt).toBeGreaterThan(-1);
     // A record taken before the apply resolves could claim an edit the sheet
     // rejected; the restore must never be followed by one either.
-    expect(recordAt).toBeGreaterThan(successAt);
-    expect(recordAt).toBeLessThan(restoreAt);
+    expect(successAt + recordAt).toBeGreaterThan(rebakeAt);
+    expect(successAt + recordAt).toBeLessThan(restoreAt);
     // Nothing is recorded before the edit is even begun.
     expect(beginAt).toBeGreaterThan(-1);
     expect(commit.slice(0, beginAt)).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');

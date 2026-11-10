@@ -10125,8 +10125,12 @@ export function PhysicsPaintStudio() {
     if (editId === null) return null;
     // Defer route: the script commit above IS the edit — the engine re-render
     // is deferred to the ONE Draft/wireframe settle. No in-flight flag (the
-    // edit is synchronous), no reset, no apply.
+    // edit is synchronous), no reset, no apply. 61-20 (G-8/VEC-07): record
+    // BEFORE the dirty flag — the deferred re-render changes only when pixels
+    // appear, never whether the gesture is undoable. This is the seam's SECOND
+    // and last record site (the other is the re-bake onSuccess tail).
     if (draft || wireframe) {
+      rotoMoveHistory.recordAquarelleScriptEdit(editId);
       setDraftPixelsDirty(true);
       setLastError(null);
       clearOwnedScriptApplyRefusal();
