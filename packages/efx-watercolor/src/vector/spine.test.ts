@@ -15,11 +15,18 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  ANCHOR_WIDTH_DEFAULT,
+  ANCHOR_WIDTH_MAX,
+  ANCHOR_WIDTH_MIN,
   PATH_SAMPLE_STEP_UV,
+  anchorWidthAt,
+  clampAnchorWidth,
+  isUniformWidthProfile,
   normaliseVectorAnchors,
   pathLength,
   resolveAnchorHandles,
   sampleVectorPath,
+  sampleVectorWidths,
   type VectorAnchor,
 } from './spine'
 
@@ -235,5 +242,152 @@ describe('degenerate anchor lists', () => {
       { x: 2, y: 0, kind: 'auto' },
     ])
     expect(normalised.map((a) => a.x)).toEqual([0, 2])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 5. The sparse width law — absent reads 1, interpolation is linear on arc length
+// ---------------------------------------------------------------------------
+
+function widened(
+  points: ReadonlyArray<readonly [number, number]>,
+  widths: ReadonlyArray<number | undefined>,
+): VectorAnchor[] {
+  return points.map(([x, y], index) => {
+    const width = widths[index]
+    return width === undefined ? { x, y, kind: 'auto' as const } : { x, y, kind: 'auto' as const, width }
+  })
+}
+
+const MID_18 = widened(
+  [
+    [0, 0],
+    [1, 0],
+    [2, 0],
+  ],
+  [undefined, 1.8, undefined],
+)
+
+describe('clampAnchorWidth', () => {
+  it('guards the published 0.2..2.0 range and defaults non-finite input', () => {
+    expect(clampAnchorWidth(0.1)).toBe(ANCHOR_WIDTH_MIN)
+    expect(clampAnchorWidth(0.1)).toBe(0.2)
+    expect(clampAnchorWidth(3)).toBe(ANCHOR_WIDTH_MAX)
+    expect(clampAnchorWidth(3)).toBe(2)
+    expect(clampAnchorWidth(1.8)).toBe(1.8)
+    expect(clampAnchorWidth(Number.NaN)).toBe(ANCHOR_WIDTH_DEFAULT)
+    expect(clampAnchorWidth(Number.NaN)).toBe(1)
+  })
+
+  it('never lowers a factor that is already inside the range', () => {
+    for (const factor of [0.2, 0.5, 1, 1.4, 1.8, 2]) {
+      expect(clampAnchorWidth(factor)).toBe(factor)
+    }
+  })
+})
+
+describe('isUniformWidthProfile', () => {
+  it('reports a list with no factor at all as uniform', () => {
+    expect(isUniformWidthProfile(COLLINEAR)).toBe(true)
+    expect(isUniformWidthProfile(widened([[0, 0], [1, 0]], [undefined, undefined]))).toBe(true)
+  })
+
+  it('reports a list where every factor is exactly 1 as uniform', () => {
+    expect(isUniformWidthProfile(widened([[0, 0], [1, 0]], [1, 1]))).toBe(true)
+  })
+
+  it('reports a single edited anchor as non-uniform', () => {
+    expect(isUniformWidthProfile(MID_18)).toBe(false)
+  })
+})
+
+describe('anchorWidthAt', () => {
+  const length = pathLength(MID_18)
+
+  it('reads 1 where no factor is set and the edited factor at its anchor station', () => {
+    expect(length).toBe(2)
+    expect(anchorWidthAt(MID_18, 0)).toBe(1)
+    expect(anchorWidthAt(MID_18, length / 2)).toBe(1.8)
+    expect(anchorWidthAt(MID_18, length)).toBe(1)
+  })
+
+  it('interpolates linearly on arc length between the two bracketing anchors', () => {
+    expect(anchorWidthAt(MID_18, length / 4)).toBe(1.4)
+  })
+
+  it('holds the nearest factor before the first and after the last station', () => {
+    const trailing = widened(
+      [
+        [0, 0],
+        [1, 0],
+        [2, 0],
+      ],
+      [undefined, undefined, 1.6],
+    )
+    const total = pathLength(trailing)
+    expect(anchorWidthAt(trailing, 0)).toBe(1)
+    expect(anchorWidthAt(trailing, total)).toBe(1.6)
+    expect(anchorWidthAt(trailing, total + 5)).toBe(1.6)
+    expect(anchorWidthAt(trailing, -5)).toBe(1)
+  })
+
+  it('returns the default for a list without anchors and 1 for a single anchor', () => {
+    expect(anchorWidthAt([], 0.5)).toBe(ANCHOR_WIDTH_DEFAULT)
+    expect(anchorWidthAt([{ x: 0.25, y: 0.5, kind: 'auto' }], 0)).toBe(1)
+  })
+})
+
+describe('sampleVectorWidths', () => {
+  it('returns one factor per point, all inside the published range', () => {
+    const path = sampleVectorPath(MID_18)
+    const widths = sampleVectorWidths(MID_18, path.points)
+    expect(widths).toHaveLength(path.points.length)
+    for (const width of widths) {
+      expect(Number.isFinite(width)).toBe(true)
+      expect(width).toBeGreaterThanOrEqual(ANCHOR_WIDTH_MIN)
+      expect(width).toBeLessThanOrEqual(ANCHOR_WIDTH_MAX)
+    }
+  })
+
+  it('rises to the edited factor then falls back — non-decreasing then non-increasing', () => {
+    const path = sampleVectorPath(MID_18)
+    const widths = sampleVectorWidths(MID_18, path.points)
+    let peak = 0
+    for (let i = 1; i < widths.length; i++) if (widths[i]! > widths[peak]!) peak = i
+    for (let i = 1; i <= peak; i++) expect(widths[i]!).toBeGreaterThanOrEqual(widths[i - 1]!)
+    for (let i = peak + 1; i < widths.length; i++) expect(widths[i]!).toBeLessThanOrEqual(widths[i - 1]!)
+    expect(widths[0]).toBe(1)
+    expect(widths[widths.length - 1]).toBe(1)
+  })
+
+  it('carries a 1.8 factor through untouched — nothing clamps it to 1', () => {
+    const path = sampleVectorPath(MID_18)
+    const widths = sampleVectorWidths(MID_18, path.points)
+    expect(Math.max(...widths)).toBeCloseTo(1.8, 12)
+  })
+
+  it('returns exactly 1 for every point of a uniform profile', () => {
+    const path = sampleVectorPath(COLLINEAR)
+    const widths = sampleVectorWidths(COLLINEAR, path.points)
+    expect(widths).toEqual(path.points.map(() => 1))
+  })
+
+  it('reads the final factor for points at or beyond the end of the spine', () => {
+    const trailing = widened(
+      [
+        [0, 0],
+        [1, 0],
+        [2, 0],
+      ],
+      [undefined, undefined, 1.6],
+    )
+    const widths = sampleVectorWidths(trailing, [
+      { x: 0, y: 0 },
+      { x: 2, y: 0 },
+      { x: 9, y: 9 },
+    ])
+    expect(widths[0]).toBe(1)
+    expect(widths[1]).toBeCloseTo(1.6, 12)
+    expect(widths[2]).toBeCloseTo(1.6, 12)
   })
 })
