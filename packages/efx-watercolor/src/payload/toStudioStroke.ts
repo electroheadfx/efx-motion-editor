@@ -40,6 +40,7 @@
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
 import type { AquarelleToolOverrides } from '../brushes/tips'
+import type { AquarelleAnchor, AquarelleRenderMode } from './vectorPath'
 
 // The one payload union accepts Dry events alongside strokes (D-16).
 export type { AquarelleDryEvent, AquarellePayloadEvent } from './dryEvent'
@@ -70,6 +71,17 @@ export interface AquarelleStrokePayload {
   diffusionFrames?: number
   timestamp: number
   playFrame?: number
+  /**
+   * 61-03: the vector path, in document uv. ABSENT means a hand-painted
+   * stroke; a non-empty list is the only vector-ness signal (D-01/D-12).
+   */
+  anchors?: readonly AquarelleAnchor[]
+  /**
+   * 61-03: explicit render discriminator (D-12). ABSENT means
+   * `watercolor`, so a pre-phase stroke renders exactly as before.
+   * Independent of `anchors` (D-14: the mode applies to both families).
+   */
+  renderMode?: AquarelleRenderMode
 }
 
 /** Host cap policy (55 D-20 / D-19) — engine-owned, script-visible. */
@@ -120,6 +132,10 @@ export interface AquarelleStroke {
   diffusionFrames?: number
   timestamp: number
   playFrame?: number
+  /** 61-03: the vector path in document uv (absent = hand-painted stroke). */
+  anchors?: readonly AquarelleAnchor[]
+  /** 61-03: explicit render discriminator (absent = watercolour, D-12). */
+  renderMode?: AquarelleRenderMode
 }
 
 /**
@@ -164,6 +180,11 @@ export function toStudioStroke(
       diffusionFrames: s.diffusionFrames,
       timestamp: s.timestamp,
       playFrame: s.playFrame,
+      // 61-03: conditional canonical terms — each vector field is written
+      // ONLY when present, so a hand-painted stroke keeps its exact
+      // pre-vector key set and a mode-only stroke gains that key alone.
+      ...(s.anchors !== undefined ? { anchors: [...s.anchors] } : {}),
+      ...(s.renderMode !== undefined ? { renderMode: s.renderMode } : {}),
     },
   }
 }
