@@ -69,6 +69,7 @@ import {
   VectorPathOverlay,
   handleVectorPathEditKey,
   handleVectorPathKey,
+  vectorPathEditDrag,
   type VectorPathGestureHandlers,
 } from './VectorPathOverlay';
 import { ScriptStrokeOverlay } from './ScriptStrokeOverlay';
@@ -205,13 +206,29 @@ function pointerEvent(
     pointerId: 1,
     clientX: x,
     clientY: y,
+    // 61-16: the drag target also exposes the pointer-capture trio, so the
+    // capture/release assertions observe the calls the overlay makes.
     currentTarget: {
       getBoundingClientRect: () => ({ left: 0, top: 0, width: WIDTH, height: HEIGHT }),
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+      hasPointerCapture: vi.fn((): boolean => true),
     },
     preventDefault: vi.fn(),
     stopPropagation: vi.fn(),
     ...overrides,
   };
+}
+
+/** The capture trio the 61-16 drag assertions observe on `currentTarget`. */
+interface CaptureStub {
+  readonly setPointerCapture: ReturnType<typeof vi.fn>;
+  readonly releasePointerCapture: ReturnType<typeof vi.fn>;
+  readonly hasPointerCapture: ReturnType<typeof vi.fn>;
+}
+
+function captureOf(event: Record<string, unknown>): CaptureStub {
+  return event['currentTarget'] as CaptureStub;
 }
 
 /** Layer px → document uv for the 1000×800 stub rect. */
@@ -904,6 +921,157 @@ describe('VectorPathOverlay — handle drag, insert, delete, width (task 2)', ()
     expect(source).toContain('handleVectorPathEditKey(event');
     expect(source).toContain('[penActive, editMutationId]');
     expect(source).toContain("window.removeEventListener('keydown'");
+  });
+});
+
+// 61-16 (G-3 / CR-01): a path-edit drag owns the pointer for its WHOLE
+// lifetime. The press captures on the overlay root, so a move or a release
+// outside the overlay still reaches the drag; the release happens on BOTH
+// exits — after the commit decision on finish, and on cancel without a commit.
+// The insert-on-spine click is a completed gesture at pointerdown and opens no
+// drag state, so it must take no capture. A release is never attempted against
+// a pointer the element no longer holds.
+describe('VectorPathOverlay — the pointer-capture law (61-16)', () => {
+  const EDIT_ID = 96001;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  const HANDLE_ANCHORS: readonly VectorAnchor[] = [
+    { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.15, y: 0.5 }, out: { x: 0.25, y: 0.5 } },
+    auto(0.5, 0.5),
+    auto(0.8, 0.5),
+  ];
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  it('captures the pointer at an anchor press, and the drag still commits on up', () => {
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+
+    const down = clickAt(0.2, 0.5);
+    press(root, down);
+    const capture = captureOf(down);
+    expect(capture.setPointerCapture).toHaveBeenCalledTimes(1);
+    expect(capture.setPointerCapture).toHaveBeenCalledWith(1);
+
+    const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
+    expect(onPointerMove, 'overlay root has no pointer-move handler').toBeTypeOf('function');
+    onPointerMove!(clickAt(0.26, 0.55));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.26, 0.55));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors[0]!.x).toBeCloseTo(0.26, 9);
+    expect(anchors[0]!.y).toBeCloseTo(0.55, 9);
+  });
+
+  it('captures the pointer at a handle press and commits the handle drag on up', () => {
+    resetAquarelleRecordState();
+    const stroke = editedStroke({ anchors: HANDLE_ANCHORS });
+    recordAquarelleStroke(EDIT_ID, stroke, 'frame-key');
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    // The OUT handle of anchor 0 sits at (0.25, 0.5).
+    const down = clickAt(0.25, 0.5);
+    press(root, down);
+    const capture = captureOf(down);
+    expect(capture.setPointerCapture).toHaveBeenCalledTimes(1);
+    expect(capture.setPointerCapture).toHaveBeenCalledWith(1);
+
+    (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.3, 0.5));
+    (root.props['onPointerUp'] as (e: unknown) => void)(clickAt(0.3, 0.5));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors[0]!.out!.x).toBeCloseTo(0.3, 9);
+  });
+
+  it('releases the capture AFTER the commit decision, on the drag pointer id', () => {
+    const order: string[] = [];
+    const onPathEdit = vi.fn(() => {
+      order.push('commit');
+    });
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.26, 0.55));
+
+    const up = clickAt(0.26, 0.55);
+    const release = captureOf(up).releasePointerCapture;
+    release.mockImplementation(() => {
+      order.push('release');
+    });
+    (root.props['onPointerUp'] as (e: unknown) => void)(up);
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledWith(1);
+    expect(order).toEqual(['commit', 'release']);
+  });
+
+  it('releases the capture on cancel and commits nothing', () => {
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    const cancel = clickAt(0.4, 0.4);
+    (root.props['onPointerCancel'] as (e: unknown) => void)(cancel);
+
+    expect(onPathEdit).not.toHaveBeenCalled();
+    const release = captureOf(cancel).releasePointerCapture;
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledWith(1);
+    // The gesture is over: a later move finds no drag state.
+    (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.5, 0.5));
+    expect(onPathEdit).not.toHaveBeenCalled();
+  });
+
+  it('takes no capture for the insert-on-spine click and still commits once', () => {
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+
+    // 150px from both anchors, on the chord — the insert branch, not a drag.
+    const down = clickAt(0.35, 0.5);
+    press(root, down);
+    const capture = captureOf(down);
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    expect((onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]])[1]).toHaveLength(4);
+    expect(capture.setPointerCapture).not.toHaveBeenCalled();
+    expect(capture.releasePointerCapture).not.toHaveBeenCalled();
+  });
+
+  it('releases only a pointer the target still holds, and never throws', () => {
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.26, 0.55));
+
+    const up = clickAt(0.26, 0.55);
+    const capture = captureOf(up);
+    capture.hasPointerCapture.mockReturnValue(false);
+    expect(() => (root.props['onPointerUp'] as (e: unknown) => void)(up)).not.toThrow();
+
+    // A lost pointer is not released — there is nothing to release.
+    expect(capture.releasePointerCapture).not.toHaveBeenCalled();
+    // The commit is unaffected by the lost capture.
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    expect(vectorPathEditDrag.peek()).toBeNull();
   });
 });
 
