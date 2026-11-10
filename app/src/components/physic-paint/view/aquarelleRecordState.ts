@@ -16,7 +16,9 @@ import {
   PAINT_SEED_SALT_PARAM,
   createDryEvent,
   isAquarelleDryEvent,
+  normaliseAquarelleAnchors,
   paintSeedSaltOf,
+  resolveAquarelleRenderMode,
   toStudioStroke,
   type AquarelleDryEvent,
   type AquarellePayloadEvent,
@@ -1354,6 +1356,16 @@ export function restoreAquarelleRecordTimeline(
       continue;
     }
     const engine = event.engine as AquarelleStrokePayload;
+    // 61-05: seed the vector path and render mode beside `playFrame`, so a
+    // reopened vector stroke stays editable as a path. Both keys are written
+    // ONLY when the payload carried them — a hand-painted stroke keeps its
+    // exact pre-vector shape. A present-but-malformed anchor list is omitted
+    // here on purpose: the refusal surfaces at path edit and export, never by
+    // dropping the event or aborting the restore.
+    const anchors =
+      engine.anchors !== undefined ? normaliseAquarelleAnchors(engine.anchors) : undefined;
+    const renderMode =
+      engine.renderMode !== undefined ? resolveAquarelleRenderMode(engine.renderMode) : undefined;
     const stroke: AquarelleStroke = {
       tool: engine.tool,
       color: engine.color,
@@ -1372,6 +1384,8 @@ export function restoreAquarelleRecordTimeline(
       diffusionFrames: engine.diffusionFrames,
       timestamp: engine.timestamp,
       playFrame: engine.playFrame,
+      ...(anchors !== undefined ? { anchors } : {}),
+      ...(renderMode !== undefined ? { renderMode } : {}),
     };
     const entry = toStudioStroke(stroke);
     payloadTimeline.push(entry);
