@@ -10139,6 +10139,10 @@ export function PhysicsPaintStudio() {
       resetSheet: () => aquarelleResetSheetRef.current?.(),
       applyTimeline: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)),
       onSuccess: () => {
+        // 61-20 (G-8/VEC-07): the apply has resolved true, so the sheet holds
+        // this exact path. Record ONE `aquarelle-script` entry — the ledger
+        // tail that makes the gesture undoable. Never on the failure route.
+        rotoMoveHistory.recordAquarelleScriptEdit(editId);
         setLastError(null);
         clearOwnedScriptApplyRefusal();
       },
@@ -10159,6 +10163,9 @@ export function PhysicsPaintStudio() {
   }, [
     isPhysicalMutationLocked,
     rotoScript,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
     setLastError,
     setApplyMessage,
     setApplyStatus,
