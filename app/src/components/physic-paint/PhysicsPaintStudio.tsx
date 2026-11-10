@@ -316,6 +316,7 @@ import {
   type ScriptStrokeTransform,
   wireframeMode,
   wireframeSettleInFlight,
+  WIREFRAME_SETTLE_REFUSED_MESSAGE,
 } from './view/scriptStrokeEdition';
 import {
   VECTOR_PATH_SCRIPT_OFF_MESSAGE,
@@ -5383,6 +5384,15 @@ export function PhysicsPaintStudio() {
   }, [setApplyMessage, setApplyStatus, setLastError]);
   const draftSettlePromiseRef = useRef<Promise<boolean> | null>(null);
   const settleDraftScript = useCallback((): Promise<boolean> => {
+    // 61-18 (D-16, T-61-62): while the wireframe view is on, the sheet must
+    // never be reset or re-baked behind it. Refuse FIRST — ahead of the clean
+    // no-op — so no exit can answer "clean" or capture the construction view.
+    // A bounded terminal state: one fixed reason, resolve false, never reject.
+    if (wireframeMode.peek()) {
+      setApplyMessage(WIREFRAME_SETTLE_REFUSED_MESSAGE);
+      setApplyStatus('error');
+      return Promise.resolve(false);
+    }
     // D-04: with Draft OFF and clean pixels every exit is a pure no-op — no
     // await, no microtask, so the Live laws keep their exact tick.
     if (!draftMode.peek() && !draftPixelsDirty.peek()) return Promise.resolve(true);

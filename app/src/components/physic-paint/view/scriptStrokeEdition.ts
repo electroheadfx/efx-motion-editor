@@ -151,11 +151,19 @@ export function setDraftPixelsDirty(on: boolean): void {
  * Entering Draft is a compare-then-write. LEAVING it is refused while
  * `draftPixelsDirty` is set: the settle is the only path that clears dirty and
  * then flips this switch, so no caller — the strip, an exit, the D-07 open
- * reset — can reach Draft OFF over stale pixels. A refused leave is a silent
- * no-op (nothing is written, nobody is notified).
+ * reset — can reach Draft OFF over stale pixels.
+ *
+ * 61-18 (D-16, T-61-61): leaving is ALSO refused while the `wireframeMode`
+ * latch is on. Wireframe GENERALISES Draft — never a second engine-suppression
+ * path — and it only holds while Draft holds: the capture gate opens on Draft
+ * OFF, so a leave behind the construction view would let the sheet be
+ * captured, reset and re-baked. The OFF transition clears the latch FIRST and
+ * then settles Draft, which is why the intended exit still completes.
+ *
+ * A refused leave is a silent no-op (nothing is written, nobody is notified).
  */
 export function setDraftMode(on: boolean): void {
-  if (!on && draftPixelsDirty.value) return;
+  if (!on && (draftPixelsDirty.value || wireframeMode.peek())) return;
   if (draftMode.value === on) return;
   draftMode.value = on;
 }
@@ -174,6 +182,15 @@ export function setDraftMode(on: boolean): void {
  * (`.peek()` only); NEVER the Studio render body (rule 5).
  */
 export const wireframeMode = signal(false);
+
+/**
+ * 61-18: the ONE fixed settle refusal while the wireframe view is up. The
+ * settle is the only route that can clear `draftPixelsDirty` and leave Draft,
+ * and it must never reset or re-bake the sheet behind the construction view —
+ * so it refuses with this line instead of a silent no-op. Never interpolated
+ * (UI-SPEC copy contract).
+ */
+export const WIREFRAME_SETTLE_REFUSED_MESSAGE = 'Draft recompute refused — wireframe is on. Turn wireframe off to re-render.';
 
 /**
  * ON: arm Draft FIRST, then flip the latch — a subscriber that sees the latch
