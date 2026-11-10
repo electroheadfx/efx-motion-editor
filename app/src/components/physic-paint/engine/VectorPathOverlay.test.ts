@@ -20,6 +20,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { effect } from '@preact/signals';
 import {
   resolveAnchorHandles,
   type AquarelleStroke,
@@ -46,17 +47,27 @@ import {
   setAquarelleScriptEditInFlight,
 } from '../view/aquarelleStrokeSelection';
 import {
+  clearVectorAnchorSelection,
   clearVectorDraft,
   enterPathEdit,
   exitPathEdit,
   resetForStudioOpen,
+  setVectorAnchorSelection,
+  toggleVectorAnchorSelection,
+  vectorAnchorSelection,
   vectorDrawDraft,
   vectorPenActive,
   type VectorDraftAnchor,
 } from '../view/vectorPathSession';
-import { buildDraftPath, buildVectorStroke, type VectorPathCommit } from '../view/vectorPathHandles';
+import {
+  buildAnchorWidthCommit,
+  buildDraftPath,
+  buildVectorStroke,
+  type VectorPathCommit,
+} from '../view/vectorPathHandles';
 import {
   VectorPathOverlay,
+  handleVectorPathEditKey,
   handleVectorPathKey,
   type VectorPathGestureHandlers,
 } from './VectorPathOverlay';
@@ -681,6 +692,213 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
     onPointerUp!(clickAt(0.2, 0.5));
 
     expect(onPathEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe('VectorPathOverlay — handle drag, insert, delete, width (task 2)', () => {
+  const EDIT_ID = 94001;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  const HANDLE_ANCHORS: readonly VectorAnchor[] = [
+    { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.15, y: 0.5 }, out: { x: 0.25, y: 0.5 } },
+    auto(0.5, 0.5),
+    auto(0.8, 0.5),
+  ];
+
+  function renderHandleStroke(onPathEdit: (id: number, anchors: readonly VectorAnchor[]) => void) {
+    const stroke = editedStroke({ anchors: HANDLE_ANCHORS });
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+    return { stroke, root };
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  it('drags one handle, mirrors its coupled partner and commits ONCE', () => {
+    enterPathEdit(String(EDIT_ID));
+    const onPathEdit = vi.fn();
+    const { root } = renderHandleStroke(onPathEdit);
+
+    // Grab the OUT handle of anchor 0 (50px from the anchor, inside the handle pad).
+    press(root, clickAt(0.25, 0.5));
+    const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
+    expect(onPointerMove, 'overlay root has no pointer-move handler').toBeTypeOf('function');
+    onPointerMove!(clickAt(0.3, 0.5));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.3, 0.5));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(anchors[0]!.kind).toBe('bezier');
+    expect(anchors[0]!.out!.x).toBeCloseTo(0.3, 9);
+    expect(anchors[0]!.out!.y).toBeCloseTo(0.5, 9);
+    // Coupled: the partner is the point reflection about the anchor (0.2, 0.5).
+    expect(anchors[0]!.in!.x).toBeCloseTo(0.1, 9);
+    expect(anchors[0]!.in!.y).toBeCloseTo(0.5, 9);
+    // The neighbours are untouched.
+    expect(anchors[1]).toEqual(HANDLE_ANCHORS[1]);
+    expect(anchors[2]).toEqual(HANDLE_ANCHORS[2]);
+  });
+
+  it('leaves the partner untouched when Alt breaks the coupling', () => {
+    enterPathEdit(String(EDIT_ID));
+    const onPathEdit = vi.fn();
+    const { root } = renderHandleStroke(onPathEdit);
+
+    press(root, clickAt(0.25, 0.5));
+    const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
+    onPointerMove!(clickAt(0.3, 0.5, { altKey: true }));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.3, 0.5, { altKey: true }));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors[0]!.out!.x).toBeCloseTo(0.3, 9);
+    expect(anchors[0]!.in).toEqual({ x: 0.15, y: 0.5 });
+    // Byte-identical: the broken partner is carried, not rebuilt.
+    expect(anchors[0]!.in).toBe(HANDLE_ANCHORS[0]!.in);
+    expect(anchors[0]!.kind).toBe('bezier');
+  });
+
+  it('inserts one anchor on a spine click, commits ONCE and selects it', () => {
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    const originalAnchors = stroke.anchors as readonly VectorAnchor[];
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    // 150px from both anchors, on the chord — no anchor or handle can win.
+    press(root, clickAt(0.35, 0.5));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(anchors).toHaveLength(4);
+    expect(anchors[0]).toEqual(originalAnchors[0]);
+    expect(anchors[1]!.kind).toBe('auto');
+    expect(anchors[1]!.x).toBeCloseTo(0.35, 2);
+    expect(anchors[2]).toEqual(originalAnchors[1]);
+    expect(anchors[3]).toEqual(originalAnchors[2]);
+    // The inserted anchor is the new selection (the ONE session signal).
+    expect(vectorAnchorSelection.peek()).toEqual([1]);
+  });
+
+  it('keeps ONE ascending, deduplicated selection and clears it on exit and reset', () => {
+    resetForStudioOpen();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+    setVectorAnchorSelection([2, 0, 2]);
+    expect(vectorAnchorSelection.peek()).toEqual([0, 2]);
+    toggleVectorAnchorSelection(1);
+    expect(vectorAnchorSelection.peek()).toEqual([0, 1, 2]);
+    toggleVectorAnchorSelection(1);
+    expect(vectorAnchorSelection.peek()).toEqual([0, 2]);
+    // Idempotent: a repeated identical write notifies nothing.
+    let runs = 0;
+    const dispose = effect(() => {
+      void vectorAnchorSelection.value;
+      runs += 1;
+    });
+    setVectorAnchorSelection([2, 0]);
+    expect(runs).toBe(1);
+    dispose();
+
+    enterPathEdit('7');
+    setVectorAnchorSelection([1]);
+    exitPathEdit();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+    setVectorAnchorSelection([1]);
+    resetForStudioOpen();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+    clearVectorAnchorSelection();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+  });
+
+  it('deletes every selected anchor in ONE commit and clears the selection', () => {
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    const originalAnchors = stroke.anchors as readonly VectorAnchor[];
+    setVectorAnchorSelection([0, 2]);
+    const onPathEdit = vi.fn();
+    const event = { key: 'Delete', preventDefault: vi.fn(), stopPropagation: vi.fn() };
+    handleVectorPathEditKey(event, {
+      getRecordedStrokes: () => new Map([[EDIT_ID, stroke]]),
+      onPathEdit,
+    });
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(anchors).toEqual([originalAnchors[1]]);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+  });
+
+  it('handles delete keys only while a path edit owns a non-empty selection', () => {
+    const onPathEdit = vi.fn();
+    const handlers = {
+      getRecordedStrokes: () => new Map([[EDIT_ID, editedStroke()]]),
+      onPathEdit,
+    };
+
+    // No path edit open.
+    setVectorAnchorSelection([0]);
+    handleVectorPathEditKey({ key: 'Delete' }, handlers);
+    expect(onPathEdit).not.toHaveBeenCalled();
+
+    // Edit open, empty selection.
+    enterPathEdit(String(EDIT_ID));
+    clearVectorAnchorSelection();
+    handleVectorPathEditKey({ key: 'Delete' }, handlers);
+    expect(onPathEdit).not.toHaveBeenCalled();
+
+    // Not a delete key.
+    setVectorAnchorSelection([0]);
+    handleVectorPathEditKey({ key: 'a' }, handlers);
+    expect(onPathEdit).not.toHaveBeenCalled();
+
+    // Backspace deletes too.
+    handleVectorPathEditKey({ key: 'Backspace' }, handlers);
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors).toHaveLength(2);
+  });
+
+  it('writes a three-anchor width commit in ONE history entry', () => {
+    const originalAnchors = editedStroke().anchors as readonly VectorAnchor[];
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const next = buildAnchorWidthCommit(originalAnchors, [0, 1, 2], 1.8);
+    const editId = beginAquarellePathEdit(EDIT_ID, next);
+    expect(editId).not.toBeNull();
+
+    const after = getRecordedAquarelleStroke(EDIT_ID)!;
+    expect(after.anchors!.map((anchor) => anchor.width)).toEqual([1.8, 1.8, 1.8]);
+    // ONE bump for the whole multi-anchor write — a per-anchor loop would be +3.
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    // One undo restores all three factors at once.
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(EDIT_ID)!.anchors).toEqual(originalAnchors);
+  });
+
+  it('binds the edit key listener for an open path edit and unbinds it on cleanup', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    expect(source).toContain('handleVectorPathEditKey(event');
+    expect(source).toContain('[penActive, editMutationId]');
+    expect(source).toContain("window.removeEventListener('keydown'");
   });
 });
 

@@ -30,11 +30,13 @@ import {
   DRAG_THRESHOLD_PX,
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
+  buildAnchorWidthCommit,
   buildDraftPath,
   buildVectorStroke,
   deleteAnchorsAt,
   hitTestVectorPath,
   insertAnchorAt,
+  insertAnchorOnSegment,
   isAdjacentToLast,
   moveAnchorBy,
   moveHandleTo,
@@ -43,6 +45,7 @@ import {
   promoteAnchorForDrag,
   screenPadToUv,
   screenToUv,
+  selectAnchor,
   uvToScreen,
   type VectorPathCommit,
 } from './vectorPathHandles';
@@ -195,6 +198,11 @@ describe('insert / delete list operations', () => {
     expect(deleteAnchorsAt([a, b, c], [7])).toEqual([a, b, c]);
   });
 
+  it('deletes [0, 2] from a four-anchor list, keeping the middle two in order', () => {
+    const d = auto(3, 0);
+    expect(deleteAnchorsAt([a, b, c, d], [0, 2])).toEqual([b, d]);
+  });
+
   it('never mutates its input', () => {
     const input = [a, b];
     insertAnchorAt(input, 1, c);
@@ -265,9 +273,10 @@ describe('moveAnchorBy — the anchor and both stored handles', () => {
   });
 });
 
-describe('moveHandleTo — the handle drag', () => {
+describe('moveHandleTo — coupling and the break modifier (61-10 task 2)', () => {
+  const anchor = bezier(0.5, 0.5, { x: 0.45, y: 0.5 }, { x: 0.55, y: 0.5 });
+
   it('moves the named endpoint and never mutates the input', () => {
-    const anchor = bezier(0.5, 0.5, { x: 0.45, y: 0.5 }, { x: 0.55, y: 0.5 });
     const before = [anchor];
     const moved = moveHandleTo(before, 0, 'out', { x: 0.6, y: 0.5 }, false);
 
@@ -275,6 +284,135 @@ describe('moveHandleTo — the handle drag', () => {
     expect(moved[0]!.out!.x).toBeCloseTo(0.6, 12);
     expect(moved[0]!.out!.y).toBeCloseTo(0.5, 12);
     expect(before[0]).toEqual(anchor);
+  });
+
+  it('mirrors the partner about the anchor on a coupled drag', () => {
+    const moved = moveHandleTo([anchor], 0, 'out', { x: 0.6, y: 0.5 }, false);
+    expect(moved[0]!.out).toEqual({ x: 0.6, y: 0.5 });
+    // Collinear and equal-length: the partner is the point reflection.
+    expect(moved[0]!.in!.x).toBeCloseTo(0.4, 12);
+    expect(moved[0]!.in!.y).toBeCloseTo(0.5, 12);
+    expect(moved[0]!.kind).toBe('bezier');
+  });
+
+  it('mirrors from the in side as well', () => {
+    const moved = moveHandleTo([anchor], 0, 'in', { x: 0.4, y: 0.6 }, false);
+    expect(moved[0]!.in).toEqual({ x: 0.4, y: 0.6 });
+    expect(moved[0]!.out!.x).toBeCloseTo(0.6, 12);
+    expect(moved[0]!.out!.y).toBeCloseTo(0.4, 12);
+  });
+
+  it('leaves the partner byte-identical when the coupling is broken (Alt)', () => {
+    const moved = moveHandleTo([anchor], 0, 'out', { x: 0.6, y: 0.5 }, true);
+    expect(moved[0]!.out).toEqual({ x: 0.6, y: 0.5 });
+    expect(moved[0]!.in).toEqual({ x: 0.45, y: 0.5 });
+    expect(moved[0]!.in).toBe(anchor.in);
+    expect(moved[0]!.kind).toBe('bezier');
+  });
+
+  it('refuses a non-bezier anchor and a non-finite point', () => {
+    const smooth = auto(0.5, 0.5);
+    expect(moveHandleTo([smooth], 0, 'out', { x: 0.6, y: 0.5 }, false)).toEqual([smooth]);
+    expect(moveHandleTo([anchor], 0, 'out', { x: Number.NaN, y: 0.5 }, false)[0]).toBe(anchor);
+  });
+});
+
+describe('insertAnchorOnSegment — a click on the spine (61-10 task 2)', () => {
+  const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
+
+  it('inserts one auto anchor between the two anchors of the segment', () => {
+    const next = insertAnchorOnSegment(anchors, 0, { x: 0.35, y: 0.5 });
+    expect(next).toHaveLength(4);
+    // Untouched anchors are carried by reference, in order.
+    expect(next[0]).toBe(anchors[0]);
+    expect(next[2]).toBe(anchors[1]);
+    expect(next[3]).toBe(anchors[2]);
+    const inserted = next[1]!;
+    // Re-resolving the list derives its handles: it is stored as `auto`.
+    expect(inserted.kind).toBe('auto');
+    // The clicked projection on the evaluated curve; a collinear path keeps y.
+    expect(inserted.x).toBeCloseTo(0.35, 2);
+    expect(inserted.y).toBeCloseTo(0.5, 6);
+    expect(anchors).toHaveLength(3);
+  });
+
+  it('inserts on the last segment and clamps an out-of-range index to it', () => {
+    const last = insertAnchorOnSegment(anchors, 1, { x: 0.65, y: 0.5 });
+    expect(last).toHaveLength(4);
+    expect(last[2]!.kind).toBe('auto');
+    expect(last[2]!.x).toBeCloseTo(0.65, 2);
+    const clamped = insertAnchorOnSegment(anchors, 99, { x: 0.65, y: 0.5 });
+    expect(clamped).toHaveLength(4);
+    expect(clamped[2]).toEqual(last[2]);
+  });
+
+  it('is finite-safe and needs two anchors to have a segment', () => {
+    expect(insertAnchorOnSegment(anchors, 0, { x: Number.NaN, y: 0.5 })).toHaveLength(3);
+    expect(insertAnchorOnSegment([auto(0.2, 0.5)], 0, { x: 0.5, y: 0.5 })).toHaveLength(1);
+    expect(insertAnchorOnSegment([], 0, { x: 0.5, y: 0.5 })).toHaveLength(0);
+  });
+});
+
+describe('selectAnchor — the one anchor selection (61-10 task 2)', () => {
+  it('replaces the selection on a plain press', () => {
+    expect(selectAnchor([2, 0], 1, false)).toEqual([1]);
+    expect(selectAnchor([], 2, false)).toEqual([2]);
+  });
+
+  it('adds, keeps ascending order and toggles off on an additive press', () => {
+    expect(selectAnchor([], 2, true)).toEqual([2]);
+    expect(selectAnchor([0, 2], 1, true)).toEqual([0, 1, 2]);
+    expect(selectAnchor([0, 1, 2], 1, true)).toEqual([0, 2]);
+  });
+
+  it('dedupes and ignores a non-integer or negative index', () => {
+    expect(selectAnchor([1, 1, 0], 2, true)).toEqual([0, 1, 2]);
+    expect(selectAnchor([1], -1, true)).toEqual([1]);
+    expect(selectAnchor([1], 1.5, false)).toEqual([1]);
+    const input = [1];
+    expect(selectAnchor(input, 2, false)).not.toBe(input);
+  });
+});
+
+describe('buildAnchorWidthCommit — one sparse width write (61-10 task 2)', () => {
+  const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
+
+  it('writes every listed index and leaves the rest reference-identical', () => {
+    const next = buildAnchorWidthCommit(anchors, [0, 2], 1.8);
+    expect(next).toHaveLength(3);
+    expect(next[0]!.width).toBe(1.8);
+    expect(next[1]).toBe(anchors[1]);
+    expect(next[2]!.width).toBe(1.8);
+    // The input stays sparse.
+    expect('width' in anchors[0]!).toBe(false);
+    expect('width' in anchors[2]!).toBe(false);
+  });
+
+  it('removes the key at exactly 1 instead of storing width: 1', () => {
+    const wide = [
+      { ...auto(0.2, 0.5), width: 1.5 },
+      auto(0.5, 0.5),
+      { ...auto(0.8, 0.5), width: 1.2 },
+    ];
+    const next = buildAnchorWidthCommit(wide, [0, 2], 1);
+    expect('width' in next[0]!).toBe(false);
+    expect('width' in next[2]!).toBe(false);
+    expect(next[1]).toBe(wide[1]);
+  });
+
+  it('clamps through clampAnchorWidth', () => {
+    expect(buildAnchorWidthCommit(anchors, [0], 99)[0]!.width).toBe(2);
+    expect(buildAnchorWidthCommit(anchors, [0], 0)[0]!.width).toBe(0.2);
+    // A non-finite value clamps to the default, which is stored as absent.
+    expect('width' in buildAnchorWidthCommit(anchors, [0], Number.NaN)[0]!).toBe(false);
+  });
+
+  it('ignores unknown indices and never mutates the input', () => {
+    const next = buildAnchorWidthCommit(anchors, [7], 1.8);
+    expect(next).toEqual(anchors);
+    expect(next).not.toBe(anchors);
+    buildAnchorWidthCommit(anchors, [0], 1.8);
+    expect('width' in anchors[0]!).toBe(false);
   });
 });
 
