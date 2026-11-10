@@ -9,7 +9,7 @@ findings:
     title: "An interrupted path-edit drag is never cleared — deleted anchors come back and a stranded drag commits a phantom edit"
   - id: CR-02
     severity: critical
-    disposition: open
+    disposition: skipped
     title: "The path-edit commit claims the in-flight latch only after `ensureAquarelleDurableBaseRef` — a concurrent commit writes the script with no ledger entry and no rollback"
   - id: WR-01
     severity: warning
@@ -59,7 +59,7 @@ findings:
     severity: critical
     disposition: fixed
     title: "Select entry does not release the vector pen — both surfaces stay latched and the overlay swallows selection clicks"
-open: 10
+open: 9
 total: 14
 recorded: 2026-11-10T22:26:33.011Z
 ---
@@ -69,7 +69,7 @@ recorded: 2026-11-10T22:26:33.011Z
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
 | CR-01 | critical | open | - |
-| CR-02 | critical | open | - |
+| CR-02 | critical | skipped | refuted by verifier: beginAquarellePathEdit checks the same module latch before its write (aquarelleStrokeSelection.ts:945) and runAquarelleScriptRebake claims it synchronously before its first await, so write-without-ledger is unreachable |
 | WR-01 | warning | open | - |
 | WR-02 | warning | open | - |
 | WR-03 | warning | open | - |
