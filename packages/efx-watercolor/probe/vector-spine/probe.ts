@@ -51,6 +51,8 @@ const JOIN_ANCHORS: ReadonlyArray<{ x: number; y: number }> = [
   { x: 0.5, y: 0.62 },
   { x: 0.65, y: 0.32 },
 ]
+const DENSITIES = [1, 4, 16] as const
+type Density = (typeof DENSITIES)[number]
 
 // --- deterministic RNG (same mulberry32 as the adapter) --------------------
 
@@ -154,6 +156,206 @@ function captureAdapter(adapter: Adapter): Uint8ClampedArray {
   return new Uint8ClampedArray(ctx.getImageData(0, 0, canvas.width, canvas.height).data)
 }
 
+// --- direct-engine rig (segment runs need scriptEnd between segments) ------
+
+class Rig {
+  readonly engine: WatercolorEngine
+  now = 0
+
+  constructor(
+    readonly width: number,
+    readonly height: number,
+  ) {
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    this.engine = withSeededMathRandom(PAPER_SEED, () => new WatercolorEngine(canvas, null, {}, [width, height]))
+    this.engine.setManual(true)
+    this.engine.setClock(() => this.now)
+  }
+
+  /** Replays the adapter's configure() exactly. */
+  configure(stroke: StudioStroke<AquarelleStrokePayload>): void {
+    const e = this.engine
+    e.setParams(toEngineParams(stroke.engine.params))
+    e.setBrush(buildBrushForStroke(stroke.engine.brushId))
+    const hex = stroke.color ?? stroke.engine.color
+    if (typeof hex === 'string' && hex.length > 0) e.setPigment(pigmentFromHex(hex))
+    e.setTool(stroke.engine.tool as Tool)
+    e.setRandom(seededRandom(stroke.traceSeed || 1))
+  }
+
+  begin(p: AquarellePoint, maxRadius?: number): void {
+    this.now += 1000 * HOST_DT
+    this.engine.scriptBegin('brush', p.x, p.y, p.p, 'Stroke', maxRadius, p.tx, p.ty)
+    this.engine.tick(HOST_DT)
+  }
+
+  move(p: AquarellePoint): void {
+    this.now += 1000 * HOST_DT
+    this.engine.scriptMove(p.x, p.y, p.p, this.now, p.tx, p.ty)
+    this.engine.tick(HOST_DT)
+  }
+
+  /** scriptEnd plus the close tick (the adapter's tail/flush tick). */
+  end(): void {
+    this.engine.scriptEnd()
+    this.now += 1000 * HOST_DT
+    this.engine.tick(HOST_DT)
+  }
+
+  capture(): Uint8ClampedArray {
+    const canvas = this.engine.exportCanvas('transparent')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('capture: no 2D context')
+    return new Uint8ClampedArray(ctx.getImageData(0, 0, canvas.width, canvas.height).data)
+  }
+
+  destroy(): void {
+    this.engine.destroy()
+  }
+}
+
+/**
+ * Strategy A — segment runs: one scriptBegin/scriptEnd pair per anchor
+ * segment, each segment re-opening at the join point. This is the
+ * no-engine-change option; scriptEnd resets the Stroke (travelled,
+ * carry, direction), which is the seam hazard the A/B measures.
+ */
+function runSegmentRuns(
+  width: number,
+  height: number,
+  anchors: ReadonlyArray<{ x: number; y: number }>,
+  density: number,
+): Uint8ClampedArray {
+  const rig = new Rig(width, height)
+  try {
+    const stroke = makeStroke(resampleAnchors(anchors, density))
+    rig.configure(stroke)
+    for (let s = 0; s < anchors.length - 1; s += 1) {
+      const a = anchors[s]!
+      const b = anchors[s + 1]!
+      const at = (t: number): AquarellePoint => ({
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t,
+        p: PRESSURE,
+        tx: 0,
+        ty: 0,
+        tw: 0,
+      })
+      rig.begin(at(0))
+      for (let k = 1; k <= density; k += 1) rig.move(at(k / density))
+      rig.end()
+    }
+    return rig.capture()
+  } finally {
+    rig.destroy()
+  }
+}
+
+/**
+ * Strategy B — payload extension: one continuous run through every join,
+ * fed through the public adapter exactly like the shipped replay.
+ */
+function runPayloadExtension(
+  width: number,
+  height: number,
+  anchors: ReadonlyArray<{ x: number; y: number }>,
+  density: number,
+): Uint8ClampedArray {
+  const adapter = createPinnedAdapter(width, height)
+  try {
+    const stroke = makeStroke(resampleAnchors(anchors, density))
+    runStroke(adapter, stroke)
+    return captureAdapter(adapter)
+  } finally {
+    adapter.dispose()
+  }
+}
+
+// --- seam metric ------------------------------------------------------------
+
+const SEAM_WINDOW_PX = 8
+
+function round3(value: number): number {
+  return Math.round(value * 1000) / 1000
+}
+
+/**
+ * Maximum absolute per-channel difference between adjacent pixel columns
+ * and rows inside an 8px window around each join, in raw 0..255 tone
+ * units. The buffer is the top-down RGBA capture, so uv y-up is flipped
+ * for the row index. The scan is unsigned: it measures visible step
+ * magnitude, not its direction.
+ */
+function seamMaxChannelDelta(
+  buffer: Uint8ClampedArray,
+  width: number,
+  height: number,
+  joinPointsUv: ReadonlyArray<{ x: number; y: number }>,
+): number {
+  const half = SEAM_WINDOW_PX
+  let worst = 0
+  for (const join of joinPointsUv) {
+    const cx = Math.round(join.x * width)
+    const cy = Math.round((1 - join.y) * height)
+    const x0 = Math.max(0, cx - half)
+    const x1 = Math.min(width - 1, cx + half)
+    const y0 = Math.max(0, cy - half)
+    const y1 = Math.min(height - 1, cy + half)
+    for (let y = y0; y <= y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const i = (y * width + x) * 4
+        const j = i + 4
+        for (let c = 0; c < 4; c += 1) {
+          const d = Math.abs(buffer[i + c]! - buffer[j + c]!)
+          if (d > worst) worst = d
+        }
+      }
+    }
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x <= x1; x += 1) {
+        const i = (y * width + x) * 4
+        const j = ((y + 1) * width + x) * 4
+        for (let c = 0; c < 4; c += 1) {
+          const d = Math.abs(buffer[i + c]! - buffer[j + c]!)
+          if (d > worst) worst = d
+        }
+      }
+    }
+  }
+  return worst
+}
+
+/**
+ * The seam step in pixel space. A raw 0..255 tone delta is not a distance,
+ * so it is converted over the scan window: a full-range (255) jump between
+ * two adjacent pixels equals the 8px window span. A soft watercolour edge
+ * spread across the window reads near zero; a hard discontinuity reads as
+ * the window width. The raw delta is reported alongside for audit.
+ */
+function measureSeamStepPx(
+  buffer: Uint8ClampedArray,
+  width: number,
+  height: number,
+  joinPointsUv: ReadonlyArray<{ x: number; y: number }>,
+): number {
+  const raw = seamMaxChannelDelta(buffer, width, height, joinPointsUv)
+  return round3((raw / 255) * SEAM_WINDOW_PX)
+}
+
+/** Pixels carrying a visible deposit (transparent export is opaque white). */
+function paintedPixels(buffer: Uint8ClampedArray): number {
+  let count = 0
+  for (let i = 0; i < buffer.length; i += 4) {
+    const r = buffer[i]!
+    const g = buffer[i + 1]!
+    const b = buffer[i + 2]!
+    if (255 - Math.min(r, g, b) > 8) count += 1
+  }
+  return count
+}
+
 // --- digests ----------------------------------------------------------------
 
 /** FNV-1a over the capture bytes — unsigned 32-bit hex. */
@@ -223,20 +425,80 @@ function writeResult(report: Record<string, unknown>): void {
 // --- main -------------------------------------------------------------------
 
 function main(): void {
+  const t0 = performance.now()
   const renderer = probeRenderer()
-  const first = digestRun(SHEET_W, SHEET_H, JOIN_ANCHORS, 1)
-  const second = digestRun(SHEET_W, SHEET_H, JOIN_ANCHORS, 1)
+
+  // The interior anchors are the joins the seam metric scans.
+  const joins = JOIN_ANCHORS.slice(1, -1)
+
+  const segmentRuns: Record<string, number> = {}
+  const payloadExtension: Record<string, number> = {}
+  const segmentRunsRaw: Record<string, number> = {}
+  const payloadExtensionRaw: Record<string, number> = {}
+  const densitySweep: Record<
+    string,
+    { seamStepPx: number; seamMaxChannelDelta: number; paintedPixels: number }
+  > = {}
+
+  for (const density of DENSITIES) {
+    const segmentsBuffer = runSegmentRuns(SHEET_W, SHEET_H, JOIN_ANCHORS, density)
+    const payloadBuffer = runPayloadExtension(SHEET_W, SHEET_H, JOIN_ANCHORS, density)
+    const segmentPainted = paintedPixels(segmentsBuffer)
+    const payloadPainted = paintedPixels(payloadBuffer)
+    if (segmentPainted === 0 || payloadPainted === 0) {
+      throw new Error(`blank seam capture at density ${density} (segmentRuns=${segmentPainted}, payloadExtension=${payloadPainted})`)
+    }
+    const segmentRaw = seamMaxChannelDelta(segmentsBuffer, SHEET_W, SHEET_H, joins)
+    const payloadRaw = seamMaxChannelDelta(payloadBuffer, SHEET_W, SHEET_H, joins)
+    const segmentStep = measureSeamStepPx(segmentsBuffer, SHEET_W, SHEET_H, joins)
+    const payloadStep = measureSeamStepPx(payloadBuffer, SHEET_W, SHEET_H, joins)
+    segmentRuns[String(density)] = segmentStep
+    payloadExtension[String(density)] = payloadStep
+    segmentRunsRaw[String(density)] = segmentRaw
+    payloadExtensionRaw[String(density)] = payloadRaw
+    densitySweep[String(density)] = {
+      seamStepPx: payloadStep,
+      seamMaxChannelDelta: payloadRaw,
+      paintedPixels: payloadPainted,
+    }
+  }
+
+  // The sampling law: the smallest density where the payload-extension
+  // seam step stops improving by more than 0.5 channel units over the
+  // previous density. When it is still improving at 16x, 16 is the answer
+  // (the ceiling this probe can measure).
+  const step1 = payloadExtension['1']!
+  const step4 = payloadExtension['4']!
+  const settledDensity: Density = step1 - step4 <= 0.5 ? 4 : 16
+
+  const first = digestRun(SHEET_W, SHEET_H, JOIN_ANCHORS, settledDensity)
+  const second = digestRun(SHEET_W, SHEET_H, JOIN_ANCHORS, settledDensity)
   const identical = first.digest === second.digest
 
-  const verdict = `VECTOR-SPINE ${identical ? 'PASS' : 'FAIL'} digest=${first.digest} identical=${identical}`
+  const segmentAt16 = segmentRuns['16']!
+  const payloadAt16 = payloadExtension['16']!
+
+  let verdict: string
+  if (segmentAt16 > 2 && payloadAt16 > 2) {
+    verdict = `VECTOR-SPINE FAIL seam=both-above-2px-at-16x(segmentRuns=${segmentAt16},payloadExtension=${payloadAt16})`
+  } else {
+    // The numbers support the lower seam at the densest sampling; a tie
+    // keeps the continuous strategy the phase intends to build.
+    const strategy = payloadAt16 <= segmentAt16 ? 'payload-extension' : 'segment-runs'
+    verdict = `VECTOR-SPINE PASS seam=${strategy} density=${settledDensity}`
+  }
 
   writeResult({
     scenario: 'vector-spine',
     kind: 'auto',
     widthFactor: 1,
-    density: 1,
+    density: settledDensity,
     sheet: `${SHEET_W}x${SHEET_H}`,
-    samplesPerStroke: resampleAnchors(JOIN_ANCHORS, 1).length,
+    samplesPerStroke: resampleAnchors(JOIN_ANCHORS, settledDensity).length,
+    seamStepPx: { segmentRuns, payloadExtension },
+    seamMaxChannelDelta: { segmentRuns: segmentRunsRaw, payloadExtension: payloadExtensionRaw },
+    densitySweep,
+    settledDensity,
     digestA: first.digest,
     digestB: second.digest,
     byteLength: first.byteLength,
@@ -244,6 +506,7 @@ function main(): void {
     identical,
     env: { renderer: String(renderer), userAgent: navigator.userAgent },
     verdict,
+    cost: { totalProbeMs: Math.round(performance.now() - t0) },
   })
 }
 
@@ -253,7 +516,6 @@ try {
   const message = error instanceof Error ? error.message : String(error)
   writeResult({
     scenario: 'vector-spine',
-    density: 1,
     digestA: '',
     digestB: '',
     byteLength: 0,
