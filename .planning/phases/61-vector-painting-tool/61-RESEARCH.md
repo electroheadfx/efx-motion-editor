@@ -1011,7 +1011,19 @@ The render mode applies to hand-painted strokes too. That reaches the freehand b
 ### Pitfall 14 — The simple-ribbon preset must not be a fifth `AquarelleTool`
 It is a *brush preset* (`BRUSH_PRESETS` in `playground/brushes.ts`), not a tool. Adding it to the tool union re-opens the C2/AQTL problem.
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All six are settled; each line names the artifact that closed it. The questions remain below as the
+record of what was asked and what it cost to answer.
+
+1. **AQTL v1: refused.** `SCRIPT_TIMELINE_BINARY_VERSION` becomes 2 and the header guard accepts only 2, failing `unsupported-version` with the received number — 61-05, under the standing no-backward-compatibility law.
+2. **Duplicate anchors: refused at draw time.** The adjacency radius means a click on or beside the last anchor appends nothing (61-09 truth 4), and the derivation falls back to a uniform tangent for imported or malformed data (61-02's golden test).
+3. **Wireframe scope: the Studio sheet path only.** The reference/durable base and the Roto PlayScript bake stay out of scope this phase; the Roto controller is a separate consumer (61-13).
+4. **Escape hatch: not taken.** 61-01's probe emits the verdict string plus the seam metric, and the payload extension was adopted on that evidence; the segment-run fallback remains pre-scoped and unbuilt.
+5. **Wireframe toggle: on the rail, not beside the spline-pointer toggle.** It mounts immediately after Motion boundaries, before Dry, in the same family as the canvas-overlay latches (61-UI-SPEC Interaction Contract §5; 61-13) — this supersedes the research recommendation of sitting next to the spline-pointer control.
+6. **Sample density: fixed integer tick stations derived from arc length.** `sampleVectorPath` places them from the arc-length parameterisation so drawing speed is independent of the host schedule's `ticks`, pinned by the golden test (61-02).
+
+### The questions as asked
 
 1. **AQTL v1 files: accept or refuse?**
    - What we know: the codec is fail-closed on unknown versions (`scriptTimelineCodec.ts:728`), and project memory records a standing decision of "no backward compat for old projects" (clean break on format changes).
