@@ -1,6 +1,17 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { effect } from '@preact/signals';
+import {
+  draftMode,
+  draftPixelsDirty,
+  runWireframeOffTransition,
+  setDraftPixelsDirty,
+  setWireframeMode,
+  setWireframeSettleInFlight,
+  wireframeMode,
+  wireframeSettleInFlight,
+} from './view/scriptStrokeEdition';
 
 // 261027-klx: the G2 census gate forbids the contiguous retired Brush-script
 // tokens in app/src. These negative pins still scan for the real identifiers at
@@ -6437,5 +6448,242 @@ describe('61-10 vector path edit wiring in the Studio', () => {
     expect(canvasMount).toContain('const onAquarelleVectorPathEditRef = useRef(props.onAquarelleVectorPathEdit);');
     expect(canvasMount).toContain('onAquarelleVectorPathEditRef.current = props.onAquarelleVectorPathEdit;');
     expect(canvasMount).toContain('onEditVectorPath={(mutationId, anchors) => onAquarelleVectorPathEditRef.current?.(mutationId, anchors)}');
+  });
+});
+
+// 61-13 Task 1: the wireframe latch (D-16). Wireframe is a session-only VIEW
+// latch that GENERALISES Draft: ON forces Draft on BEFORE the latch flips (the
+// settle needs Draft to exist), OFF clears only the latch and hands the re-bake
+// to the ONE existing Draft settle — single-flight, never a second
+// engine-suppression path. No persisted or exported surface may read it.
+describe('61-13 wireframe latch — session-only, Draft-generalising', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  function resetWireframeSignals(): void {
+    setWireframeSettleInFlight(false);
+    wireframeMode.value = false;
+    draftPixelsDirty.value = false;
+    draftMode.value = false;
+  }
+
+  beforeEach(resetWireframeSignals);
+  afterEach(resetWireframeSignals);
+
+  it('turns Draft on BEFORE the latch flips, notifying each signal once', () => {
+    const events: string[] = [];
+    const stopDraft = effect(() => {
+      if (draftMode.value) events.push('draft');
+    });
+    const stopWire = effect(() => {
+      if (wireframeMode.value) events.push('wireframe');
+    });
+    setWireframeMode(true);
+    stopDraft();
+    stopWire();
+
+    expect(wireframeMode.value).toBe(true);
+    expect(draftMode.value).toBe(true);
+    // Ordering law: the Draft effect (armed by setDraftMode) runs first.
+    expect(events).toEqual(['draft', 'wireframe']);
+  });
+
+  it('repeated ON writes nothing — zero further notifications', () => {
+    setWireframeMode(true);
+    expect(wireframeMode.value).toBe(true);
+
+    const events: string[] = [];
+    const stopDraft = effect(() => {
+      void draftMode.value;
+      events.push('draft');
+    });
+    const stopWire = effect(() => {
+      void wireframeMode.value;
+      events.push('wireframe');
+    });
+    events.length = 0;
+
+    setWireframeMode(true);
+    setWireframeMode(true);
+    stopDraft();
+    stopWire();
+
+    expect(events).toEqual([]);
+  });
+
+  it('OFF clears ONLY the latch — Draft and the dirty invariant belong to the settle', () => {
+    setWireframeMode(true);
+    setDraftPixelsDirty(true);
+
+    setWireframeMode(false);
+
+    expect(wireframeMode.value).toBe(false);
+    expect(draftMode.value).toBe(true);
+    expect(draftPixelsDirty.value).toBe(true);
+  });
+
+  it('joins two OFF clicks into ONE settle, clearing the latch before it runs', async () => {
+    setWireframeMode(true);
+    setDraftPixelsDirty(true);
+    let settleCalls = 0;
+    let releaseSettle!: (value: boolean) => void;
+    const latchAtCall: boolean[] = [];
+    const settle = () => {
+      settleCalls += 1;
+      latchAtCall.push(wireframeMode.value);
+      return new Promise<boolean>((resolve) => {
+        releaseSettle = resolve;
+      });
+    };
+
+    const first = runWireframeOffTransition(settle);
+    const second = runWireframeOffTransition(settle);
+
+    expect(second).toBe(first);
+    expect(settleCalls).toBe(1);
+    // E7 loading: the latch is already off when the re-bake starts, so the
+    // overlay stops drawing immediately instead of during the bake.
+    expect(latchAtCall).toEqual([false]);
+    expect(wireframeSettleInFlight.value).toBe(true);
+
+    releaseSettle(true);
+    await expect(first).resolves.toBe(true);
+    expect(wireframeSettleInFlight.value).toBe(false);
+
+    // The window closes with the run: a later OFF starts a fresh transition.
+    await expect(runWireframeOffTransition(async () => true)).resolves.toBe(true);
+    expect(wireframeSettleInFlight.value).toBe(false);
+  });
+
+  it('declares the latch beside Draft, compare-then-write, forcing Draft first', () => {
+    const setter = regionOf(
+      scriptStrokeEdition,
+      'export function setWireframeMode(',
+      'export const wireframeSettleInFlight',
+    );
+    const guardAt = setter.indexOf('if (wireframeMode.value === on) return;');
+    const forceDraftAt = setter.indexOf('setDraftMode(true);');
+    const latchAt = setter.indexOf('wireframeMode.value = on;');
+    expect(guardAt, 'the latch is compare-then-write').toBeGreaterThan(-1);
+    expect(forceDraftAt, 'ON arms Draft').toBeGreaterThan(guardAt);
+    expect(latchAt, 'the latch flips only after Draft is on').toBeGreaterThan(forceDraftAt);
+    // OFF never calls the Draft setter — the settle is the only way out.
+    expect(setter).not.toContain('setDraftMode(false)');
+
+    const inFlight = regionOf(
+      scriptStrokeEdition,
+      'export function setWireframeSettleInFlight(',
+      'export function runWireframeOffTransition',
+    );
+    expect(inFlight).toContain('if (wireframeSettleInFlight.value === on) return;');
+
+    const runner = regionOf(
+      scriptStrokeEdition,
+      'export function runWireframeOffTransition(',
+      'export const frozenCacheVisible',
+    );
+    expect(runner).toContain('if (wireframeSettlePromise !== null) return wireframeSettlePromise;');
+    expect(runner).toContain('if (wireframeMode.peek()) setWireframeMode(false);');
+    expect(runner).toContain('setWireframeSettleInFlight(true);');
+    expect(runner).toContain('wireframeSettlePromise = null;');
+  });
+
+  it('imports the whole latch surface from the ONE edition module', () => {
+    const editionImport = regionOf(
+      studio,
+      'import {\n  deleteSelectedScriptStroke,',
+      "} from './view/scriptStrokeEdition';",
+    );
+    for (const symbol of [
+      'wireframeMode',
+      'setWireframeMode',
+      'wireframeSettleInFlight',
+      'setWireframeSettleInFlight',
+      'runWireframeOffTransition',
+    ]) {
+      expect(editionImport, `the Studio imports ${symbol}`).toContain(symbol);
+    }
+  });
+
+  it('wires one identity-stable handler that routes OFF through the ONE Draft settle', () => {
+    const handler = regionOf(
+      studio,
+      'const handleToggleWireframe = useCallback(',
+      'const switchActiveTrack = useCallback(',
+    );
+    expect(handler).toContain('if (wireframeSettleInFlight.peek() || wireframeMode.peek()) {');
+    expect(handler).toContain('void runWireframeOffTransition(() => settleDraftScript());');
+    expect(handler).toContain('setWireframeMode(true);');
+    expect(handler).toContain('disarmAquarellePicker();');
+    expect(handler).toContain('setAquarelleSelectMode(false);');
+    expect(handler).toContain('    [settleDraftScript],');
+    // No second engine-suppression path: the handler delegates the re-bake.
+    expect(handler).not.toContain('aquarelleResetSheetRef');
+    expect(handler).not.toContain('applyAquarelleTimeline');
+  });
+
+  it('gates the paint row, the picker and Dry behind the latch read', () => {
+    const selectGate = regionOf(
+      studio,
+      'const handleSelectAquarelleTool = useCallback',
+      'const handleAquarelleColorPick = useCallback',
+    );
+    const selectCheckAt = selectGate.indexOf('if (wireframeMode.peek()) return;');
+    const exitVectorAt = selectGate.indexOf('vectorPathSession.exitVectorPen();');
+    expect(selectCheckAt, 'the paint gate runs first').toBeGreaterThan(-1);
+    expect(selectCheckAt).toBeLessThan(exitVectorAt);
+
+    const pickerGate = regionOf(
+      studio,
+      'const handleToggleAquarellePicker = useCallback',
+      'const handleToggleAquarelleSelect = useCallback',
+    );
+    const pickerCheckAt = pickerGate.indexOf('if (wireframeMode.peek()) return;');
+    const pickerSelectAt = pickerGate.indexOf('setAquarelleSelectMode(false);');
+    expect(pickerCheckAt, 'the picker gate runs first').toBeGreaterThan(-1);
+    expect(pickerCheckAt).toBeLessThan(pickerSelectAt);
+
+    const dry = regionOf(studio, 'dryAquarelleSheet: () => {', 'clearAquarelleFrame: () => {');
+    expect(dry).toContain('if (staticControlsLocked || wireframeMode.peek()) return;');
+  });
+
+  it('reports the latch to the main realm through the ONE Draft publisher', () => {
+    expect(studio).toContain(
+      'const active = draftMode.value || draftPixelsDirty.value || wireframeMode.value;',
+    );
+  });
+
+  it('forwards the handler through the identity memo', () => {
+    expect(studio).toContain('handleToggleMotionBoundaries, handleToggleWireframe], () => ({');
+    expect(studio).toContain('onToggleWireframe: handleToggleWireframe,');
+  });
+
+  it('is session-only: no persisted path can ever read the latch', () => {
+    const persisted = [
+      ['the script snapshot controller', snapshotController],
+      ['the script replay', aquarelleScriptReplay],
+      ['the live-pixel transactions', livePixelTransactions],
+      ['the export engine', exportEngine],
+      ['auto-save', autoSave],
+      ['the project store', projectStoreSource],
+      ['the physic-paint types', types],
+      ['the project types', projectTypes],
+    ] as const;
+    for (const [label, source] of persisted) {
+      expect(source, `${label} must not read the wireframe latch`).not.toContain('wireframeMode');
+    }
+    const toStudioStroke = readFileSync(
+      fileURLToPath(
+        new URL('../../../../packages/efx-watercolor/src/payload/toStudioStroke.ts', import.meta.url),
+      ),
+      'utf8',
+    );
+    expect(toStudioStroke).not.toContain('wireframeMode');
+    expect(types).not.toContain('wireframe');
   });
 });

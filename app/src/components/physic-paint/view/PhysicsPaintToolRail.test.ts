@@ -19,6 +19,7 @@ import { signal } from '@preact/signals';
 import { WatercolorRail } from './PhysicsPaintToolRail';
 import { resetForStudioOpen, vectorPenActive } from './vectorPathSession';
 import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
+import { draftMode, draftPixelsDirty, wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -46,6 +47,7 @@ vi.mock('lucide-preact', () => {
     Pipette: Icon,
     RefreshCcwDot: Icon,
     Scan: Icon,
+    VectorSquare: Icon,
     Wind: Icon,
   };
 });
@@ -109,20 +111,32 @@ function directChildren(node: TestVNode): TestVNode[] {
   return out;
 }
 
-function renderRail(): TestVNode {
-  const tree = materialize(
-    WatercolorRail({
-      disabled: false,
-      selectAvailable: signal(false),
-      rebakeAvailable: signal(false),
-      onUndo: () => {},
-      onRedo: () => {},
-      onClearFrame: () => {},
-      onRebakeScript: () => {},
-      onActiveColorChanged: () => {},
-      onToggleMotionBoundaries: () => {},
-    }),
-  ) as TestVNode;
+/**
+ * 61-13 needs one prop the 61-08 rail did not have yet. The 61-08 type stays
+ * untouched so the 61-08 test file still typechecks either side of the GREEN
+ * commit; `railProps` is a variable (never a fresh literal at the call site),
+ * so no excess-property check fires.
+ */
+type RailPropsWithWireframe = Parameters<typeof WatercolorRail>[0] & { onToggleWireframe?: () => void };
+
+function railProps(overrides: Partial<RailPropsWithWireframe> = {}): RailPropsWithWireframe {
+  return {
+    disabled: false,
+    selectAvailable: signal(false),
+    rebakeAvailable: signal(false),
+    onUndo: () => {},
+    onRedo: () => {},
+    onClearFrame: () => {},
+    onRebakeScript: () => {},
+    onActiveColorChanged: () => {},
+    onToggleMotionBoundaries: () => {},
+    onToggleWireframe: () => {},
+    ...overrides,
+  };
+}
+
+function renderRail(overrides: Partial<RailPropsWithWireframe> = {}): TestVNode {
+  const tree = materialize(WatercolorRail(railProps(overrides))) as TestVNode;
   const nav = [...walk(tree)].find((node) => node.type === 'nav');
   expect(nav, 'the rail mounts a nav').toBeTruthy();
   return nav!;
@@ -132,15 +146,27 @@ function penButton(nav: TestVNode): TestVNode {
   return directChildren(nav).find((node) => node.props?.['data-testid'] === 'aquarelle-vector-pen-toggle')!;
 }
 
+function button(nav: TestVNode, testId: string): TestVNode | undefined {
+  return directChildren(nav).find((node) => node.props?.['data-testid'] === testId);
+}
+
 function click(node: TestVNode): void {
   const onClick = node.props?.onClick as (() => void) | undefined;
   expect(onClick, 'button has no onClick').toBeTypeOf('function');
   onClick!();
 }
 
+function resetWireframeSignals(): void {
+  wireframeSettleInFlight.value = false;
+  wireframeMode.value = false;
+  draftPixelsDirty.value = false;
+  draftMode.value = false;
+}
+
 afterEach(() => {
   resetForStudioOpen();
   setAquarelleTool('brush');
+  resetWireframeSignals();
 });
 
 describe('WatercolorRail — the fifth entry (D-05 / C-01)', () => {
@@ -217,6 +243,74 @@ describe('WatercolorRail — the fifth entry (D-05 / C-01)', () => {
       }),
     ) as TestVNode;
     expect(penButton(nav).props?.disabled).toBe(true);
+  });
+});
+
+// 61-13 Task 1: the wireframe latch entry. Position, grammar, aria and the
+// settle-in-flight disable window are the rail's whole contribution to D-16;
+// the paint-row reasons and the picker disarm arrive with Task 3.
+describe('WatercolorRail — the wireframe latch (61-13)', () => {
+  it('renders exactly one wireframe entry between the motion boundary and Dry', () => {
+    const nav = renderRail();
+    const ordered = directChildren(nav);
+    const matches = [...walk(nav)].filter(
+      (node) => node.props?.['data-testid'] === 'aquarelle-wireframe-toggle',
+    );
+    expect(matches).toHaveLength(1);
+
+    const motionIndex = ordered.findIndex(
+      (node) => node.props?.['data-testid'] === 'aquarelle-motion-boundary-toggle',
+    );
+    const wireIndex = ordered.findIndex(
+      (node) => node.props?.['data-testid'] === 'aquarelle-wireframe-toggle',
+    );
+    const dryIndex = ordered.findIndex((node) => node.props?.['data-testid'] === 'aquarelle-dry');
+    expect(motionIndex, 'the motion boundary is above it').toBeGreaterThan(-1);
+    expect(dryIndex, 'Dry is below it').toBeGreaterThan(-1);
+    expect(wireIndex).toBe(motionIndex + 1);
+    expect(dryIndex).toBe(wireIndex + 1);
+  });
+
+  it('carries the approved wireframe grammar, label and title', () => {
+    const wire = button(renderRail(), 'aquarelle-wireframe-toggle');
+    expect(wire, 'the wireframe button is rendered').toBeTruthy();
+    expect(wire!.type).toBe('button');
+    expect(wire!.props?.['aria-label']).toBe('Wireframe');
+    expect(wire!.props?.title).toBe(
+      "Wireframe — show every stroke's spine and width envelope, and suspend the bake",
+    );
+    expect(wire!.props?.class).toBe('physics-paint-icon-button');
+    expect(wire!.props?.disabled).toBe(false);
+    // Icon-only: exactly one vnode child, never a text label.
+    const children = childrenOf(wire!);
+    expect(children).toHaveLength(1);
+    expect(typeof children[0]).toBe('object');
+  });
+
+  it('reports aria-pressed from the latch and fires the toggle handler', () => {
+    expect(button(renderRail(), 'aquarelle-wireframe-toggle')!.props?.['aria-pressed']).toBe(false);
+
+    const onToggleWireframe = vi.fn();
+    click(button(renderRail({ onToggleWireframe }), 'aquarelle-wireframe-toggle')!);
+    expect(onToggleWireframe).toHaveBeenCalledTimes(1);
+
+    wireframeMode.value = true;
+    const on = button(renderRail(), 'aquarelle-wireframe-toggle')!;
+    expect(on.props?.['aria-pressed']).toBe(true);
+    expect(String(on.props?.class)).toContain('active');
+  });
+
+  it('is disabled with the rail and while the OFF settle is in flight (E6 backstop)', () => {
+    expect(button(renderRail({ disabled: true }), 'aquarelle-wireframe-toggle')!.props?.disabled).toBe(true);
+
+    // A second click during the re-bake window must reach nothing: the whole
+    // rail shares the in-flight gate, not only the wireframe button.
+    wireframeSettleInFlight.value = true;
+    const nav = renderRail();
+    expect(button(nav, 'aquarelle-wireframe-toggle')!.props?.disabled).toBe(true);
+    expect(penButton(nav).props?.disabled).toBe(true);
+    expect(button(nav, 'aquarelle-motion-boundary-toggle')!.props?.disabled).toBe(true);
+    expect(button(nav, 'aquarelle-dry')!.props?.disabled).toBe(true);
   });
 });
 
