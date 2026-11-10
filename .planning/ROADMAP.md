@@ -235,7 +235,23 @@ Plans:
   4. A vector stroke persists in `.mce` (declared in both TS and Rust), survives reopen, and exports exactly as previewed while keeping hide/solo, ordering, opacity, and background behavior.
   5. Deterministic replay: the same vector stroke produces the same raster across runs, undo/redo, and reopen, and undo/redo covers each vector operation.
 
-**Plans**: TBD
+**Plans:** 14 plans
+
+Plans:
+- [ ] 61-01-PLAN.md — Wave 0 spike: seam strategy, sampling density, stroke-count cost and the 1.8x width channel, as a probe verdict
+- [ ] 61-02-PLAN.md — Vector spine math: derived Bezier handles, arc-length sampling, sparse width profile, determinism scan entry
+- [ ] 61-03-PLAN.md — Payload model: anchor and render-mode types in the opaque engine slot, projection and codec validation
+- [ ] 61-04-PLAN.md — Engine width channel: per-sample width scale through scriptBegin/scriptMove and the adapter, measured at 1.8x
+- [ ] 61-05-PLAN.md — AQTL v2: vector flags, anchor block and render-mode byte in SNAP v5, fail-closed v1 refusal, lossless restore
+- [ ] 61-06-PLAN.md — Declaration pair: matching TS and Rust members pinned by the field contract test, no new one-language exception
+- [ ] 61-07-PLAN.md — Simple ribbon: crisp render mode in the engine, the brush preset and its crisp thumb, mode-aware script begin
+- [ ] 61-08-PLAN.md — Vector pen entry: the rail's fifth tool row, the V shortcut and the session store
+- [ ] 61-09-PLAN.md — Draw path: spine and anchor overlay, click/Alt/Enter/Escape gesture, one recorded stroke per path
+- [ ] 61-10-PLAN.md — Edit path: anchor and handle drag, promotion, coupling, insert/delete, multi-select width, anchors travel with the stroke
+- [ ] 61-11-PLAN.md — Sheet controls: the Edit path header button and the Anchor width stepper with an honest effective readout
+- [ ] 61-12-PLAN.md — Render row and Advanced wet globals: two-segment mode control plus the simple-ribbon disclosure, one batch edit
+- [ ] 61-13-PLAN.md — Wireframe: session-only latch generalising Draft, every stroke's construction geometry, no bake while on
+- [ ] 61-14-PLAN.md — Close-out proofs: save/reopen bake-input parity, both render modes, undo/redo byte identity, cache-key behaviour
 
 **Spike before the data model is locked**: per-vertex watercolour feasibility (segment runs vs payload extension), the sampling law, seam quality, stroke-count cost, and the determinism pin. The renderer, not the pen tool, is the scope risk.
 
