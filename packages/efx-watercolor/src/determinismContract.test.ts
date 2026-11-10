@@ -11,15 +11,130 @@
 //    D-29 / P1    engine-2 never imports engine-1 (clean-room)
 // ============================================================
 
+import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { createAquarelleEngineAdapter } from './adapter/engineAdapter'
+import type { AquarelleRenderMode } from './payload/vectorPath'
 import type { AquarelleStrokePayload } from './payload/toStudioStroke'
 import { toStudioStroke } from './payload/toStudioStroke'
+
+// ---------------------------------------------------------------------------
+// Deterministic engine stand-in for the replay arm (61-07)
+//
+// vitest has no WebGL2, so the real WatercolorEngine constructor throws and
+// the adapter runs engine-less: the mock 2D canvas would then return an
+// all-zero buffer and NO cross-mode difference could ever be observed. The
+// replay arm therefore swaps in a deterministic stand-in whose exported bytes
+// are a pure function of the script it was fed — including the render mode,
+// which the adapter passes at the ONE scriptBegin call. That pins the law
+// this file owns: the mode is part of the deterministic replay INPUT
+// (VEC-06 / D-12). The real-pixel proof (edge transition, per-global
+// independence) lives in probe/vector-spine `--scenario ribbon`.
+// ---------------------------------------------------------------------------
+
+const replayEngine = vi.hoisted(() => {
+  interface FakeCanvas2D {
+    createImageData: (
+      width: number,
+      height: number,
+    ) => { width: number; height: number; data: Uint8ClampedArray }
+    putImageData: (
+      image: { width: number; height: number; data: Uint8ClampedArray },
+      x: number,
+      y: number,
+    ) => void
+  }
+
+  interface FakeCanvas {
+    width: number
+    height: number
+    getContext: (id: string) => FakeCanvas2D | null
+  }
+
+  class FakeWatercolorEngine {
+    paperTexture = 1
+    isAwake = false
+    private readonly surface: FakeCanvas
+    private mode: 'watercolor' | 'simple-ribbon' = 'watercolor'
+    private readonly dabs: Array<{ x: number; y: number; p: number }> = []
+
+    constructor(surface: FakeCanvas) {
+      this.surface = surface
+    }
+
+    setManual(): void {}
+    setClock(): void {}
+    setRandom(): void {}
+    setPaper(): void {}
+    setParams(): void {}
+    setBrush(): void {}
+    setPigment(): void {}
+    setTool(): void {}
+
+    scriptBegin(
+      _tool: string,
+      x: number,
+      y: number,
+      p: number,
+      _step?: string,
+      _maxRadius?: number,
+      _tiltX?: number,
+      _tiltY?: number,
+      _widthScale?: number,
+      renderMode: 'watercolor' | 'simple-ribbon' = 'watercolor',
+    ): boolean {
+      this.mode = renderMode
+      this.dabs.push({ x, y, p })
+      return true
+    }
+
+    scriptMove(x: number, y: number, p: number): void {
+      this.dabs.push({ x, y, p })
+    }
+
+    scriptEnd(): void {}
+    tick(): void {}
+    fix(): void {}
+    destroy(): void {}
+
+    resetSheet(): void {
+      this.dabs.length = 0
+      this.mode = 'watercolor'
+    }
+
+    /** Export one deterministic pixel per fed sample, tagged by mode. */
+    exportCanvas(): FakeCanvas {
+      const ctx = this.surface.getContext('2d')
+      if (!ctx) return this.surface
+      const image = ctx.createImageData(this.surface.width, this.surface.height)
+      const modeTag = this.mode === 'simple-ribbon' ? 0x22 : 0x11
+      for (const dab of this.dabs) {
+        const px =
+          ((Math.trunc(dab.x) % this.surface.width) + this.surface.width) % this.surface.width
+        const py =
+          ((Math.trunc(dab.y) % this.surface.height) + this.surface.height) % this.surface.height
+        const at = (py * this.surface.width + px) * 4
+        image.data[at] = modeTag
+        image.data[at + 1] = Math.min(255, Math.max(0, Math.round(dab.p * 255)))
+        image.data[at + 2] = this.dabs.length & 0xff
+        image.data[at + 3] = 255
+      }
+      ctx.putImageData(image, 0, 0)
+      return this.surface
+    }
+  }
+
+  return { FakeWatercolorEngine }
+})
+
+vi.mock('./playground/Engine', () => ({
+  WatercolorEngine: replayEngine.FakeWatercolorEngine,
+}))
 
 const PKG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const ENGINE_DIR = join(PKG_DIR, 'src', 'engine')
@@ -96,7 +211,7 @@ function makeMockCanvas(width: number, height: number): {
   return { canvas: canvasRef as unknown as HTMLCanvasElement, pixels }
 }
 
-function makeStroke(): StudioStroke<AquarelleStrokePayload> {
+function makeStroke(renderMode?: AquarelleRenderMode): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color: '#2244aa',
@@ -110,20 +225,57 @@ function makeStroke(): StudioStroke<AquarelleStrokePayload> {
     ],
     mutationId: 42,
     timestamp: 1000,
+    // 61-07: absent keeps the pre-phase payload shape; present is the mode.
+    ...(renderMode === undefined ? {} : { renderMode }),
   })
 }
 
-function replayBytes(): Uint8ClampedArray {
+const PAPER_SEED = 0xc0ffee
+
+/** mulberry32 — the same generator the adapter installs. */
+function seededRandom(seed: number): () => number {
+  let state = (seed | 0) || 1
+  return () => {
+    state = (state + 0x6d2b79f5) | 0
+    let t = Math.imul(state ^ (state >>> 15), 1 | state)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * 61-07: the constructor draws `paperSeed` from Math.random before the
+ * adapter installs its own RNG — pin it around every construction or the
+ * replay digests mean nothing.
+ */
+function withSeededMathRandom<T>(seed: number, fn: () => T): T {
+  const original = Math.random
+  const rng = seededRandom(seed)
+  Math.random = () => rng()
+  try {
+    return fn()
+  } finally {
+    Math.random = original
+  }
+}
+
+function replayBytes(renderMode?: AquarelleRenderMode): Uint8ClampedArray {
   const width = 64
   const height = 64
   const { canvas, pixels } = makeMockCanvas(width, height)
-  const adapter = createAquarelleEngineAdapter({ width, height, canvas })
-  adapter.applyStroke(makeStroke())
+  const adapter = withSeededMathRandom(PAPER_SEED, () =>
+    createAquarelleEngineAdapter({ width, height, canvas }),
+  )
+  adapter.applyStroke(makeStroke(renderMode))
   for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
   adapter.captureFrame()
   const copy = pixels.slice()
   adapter.dispose()
   return copy
+}
+
+function replayDigest(renderMode?: AquarelleRenderMode): string {
+  return createHash('sha256').update(Buffer.from(replayBytes(renderMode))).digest('hex')
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +295,27 @@ describe('determinism contract', () => {
     expect(stroke.traceSeed).toBe(hashMutationId(42))
     const again = makeStroke()
     expect(again.traceSeed).toBe(stroke.traceSeed)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 1b. 61-07 — the render mode is replay input, not a rendering accident
+//     (VEC-06 / D-12): each mode is self-identical across fresh adapters and
+//     the two modes deposit different bytes.
+// ---------------------------------------------------------------------------
+
+describe('render-mode replay contract (61-07)', () => {
+  it('replays each mode byte-identically on two fresh adapters', () => {
+    expect(replayDigest('watercolor')).toBe(replayDigest('watercolor'))
+    expect(replayDigest('simple-ribbon')).toBe(replayDigest('simple-ribbon'))
+  })
+
+  it('the two modes produce different digests — the mode changes the deposit', () => {
+    expect(replayDigest('watercolor')).not.toBe(replayDigest('simple-ribbon'))
+  })
+
+  it('an absent mode replays as the watercolour default (REL-02)', () => {
+    expect(replayDigest()).toBe(replayDigest('watercolor'))
   })
 })
 
