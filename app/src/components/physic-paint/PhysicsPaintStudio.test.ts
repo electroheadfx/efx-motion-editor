@@ -2533,8 +2533,10 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // mapper, same capsule.
     // 61-12: an eleventh site — the render-mode re-bake failure in
     // handleAquarelleRenderModeStrokes — same mapper, same capsule.
+    // 61-15: a twelfth site — the vector draw re-bake failure in
+    // bakeAquarelleVectorCommit — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(12); // one import + eleven call sites
+    expect(mentions).toBe(13); // one import + twelve call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 

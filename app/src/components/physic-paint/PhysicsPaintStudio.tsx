@@ -317,6 +317,12 @@ import {
   wireframeMode,
   wireframeSettleInFlight,
 } from './view/scriptStrokeEdition';
+import {
+  VECTOR_PATH_SCRIPT_OFF_MESSAGE,
+  isVectorAquarelleStroke,
+  resolveVectorCommitRoute,
+  runAquarelleScriptRebake,
+} from './view/aquarelleVectorPathCommit';
 import type {
   ScriptStrokeAppearancePatch,
   StrokeSettingsDialogBundle,
@@ -8621,6 +8627,42 @@ export function PhysicsPaintStudio() {
       finish();
     }
   }, []);
+  // 61-15 (G-1/G-2): a vector stroke paints no engine dabs — its only pixels
+  // are this re-bake. ONE in-flight latch; Draft/wireframe defer the engine
+  // re-render exactly like a stroke Move. A failure owns the capsule and the
+  // refusal flag, so no other surface clears a message this seam published.
+  const bakeAquarelleVectorCommit = useCallback(async (): Promise<boolean> => {
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    if (resolveVectorCommitRoute({ draft: draftMode.peek(), wireframe: wireframeMode.peek() }) === 'defer-pixels') {
+      // The committed script IS the edit; the sheet keeps its last rendered
+      // pixels until the ONE Draft/wireframe settle.
+      setDraftPixelsDirty(true);
+      return true;
+    }
+    return runAquarelleScriptRebake({
+      isInFlight: isAquarelleScriptEditInFlight,
+      beginInFlight: () => setAquarelleScriptEditInFlight(true),
+      endInFlight: () => setAquarelleScriptEditInFlight(false),
+      resetSheet: () => aquarelleResetSheetRef.current?.(),
+      applyTimeline: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)),
+      onSuccess: () => {
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+      },
+      onFailure: () => {
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error)
+          ?? error?.message
+          // A draw restored nothing: the record landed, only the sheet did
+          // not refresh, so the move's "stroke was restored" copy would lie.
+          ?? 'Could not re-apply the watercolor script — the vector path was recorded but the sheet did not refresh.';
+        setLastError(message);
+        setApplyMessage(message);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
+      },
+    });
+  }, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);
   const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
     // 3.6 (261027-klx): the app-owned ledger allocates the id and emits the
     // completion SYNCHRONOUSLY — no engine, no rasterization and no pending
@@ -8663,6 +8705,17 @@ export function PhysicsPaintStudio() {
       setApplyMessage(liftPlan.message);
       setApplyStatus('error');
       setLastError(liftPlan.message);
+      return;
+    }
+    // 61-15 (G-1/G-2): a vector stroke paints no engine dabs — with Script
+    // Off the path would become neither pixels nor script, so it would
+    // silently vanish (the recorder's silent drop). Refuse it with fixed
+    // copy BEFORE the ledger allocates. No sheet reset: the commit painted
+    // nothing, and a reset here would erase the live frame.
+    if (isVectorAquarelleStroke(stroke) && !aquarelleScriptRecordingEnabled.peek()) {
+      setApplyMessage(VECTOR_PATH_SCRIPT_OFF_MESSAGE);
+      setApplyStatus('error');
+      setLastError(VECTOR_PATH_SCRIPT_OFF_MESSAGE);
       return;
     }
     const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();
@@ -8736,10 +8789,15 @@ export function PhysicsPaintStudio() {
       // 261028-k03 D2: the record above is synchronous and ordered; the punch
       // is async and owns only the pixel side. It never re-records.
       if (liftPlan?.kind === 'erase') void runAquarelleLiftErase(liftPlan, stroke, liftGestureDabs);
+      // 61-15 (G-1/G-2): the vector commit's pixels exist only in this
+      // re-bake (the commit painted no engine dabs). Tailed after the record
+      // so the timeline already contains this exact stroke; a failed record
+      // throws into the catch and never bakes.
+      if (isVectorAquarelleStroke(stroke)) void bakeAquarelleVectorCommit();
     } catch {
       // A malformed recorded stroke must not kill the live surface — drop it.
     }
-  }, [applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);
+  }, [bakeAquarelleVectorCommit, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);
   const handleAquarelleStrokeSettled = useCallback((stroke: AquarelleStroke, ticks: number) => {
     const mutationId = aquarelleStrokeMutationIdsRef.current.get(stroke);
     if (mutationId !== undefined) setAquarelleStrokeDiffusionFrames(mutationId, ticks);
