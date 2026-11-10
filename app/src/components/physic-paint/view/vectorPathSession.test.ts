@@ -115,17 +115,21 @@ describe('vectorPathSession — the vector pen and path-edit session', () => {
   });
 
   it('writes each signal once for identical calls (idempotent setters)', () => {
+    // Measured one signal at a time: entering path edit legitimately clears a
+    // latched pen (the exclusion law pinned above), so a single effect over
+    // both signals would count that cross-write as an extra pen write.
     const penRuns = countRuns(() => vectorPenActive.value);
-    const editRuns = countRuns(() => pathEditMutationId.value);
     enterVectorPen();
     enterVectorPen();
     enterVectorPen();
-    enterPathEdit('m7');
-    enterPathEdit('m7');
-    // 1 initial run + exactly one real write each.
+    // 1 initial run + exactly one real write.
     expect(penRuns.runs()).toBe(2);
-    expect(editRuns.runs()).toBe(2);
     penRuns.dispose();
+
+    const editRuns = countRuns(() => pathEditMutationId.value);
+    enterPathEdit('m7');
+    enterPathEdit('m7');
+    expect(editRuns.runs()).toBe(2);
     editRuns.dispose();
   });
 

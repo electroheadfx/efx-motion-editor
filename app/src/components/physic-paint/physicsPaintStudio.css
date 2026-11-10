@@ -696,6 +696,16 @@ button.destructive {
   height: 35px;
 }
 
+/* 61-08 (D-05): the vector pen sits outside the four paint tools, so the rail
+   separates them with the derived 1px rule at the existing 7px gap. */
+.physics-paint-rail-separator {
+  flex: 0 0 auto;
+  width: 21px;
+  height: 1px;
+  margin: 1px 0;
+  background: #5a5e63;
+}
+
 .physics-paint-icon-button img {
   width: 20px;
   height: 20px;

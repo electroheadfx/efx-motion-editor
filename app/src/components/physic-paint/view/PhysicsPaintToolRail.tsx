@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import type { PaintHistoryAvailability } from '../types/paintCore';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Paintbrush, Pen, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';
+import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
@@ -17,6 +17,7 @@ import {
 } from './aquarelleStrokeSelection';
 import { aquarellePickerActive, toggleAquarellePickerLatched } from './aquarelleColorPicker';
 import { exitRailMotionEditing, railMotionSelectedChannel } from './railMotionEditingMode';
+import { exitPathEdit, exitVectorPen, toggleVectorPen, vectorPenActive } from './vectorPathSession';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
 export type PhysicsPaintRailAction = 'undo' | 'redo' | 'clear-frame' | 'rebake-script';
@@ -62,7 +63,7 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
 
-function WatercolorRail({
+export function WatercolorRail({
   disabled,
   historyAvailability,
   selectAvailable,
@@ -99,6 +100,9 @@ function WatercolorRail({
   // renders deselected while it is on, and comes back on release (the picker
   // never changes the paint tool itself).
   const pickerActive = aquarellePickerActive.value;
+  // 61-08 (D-05): the vector pen is a HOST tool — its own session latch, and
+  // one of the rail's mutually exclusive active surfaces.
+  const penActive = vectorPenActive.value;
   // 261107 UAT: animate mode is "one motion property selected". The tool is
   // the latch over that state — pressing it while a property is selected
   // leaves animate mode; pressing it otherwise deploys the lane and
@@ -114,7 +118,8 @@ function WatercolorRail({
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {
         // 261107 UAT: the rail shows ONE active surface. While Motion
         // boundaries (animate mode) is on, the paint row renders deselected.
-        const isActive = !selectActive && !pickerActive && !motionBoundaryActive && active === id;
+        const isActive =
+          !selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === id;
         const waterGated = id === 'water' && !wetAvailable;
         return (
           <button
@@ -129,6 +134,10 @@ function WatercolorRail({
               // Defense in depth: a programmatic click must not select Water
               // while the sheet is dry (261029-lel).
               if (id === 'water' && !aquarelleHasWetPaint.peek()) return;
+              // 61-08 (D-06): a paint tool press leaves the vector pen and ends
+              // path edit — the four input surfaces are mutually exclusive.
+              exitVectorPen();
+              exitPathEdit();
               setAquarelleSelectMode(false);
               setAquarelleTool(id);
             }}
@@ -137,6 +146,23 @@ function WatercolorRail({
           </button>
         );
       })}
+      {/* 61-08 (D-05 / C-01): the vector pen is a fifth, separated HOST tool —
+          outside WATERCOLOR_RAIL_TOOLS and the `AquarelleTool` union, so
+          latching it never changes the paint tool. D-06: this button always
+          means DRAW; path edit is a distinct state entered elsewhere. */}
+      <div class="physics-paint-rail-separator" aria-hidden="true" />
+      <button
+        type="button"
+        class={`physics-paint-icon-button${penActive ? ' active' : ''}`}
+        data-testid="aquarelle-vector-pen-toggle"
+        disabled={disabled}
+        title="Vector pen — draw a vector path (V)"
+        aria-label="Vector pen"
+        aria-pressed={penActive}
+        onClick={() => toggleVectorPen()}
+      >
+        <PenTool size={18} />
+      </button>
       {/* 261030-cnq: the color picker. A HOST tool — deliberately outside
           WATERCOLOR_RAIL_TOOLS and the `AquarelleTool` union, so latching it
           never changes the paint tool and unlatching is "back to the previous
