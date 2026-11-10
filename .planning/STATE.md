@@ -4,17 +4,17 @@ milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
 current_phase: 61
 current_phase_name: Vector Painting Tool
-status: executing
-stopped_at: Completed 61-19-PLAN.md
-last_updated: "2026-11-10T22:08:57.332Z"
+status: verifying
+stopped_at: Completed 61-20-PLAN.md
+last_updated: "2026-11-10T22:16:07.701Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: 76494ae019fedc7b095d02d48ff3316f65dd52d9
+state_head: aa3e3dc2c806bfb734181809cdac704139b4c88c
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 51
-  completed_plans: 50
+  completed_plans: 51
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
 Plan: 20 of 20
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-10 — Phase 61 execution started
 
 Progress: [█████░░░░░] 50%
@@ -108,6 +108,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P17 | 5min | 2 tasks | 8 files |
 | Phase 61 P18 | 6min | 2 tasks | 6 files |
 | Phase 61 P19 | 9min | 2 tasks | 6 files |
+| Phase 61 P20 | 5 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -291,6 +292,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: 61-19: the dialog shadows its reading to ANCHOR_WIDTH_EMPTY_READING on a null target instead of adding a second availability boolean, keeping disabled and caption one branch
 - [Phase 61]: 61-19: one caption span serves both inert reasons, branching only the child so the testid-before-style ordering and the shipped no-style pin stay true
 - [Phase 61]: 61-19: the Studio's width commit routes through the shared commitAquarelleVectorPathEdit, keeping exactly one beginAquarellePathEdit in the file
+- [Phase 61]: 61-20: Both ledger record sites live inside commitAquarelleVectorPathEdit (the one writer) — the defer branch records before setDraftPixelsDirty(true), the re-bake onSuccess tail records before setLastError(null) — so delegating vector routes can never double-count; a draw records nothing
+- [Phase 61]: 61-20: The commit depends on the stable rotoMoveHistory.recordAquarelleScriptEdit useCallback, never the per-render wrapper (efx-preact-reactivity §4); the failure route restores the snapshot and records nothing
 
 ### Pending Todos
 
@@ -383,8 +386,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T22:08:56.053Z
-Stopped at: Completed 61-19-PLAN.md
+Last session: 2026-11-10T22:16:06.420Z
+Stopped at: Completed 61-20-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
