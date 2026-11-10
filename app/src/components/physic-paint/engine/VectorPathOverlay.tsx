@@ -142,6 +142,8 @@ interface AnchorDragState {
   readonly startUv: Vec2;
   readonly anchorsAtStart: readonly VectorAnchor[];
   readonly wasPromoted: boolean;
+  /** 61-16: the pointer this drag captured, released when the drag ends. */
+  readonly pointerId: number;
   moved: boolean;
   latest: readonly VectorAnchor[];
 }
@@ -153,11 +155,64 @@ interface HandleDragState {
   readonly index: number;
   readonly side: 'in' | 'out';
   readonly anchorsAtStart: readonly VectorAnchor[];
+  /** 61-16: the pointer this drag captured, released when the drag ends. */
+  readonly pointerId: number;
   moved: boolean;
   latest: readonly VectorAnchor[];
 }
 
 type PathEditDragState = AnchorDragState | HandleDragState;
+
+/**
+ * The optional pointer-capture capability a drag target carries. Nothing here
+ * assumes the methods exist: a detached or non-element target has none, and a
+ * capture call must never throw into a gesture (T-61-57).
+ */
+interface PointerCaptureTarget {
+  setPointerCapture?(pointerId: number): void;
+  releasePointerCapture?(pointerId: number): void;
+  hasPointerCapture?(pointerId: number): boolean;
+}
+
+/**
+ * Capture the pointer for the lifetime of a drag. Without it a pointermove or
+ * pointerup that lands outside the overlay is delivered elsewhere and the edit
+ * is stranded mid-gesture (CR-01). A detached target cannot capture; the drag
+ * keeps working in place.
+ */
+function capturePointer(
+  target: PointerCaptureTarget | null | undefined,
+  pointerId: number,
+): void {
+  if (target === null || target === undefined) return;
+  if (typeof target.setPointerCapture !== 'function') return;
+  try {
+    target.setPointerCapture(pointerId);
+  } catch {
+    // A target that cannot capture still receives in-overlay events.
+  }
+}
+
+/**
+ * Release a capture only when the target still holds it. Releasing a pointer
+ * the element no longer holds is an error in the pointer-events spec, so the
+ * `hasPointerCapture` answer is honoured when the target can give one; a
+ * missing method or a throwing target is swallowed — the release is cleanup,
+ * never part of the edit.
+ */
+export function releasePointerCapture(
+  target: PointerCaptureTarget | null | undefined,
+  pointerId: number,
+): void {
+  if (target === null || target === undefined) return;
+  if (typeof target.releasePointerCapture !== 'function') return;
+  try {
+    if (target.hasPointerCapture?.(pointerId) === false) return;
+    target.releasePointerCapture(pointerId);
+  } catch {
+    // The pointer is already gone; there is nothing left to release.
+  }
+}
 
 /** One path the overlay draws: its anchors, resolved handles and projection. */
 interface DrawnVectorPath {
@@ -771,9 +826,13 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
         index: target.index,
         side: target.kind === 'handle-in' ? 'in' : 'out',
         anchorsAtStart: editTargetAnchors,
+        pointerId: event.pointerId,
         moved: false,
         latest: editTargetAnchors,
       };
+      // The drag owns the pointer from the press: a move or release that lands
+      // outside the overlay still reaches this element (CR-01).
+      capturePointer(event.currentTarget, event.pointerId);
       vectorPathEditDrag.value = { mutationId: editTargetMutationId, anchors: editTargetAnchors };
       return;
     }
@@ -796,16 +855,21 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
         startUv: pointerUv,
         anchorsAtStart: promoted,
         wasPromoted: current.kind !== 'bezier',
+        pointerId: event.pointerId,
         moved: false,
         latest: promoted,
       };
+      // The drag owns the pointer from the press: a move or release that lands
+      // outside the overlay still reaches this element (CR-01).
+      capturePointer(event.currentTarget, event.pointerId);
       vectorPathEditDrag.value = { mutationId: editTargetMutationId, anchors: promoted };
       return;
     }
 
     // A click on the spine inserts ONE anchor, committed immediately — a
-    // click is a completed gesture, so no drag state is opened. The inserted
-    // anchor becomes the selection.
+    // click is a completed gesture, so no drag state is opened and no pointer
+    // capture is taken (there is no later move or release to route). The
+    // inserted anchor becomes the selection.
     const segment = spineSegmentAt(editTargetAnchors, pointerUv);
     if (segment === null) return;
     const next = insertAnchorOnSegment(editTargetAnchors, segment, pointerUv);
@@ -849,7 +913,7 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     vectorPathEditDrag.value = { mutationId: drag.mutationId, anchors: next };
   };
 
-  const finishEditDrag = () => {
+  const finishEditDrag = (event?: TargetedPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (drag === null) return;
     dragRef.current = null;
@@ -858,19 +922,22 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     vectorPathEditDrag.value = null;
     if (drag.moved) {
       props.onPathEdit(drag.mutationId, drag.latest);
-      return;
-    }
-    // A grab-and-release still commits the promotion (D-03); an already-bezier
-    // anchor that did not move is a no-op and commits nothing. A handle that
-    // did not move is a no-op too — there is no promotion to preserve.
-    if (drag.kind === 'anchor' && drag.wasPromoted) {
+    } else if (drag.kind === 'anchor' && drag.wasPromoted) {
+      // A grab-and-release still commits the promotion (D-03); an already-bezier
+      // anchor that did not move is a no-op and commits nothing. A handle that
+      // did not move is a no-op too — there is no promotion to preserve.
       props.onPathEdit(drag.mutationId, drag.anchorsAtStart);
     }
+    // Release AFTER the commit decision, so the release can never swallow the
+    // edit (T-61-57). A pointer the element already lost is not released.
+    releasePointerCapture(event?.currentTarget, drag.pointerId);
   };
 
-  const cancelEditDrag = () => {
+  const cancelEditDrag = (event?: TargetedPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
     dragRef.current = null;
     vectorPathEditDrag.value = null;
+    if (drag !== null) releasePointerCapture(event?.currentTarget, drag.pointerId);
   };
 
   return (
