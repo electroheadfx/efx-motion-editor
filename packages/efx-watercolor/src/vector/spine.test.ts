@@ -13,6 +13,9 @@
 //    4. duplicate / single / empty fallbacks
 // ============================================================
 
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   ANCHOR_WIDTH_DEFAULT,
@@ -389,5 +392,26 @@ describe('sampleVectorWidths', () => {
     expect(widths[0]).toBe(1)
     expect(widths[1]).toBeCloseTo(1.6, 12)
     expect(widths[2]).toBeCloseTo(1.6, 12)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 7. Determinism scan coverage — the contract reads src/vector (T-61-07)
+// ---------------------------------------------------------------------------
+
+describe('determinism scan coverage', () => {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const moduleSource = readFileSync(join(here, 'spine.ts'), 'utf8')
+  const contractSource = readFileSync(join(here, '..', 'determinismContract.test.ts'), 'utf8')
+
+  it('the spine module carries no unseeded RNG source', () => {
+    expect(moduleSource.includes('Math.random')).toBe(false)
+    expect(moduleSource.includes('crypto.getRandomValues')).toBe(false)
+  })
+
+  it('the determinism contract declares src/vector as a scanned root', () => {
+    expect(contractSource.includes('VECTOR_DIR')).toBe(true)
+    expect(contractSource.includes("'vector'")).toBe(true)
+    expect(contractSource.includes('sourceText(VECTOR_DIR)')).toBe(true)
   })
 })

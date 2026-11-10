@@ -12,7 +12,7 @@
 // ============================================================
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
@@ -24,6 +24,9 @@ import { toStudioStroke } from './payload/toStudioStroke'
 const PKG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const ENGINE_DIR = join(PKG_DIR, 'src', 'engine')
 const PAYLOAD_DIR = join(PKG_DIR, 'src', 'payload')
+// 61-02: the vector spine lands in src/vector, so the unseeded-RNG scan must
+// read it from the same commit — otherwise a draw there would go unpunished.
+const VECTOR_DIR = join(PKG_DIR, 'src', 'vector')
 // 261030-v1t: the per-frame paint salt lives in the HOST package (the one
 // determinism surface both engines share) — scan its source too.
 const HOST_TRACE_SEED = resolve(PKG_DIR, '..', 'efx-paint-host', 'src', 'util', 'traceSeed.ts')
@@ -148,18 +151,29 @@ describe('determinism contract', () => {
 // ---------------------------------------------------------------------------
 
 describe('unseeded RNG source scan', () => {
-  it('src/engine and src/payload contain zero Math.random occurrences', () => {
-    const engine = sourceText(ENGINE_DIR)
-    const payload = sourceText(PAYLOAD_DIR)
-    expect(engine.includes('Math.random')).toBe(false)
-    expect(payload.includes('Math.random')).toBe(false)
+  it('scans a non-empty src/vector root — a rename cannot silently empty the scan', () => {
+    expect(statSync(VECTOR_DIR).isDirectory()).toBe(true)
+    const sources = collectSources(VECTOR_DIR)
+    expect(sources.length).toBeGreaterThan(0)
+    expect(sources.some((file) => basename(file) === 'spine.ts')).toBe(true)
   })
 
-  it('src/engine and src/payload contain zero crypto.getRandomValues occurrences', () => {
+  it('src/engine, src/payload and src/vector contain zero Math.random occurrences', () => {
     const engine = sourceText(ENGINE_DIR)
     const payload = sourceText(PAYLOAD_DIR)
+    const vector = sourceText(VECTOR_DIR)
+    expect(engine.includes('Math.random')).toBe(false)
+    expect(payload.includes('Math.random')).toBe(false)
+    expect(vector.includes('Math.random')).toBe(false)
+  })
+
+  it('src/engine, src/payload and src/vector contain zero crypto.getRandomValues occurrences', () => {
+    const engine = sourceText(ENGINE_DIR)
+    const payload = sourceText(PAYLOAD_DIR)
+    const vector = sourceText(VECTOR_DIR)
     expect(engine.includes('crypto.getRandomValues')).toBe(false)
     expect(payload.includes('crypto.getRandomValues')).toBe(false)
+    expect(vector.includes('crypto.getRandomValues')).toBe(false)
   })
 })
 
