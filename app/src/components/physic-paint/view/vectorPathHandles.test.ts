@@ -36,8 +36,11 @@ import {
   hitTestVectorPath,
   insertAnchorAt,
   isAdjacentToLast,
+  moveAnchorBy,
+  moveHandleTo,
   pointToSegmentDistancePx,
   projectVectorPath,
+  promoteAnchorForDrag,
   screenPadToUv,
   screenToUv,
   uvToScreen,
@@ -197,6 +200,81 @@ describe('insert / delete list operations', () => {
     insertAnchorAt(input, 1, c);
     deleteAnchorsAt(input, [0]);
     expect(input).toEqual([a, b]);
+  });
+});
+
+describe('promoteAnchorForDrag — D-03, taking control owns the handles', () => {
+  it('promotes an auto anchor and freezes the derived handles', () => {
+    const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
+    const derived = resolveAnchorHandles(anchors);
+    const promoted = promoteAnchorForDrag(anchors, 1);
+
+    expect(promoted).not.toBe(anchors);
+    expect(promoted).toHaveLength(3);
+    expect(promoted[0]).toBe(anchors[0]);
+    expect(promoted[2]).toBe(anchors[2]);
+    const promotedAnchor = promoted[1]!;
+    expect(promotedAnchor.kind).toBe('bezier');
+    expect(promotedAnchor.x).toBe(0.5);
+    expect(promotedAnchor.y).toBe(0.5);
+    expect(promotedAnchor.in).toEqual(derived[1]!.in);
+    expect(promotedAnchor.out).toEqual(derived[1]!.out);
+    // The promotion is pure — the input list is untouched.
+    expect(anchors[1]).toEqual(auto(0.5, 0.5));
+  });
+
+  it('leaves an already-bezier anchor and its stored handles untouched', () => {
+    const anchor = bezier(0.5, 0.5, { x: 0.42, y: 0.5 }, { x: 0.58, y: 0.5 });
+    const promoted = promoteAnchorForDrag([anchor], 0);
+    expect(promoted[0]).toEqual(anchor);
+    expect(promoted[0]).toBe(anchor);
+  });
+});
+
+describe('moveAnchorBy — the anchor and both stored handles', () => {
+  it('moves anchor 1 and its handles, leaving the neighbours reference-identical', () => {
+    const before = [
+      auto(0.1, 0.1),
+      bezier(0.5, 0.5, { x: 0.45, y: 0.5 }, { x: 0.55, y: 0.5 }),
+      auto(0.9, 0.9),
+    ];
+    const moved = moveAnchorBy(before, 1, 0.1, 0.2);
+
+    expect(moved).not.toBe(before);
+    expect(moved[0]).toBe(before[0]);
+    expect(moved[2]).toBe(before[2]);
+    const anchor = moved[1]!;
+    expect(anchor.kind).toBe('bezier');
+    expect(anchor.x).toBeCloseTo(0.6, 12);
+    expect(anchor.y).toBeCloseTo(0.7, 12);
+    expect(anchor.in!.x).toBeCloseTo(0.55, 12);
+    expect(anchor.in!.y).toBeCloseTo(0.7, 12);
+    expect(anchor.out!.x).toBeCloseTo(0.65, 12);
+    expect(anchor.out!.y).toBeCloseTo(0.7, 12);
+    // The input list is untouched.
+    expect(before[1]).toEqual(bezier(0.5, 0.5, { x: 0.45, y: 0.5 }, { x: 0.55, y: 0.5 }));
+  });
+
+  it('moves an auto anchor without inventing handle keys', () => {
+    const moved = moveAnchorBy([auto(0.2, 0.2)], 0, 0.1, 0.1);
+    expect(moved[0]!.kind).toBe('auto');
+    expect(moved[0]!.x).toBeCloseTo(0.3, 12);
+    expect(moved[0]!.y).toBeCloseTo(0.3, 12);
+    expect('in' in moved[0]!).toBe(false);
+    expect('out' in moved[0]!).toBe(false);
+  });
+});
+
+describe('moveHandleTo — the handle drag', () => {
+  it('moves the named endpoint and never mutates the input', () => {
+    const anchor = bezier(0.5, 0.5, { x: 0.45, y: 0.5 }, { x: 0.55, y: 0.5 });
+    const before = [anchor];
+    const moved = moveHandleTo(before, 0, 'out', { x: 0.6, y: 0.5 }, false);
+
+    expect(moved).not.toBe(before);
+    expect(moved[0]!.out!.x).toBeCloseTo(0.6, 12);
+    expect(moved[0]!.out!.y).toBeCloseTo(0.5, 12);
+    expect(before[0]).toEqual(anchor);
   });
 });
 

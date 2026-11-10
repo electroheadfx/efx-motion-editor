@@ -20,20 +20,35 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import {
+  resolveAnchorHandles,
+  type AquarelleStroke,
+  type VectorAnchor,
+} from '@efxlab/efx-watercolor/payload';
 import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
 import {
   aquarelleSelectedTipId,
   aquarelleStrokesRevision,
+  captureAquarelleStrokeRegistry,
   getAquarelleEventsForFrame,
+  getRecordedAquarellePayloadTimeline,
+  getRecordedAquarelleStroke,
   getRecordedAquarelleStrokeEntries,
   recordAquarelleStroke,
   recordAquarelleStrokeWhenEnabled,
   resetAquarelleRecordState,
+  updateAquarellePathInScript,
 } from '../view/aquarelleRecordState';
-import { listSelectableAquarelleStrokes } from '../view/aquarelleStrokeSelection';
+import {
+  beginAquarellePathEdit,
+  listSelectableAquarelleStrokes,
+  restoreAquarelleEditSnapshot,
+  setAquarelleScriptEditInFlight,
+} from '../view/aquarelleStrokeSelection';
 import {
   clearVectorDraft,
+  enterPathEdit,
+  exitPathEdit,
   resetForStudioOpen,
   vectorDrawDraft,
   vectorPenActive,
@@ -139,9 +154,13 @@ function vectorStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke
   };
 }
 
+type TestGestureHandlers = Partial<VectorPathGestureHandlers> & {
+  onPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => void;
+};
+
 function propsWith(
   entries: readonly (readonly [number, AquarelleStroke])[] = [],
-  handlers: Partial<VectorPathGestureHandlers> = {},
+  handlers: TestGestureHandlers = {},
 ) {
   return {
     width: WIDTH,
@@ -150,6 +169,7 @@ function propsWith(
     getRecordedStrokes: () => new Map(entries),
     onCommitPath: handlers.onCommitPath ?? (() => {}),
     onCancelPath: handlers.onCancelPath ?? (() => {}),
+    onPathEdit: handlers.onPathEdit ?? (() => {}),
   };
 }
 
@@ -512,6 +532,158 @@ describe('VectorPathOverlay — one entry per finished path (task 3)', () => {
   });
 });
 
+describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
+  const EDIT_ID = 93001;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  it('replaces the recorded path at the same timeline index, bumps once, and repeats at zero', () => {
+    const registryEntry = () =>
+      captureAquarelleStrokeRegistry().pairs.find((pair) => pair[0] === EDIT_ID)![2];
+    const entryBefore = registryEntry();
+    const indexBefore = getRecordedAquarellePayloadTimeline().indexOf(entryBefore);
+    expect(indexBefore).toBeGreaterThanOrEqual(0);
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const nextAnchors: readonly VectorAnchor[] = [auto(0.2, 0.55), auto(0.5, 0.55), auto(0.8, 0.55)];
+
+    expect(updateAquarellePathInScript(EDIT_ID, nextAnchors)).toBe(1);
+
+    const strokeAfter = getRecordedAquarelleStroke(EDIT_ID)!;
+    expect(strokeAfter.anchors).toEqual(nextAnchors);
+    // Every other field survives the path write.
+    expect(strokeAfter.points).toEqual(editedStroke().points);
+    expect(strokeAfter.params).toEqual(editedStroke().params);
+    const entryAfter = registryEntry();
+    expect(entryAfter).not.toBe(entryBefore);
+    // SAME index — the replay order never moves.
+    expect(getRecordedAquarellePayloadTimeline().indexOf(entryAfter)).toBe(indexBefore);
+    // The payload's opaque engine block carries the SAME anchors (T-61-34).
+    expect((entryAfter.engine as { anchors?: readonly VectorAnchor[] }).anchors).toEqual(nextAnchors);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    // Idempotency: the same call twice stores nothing and bumps nothing.
+    expect(updateAquarellePathInScript(EDIT_ID, nextAnchors)).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+  });
+
+  it('stores exactly ONE history entry for one changed anchor and refuses while in flight', () => {
+    const originalAnchors = editedStroke().anchors;
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const nextAnchors: readonly VectorAnchor[] = [auto(0.25, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
+
+    const editId = beginAquarellePathEdit(EDIT_ID, nextAnchors);
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(EDIT_ID)!.anchors).toEqual(nextAnchors);
+
+    // ONE entry for the whole gesture: a single undo restores the pre-drag path.
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(EDIT_ID)!.anchors).toEqual(originalAnchors);
+
+    // A second path commit while one is in flight is refused and bumps nothing.
+    setAquarelleScriptEditInFlight(true);
+    expect(
+      beginAquarellePathEdit(EDIT_ID, [auto(0.3, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)]),
+    ).toBeNull();
+    setAquarelleScriptEditInFlight(false);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 2);
+  });
+
+  it('owns the pointer while a path edit is open even with the pen released', () => {
+    enterPathEdit(String(EDIT_ID));
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]])))!;
+    expect(root.props['style']).toMatchObject({ pointerEvents: 'auto' });
+    expect(root.props['onPointerDown']).toBeTypeOf('function');
+  });
+
+  it('drags an anchor and commits ONE onPathEdit carrying the promotion and the moved handles', () => {
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    const originalAnchors = stroke.anchors as readonly VectorAnchor[];
+    const derived = resolveAnchorHandles(originalAnchors);
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
+    expect(onPointerMove, 'overlay root has no pointer-move handler').toBeTypeOf('function');
+    onPointerMove!(clickAt(0.26, 0.55));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.26, 0.55));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(anchors).toHaveLength(3);
+    const dragged = anchors[0]!;
+    expect(dragged.kind).toBe('bezier');
+    expect(dragged.x).toBeCloseTo(0.26, 9);
+    expect(dragged.y).toBeCloseTo(0.55, 9);
+    expect(dragged.in!.x).toBeCloseTo(derived[0]!.in.x + 0.06, 9);
+    expect(dragged.in!.y).toBeCloseTo(derived[0]!.in.y + 0.05, 9);
+    expect(dragged.out!.x).toBeCloseTo(derived[0]!.out.x + 0.06, 9);
+    expect(dragged.out!.y).toBeCloseTo(derived[0]!.out.y + 0.05, 9);
+    // The neighbours are untouched.
+    expect(anchors[1]).toEqual(originalAnchors[1]);
+    expect(anchors[2]).toEqual(originalAnchors[2]);
+  });
+
+  it('commits the promotion on a grab-and-release of an auto anchor', () => {
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    const derived = resolveAnchorHandles(stroke.anchors as readonly VectorAnchor[]);
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.2, 0.5));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors[0]!.kind).toBe('bezier');
+    expect(anchors[0]!.in).toEqual(derived[0]!.in);
+    expect(anchors[0]!.out).toEqual(derived[0]!.out);
+    expect(anchors[0]!.x).toBeCloseTo(0.2, 12);
+    expect(anchors[0]!.y).toBeCloseTo(0.5, 12);
+  });
+
+  it('commits nothing on a grab-and-release of an already-bezier anchor', () => {
+    resetAquarelleRecordState();
+    const anchors: readonly VectorAnchor[] = [
+      bezier(0.2, 0.5, { x: 0.15, y: 0.5 }, { x: 0.25, y: 0.5 }),
+      auto(0.5, 0.5),
+      auto(0.8, 0.5),
+    ];
+    const stroke = editedStroke({ anchors });
+    recordAquarelleStroke(EDIT_ID, stroke, 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.2, 0.5));
+
+    expect(onPathEdit).not.toHaveBeenCalled();
+  });
+});
+
 describe('VectorPathOverlay — authority boundary (T-61-31)', () => {
   it('never imports an engine, bake or adapter module and never records', () => {
     const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
@@ -521,6 +693,9 @@ describe('VectorPathOverlay — authority boundary (T-61-31)', () => {
     expect(source).not.toContain('recordAquarelleStroke');
     expect(source).not.toContain('aquarelleEnginePort');
     expect(source).not.toContain('aquarelleFootprint');
+    // 61-10: the overlay asks for an edit; the Studio owns history.
+    expect(source).not.toContain('updateAquarellePathInScript');
+    expect(source).not.toContain('beginAquarellePathEdit');
   });
 
   it('is mounted beside the stroke overlay and forwards to props.onStrokeEnd', () => {
