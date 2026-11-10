@@ -50,6 +50,7 @@ import {
 } from '../view/aquarelleRecordState';
 import { physicsPaintCanvasZoom } from '../view/physicsPaintCanvasZoom';
 import { wireframeMode } from '../view/scriptStrokeEdition';
+import { isTextEntryTarget } from '../view/shortcutTextTarget';
 import type { CanvasPoint } from '../view/scriptStrokeEdition';
 import {
   ANCHOR_BODY_PX,
@@ -323,6 +324,29 @@ export function handleVectorPathEditKey(
   event.stopPropagation?.();
   clearVectorAnchorSelection();
   handlers.onPathEdit(targetMutationId, next);
+}
+
+/**
+ * The window listener's dispatcher (61-16 / G-4). The listener is bound in the
+ * CAPTURE phase on `window`, so it sees keystrokes aimed at a focused dialog
+ * field before that field does. A text-entry target stands both key handlers
+ * down — nothing is consumed and nothing is prevented, so Enter submits the
+ * dialog and Delete edits the text. Every other target gets the two pure,
+ * target-agnostic handlers exactly as before.
+ */
+export function handleVectorPathWindowKey(
+  event: {
+    readonly key?: string;
+    readonly target?: unknown;
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+  },
+  draftHandlers: VectorPathGestureHandlers,
+  editHandlers: VectorPathEditKeyHandlers,
+): void {
+  if (isTextEntryTarget(event.target)) return;
+  handleVectorPathKey(event, draftHandlers);
+  handleVectorPathEditKey(event, editHandlers);
 }
 
 // --- Drawing --------------------------------------------------------------
@@ -655,8 +679,10 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     // when one of the two states flips (efx-preact-reactivity).
     if (!penActive && editMutationId === null) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      handleVectorPathKey(event, handlersRef.current);
-      handleVectorPathEditKey(event, editKeyHandlersRef.current);
+      // Capture phase on `window` sees keystrokes meant for a dialog field, so
+      // the dispatcher yields to a text-entry target before either handler
+      // runs (61-16 / G-4).
+      handleVectorPathWindowKey(event, handlersRef.current, editKeyHandlersRef.current);
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => {

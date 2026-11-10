@@ -921,7 +921,12 @@ describe('VectorPathOverlay — handle drag, insert, delete, width (task 2)', ()
 
   it('binds the edit key listener for an open path edit and unbinds it on cleanup', () => {
     const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
-    expect(source).toContain('handleVectorPathEditKey(event');
+    // 61-16: `window` binds ONE guarded dispatcher, not the two pure handlers
+    // (the capture-phase listener must see the event target first).
+    expect(source).toContain(
+      'handleVectorPathWindowKey(event, handlersRef.current, editKeyHandlersRef.current)',
+    );
+    expect(source).toContain('window.addEventListener(\'keydown\', onKeyDown, true)');
     expect(source).toContain('[penActive, editMutationId]');
     expect(source).toContain("window.removeEventListener('keydown'");
   });
