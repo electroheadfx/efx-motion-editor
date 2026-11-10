@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
-import { Eye, EyeOff, List, Settings2, SlidersHorizontal, Spline, Trash2, X } from 'lucide-preact';
+import { Eye, EyeOff, List, Settings2, SlidersHorizontal, Spline, SplinePointer, Trash2, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { hexToRgba } from '../../../lib/colorUtils';
@@ -24,12 +24,14 @@ import {
   readColorField,
   readNumericField,
   readPaintSeedVariation,
+  resolvePathEditGate,
   resolveStrokeListRange,
   resolveStrokeSettingsOpen,
   resolveStrokeSettingsView,
   resolveStrokeTipFilter,
   resolveStrokeTipName,
   resolveStrokeToolFilter,
+  shouldExitPathEdit,
   shouldInvalidateStrokeSettingsView,
   shouldMarkSawEmpty,
   sortStrokesTopmostFirst,
@@ -75,6 +77,7 @@ import {
   type AquarelleStrokeToolFilter,
   type AquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
+import { enterPathEdit, exitPathEdit, pathEditMutationId } from './vectorPathSession';
 
 /**
  * quick 261024-p5q: the Stroke Settings dialog — a selection-gated, movable
@@ -209,6 +212,16 @@ let sawEmptySinceDismiss = false;
  * notifies no subscriber, so it can never drive a reactive loop.
  */
 let strokeSettingsViewInvalidated = false;
+
+/**
+ * 61-11 (T-61-37): the path-edit exit request marker. A PLAIN (non-signal)
+ * module flag of the same kind: the render body only DECIDES that the open
+ * path edit no longer matches the selection, and the shipped lifecycle effect
+ * performs the ONE session write. A signal write here would break
+ * `efx-preact-reactivity` rule 6; a second effect would break the sheet's
+ * fixed hook order.
+ */
+let pathEditExitRequested = false;
 
 /** Distance from the canvas region's top/right edges. */
 const SURFACE_INSET_PX = 12;
@@ -463,6 +476,24 @@ export function PhysicsPaintStrokeSettingsDialog({
   const keepOpenOnEmpty = bundle?.keepOpenOnEmpty ?? engineModule === 'watercolor';
   const stackSyncNonce = stackSyncRef.current.value;
 
+  // 61-11 (E2 / T-61-37): the Edit path gate. Computed BEFORE the early return
+  // so a CLOSED sheet still observes the gate closing — the ordering law the
+  // settings-view marker below already follows. `vectorStrokeCount` is a bundle
+  // READ (the Studio owns the record seam); a single non-vector selection
+  // resolves 0 and the entry point explains why it is disabled. Reading the
+  // session id here is what makes `aria-pressed` live.
+  const selectedMutationId = selection.size === 1 ? ([...selection][0] ?? null) : null;
+  const selectedVectorAnchors = selectedMutationId !== null && engineModule === 'watercolor'
+    ? (bundle?.readVectorAnchors?.([selectedMutationId]) ?? null)
+    : null;
+  const pathEditGate = resolvePathEditGate({
+    selectionSize: selection.size,
+    vectorStrokeCount: selectedVectorAnchors !== null ? 1 : 0,
+    selectedMutationId,
+    pathEditMutationId: pathEditMutationId.value,
+  });
+  const pathEditGateEnabled = pathEditGate.enabled;
+
   // Plain (non-signal) render-body flag write — the dismissal edge marker.
   // Inert under keepOpenOnEmpty (shouldMarkSawEmpty returns false there).
   if (
@@ -492,6 +523,16 @@ export function PhysicsPaintStrokeSettingsDialog({
   ) {
     strokeSettingsViewInvalidated = true;
   }
+  // 61-11 (T-61-37): the path-edit exit guard — a plain marker write, never a
+  // session write from the render body. Sits BEFORE the early return so a
+  // CLOSED sheet still observes the gate closing, and it covers every route
+  // out of the mode: deletion, a re-selection, a filter that empties, and the
+  // rail-toggle close. The shipped lifecycle effect performs the write.
+  const pathEditActive = pathEditMutationId.value !== null;
+  if (shouldExitPathEdit({ pathEditActive, gateEnabled: pathEditGateEnabled })) {
+    pathEditExitRequested = true;
+  }
+
   const effectiveRequest: StrokeSettingsView = strokeSettingsViewInvalidated
     ? 'list'
     : requestedView;
@@ -520,6 +561,10 @@ export function PhysicsPaintStrokeSettingsDialog({
    */
   const closeMoveMode = bundle?.closeMoveMode;
   const closeSurface = useCallback(() => {
+    // 61-11 (T-61-37): closing the sheet can never leave an open path edit
+    // pointing at a stroke nobody is looking at. Session state only — the
+    // anchor selection drops with the edit inside the same action.
+    exitPathEdit();
     if (closeMoveMode) {
       closeMoveMode();
       return;
@@ -540,6 +585,14 @@ export function PhysicsPaintStrokeSettingsDialog({
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = open;
     if (wasOpen && !open) void bundle?.settleDraft?.();
+    // 61-11 (T-61-37): consume the render body's exit marker. This effect is
+    // the ONE performer of the session write; a marker that is already clear
+    // writes nothing, and the actions themselves are compare-then-write, so a
+    // repeated close notifies no subscriber.
+    if (pathEditExitRequested) {
+      pathEditExitRequested = false;
+      exitPathEdit();
+    }
     if (!open) {
       // A closed sheet must leave the order — a stale front id would make the
       // front-only Escape gate inert for every sheet that is still open.
@@ -547,7 +600,7 @@ export function PhysicsPaintStrokeSettingsDialog({
       return;
     }
     bringSheetToFront(SHEET_ID_STROKE_SETTINGS);
-  }, [open, bundle]);
+  }, [open, bundle, pathEditGateEnabled]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -846,6 +899,37 @@ export function PhysicsPaintStrokeSettingsDialog({
             onClick={() => setStrokeSizePreview(!strokeSizePreview.peek())}
           >
             <Spline size={12} aria-hidden="true" />
+          </button>
+        ) : null}
+        {engineModule === 'watercolor' ? (
+          <button
+            type="button"
+            data-testid="stroke-settings-spline-pointer"
+            class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"
+            aria-pressed={pathEditGate.pressed}
+            aria-label="Edit path"
+            title={pathEditGate.title}
+            // 61-11 (E2): one vector stroke is the ONLY editable state. The
+            // reason lives in `title` so this fixed 22x22 icon never renders
+            // text, and a multi-selection states its own reason.
+            disabled={!pathEditGate.enabled}
+            // The header is the drag handle (see Close below).
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              // Pressed means the session already edits this stroke: the same
+              // button leaves. Two distinct session actions, never a signal
+              // write from this leaf.
+              if (pathEditGate.pressed) {
+                exitPathEdit();
+                return;
+              }
+              const target = selectedMutationId;
+              if (target === null) return;
+              // Session action only: the Studio's overlay owns the record seam.
+              enterPathEdit(String(target));
+            }}
+          >
+            <SplinePointer size={12} aria-hidden="true" />
           </button>
         ) : null}
         {engineModule === 'watercolor' ? (

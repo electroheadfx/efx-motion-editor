@@ -26,10 +26,6 @@ const modelSource = readFileSync(
   fileURLToPath(new URL('./strokeSettingsModel.ts', import.meta.url)),
   'utf8',
 );
-const studioSource = readFileSync(
-  fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url)),
-  'utf8',
-);
 
 function regionOf(source: string, startMarker: string, endMarker: string): string {
   const start = source.indexOf(startMarker);
@@ -98,8 +94,11 @@ describe('61-11 Edit path header button (E2)', () => {
     // Session actions only: the button never touches the record seam or engine.
     expect(button).not.toContain('getRecordedAquarelleStroke');
     expect(button).not.toContain('beginAquarellePathEdit');
+    // The exact session-action surface: `exitPathEdit` owns the anchor-selection
+    // clear, so the dialog never imports a second clearing action (and never an
+    // unused one — `noUnusedLocals` would reject it).
     expect(dialogSource).toContain(
-      "import { clearVectorAnchorSelection, enterPathEdit, exitPathEdit, pathEditMutationId, vectorAnchorSelection } from './vectorPathSession';",
+      "import { enterPathEdit, exitPathEdit, pathEditMutationId } from './vectorPathSession';",
     );
   });
 

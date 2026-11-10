@@ -15,7 +15,7 @@
 
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
 import { findTip } from '@efxlab/efx-watercolor/brushes';
-import { paintSeedSaltOf } from '@efxlab/efx-watercolor/payload';
+import { paintSeedSaltOf, type AquarelleAnchor } from '@efxlab/efx-watercolor/payload';
 import type {
   SelectableScriptStroke,
   ScriptStrokeSize,
@@ -548,6 +548,14 @@ export interface StrokeSettingsDialogBundle {
    * `durable-base-unknown`. Absent means the sheet may enter Draft directly.
    */
   readonly armDraft?: () => Promise<boolean>;
+  /**
+   * 61-11 (VEC-02): the selected stroke's vector anchors when the single
+   * selection IS a vector stroke, otherwise null. The dialog never reads the
+   * record seam — the Studio resolves the payload, so the gate, the Anchor
+   * width reading and the effective-px readout share ONE source of truth.
+   * Absent means this module has no vector paths (the gate stays disabled).
+   */
+  readonly readVectorAnchors?: (ids: readonly number[]) => readonly AquarelleAnchor[] | null;
 }
 
 // ============================================================
@@ -696,4 +704,67 @@ export function geometryTransform(
       ...(control === 'scaleX' ? { scaleXPct: nextPct } : { scaleYPct: nextPct }),
     },
   };
+}
+
+// ── The Edit path entrance (E2) ─────────────────────────────────────
+//
+//  One vector stroke selected is the ONLY state that can enter path edit.
+//  The disabled reasons are model constants so the button can never
+//  inline its own copy, and `pressed` compares the session's mutation id
+//  (a string) with the selected stroke's id (a number) — the two live in
+//  different types on purpose: the session id is opaque to the dialog.
+
+export const PATH_EDIT_LABEL = 'Edit path';
+
+/** 0 or 1 non-vector stroke selected. */
+export const PATH_EDIT_SINGLE_DISABLED_REASON = 'Edit path — select one vector stroke';
+
+/** More than one stroke selected: paths are edited one stroke at a time. */
+export const PATH_EDIT_MULTI_DISABLED_REASON = 'Edit path — select a single vector stroke';
+
+export interface PathEditGateArgs {
+  readonly selectionSize: number;
+  readonly vectorStrokeCount: number;
+  readonly selectedMutationId: number | null;
+  readonly pathEditMutationId: string | null;
+}
+
+export interface PathEditGate {
+  readonly enabled: boolean;
+  readonly title: string;
+  readonly pressed: boolean;
+}
+
+/**
+ * Resolve the header button's whole state in one place. `title` is the
+ * constant label while enabled and the constant disabled reason otherwise,
+ * so the sheet never renders a stale hover hint.
+ */
+export function resolvePathEditGate(args: PathEditGateArgs): PathEditGate {
+  const enabled = args.selectionSize === 1 && args.vectorStrokeCount === 1;
+  return {
+    enabled,
+    title: enabled
+      ? PATH_EDIT_LABEL
+      : args.selectionSize > 1
+        ? PATH_EDIT_MULTI_DISABLED_REASON
+        : PATH_EDIT_SINGLE_DISABLED_REASON,
+    pressed:
+      args.selectedMutationId !== null &&
+      args.pathEditMutationId === String(args.selectedMutationId),
+  };
+}
+
+export interface PathEditExitArgs {
+  readonly pathEditActive: boolean;
+  readonly gateEnabled: boolean;
+}
+
+/**
+ * Leaving the mode is mandatory whenever the gate closes: a path edit that
+ * points at nothing would strand the overlay. The dialog keeps its render
+ * body signal-free — this predicate only DECIDES, the effect performs.
+ */
+export function shouldExitPathEdit(args: PathEditExitArgs): boolean {
+  return args.pathEditActive && !args.gateEnabled;
 }

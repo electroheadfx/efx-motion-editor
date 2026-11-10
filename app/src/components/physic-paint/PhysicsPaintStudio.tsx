@@ -11293,6 +11293,16 @@ export function PhysicsPaintStudio() {
           handleAquarelleAppearanceStrokes(ids, patch),
         moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
         transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
+        // 61-11 (VEC-02 / VEC-03): the vector gate and the Anchor width
+        // reading's ONE read seam. The dialog never touches the record store —
+        // a single non-vector selection (or a malformed path) resolves null,
+        // which is exactly what disables the entrance.
+        readVectorAnchors: (ids) => {
+          if (ids.length !== 1) return null;
+          const stroke = getRecordedAquarelleStroke(ids[0]!);
+          if (!stroke) return null;
+          return normaliseAquarelleAnchors(stroke.anchors) ?? null;
+        },
         reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
         // 261101-jmm: the sheet's row/global trash uses the SAME handler as
         // Backspace/Delete — one undoable edit, one re-bake, the frame guards
