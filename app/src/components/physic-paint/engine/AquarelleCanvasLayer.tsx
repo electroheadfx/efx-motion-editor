@@ -26,6 +26,7 @@ import {
   DEFAULT_PAPER,
   PAPERS,
   pigmentFromHex,
+  recordedRenderModeField,
   toEngineParams,
   WatercolorEngine,
   type PaperPreset,
@@ -529,6 +530,10 @@ export function AquarelleCanvasLayer(props: {
             const points = resampleToTickGrid(raw);
             if (points.length === 0) return;
             const snap = snapshotAquarelleRecord();
+            // 61-07 (D-14): the record-time mode resolves from the SAME brush
+            // id this literal stores, so the stamp and the brushId can never
+            // disagree about what the live stroke deposited.
+            const recordedBrushId = snap.brushId || brushIdForSelection();
             const stroke: AquarelleStroke = {
               // 261028-k03: the ENGINE resolves the live tool for THIS stroke
               // (stylus eraser end, pen barrel, finger-water) and hands it to
@@ -539,7 +544,12 @@ export function AquarelleCanvasLayer(props: {
               color: colorRef.current,
               // CANONICAL AQUA-04 globals — never the mapped bag.
               params: { ...snap.params },
-              brushId: snap.brushId || brushIdForSelection(),
+              brushId: recordedBrushId,
+              // 61-07 (D-12): the mode is written ONLY when the brush implies a
+              // non-default one — a plain hand-painted stroke gains no key
+              // (same pre-phase key set and byte cost). The mode is a stroke
+              // property, never a path property (D-14).
+              ...recordedRenderModeField(recordedBrushId),
               points,
               toolOverrides: { ...snap.toolOverrides },
               // Visible settle window (D-19, cap 600) — the SAME cap the live

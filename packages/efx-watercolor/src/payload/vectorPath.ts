@@ -84,6 +84,34 @@ export function resolveAquarelleRenderMode(value: unknown): AquarelleRenderMode 
   return isAquarelleRenderMode(value) ? value : DEFAULT_AQUARELLE_RENDER_MODE
 }
 
+/** 61-07: the shipped preset id that selects the clean-sweep deposit. */
+export const SIMPLE_RIBBON_BRUSH_ID = 'simple-ribbon'
+
+/**
+ * The render mode a brush id implies (D-12/D-14). A pure string comparison:
+ * the payload layer must never look into the playground's preset list, so the
+ * mapping cannot drift with the brush array and stays testable without WebGL.
+ */
+export function resolveRenderModeForBrushId(brushId: string | undefined): AquarelleRenderMode {
+  return brushId === SIMPLE_RIBBON_BRUSH_ID
+    ? 'simple-ribbon'
+    : DEFAULT_AQUARELLE_RENDER_MODE
+}
+
+/**
+ * The conditional canonical term for the recorded stroke: `{ renderMode }`
+ * ONLY when the brush implies a non-default mode, else an empty object. A
+ * plain hand-painted stroke therefore keeps its exact pre-phase key set and
+ * byte cost (REL-02), and the field can never disagree with the brush id the
+ * record path already stores.
+ */
+export function recordedRenderModeField(
+  brushId: string | undefined,
+): { renderMode?: AquarelleRenderMode } {
+  const mode = resolveRenderModeForBrushId(brushId)
+  return mode === DEFAULT_AQUARELLE_RENDER_MODE ? {} : { renderMode: mode }
+}
+
 type MutableAnchor = {
   x: number
   y: number
