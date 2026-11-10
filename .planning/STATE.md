@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-05-PLAN.md
-last_updated: "2026-11-10T13:31:48.804Z"
+stopped_at: Completed 61-06-PLAN.md
+last_updated: "2026-11-10T13:35:40.213Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: 19c75c3cf9f5763080e677414e774273fc8f5b65
+state_head: b34c7506bf5f840dc7415aa7690a343fa031d41b
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 37
+  completed_plans: 38
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 7 of 14
+Plan: 8 of 14
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -95,6 +95,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P03 | 6min | 3 tasks | 7 files |
 | Phase 61 P04 | 14 | 3 tasks | 6 files |
 | Phase 61 P05 | 7min | 3 tasks | 4 files |
+| Phase 61 P06 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -233,6 +234,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: AQTL v2 costs a hand-painted stroke one u8 vector-flags byte (version keeps its u16 width); the plan's '+2' prose double-counted the version bump, the layout table fixes 1
 - [Phase 61]: Anchor scalars are f32: fixtures use Math.fround(1.8) with exact deep equality plus a 1e-6 tolerance check; absent optional keys are never materialised on decode
 - [Phase 61]: Restore seeds anchors/renderMode only when the payload carried them; a malformed anchor list omits the path for its event instead of aborting the restore
+- [Phase 61]: 61-06: the vector anchor/path shapes are declared in both languages, and the field contract test is the definition of done — not a follow-up review step
+- [Phase 61]: 61-06: the Rust in-handle is in_ + #[serde(rename = "in")] because the contract parser reads pub <ident>: and a raw identifier would be silently invisible
+- [Phase 61]: 61-06: ALLOWED_ONE_LANGUAGE is snapshotted literally in the test, so allowlisting a new field is a deliberate edit rather than silent growth
+- [Phase 61]: 61-06: Rust anchor scalars are f32 to mirror the AQTL v2 wire, while the neighbouring declaration-only structs stay f64
 
 ### Pending Todos
 
@@ -325,8 +330,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T13:31:47.559Z
-Stopped at: Completed 61-05-PLAN.md
+Last session: 2026-11-10T13:35:38.981Z
+Stopped at: Completed 61-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
