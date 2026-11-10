@@ -1,12 +1,15 @@
 // 61-08 (D-05 / D-06): the vector pen and path-edit session.
 //
 // This module is SESSION STATE ONLY. It reads no document store and imports no
-// payload, codec or exporter — Phase 60's law is that view state never reaches
-// the document, and a vector stroke does not exist yet (61-08 only puts the
-// tool in reach). The law it enforces is a mutual-exclusion matrix: the vector
-// pen and path edit are two distinct states (D-06), never one toggling button,
-// and every entry clears the sibling input surfaces through their own setters
-// so no component writes another module's signal directly.
+// payload, codec or save-path module — Phase 60's law is that view state never
+// reaches the document, and a vector stroke does not exist yet (61-08 only puts
+// the tool in reach). The law it enforces is a mutual-exclusion matrix: the
+// vector pen and path edit are two distinct states (D-06), never one toggling
+// button, and every entry clears the sibling input surfaces through their own
+// setters so no component writes another module's signal directly.
+//
+// Draft policy (61-08 Task 3): a draw draft survives a tool toggle — it is
+// cleared only by Escape, by finishing the path, and by resetForStudioOpen.
 //
 // Preact reactivity: module-level signals with compare-then-write setters
 // (`efx-preact-reactivity`), `.peek()` in handlers, never a render-body write.

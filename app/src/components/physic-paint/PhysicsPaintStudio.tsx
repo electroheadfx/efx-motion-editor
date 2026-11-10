@@ -10941,6 +10941,12 @@ export function PhysicsPaintStudio() {
     });
     missingAudioSourcePaths.value = missing;
   };
+  // 61-08 (D-05 / D-06): session-only tool state resets per Studio open — the
+  // window is a fresh document per open, and a view remount inside one document
+  // also gets a clean tool surface. No render-body write, no document deps.
+  useEffect(() => {
+    vectorPathSession.resetForStudioOpen();
+  }, []);
   useEffect(() => {
     void refreshAudioAssets();
     void refreshMissingAudioPaths();

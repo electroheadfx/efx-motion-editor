@@ -161,6 +161,14 @@ describe('vectorPathSession — the vector pen and path-edit session', () => {
     expect(vectorPenActive.peek()).toBe(true);
   });
 
+  it('keeps an existing draft when the vector pen is entered again', () => {
+    enterVectorPen();
+    beginVectorDraft({ x: 0.1, y: 0.2, kind: 'auto' });
+    enterVectorPen();
+    // Entering the pen never drains the draft; only clearVectorDraft() does.
+    expect(vectorDrawDraft.peek()?.anchors).toHaveLength(1);
+  });
+
   it('returns every signal to its initial value on reset, idempotently', () => {
     enterVectorPen();
     appendVectorDraftAnchor({ x: 0.2, y: 0.3, kind: 'auto' });
@@ -177,6 +185,48 @@ describe('vectorPathSession — the vector pen and path-edit session', () => {
     resetForStudioOpen();
     expect(penRuns.runs()).toBe(1);
     penRuns.dispose();
+  });
+});
+
+describe('the session module is session-only (T-61-53)', () => {
+  const sessionSrc = readFileSync(
+    fileURLToPath(new URL('./vectorPathSession.ts', import.meta.url)),
+    'utf8',
+  );
+
+  it('imports only the signals runtime and the two sibling session surfaces', () => {
+    const importLines = sessionSrc.split('\n').filter((line) => line.startsWith('import '));
+    expect(importLines).toEqual([
+      "import { signal, type Signal } from '@preact/signals';",
+      "import { disarmAquarellePicker } from './aquarelleColorPicker';",
+      "import { setAquarelleSelectMode } from './aquarelleStrokeSelection';",
+    ]);
+  });
+
+  it('mentions no persistence symbol', () => {
+    for (const forbidden of [
+      '.mce',
+      'getEfxPaintDocument',
+      'aquarelleRecordState',
+      'revision',
+      'cacheKey',
+      'exporter',
+      'serialize',
+    ]) {
+      expect(sessionSrc).not.toContain(forbidden);
+    }
+  });
+
+  it('resets through exactly one Studio mount effect', () => {
+    const studio = readFileSync(
+      fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url)),
+      'utf8',
+    );
+    const call = 'vectorPathSession.resetForStudioOpen()';
+    expect(studio.split(call).length - 1).toBe(1);
+    expect(studio).toMatch(
+      /useEffect\(\(\) => \{\s*vectorPathSession\.resetForStudioOpen\(\);\s*\}, \[\]\);/,
+    );
   });
 });
 

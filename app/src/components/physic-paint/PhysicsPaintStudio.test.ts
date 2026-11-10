@@ -3160,7 +3160,11 @@ describe('261022-pim watercolor stroke select surface', () => {
     // Select/Move owns the active state: the paint tool is deselected. The
     // 261030-cnq picker joins it — an armed picker deselects the paint tool too.
     // 261107: Motion boundaries (animate mode) joins them — one active surface.
-    expect(watercolorRail).toContain('const isActive = !selectActive && !pickerActive && !motionBoundaryActive && active === id;');
+    // 61-08 (D-05): the vector pen joins the same one-active-surface law.
+    expect(watercolorRail).toContain('const isActive =');
+    expect(watercolorRail).toContain(
+      '!selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === id;',
+    );
     expect(watercolorRail).toContain('disabled={disabled || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
