@@ -284,6 +284,21 @@ function handPaintedWithMode(
   return { ...base, engine: { ...base.engine, renderMode: mode } };
 }
 
+/** The same path with NO width keys: every anchor uses the default factor. */
+function uniformVectorStroke(): StudioStroke<AquarelleStrokePayload> {
+  const base = minimalStroke();
+  return {
+    ...base,
+    engine: {
+      ...base.engine,
+      anchors: [
+        { x: 0.25, y: 0.5, kind: 'auto' },
+        { x: 0.75, y: 0.125, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 1, y: 0 } },
+      ],
+    },
+  };
+}
+
 function minimalStroke(): StudioStroke<AquarelleStrokePayload> {
   return {
     // Quantization-exact values (0 and 1 survive round(u16 / 65535)).
@@ -569,6 +584,51 @@ describe('AQTL v2 vector payload (61-05)', () => {
       true,
     );
     expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-count');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 61-05 task 3 — the codec-level determinism the reopen path relies on.
+//
+// SCOPE: packages/efx-watercolor/src/determinismContract.test.ts is OWNED BY
+// 61-07 in this same wave (it parameterises its replay arm by render mode).
+// This plan must not write, read or modify that file — two same-wave plans
+// owning it is exactly why this task was re-scoped to the codec seam.
+// ---------------------------------------------------------------------------
+
+describe('AQTL v2 encode/decode fixed point (61-05)', () => {
+  it('is byte-identical when a decoded vector stroke is re-encoded', () => {
+    const stroke = vectorStrokeWithMode('simple-ribbon');
+    const first = encodeScriptTimelineBinary([stroke]);
+    const decoded = decodeScriptTimelineBinary(first);
+
+    const second = encodeScriptTimelineBinary(decoded);
+    expect(second).toEqual(first);
+    expect(decodeScriptTimelineBinary(second)).toEqual(decoded);
+  });
+
+  it('leaves no width residue on a uniform path', () => {
+    const first = encodeScriptTimelineBinary([uniformVectorStroke()]);
+    const decoded = decodeScriptTimelineBinary(first);
+
+    // The decoder must not materialise a default `width` key the encoder
+    // would then have to write — that residue would grow every reopen.
+    const anchors = asStroke(decoded[0]!).engine.anchors!;
+    expect(anchors.every((anchor) => !('width' in anchor))).toBe(true);
+
+    const second = encodeScriptTimelineBinary(decoded);
+    expect(second.byteLength).toBe(first.byteLength);
+    expect(second).toEqual(first);
+  });
+
+  it('is byte-stable across three passes and decodes idempotently', () => {
+    const first = encodeScriptTimelineBinary([vectorStrokeWithMode('simple-ribbon')]);
+    let bytes = first;
+    for (let pass = 0; pass < 3; pass += 1) {
+      bytes = encodeScriptTimelineBinary(decodeScriptTimelineBinary(bytes));
+      expect(bytes).toEqual(first);
+    }
+    expect(decodeScriptTimelineBinary(first)).toEqual(decodeScriptTimelineBinary(first));
   });
 });
 
