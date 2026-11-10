@@ -1,10 +1,11 @@
 ---
 phase: "61"
 slug: "vector-painting-tool"
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: "2026-11-10"
+reviewed_at: "2026-11-10T10:31:08Z"
 ---
 
 # Phase 61 — UI Design Contract
@@ -93,6 +94,8 @@ Exceptions — **carried from shipped chrome, never re-derived**:
 New spacing in this phase uses only the declared scale. An off-scale value is permitted only when it is a shipped constant copied verbatim from the table above.
 
 **Component dimensions (not spacing, fixed by the shipped law):** rail buttons 35×35 (`:694-697`), un-scoped icon buttons 32×32 (`:679-691`), header buttons 22×22 (`:6209-6227`), canvas anchors 9×9 / handle radius 3.5 / hit pad 8, segmented-button height 20px inside the sheet (`SEGMENT_STYLE`) and `6px 10px` padding for `.physics-paint-segmented-button` (`:577-588`).
+
+**One new dimension belongs to this same category.** The rail separator's `margin: 1px 0` is component geometry, not spacing: inside the rail's `gap: 7px` column it makes the optical gap above and below the 1px rule symmetric with the 35px button faces. It is not a layout gap and does not enter the scale.
 
 ---
 
@@ -195,22 +198,73 @@ Every string below is final. Sentence case except where the global uppercase but
 
 ## UI Considerations
 
-Applicable state considerations resolved: 7 covered, 4 backstop, 1 unresolved; 1 dismissed (loading — every new control is synchronous, no async load).
+Coverage computed by `ui-consideration-probe.cjs` over 10 declared surfaces (2026-11-10).
+**54 applicable — 34 covered (explicit), 5 backstop, 1 unresolved, 14 dismissed.**
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | stroke list | ✅ covered | `No strokes on this frame.` and `No strokes match this filter.` render unchanged; a vector stroke is one row, keyed by serial like any other. |
-| empty | Anchor width stepper | ✅ covered | Zero anchors selected: stepper disabled at 1.0, caption `Select anchors on the canvas to set their width.` |
-| empty | Advanced wet globals | ✅ covered | All seven read `0` in simple mode; the collapsed row carries no count and no warning — zero is the documented simple-ribbon state, not an error. |
-| zero-one-many | spline-pointer availability | ✅ covered | 0 strokes or 0 vector strokes → disabled, `title` names why; 1 vector stroke → enabled; ≥2 selected → disabled, `title` names why. |
-| zero-one-many | anchor multi-select width | ✅ covered | 1 anchor → its factor; N anchors → one coupled `SliderStepper` call (Pitfall 12: one call with all ids, never a loop). Mixed values → `mixed` → "Mixed" caption, no value box edit. |
-| partial | render-mode mixed selection | ✅ covered | No segment pressed, `MIXED_CAPTION_STYLE` "Mixed" beside the `Render` label. Selecting either option writes the whole selection. |
-| partial | mixed anchor widths | ✅ covered | Delegated to `SliderStepper`'s shipped `mixed` prop → red italic "Mixed"; the envelope still draws each anchor's own factor. |
-| populated | wireframe legibility | 🧪 backstop | Manual row in `61-VALIDATION.md`: "Wireframe reads as a usable editing surface, not a debug view". Held-out visual check against the Studio palette. |
-| overflow | Paint tab with Advanced expanded | 🧪 backstop | Seven extra rows inside a 520px sheet: the sheet scrolls via `SidebarScrollArea`; verify the tab still ends inside the surface and the `SliderStepper` hit cells stay reachable. |
-| overflow | dense wireframe overlay | ⚠ unresolved | No cap on strokes drawn in wireframe. The reference stroke count comes from the Wave 0 probe; if the overlay is the bottleneck the planner treats "draw only the visible viewport" as an assumption. |
-| long-text | rail tooltip grammar | 🧪 backstop | The Vector pen `title` is a full grammar sentence (the shipped Select precedent at `PhysicsPaintToolRail.tsx:169`). Native `title` cannot overflow; verify it does not wrap the rail. |
-| loading | all new controls | dismissed | Synchronous signal reads and one gesture-commit seam; there is no async load, no skeleton and no spinner. Turning wireframe OFF re-uses the existing bake/apply surface. |
+Surface ids match the element set fed to the probe: E1 Vector pen rail button · E2 Edit path header
+button · E3 Render segmented row · E4 Anchor width stepper · E5 Advanced wet globals · E6 Wireframe
+toggle · E7 Wireframe canvas overlay · E8 Simple ribbon preset row · E9 Stroke list rows · E10 Vector
+path error message.
+
+Empty-state and error-state COPY stays in `## Copywriting Contract` — these rows cover shape-rooted
+STATE coverage and reference that section rather than restating the copy.
+
+| Surface | Category | Status | Resolution / Reason |
+|---------|----------|--------|---------------------|
+| E1 | loading | — dismissed | Static rail button with no async dependency; no skeleton, no spinner. |
+| E1 | error | — dismissed | Latching a host tool has no failure mode; the press cannot fail. |
+| E1 | overflow | ✅ covered | Fixed 35×35 button in a fixed column; no text is laid out in the rail. |
+| E1 | long-text | ✅ covered | `Vector pen` is a constant; the long grammar lives in the native `title`, which cannot overflow the rail. |
+| E2 | loading | — dismissed | Selection read is synchronous; the disabled state is immediate. |
+| E2 | error | ✅ covered | Disabled at `opacity: 0.4` with the reason in `title` (`Edit path — select one vector stroke`) when the selection cannot be path-edited. No toast, no modal. |
+| E2 | overflow | ✅ covered | 22×22 icon button in a fixed header row; no text is laid out. |
+| E2 | long-text | ✅ covered | The reason lives in native `title`; the button renders no text. |
+| E3 | empty | — dismissed | The Paint tab is selection-gated — the row is not mounted without a stroke. There is no empty render state. |
+| E3 | loading | — dismissed | `renderMode` is a synchronous document read. |
+| E3 | error | — dismissed | Compare-then-write setter; a rejected value leaves the prior segment pressed. No user-entered value, so no error surface. |
+| E3 | partial | ✅ covered | Mixed selection → no segment pressed + the shipped red italic `Mixed` (`MIXED_CAPTION_STYLE`) beside `Render`. Pressing either option writes the whole selection. |
+| E3 | overflow | ✅ covered | Two fixed labels in the 520px sheet; the segmented row never wraps. |
+| E3 | long-text | ✅ covered | `WATERCOLOR` / `RIBBON` are constants, never user-supplied. |
+| E4 | empty | ✅ covered | Zero anchors selected → disabled at 1.0 with the caption `Select anchors on the canvas to set their width.` |
+| E4 | loading | — dismissed | Factors are read synchronously from the document. |
+| E4 | error | ✅ covered | Out-of-range entry is clamped by `allowOutOfRangeEntry` with `min 0.2` / `max 2.0`; the box commits the clamped value and never shows an error state. |
+| E4 | partial | ✅ covered | Mixed factors → `SliderStepper`'s shipped `mixed` prop renders red italic `Mixed`; the envelope still draws each anchor's own factor. N selected anchors are one coupled call, never a loop. |
+| E4 | overflow | ✅ covered | Fixed-gutter `SliderStepper` layout — 46×17 value box, 11px/600 label — the shipped field across the sheet; it does not reflow. |
+| E4 | long-text | ✅ covered | `Anchor width` is constant; the readout is numeric with `tabular-nums`. |
+| E5 | empty | ✅ covered | All seven fields read `0` in simple mode; the collapsed row carries no count and no warning — zero is the documented simple-ribbon state, not empty. |
+| E5 | loading | — dismissed | Globals are synchronous document fields. |
+| E5 | error | — dismissed | Values clamp in place in the shipped `SliderStepper`; a rejected write leaves the prior value. |
+| E5 | partial | ✅ covered | Globals may differ across a multi-stroke selection — each `SliderStepper` resolves independently and shows `Mixed` only for the ones that differ. |
+| E5 | overflow | 🧪 backstop | Seven extra rows inside the 520px sheet; `SidebarScrollArea` owns the scroll. Held-out check — with the disclosure open, the Paint tab still ends inside the surface and the `SliderStepper` hit cells stay reachable. |
+| E5 | long-text | ✅ covered | All seven labels come from `WATERCOLOR_SETTINGS_FIELDS`; the single explanatory note is the only wrapped copy and uses line-height 1.5. |
+| E6 | loading | 🧪 backstop | Wireframe OFF routes through the existing settle / re-bake path; the rail's existing `disabled` prop covers the in-flight window. No new spinner. Held-out check — during the re-bake the sibling rail buttons read disabled, not silently dropped. |
+| E6 | error | — dismissed | A session-only view flag has no failure mode; the bake failure path is the existing stroke-bake one, unchanged. |
+| E6 | overflow | ✅ covered | 35×35 rail button; no text laid out. The lock state disables siblings rather than growing the row. |
+| E6 | long-text | ✅ covered | The explanation lives in native `title`; the rail renders no text for it. |
+| E7 | empty | ✅ covered | An empty sheet draws no overlay; the toggle stays enabled. |
+| E7 | loading | 🧪 backstop | The overlay is never drawn while a bake is in flight — the previous baked raster stays until the settle completes. Held-out check — no half-drawn overlay during the wireframe-off re-bake. |
+| E7 | error | ✅ covered | A stroke whose path cannot be read is skipped by the overlay and stays visibly unchanged; E10 names it. The overlay never throws into the render path. |
+| E7 | populated | 🧪 backstop | The dense case is the phase's known open risk: no stroke cap. Wave 0 measures the reference stroke count; held-out check — the wireframe reads as a usable editing surface, not a debug view (the `61-VALIDATION.md` manual row). |
+| E7 | overflow | ⚠ unresolved — planner must treat as assumption | No cap on strokes drawn in wireframe. The reference stroke count comes from the Wave 0 spike; if the overlay is the bottleneck, "draw only the visible viewport" becomes the planner's assumption. Deliberately not pre-empted — see the 2026-11-10 decision. |
+| E7 | long-text | — dismissed | The overlay draws geometry only; the sole text is the shipped serial badge, a fixed-width integer. |
+| E8 | empty | ✅ covered | The list always holds the shipped presets; the filter can empty it and the existing shipped no-match state applies unchanged. |
+| E8 | loading | — dismissed | `BRUSH_PRESETS` is a static module constant. |
+| E8 | error | 🧪 backstop | The thumb must paint a crisp sweep for this preset, not the wet bloom the others use — a wrong thumb silently misrepresents the mode rather than throwing. Held-out visual check — the Simple ribbon row's thumb reads as a plain sweep. |
+| E8 | populated | ✅ covered | One more row in the existing scroll list; the name + hint + thumb grammar is unchanged. |
+| E8 | partial | ✅ covered | Filtering can show a subset; the row renders complete or not at all — there is no partial row. |
+| E8 | overflow | ✅ covered | The dropdown owns its scroll; the row is a fixed-height item and the hint follows the shipped truncation grammar. |
+| E8 | zero-one-many | ✅ covered | One row per preset, no grouping; changing the count by one alters no spacing and no copy. |
+| E8 | long-text | ✅ covered | `Simple ribbon` and its hint are constants using the shipped multi-line hint grammar. |
+| E9 | empty | ✅ covered | `No strokes on this frame.` and `No strokes match this filter.` render unchanged; a vector stroke is one row keyed by serial like any other. |
+| E9 | loading | — dismissed | The list reads the in-memory document. |
+| E9 | error | — dismissed | Reuses the shipped row state; a vector stroke that fails to parse still renders as a row — the rejection is reported on path edit and export, not by the row. |
+| E9 | populated | ✅ covered | Same row grammar as hand-painted strokes; a vector stroke adds no badge and no icon. |
+| E9 | partial | ✅ covered | An unreadable path leaves the row in place with its serial and stroke metadata; only the path actions are disabled. |
+| E9 | overflow | ✅ covered | `SidebarScrollArea` owns the scroll; rows are fixed-height. |
+| E9 | zero-one-many | ✅ covered | Zero → empty copy; one → one row with no heading change; many → scroll. No count-dependent copy. |
+| E9 | long-text | ✅ covered | Row labels are serials and stroke metadata, all fixed-shape and never user-supplied prose. |
+| E10 | overflow | ✅ covered | Wraps at line-height 1.5 inside the sheet; the shipped refusal grammar never scrolls horizontally. |
+| E10 | long-text | ✅ covered | Fixed copy — `Vector path rejected — this stroke's path could not be read. The stroke was left unchanged.` Never interpolated with user text. |
 
 ---
 
@@ -310,12 +364,14 @@ No registry blocks enter the contract. REL-01 (no new runtime dependencies) hold
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS — one non-blocking FLAG resolved by declaring the rail separator's `1px` margin as component geometry (see Spacing Scale)
+- [x] Dimension 6 Registry Safety: PASS (skipped — `ui_safety_gate: false` in `.planning/config.json`; no registry blocks used)
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Reviewer:** gsd-ui-checker (haiku) · **Reviewed at:** 2026-11-10T10:31:08Z
+
+**Approval:** approved
