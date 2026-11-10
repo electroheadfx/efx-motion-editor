@@ -71,6 +71,9 @@ import {
   handleVectorPathKey,
   type VectorPathGestureHandlers,
 } from './VectorPathOverlay';
+import { ScriptStrokeOverlay } from './ScriptStrokeOverlay';
+import { buildStrokeBand } from '../view/aquarelleStrokeBand';
+import { wireframeMode } from '../view/scriptStrokeEdition';
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -235,6 +238,7 @@ afterEach(() => {
   resetForStudioOpen();
   aquarelleSelectedTipId.value = 'wc/round-medium';
   clearVectorDraft();
+  wireframeMode.value = false;
 });
 
 describe('VectorPathOverlay — rendered geometry (task 1)', () => {
@@ -923,5 +927,165 @@ describe('VectorPathOverlay — authority boundary (T-61-31)', () => {
     expect(layer).toContain('buildVectorStroke(');
     expect(layer).toContain('onStrokeEndRef.current?.(');
     expect(layer).not.toContain('recordAquarelleStroke');
+  });
+});
+
+// 61-13 Task 2: the wireframe drawing law. Under the session latch every
+// recorded vector stroke on the play frame draws its CONSTRUCTION geometry
+// (envelope, spine, rungs at explicit widths, anchors, bezier handles), while
+// every hand-painted stroke draws the SHIPPED buildStrokeBand footprint — the
+// vector overlay owns construction, the stroke overlay owns the band. Nothing
+// here is persisted or exported: the latch is display-only (D-16).
+describe('VectorPathOverlay — the wireframe drawing law (61-13)', () => {
+  const SIZE = { width: WIDTH, height: HEIGHT };
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    wireframeMode.value = false;
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  function mixedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({
+      anchors: [
+        auto(0.2, 0.5),
+        { x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.62 }, out: { x: 0.5, y: 0.38 } },
+        auto(0.8, 0.5),
+      ],
+      ...overrides,
+    });
+  }
+
+  function portOver(rows: ReturnType<typeof listSelectableAquarelleStrokes>) {
+    return {
+      isActive: () => false,
+      listStrokes: () => rows,
+      hitTestStroke: () => null,
+      deleteStrokes: () => {},
+      moveStrokes: () => {},
+      transformStrokes: () => {},
+      stepStroke: () => {},
+    };
+  }
+
+  function overlayProps(port: ReturnType<typeof portOver>) {
+    return {
+      width: WIDTH,
+      height: HEIGHT,
+      getPlayFrame: () => FRAME,
+      port,
+      selectMode: false,
+      moveArmed: false,
+      onDeleteStrokes: () => {},
+      onMoveStrokes: () => {},
+      testId: 'stroke-overlay-wireframe',
+      badgeTestId: 'stroke-badge-wireframe',
+      ghostTestId: 'stroke-ghost-wireframe',
+    };
+  }
+
+  it('draws the envelope, spine, anchors and handles of every recorded vector stroke', () => {
+    wireframeMode.value = true;
+    const tree = render(VectorPathOverlay(propsWith([[11, mixedStroke()]])));
+    expect(nodesWithTestId(tree, 'vector-path-envelope')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'vector-path-spine')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'vector-path-anchor')).toHaveLength(3);
+    expect(nodesWithTestId(tree, 'vector-path-handle')).toHaveLength(2);
+    expect(nodesWithTestId(tree, 'vector-path-rung')).toHaveLength(0);
+  });
+
+  it('draws a rung only at an anchor carrying an explicit width', () => {
+    wireframeMode.value = true;
+    const widthless = render(VectorPathOverlay(propsWith([[11, mixedStroke()]])));
+    expect(nodesWithTestId(widthless, 'vector-path-rung')).toHaveLength(0);
+
+    const weighted = render(
+      VectorPathOverlay(
+        propsWith([
+          [
+            12,
+            vectorStroke({
+              anchors: [auto(0.2, 0.5), { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 }, auto(0.8, 0.5)],
+            }),
+          ],
+        ]),
+      ),
+    );
+    expect(nodesWithTestId(weighted, 'vector-path-rung')).toHaveLength(1);
+  });
+
+  it('draws anchor shapes per kind — square only for bezier — and no handle for auto', () => {
+    wireframeMode.value = true;
+    const tree = render(VectorPathOverlay(propsWith([[11, mixedStroke()]])));
+    const anchors = nodesWithTestId(tree, 'vector-path-anchor');
+    expect(anchors.filter((node) => node.type === 'rect')).toHaveLength(1);
+    expect(anchors.filter((node) => node.type === 'circle')).toHaveLength(2);
+    // Both marker kinds wear the dark hairline under wireframe.
+    for (const node of anchors) expect(node.props?.stroke).toBe('#111111');
+    // One bezier anchor → exactly its two handles.
+    expect(nodesWithTestId(tree, 'vector-path-handle')).toHaveLength(2);
+  });
+
+  it('draws the shipped buildStrokeBand footprint and the centreline for a hand-painted stroke', () => {
+    const stroke = vectorStroke({ mutationId: 95001, anchors: undefined });
+    recordAquarelleStroke(95001, stroke, 'frame-key');
+    wireframeMode.value = true;
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    expect(rows).toHaveLength(1);
+
+    const tree = render(ScriptStrokeOverlay(overlayProps(portOver(rows))));
+    const bands = nodesWithTestId(tree, 'stroke-size-band');
+    expect(bands).toHaveLength(1);
+    // The band is the shipped builder's OWN polygon — never hand-written values.
+    const expected = buildStrokeBand(stroke, SIZE).polygonPx;
+    const expectedPath = `M${expected.map((point) => `${point.x},${point.y}`).join(' L')} Z`;
+    expect(bands[0]!.props.d).toBe(expectedPath);
+    // The centreline rides WITH the band under wireframe (the default branch
+    // still draws it): the two-pass outline, dark under light.
+    expect([...walk(tree)].filter((node) => node.type === 'polyline')).toHaveLength(2);
+    // Display-only: the surface is mounted but never owns a pointer.
+    expect(tree!.props['style']).toMatchObject({ pointerEvents: 'none' });
+    expect(tree!.props['onPointerDown']).toBeUndefined();
+  });
+
+  it('leaves a vector stroke to the construction overlay — no band for it', () => {
+    recordAquarelleStroke(95002, vectorStroke({ mutationId: 95002 }), 'frame-key');
+    wireframeMode.value = true;
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    const tree = render(ScriptStrokeOverlay(overlayProps(portOver(rows))));
+    expect(nodesWithTestId(tree, 'stroke-size-band')).toHaveLength(0);
+  });
+
+  it('renders no geometry and throws nothing when the anchors fail normalisation', () => {
+    wireframeMode.value = true;
+    const malformed = vectorStroke({
+      anchors: [
+        { x: Number.NaN, y: 0.5, kind: 'auto' },
+        { x: Number.POSITIVE_INFINITY, y: 0.5, kind: 'auto' },
+      ] as VectorAnchor[],
+    });
+    let tree: unknown = null;
+    expect(() => {
+      tree = VectorPathOverlay(propsWith([[11, malformed]]));
+    }).not.toThrow();
+    expect(tree).toBeNull();
+  });
+
+  it('renders no overlay elements for an empty sheet', () => {
+    wireframeMode.value = true;
+    expect(VectorPathOverlay(propsWith())).toBeNull();
+    expect(ScriptStrokeOverlay(overlayProps(portOver([])))).toBeNull();
+  });
+
+  it('reuses the shipped buildStrokeBand — exactly one import and one call', () => {
+    const source = readFileSync(resolve(__dirname, './ScriptStrokeOverlay.tsx'), 'utf8');
+    expect(source).toContain("import { buildStrokeBand } from '../view/aquarelleStrokeBand';");
+    expect((source.match(/buildStrokeBand\(/g) ?? []).length).toBe(1);
+    expect(source).not.toContain('buildLiftRibbon(');
   });
 });
