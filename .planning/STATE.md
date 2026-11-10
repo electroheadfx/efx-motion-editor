@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Phase 61 UI-SPEC approved
-last_updated: "2026-11-10T12:06:57.787Z"
-last_activity: 2026-11-09
-last_activity_desc: Phase 60 complete, transitioned to Phase 61
-state_head: 20e300fa70908c941a46f4d36110d0b8977e75a8
+stopped_at: Completed 61-01-PLAN.md
+last_updated: "2026-11-10T12:30:14.175Z"
+last_activity: 2026-11-10
+last_activity_desc: Phase 61 execution started
+state_head: c2999f9d9dc93f70c85414d0e22fb3c587024ced
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 31
+  completed_plans: 32
   percent: 50
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 
 ## Current Position
 
-Phase: 61 (Vector Painting Tool) — READY TO EXECUTE
-Plan: Not started
+Phase: 61 (Vector Painting Tool) — EXECUTING
+Plan: 2 of 14
 Status: Ready to execute
-Last activity: 2026-11-09 — Quick task 261109-uj0 follow-up 9e0bd2597 packaged UAT PASSED: yellow/orange fresh paint is kept by the color-aware capture gate
+Last activity: 2026-11-10 — Phase 61 execution started
 
 Progress: [█████░░░░░] 50%
 
@@ -89,6 +89,7 @@ Progress: [█████░░░░░] 50%
 | Phase 60 P04 | 12min | 3 tasks | 12 files |
 | Phase 60 P05 | 9min | 3 tasks | 6 files |
 | Phase 60 P06 | 3 | 3 tasks | 1 files |
+| Phase 61 P01 | 19min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -207,6 +208,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 60]: Store block resets scale in beforeEach and unregisters the port before and after every test
 - [Phase 60]: Selection/paste compare frame indices; their pixel surface is the rail/ghost geometry already pinned by 60-02 task 3, recorded in the header instead of a fabricated row
 - [Phase 60]: 13-row edge-probe table is literal data with exact-length, exact-id and non-empty-owner assertions, both unclassified rows owned
+- [Phase 61]: Seam strategy is payload-extension with replay density 4x: measured seam step 0px at 4x vs 4.141px for segment runs, settling at the 0.5px improvement law.
+- [Phase 61]: Reference stroke count is 10 at 1920x1080: 50 strokes cost 4035.6ms against the 33ms responsiveness budget.
+- [Phase 61]: Width channel is scriptFactor on sizeMult, measured 1.75x (12px->21px radius) against the 1.7x gate; the scriptBegin scriptScale clamp measures 1.0x and is C-03 evidence only.
 
 ### Pending Todos
 
@@ -299,9 +303,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T10:34:45.208Z
-Stopped at: Phase 61 UI-SPEC approved
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/61-UI-SPEC.md
+Last session: 2026-11-10T12:30:14.104Z
+Stopped at: Completed 61-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

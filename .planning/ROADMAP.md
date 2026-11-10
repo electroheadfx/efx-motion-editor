@@ -235,11 +235,11 @@ Plans:
   4. A vector stroke persists in `.mce` (declared in both TS and Rust), survives reopen, and exports exactly as previewed while keeping hide/solo, ordering, opacity, and background behavior.
   5. Deterministic replay: the same vector stroke produces the same raster across runs, undo/redo, and reopen, and undo/redo covers each vector operation.
 
-**Plans:** 14 plans
+**Plans:** 1/14 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 61-01-PLAN.md — Wave 0 spike: seam strategy, sampling density, stroke-count cost and the 1.8x width channel, as a probe verdict
+- [x] 61-01-PLAN.md — Wave 0 spike: seam strategy, sampling density, stroke-count cost and the 1.8x width channel, as a probe verdict
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 61-02-PLAN.md — Vector spine math: derived Bezier handles, arc-length sampling, sparse width profile, determinism scan entry
@@ -308,7 +308,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 59. Rail Motion Channels & v7 Interface | 25/25 | Complete    | 2026-11-08 |
 | 60. Studio Timeline Horizontal Zoom | 6/6 | Complete    | 2026-11-09 |
-| 61. Vector Painting Tool | 0/TBD | Not started | - |
+| 61. Vector Painting Tool | 1/14 | In Progress | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
 
 **Execution Order:** 59 → 60 → 61 → 62 (global numbering continues; Phase 57 is retired and never reused)
