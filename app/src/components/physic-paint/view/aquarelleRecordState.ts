@@ -17,6 +17,7 @@ import {
   anchorsEqual,
   createDryEvent,
   isAquarelleDryEvent,
+  isAquarelleRenderMode,
   normaliseAquarelleAnchors,
   paintSeedSaltOf,
   projectVectorPath,
@@ -826,34 +827,55 @@ export function updateAquarelleStrokesInScript(
  *
  * The mode is a STROKE property (D-12/D-14), never a path property: this door
  * reads no anchors and writes none, so an anchorless hand-painted stroke is
- * written exactly like a vector one.
+ * written exactly like a vector one, and a malformed anchor list can never
+ * refuse a mode change.
  *
- * Task-1 seam only — task 2 replaces the body with the full batch law (mode
- * validation, de-duplication, tombstone/out-of-timeline skips and no-op
- * detection). It exists here so the Studio's ONE commit path compiles.
+ * Batch law (mirrors `updateAquarelleStrokesInScript`): validate the mode
+ * against the closed union BEFORE resolving any target, de-duplicate the ids,
+ * then resolve every target — skipping only missing, deleted,
+ * out-of-timeline and already-matching strokes. Each write is a PURE field
+ * replacement (`renderMode` and nothing else), reprojected through
+ * `toStudioStroke` and stored at the SAME timeline index, so one revision
+ * bump and one history entry cover the whole selection.
  */
 export function updateAquarelleRenderModeInScript(
   mutationIds: readonly number[],
   mode: AquarelleRenderMode,
 ): number {
-  const nextMode = resolveAquarelleRenderMode(mode);
-  let written = 0;
+  // Strict membership over AQUARELLE_RENDER_MODES: an unknown mode refuses
+  // the whole batch, never a silent fall back to the watercolour default.
+  if (!isAquarelleRenderMode(mode)) return 0;
+
+  const targets: Array<{ mutationId: number; stroke: AquarelleStroke; index: number }> = [];
+  const seen = new Set<number>();
   for (const mutationId of mutationIds) {
+    if (!Number.isFinite(mutationId)) continue;
+    if (seen.has(mutationId)) continue;
+    seen.add(mutationId);
     const stroke = recordedStrokes.get(mutationId);
     const entry = recordedStrokeEntries.get(mutationId);
-    if (!stroke) continue;
-    const nextStroke: AquarelleStroke = { ...stroke, renderMode: nextMode };
+    if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) continue;
+    const index = payloadTimeline.indexOf(entry);
+    if (index < 0) continue;
+    // D-12: an absent mode IS watercolour, so an already-matching stroke is a
+    // no-op — a pre-phase stroke never gains a key for a value it already has.
+    if (resolveAquarelleRenderMode(stroke.renderMode) === mode) continue;
+    targets.push({ mutationId, stroke, index });
+  }
+  if (targets.length === 0) return 0;
+
+  for (const { mutationId, stroke, index } of targets) {
+    // Pure field replacement: no `anchors` key is synthesised on an anchorless
+    // stroke and no existing anchor list is copied, normalised or rewritten.
+    const nextStroke: AquarelleStroke = { ...stroke, renderMode: mode };
     const nextEntry = toStudioStroke(nextStroke);
     recordedStrokes.set(mutationId, nextStroke);
     recordedStrokeEntries.set(mutationId, nextEntry);
-    if (entry) {
-      const index = payloadTimeline.indexOf(entry);
-      if (index >= 0) payloadTimeline[index] = nextEntry;
-    }
-    written += 1;
+    // SAME index — replay order is preserved (replace only, never splice).
+    payloadTimeline[index] = nextEntry;
   }
-  if (written > 0) bumpAquarelleStrokesRevision();
-  return written;
+  bumpAquarelleStrokesRevision();
+  return targets.length;
 }
 
 /**
