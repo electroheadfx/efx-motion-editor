@@ -235,7 +235,7 @@ Plans:
   4. A vector stroke persists in `.mce` (declared in both TS and Rust), survives reopen, and exports exactly as previewed while keeping hide/solo, ordering, opacity, and background behavior.
   5. Deterministic replay: the same vector stroke produces the same raster across runs, undo/redo, and reopen, and undo/redo covers each vector operation.
 
-**Plans:** 15/20 plans executed (14 executed + 6 gap-closure)
+**Plans:** 16/20 plans executed (14 executed + 6 gap-closure)
 
 Plans:
 **Wave 1**
@@ -274,7 +274,7 @@ Plans:
 
 **Gap closure** *(from 61-VERIFICATION.md; waves are relative to this set — 61-15, 61-16 and 61-17 own disjoint files, 61-18, 61-19 and 61-20 follow on the Studio)*
 - [x] 61-15-PLAN.md — Bake seam: the draw commit and the path-edit commit re-bake the live sheet, and a Script-Off draw is refused (G-1, G-2) — wave 1; the ledger entry it enables is 61-20
-- [ ] 61-16-PLAN.md — Gesture surface: pointer capture on the path-edit drag, the vector keys yield to a focused text field, and the two false history titles are corrected (G-3, G-4, G-8 test truth) — wave 1
+- [x] 61-16-PLAN.md — Gesture surface: pointer capture on the path-edit drag, the vector keys yield to a focused text field, and the two false history titles are corrected (G-3, G-4, G-8 test truth) — wave 1
 - [ ] 61-17-PLAN.md — Input-surface law: entering Select or the picker releases the pen and the open path edit, through a dependency-free latch leaf (G-6) — wave 1
 - [ ] 61-18-PLAN.md — Wireframe capture law: Draft cannot leave and the Draft settle refuses while wireframe is on, and Select states why it is inert (G-7) — wave 2, after 61-15
 - [ ] 61-19-PLAN.md — Anchor width target: the width commit writes the path the open edit names or refuses, with an inert reason in the dialog (G-5, G-8) — wave 3, after 61-15
@@ -317,7 +317,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 59. Rail Motion Channels & v7 Interface | 25/25 | Complete    | 2026-11-08 |
 | 60. Studio Timeline Horizontal Zoom | 6/6 | Complete    | 2026-11-09 |
-| 61. Vector Painting Tool | 15/20 | In Progress | - |
+| 61. Vector Painting Tool | 16/20 | In Progress | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
 
 **Execution Order:** 59 → 60 → 61 → 62 (global numbering continues; Phase 57 is retired and never reused)

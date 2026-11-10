@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-15-PLAN.md
-last_updated: "2026-11-10T21:35:18.806Z"
+stopped_at: Completed 61-16-PLAN.md
+last_updated: "2026-11-10T21:43:48.322Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: f0497865545172918b50cfbe02fbbcbcf9337b40
+state_head: 2a579b2ceceaf081b8b8ebe38009c0059dbe4d47
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 51
-  completed_plans: 46
+  completed_plans: 47
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 16 of 20
+Plan: 17 of 20
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -104,6 +104,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P12 | 17min | 3 tasks | 10 files |
 | Phase 61 P14 | 7min | 3 tasks | 2 files |
 | Phase 61 P15 | 6min | 2 tasks | 5 files |
+| Phase 61 P16 | 7min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -275,6 +276,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: The vector re-bake sequence clears its in-flight latch before the terminal callbacks, so a failed path edit can restore its pre-edit snapshot without being refused by its own latch.
 - [Phase 61]: commitAquarelleVectorPathEdit reads draftMode/wireframeMode only after ensureAquarelleDurableBaseRef resolves and only via .peek(); Draft or wireframe defers the engine re-render and marks the pixels dirty.
 - [Phase 61]: A Script-Off vector draw is refused before the ledger allocates and without a sheet reset; an accepted draw tails exactly one bakeAquarelleVectorCommit() after the record and the lift erase.
+- [Phase 61]: The pointer capture releases AFTER the commit decision, never in a finally: a capture release must not be able to swallow an edit
+- [Phase 61]: isTextEntryTarget is a new DOM-free leaf rather than a refactor of the Studio's isPhysicsPaintShortcutTarget, so the overlay stays callable from a node-environment test
+- [Phase 61]: The two false history-entry titles are renamed, not deleted: the assertions keep proving one edit snapshot per gesture and one undo
 
 ### Pending Todos
 
@@ -367,8 +371,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T21:35:17.573Z
-Stopped at: Completed 61-15-PLAN.md
+Last session: 2026-11-10T21:43:47.051Z
+Stopped at: Completed 61-16-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
