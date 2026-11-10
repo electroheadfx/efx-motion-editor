@@ -46,6 +46,10 @@ import {
   resetAquarelleRecordState,
   restoreAquarelleRecordTimeline,
 } from '../../components/physic-paint/view/aquarelleRecordState';
+import {
+  beginAquarellePathEdit,
+  restoreAquarelleEditSnapshot,
+} from '../../components/physic-paint/view/aquarelleStrokeSelection';
 
 type AquarelleTimelineStroke = ReturnType<typeof toStudioStroke>;
 
@@ -75,6 +79,12 @@ function stroke(
 /** One `auto` anchor carrying the sparse 1.8 width, one `bezier` with handles. */
 const VECTOR_ANCHORS: readonly AquarelleAnchor[] = [
   { x: 0.25, y: 0.5, kind: 'auto', width: Math.fround(1.8) },
+  { x: 0.75, y: 0.125, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 1, y: 0 } },
+];
+
+/** The post-gesture anchor list — one node nudged, everything else stable. */
+const MOVED_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.3, y: 0.5, kind: 'auto', width: Math.fround(1.8) },
   { x: 0.75, y: 0.125, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 1, y: 0 } },
 ];
 
@@ -225,5 +235,127 @@ describe('61-14 vector stroke export parity', () => {
       savedIds,
     );
     expect(savedIds).toStrictEqual([211, 213, 215]);
+  });
+
+  it('both render modes are carried literally on both stroke families', () => {
+    // Neither mode ever defaults to the other: an explicit 'watercolor' stays
+    // explicit, and D-14 gives the hand-painted family the same two modes.
+    recordAquarelleStroke(
+      221,
+      stroke(221, { brushId: 'simple-ribbon', anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+    );
+    recordAquarelleStroke(223, stroke(223, { anchors: VECTOR_ANCHORS, renderMode: 'watercolor' }));
+    recordAquarelleStroke(
+      225,
+      stroke(225, { brushId: 'simple-ribbon', renderMode: 'simple-ribbon' }),
+    );
+    recordAquarelleStroke(227, stroke(227, { brushId: 'round', renderMode: 'watercolor' }));
+
+    const reopened = reopen([...getRecordedAquarellePayloadTimeline()]);
+    expect(reopened).toHaveLength(4);
+    expect(strokeEntryAt(reopened, 0).engine.renderMode).toBe('simple-ribbon');
+    expect(strokeEntryAt(reopened, 1).engine.renderMode).toBe('watercolor');
+    expect(strokeEntryAt(reopened, 2).engine.renderMode).toBe('simple-ribbon');
+    expect(strokeEntryAt(reopened, 3).engine.renderMode).toBe('watercolor');
+    for (const index of [0, 1, 2, 3]) {
+      expect(
+        'renderMode' in strokeEntryAt(reopened, index).engine,
+        `renderMode present at entry ${index}`,
+      ).toBe(true);
+    }
+    // The hand-painted family keeps its mode without ever gaining a path.
+    expect('anchors' in strokeEntryAt(reopened, 2).engine).toBe(false);
+    expect('anchors' in strokeEntryAt(reopened, 3).engine).toBe(false);
+  });
+
+  it('sparse width factors [1.8, absent, 0.4] reopen exactly and a uniform factor stores no key', () => {
+    recordAquarelleStroke(
+      231,
+      stroke(231, {
+        brushId: 'simple-ribbon',
+        renderMode: 'simple-ribbon',
+        anchors: [
+          { x: 0, y: 0, kind: 'auto', width: Math.fround(1.8) },
+          { x: 0.5, y: 0.5, kind: 'auto' },
+          { x: 1, y: 1, kind: 'bezier', width: Math.fround(0.4) },
+        ],
+      }),
+    );
+    const savedEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline());
+    const reopenedEntry = strokeEntryAt(reopen([...getRecordedAquarellePayloadTimeline()]));
+    expect(reopenedEntry).toStrictEqual(savedEntry);
+
+    // The exact three-element shape, including the absent middle factor.
+    const anchors = reopenedEntry.engine.anchors!;
+    expect(anchors).toHaveLength(3);
+    expect(anchors).toStrictEqual([
+      { x: 0, y: 0, kind: 'auto', width: Math.fround(1.8) },
+      { x: 0.5, y: 0.5, kind: 'auto' },
+      { x: 1, y: 1, kind: 'bezier', width: Math.fround(0.4) },
+    ]);
+    expect(anchors[0]!.width).toBe(Math.fround(1.8));
+    expect('width' in anchors[1]!).toBe(false);
+    expect(anchors[2]!.width).toBe(Math.fround(0.4));
+
+    // An explicit 1.0 is a uniform factor: absent, never stored (D-10).
+    resetAquarelleRecordState();
+    recordAquarelleStroke(
+      233,
+      stroke(233, {
+        anchors: [
+          { x: 0, y: 0, kind: 'auto', width: 1 },
+          { x: 1, y: 1, kind: 'auto' },
+        ],
+      }),
+    );
+    const uniformEntry = strokeEntryAt(reopen([...getRecordedAquarellePayloadTimeline()]));
+    expect('width' in uniformEntry.engine.anchors![0]!).toBe(false);
+    expect('width' in uniformEntry.engine.anchors![1]!).toBe(false);
+  });
+
+  it('a path edit, undone then redone, yields byte-identical bake inputs', () => {
+    recordAquarelleStroke(
+      251,
+      stroke(251, { brushId: 'simple-ribbon', anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+    );
+    const beforeSerialised = JSON.stringify(strokeEntryAt(getRecordedAquarellePayloadTimeline()));
+
+    const editId = beginAquarellePathEdit(251, MOVED_ANCHORS);
+    expect(editId).not.toBeNull();
+    const postEditEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline());
+    const postEditSerialised = JSON.stringify(postEditEntry);
+    // Sanity: the edit really landed before the history round trip.
+    expect(postEditSerialised).not.toBe(beforeSerialised);
+    expect(postEditEntry.engine.anchors![0]!.x).toBe(0.3);
+
+    // Undo restores the pre-edit bytes, redo the post-edit bytes — compared as
+    // serialised strings, never by object identity.
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(JSON.stringify(strokeEntryAt(getRecordedAquarellePayloadTimeline()))).toBe(
+      beforeSerialised,
+    );
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'redo')).not.toBeNull();
+    expect(JSON.stringify(strokeEntryAt(getRecordedAquarellePayloadTimeline()))).toBe(
+      postEditSerialised,
+    );
+  });
+
+  it('the codec is deterministic: two encodes match byte for byte and two decodes match entry for entry', () => {
+    recordAquarelleStroke(
+      241,
+      stroke(241, { brushId: 'simple-ribbon', anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+    );
+    const saved = [...getRecordedAquarellePayloadTimeline()];
+
+    const firstBytes = encodeScriptTimelineBinary(saved);
+    const secondBytes = encodeScriptTimelineBinary(saved);
+    expect(firstBytes.byteLength).toBeGreaterThan(0);
+    expect(secondBytes).toStrictEqual(firstBytes);
+
+    const firstDecoded = decodeScriptTimelineBinary(firstBytes);
+    const secondDecoded = decodeScriptTimelineBinary(secondBytes);
+    expect(secondDecoded).toHaveLength(saved.length);
+    expect(secondDecoded).toStrictEqual(firstDecoded);
   });
 });
