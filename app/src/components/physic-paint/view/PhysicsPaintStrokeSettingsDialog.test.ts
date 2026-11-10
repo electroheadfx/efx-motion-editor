@@ -287,7 +287,9 @@ describe('61-11 E4 rows: the Anchor width block', () => {
     const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
     expect(block).toContain('disabled={anchorWidthEmpty}');
     const emptyBranch = regionOf(dialogSource, '{anchorWidthEmpty ? (', ') : null}');
-    expect(emptyBranch).toContain(ANCHOR_WIDTH_NO_EDIT_REASON);
+    // The span references the constant by NAME (the value is asserted in the
+    // inert-cause case below); the shipped empty copy stays in the same span.
+    expect(emptyBranch).toContain('ANCHOR_WIDTH_NO_EDIT_REASON');
     expect(emptyBranch).toContain('Select anchors on the canvas to set their width.');
   });
 

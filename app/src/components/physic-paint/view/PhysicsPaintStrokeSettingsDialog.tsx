@@ -9,6 +9,8 @@ import { hexToRgba } from '../../../lib/colorUtils';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  ANCHOR_WIDTH_EMPTY_READING,
+  ANCHOR_WIDTH_NO_EDIT_REASON,
   AQUARELLE_ANCHOR_WIDTH_DEFAULT,
   AQUARELLE_ANCHOR_WIDTH_MAX,
   AQUARELLE_ANCHOR_WIDTH_MIN,
@@ -36,6 +38,7 @@ import {
   readPaintSeedVariation,
   readRenderMode,
   readSimpleRibbonGlobal,
+  resolveAnchorWidthTarget,
   resolvePathEditGate,
   resolveStrokeListRange,
   resolveStrokeSettingsOpen,
@@ -745,10 +748,19 @@ export function PhysicsPaintStrokeSettingsDialog({
   // overlay's ONE signal, and the px readout multiplies the stroke's REAL Size
   // by the anchor factor — never `scriptScale` (T-61-39). Mounted only for a
   // single vector stroke whose bundle can commit the widths.
-  const anchorWidthReading = readAnchorWidthReading(
-    selectedVectorAnchors ?? [],
-    vectorAnchorSelection.value,
-  );
+  // 61-19 (G-5): the commit targets the OPEN path edit's stroke, so a null
+  // target reads as EMPTY — the block is inert and its caption states why. The
+  // target branches only on values this render body already reads.
+  const anchorWidthTarget = resolveAnchorWidthTarget({
+    ids,
+    pathEditMutationId: pathEditMutationId.value,
+  });
+  const anchorWidthReading = anchorWidthTarget === null
+    ? ANCHOR_WIDTH_EMPTY_READING
+    : readAnchorWidthReading(
+      selectedVectorAnchors ?? [],
+      vectorAnchorSelection.value,
+    );
   const anchorWidthAvailable = engineModule === 'watercolor'
     && selectedVectorAnchors !== null
     && bundle.applyAnchorWidths !== undefined;
@@ -1710,7 +1722,9 @@ export function PhysicsPaintStrokeSettingsDialog({
                       data-testid="stroke-settings-anchor-width-caption"
                       style={ANCHOR_WIDTH_CAPTION_STYLE}
                     >
-                      Select anchors on the canvas to set their width.
+                      {anchorWidthTarget === null
+                        ? ANCHOR_WIDTH_NO_EDIT_REASON
+                        : 'Select anchors on the canvas to set their width.'}
                     </span>
                   ) : null}
                 </div>,
