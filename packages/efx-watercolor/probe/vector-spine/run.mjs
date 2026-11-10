@@ -125,12 +125,39 @@ if (!('digestA' in result)) {
 }
 
 result.wallClockMs = elapsedMs
-writeFileSync(resultPath, JSON.stringify(result, null, 2))
+const payload = JSON.stringify(result, null, 2)
+writeFileSync(resultPath, payload)
+// Committed evidence — byte-equal to the /tmp copy of this same run.
+writeFileSync(join(here, 'result.json'), payload)
 
 console.log('')
 console.log('================ vector-spine feasibility ================')
 console.log(`renderer : ${result.env?.renderer ?? 'n/a'}`)
 console.log(`${result.scenario ?? 'vector-spine'}: ${result.verdict}`)
+if (result.seamStepPx) {
+  const seg = result.seamStepPx.segmentRuns
+  const pay = result.seamStepPx.payloadExtension
+  console.log(`seam     : segmentRuns 1/4/16=${seg?.['1']}/${seg?.['4']}/${seg?.['16']}px  payloadExtension=${pay?.['1']}/${pay?.['4']}/${pay?.['16']}px`)
+  console.log(`density  : settled=${result.settledDensity}`)
+}
+for (const [size, c] of Object.entries(result.cost ?? {})) {
+  console.log(
+    `cost ${size}: dabs/stroke=${c.dabsPerStroke} ms/stroke=${c.msPerStroke} ` +
+      `sheet10=${c.msPerSheet10}ms sheet50=${c.msPerSheet50}ms sheet200=${c.msPerSheet200}ms`,
+  )
+}
+if (typeof result.referenceStrokeCount === 'number') {
+  console.log(`ref      : ${result.referenceStrokeCount} strokes under 33ms at 1920x1080`)
+}
+if (result.widthRatio) {
+  const w = result.widthRatio
+  const m = w.maxRadius ?? {}
+  console.log(
+    `width    : ${w.channel} ${w.baseRadiusPx}->${w.scaledRadiusPx}px observed=${w.observed} | ` +
+      `${m.channel} ${m.baseRadiusPx}->${m.scaledRadiusPx}px observed=${m.observed}`,
+  )
+}
 console.log('')
-console.log(`result JSON: ${resultPath}`)
+console.log(`result JSON: ${resultPath} (committed copy: ${join(here, 'result.json')})`)
+console.log(`total probe: ${result.totalProbeMs} ms`)
 console.log('=========================================================')

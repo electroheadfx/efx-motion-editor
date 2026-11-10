@@ -54,6 +54,50 @@ const JOIN_ANCHORS: ReadonlyArray<{ x: number; y: number }> = [
 const DENSITIES = [1, 4, 16] as const
 type Density = (typeof DENSITIES)[number]
 
+// The cost matrix: the same compact ten-segment spine measured at the
+// three sheet sizes the project already uses for memory/cost examples.
+const COST_SIZES = [
+  { label: '1920x1080', width: 1920, height: 1080 },
+  { label: '2048x1536', width: 2048, height: 1536 },
+  { label: '3072x2304', width: 3072, height: 2304 },
+] as const
+const COST_ANCHORS: ReadonlyArray<{ x: number; y: number }> = Array.from(
+  { length: 11 },
+  (_, i) => ({ x: 0.12 + (0.76 * i) / 10, y: i % 2 === 0 ? 0.42 : 0.58 }),
+)
+
+// The width arms: a vertical three-anchor stroke whose cross-section is a
+// row of the capture. 512 keeps the arm cheap; both arms share it.
+const WIDTH_SHEET = 512
+const WIDTH_ANCHORS: ReadonlyArray<{ x: number; y: number }> = [
+  { x: 0.5, y: 0.3 },
+  { x: 0.5, y: 0.5 },
+  { x: 0.5, y: 0.7 },
+]
+// Captured at the replay's close tick, like every other arm: extra settle
+// ticks only grow the faint diffusion tail, which biases the measured
+// radius by a constant (~2px) and compresses the observed ratio.
+const WIDTH_SETTLE_TICKS = 0
+const WIDTH_FACTOR = 1.8
+const WIDTH_GATE = 1.7
+
+// --- dab counter ------------------------------------------------------------
+
+/**
+ * Count every dab the engine lays down. `stamp` is the single deposit
+ * entry point (`trace` calls it once per dab), and the `round` preset
+ * has `dabs: 1`, so stamps × brush.dabs is the dab count.
+ */
+const stampCounter = { count: 0 }
+const enginePrototype = WatercolorEngine.prototype as unknown as {
+  stamp: (...args: unknown[]) => unknown
+}
+const originalStamp = enginePrototype.stamp
+enginePrototype.stamp = function patchedStamp(this: unknown, ...args: unknown[]) {
+  stampCounter.count += 1
+  return originalStamp.apply(this, args)
+}
+
 // --- deterministic RNG (same mulberry32 as the adapter) --------------------
 
 function seededRandom(seed: number): () => number {
@@ -108,14 +152,17 @@ function resampleAnchors(
   return pts
 }
 
-function makeStroke(points: AquarellePoint[]): StudioStroke<AquarelleStrokePayload> {
+function makeStroke(
+  points: AquarellePoint[],
+  mutationId = MUTATION_ID,
+): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color: STROKE_COLOR,
     params: { ...DEFAULT_CANONICAL_PARAMS },
     brushId: BRUSH_ID,
     points,
-    mutationId: MUTATION_ID,
+    mutationId,
     timestamp: 0,
   })
 }
@@ -202,6 +249,23 @@ class Rig {
     this.engine.scriptEnd()
     this.now += 1000 * HOST_DT
     this.engine.tick(HOST_DT)
+  }
+
+  settle(): void {
+    this.now += 1000 * HOST_DT
+    this.engine.tick(HOST_DT)
+  }
+
+  /** One continuous scripted run over every point, then an optional settle. */
+  runWhole(
+    points: readonly AquarellePoint[],
+    options: { maxRadius?: number; settleTicks?: number } = {},
+  ): void {
+    if (points.length === 0) return
+    this.begin(points[0]!, options.maxRadius)
+    for (let i = 1; i < points.length; i += 1) this.move(points[i]!)
+    this.end()
+    for (let i = 0; i < (options.settleTicks ?? 0); i += 1) this.settle()
   }
 
   capture(): Uint8ClampedArray {
@@ -390,6 +454,147 @@ function digestRun(
   }
 }
 
+// --- cost matrix ------------------------------------------------------------
+
+interface SizeCost {
+  readonly dabsPerStroke: number
+  readonly msPerStroke: number
+  readonly msPerSheet10: number
+  readonly msPerSheet50: number
+  readonly msPerSheet200: number
+}
+
+/** Deterministic per-stroke offset so a sheet accumulates distinct strokes. */
+function shiftAnchors(
+  anchors: ReadonlyArray<{ x: number; y: number }>,
+  seed: number,
+): Array<{ x: number; y: number }> {
+  const rng = seededRandom(0x9e3779b9 ^ seed)
+  const dx = (rng() - 0.5) * 0.05
+  const dy = (rng() - 0.5) * 0.05
+  const clamp = (v: number): number => Math.min(0.95, Math.max(0.05, v))
+  return anchors.map((a) => ({ x: clamp(a.x + dx), y: clamp(a.y + dy) }))
+}
+
+function measureCost(
+  width: number,
+  height: number,
+  anchors: ReadonlyArray<{ x: number; y: number }>,
+  density: number,
+): SizeCost {
+  const points = resampleAnchors(anchors, density)
+  const brushDabs = buildBrushForStroke(BRUSH_ID).dabs ?? 1
+
+  // Warm up the shader programs before timing, then measure one stroke on
+  // the same engine (a cold first stroke carries the program link cost).
+  const probe = createPinnedAdapter(width, height)
+  let dabsPerStroke = 0
+  let msPerStroke = 0
+  try {
+    runStroke(probe, makeStroke(resampleAnchors(shiftAnchors(anchors, -1), density), MUTATION_ID - 1))
+    stampCounter.count = 0
+    const t0 = performance.now()
+    runStroke(probe, makeStroke(points))
+    msPerStroke = performance.now() - t0
+    dabsPerStroke = stampCounter.count * brushDabs
+  } finally {
+    probe.dispose()
+  }
+
+  // A sheet filled with 10 / 50 / 200 strokes, cumulative checkpoints.
+  const sheet = createPinnedAdapter(width, height)
+  let after10 = 0
+  let after50 = 0
+  let after200 = 0
+  try {
+    runStroke(sheet, makeStroke(resampleAnchors(shiftAnchors(anchors, -2), density), MUTATION_ID - 2))
+    const t0 = performance.now()
+    for (let i = 0; i < 200; i += 1) {
+      const stroke = makeStroke(
+        resampleAnchors(shiftAnchors(anchors, i), density),
+        MUTATION_ID + i,
+      )
+      runStroke(sheet, stroke)
+      if (i === 9) after10 = performance.now() - t0
+      if (i === 49) after50 = performance.now() - t0
+      if (i === 199) after200 = performance.now() - t0
+    }
+  } finally {
+    sheet.dispose()
+  }
+
+  return {
+    dabsPerStroke,
+    msPerStroke: round3(msPerStroke),
+    msPerSheet10: round3(after10),
+    msPerSheet50: round3(after50),
+    msPerSheet200: round3(after200),
+  }
+}
+
+// --- width arms -------------------------------------------------------------
+
+interface WidthPixels {
+  readonly widthPx: number
+  readonly radiusPx: number
+}
+
+/**
+ * The stroke's core width from pixels: the widest row of the middle band,
+ * counted as visibly painted pixels (the transparent export is opaque
+ * white, so a deposit is a drop from 255). Radius = width / 2.
+ */
+function measureWidthFromPixels(
+  buffer: Uint8ClampedArray,
+  width: number,
+  height: number,
+): WidthPixels {
+  const top = Math.round((1 - 0.64) * height)
+  const bottom = Math.round((1 - 0.36) * height)
+  let widest = 0
+  for (let y = top; y <= bottom; y += 1) {
+    let count = 0
+    for (let x = 0; x < width; x += 1) {
+      const i = (y * width + x) * 4
+      const r = buffer[i]!
+      const g = buffer[i + 1]!
+      const b = buffer[i + 2]!
+      if (255 - Math.min(r, g, b) > 8) count += 1
+    }
+    if (count > widest) widest = count
+  }
+  return { widthPx: widest, radiusPx: widest / 2 }
+}
+
+/**
+ * Replay the vertical three-anchor stroke through the script path with
+ * either an explicit `maxRadius` (the C-03 clamp arm) or a footprint size
+ * (the `sizeMult` arm), then measure the radius from the captured pixels.
+ */
+function runWidthStroke(
+  density: number,
+  options: { size?: number; maxRadiusFactor?: number },
+): WidthPixels {
+  const rig = new Rig(WIDTH_SHEET, WIDTH_SHEET)
+  try {
+    const stroke = makeStroke(resampleAnchors(WIDTH_ANCHORS, density))
+    rig.configure(stroke)
+    if (typeof options.size === 'number') rig.engine.setParams({ size: options.size })
+    let maxRadius: number | undefined
+    if (typeof options.maxRadiusFactor === 'number') {
+      // measured while no stroke is open: scriptScale is not applied
+      const measure = rig.engine as unknown as {
+        radius(tool: Tool, pressure: number, speed: number): number
+      }
+      maxRadius = measure.radius('brush', 1, 0) * options.maxRadiusFactor
+    }
+    rig.runWhole(stroke.pts, { maxRadius, settleTicks: WIDTH_SETTLE_TICKS })
+    return measureWidthFromPixels(rig.capture(), WIDTH_SHEET, WIDTH_SHEET)
+  } finally {
+    rig.destroy()
+  }
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -464,29 +669,60 @@ function main(): void {
   }
 
   // The sampling law: the smallest density where the payload-extension
-  // seam step stops improving by more than 0.5 channel units over the
-  // previous density. When it is still improving at 16x, 16 is the answer
-  // (the ceiling this probe can measure).
+  // seam step stops improving by more than 0.5px over the previous
+  // density. When it is still improving at 16x, 16 is the ceiling this
+  // probe measures.
   const step1 = payloadExtension['1']!
   const step4 = payloadExtension['4']!
   const settledDensity: Density = step1 - step4 <= 0.5 ? 4 : 16
+
+  // Cost: one stroke plus a sheet at 10 / 50 / 200 strokes per size.
+  const cost: Record<string, SizeCost> = {}
+  for (const size of COST_SIZES) {
+    cost[size.label] = measureCost(size.width, size.height, COST_ANCHORS, settledDensity)
+  }
+
+  // VEC-05 reference count: the largest sheet that stays under 33ms at
+  // 1920x1080, falling back to 10 when even that misses.
+  const ref = cost['1920x1080']!
+  let referenceStrokeCount = 10
+  if (ref.msPerSheet50 < 33) referenceStrokeCount = 50
+  if (ref.msPerSheet200 < 33) referenceStrokeCount = 200
 
   const first = digestRun(SHEET_W, SHEET_H, JOIN_ANCHORS, settledDensity)
   const second = digestRun(SHEET_W, SHEET_H, JOIN_ANCHORS, settledDensity)
   const identical = first.digest === second.digest
 
+  // Width, both arms measured from pixels. `sizeMult()` is
+  // 3^((size - 0.5) * 2), so the size that multiplies the footprint by
+  // 1.8 is 0.5 + ln(1.8) / (2 * ln(3)).
+  const widthBase = runWidthStroke(settledDensity, { size: 0.5 })
+  const widthScaled = runWidthStroke(settledDensity, {
+    size: 0.5 + Math.log(WIDTH_FACTOR) / (2 * Math.log(3)),
+  })
+  const widthObserved = round3(widthScaled.radiusPx / widthBase.radiusPx)
+
+  // The C-03 clamp evidence: scriptBegin's maxRadius is capped at
+  // scriptScale = min(1, maxRadius / radius), so this arm measures ~1.0.
+  // It is evidence, never a gate.
+  const clampBase = runWidthStroke(settledDensity, { maxRadiusFactor: 1 })
+  const clampScaled = runWidthStroke(settledDensity, { maxRadiusFactor: WIDTH_FACTOR })
+  const clampObserved = round3(clampScaled.radiusPx / clampBase.radiusPx)
+
   const segmentAt16 = segmentRuns['16']!
   const payloadAt16 = payloadExtension['16']!
+  const strategy = payloadAt16 <= segmentAt16 ? 'payload-extension' : 'segment-runs'
+  const seamPass = !(segmentAt16 > 2 && payloadAt16 > 2)
+  const seamName = seamPass
+    ? strategy
+    : `both-above-2px-at-16x(segmentRuns=${segmentAt16},payloadExtension=${payloadAt16})`
+  const widthPass = widthObserved >= WIDTH_GATE
 
-  let verdict: string
-  if (segmentAt16 > 2 && payloadAt16 > 2) {
-    verdict = `VECTOR-SPINE FAIL seam=both-above-2px-at-16x(segmentRuns=${segmentAt16},payloadExtension=${payloadAt16})`
-  } else {
-    // The numbers support the lower seam at the densest sampling; a tie
-    // keeps the continuous strategy the phase intends to build.
-    const strategy = payloadAt16 <= segmentAt16 ? 'payload-extension' : 'segment-runs'
-    verdict = `VECTOR-SPINE PASS seam=${strategy} density=${settledDensity}`
-  }
+  // Only the sizeMult arm gates (VEC-03): the clamp arm fires for a reason
+  // the phase already designs around, so it is never a FAIL condition.
+  const verdict = widthPass
+    ? `VECTOR-SPINE ${seamPass ? 'PASS' : 'FAIL'} seam=${seamName} density=${settledDensity} ref=${referenceStrokeCount} width=scriptFactor(${widthObserved})`
+    : `VECTOR-SPINE FAIL width=${widthObserved}`
 
   writeResult({
     scenario: 'vector-spine',
@@ -504,9 +740,24 @@ function main(): void {
     byteLength: first.byteLength,
     byteLengthB: second.byteLength,
     identical,
+    cost,
+    referenceStrokeCount,
+    widthRatio: {
+      factor: WIDTH_FACTOR,
+      baseRadiusPx: round3(widthBase.radiusPx),
+      scaledRadiusPx: round3(widthScaled.radiusPx),
+      observed: widthObserved,
+      channel: 'scriptFactor(sizeMult)',
+      maxRadius: {
+        baseRadiusPx: round3(clampBase.radiusPx),
+        scaledRadiusPx: round3(clampScaled.radiusPx),
+        observed: clampObserved,
+        channel: 'scriptScale-clamped',
+      },
+    },
     env: { renderer: String(renderer), userAgent: navigator.userAgent },
     verdict,
-    cost: { totalProbeMs: Math.round(performance.now() - t0) },
+    totalProbeMs: Math.round(performance.now() - t0),
   })
 }
 
