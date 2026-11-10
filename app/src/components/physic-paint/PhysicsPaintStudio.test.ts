@@ -6466,6 +6466,101 @@ describe('61-10 vector path edit wiring in the Studio', () => {
   });
 });
 
+// 61-15 Task 1: a drawn vector path must reach the live sheet at commit
+// (G-1/G-2). A Script-Off draw is refused with ONE fixed message instead of
+// silently vanishing, and the accepted draw tails the stroke-end with a
+// single vector re-bake that defers pixels in Draft or wireframe.
+describe('61-15 vector draw bake seam in the Studio', () => {
+  const HANDLER_START = 'const handleAquarelleStrokeEnd = useCallback(';
+  const HANDLER_END = 'const handleAquarelleStrokeSettled = useCallback(';
+
+  function strokeEndRegion(): string {
+    const start = studio.indexOf(HANDLER_START);
+    expect(start, `missing start marker: ${HANDLER_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(HANDLER_END, start + HANDLER_START.length);
+    expect(end, `missing end marker: ${HANDLER_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('refuses a Script-Off vector draw before the ledger allocates, without resetting the sheet', () => {
+    const handler = strokeEndRegion();
+    const REFUSAL = 'if (isVectorAquarelleStroke(stroke) && !aquarelleScriptRecordingEnabled.peek()) {';
+    expect(handler).toContain(REFUSAL);
+    const liftRefuseAt = handler.indexOf("if (liftPlan?.kind === 'refuse') {");
+    const refusalAt = handler.indexOf(REFUSAL);
+    const scriptReadAt = handler.indexOf('const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();');
+    const allocateAt = handler.indexOf('paintMutationLedger.allocateStrokeMutation(');
+    expect(liftRefuseAt).toBeGreaterThan(-1);
+    expect(scriptReadAt).toBeGreaterThan(-1);
+    expect(allocateAt).toBeGreaterThan(-1);
+    // AFTER the lift refusal (a lift is not a vector path) and BEFORE both the
+    // script read and the ledger allocation — a refused draw writes NOTHING.
+    expect(refusalAt).toBeGreaterThan(liftRefuseAt);
+    expect(scriptReadAt).toBeGreaterThan(refusalAt);
+    expect(allocateAt).toBeGreaterThan(refusalAt);
+    // The refusal block itself publishes the fixed copy and returns. A vector
+    // commit paints no engine dabs, so it must NOT reset the sheet.
+    const refusalBlock = handler.slice(refusalAt, handler.indexOf('\n    }', refusalAt));
+    expect(refusalBlock).toContain('setApplyMessage(VECTOR_PATH_SCRIPT_OFF_MESSAGE);');
+    expect(refusalBlock).toContain("setApplyStatus('error');");
+    expect(refusalBlock).toContain('setLastError(VECTOR_PATH_SCRIPT_OFF_MESSAGE);');
+    expect(refusalBlock).toContain('return;');
+    expect(refusalBlock).not.toContain('aquarelleResetSheetRef');
+    expect(refusalBlock).not.toContain('allocateStrokeMutation');
+    // One fixed module constant, owned by the leaf seam.
+    expect(studio).toContain(
+      "import {\n  VECTOR_PATH_SCRIPT_OFF_MESSAGE,\n  isVectorAquarelleStroke,\n  resolveVectorCommitRoute,\n  runAquarelleScriptRebake,\n} from './view/aquarelleVectorPathCommit';",
+    );
+  });
+
+  it('tails the stroke end with exactly one vector bake, after the record and the lift erase', () => {
+    const handler = strokeEndRegion();
+    const TAIL = 'if (isVectorAquarelleStroke(stroke)) void bakeAquarelleVectorCommit();';
+    expect(handler.split(TAIL).length - 1).toBe(1);
+    const tryAt = handler.indexOf('    try {');
+    const recordAt = handler.indexOf('recordAquarelleStrokeWhenEnabled(');
+    const eraseAt = handler.indexOf('void runAquarelleLiftErase(');
+    const tailAt = handler.indexOf(TAIL);
+    expect(tryAt).toBeGreaterThan(-1);
+    expect(recordAt).toBeGreaterThan(tryAt);
+    expect(eraseAt).toBeGreaterThan(recordAt);
+    // The bake is the stroke-end tail: the record is already ordered, so the
+    // re-bake's timeline contains this exact stroke.
+    expect(tailAt).toBeGreaterThan(eraseAt);
+    // A refused record (the catch) never bakes.
+    expect(tailAt).toBeLessThan(handler.indexOf('    } catch {'));
+    expect(studio).toContain(
+      '  }, [bakeAquarelleVectorCommit, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);',
+    );
+    // The callback bakes the live sheet through reset + apply, and defers
+    // pixels in Draft or wireframe.
+    const bakeStart = studio.indexOf('const bakeAquarelleVectorCommit = useCallback(');
+    const handlerStart = studio.indexOf(HANDLER_START);
+    expect(bakeStart).toBeGreaterThan(-1);
+    // Declared BEFORE the stroke-end handler so `void bakeAquarelleVectorCommit()`
+    // is not a temporal-dead-zone read.
+    expect(handlerStart).toBeGreaterThan(bakeStart);
+    const bake = studio.slice(bakeStart, handlerStart);
+    expect(bake).toContain('resolveVectorCommitRoute({ draft: draftMode.peek(), wireframe: wireframeMode.peek() })');
+    expect(bake).toContain("=== 'defer-pixels'");
+    expect(bake).toContain('setDraftPixelsDirty(true);');
+    expect(bake).toContain('return true;');
+    expect(bake).toContain('runAquarelleScriptRebake({');
+    expect(bake).toContain('aquarelleResetSheetRef.current?.()');
+    expect(bake).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
+    // The defer slice returns BEFORE the rebake seam: no reset, no apply.
+    const defer = bake.slice(bake.indexOf("=== 'defer-pixels'"), bake.indexOf('runAquarelleScriptRebake({'));
+    expect(defer).toContain('setDraftPixelsDirty(true);');
+    expect(defer).toContain('return true;');
+    expect(defer).not.toContain('aquarelleResetSheetRef');
+    expect(defer).not.toContain('applyAquarelleTimeline');
+    // The failure path owns the capsule and the refusal flag, like a move.
+    expect(bake).toContain('setApplyMessage(message);');
+    expect(bake).toContain("setApplyStatus('error');");
+    expect(bake).toContain('scriptApplyRefusalOwnedRef.current = true;');
+  });
+});
+
 // 61-11 Task 2: the Anchor width bundle members. The dialog never touches the
 // record store — `readVectorAnchors` is the ONE read seam (the gate and the
 // Paint row share it), and `applyAnchorWidths` builds the WHOLE next list and
