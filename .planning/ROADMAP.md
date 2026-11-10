@@ -235,7 +235,7 @@ Plans:
   4. A vector stroke persists in `.mce` (declared in both TS and Rust), survives reopen, and exports exactly as previewed while keeping hide/solo, ordering, opacity, and background behavior.
   5. Deterministic replay: the same vector stroke produces the same raster across runs, undo/redo, and reopen, and undo/redo covers each vector operation.
 
-**Plans:** 5/14 plans executed
+**Plans:** 6/14 plans executed
 
 Plans:
 **Wave 1**
@@ -250,7 +250,7 @@ Plans:
 - [x] 61-04-PLAN.md — Engine width channel: per-sample width scale through scriptBegin/scriptMove and the adapter, measured at 1.8x
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 61-05-PLAN.md — AQTL v2: vector flags, anchor block and render-mode byte in SNAP v5, fail-closed v1 refusal, lossless restore
+- [x] 61-05-PLAN.md — AQTL v2: vector flags, anchor block and render-mode byte in SNAP v5, fail-closed v1 refusal, lossless restore
 - [ ] 61-06-PLAN.md — Declaration pair: matching TS and Rust members pinned by the field contract test, no new one-language exception
 - [ ] 61-07-PLAN.md — Simple ribbon: crisp render mode in the engine, the brush preset and its crisp thumb, mode-aware script begin
 
@@ -308,7 +308,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 59. Rail Motion Channels & v7 Interface | 25/25 | Complete    | 2026-11-08 |
 | 60. Studio Timeline Horizontal Zoom | 6/6 | Complete    | 2026-11-09 |
-| 61. Vector Painting Tool | 5/14 | In Progress | - |
+| 61. Vector Painting Tool | 6/14 | In Progress | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
 
 **Execution Order:** 59 → 60 → 61 → 62 (global numbering continues; Phase 57 is retired and never reused)

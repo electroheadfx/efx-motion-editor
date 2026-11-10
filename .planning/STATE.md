@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-04-PLAN.md
-last_updated: "2026-11-10T13:20:31.874Z"
+stopped_at: Completed 61-05-PLAN.md
+last_updated: "2026-11-10T13:31:48.804Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: bece888992023ee80a8c3978cc255566760c79b0
+state_head: 19c75c3cf9f5763080e677414e774273fc8f5b65
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 36
+  completed_plans: 37
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 6 of 14
+Plan: 7 of 14
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -94,6 +94,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P08 | 9min | 3 tasks | 11 files |
 | Phase 61 P03 | 6min | 3 tasks | 7 files |
 | Phase 61 P04 | 14 | 3 tasks | 6 files |
+| Phase 61 P05 | 7min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -229,6 +230,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: sizeMult(widthFactor) multiplies the existing footprint beside the unchanged 'this.scripting ? this.scriptScale : 1' term; the scriptScale clamp assignment stays character-for-character and appears exactly once (Engine.ts:866).
 - [Phase 61]: resolveStrokeWidthFactors derives one Float32Array per active stroke at activation (applyStroke/renderAllStrokes/renderPartialStrokes) and feeds it by active.index; null means the feed passes the literal 1 and the uniform path deposits byte-identically.
 - [Phase 61]: The width probe paints at canonical size 32 (engine scale 1.0): at 12px the widest-row radius is paper-grain-limited (observed 1.6-1.75) and cannot discriminate the 1.7 gate; 32px measures 35px->60px = 1.714 deterministically, while the committed phase-evidence digests stay 2058d0c6.
+- [Phase 61]: AQTL v2 costs a hand-painted stroke one u8 vector-flags byte (version keeps its u16 width); the plan's '+2' prose double-counted the version bump, the layout table fixes 1
+- [Phase 61]: Anchor scalars are f32: fixtures use Math.fround(1.8) with exact deep equality plus a 1e-6 tolerance check; absent optional keys are never materialised on decode
+- [Phase 61]: Restore seeds anchors/renderMode only when the payload carried them; a malformed anchor list omits the path for its event instead of aborting the restore
 
 ### Pending Todos
 
@@ -321,8 +325,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T13:20:21.042Z
-Stopped at: Completed 61-04-PLAN.md
+Last session: 2026-11-10T13:31:47.559Z
+Stopped at: Completed 61-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
