@@ -101,6 +101,19 @@ export const WATERCOLOR_SETTINGS_FIELDS: readonly StrokeSettingsField[] = Object
   Object.freeze({ key: 'dry', label: 'Dry speed', min: 0, max: 100, step: 1, kind: 'numeric' as const, fallback: DEFAULT_CANONICAL_PARAMS.dry }),
 ]);
 
+/**
+ * 61-12 (D-13): the seven wet globals behind the Advanced disclosure. Exactly
+ * the Water color Paint rows MINUS `size` — Size is the shared brush slider
+ * (D-05), not a wet term, and `lift` is the Eraser strength, never a global.
+ */
+export const SIMPLE_RIBBON_GLOBALS: readonly StrokeSettingsField[] = Object.freeze(
+  WATERCOLOR_SETTINGS_FIELDS.filter((field) => field.key !== 'size'),
+);
+
+/** The UI-SPEC Advanced disclosure note, verbatim and never interpolated. */
+export const SIMPLE_RIBBON_WET_NOTE =
+  'All seven sit at zero for a plain ribbon. Raise any to blend physics back in.';
+
 export function strokeSettingsFields(module: StrokeSettingsModule): readonly StrokeSettingsField[] {
   return module === 'watercolor' ? WATERCOLOR_SETTINGS_FIELDS : BRUSH_SETTINGS_FIELDS;
 }
@@ -220,6 +233,24 @@ export function readNumericField(
   const fallback = fieldDefault(field);
   const values = orderedIds.map((id) => readFiniteParam(byId.get(id)?.params, key, fallback));
   if (values.length === 0) return { value: fallback, mixed: false };
+  const first = values[0]!;
+  return { value: first, mixed: values.some((value) => value !== first) };
+}
+
+/**
+ * 61-12 (D-13): one wet-global reading for the Advanced disclosure. The
+ * stored param key IS the field key (no `paramKey` alias among the seven),
+ * and an absent key reads 0 — the ribbon preset genuinely writes zeros at
+ * pick time, so zero is a real stored value, never a display fallback.
+ * Mixed compares the raw values across the selection.
+ */
+export function readSimpleRibbonGlobal(
+  appearances: readonly ScriptStrokeAppearance[],
+  key: string,
+): NumericFieldReading {
+  const values = appearances.map((appearance) =>
+    readFiniteParam(appearance.params, key, 0));
+  if (values.length === 0) return { value: 0, mixed: false };
   const first = values[0]!;
   return { value: first, mixed: values.some((value) => value !== first) };
 }

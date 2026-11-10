@@ -23,6 +23,8 @@ import {
   AQUARELLE_ANCHOR_WIDTH_MIN,
   AQUARELLE_ANCHOR_WIDTH_STEP,
   RENDER_MODE_OPTIONS,
+  SIMPLE_RIBBON_GLOBALS,
+  SIMPLE_RIBBON_WET_NOTE,
   WATERCOLOR_SETTINGS_FIELDS,
 } from './strokeSettingsModel';
 
@@ -371,5 +373,105 @@ describe('61-12 Render row (E3)', () => {
     expect(block).not.toContain('buildAppearancePatch');
     expect(block).not.toContain('segmentedFields');
     expect(WATERCOLOR_SETTINGS_FIELDS.map((field) => field.key)).not.toContain('renderMode');
+  });
+});
+
+// ── 61-12 Task 3: the Advanced wet-globals disclosure (D-13 / E5) ────
+
+describe('61-12 Advanced wet-globals disclosure (E5)', () => {
+  const BLOCK = 'data-testid="stroke-settings-advanced-wet-globals-block"';
+  const ROW = 'data-testid="stroke-settings-advanced-wet-globals"';
+  const BODY = 'data-testid="stroke-settings-advanced-wet-globals-body"';
+  const NOTE = 'data-testid="stroke-settings-advanced-wet-globals-note"';
+  // The block's own close: the paint section's final `</div>` and its
+  // `) : null}` — indented less than any closer inside the block.
+  const BLOCK_END = '\n            </div>\n          ) : null}';
+
+  function disclosureBlock(): string {
+    return regionOf(dialogSource, BLOCK, BLOCK_END);
+  }
+
+  it('mounts exactly one collapsed disclosure after the numeric field map', () => {
+    expect(countOf(dialogSource, BLOCK)).toBe(1);
+    expect(countOf(dialogSource, ROW)).toBe(1);
+    expect(countOf(dialogSource, BODY)).toBe(1);
+    expect(countOf(dialogSource, NOTE)).toBe(1);
+
+    const paintAt = dialogSource.indexOf('data-testid="stroke-settings-paint"');
+    const numericAt = dialogSource.indexOf('{numericFields.map((field) => {');
+    const blockAt = dialogSource.indexOf(BLOCK);
+    expect(paintAt).toBeGreaterThan(-1);
+    expect(numericAt).toBeGreaterThan(paintAt);
+    expect(blockAt, 'the disclosure mounts inside the Paint tab').toBeGreaterThan(paintAt);
+    expect(blockAt, 'the disclosure sits after the last numeric field').toBeGreaterThan(numericAt);
+
+    // Collapsed by default: the local signal starts false and the body is
+    // behind the open branch only.
+    expect(dialogSource).toContain(
+      'if (!advancedWetOpenRef.current) advancedWetOpenRef.current = signal<boolean>(false);',
+    );
+    expect(disclosureBlock()).toContain('{advancedWetOpen ? (');
+    // Local view state only — no effect, no engine call (T-61-43).
+    expect(countOf(dialogSource, 'useEffect(')).toBe(2);
+  });
+
+  it('is a simple-ribbon presentation only — watercolor mode mounts nothing', () => {
+    const block = disclosureBlock();
+    // The mount gate is the NEAREST gate before the block (the block test id
+    // is inside the gate's JSX, so the gate line itself is outside the slice).
+    const blockAt = dialogSource.indexOf(BLOCK);
+    const gateAt = dialogSource.lastIndexOf(
+      "engineModule === 'watercolor' && renderModeReading.mode === 'simple-ribbon' ? (",
+      blockAt,
+    );
+    expect(gateAt).toBeGreaterThan(-1);
+    expect(blockAt - gateAt).toBeLessThan(200);
+    // A mixed selection reads mode null, so it mounts nothing either.
+    expect(block).not.toContain('renderModeReading.mixed');
+    // The seven rows are ADDITIONAL: the shared field map is untouched.
+    expect(block).not.toContain('numericFields');
+    expect(block).not.toContain('segmentedFields');
+    expect(block).not.toContain("field.key === 'size'");
+  });
+
+  it('binds aria-expanded and swaps the two 12px chevrons', () => {
+    const block = disclosureBlock();
+    expect(block).toContain('aria-expanded={advancedWetOpen}');
+    expect(block).toContain('<ChevronDown size={12} aria-hidden="true" />');
+    expect(block).toContain('<ChevronRight size={12} aria-hidden="true" />');
+    // Open ⇒ ChevronDown, collapsed ⇒ ChevronRight.
+    expect(block.indexOf('<ChevronDown')).toBeGreaterThan(-1);
+    expect(block.indexOf('<ChevronDown')).toBeLessThan(block.indexOf('<ChevronRight'));
+    const rowStyle = regionOf(dialogSource, 'const ADVANCED_ROW_STYLE', '};');
+    expect(rowStyle).toContain("height: '24px'");
+    expect(block).toContain('<span style={PAINT_ROW_LABEL_STYLE}>Advanced — wet globals</span>');
+  });
+
+  it('maps the seven model rows to one SliderStepper each, committing per stroke', () => {
+    const block = disclosureBlock();
+    expect(block).toContain('{SIMPLE_RIBBON_GLOBALS.map((field) => {');
+    expect(block).toContain('const reading = readSimpleRibbonGlobal(appearances, field.key);');
+    // ONE template row: the seven rows come from the model list.
+    expect(countOf(block, '<SliderStepper')).toBe(1);
+    expect(block).toContain('mixed={reading.mixed}');
+    expect(block).toContain(
+      "buildAppearancePatch('watercolor', field.key, value)",
+    );
+    expect(block).toContain('void bundle.applyAppearance(');
+    // Exactly seven rows, and Size is not one of them.
+    expect(SIMPLE_RIBBON_GLOBALS).toHaveLength(7);
+    expect(SIMPLE_RIBBON_GLOBALS.map((field) => field.label)).not.toContain('Size');
+  });
+
+  it('renders the UI-SPEC note verbatim in one line-height 1.5 element', () => {
+    const block = disclosureBlock();
+    expect(block).toContain('{SIMPLE_RIBBON_WET_NOTE}');
+    // One fixed sentence — never interpolated with a value.
+    expect(block).not.toMatch(/\$\{SIMPLE_RIBBON_WET_NOTE\}/);
+    expect(SIMPLE_RIBBON_WET_NOTE).toBe(
+      'All seven sit at zero for a plain ribbon. Raise any to blend physics back in.',
+    );
+    const noteStyle = regionOf(dialogSource, 'const ADVANCED_WET_NOTE_STYLE', '};');
+    expect(noteStyle).toContain('lineHeight: 1.5');
   });
 });

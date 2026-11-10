@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
-import { Eye, EyeOff, List, Settings2, SlidersHorizontal, Spline, SplinePointer, Trash2, X } from 'lucide-preact';
+import { ChevronDown, ChevronRight, Eye, EyeOff, List, Settings2, SlidersHorizontal, Spline, SplinePointer, Trash2, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { hexToRgba } from '../../../lib/colorUtils';
@@ -15,6 +15,8 @@ import {
   AQUARELLE_ANCHOR_WIDTH_STEP,
   FRESH_STROKE_GEOMETRY_SESSION,
   RENDER_MODE_OPTIONS,
+  SIMPLE_RIBBON_GLOBALS,
+  SIMPLE_RIBBON_WET_NOTE,
   STROKE_POSITION_RANGE,
   STROKE_ROTATION_RANGE,
   STROKE_SCALE_RANGE,
@@ -33,6 +35,7 @@ import {
   readNumericField,
   readPaintSeedVariation,
   readRenderMode,
+  readSimpleRibbonGlobal,
   resolvePathEditGate,
   resolveStrokeListRange,
   resolveStrokeSettingsOpen,
@@ -299,6 +302,32 @@ const ANCHOR_WIDTH_CAPTION_STYLE: CSSProperties = {
   color: 'var(--sidebar-text-secondary, #9aa5b1)',
 };
 
+/**
+ * 61-12 (D-13): the Advanced disclosure row — the BrushesDocker grammar
+ * (chevron + label, 24px row, transparent, no border).
+ */
+const ADVANCED_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  width: '100%',
+  height: '24px',
+  padding: '0',
+  border: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  textAlign: 'left',
+};
+
+/** 61-12 (D-13): the one-line note under the seven disclosure rows. */
+const ADVANCED_WET_NOTE_STYLE: CSSProperties = {
+  display: 'block',
+  marginTop: '4px',
+  fontSize: '10px',
+  lineHeight: 1.5,
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+};
+
 const SEGMENT_GROUP_STYLE: CSSProperties = {
   display: 'flex',
   gap: '4px',
@@ -458,6 +487,13 @@ export function PhysicsPaintStrokeSettingsDialog({
   const rowAnchorRef = useRef<number>(-1);
   /** 261101-o2m: the previous render's `open` — the dialog-close exit edge. */
   const wasOpenRef = useRef(false);
+  /**
+   * 61-12 (D-13): the Advanced wet-globals disclosure is a LOCAL view signal,
+   * collapsed by default and written ONLY from the row's click handler. It
+   * never touches the script, the engine or the sheet (T-61-43).
+   */
+  const advancedWetOpenRef = useRef<Signal<boolean> | null>(null);
+  if (!advancedWetOpenRef.current) advancedWetOpenRef.current = signal<boolean>(false);
 
   const selection = scriptSelectedStrokeIds.value;
   const engineModule = bundle?.module ?? 'brush';
@@ -722,6 +758,10 @@ export function PhysicsPaintStrokeSettingsDialog({
   // 61-12 (VEC-04): the Paint tab's Render row reading. The mode rides the
   // appearance objects the bundle hydrates — never a numeric field.
   const renderModeReading = readRenderMode(appearances);
+  // 61-12 (D-13): the disclosure's own open state, ref-held and read here
+  // (render-body READ only — the click handler owns the write).
+  const advancedWetOpenSignal: Signal<boolean> = advancedWetOpenRef.current;
+  const advancedWetOpen = advancedWetOpenSignal.value;
 
   const applied = strokeSettingsDragOffset.value;
 
@@ -1716,6 +1756,67 @@ export function PhysicsPaintStrokeSettingsDialog({
                 </div>
               );
             })}
+            {/* 61-12 (D-13): the Advanced wet-globals disclosure. A
+                simple-ribbon presentation only — watercolor mode keeps
+                today's Paint tab exactly, and a mixed selection mounts
+                nothing because its mode reads null. Collapsed by default. */}
+            {engineModule === 'watercolor' && renderModeReading.mode === 'simple-ribbon' ? (
+              <div data-testid="stroke-settings-advanced-wet-globals-block">
+                <button
+                  type="button"
+                  data-testid="stroke-settings-advanced-wet-globals"
+                  aria-expanded={advancedWetOpen}
+                  style={ADVANCED_ROW_STYLE}
+                  onClick={() => {
+                    // The handler owns the ONLY write to the disclosure state;
+                    // the render body reads it, never writes it.
+                    advancedWetOpenSignal.value = !advancedWetOpenSignal.value;
+                  }}
+                >
+                  {advancedWetOpen
+                    ? <ChevronDown size={12} aria-hidden="true" />
+                    : <ChevronRight size={12} aria-hidden="true" />}
+                  <span style={PAINT_ROW_LABEL_STYLE}>Advanced — wet globals</span>
+                </button>
+                {advancedWetOpen ? (
+                  <div data-testid="stroke-settings-advanced-wet-globals-body">
+                    {SIMPLE_RIBBON_GLOBALS.map((field) => {
+                      const reading = readSimpleRibbonGlobal(appearances, field.key);
+                      return (
+                        <div key={field.key} data-testid={`stroke-settings-wet-${field.key}`}>
+                          <SliderStepper
+                            label={field.label}
+                            ariaLabel={field.label}
+                            value={reading.value}
+                            min={field.min}
+                            max={field.max}
+                            step={field.step}
+                            mixed={reading.mixed}
+                            commitOnRelease
+                            allowOutOfRangeEntry
+                            onChange={(value) => {
+                              void bundle.applyAppearance(
+                                ids,
+                                // 61-12 (D-13): a per-stroke wet write. The
+                                // disclosure is not a numeric field-map row —
+                                // it reuses the canonical watercolor patch.
+                                buildAppearancePatch('watercolor', field.key, value),
+                              );
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                    <span
+                      data-testid="stroke-settings-advanced-wet-globals-note"
+                      style={ADVANCED_WET_NOTE_STYLE}
+                    >
+                      {SIMPLE_RIBBON_WET_NOTE}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             </div>
           ) : null}
             </>

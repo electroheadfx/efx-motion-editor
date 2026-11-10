@@ -36,7 +36,10 @@ import {
   PATH_EDIT_MULTI_DISABLED_REASON,
   PATH_EDIT_SINGLE_DISABLED_REASON,
   RENDER_MODE_OPTIONS,
+  SIMPLE_RIBBON_GLOBALS,
+  SIMPLE_RIBBON_WET_NOTE,
   readRenderMode,
+  readSimpleRibbonGlobal,
   resolvePathEditGate,
   shouldExitPathEdit,
   FRESH_STROKE_GEOMETRY_SESSION,
@@ -3715,5 +3718,86 @@ describe('61-12 Render mode reading (Paint tab)', () => {
     expect(keys).not.toContain('render-mode');
     // The row is dispatched off the string union, not the numeric path.
     expect(RENDER_MODE_OPTIONS.every((option) => typeof option.mode === 'string')).toBe(true);
+  });
+});
+
+// ── 61-12 Task 3: the Advanced wet-globals disclosure model (D-13 / E5) ──
+
+describe('61-12 Advanced wet globals (E5)', () => {
+  function appearanceOf(id: number, params: Record<string, number> = {}) {
+    return { mutationId: id, params, color: '#103c65' };
+  }
+
+  it('is exactly the Water color rows minus Size, frozen', () => {
+    expect(SIMPLE_RIBBON_GLOBALS).toEqual(
+      WATERCOLOR_SETTINGS_FIELDS.filter((field) => field.key !== 'size'),
+    );
+    expect(SIMPLE_RIBBON_GLOBALS.map((field) => field.key)).toEqual([
+      'load',
+      'water',
+      'flow',
+      'bleed',
+      'edge',
+      'granulation',
+      'dry',
+    ]);
+    expect(Object.isFrozen(SIMPLE_RIBBON_GLOBALS)).toBe(true);
+  });
+
+  it('E5 long-text: asserts the seven labels by name and Size as absent', () => {
+    expect(SIMPLE_RIBBON_GLOBALS.map((field) => field.label)).toEqual([
+      'Pigment',
+      'Water',
+      'Flow',
+      'Bleed',
+      'Edges',
+      'Grain',
+      'Dry speed',
+    ]);
+    expect(SIMPLE_RIBBON_GLOBALS.map((field) => field.label)).not.toContain('Size');
+    // Every row is a numeric 0..100 stepper: the disclosure reuses SliderStepper.
+    expect(SIMPLE_RIBBON_GLOBALS.every((field) =>
+      field.kind === 'numeric' && field.min === 0 && field.max === 100 && field.step === 1,
+    )).toBe(true);
+  });
+
+  it('carries the UI-SPEC note verbatim', () => {
+    expect(SIMPLE_RIBBON_WET_NOTE).toBe(
+      'All seven sit at zero for a plain ribbon. Raise any to blend physics back in.',
+    );
+    // One fixed sentence — never interpolated with a value.
+    expect(SIMPLE_RIBBON_WET_NOTE).not.toContain('${');
+  });
+
+  it('reads 0 for an absent or non-finite wet key', () => {
+    expect(readSimpleRibbonGlobal([], 'water')).toEqual({ value: 0, mixed: false });
+    expect(readSimpleRibbonGlobal([appearanceOf(1)], 'water'))
+      .toEqual({ value: 0, mixed: false });
+    expect(readSimpleRibbonGlobal([appearanceOf(1, { water: Number.NaN })], 'water'))
+      .toEqual({ value: 0, mixed: false });
+    // The stored key IS the field key — no paramKey alias among the seven.
+    expect(readSimpleRibbonGlobal([appearanceOf(1, { water: 0 })], 'water'))
+      .toEqual({ value: 0, mixed: false });
+  });
+
+  it('reads the stored value and reports a mixed selection', () => {
+    expect(readSimpleRibbonGlobal([
+      appearanceOf(1, { water: 0, flow: 12 }),
+      appearanceOf(2, { water: 0, flow: 12 }),
+    ], 'flow')).toEqual({ value: 12, mixed: false });
+    // Absent reads 0, so an absent key and an explicit 0 agree.
+    expect(readSimpleRibbonGlobal([
+      appearanceOf(1, { water: 0 }),
+      appearanceOf(2),
+    ], 'water')).toEqual({ value: 0, mixed: false });
+    // A genuinely raised term against an absent one is mixed.
+    expect(readSimpleRibbonGlobal([
+      appearanceOf(1, { water: 40 }),
+      appearanceOf(2),
+    ], 'water')).toEqual({ value: 40, mixed: true });
+    expect(readSimpleRibbonGlobal([
+      appearanceOf(1),
+      appearanceOf(2, { water: 40 }),
+    ], 'water')).toEqual({ value: 0, mixed: true });
   });
 });

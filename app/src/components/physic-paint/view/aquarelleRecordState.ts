@@ -213,6 +213,84 @@ export function setAquarelleParam(key: AquarelleGlobalKey, value: number): void 
 }
 
 /**
+ * 61-12 (D-13): the seven wet globals behind the Advanced disclosure — every
+ * AQUA-04 global except `size` (the shared brush slider, D-05) and `lift`
+ * (the Eraser strength). The ribbon preset zeroes EXACTLY these.
+ */
+export type AquarelleWetKey =
+  | 'load'
+  | 'water'
+  | 'flow'
+  | 'bleed'
+  | 'edge'
+  | 'granulation'
+  | 'dry';
+
+export const AQUARELLE_WET_KEYS: readonly AquarelleWetKey[] = Object.freeze([
+  'load',
+  'water',
+  'flow',
+  'bleed',
+  'edge',
+  'granulation',
+  'dry',
+] as const);
+
+/**
+ * 61-12 (D-13): the seven values the live bag held BEFORE the ribbon preset
+ * was picked (null when not in ribbon mode). Session memory only — never
+ * persisted and never written into a recorded stroke; leaving the preset
+ * restores it into the live bag.
+ */
+export const aquarelleSimpleRibbonWetMemory = signal<
+  Readonly<Record<AquarelleWetKey, number>> | null
+>(null);
+
+/**
+ * 61-12 (D-13): the batch form of `setAquarelleParam`. Builds the next bag
+ * ONCE, compare-then-writes over the seven wet keys and assigns
+ * `aquarelleParams.value` AT MOST ONCE — one store write, one render. A
+ * non-finite value is ignored, never written into the document. Returns
+ * whether it wrote.
+ */
+export function setAquarelleWetGlobals(
+  patch: Readonly<Partial<Record<AquarelleWetKey, number>>>,
+): boolean {
+  const current = aquarelleParams.value;
+  const next: AquarelleGlobalParams = { ...current };
+  let changed = false;
+  for (const key of AQUARELLE_WET_KEYS) {
+    const value = patch[key];
+    if (value === undefined || !Number.isFinite(value)) continue;
+    if (next[key] === value) continue;
+    next[key] = value;
+    changed = true;
+  }
+  if (!changed) return false;
+  aquarelleParams.value = next;
+  return true;
+}
+
+/** The live bag's seven wet values, in canonical key order. */
+function snapshotAquarelleWetGlobals(): Record<AquarelleWetKey, number> {
+  const live = aquarelleParams.value;
+  const captured = {} as Record<AquarelleWetKey, number>;
+  for (const key of AQUARELLE_WET_KEYS) captured[key] = live[key];
+  return captured;
+}
+
+/** D-13: a plain ribbon deposits with every wet term at zero. */
+const ZERO_AQUARELLE_WET_GLOBALS: Readonly<Record<AquarelleWetKey, number>> = Object.freeze({
+  load: 0,
+  water: 0,
+  flow: 0,
+  bleed: 0,
+  edge: 0,
+  granulation: 0,
+  dry: 0,
+});
+
+/**
  * 261030-cnq: picking a paint tool leaves the color picker — the disarm runs
  * BEFORE the equality early-return, so a pick of the already-active tool still
  * leaves the picker (re-arming the same brush must not stay in sampling mode).
@@ -249,6 +327,22 @@ export function selectAquarelleTip(tipId: string | null): void {
   // A successful pick is a brush-tool variant pick — flip the tool first
   // so a re-pick of the already-selected id still returns to Brush.
   if (nextId !== null) setAquarelleTool('brush');
+  // 61-12 (D-13): the ribbon preset is a RENDER-MODE pick. Zero the seven wet
+  // globals (remembering the pre-ribbon values first) or restore them on any
+  // other pick. Runs BEFORE the identity early-return, so re-picking the
+  // ribbon re-establishes the zeros instead of returning.
+  if (preset?.renderMode === 'simple-ribbon') {
+    if (aquarelleSimpleRibbonWetMemory.value === null) {
+      aquarelleSimpleRibbonWetMemory.value = snapshotAquarelleWetGlobals();
+    }
+    setAquarelleWetGlobals(ZERO_AQUARELLE_WET_GLOBALS);
+  } else {
+    const rememberedWet = aquarelleSimpleRibbonWetMemory.value;
+    if (rememberedWet !== null) {
+      setAquarelleWetGlobals(rememberedWet);
+      aquarelleSimpleRibbonWetMemory.value = null;
+    }
+  }
   const currentId = aquarelleSelectedTipId.value;
   if (currentId === nextId) return;
 
