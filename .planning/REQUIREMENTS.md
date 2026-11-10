@@ -42,7 +42,7 @@ Each maps to exactly one roadmap phase.
 
 ### Vector painting tool (Phase 61)
 
-- [ ] **VEC-01**: `pen-tool` draws a vector stroke with corner and smooth points
+- [x] **VEC-01**: `pen-tool` draws a vector stroke with corner and smooth points
 - [ ] **VEC-02**: `spline-pointer` edits the path — anchors, coupled handles, handle break, insert, delete, and multi-select
 - [x] **VEC-03**: Stroke width can vary per vertex
 - [ ] **VEC-04**: Brush type and colour are per stroke
@@ -128,7 +128,7 @@ Deferred to a later milestone. Not in the current roadmap.
 | ZOOM-03 | Phase 60 | Complete |
 | ZOOM-04 | Phase 60 | Complete |
 | ZOOM-05 | Phase 60 | Complete |
-| VEC-01 | Phase 61 | Pending |
+| VEC-01 | Phase 61 | Complete |
 | VEC-02 | Phase 61 | Pending |
 | VEC-03 | Phase 61 | Complete |
 | VEC-04 | Phase 61 | Pending |
