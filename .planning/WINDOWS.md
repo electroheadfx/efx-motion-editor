@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 6
+open_count: 10
 waived_count: 18
 fixed_count: 91
-total_count: 115
-last_updated: 2026-11-10T14:56:49.841Z
+total_count: 119
+last_updated: 2026-11-10T15:25:49.384Z
 ---
 
 # Broken Windows Ledger
@@ -130,6 +130,10 @@ last_updated: 2026-11-10T14:56:49.841Z
 | 113 | 60 | deviation | app/src/components/physic-paint/physicsPaintStudio.css | 5150 | Ruler tick mark/label offset stays literal 8px (plan says keep positioning); drifts from cell centre above 1x - revisit in 60-05 | open |  | 2026-11-09T12:21:19.947Z |  |
 | 114 | 61 | deviation | app/src/components/physic-paint/engine/VectorPathOverlay.test.ts |  | Task 2: updated the shipped 61-09 effect-guard source pin after the edit-key binding widened the guard (Rule 1). | open |  | 2026-11-10T14:56:49.655Z |  |
 | 115 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Task 3: appended handleAquarelleVectorPathEdit to two shipped canvas-mount dependency pins (Rule 1). | open |  | 2026-11-10T14:56:49.841Z |  |
+| 116 | 61 | deviation | app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx |  | 61-13 Task 3: Draft switch ON/disabled/inert wiring added outside the plan's Task 3 file list (Rule 2). | open |  | 2026-11-10T15:25:48.819Z |  |
+| 117 | 61 | deviation | app/src/components/physic-paint/view/vectorPathHandles.ts |  | 61-13 Task 2: projectVectorPath gained an alwaysEnvelope option outside the plan's Task 2 file list so uniform-profile strokes show an envelope under wireframe (Rule 3). | open |  | 2026-11-10T15:25:49.016Z |  |
+| 118 | 61 | deviation | app/src/components/physic-paint/engine/ScriptStrokeOverlay.tsx |  | 61-13 Task 2: empty-sheet wireframe branch now returns null instead of mounting an empty svg (Rule 1). | open |  | 2026-11-10T15:25:49.216Z |  |
+| 119 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-13 Tasks 1-3: shipped pins updated for the one-active-surface wireframe clause, the new disabled/title literals and the VectorSquare import (Rule 1). | open |  | 2026-11-10T15:25:49.384Z |  |
 
 ````json
 [
@@ -1553,6 +1557,58 @@ last_updated: 2026-11-10T14:56:49.841Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-10T14:56:49.841Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 116,
+    "kind": "deviation",
+    "phase": "61",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx",
+    "line": null,
+    "description": "61-13 Task 3: Draft switch ON/disabled/inert wiring added outside the plan's Task 3 file list (Rule 2).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-10T15:25:48.819Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 117,
+    "kind": "deviation",
+    "phase": "61",
+    "file": "app/src/components/physic-paint/view/vectorPathHandles.ts",
+    "line": null,
+    "description": "61-13 Task 2: projectVectorPath gained an alwaysEnvelope option outside the plan's Task 2 file list so uniform-profile strokes show an envelope under wireframe (Rule 3).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-10T15:25:49.016Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 118,
+    "kind": "deviation",
+    "phase": "61",
+    "file": "app/src/components/physic-paint/engine/ScriptStrokeOverlay.tsx",
+    "line": null,
+    "description": "61-13 Task 2: empty-sheet wireframe branch now returns null instead of mounting an empty svg (Rule 1).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-10T15:25:49.216Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 119,
+    "kind": "deviation",
+    "phase": "61",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
+    "line": null,
+    "description": "61-13 Tasks 1-3: shipped pins updated for the one-active-surface wireframe clause, the new disabled/title literals and the VectorSquare import (Rule 1).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-10T15:25:49.384Z",
     "resolved_at": null,
     "milestone": "v2.1.0"
   }
