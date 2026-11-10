@@ -69,6 +69,17 @@ These were settled before this discussion and must not be reopened by research o
 - The **reference stroke count** for the responsiveness target — measured during the spike, not guessed.
 - Exact placement and visual form of the wireframe toggle within the existing Studio chrome.
 
+### Research Corrections (applied 2026-11-10, post-research)
+
+These refine the decisions above; they do not reopen them. Each is anchored to code read during research — see `61-RESEARCH.md` § Risks and Pitfalls. Downstream agents (`/gsd-ui-phase`, the planner, the plan-checker) must treat these as the operative reading.
+
+- **C-01 (refines D-05).** `AquarelleToolRow.tsx` exists but has **no production JSX mount**; `panelSplitShell.test.tsx:173` asserts it must not be mounted. The shipped tool row — and therefore the real home of the vector pen's 5th entry — is `WATERCOLOR_RAIL_TOOLS` in `PhysicsPaintToolRail.tsx:59-64`. D-05's *intent* (a 5th, visually separated entry with a non-`P` shortcut) holds; its *named file* does not. Treat `AquarelleToolRow` as dead code and do not build on it.
+- **C-02 (refines REL-02 as it applies to strokes).** Strokes persist as opaque `AQTL` binary (`scriptTimelineCodec.ts`, magic `'AQTL'`, version `1`), not as a field-for-field TS↔Rust mapping. `TOOL_CODE_BY_NAME` is fail-closed, `params` are sorted, and overrides use an encoded mask that rejects unknown keys — there is no generic passthrough, so a new payload field is **silently dropped** unless the encoder learns it. Rust's `validate_engine_payload_aquarelle` accepts unknown engine keys, so it cannot catch a mismatch either. Persisting any new vector field is therefore **three deliverables**: an AQTL v2 encoder, declaration-layer `Mce*` members in both languages, and a TS round-trip pin. A task that says "add the field to the TS interface and the Rust struct" will not survive reopen.
+- **C-03 (refines D-09).** The per-vertex width multiplier **cannot ride the existing `scriptScale`**: `Engine.ts:844` clamps it with `Math.min(1, …)`, so every widening edit would silently collapse to 1.0. The spike must exercise a 1.8× vertex and assert the measured radius grows by 1.8×.
+- **C-04 (refines D-11).** "The fixed bake path" does not mean `aquarelleBake.ts` changes. That file only advances ticks (`adapter.stepTick`) and captures frames (`adapter.captureFrame`). The `simple-ribbon` deposit mode belongs in `Engine.ts` `trace`/`stamp`, where the sampling law (`spacing = radius(...) × spacingFrac(...)`, `s.carry` phase, 48-step cap) already lives. Treat `aquarelleBake.ts` as read-only unless a determinism pin forces otherwise.
+
+**Corollary for the wireframe (D-15/D-16).** The mechanism already ships as **Draft mode**: `draftMode` suspends only engine re-render, with seven named gating sites in `PhysicsPaintStudio.tsx`, the `draftPixelsDirty` correctness invariant, and a cross-realm gate (`physicPaintDraftMode.ts`, 5000 ms heartbeat / 20000 ms stale) covering autosave, the 60 s interval, manual save and export. Generalise that mechanism; do not invent a second suppression path.
+
 </decisions>
 
 <canonical_refs>
@@ -106,7 +117,8 @@ These were settled before this discussion and must not be reopened by research o
 
 ### Reusable Assets
 
-- `app/src/components/physic-paint/view/AquarelleToolRow.tsx` — the four-tool row (brush | water | pen | lift, shortcuts B/W/P/E), the `physics-paint-segmented-button` visual grammar, `aria-pressed`, and the water-tool grey-out precedent. D-05 adds a fifth entry here.
+- `app/src/components/physic-paint/view/PhysicsPaintToolRail.tsx` — the **shipped** tool row: `WATERCOLOR_RAIL_TOOLS` (brush | water | pen | lift, shortcuts B/W/P/E) at `:59-64`, the `physics-paint-segmented-button` visual grammar, `aria-pressed`, and the water-tool grey-out precedent. D-05 adds a fifth entry here — see C-01.
+- `app/src/components/physic-paint/view/AquarelleToolRow.tsx` — **dead code**: no production JSX mount, and `panelSplitShell.test.tsx:173` asserts it must not be mounted. Its tests are a shape reference for the vnode harness only; do not extend the component.
 - `app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx` — the movable, selection-gated Move/Edit modal: no backdrop, no focus trap, header chrome (icon + title + rounded close), `SidebarScrollArea` internals, pinned tab row (Geometry | Stack | Paint). Hosts the spline-pointer toggle (D-06), the width stepper (D-08) and the collapsed advanced wet-params section (D-13).
 - `app/src/components/physic-paint/view/strokeSettingsModel.ts` — `resolveStrokeSettingsOpen`, `resolveStrokeSettingsView`, `strokeSettingsFields`, `buildAppearancePatch`, `listStrokeTipOptions`, and the geometry helpers. The projection seam the modal reads; new fields belong here rather than inline in the dialog.
 - `app/src/components/physic-paint/view/aquarelleStrokeSelection.ts` — select mode, selection sets, Shift+A select-all, the paint→eraser→all filter. This is the existing Move/Edit scope that gates the dialog.
@@ -130,7 +142,7 @@ These were settled before this discussion and must not be reopened by research o
 
 ### Integration Points
 
-- `AquarelleToolRow.tsx` — the vector pen entry (D-05) and its shortcut arbitration against the existing `P`.
+- `PhysicsPaintToolRail.tsx` — the vector pen entry (D-05) and its shortcut arbitration against the existing `P` (see C-01: not `AquarelleToolRow.tsx`, which is unmounted).
 - `PhysicsPaintStrokeSettingsDialog.tsx` + `strokeSettingsModel.ts` — spline-pointer toggle, width stepper, advanced wet params, render-mode switch.
 - `aquarelleRecordState.ts` — the record path; a vector stroke must commit through the same seam as a painted one.
 - `packages/efx-watercolor/src/payload/toStudioStroke.ts` and `AquarelleStrokePayload` — the payload extension for anchors, sparse widths and `renderMode`.
