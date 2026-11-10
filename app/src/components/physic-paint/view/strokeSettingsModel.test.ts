@@ -28,6 +28,11 @@ import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
   BRUSH_SETTINGS_FIELDS,
+  PATH_EDIT_LABEL,
+  PATH_EDIT_MULTI_DISABLED_REASON,
+  PATH_EDIT_SINGLE_DISABLED_REASON,
+  resolvePathEditGate,
+  shouldExitPathEdit,
   FRESH_STROKE_GEOMETRY_SESSION,
   STROKE_POSITION_RANGE,
   STROKE_ROTATION_RANGE,
@@ -3428,5 +3433,81 @@ describe('261101-o2m cache eye', () => {
       .toBeUndefined();
     expect(findByTestId(renderSettings(brush.bundle), 'stroke-settings-cache-visibility'))
       .toBeUndefined();
+  });
+});
+
+// 61-11 (VEC-02 / D-06): the `Edit path` entrance law. The gate is one pure
+// resolution over the selection and the session: ONE selected vector stroke is
+// the only enabled case, and the reason it is disabled lives in the copy the
+// `title` carries.
+describe('61-11 path-edit gate (Edit path header button)', () => {
+  it('enables for exactly one selected vector stroke and titles itself Edit path', () => {
+    expect(resolvePathEditGate({
+      selectionSize: 1,
+      vectorStrokeCount: 1,
+      selectedMutationId: 7,
+      pathEditMutationId: null,
+    })).toEqual({ enabled: true, title: PATH_EDIT_LABEL, pressed: false });
+    expect(PATH_EDIT_LABEL).toBe('Edit path');
+  });
+
+  it('refuses a single selection that is not a vector stroke', () => {
+    const gate = resolvePathEditGate({
+      selectionSize: 1,
+      vectorStrokeCount: 0,
+      selectedMutationId: 7,
+      pathEditMutationId: null,
+    });
+    expect(gate.enabled).toBe(false);
+    expect(gate.title).toBe('Edit path — select one vector stroke');
+    expect(gate.title).toBe(PATH_EDIT_SINGLE_DISABLED_REASON);
+  });
+
+  it('refuses a multi-selection with the single-stroke reason', () => {
+    const gate = resolvePathEditGate({
+      selectionSize: 2,
+      vectorStrokeCount: 2,
+      selectedMutationId: null,
+      pathEditMutationId: null,
+    });
+    expect(gate.enabled).toBe(false);
+    expect(gate.title).toBe('Edit path — select a single vector stroke');
+    expect(gate.title).toBe(PATH_EDIT_MULTI_DISABLED_REASON);
+  });
+
+  it('refuses an empty selection with the single-stroke reason', () => {
+    const gate = resolvePathEditGate({
+      selectionSize: 0,
+      vectorStrokeCount: 0,
+      selectedMutationId: null,
+      pathEditMutationId: null,
+    });
+    expect(gate.enabled).toBe(false);
+    expect(gate.title).toBe('Edit path — select one vector stroke');
+    expect(gate.pressed).toBe(false);
+  });
+
+  it('reports pressed only while the session edits the SELECTED stroke', () => {
+    const args = {
+      selectionSize: 1,
+      vectorStrokeCount: 1,
+      selectedMutationId: 7,
+    } as const;
+    expect(resolvePathEditGate({ ...args, pathEditMutationId: '7' }).pressed).toBe(true);
+    expect(resolvePathEditGate({ ...args, pathEditMutationId: '8' }).pressed).toBe(false);
+    expect(resolvePathEditGate({ ...args, pathEditMutationId: null }).pressed).toBe(false);
+    // No selected id can never read pressed.
+    expect(resolvePathEditGate({
+      selectionSize: 0,
+      vectorStrokeCount: 0,
+      selectedMutationId: null,
+      pathEditMutationId: '7',
+    }).pressed).toBe(false);
+  });
+
+  it('requests an exit only when an edit is open under a closed gate', () => {
+    expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: false })).toBe(true);
+    expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: true })).toBe(false);
+    expect(shouldExitPathEdit({ pathEditActive: false, gateEnabled: false })).toBe(false);
   });
 });
