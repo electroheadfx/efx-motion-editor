@@ -17,7 +17,12 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { ANCHOR_WIDTH_MAX, ANCHOR_WIDTH_MIN } from '../vector/spine'
+import {
+  ANCHOR_WIDTH_DEFAULT,
+  ANCHOR_WIDTH_MAX,
+  ANCHOR_WIDTH_MIN,
+  isUniformWidthProfile,
+} from '../vector/spine'
 import {
   AQUARELLE_RENDER_MODES,
   DEFAULT_AQUARELLE_RENDER_MODE,
@@ -25,6 +30,7 @@ import {
   isAquarelleRenderMode,
   isVectorStroke,
   normaliseAquarelleAnchors,
+  projectVectorPath,
   resolveAquarelleRenderMode,
   vectorPathsEqual,
   type AquarelleAnchor,
@@ -212,7 +218,81 @@ describe('anchorsEqual / vectorPathsEqual', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 5. One structural type — no second anchor declaration (VEC-04 pin shape)
+// 5. Sparse width projection (D-10: a uniform stroke stores nothing)
+// ---------------------------------------------------------------------------
+
+describe('projectVectorPath — sparse width (D-10)', () => {
+  it('omits an explicit default factor and keeps exactly one non-default factor', () => {
+    const input: readonly AquarelleAnchor[] = [
+      { x: 0, y: 0, kind: 'auto' },
+      { x: 10, y: 0, kind: 'auto', width: ANCHOR_WIDTH_DEFAULT },
+      { x: 20, y: 0, kind: 'auto', width: 1.8 },
+    ]
+    const projected = projectVectorPath(input)
+    expect(projected).toHaveLength(3)
+    expect(projected.filter((anchor) => anchor.width !== undefined)).toHaveLength(1)
+    expect(projected.filter((anchor) => 'width' in anchor)).toHaveLength(1)
+    expect(projected[2]!.width).toBe(1.8)
+  })
+
+  it('keeps a fully uniform list free of width keys, and isUniformWidthProfile agrees', () => {
+    const projected = projectVectorPath([
+      { x: 0, y: 0, kind: 'auto' },
+      { x: 10, y: 0, kind: 'auto' },
+      { x: 20, y: 0, kind: 'auto' },
+    ])
+    expect(projected.every((anchor) => !('width' in anchor))).toBe(true)
+    expect(isUniformWidthProfile(projected)).toBe(true)
+  })
+
+  it('returns a frozen list, a fresh array, and never mutates its input', () => {
+    const input: AquarelleAnchor[] = [
+      { x: 0, y: 0, kind: 'auto' },
+      { x: 10, y: 0, kind: 'auto', width: ANCHOR_WIDTH_DEFAULT },
+    ]
+    const projected = projectVectorPath(input)
+    expect(Object.isFrozen(projected)).toBe(true)
+    expect(projected).not.toBe(input)
+    expect(input[1]!.width).toBe(ANCHOR_WIDTH_DEFAULT)
+    expect('width' in input[1]!).toBe(true)
+  })
+
+  it('preserves anchor order exactly (61-02 stations index into it)', () => {
+    const input: readonly AquarelleAnchor[] = [
+      { x: 0, y: 0, kind: 'auto' },
+      { x: 10, y: 5, kind: 'bezier', in: { x: 9, y: 4 }, out: { x: 11, y: 6 }, width: 0.3 },
+      { x: 20, y: 0, kind: 'auto', width: 1.8 },
+    ]
+    const projected = projectVectorPath(input)
+    expect(projected.map((anchor) => [anchor.x, anchor.y])).toEqual([
+      [0, 0],
+      [10, 5],
+      [20, 0],
+    ])
+    expect(projected[1]!.width).toBe(0.3)
+    expect(projected[2]!.width).toBe(1.8)
+    expect(projected.map((anchor) => anchor.kind)).toEqual(['auto', 'bezier', 'auto'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 6. Render mode survives serialisation (D-12 across a JSON round trip)
+// ---------------------------------------------------------------------------
+
+describe('render mode persistence', () => {
+  it('keeps simple-ribbon across a JSON round trip of the path', () => {
+    const path = { anchors: TWO_ANCHORS, renderMode: 'simple-ribbon' as const }
+    const round = JSON.parse(JSON.stringify(path)) as {
+      anchors: readonly AquarelleAnchor[]
+      renderMode: unknown
+    }
+    expect(resolveAquarelleRenderMode(round.renderMode)).toBe('simple-ribbon')
+    expect(anchorsEqual(round.anchors, TWO_ANCHORS)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 7. One structural type — no second anchor declaration (VEC-04 pin shape)
 // ---------------------------------------------------------------------------
 
 describe('the anchor type is re-exported, never redeclared', () => {

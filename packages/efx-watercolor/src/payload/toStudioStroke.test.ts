@@ -24,6 +24,7 @@ import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import { payloadCodec } from './codec'
 import { isAquarelleDryEvent } from './dryEvent'
 import { toEngineParams } from '../playground/params'
+import { ANCHOR_WIDTH_DEFAULT, isUniformWidthProfile } from '../vector/spine'
 import type { AquarelleAnchor } from './vectorPath'
 import {
   PAINT_SEED_SALT_PARAM,
@@ -215,5 +216,61 @@ describe('vector path engine block (61-03 D-12 / D-14)', () => {
     expect(stroke.engine.anchors).toEqual(cornerAnchors)
     expect(stroke.engine.anchors?.[0]?.in).toEqual({ x: 10, y: 10 })
     expect(stroke.engine.renderMode).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 5. Sparse width projection through the engine block and the wire (D-10)
+// ---------------------------------------------------------------------------
+
+const THREE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0, y: 0, kind: 'auto' },
+  { x: 10, y: 0, kind: 'auto' },
+  { x: 20, y: 0, kind: 'auto' },
+]
+
+describe('sparse vector width projection (61-03 D-10)', () => {
+  it('writes no width key for a fully uniform stroke', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ anchors: THREE_ANCHORS }))
+    const anchors = stroke.engine.anchors ?? []
+    expect(anchors).toHaveLength(3)
+    expect(anchors.some((anchor) => 'width' in anchor)).toBe(false)
+    expect(isUniformWidthProfile(anchors)).toBe(true)
+  })
+
+  it('drops an explicit default factor through the engine block (uniform stores nothing)', () => {
+    const anchors = [
+      THREE_ANCHORS[0]!,
+      { ...THREE_ANCHORS[1]!, width: ANCHOR_WIDTH_DEFAULT },
+      THREE_ANCHORS[2]!,
+    ]
+    const stroke = toStudioStroke(makeRuntimeStroke({ anchors }))
+    expect(stroke.engine.anchors).toHaveLength(3)
+    expect(stroke.engine.anchors?.some((anchor) => 'width' in anchor)).toBe(false)
+  })
+
+  it('keeps exactly one width key when one of three anchors reads 1.8', () => {
+    const sparse = [THREE_ANCHORS[0]!, THREE_ANCHORS[1]!, { ...THREE_ANCHORS[2]!, width: 1.8 }]
+    const stroke = toStudioStroke(makeRuntimeStroke({ anchors: sparse }))
+    const anchors = stroke.engine.anchors ?? []
+    expect(anchors.filter((anchor) => 'width' in anchor)).toHaveLength(1)
+    expect(anchors[2]!.width).toBe(1.8)
+    expect('width' in anchors[0]!).toBe(false)
+    expect('width' in anchors[1]!).toBe(false)
+  })
+
+  it('preserves 1.8 and 0.3 with no clamp to 1 through the engine block and the wire codec', () => {
+    for (const factor of [1.8, 0.3]) {
+      const anchors = [THREE_ANCHORS[0]!, { ...THREE_ANCHORS[1]!, width: factor }, THREE_ANCHORS[2]!]
+      const stroke = toStudioStroke(makeRuntimeStroke({ anchors }))
+      expect(stroke.engine.anchors?.[1]?.width).toBe(factor)
+
+      const decoded = payloadCodec.parse(payloadCodec.serialize(stroke))
+      expect(decoded).not.toBeNull()
+      if (decoded === null || isAquarelleDryEvent(decoded)) {
+        throw new Error('expected the decoded event to be a stroke')
+      }
+      expect(decoded.engine.anchors?.[1]?.width).toBe(factor)
+    }
   })
 })
