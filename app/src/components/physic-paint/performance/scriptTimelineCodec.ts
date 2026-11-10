@@ -9,11 +9,12 @@
 //  1. JSON baseline — JSON.stringify / JSON.parse, UTF-8.
 //     Exact and simple; repeats keys and writes decimal numbers.
 //
-//  2. AQTL v1 packed binary — little-endian, 24-byte fixed header,
-//     packed stroke metadata and quantized point records.
+//  2. AQTL v2 packed binary (61-05) — little-endian, 24-byte fixed
+//     header, packed stroke metadata, quantized point records and the
+//     vector path block.
 //
 //  HEADER (24 bytes):
-//    magic 'AQTL' (4) | u16 version=1 | u16 flags=0 | u32 eventCount |
+//    magic 'AQTL' (4) | u16 version=2 | u16 flags=0 | u32 eventCount |
 //    u32 totalPointCount | u32 bodyByteLength | u32 reserved=0
 //  bodyByteLength counts the bytes AFTER the header, so
 //  bodyByteLength + 24 must equal the buffer length (no trailing bytes).
@@ -32,6 +33,17 @@
 //      f64 value) in sorted key order; u8 toolOverrides mask + f64
 //      values; u8 mutationId presence + u32; u8 diffusionFrames
 //      presence + u32; f64 timestamp; u8 playFrame presence + i32.
+//    Vector block (61-05), AFTER the engine block's playFrame presence
+//      and BEFORE pointCount: u8 vectorFlags (bit 0 = a non-empty anchor
+//      list follows, bit 1 = a render-mode byte follows), then when bit 0
+//      is set u16 anchorCount + per anchor u8-order: f32 x, f32 y,
+//      u8 kindCode (auto=0, bezier=1), u8 handleFlags (bit 0 in-present,
+//      bit 1 out-present), the conditional f32 handle pairs, u8
+//      widthPresent + conditional f32 width; then when bit 1 is set
+//      u8 renderModeCode (watercolor=0, simple-ribbon=1). The block sits
+//      inside the engine slot because that slot is the opaque carrier:
+//      appending there leaves every pre-existing field's offset stable.
+//      A hand-painted stroke with no mode pays exactly one flags byte.
 //    Point record (16 bytes): u16 x, u16 y, u16 p, i16 tx, i16 ty,
 //      i16 tw, u32 tick.
 //
@@ -47,9 +59,14 @@
 //
 //  The decoder validates magic, version, flags, exact body length,
 //  eventCount <= bodyByteLength, totalPointCount * 16 <= bodyByteLength,
-//  per-stroke pointCount * 16 <= remaining, string lengths <= remaining,
-//  and no trailing bytes BEFORE allocating or reading. Every failure is a
-//  typed ScriptTimelineCodecError — never a raw RangeError.
+//  per-stroke pointCount * 16 <= remaining, the anchor count against the
+//  remaining bytes, string lengths <= remaining, and no trailing bytes
+//  BEFORE allocating or reading. Every failure is a typed
+//  ScriptTimelineCodecError — never a raw RangeError.
+//
+//  VERSION LAW: v2 is the ONE accepted version. Version 1 is refused with
+//  `unsupported-version` and there is no upgrade path and no v1 reader
+//  left behind (project law: no backward compatibility for old payloads).
 //
 //  NOTE on the point-record size: the field list above (three u16 +
 //  three i16 + one u32) is 16 bytes; the plan's 14-byte lower bound in
@@ -57,8 +74,11 @@
 // ============================================================
 
 import type {
+  AquarelleAnchor,
+  AquarelleAnchorKind,
   AquarelleDryEvent,
   AquarellePayloadEvent,
+  AquarelleRenderMode,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
@@ -66,8 +86,8 @@ import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation
 /** ASCII magic carried by every AQTL buffer. */
 export const SCRIPT_TIMELINE_BINARY_MAGIC = 'AQTL';
 
-/** The one binary version this module encodes and accepts. */
-export const SCRIPT_TIMELINE_BINARY_VERSION = 1;
+/** The one binary version this module encodes and accepts (61-05). */
+export const SCRIPT_TIMELINE_BINARY_VERSION = 2;
 
 /** UV/pressure quantization step (u16 over [0,1]). */
 export const POINT_UV_STEP = 1 / 65535;
@@ -127,6 +147,36 @@ const TOOL_CODE_BY_NAME: Readonly<Record<string, number>> = {
   pen: 2,
   lift: 3,
 };
+
+// 61-05 vector block codes (D-01: exactly two anchor kinds; D-12: exactly
+// two render modes). The NAME tables are the decode authority; the CODE maps
+// are the encode authority — an unknown value fails closed on both sides.
+const VECTOR_KIND_NAMES: readonly AquarelleAnchorKind[] = ['auto', 'bezier'];
+
+const VECTOR_KIND_CODE: Readonly<Record<string, number>> = {
+  auto: 0,
+  bezier: 1,
+};
+
+const VECTOR_RENDER_MODE_NAMES: readonly AquarelleRenderMode[] = [
+  'watercolor',
+  'simple-ribbon',
+];
+
+const VECTOR_RENDER_MODE_CODE: Readonly<Record<string, number>> = {
+  watercolor: 0,
+  'simple-ribbon': 1,
+};
+
+const VECTOR_FLAG_ANCHORS = 1 << 0;
+const VECTOR_FLAG_RENDER_MODE = 1 << 1;
+const VECTOR_FLAGS_MASK = VECTOR_FLAG_ANCHORS | VECTOR_FLAG_RENDER_MODE;
+const ANCHOR_HANDLE_IN = 1 << 0;
+const ANCHOR_HANDLE_OUT = 1 << 1;
+const ANCHOR_HANDLE_MASK = ANCHOR_HANDLE_IN | ANCHOR_HANDLE_OUT;
+
+/** x + y (two f32) + kind + handleFlags + widthPresent. */
+const MIN_ANCHOR_BYTE_LENGTH = 4 + 4 + 1 + 1 + 1;
 
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
@@ -228,6 +278,13 @@ class BinaryWriter {
     this.cursor += 2;
   }
 
+  /** Anchor scalars are f32 (61-05): uv precision far finer than u16 points. */
+  f32(value: number): void {
+    this.ensure(4);
+    this.view.setFloat32(this.cursor, value, true);
+    this.cursor += 4;
+  }
+
   f64(value: number): void {
     this.ensure(8);
     this.view.setFloat64(this.cursor, value, true);
@@ -326,6 +383,13 @@ class BinaryReader {
     return value;
   }
 
+  f32(): number {
+    this.need(4);
+    const value = this.view.getFloat32(this.cursor, true);
+    this.cursor += 4;
+    return value;
+  }
+
   f64(): number {
     this.need(8);
     const value = this.view.getFloat64(this.cursor, true);
@@ -414,9 +478,93 @@ function quantizeTilt(value: unknown, what: string): number {
 // Binary encode
 // ---------------------------------------------------------------------------
 
+function writeVec2(writer: BinaryWriter, value: unknown, what: string): void {
+  if (typeof value !== 'object' || value === null) {
+    fail('invalid-value', `${what} must be a { x, y } point`);
+  }
+  const point = value as { readonly x?: unknown; readonly y?: unknown };
+  writer.f32(assertFinite(point.x, `${what}.x`));
+  writer.f32(assertFinite(point.y, `${what}.y`));
+}
+
+function encodeAnchor(writer: BinaryWriter, raw: unknown, index: number): void {
+  const what = `engine.anchors[${index}]`;
+  if (typeof raw !== 'object' || raw === null) {
+    fail('invalid-value', `${what} must be an anchor object`);
+  }
+  const anchor = raw as unknown as Readonly<Record<string, unknown>>;
+  writer.f32(assertFinite(anchor['x'], `${what}.x`));
+  writer.f32(assertFinite(anchor['y'], `${what}.y`));
+  const kindCode = VECTOR_KIND_CODE[anchor['kind'] as string];
+  if (kindCode === undefined) {
+    fail('invalid-value', `${what} has unknown kind "${String(anchor['kind'])}"`);
+  }
+  writer.u8(kindCode);
+
+  const handleIn = anchor['in'];
+  const handleOut = anchor['out'];
+  let handleFlags = 0;
+  if (handleIn !== undefined) handleFlags |= ANCHOR_HANDLE_IN;
+  if (handleOut !== undefined) handleFlags |= ANCHOR_HANDLE_OUT;
+  writer.u8(handleFlags);
+  if (handleIn !== undefined) writeVec2(writer, handleIn, `${what}.in`);
+  if (handleOut !== undefined) writeVec2(writer, handleOut, `${what}.out`);
+
+  const width = anchor['width'];
+  writer.u8(width === undefined ? 0 : 1);
+  if (width !== undefined) writer.f32(assertFinite(width, `${what}.width`));
+}
+
+/**
+ * 61-05 vector block: the two optional engine fields, each written only when
+ * present. A hand-painted stroke therefore pays a single flags byte and
+ * nothing else. An empty anchor list is not a path (61-03 refuses it too),
+ * so it fails closed instead of silently encoding as hand-painted.
+ */
+function encodeVectorBlock(
+  writer: BinaryWriter,
+  engine: AquarelleStrokePayload,
+): void {
+  const rawAnchors: unknown = engine.anchors;
+  let anchors: readonly unknown[] | undefined;
+  if (rawAnchors !== undefined) {
+    if (!Array.isArray(rawAnchors) || rawAnchors.length === 0) {
+      fail('invalid-value', 'engine.anchors must be a non-empty array');
+    }
+    anchors = rawAnchors as readonly unknown[];
+  }
+
+  const renderMode: unknown = engine.renderMode;
+  if (
+    renderMode !== undefined &&
+    VECTOR_RENDER_MODE_CODE[renderMode as string] === undefined
+  ) {
+    fail('invalid-value', `unknown engine.renderMode "${String(renderMode)}"`);
+  }
+
+  let flags = 0;
+  if (anchors !== undefined) flags |= VECTOR_FLAG_ANCHORS;
+  if (renderMode !== undefined) flags |= VECTOR_FLAG_RENDER_MODE;
+  writer.u8(flags);
+
+  if (anchors !== undefined) {
+    if (anchors.length > 0xffff) {
+      fail('invalid-count', 'engine.anchors count exceeds 65535');
+    }
+    writer.u16(anchors.length);
+    for (let index = 0; index < anchors.length; index += 1) {
+      encodeAnchor(writer, anchors[index], index);
+    }
+  }
+
+  if (renderMode !== undefined) {
+    writer.u8(VECTOR_RENDER_MODE_CODE[renderMode as string]!);
+  }
+}
+
 function encodeStroke(writer: BinaryWriter, stroke: StudioStroke<AquarelleStrokePayload>): number {
   if (stroke.motion !== null && stroke.motion !== undefined) {
-    fail('unsupported-motion', 'motion schedules are not encodable in AQTL v1');
+    fail('unsupported-motion', 'motion schedules are not encodable in AQTL');
   }
 
   const engine = stroke.engine;
@@ -504,6 +652,8 @@ function encodeStroke(writer: BinaryWriter, stroke: StudioStroke<AquarelleStroke
   if (enginePlayFrame !== undefined) {
     writer.i32(assertInt32(enginePlayFrame, 'engine.playFrame'));
   }
+
+  encodeVectorBlock(writer, engine);
 
   const pts = stroke.pts;
   if (!Array.isArray(pts)) fail('invalid-value', 'stroke.pts must be an array');
@@ -598,6 +748,90 @@ function decodePoint(reader: BinaryReader): StudioPoint {
   return { x, y, p, tx, ty, tw, tick };
 }
 
+function decodeVec2(
+  reader: BinaryReader,
+  what: string,
+): { readonly x: number; readonly y: number } {
+  return {
+    x: assertFinite(reader.f32(), `${what}.x`),
+    y: assertFinite(reader.f32(), `${what}.y`),
+  };
+}
+
+function decodeAnchor(reader: BinaryReader, index: number): AquarelleAnchor {
+  const what = `engine.anchors[${index}]`;
+  const x = assertFinite(reader.f32(), `${what}.x`);
+  const y = assertFinite(reader.f32(), `${what}.y`);
+  const kindCode = reader.u8();
+  const kind = VECTOR_KIND_NAMES[kindCode];
+  if (kind === undefined) {
+    fail('invalid-tag', `unknown anchor kind code ${kindCode}`, reader.offset - 1);
+  }
+  const handleFlags = reader.u8();
+  if ((handleFlags & ~ANCHOR_HANDLE_MASK) !== 0) {
+    fail('invalid-value', `${what} has reserved handle flags set`, reader.offset - 1);
+  }
+  const handleIn =
+    (handleFlags & ANCHOR_HANDLE_IN) !== 0 ? decodeVec2(reader, `${what}.in`) : undefined;
+  const handleOut =
+    (handleFlags & ANCHOR_HANDLE_OUT) !== 0 ? decodeVec2(reader, `${what}.out`) : undefined;
+  const hasWidth = reader.presence(`${what}.width`);
+  const width = hasWidth ? assertFinite(reader.f32(), `${what}.width`) : undefined;
+  // Optional members are materialised only when their flag carried them, so a
+  // projected uniform stroke round-trips without width keys.
+  return {
+    x,
+    y,
+    kind,
+    ...(handleIn !== undefined ? { in: handleIn } : {}),
+    ...(handleOut !== undefined ? { out: handleOut } : {}),
+    ...(width !== undefined ? { width } : {}),
+  };
+}
+
+function decodeVectorBlock(reader: BinaryReader): {
+  anchors?: readonly AquarelleAnchor[];
+  renderMode?: AquarelleRenderMode;
+} {
+  const flags = reader.u8();
+  if ((flags & ~VECTOR_FLAGS_MASK) !== 0) {
+    fail('invalid-value', 'vector block has reserved flags set', reader.offset - 1);
+  }
+  const result: {
+    anchors?: readonly AquarelleAnchor[];
+    renderMode?: AquarelleRenderMode;
+  } = {};
+  if ((flags & VECTOR_FLAG_ANCHORS) !== 0) {
+    const anchorCount = reader.u16();
+    if (anchorCount === 0) {
+      fail(
+        'invalid-count',
+        'anchor count must be positive when the anchors flag is set',
+        reader.offset - 2,
+      );
+    }
+    // Every anchor costs at least x + y + kind + handleFlags + widthPresent.
+    // Rejecting hostile counts before the loop keeps allocation bounded.
+    if (anchorCount * MIN_ANCHOR_BYTE_LENGTH > reader.remaining) {
+      fail('invalid-count', 'anchor count exceeds the remaining body bytes', reader.offset);
+    }
+    const anchors: AquarelleAnchor[] = [];
+    for (let index = 0; index < anchorCount; index += 1) {
+      anchors.push(decodeAnchor(reader, index));
+    }
+    result.anchors = anchors;
+  }
+  if ((flags & VECTOR_FLAG_RENDER_MODE) !== 0) {
+    const modeCode = reader.u8();
+    const renderMode = VECTOR_RENDER_MODE_NAMES[modeCode];
+    if (renderMode === undefined) {
+      fail('invalid-tag', `unknown render mode code ${modeCode}`, reader.offset - 1);
+    }
+    result.renderMode = renderMode;
+  }
+  return result;
+}
+
 function decodeStroke(reader: BinaryReader): {
   stroke: StudioStroke<AquarelleStrokePayload>;
   pointCount: number;
@@ -661,6 +895,8 @@ function decodeStroke(reader: BinaryReader): {
   const hasEnginePlayFrame = reader.presence('engine.playFrame');
   const enginePlayFrame = hasEnginePlayFrame ? reader.i32() : undefined;
 
+  const vector = decodeVectorBlock(reader);
+
   const pointCount = reader.u32();
   if (pointCount * POINT_RECORD_BYTE_LENGTH > reader.remaining) {
     fail('invalid-count', 'point count exceeds the remaining body bytes', reader.offset);
@@ -683,6 +919,8 @@ function decodeStroke(reader: BinaryReader): {
     diffusionFrames,
     timestamp,
     playFrame: enginePlayFrame,
+    ...(vector.anchors !== undefined ? { anchors: vector.anchors } : {}),
+    ...(vector.renderMode !== undefined ? { renderMode: vector.renderMode } : {}),
   };
 
   return {
