@@ -7153,3 +7153,68 @@ describe('61-12 Render mode bundle wiring in the Studio', () => {
     expect(studio.slice(memoStart, memoDepEnd)).toContain('handleAquarelleRenderModeStrokes');
   });
 });
+
+// ============================================================
+//  61-20 Task 1 — the ledger half of G-8 (VEC-07).
+//
+//  `beginAquarellePathEdit` stores the edit in the edits map and returns an id;
+//  until now nothing passed that id to `recordAquarelleScriptEdit`, so undo/redo
+//  (which walk only 'aquarelle-script' and 'paint' entries) could never reach a
+//  path edit. The ONE writer 61-15 built records it on the re-bake SUCCESS tail
+//  — after the apply resolves, never before the bake and never on failure — and
+//  depends on the stable recorder callback, never the per-render wrapper.
+// ============================================================
+
+describe('61-20 G-8: a vector path edit is exactly one undo entry', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
+  const COMMIT_END = 'const handleAquarelleVectorPathEdit = useCallback(';
+  const RECORD = 'rotoMoveHistory.recordAquarelleScriptEdit(editId);';
+
+  function commitRegion(): string {
+    return regionOf(studio, COMMIT_START, COMMIT_END);
+  }
+
+  it('records exactly once on the re-bake success tail, between onSuccess and onFailure', () => {
+    const commit = commitRegion();
+    const success = regionOf(commit, 'onSuccess:', 'onFailure:');
+    // One gesture is one ledger entry: a second site would double-count it.
+    expect(success.split(RECORD).length - 1).toBe(1);
+  });
+
+  it('records after the bake resolved and before any failure restore', () => {
+    const commit = commitRegion();
+    const recordAt = commit.indexOf(RECORD);
+    const successAt = commit.indexOf('onSuccess:');
+    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo');");
+    const beginAt = commit.indexOf('beginAquarellePathEdit(');
+    expect(recordAt).toBeGreaterThan(-1);
+    expect(successAt).toBeGreaterThan(-1);
+    expect(restoreAt).toBeGreaterThan(-1);
+    // A record taken before the apply resolves could claim an edit the sheet
+    // rejected; the restore must never be followed by one either.
+    expect(recordAt).toBeGreaterThan(successAt);
+    expect(recordAt).toBeLessThan(restoreAt);
+    // Nothing is recorded before the edit is even begun.
+    expect(beginAt).toBeGreaterThan(-1);
+    expect(commit.slice(0, beginAt)).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
+  });
+
+  it('depends on the stable recorder callback, never the per-render wrapper', () => {
+    const commit = commitRegion();
+    const depsAt = commit.indexOf('  }, [');
+    expect(depsAt).toBeGreaterThan(-1);
+    const deps = commit.slice(depsAt);
+    // The hook returns a fresh wrapper each render; its recorder is the stable
+    // useCallback. Depending on the wrapper would capture a stale stack.
+    expect(deps).toContain('\n    rotoMoveHistory.recordAquarelleScriptEdit,\n');
+    expect(deps).not.toContain('\n    rotoMoveHistory,\n');
+  });
+});
