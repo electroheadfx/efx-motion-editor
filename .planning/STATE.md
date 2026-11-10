@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-13-PLAN.md
-last_updated: "2026-11-10T15:26:17.051Z"
+stopped_at: Completed 61-11-PLAN.md
+last_updated: "2026-11-10T15:45:44.462Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: 40b8f57b67a3f6bdd8e95fb49256b5eb8d3d5463
+state_head: b64f0ecbf4300344bedf6eae0312d6b0ef44d3ea
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 42
+  completed_plans: 43
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 12 of 14
+Plan: 13 of 14
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -100,6 +100,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P09 | 10min | 3 tasks | 6 files |
 | Phase 61 P10 | 16min | 3 tasks | 12 files |
 | Phase 61 P13 | 15 | 3 tasks | 13 files |
+| Phase 61 P11 | 13 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -259,6 +260,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: Wireframe generalises Draft: ON forces Draft on before the latch flips; OFF clears only the latch and joins the ONE settleDraftScript promise, single-flight (61-13).
 - [Phase 61]: Wireframe construction geometry is read-only: VectorPathOverlay draws envelope/spine/rungs/anchors/handles, ScriptStrokeOverlay draws hand-painted bands via buildStrokeBand and skips recorded vector strokes (61-13).
 - [Phase 61]: Gated controls state their reason in title; the Draft switch stays ON and inert because the latch owns the only exit; E7 overflow remains a flagged assumption at the Wave 0 count (61-13).
+- [Phase 61]: The path-edit gate reads vector-ness through ONE bundle member (readVectorAnchors): the dialog never touches the record store, and the same read feeds the gate, the width reading and the px readout.
+- [Phase 61]: A closed gate or a close both request exitPathEdit through the shipped lifecycle effect; the render body only sets a plain module marker, so no signal is written during render and the sheet keeps exactly two effects.
+- [Phase 61]: The Anchor width factor is a per-anchor multiplier, not an appearance param: the block mounts as the Size row's sibling and never enters WATERCOLOR_SETTINGS_FIELDS or readNumericField/buildAppearancePatch.
 
 ### Pending Todos
 
@@ -351,8 +355,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T15:26:15.521Z
-Stopped at: Completed 61-13-PLAN.md
+Last session: 2026-11-10T15:45:43.214Z
+Stopped at: Completed 61-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
