@@ -34,6 +34,7 @@ import { signal } from '@preact/signals';
 import type { JSX, TargetedPointerEvent } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import {
+  clampAnchorWidth,
   normaliseVectorAnchors,
   resolveAnchorHandles,
   resolveRenderModeForBrushId,
@@ -48,6 +49,7 @@ import {
   isAquarelleStrokeDeleted,
 } from '../view/aquarelleRecordState';
 import { physicsPaintCanvasZoom } from '../view/physicsPaintCanvasZoom';
+import { wireframeMode } from '../view/scriptStrokeEdition';
 import type { CanvasPoint } from '../view/scriptStrokeEdition';
 import {
   ANCHOR_BODY_PX,
@@ -56,6 +58,7 @@ import {
   DRAG_THRESHOLD_PX,
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
+  VECTOR_ENVELOPE_BASE_UV,
   buildDraftPath,
   deleteAnchorsAt,
   hitTestVectorPath,
@@ -162,6 +165,10 @@ interface DrawnVectorPath {
   readonly anchors: readonly VectorAnchor[];
   readonly handles: readonly ResolvedAnchorHandles[];
   readonly projection: VectorPathProjection;
+  /** 61-13: the recorded stroke's own colour; null for the pen draft. */
+  readonly color: string | null;
+  /** 61-13: the live target (open path edit / pen draft) wears louder chrome. */
+  readonly selected: boolean;
 }
 
 function finiteScale(scale: number): number {
@@ -270,6 +277,11 @@ function drawnPathOf(
   anchors: readonly VectorAnchor[],
   width: number,
   height: number,
+  options: {
+    readonly alwaysEnvelope?: boolean;
+    readonly color?: string | null;
+    readonly selected?: boolean;
+  } = {},
 ): DrawnVectorPath | null {
   const normalised = normaliseVectorAnchors(anchors);
   if (normalised.length === 0) return null;
@@ -277,22 +289,33 @@ function drawnPathOf(
     key,
     anchors: normalised,
     handles: resolveAnchorHandles(normalised),
-    projection: projectVectorPath(normalised, width, height),
+    projection: projectVectorPath(normalised, width, height, {
+      alwaysEnvelope: options.alwaysEnvelope === true,
+    }),
+    color: options.color ?? null,
+    selected: options.selected === true,
   };
 }
 
 /**
- * One path's SVG group, in the UI-SPEC order: envelope → spine → anchors →
- * handles. Marker extents are screen-pixel constants divided by the effective
- * zoom, so the chrome keeps its screen size at every zoom.
+ * One path's SVG group, in the UI-SPEC order: envelope → spine → rungs →
+ * anchors → handles. Marker extents are screen-pixel constants divided by the
+ * effective zoom, so the chrome keeps its screen size at every zoom.
+ *
+ * The editing chrome is unchanged (61-09/61-10). `wireframe` (61-13) swaps it
+ * for the construction view: the envelope is always drawn in the stroke's own
+ * colour, the spine is a two-pass dark/light line (or the accent for the live
+ * target), rungs appear ONLY at anchors carrying an explicit width factor,
+ * and every marker wears the dark hairline instead of the light one.
  */
 function renderPath(
   drawn: DrawnVectorPath,
   scale: number,
   width: number,
   height: number,
+  wireframe: boolean,
 ): JSX.Element {
-  const { anchors, handles, projection } = drawn;
+  const { anchors, handles, projection, color, selected } = drawn;
   const spinePoints = projection.spine.map((point) => `${point.x},${point.y}`).join(' ');
   const envelope = projection.envelope.length < 3
     ? null
@@ -300,10 +323,25 @@ function renderPath(
   const anchorSizePx = ANCHOR_BODY_PX / scale;
   const coreRadiusPx = ANCHOR_CORE_RADIUS_PX / scale;
   const handleRadiusPx = HANDLE_BODY_PX / 2 / scale;
+  // 61-13: the wireframe envelope wears the stroke's own colour; the pen draft
+  // has none, so it falls back to the vector accent.
+  const wireframeEnvelopeColor = color ?? SELECTED_SPINE_COLOR;
+  const markerStroke = wireframe ? OUTLINE_DARK : OUTLINE_LIGHT;
 
   return (
     <g key={drawn.key}>
-      {envelope === null ? null : (
+      {envelope === null ? null : wireframe ? (
+        <path
+          data-testid="vector-path-envelope"
+          d={envelope}
+          fill={wireframeEnvelopeColor}
+          fillOpacity={selected ? 0.14 : 0.07}
+          stroke={wireframeEnvelopeColor}
+          strokeOpacity={0.5}
+          strokeWidth={selected ? 3.5 : 1.5}
+          vectorEffect="non-scaling-stroke"
+        />
+      ) : (
         <path
           data-testid="vector-path-envelope"
           d={envelope}
@@ -315,25 +353,115 @@ function renderPath(
           vectorEffect="non-scaling-stroke"
         />
       )}
-      <polyline
-        points={spinePoints}
-        fill="none"
-        stroke={OUTLINE_DARK}
-        strokeWidth={3}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
-      <polyline
-        data-testid="vector-path-spine"
-        points={spinePoints}
-        fill="none"
-        stroke={SELECTED_SPINE_COLOR}
-        strokeWidth={SPINE_STROKE_PX}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
+      {wireframe ? (
+        selected ? (
+          <polyline
+            data-testid="vector-path-spine"
+            points={spinePoints}
+            fill="none"
+            stroke={SELECTED_SPINE_COLOR}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : (
+          <>
+            <polyline
+              points={spinePoints}
+              fill="none"
+              stroke={OUTLINE_DARK}
+              strokeWidth={2}
+              opacity={0.7}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+            <polyline
+              data-testid="vector-path-spine"
+              points={spinePoints}
+              fill="none"
+              stroke={OUTLINE_LIGHT}
+              strokeWidth={1}
+              opacity={0.9}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          </>
+        )
+      ) : (
+        <>
+          <polyline
+            points={spinePoints}
+            fill="none"
+            stroke={OUTLINE_DARK}
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+          <polyline
+            data-testid="vector-path-spine"
+            points={spinePoints}
+            fill="none"
+            stroke={SELECTED_SPINE_COLOR}
+            strokeWidth={SPINE_STROKE_PX}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </>
+      )}
+      {wireframe
+        ? projection.anchors.map((point, index) => {
+          const anchor = anchors[index];
+          // D-10/D-15: a rung exists ONLY where the anchor carries an
+          // explicit width factor — the sparse representation made visible.
+          if (anchor === undefined || anchor.width === undefined) return null;
+          const before = projection.anchors[Math.max(0, index - 1)] ?? point;
+          const after = projection.anchors[Math.min(projection.anchors.length - 1, index + 1)] ?? point;
+          let tx = after.x - before.x;
+          let ty = after.y - before.y;
+          const length = Math.hypot(tx, ty);
+          if (!(length > 0)) {
+            tx = 1;
+            ty = 0;
+          } else {
+            tx /= length;
+            ty /= length;
+          }
+          // The rung spans the envelope's local cross-section: the same base
+          // half-width the envelope sweep uses, at this anchor's factor.
+          const half = VECTOR_ENVELOPE_BASE_UV * height * clampAnchorWidth(anchor.width);
+          const offsetX = -ty * half;
+          const offsetY = tx * half;
+          return (
+            <g key={`rung-${index}`} data-testid="vector-path-rung">
+              <line
+                x1={point.x - offsetX}
+                y1={point.y - offsetY}
+                x2={point.x + offsetX}
+                y2={point.y + offsetY}
+                stroke={OUTLINE_DARK}
+                strokeWidth={1.5}
+                opacity={0.55}
+                vectorEffect="non-scaling-stroke"
+              />
+              <line
+                x1={point.x - offsetX}
+                y1={point.y - offsetY}
+                x2={point.x + offsetX}
+                y2={point.y + offsetY}
+                stroke={OUTLINE_LIGHT}
+                strokeWidth={1}
+                opacity={0.9}
+                vectorEffect="non-scaling-stroke"
+              />
+            </g>
+          );
+        })
+        : null}
       {projection.anchors.map((point, index) => {
         const anchor = anchors[index];
         if (anchor === undefined) return null;
@@ -346,7 +474,7 @@ function renderPath(
             width={anchorSizePx}
             height={anchorSizePx}
             fill={OWNED_CONTROL_COLOR}
-            stroke={OUTLINE_LIGHT}
+            stroke={markerStroke}
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
@@ -358,7 +486,7 @@ function renderPath(
             cy={point.y}
             r={coreRadiusPx}
             fill={SELECTED_SPINE_COLOR}
-            stroke={OUTLINE_LIGHT}
+            stroke={markerStroke}
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
@@ -444,6 +572,9 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   const scale = finiteScale(physicsPaintCanvasZoom.effectiveScale.value);
   const draft = vectorDrawDraft.value;
   const editDrag = vectorPathEditDrag.value;
+  // 61-13 (D-16): the session-only wireframe latch. This leaf is the narrow
+  // subscriber; the Studio never reads it in its own render body.
+  const wireframe = wireframeMode.value;
 
   // Path edit (61-10): resolve the stroke the session names. The id is a
   // session string and the registry is keyed by number, so the match is
@@ -489,13 +620,22 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       ? editDrag.anchors
       : stroke.anchors;
     if (anchors === undefined || anchors.length === 0) continue;
-    const drawn = drawnPathOf(`stroke-${mutationId}`, anchors, props.width, props.height);
+    const drawn = drawnPathOf(`stroke-${mutationId}`, anchors, props.width, props.height, {
+      // The wireframe always shows the swept envelope, uniform profile or not.
+      alwaysEnvelope: wireframe,
+      color: typeof stroke.color === 'string' && stroke.color.length > 0 ? stroke.color : null,
+      // The open path edit is the live target and wears the louder chrome.
+      selected: editMutationId !== null && String(mutationId) === editMutationId,
+    });
     if (drawn === null) continue;
     recorded.push(drawn);
   }
   const draftPath = draft === null || draft.anchors.length === 0
     ? null
-    : drawnPathOf('draft', draft.anchors, props.width, props.height);
+    : drawnPathOf('draft', draft.anchors, props.width, props.height, {
+      alwaysEnvelope: wireframe,
+      selected: penActive,
+    });
 
   if (recorded.length === 0 && draftPath === null && !penActive && editTargetMutationId === null) {
     return null;
@@ -764,8 +904,8 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
           pointerEvents: 'none',
         }}
       >
-        {recorded.map((drawn) => renderPath(drawn, scale, props.width, props.height))}
-        {draftPath === null ? null : renderPath(draftPath, scale, props.width, props.height)}
+        {recorded.map((drawn) => renderPath(drawn, scale, props.width, props.height, wireframe))}
+        {draftPath === null ? null : renderPath(draftPath, scale, props.width, props.height, wireframe)}
       </svg>
     </div>
   );

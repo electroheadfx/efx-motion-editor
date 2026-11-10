@@ -321,11 +321,16 @@ function buildEnvelope(
  * uniform width profile stores no factor, so it draws no envelope — the
  * envelope exists to make the sparse profile visible (D-10), exactly like the
  * rung law's "no rung for an absent factor".
+ *
+ * `alwaysEnvelope` (61-13 wireframe) draws the swept envelope even for a
+ * uniform profile: the wireframe is a CONSTRUCTION view, so it shows the
+ * stroke's actual width unconditionally. Editing chrome keeps the D-10 law.
  */
 export function projectVectorPath(
   anchors: readonly VectorAnchor[],
   width: number,
   height: number,
+  options: { readonly alwaysEnvelope?: boolean } = {},
 ): VectorPathProjection {
   const normalised = normaliseVectorAnchors(anchors);
   if (normalised.length === 0) return { anchors: [], spine: [], widths: [], envelope: [] };
@@ -333,7 +338,9 @@ export function projectVectorPath(
   if (points.length === 0) return { anchors: [], spine: [], widths: [], envelope: [] };
   const spine = points.map((point) => uvToScreen(point, width, height));
   const widths = sampleVectorWidths(normalised, points);
-  const envelope = isUniformWidthProfile(normalised) ? [] : buildEnvelope(spine, widths, height);
+  const envelope = options.alwaysEnvelope === true || !isUniformWidthProfile(normalised)
+    ? buildEnvelope(spine, widths, height)
+    : [];
   return {
     anchors: normalised.map((anchor) => uvToScreen(anchor, width, height)),
     spine,
