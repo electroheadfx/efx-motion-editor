@@ -63,11 +63,20 @@ export function toggleVectorPen(): void {
   else enterVectorPen();
 }
 
-/** Open path edit for one stroke. Clears the pen, Select mode and the picker; never touches the paint tool. */
+/**
+ * Open path edit for one stroke. Clears the pen and the picker; never touches
+ * Select mode or the paint tool.
+ *
+ * Path edit lives INSIDE Move/Select, not instead of it: the spline pointer
+ * being pressed is a state of the open sheet (61-UI-SPEC §292, §296), and the
+ * sheet is what hosts the anchor-width control. Leaving Select here would clear
+ * the very selection `resolvePathEditGate` and `resolveAnchorWidthTarget`
+ * resolve from — and close the sheet — so the edit would be entered and exited
+ * in the same tick and no anchor could ever be grabbed.
+ */
 export function enterPathEdit(mutationId: string): void {
   writeIfChanged(pathEditMutationId, mutationId);
   exitVectorPen();
-  setAquarelleSelectMode(false);
   disarmAquarellePicker();
 }
 

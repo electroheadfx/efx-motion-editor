@@ -90,17 +90,22 @@ describe('vectorPathSession — the vector pen and path-edit session', () => {
     expect(vectorPenActive.value).toBe(false);
   });
 
-  it('enters path edit and clears select, the picker and the pen', () => {
+  it('enters path edit, releasing the pen and the picker but keeping Select mode', () => {
     setAquarelleTool('brush');
     setAquarelleSelectMode(true);
     setAquarellePickerLatched(true);
-    enterVectorPen();
 
     enterPathEdit('m7');
 
     expect(pathEditMutationId.value).toBe('m7');
     expect(vectorPenActive.value).toBe(false);
-    expect(aquarelleSelectMode.value).toBe(false);
+    // 61-UAT G-9: path edit lives INSIDE Move/Select. Clearing Select here
+    // emptied the selection `resolvePathEditGate` and `resolveAnchorWidthTarget`
+    // both resolve from, so the edit was entered and exited in the same tick and
+    // no anchor could ever be grabbed. The earlier form of this test called
+    // `enterVectorPen()` first, which had already cleared Select, so it could
+    // never see that bug.
+    expect(aquarelleSelectMode.value).toBe(true);
     expect(aquarellePickerActive.value).toBe(false);
     expect(aquarelleActiveTool.value).toBe('brush');
   });
