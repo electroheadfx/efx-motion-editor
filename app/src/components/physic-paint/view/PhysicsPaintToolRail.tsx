@@ -129,13 +129,7 @@ export function WatercolorRail({
         // boundaries (animate mode) is on, the paint row renders deselected.
         // 61-13 (D-16): the wireframe latch also deselects it — nothing may
         // bake while the construction view is up, so no paint tool is "on".
-        const isActive =
-          !selectActive
-          && !pickerActive
-          && !motionBoundaryActive
-          && !penActive
-          && !wireframeActive
-          && active === id;
+        const isActive = !selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === id && !wireframeActive;
         const waterGated = id === 'water' && !wetAvailable;
         // 61-13: the paint row's disable reason. The latch never silently
         // switches tools — it states why the press is inert.

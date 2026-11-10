@@ -3185,7 +3185,7 @@ describe('261022-pim watercolor stroke select surface', () => {
     for (const clause of ['!selectActive', '!pickerActive', '!motionBoundaryActive', '!penActive', '!wireframeActive']) {
       expect(isActiveRegion, `isActive must keep the ${clause} clause`).toContain(clause);
     }
-    expect(isActiveRegion).toContain('active === id;');
+    expect(isActiveRegion).toContain('active === id');
     expect(watercolorRail).toContain('disabled={railDisabled || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
