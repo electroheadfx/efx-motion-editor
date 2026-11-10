@@ -15,15 +15,24 @@
 //  hostGenericityRoundTrip) — normal vitest .test.ts, no new config.
 // ============================================================
 
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
-import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
+import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { mixSpectral } from '@efxlab/efx-spectral'
-import { createAquarelleEngineAdapter, resolveBakePaperPreset } from './engineAdapter'
+import {
+  createAquarelleEngineAdapter,
+  resolveBakePaperPreset,
+  resolveStrokeWidthFactors,
+} from './engineAdapter'
 import { PAPERS } from '../playground/papers'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
 import { toStudioStroke, DIFFUSION_CAP } from '../payload/toStudioStroke'
 import type { AquarelleStroke } from '../payload/toStudioStroke'
+import type { AquarelleAnchor } from '../payload/vectorPath'
+import { ANCHOR_WIDTH_DEFAULT, ANCHOR_WIDTH_MAX, ANCHOR_WIDTH_MIN } from '../vector/spine'
 
 // ---------------------------------------------------------------------------
 // WebGL2 gate — GPU pins skip cleanly when the context cannot exist.
@@ -492,5 +501,139 @@ describe.skipIf(!gpu)('per-frame paint salt GPU (WebGL2 required)', () => {
     const a = paintFresh(null)
     const b = paintFresh(null)
     expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 8. 61-04 — the sparse width profile bridge (VEC-03).
+//    `resolveStrokeWidthFactors` is the ONE bridge from the persisted sparse
+//    anchor factors (61-02 spine) to the engine's per-sample finite channel.
+//    It is pure — no clock, no RNG, no engine-state write — runs once per
+//    active stroke, and its derived array is never persisted. Non-GPU: every
+//    law is arithmetic over the pure spine module; the real-pixel proof lives
+//    in probe/vector-spine (`--scenario width`).
+// ---------------------------------------------------------------------------
+
+describe('resolveStrokeWidthFactors (61-04)', () => {
+  // Three anchors on the test grid's y = 0.5 line: default, 1.8, default.
+  // The middle factor is the authored maximum the engine must carry.
+  const SPARSE_ANCHORS: readonly AquarelleAnchor[] = [
+    { x: 0.3, y: 0.5, kind: 'auto' },
+    { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 },
+    { x: 0.6, y: 0.5, kind: 'auto' },
+  ]
+
+  const projected = (anchors: readonly AquarelleAnchor[] | undefined) => {
+    const stroke = toStudioStroke(makeStrokePayload(anchors === undefined ? {} : { anchors }))
+    return { payload: stroke.engine, pts: stroke.pts }
+  }
+
+  it('reads null without anchors — a hand-painted stroke carries no width data', () => {
+    const absent = projected(undefined)
+    expect(resolveStrokeWidthFactors(absent.payload, absent.pts)).toBeNull()
+
+    const empty = projected([])
+    expect(resolveStrokeWidthFactors(empty.payload, empty.pts)).toBeNull()
+  })
+
+  it('reads null for a uniform profile — every anchor at the default factor', () => {
+    const uniform = projected([
+      { x: 0.3, y: 0.5, kind: 'auto' },
+      { x: 0.5, y: 0.5, kind: 'auto', width: ANCHOR_WIDTH_DEFAULT },
+      { x: 0.6, y: 0.5, kind: 'auto' },
+    ])
+    expect(resolveStrokeWidthFactors(uniform.payload, uniform.pts)).toBeNull()
+  })
+
+  it('derives one Float32Array entry per point: authored maximum, held ends', () => {
+    const { payload, pts } = projected(SPARSE_ANCHORS)
+    const factors = resolveStrokeWidthFactors(payload, pts)
+
+    expect(factors).toBeInstanceOf(Float32Array)
+    expect(factors?.length).toBe(pts.length)
+
+    const values = Array.from(factors!)
+    expect(Math.max(...values)).toBeGreaterThan(1.7)
+    expect(Math.max(...values)).toBeLessThanOrEqual(1.8)
+    expect(values[0]).toBeCloseTo(1, 5)
+    expect(values[values.length - 1]).toBeCloseTo(1, 5)
+  })
+
+  it('two consecutive resolutions are element-wise identical (pure, no clock/RNG)', () => {
+    const { payload, pts } = projected(SPARSE_ANCHORS)
+    const first = resolveStrokeWidthFactors(payload, pts)
+    const second = resolveStrokeWidthFactors(payload, pts)
+
+    expect(second).not.toBeNull()
+    expect(second?.length).toBe(first?.length)
+    for (let index = 0; index < (first?.length ?? 0); index++) {
+      expect(second![index]).toBe(first![index])
+    }
+  })
+
+  it('a one-point grid reads the first anchor factor', () => {
+    const { payload } = projected([
+      { x: 0.3, y: 0.5, kind: 'auto', width: 1.8 },
+      { x: 0.6, y: 0.5, kind: 'auto' },
+    ])
+    const single: StudioPoint = { x: 0.3, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0, tick: 0 }
+    const factors = resolveStrokeWidthFactors(payload, [single])
+
+    expect(factors).not.toBeNull()
+    expect(factors!.length).toBe(1)
+    expect(factors![0]).toBeCloseTo(1.8, 5)
+  })
+
+  it('holds out-of-range factors at the nearest published end, always finite', () => {
+    const maxAuthored = 9
+    const { payload, pts } = projected([
+      { x: 0.3, y: 0.5, kind: 'auto', width: maxAuthored },
+      { x: 0.5, y: 0.5, kind: 'auto', width: 0.05 },
+      { x: 0.6, y: 0.5, kind: 'auto' },
+    ])
+    const factors = resolveStrokeWidthFactors(payload, pts)
+
+    expect(factors).not.toBeNull()
+    const values = Array.from(factors!)
+    for (const value of values) {
+      expect(Number.isFinite(value)).toBe(true)
+      expect(value).toBeGreaterThanOrEqual(ANCHOR_WIDTH_MIN)
+      expect(value).toBeLessThanOrEqual(ANCHOR_WIDTH_MAX)
+      // No extrapolation: nothing reads beyond what was authored.
+      expect(value).toBeLessThanOrEqual(maxAuthored)
+    }
+    // Grid x = 0.3 / 0.4 / 0.5 / 0.6: the oversized anchor holds its clamped
+    // maximum at index 0, the undersized one holds the clamped minimum at
+    // index 2 (the 0.4 sample interpolates between them), and the trailing
+    // anchor keeps the default.
+    expect(values[0]).toBeCloseTo(ANCHOR_WIDTH_MAX, 5)
+    expect(values[2]).toBeCloseTo(ANCHOR_WIDTH_MIN, 5)
+    expect(values[values.length - 1]).toBeCloseTo(ANCHOR_WIDTH_DEFAULT, 5)
+  })
+
+  it('feeds the factor at both script calls inside feedDueSample (source contract)', () => {
+    const adapterSource = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'engineAdapter.ts'),
+      'utf8',
+    )
+    const feedStart = adapterSource.indexOf('const feedDueSample')
+    expect(feedStart).toBeGreaterThan(-1)
+    const feed = adapterSource.slice(feedStart, adapterSource.indexOf('return {', feedStart))
+    expect(feed.length).toBeGreaterThan(0)
+
+    const lines = feed.split('\n')
+    const beginLine = lines.find((line) => line.includes('scriptBegin('))
+    const moveLine = lines.find((line) => line.includes('scriptMove('))
+    expect(beginLine).toBeDefined()
+    expect(moveLine).toBeDefined()
+
+    // The width factor is the argument AFTER the 2D tilt pair at both call
+    // sites — begin(...tiltX, tiltY, widthFactor) / move(...tiltX, tiltY,
+    // widthFactor). A refactor that drops it silently reverts to the capped
+    // footprint (C-03), so the source contract pins it here.
+    expect(beginLine!.trimEnd().endsWith('widthFactor)')).toBe(true)
+    expect(moveLine!.trimEnd().endsWith('widthFactor)')).toBe(true)
+    // Both read the per-sample entry derived once at activation.
+    expect(feed).toContain('active.widths')
   })
 })
