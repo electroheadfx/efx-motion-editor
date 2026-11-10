@@ -240,7 +240,6 @@ function expectedCode(run: () => unknown): ScriptTimelineCodecErrorCode | 'no-th
 const MINIMAL_RECORDED_ORDER_OFFSET = 39;
 const MINIMAL_BRUSH_ID_LENGTH_OFFSET = 47;
 const MINIMAL_TOOL_OFFSET = 52;
-const MINIMAL_VECTOR_FLAGS_OFFSET = 73;
 const MINIMAL_POINT_COUNT_OFFSET = 74;
 
 // ---------------------------------------------------------------------------

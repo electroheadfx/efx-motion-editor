@@ -348,10 +348,11 @@ describe('Phase 61 envelope round trip (REL-02)', () => {
     // Deep equality: both anchors, the stored handle pair and the one sparse
     // width factor survive the envelope untouched.
     expect(reopened).toEqual(payload);
-    expect((reopened.engine as MceAquarelleVectorPath).anchors).toEqual(VECTOR_PATH.anchors);
-    expect((reopened.engine as MceAquarelleVectorPath).renderMode).toBe('simple-ribbon');
+    const engine = reopened.engine as unknown as MceAquarelleVectorPath;
+    expect(engine.anchors).toEqual(VECTOR_PATH.anchors);
+    expect(engine.renderMode).toBe('simple-ribbon');
     // Exactly one width key: the uniform anchor stores nothing (D-10).
-    expect(Object.keys((reopened.engine as MceAquarelleVectorPath).anchors[0]!)).toEqual([
+    expect(Object.keys(engine.anchors[0]!)).toEqual([
       'x', 'y', 'kind',
     ]);
     // Byte identity: a second serialisation reproduces the saved string.
