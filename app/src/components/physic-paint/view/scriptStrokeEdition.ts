@@ -161,6 +161,72 @@ export function setDraftMode(on: boolean): void {
 }
 
 /**
+ * 61-13 (D-16): the **wireframe** VIEW latch. ON draws every recorded vector
+ * stroke's spine and width envelope (plus a width rung at every stored width
+ * factor) while the watercolor bake is suspended. It is a GENERALISATION of
+ * Draft, never a second engine-suppression path: ON forces Draft through the
+ * one `setDraftMode` setter, and OFF clears only this latch and hands the
+ * re-bake to the Studio's ONE `settleDraftScript`.
+ *
+ * Session/UI state only — never written to the document, never part of the
+ * undo stack, never persisted, never part of a cache key or an export (D-16).
+ * Read by the rail leaf, the two overlays and the Studio event handlers
+ * (`.peek()` only); NEVER the Studio render body (rule 5).
+ */
+export const wireframeMode = signal(false);
+
+/**
+ * ON: arm Draft FIRST, then flip the latch — a subscriber that sees the latch
+ * on must already observe Draft on, and the OFF settle needs Draft to exist.
+ * OFF: clear this latch ONLY; the Studio's settle owns the Draft exit (clear
+ * dirty, flip Draft, re-render). Compare-then-write: a repeated call notifies
+ * nobody and writes nothing (rule 3).
+ */
+export function setWireframeMode(on: boolean): void {
+  if (wireframeMode.value === on) return;
+  if (on) setDraftMode(true);
+  wireframeMode.value = on;
+}
+
+/**
+ * 61-13 (E6 backstop): true from the moment an OFF transition starts its
+ * re-bake until that settle lands. Read by the rail leaf to disable every rail
+ * control during the window; never the Studio render body.
+ */
+export const wireframeSettleInFlight = signal(false);
+
+/** Compare-then-write — 1000 identical calls notify zero times (rule 3). */
+export function setWireframeSettleInFlight(on: boolean): void {
+  if (wireframeSettleInFlight.value === on) return;
+  wireframeSettleInFlight.value = on;
+}
+
+let wireframeSettlePromise: Promise<boolean> | null = null;
+
+/**
+ * The single-flight OFF transition. Two clicks racing each other join the SAME
+ * settle promise; the latch clears FIRST so the overlay stops drawing before
+ * the re-bake begins (E7 loading), and the window closes when the run settles
+ * so a later click can start a fresh transition. The settle is the Studio's
+ * ONE `settleDraftScript` — this module never re-implements it.
+ */
+export function runWireframeOffTransition(settle: () => Promise<boolean>): Promise<boolean> {
+  if (wireframeSettlePromise !== null) return wireframeSettlePromise;
+  if (wireframeMode.peek()) setWireframeMode(false);
+  setWireframeSettleInFlight(true);
+  const run = (async () => {
+    try {
+      return await settle();
+    } finally {
+      setWireframeSettleInFlight(false);
+      wireframeSettlePromise = null;
+    }
+  })();
+  wireframeSettlePromise = run;
+  return run;
+}
+
+/**
  * 261101-o2m (D-02): the Stroke settings **cache eye** VIEW preference — hides
  * the committed (frozen) sheet so the edited script's overlay is readable on
  * its own. Session/UI state only, default visible, never persisted, never

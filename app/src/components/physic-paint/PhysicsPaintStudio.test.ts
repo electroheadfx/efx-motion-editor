@@ -3176,7 +3176,7 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain(
       '!selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === id;',
     );
-    expect(watercolorRail).toContain('disabled={disabled || !selectAvailable.value}');
+    expect(watercolorRail).toContain('disabled={railDisabled || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
     expect(watercolorRail).toContain('Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
@@ -5935,7 +5935,9 @@ describe('quick 261101-o2m — the five exits act on the recompute, the persiste
 
   it('publishes the Draft-or-dirty state with a 5s heartbeat from one lifecycle effect', () => {
     expect(studio).toContain("import { PHYSIC_PAINT_DRAFT_HEARTBEAT_MS, publishStudioDraftMode } from '../../lib/physicPaintDraftMode';");
-    const effectStart = studio.indexOf('const active = draftMode.value || draftPixelsDirty.value;');
+    const effectStart = studio.indexOf(
+      'const active = draftMode.value || draftPixelsDirty.value || wireframeMode.value;',
+    );
     expect(effectStart, 'the publisher follows the PIXELS, never the switch alone').toBeGreaterThan(-1);
     expect(studio.indexOf('void publishStudioDraftMode(active);', effectStart)).toBeGreaterThan(effectStart);
     expect(studio.indexOf('}, PHYSIC_PAINT_DRAFT_HEARTBEAT_MS);', effectStart)).toBeGreaterThan(effectStart);
@@ -6603,7 +6605,6 @@ describe('61-13 wireframe latch — session-only, Draft-generalising', () => {
       'wireframeMode',
       'setWireframeMode',
       'wireframeSettleInFlight',
-      'setWireframeSettleInFlight',
       'runWireframeOffTransition',
     ]) {
       expect(editionImport, `the Studio imports ${symbol}`).toContain(symbol);
@@ -6621,7 +6622,7 @@ describe('61-13 wireframe latch — session-only, Draft-generalising', () => {
     expect(handler).toContain('setWireframeMode(true);');
     expect(handler).toContain('disarmAquarellePicker();');
     expect(handler).toContain('setAquarelleSelectMode(false);');
-    expect(handler).toContain('    [settleDraftScript],');
+    expect(handler).toContain('[settleDraftScript]');
     // No second engine-suppression path: the handler delegates the re-bake.
     expect(handler).not.toContain('aquarelleResetSheetRef');
     expect(handler).not.toContain('applyAquarelleTimeline');

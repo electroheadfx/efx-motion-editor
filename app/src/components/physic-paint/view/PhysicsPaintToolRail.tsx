@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import type { PaintHistoryAvailability } from '../types/paintCore';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';
+import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, VectorSquare, Wind } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
@@ -18,6 +18,7 @@ import {
 import { aquarellePickerActive, toggleAquarellePickerLatched } from './aquarelleColorPicker';
 import { exitRailMotionEditing, railMotionSelectedChannel } from './railMotionEditingMode';
 import { exitPathEdit, exitVectorPen, toggleVectorPen, vectorPenActive } from './vectorPathSession';
+import { wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
 export type PhysicsPaintRailAction = 'undo' | 'redo' | 'clear-frame' | 'rebake-script';
@@ -74,6 +75,7 @@ export function WatercolorRail({
   onRebakeScript,
   onActiveColorChanged,
   onToggleMotionBoundaries,
+  onToggleWireframe,
 }: {
   disabled: boolean;
   historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
@@ -88,6 +90,8 @@ export function WatercolorRail({
   onActiveColorChanged?: (color: string) => void;
   /** 261107: deploy the motion lane + re-select the last animated property. */
   onToggleMotionBoundaries: () => void;
+  /** 61-13 (D-16): toggle the wireframe view latch (and the Draft it rides on). */
+  onToggleWireframe: () => void;
 }) {
   const active = aquarelleActiveTool.value;
   // 261029-lel: Water only acts on live standing water — grey it while the
@@ -109,6 +113,11 @@ export function WatercolorRail({
   // re-selects the last property. Paint picks leave animate mode TOO but keep
   // the lane deployed, so painting with the lanes open is the normal path.
   const motionBoundaryActive = railMotionSelectedChannel.value !== null;
+  // 61-13 (D-16): the wireframe latch is a session VIEW mode — the rail shows
+  // it lit while on, and every rail control goes dark for the OFF re-bake
+  // window (E6 loading; the Studio's settle owns the actual suppression).
+  const wireframeActive = wireframeMode.value;
+  const railDisabled = disabled || wireframeSettleInFlight.value;
   const undoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'undo')!;
   const redoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'redo')!;
   const clearItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'clear-frame')!;
@@ -126,7 +135,7 @@ export function WatercolorRail({
             key={id}
             type="button"
             class={`physics-paint-icon-button${isActive ? ' active' : ''}`}
-            disabled={disabled || (id === 'water' && !wetAvailable)}
+            disabled={railDisabled || (id === 'water' && !wetAvailable)}
             title={waterGated ? 'Water (W) — needs standing water' : shortcut ? `${label} (${shortcut})` : label}
             aria-label={label}
             aria-pressed={isActive}
@@ -155,7 +164,7 @@ export function WatercolorRail({
         type="button"
         class={`physics-paint-icon-button${penActive ? ' active' : ''}`}
         data-testid="aquarelle-vector-pen-toggle"
-        disabled={disabled}
+        disabled={railDisabled}
         title="Vector pen — draw a vector path (V)"
         aria-label="Vector pen"
         aria-pressed={penActive}
@@ -171,7 +180,7 @@ export function WatercolorRail({
         type="button"
         class={`physics-paint-icon-button${pickerActive ? ' active' : ''}`}
         data-testid="aquarelle-picker-toggle"
-        disabled={disabled}
+        disabled={railDisabled}
         title="Picker (I) — click the canvas to sample the color under the cursor · hold Alt for a temporary picker"
         aria-label="Picker"
         aria-pressed={pickerActive}
@@ -191,7 +200,7 @@ export function WatercolorRail({
         type="button"
         class={`physics-paint-icon-button${selectActive ? ' active' : ''}`}
         data-testid="aquarelle-select-toggle"
-        disabled={disabled || !selectAvailable.value}
+        disabled={railDisabled || !selectAvailable.value}
         title="Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward"
         aria-label="Select"
         aria-pressed={selectActive}
@@ -207,7 +216,7 @@ export function WatercolorRail({
         type="button"
         class={`physics-paint-icon-button${motionBoundaryActive ? ' active' : ''}`}
         data-testid="aquarelle-motion-boundary-toggle"
-        disabled={disabled}
+        disabled={railDisabled}
         title={motionBoundaryActive
           ? 'Motion boundaries — editing the selected property; click again to leave motion mode'
           : 'Motion boundaries — deploy the motion lane and select the last property. Pick a channel in the sidebar to animate it.'}
@@ -217,11 +226,27 @@ export function WatercolorRail({
       >
         <Scan size={18} />
       </button>
+      {/* 61-13 (D-16): the wireframe VIEW latch. ON draws every recorded
+          vector stroke's spine and width envelope and suspends the bake (it
+          rides the Draft mode); OFF routes through the existing Draft settle.
+          Session-only — never persisted (see setWireframeMode's docblock). */}
+      <button
+        type="button"
+        class={`physics-paint-icon-button${wireframeActive ? ' active' : ''}`}
+        data-testid="aquarelle-wireframe-toggle"
+        disabled={railDisabled}
+        title="Wireframe — show every stroke's spine and width envelope, and suspend the bake"
+        aria-label="Wireframe"
+        aria-pressed={wireframeActive}
+        onClick={onToggleWireframe}
+      >
+        <VectorSquare size={18} />
+      </button>
       <button
         type="button"
         class="physics-paint-icon-button"
         data-testid="aquarelle-dry"
-        disabled={disabled}
+        disabled={railDisabled}
         title="Flash-dry the sheet (F). Recorded in the script."
         aria-label="Dry"
         onClick={() => emitAquarelleDry(aquarelleRecordClock())}
@@ -233,20 +258,20 @@ export function WatercolorRail({
       <PhysicsPaintHistoryActionButton
         item={undoItem}
         historyAvailability={historyAvailability}
-        disabled={disabled}
+        disabled={railDisabled}
         onAction={onUndo}
       />
       <PhysicsPaintHistoryActionButton
         item={redoItem}
         historyAvailability={historyAvailability}
-        disabled={disabled}
+        disabled={railDisabled}
         onAction={onRedo}
       />
       <button
         type="button"
         class="physics-paint-icon-button"
         data-testid="aquarelle-rebake-script"
-        disabled={disabled || !rebakeAvailable.value}
+        disabled={railDisabled || !rebakeAvailable.value}
         title={rebakeAvailable.value
           ? `${rebakeItem.label} (Shift+R)`
           : 'Re-render (Shift+R) — this frame has no paint script'}
@@ -258,7 +283,7 @@ export function WatercolorRail({
       <button
         type="button"
         class="physics-paint-icon-button"
-        disabled={disabled}
+        disabled={railDisabled}
         title={`${clearItem.label} (C — asks to confirm)`}
         aria-label="Trash"
         onClick={onClearFrame}
@@ -288,6 +313,8 @@ export interface PhysicsPaintToolRailProps {
   onActiveColorChanged?: (color: string) => void;
   /** 261107: deploy the motion lane + re-select the last animated property. */
   onToggleMotionBoundaries: () => void;
+  /** 61-13 (D-16): toggle the wireframe view latch (and the Draft it rides on). */
+  onToggleWireframe: () => void;
 }
 
 function PhysicsPaintHistoryActionButton({
@@ -333,6 +360,7 @@ function PhysicsPaintToolRailImpl({
   onRebakeScript,
   onActiveColorChanged,
   onToggleMotionBoundaries,
+  onToggleWireframe,
 }: PhysicsPaintToolRailProps) {
   recordPhysicsPaintPerformanceCounter('render.toolRailImpl');
   // 261027-klx: Water color is the only module — the rail is the aquarelle
@@ -349,6 +377,7 @@ function PhysicsPaintToolRailImpl({
       onRebakeScript={onRebakeScript}
       onActiveColorChanged={onActiveColorChanged}
       onToggleMotionBoundaries={onToggleMotionBoundaries}
+      onToggleWireframe={onToggleWireframe}
     />
   );
 }

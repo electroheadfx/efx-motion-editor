@@ -305,11 +305,15 @@ import {
   deleteSelectedScriptStroke,
   draftMode,
   draftPixelsDirty,
+  runWireframeOffTransition,
   scriptSelectedStrokeIds,
   setDraftMode,
   setDraftPixelsDirty,
   setScriptStrokeEditionPorts,
+  setWireframeMode,
   type ScriptStrokeTransform,
+  wireframeMode,
+  wireframeSettleInFlight,
 } from './view/scriptStrokeEdition';
 import type {
   ScriptStrokeAppearancePatch,
@@ -2596,6 +2600,10 @@ export function PhysicsPaintStudio() {
   // Every read is `.peek()` — the Studio render body never subscribes a
   // selection signal.
   const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'pen' | 'lift') => {
+    // 61-13 (D-16): the paint row is disarmed while wireframe is on — the rail
+    // renders it deselected + disabled with the reason, and this gate refuses
+    // a programmatic press (a keyboard shortcut or a stale rail render).
+    if (wireframeMode.peek()) return;
     // 61-08 (D-06): a paint-tool press (rail or B/W/E/P) clears the vector pen
     // and ends path edit — the input surfaces are mutually exclusive.
     vectorPathSession.exitVectorPen();
@@ -2669,6 +2677,9 @@ export function PhysicsPaintStudio() {
   // 261030-cnq: the `I` shortcut and the rail Picker button drive the SAME
   // latch; both leave Move/Edit first (Select owns Alt).
   const handleToggleAquarellePicker = useCallback(() => {
+    // 61-13 (D-16): picking a sheet mid-wireframe would sample the suspended
+    // bake — the picker is disarmed until wireframe turns off.
+    if (wireframeMode.peek()) return;
     setAquarelleSelectMode(false);
     // 261107 UAT: sampling the canvas leaves animate mode — the rail-motion
     // boundary would otherwise swallow the pick.
@@ -5416,6 +5427,20 @@ export function PhysicsPaintStudio() {
     draftSettlePromiseRef.current = run;
     return run;
   }, [applyFrameModuleState, isPhysicalMutationLocked, rotoPersistence, rotoScript, setApplyMessage, setApplyStatus, setLastError]);
+  // 61-13 (D-16): the wireframe latch. ON rides the Draft mode (setWireframeMode
+  // forces it) and leaves the painting surfaces: the Studio gates the paint
+  // row, the picker and Dry on `wireframeMode.peek()`. OFF clears the latch
+  // FIRST — the overlay stops drawing before the bake — and hands the re-bake
+  // to the ONE Draft settle, single-flight, so two clicks join one recompute.
+  const handleToggleWireframe = useCallback(() => {
+    if (wireframeSettleInFlight.peek() || wireframeMode.peek()) {
+      void runWireframeOffTransition(() => settleDraftScript());
+      return;
+    }
+    setWireframeMode(true);
+    disarmAquarellePicker();
+    setAquarelleSelectMode(false);
+  }, [settleDraftScript]);
   /**
    * 261101-o2m (CR-01): the ONE guarded active-track switch.
    *
@@ -6708,7 +6733,7 @@ export function PhysicsPaintStudio() {
       toggleSelectAllAquarelleStrokes: handleToggleSelectAllAquarelleStrokes,
       cycleAquarelleSelectFilter: handleCycleAquarelleSelectFilter,
       dryAquarelleSheet: () => {
-        if (staticControlsLocked) return;
+        if (staticControlsLocked || wireframeMode.peek()) return;
         emitAquarelleDry(aquarelleRecordClock());
       },
       clearAquarelleFrame: () => {
@@ -7147,7 +7172,7 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([historyAvailability, staticControlsLocked, undo, redo, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, rebakeScriptAvailable, handleRebakeScript, handleToggleMotionBoundaries], () => ({
+  const toolRail = toolRailPropsMemo.resolve([historyAvailability, staticControlsLocked, undo, redo, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, rebakeScriptAvailable, handleRebakeScript, handleToggleMotionBoundaries, handleToggleWireframe], () => ({
     historyAvailability,
     selectAvailable: watercolorMoveAvailable,
     rebakeAvailable: rebakeScriptAvailable,
@@ -7158,6 +7183,7 @@ export function PhysicsPaintStudio() {
     onRebakeScript: () => { void handleRebakeScript(); },
     onActiveColorChanged: handleActiveColorChanged,
     onToggleMotionBoundaries: handleToggleMotionBoundaries,
+    onToggleWireframe: handleToggleWireframe,
   }));
   // 38-11: the right panel props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
@@ -10719,7 +10745,7 @@ export function PhysicsPaintStudio() {
       }
     };
     const dispose = effect(() => {
-      const active = draftMode.value || draftPixelsDirty.value;
+      const active = draftMode.value || draftPixelsDirty.value || wireframeMode.value;
       stopHeartbeat();
       void publishStudioDraftMode(active);
       if (!active) return;

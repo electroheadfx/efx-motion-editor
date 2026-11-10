@@ -230,18 +230,7 @@ describe('WatercolorRail — the fifth entry (D-05 / C-01)', () => {
   });
 
   it('is disabled with the rail', () => {
-    const nav = materialize(
-      WatercolorRail({
-        disabled: true,
-        selectAvailable: signal(false),
-        rebakeAvailable: signal(false),
-        onUndo: () => {},
-        onRedo: () => {},
-        onClearFrame: () => {},
-        onRebakeScript: () => {},
-        onToggleMotionBoundaries: () => {},
-      }),
-    ) as TestVNode;
+    const nav = renderRail({ disabled: true });
     expect(penButton(nav).props?.disabled).toBe(true);
   });
 });
