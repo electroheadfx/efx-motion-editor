@@ -40,6 +40,7 @@
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
 import type { AquarelleToolOverrides } from '../brushes/tips'
+import { projectVectorPath } from './vectorPath'
 import type { AquarelleAnchor, AquarelleRenderMode } from './vectorPath'
 
 // The one payload union accepts Dry events alongside strokes (D-16).
@@ -183,7 +184,7 @@ export function toStudioStroke(
       // 61-03: conditional canonical terms — each vector field is written
       // ONLY when present, so a hand-painted stroke keeps its exact
       // pre-vector key set and a mode-only stroke gains that key alone.
-      ...(s.anchors !== undefined ? { anchors: [...s.anchors] } : {}),
+      ...(s.anchors !== undefined ? { anchors: projectVectorPath(s.anchors) } : {}),
       ...(s.renderMode !== undefined ? { renderMode: s.renderMode } : {}),
     },
   }

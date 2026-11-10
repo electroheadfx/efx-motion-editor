@@ -27,6 +27,7 @@
 // ============================================================
 
 import {
+  ANCHOR_WIDTH_DEFAULT,
   ANCHOR_WIDTH_MAX,
   ANCHOR_WIDTH_MIN,
   type Vec2,
@@ -166,6 +167,26 @@ export function anchorsEqual(
     }
   }
   return true
+}
+
+/**
+ * D-10: the projected persisted form of an anchor list. A `width` key is
+ * written ONLY for an anchor whose factor is present and not exactly
+ * ANCHOR_WIDTH_DEFAULT, so a uniformly-wide stroke stores no width data at
+ * all and an untouched anchor gains no key. Order is preserved exactly —
+ * 61-02's stations index into this order — and the input is never mutated.
+ */
+export function projectVectorPath(anchors: readonly VectorAnchor[]): readonly VectorAnchor[] {
+  const projected = anchors.map((anchor) => {
+    const next: MutableAnchor = { x: anchor.x, y: anchor.y, kind: anchor.kind }
+    if (anchor.in !== undefined) next.in = { x: anchor.in.x, y: anchor.in.y }
+    if (anchor.out !== undefined) next.out = { x: anchor.out.x, y: anchor.out.y }
+    if (anchor.width !== undefined && anchor.width !== ANCHOR_WIDTH_DEFAULT) {
+      next.width = anchor.width
+    }
+    return next
+  })
+  return Object.freeze(projected)
 }
 
 /** The two persisted members a vector path is compared on. */
