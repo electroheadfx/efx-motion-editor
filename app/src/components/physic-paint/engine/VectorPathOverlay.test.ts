@@ -270,10 +270,7 @@ describe('VectorPathOverlay — draw gesture (task 2)', () => {
     const root = render(VectorPathOverlay(propsWith()))!;
     press(root, clickAt(0.5, 0.5));
     press(root, clickAt(0.7, 0.4, { altKey: true }));
-    expect(draftAnchors()).toEqual([
-      auto(0.5, 0.5),
-      { x: 0.7, y: 0.4, kind: 'bezier', in: { x: 0.7, y: 0.4 }, out: { x: 0.7, y: 0.4 } },
-    ]);
+    expect(draftAnchors()).toEqual([auto(0.5, 0.5), bezier(0.7, 0.4)]);
   });
 
   it('refuses a click within the adjacency radius of the last anchor', () => {
@@ -311,7 +308,8 @@ describe('VectorPathOverlay — draw gesture (task 2)', () => {
     const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
     press(root, clickAt(0.2, 0.5));
     press(root, clickAt(0.6, 0.5));
-    const onDoubleClick = root.props['onDoubleClick'] as ((e: unknown) => void) | undefined;
+    // Preact's DOM event prop is `onDblClick` (it binds the real `dblclick`).
+    const onDoubleClick = root.props['onDblClick'] as ((e: unknown) => void) | undefined;
     expect(onDoubleClick, 'overlay root has no double-click handler').toBeTypeOf('function');
     onDoubleClick!({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
     expect(onCommitPath).toHaveBeenCalledTimes(1);
