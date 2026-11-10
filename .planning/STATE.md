@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-16-PLAN.md
-last_updated: "2026-11-10T21:43:48.322Z"
+stopped_at: Completed 61-17-PLAN.md
+last_updated: "2026-11-10T21:51:42.350Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: 2a579b2ceceaf081b8b8ebe38009c0059dbe4d47
+state_head: 8acd9cfad20cd37756436e63840be79f88ee47c3
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 51
-  completed_plans: 47
+  completed_plans: 48
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 17 of 20
+Plan: 18 of 20
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -105,6 +105,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P14 | 7min | 3 tasks | 2 files |
 | Phase 61 P15 | 6min | 2 tasks | 5 files |
 | Phase 61 P16 | 7min | 2 tasks | 4 files |
+| Phase 61 P17 | 5min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -279,6 +280,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: The pointer capture releases AFTER the commit decision, never in a finally: a capture release must not be able to swallow an edit
 - [Phase 61]: isTextEntryTarget is a new DOM-free leaf rather than a refactor of the Studio's isPhysicsPaintShortcutTarget, so the overlay stays callable from a node-environment test
 - [Phase 61]: The two false history-entry titles are renamed, not deleted: the assertions keep proving one edit snapshot per gesture and one undo
+- [Phase 61]: 61-17: the pen, path-edit and anchor-selection latches moved to the dependency-free vectorPathLatches leaf and are re-exported by vectorPathSession (signal identity pinned), so the Select and picker choke points import the leaf without an evaluation cycle.
+- [Phase 61]: 61-17: Select and picker entry release the vector pen and close any path edit (entry edge only, never the exit edge); Select entry is refused outright while the wireframe view is on (D-16).
 
 ### Pending Todos
 
@@ -371,8 +374,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T21:43:47.051Z
-Stopped at: Completed 61-16-PLAN.md
+Last session: 2026-11-10T21:51:41.089Z
+Stopped at: Completed 61-17-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
