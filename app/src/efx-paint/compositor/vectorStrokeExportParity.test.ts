@@ -28,6 +28,8 @@
 //  it names.
 // ============================================================
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   toStudioStroke,
@@ -40,6 +42,7 @@ import {
   decodeScriptTimelineBinary,
   encodeScriptTimelineBinary,
 } from '../../components/physic-paint/performance/scriptTimelineCodec';
+import { encodeStudioScriptSnapshot } from '../../components/physic-paint/performance/studioScriptSnapshotCodec';
 import {
   getRecordedAquarellePayloadTimeline,
   recordAquarelleStroke,
@@ -50,6 +53,14 @@ import {
   beginAquarellePathEdit,
   restoreAquarelleEditSnapshot,
 } from '../../components/physic-paint/view/aquarelleStrokeSelection';
+import {
+  draftMode,
+  setDraftMode,
+  setWireframeMode,
+  wireframeMode,
+} from '../../components/physic-paint/view/scriptStrokeEdition';
+import { projectLayerDocument } from '../../lib/efxPaintPersistence';
+import { createEfxPaintDocument } from '../document/efxPaintDocument';
 
 type AquarelleTimelineStroke = ReturnType<typeof toStudioStroke>;
 
@@ -87,6 +98,32 @@ const MOVED_ANCHORS: readonly AquarelleAnchor[] = [
   { x: 0.3, y: 0.5, kind: 'auto', width: Math.fround(1.8) },
   { x: 0.75, y: 0.125, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 1, y: 0 } },
 ];
+
+/** The persisted-bytes pipeline this phase must keep free of session state. */
+const PERSISTENCE_PATH_FILES = [
+  'src/components/physic-paint/performance/scriptTimelineCodec.ts',
+  'src/components/physic-paint/performance/studioScriptSnapshotCodec.ts',
+  'src/efx-paint/compositor/efxPaintCompositeCache.ts',
+  'src/efx-paint/compositor/efxPaintCompositor.ts',
+  'src/lib/efxPaintPersistence.ts',
+  'src/lib/exportEngine.ts',
+  '../packages/efx-watercolor/src/payload/toStudioStroke.ts',
+  '../packages/efx-watercolor/src/payload/vectorPath.ts',
+  '../packages/efx-watercolor/src/bake/aquarelleBake.ts',
+] as const;
+
+const SESSION_ONLY_IDENTIFIERS = [
+  'wireframeMode',
+  'pathEditMutationId',
+  'vectorPenActive',
+] as const;
+
+/** app/ — the cache test's own root idiom, reused so the scan paths stay stable. */
+const APP_ROOT = resolve(__dirname, '../../..');
+
+function readAppSource(relativePath: string): string {
+  return readFileSync(resolve(APP_ROOT, relativePath), 'utf8');
+}
 
 /**
  * Save then reopen through the shipped chain. `restoreAquarelleRecordTimeline`
@@ -357,5 +394,73 @@ describe('61-14 vector stroke export parity', () => {
     const secondDecoded = decodeScriptTimelineBinary(secondBytes);
     expect(secondDecoded).toHaveLength(saved.length);
     expect(secondDecoded).toStrictEqual(firstDecoded);
+  });
+
+  it('view flags never reach the persisted bytes: wireframe on and off serialise identically', () => {
+    recordAquarelleStroke(
+      261,
+      stroke(261, { brushId: 'simple-ribbon', anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+    );
+    recordAquarelleStroke(263, stroke(263, { brushId: 'simple-ribbon', renderMode: 'simple-ribbon' }));
+    const events = [...getRecordedAquarellePayloadTimeline()];
+    // ONE document: the flag toggle must be the only variable between the two
+    // serialisations (createEfxPaintDocument mints fresh ids per call).
+    const document = createEfxPaintDocument('layer-1');
+
+    const serialiseLayerDocument = () =>
+      JSON.stringify(projectLayerDocument(document, () => undefined));
+    const serialiseSnapshot = () =>
+      encodeStudioScriptSnapshot({
+        projectId: 'project-1',
+        layerId: 'layer-1',
+        trackId: 'track-1',
+        watercolorEvents: events,
+        watercolorKeyAnchors: [{ mutationId: 261, keyId: 'key-1' }],
+        durableBases: [],
+        railCleanupDone: false,
+      });
+
+    setDraftMode(false);
+    setWireframeMode(false);
+    const documentBytesOff = serialiseLayerDocument();
+    const snapshotBytesOff = serialiseSnapshot();
+    expect(documentBytesOff.length).toBeGreaterThan(0);
+    expect(snapshotBytesOff.byteLength).toBeGreaterThan(0);
+
+    setWireframeMode(true);
+    // Prove the flags flipped before asserting the bytes did not move.
+    expect(wireframeMode.value).toBe(true);
+    expect(draftMode.value).toBe(true);
+    expect(serialiseLayerDocument()).toBe(documentBytesOff);
+    expect(serialiseSnapshot()).toStrictEqual(snapshotBytesOff);
+
+    setWireframeMode(false);
+    setDraftMode(false);
+    expect(wireframeMode.value).toBe(false);
+    expect(serialiseLayerDocument()).toBe(documentBytesOff);
+    expect(serialiseSnapshot()).toStrictEqual(snapshotBytesOff);
+
+    // Neither the layer sub-file nor the snapshot container names view state.
+    expect(documentBytesOff).not.toContain('wireframe');
+    expect(documentBytesOff).not.toContain('draftMode');
+    const snapshotText = new TextDecoder().decode(snapshotBytesOff);
+    expect(snapshotText).not.toContain('wireframe');
+    expect(snapshotText).not.toContain('draftMode');
+  });
+
+  it('no persistence-path module references a session-only identifier', () => {
+    const scanned = PERSISTENCE_PATH_FILES.map((path) => ({
+      path,
+      source: readAppSource(path),
+    }));
+    // Report the scanned count so an empty scan can never pass vacuously.
+    expect(scanned).toHaveLength(PERSISTENCE_PATH_FILES.length);
+    expect(scanned.length).toBeGreaterThan(0);
+    for (const { path, source } of scanned) {
+      expect(source.length, `${path} must be non-empty`).toBeGreaterThan(0);
+      for (const identifier of SESSION_ONLY_IDENTIFIERS) {
+        expect(source.includes(identifier), `${path} must not reference ${identifier}`).toBe(false);
+      }
+    }
   });
 });
