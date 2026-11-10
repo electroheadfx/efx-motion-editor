@@ -238,19 +238,38 @@ Plans:
 **Plans:** 14 plans
 
 Plans:
+**Wave 1**
 - [ ] 61-01-PLAN.md — Wave 0 spike: seam strategy, sampling density, stroke-count cost and the 1.8x width channel, as a probe verdict
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 61-02-PLAN.md — Vector spine math: derived Bezier handles, arc-length sampling, sparse width profile, determinism scan entry
+- [ ] 61-08-PLAN.md — Vector pen entry: the rail's fifth tool row, the V shortcut and the session store
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 61-03-PLAN.md — Payload model: anchor and render-mode types in the opaque engine slot, projection and codec validation
 - [ ] 61-04-PLAN.md — Engine width channel: per-sample width scale through scriptBegin/scriptMove and the adapter, measured at 1.8x
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 61-05-PLAN.md — AQTL v2: vector flags, anchor block and render-mode byte in SNAP v5, fail-closed v1 refusal, lossless restore
 - [ ] 61-06-PLAN.md — Declaration pair: matching TS and Rust members pinned by the field contract test, no new one-language exception
 - [ ] 61-07-PLAN.md — Simple ribbon: crisp render mode in the engine, the brush preset and its crisp thumb, mode-aware script begin
-- [ ] 61-08-PLAN.md — Vector pen entry: the rail's fifth tool row, the V shortcut and the session store
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 61-09-PLAN.md — Draw path: spine and anchor overlay, click/Alt/Enter/Escape gesture, one recorded stroke per path
+
+**Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 61-10-PLAN.md — Edit path: anchor and handle drag, promotion, coupling, insert/delete, multi-select width, anchors travel with the stroke
+
+**Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 61-11-PLAN.md — Sheet controls: the Edit path header button and the Anchor width stepper with an honest effective readout
+
+**Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 61-12-PLAN.md — Render row and Advanced wet globals: two-segment mode control plus the simple-ribbon disclosure, one batch edit
+
+**Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 61-13-PLAN.md — Wireframe: session-only latch generalising Draft, every stroke's construction geometry, no bake while on
+
+**Wave 10** *(blocked on Wave 9 completion)*
 - [ ] 61-14-PLAN.md — Close-out proofs: save/reopen bake-input parity, both render modes, undo/redo byte identity, cache-key behaviour
 
 **Spike before the data model is locked**: per-vertex watercolour feasibility (segment runs vs payload extension), the sampling law, seam quality, stroke-count cost, and the determinism pin. The renderer, not the pen tool, is the scope risk.
