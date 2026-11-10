@@ -8,7 +8,7 @@
 //  No DOM, no Preact components.
 // ============================================================
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host';
 import {
@@ -93,10 +93,22 @@ import {
   setDraftPixelsDirty,
   setScriptStrokeSelection,
   setStrokeSizePreview,
+  setWireframeMode,
   strokeSizePreview,
   type CanvasPoint,
 } from './scriptStrokeEdition';
 import { paintRadiusDocFor } from './aquarelleStrokeBand';
+import {
+  enterPathEdit,
+  enterVectorPen,
+  exitPathEdit,
+  exitVectorPen,
+  pathEditMutationId,
+  resetForStudioOpen,
+  setVectorAnchorSelection,
+  vectorAnchorSelection,
+  vectorPenActive,
+} from './vectorPathSession';
 
 const SHEET = { width: 400, height: 200 };
 
@@ -436,6 +448,84 @@ describe('261101-o2m Draft reset on the select-mode edge', () => {
     } finally {
       dispose();
     }
+  });
+});
+
+// 61-17 (G-6 / D-16): the Select choke point releases the vector pen and any
+// open path edit on the ENTRY edge only — `enterVectorPen` clears Select
+// through this same setter, so an exit-edge release would cancel the pen it
+// just latched. Wireframe is a no-capture view: Select entry is refused
+// outright while it is on, and leaving Select is never refused.
+describe('61-17 G-6 Select entry releases the vector pen', () => {
+  afterEach(() => {
+    resetForStudioOpen();
+    setAquarelleSelectMode(false);
+    setWireframeMode(false);
+    setDraftPixelsDirty(false);
+    setDraftMode(false);
+  });
+
+  it('releases the vector pen on Select entry and keeps Select on', () => {
+    setAquarelleSelectMode(false);
+    enterVectorPen();
+    expect(vectorPenActive.peek()).toBe(true);
+
+    setAquarelleSelectMode(true);
+
+    expect(vectorPenActive.peek()).toBe(false);
+    expect(aquarelleSelectMode.peek()).toBe(true);
+  });
+
+  it('closes an open path edit and clears its anchor selection on Select entry', () => {
+    setAquarelleSelectMode(false);
+    enterPathEdit('m17');
+    setVectorAnchorSelection([0, 2]);
+    expect(pathEditMutationId.peek()).toBe('m17');
+
+    setAquarelleSelectMode(true);
+
+    expect(pathEditMutationId.peek()).toBeNull();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+    expect(aquarelleSelectMode.peek()).toBe(true);
+  });
+
+  it('never releases the pen on the Select exit edge', () => {
+    setAquarelleSelectMode(false);
+    enterVectorPen();
+    // `enterVectorPen` itself calls setAquarelleSelectMode(false) — the pen it
+    // just latched must survive that exit path.
+    expect(vectorPenActive.peek()).toBe(true);
+
+    setAquarelleSelectMode(false);
+
+    expect(vectorPenActive.peek()).toBe(true);
+  });
+
+  it('refuses Select entry while the wireframe view is on', () => {
+    setAquarelleSelectMode(false);
+    setWireframeMode(true);
+    enterVectorPen();
+
+    setAquarelleSelectMode(true);
+    expect(aquarelleSelectMode.peek()).toBe(false);
+    expect(vectorPenActive.peek()).toBe(true);
+
+    // A path edit and its selection are equally untouched by the refusal.
+    enterPathEdit('m19');
+    setVectorAnchorSelection([1]);
+    setAquarelleSelectMode(true);
+    expect(aquarelleSelectMode.peek()).toBe(false);
+    expect(pathEditMutationId.peek()).toBe('m19');
+    expect(vectorAnchorSelection.peek()).toEqual([1]);
+  });
+
+  it('still turns Select off while the wireframe view is on', () => {
+    setAquarelleSelectMode(true);
+    setWireframeMode(true);
+
+    setAquarelleSelectMode(false);
+
+    expect(aquarelleSelectMode.peek()).toBe(false);
   });
 });
 

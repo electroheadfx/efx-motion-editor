@@ -194,12 +194,13 @@ describe('the session module is session-only (T-61-53)', () => {
     'utf8',
   );
 
-  it('imports only the signals runtime and the two sibling session surfaces', () => {
+  it('imports only the signals runtime and the three sibling session surfaces', () => {
     const importLines = sessionSrc.split('\n').filter((line) => line.startsWith('import '));
     expect(importLines).toEqual([
-      "import { signal, type Signal } from '@preact/signals';",
+      "import { signal } from '@preact/signals';",
       "import { disarmAquarellePicker } from './aquarelleColorPicker';",
       "import { setAquarelleSelectMode } from './aquarelleStrokeSelection';",
+      "import { clearVectorAnchorSelection, exitPathEdit, exitVectorPen, pathEditMutationId, vectorPenActive, writeIfChanged } from './vectorPathLatches';",
     ]);
   });
 
