@@ -141,10 +141,31 @@ function diffMember(name: string, tsKeys: Set<string>, rustKeys: Set<string>): s
   return problems;
 }
 
-describe('TS ↔ Rust .mce field-diff contract', () => {
-  const rust = parseRustStructs(RUST_SRC);
-  const ts = parseTsInterfaces(TS_SOURCES);
+// Both surfaces are parsed once; every describe block below asserts against the
+// same parsed view, so a row added by any phase reads the live source.
+const rust = parseRustStructs(RUST_SRC);
+const ts = parseTsInterfaces(TS_SOURCES);
 
+/**
+ * Assert a named .mce member exists in BOTH languages, carries every listed
+ * wire key on both sides, and has no other one-language key.
+ */
+function expectMemberKeys(name: string, keys: readonly string[]): void {
+  expect(ts.has(name), `TS parser missed ${name}`).toBe(true);
+  expect(rust.has(name), `Rust parser missed ${name}`).toBe(true);
+  const tsKeys = ts.get(name)!;
+  const rustKeys = new Set(rust.get(name)!.values());
+  for (const key of keys) {
+    expect(tsKeys.has(key), `${name}.${key}: TS side is missing the key`).toBe(true);
+    expect(rustKeys.has(key), `${name}.${key}: Rust side is missing the key`).toBe(true);
+  }
+  // And no missing keys on either side for this member (the group must be a
+  // complete two-language declaration, not a partial sketch).
+  const problems = diffMember(name, tsKeys, rustKeys);
+  expect(problems, `${name} field-diff violations:\n${problems.join('\n')}`).toEqual([]);
+}
+
+describe('TS ↔ Rust .mce field-diff contract', () => {
   it('parses both declaration surfaces', () => {
     expect(rust.size).toBeGreaterThan(10);
     expect(ts.size).toBeGreaterThan(10);
@@ -207,24 +228,6 @@ describe('TS ↔ Rust .mce field-diff contract', () => {
 // ---------------------------------------------------------------------------
 
 describe('Phase 56 .mce field set (DATA-04 / D-27)', () => {
-  const rust = parseRustStructs(RUST_SRC);
-  const ts = parseTsInterfaces(TS_SOURCES);
-
-  function expectMemberKeys(name: string, keys: readonly string[]): void {
-    expect(ts.has(name), `TS parser missed ${name}`).toBe(true);
-    expect(rust.has(name), `Rust parser missed ${name}`).toBe(true);
-    const tsKeys = ts.get(name)!;
-    const rustKeys = new Set(rust.get(name)!.values());
-    for (const key of keys) {
-      expect(tsKeys.has(key), `${name}.${key}: TS side is missing the key`).toBe(true);
-      expect(rustKeys.has(key), `${name}.${key}: Rust side is missing the key`).toBe(true);
-    }
-    // And no missing keys on either side for this member (the four groups must
-    // be complete two-language declarations, not partial sketches).
-    const problems = diffMember(name, tsKeys, rustKeys);
-    expect(problems, `${name} field-diff violations:\n${problems.join('\n')}`).toEqual([]);
-  }
-
   it('declares paper display state on the fond (id, strength, scale) in both languages', () => {
     // PAPER-03 / D-22: paper id + strength + scale ride the document fond.
     expectMemberKeys('McePaperDisplayState', ['id', 'strength', 'scale']);
@@ -252,5 +255,37 @@ describe('Phase 56 .mce field set (DATA-04 / D-27)', () => {
       expect(entry.toLowerCase()).not.toContain('brushpack');
       expect(entry.toLowerCase()).not.toContain('brush_pack');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 61 vector field set (VEC-06 / REL-02)
+//
+// The vector stroke rides the already-opaque engine slot, so the risk is not
+// corruption but SILENT NON-DECLARATION: the payload works today and drops out
+// of the dual-language contract the first time the models are regenerated.
+// These two rows put the shape under the same pin as every other .mce member.
+//
+// The key sets mirror the AQTL v2 field names from 61-05 exactly, including
+// the `in` / `out` handle pair and the camelCase `renderMode` wire key.
+// ---------------------------------------------------------------------------
+
+describe('Phase 61 vector field set (VEC-06 / REL-02)', () => {
+  it('declares the vector anchor shape in both languages', () => {
+    // VEC-06: x, y, kind, the optional handle pair and the sparse width factor.
+    expectMemberKeys('MceAquarelleAnchor', ['x', 'y', 'kind', 'in', 'out', 'width']);
+  });
+
+  it('declares the vector path shape in both languages', () => {
+    // VEC-06 / D-12: the non-empty anchor list plus the optional render mode.
+    expectMemberKeys('MceAquarelleVectorPath', ['anchors', 'renderMode']);
+  });
+
+  it('the in-handle wire key is the rename target of a named field, never a raw identifier', () => {
+    // REL-02: the contract parser reads `pub <ident>:`; `pub r#in` would be
+    // invisible to it, so the declaration must stay `in_` + serde rename.
+    expect(RUST_SRC).not.toContain('pub r#in');
+    expect(RUST_SRC).toContain('#[serde(rename = "in")]');
+    expect(rust.get('MceAquarelleAnchor')!.get('in_')).toBe('in');
   });
 });

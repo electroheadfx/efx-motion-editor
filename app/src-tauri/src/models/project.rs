@@ -463,3 +463,45 @@ pub struct MceBrushPackSnapshot {
     pub kind: String,
     pub entries: Vec<Value>,
 }
+
+/// A document-uv point carried on the wire (61-06). A named struct rather than
+/// a tuple so the field-diff parser sees the same `x` / `y` keys on both sides.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Vec2Wire {
+    pub x: f32,
+    pub y: f32,
+}
+
+/// One anchor of a persisted vector path (VEC-06 / 61-06). Mirrors the AQTL v2
+/// anchor block shipped in 61-05: `x` / `y` are document-uv, `kind` is the
+/// closed `auto` / `bezier` union, and `in` / `out` carry absolute handle
+/// endpoints only for a `bezier` anchor. `width` is the sparse per-anchor width
+/// factor (D-10) — absent reads 1.
+///
+/// Contract declaration (REL-02): this is a declaration surface, not a second
+/// parser — the engine slot stays opaque on the wire. `in` is a Rust keyword,
+/// so the field is `in_` with a serde rename to the wire key; the contract
+/// parser reads `pub <ident>:` and would silently miss a raw identifier.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceAquarelleAnchor {
+    pub x: f32,
+    pub y: f32,
+    pub kind: String,
+    #[serde(rename = "in")]
+    pub in_: Option<Vec2Wire>,
+    pub out: Option<Vec2Wire>,
+    pub width: Option<f32>,
+}
+
+/// The persisted vector-path shape of one stroke (VEC-06 / 61-06): a non-empty
+/// anchor list plus an optional render mode (D-12, absent reads `watercolor`).
+/// Mirrors the AQTL v2 field names from 61-05.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceAquarelleVectorPath {
+    pub anchors: Vec<MceAquarelleAnchor>,
+    #[serde(rename = "renderMode")]
+    pub render_mode: Option<String>,
+}
