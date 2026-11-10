@@ -127,16 +127,30 @@ export function WatercolorRail({
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {
         // 261107 UAT: the rail shows ONE active surface. While Motion
         // boundaries (animate mode) is on, the paint row renders deselected.
+        // 61-13 (D-16): the wireframe latch also deselects it — nothing may
+        // bake while the construction view is up, so no paint tool is "on".
         const isActive =
-          !selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === id;
+          !selectActive
+          && !pickerActive
+          && !motionBoundaryActive
+          && !penActive
+          && !wireframeActive
+          && active === id;
         const waterGated = id === 'water' && !wetAvailable;
+        // 61-13: the paint row's disable reason. The latch never silently
+        // switches tools — it states why the press is inert.
+        const wireframeReason = shortcut === undefined
+          ? `${label} — turn wireframe off to paint`
+          : `${label} (${shortcut}) — turn wireframe off to paint`;
         return (
           <button
             key={id}
             type="button"
             class={`physics-paint-icon-button${isActive ? ' active' : ''}`}
-            disabled={railDisabled || (id === 'water' && !wetAvailable)}
-            title={waterGated ? 'Water (W) — needs standing water' : shortcut ? `${label} (${shortcut})` : label}
+            disabled={railDisabled || wireframeActive || (id === 'water' && !wetAvailable)}
+            title={wireframeActive
+              ? wireframeReason
+              : waterGated ? 'Water (W) — needs standing water' : shortcut ? `${label} (${shortcut})` : label}
             aria-label={label}
             aria-pressed={isActive}
             onClick={() => {
@@ -180,8 +194,10 @@ export function WatercolorRail({
         type="button"
         class={`physics-paint-icon-button${pickerActive ? ' active' : ''}`}
         data-testid="aquarelle-picker-toggle"
-        disabled={railDisabled}
-        title="Picker (I) — click the canvas to sample the color under the cursor · hold Alt for a temporary picker"
+        disabled={railDisabled || wireframeActive}
+        title={wireframeActive
+          ? 'Picker (I) — turn wireframe off to pick'
+          : 'Picker (I) — click the canvas to sample the color under the cursor · hold Alt for a temporary picker'}
         aria-label="Picker"
         aria-pressed={pickerActive}
         onClick={() => {
@@ -246,8 +262,10 @@ export function WatercolorRail({
         type="button"
         class="physics-paint-icon-button"
         data-testid="aquarelle-dry"
-        disabled={railDisabled}
-        title="Flash-dry the sheet (F). Recorded in the script."
+        disabled={railDisabled || wireframeActive}
+        title={wireframeActive
+          ? 'Dry (F) — turn wireframe off to paint'
+          : 'Flash-dry the sheet (F). Recorded in the script.'}
         aria-label="Dry"
         onClick={() => emitAquarelleDry(aquarelleRecordClock())}
       >

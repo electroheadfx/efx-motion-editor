@@ -303,6 +303,67 @@ describe('WatercolorRail — the wireframe latch (61-13)', () => {
   });
 });
 
+// 61-13 Task 3: the wireframe gates. A gated control states WHY it is inert in
+// its `title` instead of starting an implicit exit (D-16); every reason below
+// is the approved literal. E7 overflow (flagged assumption): the wireframe
+// overlay draws every stroke on the sheet with no cap — the Wave 0 probe's
+// measured reference count (10 strokes at 1920x1080, 61-01 result.json) is the
+// threshold; a viewport limit is the stated fallback ONLY if a real sheet
+// exceeds it, so the row stays open until then.
+describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
+  it('disables the whole paint row with its reason and renders it deselected', () => {
+    wireframeMode.value = true;
+    const nav = renderRail();
+    const paint = directChildren(nav).slice(0, 4);
+    expect(paint.map((node) => node.props?.title)).toEqual([
+      'Brush (B) — turn wireframe off to paint',
+      'Water (W) — turn wireframe off to paint',
+      'Pen (P) — turn wireframe off to paint',
+      'Eraser (E) — turn wireframe off to paint',
+    ]);
+    for (const node of paint) {
+      expect(node.props?.disabled).toBe(true);
+      expect(node.props?.['aria-pressed']).toBe(false);
+      expect(String(node.props?.class)).not.toContain('active');
+    }
+  });
+
+  it('disables Dry and the picker with their reasons', () => {
+    wireframeMode.value = true;
+    const nav = renderRail();
+    const dry = button(nav, 'aquarelle-dry')!;
+    expect(dry.props?.disabled).toBe(true);
+    expect(dry.props?.title).toBe('Dry (F) — turn wireframe off to paint');
+    const picker = button(nav, 'aquarelle-picker-toggle')!;
+    expect(picker.props?.disabled).toBe(true);
+    expect(picker.props?.title).toBe('Picker (I) — turn wireframe off to pick');
+  });
+
+  it('keeps the vector pen and the latch itself available — an empty sheet never locks', () => {
+    wireframeMode.value = true;
+    const nav = renderRail();
+    expect(penButton(nav).props?.disabled).toBe(false);
+    const toggle = button(nav, 'aquarelle-wireframe-toggle')!;
+    expect(toggle.props?.disabled).toBe(false);
+    expect(toggle.props?.['aria-pressed']).toBe(true);
+  });
+
+  it('restores the paint row when the latch clears', () => {
+    wireframeMode.value = true;
+    renderRail();
+    wireframeMode.value = false;
+    const nav = renderRail();
+    const paint = directChildren(nav).slice(0, 4);
+    expect(paint.map((node) => node.props?.title)).toEqual([
+      'Brush (B)',
+      'Water (W) — needs standing water',
+      'Pen (P)',
+      'Eraser (E)',
+    ]);
+    expect(paint[0]!.props?.disabled).toBe(false);
+  });
+});
+
 describe('the rail separator rule (physicsPaintStudio.css)', () => {
   it('is the derived 1px #5a5e63 rule, 21px wide', () => {
     const css = readFileSync(resolve(__dirname, '../physicsPaintStudio.css'), 'utf8');

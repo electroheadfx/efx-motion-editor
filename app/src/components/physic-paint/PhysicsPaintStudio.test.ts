@@ -57,6 +57,9 @@ const livePixelTransactions = readFileSync(fileURLToPath(new URL('./roto/rotoLiv
 // 261023-g4p: ONE shared gesture implementation + ONE shared edition module.
 const scriptStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/ScriptStrokeOverlay.tsx', import.meta.url)), 'utf8');
 const scriptStrokeEdition = readFileSync(fileURLToPath(new URL('./view/scriptStrokeEdition.ts', import.meta.url)), 'utf8');
+// 61-13: the Draft switch is the one control the wireframe must DISABLE and
+// leave visibly ON (the latch owns the settle).
+const strokeSettingsDialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintStrokeSettingsDialog.tsx', import.meta.url)), 'utf8');
 // 261101-o2m (D-02): the frozen-sheet leaf the cache eye hides.
 const cachedBase = readFileSync(fileURLToPath(new URL('./engine/AquarelleCachedBaseLayer.tsx', import.meta.url)), 'utf8');
 // 261101-o2m (D-05): the main-realm Draft gate, its Studio publisher and the
@@ -3172,10 +3175,17 @@ describe('261022-pim watercolor stroke select surface', () => {
     // 261030-cnq picker joins it — an armed picker deselects the paint tool too.
     // 261107: Motion boundaries (animate mode) joins them — one active surface.
     // 61-08 (D-05): the vector pen joins the same one-active-surface law.
+    // 61-13 (D-16): the wireframe latch joins them too — while the
+    // construction view is up, no paint tool renders "on".
     expect(watercolorRail).toContain('const isActive =');
-    expect(watercolorRail).toContain(
-      '!selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === id;',
+    const isActiveRegion = watercolorRail.slice(
+      watercolorRail.indexOf('const isActive ='),
+      watercolorRail.indexOf('const waterGated'),
     );
+    for (const clause of ['!selectActive', '!pickerActive', '!motionBoundaryActive', '!penActive', '!wireframeActive']) {
+      expect(isActiveRegion, `isActive must keep the ${clause} clause`).toContain(clause);
+    }
+    expect(isActiveRegion).toContain('active === id;');
     expect(watercolorRail).toContain('disabled={railDisabled || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
@@ -6686,5 +6696,95 @@ describe('61-13 wireframe latch — session-only, Draft-generalising', () => {
     );
     expect(toStudioStroke).not.toContain('wireframeMode');
     expect(types).not.toContain('wireframe');
+  });
+});
+
+// 61-13 Task 3: the gates and their edges. A gated control states WHY it is
+// inert rather than starting an implicit exit; the Draft switch stays visibly
+// ON and inert because the latch owns the ONE route out; the cache eye keeps
+// its unconditional availability. E7 overflow (flagged assumption): the
+// wireframe overlay draws every stroke with no cap — the Wave 0 probe's
+// measured reference count (10 strokes at 1920x1080, 61-01 result.json) is the
+// threshold, and a viewport limit is the stated fallback ONLY if a real sheet
+// exceeds it. The row stays open until that count is exceeded.
+describe('61-13 wireframe gates — reasons, Draft ownership, idempotency', () => {
+  function resetWireframeGateSignals(): void {
+    setWireframeSettleInFlight(false);
+    wireframeMode.value = false;
+    draftPixelsDirty.value = false;
+    draftMode.value = false;
+  }
+
+  beforeEach(resetWireframeGateSignals);
+  afterEach(resetWireframeGateSignals);
+
+  it('states every gated control reason in the rail source', () => {
+    // The four paint literals are composed as `${label} (${shortcut}) — ...`
+    // and asserted verbatim by the RENDERED rail pins (PhysicsPaintToolRail.
+    // test.ts); Dry and the picker carry direct literals.
+    expect(toolRail).toContain('— turn wireframe off to paint');
+    expect(toolRail).toContain("'Dry (F) — turn wireframe off to paint'");
+    expect(toolRail).toContain("'Picker (I) — turn wireframe off to pick'");
+    expect(toolRail).toContain('disabled={railDisabled || wireframeActive || (id === \'water\' && !wetAvailable)}');
+    expect(toolRail).toContain('wireframeReason');
+  });
+
+  it('renders the Draft switch ON and disabled while the latch owns the settle', () => {
+    expect(strokeSettingsDialog).toContain('const wireframeOn = wireframeMode.value;');
+    expect(strokeSettingsDialog).toContain('disabled={wireframeOn}');
+    expect(strokeSettingsDialog).toContain(
+      "'Draft — on while wireframe is on. Turn wireframe off to re-render.'",
+    );
+    const switchStart = strokeSettingsDialog.indexOf('data-testid="stroke-settings-draft-switch"');
+    const cacheStart = strokeSettingsDialog.indexOf('data-testid="stroke-settings-cache-visibility"');
+    expect(switchStart).toBeGreaterThan(-1);
+    expect(cacheStart).toBeGreaterThan(switchStart);
+    // Programmatic clicks are refused too — the wireframe is the only exit.
+    expect(strokeSettingsDialog.slice(switchStart, cacheStart)).toContain(
+      'if (wireframeMode.peek()) return;',
+    );
+    // D-02: the cache eye stays available — no disable reaches it.
+    const cacheRegion = strokeSettingsDialog.slice(
+      cacheStart,
+      strokeSettingsDialog.indexOf('</button>', cacheStart),
+    );
+    expect(cacheRegion).not.toContain('disabled');
+  });
+
+  it('keeps the vector pen outside the paint-row gate (it stays available)', () => {
+    const penStart = toolRail.indexOf('data-testid="aquarelle-vector-pen-toggle"');
+    expect(penStart).toBeGreaterThan(-1);
+    const penRegion = toolRail.slice(penStart, toolRail.indexOf('</button>', penStart));
+    expect(penRegion).toContain('disabled={railDisabled}');
+    expect(penRegion).not.toContain('wireframeActive');
+  });
+
+  it('keeps the latch enabled on an empty sheet — the toggle has no data gate', () => {
+    // The behavioral halves: the rail keeps the toggle enabled and the overlays
+    // return null for an empty sheet (PhysicsPaintToolRail.test.ts /
+    // VectorPathOverlay.test.ts). This pin proves the rail never grows a
+    // stroke-count condition around the control.
+    const toggleStart = toolRail.indexOf('data-testid="aquarelle-wireframe-toggle"');
+    expect(toggleStart).toBeGreaterThan(-1);
+    const toggleRegion = toolRail.slice(toggleStart, toolRail.indexOf('</button>', toggleStart));
+    expect(toggleRegion).toContain('disabled={railDisabled}');
+    expect(toggleRegion).not.toContain('strokes');
+  });
+
+  it('treats two ON calls as ONE state change — the overlay subscriber runs once', () => {
+    let passes = 0;
+    const stop = effect(() => {
+      void wireframeMode.value;
+      passes += 1;
+    });
+    expect(passes).toBe(1);
+
+    setWireframeMode(true);
+    setWireframeMode(true);
+    stop();
+
+    // Initial run + exactly one notified transition. VectorPathOverlay reads
+    // this signal only, so one notification is one overlay pass.
+    expect(passes).toBe(2);
   });
 });

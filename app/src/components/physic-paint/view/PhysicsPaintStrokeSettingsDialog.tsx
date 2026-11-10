@@ -50,6 +50,7 @@ import {
   setFrozenCacheVisible,
   setStrokeSizePreview,
   strokeSizePreview,
+  wireframeMode,
 } from './scriptStrokeEdition';
 import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
 import { clampStackPosition } from './stackOrder';
@@ -451,6 +452,10 @@ export function PhysicsPaintStrokeSettingsDialog({
   // document edit, never undoable) read by this strip leaf — never the Studio
   // render body.
   const draftOn = draftMode.value;
+  // 61-13 (D-16): wireframe OWNS the Draft — ON forces it on, OFF settles it.
+  // The switch stays visibly ON but inert, so no second route out can race the
+  // wireframe's single-flight settle.
+  const wireframeOn = wireframeMode.value;
   // 261101-o2m (D-02): the cache eye — a display-only VIEW preference read by
   // this strip leaf and the cached-base leaf. It never gates a commit, a
   // capture, a save or an export.
@@ -914,11 +919,16 @@ export function PhysicsPaintStrokeSettingsDialog({
             role="switch"
             aria-checked={draftOn ? 'true' : 'false'}
             aria-label="Draft"
-            title="Draft — suspend the watercolor re-render until you turn it off"
+            title={wireframeOn
+              ? 'Draft — on while wireframe is on. Turn wireframe off to re-render.'
+              : 'Draft — suspend the watercolor re-render until you turn it off'}
             class={`physics-paint-script-switch${draftOn ? ' is-on' : ''}`}
+            disabled={wireframeOn}
             // The header is the drag handle: the press must not start one.
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => {
+              // 61-13: the wireframe owns the one route out of Draft.
+              if (wireframeMode.peek()) return;
               // OFF is routed, never written: the settle clears the invariant
               // and then flips the mode (a bundle without one leaves Draft ON).
               if (draftMode.peek()) {
