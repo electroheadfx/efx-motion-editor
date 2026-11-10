@@ -306,9 +306,19 @@ describe('the anchor type is re-exported, never redeclared', () => {
 
   it('carries no per-anchor brush type and no per-anchor colour member (VEC-04)', () => {
     const source = readFileSync(VECTOR_PATH_SOURCE, 'utf8')
-    expect(/\bbrushId\b/.test(source)).toBe(false)
-    expect(/\bbrushType\b/.test(source)).toBe(false)
-    expect(/\bcolour?\b\s*:/.test(source)).toBe(false)
-    expect(/\bcolor\s*:/.test(source)).toBe(false)
+    // 61-07: `resolveRenderModeForBrushId`/`recordedRenderModeField` map a
+    // STROKE-level brush id to the stroke's render mode — they are not anchor
+    // members. The prohibition is per-ANCHOR paint identity, so the scan is
+    // scoped to the anchor type and its canonicalisation, the only place an
+    // anchor member can be declared.
+    const anchorRegion = source.slice(
+      source.indexOf('type MutableAnchor'),
+      source.indexOf('export function normaliseAquarelleAnchors'),
+    )
+    expect(anchorRegion.length).toBeGreaterThan(0)
+    expect(/\bbrushId\b/.test(anchorRegion)).toBe(false)
+    expect(/\bbrushType\b/.test(anchorRegion)).toBe(false)
+    expect(/\bcolour?\b\s*:/.test(anchorRegion)).toBe(false)
+    expect(/\bcolor\s*:/.test(anchorRegion)).toBe(false)
   })
 })
