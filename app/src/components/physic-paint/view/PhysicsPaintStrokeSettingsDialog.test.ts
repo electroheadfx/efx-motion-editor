@@ -18,6 +18,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  ANCHOR_WIDTH_EMPTY_READING,
+  ANCHOR_WIDTH_NO_EDIT_REASON,
   AQUARELLE_ANCHOR_WIDTH_DEFAULT,
   AQUARELLE_ANCHOR_WIDTH_MAX,
   AQUARELLE_ANCHOR_WIDTH_MIN,
@@ -277,6 +279,48 @@ describe('61-11 E4 rows: the Anchor width block', () => {
     expect(block).toContain('bundle.applyAnchorWidths?.(');
     expect(block).not.toContain('buildAppearancePatch');
     expect(block).not.toContain('readNumericField');
+  });
+
+  // ── 61-19 (G-5): the inert state must state WHY it is inert ─────────
+
+  it('61-19 inert: no open path edit reads empty and one caption span serves both reasons', () => {
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(block).toContain('disabled={anchorWidthEmpty}');
+    const emptyBranch = regionOf(dialogSource, '{anchorWidthEmpty ? (', ') : null}');
+    expect(emptyBranch).toContain(ANCHOR_WIDTH_NO_EDIT_REASON);
+    expect(emptyBranch).toContain('Select anchors on the canvas to set their width.');
+  });
+
+  it('61-19 inert cause: the reading is shadowed by the resolved target, never guessed', () => {
+    expect(dialogSource).toContain('resolveAnchorWidthTarget({');
+    expect(dialogSource).toContain('pathEditMutationId: pathEditMutationId.value');
+    expect(dialogSource).toContain('anchorWidthTarget === null');
+    expect(dialogSource).toContain('ANCHOR_WIDTH_EMPTY_READING');
+    expect(dialogSource).toContain('readAnchorWidthReading(');
+    // The two model constants are the ones the block branches on.
+    expect(ANCHOR_WIDTH_EMPTY_READING).toEqual({
+      value: AQUARELLE_ANCHOR_WIDTH_DEFAULT,
+      mixed: false,
+      count: 0,
+    });
+    expect(ANCHOR_WIDTH_NO_EDIT_REASON).toBe('Open Edit path on this stroke to set anchor widths.');
+  });
+
+  it('61-19 live: the shipped commit call and clamp are untouched, and no local writer exists', () => {
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(block).toContain('void bundle.applyAnchorWidths?.(');
+    expect(block).toContain('anchorWidthPatchValue(value)');
+    expect(block).not.toContain('beginAquarellePathEdit');
+  });
+
+  it('61-19 no new surface: one stepper, and the caption testid still precedes its style', () => {
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(countOf(block, '<SliderStepper')).toBe(1);
+    expect(block).not.toContain('style=');
+    // The testid must stay BEFORE the style attribute: the shipped region pin
+    // ends at the testid, which is what keeps the block's no-`style=` pin true.
+    const caption = regionOf(dialogSource, BLOCK_END, '</span>');
+    expect(caption).toContain('style={ANCHOR_WIDTH_CAPTION_STYLE}');
   });
 });
 
