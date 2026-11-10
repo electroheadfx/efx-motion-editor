@@ -17,6 +17,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import {
+  AQUARELLE_ANCHOR_WIDTH_DEFAULT,
+  AQUARELLE_ANCHOR_WIDTH_MAX,
+  AQUARELLE_ANCHOR_WIDTH_MIN,
+  AQUARELLE_ANCHOR_WIDTH_STEP,
+  WATERCOLOR_SETTINGS_FIELDS,
+} from './strokeSettingsModel';
 
 const dialogSource = readFileSync(
   fileURLToPath(new URL('./PhysicsPaintStrokeSettingsDialog.tsx', import.meta.url)),
@@ -24,6 +31,10 @@ const dialogSource = readFileSync(
 );
 const modelSource = readFileSync(
   fileURLToPath(new URL('./strokeSettingsModel.ts', import.meta.url)),
+  'utf8',
+);
+const cssSource = readFileSync(
+  fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)),
   'utf8',
 );
 
@@ -130,5 +141,138 @@ describe('61-11 Edit path header button (E2)', () => {
     const lifecycle = regionOf(dialogSource, 'const wasOpen = wasOpenRef.current;', '}, [open, bundle, pathEditGateEnabled]);');
     expect(lifecycle).toContain('pathEditExitRequested = false;');
     expect(lifecycle).toContain('exitPathEdit();');
+  });
+});
+
+// ============================================================
+//  61-11 Task 3 — close the E2 and E4 UI-consideration rows.
+//
+//  Row ledger (every applicable row this plan carries):
+//    E2 loading      — dismissed: the selection read is synchronous; the
+//                      disabled state is immediate, no skeleton exists.
+//    E2 error        -> pinned below (0.4 opacity + the reason in `title`).
+//    E2 overflow     -> pinned below (shipped 22x22 CSS geometry, no text).
+//    E2 long-text    -> pinned below (native `title`, zero rendered text).
+//    E4 empty        -> pinned below (disabled at 1.0 + the exact caption).
+//    E4 loading      — dismissed: factors are read synchronously.
+//    E4 error        -> pinned in both files (clamp both ends, no error UI).
+//    E4 partial      -> pinned in the model test (Mixed + per-anchor factors).
+//    E4 overflow     -> pinned below (shipped SliderStepper, fixed gutter).
+//    E4 long-text    -> pinned below (constant label, numeric readout).
+// ============================================================
+
+describe('61-11 E2 rows: the Edit path disabled state', () => {
+  it('E2 error: the disabled reason is the model literal and rides title only', () => {
+    const button = regionOf(dialogSource, SPLINE_START, SPLINE_END);
+    expect(button).toContain('title={pathEditGate.title}');
+    expect(button).toContain('disabled={!pathEditGate.enabled}');
+    // The 0.4 opacity is the SHIPPED disabled rule every header button wears —
+    // the new button adds no state of its own.
+    const disabledRule = regionOf(
+      cssSource,
+      '.physics-paint-stroke-settings-header-button:disabled {',
+      '}',
+    );
+    expect(disabledRule).toContain('opacity: 0.4;');
+  });
+
+  it('E2 overflow: the shipped 22x22 chrome is fixed and the icon is the ONLY child', () => {
+    const chrome = regionOf(cssSource, '.physics-paint-stroke-settings-header-button {', '}');
+    expect(chrome).toContain('width: 22px;');
+    expect(chrome).toContain('height: 22px;');
+    expect(chrome).toContain('flex: 0 0 auto;');
+    const button = regionOf(dialogSource, SPLINE_START, SPLINE_END);
+    // Icon-only: the element's whole child list is the glyph, so no text node
+    // can be laid out (and therefore none can overflow).
+    expect(button).toMatch(/>\s*<SplinePointer size=\{12\} aria-hidden="true" \/>\s*<\/button>/);
+  });
+
+  it('E2 long-text: the reason lives in the native title, never in the DOM', () => {
+    const button = regionOf(dialogSource, SPLINE_START, SPLINE_END);
+    expect(button).toContain('title={pathEditGate.title}');
+    expect(button).not.toContain('{PATH_EDIT_LABEL}');
+    expect(button).not.toMatch(/>\s*Edit path\s*</);
+    // The whole child list is the glyph — no text node exists to lay out.
+    expect(button).toMatch(/>\s*<SplinePointer size=\{12\} aria-hidden="true" \/>\s*<\/button>/);
+  });
+});
+
+describe('61-11 E4 rows: the Anchor width block', () => {
+  const BLOCK_START = 'data-testid="stroke-settings-anchor-width"';
+  const BLOCK_END = 'data-testid="stroke-settings-anchor-width-caption"';
+
+  it('E4 empty: zero anchors selected reads 1.0, disabled, with the exact caption', () => {
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(block).toContain('value={anchorWidthEmpty');
+    expect(block).toContain('? AQUARELLE_ANCHOR_WIDTH_DEFAULT');
+    expect(block).toContain('disabled={anchorWidthEmpty}');
+    // The caption and the disabled condition are the SAME branch — never a
+    // caption that outlives the disabled state.
+    const emptyBranch = regionOf(dialogSource, '{anchorWidthEmpty ? (', ') : null}');
+    expect(emptyBranch).toContain(BLOCK_END);
+    expect(emptyBranch).toContain('Select anchors on the canvas to set their width.');
+    // And the empty branch is defined by the reading's count, not a size guess.
+    expect(dialogSource).toContain('const anchorWidthEmpty = anchorWidthReading.count === 0;');
+  });
+
+  it('E4 error: the band is bound from the model constants and clamps, never an error UI', () => {
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(block).toContain('min={AQUARELLE_ANCHOR_WIDTH_MIN}');
+    expect(block).toContain('max={AQUARELLE_ANCHOR_WIDTH_MAX}');
+    expect(block).toContain('step={AQUARELLE_ANCHOR_WIDTH_STEP}');
+    expect(block).toContain('precision={1}');
+    expect(block).toContain('allowOutOfRangeEntry');
+    expect(block).toContain('commitOnRelease');
+    // The clamped value is the ONLY thing the handler emits.
+    expect(block).toContain('anchorWidthPatchValue(value)');
+    // No error surface: no invalid flag, no error text, no red on this row.
+    expect(block).not.toContain('ariaInvalid');
+    expect(block).not.toContain('MIXED_CAPTION_STYLE');
+    // The constants themselves are the shipped D-09 band.
+    expect(AQUARELLE_ANCHOR_WIDTH_MIN).toBe(0.2);
+    expect(AQUARELLE_ANCHOR_WIDTH_MAX).toBe(2);
+    expect(AQUARELLE_ANCHOR_WIDTH_STEP).toBe(0.1);
+    expect(AQUARELLE_ANCHOR_WIDTH_DEFAULT).toBe(1);
+  });
+
+  it('E4 partial: the shipped mixed prop is bound from the reading', () => {
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(block).toContain('mixed={anchorWidthReading.mixed}');
+    // Mixed is SliderStepper's shipped red italic caption — this row adds no
+    // second Mixed copy of its own.
+    expect(block).not.toContain('Mixed');
+  });
+
+  it('E4 overflow: the shipped SliderStepper owns the fixed gutter', () => {
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(block).toContain('<SliderStepper');
+    // No bespoke control, no width style: the shared 46x17 value box and the
+    // fixed label column are the shipped geometry.
+    expect(block).not.toContain('style=');
+    expect(block).not.toContain('width:');
+  });
+
+  it('E4 long-text: the label is constant and the readout is numeric', () => {
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(block).toContain('label="Anchor width"');
+    expect(block).toContain('ariaLabel="Anchor width"');
+    expect(block).toContain('`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`');
+  });
+
+  it('mounts under the Size row and is NOT an appearance-field registry entry', () => {
+    // The registry is the appearance field list; the width factor is not one of
+    // its params (it belongs to the anchors, not to `params`).
+    expect(WATERCOLOR_SETTINGS_FIELDS.map((field) => field.key)).not.toContain('anchorWidth');
+    const gateAt = dialogSource.indexOf(
+      "if (field.key !== 'size' || !anchorWidthAvailable) return row;",
+    );
+    const blockAt = dialogSource.indexOf(BLOCK_START);
+    expect(gateAt).toBeGreaterThan(-1);
+    expect(blockAt).toBeGreaterThan(gateAt);
+    // The block commits through the anchor seam, never the appearance patch.
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(block).toContain('bundle.applyAnchorWidths?.(');
+    expect(block).not.toContain('buildAppearancePatch');
+    expect(block).not.toContain('readNumericField');
   });
 });

@@ -3592,3 +3592,60 @@ describe('61-11 Anchor width reading (Paint tab)', () => {
     expect(anchorWidthPatchValue(Number.NaN)).toBe(1);
   });
 });
+
+// ── Task 3: the remaining E4 rows (error / partial / long-text) ──────
+//
+//  E4 error: the clamp is the WHOLE error story — `allowOutOfRangeEntry`
+//  lets the box keep the typed text, and the commit value is the clamped
+//  number. Nothing here can throw, and there is no error object to render.
+//  E4 partial: the mixed state is reportable while every selected anchor
+//  keeps its OWN factor — the per-anchor commit is 61-10's
+//  `buildAnchorWidthCommit`, pinned in vectorPathHandles.test.ts.
+//  E4 long-text: the label is the constant the dialog carries; the readout
+//  stays numeric at the top of the band.
+
+describe('61-11 E4 error, partial and long-text rows', () => {
+  const anchor = (width?: number) => ({
+    x: 0,
+    y: 0,
+    kind: 'auto' as const,
+    ...(width === undefined ? {} : { width }),
+  });
+
+  it('E4 error: clamps BOTH ends and reports no error surface', () => {
+    expect(anchorWidthPatchValue(-1)).toBe(0.2);
+    expect(anchorWidthPatchValue(0.2)).toBe(0.2);
+    expect(anchorWidthPatchValue(2)).toBe(2);
+    expect(anchorWidthPatchValue(2.0001)).toBe(2);
+    expect(anchorWidthPatchValue(99)).toBe(2);
+    // Total: the value is always a finite number inside the band.
+    for (const input of [-Infinity, Infinity, Number.NaN, 1e9, -1e9]) {
+      const value = anchorWidthPatchValue(input);
+      expect(typeof value).toBe('number');
+      expect(Number.isFinite(value)).toBe(true);
+    }
+  });
+
+  it('E4 partial: mixed stays reportable and each anchor keeps its own factor', () => {
+    const anchors = [anchor(1.8), anchor(0.5), anchor()];
+    expect(readAnchorWidthReading(anchors, [0, 1, 2])).toEqual({
+      value: 1.8,
+      mixed: true,
+      count: 3,
+    });
+    // Per-index reads still state each anchor's own factor: nothing is
+    // flattened to the representative value.
+    expect(readAnchorWidthReading(anchors, [0]).value).toBe(1.8);
+    expect(readAnchorWidthReading(anchors, [1]).value).toBe(0.5);
+    expect(readAnchorWidthReading(anchors, [2]).value).toBe(1);
+    // A single selection is never mixed, whatever the factor.
+    expect(readAnchorWidthReading(anchors, [1]).mixed).toBe(false);
+  });
+
+  it('E4 long-text: the readout stays numeric at the top of the band', () => {
+    expect(`→ ${anchorWidthEffectivePx(800, 2)} px`).toBe('→ 1600 px');
+    expect(`→ ${anchorWidthEffectivePx(1, 0.2)} px`).toBe('→ 0.2 px');
+    // The step is the one-decimal grid the value box displays.
+    expect(AQUARELLE_ANCHOR_WIDTH_STEP).toBe(0.1);
+  });
+});
