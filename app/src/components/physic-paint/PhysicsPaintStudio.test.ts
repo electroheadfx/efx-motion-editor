@@ -6377,3 +6377,65 @@ describe('quick 261109-uj0 — capture laws stay intact around the localized gat
     expect(studio).toContain("// quick-261109-pwt: settle the destination frame's pending cache capture once it is displayed.");
   });
 });
+
+// 61-10 Task 3: the ONE path-edit seam reaches the Studio. The refusal copy is
+// a fixed module constant (E10 long-text — never interpolated), an unreadable
+// path publishes it with status `error` and writes nothing, and a READABLE path
+// returning a null edit id (in-flight / unchanged gesture) publishes nothing.
+describe('61-10 vector path edit wiring in the Studio', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const HANDLER_START = 'const handleAquarelleVectorPathEdit = useCallback(';
+  const HANDLER_END = 'const canvasMount = canvasMountPropsMemo.resolve(';
+
+  it('declares the fixed rejection copy verbatim, with no interpolation', () => {
+    expect(studio).toContain(
+      "const VECTOR_PATH_REJECTION_MESSAGE = \"Vector path rejected — this stroke's path could not be read. The stroke was left unchanged.\";",
+    );
+    // Fixed copy — a user value can never enter the capsule line.
+    const start = studio.indexOf('const VECTOR_PATH_REJECTION_MESSAGE');
+    const declaration = studio.slice(start, studio.indexOf('\n', start));
+    expect(declaration).not.toContain('${');
+    expect(declaration).not.toContain('`');
+  });
+
+  it('refuses a missing or unreadable path through the capsule and stores nothing', () => {
+    const handler = regionOf(studio, HANDLER_START, HANDLER_END);
+    expect(handler).toContain('getRecordedAquarelleStroke(mutationId)');
+    const guardAt = handler.indexOf('normaliseAquarelleAnchors(stroke.anchors) === undefined');
+    const publishAt = handler.indexOf('setApplyMessage(VECTOR_PATH_REJECTION_MESSAGE)');
+    const commitAt = handler.indexOf('return beginAquarellePathEdit(mutationId, anchors);');
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(publishAt).toBeGreaterThan(guardAt);
+    expect(commitAt).toBeGreaterThan(publishAt);
+    expect(handler).toContain("setApplyStatus('error')");
+    expect(handler).toContain('setLastError(VECTOR_PATH_REJECTION_MESSAGE)');
+    // EXACTLY one publication site — the readable-path null (in-flight or
+    // unchanged gesture) falls through without touching the capsule.
+    expect(handler.split('setApplyMessage(').length - 1).toBe(1);
+    expect(handler.split("setApplyStatus('error')").length - 1).toBe(1);
+    // Identity-stable callback: no reactive dependency can re-create it.
+    expect(handler).toContain('    [],');
+  });
+
+  it('forwards the handler into the mount memo and its props object', () => {
+    expect(studio).toContain("import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';");
+    expect(studio).toContain('  beginAquarellePathEdit,');
+    expect(studio).toContain('handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {');
+    expect(studio).toContain('onAquarelleVectorPathEdit: handleAquarelleVectorPathEdit,');
+  });
+
+  it('threads the mount prop into the layer seam through one ref', () => {
+    expect(canvasMount).toContain("import type { AquarelleStroke, VectorAnchor } from '@efxlab/efx-watercolor';");
+    expect(canvasMount).toContain('onAquarelleVectorPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => number | null;');
+    expect(canvasMount).toContain('const onAquarelleVectorPathEditRef = useRef(props.onAquarelleVectorPathEdit);');
+    expect(canvasMount).toContain('onAquarelleVectorPathEditRef.current = props.onAquarelleVectorPathEdit;');
+    expect(canvasMount).toContain('onEditVectorPath={(mutationId, anchors) => onAquarelleVectorPathEditRef.current?.(mutationId, anchors)}');
+  });
+});
