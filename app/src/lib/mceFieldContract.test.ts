@@ -1,6 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {describe, it, expect} from 'vitest';
+import type {MceAquarelleVectorPath, MceEngineStrokePayload} from '../types/project';
 
 /**
  * TS ↔ Rust .mce field-diff contract (261012-d6q dual-language law).
@@ -287,5 +288,102 @@ describe('Phase 61 vector field set (VEC-06 / REL-02)', () => {
     expect(RUST_SRC).not.toContain('pub r#in');
     expect(RUST_SRC).toContain('#[serde(rename = "in")]');
     expect(rust.get('MceAquarelleAnchor')!.get('in_')).toBe('in');
+  });
+
+  it('did not claim a one-language exception for any vector field', () => {
+    // The settled law: a .mce field on one side only is a defect, not an
+    // allowlisted exception. The vector shape is two-language by design.
+    for (const entry of ALLOWED_ONE_LANGUAGE) {
+      expect(entry.toLowerCase()).not.toContain('aquarelleanchor');
+      expect(entry.toLowerCase()).not.toContain('aquarellevectorpath');
+      expect(entry.toLowerCase()).not.toContain('render');
+      expect(entry.toLowerCase()).not.toContain('anchor');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 61 envelope round trip (REL-02)
+//
+// The vector fields ride the already-opaque `MceEngineStrokePayload.engine`
+// slot, so the envelope risk is not corruption but silent loss: one JSON
+// save/load must return the anchor block, the sparse width factor and the
+// render mode untouched, byte for byte. The same round trip also proves the
+// slot stayed OPAQUE — an engine key this phase never imagined survives too,
+// so no strict schema was introduced alongside the declarations.
+//
+// This is a pure TypeScript source-and-data test: it reads the Rust file as
+// text and round-trips plain data. It never requires the Rust toolchain.
+// ---------------------------------------------------------------------------
+
+describe('Phase 61 envelope round trip (REL-02)', () => {
+  /** A two-anchor path: one `auto`, one `bezier` with stored handles. */
+  const VECTOR_PATH: MceAquarelleVectorPath = {
+    anchors: [
+      { x: 0.25, y: 0.5, kind: 'auto' },
+      {
+        x: 0.75,
+        y: 0.5,
+        kind: 'bezier',
+        in: { x: 0.625, y: 0.25 },
+        out: { x: 0.875, y: 0.75 },
+        width: 1.8,
+      },
+    ],
+    renderMode: 'simple-ribbon',
+  };
+
+  function roundTrip(payload: MceEngineStrokePayload): {
+    saved: string;
+    reopened: MceEngineStrokePayload;
+  } {
+    const saved = JSON.stringify(payload);
+    return { saved, reopened: JSON.parse(saved) as MceEngineStrokePayload };
+  }
+
+  it('carries a vector engine block through save/load deep-equal and byte-identical', () => {
+    const payload: MceEngineStrokePayload = { engine: { ...VECTOR_PATH } };
+    const { saved, reopened } = roundTrip(payload);
+
+    // Deep equality: both anchors, the stored handle pair and the one sparse
+    // width factor survive the envelope untouched.
+    expect(reopened).toEqual(payload);
+    expect((reopened.engine as MceAquarelleVectorPath).anchors).toEqual(VECTOR_PATH.anchors);
+    expect((reopened.engine as MceAquarelleVectorPath).renderMode).toBe('simple-ribbon');
+    // Exactly one width key: the uniform anchor stores nothing (D-10).
+    expect(Object.keys((reopened.engine as MceAquarelleVectorPath).anchors[0]!)).toEqual([
+      'x', 'y', 'kind',
+    ]);
+    // Byte identity: a second serialisation reproduces the saved string.
+    expect(JSON.stringify(reopened)).toBe(saved);
+  });
+
+  it('keeps the engine slot opaque: an unknown engine key round-trips untouched', () => {
+    const payload: MceEngineStrokePayload = {
+      engine: {
+        ...VECTOR_PATH,
+        // A key no 61-06 declaration names. Introduced here only to prove the
+        // slot accepts it: the declarations are a contract surface, not a
+        // parser, so nothing filters the engine object.
+        futureEngineKey: { nested: [1, 2, 3], label: 'unknown-by-design' },
+      },
+    };
+    const { saved, reopened } = roundTrip(payload);
+
+    expect(reopened).toEqual(payload);
+    expect(JSON.stringify(reopened)).toBe(saved);
+    expect(Object.keys(reopened.engine as Record<string, unknown>)).toContain('futureEngineKey');
+    expect((reopened.engine as Record<string, unknown>)['futureEngineKey']).toEqual({
+      nested: [1, 2, 3],
+      label: 'unknown-by-design',
+    });
+  });
+
+  it('the one-language exception list is unchanged by this plan (literal snapshot)', () => {
+    // Snapshot of the pre-plan set, written out literally: adding an entry is
+    // now a deliberate edit to this test rather than a silent allowlist.
+    const PRE_PLAN_ALLOWED_ONE_LANGUAGE = ['MceSequence.fps'];
+    expect(ALLOWED_ONE_LANGUAGE.size).toBe(PRE_PLAN_ALLOWED_ONE_LANGUAGE.length);
+    expect([...ALLOWED_ONE_LANGUAGE]).toEqual(PRE_PLAN_ALLOWED_ONE_LANGUAGE);
   });
 });
