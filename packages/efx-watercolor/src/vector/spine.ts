@@ -231,3 +231,103 @@ export function pathLength(anchors: readonly VectorAnchor[]): number {
   const { stations } = walkPath(normaliseVectorAnchors(anchors))
   return stations.length === 0 ? 0 : stations[stations.length - 1]!
 }
+
+/**
+ * Guard the published 0.2..2.0 range (D-09). This clamp exists ONLY to bound
+ * the range; it must never lower a factor that is already inside it — C-03
+ * forbids the upper bound at 1.0 that `Engine.ts:844` applies to `scriptScale`,
+ * which is why the ceiling here is ANCHOR_WIDTH_MAX and never 1. A non-finite
+ * factor reads the default.
+ */
+export function clampAnchorWidth(value: number): number {
+  if (!Number.isFinite(value)) return ANCHOR_WIDTH_DEFAULT
+  return Math.min(ANCHOR_WIDTH_MAX, Math.max(ANCHOR_WIDTH_MIN, value))
+}
+
+/**
+ * The factor one anchor contributes: absent reads 1 (D-10), present is clamped
+ * into the published range. Interpolation and the uniform test both read this
+ * single definition, so a sparse profile can never disagree with itself.
+ */
+function anchorWidthFactor(anchor: VectorAnchor): number {
+  return anchor.width === undefined ? ANCHOR_WIDTH_DEFAULT : clampAnchorWidth(anchor.width)
+}
+
+/**
+ * D-10: true when the profile stores nothing worth persisting — every anchor
+ * carries either no factor or exactly the default. A caller that sees true must
+ * write no width data at all.
+ */
+export function isUniformWidthProfile(anchors: readonly VectorAnchor[]): boolean {
+  return normaliseVectorAnchors(anchors).every(
+    (anchor) => anchorWidthFactor(anchor) === ANCHOR_WIDTH_DEFAULT,
+  )
+}
+
+function widthAtStation(
+  anchors: readonly VectorAnchor[],
+  anchorStations: readonly number[],
+  station: number,
+): number {
+  const last = anchors.length - 1
+  if (last < 0) return ANCHOR_WIDTH_DEFAULT
+  if (last === 0) return anchorWidthFactor(anchors[0]!)
+  if (!Number.isFinite(station) || station <= anchorStations[0]!) {
+    return anchorWidthFactor(anchors[0]!)
+  }
+  if (station >= anchorStations[last]!) return anchorWidthFactor(anchors[last]!)
+  for (let index = 0; index < last; index++) {
+    const start = anchorStations[index]!
+    const end = anchorStations[index + 1]!
+    if (station > end) continue
+    const span = end - start
+    const from = anchorWidthFactor(anchors[index]!)
+    if (span <= 0) return anchorWidthFactor(anchors[index + 1]!)
+    const to = anchorWidthFactor(anchors[index + 1]!)
+    return from + (to - from) * ((station - start) / span)
+  }
+  return anchorWidthFactor(anchors[last]!)
+}
+
+/**
+ * The width factor at an arc-length station, interpolated linearly between the
+ * two bracketing anchors' factors and held at the first / last anchor outside
+ * the path. `station` is a position on the spine's own station list (uv).
+ */
+export function anchorWidthAt(anchors: readonly VectorAnchor[], station: number): number {
+  const normalised = normaliseVectorAnchors(anchors)
+  const { anchorStations } = walkPath(normalised)
+  return widthAtStation(normalised, anchorStations, station)
+}
+
+/**
+ * One width factor per input point, mapped onto the spine's own arc-length
+ * stations. Points at or beyond the end of the spine read the final factor, so
+ * a trailing sample can never fall off the profile.
+ */
+export function sampleVectorWidths(
+  anchors: readonly VectorAnchor[],
+  points: readonly Vec2[],
+): readonly number[] {
+  if (points.length === 0) return []
+  const normalised = normaliseVectorAnchors(anchors)
+  if (normalised.length === 0) return points.map(() => ANCHOR_WIDTH_DEFAULT)
+  if (isUniformWidthProfile(normalised)) return points.map(() => ANCHOR_WIDTH_DEFAULT)
+  const { points: samples, stations, anchorStations } = walkPath(normalised)
+  return points.map((point) => {
+    let nearest = 0
+    let nearestDistance = Number.POSITIVE_INFINITY
+    for (let index = 0; index < samples.length; index++) {
+      const sample = samples[index]!
+      const dx = point.x - sample.x
+      const dy = point.y - sample.y
+      const squared = dx * dx + dy * dy
+      if (squared < nearestDistance) {
+        nearestDistance = squared
+        nearest = index
+        if (squared === 0) break
+      }
+    }
+    return widthAtStation(normalised, anchorStations, stations[nearest] ?? 0)
+  })
+}
