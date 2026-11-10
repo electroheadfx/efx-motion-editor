@@ -283,6 +283,7 @@ import {
   beginAquarellePaintSeedRerollEdit,
   beginAquarellePathEdit,
   beginAquarellePlaceEdit,
+  beginAquarelleRenderModeEdit,
   beginAquarelleReorderEdit,
   beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
@@ -323,6 +324,7 @@ import type {
 import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import type { AquarelleRenderMode } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import {
   beginAquarelleLiftPreview,
@@ -9053,6 +9055,77 @@ export function PhysicsPaintStudio() {
   // at event time; assignment is a plain render-body ref write (port precedent).
   aquarelleAppearanceCommitRef.current = handleAquarelleAppearanceStrokes;
 
+  // 61-12 (VEC-04 / T-61-41): the Paint tab's `Render` row. Same shape as the
+  // appearance handler — one batch + its re-bake = ONE `aquarelle-script`
+  // ledger entry — but the commit seam is the render-mode wrapper, which
+  // replaces the mode field and NOTHING else (D-12/D-14: the mode is a stroke
+  // property; no `anchors` key is created, dropped or rewritten). Guards are
+  // peek-only: the handler must not subscribe the Studio body.
+  const handleAquarelleRenderModeStrokes = useCallback(async (
+    ids: readonly number[],
+    mode: AquarelleRenderMode,
+  ): Promise<boolean> => {
+    if (isPhysicalMutationLocked()) return false;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;
+    if (isAquarelleScriptEditInFlight()) return false;
+    // Stale ids never leak across frames: keep only live strokes of the
+    // current edit frame before the batch edit.
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
+    if (frameIds.length === 0) return false;
+    // 261028-k03d: recover a legacy key's missing durable base before the edit.
+    await ensureAquarelleDurableBaseRef.current(playFrame);
+    // 261101-o2m (WR-03): read the Draft state AFTER the await.
+    const draft = draftMode.peek();
+    // One render-mode batch = one edit with before/after script snapshots.
+    const editId = beginAquarelleRenderModeEdit(frameIds, mode);
+    if (editId === null) return false;
+    if (draft) {
+      rotoMoveHistory.recordAquarelleScriptEdit(editId);
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return true;
+    }
+    setAquarelleScriptEditInFlight(true);
+    try {
+      // The recorded timeline IS the script (same replay source as delete).
+      aquarelleResetSheetRef.current?.();
+      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+      if (ok) {
+        rotoMoveHistory.recordAquarelleScriptEdit(editId);
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+        return true;
+      }
+      // Failed re-bake: put the pre-edit render mode back exactly.
+      restoreAquarelleEditSnapshot(editId, 'undo');
+      const error = rotoScript.error.peek();
+      const message = buildRotoScriptApplyRefusalMessage(error)
+        ?? error?.message
+        ?? 'Could not re-apply the watercolor script — the render mode was restored.';
+      setLastError(message);
+      setApplyMessage(message);
+      setApplyStatus('error');
+      scriptApplyRefusalOwnedRef.current = true;
+      return false;
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    rotoTimelineModel,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+  ]);
+
   // 261024-mz5 Task 3: corner-scale / top-rotate of the whole watercolor
   // selection. The overlay wrote only the live preview during the gesture; this
   // release path transforms every recorded stroke + its payload-timeline entry
@@ -11270,6 +11343,7 @@ export function PhysicsPaintStudio() {
       canvasWidth,
       canvasHeight,
       handleAquarelleAppearanceStrokes,
+      handleAquarelleRenderModeStrokes,
       handleAquarelleMoveStrokes,
       handleAquarelleTransformStrokes,
       handleAquarellePlaceStroke,
@@ -11289,9 +11363,22 @@ export function PhysicsPaintStudio() {
         playFrame,
         canvasSize,
         listStrokes: (frame, size) => listSelectableAquarelleStrokes(frame, size),
-        readAppearance: (ids, frame) => readAquarelleStrokeAppearance(ids, frame),
+        // 61-12 (VEC-04 / D-12): the appearance hydration plus the recorded
+        // stroke's render discriminator. An absent field stays absent, so the
+        // dialog's reading applies the watercolor default rather than treating
+        // a hand-painted stroke as a third state.
+        readAppearance: (ids, frame) => readAquarelleStrokeAppearance(ids, frame).map((appearance) => {
+          const stroke = getRecordedAquarelleStroke(appearance.mutationId);
+          return stroke?.renderMode === undefined
+            ? appearance
+            : { ...appearance, renderMode: stroke.renderMode };
+        }),
         applyAppearance: (ids, patch: ScriptStrokeAppearancePatch) =>
           handleAquarelleAppearanceStrokes(ids, patch),
+        // 61-12 (VEC-04 / T-61-41): the Render row's ONE commit seam. The whole
+        // selection — vector or hand-painted — is written by one
+        // `beginAquarelleRenderModeEdit`, so the batch is one undo entry.
+        applyRenderMode: (ids, mode) => handleAquarelleRenderModeStrokes(ids, mode),
         moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
         transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
         // 61-11 (VEC-02 / VEC-03): the vector gate and the Anchor width

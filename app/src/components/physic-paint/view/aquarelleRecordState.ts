@@ -822,6 +822,41 @@ export function updateAquarelleStrokesInScript(
 }
 
 /**
+ * 61-12 (VEC-04 / T-61-40): write one render mode on every target stroke.
+ *
+ * The mode is a STROKE property (D-12/D-14), never a path property: this door
+ * reads no anchors and writes none, so an anchorless hand-painted stroke is
+ * written exactly like a vector one.
+ *
+ * Task-1 seam only — task 2 replaces the body with the full batch law (mode
+ * validation, de-duplication, tombstone/out-of-timeline skips and no-op
+ * detection). It exists here so the Studio's ONE commit path compiles.
+ */
+export function updateAquarelleRenderModeInScript(
+  mutationIds: readonly number[],
+  mode: AquarelleRenderMode,
+): number {
+  const nextMode = resolveAquarelleRenderMode(mode);
+  let written = 0;
+  for (const mutationId of mutationIds) {
+    const stroke = recordedStrokes.get(mutationId);
+    const entry = recordedStrokeEntries.get(mutationId);
+    if (!stroke) continue;
+    const nextStroke: AquarelleStroke = { ...stroke, renderMode: nextMode };
+    const nextEntry = toStudioStroke(nextStroke);
+    recordedStrokes.set(mutationId, nextStroke);
+    recordedStrokeEntries.set(mutationId, nextEntry);
+    if (entry) {
+      const index = payloadTimeline.indexOf(entry);
+      if (index >= 0) payloadTimeline[index] = nextEntry;
+    }
+    written += 1;
+  }
+  if (written > 0) bumpAquarelleStrokesRevision();
+  return written;
+}
+
+/**
  * 61-10 (VEC-02 / VEC-07): replace the path of one recorded stroke and its
  * payload-timeline entry.
  *

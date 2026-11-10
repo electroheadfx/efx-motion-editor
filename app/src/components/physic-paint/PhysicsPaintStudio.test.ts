@@ -2531,8 +2531,10 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // handleAquarellePlaceStroke — same mapper, same capsule.
     // 261101-o2m: a tenth site — the Draft settle's recompute refusal — same
     // mapper, same capsule.
+    // 61-12: an eleventh site — the render-mode re-bake failure in
+    // handleAquarelleRenderModeStrokes — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(11); // one import + ten call sites
+    expect(mentions).toBe(12); // one import + eleven call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
@@ -5605,8 +5607,9 @@ describe('quick 261028-k03d — key-payload recovery and non-blanking failures',
     // 261029-lsr: the manual force-re-render (rail / Shift+R) recovers too.
     // 261101-o2m: the Draft entry arm and the Draft settle's belt join them —
     // both are no-ops once the arm has resolved the frame's durable base.
-    expect(calls, 'delete + move + appearance + transform + apply + rebake target + draft arm + draft settle').toBe(8);
-    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleTransformStrokes']) {
+    // 61-12: the render-mode batch joins the timeline edits.
+    expect(calls, 'delete + move + appearance + render mode + transform + apply + rebake target + draft arm + draft settle').toBe(9);
+    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleRenderModeStrokes', 'handleAquarelleTransformStrokes']) {
       const start = studio.indexOf(`const ${handler} = useCallback`);
       expect(start, `${handler} exists`).toBeGreaterThan(-1);
       const call = studio.indexOf('await ensureAquarelleDurableBaseRef.current(', start);

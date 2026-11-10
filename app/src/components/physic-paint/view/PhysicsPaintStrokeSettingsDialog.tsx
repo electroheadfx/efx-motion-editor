@@ -14,6 +14,7 @@ import {
   AQUARELLE_ANCHOR_WIDTH_MIN,
   AQUARELLE_ANCHOR_WIDTH_STEP,
   FRESH_STROKE_GEOMETRY_SESSION,
+  RENDER_MODE_OPTIONS,
   STROKE_POSITION_RANGE,
   STROKE_ROTATION_RANGE,
   STROKE_SCALE_RANGE,
@@ -31,6 +32,7 @@ import {
   readColorField,
   readNumericField,
   readPaintSeedVariation,
+  readRenderMode,
   resolvePathEditGate,
   resolveStrokeListRange,
   resolveStrokeSettingsOpen,
@@ -717,6 +719,9 @@ export function PhysicsPaintStrokeSettingsDialog({
 
   const colorReading = readColorField(appearances, ids);
   const colorRgb = hexToRgba(colorReading.color);
+  // 61-12 (VEC-04): the Paint tab's Render row reading. The mode rides the
+  // appearance objects the bundle hydrates — never a numeric field.
+  const renderModeReading = readRenderMode(appearances);
 
   const applied = strokeSettingsDragOffset.value;
 
@@ -1531,6 +1536,54 @@ export function PhysicsPaintStrokeSettingsDialog({
 
           {activeSettingsTab === 'paint' ? (
             <div style={SECTION_STYLE} data-testid="stroke-settings-paint">
+              {/* 61-12 (VEC-04 / D-12 / D-14): the render-mode discriminator.
+                  It is a STROKE property, never an appearance param: it is not
+                  a registry row and never touches `readNumericField`, so a
+                  selection of hand-painted strokes gets the row exactly like a
+                  vector one. Mounted only for the watercolor engine, inside the
+                  Paint tab — an Eraser filter closes that tab entirely. */}
+              {engineModule === 'watercolor' ? (
+                <div data-testid="stroke-settings-render-mode-block">
+                  <div style={SEGMENT_LABEL_ROW_STYLE}>
+                    <span style={PAINT_ROW_LABEL_STYLE}>Render</span>
+                    {renderModeReading.mixed ? (
+                      <span
+                        data-testid="stroke-settings-render-mode-mixed"
+                        style={MIXED_CAPTION_STYLE}
+                      >
+                        Mixed
+                      </span>
+                    ) : null}
+                  </div>
+                  <div
+                    role="group"
+                    aria-label="Render"
+                    data-testid="stroke-settings-render-mode"
+                    style={SEGMENT_GROUP_STYLE}
+                  >
+                    {RENDER_MODE_OPTIONS.map((option) => {
+                      const active = !renderModeReading.mixed && renderModeReading.mode === option.mode;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          data-testid={`stroke-settings-render-mode-option-${option.id}`}
+                          aria-pressed={active}
+                          style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
+                          onClick={() => {
+                            // Pressing the mode the selection already holds
+                            // writes nothing — no edit, no undo entry.
+                            if (active) return;
+                            void bundle.applyRenderMode?.(ids, option.mode);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               <span style={PAINT_ROW_LABEL_STYLE}>Color</span>
               <div
                 data-testid="stroke-settings-color"

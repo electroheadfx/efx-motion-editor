@@ -333,7 +333,8 @@ describe('61-12 Render row (E3)', () => {
     expect(block).toContain('aria-label="Render"');
     expect(block).toContain('<span style={PAINT_ROW_LABEL_STYLE}>Render</span>');
     expect(block).toContain('style={MIXED_CAPTION_STYLE}');
-    expect(block).toContain('>Mixed</span>');
+    // The caption is the single word, never a value or a second sentence.
+    expect(block).toMatch(/>\s*Mixed\s*<\/span>/);
   });
 
   it('marks an option active only for the selection mode and skips the active press', () => {
