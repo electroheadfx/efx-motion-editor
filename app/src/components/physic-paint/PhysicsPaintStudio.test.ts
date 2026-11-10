@@ -3192,7 +3192,9 @@ describe('261022-pim watercolor stroke select surface', () => {
       expect(isActiveRegion, `isActive must keep the ${clause} clause`).toContain(clause);
     }
     expect(isActiveRegion).toContain('active === id');
-    expect(watercolorRail).toContain('disabled={railDisabled || !selectAvailable.value}');
+    // 61-18: the wireframe latch joins the Select disable expression — the
+    // construction view never offers a selection surface over it.
+    expect(watercolorRail).toContain('disabled={railDisabled || wireframeActive || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
     expect(watercolorRail).toContain('Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
