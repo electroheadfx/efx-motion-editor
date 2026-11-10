@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-06-PLAN.md
-last_updated: "2026-11-10T13:35:40.213Z"
+stopped_at: Completed 61-07-PLAN.md
+last_updated: "2026-11-10T14:06:02.853Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: b34c7506bf5f840dc7415aa7690a343fa031d41b
+state_head: 6018713a13be6de78b6737ba825f07c7a4b1584c
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 38
+  completed_plans: 39
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 8 of 14
+Plan: 9 of 14
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -96,6 +96,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P04 | 14 | 3 tasks | 6 files |
 | Phase 61 P05 | 7min | 3 tasks | 4 files |
 | Phase 61 P06 | 3min | 2 tasks | 3 files |
+| Phase 61 P07 | 23 | 3 tasks | 28 files |
 
 ## Accumulated Context
 
@@ -238,6 +239,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: 61-06: the Rust in-handle is in_ + #[serde(rename = "in")] because the contract parser reads pub <ident>: and a raw identifier would be silently invisible
 - [Phase 61]: 61-06: ALLOWED_ONE_LANGUAGE is snapshotted literally in the test, so allowlisting a new field is a deliberate edit rather than silent growth
 - [Phase 61]: 61-06: Rust anchor scalars are f32 to mirror the AQTL v2 wire, while the neighbouring declaration-only structs stay f64
+- [Phase 61]: 61-07: the render mode is explicit stroke data (Stroke.renderMode; scriptBegin argument wins, interactive seeds from the brush) and is never inferred from a parameter value.
+- [Phase 61]: 61-07: the ribbon branch sits inside the existing stamp path with the seven wet globals as independent weights; the preset keeps neutral brush-side multipliers so a raised global still reaches the deposit (D-13).
+- [Phase 61]: 61-07: the record-time stamp writes renderMode only when non-default, so a plain hand-painted stroke keeps its pre-phase key set; the eraser popover filters render-mode presets through one pure helper.
 
 ### Pending Todos
 
@@ -330,8 +334,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T13:35:38.981Z
-Stopped at: Completed 61-06-PLAN.md
+Last session: 2026-11-10T14:06:01.609Z
+Stopped at: Completed 61-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
