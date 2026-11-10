@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-03-PLAN.md
-last_updated: "2026-11-10T13:01:50.200Z"
+stopped_at: Completed 61-04-PLAN.md
+last_updated: "2026-11-10T13:20:31.874Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: 1582810c5de09adc92754441974816265bf13cbe
+state_head: bece888992023ee80a8c3978cc255566760c79b0
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 35
+  completed_plans: 36
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 5 of 14
+Plan: 6 of 14
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -93,6 +93,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P02 | 3min | 3 tasks | 3 files |
 | Phase 61 P08 | 9min | 3 tasks | 11 files |
 | Phase 61 P03 | 6min | 3 tasks | 7 files |
+| Phase 61 P04 | 14 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -224,6 +225,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: 61-03: anchorsEqual treats a difference of exactly 1e-9 as unequal (|a-b| < 1e-9 means equal); vectorPathsEqual resolves an absent mode to watercolour.
 - [Phase 61]: 61-03: projectVectorPath drops a width key equal to ANCHOR_WIDTH_DEFAULT and never clamps a non-default factor (1.8 and 0.3 pass through), order-preserving and non-mutating (D-10).
 - [Phase 61]: 61-03: codec validation lives in isStrokeShape and canonicalisation in cloneStrokeForWire; AQUARELLE_SCHEMA_VERSION stays 1 because the two fields are optional additions whose absence is the documented state.
+- [Phase 61]: The per-sample width factor rides the queued sample (Sample.w + Stroke.widthFrom/widthTo); the plan's artifacts-table row 'private scriptWidth' is deliberately not implemented because a mutable engine field would stamp late samples with a later neighbour's width (T-61-13 pin asserts the identifier never appears).
+- [Phase 61]: sizeMult(widthFactor) multiplies the existing footprint beside the unchanged 'this.scripting ? this.scriptScale : 1' term; the scriptScale clamp assignment stays character-for-character and appears exactly once (Engine.ts:866).
+- [Phase 61]: resolveStrokeWidthFactors derives one Float32Array per active stroke at activation (applyStroke/renderAllStrokes/renderPartialStrokes) and feeds it by active.index; null means the feed passes the literal 1 and the uniform path deposits byte-identically.
+- [Phase 61]: The width probe paints at canonical size 32 (engine scale 1.0): at 12px the widest-row radius is paper-grain-limited (observed 1.6-1.75) and cannot discriminate the 1.7 gate; 32px measures 35px->60px = 1.714 deterministically, while the committed phase-evidence digests stay 2058d0c6.
 
 ### Pending Todos
 
@@ -316,8 +321,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T13:01:48.977Z
-Stopped at: Completed 61-03-PLAN.md
+Last session: 2026-11-10T13:20:21.042Z
+Stopped at: Completed 61-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
