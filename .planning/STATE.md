@@ -4,17 +4,17 @@ milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
 current_phase: 61
 current_phase_name: Vector Painting Tool
-status: executing
-stopped_at: Completed 61-12-PLAN.md
-last_updated: "2026-11-10T16:07:32.570Z"
+status: verifying
+stopped_at: Completed 61-14-PLAN.md
+last_updated: "2026-11-10T16:20:26.928Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: 5368c45317d21ba19101af5c4620c6bf39e96189
+state_head: 8e0cf1334c17bb8a950c6d22ee8c37638df947fc
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 44
+  completed_plans: 45
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
 Plan: 14 of 14
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-10 — Phase 61 execution started
 
 Progress: [█████░░░░░] 50%
@@ -102,6 +102,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P13 | 15 | 3 tasks | 13 files |
 | Phase 61 P11 | 13 | 3 tasks | 6 files |
 | Phase 61 P12 | 17min | 3 tasks | 10 files |
+| Phase 61 P14 | 7min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -268,6 +269,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: An unknown render mode refuses the whole batch through strict isAquarelleRenderMode membership instead of coercing to the watercolor default; an absent mode still counts as already-watercolor so no pre-phase stroke gains a key.
 - [Phase 61]: The ribbon preset pick runs its wet-globals law BEFORE selectAquarelleTip's identity early-return: snapshot the seven values only when the memory is empty, zero them in ONE aquarelleParams write, and restore plus clear on any later non-ribbon pick.
 - [Phase 61]: The Advanced wet-globals disclosure is a ref-held local dialog signal written only from its click handler (no third useEffect) and mounts only for a simple-ribbon selection, so watercolor mode keeps today's Paint tab.
+- [Phase 61]: 61-14 test-only close-out: task.is-behavior-adding=false, so the behavioural TDD gate does not apply and no feat commit was fabricated.
+- [Phase 61]: 61-14 reopen parity runs through restoreAquarelleRecordTimeline, and the cache case reuses ONE document because createEfxPaintDocument mints fresh ids per call.
 
 ### Pending Todos
 
@@ -360,8 +363,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T16:07:31.308Z
-Stopped at: Completed 61-12-PLAN.md
+Last session: 2026-11-10T16:20:25.641Z
+Stopped at: Completed 61-14-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
