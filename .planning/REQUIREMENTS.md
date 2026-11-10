@@ -46,7 +46,7 @@ Each maps to exactly one roadmap phase.
 - [x] **VEC-02**: `spline-pointer` edits the path — anchors, coupled handles, handle break, insert, delete, and multi-select
 - [ ] **VEC-03**: Stroke width can vary per vertex
 - [ ] **VEC-04**: Brush type and colour are per stroke
-- [ ] **VEC-05**: A wireframe preview toggle shows strokes and paths without render, and serves as the drag-time performance mode
+- [x] **VEC-05**: A wireframe preview toggle shows strokes and paths without render, and serves as the drag-time performance mode
 - [ ] **VEC-06**: Vector strokes persist in the `.mce`, survive reopen, and export
 - [x] **VEC-07**: Undo/redo covers each vector operation
 
@@ -132,7 +132,7 @@ Deferred to a later milestone. Not in the current roadmap.
 | VEC-02 | Phase 61 | Complete |
 | VEC-03 | Phase 61 | Gaps Found |
 | VEC-04 | Phase 61 | Gaps Found |
-| VEC-05 | Phase 61 | Gaps Found |
+| VEC-05 | Phase 61 | Complete |
 | VEC-06 | Phase 61 | Gaps Found |
 | VEC-07 | Phase 61 | Complete |
 | CRV-01 | Phase 62 | Pending |
