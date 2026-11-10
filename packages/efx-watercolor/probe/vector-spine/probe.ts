@@ -32,6 +32,7 @@ import {
   type AquarellePoint,
   type AquarelleStrokePayload,
 } from '../../src/payload/toStudioStroke'
+import type { AquarelleAnchor } from '../../src/payload/vectorPath'
 import { createAquarelleEngineAdapter } from '../../src/adapter/engineAdapter'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 
@@ -80,6 +81,32 @@ const WIDTH_ANCHORS: ReadonlyArray<{ x: number; y: number }> = [
 const WIDTH_SETTLE_TICKS = 0
 const WIDTH_FACTOR = 1.8
 const WIDTH_GATE = 1.7
+// Four samples per anchor segment: the profile's 1.8 is read exactly at the
+// middle anchor while the neighbouring samples stay on their own factors.
+const WIDTH_SCENARIO_DENSITY = 4
+// A 32px canonical size (engine scale 1.0) keeps the visible footprint well
+// above the paper-grain noise floor, so the widest-row measurement resolves
+// the factor instead of reading grain: the DEFAULT 12px footprint fluctuates
+// by 2px per row, which alone compresses a true 1.8x to ~1.6x.
+const WIDTH_SCENARIO_SIZE = 32
+
+// 61-04: the per-sample width scenario replays the same vertical spine twice
+// through the PUBLIC adapter, as payload anchors. The base arm stores every
+// factor absent (uniform profile: the derived array is null and the feed
+// passes the literal 1); the scaled arm stores the middle anchor at
+// WIDTH_FACTOR. Both arms differ in nothing else, so the measured ratio is
+// the width channel and only the width channel.
+const WIDTH_SCENARIO_BASE_ANCHORS: readonly AquarelleAnchor[] = WIDTH_ANCHORS.map(
+  (anchor) => ({ x: anchor.x, y: anchor.y, kind: 'auto' as const }),
+)
+const WIDTH_SCENARIO_SCALED_ANCHORS: readonly AquarelleAnchor[] = WIDTH_ANCHORS.map(
+  (anchor, index) => ({
+    x: anchor.x,
+    y: anchor.y,
+    kind: 'auto' as const,
+    ...(index === 1 ? { width: WIDTH_FACTOR } : {}),
+  }),
+)
 
 // --- dab counter ------------------------------------------------------------
 
@@ -155,15 +182,19 @@ function resampleAnchors(
 function makeStroke(
   points: AquarellePoint[],
   mutationId = MUTATION_ID,
+  anchors?: readonly AquarelleAnchor[],
+  params: Readonly<Record<string, number>> = DEFAULT_CANONICAL_PARAMS,
 ): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color: STROKE_COLOR,
-    params: { ...DEFAULT_CANONICAL_PARAMS },
+    params: { ...params },
     brushId: BRUSH_ID,
     points,
     mutationId,
     timestamp: 0,
+    // 61-04: absent anchors keep the hand-painted projection byte-identical.
+    ...(anchors === undefined ? {} : { anchors }),
   })
 }
 
@@ -595,6 +626,62 @@ function runWidthStroke(
   }
 }
 
+/**
+ * 61-04: one adapter replay of the vertical spine, the width factors carried
+ * as payload anchors. Goes through renderPartialStrokes exactly like the
+ * shipped Play path, so the measurement covers the whole channel:
+ * payload anchors → resolveStrokeWidthFactors → scriptBegin/scriptMove
+ * → Sample.w → Stroke.widthFrom/widthTo → sizeMult → dab radius and spacing.
+ */
+function runScriptWidthStroke(anchors: readonly AquarelleAnchor[]): WidthPixels {
+  const adapter = createPinnedAdapter(WIDTH_SHEET, WIDTH_SHEET)
+  try {
+    const stroke = makeStroke(
+      resampleAnchors(WIDTH_ANCHORS, WIDTH_SCENARIO_DENSITY),
+      MUTATION_ID,
+      anchors,
+      { ...DEFAULT_CANONICAL_PARAMS, size: WIDTH_SCENARIO_SIZE },
+    )
+    runStroke(adapter, stroke)
+    return measureWidthFromPixels(captureAdapter(adapter), WIDTH_SHEET, WIDTH_SHEET)
+  } finally {
+    adapter.dispose()
+  }
+}
+
+/**
+ * 61-04 / VEC-03: the per-sample width channel measured on real pixels
+ * through the public adapter. Both arms replay the SAME stroke; the only
+ * difference is the middle anchor's sparse factor (absent vs 1.8). The
+ * observed ratio is the measurement the C-03 trap cannot fake, because the
+ * factor never goes through the scriptScale clamp.
+ */
+function runWidthScenario(renderer: string): void {
+  const t0 = performance.now()
+  const base = runScriptWidthStroke(WIDTH_SCENARIO_BASE_ANCHORS)
+  const scaled = runScriptWidthStroke(WIDTH_SCENARIO_SCALED_ANCHORS)
+  if (base.radiusPx <= 0) throw new Error('width scenario: base arm painted nothing')
+  const observed = round3(scaled.radiusPx / base.radiusPx)
+  const pass = observed >= WIDTH_GATE
+  writeResult({
+    scenario: 'width',
+    kind: 'auto',
+    sheet: `${WIDTH_SHEET}x${WIDTH_SHEET}`,
+    widthFactor: WIDTH_FACTOR,
+    density: WIDTH_SCENARIO_DENSITY,
+    widthRatio: {
+      baseRadiusPx: round3(base.radiusPx),
+      scaledRadiusPx: round3(scaled.radiusPx),
+      observed,
+      gate: WIDTH_GATE,
+      channel: 'scriptFactor(sample)',
+    },
+    env: { renderer: String(renderer), userAgent: navigator.userAgent },
+    verdict: `${pass ? 'VECTOR-WIDTH PASS' : 'VECTOR-WIDTH FAIL'} observed=${observed}`,
+    totalProbeMs: Math.round(performance.now() - t0),
+  })
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -630,8 +717,23 @@ function writeResult(report: Record<string, unknown>): void {
 // --- main -------------------------------------------------------------------
 
 function main(): void {
-  const t0 = performance.now()
   const renderer = probeRenderer()
+  const scenario = new URLSearchParams(location.search).get('scenario')
+  if (scenario === 'width') {
+    try {
+      runWidthScenario(renderer)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      writeResult({
+        scenario: 'width',
+        widthRatio: { baseRadiusPx: 0, scaledRadiusPx: 0, observed: 0 },
+        verdict: `VECTOR-WIDTH FAIL ${message}`,
+        error: message,
+      })
+    }
+    return
+  }
+  const t0 = performance.now()
 
   // The interior anchors are the joins the seam metric scans.
   const joins = JOIN_ANCHORS.slice(1, -1)

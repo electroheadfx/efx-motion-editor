@@ -16,7 +16,20 @@ const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = join(here, '..', '..', '..', '..')
 const outDir = '/tmp/vector-spine'
 const bundlePath = join(here, 'probe.bundle.js')
-const resultPath = join(outDir, 'result.json')
+
+// 61-04: `--scenario width` replays the per-sample width channel and writes
+// /tmp/vector-spine/width-result.json. It must never overwrite the committed
+// phase evidence (result.json), which the uniform-path byte-identity pins.
+const args = process.argv.slice(2)
+const scenarioFlag = args.indexOf('--scenario')
+const scenario = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
+if (scenario !== undefined && scenario !== 'width') {
+  console.error(`unknown --scenario "${scenario}" (supported: width)`)
+  process.exit(1)
+}
+const widthScenario = scenario === 'width'
+const pageQuery = widthScenario ? '?scenario=width' : ''
+const resultPath = join(outDir, widthScenario ? 'width-result.json' : 'result.json')
 
 const esbuildCandidates = [
   join(repoRoot, 'node_modules/.pnpm/esbuild@0.27.7/node_modules/esbuild/bin/esbuild'),
@@ -73,7 +86,7 @@ const run = spawnSync(
     '--window-size=512,512',
     '--allow-file-access-from-files',
     '--dump-dom',
-    `file://${join(here, 'index.html')}`,
+    `file://${join(here, 'index.html')}${pageQuery}`,
   ],
   // The cost matrix replays 200 strokes at three sheet sizes under
   // SwiftShader; the reference probe's 15 min ceiling is too tight here.
@@ -117,7 +130,14 @@ try {
   process.exit(1)
 }
 
-if (!('digestA' in result)) {
+if (widthScenario) {
+  if (typeof result.widthRatio !== 'object' || result.widthRatio === null) {
+    console.error(`[probe] width result has no widthRatio (verdict=${result.verdict ?? '(missing)'})`)
+    writeFileSync(join(outDir, 'dom.html'), dom)
+    console.error(`[probe] DOM saved to ${join(outDir, 'dom.html')}`)
+    process.exit(1)
+  }
+} else if (!('digestA' in result)) {
   console.error(`[probe] result JSON has no digestA (verdict=${result.verdict ?? '(missing)'})`)
   writeFileSync(join(outDir, 'dom.html'), dom)
   console.error(`[probe] DOM saved to ${join(outDir, 'dom.html')}`)
@@ -127,11 +147,20 @@ if (!('digestA' in result)) {
 result.wallClockMs = elapsedMs
 const payload = JSON.stringify(result, null, 2)
 writeFileSync(resultPath, payload)
-// Committed evidence — byte-equal to the /tmp copy of this same run.
-writeFileSync(join(here, 'result.json'), payload)
+if (!widthScenario) {
+  // Committed evidence — byte-equal to the /tmp copy of this same run. The
+  // width scenario writes /tmp only: it must never overwrite this file.
+  writeFileSync(join(here, 'result.json'), payload)
+}
 
 console.log('')
-console.log('================ vector-spine feasibility ================')
+if (widthScenario) {
+  console.log(result.verdict)
+  console.log(`result JSON: ${resultPath}`)
+  // exitCode (not exit) so the buffered stdout above is flushed.
+  process.exitCode = /^VECTOR-WIDTH PASS/.test(result.verdict) ? 0 : 1
+} else {
+  console.log('================ vector-spine feasibility ================')
 console.log(`renderer : ${result.env?.renderer ?? 'n/a'}`)
 console.log(`${result.scenario ?? 'vector-spine'}: ${result.verdict}`)
 if (result.seamStepPx) {
@@ -158,6 +187,7 @@ if (result.widthRatio) {
   )
 }
 console.log('')
-console.log(`result JSON: ${resultPath} (committed copy: ${join(here, 'result.json')})`)
-console.log(`total probe: ${result.totalProbeMs} ms`)
-console.log('=========================================================')
+  console.log(`result JSON: ${resultPath} (committed copy: ${join(here, 'result.json')})`)
+  console.log(`total probe: ${result.totalProbeMs} ms`)
+  console.log('=========================================================')
+}
