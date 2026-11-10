@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-18-PLAN.md
-last_updated: "2026-11-10T22:00:49.457Z"
+stopped_at: Completed 61-19-PLAN.md
+last_updated: "2026-11-10T22:08:57.332Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: fa57855f012579c8905edeffda3ba63fd26b3c95
+state_head: 76494ae019fedc7b095d02d48ff3316f65dd52d9
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 51
-  completed_plans: 49
+  completed_plans: 50
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 19 of 20
+Plan: 20 of 20
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -107,6 +107,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P16 | 7min | 2 tasks | 4 files |
 | Phase 61 P17 | 5min | 2 tasks | 8 files |
 | Phase 61 P18 | 6min | 2 tasks | 6 files |
+| Phase 61 P19 | 9min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -286,6 +287,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: Wireframe refusal mirrors the dirty-pixel refusal in the one setDraftMode guard; the ON edge is untouched
 - [Phase 61]: The settle guard publishes only the message and error status, never setLastError nor an owned refusal: a refusal is not a failed apply
 - [Phase 61]: WIREFRAME_SETTLE_REFUSED_MESSAGE is owned by the edition leaf and imported at the end of the Studio block to keep the shipped 61-13 exact import pin byte-unchanged
+- [Phase 61]: 61-19: resolveAnchorWidthTarget fails closed on a selection/edit mismatch, an absent edit, an empty session id or a non-integer id, so the width commit refuses with no write, re-bake or ledger entry
+- [Phase 61]: 61-19: the dialog shadows its reading to ANCHOR_WIDTH_EMPTY_READING on a null target instead of adding a second availability boolean, keeping disabled and caption one branch
+- [Phase 61]: 61-19: one caption span serves both inert reasons, branching only the child so the testid-before-style ordering and the shipped no-style pin stay true
+- [Phase 61]: 61-19: the Studio's width commit routes through the shared commitAquarelleVectorPathEdit, keeping exactly one beginAquarellePathEdit in the file
 
 ### Pending Todos
 
@@ -378,8 +383,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T22:00:48.193Z
-Stopped at: Completed 61-18-PLAN.md
+Last session: 2026-11-10T22:08:56.053Z
+Stopped at: Completed 61-19-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
