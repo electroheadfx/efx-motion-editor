@@ -22,6 +22,7 @@ import {
   AQUARELLE_ANCHOR_WIDTH_MAX,
   AQUARELLE_ANCHOR_WIDTH_MIN,
   AQUARELLE_ANCHOR_WIDTH_STEP,
+  RENDER_MODE_OPTIONS,
   WATERCOLOR_SETTINGS_FIELDS,
 } from './strokeSettingsModel';
 
@@ -274,5 +275,100 @@ describe('61-11 E4 rows: the Anchor width block', () => {
     expect(block).toContain('bundle.applyAnchorWidths?.(');
     expect(block).not.toContain('buildAppearancePatch');
     expect(block).not.toContain('readNumericField');
+  });
+});
+
+// ============================================================
+//  61-12 Task 1 — the Render row (VEC-04 / E3).
+//
+//  Row ledger:
+//    E3 partial   — pinned below: the shipped red italic `Mixed` beside the
+//                   label, never a third "mixed" segment.
+//    E3 overflow  — pinned below: two constant labels in the shipped segment
+//                   row inside the fixed 520px sheet.
+//    E3 long-text — pinned below: model constants only, zero interpolation, so
+//                   no user-supplied text can reach the row.
+//
+//  The mode is a STROKE property (D-12/D-14): the mount path never consults
+//  anchors, so a hand-painted selection still gets the row, and the shipped
+//  Eraser rule still closes the whole Paint tab (and therefore the row).
+// ============================================================
+
+describe('61-12 Render row (E3)', () => {
+  const BLOCK_START = 'data-testid="stroke-settings-render-mode-block"';
+  const GROUP = 'data-testid="stroke-settings-render-mode"';
+  const NEXT_ROW = 'data-testid="stroke-settings-color"';
+
+  function renderBlock(): string {
+    return regionOf(dialogSource, BLOCK_START, NEXT_ROW);
+  }
+
+  it('mounts exactly one Render block as the FIRST row of the Paint tab', () => {
+    expect(countOf(dialogSource, BLOCK_START)).toBe(1);
+    expect(countOf(dialogSource, GROUP)).toBe(1);
+    const paintAt = dialogSource.indexOf('data-testid="stroke-settings-paint"');
+    const blockAt = dialogSource.indexOf(BLOCK_START);
+    const colorLabelAt = dialogSource.indexOf('<span style={PAINT_ROW_LABEL_STYLE}>Color</span>');
+    const colorAt = dialogSource.indexOf(NEXT_ROW);
+    expect(paintAt).toBeGreaterThan(-1);
+    expect(blockAt, 'the Render row mounts inside the Paint tab').toBeGreaterThan(paintAt);
+    expect(colorLabelAt, 'the Render row precedes the Color label').toBeGreaterThan(blockAt);
+    expect(colorAt, 'the Render row precedes the Color row').toBeGreaterThan(colorLabelAt);
+  });
+
+  it('offers exactly the two option ids, both from the model constants', () => {
+    const block = renderBlock();
+    expect(block).toContain('RENDER_MODE_OPTIONS.map((option) => {');
+    expect(block).toContain('data-testid={`stroke-settings-render-mode-option-${option.id}`}');
+    expect(block).toContain('{option.label}');
+    // ONE template test id — the two ids come from the two model options.
+    expect(countOf(dialogSource, 'stroke-settings-render-mode-option-')).toBe(1);
+    expect(RENDER_MODE_OPTIONS.map((option) => option.id)).toEqual(['watercolor', 'ribbon']);
+    expect(RENDER_MODE_OPTIONS.map((option) => option.label)).toEqual(['Watercolor', 'Ribbon']);
+  });
+
+  it('binds the group label, the row label and the shipped Mixed caption', () => {
+    const block = renderBlock();
+    expect(block).toContain('role="group"');
+    expect(block).toContain('aria-label="Render"');
+    expect(block).toContain('<span style={PAINT_ROW_LABEL_STYLE}>Render</span>');
+    expect(block).toContain('style={MIXED_CAPTION_STYLE}');
+    expect(block).toContain('>Mixed</span>');
+  });
+
+  it('marks an option active only for the selection mode and skips the active press', () => {
+    const block = renderBlock();
+    expect(block).toContain(
+      'const active = !renderModeReading.mixed && renderModeReading.mode === option.mode;',
+    );
+    expect(block).toContain('aria-pressed={active}');
+    // Pressing the mode the selection already holds writes nothing.
+    expect(block).toContain('if (active) return;');
+    expect(block).toContain('void bundle.applyRenderMode?.(ids, option.mode);');
+  });
+
+  it('is gated on the Paint tab and the watercolor module, never on anchors', () => {
+    const block = renderBlock();
+    // D-12/D-14: the row is a stroke property, so no anchor read can gate it.
+    expect(block).not.toContain('readVectorAnchors');
+    expect(block).not.toContain('anchorWidth');
+    // The module gate is the nearest gate BEFORE the block and sits inside the
+    // Paint-tab section (so the Eraser filter that closes the tab closes it).
+    const paintAt = dialogSource.indexOf('data-testid="stroke-settings-paint"');
+    const blockAt = dialogSource.indexOf(BLOCK_START);
+    const mountAt = dialogSource.lastIndexOf("engineModule === 'watercolor' ? (", blockAt);
+    expect(mountAt).toBeGreaterThan(paintAt);
+    // The Eraser rule that closes the tab (and therefore the row) is unchanged.
+    expect(dialogSource).toContain(
+      "const paintTabAvailable = strokeTypeFilter !== 'lift' && !selectionHasLift;",
+    );
+  });
+
+  it('never routes the mode through the numeric field path', () => {
+    const block = renderBlock();
+    expect(block).not.toContain('readNumericField');
+    expect(block).not.toContain('buildAppearancePatch');
+    expect(block).not.toContain('segmentedFields');
+    expect(WATERCOLOR_SETTINGS_FIELDS.map((field) => field.key)).not.toContain('renderMode');
   });
 });

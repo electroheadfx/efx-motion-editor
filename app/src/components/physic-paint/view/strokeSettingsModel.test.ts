@@ -35,6 +35,8 @@ import {
   PATH_EDIT_LABEL,
   PATH_EDIT_MULTI_DISABLED_REASON,
   PATH_EDIT_SINGLE_DISABLED_REASON,
+  RENDER_MODE_OPTIONS,
+  readRenderMode,
   resolvePathEditGate,
   shouldExitPathEdit,
   FRESH_STROKE_GEOMETRY_SESSION,
@@ -3647,5 +3649,71 @@ describe('61-11 E4 error, partial and long-text rows', () => {
     expect(`→ ${anchorWidthEffectivePx(1, 0.2)} px`).toBe('→ 0.2 px');
     // The step is the one-decimal grid the value box displays.
     expect(AQUARELLE_ANCHOR_WIDTH_STEP).toBe(0.1);
+  });
+});
+
+// 61-12 (VEC-04 / E3): the `Render` row's reading law. The mode is a string
+// discriminator on the stroke, never a numeric appearance param — the reading
+// is pure over the appearance objects, and an absent field means watercolour
+// (D-12) rather than an unknown state.
+describe('61-12 Render mode reading (Paint tab)', () => {
+  function appearanceOf(
+    mutationId: number,
+    renderMode?: 'watercolor' | 'simple-ribbon',
+  ): ScriptStrokeAppearance {
+    return renderMode === undefined
+      ? { mutationId, params: {}, color: null }
+      : { mutationId, params: {}, color: null, renderMode };
+  }
+
+  it('reads simple-ribbon when every selected stroke carries it', () => {
+    expect(readRenderMode([
+      appearanceOf(1, 'simple-ribbon'),
+      appearanceOf(2, 'simple-ribbon'),
+    ])).toEqual({ mode: 'simple-ribbon', mixed: false });
+  });
+
+  it('reads mixed with no representative when the selection disagrees', () => {
+    expect(readRenderMode([
+      appearanceOf(1, 'watercolor'),
+      appearanceOf(2, 'simple-ribbon'),
+    ])).toEqual({ mode: null, mixed: true });
+    // Order never decides the mixed state — either direction is mixed.
+    expect(readRenderMode([
+      appearanceOf(1, 'simple-ribbon'),
+      appearanceOf(2, 'watercolor'),
+    ])).toEqual({ mode: null, mixed: true });
+  });
+
+  it('treats an absent mode as watercolor and never as mixed', () => {
+    expect(readRenderMode([appearanceOf(1)])).toEqual({ mode: 'watercolor', mixed: false });
+    // An absent field and an explicit default are the SAME mode.
+    expect(readRenderMode([appearanceOf(1), appearanceOf(2, 'watercolor')]))
+      .toEqual({ mode: 'watercolor', mixed: false });
+    expect(readRenderMode([appearanceOf(1), appearanceOf(2)]))
+      .toEqual({ mode: 'watercolor', mixed: false });
+  });
+
+  it('reads the default for an empty selection', () => {
+    expect(readRenderMode([])).toEqual({ mode: 'watercolor', mixed: false });
+  });
+
+  it('E3 long-text: the two option labels are the fixed UI-SPEC constants', () => {
+    expect(RENDER_MODE_OPTIONS.map((option) => [option.id, option.mode, option.label])).toEqual([
+      ['watercolor', 'watercolor', 'Watercolor'],
+      ['ribbon', 'simple-ribbon', 'Ribbon'],
+    ]);
+    // The ids are the test-id suffixes the dialog renders; the labels are the
+    // only copy the row ever shows.
+    expect(`stroke-settings-render-mode-option-${RENDER_MODE_OPTIONS[1]!.id}`)
+      .toBe('stroke-settings-render-mode-option-ribbon');
+  });
+
+  it('never enters the numeric field registry', () => {
+    const keys = WATERCOLOR_SETTINGS_FIELDS.map((field) => field.key);
+    expect(keys).not.toContain('renderMode');
+    expect(keys).not.toContain('render-mode');
+    // The row is dispatched off the string union, not the numeric path.
+    expect(RENDER_MODE_OPTIONS.every((option) => typeof option.mode === 'string')).toBe(true);
   });
 });
