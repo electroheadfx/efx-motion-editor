@@ -15,9 +15,13 @@
 //  The module imports NOTHING from the Studio, `aquarelleRecordState`
 //  or `aquarelleStrokeSelection`: those import this module, never the
 //  reverse (one-way edge keeps the disarm choke points acyclic).
+//  61-17 (G-6): the ONE permitted sibling import is the dependency-free
+//  `vectorPathLatches` leaf, so latching the picker can release the
+//  vector pen and an open path edit without importing the session.
 // ============================================================
 
 import { computed, signal } from '@preact/signals';
+import { exitPathEdit, exitVectorPen } from './vectorPathLatches';
 
 /** Session-only UI state — never persisted. */
 export const aquarellePickerLatched = signal(false);
@@ -32,6 +36,14 @@ export const aquarellePickerActive = computed(
 /** Compare-then-write (efx-preact-reactivity rule 3). */
 export function setAquarellePickerLatched(next: boolean): void {
   if (aquarellePickerLatched.peek() === next) return;
+  // 61-17 (G-6): arming the picker releases the vector pen and closes any
+  // open path edit — the vector overlay draws above the sheet and would
+  // swallow a latched pick. ENTRY EDGE ONLY: `disarmAquarellePicker` is a
+  // release path and must never disturb the pen or the edit.
+  if (next) {
+    exitVectorPen();
+    exitPathEdit();
+  }
   aquarellePickerLatched.value = next;
 }
 
