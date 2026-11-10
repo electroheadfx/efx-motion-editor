@@ -556,6 +556,13 @@ export interface StrokeSettingsDialogBundle {
    * Absent means this module has no vector paths (the gate stays disabled).
    */
   readonly readVectorAnchors?: (ids: readonly number[]) => readonly AquarelleAnchor[] | null;
+  /**
+   * 61-11 (VEC-03 / T-61-38): write one factor on EVERY selected anchor of the
+   * single selected vector stroke as ONE path edit, so a multi-anchor change is
+   * one undo entry rather than one per anchor. Returns true only when the edit
+   * was accepted. Absent hides the Anchor width block.
+   */
+  readonly applyAnchorWidths?: (ids: readonly number[], value: number) => boolean;
 }
 
 // ============================================================
@@ -767,4 +774,70 @@ export interface PathEditExitArgs {
  */
 export function shouldExitPathEdit(args: PathEditExitArgs): boolean {
   return args.pathEditActive && !args.gateEnabled;
+}
+
+// ── The Anchor width control (E4 / VEC-03) ──────────────────────────
+//
+//  D-09: an anchor's width is a MULTIPLIER of the stroke's brush Size, never a
+//  pixel radius. The band is deliberately wider than the multiplier band —
+//  `MULTIPLIER_MIN` stays the shipped 0.5, untouched — because a vector path
+//  can pinch to 0.2 and swell to 2.0.
+
+export const AQUARELLE_ANCHOR_WIDTH_MIN = 0.2;
+export const AQUARELLE_ANCHOR_WIDTH_MAX = 2;
+export const AQUARELLE_ANCHOR_WIDTH_STEP = 0.1;
+export const AQUARELLE_ANCHOR_WIDTH_DEFAULT = 1;
+
+export interface AnchorWidthReading {
+  readonly value: number;
+  readonly mixed: boolean;
+  readonly count: number;
+}
+
+/**
+ * The Paint row's reading. `value` is the FIRST selected anchor's factor (the
+ * first-selected precedent every numeric field follows), `mixed` when any
+ * listed anchor disagrees, and `count` how many of the listed indices the path
+ * actually carries. An absent `width` is 1.0 — the sparse law 61-05 records.
+ */
+export function readAnchorWidthReading(
+  anchors: readonly AquarelleAnchor[],
+  indices: readonly number[],
+): AnchorWidthReading {
+  const factors: number[] = [];
+  for (const index of indices) {
+    const anchor = Number.isInteger(index) && index >= 0 ? anchors[index] : undefined;
+    if (!anchor) continue;
+    factors.push(
+      typeof anchor.width === 'number' && Number.isFinite(anchor.width)
+        ? anchor.width
+        : AQUARELLE_ANCHOR_WIDTH_DEFAULT,
+    );
+  }
+  if (factors.length === 0) {
+    return { value: AQUARELLE_ANCHOR_WIDTH_DEFAULT, mixed: false, count: 0 };
+  }
+  const first = factors[0]!;
+  return { value: first, mixed: factors.some((factor) => factor !== first), count: factors.length };
+}
+
+/**
+ * Size x the anchor factor, rounded to ONE decimal — the honest per-vertex
+ * radius in px. Never reads `scriptScale` (T-61-39): a 1.8x vertex on a 20px
+ * brush reads `→ 36 px`, whatever the transform says.
+ */
+export function anchorWidthEffectivePx(sizePx: number, factor: number): number {
+  const safeSize = Number.isFinite(sizePx) ? sizePx : 0;
+  const safeFactor = Number.isFinite(factor) ? factor : AQUARELLE_ANCHOR_WIDTH_DEFAULT;
+  return Math.round(safeSize * safeFactor * 10) / 10;
+}
+
+/**
+ * The committed factor: clamped into the band. Exactly 1 survives as 1 so the
+ * commit DELETES the sparse `width` key instead of storing the default, and a
+ * non-finite entry can never reach a document field.
+ */
+export function anchorWidthPatchValue(value: number): number {
+  if (!Number.isFinite(value)) return AQUARELLE_ANCHOR_WIDTH_DEFAULT;
+  return Math.min(AQUARELLE_ANCHOR_WIDTH_MAX, Math.max(AQUARELLE_ANCHOR_WIDTH_MIN, value));
 }

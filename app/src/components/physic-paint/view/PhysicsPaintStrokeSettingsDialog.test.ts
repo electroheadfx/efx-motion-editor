@@ -95,10 +95,10 @@ describe('61-11 Edit path header button (E2)', () => {
     expect(button).not.toContain('getRecordedAquarelleStroke');
     expect(button).not.toContain('beginAquarellePathEdit');
     // The exact session-action surface: `exitPathEdit` owns the anchor-selection
-    // clear, so the dialog never imports a second clearing action (and never an
-    // unused one — `noUnusedLocals` would reject it).
+    // clear (no second clearing action), and the Anchor width block reads the
+    // overlay's ONE anchor-selection signal.
     expect(dialogSource).toContain(
-      "import { enterPathEdit, exitPathEdit, pathEditMutationId } from './vectorPathSession';",
+      "import { enterPathEdit, exitPathEdit, pathEditMutationId, vectorAnchorSelection } from './vectorPathSession';",
     );
   });
 

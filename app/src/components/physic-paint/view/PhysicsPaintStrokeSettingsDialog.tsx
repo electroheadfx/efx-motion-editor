@@ -9,10 +9,16 @@ import { hexToRgba } from '../../../lib/colorUtils';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  AQUARELLE_ANCHOR_WIDTH_DEFAULT,
+  AQUARELLE_ANCHOR_WIDTH_MAX,
+  AQUARELLE_ANCHOR_WIDTH_MIN,
+  AQUARELLE_ANCHOR_WIDTH_STEP,
   FRESH_STROKE_GEOMETRY_SESSION,
   STROKE_POSITION_RANGE,
   STROKE_ROTATION_RANGE,
   STROKE_SCALE_RANGE,
+  anchorWidthEffectivePx,
+  anchorWidthPatchValue,
   buildAppearancePatch,
   buildPaintSeedVariationPatch,
   filterStrokeListRows,
@@ -21,6 +27,7 @@ import {
   listStrokeTipOptions,
   listStrokeToolOptions,
   matchesStrokeTypeFilter,
+  readAnchorWidthReading,
   readColorField,
   readNumericField,
   readPaintSeedVariation,
@@ -77,7 +84,7 @@ import {
   type AquarelleStrokeToolFilter,
   type AquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
-import { enterPathEdit, exitPathEdit, pathEditMutationId } from './vectorPathSession';
+import { enterPathEdit, exitPathEdit, pathEditMutationId, vectorAnchorSelection } from './vectorPathSession';
 
 /**
  * quick 261024-p5q: the Stroke Settings dialog — a selection-gated, movable
@@ -280,6 +287,14 @@ const MIXED_CAPTION_STYLE: CSSProperties = {
   fontSize: '10px',
   fontStyle: 'italic',
   color: '#ef4444',
+};
+
+/** 61-11 (E4 empty): the Anchor width block's quiet caption under the row. */
+const ANCHOR_WIDTH_CAPTION_STYLE: CSSProperties = {
+  display: 'block',
+  marginTop: '4px',
+  fontSize: '10px',
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
 };
 
 const SEGMENT_GROUP_STYLE: CSSProperties = {
@@ -686,6 +701,19 @@ export function PhysicsPaintStrokeSettingsDialog({
   // 261031-cf9: the switch is watercolor-only and derived from the salt each
   // appearance carries — never a second boolean.
   const paintSeedVariationActive = readPaintSeedVariation(appearances);
+
+  // 61-11 (VEC-03 / E4): the per-vertex width control. The anchors are the
+  // SAME bundle read the header gate uses, the anchor selection is the
+  // overlay's ONE signal, and the px readout multiplies the stroke's REAL Size
+  // by the anchor factor — never `scriptScale` (T-61-39). Mounted only for a
+  // single vector stroke whose bundle can commit the widths.
+  const anchorWidthReading = readAnchorWidthReading(
+    selectedVectorAnchors ?? [],
+    vectorAnchorSelection.value,
+  );
+  const anchorWidthAvailable = engineModule === 'watercolor'
+    && selectedVectorAnchors !== null
+    && bundle.applyAnchorWidths !== undefined;
 
   const colorReading = readColorField(appearances, ids);
   const colorRgb = hexToRgba(colorReading.color);
@@ -1527,7 +1555,7 @@ export function PhysicsPaintStrokeSettingsDialog({
               </div>
               {numericFields.map((field) => {
               const reading = readNumericField(appearances, ids, field);
-              return (
+              const row = (
                 <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
                   <SliderStepper
                     label={field.label}
@@ -1548,6 +1576,52 @@ export function PhysicsPaintStrokeSettingsDialog({
                   />
                 </div>
               );
+              // 61-11 (E4): the Anchor width block sits DIRECTLY under Size and
+              // OUTSIDE the appearance-field registry — the factor is per
+              // anchor, never an appearance param, so it must not ride
+              // `readNumericField` / `buildAppearancePatch`.
+              if (field.key !== 'size' || !anchorWidthAvailable) return row;
+              const anchorWidthEmpty = anchorWidthReading.count === 0;
+              return [
+                row,
+                <div key="anchor-width" data-testid="stroke-settings-anchor-width">
+                  <SliderStepper
+                    label="Anchor width"
+                    ariaLabel="Anchor width"
+                    value={anchorWidthEmpty
+                      ? AQUARELLE_ANCHOR_WIDTH_DEFAULT
+                      : anchorWidthReading.value}
+                    min={AQUARELLE_ANCHOR_WIDTH_MIN}
+                    max={AQUARELLE_ANCHOR_WIDTH_MAX}
+                    step={AQUARELLE_ANCHOR_WIDTH_STEP}
+                    precision={1}
+                    mixed={anchorWidthReading.mixed}
+                    disabled={anchorWidthEmpty}
+                    commitOnRelease
+                    allowOutOfRangeEntry
+                    // `→ {n} px` from the REAL per-vertex radius: Size x factor.
+                    // Empty means there is no vertex to measure — the caption
+                    // below says what to do instead.
+                    below={anchorWidthEmpty
+                      ? undefined
+                      : `→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`}
+                    onChange={(value) => {
+                      void bundle.applyAnchorWidths?.(
+                        ids,
+                        anchorWidthPatchValue(value),
+                      );
+                    }}
+                  />
+                  {anchorWidthEmpty ? (
+                    <span
+                      data-testid="stroke-settings-anchor-width-caption"
+                      style={ANCHOR_WIDTH_CAPTION_STYLE}
+                    >
+                      Select anchors on the canvas to set their width.
+                    </span>
+                  ) : null}
+                </div>,
+              ];
             })}
             {segmentedFields.map((field) => {
               const reading = readNumericField(appearances, ids, field);

@@ -111,6 +111,7 @@ import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import * as vectorPathSession from './view/vectorPathSession';
+import { buildAnchorWidthCommit } from './view/vectorPathHandles';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
@@ -11302,6 +11303,23 @@ export function PhysicsPaintStudio() {
           const stroke = getRecordedAquarelleStroke(ids[0]!);
           if (!stroke) return null;
           return normaliseAquarelleAnchors(stroke.anchors) ?? null;
+        },
+        // 61-11 (VEC-03 / T-61-38): the Anchor width commit. The whole next
+        // list is built from the LIVE anchor selection and driven through ONE
+        // path edit, so a multi-anchor change is one undo entry — never one
+        // per anchor.
+        applyAnchorWidths: (ids, value) => {
+          if (ids.length !== 1) return false;
+          const stroke = getRecordedAquarelleStroke(ids[0]!);
+          if (!stroke) return false;
+          const anchors = normaliseAquarelleAnchors(stroke.anchors);
+          if (!anchors) return false;
+          const next = buildAnchorWidthCommit(
+            anchors,
+            vectorPathSession.vectorAnchorSelection.peek(),
+            value,
+          );
+          return beginAquarellePathEdit(ids[0]!, next) !== null;
         },
         reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
         // 261101-jmm: the sheet's row/global trash uses the SAME handler as
