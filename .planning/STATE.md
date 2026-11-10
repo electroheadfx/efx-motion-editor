@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-08-PLAN.md
-last_updated: "2026-11-10T12:52:16.530Z"
+stopped_at: Completed 61-03-PLAN.md
+last_updated: "2026-11-10T13:01:50.200Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: 090e96f990085bf670606652af1df2fdbaa1e820
+state_head: 1582810c5de09adc92754441974816265bf13cbe
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 34
+  completed_plans: 35
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 4 of 14
+Plan: 5 of 14
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -92,6 +92,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P01 | 19min | 3 tasks | 4 files |
 | Phase 61 P02 | 3min | 3 tasks | 3 files |
 | Phase 61 P08 | 9min | 3 tasks | 11 files |
+| Phase 61 P03 | 6min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -218,6 +219,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: The determinism contract scans src/vector with a zero-file guard naming spine.ts; spine.ts imports nothing, so REL-01 and the engine-1 direction pins are untouched
 - [Phase 61]: The vector pen is a host tool: vectorPathSession signals live outside AquarelleTool, paint tool presses clear the pen at the two input seams (rail onClick, Studio handleSelectAquarelleTool) to avoid an aquarelleRecordState -> vectorPathSession -> aquarelleStrokeSelection import cycle.
 - [Phase 61]: WatercolorRail is exported for the plain .test.ts vnode walk because vitest collects only src/**/*.test.ts; the pen also joins the one-active-surface law (!penActive) in the paint row.
+- [Phase 61]: 61-03: the vector path rides the existing opaque engine block (anchors + renderMode), so the host generic contract is untouched and the host still never reads P.
+- [Phase 61]: 61-03: conditional spreads in toStudioStroke keep the nine pre-vector engine keys literally identical and add exactly one key for a mode-only stroke (D-14 independence).
+- [Phase 61]: 61-03: anchorsEqual treats a difference of exactly 1e-9 as unequal (|a-b| < 1e-9 means equal); vectorPathsEqual resolves an absent mode to watercolour.
+- [Phase 61]: 61-03: projectVectorPath drops a width key equal to ANCHOR_WIDTH_DEFAULT and never clamps a non-default factor (1.8 and 0.3 pass through), order-preserving and non-mutating (D-10).
+- [Phase 61]: 61-03: codec validation lives in isStrokeShape and canonicalisation in cloneStrokeForWire; AQUARELLE_SCHEMA_VERSION stays 1 because the two fields are optional additions whose absence is the documented state.
 
 ### Pending Todos
 
@@ -310,8 +316,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T12:52:15.297Z
-Stopped at: Completed 61-08-PLAN.md
+Last session: 2026-11-10T13:01:48.977Z
+Stopped at: Completed 61-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
