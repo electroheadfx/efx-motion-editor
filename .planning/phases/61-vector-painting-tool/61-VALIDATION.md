@@ -2,9 +2,9 @@
 phase: "61"
 slug: "vector-painting-tool"
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: "2026-11-10"
 ---
 
@@ -45,20 +45,20 @@ The planner fills the Task ID / Plan / Wave / Threat Ref columns. The requiremen
 
 | Requirement | Behavior | Test Type | Automated Command | File Exists |
 |---|---|---|---|---|
-| VEC-01 | Spine passes through its anchors; Alt places a corner | unit | `pnpm --filter @efxlab/efx-watercolor exec vitest run src/vector/spine.test.ts` | ❌ Wave 0 |
-| VEC-01 | Ribbon tool appears in the rail as a 5th, visually separated entry with `aria-pressed` | vnode harness | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/view/PhysicsPaintToolRail.test.ts` | ❌ Wave 0 (`.test.ts`, not `.test.tsx`) |
-| VEC-02 | Anchor/handle hit-test priority over strokes; 8 px pad at any zoom | unit | `… vitest run src/components/physic-paint/view/scriptStrokeTransform.test.ts` | ✅ extend |
-| VEC-02 | Insert/delete change the anchor list and the spine in one commit | unit | `… vitest run src/components/physic-paint/view/aquarelleRecordState.test.ts` | ⚠️ verify then extend |
-| VEC-03 | Sparse width: absent factor interpolates; uniform stroke stores nothing | unit | `pnpm --filter @efxlab/efx-watercolor exec vitest run src/payload/toStudioStroke.test.ts` | ⚠️ check existing payload tests |
-| VEC-04 | Brush id + colour are stroke-level; no per-vertex fields exist in the payload type | source/type pin | included in the AQTL field pin | ❌ Wave 0 |
-| VEC-05 | Wireframe on ⇒ no capture, no reset, no rebake, no cross-realm persist | source-contract | `… vitest run src/components/physic-paint/PhysicsPaintStudio.test.ts` | ✅ extend the Draft pin block at `:5628-5923` |
-| VEC-05 | Toggle is not in `.mce`, the revision, any cache key, or export | source-contract | `… vitest run src/lib/mceFieldContract.test.ts` + a new negative scan | ✅ / ❌ extend |
-| VEC-06 | AQTL encode→decode round-trips anchors, kinds, sparse widths, `renderMode` | unit | `… vitest run src/components/physic-paint/performance/scriptTimelineCodec.test.ts` | ✅ extend |
-| VEC-06 | Reopen: encode→decode→replay produces identical bytes | integration (headless engine) | `pnpm --filter @efxlab/efx-watercolor exec vitest run src/determinismContract.test.ts` | ✅ extend |
-| VEC-06 | New fields declared in BOTH TS and Rust | field-diff | `… vitest run src/lib/mceFieldContract.test.ts` | ✅ extend `expectMemberKeys` |
-| VEC-07 | Each operation is exactly one undo entry | unit | `… vitest run src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts` | ⚠️ verify; else add |
-| All | Determinism: same script ⇒ same pixels, twice, per mode | contract | `pnpm --filter @efxlab/efx-watercolor exec vitest run src/determinismContract.test.ts` | ✅ extend |
-| All | No unseeded RNG in the new module | static scan | same file — **must widen the `src/engine` / `src/payload` scan to cover `src/vector`** | ⚠️ gap |
+| VEC-01 | Spine passes through its anchors; Alt places a corner | unit | `pnpm --filter @efxlab/efx-watercolor exec vitest run src/vector/spine.test.ts` | ✅ 61-02 (33 tests) |
+| VEC-01 | Ribbon tool appears in the rail as a 5th, visually separated entry with `aria-pressed` | vnode harness | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/view/PhysicsPaintToolRail.test.ts` | ✅ 61-08 |
+| VEC-02 | Anchor/handle hit-test priority over strokes; 8 px pad at any zoom | unit | `… vitest run src/components/physic-paint/view/scriptStrokeTransform.test.ts` | ✅ extended 61-09 |
+| VEC-02 | Insert/delete change the anchor list and the spine in one commit | unit | `… vitest run src/components/physic-paint/engine/VectorPathOverlay.test.ts` | ✅ 61-10 (`commits ONCE`, `ONE commit`) |
+| VEC-03 | Sparse width: absent factor interpolates; uniform stroke stores nothing | unit | `pnpm --filter @efxlab/efx-watercolor exec vitest run src/payload/toStudioStroke.test.ts` | ✅ 61-03 / 61-04 |
+| VEC-04 | Brush id + colour are stroke-level; no per-vertex fields exist in the payload type | source/type pin | `… vitest run src/components/physic-paint/view/strokeSettingsModel.test.ts` + AQTL field pin | ✅ 61-03 / 61-12 |
+| VEC-05 | Wireframe on ⇒ no capture, no reset, no rebake, no cross-realm persist | source-contract | `… vitest run src/components/physic-paint/PhysicsPaintStudio.test.ts` | ✅ 61-13 |
+| VEC-05 | Toggle is not in `.mce`, the revision, any cache key, or export | source-contract | `… vitest run src/efx-paint/compositor/vectorStrokeExportParity.test.ts` + `efxPaintCompositeCache.test.ts` | ✅ 61-14 |
+| VEC-06 | AQTL encode→decode round-trips anchors, kinds, sparse widths, `renderMode` | unit | `… vitest run src/components/physic-paint/performance/scriptTimelineCodec.test.ts` | ✅ 61-05 |
+| VEC-06 | Reopen: encode→decode→replay produces identical bytes | integration (headless engine) | `pnpm --filter @efxlab/efx-watercolor exec vitest run src/determinismContract.test.ts` | ✅ 61-05 / 61-14 |
+| VEC-06 | New fields declared in BOTH TS and Rust | field-diff | `… vitest run src/lib/mceFieldContract.test.ts` | ✅ 61-06 |
+| VEC-07 | Each operation is exactly one undo entry | unit | `… vitest run src/components/physic-paint/engine/VectorPathOverlay.test.ts` | ✅ 61-10 / 61-11 / 61-12 |
+| All | Determinism: same script ⇒ same pixels, twice, per mode | contract | `pnpm --filter @efxlab/efx-watercolor exec vitest run src/determinismContract.test.ts` | ✅ 61-07 |
+| All | No unseeded RNG in the new module | static scan | same file — widened to cover `src/vector` | ✅ 61-02 |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -74,14 +74,14 @@ The planner fills the Task ID / Plan / Wave / Threat Ref columns. The requiremen
 
 ## Wave 0 Requirements
 
-- [ ] `packages/efx-watercolor/probe/vector-spine/` — clone of `probe/watercolor-opacity/` (`probe.ts`, `index.html`, `run.mjs`). Must answer the five ROADMAP spike questions: segment-runs vs payload-extension seam scan, sampling law at 1×/4×/16× tick density, seam step metric across segment joins, dab-count cost vs stroke count at 1920×1080 / 2048×1536 / 3072×2304, and byte-identity across runs. **This probe gates the data model.**
-- [ ] `packages/efx-watercolor/src/vector/spine.test.ts` — spine evaluation, arc-length station assignment, duplicate-anchor fallback, centripetal handle golden values (exact)
-- [ ] `packages/efx-watercolor/src/payload/toStudioStroke.test.ts` — sparse width projection, absent-means-uniform, `renderMode` default
-- [ ] `app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts` — AQTL v2 round trip including absent fields and the v1 refusal/acceptance decision
-- [ ] `app/src/lib/mceFieldContract.test.ts` — extended `expectMemberKeys` for the new `Mce*` members; no new `ALLOWED_ONE_LANGUAGE` entries
-- [ ] `app/src/components/physic-paint/PhysicsPaintStudio.test.ts` — wireframe gate pins mirroring the Draft block
-- [ ] `app/src/components/physic-paint/view/PhysicsPaintToolRail.test.ts` — fifth-entry pin (`.test.ts`, not `.test.tsx`)
-- [ ] Undo-granularity test for the new gestures (extend `useRotoPhysicalEditHistory` coverage or add a focused file)
+- [x] `packages/efx-watercolor/probe/vector-spine/` — clone of `probe/watercolor-opacity/` (`probe.ts`, `index.html`, `run.mjs`). Must answer the five ROADMAP spike questions: segment-runs vs payload-extension seam scan, sampling law at 1×/4×/16× tick density, seam step metric across segment joins, dab-count cost vs stroke count at 1920×1080 / 2048×1536 / 3072×2304, and byte-identity across runs. **This probe gates the data model.** — landed 61-01, `VECTOR-SPINE PASS`
+- [x] `packages/efx-watercolor/src/vector/spine.test.ts` — spine evaluation, arc-length station assignment, duplicate-anchor fallback, centripetal handle golden values (exact) — 61-02
+- [x] `packages/efx-watercolor/src/payload/toStudioStroke.test.ts` — sparse width projection, absent-means-uniform, `renderMode` default — 61-03 / 61-04
+- [x] `app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts` — AQTL v2 round trip including absent fields and the v1 refusal/acceptance decision — 61-05
+- [x] `app/src/lib/mceFieldContract.test.ts` — extended `expectMemberKeys` for the new `Mce*` members; no new `ALLOWED_ONE_LANGUAGE` entries — 61-06
+- [x] `app/src/components/physic-paint/PhysicsPaintStudio.test.ts` — wireframe gate pins mirroring the Draft block — 61-13
+- [x] `app/src/components/physic-paint/view/PhysicsPaintToolRail.test.ts` — fifth-entry pin (`.test.ts`, not `.test.tsx`) — 61-08
+- [x] Undo-granularity test for the new gestures (extend `useRotoPhysicalEditHistory` coverage or add a focused file) — 61-10 / 61-11 / 61-12 via `VectorPathOverlay.test.ts`
 
 ---
 
@@ -97,11 +97,24 @@ The planner fills the Task ID / Plan / Wave / Threat Ref columns. The requiremen
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 15 s per task
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 15 s per task
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validated 2026-11-10 — app suite 421 files / 8712 tests green; engine suite 16 files / 299 tests green.
+
+Every row of the Per-Task Verification Map resolved to an existing, green test file after
+execution. The one anticipated gap — the unseeded-RNG scan not covering the new `src/vector`
+root — was closed by 61-02, which also added a zero-file guard so a rename cannot empty the
+scan silently. Three behaviours remain manual-only by design (see above).
+
+## Validation Audit 2026-11-10
+
+| Metric | Count |
+|---|---|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
