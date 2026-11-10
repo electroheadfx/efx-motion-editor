@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 4
+open_count: 6
 waived_count: 18
 fixed_count: 91
-total_count: 113
-last_updated: 2026-11-09T12:21:19.947Z
+total_count: 115
+last_updated: 2026-11-10T14:56:49.841Z
 ---
 
 # Broken Windows Ledger
@@ -128,6 +128,8 @@ last_updated: 2026-11-09T12:21:19.947Z
 | 111 | 261107-qgj | deviation | app/src/components/physic-paint/view/railMotionBoundaryTool.test.ts |  | Rule 1: updated the railMotionEditingMode import pin to the combined exitRailMotionEditing + railMotionSelectedChannel import | open |  | 2026-11-07T18:34:20.061Z |  |
 | 112 | 60 | deviation | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Viewport getter converted to peeked live pitch early (60-03's intended end state); Rule 2 pre-emptive fix | open |  | 2026-11-09T12:21:19.771Z |  |
 | 113 | 60 | deviation | app/src/components/physic-paint/physicsPaintStudio.css | 5150 | Ruler tick mark/label offset stays literal 8px (plan says keep positioning); drifts from cell centre above 1x - revisit in 60-05 | open |  | 2026-11-09T12:21:19.947Z |  |
+| 114 | 61 | deviation | app/src/components/physic-paint/engine/VectorPathOverlay.test.ts |  | Task 2: updated the shipped 61-09 effect-guard source pin after the edit-key binding widened the guard (Rule 1). | open |  | 2026-11-10T14:56:49.655Z |  |
+| 115 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Task 3: appended handleAquarelleVectorPathEdit to two shipped canvas-mount dependency pins (Rule 1). | open |  | 2026-11-10T14:56:49.841Z |  |
 
 ````json
 [
@@ -1525,6 +1527,32 @@ last_updated: 2026-11-09T12:21:19.947Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-09T12:21:19.947Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 114,
+    "kind": "deviation",
+    "phase": "61",
+    "file": "app/src/components/physic-paint/engine/VectorPathOverlay.test.ts",
+    "line": null,
+    "description": "Task 2: updated the shipped 61-09 effect-guard source pin after the edit-key binding widened the guard (Rule 1).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-10T14:56:49.655Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 115,
+    "kind": "deviation",
+    "phase": "61",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
+    "line": null,
+    "description": "Task 3: appended handleAquarelleVectorPathEdit to two shipped canvas-mount dependency pins (Rule 1).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-10T14:56:49.841Z",
     "resolved_at": null,
     "milestone": "v2.1.0"
   }

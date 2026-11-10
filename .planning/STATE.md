@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-09-PLAN.md
-last_updated: "2026-11-10T14:31:24.757Z"
+stopped_at: Completed 61-10-PLAN.md
+last_updated: "2026-11-10T14:56:45.874Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: 4e9c6c93b194c1abc0cdfee0f4ee2b9073b4b8a9
+state_head: f8977e375848a632003788943f1f66545424eb96
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 40
+  completed_plans: 41
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 10 of 14
+Plan: 11 of 14
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -98,6 +98,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P06 | 3min | 2 tasks | 3 files |
 | Phase 61 P07 | 23 | 3 tasks | 28 files |
 | Phase 61 P09 | 10min | 3 tasks | 6 files |
+| Phase 61 P10 | 16min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -248,6 +249,12 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: 61-09: Stroke assembly is the pure buildVectorStroke(commit, source); AquarelleCanvasLayer supplies live values and forwards once to the existing onStrokeEnd seam (one revision bump).
 - [Phase 61]: 61-09: Recorded vector paths stay visible with root pointerEvents none while the pen is released; the window key listener binds only while the pen is active.
 - [Phase 61]: 61-09: Preact onDblClick (real dblclick) finishes the path; a real double-click's second pointerdown is absorbed by the adjacency refusal, so no duplicate anchor is appended.
+- [Phase 61]: 61-10: Alt is read per pointermove so the handle-coupling break applies mid-drag; each move recomputes from anchorsAtStart.
+- [Phase 61]: 61-10: A spine click is a completed insert gesture at pointerdown (insert, select, ONE onPathEdit), not a drag state.
+- [Phase 61]: 61-10: mapAnchorList returns undefined for an absent list and maps only stored handles, so hand-painted strokes gain no anchors key and auto anchors no invented handles.
+- [Phase 61]: 61-10: Translate/transform rebuild the payload entry's engine.anchors from the same mapped list, so the payload never carries a stale path (T-61-34).
+- [Phase 61]: 61-10: The Studio path-edit handler publishes the fixed rejection line only for a missing/unreadable path; a readable-path null (in-flight or unchanged) publishes nothing.
+- [Phase 61]: 61-10: Geometry edits never re-roll the paint seed — beginAquarellePathEdit omits bumpAquarellePaintSeedSalts.
 
 ### Pending Todos
 
@@ -340,8 +347,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T14:31:23.524Z
-Stopped at: Completed 61-09-PLAN.md
+Last session: 2026-11-10T14:56:44.631Z
+Stopped at: Completed 61-10-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
