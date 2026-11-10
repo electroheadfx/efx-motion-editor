@@ -1094,6 +1094,9 @@ describe('VectorPathOverlay — the text-entry key guard (61-16)', () => {
   beforeEach(() => {
     resetAquarelleRecordState();
     resetForStudioOpen();
+    // The two draft cases press on the overlay, which mounts only while the
+    // pen owns the surface.
+    vectorPenActive.value = true;
   });
 
   afterEach(() => {
