@@ -48,7 +48,7 @@ Each maps to exactly one roadmap phase.
 - [x] **VEC-04**: Brush type and colour are per stroke
 - [x] **VEC-05**: A wireframe preview toggle shows strokes and paths without render, and serves as the drag-time performance mode
 - [x] **VEC-06**: Vector strokes persist in the `.mce`, survive reopen, and export
-- [ ] **VEC-07**: Undo/redo covers each vector operation
+- [x] **VEC-07**: Undo/redo covers each vector operation
 
 ### Painted-stroke curve editing (Phase 62)
 
@@ -134,7 +134,7 @@ Deferred to a later milestone. Not in the current roadmap.
 | VEC-04 | Phase 61 | Complete |
 | VEC-05 | Phase 61 | Complete |
 | VEC-06 | Phase 61 | Complete |
-| VEC-07 | Phase 61 | Pending |
+| VEC-07 | Phase 61 | Complete |
 | CRV-01 | Phase 62 | Pending |
 | CRV-02 | Phase 62 | Pending |
 | CRV-03 | Phase 62 | Pending |

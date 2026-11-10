@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-07-PLAN.md
-last_updated: "2026-11-10T14:06:02.853Z"
+stopped_at: Completed 61-09-PLAN.md
+last_updated: "2026-11-10T14:31:24.757Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: 6018713a13be6de78b6737ba825f07c7a4b1584c
+state_head: 4e9c6c93b194c1abc0cdfee0f4ee2b9073b4b8a9
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 39
+  completed_plans: 40
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 9 of 14
+Plan: 10 of 14
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -97,6 +97,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P05 | 7min | 3 tasks | 4 files |
 | Phase 61 P06 | 3min | 2 tasks | 3 files |
 | Phase 61 P07 | 23 | 3 tasks | 28 files |
+| Phase 61 P09 | 10min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -242,6 +243,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: 61-07: the render mode is explicit stroke data (Stroke.renderMode; scriptBegin argument wins, interactive seeds from the brush) and is never inferred from a parameter value.
 - [Phase 61]: 61-07: the ribbon branch sits inside the existing stamp path with the seven wet globals as independent weights; the preset keeps neutral brush-side multipliers so a raised global still reaches the deposit (D-13).
 - [Phase 61]: 61-07: the record-time stamp writes renderMode only when non-default, so a plain hand-painted stroke keeps its pre-phase key set; the eraser popover filters render-mode presets through one pure helper.
+- [Phase 61]: 61-09: The width envelope draws only for a non-uniform profile (D-10), with VECTOR_ENVELOPE_BASE_UV = 0.02 x sheet height as display-only base half-width; baked thickness stays the brush radius.
+- [Phase 61]: 61-09: renderMode resolves from resolveRenderModeForBrushId(aquarelleBrushForActiveTool().brushId) at finish time so the commit can never disagree with the recorded brush.
+- [Phase 61]: 61-09: Stroke assembly is the pure buildVectorStroke(commit, source); AquarelleCanvasLayer supplies live values and forwards once to the existing onStrokeEnd seam (one revision bump).
+- [Phase 61]: 61-09: Recorded vector paths stay visible with root pointerEvents none while the pen is released; the window key listener binds only while the pen is active.
+- [Phase 61]: 61-09: Preact onDblClick (real dblclick) finishes the path; a real double-click's second pointerdown is absorbed by the adjacency refusal, so no duplicate anchor is appended.
 
 ### Pending Todos
 
@@ -334,8 +340,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T14:06:01.609Z
-Stopped at: Completed 61-07-PLAN.md
+Last session: 2026-11-10T14:31:23.524Z
+Stopped at: Completed 61-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

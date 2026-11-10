@@ -235,7 +235,7 @@ Plans:
   4. A vector stroke persists in `.mce` (declared in both TS and Rust), survives reopen, and exports exactly as previewed while keeping hide/solo, ordering, opacity, and background behavior.
   5. Deterministic replay: the same vector stroke produces the same raster across runs, undo/redo, and reopen, and undo/redo covers each vector operation.
 
-**Plans:** 8/14 plans executed
+**Plans:** 9/14 plans executed
 
 Plans:
 **Wave 1**
@@ -255,7 +255,7 @@ Plans:
 - [x] 61-07-PLAN.md — Simple ribbon: crisp render mode in the engine, the brush preset and its crisp thumb, mode-aware script begin
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 61-09-PLAN.md — Draw path: spine and anchor overlay, click/Alt/Enter/Escape gesture, one recorded stroke per path
+- [x] 61-09-PLAN.md — Draw path: spine and anchor overlay, click/Alt/Enter/Escape gesture, one recorded stroke per path
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 61-10-PLAN.md — Edit path: anchor and handle drag, promotion, coupling, insert/delete, multi-select width, anchors travel with the stroke
@@ -308,7 +308,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 59. Rail Motion Channels & v7 Interface | 25/25 | Complete    | 2026-11-08 |
 | 60. Studio Timeline Horizontal Zoom | 6/6 | Complete    | 2026-11-09 |
-| 61. Vector Painting Tool | 8/14 | In Progress | - |
+| 61. Vector Painting Tool | 9/14 | In Progress | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
 
 **Execution Order:** 59 → 60 → 61 → 62 (global numbering continues; Phase 57 is retired and never reused)
