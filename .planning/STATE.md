@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-11-PLAN.md
-last_updated: "2026-11-10T15:45:44.462Z"
+stopped_at: Completed 61-12-PLAN.md
+last_updated: "2026-11-10T16:07:32.570Z"
 last_activity: 2026-11-10
 last_activity_desc: Phase 61 execution started
-state_head: b64f0ecbf4300344bedf6eae0312d6b0ef44d3ea
+state_head: 5368c45317d21ba19101af5c4620c6bf39e96189
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 45
-  completed_plans: 43
+  completed_plans: 44
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 13 of 14
+Plan: 14 of 14
 Status: Ready to execute
 Last activity: 2026-11-10 — Phase 61 execution started
 
@@ -101,6 +101,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P10 | 16min | 3 tasks | 12 files |
 | Phase 61 P13 | 15 | 3 tasks | 13 files |
 | Phase 61 P11 | 13 | 3 tasks | 6 files |
+| Phase 61 P12 | 17min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -263,6 +264,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: The path-edit gate reads vector-ness through ONE bundle member (readVectorAnchors): the dialog never touches the record store, and the same read feeds the gate, the width reading and the px readout.
 - [Phase 61]: A closed gate or a close both request exitPathEdit through the shipped lifecycle effect; the render body only sets a plain module marker, so no signal is written during render and the sheet keeps exactly two effects.
 - [Phase 61]: The Anchor width factor is a per-anchor multiplier, not an appearance param: the block mounts as the Size row's sibling and never enters WATERCOLOR_SETTINGS_FIELDS or readNumericField/buildAppearancePatch.
+- [Phase 61]: Render mode is a stroke property: the batch mutator reads no anchors, so a malformed anchor list never refuses a mode change and no write creates, drops, copies or normalises an anchor list (D-12/D-14).
+- [Phase 61]: An unknown render mode refuses the whole batch through strict isAquarelleRenderMode membership instead of coercing to the watercolor default; an absent mode still counts as already-watercolor so no pre-phase stroke gains a key.
+- [Phase 61]: The ribbon preset pick runs its wet-globals law BEFORE selectAquarelleTip's identity early-return: snapshot the seven values only when the memory is empty, zero them in ONE aquarelleParams write, and restore plus clear on any later non-ribbon pick.
+- [Phase 61]: The Advanced wet-globals disclosure is a ref-held local dialog signal written only from its click handler (no third useEffect) and mounts only for a simple-ribbon selection, so watercolor mode keeps today's Paint tab.
 
 ### Pending Todos
 
@@ -355,8 +360,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T15:45:43.214Z
-Stopped at: Completed 61-11-PLAN.md
+Last session: 2026-11-10T16:07:31.308Z
+Stopped at: Completed 61-12-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
