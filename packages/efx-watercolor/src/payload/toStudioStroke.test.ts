@@ -13,6 +13,10 @@
 //    · truncation: 4.7 -> 4; 0 is a valid salt
 //    · payload codec round-trip preserves the salt and the same seed
 //    · the engine-params projection stays inert to the key
+//
+//  61-03 adds the vector-path pins: `anchors` and `renderMode` are
+//  copied into the opaque engine block ONLY when present, so a plain
+//  stroke keeps its exact pre-vector key set (D-14 independence).
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
@@ -20,6 +24,7 @@ import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import { payloadCodec } from './codec'
 import { isAquarelleDryEvent } from './dryEvent'
 import { toEngineParams } from '../playground/params'
+import type { AquarelleAnchor } from './vectorPath'
 import {
   PAINT_SEED_SALT_PARAM,
   paintSeedSaltOf,
@@ -148,5 +153,67 @@ describe('paint seed salt persistence', () => {
     expect(toEngineParams({ size: 12, [PAINT_SEED_SALT_PARAM]: 3 })).toEqual(
       toEngineParams({ size: 12 }),
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 4. Vector path engine block (61-03 D-12 / D-14)
+//
+//  The two new fields ride the opaque engine slot, which is the ONE
+//  persistence carrier. Each is copied ONLY when present, so a plain
+//  hand-painted stroke keeps today's exact key set and a stroke that
+//  carries just a mode gains that key and no other.
+// ---------------------------------------------------------------------------
+
+/** Key set of the engine block BEFORE this plan — pinned literally. */
+const PRE_VECTOR_ENGINE_KEYS = [
+  'tool',
+  'color',
+  'params',
+  'brushId',
+  'toolOverrides',
+  'mutationId',
+  'diffusionFrames',
+  'timestamp',
+  'playFrame',
+] as const
+
+const VECTOR_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 20, y: 32, kind: 'auto' },
+  { x: 44, y: 32, kind: 'bezier', in: { x: 40, y: 30 }, out: { x: 48, y: 34 } },
+]
+
+describe('vector path engine block (61-03 D-12 / D-14)', () => {
+  it('copies anchors and renderMode into the engine block unchanged', () => {
+    const stroke = toStudioStroke(
+      makeRuntimeStroke({ anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+    )
+    expect(stroke.engine.anchors).toEqual(VECTOR_ANCHORS)
+    expect(stroke.engine.renderMode).toBe('simple-ribbon')
+  })
+
+  it('adds no key at all when neither field is present (byte-identical shape)', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke())
+    expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS])
+    expect('anchors' in stroke.engine).toBe(false)
+    expect('renderMode' in stroke.engine).toBe(false)
+  })
+
+  it('copies renderMode ALONE when a hand-painted stroke carries a mode (D-14)', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ renderMode: 'simple-ribbon' }))
+    expect(stroke.engine.renderMode).toBe('simple-ribbon')
+    expect('anchors' in stroke.engine).toBe(false)
+    expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS, 'renderMode'])
+  })
+
+  it('round-trips a bezier anchor whose handles have zero length exactly', () => {
+    const cornerAnchors: readonly AquarelleAnchor[] = [
+      { x: 10, y: 10, kind: 'bezier', in: { x: 10, y: 10 }, out: { x: 10, y: 10 } },
+      { x: 20, y: 20, kind: 'bezier', in: { x: 20, y: 20 }, out: { x: 20, y: 20 } },
+    ]
+    const stroke = toStudioStroke(makeRuntimeStroke({ anchors: cornerAnchors }))
+    expect(stroke.engine.anchors).toEqual(cornerAnchors)
+    expect(stroke.engine.anchors?.[0]?.in).toEqual({ x: 10, y: 10 })
+    expect(stroke.engine.renderMode).toBeUndefined()
   })
 })
