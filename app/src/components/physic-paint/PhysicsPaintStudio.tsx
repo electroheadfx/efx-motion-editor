@@ -110,6 +110,7 @@ import { useAquarelleColorPicker } from './hooks/useAquarelleColorPicker';
 import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
+import * as vectorPathSession from './view/vectorPathSession';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
@@ -2591,6 +2592,10 @@ export function PhysicsPaintStudio() {
   // Every read is `.peek()` — the Studio render body never subscribes a
   // selection signal.
   const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'pen' | 'lift') => {
+    // 61-08 (D-06): a paint-tool press (rail or B/W/E/P) clears the vector pen
+    // and ends path edit — the input surfaces are mutually exclusive.
+    vectorPathSession.exitVectorPen();
+    vectorPathSession.exitPathEdit();
     setAquarelleSelectMode(false);
     setAquarelleTool(tool);
   }, []);
@@ -6692,6 +6697,9 @@ export function PhysicsPaintStudio() {
       },
       selectAquarelleTool: handleSelectAquarelleTool,
       toggleAquarellePicker: handleToggleAquarellePicker,
+      // 61-08 (D-05): bare V toggles the vector pen — the same module action
+      // the rail button calls, so the two surfaces can never disagree.
+      toggleVectorPen: vectorPathSession.toggleVectorPen,
       toggleAquarelleSelect: handleToggleAquarelleSelect,
       toggleSelectAllAquarelleStrokes: handleToggleSelectAllAquarelleStrokes,
       cycleAquarelleSelectFilter: handleCycleAquarelleSelectFilter,
