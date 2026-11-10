@@ -1,0 +1,3139 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="10" failures="8" errors="0" time="0.583">
+    <testsuite name="src/playground/engineRenderMode.test.ts" timestamp="2026-11-10T13:41:13.681Z" hostname="efx2.home" tests="10" failures="8" errors="0" skipped="0" time="0.015384208">
+        <testcase classname="src/playground/engineRenderMode.test.ts" name="scriptBegin stores the stroke render mode (61-07 D-12) &gt; defaults to watercolor when the argument is omitted" time="0.005153792">
+            <failure message="expected undefined to be &apos;watercolor&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be &apos;watercolor&apos; // Object.is equality
+
+- Expected: 
+&quot;watercolor&quot;
+
++ Received: 
+undefined
+
+ ❯ src/playground/engineRenderMode.test.ts:92:39
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineRenderMode.test.ts" name="scriptBegin stores the stroke render mode (61-07 D-12) &gt; stores simple-ribbon on the active stroke when the argument says so" time="0.0003085">
+            <failure message="expected undefined to be &apos;simple-ribbon&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be &apos;simple-ribbon&apos; // Object.is equality
+
+- Expected: 
+&quot;simple-ribbon&quot;
+
++ Received: 
+undefined
+
+ ❯ src/playground/engineRenderMode.test.ts:98:39
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineRenderMode.test.ts" name="scriptBegin stores the stroke render mode (61-07 D-12) &gt; lets an explicit script mode win over the loaded brush" time="0.000471417">
+            <failure message="expected undefined to be &apos;watercolor&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be &apos;watercolor&apos; // Object.is equality
+
+- Expected: 
+&quot;watercolor&quot;
+
++ Received: 
+undefined
+
+ ❯ src/playground/engineRenderMode.test.ts:105:39
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineRenderMode.test.ts" name="interactive strokes seed their mode from the brush (61-07 D-14) &gt; sets the pointerdown stroke literal from the active brush, exactly once" time="0.001491042">
+            <failure message="expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/playground/engineRenderMode.test.ts:112:46
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineRenderMode.test.ts" name="interactive strokes seed their mode from the brush (61-07 D-14) &gt; the interactive sample queue still carries the neutral width factor" time="0.000323208">
+        </testcase>
+        <testcase classname="src/playground/engineRenderMode.test.ts" name="the ribbon deposit branch is explicit (61-07 D-12 / T-61-22) &gt; exports RIBBON_RIM_FRAC as the 0.08 rim fraction" time="0.000421291">
+            <failure message="expected undefined to be 0.08 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 0.08 // Object.is equality
+
+- Expected: 
+0.08
+
++ Received: 
+undefined
+
+ ❯ src/playground/engineRenderMode.test.ts:123:29
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineRenderMode.test.ts" name="the ribbon deposit branch is explicit (61-07 D-12 / T-61-22) &gt; selects the branch from stroke.renderMode, never from a zero parameter" time="0.003946417">
+            <failure message="expected &apos;import { BRUSH_PRESETS, buildBrush, t…&apos; to contain &apos;s.renderMode === \&apos;simple-ribbon\&apos;&apos;" type="AssertionError">
+AssertionError: expected &apos;import { BRUSH_PRESETS, buildBrush, t…&apos; to contain &apos;s.renderMode === \&apos;simple-ribbon\&apos;&apos;
+
+- Expected
++ Received
+
+- s.renderMode === &apos;simple-ribbon&apos;
++ import { BRUSH_PRESETS, buildBrush, type Brush } from &apos;./brushes&apos;;
++ import { GL, type DoubleTarget, type Format, type Program, type Rect, type Target } from &apos;./gl&apos;;
++ import { History, type StepInfo, type StepKind } from &apos;./history&apos;;
++ import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from &apos;./papers&apos;;
++ import * as S from &apos;./shaders&apos;;
++ import { pigmentFromHex, type Pigment } from &apos;./spectral&apos;;
++ // 61-04: the published width-factor range lives in the pure spine module —
++ // one authority for the bound, shared by the profile law and this channel.
++ import { ANCHOR_WIDTH_MAX, ANCHOR_WIDTH_MIN } from &apos;../vector/spine&apos;;
++ import { WET_THRESHOLD, isSheetWet } from &apos;./wetState&apos;;
++
++ export type Tool = &apos;brush&apos; | &apos;water&apos; | &apos;pen&apos; | &apos;lift&apos;;
++
++ /** All sliders are normalised 0..1. */
++ export interface Params {
++   size: number;
++   water: number;       // how much water the brush carries
++   load: number;        // pigment concentration on the brush
++   flow: number;        // strength of the water&apos;s motion
++   bleed: number;       // diffusion of pigment through wet paper
++   dry: number;         // drying speed
++   edge: number;        // tide-line darkening at drying edges
++   granulation: number; // pigment settling into the paper grain
++   lift: number;        // Lift per-dab erase amount (0..0.9)
++ }
++
++ export const DEFAULT_PARAMS: Params = {
++   size: 0.5, water: 0.6, load: 0.5, flow: 0.45, bleed: 0.5, dry: 0.4, edge: 0.5, granulation: 0.45,
++   lift: 0.22,
++ };
++
++ export interface EngineCallbacks {
++   /** The undo history changed: every step (oldest first) and how many of them are applied. */
++   onHistoryChange?(steps: StepInfo[], index: number): void;
++   /** Paper or reference state changed from inside the engine (undo, redo, a project opened). */
++   onDocumentChange?(state: DocState): void;
++   /** The active tool changed for the current stroke (pencil barrel / finger-as-water). */
++   onStrokeTool?(tool: Tool | null): void;
++   /** The view was zoomed or panned (`zoom` 1 = one document texel per CSS pixel). */
++   onViewChange?(zoom: number, docSize: [number, number]): void;
++   /** Studio record seam: one pointer sample entered the stroke (doc uv, y up). */
++   onStrokeSample?(sample: { x: number; y: number; p: number; tx: number; ty: number; t: number }): void;
++   /** Studio record seam: the pointer stroke ended. */
++   onStrokeEnd?(tool: Tool): void;
++   /**
++    * 261028-k03b: one applied Lift dab (doc uv y up, radius in document
++    * heights, amount = the effective per-dab erase). The Studio previews it on
++    * the cached base so a lift on a cooked frame erases while the user draws.
++    * 261028-k03c: `angle` is the tip angle in radians (y up — the same value
++    * `brushAngle` resolved and the shader bound as uAxis), so the cached-base
++    * preview can reproduce the erased shape.
++    */
++   onLiftDab?(x: number, y: number, r: number, amount: number, angle: number): void;
++ }
++
++ export type ExportFormat = &apos;png&apos; | &apos;jpeg&apos; | &apos;webp&apos;;
++ export type ExportBackground = &apos;transparent&apos; | &apos;paper&apos; | &apos;white&apos;;
++ /** `texture` false exports the paper (or white) as a flat sheet; true uses the on-screen texture strength. */
++ export interface ExportOptions { format: ExportFormat; background: ExportBackground; quality?: number; texture?: boolean }
++
++ /** Placement of the reference image in document uv (y up): origin and size. */
++ export interface RefRect { x: number; y: number; w: number; h: number }
++
++ export type LayerId = &apos;inkA&apos; | &apos;inkB&apos; | &apos;fixedA&apos; | &apos;fixedB&apos; | &apos;wet&apos;;
++
++ /**
++  * The paint layers as half floats (RGBA for ink and fixed, one channel for wet), cropped
++  * to `rect`, the texel rect holding everything ever painted (null: a blank sheet).
++  */
++ export interface WholeDoc { w: number; h: number; rect: Rect | null; layers: Record&lt;LayerId, Uint16Array&gt; }
++
++ /** Document-level state that undo tracks besides the paint. */
++ export interface DocState {
++   paperId: string;
++   paperStrength: number;
++   reference: { image: HTMLCanvasElement | null; rect: RefRect; opacity: number; visible: boolean };
++ }
++
++ /** Everything needed to bring a painting back exactly as it is. */
++ export interface DocumentSnapshot {
++   whole: WholeDoc;
++   paper: { id: string; seed: number; origin: [number, number]; scale: number; strength: number };
++   wet: { wetAgo: number; wetPeak: number; active: Rect | null; painted: Rect | null };
++   reference: DocState[&apos;reference&apos;];
++   view: { zoom: number; pan: [number, number]; fitted: boolean };
++ }
++
++ /** How the display shader composites: on screen (with the reference) or for an export. */
++ // `transparent` is the OPAQUE transmittance export/capture (storage format);
++ // `pigment` is the compositor DISPLAY mode (straight-alpha pigment, round 2).
++ const MODE = { screen: 0, paper: 1, transparent: 2, white: 3, pigment: 4 } as const;
++ const MAX_REF_SIDE = 4096;
++
++ // 61-04: `w` is the per-sample width factor (VEC-03). It rides the queued
++ // sample — never a mutable engine field — so a sample can only ever be
++ // stamped at its own width, even when the queue drains late. 1 = today&apos;s
++ // footprint, so a stroke with no width profile is byte-identical.
++ interface Sample { x: number; y: number; p: number; t: number; tx: number; ty: number; w: number }
++
++ interface Stroke {
++   pointerId: number;
++   pointerType: string;
++   tool: Tool;
++   started: boolean;
++   ending: boolean;
++   x: number; y: number;       // where the drawn stroke currently ends (uv)
++   cx: number; cy: number;     // latest smoothed sample: the curve&apos;s control point, drawn up to on the next sample
++   pr: number;                 // pressure at (x, y), so pressure ramps along each curve
++   t: number;                 // time of last sample (ms)
++   speed: number;              // doc heights / second
++   simPressure: number;        // pressure stand-in for mice and fingers
++   carry: number;              // distance travelled since the last stamp (doc heights)
++   travelled: number;
++   moved: boolean;             // received movement this frame
++   dx: number; dy: number;     // smoothed direction (aspect-corrected, unit-ish)
++   angle: number;              // tip angle of the last dab (radians, doc frame)
++   azimuth: number | null;     // pen tilt direction, when the pen is tilted enough to tell
++   // 61-04: the width factor of the sample being deposited and the one before
++   // it. Dabs interpolate between the pair, so a taper has no step at the
++   // sample boundary; both are 1 for a stroke without a width profile.
++   widthFrom: number;
++   widthTo: number;
++ }
++
++ /** 61-04 / T-61-11: bound a scripted width factor and default a bad one. */
++ function scriptWidthFactor(value: number): number {
++   return Number.isFinite(value) ? clamp(value, ANCHOR_WIDTH_MIN, ANCHOR_WIDTH_MAX) : 1;
++ }
++
++ const DEG = Math.PI / 180;
++ const SCRIPT_POINTER = -1;
++
++ /**
++  * Scripted samples keep the live &quot;no pen pressure&quot; sentinel so a replayed
++  * mouse/trackpad stroke derives pressure from speed like the pointer path.
++  * Clamping the sentinel to the floor made every replayed dab minimum-pressure
++  * (pale, thin, under-wet) — the Play-vs-paint mismatch.
++  */
++ function scriptPressure(p: number): number {
++   return p &lt; 0 ? -1 : clamp(p, 0.02, 1);
++ }
++
++ interface StepMeta {
++   wetAgo: number; wetPeak: number; active: Rect | null; painted: Rect | null;
++   doc: DocState;
++   /** Boundary (resize) steps: the whole sheet as it was, and where its paper sat. */
++   whole?: WholeDoc; paperOrigin?: [number, number];
++ }
++ const STROKE_LABEL: Record&lt;Tool, string&gt; = { brush: &apos;Brush stroke&apos;, water: &apos;Water&apos;, pen: &apos;Pen&apos;, lift: &apos;Lift&apos; };
++
++ // WebGL2 enum values inlined so this module imports without a WebGL2
++ // global (tests / SSR). Values are fixed by the WebGL2 spec.
++ const GL_RG16F = 0x822f, GL_R16F = 0x822d, GL_RGBA16F = 0x881a, GL_RG32F = 0x8230;
++ const GL_RG = 0x8227, GL_RED = 0x1903, GL_RGBA = 0x1908, GL_RGBA8 = 0x8058;
++ const GL_HALF_FLOAT = 0x140b, GL_UNSIGNED_BYTE = 0x1401, GL_FLOAT = 0x1406;
++ const HALF_FLOAT_RG: Format = { internal: GL_RG16F, format: GL_RG, type: GL_HALF_FLOAT };
++ const HALF_FLOAT_R: Format = { internal: GL_R16F, format: GL_RED, type: GL_HALF_FLOAT };
++ const HALF_FLOAT_RGBA: Format = { internal: GL_RGBA16F, format: GL_RGBA, type: GL_HALF_FLOAT };
++ const RGBA8: Format = { internal: GL_RGBA8, format: GL_RGBA, type: GL_UNSIGNED_BYTE };
++ const FLOAT_RG: Format = { internal: GL_RG32F, format: GL_RG, type: GL_FLOAT };
++ const FILL_WATER_LEAD = 10;    // px the water runs ahead of the pigment in a bucket fill
++ const FILL_WIDTH = 24;         // px over which a bucket fill&apos;s front ramps up
++ const FILL_JITTER = 3;         // px the paper grain roughens a bucket fill&apos;s front
++
++ const SIM_BASE = 256;          // short side of the velocity / pressure grid
++ const PRESSURE_ITERATIONS = 20;
++ const SCREEN_DOC_LONG = 2048;   // a &quot;screen&quot; sheet follows the window, within these limits
++ const SCREEN_DOC_SHORT = 1536;
++ const MAX_DOC_LONG = 3072;     // pigment / water grid limits (live state: ~56 bytes per texel)
++ const MAX_DOC_PIXELS = 4_200_000;   // (plus an undo atlas of ~52 bytes per texel)
++ export const MIN_DOC_SIDE = 256;
++ export const MIN_ZOOM = 0.02;
++ export const MAX_ZOOM = 32;
++ const FIT_PADDING = 24;        // CSS px around the sheet when zoomed to fit
++ const PAN_KEEP = 48;           // CSS px of the sheet that always stays on screen
++ const FIX_DURATION = 1.2;
++ const MASK_BLOCK = 16;         // texels per wet-mask cell
++ const MASK_EVERY = 10;         // frames between wet-mask readbacks that trim the active rect
++ const MASK_MARGIN = MASK_BLOCK + 8;
++ const PROTECT_MARGIN = 24;     // texels around a dab / fill band saved for undo, where its water and pigment spread to
++ const DESK = [1, 1, 1];      // the table the sheet lies on (sRGB)
++ const PAPER_UNITS = 1100;      // paper features are drawn for a sheet this many texels tall
++
++ const clamp = (v: number, lo: number, hi: number) =&gt; Math.min(hi, Math.max(lo, v));
++
++ /** A sheet size within the memory limits: the same shape, scaled down if too big. */
++ export function clampDocSize(w: number, h: number, maxSide = MAX_DOC_LONG): [number, number] {
++   w = Math.max(MIN_DOC_SIDE, Math.round(w) || MIN_DOC_SIDE);
++   h = Math.max(MIN_DOC_SIDE, Math.round(h) || MIN_DOC_SIDE);
++   const s = Math.min(1, Math.min(MAX_DOC_LONG, maxSide) / Math.max(w, h), Math.sqrt(MAX_DOC_PIXELS / (w * h)));
++   return [Math.max(MIN_DOC_SIDE, Math.round(w * s)), Math.max(MIN_DOC_SIDE, Math.round(h * s))];
++ }
++
++ const union = (a: Rect | null, b: Rect): Rect =&gt;
++   a ? { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) } : { ...b };
++
++ export class WatercolorEngine {
++   params: Params = { ...DEFAULT_PARAMS };
++   tool: Tool = &apos;brush&apos;;
++   pigment: Pigment = pigmentFromHex(&apos;#2338a8&apos;);
++   // 261027-gh9f: the Studio opens on the dry chalk stick (first Brush-tab
++   // card); the everyday round remains the fallback.
++   brush: Brush = buildBrush(BRUSH_PRESETS.find((p) =&gt; p.id === &apos;chalk&apos;) ?? BRUSH_PRESETS.find((p) =&gt; p.id === &apos;round&apos;) ?? BRUSH_PRESETS[0]!);
++   /** Once an Apple Pencil / stylus is seen, fingers paint with clear water. */
++   fingerIsWater = true;
++   /** When false, pointers on the paper are ignored (another tool, e.g. text, is driving it). */
++   interactive = true;
++   /** Footprint scale of the scripted stroke in progress (see scriptBegin). */
++   private scriptScale = 1;
++   private nav = false;
++   /** Deterministic bake seam: seeded RNG (A2). Defaults to Math.random for live. */
++   private rng: () =&gt; number = Math.random;
++   /** Deterministic bake seam: virtual clock in ms. Defaults to performance.now(). */
++   private clock: () =&gt; number = () =&gt; performance.now();
++   /** When true, schedule() is a no-op — the host drives tick(dt) (bake). */
++   private manual = false;
++
++   private tipTextures = new Map&lt;string, WebGLTexture&gt;();
++   private paperPreset: PaperPreset = DEFAULT_PAPER;
++   private paperSeed = 0;
++   private paperStrength = 1;
++   private paperScale = 1;                           // paper units per texel, fixed when the sheet is made
++   private paperOrigin: [number, number] = [0, 0];   // where the sheet sits in the paper&apos;s field (texels)
++   // reference image: shown under the paint on screen only, never exported
++   private ref: { tex: WebGLTexture; aspect: number; src: HTMLCanvasElement } | null = null;
++   private refRect: RefRect = { x: 0, y: 0, w: 1, h: 1 };
++   private refOpacity = 0.5;
++   private refVisible = true;
++   private lastDir: [number, number] = [1, 0];      // direction of the last stroke, for the first dab
++   private lastAngle = 0;                            // tip angle shown by the hover cursor
++
++   private g: GL;
++   private gl: WebGL2RenderingContext;
++   private programs: Record&lt;string, Program&gt;;
++   private canvasSize: [number, number] = [1, 1];
++   private dpr = 1;
++   private view = { x: 0, y: 0, w: 1, h: 1 };   // document placement in canvas px
++   private zoomLevel = 1;                        // 1 = one document texel per CSS px
++   /** Compositor-layer mode: exact-fit view + transparent pigment display. */
++   private compositorLayer = false;
++   private fitPadding = FIT_PADDING;             // CSS px around the sheet when fitted
++   private pan: [number, number] = [0, 0];       // sheet centre from canvas centre (canvas px, y up)
++   private fitMode = true;                       // keep the sheet fitted as the window changes
++
++   // document state
++   private dw = 1; private dh = 1;
++   private velocity!: DoubleTarget;
++   private pressure!: DoubleTarget;
++   private divergence!: Target;
++   private curl!: Target;
++   private ink!: DoubleTarget;
++   private fixed!: Target;
++   private wet!: DoubleTarget;
++   private paper!: Target;
++   private wetMask!: Target;                    // coarse &quot;is there water here&quot; map, read back to bound the sim
++   private maskPixels = new Uint8Array(0);
++   private maskCounter = 0;
++   private history!: History;
++
++   // simulation bookkeeping
++   private active: Rect | null = null;          // document texels the sim must process
++   private painted: Rect | null = null;         // where mobile pigment may exist (since the last fix)
++   private everPainted: Rect | null = null;     // where any pigment, mobile or fixed, may exist
++   private dirty: Rect | null = null;           // document texels to redraw
++   private dirtyAll = true;
++   private lastWet = -Infinity;                 // ms timestamp of the last water added
++   private wetPeak = 0;
++   private minAwakeUntil = 0;
++   private fixTimer = 0;
++   /** Studio settle-cap fix: the last step is a fix a new stroke may reopen (cancelAutoFix). */
++   private autoFix = false;
++   private flowSpeed = 0;                       // upper bound on water speed (sim texels / s)
++   private growCarry = 0;                       // fractional texels the active rect still has to grow
++   private brushNow = { x: 0, y: 0, r: 0 };
++   private raf = 0;
++   private lastFrame = 0;
++   private seenEvictions = 0;           // history.evictions as of the last onHistoryChange
++
++   // input
++   private stroke: Stroke | null = null;
++   private fill: { tex: WebGLTexture; bbox: Rect } | null = null;   // a paint-bucket wash in progress
++   private queue: Sample[] = [];
++   private pencilSeen = false;
++   private hover = { x: 0, y: 0, inside: false, type: &apos;mouse&apos; };
++   private force = { value: 0, t: -Infinity };
++   /** Host-injected tablet sample (261027-gh9e) — webviews that report no pen dynamics. */
++   private nativePen: { pressure: number; tiltX: number; tiltY: number } | null = null;
++   private nativePenAt = -Infinity;
++   private disposers: (() =&gt; void)[] = [];
++
++   /** `size` is the sheet in texels; omitted, the sheet follows the window (&quot;screen&quot;). */
++   constructor(private canvas: HTMLCanvasElement, private cursor: HTMLElement | null, private callbacks: EngineCallbacks = {}, size?: [number, number] | null) {
++     const gl = canvas.getContext(&apos;webgl2&apos;, {
++       // alpha: true so the compositor-layer display can show the fond beneath.
++       // premultipliedAlpha stays at the WebGL DEFAULT (true) — displayFS
++       // writes premultiplied pixels (F1). A straight-alpha write reads as
++       // neon + a light fringe on WKWebView even with premultipliedAlpha:false
++       // (that flag is not reliably honoured there).
++       alpha: true, premultipliedAlpha: true, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: true,
++       powerPreference: &apos;high-performance&apos;,
++     });
++     if (!gl) throw new Error(&apos;WebGL2 is not available in this browser.&apos;);
++     if (!gl.getExtension(&apos;EXT_color_buffer_float&apos;) &amp;&amp; !gl.getExtension(&apos;EXT_color_buffer_half_float&apos;))
++       throw new Error(&apos;This GPU cannot render to floating-point textures.&apos;);
++     this.gl = gl;
++     this.g = new GL(gl);
++     gl.disable(gl.BLEND);
++     this.programs = {
++       splat: this.g.program(S.splatFS),
++       stamp: this.g.program(S.stampFS),
++       fill: this.g.program(S.fillFS),
++       advectVelocity: this.g.program(S.advectVelocityFS),
++       divergence: this.g.program(S.divergenceFS),
++       pressure: this.g.program(S.pressureFS),
++       gradient: this.g.program(S.gradientSubtractFS),
++       curl: this.g.program(S.curlFS),
++       vorticity: this.g.program(S.vorticityFS),
++       scale: this.g.program(S.scaleFS),
++       advectWet: this.g.program(S.advectWetFS),
++       wetMask: this.g.program(S.wetMaskFS),
++       advectInk: this.g.program(S.advectInkFS),
++       settle: this.g.program(S.settleFS),
++       bleach: this.g.program(S.bleachFS),
++       lift: this.g.program(S.liftFS),
++       paperField: this.g.program(S.paperFieldFS),
++       paperLight: this.g.program(S.paperLightFS),
++       paperSwatch: this.g.program(S.paperSwatchFS),
++       paperSheet: this.g.program(S.paperSheetFS),
++       display: this.g.program(S.displayFS),
++     };
++     this.fitCanvas();
++     this.createDocument(size ?? this.screenSize);
++     this.attachInput();
++     this.schedule();
++   }
++
++   /* ------------------------------------------------------------------ setup */
++
++   private fitCanvas() {
++     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
++     const r = this.canvas.getBoundingClientRect();
++     const w = Math.max(2, Math.round(r.width * this.dpr)), h = Math.max(2, Math.round(r.height * this.dpr));
++     this.canvas.width = w; this.canvas.height = h;
++     this.canvasSize = [w, h];
++     if (this.fitMode) this.fitZoom(); else this.updateView();
++   }
++
++   /** The zoom that shows the whole sheet with a margin (0 margin in compositor mode). */
++   private fitZoom() {
++     const [cw, ch] = this.canvasSize;
++     const pad = 2 * this.fitPadding * this.dpr;
++     const z = Math.min((cw - pad) / this.dw, (ch - pad) / this.dh) / this.dpr;
++     this.zoomLevel = clamp(z, MIN_ZOOM, MAX_ZOOM);
++     this.pan = [0, 0];
++     this.fitMode = true;
++     this.updateView();
++   }
++
++   /** Place the sheet from zoom and pan; everything that maps pointers goes through `view`. */
++   private updateView() {
++     const [cw, ch] = this.canvasSize;
++     const s = this.zoomLevel * this.dpr, w = this.dw * s, h = this.dh * s;
++     // keep a strip of the sheet on screen so it can&apos;t be lost off the edge
++     const keep = PAN_KEEP * this.dpr;
++     const mx = Math.max(0, (cw + w) / 2 - keep), my = Math.max(0, (ch + h) / 2 - keep);
++     this.pan = [clamp(this.pan[0], -mx, mx), clamp(this.pan[1], -my, my)];
++     this.view = { x: (cw - w) / 2 + this.pan[0], y: (ch - h) / 2 + this.pan[1], w, h };
++     this.dirtyAll = true;
++     this.updateCursor();
++     this.callbacks.onViewChange?.(this.zoomLevel, [this.dw, this.dh]);
++   }
++
++   /** A sheet the shape of the window, in device pixels, within the &quot;screen&quot; limits. */
++   get screenSize(): [number, number] {
++     const [cw, ch] = this.canvasSize;
++     const s = Math.min(1, SCREEN_DOC_LONG / Math.max(cw, ch), SCREEN_DOC_SHORT / Math.min(cw, ch));
++     return clampDocSize(cw * s, ch * s, this.maxSide);
++   }
++
++   /** The longest sheet side this GPU allows. */
++   get maxSide() { return Math.min(MAX_DOC_LONG, this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) as number); }
++
++   /** Allocate every document-sized target for a `dw`×`dh` sheet (the old ones are the caller&apos;s to free). */
++   private allocateTargets() {
++     const { gl, g } = this;
++     const ar = this.dw / this.dh;
++     const sim = ar &gt; 1 ? { w: Math.round(SIM_BASE * ar), h: SIM_BASE } : { w: SIM_BASE, h: Math.round(SIM_BASE / ar) };
++     this.velocity = g.double(sim.w, sim.h, [HALF_FLOAT_RG], gl.LINEAR);
++     this.pressure = g.double(sim.w, sim.h, [HALF_FLOAT_R], gl.NEAREST);
++     this.divergence = g.target(sim.w, sim.h, [HALF_FLOAT_R], gl.NEAREST);
++     this.curl = g.target(sim.w, sim.h, [HALF_FLOAT_R], gl.NEAREST);
++     this.ink = g.double(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);
++     this.fixed = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);
++     this.wet = g.double(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
++     this.paper = g.target(this.dw, this.dh, [RGBA8], gl.LINEAR);
++     this.wetMask = g.target(Math.ceil(this.dw / MASK_BLOCK), Math.ceil(this.dh / MASK_BLOCK), [RGBA8], gl.NEAREST);
++     this.maskPixels = new Uint8Array(this.wetMask.w * this.wetMask.h * 4);
++   }
++
++   private allocateHistory() {
++     this.history = new History(this.g, this.dw, this.dh, [
++       { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R], documents: 2 }, // mobile pigment + water
++       { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], documents: 1 },               // fixed pigment
++     ]);
++   }
++
++   /** The targets that hold the sheet (not the sim grids, not the history atlases). */
++   private docTargets(): Target[] {
++     return [this.velocity.read, this.velocity.write, this.pressure.read, this.pressure.write, this.divergence, this.curl,
++       this.ink.read, this.ink.write, this.fixed, this.wet.read, this.wet.write, this.paper, this.wetMask];
++   }
++
++   /** (Re)create a blank `w`×`h` sheet. Discards the painting. */
++   private createDocument([w, h]: [number, number]) {
++     const oldAspect = this.aspect;
++     [this.dw, this.dh] = clampDocSize(w, h, this.maxSide);
++     // a reference placed on paper of another shape would be stretched; fit it afresh
++     if (this.ref &amp;&amp; Math.abs(this.aspect - oldAspect) &gt; 1e-3) this.fitReference();
++     this.g.disposeTargets();
++     this.allocateTargets();
++     this.allocateHistory();
++
++     this.paperSeed = this.rng();
++     this.paperScale = PAPER_UNITS / this.dh;
++     this.paperOrigin = [0, 0];
++     this.drawPaper(this.paper, this.paperOrigin, this.paperScale);
++
++     this.resetPaintState();
++     if (this.fitMode) this.fitZoom(); else this.updateView();
++     this.notifyHistory();
++   }
++
++   private resetPaintState() {
++     this.active = null;
++     this.painted = null;
++     this.everPainted = null;
++     this.dirty = null;
++     this.dirtyAll = true;
++     this.lastWet = -Infinity;
++     this.wetPeak = 0;
++     this.fixTimer = 0;
++     this.autoFix = false;
++     this.flowSpeed = 0;
++   }
++
++   /**
++    * Change the sheet to `w`×`h` texels, keeping the painting at its size and centred:
++    * a bigger sheet adds blank paper around it, a smaller one crops it. The paper grain
++    * stays registered under the paint. The change is one undo step; the steps before it
++    * are forgotten (their undo tiles belong to the old sheet).
++    */
++   resizeDocument(w: number, h: number) {
++     [w, h] = clampDocSize(w, h, this.maxSide);
++     const ow = this.dw, oh = this.dh;
++     if (w === ow &amp;&amp; h === oh) return;
++     this.stroke = null;
++     this.dropFill();
++     this.queue = [];
++     this.autoFix = false;   // a newer step makes the settle-cap fix permanent
++     const { g } = this;
++     const ox = Math.round((w - ow) / 2), oy = Math.round((h - oh) / 2);
++     const meta: StepMeta = { ...this.currentMeta(), whole: this.captureWhole(), paperOrigin: [...this.paperOrigin] };
++     const old = { targets: this.docTargets(), ink: this.ink.read, fixed: this.fixed, wet: this.wet.read };
++     this.dw = w; this.dh = h;
++     this.allocateTargets();
++     this.history.beginBoundary({ kind: &apos;resize&apos;, label: `Resize ${w} × ${h}` }, meta, w, h);
++
++     // the overlap of the old sheet (shifted by ox, oy) and the new one
++     const sx = Math.max(0, -ox), sy = Math.max(0, -oy), dx = Math.max(0, ox), dy = Math.max(0, oy);
++     const cw = Math.min(ow - sx, w - dx), ch = Math.min(oh - sy, h - dy);
++     const copy = (src: Target, dsts: Target[]) =&gt; {
++       if (cw &gt; 0 &amp;&amp; ch &gt; 0) src.views.forEach((v, i) =&gt; dsts.forEach(d =&gt; g.blit(v, sx, sy, d.views[i], dx, dy, cw, ch)));
++     };
++     copy(old.ink, [this.ink.read, this.ink.write]);
++     copy(old.wet, [this.wet.read, this.wet.write]);
++     copy(old.fixed, [this.fixed]);
++     old.targets.forEach(t =&gt; g.disposeTarget(t));
++
++     this.paperOrigin = [this.paperOrigin[0] - ox, this.paperOrigin[1] - oy];
++     this.drawPaper(this.paper, this.paperOrigin, this.paperScale);
++
++     const shift = (r: Rect | null): Rect | null =&gt; {
++       if (!r) return null;
++       const n = { x0: Math.max(0, r.x0 + ox), y0: Math.max(0, r.y0 + oy), x1: Math.min(w, r.x1 + ox), y1: Math.min(h, r.y1 + oy) };
++       return n.x1 &gt; n.x0 &amp;&amp; n.y1 &gt; n.y0 ? n : null;
++     };
++     this.active = shift(this.active);
++     this.painted = shift(this.painted);
++     this.everPainted = shift(this.everPainted);
++     this.dirty = null;
++     const rr = this.refRect;
++     this.refRect = { x: (rr.x * ow + ox) / w, y: (rr.y * oh + oy) / h, w: (rr.w * ow) / w, h: (rr.h * oh) / h };
++
++     if (this.fitMode) this.fitZoom(); else this.updateView();
++     this.notifyHistory();
++     this.callbacks.onDocumentChange?.(this.docState());
++     this.schedule();
++   }
++
++   /* ------------------------------------------------- whole-document state */
++
++   /** The paint layers, cropped to where anything was ever painted. */
++   private captureWhole(): WholeDoc {
++     const r = this.everPainted;
++     const { g, dw, dh } = this;
++     const read = (fb: WebGLFramebuffer, ch: 1 | 4) =&gt; (r ? g.readHalf(fb, dw, dh, ch, r) : new Uint16Array(0));
++     return {
++       w: dw, h: dh, rect: r ? { ...r } : null,
++       layers: {
++         inkA: read(this.ink.read.views[0], 4), inkB: read(this.ink.read.views[1], 4),
++         fixedA: read(this.fixed.views[0], 4), fixedB: read(this.fixed.views[1], 4),
++         wet: read(this.wet.read.views[0], 1),
++       },
++     };
++   }
++
++   /** Put `whole`&apos;s layers into the (blank) current targets; both halves of the ping-pong pairs. */
++   private uploadWhole(whole: WholeDoc) {
++     const r = whole.rect;
++     if (!r) return;
++     const { gl, g } = this;
++     const w = r.x1 - r.x0, h = r.y1 - r.y0;
++     const up = (tex: WebGLTexture, format: number, data: Uint16Array) =&gt; g.uploadHalf(tex, r.x0, r.y0, w, h, format, data);
++     for (const t of [this.ink.read, this.ink.write]) { up(t.tex[0], gl.RGBA, whole.layers.inkA); up(t.tex[1], gl.RGBA, whole.layers.inkB); }
++     up(this.fixed.tex[0], gl.RGBA, whole.layers.fixedA);
++     up(this.fixed.tex[1], gl.RGBA, whole.layers.fixedB);
++     for (const t of [this.wet.read, this.wet.write]) up(t.tex[0], gl.RED, whole.layers.wet);
++     this.everPainted = { ...r };
++   }
++
++   /** Replace the sheet with `whole` (another size, usually), keeping the history atlases. */
++   private applyWhole(whole: WholeDoc, paperOrigin: [number, number]) {
++     const old = this.docTargets();
++     this.dw = whole.w; this.dh = whole.h;
++     this.allocateTargets();
++     old.forEach(t =&gt; this.g.disposeTarget(t));
++     this.history.resize(this.dw, this.dh);
++     this.paperOrigin = [...paperOrigin];
++     this.drawPaper(this.paper, this.paperOrigin, this.paperScale);
++     this.everPainted = null;
++     this.uploadWhole(whole);
++     this.dirty = null;
++     this.dirtyAll = true;
++     if (this.fitMode) this.fitZoom(); else this.updateView();
++   }
++
++   private docState(): DocState {
++     return {
++       paperId: this.paperPreset.id,
++       paperStrength: this.paperStrength,
++       reference: { image: this.ref?.src ?? null, rect: { ...this.refRect }, opacity: this.refOpacity, visible: this.refVisible },
++     };
++   }
++
++   /** Paper and reference state as undo tracks it. */
++   get documentState(): DocState { return this.docState(); }
++
++   /** Bring paper / reference state back (after undo, redo or a project opened). */
++   private applyDocState(d: DocState) {
++     const preset = PAPERS.find(p =&gt; p.id === d.paperId);
++     if (preset &amp;&amp; preset !== this.paperPreset) { this.paperPreset = preset; this.drawPaper(this.paper, this.paperOrigin, this.paperScale); }
++     this.paperStrength = clamp(d.paperStrength, 0, 1);
++     const r = d.reference;
++     if (r.image !== (this.ref?.src ?? null)) this.uploadReference(r.image);
++     this.refRect = { ...r.rect };
++     this.refOpacity = r.opacity;
++     this.refVisible = r.visible;
++     this.dirtyAll = true;
++   }
++
++   /**
++    * Record a document-level change that has already been applied (paper, reference) as
++    * one undo step; `before` is the state to come back to.
++    */
++   recordChange(kind: StepKind, label: string, before: DocState) {
++     this.dropFill();
++     this.autoFix = false;   // a newer step makes the settle-cap fix permanent
++     this.history.begin({ kind, label }, { ...this.currentMeta(), doc: before } satisfies StepMeta);
++     this.notifyHistory();
++   }
++
++   /** The painting as it is now, ready to be saved. */
++   snapshot(): DocumentSnapshot {
++     const m = this.currentMeta();
++     return {
++       whole: this.captureWhole(),
++       paper: { id: this.paperPreset.id, seed: this.paperSeed, origin: [...this.paperOrigin], scale: this.paperScale, strength: this.paperStrength },
++       wet: { wetAgo: m.wetAgo, wetPeak: m.wetPeak, active: m.active, painted: m.painted },
++       reference: m.doc.reference,
++       view: { zoom: this.zoomLevel, pan: [...this.pan], fitted: this.fitMode },
++     };
++   }
++
++   /** Replace the painting with a saved one. History starts afresh. */
++   restore(s: DocumentSnapshot) {
++     const [w, h] = clampDocSize(s.whole.w, s.whole.h, this.maxSide);
++     if (w !== s.whole.w || h !== s.whole.h) throw new Error(`This sheet (${s.whole.w} × ${s.whole.h}) is too large for this GPU.`);
++     this.stroke = null;
++     this.dropFill();
++     this.queue = [];
++     if (this.ref) { this.gl.deleteTexture(this.ref.tex); this.ref = null; }
++     this.g.disposeTargets();
++     this.dw = w; this.dh = h;
++     this.allocateTargets();
++     this.allocateHistory();
++     this.resetPaintState();
++
++     this.paperPreset = PAPERS.find(p =&gt; p.id === s.paper.id) ?? DEFAULT_PAPER;
++     this.paperSeed = s.paper.seed;
++     this.paperScale = s.paper.scale || PAPER_UNITS / this.dh;
++     this.paperOrigin = [...s.paper.origin];
++     this.paperStrength = clamp(s.paper.strength, 0, 1);
++     this.drawPaper(this.paper, this.paperOrigin, this.paperScale);
++
++     this.uploadWhole(s.whole);
++     const now = this.clock();
++     this.lastWet = Number.isFinite(s.wet.wetAgo) ? now - s.wet.wetAgo : -Infinity;
++     this.wetPeak = s.wet.wetPeak;
++     this.active = s.wet.active ? { ...s.wet.active } : null;
++     this.painted = s.wet.painted ? { ...s.wet.painted } : null;
++     if (this.active) this.minAwakeUntil = now + 250;
++
++     this.uploadReference(s.reference.image);
++     this.refRect = { ...s.reference.rect };
++     this.refOpacity = clamp(s.reference.opacity, 0, 1);
++     this.refVisible = s.reference.visible;
++
++     this.zoomLevel = clamp(s.view.zoom, MIN_ZOOM, MAX_ZOOM);
++     this.pan = [...s.view.pan];
++     this.fitMode = s.view.fitted;
++     if (this.fitMode) this.fitZoom(); else this.updateView();
++     this.notifyHistory();
++     this.callbacks.onDocumentChange?.(this.docState());
++     this.schedule();
++   }
++
++   /* ---------------------------------------------------------------- view */
++
++   /** Current zoom: 1 shows one document texel per CSS pixel. */
++   get zoom() { return this.zoomLevel; }
++
++   /** True while the sheet is fitted to the window (it stays fitted as the window changes). */
++   get fitted() { return this.fitMode; }
++
++   /** While navigating (e.g. Space held) pointers on the paper pan instead of paint. */
++   get navigating() { return this.nav; }
++   set navigating(v: boolean) { this.nav = v; this.updateCursor(); }
++
++   /** Zoom by `factor` keeping the document point under (clientX, clientY) in place. */
++   zoomAt(clientX: number, clientY: number, factor: number) {
++     const r = this.canvas.getBoundingClientRect();
++     const [cw, ch] = this.canvasSize;
++     const z = clamp(this.zoomLevel * factor, MIN_ZOOM, MAX_ZOOM);
++     const k = z / this.zoomLevel;
++     if (k === 1) return;
++     const px = (clientX - r.left) * this.dpr, py = ch - (clientY - r.top) * this.dpr;
++     // the sheet centre moves away from the fixed point by the zoom ratio
++     const cx = cw / 2 + this.pan[0], cy = ch / 2 + this.pan[1];
++     this.pan = [px - (px - cx) * k - cw / 2, py - (py - cy) * k - ch / 2];
++     this.zoomLevel = z;
++     this.fitMode = false;
++     this.updateView();
++     this.schedule();
++   }
++
++   /** Zoom to `z` about the middle of the window. */
++   zoomTo(z: number) {
++     const r = this.canvas.getBoundingClientRect();
++     this.zoomAt(r.left + r.width / 2, r.top + r.height / 2, z / this.zoomLevel);
++   }
++
++   /** Show the whole sheet. */
++   zoomToFit() { this.fitZoom(); this.schedule(); }
++
++   /**
++    * True while a stroke, fix, or wet diffusion still needs frames. Goes false
++    * when the sheet settles — the point where the dry (concentrated) look is
++    * what the user sees, and the right moment to capture it.
++    */
++   get isAwake(): boolean {
++     const now = this.clock();
++     return this.active !== null &amp;&amp;
++       (this.stroke !== null || this.fixTimer &gt; 0 || now &lt; this.minAwakeUntil || now &lt; this.wetUntil());
++   }
++
++   /**
++    * True while the sheet holds standing water the Water tool can act on — the
++    * live UI gate&apos;s source of truth. False during the Dry fix bake even though
++    * `isAwake` is still true.
++    */
++   get hasStandingWater(): boolean {
++     return isSheetWet({
++       wetPeak: this.wetPeak,
++       wetUntilMs: this.wetUntil(),
++       nowMs: this.clock(),
++       fixing: this.fixTimer &gt; 0,
++     });
++   }
++
++   /** True when the sheet holds paint (since the last clear) — never capture blank. */
++   get hasPaint(): boolean {
++     return this.everPainted !== null;
++   }
++
++   /**
++    * Compositor-layer mode (Studio integration): the sheet maps 1:1 onto the
++    * canvas box (no fit margin — pointer UV is the plain rect fraction) and the
++    * display is pigment-on-transparent. The document fond is owned by the
++    * compositor, never this surface (v1.0 compositor law).
++    */
++   setCompositorLayer(on: boolean): void {
++     if (this.compositorLayer === on) return;
++     this.compositorLayer = on;
++     this.fitPadding = on ? 0 : FIT_PADDING;
++     if (this.fitMode) this.fitZoom(); else this.updateView();
++     this.redraw();
++   }
++
++   /** Move the sheet by (dx, dy) CSS pixels. */
++   panBy(dx: number, dy: number) {
++     if (!dx &amp;&amp; !dy) return;
++     this.pan = [this.pan[0] + dx * this.dpr, this.pan[1] - dy * this.dpr];
++     this.fitMode = false;
++     this.updateView();
++     this.schedule();
++   }
++
++   /* ------------------------------------------------------------- public API */
++
++   setParams(p: Partial&lt;Params&gt;) { Object.assign(this.params, p); }
++
++   /** Document width / height. Document uv has y up; x spans `aspect` heights. */
++   get aspect() { return this.dw / this.dh; }
++
++   /** Client (CSS px) -&gt; document uv. */
++   clientToDoc(clientX: number, clientY: number): [number, number] { return this.toUv({ clientX, clientY }); }
++
++   /** Document uv -&gt; client (CSS px). */
++   docToClient(x: number, y: number): [number, number] {
++     const r = this.canvas.getBoundingClientRect();
++     return [r.left + (this.view.x + x * this.view.w) / this.dpr, r.top + (this.canvasSize[1] - this.view.y - y * this.view.h) / this.dpr];
++   }
++
++   /** Document size in texels. */
++   get docSize(): [number, number] { return [this.dw, this.dh]; }
++
++   /* ------------------------------------------------- paint-bucket fills (fill) */
++
++   /** Is a bucket fill in progress? */
++   get filling() { return this.fill !== null; }
++
++   /** How far (px) past the farthest field distance a fill must run so its roughened front covers everything. */
++   get fillMargin() { return FILL_WIDTH + FILL_JITTER + 1; }
++
++   /**
++    * The document as a flat image: pigment on plain paper with no relief, grain, edge
++    * darkening or wet tint, so areas of one colour read as one colour. RGBA8, row 0 is
++    * document y = 0 (uv is y-up, so no flip is needed to index it by texel).
++    */
++   readFlat(): Uint8Array { return this.readback(true); }
++
++   /**
++    * Start a bucket fill: `field` is RG per document texel (distance from the tap in
++    * px, -1 outside the area; distance to the area&apos;s edge), `bbox` the half-open texel
++    * rect around it. Opens one undo step for the whole wash. False while a stroke is
++    * still on the paper.
++    */
++   fillBegin(field: Float32Array, bbox: Rect, label = &apos;Fill&apos;): boolean {
++     if (this.stroke) return false;
++     if (field.length !== this.dw * this.dh * 2) throw new Error(&apos;fill field does not match the document&apos;);
++     this.beginStep(&apos;fill&apos;, label);   // also drops any previous fill
++     const tex = this.g.texture(this.dw, this.dh, FLOAT_RG, field, this.gl.NEAREST);
++     this.fill = { tex, bbox: { ...bbox } };
++     return true;
++   }
++
++   /**
++    * Deposit the band `from &lt; distance &lt;= to` of the current fill: pigment (if `paint`)
++    * and water, feathered over `soft` px at the area&apos;s edge. False once the fill is
++    * gone (undo, clear, another action), in which case the caller should stop.
++    */
++   fillStep(from: number, to: number, o: { strength: number; water: number; soft: number; paint: boolean }): boolean {
++     const f = this.fill;
++     if (!f) return false;
++     const { gl, g } = this;
++     const P = this.params;
++     this.touch(f.bbox);
++     const p = this.programs.fill;
++     p.bind();
++     gl.uniform1i(p.u.uField, g.bindTex(0, f.tex));
++     gl.uniform1i(p.u.uPaper, g.bindTex(1, this.paper.tex[0]));
++     gl.uniform1f(p.u.uSoft, Math.max(0, o.soft));
++     gl.uniform1f(p.u.uGrainThr, 0.5);
++     gl.uniform1f(p.u.uJitter, FILL_JITTER);
++     gl.uniform1f(p.u.uWidth, FILL_WIDTH);
++     gl.enable(gl.BLEND);
++     if (o.paint) {
++       // a steady stroke&apos;s density (brush case of stamp(), full reservoir, medium pressure)
++       const conc = 0.15 * Math.exp(P.load * 2.8) * 0.84;
++       const amount = conc * o.strength;
++       const c = this.pigment.coeffs;
++       gl.uniform1i(p.u.uCumulative, 0);
++       gl.uniform1f(p.u.uFrom, from);
++       gl.uniform1f(p.u.uTo, to);
++       gl.uniform1f(p.u.uGrain, 0.12);
++       gl.uniform4f(p.u.uColor0, c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount);
++       gl.uniform4f(p.u.uColor1, c[4] * amount, c[5] * amount, c[6] * amount, this.pigment.white * amount * 1.6);
++       gl.blendEquation(gl.FUNC_ADD);
++       gl.blendFunc(gl.ONE, gl.ONE);
++       g.draw(this.ink.read, f.bbox);
++     }
++     // the water runs a little ahead of the pigment, as a real wash does
++     const wetAmt = (0.25 + 0.75 * o.water) * 0.9;
++     gl.uniform1i(p.u.uCumulative, 1);
++     gl.uniform1f(p.u.uTo, to + FILL_WATER_LEAD);
++     gl.uniform1f(p.u.uGrain, 0);
++     gl.uniform4f(p.u.uColor0, wetAmt, 0, 0, 0);
++     gl.uniform4f(p.u.uColor1, 0, 0, 0, 0);
++     gl.blendEquation(gl.MAX);
++     g.draw(this.wet.read, f.bbox);
++     gl.blendEquation(gl.FUNC_ADD);
++     gl.disable(gl.BLEND);
++     this.wetPeak = Math.max(this.wetPeak * this.wetDecay(), wetAmt);
++     this.lastWet = this.clock();
++     this.schedule();
++     return true;
++   }
++
++   /** Finish (or stop) the current fill; what has been laid down stays. */
++   fillEnd() { this.dropFill(); }
++
++   private dropFill() {
++     if (!this.fill) return;
++     this.gl.deleteTexture(this.fill.tex);
++     this.fill = null;
++   }
++
++   /* -------------------------------------------------- scripted strokes (text) */
++
++   /** Is a code-driven stroke in progress? */
++   get scripting() { return this.stroke?.pointerId === SCRIPT_POINTER; }
++
++   /**
++    * Start a stroke driven by code rather than a pointer; it runs through the same
++    * pipeline (spacing, speed thinning, dwell, undo). Returns false while another
++    * stroke is still on the paper. A string `step` opens an undo step with that label;
++    * pass false to group several strokes (the letters of a word) into one. `maxRadius`
++    * (document heights) shrinks a footprint that would be wider than that at full
++    * pressure, so a big brush still writes small letters legibly.
++    *
++    * Studio integration: `pressure` keeps the live sentinel — a negative value
++    * means &quot;no pen pressure available&quot; (mouse / trackpad), so the stroke derives
++    * it from speed exactly like the pointer path. Clamping it to the floor made
++    * replayed mouse strokes land at minimum pressure (pale, thin, under-wet).
++    * `tiltX`/`tiltY` carry the recorded pen tilt so asymmetric tips keep their
++    * azimuth on replay.
++    *
++    * `widthScale` (61-04) is the per-sample width factor of the vector profile
++    * — a footprint multiplier carried on the sample, bounded to the published
++    * 0.2..2.0 range. It is NOT `maxRadius` and is never routed through
++    * `scriptScale`: that clamp stays the footprint cap it always was (C-03).
++    */
++   scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = &apos;Stroke&apos;, maxRadius?: number, tiltX = 0, tiltY = 0, widthScale = 1): boolean {
++     if (this.stroke) return false;
++     if (step !== false) this.beginStep(&apos;script&apos;, step);
++     this.scriptScale = maxRadius ? Math.min(1, maxRadius / this.radius(tool, 1, 0)) : 1;
++     this.stroke = {
++       pointerId: SCRIPT_POINTER, pointerType: &apos;pen&apos;, tool, started: false, ending: false,
++       x: 0, y: 0, cx: 0, cy: 0, pr: 0, t: this.clock(), speed: 0, simPressure: 0.45, carry: 0, travelled: 0, moved: false,
++       dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
++       widthFrom: 1, widthTo: 1,
++     };
++     this.queue.push({ x, y, p: scriptPressure(pressure), t: this.clock(), tx: tiltX, ty: tiltY, w: scriptWidthFactor(widthScale) });
++     this.schedule();
++     return true;
++   }
++
++   /** Feed the scripted stroke a sample; `t` is a performance.now() timestamp. False once the stroke is gone (undo, clear). */
++   scriptMove(x: number, y: number, pressure: number, t: number, tiltX = 0, tiltY = 0, widthScale = 1): boolean {
++     if (!this.scripting) return false;
++     this.queue.push({ x, y, p: scriptPressure(pressure), t, tx: tiltX, ty: tiltY, w: scriptWidthFactor(widthScale) });
++     this.schedule();
++     return true;
++   }
++
++   scriptEnd() {
++     if (!this.scripting) return;
++     this.stroke!.ending = true;
++     this.schedule();
++   }
++
++   setPigment(p: Pigment) { this.pigment = p; }
++
++   /** Deterministic bake: install a seeded RNG (A2). */
++   setRandom(fn: () =&gt; number) { this.rng = fn; }
++
++   /** Deterministic bake: install a virtual clock in ms (A2). */
++   setClock(fn: () =&gt; number) { this.clock = fn; }
++
++   /** Deterministic bake: stop the rAF loop; the host drives tick(dt). */
++   setManual(on: boolean) {
++     this.manual = on;
++     if (on) {
++       cancelAnimationFrame(this.raf);
++       this.raf = 0;
++     } else {
++       this.schedule();
++     }
++   }
++
++   /**
++    * One deterministic simulation step (seconds). Runs the same body as the
++    * rAF frame with a caller-supplied dt — the bake tick law.
++    */
++   tick(dt: number) {
++     this.brushNow.r = 0;
++     this.processInput(dt);
++     const now = this.clock();
++     const awake = this.active !== null &amp;&amp;
++       (this.stroke !== null || this.fixTimer &gt; 0 || now &lt; this.minAwakeUntil || now &lt; this.wetUntil());
++     if (awake) {
++       this.flowSpeed *= Math.exp(-dt * (3.0 - this.params.flow * 2.4));
++       this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w));
++       const grow = Math.floor(this.growCarry);
++       if (grow &gt; 0) {
++         this.growCarry -= grow;
++         const a = this.active!;
++         this.touch({ x0: Math.max(0, a.x0 - grow), y0: Math.max(0, a.y0 - grow), x1: Math.min(this.dw, a.x1 + grow), y1: Math.min(this.dh, a.y1 + grow) }, false, false);
++       }
++       this.step(dt);
++       if (this.fixTimer &lt;= 0 &amp;&amp; ++this.maskCounter &gt;= MASK_EVERY) { this.maskCounter = 0; this.trimActive(); }
++     }
++     this.render();
++     if (!awake &amp;&amp; this.active) this.sleep();
++   }
++
++   /** The composited document as an RGBA8 canvas (bottom row first flipped to top). */
++   exportCanvas(background: ExportBackground = &apos;transparent&apos;, texture = true): HTMLCanvasElement {
++     const { dw, dh } = this;
++     const px = this.readback(false, MODE[background], texture);
++     // displayFS writes PREMULTIPLIED alpha (F1). ImageData / WebP want
++     // STRAIGHT alpha — un-premultiply here so the cache bytes match the
++     // classic export. Opaque modes (a=255) are a no-op.
++     // NOTE: MODE.transparent is OPAQUE transmittance (vec4(t, 1.0)) — the
++     // cache stores that and is composited with MULTIPLY over the fond
++     // (studio-reopen-paper-washout). Never flatten it to source-over alpha.
++     for (let i = 0; i &lt; px.length; i += 4) {
++       const a = px[i + 3];
++       if (a &gt; 0 &amp;&amp; a &lt; 255) {
++         px[i] = Math.min(255, Math.round((px[i] * 255) / a));
++         px[i + 1] = Math.min(255, Math.round((px[i + 1] * 255) / a));
++         px[i + 2] = Math.min(255, Math.round((px[i + 2] * 255) / a));
++       }
++     }
++     const c = document.createElement(&apos;canvas&apos;);
++     c.width = dw; c.height = dh;
++     const ctx = c.getContext(&apos;2d&apos;)!;
++     const img = ctx.createImageData(dw, dh);
++     const row = dw * 4;
++     for (let y = 0; y &lt; dh; y++) img.data.set(px.subarray((dh - 1 - y) * row, (dh - y) * row), y * row);
++     ctx.putImageData(img, 0, 0);
++     return c;
++   }
++
++   /* ------------------------------------------------------------------ paper */
++
++   get paperId() { return this.paperPreset.id; }
++
++   /** How strongly the sheet&apos;s relief, fibres and flecks show (0: a flat tint, 1: full), on screen and in textured exports. */
++   get paperTexture() { return this.paperStrength; }
++   set paperTexture(v: number) {
++     v = clamp(v, 0, 1);
++     if (v === this.paperStrength) return;
++     this.paperStrength = v;
++     this.redraw();
++   }
++
++   /**
++    * Swap the sheet under the painting. Only the paper changes: the paint stays, and
++    * granulation and dry brush follow the new tooth from here on.
++    */
++   setPaper(p: PaperPreset) {
++     if (p === this.paperPreset) return;
++     this.paperPreset = p;
++     this.drawPaper(this.paper, this.paperOrigin, this.paperScale);
++     this.redraw();
++   }
++
++   /**
++    * A preview of a paper at the scale it appears on screen: `w`×`h` device pixels of
++    * the sheet with a granulating wash across one corner, as an sRGB canvas.
++    */
++   paperSwatch(p: PaperPreset, w: number, h: number): HTMLCanvasElement {
++     const { gl, g } = this;
++     const paper = g.target(w, h, [RGBA8], gl.LINEAR);
++     const out = g.target(w, h, [RGBA8], gl.NEAREST);
++     // one canvas pixel shows dh / view.h document texels
++     this.drawPaper(paper, [w * 0.7, h * 1.3], this.paperScale * (this.dh / this.view.h), p);
++     const s = this.programs.paperSwatch;
++     s.bind();
++     gl.uniform1i(s.u.uPaper, g.bindTex(0, paper.tex[0]));
++     this.paperUniforms(s, p, 1);
++     g.draw(out);
++     const px = new Uint8Array(w * h * 4);
++     gl.bindFramebuffer(gl.FRAMEBUFFER, out.fbo);
++     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
++     g.disposeTarget(paper);
++     g.disposeTarget(out);
++     const c = document.createElement(&apos;canvas&apos;);
++     c.width = w; c.height = h;
++     const ctx = c.getContext(&apos;2d&apos;)!;
++     const img = ctx.createImageData(w, h);
++     for (let y = 0; y &lt; h; y++) img.data.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
++     ctx.putImageData(img, 0, 0);
++     return c;
++   }
++
++   /**
++    * The sheet alone at `width`×`height` — the fond / thumb source. Same
++    * allocation + readPixels tail as `paperSwatch`, but `paperSheetFS`
++    * (no ultramarine wash) and the sheet origin + sheet scale law.
++    */
++   paperSheet(preset: PaperPreset, width: number, height: number, scale = PAPER_UNITS / height): HTMLCanvasElement {
++     if (!(width &gt; 0) || !Number.isFinite(width) || !(height &gt; 0) || !Number.isFinite(height)) {
++       throw new RangeError(`paperSheet: width and height must be positive and finite (got ${width}×${height})`);
++     }
++     if (!(scale &gt; 0) || !Number.isFinite(scale)) {
++       throw new RangeError(`paperSheet: scale must be positive and finite (got ${scale})`);
++     }
++     const w = Math.round(width), h = Math.round(height);
++     const { gl, g } = this;
++     const paper = g.target(w, h, [RGBA8], gl.LINEAR);
++     const out = g.target(w, h, [RGBA8], gl.NEAREST);
++     this.drawPaper(paper, [0, 0], scale, preset);
++     const s = this.programs.paperSheet;
++     s.bind();
++     gl.uniform1i(s.u.uPaper, g.bindTex(0, paper.tex[0]));
++     this.paperUniforms(s, preset, 1);
++     g.draw(out);
++     const px = new Uint8Array(w * h * 4);
++     gl.bindFramebuffer(gl.FRAMEBUFFER, out.fbo);
++     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
++     g.disposeTarget(paper);
++     g.disposeTarget(out);
++     const c = document.createElement(&apos;canvas&apos;);
++     c.width = w; c.height = h;
++     const ctx = c.getContext(&apos;2d&apos;)!;
++     const img = ctx.createImageData(w, h);
++     for (let y = 0; y &lt; h; y++) img.data.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
++     ctx.putImageData(img, 0, 0);
++     return c;
++   }
++
++   /**
++    * The height channel of the packed paper texel (paperLightFS: lit, height,
++    * mottle, fleck) as `width * height` floats in 0..1 — the bake tooth&apos;s field.
++    */
++   paperHeight(preset: PaperPreset, width: number, height: number, scale = PAPER_UNITS / height): Float32Array {
++     if (!(width &gt; 0) || !Number.isFinite(width) || !(height &gt; 0) || !Number.isFinite(height)) {
++       throw new RangeError(`paperHeight: width and height must be positive and finite (got ${width}×${height})`);
++     }
++     if (!(scale &gt; 0) || !Number.isFinite(scale)) {
++       throw new RangeError(`paperHeight: scale must be positive and finite (got ${scale})`);
++     }
++     const w = Math.round(width), h = Math.round(height);
++     const { gl, g } = this;
++     const paper = g.target(w, h, [RGBA8], gl.LINEAR);
++     this.drawPaper(paper, [0, 0], scale, preset);
++     const px = new Uint8Array(w * h * 4);
++     gl.bindFramebuffer(gl.FRAMEBUFFER, paper.fbo);
++     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
++     g.disposeTarget(paper);
++     const out = new Float32Array(w * h);
++     // y-flip like paperSheet so the height rows sit in canvas order
++     for (let y = 0; y &lt; h; y++) {
++       const src = (h - 1 - y) * w * 4;
++       for (let x = 0; x &lt; w; x++) out[y * w + x] = px[src + x * 4 + 1] / 255;
++     }
++     return out;
++   }
++
++   /** Generate a paper into `t`: `offset` places it on the sheet (texels), `scale` is paper units per texel. */
++   drawPaper(t: Target, offset: [number, number], scale: number, preset = this.paperPreset) {
++     const { gl, g } = this;
++     const field = g.target(t.w, t.h, [HALF_FLOAT_RGBA], gl.NEAREST);
++     const f = this.programs.paperField;
++     f.bind();
++     gl.uniform2f(f.u.uRes, t.w, t.h);
++     gl.uniform2f(f.u.uOffset, offset[0], offset[1]);
++     gl.uniform1f(f.u.uScale, scale);
++     gl.uniform1f(f.u.uSeed, this.paperSeed);
++     gl.uniform1i(f.u.uKind, preset.kind);
++     g.draw(field);
++     const l = this.programs.paperLight;
++     l.bind();
++     gl.uniform1i(l.u.uField, g.bindTex(0, field.tex[0]));
++     gl.uniform2f(l.u.uTexel, 1 / t.w, 1 / t.h);
++     // the relief is drawn in paper units, so its slope per texel shrinks as texels get smaller
++     gl.uniform1f(l.u.uBump, (preset.bump * 1.4) / scale);
++     g.draw(t);
++     g.disposeTarget(field);
++   }
++
++   private paperUniforms(p: Program, preset: PaperPreset, texture: number) {
++     const { gl } = this;
++     gl.uniform3fv(p.u.uPaperTint, linearRGB(preset.tint));
++     gl.uniform3fv(p.u.uFleckTint, linearRGB(preset.fleck));
++     gl.uniform1f(p.u.uMottle, preset.mottle);
++     gl.uniform1f(p.u.uTexture, texture);
++   }
++
++   setTool(t: Tool) { this.tool = t; this.updateCursor(); }
++
++   setBrush(b: Brush) {
++     this.brush = b;
++     this.lastAngle = b.rotation === &apos;fixed&apos; ? b.angle * DEG : b.rotation === &apos;follow&apos; ? Math.atan2(this.lastDir[1], this.lastDir[0]) + b.angle * DEG : 0;
++     this.updateCursor();
++   }
++
++   /**
++    * 261027-gh9e: inject native tablet input for hosts where the webview&apos;s
++    * PointerEvent carries no pen dynamics (macOS tablets often arrive as
++    * pointerType &apos;mouse&apos; / pressure 0). Mirrors the engine-1 host bridge:
++    * the sample is used for a 300 ms window while the pointer reports none.
++    */
++   updateNativePenInput(input: { pressure: number; tiltX?: number; tiltY?: number }): void {
++     const pressure = Math.min(1, Math.max(0, Number(input.pressure)));
++     if (!Number.isFinite(pressure)) return;
++     this.nativePen = { pressure, tiltX: input.tiltX ?? 0, tiltY: input.tiltY ?? 0 };
++     this.nativePenAt = this.clock();
++   }
++
++   /* ------------------------------------------------------- reference image */
++
++   get hasReference() { return this.ref !== null; }
++
++   /** Width / height of the reference image, or 0 without one. */
++   get referenceAspect() { return this.ref?.aspect ?? 0; }
++
++   /**
++    * Show `img` under the paint (or remove it with null), fitted to the paper, as one
++    * undo step. It survives clearing the paper and is never part of an export.
++    */
++   setReference(img: ImageBitmap | HTMLCanvasElement | null) {
++     const before = this.docState();
++     let src: HTMLCanvasElement | null = null;
++     if (img) {
++       const max = Math.min(MAX_REF_SIDE, this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE) as number);
++       // kept on the CPU as well, so the Fill tool can find areas on it (see readReferenceFlat)
++       const s = Math.min(1, max / Math.max(img.width, img.height));
++       src = document.createElement(&apos;canvas&apos;);
++       src.width = Math.max(1, Math.round(img.width * s)); src.height = Math.max(1, Math.round(img.height * s));
++       src.getContext(&apos;2d&apos;)!.drawImage(img, 0, 0, src.width, src.height);
++     }
++     this.uploadReference(src);
++     if (src) this.fitReference();
++     this.recordChange(&apos;reference&apos;, src ? &apos;Reference added&apos; : &apos;Reference removed&apos;, before);
++     this.redraw();
++   }
++
++   /** The reference image as the engine keeps it (downscaled), or null. */
++   referenceImage(): HTMLCanvasElement | null { return this.ref?.src ?? null; }
++
++   /** Put `src` on the GPU as the reference (or drop it with null); placement is left alone. */
++   private uploadReference(src: HTMLCanvasElement | null) {
++     const { gl } = this;
++     if (this.ref?.src === src) return;
++     if (this.ref) { gl.deleteTexture(this.ref.tex); this.ref = null; }
++     if (!src) return;
++     const tex = gl.createTexture()!;
++     gl.activeTexture(gl.TEXTURE0);
++     gl.bindTexture(gl.TEXTURE_2D, tex);
++     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
++     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, src);
++     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
++     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
++     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
++     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
++     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
++     this.ref = { tex, aspect: src.width / src.height, src };
++   }
++
++   /** The reference placed as large as fits, centred on the paper. */
++   fitReference() {
++     if (!this.ref) return;
++     const k = this.ref.aspect / this.aspect;   // the image&apos;s width / height in uv units
++     const w = k &gt; 1 ? 1 : k, h = k &gt; 1 ? 1 / k : 1;
++     this.referenceRect = { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
++   }
++
++   /**
++    * The reference as placed on the paper, at document resolution, over plain white
++    * (where it does not cover the paper, and through any transparency). Same layout as
++    * readFlat: RGBA8, opaque, row 0 is document y = 0. Null without a reference.
++    */
++   readReferenceFlat(): Uint8Array | null {
++     if (!this.ref) return null;
++     const { dw, dh } = this, r = this.refRect;
++     const c = document.createElement(&apos;canvas&apos;);
++     c.width = dw; c.height = dh;
++     const ctx = c.getContext(&apos;2d&apos;, { willReadFrequently: true })!;
++     ctx.fillStyle = &apos;#fff&apos;;
++     ctx.fillRect(0, 0, dw, dh);
++     // canvas rows run top-down, document uv runs bottom-up
++     ctx.drawImage(this.ref.src, r.x * dw, (1 - r.y - r.h) * dh, r.w * dw, r.h * dh);
++     const top = ctx.getImageData(0, 0, dw, dh).data;
++     const out = new Uint8Array(dw * dh * 4), row = dw * 4;
++     for (let y = 0; y &lt; dh; y++) out.set(top.subarray((dh - 1 - y) * row, (dh - y) * row), y * row);
++     for (let i = 3; i &lt; out.length; i += 4) out[i] = 255;
++     return out;
++   }
++
++   get referenceRect(): RefRect { return { ...this.refRect }; }
++   set referenceRect(r: RefRect) {
++     const c = this.refRect;
++     if (r.x === c.x &amp;&amp; r.y === c.y &amp;&amp; r.w === c.w &amp;&amp; r.h === c.h) return;
++     this.refRect = { ...r };
++     this.redraw();
++   }
++
++   get referenceOpacity() { return this.refOpacity; }
++   set referenceOpacity(v: number) {
++     v = clamp(v, 0, 1);
++     if (v === this.refOpacity) return;
++     this.refOpacity = v;
++     this.redraw();
++   }
++
++   /** Does the Fill tool find its areas on the reference (traced) rather than on the paint? */
++   referenceForFill = false;
++
++   get referenceVisible() { return this.refVisible; }
++   set referenceVisible(v: boolean) { if (v !== this.refVisible) { this.refVisible = v; this.redraw(); } }
++
++   private redraw() { this.dirtyAll = true; this.schedule(); }
++
++   /** Drop the GPU copy of a brush tip (after a custom brush is removed or replaced). */
++   forgetBrush(id: string) {
++     const t = this.tipTextures.get(id);
++     if (t) { this.gl.deleteTexture(t); this.tipTextures.delete(id); }
++   }
++
++   private tipTexture(b: Brush): WebGLTexture {
++     let t = this.tipTextures.get(b.id);
++     if (t) return t;
++     const { gl } = this;
++     t = gl.createTexture()!;
++     gl.activeTexture(gl.TEXTURE0);
++     gl.bindTexture(gl.TEXTURE_2D, t);
++     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
++     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, b.tipSize, b.tipSize, 0, gl.RED, gl.UNSIGNED_BYTE, b.tipData);
++     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
++     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
++     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
++     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
++     this.tipTextures.set(b.id, t);
++     return t;
++   }
++
++   /**
++    * Dry everything and bake the mobile pigment into the paper. `auto` marks the
++    * Studio settle-cap fix: a later stroke may reopen it with cancelAutoFix() so
++    * wet-on-wet painting still blends. An explicit Dry disarms that reopen even
++    * when it cannot start (a fix is already running).
++    */
++   fix(auto = false): boolean {
++     if (!auto) this.autoFix = false;
++     if (!this.painted || this.fixTimer &gt; 0) return false;
++     this.beginStep(&apos;dry&apos;, &apos;Dry&apos;);
++     // the fixed layer changes here AND at lift() (261028-k03 D1), so both snapshot it
++     this.history.protect(1, this.painted, this.fixed.views);
++     this.fixTimer = FIX_DURATION;
++     this.autoFix = auto;
++     // mobile pigment only exists where strokes have been, so only that needs settling
++     this.touch(this.painted);
++     this.schedule();
++     return true;
++   }
++
++   /**
++    * Reopen a settle-cap fix (Studio): the artist painted again, so the sheet
++    * goes back to its wet, blendable state instead of painting over dry paper.
++    * No-op unless the last step is an auto fix — an explicit Dry stays permanent.
++    */
++   cancelAutoFix(): boolean {
++     if (!this.autoFix) return false;
++     this.autoFix = false;
++     if (!this.history.canUndo) return false;
++     this.travel(&apos;undo&apos;);
++     return true;
++   }
++
++   /** Wipe the paint as one undo step. The sheet (and its grain) stays. */
++   clear() {
++     this.stroke = null;
++     this.queue = [];
++     if (!this.everPainted &amp;&amp; !this.fill) return;   // already blank
++     this.beginStep(&apos;clear&apos;, &apos;Clear&apos;);
++     if (this.everPainted) {
++       this.history.protect(0, this.everPainted, this.snapshotLayers());
++       this.history.protect(1, this.everPainted, this.fixed.views);
++     }
++     for (const t of this.docTargets()) if (t !== this.paper) this.g.clearTarget(t);
++     this.resetPaintState();
++     this.notifyHistory();
++     this.schedule();
++   }
++
++   /**
++    * 261030-v1t: wipe pigment and water while KEEPING the sheet — the replay
++    * seam a per-output-frame re-pattern bake needs (the aquarelle sheet is
++    * cumulative, so each salted replay must start from the same naked paper).
++    *
++    * Unlike clear() this is not an undo step: bakes never travel history. It
++    * must never re-roll `paperSeed`, redraw the paper or recreate targets — the
++    * sheet and its seeded grain are the constant across replays. The caller
++    * re-arms the virtual clock and the RNG stream.
++    */
++   resetSheet() {
++     this.stroke = null;
++     this.queue = [];
++     this.dropFill();
++     for (const t of this.docTargets()) if (t !== this.paper) this.g.clearTarget(t);
++     this.resetPaintState();
++     this.notifyHistory();
++   }
++
++   /** Take back the stroke in progress as if it never happened (a touch that became a pinch). */
++   abortStroke() {
++     const s = this.stroke;
++     if (!s) return;
++     this.stroke = null;
++     this.queue = [];
++     if (s.pointerId !== SCRIPT_POINTER) this.callbacks.onStrokeTool?.(null);
++     if (this.history.canUndo) { this.travel(&apos;undo&apos;); this.history.discardRedo(); this.notifyHistory(); }
++   }
++
++   undo() { if (this.history.canUndo) this.travel(&apos;undo&apos;); }
++
++   redo() { if (this.history.canRedo) this.travel(&apos;redo&apos;); }
++
++   /** Undo or redo until `index` steps are applied. */
++   jumpTo(index: number) {
++     const { index: now, list } = this.history.entries();
++     index = clamp(Math.round(index), 0, list.length);
++     for (let i = now; i &gt; index &amp;&amp; this.history.canUndo; i--) this.travel(&apos;undo&apos;, false);
++     for (let i = now; i &lt; index &amp;&amp; this.history.canRedo; i++) this.travel(&apos;redo&apos;, false);
++     this.notifyHistory();
++   }
++
++   get canUndo() { return this.history.canUndo; }
++   get canRedo() { return this.history.canRedo; }
++
++   /** Step through history in either direction. */
++   private travel(dir: &apos;undo&apos; | &apos;redo&apos;, notify = true) {
++     this.autoFix = false;   // the last step is no longer the settle-cap fix
++     this.stroke = null;
++     this.dropFill();
++     this.queue = [];
++     this.fixTimer = 0;
++     const next = dir === &apos;undo&apos; ? this.history.peekUndo() : this.history.peekRedo();
++     const metaNow: StepMeta = this.currentMeta();
++     if (next?.boundary) { metaNow.whole = this.captureWhole(); metaNow.paperOrigin = [...this.paperOrigin]; }
++     this.sleep();
++     const ink = this.ink, wet = this.wet;
++     const layers = [
++       [[ink.read.views[0], ink.write.views[0]], [ink.read.views[1], ink.write.views[1]], [wet.read.views[0], wet.write.views[0]]],
++       [[this.fixed.views[0]], [this.fixed.views[1]]],
++     ];
++     const res = dir === &apos;undo&apos; ? this.history.undo(layers, metaNow) : this.history.redo(layers, metaNow);
++     if (!res) return;
++     const meta = res.meta as StepMeta;
++     const now = this.clock();
++     if (meta.whole) {
++       this.applyWhole(meta.whole, meta.paperOrigin ?? [0, 0]);
++       this.painted = meta.painted ? { ...meta.painted } : null;
++     }
++     if (res.info.kind !== &apos;paper&apos; &amp;&amp; res.info.kind !== &apos;reference&apos;) {
++       // the restored water keeps drying from where it was when the step began
++       this.lastWet = now - meta.wetAgo;
++       this.wetPeak = meta.wetPeak;
++       this.active = meta.active ? { ...meta.active } : null;
++     }
++     if (res.rect) {
++       this.dirty = union(this.dirty, res.rect);
++       this.painted = union(this.painted, res.rect);
++       this.everPainted = union(this.everPainted, res.rect);
++     }
++     this.applyDocState(meta.doc);
++     this.callbacks.onDocumentChange?.(this.docState());
++     if (notify) this.notifyHistory();
++     this.schedule();
++   }
++
++   private notifyHistory() {
++     this.seenEvictions = this.history.evictions;
++     const { list, index } = this.history.entries();
++     this.callbacks.onHistoryChange?.(list, index);
++   }
++
++   private currentMeta(): StepMeta {
++     return {
++       wetAgo: this.clock() - this.lastWet, wetPeak: this.wetPeak,
++       active: this.active ? { ...this.active } : null, painted: this.painted ? { ...this.painted } : null,
++       doc: this.docState(),
++     };
++   }
++
++   /**
++    * Render the document at full resolution as an image file. The reference image is
++    * never included. JPEG has no alpha, so a transparent JPEG is put on white.
++    */
++   async exportImage(o: ExportOptions): Promise&lt;Blob&gt; {
++     const { dw, dh } = this;
++     const bg = o.format === &apos;jpeg&apos; &amp;&amp; o.background === &apos;transparent&apos; ? &apos;white&apos; : o.background;
++     const px = this.readback(false, MODE[bg], o.texture ?? true);
++     const c = document.createElement(&apos;canvas&apos;);
++     c.width = dw; c.height = dh;
++     const ctx = c.getContext(&apos;2d&apos;)!;
++     const img = ctx.createImageData(dw, dh);
++     const row = dw * 4;
++     for (let y = 0; y &lt; dh; y++) img.data.set(px.subarray((dh - 1 - y) * row, (dh - y) * row), y * row);
++     ctx.putImageData(img, 0, 0);
++     const type = `image/${o.format}`;
++     return new Promise((resolve, reject) =&gt; c.toBlob(b =&gt; {
++       if (!b) reject(new Error(&apos;export failed&apos;));
++       else if (b.type !== type) reject(new Error(`This browser cannot save ${o.format.toUpperCase()}`));
++       else resolve(b);
++     }, type, o.quality));
++   }
++
++   /** The composited document at full resolution as RGBA8 bytes, bottom row first. */
++   private readback(flat: boolean, mode: number = MODE.paper, texture = true): Uint8Array {
++     const { gl, g, dw, dh } = this;
++     const out = g.target(dw, dh, [RGBA8], gl.NEAREST);
++     this.drawDisplay(out, { x: 0, y: 0, w: dw, h: dh }, null, flat, mode, texture);
++     const px = new Uint8Array(dw * dh * 4);
++     gl.bindFramebuffer(gl.FRAMEBUFFER, out.fbo);
++     gl.readPixels(0, 0, dw, dh, gl.RGBA, gl.UNSIGNED_BYTE, px);
++     g.disposeTarget(out);
++     return px;
++   }
++
++   resize() {
++     this.fitCanvas();
++     this.schedule();
++   }
++
++   destroy() {
++     cancelAnimationFrame(this.raf);
++     this.dropFill();
++     this.disposers.forEach(d =&gt; d());
++     this.tipTextures.forEach(t =&gt; this.gl.deleteTexture(t));
++     this.tipTextures.clear();
++     if (this.ref) this.gl.deleteTexture(this.ref.tex);
++     this.ref = null;
++     this.g.disposeTargets();
++   }
++
++   /* ------------------------------------------------------------------ input */
++
++   private toUv(e: { clientX: number; clientY: number }): [number, number] {
++     const r = this.canvas.getBoundingClientRect();
++     const cx = (e.clientX - r.left) * this.dpr;
++     const cy = this.canvasSize[1] - (e.clientY - r.top) * this.dpr;
++     return [(cx - this.view.x) / this.view.w, (cy - this.view.y) / this.view.h];
++   }
++
++   private attachInput() {
++     const c = this.canvas;
++     const on = &lt;K extends keyof HTMLElementEventMap&gt;(el: HTMLElement | Window, type: K, fn: (e: HTMLElementEventMap[K]) =&gt; void, opts?: AddEventListenerOptions) =&gt; {
++       el.addEventListener(type, fn as EventListener, opts);
++       this.disposers.push(() =&gt; el.removeEventListener(type, fn as EventListener, opts));
++     };
++
++     on(c, &apos;pointerdown&apos;, e =&gt; {
++       e.preventDefault();
++       if (!this.interactive || this.nav || e.button === 1) return;
++       if (this.stroke) return;                       // one stroke at a time (palm rejection)
++       if (e.pointerType === &apos;pen&apos;) this.pencilSeen = true;
++       try { c.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
++       let tool = this.tool;
++       if (e.pointerType === &apos;touch&apos; &amp;&amp; this.pencilSeen &amp;&amp; this.fingerIsWater) tool = &apos;water&apos;;
++       if (e.pointerType === &apos;pen&apos; &amp;&amp; e.buttons &amp; 32) tool = &apos;lift&apos;;          // eraser end
++       else if (e.pointerType === &apos;pen&apos; &amp;&amp; e.buttons &amp; 2) tool = tool === &apos;water&apos; ? &apos;brush&apos; : &apos;water&apos;; // barrel button
++       this.stroke = {
++         pointerId: e.pointerId, pointerType: e.pointerType, tool, started: false, ending: false,
++         x: 0, y: 0, cx: 0, cy: 0, pr: 0, t: e.timeStamp, speed: 0, simPressure: 0.45, carry: 0, travelled: 0, moved: false,
++         dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
++         widthFrom: 1, widthTo: 1,
++       };
++       if (tool !== this.tool) this.callbacks.onStrokeTool?.(tool);
++       this.beginStep(&apos;stroke&apos;, STROKE_LABEL[tool]);
++       this.pushSample(e);
++       this.trackHover(e);
++       this.schedule();
++     });
++
++     on(c, &apos;pointermove&apos;, e =&gt; {
++       if (e.pointerType === &apos;pen&apos;) this.pencilSeen = true;
++       this.trackHover(e);
++       if (!this.stroke || e.pointerId !== this.stroke.pointerId) return;
++       const events = e.getCoalescedEvents?.() ?? [];
++       for (const s of events.length ? events : [e]) this.pushSample(s);
++       this.schedule();
++     });
++
++     const end = (e: PointerEvent) =&gt; {
++       if (!this.stroke || e.pointerId !== this.stroke.pointerId) return;
++       this.stroke.ending = true;
++       this.schedule();
++     };
++     on(c, &apos;pointerup&apos;, end);
++     on(c, &apos;pointercancel&apos;, end);
++     on(c, &apos;pointerleave&apos;, () =&gt; { this.hover.inside = false; this.updateCursor(); });
++     on(c, &apos;contextmenu&apos;, e =&gt; e.preventDefault());
++     on(window, &apos;blur&apos;, () =&gt; { if (this.stroke) this.stroke.ending = true; });
++
++     // macOS Force Touch trackpads report pressure through a WebKit-only event
++     on(c, &apos;webkitmouseforcechanged&apos; as keyof HTMLElementEventMap, (e: Event) =&gt; {
++       const f = (e as unknown as { webkitForce?: number }).webkitForce;
++       if (typeof f === &apos;number&apos;) this.force = { value: clamp((f - 1) / 1.7, 0.04, 1), t: this.clock() };
++     });
++   }
++
++   private pushSample(e: PointerEvent) {
++     const [x, y] = this.toUv(e);
++     let p = -1;
++     let tx = e.tiltX || 0;
++     let ty = e.tiltY || 0;
++     const now = this.clock();
++     // 261027-gh9e/gh9f: prefer the host&apos;s native tablet sample whenever the
++     // PointerEvent reports no real pen pressure. macOS WKWebView sends the
++     // fixed 0.5 sentinel (sometimes with a real pointerType &apos;pen&apos; and tilt), so
++     // tilt alone must not disqualify the native sample — the old law kept the
++     // constant 0.5 and the pen had almost no dynamic range.
++     const nativeActive = this.nativePenAt &gt; -Infinity &amp;&amp; now - this.nativePenAt &lt; 300;
++     const reportsPenDynamics = e.pointerType === &apos;pen&apos;
++       &amp;&amp; e.pressure !== 0.5 &amp;&amp; e.pressure !== 0;
++     if (nativeActive &amp;&amp; this.nativePen &amp;&amp; !reportsPenDynamics
++       &amp;&amp; (e.pointerType !== &apos;mouse&apos; || e.buttons &gt; 0)) {
++       // Raw native pressure: engine-1&apos;s law. The old pow(0.8) compressed the
++       // low end, which is exactly where the pen&apos;s range lives.
++       p = this.nativePen.pressure;
++       tx = this.nativePen.tiltX;
++       ty = this.nativePen.tiltY;
++     } else if (e.pointerType === &apos;pen&apos;) {
++       p = e.pressure &gt; 0 ? Math.pow(e.pressure, 0.8) : 0.5;
++     } else if (e.pointerType === &apos;mouse&apos; &amp;&amp; now - this.force.t &lt; 3000) {
++       p = this.force.value;
++     }
++     // 61-04: pointer strokes carry the neutral factor — the width profile is a
++     // recorded-vector channel, and a live hand stroke never has one.
++     const sample = { x, y, p, t: e.timeStamp, tx, ty, w: 1 };
++     this.queue.push(sample);
++     this.callbacks.onStrokeSample?.(sample);
++   }
++
++   private trackHover(e: PointerEvent) {
++     this.hover.x = e.clientX; this.hover.y = e.clientY;
++     this.hover.inside = true; this.hover.type = e.pointerType;
++     this.updateCursor();
++   }
++
++   private updateCursor() {
++     const el = this.cursor;
++     if (!el) return;
++     if (!this.hover.inside || this.hover.type === &apos;touch&apos; || !this.interactive || this.nav) { el.style.opacity = &apos;0&apos;; return; }
++     const tool = this.stroke?.tool ?? this.tool;
++     const r = this.radius(tool, this.stroke ? this.pressureOf(this.stroke, -1) : 0.4, 0);
++     const shaped = tool === &apos;brush&apos; || tool === &apos;water&apos;;
++     const b = this.brush;
++     const d = Math.max(4, (2 * r * this.view.h) / this.dpr);
++     const h = shaped ? Math.max(3, d * b.aspect) : d;
++     // doc uv has y up, the screen has y down, so the angle flips
++     const angle = shaped &amp;&amp; b.rotation !== &apos;random&apos; ? -(this.stroke?.angle ?? this.lastAngle) : 0;
++     el.style.opacity = &apos;1&apos;;
++     el.style.width = `${d}px`;
++     el.style.height = `${h}px`;
++     el.style.transform = `translate(${this.hover.x - d / 2}px, ${this.hover.y - h / 2}px) rotate(${angle}rad)`;
++     el.style.borderRadius = shaped &amp;&amp; b.aspect &lt; 0.6 ? `${h * 0.4}px / 50%` : &apos;50%&apos;;
++     el.dataset.tool = tool;
++   }
++
++   /* -------------------------------------------------------------- strokes */
++
++   /**
++    * Footprint multiplier. `widthFactor` (61-04) is the vector profile&apos;s
++    * per-vertex factor, interpolated along the segment — it multiplies the
++    * footprint on top of the scripted-stroke clamp, so it can exceed 1.0
++    * where `scriptScale` alone could not (C-03). It is never assigned to
++    * `scriptScale`. A factor of 1 (every existing call) is exact.
++    */
++   private sizeMult(widthFactor = 1) { return Math.pow(3, (this.params.size - 0.5) * 2) * (this.scripting ? this.scriptScale : 1) * widthFactor; }
++
++   /**
++    * 61-04: the width factor at `fraction` of the segment being deposited,
++    * linearly interpolated from the consumed sample&apos;s pair (widthFrom →
++    * widthTo) and held at the ends. Always finite; never extrapolated.
++    */
++   private widthFactorAt(s: Stroke, fraction: number): number {
++     const u = clamp(fraction, 0, 1);
++     return s.widthFrom + (s.widthTo - s.widthFrom) * u;
++   }
++
++   /** Footprint radius in document heights. */
++   private radius(tool: Tool, pr: number, speed: number, widthFactor = 1) {
++     const m = this.sizeMult(widthFactor);
++     switch (tool) {
++       case &apos;pen&apos;: return (0.0016 + 0.0042 * pr) * clamp(1.12 - speed * 0.3, 0.55, 1.12) * m;
++       case &apos;brush&apos;: return this.brushRadius(pr, speed, widthFactor);
++       case &apos;water&apos;: return this.brushRadius(pr, speed, widthFactor) * 1.3 * (1 + Math.min(speed, 2.5) * 0.12);
++       case &apos;lift&apos;: return (0.012 + 0.03 * pr) * m;
++     }
++   }
++
++   /** Half the long axis of the current brush&apos;s footprint, in document heights. */
++   private brushRadius(pr: number, speed: number, widthFactor = 1) {
++     const b = this.brush;
++     const t = Math.pow(clamp(pr, 0, 1), b.pressureSize);
++     // preset sizes describe the full footprint; 0.8 keeps a hard-pressed stroke on a desktop screen sane
++     return (b.size[0] + (b.size[1] - b.size[0]) * t) * clamp(1 - speed * b.speedThin, 0.4, 1) * this.sizeMult(widthFactor) * 0.8;
++   }
++
++   /** Tip angle for the next dab, in the document frame. */
++   private brushAngle(s: Stroke) {
++     const b = this.brush;
++     let a: number;
++     if (b.rotation === &apos;random&apos;) a = this.rng() * Math.PI * 2;
++     else if (b.rotation === &apos;follow&apos;) a = Math.atan2(s.dy, s.dx) + b.angle * DEG;
++     else a = s.azimuth ?? b.angle * DEG;
++     if (b.angleJitter) a += (this.rng() - 0.5) * 2 * b.angleJitter * DEG;
++     s.angle = a;
++     if (b.rotation !== &apos;random&apos;) this.lastAngle = a;
++     return a;
++   }
++
++   private pressureOf(s: Stroke, p: number) { return p &gt;= 0 ? p : s.simPressure; }
++
++   private processInput(dt: number) {
++     const s = this.stroke;
++     if (!s) return;
++     s.moved = false;
++     const aspect = this.dw / this.dh;
++     for (const q of this.queue) {
++       // a tilted pen tells us which way it leans; a vertical one tells us nothing
++       if (Math.hypot(q.tx, q.ty) &gt; 12) s.azimuth = Math.atan2(-q.ty, q.tx);
++       if (!s.started) {
++         s.started = true;
++         s.x = s.cx = q.x; s.y = s.cy = q.y; s.t = q.t;
++         s.pr = this.pressureOf(s, q.p);
++         // 61-04: a stroke starts at its own sample&apos;s width — there is no
++         // preceding segment to ramp from.
++         s.widthFrom = s.widthTo = q.w;
++         this.stamp(s, q.x, q.y, s.pr, 0, 0, 1, 0, q.w);
++         continue;
++       }
++       // 61-04: the consumed sample names the width its segment ramps TO; the
++       // previous sample&apos;s width is where it starts. The pair lives on the
++       // stroke only while its segment deposits — the authoritative factor
++       // always rode the queued sample.
++       s.widthFrom = s.widthTo;
++       s.widthTo = q.w;
++       const sdt = Math.max(q.t - s.t, 1) / 1000;
++       s.t = q.t;
++       // light smoothing; mice get a little more than styluses
++       const k = s.pointerType === &apos;mouse&apos; ? 0.5 : 0.65;
++       const nx = s.cx + (q.x - s.cx) * k, ny = s.cy + (q.y - s.cy) * k;
++       const len = Math.hypot((nx - s.cx) * aspect, ny - s.cy);
++       s.speed += (len / sdt - s.speed) * (1 - Math.exp(-sdt * 10));
++       const target = clamp(1.18 - s.speed * 0.95, 0.12, 1);
++       s.simPressure += (target - s.simPressure) * (1 - Math.exp(-sdt * 6));
++       const pr = this.pressureOf(s, q.p);
++       const vx = (nx - s.cx) / sdt, vy = (ny - s.cy) / sdt;
++       if (s.pointerId === SCRIPT_POINTER) {
++         // scripted glyphs keep their corners
++         this.trace(s, nx, ny, nx, ny, pr, vx, vy);
++       } else {
++         // a fast mouse reports sparse samples (~8ms apart, often 50px+); curving through
++         // their midpoints keeps the stroke round instead of a visible polyline
++         this.trace(s, s.cx, s.cy, (s.cx + nx) / 2, (s.cy + ny) / 2, pr, vx, vy);
++       }
++       s.cx = nx; s.cy = ny;
++       if (len &gt; 0) s.moved = true;
++     }
++     this.queue = [];
++     // the curve trails half a sample behind; catch up once the pointer rests or lifts
++     if (s.started &amp;&amp; (!s.moved || s.ending) &amp;&amp; (s.x !== s.cx || s.y !== s.cy)) this.trace(s, s.cx, s.cy, s.cx, s.cy, s.pr, 0, 0);
++     // resting in place: pigment keeps soaking in, water keeps pooling
++     if (!s.moved &amp;&amp; s.started &amp;&amp; !s.ending) this.stamp(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1));
++     if (s.ending) {
++       this.stroke = null;
++       if (s.pointerId !== SCRIPT_POINTER) {
++         this.callbacks.onStrokeTool?.(null);
++         this.callbacks.onStrokeEnd?.(s.tool);
++       }
++     }
++   }
++
++   /**
++    * Lay dabs along the quadratic from the stroke&apos;s end (s.x, s.y) through control (qx, qy)
++    * to (ex, ey), every `spacing` of arc length so deposits don&apos;t depend on event rate.
++    * Pressure ramps from s.pr to `pr`; direction follows the curve&apos;s tangent.
++    */
++   private trace(s: Stroke, qx: number, qy: number, ex: number, ey: number, pr: number, vx: number, vy: number) {
++     const aspect = this.dw / this.dh;
++     const x0 = s.x, y0 = s.y, pr0 = s.pr;
++     const approx = Math.hypot((qx - x0) * aspect, qy - y0) + Math.hypot((ex - qx) * aspect, ey - qy);
++     if (approx &lt; 1e-7) return;
++     // 61-04: the width factor ramps from the previous sample&apos;s factor to this
++     // one&apos;s across the segment; spacing derives from the radius it scales, so
++     // a wider stroke keeps the same wash density instead of streaking.
++     const fine = this.radius(s.tool, Math.max(pr0, pr), s.speed, this.widthFactorAt(s, 1)) * this.spacingFrac(s.tool);
++     const n = clamp(Math.ceil(approx / Math.max(fine, 1e-5)), 1, 48);
++     let px = x0, py = y0;
++     for (let i = 1; i &lt;= n; i++) {
++       const u = i / n, w = 1 - u;
++       const cx = w * w * x0 + 2 * w * u * qx + u * u * ex;
++       const cy = w * w * y0 + 2 * w * u * qy + u * u * ey;
++       const dx = (cx - px) * aspect, dy = cy - py;
++       const len = Math.hypot(dx, dy);
++       const p = pr0 + (pr - pr0) * u;
++       const widthAt = this.widthFactorAt(s, u);
++       if (len &gt; 1e-5) {
++         // direction smoothing scaled by distance, so a jittery stylus doesn&apos;t spin a flat brush
++         const kd = 1 - Math.exp(-len / (this.radius(s.tool, p, s.speed, widthAt) * 1.5 + 1e-4));
++         s.dx += (dx / len - s.dx) * kd; s.dy += (dy / len - s.dy) * kd;
++         const m = Math.hypot(s.dx, s.dy) || 1;
++         s.dx /= m; s.dy /= m;
++         this.lastDir = [s.dx, s.dy];
++       }
++       const spacing = this.radius(s.tool, p, s.speed, widthAt) * this.spacingFrac(s.tool);
++       let pos = 0;
++       while (len - pos &gt;= spacing - s.carry) {
++         pos += spacing - s.carry;
++         s.carry = 0;
++         const t = pos / len;
++         this.stamp(s, px + (cx - px) * t, py + (cy - py) * t, p, vx, vy, 1, 0, this.widthFactorAt(s, (i - 1 + t) / n));
++       }
++       s.carry += len - pos;
++       s.travelled += len;
++       px = cx; py = cy;
++     }
++     s.x = ex; s.y = ey; s.pr = pr;
++   }
++
++   /** Dab spacing as a fraction of the footprint radius. */
++   private spacingFrac(tool: Tool) {
++     const b = this.brush;
++     // flat tips need tighter spacing: the footprint is thin across one axis
++     return tool === &apos;brush&apos; || tool === &apos;water&apos; ? b.spacing * Math.sqrt(b.aspect) : 0.5;
++   }
++
++   /** One dab of the current tool. `moving` = 0 with `dt` set means a dwell. */
++   private stamp(s: Stroke, x: number, y: number, pr: number, vx: number, vy: number, moving: number, dt = 0, widthFactor = 1) {
++     const P = this.params;
++     const r = this.radius(s.tool, pr, s.speed, widthFactor);
++     const dwell = moving ? 1 : dt * 8;
++     switch (s.tool) {
++       case &apos;brush&apos;: {
++         const b = this.brush;
++         // the brush empties as it travels; a dry brush skips the valleys of the paper
++         const reservoir = 0.25 + 0.75 * Math.exp(-s.travelled / ((1.5 + 3 * P.water) * b.capacity));
++         const dryness = clamp(b.grain + (1 - b.grain) * clamp((0.5 - reservoir) * 2.5, 0, 1) * 0.6, 0, 1);
++         const grainThr = 0.74 - 0.45 * pr - 0.05 * P.water;   // pressing harder reaches into the valleys
++         // 261027-gh9f: pressure reaches density much harder than before. At the
++         // old 0.6..1.0 band the overlapping dabs saturated the deposit and a
++         // light pen looked identical to a hard one.
++         const conc = 0.15 * Math.exp(P.load * 2.8) * reservoir * (0.4 + 0.6 * pr) * b.load;
++         // spacing / profile integral -&gt; ~conc in the stroke, normalised for sparse tips
++         const norm = clamp(Math.sqrt(0.5 / b.tipMean), 0.7, 2.2);
++         const amount = conc * Math.min(b.spacing, 1) / 1.8 * norm * dwell;
++         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
++         const c = this.pigment.coeffs;
++         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
++         const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, this.pigment.white * amount * 1.6];
++         this.eachDab(s, x, y, r, (dx, dy, dr, angle) =&gt; {
++           this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
++           // soft brushes wet a little beyond the tip; textured ones keep their
++           // edges. A waterless brush never wakes the fluid sim at all.
++           if (wet &gt; 0) this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, dryness, grainThr);
++         });
++         // A waterless brush (dry media) imparts no flow: the velocity splat
++         // was stirring the sheet under chalk, making separate strokes blend
++         // like a wet medium.
++         if (moving &amp;&amp; b.water &gt; 0) this.splatVelocity(x, y, r * 1.2, vx, vy, (15 + P.flow * 95) * 0.25 * b.flow);
++         break;
++       }
++       case &apos;water&apos;: {
++         const b = this.brush;
++         const reservoir = 0.25 + 0.75 * Math.exp(-s.travelled / ((3 + 4 * P.water) * b.capacity));
++         const amp = (0.35 + 0.65 * P.water) * (0.5 + 0.5 * pr) * clamp(b.water, 0.6, 1.5) * (0.7 + 0.3 * reservoir);
++         const dryness = b.grain * 0.7;
++         const grainThr = 0.55 - 0.3 * pr;
++         this.eachDab(s, x, y, r, (dx, dy, dr, angle) =&gt; {
++           this.brushWet(dx, dy, dr, angle, amp, Math.max(b.wetRound, 0.3), dryness, grainThr);
++         });
++         this.brushNow = { x, y, r };
++         if (moving) this.splatVelocity(x, y, r * 1.15, vx, vy, (15 + P.flow * 95) * b.flow);
++         else {
++           const a = this.rng() * Math.PI * 2, m = (6 + 26 * P.flow) * pr;
++           this.splatVelocityRaw(x, y, r * 0.9, Math.cos(a) * m, Math.sin(a) * m);
++         }
++         break;
++       }
++       case &apos;pen&apos;: {
++         const dens = (0.9 + 1.6 * pr) * clamp(1.25 - s.speed * 0.45, 0.6, 1.25) * (0.5 + P.load);
++         const amount = dens * 0.5 / 1.8 * dwell;
++         const c = this.pigment.coeffs;
++         this.splatInk(x, y, r, [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount],
++           [c[4] * amount, c[5] * amount, c[6] * amount, this.pigment.white * amount * 3], 2);
++         this.splatWet(x, y, r * 2.6, 0.13, 1);   // fresh ink is faintly wet, so it feathers a little
++         break;
++       }
++       case &apos;lift&apos;: {
++         // 261028-k03b: strength is a canonical param (lift/100) recorded per
++         // stroke, so the live pass, the bake replay and the cached-raster
++         // punch share one number. The 0.22 default keeps old strokes exact.
++         // 261028-k03c: the tip angle is the same law the brush stamps use —
++         // brushAngle already resolves fixed rotation as the sticky pen-tilt
++         // azimuth s.azimuth (set in processInput from atan2(-ty, tx) when
++         // hypot(tx, ty) &gt; 12) falling back to b.angle * DEG, so the live erase
++         // gains the tilt with no extra logic here. The punch and the cursor
++         // mirror this exact law.
++         const amount = Math.min(0.9, P.lift * dwell);
++         this.lift(x, y, r, this.brushAngle(s), amount);
++         break;
++       }
++     }
++   }
++
++   /* --------------------------------------------------------------- splats */
++
++   /** Run `fn` for every dab of a stamp: one for most brushes, a scattered burst for spatter. */
++   private eachDab(s: Stroke, x: number, y: number, r: number, fn: (x: number, y: number, r: number, angle: number) =&gt; void) {
++     const b = this.brush;
++     const aspect = this.dw / this.dh;
++     for (let i = 0; i &lt; b.dabs; i++) {
++       let dx = x, dy = y, dr = r;
++       if (b.scatter &gt; 0) {
++         const a = this.rng() * Math.PI * 2, m = Math.sqrt(this.rng()) * b.scatter * r;
++         dx += (Math.cos(a) * m) / aspect; dy += Math.sin(a) * m;
++       }
++       if (b.sizeJitter &gt; 0) dr *= clamp(1 + (this.rng() * 2 - 1) * b.sizeJitter, 0.15, 2);
++       fn(dx, dy, dr, this.brushAngle(s));
++     }
++   }
++
++   private drawStamp(t: Target, x: number, y: number, r: number, angle: number, c0: number[], c1: number[], round: number, grain: number, grainThr: number) {
++     const { gl, g } = this;
++     const b = this.brush;
++     const p = this.programs.stamp;
++     p.bind();
++     gl.uniform1i(p.u.uTip, g.bindTex(0, this.tipTexture(b)));
++     gl.uniform1i(p.u.uPaper, g.bindTex(1, this.paper.tex[0]));
++     gl.uniform1f(p.u.uAspect, t.w / t.h);
++     gl.uniform2f(p.u.uPoint, x, y);
++     gl.uniform1f(p.u.uRadius, r);
++     gl.uniform1f(p.u.uTipAspect, b.aspect);
++     gl.uniform2f(p.u.uAxis, Math.cos(angle), Math.sin(angle));
++     gl.uniform1f(p.u.uRound, round);
++     gl.uniform1f(p.u.uGrain, grain);
++     gl.uniform1f(p.u.uGrainThr, grainThr);
++     gl.uniform1f(p.u.uRough, b.roughness ?? 0);
++     gl.uniform1f(p.u.uJitter, b.stampJitter ?? 0);
++     gl.uniform4fv(p.u.uColor0, c0);
++     gl.uniform4fv(p.u.uColor1, c1);
++     g.draw(t, this.stampRect(x, y, r, t.w, t.h, Math.sqrt(1 + b.aspect * b.aspect) * 1.02));
++   }
++
++   private brushInk(x: number, y: number, r: number, angle: number, c0: number[], c1: number[], grain: number, grainThr: number) {
++     const { gl } = this;
++     this.touch(this.stampRect(x, y, r, this.dw, this.dh, 1.5));
++     gl.enable(gl.BLEND);
++     gl.blendEquation(gl.FUNC_ADD);
++     gl.blendFunc(gl.ONE, gl.ONE);
++     this.drawStamp(this.ink.read, x, y, r, angle, c0, c1, 0, grain, grainThr);
++     gl.disable(gl.BLEND);
++   }
++
++   private brushWet(x: number, y: number, r: number, angle: number, amount: number, round: number, grain: number, grainThr: number) {
++     const { gl } = this;
++     this.touch(this.stampRect(x, y, r, this.dw, this.dh, 1.5));
++     gl.enable(gl.BLEND);
++     gl.blendEquation(gl.MAX);
++     this.drawStamp(this.wet.read, x, y, r, angle, [amount, 0, 0, 0], [0, 0, 0, 0], round, grain, grainThr);
++     gl.blendEquation(gl.FUNC_ADD);
++     gl.disable(gl.BLEND);
++     this.wetPeak = Math.max(this.wetPeak * this.wetDecay(), amount);
++     this.lastWet = this.clock();
++   }
++
++   /** Rect (in texels of a w×h grid) covered by a stamp of radius r (doc heights). */
++   private stampRect(x: number, y: number, r: number, w: number, h: number, extent: number): Rect {
++     const e = Math.ceil(r * extent * h) + 2;
++     const cx = Math.round(x * w), cy = Math.round(y * h);
++     return { x0: clamp(cx - e, 0, w), y0: clamp(cy - e, 0, h), x1: clamp(cx + e, 0, w), y1: clamp(cy + e, 0, h) };
++   }
++
++   /**
++    * Grow the simulated region. With `save`, the tiles around `rect` are saved for undo
++    * first: a step restores what its own dabs and fills touched (plus a margin for what
++    * spread from them), while the rest of the sheet simply keeps drying. That keeps a
++    * step&apos;s cost proportional to the stroke, not to everything that happens to be wet.
++    */
++   private touch(rect: Rect, wake = true, save = true) {
++     if (rect.x1 &lt;= rect.x0 || rect.y1 &lt;= rect.y0) return;
++     const next = union(this.active, rect);
++     if (save) {
++       const m = PROTECT_MARGIN;
++       this.history.protect(0, { x0: Math.max(0, rect.x0 - m), y0: Math.max(0, rect.y0 - m), x1: Math.min(this.dw, rect.x1 + m), y1: Math.min(this.dh, rect.y1 + m) }, this.snapshotLayers());
++     }
++     this.active = next;
++     this.painted = union(this.painted, rect);
++     this.everPainted = union(this.everPainted, rect);
++     this.dirty = union(this.dirty, rect);
++     if (wake) this.minAwakeUntil = Math.max(this.minAwakeUntil, this.clock() + 250);
++   }
++
++   private snapshotLayers() {
++     return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0]];
++   }
++
++   private drawSplat(t: Target, x: number, y: number, r: number, c0: number[], c1: number[], hardness: number, extent: number) {
++     const { gl, g } = this;
++     const p = this.programs.splat;
++     p.bind();
++     gl.uniform1f(p.u.uAspect, t.w / t.h);
++     gl.uniform2f(p.u.uPoint, x, y);
++     gl.uniform1f(p.u.uRadius, r);
++     gl.uniform1f(p.u.uHardness, hardness);
++     gl.uniform4fv(p.u.uColor0, c0);
++     gl.uniform4fv(p.u.uColor1, c1);
++     g.draw(t, this.stampRect(x, y, r, t.w, t.h, extent));
++   }
++
++   private splatInk(x: number, y: number, r: number, c0: number[], c1: number[], hardness: number) {
++     const { gl } = this;
++     const extent = hardness &gt; 1.4 ? 2.2 : 3.2;
++     this.touch(this.stampRect(x, y, r, this.dw, this.dh, extent));
++     gl.enable(gl.BLEND);
++     gl.blendEquation(gl.FUNC_ADD);
++     gl.blendFunc(gl.ONE, gl.ONE);
++     this.drawSplat(this.ink.read, x, y, r, c0, c1, hardness, extent);
++     gl.disable(gl.BLEND);
++   }
++
++   private splatWet(x: number, y: number, r: number, amount: number, hardness: number) {
++     const { gl } = this;
++     const extent = hardness &gt; 1.4 ? 2.2 : 3.2;
++     this.touch(this.stampRect(x, y, r, this.dw, this.dh, extent));
++     gl.enable(gl.BLEND);
++     gl.blendEquation(gl.MAX);
++     this.drawSplat(this.wet.read, x, y, r, [amount, 0, 0, 0], [0, 0, 0, 0], hardness, extent);
++     gl.blendEquation(gl.FUNC_ADD);
++     gl.disable(gl.BLEND);
++     this.wetPeak = Math.max(this.wetPeak * this.wetDecay(), amount);
++     this.lastWet = this.clock();
++   }
++
++   private splatVelocity(x: number, y: number, r: number, vx: number, vy: number, force: number) {
++     let fx = vx * force, fy = vy * force;
++     const m = Math.hypot(fx, fy), vmax = 240;
++     if (m &gt; vmax) { fx *= vmax / m; fy *= vmax / m; }
++     this.flowSpeed = Math.max(this.flowSpeed, Math.min(m, vmax));
++     this.splatVelocityRaw(x, y, r, fx, fy);
++   }
++
++   private splatVelocityRaw(x: number, y: number, r: number, fx: number, fy: number) {
++     const { gl } = this;
++     gl.enable(gl.BLEND);
++     gl.blendEquation(gl.FUNC_ADD);
++     gl.blendFunc(gl.ONE, gl.ONE);
++     this.drawSplat(this.velocity.read, x, y, r, [fx, fy, 0, 0], [0, 0, 0, 0], 1, 3);
++     gl.disable(gl.BLEND);
++   }
++
++   private lift(x: number, y: number, r: number, angle: number, amount: number) {
++     const { gl, g } = this;
++     const b = this.brush;
++     const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
++     this.touch(rect);
++     // 261028-k03 D1: Lift is the ONE tool that also reaches fixed pigment, so the
++     // fixed pool is saved before the fixed draw (same per-dab margin as the mobile tiles).
++     const m = PROTECT_MARGIN;
++     this.history.protect(1, { x0: Math.max(0, rect.x0 - m), y0: Math.max(0, rect.y0 - m), x1: Math.min(this.dw, rect.x1 + m), y1: Math.min(this.dh, rect.y1 + m) }, this.fixed.views);
++     const p = this.programs.lift;
++     p.bind();
++     // 261028-k03c: the tip footprint binds exactly like drawStamp — the same
++     // tip texture, aspect and angle the brush stamps use. uRound = 0 shaves
++     // the silhouette to the tip&apos;s contour (the punch&apos;s LIFT_TIP_ROUND mirrors
++     // this constant).
++     gl.uniform1i(p.u.uTip, g.bindTex(0, this.tipTexture(b)));
++     gl.uniform1f(p.u.uAspect, this.dw / this.dh);
++     gl.uniform2f(p.u.uPoint, x, y);
++     gl.uniform1f(p.u.uRadius, r);
++     gl.uniform1f(p.u.uTipAspect, b.aspect);
++     gl.uniform2f(p.u.uAxis, Math.cos(angle), Math.sin(angle));
++     gl.uniform1f(p.u.uRound, 0);
++     gl.enable(gl.BLEND);
++     gl.blendEquation(gl.FUNC_ADD);
++     gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
++     gl.uniform1f(p.u.uAmount, amount);
++     g.draw(this.ink.read, rect);
++     gl.uniform1f(p.u.uAmount, amount * 0.8);   // the tissue soaks up water too
++     g.draw(this.wet.read, rect);
++     gl.uniform1f(p.u.uAmount, amount);
++     g.draw(this.fixed, rect);
++     // fixed pigment is dry by definition — no tissue water factor, the full amount.
++     // Declared consequence: an explicit Dry is permanent for every tool except Lift.
++     gl.disable(gl.BLEND);
++     // After the draw, so the preview observes exactly the dab the engine applied.
++     this.callbacks.onLiftDab?.(x, y, r, amount, angle);
++   }
++
++   /* ----------------------------------------------------------- simulation */
++
++   private dryTau() { return this.fixTimer &gt; 0 ? 0.25 : 2 + (1 - this.params.dry) * 16; }
++
++   private wetDecay() { return Math.exp(-(this.clock() - this.lastWet) / 1000 / this.dryTau()); }
++
++   /** Time (ms) until standing water everywhere has dried below the threshold. */
++   private wetUntil() {
++     if (this.wetPeak &lt;= WET_THRESHOLD) return this.lastWet;
++     return this.lastWet + this.dryTau() * Math.log(this.wetPeak / WET_THRESHOLD) * 1000;
++   }
++
++   private beginStep(kind: StepKind, label: string) {
++     this.dropFill();   // a new action ends a running fill; its remaining bands never land in this step
++     this.autoFix = false;   // any newer action makes the settle-cap fix permanent
++     this.history.begin({ kind, label }, this.currentMeta());
++     this.notifyHistory();
++   }
++
++   private step(dt: number) {
++     const { gl, g, programs: P } = this;
++     const fixing = this.fixTimer &gt; 0;
++     if (fixing) {
++       this.fixTimer -= dt;
++       if (this.fixTimer &lt;= 0) {
++         // everything has flash-dried: let the sim sleep so the next stroke starts
++         // from a small active region (and a small undo snapshot)
++         this.wetPeak = 0;
++         this.minAwakeUntil = 0;
++         this.painted = null;
++       }
++     }
++     const vel = this.velocity;
++     const simTexel = [1 / vel.w, 1 / vel.h];
++     const texel = [1 / this.dw, 1 / this.dh];
++     const flow = this.params.flow;
++     const rect = this.active!;
++
++     P.advectVelocity.bind();
++     gl.uniform1i(P.advectVelocity.u.uVelocity, g.bindTex(0, vel.read.tex[0]));
++     gl.uniform1i(P.advectVelocity.u.uWet, g.bindTex(1, this.wet.read.tex[0]));
++     gl.uniform2fv(P.advectVelocity.u.uTexel, simTexel);
++     gl.uniform1f(P.advectVelocity.u.uDt, dt);
++     gl.uniform1f(P.advectVelocity.u.uDissipation, Math.exp(-dt * (3.0 - flow * 2.4)) * (fixing ? Math.exp(-dt * 7) : 1));
++     g.draw(vel.write); vel.swap();
++
++     P.curl.bind();
++     gl.uniform1i(P.curl.u.uVelocity, g.bindTex(0, vel.read.tex[0]));
++     gl.uniform2fv(P.curl.u.uTexel, simTexel);
++     g.draw(this.curl);
++
++     P.vorticity.bind();
++     gl.uniform1i(P.vorticity.u.uVelocity, g.bindTex(0, vel.read.tex[0]));
++     gl.uniform1i(P.vorticity.u.uCurl, g.bindTex(1, this.curl.tex[0]));
++     gl.uniform2fv(P.vorticity.u.uTexel, simTexel);
++     gl.uniform1f(P.vorticity.u.uCurlAmount, 4 + flow * 22);
++     gl.uniform1f(P.vorticity.u.uDt, dt);
++     g.draw(vel.write); vel.swap();
++
++     P.divergence.bind();
++     gl.uniform1i(P.divergence.u.uVelocity, g.bindTex(0, vel.read.tex[0]));
++     gl.uniform2fv(P.divergence.u.uTexel, simTexel);
++     g.draw(this.divergence);
++
++     P.scale.bind();
++     gl.uniform1i(P.scale.u.uTex, g.bindTex(0, this.pressure.read.tex[0]));
++     gl.uniform1f(P.scale.u.uValue, 0.8);
++     g.draw(this.pressure.write); this.pressure.swap();
++
++     P.pressure.bind();
++     gl.uniform1i(P.pressure.u.uDivergence, g.bindTex(1, this.divergence.tex[0]));
++     gl.uniform2fv(P.pressure.u.uTexel, simTexel);
++     for (let i = 0; i &lt; PRESSURE_ITERATIONS; i++) {
++       gl.uniform1i(P.pressure.u.uPressure, g.bindTex(0, this.pressure.read.tex[0]));
++       g.draw(this.pressure.write); this.pressure.swap();
++     }
++
++     P.gradient.bind();
++     gl.uniform1i(P.gradient.u.uPressure, g.bindTex(0, this.pressure.read.tex[0]));
++     gl.uniform1i(P.gradient.u.uVelocity, g.bindTex(1, vel.read.tex[0]));
++     gl.uniform2fv(P.gradient.u.uTexel, simTexel);
++     g.draw(vel.write); vel.swap();
++
++     // water: dries on a timescale set by the DRY slider (flash-dries while fixing)
++     P.advectWet.bind();
++     gl.uniform1i(P.advectWet.u.uVelocity, g.bindTex(0, vel.read.tex[0]));
++     gl.uniform1i(P.advectWet.u.uWet, g.bindTex(1, this.wet.read.tex[0]));
++     gl.uniform2fv(P.advectWet.u.uSimTexel, simTexel);
++     gl.uniform2fv(P.advectWet.u.uTexel, texel);
++     gl.uniform1f(P.advectWet.u.uDt, dt);
++     gl.uniform1f(P.advectWet.u.uDecay, Math.exp(-dt / this.dryTau()));
++     gl.uniform1f(P.advectWet.u.uSpread, 0.12);
++     g.draw(this.wet.write, rect); this.wet.swap();
++
++     // fixing: bleach under white gouache, then settle mobile pigment into the paper
++     const settle = fixing ? 1 - Math.exp(-dt * 5) : 0;
++     if (fixing) {
++       gl.enable(gl.BLEND);
++       gl.blendEquation(gl.FUNC_ADD);
++       gl.blendFunc(gl.ZERO, gl.SRC_COLOR);
++       P.bleach.bind();
++       gl.uniform1i(P.bleach.u.uInkB, g.bindTex(0, this.ink.read.tex[1]));
++       gl.uniform1f(P.bleach.u.uSettle, settle);
++       g.draw(this.fixed, rect);
++       gl.blendFunc(gl.ONE, gl.ONE);
++       P.settle.bind();
++       gl.uniform1i(P.settle.u.uInkA, g.bindTex(0, this.ink.read.tex[0]));
++       gl.uniform1i(P.settle.u.uInkB, g.bindTex(1, this.ink.read.tex[1]));
++       gl.uniform1f(P.settle.u.uSettle, settle);
++       g.draw(this.fixed, rect);
++       gl.disable(gl.BLEND);
++     }
++
++     // pigment: flows, bleeds and gathers at drying edges, only where wet
++     const p = P.advectInk;
++     p.bind();
++     gl.uniform1i(p.u.uVelocity, g.bindTex(0, vel.read.tex[0]));
++     gl.uniform1i(p.u.uInkA, g.bindTex(1, this.ink.read.tex[0]));
++     gl.uniform1i(p.u.uInkB, g.bindTex(2, this.ink.read.tex[1]));
++     gl.uniform1i(p.u.uWet, g.bindTex(3, this.wet.read.tex[0]));
++     gl.uniform2fv(p.u.uSimTexel, simTexel);
++     gl.uniform2fv(p.u.uTexel, texel);
++     gl.uniform1f(p.u.uDt, dt);
++     gl.uniform1f(p.u.uBleed, this.params.bleed);
++     gl.uniform1f(p.u.uEdge, this.params.edge * 1.4);
++     gl.uniform1f(p.u.uAspect, this.dw / this.dh);
++     gl.uniform1f(p.u.uKeep, 1 - settle);
++     gl.uniform3f(p.u.uBrush, this.brushNow.x, this.brushNow.y, this.brushNow.r);
++     g.draw(this.ink.write, rect); this.ink.swap();
++
++     this.dirty = union(this.dirty, rect);
++   }
++
++   /**
++    * The active rect grows blindly each frame so the wet front can creep; left alone it
++    * would cover the sheet in a minute, and every undo step would have to save all of
++    * it. Now and then, find where there is actually water and cut the rect down to that.
++    */
++   private trimActive() {
++     const a = this.active;
++     if (!a) return;
++     const { gl, g } = this;
++     const m = this.wetMask;
++     const p = this.programs.wetMask;
++     p.bind();
++     gl.uniform1i(p.u.uWet, g.bindTex(0, this.wet.read.tex[0]));
++     gl.uniform2f(p.u.uBlock, 1 / m.w, 1 / m.h);
++     gl.uniform1f(p.u.uThreshold, WET_THRESHOLD);
++     g.draw(m);
++     gl.bindFramebuffer(gl.FRAMEBUFFER, m.fbo);
++     gl.readPixels(0, 0, m.w, m.h, gl.RGBA, gl.UNSIGNED_BYTE, this.maskPixels);
++     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
++     let x0 = m.w, y0 = m.h, x1 = -1, y1 = -1;
++     const px = this.maskPixels;
++     for (let y = 0; y &lt; m.h; y++) for (let x = 0; x &lt; m.w; x++) {
++       if (!px[(y * m.w + x) * 4]) continue;
++       if (x &lt; x0) x0 = x; if (x &gt; x1) x1 = x; if (y &lt; y0) y0 = y; if (y &gt; y1) y1 = y;
++     }
++     let next: Rect | null = null;
++     if (x1 &gt;= 0) {
++       const wet = {
++         x0: Math.max(0, x0 * MASK_BLOCK - MASK_MARGIN), y0: Math.max(0, y0 * MASK_BLOCK - MASK_MARGIN),
++         x1: Math.min(this.dw, (x1 + 1) * MASK_BLOCK + MASK_MARGIN), y1: Math.min(this.dh, (y1 + 1) * MASK_BLOCK + MASK_MARGIN),
++       };
++       const r = { x0: Math.max(a.x0, wet.x0), y0: Math.max(a.y0, wet.y0), x1: Math.min(a.x1, wet.x1), y1: Math.min(a.y1, wet.y1) };
++       if (r.x1 &gt; r.x0 &amp;&amp; r.y1 &gt; r.y0) next = r;
++     }
++     if (next &amp;&amp; next.x0 === a.x0 &amp;&amp; next.y0 === a.y0 &amp;&amp; next.x1 === a.x1 &amp;&amp; next.y1 === a.y1) return;
++     // the part being dropped was updated into alternating halves: make them agree before it is left alone
++     const w = a.x1 - a.x0, h = a.y1 - a.y0;
++     for (const d of [this.ink, this.wet])
++       d.read.views.forEach((v, i) =&gt; g.blit(v, a.x0, a.y0, d.write.views[i], a.x0, a.y0, w, h));
++     if (next) this.active = next; else this.sleep();
++   }
++
++   /** Make both halves of the ping-pong buffers identical, then stop simulating. */
++   private sleep() {
++     const rect = this.active;
++     if (rect) {
++       const { g } = this;
++       const w = rect.x1 - rect.x0, h = rect.y1 - rect.y0;
++       for (const d of [this.ink, this.wet])
++         d.read.views.forEach((v, i) =&gt; g.blit(v, rect.x0, rect.y0, d.write.views[i], rect.x0, rect.y0, w, h));
++     }
++     for (const d of [this.velocity, this.pressure]) { this.g.clearTarget(d.read); this.g.clearTarget(d.write); }
++     this.active = null;
++     this.wetPeak = 0;
++     this.flowSpeed = 0;
++   }
++
++   /* -------------------------------------------------------------- display */
++
++   private drawDisplay(target: Target | null, view: { x: number; y: number; w: number; h: number }, scissor: Rect | null, flat = false, mode: number = MODE.screen, texture = true) {
++     const { gl, g } = this;
++     const p = this.programs.display;
++     p.bind();
++     gl.uniform1i(p.u.uInkA, g.bindTex(0, this.ink.read.tex[0]));
++     gl.uniform1i(p.u.uInkB, g.bindTex(1, this.ink.read.tex[1]));
++     gl.uniform1i(p.u.uFixedA, g.bindTex(2, this.fixed.tex[0]));
++     gl.uniform1i(p.u.uFixedB, g.bindTex(3, this.fixed.tex[1]));
++     gl.uniform1i(p.u.uWet, g.bindTex(4, this.wet.read.tex[0]));
++     gl.uniform1i(p.u.uPaper, g.bindTex(5, this.paper.tex[0]));
++     gl.uniform4f(p.u.uView, view.x, view.y, view.w, view.h);
++     gl.uniform2f(p.u.uTexel, 1 / this.dw, 1 / this.dh);
++     gl.uniform1f(p.u.uGranulation, this.params.granulation * 0.55);
++     gl.uniform1f(p.u.uEdgeDarken, 0.8);
++     gl.uniform1f(p.u.uFlat, flat ? 1 : 0);
++     gl.uniform3fv(p.u.uDesk, DESK);
++     gl.uniform1i(p.u.uMode, mode);
++     this.paperUniforms(p, this.paperPreset, texture ? this.paperStrength : 0);
++     const ref = mode === MODE.screen &amp;&amp; !flat &amp;&amp; this.refVisible ? this.ref : null;
++     gl.uniform1f(p.u.uRefOpacity, ref ? this.refOpacity : 0);
++     // the sampler needs a texture bound either way; the paper stands in when there is none
++     gl.uniform1i(p.u.uRef, g.bindTex(6, ref ? ref.tex : this.paper.tex[0]));
++     const r = this.refRect;
++     gl.uniform4f(p.u.uRefRect, r.x, r.y, r.w, r.h);
++     // the shadow grows with the sheet on screen, within a range that always reads as paper on a desk
++     const shadow = mode === MODE.screen &amp;&amp; !target ? clamp(Math.min(view.w, view.h) / this.dpr * 0.05, 14, 48) * this.dpr : 0;
++     gl.uniform1f(p.u.uShadow, shadow);
++     gl.uniform1f(p.u.uDpr, this.dpr);
++     g.draw(target, scissor, this.canvasSize);
++   }
++
++   private render() {
++     if (!this.dirtyAll &amp;&amp; !this.dirty) return;
++     let rect: Rect | null = null;
++     if (!this.dirtyAll &amp;&amp; this.dirty) {
++       const v = this.view, d = this.dirty;
++       rect = {
++         x0: Math.floor(v.x + (d.x0 / this.dw) * v.w) - 2, y0: Math.floor(v.y + (d.y0 / this.dh) * v.h) - 2,
++         x1: Math.ceil(v.x + (d.x1 / this.dw) * v.w) + 2, y1: Math.ceil(v.y + (d.y1 / this.dh) * v.h) + 2,
++       };
++     }
++     // The compositor surface shows the sheet as a real paint layer (pigment
++     // alpha); the literal `transparent` mode stays the opaque capture format.
++     this.drawDisplay(null, this.view, rect, false, this.compositorLayer ? MODE.pigment : MODE.screen);
++     this.dirty = null;
++     this.dirtyAll = false;
++   }
++
++   /* ------------------------------------------------------------ main loop */
++
++   private schedule() {
++     if (this.manual) return;
++     if (!this.raf) {
++       this.lastFrame = this.clock();
++       this.raf = requestAnimationFrame(this.frame);
++     }
++   }
++
++   private frame = (now: number) =&gt; {
++     this.raf = 0;
++     const dt = clamp((now - this.lastFrame) / 1000, 1 / 240, 1 / 30);
++     this.lastFrame = now;
++     this.brushNow.r = 0;
++
++     this.processInput(dt);
++
++     const awake = this.active !== null &amp;&amp;
++       (this.stroke !== null || this.fixTimer &gt; 0 || now &lt; this.minAwakeUntil || now &lt; this.wetUntil());
++     if (awake) {
++       // Grow the simulated region as fast as the wet front can move: slow diffusive
++       // creep plus a share of the (decaying) flow speed
++       this.flowSpeed *= Math.exp(-dt * (3.0 - this.params.flow * 2.4));
++       // (velocity is masked to ~0 at the wet front, so the front itself only creeps)
++       this.growCarry += 0.4 + Math.min(3, 0.15 * this.flowSpeed * dt * (this.dw / this.velocity.w));
++       const grow = Math.floor(this.growCarry);
++       if (grow &gt; 0) {
++         this.growCarry -= grow;
++         const a = this.active!;
++         this.touch({ x0: Math.max(0, a.x0 - grow), y0: Math.max(0, a.y0 - grow), x1: Math.min(this.dw, a.x1 + grow), y1: Math.min(this.dh, a.y1 + grow) }, false, false);
++       }
++       this.step(dt);
++       if (this.fixTimer &lt;= 0 &amp;&amp; ++this.maskCounter &gt;= MASK_EVERY) { this.maskCounter = 0; this.trimActive(); }
++     }
++     this.render();
++     // a stroke that ran the undo memory dry dropped old steps: the list should say so
++     if (this.history.evictions !== this.seenEvictions) this.notifyHistory();
++     if (!awake &amp;&amp; this.active) this.sleep();
++     if (awake || this.stroke) this.schedule();
++   };
++ }
++
+
+ ❯ src/playground/engineRenderMode.test.ts:127:27
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineRenderMode.test.ts" name="the ribbon deposit branch is explicit (61-07 D-12 / T-61-22) &gt; leaves the sampling law untouched (spacingFrac / carry / 48-substep cap)" time="0.000317292">
+        </testcase>
+        <testcase classname="src/playground/engineRenderMode.test.ts" name="the ribbon deposit branch is explicit (61-07 D-12 / T-61-22) &gt; never reuses the watercolour branch floored wet / concentration expressions" time="0.000527083">
+            <failure message="expected 2 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ src/playground/engineRenderMode.test.ts:142:73
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineRenderMode.test.ts" name="the ribbon deposit branch is explicit (61-07 D-12 / T-61-22) &gt; adds the ribbon coverage profile to the stamp shader" time="0.001368709">
+            <failure message="expected &apos;import { displayBasisGLSL } from \&apos;./…&apos; to contain &apos;uRibbon&apos;" type="AssertionError">
+AssertionError: expected &apos;import { displayBasisGLSL } from \&apos;./…&apos; to contain &apos;uRibbon&apos;
+
+- Expected
++ Received
+
+- uRibbon
++ import { displayBasisGLSL } from &apos;./spectral&apos;;
++
++ // Texture layout
++ //   velocity  RG16F  (sim grid)       water flow, in sim texels / second
++ //   wet       R16F   (document grid)  standing water on the paper
++ //   ink       2 × RGBA16F (document)   mobile pigment: A = absorbance coeffs 0..3,
++ //                                      B.rgb = coeffs 4..6, B.a = white gouache
++ //   fixed     2 × RGBA16F (document)   pigment settled into the paper (no white)
++ //   paper     RGBA8  (document)        r = lit relief, g = height, b = mottle, a = fleck
++
++ const HEADER = `#version 300 es
++ precision highp float;
++ in vec2 vUv;
++ `;
++
++ /** Circular stamp; MRT so one draw writes both pigment textures. */
++ export const splatFS = `${HEADER}
++ layout(location=0) out vec4 o0;
++ layout(location=1) out vec4 o1;
++ uniform float uAspect, uRadius, uHardness;
++ uniform vec2 uPoint;
++ uniform vec4 uColor0, uColor1;
++ void main(){
++   vec2 p = vUv - uPoint; p.x *= uAspect;
++   float d = dot(p, p) / (uRadius * uRadius);
++   float f = exp(-pow(d, uHardness));
++   o0 = uColor0 * f;
++   o1 = uColor1 * f;
++ }`;
++
++ // Textured brush dab. The tip texture&apos;s square (-1..1) is mapped onto an ellipse of
++ // the brush&apos;s aspect, rotated by uAxis. uRound mixes toward a plain soft ellipse
++ // (used for the water footprint); uGrain gates the deposit by the paper&apos;s height so
++ // a dry brush only touches the peaks of the tooth.
++ export const stampFS = `${HEADER}
++ layout(location=0) out vec4 o0;
++ layout(location=1) out vec4 o1;
++ uniform sampler2D uTip, uPaper;
++ uniform float uAspect, uRadius, uTipAspect, uRound, uGrain, uGrainThr;
++ uniform float uRough, uJitter;
++ uniform vec2 uPoint, uAxis;
++ uniform vec4 uColor0, uColor1;
++ void main(){
++   vec2 p = vUv - uPoint; p.x *= uAspect;
++   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
++   q.y /= uTipAspect;
++   if (abs(q.x) &gt; 1.0 || abs(q.y) &gt; 1.0) discard;
++   // Dry media (uRough &gt; 0): every dab reads a different slice of the tip, so
++   // the silhouette breaks up randomly instead of repeating one contour.
++   float e0 = fract(sin(dot(uPoint, vec2(12.9898, 78.233))) * 43758.5453);
++   float e1 = fract(e0 * 63.7264 + 0.37);
++   vec2 uv = clamp(q * 0.5 + 0.5 + (vec2(e0, e1) - 0.5) * uJitter, 0.0, 1.0);
++   float t = texture(uTip, uv).r;
++   // Re-threshold the tip into a hard, crumbly mask. uRough = 0 keeps the
++   // smooth alpha every wet brush expects.
++   float th = uRough * 0.45;
++   float dry = smoothstep(th, th + 0.02, t);
++   float sharp = mix(t, dry, step(0.0001, uRough));
++   float d = dot(q, q);
++   float round = 1.0 - smoothstep(0.15, 1.0, d);
++   float f = mix(sharp, round, uRound);
++   float h = texture(uPaper, vUv).g;
++   f *= mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);
++   o0 = uColor0 * f;
++   o1 = uColor1 * f;
++ }`;
++
++ // Water flow: self-advect, damp, and confine to wet paper.
++ export const advectVelocityFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uVelocity, uWet;
++ uniform vec2 uTexel;
++ uniform float uDt, uDissipation;
++ void main(){
++   vec2 coord = vUv - uDt * texture(uVelocity, vUv).xy * uTexel;
++   vec2 vel = texture(uVelocity, coord).xy * uDissipation;
++   float w = texture(uWet, vUv).x;
++   o = vec4(vel * smoothstep(0.005, 0.2, w), 0.0, 1.0);
++ }`;
++
++ export const divergenceFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uVelocity; uniform vec2 uTexel;
++ void main(){
++   float L = texture(uVelocity, vUv - vec2(uTexel.x, 0.0)).x;
++   float R = texture(uVelocity, vUv + vec2(uTexel.x, 0.0)).x;
++   float B = texture(uVelocity, vUv - vec2(0.0, uTexel.y)).y;
++   float T = texture(uVelocity, vUv + vec2(0.0, uTexel.y)).y;
++   o = vec4(0.5 * (R - L + T - B), 0.0, 0.0, 1.0);
++ }`;
++
++ export const pressureFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uPressure, uDivergence; uniform vec2 uTexel;
++ void main(){
++   float L = texture(uPressure, vUv - vec2(uTexel.x, 0.0)).x;
++   float R = texture(uPressure, vUv + vec2(uTexel.x, 0.0)).x;
++   float B = texture(uPressure, vUv - vec2(0.0, uTexel.y)).x;
++   float T = texture(uPressure, vUv + vec2(0.0, uTexel.y)).x;
++   o = vec4((L + R + B + T - texture(uDivergence, vUv).x) * 0.25, 0.0, 0.0, 1.0);
++ }`;
++
++ export const gradientSubtractFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uPressure, uVelocity; uniform vec2 uTexel;
++ void main(){
++   float L = texture(uPressure, vUv - vec2(uTexel.x, 0.0)).x;
++   float R = texture(uPressure, vUv + vec2(uTexel.x, 0.0)).x;
++   float B = texture(uPressure, vUv - vec2(0.0, uTexel.y)).x;
++   float T = texture(uPressure, vUv + vec2(0.0, uTexel.y)).x;
++   o = vec4(texture(uVelocity, vUv).xy - 0.5 * vec2(R - L, T - B), 0.0, 1.0);
++ }`;
++
++ export const curlFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uVelocity; uniform vec2 uTexel;
++ void main(){
++   float L = texture(uVelocity, vUv - vec2(uTexel.x, 0.0)).y;
++   float R = texture(uVelocity, vUv + vec2(uTexel.x, 0.0)).y;
++   float B = texture(uVelocity, vUv - vec2(0.0, uTexel.y)).x;
++   float T = texture(uVelocity, vUv + vec2(0.0, uTexel.y)).x;
++   o = vec4(0.5 * ((R - L) - (T - B)), 0.0, 0.0, 1.0);
++ }`;
++
++ export const vorticityFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uVelocity, uCurl;
++ uniform vec2 uTexel; uniform float uCurlAmount, uDt;
++ void main(){
++   float L = texture(uCurl, vUv - vec2(uTexel.x, 0.0)).x;
++   float R = texture(uCurl, vUv + vec2(uTexel.x, 0.0)).x;
++   float B = texture(uCurl, vUv - vec2(0.0, uTexel.y)).x;
++   float T = texture(uCurl, vUv + vec2(0.0, uTexel.y)).x;
++   float C = texture(uCurl, vUv).x;
++   vec2 force = 0.5 * vec2(abs(T) - abs(B), abs(R) - abs(L));
++   force /= length(force) + 1e-4;
++   force *= uCurlAmount * C * vec2(1.0, -1.0);
++   o = vec4(clamp(texture(uVelocity, vUv).xy + force * uDt, -1000.0, 1000.0), 0.0, 1.0);
++ }`;
++
++ export const scaleFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uTex; uniform float uValue;
++ void main(){ o = texture(uTex, vUv) * uValue; }`;
++
++ // Where is there water at all? One output texel per block of the sheet: 1 where any of
++ // 8×8 taps across the block is wetter than uThreshold. Read back to bound the simulated region.
++ export const wetMaskFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uWet;
++ uniform vec2 uBlock;        // one output texel, in wet-texture uv
++ uniform float uThreshold;
++ void main(){
++   vec2 base = vUv - uBlock * 0.5;
++   float m = 0.0;
++   for (int y = 0; y &lt; 8; y++) for (int x = 0; x &lt; 8; x++) {
++     vec2 p = base + uBlock * (vec2(float(x), float(y)) + 0.5) / 8.0;
++     m = max(m, texture(uWet, p).r);
++   }
++   o = vec4(m &gt; uThreshold ? 1.0 : 0.0, 0.0, 0.0, 1.0);
++ }`;
++
++ // Water: carried a little by the flow, creeps outward, evaporates.
++ export const advectWetFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uVelocity, uWet;
++ uniform vec2 uSimTexel, uTexel;
++ uniform float uDt, uDecay, uSpread;
++ void main(){
++   vec2 coord = vUv - uDt * texture(uVelocity, vUv).xy * uSimTexel * 0.6;
++   float w = texture(uWet, coord).x;
++   vec2 b = uTexel * 1.6;
++   float n = (texture(uWet, coord + vec2(b.x, 0.0)).x + texture(uWet, coord - vec2(b.x, 0.0)).x
++            + texture(uWet, coord + vec2(0.0, b.y)).x + texture(uWet, coord - vec2(0.0, b.y)).x) * 0.25;
++   o = vec4(mix(w, n, uSpread) * uDecay, 0.0, 0.0, 1.0);
++ }`;
++
++ // Pigment transport. Three effects, all confined to wet paper:
++ //  1. advection by the water&apos;s flow (semi-Lagrangian),
++ //  2. diffusion between neighbouring wet texels (bleeding),
++ //  3. capillary flow down the wetness gradient toward the drying edge, where it is
++ //     stranded -&gt; the dark &quot;tide line&quot; of a dried wash.
++ // 2 and 3 are written as fluxes across texel faces, gated by the mobility of both
++ // sides, so pigment is conserved and never seeps onto dry paper: wet-on-dry strokes
++ // keep hard edges, wet-in-wet strokes bloom as far as the water reaches.
++ export const advectInkFS = `${HEADER}
++ layout(location=0) out vec4 oA;
++ layout(location=1) out vec4 oB;
++ uniform sampler2D uVelocity, uInkA, uInkB, uWet;
++ uniform vec2 uSimTexel, uTexel;
++ uniform float uDt, uBleed, uEdge, uAspect, uKeep;
++ uniform vec3 uBrush;  // x, y, radius (radius &lt;= 0: no brush down)
++
++ float mobility(float w){ return smoothstep(0.02, 0.45, w); }
++
++ void face(vec2 off, float w, float m, vec4 A, vec4 B, float diffusion, float edge,
++           inout vec4 dA, inout vec4 dB){
++   vec2 uv = vUv + off;
++   float wn = texture(uWet, uv).x;
++   float g = m * mobility(wn);
++   if (g &lt;= 0.0) return;
++   vec4 An = texture(uInkA, uv), Bn = texture(uInkB, uv);
++   float d = diffusion * g;
++   // positive: water (and pigment) drifts from this texel toward the drier neighbour
++   float e = clamp(edge * (w - wn), -0.08, 0.08) * g;
++   dA += d * (An - A) - (e &gt; 0.0 ? e * A : e * An);
++   dB += d * (Bn - B) - (e &gt; 0.0 ? e * B : e * Bn);
++ }
++
++ void main(){
++   float w = texture(uWet, vUv).x;
++   float m = mobility(w);
++   vec4 A = texture(uInkA, vUv), B = texture(uInkB, vUv);
++   if (m &lt; 0.002){ oA = A * uKeep; oB = B * uKeep; return; }
++
++   vec2 vel = texture(uVelocity, vUv).xy;
++   vec2 coord = vUv - uDt * vel * uSimTexel * m;
++   vec4 a = mix(A, texture(uInkA, coord), m);
++   vec4 b = mix(B, texture(uInkB, coord), m);
++
++   float brush = 0.0;
++   if (uBrush.z &gt; 0.0){
++     vec2 d = vUv - uBrush.xy; d.x *= uAspect;
++     brush = exp(-dot(d, d) / (uBrush.z * uBrush.z));
++   }
++   float diffusion = clamp(uBleed * (0.25 + 1.3 * brush) * 0.3, 0.0, 0.15);
++   vec4 dA = vec4(0.0), dB = vec4(0.0);
++   face(vec2( uTexel.x, 0.0), w, m, A, B, diffusion, uEdge, dA, dB);
++   face(vec2(-uTexel.x, 0.0), w, m, A, B, diffusion, uEdge, dA, dB);
++   face(vec2(0.0,  uTexel.y), w, m, A, B, diffusion, uEdge, dA, dB);
++   face(vec2(0.0, -uTexel.y), w, m, A, B, diffusion, uEdge, dA, dB);
++
++   // no clamping: basis coefficients are signed (only the spectrum they encode is positive)
++   oA = (a + dA) * uKeep;
++   oB = vec4((b + dB).rgb, max(b.a + dB.a, 0.0)) * uKeep;
++ }`;
++
++ // &quot;Fix&quot;: mobile pigment settles into the paper. Drawn with additive blending into
++ // the fixed layer, after bleachFS has faded what lies under white gouache.
++ export const settleFS = `${HEADER}
++ layout(location=0) out vec4 oA;
++ layout(location=1) out vec4 oB;
++ uniform sampler2D uInkA, uInkB;
++ uniform float uSettle;
++ void main(){
++   vec4 A = texture(uInkA, vUv), B = texture(uInkB, vUv);
++   float keep = 1.0 - (1.0 - exp(-2.2 * B.a)) * uSettle;
++   oA = A * uSettle * keep;
++   oB = vec4(B.rgb * uSettle * keep, 0.0);
++ }`;
++
++ // Multiplicative pass (blend ZERO, SRC_COLOR): white gouache bleaches the fixed
++ // pigment beneath it, so after fixing it reads as paper and can be painted over.
++ export const bleachFS = `${HEADER}
++ layout(location=0) out vec4 oA;
++ layout(location=1) out vec4 oB;
++ uniform sampler2D uInkB;
++ uniform float uSettle;
++ void main(){
++   float keep = 1.0 - (1.0 - exp(-2.2 * texture(uInkB, vUv).a)) * uSettle;
++   oA = vec4(keep);
++   oB = vec4(keep);
++ }`;
++
++ // Multiplicative stamp (blend ZERO, ONE_MINUS_SRC_COLOR): blotting with a tissue.
++ // 261028-k03c: the pre-k03c radial envelope exp(-(q·q)²) stays the erase law;
++ // the brush tip then shaves the silhouette to its contour (the same square
++ // (-1..1) tip-space mapping stampFS uses). The square crop is UNCONDITIONAL:
++ // uRound only blends the tip MASK towards the full envelope (1 = no tip
++ // texture, still clipped to the tip square) — it does not restore a
++ // radial-only footprint. The engine always binds uRound = 0.
++ export const liftFS = `${HEADER}
++ layout(location=0) out vec4 o0;
++ layout(location=1) out vec4 o1;
++ uniform sampler2D uTip;
++ uniform float uAspect, uRadius, uAmount, uTipAspect, uRound;
++ uniform vec2 uPoint, uAxis;
++ void main(){
++   vec2 p = vUv - uPoint; p.x *= uAspect;
++   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
++   q.y /= uTipAspect;
++   if (abs(q.x) &gt; 1.0 || abs(q.y) &gt; 1.0) discard;
++   float t = texture(uTip, clamp(q * 0.5 + 0.5, 0.0, 1.0)).r;
++   float f = uAmount * exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);
++   o0 = vec4(f);
++   o1 = vec4(f);
++ }`;
++
++ // Paper, generated per document and whenever the paper is changed, in two passes.
++ // paperFieldFS builds the sheet&apos;s procedural field into a half-float target:
++ //   x = height 0..1 (mean ~0.5), y = mottle 0..1 (fibre clumping, 0.5 neutral),
++ //   z = fleck 0..1 (0.5 none, below: dark speck, above: light fibre).
++ // paperLightFS then lights the height from the upper left and packs the paper texture.
++ // Positions are in &quot;units&quot;: a texel of a 1100-texel-tall sheet, about 0.18 mm, so the
++ // grain looks the same at any document size.
++ export const paperFieldFS = `${HEADER}
++ out vec4 o;
++ uniform vec2 uRes, uOffset;   // target size and where it sits on the sheet (texels)
++ uniform float uScale;         // units per texel
++ uniform float uSeed;
++ uniform int uKind;
++ const float PI = 3.14159265;
++
++ uint pcg(uint v){ uint s = v * 747796405u + 2891336453u; uint w = ((s &gt;&gt; ((s &gt;&gt; 28u) + 4u)) ^ s) * 277803737u; return (w &gt;&gt; 22u) ^ w; }
++ float hash(vec2 c, float salt){
++   ivec2 i = ivec2(floor(c));
++   return float(pcg(uint(i.x) + pcg(uint(i.y) + pcg(uint(salt) + uint(uSeed * 7919.0))))) * (1.0 / 4294967296.0);
++ }
++ vec2 hash2(vec2 c, float salt){ return vec2(hash(c, salt), hash(c, salt + 1.0)); }
++ float vnoise(vec2 p, float salt){
++   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
++   return mix(mix(hash(i, salt), hash(i + vec2(1.0, 0.0), salt), f.x),
++              mix(hash(i + vec2(0.0, 1.0), salt), hash(i + vec2(1.0, 1.0), salt), f.x), f.y);
++ }
++ // normalised to 0..1; each octave rotated so the lattice never shows
++ float fbm(vec2 p, int oct, float salt){
++   float v = 0.0, a = 0.5, n = 0.0;
++   for (int i = 0; i &lt; 6; i++){
++     if (i &gt;= oct) break;
++     v += a * vnoise(p, salt + float(i) * 13.0); n += a;
++     p = mat2(0.8, -0.6, 0.6, 0.8) * p * 2.03 + 17.1; a *= 0.5;
++   }
++   return v / n;
++ }
++ // distances to the nearest and second-nearest of a jittered lattice of points
++ vec2 cells(vec2 p, float jitter, float salt){
++   vec2 i = floor(p), f = fract(p);
++   float d1 = 9.0, d2 = 9.0;
++   for (int y = -1; y &lt;= 1; y++) for (int x = -1; x &lt;= 1; x++){
++     vec2 c = vec2(x, y);
++     float d = length(c + 0.5 + (hash2(i + c, salt) - 0.5) * jitter - f);
++     if (d &lt; d1){ d2 = d1; d1 = d; } else if (d &lt; d2) d2 = d;
++   }
++   return vec2(d1, d2);
++ }
++ // Rounded hills of random size and height scattered on a jittered grid; never polygonal
++ // like cells, because neighbouring hills simply add up. Roughly 0..1.
++ float blobs(vec2 p, float salt){
++   vec2 i = floor(p), f = fract(p);
++   float h = 0.0;
++   for (int y = -1; y &lt;= 1; y++) for (int x = -1; x &lt;= 1; x++){
++     vec2 c = vec2(x, y);
++     vec4 r = vec4(hash2(i + c, salt), hash2(i + c, salt + 2.0));
++     vec2 d = c + r.xy - f;
++     float rad = 0.35 + 0.4 * r.z;
++     h += (0.5 + 0.5 * r.w) * exp(-dot(d, d) / (rad * rad));
++   }
++   return h * 0.75;
++ }
++ float segment(vec2 p, vec2 a, vec2 b){
++   vec2 pa = p - a, ba = b - a;
++   return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
++ }
++ // Thin strands scattered over a grid of &apos;cell&apos; units, up to &apos;len&apos; cells long and &apos;width&apos;
++ // units wide; returns the coverage of the nearest. &apos;along&apos; lines them up with x, the
++ // way a paper machine lays its fibres; &apos;density&apos; is the share of grid slots that hold one.
++ float fibres(vec2 p, float cell, float len, float width, float density, float along, float salt){
++   p /= cell;
++   vec2 i = floor(p);
++   float cov = 0.0;
++   for (int y = -2; y &lt;= 2; y++) for (int x = -2; x &lt;= 2; x++){
++     vec2 c = i + vec2(x, y);
++     for (int k = 0; k &lt; 2; k++){
++       float s = salt + float(k) * 31.0;
++       vec4 h = vec4(hash2(c, s), hash2(c, s + 2.0));
++       if (h.w &lt; density){
++         float a = (h.z - 0.5) * PI * (1.0 - along);
++         vec2 d = vec2(cos(a), sin(a)) * len * (0.35 + 0.65 * hash(c, s + 4.0)) * 0.5;
++         float dist = segment(p, c + h.xy - d, c + h.xy + d) * cell;
++         cov = max(cov, (1.0 - smoothstep(width * 0.5, width * 0.5 + 0.9, dist)) * (0.55 + 0.45 * hash(c, s + 5.0)));
++       }
++     }
++   }
++   return cov;
++ }
++ // small round specks: coverage of the nearest, &apos;density&apos; of grid slots hold one
++ float specks(vec2 p, float cell, float radius, float density, float salt){
++   vec2 i = floor(p / cell), f = p / cell - i;
++   float cov = 0.0;
++   for (int y = -1; y &lt;= 1; y++) for (int x = -1; x &lt;= 1; x++){
++     vec2 c = vec2(x, y);
++     if (hash(i + c, salt + 2.0) &lt; density){
++       float r = radius * (0.4 + 0.6 * hash(i + c, salt + 3.0));
++       float d = length(c + hash2(i + c, salt) - f) * cell;
++       cov = max(cov, 1.0 - smoothstep(r * 0.6, r + 0.6, d));
++     }
++   }
++   return cov;
++ }
++ // distance to the nearest centre of a hexagonal lattice with spacing 1
++ float hexDist(vec2 p){
++   const vec2 s = vec2(1.0, 1.7320508);
++   vec2 a = mod(p, s) - s * 0.5, b = mod(p - s * 0.5, s) - s * 0.5;
++   return min(length(a), length(b));
++ }
++ vec2 warp(vec2 p, float freq, float amount, float salt){
++   return p + (vec2(fbm(p * freq, 3, salt), fbm(p * freq, 3, salt + 50.0)) - 0.5) * amount;
++ }
++
++ // Cold press: rounded, irregular bumps of mixed size (~0.5-2 mm) over a fine felt.
++ vec3 coldPress(vec2 p){
++   vec2 q = warp(p, 0.02, 10.0, 100.0);
++   float hills = blobs(q / 11.0, 110.0) * 0.6 + blobs(q / 5.5, 115.0) * 0.4;
++   float h = hills * 0.5 + fbm(q * 0.09, 5, 120.0) * 0.38 + vnoise(p * 0.5, 130.0) * 0.12;
++   return vec3(0.5 + (h - 0.5) * 1.3, fbm(p * 0.012, 4, 140.0), 0.5);
++ }
++ // Hot press: pressed nearly flat; only a faint felt and the fibres show.
++ vec3 hotPress(vec2 p){
++   float h = fbm(p * 0.06, 4, 200.0) * 0.6 + vnoise(p * 0.4, 210.0) * 0.25 + fibres(p, 16.0, 2.5, 0.8, 0.3, 0.0, 220.0) * 0.05;
++   return vec3(0.5 + (h - 0.4) * 0.45, fbm(p * 0.01, 4, 230.0), 0.5);
++ }
++ // Rough: big knobbly hills (~2-4 mm) with deep valleys between them.
++ vec3 rough(vec2 p){
++   vec2 q = warp(p, 0.01, 40.0, 300.0);
++   // hill size varies across the sheet, as on a mould-made rough
++   float big = smoothstep(0.3, 0.7, fbm(p * 0.006, 3, 305.0));
++   float hills = blobs(q / 26.0, 310.0) * (0.35 + 0.4 * big) + blobs(q / 12.0, 315.0) * (0.45 - 0.25 * big);
++   float h = hills * 0.65 + fbm(q * 0.06, 5, 320.0) * 0.25 + vnoise(p * 0.45, 325.0) * 0.1;
++   return vec3(0.5 + (h - 0.52) * 1.5, fbm(p * 0.01, 4, 330.0), 0.5);
++ }
++ // Khadi: handmade, lumpy at every scale, with raised fibres and dark inclusions.
++ vec3 khadi(vec2 p){
++   vec2 q = warp(p, 0.008, 60.0, 400.0);
++   float lumps = fbm(q * 0.035, 5, 410.0);
++   vec2 c = cells(q / 13.0, 1.0, 420.0);
++   float knobs = 1.0 - smoothstep(0.0, 0.9, c.x);
++   float fib = fibres(warp(p, 0.05, 8.0, 430.0), 9.0, 3.0, 1.1, 0.6, 0.0, 440.0);
++   float h = lumps * 0.5 + knobs * 0.3 + fbm(p * 0.2, 3, 450.0) * 0.16 + fib * 0.03;
++   float dark = max(specks(p, 60.0, 2.0, 0.3, 460.0), fibres(warp(p, 0.06, 10.0, 465.0), 110.0, 0.4, 0.9, 0.3, 0.0, 470.0) * 0.6);
++   return vec3(0.5 + (h - 0.5) * 1.6, fbm(p * 0.006, 4, 480.0) * 0.7 + fib * 0.25, 0.5 - dark * 0.35 + fib * 0.06);
++ }
++ // Washi: smooth and cloudy, a web of long kozo fibres lying on top, the odd bark speck.
++ vec3 washi(vec2 p){
++   vec2 q = warp(p, 0.025, 28.0, 500.0);
++   float longF = fibres(q, 42.0, 3.4, 1.3, 0.4, 0.0, 510.0) * (0.6 + 0.4 * vnoise(p * 0.05, 512.0));
++   float fineF = fibres(warp(p, 0.05, 10.0, 515.0), 14.0, 3.0, 0.6, 0.45, 0.0, 520.0);
++   float h = fbm(p * 0.05, 4, 530.0) * 0.8 + longF * 0.08 + fineF * 0.03;
++   float cloud = fbm(p * 0.005, 5, 540.0);
++   float bark = specks(p, 70.0, 1.6, 0.18, 550.0);
++   return vec3(0.5 + (h - 0.42) * 0.7, cloud * 0.85 + longF * 0.15, 0.5 + longF * 0.16 + fineF * 0.05 - bark * 0.4);
++ }
++ // Laid: close laid lines (~1 mm) crossed by chain lines (~25 mm), over a soft felt.
++ vec3 laid(vec2 p){
++   float wob = (fbm(p * vec2(0.004, 0.02), 3, 600.0) - 0.5) * 6.0;
++   float lines = pow(0.5 + 0.5 * cos(2.0 * PI * (p.y + wob) / 5.6), 2.0);
++   float cx = p.x + (fbm(p * vec2(0.02, 0.004), 3, 610.0) - 0.5) * 8.0;
++   float dc = abs(fract(cx / 140.0) - 0.5) * 140.0;   // distance to the nearest chain line
++   float chain = 1.0 - smoothstep(1.0, 3.5, dc);
++   float h = lines * 0.1 + chain * 0.05 + fbm(p * 0.08, 4, 620.0) * 0.6;
++   // the sheet runs a touch thicker beside each chain line, and the laid lines read faintly in the tone
++   float tone = 0.5 - 0.12 * exp(-dc / 12.0) - 0.06 * lines + (fbm(p * 0.01, 3, 630.0) - 0.5) * 0.6;
++   return vec3(0.5 + (h - 0.36) * 1.1, tone, 0.5);
++ }
++ // Canvas: a plain weave of slightly uneven threads under a coat of gesso.
++ vec3 canvas(vec2 p){
++   const float T = 8.0;
++   p += (vec2(vnoise(p * 0.02, 700.0), vnoise(p * 0.02, 701.0)) - 0.5) * T * 1.2;
++   vec2 c = p / T, i = floor(c), f = fract(c);
++   float tx = 0.8 + 0.2 * hash(vec2(i.x, 0.0), 702.0) + 0.3 * (vnoise(vec2(i.x * 5.0, c.y * 0.35), 703.0) - 0.5);
++   float ty = 0.8 + 0.2 * hash(vec2(0.0, i.y), 704.0) + 0.3 * (vnoise(vec2(c.x * 0.35, i.y * 5.0), 705.0) - 0.5);
++   // where a thread crosses over, it shows as a rice-grain bump along its length;
++   // over and under alternate, so the grains make a checkerboard
++   vec2 d = f - 0.5;
++   bool warpUp = mod(i.x + i.y, 2.0) &gt; 0.5;
++   d *= warpUp ? vec2(2.3, 1.15) : vec2(1.15, 2.3);
++   float grain = max(0.0, 1.0 - dot(d, d)) * (warpUp ? tx : ty);
++   float h = sqrt(grain) * 0.75 + fbm(p * 0.15, 3, 706.0) * 0.25;
++   return vec3(0.5 + (h - 0.55) * 1.1, fbm(p * 0.01, 3, 707.0), 0.5);
++ }
++ // Toned (Mi-Teintes honeycomb): a regular mesh of shallow pits ~1.5 mm across.
++ vec3 toned(vec2 p){
++   vec2 q = warp(p, 0.05, 7.0, 800.0) / 9.0;
++   float d = hexDist(q) * (0.8 + 0.4 * vnoise(q * 2.0, 805.0));
++   float rims = smoothstep(0.1, 0.55, d);
++   float h = rims * 0.28 + fbm(p * 0.09, 4, 810.0) * 0.6 + fibres(p, 12.0, 2.0, 0.9, 0.35, 0.0, 820.0) * 0.04;
++   return vec3(0.5 + (h - 0.42) * 1.2, fbm(p * 0.012, 4, 830.0), 0.5 - specks(p, 60.0, 1.2, 0.2, 840.0) * 0.3);
++ }
++ // Kraft: smooth, streaky along the machine direction, with dark bark and recycled flecks.
++ vec3 kraft(vec2 p){
++   float h = fbm(p * 0.07, 4, 900.0) * 0.6 + vnoise(p * 0.35, 910.0) * 0.32 + fibres(p, 10.0, 2.5, 0.9, 0.6, 0.7, 920.0) * 0.04;
++   float streak = fbm(p * vec2(0.004, 0.03), 5, 930.0);
++   float dark = max(fibres(warp(p, 0.08, 10.0, 935.0), 60.0, 0.35, 0.7, 0.2, 0.6, 940.0) * 0.6, specks(p, 40.0, 1.3, 0.35, 950.0));
++   float light = fibres(warp(p, 0.08, 10.0, 955.0), 70.0, 0.4, 1.0, 0.25, 0.5, 960.0);
++   return vec3(0.5 + (h - 0.45) * 0.7, streak * 0.8 + fbm(p * 0.01, 3, 970.0) * 0.2, 0.5 - dark * 0.28 + light * 0.12);
++ }
++ // Student (cellulose): a felt-pressed texture of small bumps all of one size, evenly spread.
++ vec3 student(vec2 p){
++   vec2 q = warp(p, 0.03, 3.0, 995.0);
++   vec2 c = cells(q / 7.0, 0.7, 1000.0);
++   float bumps = 1.0 - smoothstep(0.0, 0.7, c.x);
++   float h = bumps * 0.6 + fbm(p * 0.12, 3, 1010.0) * 0.4;
++   return vec3(0.5 + (h - 0.48) * 1.1, fbm(p * 0.015, 3, 1020.0), 0.5);
++ }
++
++ void main(){
++   vec2 p = (vUv * uRes + uOffset) * uScale;
++   vec3 f;
++   switch (uKind){
++     case 1: f = hotPress(p); break;
++     case 2: f = rough(p); break;
++     case 3: f = khadi(p); break;
++     case 4: f = washi(p); break;
++     case 5: f = laid(p); break;
++     case 6: f = canvas(p); break;
++     case 7: f = toned(p); break;
++     case 8: f = kraft(p); break;
++     case 9: f = student(p); break;
++     default: f = coldPress(p);
++   }
++   o = vec4(clamp(f, 0.0, 1.0), 1.0);
++ }`;
++
++ // Light the field&apos;s height from the upper left. Packs the paper texture:
++ //   r = lit relief (0.5 flat), g = height, b = mottle, a = fleck.
++ export const paperLightFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uField;
++ uniform vec2 uTexel;
++ uniform float uBump;          // relief strength, already divided by units per texel
++ void main(){
++   vec4 f = texture(uField, vUv);
++   float l = texture(uField, vUv - vec2(uTexel.x, 0.0)).x, r = texture(uField, vUv + vec2(uTexel.x, 0.0)).x;
++   float b = texture(uField, vUv - vec2(0.0, uTexel.y)).x, t = texture(uField, vUv + vec2(0.0, uTexel.y)).x;
++   vec3 n = normalize(vec3((l - r) * uBump, (b - t) * uBump, 1.0));
++   vec3 L = normalize(vec3(-0.5, 0.6, 0.62));
++   // a little ambient occlusion: valleys sit in shadow whichever way the light falls
++   float lit = 0.5 + (dot(n, L) - L.z) * 1.3 + (f.x - 0.5) * 0.25;
++   o = vec4(clamp(lit, 0.0, 1.0), f.x, f.y, f.z);
++ }`;
++
++ /** The sheet&apos;s colour (linear) from a paper texel; shared by the display and the swatches. */
++ const PAPER_COLOUR = `
++ uniform vec3 uPaperTint, uFleckTint;
++ uniform float uMottle;
++ uniform float uTexture;       // texture strength: 0 a flat sheet of the tint, 1 full relief
++ vec3 paperColour(vec4 paper, vec3 base){
++   vec3 c = base * (1.0 + uTexture * ((paper.r - 0.5) * 0.32 + (paper.b - 0.5) * uMottle * 2.0));
++   float fl = (paper.a - 0.5) * 2.0 * uTexture;
++   return fl &lt; 0.0 ? mix(c, uFleckTint, -fl) : mix(c, min(base * 1.1 + 0.02, vec3(1.0)), fl);
++ }`;
++
++ const TO_SRGB = `
++ vec3 toSRGB(vec3 c){
++   c = clamp(c, 0.0, 1.0);
++   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
++ }`;
++
++ /** A paper preview: the sheet with a granulating ultramarine wash across one corner. */
++ export const paperSwatchFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uPaper;
++ ${PAPER_COLOUR}
++ ${TO_SRGB}
++ void main(){
++   vec4 paper = texture(uPaper, vUv);
++   vec3 c = paperColour(paper, uPaperTint);
++   float x = vUv.x * 0.62 + (1.0 - vUv.y) * 0.38 + (paper.g - 0.5) * 0.03;
++   float wash = smoothstep(0.6, 0.605, x);
++   float gran = 1.0 + (0.5 - paper.g) * 2.4;
++   float tide = 1.0 + 0.5 * exp(-(x - 0.6) * 90.0) * wash;
++   c *= mix(vec3(1.0), pow(vec3(0.3, 0.38, 0.72), vec3(gran * tide)), wash);
++   o = vec4(toSRGB(c), 1.0);
++ }`;
++
++ /** The sheet alone (fond / thumbs): PAPER_COLOUR + TO_SRGB, no swatch wash. */
++ export const paperSheetFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uPaper;
++ ${PAPER_COLOUR}
++ ${TO_SRGB}
++ void main(){
++   vec4 paper = texture(uPaper, vUv);
++   vec3 c = paperColour(paper, uPaperTint);
++   o = vec4(toSRGB(c), 1.0);
++ }`;
++
++ // Paint-bucket wash. uField holds, per document texel, the distance travelled from the
++ // tap through the chosen area (r, px; -1 outside it) and the distance to the area&apos;s edge
++ // (g, px). The front is a ramp uWidth px wide: a texel at distance r has received the
++ // fraction ramp(t - r) of its deposit once the front has reached t, so the frame that
++ // moves the front from uFrom to uTo lays down the difference. Summed over all frames
++ // that is exactly one deposit per texel, with no frame boundary to leave a tide line.
++ // Water is drawn with MAX blending, so it gets the cumulative ramp instead. MRT like splatFS.
++ export const fillFS = `${HEADER}
++ layout(location=0) out vec4 o0;
++ layout(location=1) out vec4 o1;
++ uniform highp sampler2D uField;
++ uniform sampler2D uPaper;
++ uniform float uFrom, uTo, uWidth, uSoft, uGrain, uGrainThr, uJitter;
++ uniform int uCumulative;
++ uniform vec4 uColor0, uColor1;
++ float ramp(float x){ return smoothstep(0.0, 1.0, clamp(x / uWidth, 0.0, 1.0)); }
++ void main(){
++   vec2 f = texture(uField, vUv).rg;
++   if (f.r &lt; 0.0) discard;
++   float h = texture(uPaper, vUv).g;
++   float r = max(0.0, f.r + (h - 0.5) * uJitter);
++   float w = ramp(uTo - r) - (uCumulative == 1 ? 0.0 : ramp(uFrom - r));
++   if (w &lt;= 0.0) discard;
++   float edge = uSoft &gt; 0.0 ? smoothstep(0.0, uSoft, f.g + 0.5) : 1.0;
++   w *= edge * mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);
++   o0 = uColor0 * w;
++   o1 = uColor1 * w;
++ }`;
++
++ /** Final composite: spectral reconstruction of pigment on paper. */
++ export const displayFS = `${HEADER}
++ out vec4 o;
++ uniform sampler2D uInkA, uInkB, uFixedA, uFixedB, uWet, uPaper;
++ uniform vec4 uView;       // canvas px -&gt; document uv: uv = (fragCoord - xy) / zw
++ uniform vec2 uTexel;      // document texel size
++ uniform float uGranulation, uEdgeDarken;
++ uniform float uFlat;      // 1: ignore the paper&apos;s relief, grain and wetness (for region picking)
++ uniform vec3 uDesk;
++ uniform int uMode;        // 0 screen, 1 export on paper, 2 export transparent, 3 export on white, 4 display pigment alpha
++ uniform sampler2D uRef;   // reference image (screen only), sRGB, y up
++ uniform vec4 uRefRect;    // its placement in document uv: xy origin, zw size
++ uniform float uRefOpacity;
++ uniform float uShadow;    // screen only: size of the sheet&apos;s shadow on the desk (canvas px), 0 for exports
++ uniform float uDpr;
++ ${PAPER_COLOUR}
++ ${TO_SRGB}
++ float density(vec2 uv){ return texture(uInkA, uv).x + texture(uFixedA, uv).x; }
++
++ // Signed distance (canvas px) from p to the sheet, moved down by \`drop\`.
++ float sheetDist(vec2 p, float drop){
++   vec2 q = abs(p - uView.xy - uView.zw * 0.5 + vec2(0.0, drop)) - uView.zw * 0.5;
++   return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
++ }
++
++ // The sheet lying on the desk: a tight contact shadow at its edge and a soft one
++ // cast a little downward, as from a light above and in front.
++ vec3 desk(vec2 p){
++   float R = uShadow;
++   float contact = 1.0 - smoothstep(0.0, 0.12 * R, sheetDist(p, 0.03 * R));
++   float d = max(sheetDist(p, 0.3 * R), 0.0) / R;
++   float ambient = exp(-3.0 * d * d) * 0.75 + exp(-0.9 * d) * 0.25;   // a soft core with a long, faint tail
++   vec3 lin = pow(uDesk, vec3(2.2)) * (1.0 - 0.45 * contact) * (1.0 - 0.32 * ambient);
++   return toSRGB(lin);
++ }
++
++ void main(){
++   vec2 uv = (gl_FragCoord.xy - uView.xy) / uView.zw;
++   if (uv.x &lt; 0.0 || uv.y &lt; 0.0 || uv.x &gt; 1.0 || uv.y &gt; 1.0){
++     // Compositor layer: nothing outside the sheet — the fond is the compositor&apos;s.
++     o = (uMode == 2 || uMode == 4) ? vec4(0.0) : vec4(uShadow &gt; 0.0 ? desk(gl_FragCoord.xy) : uDesk, 1.0);
++     return;
++   }
++
++   vec4 paper = mix(texture(uPaper, uv), vec4(0.5), uFlat);
++   vec4 iB = texture(uInkB, uv);
++   vec4 a = texture(uInkA, uv) + texture(uFixedA, uv);
++   vec3 b = iB.rgb + texture(uFixedB, uv).rgb;
++
++   // Granulation: pigment settles into the valleys of the paper.
++   float d0 = a.x;
++   float gran = 1.0 + uGranulation * (0.5 - paper.g) * 2.2;
++   // Edge darkening from the density gradient keeps fine pen work crisp.
++   float l = density(uv - vec2(uTexel.x, 0.0)), r = density(uv + vec2(uTexel.x, 0.0));
++   float bt = density(uv - vec2(0.0, uTexel.y)), t = density(uv + vec2(0.0, uTexel.y));
++   float edge = min(length(vec2(r - l, t - bt)) / (d0 + 1.0), 1.0);
++   float k = mix(gran * (1.0 + uEdgeDarken * edge), 1.0, uFlat);
++   a *= k; b *= k;
++
++   vec3 rgb = vec3(0.0);
++   float tr;
++ ${displayBasisGLSL()}
++
++   // White gouache sits on top as an opaque layer, a little patchy on the tooth.
++   float cov = 1.0 - exp(-2.2 * iB.a);
++   cov = clamp(cov * (1.0 + (paper.g - 0.5) * 0.5), 0.0, 1.0);
++   vec3 gouache = vec3(0.96, 0.955, 0.94) * (1.0 + 0.1 * (paper.r - 0.5) * uTexture);
++
++   if (uMode == 2){
++     // TRANSMITTANCE, opaque (R2.2 paper-agnostic multiply seam). rgb is how
++     // much paper light gets through the pigment. Composited with
++     // mix-blend-mode: multiply over ANY fond: result = fond x transmittance,
++     // exactly MODE.paper&apos;s rgb * paperCol. No alpha to misread (F1 neon /
++     // fringe) and no un-mix round-trip to lose thin strokes (F2 fade).
++     vec3 t = toSRGB(rgb);
++     // White gouache is a cover layer — lift transmittance so multiply shows
++     // it as a pale veil (the pigment underneath still tints).
++     t = mix(t, vec3(1.0), cov);
++     o = vec4(t, 1.0);
++     return;
++   }
++
++   if (uMode == 4){
++     // PIGMENT ALPHA (compositor display, 2026-10-26 round 2). The same
++     // transmittance as mode 2, re-expressed as straight-alpha pigment so the
++     // live sheet stacks with REAL layer alpha: alpha = 1 - min(r,g,b),
++     // colour = (t - min) / alpha. Light washes stay translucent, dense pigment
++     // masks. displayFS writes PREMULTIPLIED pixels (F1 contract), so scale the
++     // colour by alpha. Storage/export keeps mode 2&apos;s opaque sheet.
++     vec3 t = toSRGB(rgb);
++     t = mix(t, vec3(1.0), cov);
++     float mn = min(min(t.r, t.g), t.b);
++     float alpha = 1.0 - mn;
++     vec3 pigment = alpha &gt; 0.0 ? (t - vec3(mn)) / alpha : vec3(0.0);
++     o = vec4(pigment * alpha, alpha);
++     return;
++   }
++
++   // Paper: the sheet&apos;s tint, lit relief, fibre mottling and flecks (linear light).
++   vec3 paperCol = paperColour(paper, uMode == 3 ? vec3(1.0) : uPaperTint);
++   // On screen, a reference image shows through the paper, under the paint.
++   if (uMode == 0 &amp;&amp; uRefOpacity &gt; 0.0){
++     vec2 ruv = (uv - uRefRect.xy) / uRefRect.zw;
++     if (ruv.x &gt;= 0.0 &amp;&amp; ruv.y &gt;= 0.0 &amp;&amp; ruv.x &lt;= 1.0 &amp;&amp; ruv.y &lt;= 1.0){
++       vec4 r = texture(uRef, ruv);
++       vec3 lin = pow(r.rgb, vec3(2.2));
++       paperCol = mix(paperCol, lin, r.a * uRefOpacity);
++     }
++   }
++   vec3 col = rgb * paperCol;
++   col = mix(col, uMode == 3 ? vec3(1.0) : gouache, cov);
++
++   // Wet paper reads darker and slightly cool.
++   float ws = uMode == 3 ? 0.0 : smoothstep(0.02, 0.7, texture(uWet, uv).x) * (1.0 - uFlat);
++   col *= vec3(1.0) - ws * vec3(0.12, 0.11, 0.08);
++
++   // On screen, the cut edge of the sheet catches a faint shade, so it reads as a thin card.
++   if (uShadow &gt; 0.0){
++     float inside = -sheetDist(gl_FragCoord.xy, 0.0);
++     col *= mix(0.9, 1.0, smoothstep(0.0, 1.5 * uDpr, inside));
++   }
++
++   o = vec4(toSRGB(col), 1.0);
++ }`;
++
+
+ ❯ src/playground/engineRenderMode.test.ts:149:27
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

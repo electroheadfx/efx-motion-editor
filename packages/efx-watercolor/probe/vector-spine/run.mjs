@@ -18,18 +18,25 @@ const outDir = '/tmp/vector-spine'
 const bundlePath = join(here, 'probe.bundle.js')
 
 // 61-04: `--scenario width` replays the per-sample width channel and writes
-// /tmp/vector-spine/width-result.json. It must never overwrite the committed
-// phase evidence (result.json), which the uniform-path byte-identity pins.
+// /tmp/vector-spine/width-result.json. 61-07: `--scenario ribbon` measures the
+// simple-ribbon edge against watercolour and writes ribbon-result.json.
+// Neither may ever overwrite the committed phase evidence (result.json),
+// which the uniform-path byte-identity pins.
+const SCENARIOS = ['width', 'ribbon']
 const args = process.argv.slice(2)
 const scenarioFlag = args.indexOf('--scenario')
 const scenario = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
-if (scenario !== undefined && scenario !== 'width') {
-  console.error(`unknown --scenario "${scenario}" (supported: width)`)
+if (scenario !== undefined && !SCENARIOS.includes(scenario)) {
+  console.error(`unknown --scenario "${scenario}" (supported: ${SCENARIOS.join(', ')})`)
   process.exit(1)
 }
 const widthScenario = scenario === 'width'
-const pageQuery = widthScenario ? '?scenario=width' : ''
-const resultPath = join(outDir, widthScenario ? 'width-result.json' : 'result.json')
+const ribbonScenario = scenario === 'ribbon'
+const pageQuery = widthScenario || ribbonScenario ? `?scenario=${scenario}` : ''
+const resultPath = join(
+  outDir,
+  widthScenario ? 'width-result.json' : ribbonScenario ? 'ribbon-result.json' : 'result.json',
+)
 
 const esbuildCandidates = [
   join(repoRoot, 'node_modules/.pnpm/esbuild@0.27.7/node_modules/esbuild/bin/esbuild'),
@@ -137,6 +144,20 @@ if (widthScenario) {
     console.error(`[probe] DOM saved to ${join(outDir, 'dom.html')}`)
     process.exit(1)
   }
+} else if (ribbonScenario) {
+  if (
+    typeof result.edgeTransitionPx !== 'object' ||
+    result.edgeTransitionPx === null ||
+    typeof result.wetDelta !== 'object' ||
+    result.wetDelta === null
+  ) {
+    console.error(
+      `[probe] ribbon result has no edgeTransitionPx/wetDelta (verdict=${result.verdict ?? '(missing)'})`,
+    )
+    writeFileSync(join(outDir, 'dom.html'), dom)
+    console.error(`[probe] DOM saved to ${join(outDir, 'dom.html')}`)
+    process.exit(1)
+  }
 } else if (!('digestA' in result)) {
   console.error(`[probe] result JSON has no digestA (verdict=${result.verdict ?? '(missing)'})`)
   writeFileSync(join(outDir, 'dom.html'), dom)
@@ -147,18 +168,20 @@ if (widthScenario) {
 result.wallClockMs = elapsedMs
 const payload = JSON.stringify(result, null, 2)
 writeFileSync(resultPath, payload)
-if (!widthScenario) {
+if (!widthScenario && !ribbonScenario) {
   // Committed evidence — byte-equal to the /tmp copy of this same run. The
-  // width scenario writes /tmp only: it must never overwrite this file.
+  // width and ribbon scenarios write /tmp only: they must never overwrite
+  // this file.
   writeFileSync(join(here, 'result.json'), payload)
 }
 
 console.log('')
-if (widthScenario) {
+if (widthScenario || ribbonScenario) {
   console.log(result.verdict)
   console.log(`result JSON: ${resultPath}`)
   // exitCode (not exit) so the buffered stdout above is flushed.
-  process.exitCode = /^VECTOR-WIDTH PASS/.test(result.verdict) ? 0 : 1
+  const passPattern = widthScenario ? /^VECTOR-WIDTH PASS/ : /^VECTOR-RIBBON PASS/
+  process.exitCode = passPattern.test(result.verdict) ? 0 : 1
 } else {
   console.log('================ vector-spine feasibility ================')
 console.log(`renderer : ${result.env?.renderer ?? 'n/a'}`)

@@ -56,6 +56,12 @@ export interface BrushPreset {
    * instead of repeating one contour.
    */
   stampJitter: number;
+  /**
+   * 61-07 (D-12): absent means the wet watercolour deposit — every preset
+   * that shipped before this phase. Set only by the preset that ships the
+   * clean sweep; the live stroke begin seeds its mode from here.
+   */
+  renderMode?: 'simple-ribbon';
   custom?: boolean;
 }
 

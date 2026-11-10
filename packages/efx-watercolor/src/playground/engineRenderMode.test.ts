@@ -135,11 +135,12 @@ describe('the ribbon deposit branch is explicit (61-07 D-12 / T-61-22)', () => {
   })
 
   it('never reuses the watercolour branch floored wet / concentration expressions', () => {
-    // The ribbon branch must multiply each global directly. The watercolour
-    // branch keeps exactly one copy of each floored expression; the ribbon
-    // branch adds none.
+    // The ribbon branch must multiply each global directly. These are the
+    // exact pre-phase counts — the brush case and fillStep each own one copy
+    // of the concentration floor, the brush case owns the wet floor — and the
+    // ribbon branch adds none of either.
     expect(occurrences(ENGINE_SOURCE, '(0.25 + 0.75 * P.water)')).toBe(1)
-    expect(occurrences(ENGINE_SOURCE, '0.15 * Math.exp(P.load * 2.8)')).toBe(1)
+    expect(occurrences(ENGINE_SOURCE, '0.15 * Math.exp(P.load * 2.8)')).toBe(2)
     // No unseeded randomness in the playground deposit path: the only
     // reference is the live default rng seam (declaration + its comment).
     expect(occurrences(ENGINE_SOURCE, 'Math.random')).toBe(2)

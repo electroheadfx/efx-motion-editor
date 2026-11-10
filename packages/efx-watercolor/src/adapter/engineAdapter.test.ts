@@ -622,16 +622,19 @@ describe('resolveStrokeWidthFactors (61-04)', () => {
     expect(feed.length).toBeGreaterThan(0)
 
     const lines = feed.split('\n')
-    const beginLine = lines.find((line) => line.includes('scriptBegin('))
     const moveLine = lines.find((line) => line.includes('scriptMove('))
-    expect(beginLine).toBeDefined()
     expect(moveLine).toBeDefined()
 
     // The width factor is the argument AFTER the 2D tilt pair at both call
-    // sites — begin(...tiltX, tiltY, widthFactor) / move(...tiltX, tiltY,
-    // widthFactor). A refactor that drops it silently reverts to the capped
-    // footprint (C-03), so the source contract pins it here.
-    expect(beginLine!.trimEnd().endsWith('widthFactor)')).toBe(true)
+    // sites — begin(...tiltX, tiltY, widthFactor, renderMode) /
+    // move(...tiltX, tiltY, widthFactor). A refactor that drops it silently
+    // reverts to the capped footprint (C-03), so the source contract pins it.
+    // 61-07 appended the render mode after it on the SAME scriptBegin call —
+    // never a second deposit path (T-61-22) — so the begin call is multi-line
+    // now and its argument block is pinned instead of its last source line.
+    const beginBlock = feed.slice(feed.indexOf('scriptBegin('), feed.indexOf('scriptMove('))
+    expect(beginBlock).toContain('widthFactor,')
+    expect(beginBlock).toContain('resolveAquarelleRenderMode(active.stroke.engine.renderMode)')
     expect(moveLine!.trimEnd().endsWith('widthFactor)')).toBe(true)
     // Both read the per-sample entry derived once at activation.
     expect(feed).toContain('active.widths')

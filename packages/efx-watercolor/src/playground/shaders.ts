@@ -38,6 +38,10 @@ layout(location=1) out vec4 o1;
 uniform sampler2D uTip, uPaper;
 uniform float uAspect, uRadius, uTipAspect, uRound, uGrain, uGrainThr;
 uniform float uRough, uJitter;
+// 61-07: uRibbon is the simple-ribbon rim width as a fraction of the radius
+// (0 = off, every watercolour brush keeps the tip/round profile); uEdge
+// darkens a tide ring just inside that rim (0 = off).
+uniform float uRibbon, uEdge;
 uniform vec2 uPoint, uAxis;
 uniform vec4 uColor0, uColor1;
 void main(){
@@ -58,7 +62,15 @@ void main(){
   float sharp = mix(t, dry, step(0.0001, uRough));
   float d = dot(q, q);
   float round = 1.0 - smoothstep(0.15, 1.0, d);
-  float f = mix(sharp, round, uRound);
+  // 61-07: the simple-ribbon profile — solid inside radius x (1 - rim), a
+  // smoothstep rim to zero at the radius. The guarded rim keeps the
+  // smoothstep edges legal when uRibbon is 0 (the watercolour profile then
+  // wins the mix below and this term contributes nothing).
+  float rim = max(uRibbon, 0.0001);
+  float rad = sqrt(d);
+  float ribbon = 1.0 - smoothstep(1.0 - rim, 1.0, rad);
+  ribbon *= 1.0 + uEdge * smoothstep(1.0 - 2.0 * rim, 1.0 - rim, rad);
+  float f = mix(mix(sharp, round, uRound), ribbon, step(0.0001, uRibbon));
   float h = texture(uPaper, vUv).g;
   f *= mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);
   o0 = uColor0 * f;
