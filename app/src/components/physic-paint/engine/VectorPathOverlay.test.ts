@@ -22,7 +22,16 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
-import { aquarelleSelectedTipId } from '../view/aquarelleRecordState';
+import {
+  aquarelleSelectedTipId,
+  aquarelleStrokesRevision,
+  getAquarelleEventsForFrame,
+  getRecordedAquarelleStrokeEntries,
+  recordAquarelleStroke,
+  recordAquarelleStrokeWhenEnabled,
+  resetAquarelleRecordState,
+} from '../view/aquarelleRecordState';
+import { listSelectableAquarelleStrokes } from '../view/aquarelleStrokeSelection';
 import {
   clearVectorDraft,
   resetForStudioOpen,
@@ -30,7 +39,7 @@ import {
   vectorPenActive,
   type VectorDraftAnchor,
 } from '../view/vectorPathSession';
-import { buildDraftPath } from '../view/vectorPathHandles';
+import { buildDraftPath, buildVectorStroke, type VectorPathCommit } from '../view/vectorPathHandles';
 import {
   VectorPathOverlay,
   handleVectorPathKey,
@@ -384,6 +393,122 @@ describe('VectorPathOverlay — draw gesture (task 2)', () => {
     expect(source).toContain("window.addEventListener('keydown'");
     expect(source).toContain("window.removeEventListener('keydown'");
     expect(source).toContain('if (!penActive) return');
+  });
+});
+
+describe('VectorPathOverlay — one entry per finished path (task 3)', () => {
+  const SIZE = { width: WIDTH, height: HEIGHT };
+  const HAND_PAINTED_ID = 92001;
+  const VECTOR_ID = 92002;
+
+  /**
+   * The Studio's stroke-end handler, reduced to the ONE record seam it drives
+   * (the plan's scope: the overlay commits, the Studio records).
+   */
+  function recordCommitAs(mutationId: number) {
+    return (commit: VectorPathCommit) => {
+      const stroke = buildVectorStroke(commit, {
+        color: '#103c65',
+        params: { size: 40, dry: 30 },
+        brushId: 'wc/round-medium',
+        toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES },
+        tool: 'brush',
+        diffusionFrames: 120,
+        timestamp: 4242,
+        playFrame: FRAME,
+      });
+      recordAquarelleStrokeWhenEnabled(true, mutationId, stroke, 'frame-key');
+    };
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    vectorPenActive.value = true;
+  });
+
+  it('records exactly one entry and one revision bump for a finished path', () => {
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const onCommitPath = vi.fn(recordCommitAs(VECTOR_ID));
+    const handlers = { onCommitPath, onCancelPath: () => {} };
+    expect(getRecordedAquarelleStrokeEntries().size).toBe(0);
+
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+    handleVectorPathKey({ key: 'Enter' }, handlers);
+
+    expect(onCommitPath).toHaveBeenCalledTimes(1);
+    expect(getRecordedAquarelleStrokeEntries().size).toBe(1);
+    expect(getAquarelleEventsForFrame(FRAME)).toHaveLength(1);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    // A repeat finish on the cleared draft adds nothing — not a second entry,
+    // not a second timeline event, not a second revision bump (T-61-30).
+    handleVectorPathKey({ key: 'Enter' }, handlers);
+    expect(onCommitPath).toHaveBeenCalledTimes(1);
+    expect(getRecordedAquarelleStrokeEntries().size).toBe(1);
+    expect(getAquarelleEventsForFrame(FRAME)).toHaveLength(1);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+  });
+
+  it('records nothing for an empty or one-anchor path — no entry, no serial, no event', () => {
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const onCommitPath = vi.fn(recordCommitAs(VECTOR_ID));
+    const handlers = { onCommitPath, onCancelPath: () => {} };
+
+    // Empty draft.
+    handleVectorPathKey({ key: 'Enter' }, handlers);
+    // One-anchor draft.
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    handleVectorPathKey({ key: 'Enter' }, handlers);
+
+    expect(onCommitPath).not.toHaveBeenCalled();
+    expect(getRecordedAquarelleStrokeEntries().size).toBe(0);
+    expect(getAquarelleEventsForFrame(FRAME)).toHaveLength(0);
+    // No serial: nothing is listed and nothing was allocated.
+    expect(listSelectableAquarelleStrokes(FRAME, SIZE, 'all')).toEqual([]);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+  });
+
+  it('lists a committed vector stroke once, keyed by serial, with the hand-painted row shape', () => {
+    recordAquarelleStroke(
+      HAND_PAINTED_ID,
+      vectorStroke({ mutationId: HAND_PAINTED_ID, anchors: undefined }),
+      'frame-key',
+    );
+    const onCommitPath = vi.fn(recordCommitAs(VECTOR_ID));
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+    handleVectorPathKey({ key: 'Enter' }, { onCommitPath, onCancelPath: () => {} });
+
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    const vectorRows = rows.filter((row) => row.mutationId === VECTOR_ID);
+    const paintRows = rows.filter((row) => row.mutationId === HAND_PAINTED_ID);
+    expect(vectorRows).toHaveLength(1);
+    expect(paintRows).toHaveLength(1);
+    const vectorRow = vectorRows[0]!;
+    const paintRow = paintRows[0]!;
+
+    // One ordinary paint row: no badge, no icon, no vector-only field.
+    expect(Object.keys(vectorRow).sort()).toEqual(Object.keys(paintRow).sort());
+    expect(vectorRow.kind).toBe('paint');
+    expect(vectorRow.kind).toBe(paintRow.kind);
+    expect(vectorRow.color).toBe(paintRow.color);
+    expect(vectorRow.tool).toBe(paintRow.tool);
+    expect(vectorRow.brushId).toBe(paintRow.brushId);
+    expect(vectorRow.customResponse).toBe(paintRow.customResponse);
+
+    // Keyed by serial: one row per serial, and the vector row owns its own.
+    const serials = rows.map((row) => row.serial);
+    expect(new Set(serials).size).toBe(rows.length);
+    expect(rows.filter((row) => row.serial === vectorRow.serial)).toHaveLength(1);
+
+    // Shared stack grammar: the vector stroke was recorded last, so it is top.
+    expect(rows.map((row) => row.stackTotal)).toEqual([2, 2]);
+    expect(vectorRow.stackPosition).toBe(1);
+    expect(paintRow.stackPosition).toBe(2);
   });
 });
 
