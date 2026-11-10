@@ -419,11 +419,12 @@ describe('VectorPathOverlay — draw gesture (task 2)', () => {
     expect((event['stopPropagation'] as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
   });
 
-  it('binds the key listener only while the pen is active and removes it on cleanup', () => {
+  it('binds the key listener while the pen or a path edit is active and removes it on cleanup', () => {
     const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
     expect(source).toContain("window.addEventListener('keydown'");
     expect(source).toContain("window.removeEventListener('keydown'");
-    expect(source).toContain('if (!penActive) return');
+    // 61-10: the same listener carries the open path edit's Delete/Backspace.
+    expect(source).toContain('if (!penActive && editMutationId === null) return');
   });
 });
 

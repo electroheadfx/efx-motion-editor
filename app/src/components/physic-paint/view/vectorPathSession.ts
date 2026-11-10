@@ -42,6 +42,54 @@ export const pathEditMutationId = signal<string | null>(null);
 /** The draw draft in progress; survives a tool toggle and clears only on Escape / finish / reset. */
 export const vectorDrawDraft = signal<VectorDrawDraft | null>(null);
 
+/**
+ * 61-10: the open path edit's anchor selection — the ONE selection signal.
+ * The overlay writes it through `selectAnchor`; the dialog plan (61-11) reads
+ * it. Never a second copy.
+ */
+export const vectorAnchorSelection = signal<readonly number[]>([]);
+
+/** Deduplicated, ascending selection; unknown indices are dropped. */
+function normaliseAnchorSelection(indices: readonly number[]): readonly number[] {
+  const kept = new Set<number>();
+  for (const index of indices) {
+    if (Number.isInteger(index) && index >= 0) kept.add(index);
+  }
+  return [...kept].sort((a, b) => a - b);
+}
+
+function sameAnchorSelection(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
+}
+
+/** Write the selection; an identical value notifies zero effects. */
+export function setVectorAnchorSelection(indices: readonly number[]): void {
+  const next = normaliseAnchorSelection(indices);
+  if (sameAnchorSelection(vectorAnchorSelection.peek(), next)) return;
+  vectorAnchorSelection.value = next;
+}
+
+/** Toggle one anchor in/out of the selection, keeping it ascending. */
+export function toggleVectorAnchorSelection(index: number): void {
+  if (!Number.isInteger(index) || index < 0) return;
+  const current = vectorAnchorSelection.peek();
+  const next = current.includes(index)
+    ? current.filter((value) => value !== index)
+    : [...current, index].sort((a, b) => a - b);
+  if (sameAnchorSelection(current, next)) return;
+  vectorAnchorSelection.value = next;
+}
+
+/** Drop the selection; an already-empty selection notifies nothing. */
+export function clearVectorAnchorSelection(): void {
+  if (vectorAnchorSelection.peek().length === 0) return;
+  vectorAnchorSelection.value = [];
+}
+
 /** Compare-then-write: an identical value notifies zero effects (idempotent setters). */
 function writeIfChanged<T>(target: Signal<T>, next: T): boolean {
   if (target.peek() === next) return false;
@@ -80,9 +128,10 @@ export function enterPathEdit(mutationId: string): void {
   disarmAquarellePicker();
 }
 
-/** Close path edit. Re-arms nothing. */
+/** Close path edit. Re-arms nothing and drops the anchor selection with the edit. */
 export function exitPathEdit(): void {
   writeIfChanged(pathEditMutationId, null);
+  clearVectorAnchorSelection();
 }
 
 /** Start a draft from its first anchor; the cursor starts at that anchor. */
@@ -116,4 +165,5 @@ export function resetForStudioOpen(): void {
   writeIfChanged(vectorPenActive, false);
   writeIfChanged(pathEditMutationId, null);
   writeIfChanged(vectorDrawDraft, null);
+  clearVectorAnchorSelection();
 }

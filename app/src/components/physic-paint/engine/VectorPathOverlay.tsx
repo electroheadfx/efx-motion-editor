@@ -52,24 +52,33 @@ import type { CanvasPoint } from '../view/scriptStrokeEdition';
 import {
   ANCHOR_BODY_PX,
   ANCHOR_CORE_RADIUS_PX,
+  ANCHOR_HIT_PAD_PX,
   DRAG_THRESHOLD_PX,
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
   buildDraftPath,
+  deleteAnchorsAt,
   hitTestVectorPath,
+  insertAnchorOnSegment,
   isAdjacentToLast,
   moveAnchorBy,
+  moveHandleTo,
+  pointToSegmentDistancePx,
   projectVectorPath,
   promoteAnchorForDrag,
   screenToUv,
+  selectAnchor,
   uvToScreen,
   type VectorPathCommit,
   type VectorPathProjection,
 } from '../view/vectorPathHandles';
 import {
   appendVectorDraftAnchor,
+  clearVectorAnchorSelection,
   clearVectorDraft,
   pathEditMutationId,
+  setVectorAnchorSelection,
+  vectorAnchorSelection,
   vectorDrawDraft,
   vectorPenActive,
   type VectorDraftAnchor,
@@ -124,6 +133,7 @@ export const vectorPathEditDrag = signal<{
 
 /** One in-flight anchor drag (path edit): where it started and its latest list. */
 interface AnchorDragState {
+  readonly kind: 'anchor';
   readonly mutationId: number;
   readonly index: number;
   readonly startUv: Vec2;
@@ -132,6 +142,19 @@ interface AnchorDragState {
   moved: boolean;
   latest: readonly VectorAnchor[];
 }
+
+/** One in-flight handle drag: the endpoint follows the pointer absolutely. */
+interface HandleDragState {
+  readonly kind: 'handle';
+  readonly mutationId: number;
+  readonly index: number;
+  readonly side: 'in' | 'out';
+  readonly anchorsAtStart: readonly VectorAnchor[];
+  moved: boolean;
+  latest: readonly VectorAnchor[];
+}
+
+type PathEditDragState = AnchorDragState | HandleDragState;
 
 /** One path the overlay draws: its anchors, resolved handles and projection. */
 interface DrawnVectorPath {
@@ -196,6 +219,48 @@ export function handleVectorPathKey(
   event.stopPropagation?.();
   if (key === 'Enter') finishVectorPath(handlers);
   else cancelVectorPath(handlers);
+}
+
+/** What the Delete/Backspace edit key needs from its host (61-10). */
+export interface VectorPathEditKeyHandlers {
+  readonly getRecordedStrokes: () => ReadonlyMap<number, AquarelleStroke>;
+  readonly onPathEdit: (mutationId: number, anchors: readonly VectorAnchor[]) => void;
+}
+
+/**
+ * The open path edit's Delete/Backspace law: remove every selected anchor
+ * through `deleteAnchorsAt` and leave the whole next list in ONE
+ * `onPathEdit`. The selection is cleared BEFORE the commit (the T-61-30
+ * clear-before-commit law), so a same-tick repeat finds nothing. Every other
+ * key is left to the Studio — the overlay swallows only what it owns.
+ */
+export function handleVectorPathEditKey(
+  event: { readonly key?: string; preventDefault?: () => void; stopPropagation?: () => void },
+  handlers: VectorPathEditKeyHandlers,
+): void {
+  const key = event.key;
+  if (key !== 'Delete' && key !== 'Backspace') return;
+  const editMutationId = pathEditMutationId.peek();
+  if (editMutationId === null) return;
+  const selection = vectorAnchorSelection.peek();
+  if (selection.length === 0) return;
+  let targetMutationId: number | null = null;
+  let targetAnchors: readonly VectorAnchor[] | null = null;
+  for (const [mutationId, stroke] of handlers.getRecordedStrokes()) {
+    if (String(mutationId) !== editMutationId) continue;
+    if (isAquarelleStrokeDeleted(mutationId)) continue;
+    if (stroke.anchors === undefined || stroke.anchors.length === 0) continue;
+    targetMutationId = mutationId;
+    targetAnchors = stroke.anchors;
+    break;
+  }
+  if (targetMutationId === null || targetAnchors === null) return;
+  const next = deleteAnchorsAt(targetAnchors, selection);
+  if (next.length === targetAnchors.length) return;
+  event.preventDefault?.();
+  event.stopPropagation?.();
+  clearVectorAnchorSelection();
+  handlers.onPathEdit(targetMutationId, next);
 }
 
 // --- Drawing --------------------------------------------------------------
@@ -355,9 +420,19 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     onCommitPath: props.onCommitPath,
     onCancelPath: props.onCancelPath,
   };
-  // The in-flight anchor drag (path edit). A ref so the pointer handlers never
-  // re-render the surface mid-gesture; the visual preview travels on a signal.
-  const dragRef = useRef<AnchorDragState | null>(null);
+  // The edit key's host seam rides its own ref, like the draft handlers above.
+  const editKeyHandlersRef = useRef<VectorPathEditKeyHandlers>({
+    getRecordedStrokes: props.getRecordedStrokes,
+    onPathEdit: props.onPathEdit,
+  });
+  editKeyHandlersRef.current = {
+    getRecordedStrokes: props.getRecordedStrokes,
+    onPathEdit: props.onPathEdit,
+  };
+  // The in-flight anchor / handle drag (path edit). A ref so the pointer
+  // handlers never re-render the surface mid-gesture; the visual preview
+  // travels on a signal.
+  const dragRef = useRef<PathEditDragState | null>(null);
 
   // Narrow reads: this leaf is the only subscriber to the session latches.
   const penActive = vectorPenActive.value;
@@ -389,15 +464,19 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   }
 
   useEffect(() => {
-    if (!penActive) return;
+    // The draft keys live while the pen is latched; the edit keys live while
+    // a path edit is open. Both are primitives, so the listener rebinds only
+    // when one of the two states flips (efx-preact-reactivity).
+    if (!penActive && editMutationId === null) return;
     const onKeyDown = (event: KeyboardEvent) => {
       handleVectorPathKey(event, handlersRef.current);
+      handleVectorPathEditKey(event, editKeyHandlersRef.current);
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
     };
-  }, [penActive]);
+  }, [penActive, editMutationId]);
 
   const playFrame = props.getPlayFrame();
   const recorded: DrawnVectorPath[] = [];
@@ -493,7 +572,36 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     finishVectorPath(handlersRef.current);
   };
 
-  // --- Path edit (61-10): the anchor drag ---------------------------------
+  // --- Path edit (61-10): the anchor / handle drag ------------------------
+
+  /**
+   * The chord segment under the pointer, in screen pixels. The spine's true
+   * curve is the evaluator's; hit-testing the CHORD is the documented
+   * approximation this overlay has always used (`pointToSegmentDistancePx`),
+   * and the inserted anchor is still projected onto the evaluated curve.
+   */
+  const spineSegmentAt = (
+    anchors: readonly VectorAnchor[],
+    pointerUv: Vec2,
+  ): number | null => {
+    const pointer = uvToScreen(pointerUv, props.width, props.height);
+    let best: number | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < anchors.length - 1; index += 1) {
+      const start = anchors[index];
+      const end = anchors[index + 1];
+      if (start === undefined || end === undefined) continue;
+      const distance = pointToSegmentDistancePx(
+        pointer,
+        uvToScreen(start, props.width, props.height),
+        uvToScreen(end, props.width, props.height),
+      ) * scale;
+      if (distance > ANCHOR_HIT_PAD_PX || distance >= bestDistance) continue;
+      bestDistance = distance;
+      best = index;
+    }
+    return best;
+  };
 
   const startEditDrag = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -511,22 +619,59 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       props.height,
       scale,
     );
-    if (target === null || target.kind !== 'anchor') return;
-    const current = editTargetAnchors[target.index];
-    if (current === undefined) return;
-    // D-03: the grab owns the anchor — promote BEFORE any movement, so a
-    // grab-and-release still commits the promoted shape.
-    const promoted = promoteAnchorForDrag(editTargetAnchors, target.index);
-    dragRef.current = {
-      mutationId: editTargetMutationId,
-      index: target.index,
-      startUv: pointerUv,
-      anchorsAtStart: promoted,
-      wasPromoted: current.kind !== 'bezier',
-      moved: false,
-      latest: promoted,
-    };
-    vectorPathEditDrag.value = { mutationId: editTargetMutationId, anchors: promoted };
+
+    if (target !== null && target.kind !== 'anchor') {
+      // Handle drag: the endpoint follows the pointer; the partner mirrors
+      // about the anchor unless Alt breaks the coupling for this drag.
+      const anchor = editTargetAnchors[target.index];
+      if (anchor === undefined || anchor.kind !== 'bezier') return;
+      dragRef.current = {
+        kind: 'handle',
+        mutationId: editTargetMutationId,
+        index: target.index,
+        side: target.kind === 'handle-in' ? 'in' : 'out',
+        anchorsAtStart: editTargetAnchors,
+        moved: false,
+        latest: editTargetAnchors,
+      };
+      vectorPathEditDrag.value = { mutationId: editTargetMutationId, anchors: editTargetAnchors };
+      return;
+    }
+
+    if (target !== null) {
+      // Anchor grab: the press writes the ONE selection (additive on
+      // Shift / Cmd / Ctrl), then D-03 promotes BEFORE any movement so a
+      // grab-and-release still commits the promoted shape.
+      const current = editTargetAnchors[target.index];
+      if (current === undefined) return;
+      const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+      setVectorAnchorSelection(
+        selectAnchor(vectorAnchorSelection.peek(), target.index, additive),
+      );
+      const promoted = promoteAnchorForDrag(editTargetAnchors, target.index);
+      dragRef.current = {
+        kind: 'anchor',
+        mutationId: editTargetMutationId,
+        index: target.index,
+        startUv: pointerUv,
+        anchorsAtStart: promoted,
+        wasPromoted: current.kind !== 'bezier',
+        moved: false,
+        latest: promoted,
+      };
+      vectorPathEditDrag.value = { mutationId: editTargetMutationId, anchors: promoted };
+      return;
+    }
+
+    // A click on the spine inserts ONE anchor, committed immediately — a
+    // click is a completed gesture, so no drag state is opened. The inserted
+    // anchor becomes the selection.
+    const segment = spineSegmentAt(editTargetAnchors, pointerUv);
+    if (segment === null) return;
+    const next = insertAnchorOnSegment(editTargetAnchors, segment, pointerUv);
+    if (next.length === editTargetAnchors.length) return;
+    setVectorAnchorSelection([segment + 1]);
+    props.onPathEdit(editTargetMutationId, next);
   };
 
   const continueEditDrag = (event: TargetedPointerEvent<HTMLDivElement>) => {
@@ -534,6 +679,25 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     if (drag === null) return;
     const pointerUv = pointerUvOf(event);
     if (pointerUv === null) return;
+
+    if (drag.kind === 'handle') {
+      // Absolute: the endpoint IS the pointer, so a dropped move cannot drift
+      // it. Alt is read per move — the coupling breaks while it is held.
+      const next = moveHandleTo(drag.anchorsAtStart, drag.index, drag.side, pointerUv, event.altKey);
+      const startPoint = drag.anchorsAtStart[drag.index]?.[drag.side];
+      const movedPoint = next[drag.index]?.[drag.side];
+      const distancePx = startPoint !== undefined && movedPoint !== undefined
+        ? Math.hypot(
+          (movedPoint.x - startPoint.x) * props.width,
+          (movedPoint.y - startPoint.y) * props.height,
+        ) * scale
+        : 0;
+      drag.latest = next;
+      if (distancePx > DRAG_THRESHOLD_PX) drag.moved = true;
+      vectorPathEditDrag.value = { mutationId: drag.mutationId, anchors: next };
+      return;
+    }
+
     // Absolute delta from the gesture start — never accumulated per move, so a
     // dropped pointer event cannot drift the anchor.
     const dx = pointerUv.x - drag.startUv.x;
@@ -557,8 +721,11 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       return;
     }
     // A grab-and-release still commits the promotion (D-03); an already-bezier
-    // anchor that did not move is a no-op and commits nothing.
-    if (drag.wasPromoted) props.onPathEdit(drag.mutationId, drag.anchorsAtStart);
+    // anchor that did not move is a no-op and commits nothing. A handle that
+    // did not move is a no-op too — there is no promotion to preserve.
+    if (drag.kind === 'anchor' && drag.wasPromoted) {
+      props.onPathEdit(drag.mutationId, drag.anchorsAtStart);
+    }
   };
 
   const cancelEditDrag = () => {

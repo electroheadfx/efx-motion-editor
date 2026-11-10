@@ -26,6 +26,8 @@
 // ============================================================
 
 import {
+  ANCHOR_WIDTH_DEFAULT,
+  clampAnchorWidth,
   isUniformWidthProfile,
   normaliseVectorAnchors,
   resolveAnchorHandles,
@@ -421,6 +423,112 @@ export function moveHandleTo(
   const next = [...anchors];
   next[index] = movedAnchor;
   return next;
+}
+
+// --- Insert on a segment (61-10 Task 2) -----------------------------------
+
+/**
+ * Insert one `auto` anchor between the two anchors of `segmentIndex`. The
+ * click is projected onto the chord to find its station, then the evaluated
+ * curve is sampled at that station so the new anchor sits ON the path the
+ * user clicked — never off the chord's straight line. Its handles are not
+ * stored: re-resolving the list derives them like every other `auto` anchor
+ * (D-03's counter-case: a new anchor starts unowned). The input list is never
+ * mutated and untouched anchors are carried by reference.
+ */
+export function insertAnchorOnSegment(
+  anchors: readonly VectorAnchor[],
+  segmentIndex: number,
+  pointUv: Vec2,
+): readonly VectorAnchor[] {
+  const normalised = normaliseVectorAnchors(anchors);
+  if (normalised.length < 2) return [...normalised];
+  if (!Number.isFinite(pointUv.x) || !Number.isFinite(pointUv.y)) return [...normalised];
+  const lastSegment = normalised.length - 2;
+  const segment = Number.isFinite(segmentIndex)
+    ? Math.max(0, Math.min(lastSegment, Math.trunc(segmentIndex)))
+    : lastSegment;
+  const start = normalised[segment]!;
+  const end = normalised[segment + 1]!;
+  const handles = resolveAnchorHandles(normalised);
+  const controlA = handles[segment]?.out ?? start;
+  const controlB = handles[segment + 1]?.in ?? end;
+  // Chord projection: the station the click falls on along the segment.
+  const chordX = end.x - start.x;
+  const chordY = end.y - start.y;
+  const chordSquared = chordX * chordX + chordY * chordY;
+  const t = chordSquared > 0
+    ? Math.max(0, Math.min(1, ((pointUv.x - start.x) * chordX + (pointUv.y - start.y) * chordY) / chordSquared))
+    : 0.5;
+  const u = 1 - t;
+  const x = u * u * u * start.x + 3 * u * u * t * controlA.x + 3 * u * t * t * controlB.x + t * t * t * end.x;
+  const y = u * u * u * start.y + 3 * u * u * t * controlA.y + 3 * u * t * t * controlB.y + t * t * t * end.y;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return [...normalised];
+  const inserted: VectorAnchor = { x, y, kind: 'auto' };
+  return [
+    ...normalised.slice(0, segment + 1),
+    inserted,
+    ...normalised.slice(segment + 1),
+  ];
+}
+
+// --- The anchor selection (61-10 Task 2) ----------------------------------
+
+/** Deduplicated, ascending selection; unknown indices are dropped. */
+function normaliseAnchorSelection(selected: readonly number[]): readonly number[] {
+  const kept = new Set<number>();
+  for (const index of selected) {
+    if (Number.isInteger(index) && index >= 0) kept.add(index);
+  }
+  return [...kept].sort((a, b) => a - b);
+}
+
+/**
+ * The overlay's selection action: a plain press replaces the selection with
+ * the pressed anchor; an additive press (Shift / Cmd / Ctrl) toggles it while
+ * keeping the list deduplicated and ascending. Always returns a new list.
+ */
+export function selectAnchor(
+  selected: readonly number[],
+  index: number,
+  additive: boolean,
+): readonly number[] {
+  const current = normaliseAnchorSelection(selected);
+  if (!Number.isInteger(index) || index < 0) return current;
+  if (!additive) return [index];
+  const next = new Set(current);
+  if (next.has(index)) next.delete(index);
+  else next.add(index);
+  return [...next].sort((a, b) => a - b);
+}
+
+// --- The width commit (61-10 Task 2) --------------------------------------
+
+/** One anchor without its `width` key — the sparse representation of 1.0. */
+function withoutWidth(anchor: VectorAnchor): VectorAnchor {
+  const { width: _width, ...rest } = anchor;
+  return rest;
+}
+
+/**
+ * The pure half of a width commit: write the CLAMPED factor on every listed
+ * anchor in one pass and leave every other anchor reference-identical. A
+ * factor of exactly 1 DELETES the key instead of storing `width: 1`, so the
+ * sparse profile stays sparse (the envelope law reads an absent factor as 1).
+ * The caller drives the result through ONE edit wrapper — never one per
+ * anchor (VEC-07).
+ */
+export function buildAnchorWidthCommit(
+  anchors: readonly VectorAnchor[],
+  indices: readonly number[],
+  value: number,
+): readonly VectorAnchor[] {
+  const targets = new Set(normaliseAnchorSelection(indices));
+  const width = clampAnchorWidth(value);
+  return anchors.map((anchor, index) => {
+    if (!targets.has(index)) return anchor;
+    return width === ANCHOR_WIDTH_DEFAULT ? withoutWidth(anchor) : { ...withoutWidth(anchor), width };
+  });
 }
 
 // --- The commit's stroke half --------------------------------------------
