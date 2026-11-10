@@ -362,6 +362,45 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
     ]);
     expect(paint[0]!.props?.disabled).toBe(false);
   });
+
+  // 61-18 (D-16): the rail's visible half of the Select law. 61-17 already
+  // refuses the entry at the ONE choke point; this suite pins the rendered
+  // props — a click case would prove nothing because click() fires onClick
+  // directly and ignores `disabled`.
+  it('disables Select with its reason while the wireframe is on', () => {
+    wireframeMode.value = true;
+    const nav = renderRail({ selectAvailable: signal(true) });
+    const select = button(nav, 'aquarelle-select-toggle')!;
+    expect(select, 'the Select button is rendered').toBeTruthy();
+    // `selectAvailable` is TRUE: the disable reason is the wireframe gate alone.
+    expect(select.props?.disabled).toBe(true);
+    expect(select.props?.title).toBe('Select (A) — turn wireframe off to select');
+    // The rendered bindings are the shipped ones — only the inert state and
+    // its reason change.
+    expect(select.props?.['aria-label']).toBe('Select');
+    expect(select.props?.['aria-pressed']).toBe(false);
+    expect(select.props?.onClick).toBeTypeOf('function');
+  });
+
+  it('restores the shipped Select copy and enablement when the latch clears', () => {
+    const SHIPPED_SELECT_TITLE = 'Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward';
+    const enabled = button(renderRail({ selectAvailable: signal(true) }), 'aquarelle-select-toggle')!;
+    expect(enabled.props?.title).toBe(SHIPPED_SELECT_TITLE);
+    expect(enabled.props?.disabled).toBe(false);
+
+    // selectAvailable still gates it — with the shipped title intact.
+    const unavailable = button(renderRail({ selectAvailable: signal(false) }), 'aquarelle-select-toggle')!;
+    expect(unavailable.props?.title).toBe(SHIPPED_SELECT_TITLE);
+    expect(unavailable.props?.disabled).toBe(true);
+
+    // railDisabled still gates it — with the shipped title intact.
+    const railOff = button(
+      renderRail({ disabled: true, selectAvailable: signal(true) }),
+      'aquarelle-select-toggle',
+    )!;
+    expect(railOff.props?.title).toBe(SHIPPED_SELECT_TITLE);
+    expect(railOff.props?.disabled).toBe(true);
+  });
 });
 
 describe('the rail separator rule (physicsPaintStudio.css)', () => {
