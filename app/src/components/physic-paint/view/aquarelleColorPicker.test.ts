@@ -13,6 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { effect } from '@preact/signals';
 import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
 import { aquarelleSelectMode, setAquarelleSelectMode } from './aquarelleStrokeSelection';
 import {
@@ -32,9 +33,28 @@ import {
   type PickRgba,
 } from './aquarelleColorPicker';
 import { photoPixelAt } from './aquarellePhotoPick';
+import {
+  enterPathEdit,
+  enterVectorPen,
+  pathEditMutationId,
+  resetForStudioOpen,
+  setVectorAnchorSelection,
+  vectorAnchorSelection,
+  vectorPenActive,
+} from './vectorPathSession';
 
 const OPAQUE_BLACK: PickRgba = { r: 0, g: 0, b: 0, a: 1 };
 const TRANSPARENT: PickRgba = { r: 0, g: 0, b: 0, a: 0 };
+
+/** Count how many times a read runs — an `effect()` re-runs only on a REAL write. */
+function countRuns(read: () => unknown): { runs: () => number; dispose: () => void } {
+  let runs = 0;
+  const dispose = effect(() => {
+    void read();
+    runs += 1;
+  });
+  return { runs: () => runs, dispose };
+}
 
 beforeEach(() => {
   disarmAquarellePicker();
@@ -218,6 +238,80 @@ describe('disarm laws — a paint tool or Move/Edit leaves the picker', () => {
     setAquarellePickerLatched(true);
     setAquarelleSelectMode(false);
     expect(aquarellePickerLatched.value).toBe(true);
+  });
+});
+
+// 61-17 (G-6): the picker latch releases the vector pen and any open path edit
+// on its ENTRY edge — the vector overlay draws above the sheet and would
+// swallow a latched pick. Disarming is a release path and must touch neither.
+describe('61-17 G-6 the picker latch releases the vector pen', () => {
+  afterEach(() => {
+    resetForStudioOpen();
+    disarmAquarellePicker();
+  });
+
+  it('latching the picker releases the vector pen and arms the picker', () => {
+    enterVectorPen();
+    expect(vectorPenActive.peek()).toBe(true);
+
+    setAquarellePickerLatched(true);
+
+    expect(vectorPenActive.peek()).toBe(false);
+    expect(aquarellePickerLatched.peek()).toBe(true);
+    expect(isAquarellePickerArmed()).toBe(true);
+  });
+
+  it('latching the picker closes an open path edit and clears its anchor selection', () => {
+    enterPathEdit('m17');
+    setVectorAnchorSelection([0, 2]);
+    expect(pathEditMutationId.peek()).toBe('m17');
+
+    setAquarellePickerLatched(true);
+
+    expect(pathEditMutationId.peek()).toBeNull();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+    expect(aquarellePickerLatched.peek()).toBe(true);
+  });
+
+  it('disarmAquarellePicker touches neither the pen nor the path edit', () => {
+    enterVectorPen();
+    disarmAquarellePicker();
+    expect(vectorPenActive.peek()).toBe(true);
+
+    enterPathEdit('m23');
+    setVectorAnchorSelection([1]);
+    disarmAquarellePicker();
+    expect(pathEditMutationId.peek()).toBe('m23');
+    expect(vectorAnchorSelection.peek()).toEqual([1]);
+  });
+
+  it('a repeated latch notifies the picker once and the pen never', () => {
+    const penRuns = countRuns(() => vectorPenActive.value);
+    const pickerRuns = countRuns(() => aquarellePickerLatched.value);
+    try {
+      setAquarellePickerLatched(true);
+      setAquarellePickerLatched(true);
+      // One initial run + exactly one real write; the pen was already off.
+      expect(pickerRuns.runs()).toBe(2);
+      expect(penRuns.runs()).toBe(1);
+    } finally {
+      penRuns.dispose();
+      pickerRuns.dispose();
+    }
+  });
+});
+
+// T-61-60: the latch leaf is the picker's ONLY sibling import, so no future
+// edit can recreate the evaluation cycle the one-way edge exists to prevent.
+describe('the picker module keeps its one-way edge (T-61-60)', () => {
+  const pickerSrc = readFileSync(resolve(__dirname, './aquarelleColorPicker.ts'), 'utf8');
+
+  it('imports only the signals runtime and the dependency-free latch leaf', () => {
+    const importLines = pickerSrc.split('\n').filter((line) => line.startsWith('import '));
+    expect(importLines).toEqual([
+      "import { computed, signal } from '@preact/signals';",
+      "import { exitPathEdit, exitVectorPen } from './vectorPathLatches';",
+    ]);
   });
 });
 
