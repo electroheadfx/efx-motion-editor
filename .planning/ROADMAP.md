@@ -235,7 +235,7 @@ Plans:
   4. A vector stroke persists in `.mce` (declared in both TS and Rust), survives reopen, and exports exactly as previewed while keeping hide/solo, ordering, opacity, and background behavior.
   5. Deterministic replay: the same vector stroke produces the same raster across runs, undo/redo, and reopen, and undo/redo covers each vector operation.
 
-**Plans:** 19 plans (14 executed + 5 gap-closure)
+**Plans:** 20 plans (14 executed + 6 gap-closure)
 
 Plans:
 **Wave 1**
@@ -272,12 +272,13 @@ Plans:
 **Wave 10** *(blocked on Wave 9 completion)*
 - [x] 61-14-PLAN.md — Close-out proofs: save/reopen bake-input parity, both render modes, undo/redo byte identity, cache-key behaviour
 
-**Gap closure** *(from 61-VERIFICATION.md; waves are relative to this set — 61-15, 61-16 and 61-17 own disjoint files, 61-18 and 61-19 follow on the Studio)*
-- [ ] 61-15-PLAN.md — Bake and ledger seam: the draw commit and the path-edit commit re-bake the live sheet, a Script-Off draw is refused, and every path edit is one undo entry (G-1, G-2, G-8) — wave 1
+**Gap closure** *(from 61-VERIFICATION.md; waves are relative to this set — 61-15, 61-16 and 61-17 own disjoint files, 61-18, 61-19 and 61-20 follow on the Studio)*
+- [ ] 61-15-PLAN.md — Bake seam: the draw commit and the path-edit commit re-bake the live sheet, and a Script-Off draw is refused (G-1, G-2) — wave 1; the ledger entry it enables is 61-20
 - [ ] 61-16-PLAN.md — Gesture surface: pointer capture on the path-edit drag, the vector keys yield to a focused text field, and the two false history titles are corrected (G-3, G-4, G-8 test truth) — wave 1
 - [ ] 61-17-PLAN.md — Input-surface law: entering Select or the picker releases the pen and the open path edit, through a dependency-free latch leaf (G-6) — wave 1
 - [ ] 61-18-PLAN.md — Wireframe capture law: Draft cannot leave and the Draft settle refuses while wireframe is on, and Select states why it is inert (G-7) — wave 2, after 61-15
 - [ ] 61-19-PLAN.md — Anchor width target: the width commit writes the path the open edit names or refuses, with an inert reason in the dialog (G-5, G-8) — wave 3, after 61-15
+- [ ] 61-20-PLAN.md — Vector path-edit ledger: one undo entry per completed edit on both success routes, none on failure, and no second writer (G-8) — wave 4, after 61-15
 
 
 **Spike before the data model is locked**: per-vertex watercolour feasibility (segment runs vs payload extension), the sampling law, seam quality, stroke-count cost, and the determinism pin. The renderer, not the pen tool, is the scope risk.

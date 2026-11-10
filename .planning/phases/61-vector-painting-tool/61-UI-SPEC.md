@@ -184,9 +184,13 @@ Every string below is final. Sentence case except where the global uppercase but
 | Empty state (no vector stroke) | `Edit path — select one vector stroke.` (new — the header button's `title` when the selection cannot be path-edited) |
 | Error state | `Vector path rejected — this stroke's path could not be read. The stroke was left unchanged.` (new, follows the shipped refusal grammar `X rejected — <problem>. Nothing changed.` from `roto/physicsPaintRotoScriptApplyRefusal.ts:43-59`) |
 | Error state (existing, unchanged) | `Apply rejected — this script could not be read. Nothing changed.` |
+| Error state — draw with Script off (61-15) | `Vector path rejected — Script is off, so the path would not be recorded. Turn Script on and draw it again.` (fixed, never interpolated) |
+| Error state — wireframe blocks the Draft settle (61-18) | `Draft recompute refused — wireframe is on. Turn wireframe off to re-render.` (fixed, never interpolated; reuses the shipped "Turn wireframe off to re-render." clause) |
 | Destructive confirmation | `Clear current Roto frame`: the existing confirm (rail Trash title ends `asks to confirm`). **No new confirmation in this phase.** Deleting an anchor or a stroke is one undo entry and never prompts. |
 | Disabled reason — paint tool in wireframe | `Brush (B) — turn wireframe off to paint` (and the same shape for Water / Pen / Eraser / Dry) |
 | Disabled reason — spline-pointer | `Edit path — select one vector stroke` / `Edit path — select a single vector stroke` (multi-select) |
+| Disabled reason — rail Select under wireframe (61-18) | `Select (A) — turn wireframe off to select` (the rail button's `title` while wireframe is on) |
+| Disabled reason — Anchor width with no open path edit (61-19) | `Open Edit path on this stroke to set anchor widths.` (`ANCHOR_WIDTH_NO_EDIT_REASON`; rendered inside the shipped caption span, which is also the shipped `disabled` branch) |
 | Disabled reason — Draft switch under wireframe | `Draft — on while wireframe is on. Turn wireframe off to re-render.` |
 | Render-mode row label | `Render`; options `Watercolor` and `Ribbon` (rendered uppercase by the global rule) |
 | Width row label | `Anchor width`; `below` readout `→ {n} px` (the `BrushResponsePanel` multiplier grammar) |
