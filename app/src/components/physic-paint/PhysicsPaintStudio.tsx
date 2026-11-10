@@ -10094,13 +10094,73 @@ export function PhysicsPaintStudio() {
     setApplyStatus('error');
     setLastError(message);
   }, []);
+  // 61-15 (G-1/G-2): the ONE writer AND the ONE bake for a user path edit.
+  // Guard order and the post-await Draft read mirror `handleAquarelleMoveStrokes`
+  // (261101-o2m WR-03): the base recovery can settle Draft OFF, so a stale
+  // `true` would skip the re-render over fresh pixels. Guards are `.peek()`/
+  // ref reads only — the handler must not subscribe the Studio body. The edit
+  // is recorded before the bake, and a failed bake restores the pre-edit
+  // snapshot so nothing half-written survives.
+  const commitAquarelleVectorPathEdit = useCallback(async (mutationId: number, anchors: readonly AquarelleAnchor[]): Promise<number | null> => {
+    if (isPhysicalMutationLocked()) return null;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return null;
+    if (isAquarelleScriptEditInFlight()) return null;
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    await ensureAquarelleDurableBaseRef.current(playFrame);
+    // WR-03: read Draft only AFTER the await; `.peek()` never subscribes.
+    const draft = draftMode.peek();
+    const wireframe = wireframeMode.peek();
+    const editId = beginAquarellePathEdit(mutationId, anchors);
+    if (editId === null) return null;
+    // Defer route: the script commit above IS the edit — the engine re-render
+    // is deferred to the ONE Draft/wireframe settle. No in-flight flag (the
+    // edit is synchronous), no reset, no apply.
+    if (draft || wireframe) {
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return editId;
+    }
+    const ok = await runAquarelleScriptRebake({
+      isInFlight: isAquarelleScriptEditInFlight,
+      beginInFlight: () => setAquarelleScriptEditInFlight(true),
+      endInFlight: () => setAquarelleScriptEditInFlight(false),
+      resetSheet: () => aquarelleResetSheetRef.current?.(),
+      applyTimeline: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)),
+      onSuccess: () => {
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+      },
+      onFailure: () => {
+        // Put the pre-edit script back exactly, BEFORE publishing.
+        restoreAquarelleEditSnapshot(editId, 'undo');
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error)
+          ?? error?.message
+          ?? 'Could not re-apply the watercolor script — the path edit was restored.';
+        setLastError(message);
+        setApplyMessage(message);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
+      },
+    });
+    return ok ? editId : null;
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+  ]);
+
   // 61-10 (VEC-02 / T-61-34): the ONE path-edit seam. The overlay hands the
   // full next anchor list; this handler is the only writer. A missing stroke or
   // an unreadable path is refused WHOLE — nothing is written and the existing
   // status capsule publishes the fixed line. A null edit id for a READABLE path
   // is an in-flight or unchanged gesture, which must publish nothing.
   const handleAquarelleVectorPathEdit = useCallback(
-    (mutationId: number, anchors: readonly AquarelleAnchor[]): number | null => {
+    async (mutationId: number, anchors: readonly AquarelleAnchor[]): Promise<number | null> => {
       const stroke = getRecordedAquarelleStroke(mutationId);
       if (!stroke || normaliseAquarelleAnchors(stroke.anchors) === undefined) {
         setApplyMessage(VECTOR_PATH_REJECTION_MESSAGE);
@@ -10108,9 +10168,9 @@ export function PhysicsPaintStudio() {
         setLastError(VECTOR_PATH_REJECTION_MESSAGE);
         return null;
       }
-      return beginAquarellePathEdit(mutationId, anchors);
+      return commitAquarelleVectorPathEdit(mutationId, anchors);
     },
-    [],
+    [commitAquarelleVectorPathEdit],
   );
 
   // 261027-klx: the mount's prop surface is the watercolor surface alone —

@@ -2535,8 +2535,10 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // handleAquarelleRenderModeStrokes — same mapper, same capsule.
     // 61-15: a twelfth site — the vector draw re-bake failure in
     // bakeAquarelleVectorCommit — same mapper, same capsule.
+    // 61-15: a thirteenth site — the path-edit re-bake failure in
+    // commitAquarelleVectorPathEdit — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(13); // one import + twelve call sites
+    expect(mentions).toBe(14); // one import + thirteen call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
@@ -5610,8 +5612,9 @@ describe('quick 261028-k03d — key-payload recovery and non-blanking failures',
     // 261101-o2m: the Draft entry arm and the Draft settle's belt join them —
     // both are no-ops once the arm has resolved the frame's durable base.
     // 61-12: the render-mode batch joins the timeline edits.
-    expect(calls, 'delete + move + appearance + render mode + transform + apply + rebake target + draft arm + draft settle').toBe(9);
-    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleRenderModeStrokes', 'handleAquarelleTransformStrokes']) {
+    // 61-15: the shared vector path edit commit joins them.
+    expect(calls, 'delete + move + appearance + render mode + transform + apply + rebake target + draft arm + draft settle + path edit').toBe(10);
+    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleRenderModeStrokes', 'handleAquarelleTransformStrokes', 'commitAquarelleVectorPathEdit']) {
       const start = studio.indexOf(`const ${handler} = useCallback`);
       expect(start, `${handler} exists`).toBeGreaterThan(-1);
       const call = studio.indexOf('await ensureAquarelleDurableBaseRef.current(', start);

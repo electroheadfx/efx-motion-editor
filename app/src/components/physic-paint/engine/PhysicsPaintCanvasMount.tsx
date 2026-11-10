@@ -66,10 +66,11 @@ export function PhysicsPaintCanvasMount(props: {
   onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void;
   onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
   onAquarelleTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
-  /** 61-10 (VEC-02): one completed path-edit gesture, forwarded from the
-   *  layer's ONE overlay seam. Returns the stored edit id (null = refused or
-   *  no-op); the Studio owns history and the refusal publication. */
-  onAquarelleVectorPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => number | null;
+  /** 61-10 (VEC-02) / 61-15 (G-1/G-2): one completed path-edit gesture,
+   *  forwarded from the layer's ONE overlay seam. Resolves to the stored edit
+   *  id once the re-bake settles (null = refused, no-op or failed bake); the
+   *  Studio owns history, the restore and the refusal publication. */
+  onAquarelleVectorPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => Promise<number | null>;
   /** Wave 3 D8: the ONE narrow engine port, forwarded from the layer. */
   onEnginePortReady?: (port: AquarelleEnginePort | null) => void;
 }) {
