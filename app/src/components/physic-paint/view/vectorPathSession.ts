@@ -101,6 +101,26 @@ export function appendVectorDraftAnchor(anchor: VectorDraftAnchor): void {
   };
 }
 
+/**
+ * 61-21 (IN-01): move the draft's rubber-band station. This is a PREVIEW write
+ * only — it places no anchor, records no stroke and starts no bake, so a
+ * pointer move can never commit the path (D-06: a move is not a gesture).
+ * Compares before writing, so a stationary pointer notifies zero effects
+ * (`efx-preact-reactivity` rule 3). The anchor list is CARRIED by reference,
+ * never rebuilt. Returns true only when a draft exists and the station moved.
+ */
+export function moveVectorDraftCursor(point: { readonly x: number; readonly y: number }): boolean {
+  const draft = vectorDrawDraft.peek();
+  if (draft === null) return false;
+  const cursor = draft.cursor;
+  if (cursor !== null && cursor.x === point.x && cursor.y === point.y) return false;
+  vectorDrawDraft.value = {
+    anchors: draft.anchors,
+    cursor: { x: point.x, y: point.y },
+  };
+  return true;
+}
+
 /** Drop the draft. Escape / finish call this; a tool toggle deliberately does not. */
 export function clearVectorDraft(): void {
   writeIfChanged(vectorDrawDraft, null);

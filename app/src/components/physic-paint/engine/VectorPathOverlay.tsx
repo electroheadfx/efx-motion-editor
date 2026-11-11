@@ -38,6 +38,7 @@ import {
   normaliseVectorAnchors,
   resolveAnchorHandles,
   resolveRenderModeForBrushId,
+  sampleVectorPath,
   type AquarelleStroke,
   type ResolvedAnchorHandles,
   type Vec2,
@@ -80,11 +81,13 @@ import {
   appendVectorDraftAnchor,
   clearVectorAnchorSelection,
   clearVectorDraft,
+  moveVectorDraftCursor,
   pathEditMutationId,
   setVectorAnchorSelection,
   vectorAnchorSelection,
   vectorDrawDraft,
   vectorPenActive,
+  type VectorDrawDraft,
   type VectorDraftAnchor,
 } from '../view/vectorPathSession';
 
@@ -374,6 +377,33 @@ function drawnPathOf(
     color: options.color ?? null,
     selected: options.selected === true,
   };
+}
+
+/**
+ * 61-21 (IN-01): the provisional rubber-band polyline, in layer pixels. It
+ * appends a transient `auto` station at the draft cursor, samples the ONE spine
+ * module and screen-projects the samples — never through `renderPath`, so the
+ * preview adds no marker, no handle and no envelope, and never touches
+ * `DrawnVectorPath`. Construction chrome: it stays visible in wireframe too.
+ */
+function draftPreviewPointsOf(
+  draft: VectorDrawDraft | null,
+  width: number,
+  height: number,
+): string | null {
+  if (draft === null || draft.cursor === null || draft.anchors.length === 0) return null;
+  const cursor = draft.cursor;
+  const { points } = sampleVectorPath([
+    ...draft.anchors,
+    { x: cursor.x, y: cursor.y, kind: 'auto' },
+  ]);
+  if (points.length === 0) return null;
+  return points
+    .map((point) => {
+      const at = uvToScreen(point, width, height);
+      return `${at.x},${at.y}`;
+    })
+    .join(' ');
 }
 
 /**
@@ -723,6 +753,8 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       alwaysEnvelope: wireframe,
       selected: penActive,
     });
+  // 61-21 (IN-01): the live rubber band to the cursor — display-only.
+  const draftPreviewPoints = draftPreviewPointsOf(draft, props.width, props.height);
 
   if (recorded.length === 0 && draftPath === null && !penActive && editTargetMutationId === null) {
     return null;
@@ -755,6 +787,18 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   };
 
   const pointDistancePx = (a: CanvasPoint, b: CanvasPoint): number => Math.hypot(a.x - b.x, a.y - b.y);
+
+  /**
+   * 61-21 (IN-01): the draw state's pointer move writes the preview station
+   * through the ONE session writer. It never places an anchor, records a
+   * stroke or starts a bake — a move is not a gesture (D-06). No
+   * `preventDefault`/`stopPropagation`: nothing about a move is claimed.
+   */
+  const handleDraftPointerMove = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    const pointerUv = pointerUvOf(event);
+    if (pointerUv === null) return;
+    moveVectorDraftCursor(pointerUv);
+  };
 
   const handlePointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -985,7 +1029,11 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
         cursor: drawInteractive ? 'crosshair' : 'default',
       }}
       onPointerDown={interactive ? (editInteractive ? startEditDrag : handlePointerDown) : undefined}
-      onPointerMove={editInteractive ? continueEditDrag : undefined}
+      // 61-21 (IN-01): the move handler exists ONLY in the draw state; the
+      // edit drag keeps its own binding untouched.
+      onPointerMove={
+        editInteractive ? continueEditDrag : drawInteractive ? handleDraftPointerMove : undefined
+      }
       onPointerUp={editInteractive ? finishEditDrag : undefined}
       onPointerCancel={editInteractive ? cancelEditDrag : undefined}
       // Preact's DOM event prop is `onDblClick`; it binds the real `dblclick`.
@@ -1004,6 +1052,19 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
         }}
       >
         {recorded.map((drawn) => renderPath(drawn, scale, props.width, props.height, wireframe))}
+        {/* 61-21 (IN-01): the provisional spine, drawn BEFORE the committed
+            draft path so the placed segments stay legible. */}
+        {draftPreviewPoints === null ? null : (
+          <polyline
+            data-testid="vector-path-draft-preview"
+            points={draftPreviewPoints}
+            fill="none"
+            stroke={SELECTED_SPINE_COLOR}
+            strokeWidth={1}
+            strokeDasharray="4 3"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
         {draftPath === null ? null : renderPath(draftPath, scale, props.width, props.height, wireframe)}
       </svg>
     </div>
