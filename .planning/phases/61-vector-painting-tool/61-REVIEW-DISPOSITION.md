@@ -5,83 +5,59 @@ titles: json
 findings:
   - id: CR-01
     severity: critical
-    disposition: open
-    title: "An interrupted path-edit drag is never cleared — deleted anchors come back and a stranded drag commits a phantom edit"
-  - id: CR-02
-    severity: critical
-    disposition: skipped
-    title: "The path-edit commit claims the in-flight latch only after `ensureAquarelleDurableBaseRef` — a concurrent commit writes the script with no ledger entry and no rollback"
+    disposition: fixed
+    title: "Residual half of the earlier CR-01: a mid-drag Delete is undone on release — the key seam wrote the new anchors but left the drag alive, so the pointerup re-committed `anchorsAtStart`"
   - id: WR-01
     severity: warning
     disposition: open
-    title: "Shift+A writes a stroke selection while Select entry is refused under wireframe"
+    title: "The widened 61-21 predicate lets Delete fall through to whole-stroke deletion during a path edit on a focused control"
   - id: WR-02
     severity: warning
     disposition: open
-    title: "A failed path-edit bake rolls back through the authority-checked restore — an interleaved bump skips the rollback while the capsule says it succeeded"
+    title: "+Key publishes ROTO_ADD_KEY_SCRIPT_COPY_FAILED when the previous real key has no recorded paint (a no-op should succeed)"
   - id: WR-03
     severity: warning
     disposition: open
-    title: "The draw-site bake refuses silently and its result is discarded"
+    title: "`addKey` claims `keyActionInFlightRef` after the blank-build await, so a second click can run the sequence twice"
   - id: WR-04
     severity: warning
     disposition: open
-    title: "An open path edit survives the selection moving to a different vector stroke"
-  - id: WR-05
-    severity: warning
-    disposition: open
-    title: "The capture-phase key guard only knows text fields — Enter on a focused button is swallowed by the draft handler"
+    title: "The new curve-mode failure branch omits the reanchor/restore result the path-edit seam already carries"
   - id: IN-01
     severity: info
     disposition: open
-    title: "`VectorDrawDraft.cursor` is still written and never read (repeat of the previous WR-01/WR-02)"
+    title: "The Curve row discards `applyCurveMode`'s boolean — guard refusals stay silent"
   - id: IN-02
     severity: info
     disposition: open
-    title: "`settleDraftScript` refuses silently when a mutation holds the gates, and `switchActiveTrack` assumes a message was surfaced"
+    title: "AQTL encode guard fails open on prototype keys (`VECTOR_CURVE_MODE_CODE['constructor']`); decode stays fail-closed"
   - id: IN-03
     severity: info
     disposition: open
-    title: "The Anchor width commit's result is discarded, so a refusal is indistinguishable from a success"
-  - id: CR-03
-    severity: critical
-    disposition: fixed
-    title: "Wireframe ON and Draft OFF can coexist — Select and Shift+A escape the Draft suppression"
-  - id: CR-04
-    severity: critical
-    disposition: fixed
-    title: "A drawn vector path and every path edit are recorded but never baked"
-  - id: CR-05
-    severity: critical
-    disposition: fixed
-    title: "The path-edit target can diverge from the selection — Anchor width then writes to the wrong stroke"
-  - id: CR-06
-    severity: critical
-    disposition: fixed
-    title: "Select entry does not release the vector pen — both surfaces stay latched and the overlay swallows selection clicks"
-open: 9
-total: 14
-recorded: 2026-11-10T22:26:33.011Z
+    title: "`recordedCurveModeField` has no production caller (necessity) — three seams inline the same rule"
 ---
 
-# Phase 61: Code Review Disposition
+# Phase 61 — Review Disposition
 
-| Finding | Severity | Disposition | Source |
-|---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
-| CR-02 | critical | skipped | refuted by verifier: beginAquarellePathEdit checks the same module latch before its write (aquarelleStrokeSelection.ts:945) and runAquarelleScriptRebake claims it synchronously before its first await, so write-without-ledger is unreachable |
-| WR-01 | warning | open | - |
-| WR-02 | warning | open | - |
-| WR-03 | warning | open | - |
-| WR-04 | warning | open | - |
-| WR-05 | warning | open | - |
-| IN-01 | info | open | - |
-| IN-02 | info | open | - |
-| IN-03 | info | open | - |
-| CR-03 | critical | fixed | closed by 61-15..61-20; confirmed in this review |
-| CR-04 | critical | fixed | closed by 61-15..61-20; confirmed in this review |
-| CR-05 | critical | fixed | closed by 61-15..61-20; confirmed in this review |
-| CR-06 | critical | fixed | closed by 61-15..61-20; confirmed in this review |
+Report: `61-REVIEW.md` (incremental, 39 files changed since `ab91201db5`).
 
-Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
-Set `deferred` by hand and put the reason in the Source cell; both are preserved.
+| ID | Severity | Disposition | Finding |
+|----|----------|-------------|---------|
+| CR-01 | critical | **fixed** (`9be725501`) | Mid-drag Delete undone on release |
+| WR-01 | warning | open | Widened key predicate lets Delete delete the whole stroke during a path edit |
+| WR-02 | warning | open | +Key reports a copy failure when there was simply nothing to copy |
+| WR-03 | warning | open | `keyActionInFlightRef` claimed after the first await — double-run window |
+| WR-04 | warning | open | Curve-mode failure branch drops the reanchor/restore result |
+| IN-01 | info | open | Curve row discards its apply boolean |
+| IN-02 | info | open | Encode guard fails open on prototype keys |
+| IN-03 | info | open | `recordedCurveModeField` has no caller |
+
+**Totals:** 1 critical (fixed), 4 warnings open, 3 info open.
+
+The blocker was fixed in this run because it defeats VEC-07's one-edit-per-operation
+guarantee and VEC-02's edit correctness: the user's Delete was visibly undone by the
+pointerup. The fix adds `cancelActiveDrag` to the key seam's handler contract and calls it
+before the write, pinned by an overlay test asserting cancel-before-edit ordering.
+
+The four warnings and three infos are triaged open — each is a narrower correctness or UX
+seam that deserves its own pass rather than a rushed edit at phase close.
