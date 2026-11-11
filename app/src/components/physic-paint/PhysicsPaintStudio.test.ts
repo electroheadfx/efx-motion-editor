@@ -7026,10 +7026,14 @@ describe('61-13 wireframe gates — reasons, Draft ownership, idempotency', () =
   it('states every gated control reason in the rail source', () => {
     // The four paint literals are composed as `${label} (${shortcut}) — ...`
     // and asserted verbatim by the RENDERED rail pins (PhysicsPaintToolRail.
-    // test.ts); Dry and the picker carry direct literals.
+    // test.ts); Dry carries a direct literal.
     expect(toolRail).toContain('— turn wireframe off to paint');
     expect(toolRail).toContain("'Dry (F) — turn wireframe off to paint'");
-    expect(toolRail).toContain("'Picker (I) — turn wireframe off to pick'");
+    // 61-25 (UI-05 / §5): the contract DISARMS the picker under wireframe; it
+    // never removes the function. The button stays pressable with its shipped
+    // title, so re-adding a wireframe gate here would re-break the contract.
+    expect(toolRail).not.toContain('turn wireframe off to pick');
+    expect(toolRail).toContain('title="Picker (I) — click the canvas to sample the color under the cursor');
     expect(toolRail).toContain('disabled={railDisabled || wireframeActive || (id === \'water\' && !wetAvailable)}');
     expect(toolRail).toContain('wireframeReason');
   });
