@@ -51,6 +51,14 @@ export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
   },
 ];
 
+/**
+ * 61-25 (UI-01): the Copywriting Contract's Primary CTA, VERBATIM. The pen
+ * tooltip is the phase's only teaching surface for the nonstandard draw law,
+ * so it lives at module scope — a single named constant cannot drift inline.
+ */
+const VECTOR_PEN_TOOLTIP =
+  'Vector pen (V) — click to place a smooth anchor · hold Alt for a corner · Enter or double-click to finish · click the first anchor to finish there';
+
 /** UI checklist rows 8/9: Water color rail = Brush | Water | Pen | Lift | Dry. */
 const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   id: AquarelleTool;
@@ -173,7 +181,7 @@ export function WatercolorRail({
         class={`physics-paint-icon-button${penActive ? ' active' : ''}`}
         data-testid="aquarelle-vector-pen-toggle"
         disabled={railDisabled}
-        title="Vector pen — draw a vector path (V)"
+        title={VECTOR_PEN_TOOLTIP}
         aria-label="Vector pen"
         aria-pressed={penActive}
         onClick={() => toggleVectorPen()}
@@ -188,10 +196,11 @@ export function WatercolorRail({
         type="button"
         class={`physics-paint-icon-button${pickerActive ? ' active' : ''}`}
         data-testid="aquarelle-picker-toggle"
-        disabled={railDisabled || wireframeActive}
-        title={wireframeActive
-          ? 'Picker (I) — turn wireframe off to pick'
-          : 'Picker (I) — click the canvas to sample the color under the cursor · hold Alt for a temporary picker'}
+        // 61-25 (UI-05 / §5): the contract DISARMS the picker under wireframe,
+        // it never removes the function — picking is non-depositing, so the
+        // button stays pressable with its shipped title.
+        disabled={railDisabled}
+        title="Picker (I) — click the canvas to sample the color under the cursor · hold Alt for a temporary picker"
         aria-label="Picker"
         aria-pressed={pickerActive}
         onClick={() => {
