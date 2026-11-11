@@ -123,9 +123,10 @@ coverage:
   - id: D3
     description: "In the running Studio, picking a brush or releasing a paint slider with an armed selection visibly rewrites the selected paint strokes as ONE undo entry and one revision bump; lift strokes never change"
     requirement: "QUICK-261111-UCF"
-    verification: []
+    verification:
+      - "UAT PASSED 2026-11-11 (user-confirmed): brush picks from all three surfaces and every slider release rewrite the selected strokes as ONE undo entry; Reset is one entry; lift strokes untouched"
     human_judgment: true
-    rationale: "The fixtures use a registered fake port; the live one-ledger-edit, one-undo, one-seed-re-roll result through the Studio port path needs a visible UAT row (project law: automated-ready until live UAT passes)."
+    rationale: "The fixtures use a registered fake port; the live one-ledger-edit, one-undo, one-seed-re-roll result through the Studio port path needed a visible UAT row (project law: automated-ready until live UAT passes) — that row passed 2026-11-11."
 
 duration: 15min
 completed: 2026-11-11
@@ -226,8 +227,7 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- Automated-ready: the seam, all pick surfaces and all release boundaries are wired and pinned.
-- Pending visible UAT: with a selection armed, a brush pick or slider release should rewrite the selected paint strokes as one undo entry, and lift strokes must stay untouched.
+- Shipped: the seam, all pick surfaces and all release boundaries are wired and pinned, and the live UAT passed on 2026-11-11 (brush picks and slider releases rewrite the selected strokes as one undo entry; lift strokes untouched).
 - No Studio edit, no record-state change, no engine/compositor/`.mce` change.
 
 ---

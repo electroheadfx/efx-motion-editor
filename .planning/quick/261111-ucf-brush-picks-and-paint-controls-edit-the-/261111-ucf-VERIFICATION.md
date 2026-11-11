@@ -1,7 +1,7 @@
 ---
 phase: 261111-ucf-brush-picks-and-paint-controls-edit-the-
 verified: 2026-11-11T21:26:36Z
-status: human_needed
+status: passed
 score: 8/8 must-haves verified
 covered_files:
   - ".planning/quick/261111-ucf-brush-picks-and-paint-controls-edit-the-/261111-ucf-PLAN.md"
@@ -42,7 +42,7 @@ human_verification:
 
 **Phase Goal:** Selecting a stroke (hand-painted or vector) and picking a brush / moving a paint slider changes THAT stroke, while the live brush still updates as today.
 **Verified:** 2026-11-11T21:26:36Z
-**Status:** human_needed (all must-haves verified; visible live-UAT rows pending)
+**Status:** passed — all must-haves verified, and the visible live-UAT rows below were confirmed by the user on 2026-11-11
 **Re-verification:** No — initial verification
 
 ## Goal Achievement
@@ -146,6 +146,8 @@ None. No `TBD`/`FIXME`/`XXX`/`HACK`/`PLACEHOLDER` markers in any changed file; n
 
 ### Human Verification Required
 
+> **UAT RESULT: PASSED** — user-confirmed 2026-11-11. All three rows below passed in the live Studio.
+
 1. **Live pick repaints the selected stroke (one undo)**
    - **Test:** In the running Studio, arm Select mode, select a hand-painted (or vector) stroke, then pick another brush from the top-bar dropdown (repeat once from a library card and once from a docker row).
    - **Expected:** The selected stroke repaints to the picked brush, the live brush also changes, the dropdown closes, and ONE undo reverts the repaint.
@@ -163,7 +165,7 @@ None. No `TBD`/`FIXME`/`XXX`/`HACK`/`PLACEHOLDER` markers in any changed file; n
 
 ### Gaps Summary
 
-No gaps. All eight must-have truths are present, substantive, wired and covered by passing automated checks. The only remaining step is the visible live UAT recorded above — the plan itself requires that row before calling the feature shipped.
+No gaps. All eight must-have truths are present, substantive, wired and covered by passing automated checks. The live UAT rows recorded above passed on 2026-11-11 (user-confirmed), so the feature is shipped, not merely automated-ready.
 
 ---
 
