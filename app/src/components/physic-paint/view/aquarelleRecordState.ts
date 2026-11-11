@@ -25,6 +25,7 @@ import {
   sampleVectorPath,
   toStudioStroke,
   type AquarelleAnchor,
+  type AquarelleCurveMode,
   type AquarelleDryEvent,
   type AquarellePayloadEvent,
   type AquarelleRenderMode,
@@ -971,6 +972,20 @@ export function updateAquarelleRenderModeInScript(
   }
   bumpAquarelleStrokesRevision();
   return targets.length;
+}
+
+/**
+ * 61-30 (G-20): switch the curve-evaluation mode on every target stroke and
+ * re-sample its points from the new evaluation in the SAME write.
+ */
+export function updateAquarelleCurveModeInScript(
+  mutationIds: readonly number[],
+  mode: AquarelleCurveMode,
+): number {
+  // SCRATCH STUB (61-30 RED): writes nothing until the batch door lands.
+  void mutationIds
+  void mode
+  return 0
 }
 
 /**

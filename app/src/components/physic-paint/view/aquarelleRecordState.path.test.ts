@@ -15,6 +15,7 @@ import {
   sampleVectorPath,
   toStudioStroke as aquarelleToStudioStroke,
   type AquarelleAnchor,
+  type AquarelleCurveMode,
   type AquarellePayloadEvent,
   type AquarellePoint,
   type AquarelleStroke,
@@ -28,6 +29,7 @@ import {
   resetAquarelleRecordState,
   transformAquarelleStrokesInScript,
   translateAquarelleStrokesInScript,
+  updateAquarelleCurveModeInScript,
   updateAquarellePathInScript,
   type AquarelleStrokeTransform,
 } from './aquarelleRecordState';
@@ -504,6 +506,153 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     // The spine is unchanged, but it is a FRESH re-derived array.
     expect(after.points).not.toBe(before.points);
     expect(after.points).toEqual(before.points);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+  });
+});
+
+// ============================================================
+//  61-30 (G-20) — the curve-mode switch: a committed mode change
+//  re-samples the points from the new evaluation in the SAME
+//  write, and switching back restores the authored geometry
+//  byte-identical (the authored handles are never rewritten).
+// ============================================================
+
+/** An authored path with one off-curve bezier anchor, so spline differs from bezier. */
+const CURVE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.2, y: 0.5, kind: 'auto' },
+  { x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.4, y: 0.9 }, out: { x: 0.6, y: 0.1 } },
+  { x: 0.8, y: 0.5, kind: 'auto' },
+];
+
+/** A second authored path, also with a bezier anchor, used by the path-write case. */
+const EDITED_CURVE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.2, y: 0.6, kind: 'auto' },
+  { x: 0.5, y: 0.6, kind: 'bezier', in: { x: 0.4, y: 1 }, out: { x: 0.6, y: 0.2 } },
+  { x: 0.8, y: 0.6, kind: 'auto' },
+];
+
+/** The derived-auto evaluation view, written out here (never asked from the code under test). */
+function splineView(anchors: readonly AquarelleAnchor[]): readonly AquarelleAnchor[] {
+  return anchors.map((anchor) => ({
+    x: anchor.x,
+    y: anchor.y,
+    kind: 'auto' as const,
+    ...(anchor.width === undefined ? {} : { width: anchor.width }),
+  }));
+}
+
+/** The sampled spine of one evaluation mode, stamped with the vector commit shape. */
+function sampledModePoints(
+  anchors: readonly AquarelleAnchor[],
+  mode: 'bezier' | 'spline',
+): readonly AquarellePoint[] {
+  const source = mode === 'spline' ? splineView(anchors) : anchors;
+  return sampleVectorPath(source).points.map((p) => ({
+    x: p.x,
+    y: p.y,
+    p: 1,
+    tx: 0,
+    ty: 0,
+    tw: 0,
+  }));
+}
+
+/** A recorded vector stroke with the authored anchors and, when given, a curve mode. */
+function curveStroke(mutationId: number, mode?: 'bezier' | 'spline'): AquarelleStroke {
+  return {
+    ...stroke(mutationId, sampledModePoints(CURVE_ANCHORS, mode ?? 'bezier'), CURVE_ANCHORS),
+    renderMode: 'simple-ribbon',
+    ...(mode === undefined ? {} : { curveMode: mode }),
+  };
+}
+
+describe('61-30 G-20 — the curve-mode switch re-samples the path', () => {
+  beforeEach(() => {
+    resetAquarelleRecordState();
+  });
+
+  it('stores the mode and the spline points in one write, is idempotent and restores on bezier', () => {
+    const id = 63001;
+    recordAquarelleStroke(id, curveStroke(id));
+    const index = getRecordedAquarellePayloadTimeline().length - 1;
+    const before = getRecordedAquarelleStroke(id)!;
+    const beforeEntry = timelineStrokeAt(index);
+    const revision = aquarelleStrokesRevision.value;
+    const splinePoints = sampledModePoints(CURVE_ANCHORS, 'spline');
+    expect(splinePoints).not.toEqual(before.points);
+    expect('curveMode' in before).toBe(false);
+
+    expect(updateAquarelleCurveModeInScript([id], 'spline')).toBe(1);
+
+    const switched = getRecordedAquarelleStroke(id)!;
+    expect(switched.curveMode).toBe('spline');
+    // The authored geometry is untouched by the switch — kinds and handles stay.
+    expect(switched.anchors).toEqual(CURVE_ANCHORS);
+    expectAnchor(switched.anchors![1], {
+      x: 0.5,
+      y: 0.5,
+      kind: 'bezier',
+      in: { x: 0.4, y: 0.9 },
+      out: { x: 0.6, y: 0.1 },
+    });
+    // The points ARE the spline evaluation, stamped with the commit shape.
+    expect(switched.points).toEqual(splinePoints);
+    // The payload entry is replaced at the SAME index with the new mode and pts.
+    const switchedEntry = timelineStrokeAt(index);
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(1);
+    expect(getRecordedAquarellePayloadTimeline().indexOf(beforeEntry)).toBe(-1);
+    expect(switchedEntry).not.toBe(beforeEntry);
+    expect(switchedEntry.engine.curveMode).toBe('spline');
+    expect(switchedEntry.pts).toHaveLength(splinePoints.length);
+    expect(switchedEntry.pts[150]!.y).toBeCloseTo(splinePoints[150]!.y, 12);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+
+    // A second identical call is a no-op — one mode, one write, one bump.
+    expect(updateAquarelleCurveModeInScript([id], 'spline')).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+
+    // Switching back drops the key and restores the authored Bézier points.
+    expect(updateAquarelleCurveModeInScript([id], 'bezier')).toBe(1);
+    const restored = getRecordedAquarelleStroke(id)!;
+    expect('curveMode' in restored).toBe(false);
+    expect(restored.points).toEqual(sampledModePoints(CURVE_ANCHORS, 'bezier'));
+    expect(restored.points).toEqual(before.points);
+    expect('curveMode' in timelineStrokeAt(index).engine).toBe(false);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 2);
+
+    // An anchorless stroke and an unknown mode write nothing.
+    const plainId = 63003;
+    recordAquarelleStroke(plainId, stroke(plainId, [point(0.2, 0.5), point(0.3, 0.5)]));
+    const plainRevision = aquarelleStrokesRevision.value;
+    expect(updateAquarelleCurveModeInScript([plainId], 'spline')).toBe(0);
+    expect(updateAquarelleCurveModeInScript([id], 'linear' as AquarelleCurveMode)).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(plainRevision);
+    expect('anchors' in getRecordedAquarelleStroke(plainId)!).toBe(false);
+  });
+
+  it('samples the edited path through the stroke stored spline mode', () => {
+    const id = 63005;
+    recordAquarelleStroke(id, curveStroke(id, 'spline'));
+    const index = getRecordedAquarellePayloadTimeline().length - 1;
+    const expected = sampledModePoints(EDITED_CURVE_ANCHORS, 'spline');
+    // Non-degenerate: the authored Bezier evaluation of the edited path differs.
+    expect(expected).not.toEqual(sampledModePoints(EDITED_CURVE_ANCHORS, 'bezier'));
+    const revision = aquarelleStrokesRevision.value;
+
+    expect(updateAquarellePathInScript(id, EDITED_CURVE_ANCHORS)).toBe(1);
+
+    const after = getRecordedAquarelleStroke(id)!;
+    // The mode rides the stroke through the edit ...
+    expect(after.curveMode).toBe('spline');
+    expect(after.anchors).toEqual(EDITED_CURVE_ANCHORS);
+    // ... and the re-derived points ARE the spline evaluation of the edited path.
+    expect(after.points).toEqual(expected);
+    expect(after.points).not.toEqual(sampledModePoints(EDITED_CURVE_ANCHORS, 'bezier'));
+    expect(after.points[150]!.y).toBeCloseTo(expected[150]!.y, 12);
+    // The payload entry agrees on both halves in the same write.
+    const entry = timelineStrokeAt(index);
+    expect(entry.engine.curveMode).toBe('spline');
+    expect(entry.pts[150]!.y).toBeCloseTo(expected[150]!.y, 12);
     expect(aquarelleStrokesRevision.value).toBe(revision + 1);
   });
 });

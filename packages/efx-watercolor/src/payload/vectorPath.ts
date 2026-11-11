@@ -30,6 +30,8 @@ import {
   ANCHOR_WIDTH_DEFAULT,
   ANCHOR_WIDTH_MAX,
   ANCHOR_WIDTH_MIN,
+  sampleVectorPath,
+  type SampledVectorPath,
   type Vec2,
   type VectorAnchor,
   type VectorAnchorKind,
@@ -155,6 +157,31 @@ export function recordedCurveModeField(
   curveMode: AquarelleCurveMode,
 ): { curveMode?: AquarelleCurveMode } {
   return curveMode === DEFAULT_AQUARELLE_CURVE_MODE ? {} : { curveMode }
+}
+
+/**
+ * The evaluation VIEW of an anchor list (G-20). `bezier` returns the list
+ * untouched; `spline` returns a frozen list where every anchor is `auto` and
+ * carries its width, so the spine's derived-smooth family owns the tangents.
+ * Authored handles are dropped from the VIEW only — the document keeps them.
+ */
+export function resolveCurveAnchors(
+  anchors: readonly VectorAnchor[],
+  curveMode: AquarelleCurveMode,
+): readonly VectorAnchor[] {
+  // SCRATCH STUB (61-30 RED): returns the list untouched until the view lands.
+  void curveMode
+  return anchors
+}
+
+/** One `sampleVectorPath` walk over the mode's evaluation view (G-20). */
+export function evaluateAquarellePath(
+  anchors: readonly VectorAnchor[],
+  curveMode: AquarelleCurveMode,
+): SampledVectorPath {
+  // SCRATCH STUB (61-30 RED): always evaluates Bézier until the dispatch lands.
+  void curveMode
+  return sampleVectorPath(anchors)
 }
 
 type MutableAnchor = {

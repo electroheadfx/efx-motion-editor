@@ -22,6 +22,7 @@ import {
   ANCHOR_WIDTH_MAX,
   ANCHOR_WIDTH_MIN,
   isUniformWidthProfile,
+  sampleVectorPath,
 } from '../vector/spine'
 import {
   AQUARELLE_CURVE_MODES,
@@ -29,6 +30,7 @@ import {
   DEFAULT_AQUARELLE_CURVE_MODE,
   DEFAULT_AQUARELLE_RENDER_MODE,
   anchorsEqual,
+  evaluateAquarellePath,
   isAquarelleCurveMode,
   isAquarelleRenderMode,
   isVectorStroke,
@@ -37,6 +39,7 @@ import {
   recordedCurveModeField,
   resolveAquarelleCurveMode,
   resolveAquarelleRenderMode,
+  resolveCurveAnchors,
   vectorPathsEqual,
   type AquarelleAnchor,
 } from './vectorPath'
@@ -147,6 +150,72 @@ describe('curve mode (G-20: explicit evaluation discriminator, absent means Béz
     expect(recordedCurveModeField('bezier')).toEqual({})
     expect(Object.keys(recordedCurveModeField('bezier'))).toHaveLength(0)
     expect(recordedCurveModeField('spline')).toEqual({ curveMode: 'spline' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2c. Curve evaluation (G-20: spline is a VIEW over the same anchor list —
+//     the authored kinds and handles stay in the document, untouched)
+// ---------------------------------------------------------------------------
+
+describe('curve evaluation (G-20: spline is a view, never a rewrite)', () => {
+  const STORED: readonly AquarelleAnchor[] = [
+    { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.1, y: 0.4 }, out: { x: 0.3, y: 0.6 } },
+    { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 },
+    { x: 0.8, y: 0.5, kind: 'bezier', in: { x: 0.7, y: 0.5 }, out: { x: 0.9, y: 0.5 } },
+  ]
+
+  /** The derived-auto view, written out here so the test never asks the code under test. */
+  const SPLINE_VIEW: readonly AquarelleAnchor[] = [
+    { x: 0.2, y: 0.5, kind: 'auto' },
+    { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 },
+    { x: 0.8, y: 0.5, kind: 'auto' },
+  ]
+
+  it('resolveCurveAnchors returns the input list as-is for bezier', () => {
+    expect(resolveCurveAnchors(STORED, 'bezier')).toBe(STORED)
+  })
+
+  it('resolveCurveAnchors derives the spline view with every anchor auto and no stored handles', () => {
+    const view = resolveCurveAnchors(STORED, 'spline')
+    expect(view).not.toBe(STORED)
+    expect(view).toEqual(SPLINE_VIEW)
+    expect(Object.isFrozen(view)).toBe(true)
+    for (const anchor of view) {
+      expect(anchor.kind).toBe('auto')
+      expect('in' in anchor).toBe(false)
+      expect('out' in anchor).toBe(false)
+    }
+    // The width factor is a paint property, not an evaluation one.
+    expect(view[1]!.width).toBe(1.8)
+    // The DOCUMENT keeps the authored handles — a view is never a write-back.
+    expect(STORED[0]).toEqual({
+      x: 0.2,
+      y: 0.5,
+      kind: 'bezier',
+      in: { x: 0.1, y: 0.4 },
+      out: { x: 0.3, y: 0.6 },
+    })
+  })
+
+  it('resolveCurveAnchors never mutates or aliases the input when deriving the spline view', () => {
+    const stored: AquarelleAnchor[] = STORED.map((anchor) => ({ ...anchor }))
+    const snapshot = JSON.parse(JSON.stringify(stored)) as readonly AquarelleAnchor[]
+    const view = resolveCurveAnchors(stored, 'spline')
+    expect(view).not.toBe(stored)
+    expect(view[0]).not.toBe(stored[0])
+    expect(stored).toEqual(snapshot)
+  })
+
+  it('evaluateAquarellePath samples the mode evaluation view and the two modes differ', () => {
+    const bezier = evaluateAquarellePath(STORED, 'bezier')
+    const spline = evaluateAquarellePath(STORED, 'spline')
+    expect(bezier).toEqual(sampleVectorPath(STORED))
+    // A stored off-curve handle has no effect under spline: the sampled spine is
+    // exactly the one over the derived-auto view.
+    expect(spline).toEqual(sampleVectorPath(SPLINE_VIEW))
+    // Non-degenerate: the two evaluations really do draw different curves.
+    expect(spline.points).not.toEqual(bezier.points)
   })
 })
 

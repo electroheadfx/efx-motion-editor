@@ -20,6 +20,7 @@ import {
   type Vec2,
   type VectorAnchor,
   resolveAnchorHandles,
+  sampleVectorPath,
 } from '@efxlab/efx-watercolor/payload';
 import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
 import {
@@ -471,6 +472,90 @@ describe('buildDraftPath', () => {
     expect(two.points.length).toBeGreaterThan(2);
     expect(two.points[0]).toEqual({ x: 0.2, y: 0.5 });
     expect(two.points[two.points.length - 1]).toEqual({ x: 0.8, y: 0.5 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+//  61-30 (G-20) — spline is an EVALUATION mode: every read path samples the
+//  derived-auto view and never rewrites a stored kind or handle.
+// ---------------------------------------------------------------------------
+
+describe('61-30 curve mode — spline evaluates a view and never rewrites the path', () => {
+  const STORED: readonly VectorAnchor[] = [
+    auto(0.2, 0.5),
+    bezier(0.5, 0.5, { x: 0.4, y: 0.9 }, { x: 0.6, y: 0.1 }),
+    auto(0.8, 0.5),
+  ];
+
+  /** The derived-auto view, written out here so the test never asks the code under test. */
+  const SPLINE_VIEW: readonly VectorAnchor[] = [
+    auto(0.2, 0.5),
+    auto(0.5, 0.5),
+    auto(0.8, 0.5),
+  ];
+
+  it('buildDraftPath samples the spline view and carries the STORED anchors untouched', () => {
+    const draft = buildDraftPath(STORED, 'spline');
+    // Untouched: the authored bezier anchor is carried by reference, handles and all.
+    expect(draft.anchors).toHaveLength(3);
+    for (let index = 0; index < STORED.length; index += 1) {
+      expect(draft.anchors[index]).toBe(STORED[index]);
+    }
+    expect(draft.anchors[1]!.kind).toBe('bezier');
+    expect(draft.anchors[1]!.in).toEqual({ x: 0.4, y: 0.9 });
+    expect(draft.anchors[1]!.out).toEqual({ x: 0.6, y: 0.1 });
+    // The points ARE the spline evaluation, not the authored Bézier one.
+    expect(draft.points).toEqual(sampleVectorPath(SPLINE_VIEW).points);
+    expect(draft.points).not.toEqual(sampleVectorPath(STORED).points);
+  });
+
+  it('promoteAnchorForDrag converts nothing under spline', () => {
+    const promoted = promoteAnchorForDrag(STORED, 1, 'spline');
+    expect(promoted).toHaveLength(3);
+    expect(promoted[0]).toBe(STORED[0]);
+    // The authored bezier anchor survives the press byte-identical.
+    expect(promoted[1]).toBe(STORED[1]);
+    expect(promoted[1]!.kind).toBe('bezier');
+    expect(promoted[1]!.in).toEqual({ x: 0.4, y: 0.9 });
+    expect(promoted[1]!.out).toEqual({ x: 0.6, y: 0.1 });
+    // An auto anchor is NOT promoted either: spline owns every tangent.
+    const autoPromoted = promoteAnchorForDrag(STORED, 0, 'spline');
+    expect(autoPromoted[0]).toBe(STORED[0]);
+    expect(autoPromoted[0]!.kind).toBe('auto');
+    expect('in' in autoPromoted[0]!).toBe(false);
+    expect('out' in autoPromoted[0]!).toBe(false);
+  });
+
+  it('hitTestVectorPath offers no handle under spline even on a stored handle endpoint', () => {
+    const anchors = [bezier(0.5, 0.5, { x: 0.45, y: 0.5 }, { x: 0.55, y: 0.5 })];
+    const handles = resolveAnchorHandles(anchors);
+    const onOutHandle = { x: 0.55, y: 0.5 };
+    // The same pointer in the authored mode IS the out handle ...
+    expect(hitTestVectorPath(anchors, handles, onOutHandle, 1000, 1000, 1, 'bezier')).toEqual({
+      kind: 'handle-out',
+      index: 0,
+    });
+    // ... and under spline the stored handles are dormant: nothing there at all.
+    expect(hitTestVectorPath(anchors, handles, onOutHandle, 1000, 1000, 1, 'spline')).toBeNull();
+  });
+
+  it('insertAnchorOnSegment lands on the spline segment, not the stored Bézier curve', () => {
+    // Spline midpoint of segment 1 is (0.65, 0.5) — the straight derived view.
+    // The authored out handle (0.6, 0.1) pulls the Bézier midpoint to y = 0.35.
+    const spline = insertAnchorOnSegment(STORED, 1, { x: 0.65, y: 0.5 }, 'spline');
+    expect(spline).toHaveLength(4);
+    const inserted = spline[2]!;
+    expect(inserted.kind).toBe('auto');
+    expect(inserted.x).toBeCloseTo(0.65, 6);
+    expect(inserted.y).toBeCloseTo(0.5, 6);
+    expect(inserted.y).not.toBeCloseTo(0.35, 2);
+    // Every authored anchor is carried by reference, order preserved.
+    expect(spline[0]).toBe(STORED[0]);
+    expect(spline[1]).toBe(STORED[1]);
+    expect(spline[3]).toBe(STORED[2]);
+    // The same click in the authored mode really does land elsewhere.
+    const authored = insertAnchorOnSegment(STORED, 1, { x: 0.65, y: 0.5 }, 'bezier');
+    expect(authored[2]!.y).toBeCloseTo(0.35, 6);
   });
 });
 
