@@ -9,6 +9,7 @@ import { hexToRgba } from '../../../lib/colorUtils';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE,
   ANCHOR_WIDTH_EMPTY_READING,
   ANCHOR_WIDTH_NO_EDIT_REASON,
   AQUARELLE_ANCHOR_WIDTH_DEFAULT,
@@ -1930,10 +1931,17 @@ function AnchorWidthControl(props: AnchorWidthControlProps) {
             </span>
           )}
         onChange={(value) => {
-          void bundle.applyAnchorWidths?.(
+          // 61-27 (IN-03): the commit's boolean was discarded, so a refusal
+          // (wrong target, missing stroke, in-flight lock) looked like a
+          // success — the knob snapped back with no explanation. Consume it
+          // and publish the ONE refusal line through the bundle's optional
+          // port; an absent port keeps the shipped silent fallback.
+          void Promise.resolve(bundle.applyAnchorWidths?.(
             ids,
             anchorWidthPatchValue(value),
-          );
+          )).then((applied) => {
+            if (applied === false) bundle.publishRefusal?.(ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE);
+          });
         }}
       />
       {anchorWidthEmpty ? (

@@ -407,7 +407,10 @@ describe('61-11 E4 rows: the Anchor width block', () => {
 
   it('61-19 live: the shipped commit call and clamp are untouched, and no local writer exists', () => {
     const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
-    expect(block).toContain('void bundle.applyAnchorWidths?.(');
+    // 61-27 (IN-03): the shipped call keeps its ONE commit seam and its
+    // patch helper; the continuation now consumes the result. Repointed from
+    // the bare `void bundle.applyAnchorWidths?.(` literal, never dropped.
+    expect(block).toContain('void Promise.resolve(bundle.applyAnchorWidths?.(');
     expect(block).toContain('anchorWidthPatchValue(value)');
     expect(block).not.toContain('beginAquarellePathEdit');
   });
@@ -674,7 +677,9 @@ describe('61-22 G-11 — the Anchor width control in the list view', () => {
     );
     expect(component).toContain('const anchorWidthEmpty = anchorWidthReading.count === 0;');
     expect(component).toContain('mixed={anchorWidthReading.mixed}');
-    expect(component).toContain('void bundle.applyAnchorWidths?.(');
+    // 61-27 (IN-03): same commit seam, now with its result consumed. Repointed
+    // from the bare `void bundle.applyAnchorWidths?.(` literal, never dropped.
+    expect(component).toContain('void Promise.resolve(bundle.applyAnchorWidths?.(');
     expect(component).toContain('anchorWidthPatchValue(value)');
     expect(component).toContain(
       '`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`',

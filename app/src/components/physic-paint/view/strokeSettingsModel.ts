@@ -646,6 +646,12 @@ export interface StrokeSettingsDialogBundle {
    */
   readonly applyAnchorWidths?: (ids: readonly number[], value: number) => boolean | Promise<boolean>;
   /**
+   * 61-27 (IN-03): the sheet's ONE refusal channel for a commit the module
+   * declined. Optional, so an absent Studio port keeps the shipped silent
+   * fallback; the dialog itself stays engine-free and never writes a signal.
+   */
+  readonly publishRefusal?: (message: string) => void;
+  /**
    * 61-12 (VEC-04 / T-61-41): write one render mode on EVERY selected paint
    * stroke as ONE history entry, so the whole batch is one undo step. The mode
    * is a stroke property (D-12/D-14) — the write adds or removes no `anchors`
@@ -933,6 +939,15 @@ export const ANCHOR_WIDTH_EMPTY_READING: AnchorWidthReading = {
 /** 61-19 (G-5): why the Anchor width control is inert when no path edit is open. */
 export const ANCHOR_WIDTH_NO_EDIT_REASON =
   'Open Edit path on this stroke to set anchor widths.';
+
+/**
+ * 61-27 (IN-03): the ONE reason a refused Anchor width commit publishes. The
+ * commit's boolean used to be discarded, so a refusal (wrong target, missing
+ * stroke, in-flight lock) looked exactly like a success — the knob snapped back
+ * with no explanation. Fixed and non-interpolated: the same line for every
+ * refusal path.
+ */
+export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Anchor width not applied — the path edit is no longer open on this stroke.';
 
 /**
  * The Paint row's reading. `value` is the FIRST selected anchor's factor (the

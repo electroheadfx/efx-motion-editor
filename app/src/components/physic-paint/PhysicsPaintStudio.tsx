@@ -11611,6 +11611,16 @@ export function PhysicsPaintStudio() {
           );
           return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);
         },
+        // 61-27 (IN-03): the sheet's ONE refusal channel. A commit the open
+        // path edit's target check declined publishes its reason through the
+        // shared capsule, so the knob snap-back is explained. It claims NO
+        // ownership — that flag belongs to the script-apply surface, and
+        // claiming it here would swallow that surface's own message.
+        publishRefusal: (message) => {
+          setApplyMessage(message);
+          setApplyStatus('error');
+          setLastError(message);
+        },
         reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
         // 261101-jmm: the sheet's row/global trash uses the SAME handler as
         // Backspace/Delete — one undoable edit, one re-bake, the frame guards
