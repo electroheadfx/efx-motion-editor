@@ -41,7 +41,7 @@ import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
 import type { AquarelleToolOverrides } from '../brushes/tips'
 import { projectVectorPath } from './vectorPath'
-import type { AquarelleAnchor, AquarelleRenderMode } from './vectorPath'
+import type { AquarelleAnchor, AquarelleCurveMode, AquarelleRenderMode } from './vectorPath'
 
 // The one payload union accepts Dry events alongside strokes (D-16).
 export type { AquarelleDryEvent, AquarellePayloadEvent } from './dryEvent'
@@ -83,6 +83,12 @@ export interface AquarelleStrokePayload {
    * Independent of `anchors` (D-14: the mode applies to both families).
    */
   renderMode?: AquarelleRenderMode
+  /**
+   * 61-30 (G-20): explicit curve-evaluation discriminator. ABSENT means
+   * `bezier`, so a stroke written before this phase evaluates exactly as
+   * it did. An evaluation mode, never a third anchor kind.
+   */
+  curveMode?: AquarelleCurveMode
 }
 
 /** Host cap policy (55 D-20 / D-19) — engine-owned, script-visible. */
@@ -137,6 +143,8 @@ export interface AquarelleStroke {
   anchors?: readonly AquarelleAnchor[]
   /** 61-03: explicit render discriminator (absent = watercolour, D-12). */
   renderMode?: AquarelleRenderMode
+  /** 61-30 (G-20): explicit curve-evaluation mode (absent = Bézier). */
+  curveMode?: AquarelleCurveMode
 }
 
 /**

@@ -592,6 +592,28 @@ describe('wire validation of the vector fields (61-03 T-61-08)', () => {
     expect('renderMode' in stroke.engine).toBe(false)
   })
 
+  it('round-trips a curveMode and keeps an absent key absent (61-30 G-20)', () => {
+    const spline = makeStrokeEvent({ curveMode: 'spline' })
+    const parsed = parse(serialize(spline))
+    expect(parsed).not.toBeNull()
+    expect((parsed as StudioStroke<AquarelleStrokePayload>).engine.curveMode).toBe('spline')
+
+    const absent = makeStrokeEvent()
+    const absentParsed = parse(serialize(absent)) as StudioStroke<AquarelleStrokePayload>
+    expect('curveMode' in absentParsed.engine).toBe(false)
+  })
+
+  it('parses to null when curveMode is not a member of the closed union (fail closed)', () => {
+    const stroke = makeStrokeEvent()
+    const raw = {
+      ...stroke,
+      engine: { ...stroke.engine, curveMode: 'linear' },
+    } as unknown as StudioStroke<AquarelleStrokePayload>
+    expect(() => parse(wrapStroke(raw))).not.toThrow()
+    expect(parse(wrapStroke(raw))).toBeNull()
+    expect(classifyAquarellePayloadFailure(wrapStroke(raw))).toBe('malformed-engine-payload')
+  })
+
   it('classifyAquarellePayloadFailure still names a malformed engine block', () => {
     const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
     expect(classifyAquarellePayloadFailure(serialize(stroke))).toBeNull()

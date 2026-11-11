@@ -112,6 +112,57 @@ export function recordedRenderModeField(
   return mode === DEFAULT_AQUARELLE_RENDER_MODE ? {} : { renderMode: mode }
 }
 
+// ---------------------------------------------------------------------------
+//  Curve mode (G-20, 2026-11-11). D-01 / D-04 are REVISED here under the
+//  user's explicit authorisation: `spline` is an EVALUATION MODE over the
+//  SAME anchor list, never a third anchor kind and never a rewrite of
+//  authored data. An anchor stays `auto` or `bezier`, its stored handles
+//  stay in the document, and `spline` merely evaluates every anchor through
+//  the spine's derived-smooth family (`handlesFor` already derives handles
+//  for any kind that is not `bezier`). Switching back restores the authored
+//  geometry byte for byte, and an absent mode reads `bezier`, so every
+//  pre-existing document and script body stays byte-identical (REL-02).
+// ---------------------------------------------------------------------------
+
+/** How a vector stroke is evaluated (G-20). Not a second anchor kind. */
+export type AquarelleCurveMode = 'bezier' | 'spline'
+
+/** The closed curve-mode union, in declaration order. */
+export const AQUARELLE_CURVE_MODES: readonly AquarelleCurveMode[] = Object.freeze([
+  'bezier',
+  'spline',
+])
+
+/** An absent mode means Bézier (G-20 / REL-02). */
+export const DEFAULT_AQUARELLE_CURVE_MODE: AquarelleCurveMode = 'bezier'
+
+/** Strict membership test over the closed curve-mode union. */
+export function isAquarelleCurveMode(value: unknown): value is AquarelleCurveMode {
+  // SCRATCH STUB (61-30 RED): answers the closed union once the guard lands.
+  void value
+  return false
+}
+
+/** The mode a stroke evaluates with; anything unknown reads Bézier. */
+export function resolveAquarelleCurveMode(value: unknown): AquarelleCurveMode {
+  // SCRATCH STUB (61-30 RED): reads the default until the resolver lands.
+  void value
+  return DEFAULT_AQUARELLE_CURVE_MODE
+}
+
+/**
+ * The conditional canonical term for a recorded stroke: `{ curveMode }` ONLY
+ * when the mode is not the default, else an empty object — switching back to
+ * Bézier drops the key so an untouched document keeps today's exact bytes.
+ */
+export function recordedCurveModeField(
+  curveMode: unknown,
+): { curveMode?: AquarelleCurveMode } {
+  // SCRATCH STUB (61-30 RED): writes nothing until the helper lands.
+  void curveMode
+  return {}
+}
+
 type MutableAnchor = {
   x: number
   y: number

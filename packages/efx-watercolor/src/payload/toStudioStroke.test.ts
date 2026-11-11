@@ -220,6 +220,30 @@ describe('vector path engine block (61-03 D-12 / D-14)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 4b. Curve mode engine block (61-30 G-20)
+//
+//  `curveMode` mirrors `renderMode` exactly: it rides the opaque engine
+//  slot, is copied ONLY when present, and lands AFTER the render-mode
+//  member so a stroke that carries neither keeps today's key order.
+// ---------------------------------------------------------------------------
+
+describe('curve mode engine block (61-30 G-20)', () => {
+  it('copies a spline mode into the engine block unchanged', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ curveMode: 'spline' }))
+    expect(stroke.engine.curveMode).toBe('spline')
+    expect('anchors' in stroke.engine).toBe(false)
+    expect('renderMode' in stroke.engine).toBe(false)
+    expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS, 'curveMode'])
+  })
+
+  it('invents no curveMode key when the field is absent (byte-identical shape)', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke())
+    expect('curveMode' in stroke.engine).toBe(false)
+    expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 5. Sparse width projection through the engine block and the wire (D-10)
 // ---------------------------------------------------------------------------
 

@@ -241,6 +241,10 @@ const MINIMAL_RECORDED_ORDER_OFFSET = 39;
 const MINIMAL_BRUSH_ID_LENGTH_OFFSET = 47;
 const MINIMAL_TOOL_OFFSET = 52;
 const MINIMAL_POINT_COUNT_OFFSET = 74;
+// 61-30: when a curve mode is present it is written AFTER the render-mode byte
+// (which is itself absent here), so the code byte sits directly after the
+// vectorFlags byte at 73 and pointCount shifts one byte later.
+const MINIMAL_CURVE_MODE_OFFSET = 74;
 
 // ---------------------------------------------------------------------------
 // Vector-stroke layout (61-05): same prefix, then the anchor block.
@@ -281,6 +285,14 @@ function handPaintedWithMode(
 ): StudioStroke<AquarelleStrokePayload> {
   const base = minimalStroke();
   return { ...base, engine: { ...base.engine, renderMode: mode } };
+}
+
+/** A hand-painted stroke that carries an explicit curve-evaluation mode. */
+function handPaintedWithCurveMode(
+  mode: 'bezier' | 'spline',
+): StudioStroke<AquarelleStrokePayload> {
+  const base = minimalStroke();
+  return { ...base, engine: { ...base.engine, curveMode: mode } };
 }
 
 /** The same path with NO width keys: every anchor uses the default factor. */
@@ -583,6 +595,40 @@ describe('AQTL v2 vector payload (61-05)', () => {
       true,
     );
     expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-count');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 61-30 — curve mode in AQTL v2 (G-20)
+//
+//  A new flag bit and a code byte written LAST in the vector block. A body
+//  written without a mode keeps today's exact bytes: no flag bit, no byte.
+// ---------------------------------------------------------------------------
+
+describe('AQTL v2 curve mode (61-30 G-20)', () => {
+  it("round-trips curveMode 'spline' and leaves an absent mode absent", () => {
+    const withMode = handPaintedWithCurveMode('spline');
+    const [decoded] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([withMode]));
+    expect(asStroke(decoded).engine.curveMode).toBe('spline');
+    expect(decoded).toEqual(withMode);
+
+    const [without] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([minimalStroke()]));
+    expect('curveMode' in asStroke(without).engine).toBe(false);
+  });
+
+  it('costs exactly one byte for a curve mode and nothing when absent', () => {
+    const absent = encodeScriptTimelineBinary([minimalStroke()]);
+    const spline = encodeScriptTimelineBinary([handPaintedWithCurveMode('spline')]);
+    expect(spline.byteLength).toBe(absent.byteLength + 1);
+  });
+
+  it('refuses an unmapped curve-mode code (fail closed, never defaults)', () => {
+    const bytes = encodeScriptTimelineBinary([handPaintedWithCurveMode('spline')]);
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(
+      MINIMAL_CURVE_MODE_OFFSET,
+      7,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
   });
 });
 

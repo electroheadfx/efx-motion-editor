@@ -24,13 +24,18 @@ import {
   isUniformWidthProfile,
 } from '../vector/spine'
 import {
+  AQUARELLE_CURVE_MODES,
   AQUARELLE_RENDER_MODES,
+  DEFAULT_AQUARELLE_CURVE_MODE,
   DEFAULT_AQUARELLE_RENDER_MODE,
   anchorsEqual,
+  isAquarelleCurveMode,
   isAquarelleRenderMode,
   isVectorStroke,
   normaliseAquarelleAnchors,
   projectVectorPath,
+  recordedCurveModeField,
+  resolveAquarelleCurveMode,
   resolveAquarelleRenderMode,
   vectorPathsEqual,
   type AquarelleAnchor,
@@ -102,6 +107,46 @@ describe('render mode (D-12: explicit discriminator, absent means watercolour)',
     expect(isAquarelleRenderMode('oil')).toBe(false)
     expect(isAquarelleRenderMode(undefined)).toBe(false)
     expect(isAquarelleRenderMode(null)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2b. Curve mode (G-20: an evaluation mode over the SAME anchor list, never
+//     a third anchor kind and never a rewrite of authored data)
+// ---------------------------------------------------------------------------
+
+describe('curve mode (G-20: explicit evaluation discriminator, absent means Bézier)', () => {
+  it('declares exactly bezier and spline in this order, defaulting to bezier, and the guard is a strict membership test', () => {
+    expect(AQUARELLE_CURVE_MODES).toEqual(['bezier', 'spline'])
+    expect(DEFAULT_AQUARELLE_CURVE_MODE).toBe('bezier')
+    expect(isAquarelleCurveMode('bezier')).toBe(true)
+    expect(isAquarelleCurveMode('spline')).toBe(true)
+    expect(isAquarelleCurveMode('linear')).toBe(false)
+    expect(isAquarelleCurveMode('watercolor')).toBe(false)
+    expect(isAquarelleCurveMode(undefined)).toBe(false)
+    expect(isAquarelleCurveMode(null)).toBe(false)
+    expect(isAquarelleCurveMode(1)).toBe(false)
+    expect(isAquarelleCurveMode({ mode: 'spline' })).toBe(false)
+  })
+
+  it('resolves an absent mode and bezier to bezier, and passes spline through', () => {
+    expect(resolveAquarelleCurveMode(undefined)).toBe('bezier')
+    expect(resolveAquarelleCurveMode('bezier')).toBe('bezier')
+    expect(resolveAquarelleCurveMode('spline')).toBe('spline')
+  })
+
+  it('resolves any unknown value to bezier', () => {
+    expect(resolveAquarelleCurveMode('linear')).toBe('bezier')
+    expect(resolveAquarelleCurveMode('simple-ribbon')).toBe('bezier')
+    expect(resolveAquarelleCurveMode(null)).toBe('bezier')
+    expect(resolveAquarelleCurveMode(3)).toBe('bezier')
+    expect(resolveAquarelleCurveMode({ curveMode: 'spline' })).toBe('bezier')
+  })
+
+  it('recordedCurveModeField writes nothing for the default and one key otherwise', () => {
+    expect(recordedCurveModeField('bezier')).toEqual({})
+    expect(Object.keys(recordedCurveModeField('bezier'))).toHaveLength(0)
+    expect(recordedCurveModeField('spline')).toEqual({ curveMode: 'spline' })
   })
 })
 

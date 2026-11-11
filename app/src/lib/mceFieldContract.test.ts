@@ -278,8 +278,9 @@ describe('Phase 61 vector field set (VEC-06 / REL-02)', () => {
   });
 
   it('declares the vector path shape in both languages', () => {
-    // VEC-06 / D-12: the non-empty anchor list plus the optional render mode.
-    expectMemberKeys('MceAquarelleVectorPath', ['anchors', 'renderMode']);
+    // VEC-06 / D-12 / G-20: the non-empty anchor list plus the optional
+    // render mode and the optional curve-evaluation mode.
+    expectMemberKeys('MceAquarelleVectorPath', ['anchors', 'renderMode', 'curveMode']);
   });
 
   it('the in-handle wire key is the rename target of a named field, never a raw identifier', () => {
@@ -357,6 +358,24 @@ describe('Phase 61 envelope round trip (REL-02)', () => {
     ]);
     // Byte identity: a second serialisation reproduces the saved string.
     expect(JSON.stringify(reopened)).toBe(saved);
+  });
+
+  it('carries a curve mode through save/load deep-equal and byte-identical (61-30 G-20)', () => {
+    const splinePath: MceAquarelleVectorPath = {
+      ...VECTOR_PATH,
+      curveMode: 'spline',
+    };
+    const payload: MceEngineStrokePayload = { engine: { ...splinePath } };
+    const { saved, reopened } = roundTrip(payload);
+
+    expect(reopened).toEqual(payload);
+    const engine = reopened.engine as unknown as MceAquarelleVectorPath;
+    expect(engine.curveMode).toBe('spline');
+    expect(engine.anchors).toEqual(VECTOR_PATH.anchors);
+    // Byte identity: the key survives a second serialisation.
+    expect(JSON.stringify(reopened)).toBe(saved);
+    // Absent means Bézier: the pre-phase fixture gained no key.
+    expect('curveMode' in VECTOR_PATH).toBe(false);
   });
 
   it('keeps the engine slot opaque: an unknown engine key round-trips untouched', () => {
