@@ -617,9 +617,10 @@ export function restoreAquarelleStrokeRegistry(
 /**
  * 61-10 (VEC-02 / T-61-34): the ONE anchor map a whole-stroke move shares with
  * its points. An absent list stays absent (a hand-painted stroke gains no
- * `anchors` key), `kind` and `width` are carried verbatim (width is a paint
- * property, never a geometry one), and only the handles the anchor STORED are
- * mapped — an auto anchor gains no invented `in`/`out` key.
+ * `anchors` key), `kind`, `width` and the explicit `color` (261111-wd6) are
+ * carried verbatim — all three are paint properties, never geometry — and only
+ * the handles the anchor STORED are mapped, so an auto anchor gains no
+ * invented `in`/`out` key.
  */
 function mapAnchorList(
   anchors: readonly AquarelleAnchor[] | undefined,
@@ -635,6 +636,7 @@ function mapAnchorList(
       ...(anchor.in !== undefined ? { in: mapPoint(anchor.in.x, anchor.in.y) } : {}),
       ...(anchor.out !== undefined ? { out: mapPoint(anchor.out.x, anchor.out.y) } : {}),
       ...(anchor.width !== undefined ? { width: anchor.width } : {}),
+      ...(anchor.color !== undefined ? { color: anchor.color } : {}),
     };
   });
 }

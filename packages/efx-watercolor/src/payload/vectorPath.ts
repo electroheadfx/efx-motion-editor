@@ -11,9 +11,12 @@
 //       while it existed still open; nothing writes or interprets a
 //       render mode here.
 //    3. ANCHORS are absolute document-uv points carrying an optional
-//       absolute handle pair and an optional width multiplier. The
-//       width factor is the ONLY per-anchor paint property (VEC-03 /
-//       VEC-04): brush identity and colour live at the stroke level.
+//       absolute handle pair, an optional width multiplier and an
+//       optional explicit colour. Quick 261111-wd6 REVISES VEC-04's
+//       "width is the only per-anchor paint property": a vertex may
+//       carry its own colour, stored even when it equals the stroke
+//       colour (explicit wins over inherit). Brush identity still
+//       lives at the stroke level only.
 //
 //  FAIL-CLOSED (T-61-08): one malformed anchor refuses the WHOLE
 //  list. Nothing here repairs partially, and nothing here throws —
@@ -28,6 +31,7 @@ import {
   ANCHOR_WIDTH_DEFAULT,
   ANCHOR_WIDTH_MAX,
   ANCHOR_WIDTH_MIN,
+  normaliseAnchorColor,
   sampleVectorPath,
   type SampledVectorPath,
   type Vec2,
@@ -134,6 +138,13 @@ export function resolveCurveAnchors(
 ): readonly VectorAnchor[] {
   if (curveMode !== 'spline') return anchors
   const view = anchors.map((anchor) => {
+    // 261111-wd6: paint properties survive BOTH branches — a spline that
+    // dropped a colour would make the sampler read a colour the document
+    // never wrote.
+    const paint = {
+      ...(anchor.width === undefined ? {} : { width: anchor.width }),
+      ...(anchor.color === undefined ? {} : { color: anchor.color }),
+    }
     if (isCornerAnchor(anchor)) {
       const corner: VectorAnchor = {
         x: anchor.x,
@@ -141,11 +152,12 @@ export function resolveCurveAnchors(
         kind: 'bezier',
         in: { x: anchor.in!.x, y: anchor.in!.y },
         out: { x: anchor.out!.x, y: anchor.out!.y },
+        ...paint,
       }
-      return anchor.width === undefined ? corner : { ...corner, width: anchor.width }
+      return corner
     }
-    const plain: VectorAnchor = { x: anchor.x, y: anchor.y, kind: 'auto' }
-    return anchor.width === undefined ? plain : { ...plain, width: anchor.width }
+    const plain: VectorAnchor = { x: anchor.x, y: anchor.y, kind: 'auto', ...paint }
+    return plain
   })
   return Object.freeze(view)
 }
@@ -170,12 +182,15 @@ type MutableAnchor = {
   in?: Vec2
   out?: Vec2
   width?: number
+  color?: string
 }
 
 /**
  * Canonical form of one anchor, or undefined when any field is malformed.
  * Only the known fields survive, so an unknown extra key can never reach
- * the document. The width factor is the sole per-anchor paint property.
+ * the document. Paint is the sparse width factor plus an optional explicit
+ * colour (261111-wd6); a colour the package normaliser cannot canonicalise
+ * refuses the WHOLE list — it is never repaired.
  */
 function canonicalAnchor(raw: Record<string, unknown>): MutableAnchor | undefined {
   const x = raw['x']
@@ -192,10 +207,14 @@ function canonicalAnchor(raw: Record<string, unknown>): MutableAnchor | undefine
     if (!isFiniteNumber(width)) return undefined
     if (width < ANCHOR_WIDTH_MIN || width > ANCHOR_WIDTH_MAX) return undefined
   }
+  const color = raw['color']
+  const normalisedColor = color === undefined ? undefined : normaliseAnchorColor(color)
+  if (color !== undefined && normalisedColor === undefined) return undefined
   const anchor: MutableAnchor = { x, y, kind }
   if (handleIn !== undefined) anchor.in = { x: (handleIn as Vec2).x, y: (handleIn as Vec2).y }
   if (handleOut !== undefined) anchor.out = { x: (handleOut as Vec2).x, y: (handleOut as Vec2).y }
   if (width !== undefined) anchor.width = width
+  if (normalisedColor !== undefined) anchor.color = normalisedColor
   return anchor
 }
 
@@ -225,8 +244,9 @@ export function isVectorStroke(
 
 /**
  * Field-by-field anchor comparison to within 1e-9, including the optional
- * handles and the sparse width factor. Order-sensitive: the list order IS
- * the path order.
+ * handles, the sparse width factor and the explicit colour. Order-sensitive:
+ * the list order IS the path order. Without the colour term a colour-only
+ * edit compares equal and the record store silently drops the gesture.
  */
 export function anchorsEqual(
   a: readonly VectorAnchor[],
@@ -244,6 +264,8 @@ export function anchorsEqual(
     } else if (!numbersEqual(left.width, right.width)) {
       return false
     }
+    // Exact string equality: both canonical, both absent is equal.
+    if (left.color !== right.color) return false
   }
   return true
 }
@@ -252,8 +274,11 @@ export function anchorsEqual(
  * D-10: the projected persisted form of an anchor list. A `width` key is
  * written ONLY for an anchor whose factor is present and not exactly
  * ANCHOR_WIDTH_DEFAULT, so a uniformly-wide stroke stores no width data at
- * all and an untouched anchor gains no key. Order is preserved exactly —
- * 61-02's stations index into this order — and the input is never mutated.
+ * all and an untouched anchor gains no key. A `color` key is written
+ * whenever it is present (261111-wd6) — there is NO default elision for
+ * colour, because an explicit colour equal to the stroke's is still an
+ * explicit intent. Order is preserved exactly — 61-02's stations index into
+ * this order — and the input is never mutated.
  */
 export function projectVectorPath(anchors: readonly VectorAnchor[]): readonly VectorAnchor[] {
   const projected = anchors.map((anchor) => {
@@ -263,6 +288,7 @@ export function projectVectorPath(anchors: readonly VectorAnchor[]): readonly Ve
     if (anchor.width !== undefined && anchor.width !== ANCHOR_WIDTH_DEFAULT) {
       next.width = anchor.width
     }
+    if (anchor.color !== undefined) next.color = anchor.color
     return next
   })
   return Object.freeze(projected)

@@ -15,11 +15,18 @@
 //    2. ARC-LENGTH STATIONS. The sampled station list is the single
 //       ordering authority. Every consumer (width law, overlay,
 //       adapter) indexes this list; no second station definition.
-//    3. SPARSE WIDTH. An anchor carries a width factor only once it
-//       is edited (D-10); absent reads ANCHOR_WIDTH_DEFAULT, and a
-//       uniform profile stores nothing. The factor is a multiplier
-//       of the brush size (D-09), never a pixel radius, and nothing
-//       here clamps it below its published 0.2..2.0 range.
+//    3. PER-VERTEX PAINT. An anchor carries a width factor only once
+//       it is edited (D-10); absent reads ANCHOR_WIDTH_DEFAULT, and a
+//       uniform profile stores nothing. An anchor may ADDITIONALLY
+//       carry an explicit colour (261111-wd6), the revision of
+//       VEC-04's "width is the only per-anchor paint property". The
+//       two sparsity rules differ on purpose: width is elided at its
+//       default, while an explicit colour is stored even when it
+//       equals the stroke colour — "explicitly red" and "inherit the
+//       stroke's red" are different intents. Absent means inherit.
+//       The factor is a multiplier of the brush size (D-09), never a
+//       pixel radius, and nothing here clamps it below its published
+//       0.2..2.0 range.
 //
 //  PURITY: no imports, no Preact, no signals, no DOM, no engine, no
 //  unseeded RNG, and no pixel / zoom / viewport term. Coordinates
@@ -49,6 +56,12 @@ export interface VectorAnchor {
   readonly out?: Vec2
   /** Width multiplier of the stroke's brush size (D-09). Absent reads 1. */
   readonly width?: number
+  /**
+   * 261111-wd6: explicit vertex colour in canonical `#rrggbb`. Absent means
+   * "inherit the stroke colour"; unlike `width` there is NO default elision —
+   * an explicit colour is stored even when it equals the stroke colour.
+   */
+  readonly color?: string
 }
 
 /** The handles actually used for one anchor on this evaluation. */
@@ -264,6 +277,40 @@ export function isUniformWidthProfile(anchors: readonly VectorAnchor[]): boolean
   )
 }
 
+/** The only hex colour form this module accepts: optional `#`, 3/6/8 digits. */
+const ANCHOR_COLOR_PATTERN = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/
+
+/**
+ * 261111-wd6: the package's ONE hex-colour law for a vertex colour. Accepts
+ * 3, 6 or 8 hex digits with an optional leading `#`; `#rgb` expands by
+ * doubling each digit; the 8-digit form drops its alpha pair; the result is
+ * always lowercase `#rrggbb`. Every other value — including non-strings —
+ * returns undefined, so callers can fail closed instead of throwing.
+ *
+ * This module still has NO imports: the app's private `normalizeHexInput`
+ * (RightPanelColorTab.tsx) is mirrored, never imported.
+ */
+export function normaliseAnchorColor(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const match = ANCHOR_COLOR_PATTERN.exec(value)
+  if (match === null) return undefined
+  const digits = match[1]!.toLowerCase()
+  const expanded =
+    digits.length === 3
+      ? digits[0]! + digits[0]! + digits[1]! + digits[1]! + digits[2]! + digits[2]!
+      : digits.slice(0, 6)
+  return `#${expanded}`
+}
+
+/**
+ * 261111-wd6: true when the profile stores no explicit colour at all — every
+ * anchor inherits the stroke colour. Exactly `isUniformWidthProfile`'s shape;
+ * a caller that sees true must treat the whole stroke as one colour.
+ */
+export function isUniformColorProfile(anchors: readonly VectorAnchor[]): boolean {
+  return normaliseVectorAnchors(anchors).every((anchor) => anchor.color === undefined)
+}
+
 function widthAtStation(
   anchors: readonly VectorAnchor[],
   anchorStations: readonly number[],
@@ -329,5 +376,125 @@ export function sampleVectorWidths(
       }
     }
     return widthAtStation(normalised, anchorStations, stations[nearest] ?? 0)
+  })
+}
+
+// ---------------------------------------------------------------------------
+//  261111-wd6 — the per-vertex colour sampler. The colour twin of the width
+//  law above: ONE station list, ONE nearest-sample mapping, component-wise
+//  linear sRGB interpolation, pure and total.
+// ---------------------------------------------------------------------------
+
+/** A colour as 0..1 sRGB channels, the form the mixer interpolates. */
+interface AnchorColorChannels {
+  readonly r: number
+  readonly g: number
+  readonly b: number
+}
+
+/** Parse a canonical `#rrggbb` into 0..1 channels (never called on a bad form). */
+function anchorColorChannels(hex: string): AnchorColorChannels {
+  return {
+    r: Number.parseInt(hex.slice(1, 3), 16) / 255,
+    g: Number.parseInt(hex.slice(3, 5), 16) / 255,
+    b: Number.parseInt(hex.slice(5, 7), 16) / 255,
+  }
+}
+
+/** Canonical lowercase `#rrggbb`, each channel clamped then rounded to 0..255. */
+function formatAnchorColor(color: AnchorColorChannels): string {
+  const channel = (value: number): string => {
+    const clamped = Math.min(1, Math.max(0, value))
+    return Math.round(clamped * 255)
+      .toString(16)
+      .padStart(2, '0')
+  }
+  return `#${channel(color.r)}${channel(color.g)}${channel(color.b)}`
+}
+
+/** Component-wise linear sRGB interpolation between two bracketing anchors. */
+function mixAnchorColor(
+  from: AnchorColorChannels,
+  to: AnchorColorChannels,
+  u: number,
+): AnchorColorChannels {
+  return {
+    r: from.r + (to.r - from.r) * u,
+    g: from.g + (to.g - from.g) * u,
+    b: from.b + (to.b - from.b) * u,
+  }
+}
+
+function colorAtStation(
+  anchors: readonly VectorAnchor[],
+  anchorStations: readonly number[],
+  anchorColors: readonly AnchorColorChannels[],
+  base: AnchorColorChannels,
+  station: number,
+): AnchorColorChannels {
+  const last = anchors.length - 1
+  if (last < 0) return base
+  if (last === 0) return anchorColors[0]!
+  if (!Number.isFinite(station) || station <= anchorStations[0]!) return anchorColors[0]!
+  if (station >= anchorStations[last]!) return anchorColors[last]!
+  for (let index = 0; index < last; index++) {
+    const start = anchorStations[index]!
+    const end = anchorStations[index + 1]!
+    if (station > end) continue
+    const span = end - start
+    if (span <= 0) return anchorColors[index + 1]!
+    return mixAnchorColor(anchorColors[index]!, anchorColors[index + 1]!, (station - start) / span)
+  }
+  return anchorColors[last]!
+}
+
+/**
+ * 261111-wd6: one canonical colour per input point, mapped onto the spine's
+ * own arc-length stations — the exact mapping `sampleVectorWidths` uses, so
+ * the two per-vertex paint properties can never disagree about which anchor a
+ * sample belongs to. Each anchor's colour is its explicit colour or the base;
+ * the two bracketing anchors mix component-wise in sRGB, held at the first /
+ * last anchor outside the path, and a malformed authored colour falls back to
+ * the base instead of throwing.
+ *
+ * `baseColor` is the stroke colour the engine installs; the adapter resolves
+ * it through the ONE `resolveStrokeBaseColor`. A point grid with no anchors
+ * reads it verbatim; a uniform profile reads its canonical form. Values the
+ * normaliser cannot canonicalise leave nothing to interpolate from, so every
+ * point reads `baseColor` verbatim — this function never invents a colour.
+ */
+export function sampleVectorColors(
+  anchors: readonly VectorAnchor[],
+  points: readonly Vec2[],
+  baseColor: string,
+): readonly string[] {
+  if (points.length === 0) return []
+  const normalised = normaliseVectorAnchors(anchors)
+  if (normalised.length === 0) return points.map(() => baseColor)
+  const normalisedBase = normaliseAnchorColor(baseColor)
+  if (normalisedBase === undefined) return points.map(() => baseColor)
+  if (isUniformColorProfile(normalised)) return points.map(() => normalisedBase)
+  const base = anchorColorChannels(normalisedBase)
+  const anchorColors = normalised.map((anchor) =>
+    anchorColorChannels(normaliseAnchorColor(anchor.color) ?? normalisedBase),
+  )
+  const { points: samples, stations, anchorStations } = walkPath(normalised)
+  return points.map((point) => {
+    let nearest = 0
+    let nearestDistance = Number.POSITIVE_INFINITY
+    for (let index = 0; index < samples.length; index++) {
+      const sample = samples[index]!
+      const dx = point.x - sample.x
+      const dy = point.y - sample.y
+      const squared = dx * dx + dy * dy
+      if (squared < nearestDistance) {
+        nearestDistance = squared
+        nearest = index
+        if (squared === 0) break
+      }
+    }
+    return formatAnchorColor(
+      colorAtStation(normalised, anchorStations, anchorColors, base, stations[nearest] ?? 0),
+    )
   })
 }
