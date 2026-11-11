@@ -168,6 +168,15 @@ export function waitForRotoDuplicateSourceFrame(
  * copy allocates a fresh one. `playFrame` becomes the destination frame, and
  * `diffusionFrames` takes the positive `cuisson` (the round-trip of
  * `toStudioStroke`'s mapping) before falling back to the engine snapshot.
+ *
+ * 61-24 (G-15): the vector path and its discriminator are part of the
+ * timeline, not of the pixels — a replay that dropped them would leave the
+ * duplicated key hand-painted and un-editable. Both terms follow
+ * `toStudioStroke`'s conditional-spread convention: written ONLY when the
+ * source event carries them, so a hand-painted event keeps its exact
+ * pre-vector key set and an absent vector field stays absent. The list is
+ * carried, never cloned or normalised — the event already holds the projected
+ * form, the record seam re-projects, and nothing here writes the source.
  */
 export function aquarelleStrokeFromScriptEvent(
   event: Exclude<AquarellePayloadEvent, AquarelleDryEvent>,
@@ -191,6 +200,8 @@ export function aquarelleStrokeFromScriptEvent(
     diffusionFrames: event.cuisson > 0 ? event.cuisson : engine.diffusionFrames,
     timestamp: engine.timestamp,
     playFrame: destinationFrame,
+    ...(engine.anchors !== undefined ? { anchors: engine.anchors } : {}),
+    ...(engine.renderMode !== undefined ? { renderMode: engine.renderMode } : {}),
   };
 }
 

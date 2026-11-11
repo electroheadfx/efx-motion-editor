@@ -7,9 +7,19 @@ import type { PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from
  * A real key cloned from the nearest previous real key, a blank base when no
  * previous real key exists, or a fail-closed `unavailable` when the previous
  * key exists but neither carrier holds usable bytes.
+ *
+ * 61-24 (G-15): a clone names the frame its carrier came from. The payload
+ * keeps labeling the DESTINATION (`appFrame`); `sourceAppFrame` is provenance
+ * for the +Key script copy, which must read the previous key's vector path
+ * without a second scan of the records. `blank` and `unavailable` carry no
+ * frame — they have no source to copy from.
  */
 export type PreviousRealKeyBaseResolution =
-  | { kind: 'clone'; payload: PhysicPaintRotoRealKeyPayload & { readonly bytes: Uint8Array } }
+  | {
+      kind: 'clone';
+      payload: PhysicPaintRotoRealKeyPayload & { readonly bytes: Uint8Array };
+      readonly sourceAppFrame: number;
+    }
   | { kind: 'blank' }
   | { kind: 'unavailable' };
 
@@ -66,7 +76,13 @@ export function resolvePreviousRealKeyBase(
   const cached = (input.cachedRotoFrames ?? []).find(
     (frame) => frame.appFrame === previousFrame && frame.source === 'real-key' && hasUsableBytes(frame.bytes),
   );
-  if (cached) return { kind: 'clone', payload: toDestinationPayload(cached, destinationAppFrame) };
+  if (cached) {
+    return {
+      kind: 'clone',
+      payload: toDestinationPayload(cached, destinationAppFrame),
+      sourceAppFrame: previousFrame,
+    };
+  }
   const durable = input.records.find(
     (record) => record.appFrame === previousFrame && hasUsableBytes(record.payload.bytes),
   );
@@ -74,6 +90,7 @@ export function resolvePreviousRealKeyBase(
     return {
       kind: 'clone',
       payload: toDestinationPayload({ ...durable.payload, bytes: durable.payload.bytes }, destinationAppFrame),
+      sourceAppFrame: previousFrame,
     };
   }
   return { kind: 'unavailable' };
