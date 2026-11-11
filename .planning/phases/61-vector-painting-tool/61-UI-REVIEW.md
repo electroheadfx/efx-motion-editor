@@ -1,11 +1,11 @@
 # Phase 61 — UI Review
 
-**Audited:** 2026-11-10
-**Baseline:** `61-UI-SPEC.md` (approved 2026-11-10) — audited section by section against the Copywriting Contract, Typography, Color, Spacing and Interaction Contract
-**Screenshots:** not captured — no dev server reachable on ports 3000 / 5173 / 8080; static code review only per the orchestrator constraint (the user owns the dev server; Playwright capture is unavailable for this app)
-**Interaction captures:** off (`workflow.ui_interaction_capture: false`)
+**Audited:** 2026-11-11 (re-audit after gap-closure plans 61-21 → 61-31)
+**Baseline:** `61-UI-SPEC.md` (approved 2026-11-10) — audited section by section against the Copywriting Contract, Typography, Color, Spacing and Interaction Contract, plus the post-contract surfaces added by 61-21…61-31
+**Screenshots:** not captured — no dev server reachable on ports 3000 / 5173 / 8080 (`curl` returned `000`); code-only audit per the orchestrator constraint (the project owner runs the server)
+**Interaction captures:** off (`workflow.ui_interaction_capture` is false)
 
-> This is a code-derived audit. No rendered pixels were inspected. Every visual claim below is traced to source (inline style, CSS rule, or SVG attribute). The UI-SPEC's held-out visual rows (E5 overflow, E6 loading, E7 loading/populated, E8 thumb) and the plans' live UAT rows remain unverified by construction.
+> This is a code-derived audit. No rendered pixels were inspected. Every visual claim below is traced to source (inline style, CSS rule, or SVG attribute). The plans' native UAT rows remain the only acceptance evidence for the rendered frame.
 
 ---
 
@@ -13,26 +13,36 @@
 
 | Pillar | Score | Key Finding |
 |--------|-------|-------------|
-| 1. Copywriting | 3/4 | 15 of 16 contract strings are verbatim; the primary CTA's `title` drops the mandated draw-gesture grammar, the one surface that teaches Alt-corner / Enter / double-click / first-anchor finish |
-| 2. Visuals | 3/4 | Rail entry, separator, header order, overlay draw order and zoom law all match; the wireframe-only view suppresses the serial badge and bounds chrome the contract keeps "on top", and handle/envelope styling deviates |
-| 3. Color | 3/4 | Chrome palette and accent discipline are exact; three canvas alpha/stroke values deviate from the declared band/handle law (`0.12` vs `0.14/0.07`, `strokeOpacity 0.5`, handles at `fillOpacity 0.6` + white stroke) |
-| 4. Typography | 2/4 | Sheet type is otherwise exact, but the only new numeric readout loses `font-variant-numeric: tabular-nums` and the mandated `BrushResponsePanel` span grammar, and two new 400-weight strings are undeclared |
-| 5. Spacing | 4/4 | Every new gap, padding and dimension is on the declared scale or a declared shipped exception; the rail separator matches its derived geometry exactly |
-| 6. Experience Design | 2/4 | State coverage is strong, but the mandated live rubber-band spine to the cursor is absent from the draw state, and the picker is fully disabled (not merely disarmed) under wireframe; four live backstops unverified |
+| 1. Copywriting | 3/4 | All 21 declared strings are verbatim; the post-contract Curve row ships with no declared copy or explanatory hint, and one new refusal breaks the contract's `X rejected — …` grammar |
+| 2. Visuals | 3/4 | All five prior visual warnings are closed (band law, solid dots, chrome on top of wireframe, rubber band); the vector construction layer at `z=41` paints over the serial badge / transform box / lift ribbon at `z=40`, contradicting §6 item 6 "unchanged, on top" |
+| 3. Color | 4/4 | Canvas band, handle and anchor law now matches the declared palette exactly; chrome accent discipline holds; no undeclared color was introduced |
+| 4. Typography | 3/4 | The readout span, 600-weight explanation strings and 400-only-italic-Mixed are correct; the Render and Curve segments render 10px/600 where the Typography table declares segmented-button text at 700 |
+| 5. Spacing | 4/4 | Every new gap, padding and dimension is on the declared scale or a declared shipped exception; no off-scale value found |
+| 6. Experience Design | 3/4 | Rubber band, picker disarm, refusal channel, empty states and gesture guards are all verified; the edit-state canvas gives no pre-press affordance across three different press outcomes |
 
-**Overall: 17/24**
+**Overall: 20/24**
 
-Finding classification: **no BLOCKERs** — no pillar scored 1 and no defect prevents completing a draw, edit, save or reopen flow. Six WARNING-level defects are listed below, one per affected pillar (Spacing has none).
+Finding classification: **no BLOCKERs** — no pillar scored 1 and no defect prevents completing a draw, edit, mode switch, save or reopen flow. Five WARNING-level defects are listed below (Copywriting ×2, Visuals ×1, Typography ×1, Experience ×1).
+
+### Prior review closure (61-20 gap set)
+
+| Prior WARNING (17/24 review) | Status | Evidence |
+|---|---|---|
+| Vector pen `title` omits the draw grammar | **CLOSED** | `PhysicsPaintToolRail.tsx:59-60` defines the contract string verbatim and `:184` applies it |
+| Draw state has no live rubber-band spine | **CLOSED** | `VectorPathOverlay.tsx:395-420` projects the cursor station; `:1177-1189` draws `vector-path-draft-preview` dashed 1px before the committed draft; `:1149-1151` binds the move only in the draw state |
+| Anchor-width readout unstyled | **CLOSED** | `ANCHOR_WIDTH_READOUT_STYLE` `PhysicsPaintStrokeSettingsDialog.tsx:319-324` is exactly 10px / 600 / secondary / `tabular-nums`; `BELOW_STYLE` `SliderStepper.tsx:158-164` is layout-only |
+| Two 400-weight explanation strings | **CLOSED** | Caption `:306-312` and advanced note `:344-351` are 600; the only unset weight is the italic `Mixed` caption `:299-303` (declared exception) |
+| Wireframe suppresses bounds box and serial badge | **CLOSED** | `ScriptStrokeOverlay.tsx:489-502` and `:503-540` render unconditionally; `wireframeOnly` no longer exists |
+| Canvas alpha/stroke deviations | **CLOSED** | Envelope `fillOpacity 0.14/0.07`, edge `3.5/1.5`, no `strokeOpacity` (`VectorPathOverlay.tsx:462-477`); handles solid `#f59e0b` (`:680-690`) |
+| Picker disabled rather than disarmed | **CLOSED** | Picker is `disabled={railDisabled}` only (`PhysicsPaintToolRail.tsx:195-215`); no wireframe term in its title |
 
 ---
 
 ## Top 3 Priority Fixes
 
-1. **The draw state has no live rubber-band spine to the cursor** — `vectorDrawDraft.cursor` is written (`view/vectorPathSession.ts:31-34,137-156`) but never read, and `VectorPathOverlay` binds `onPointerMove` only for edit drags (`engine/VectorPathOverlay.tsx:889`); the draft renders placed anchors only (`:633-638`). UI-SPEC Interaction Contract §2 requires "anchors placed so far + a live rubber-band spine to the cursor". A user drawing a path gets no preview of the next segment or the curve it will produce — the phase's headline gesture feels blind. Fix: track the pointer in the draft and append the cursor station to the drawn draft path (plus the derived handle preview if feasible), or amend the contract explicitly.
-
-2. **The Vector pen `title` omits the mandated interaction grammar** — shipped `title="Vector pen — draw a vector path (V)"` (`view/PhysicsPaintToolRail.tsx:176`) vs contract `Vector pen (V) — click to place a smooth anchor · hold Alt for a corner · Enter or double-click to finish · click the first anchor to finish there` (`61-UI-SPEC.md:180`). UI-SPEC E1 long-text coverage deliberately parks the entire grammar in this native title; with it removed, nothing in the UI teaches Alt-corner, Enter/double-click finish, or first-anchor finish (grep confirms no other surface carries it). Fix: use the contract string verbatim.
-
-3. **The Anchor width `→ n px` readout loses the mandated numeric-readout grammar** — the dialog passes a plain interpolated string (`view/PhysicsPaintStrokeSettingsDialog.tsx:1698-1700`) into `SliderStepper`'s `below` slot, whose `BELOW_STYLE` sets no font size, weight, colour or `tabular-nums` (`shared/SliderStepper.tsx:158-164,600-602`). The contract requires `below={<span …>→ {effectivePx} px</span>} — the exact BrushResponsePanel multiplier grammar` (`61-UI-SPEC.md:312`) and states numeric readouts set `font-variant-numeric: tabular-nums` (`:125`). The reference span sets `10px / 600 / var(--sidebar-text-secondary) / tabular-nums` (`view/BrushResponsePanel.tsx:61-73`). The value itself is correct (Size x factor, never `scriptScale`); only its presentation is wrong, and a proportional readout jitters while the value steps.
+1. **Vector construction chrome paints over the existing chrome the contract keeps on top** — in wireframe — the only state where both overlays render — `VectorPathOverlay` sits at `zIndex: 41` (`VectorPathOverlay.tsx:111,1140`) above `ScriptStrokeOverlay` at `zIndex: 40` (`ScriptStrokeOverlay.tsx:614,630`), so vector spines, anchors and envelopes cross hand-painted strokes' serial badges, bounds boxes, transform box and lift ribbon. UI-SPEC §6 item 6 requires the transform box / serial badge / lift ribbon to be "unchanged, on top" (`61-UI-SPEC.md:342`). Fix: split the z stack so the display chrome stays above the construction layer (e.g. paint the script overlay's chrome at `z=42` while its pointer surface remains gated by `interactive`, or seat the vector layer at `z=40` and keep its pointer ownership through `pointerEvents`).
+2. **The Curve row ships with no declared copy and no explanation** — `BÉZIER` / `SPLINE` is the newest user-visible control and appears nowhere in the UI-SPEC (`grep` over `61-UI-SPEC.md` finds no Curve row); its only teaching surface does not exist (no `title`, no hint in `CURVE_MODE_OPTIONS`, `strokeSettingsModel.ts:208-211`; render `PhysicsPaintStrokeSettingsDialog.tsx:1701-1747`). A user cannot learn what the switch changes. Fix: add the row to the Copywriting Contract and give the switch a native hint in the pen-tooltip voice (e.g. "Curve — Bézier keeps your authored handles · Spline derives smooth tangents from the same anchors").
+3. **The edit-state canvas gives no pre-press affordance** — the overlay's cursor is `crosshair` while drawing and `default` while editing (`VectorPathOverlay.tsx:1144`), and there is no hover hit-test. A press can do three different things — drag a handle, drag/promote an anchor, or insert an anchor on the spine — with no signal before the press. Fix: hit-test on pointer move in the edit state and set `grab` / `move` / `copy` cursors (plus a hover halo on the element that would be claimed), using the existing `hitTestVectorPath` call the press already makes.
 
 ---
 
@@ -40,111 +50,114 @@ Finding classification: **no BLOCKERs** — no pillar scored 1 and no defect pre
 
 ### Pillar 1: Copywriting (3/4)
 
-Verified verbatim against the Copywriting Contract:
-- Wireframe `aria-label` and `title` — `PhysicsPaintToolRail.tsx:248-249` vs spec `:194`.
-- Paint-row wireframe reasons — `PhysicsPaintToolRail.tsx:136-138`; Dry `:261`; matches the contract's shape (`:188`).
-- Draft reason — `PhysicsPaintStrokeSettingsDialog.tsx:1079-1081` vs spec `:190`.
-- `Edit path` label, and both disabled reasons in native `title` — `strokeSettingsModel.ts:813,816,819,839-852`; matches `:181,189`.
-- Empty width caption — `PhysicsPaintStrokeSettingsDialog.tsx:1708-1715` vs spec `:183`.
-- Render label, `Watercolor` / `Ribbon`, red italic `Mixed` — `PhysicsPaintStrokeSettingsDialog.tsx:1588-1596,1604-1622`; model `strokeSettingsModel.ts:153-156`; matches `:191`.
-- `Advanced — wet globals` and the note — `PhysicsPaintStrokeSettingsDialog.tsx:1779,1814`; note constant `strokeSettingsModel.ts:114-115`; matches `:193`.
-- Rejection copy — `PhysicsPaintStudio.tsx:365`, published through the existing status capsule at `:10044-10056`; matches `:185`.
-- `Simple ribbon` name and hint — `packages/efx-watercolor/src/playground/brushes.ts:355-356` vs spec `:195`.
+Verified verbatim against the Copywriting Contract (`61-UI-SPEC.md:174-200`):
+- Primary CTA tooltip — `PhysicsPaintToolRail.tsx:59-60` vs spec `:180`; `aria-label="Vector pen"` `:185`.
+- Secondary CTA — `PATH_EDIT_LABEL = 'Edit path'` (`strokeSettingsModel.ts:885`) rendered as `aria-label` and the enabled `title` (`:1042-1043`, `:915-919`).
+- Empty states — `No strokes on this frame.` `:1306`; `Select anchors on the canvas to set their width.` `:2006`; `Edit path — select one vector stroke` / `… a single vector stroke` (`strokeSettingsModel.ts:888,891`).
+- Error states — vector rejection `PhysicsPaintStudio.tsx:376`; Script-off rejection `aquarelleVectorPathCommit.ts:13`; Draft recompute refusal `scriptStrokeEdition.ts:193`.
+- Disabled reasons — paint row `PhysicsPaintToolRail.tsx:147-150`, Select `:223-224`, Dry `:271-274`, Draft `:1139`, Anchor width no-edit `strokeSettingsModel.ts:1006-1007`; every one matches spec `:190-194`.
+- Render row `Render` / `Watercolor` / `Ribbon` (`strokeSettingsModel.ts:166-169`); `Anchor width` + `→ {n} px` (`:1952-2011`); `Advanced — wet globals` + note (`:116-117`); Wireframe title `PhysicsPaintToolRail.tsx:259`; `Simple ribbon` + hint (`packages/efx-watercolor/src/playground/brushes.ts:355-356`).
 
-**WARNING — primary CTA title.** `PhysicsPaintToolRail.tsx:176` ships `Vector pen — draw a vector path (V)`. The contract string (`61-UI-SPEC.md:180`) carries four interaction rules in one native tooltip; that tooltip is the only teaching surface for the nonstandard draw law. The aria-label (`Vector pen`) and the `(V)` shortcut hint are correct, so the button is identifiable but the gesture set is undiscoverable. This is the only copy deviation found in the phase.
+**WARNING — the Curve row is undeclared and unexplained.** The Paint tab now mounts a second segmented row — label `Curve`, options `Bézier` / `Spline`, red italic `Mixed` on disagreement (`PhysicsPaintStrokeSettingsDialog.tsx:1701-1747`; labels `strokeSettingsModel.ts:208-211`). None of this copy exists in the contract, and the row carries no `title`, caption or hint. Since switching changes the drawn shape of every selected vector stroke, this is the one new control whose consequence is stated nowhere in the UI.
 
-**Contract ambiguity (no action):** the no-vector-stroke copy appears twice in the spec — with a trailing period at `:184` and without at `:189`; the implementation follows the more specific disabled-reason row.
+**WARNING — a new refusal breaks the declared grammar.** `ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Anchor width not applied — the path edit is no longer open on this stroke.'` (`strokeSettingsModel.ts:1016`) is published through the status capsule (`PhysicsPaintStudio.tsx:11708-11712`). The contract declares the refusal grammar `X rejected — <problem>. Nothing changed.` and uses it for the vector rejection (`61-UI-SPEC.md:185`). This message says "not applied" instead of "rejected" and never states that nothing changed.
+
+**Minor (undeclared, low severity):** `DRAFT_SETTLE_BUSY_MESSAGE = 'Another edit is settling — try again.'` (`scriptStrokeEdition.ts:202`) — an actionable but undeclared, generic "try again" string. `No strokes match this filter.` (`:1310`) is likewise undeclared and pre-existing.
 
 ### Pillar 2: Visuals (3/4)
 
 Matches:
-- Rail structure: separator `PhysicsPaintToolRail.tsx:170` + CSS `.physics-paint-rail-separator` (21px x 1px, `margin: 1px 0`, `#5a5e63`, `physicsPaintStudio.css:701-707`) exactly matches the derived value (`61-UI-SPEC.md:166`); pen button 35x35 with `PenTool size={18}` and one-active-surface precedence (`:132,171-182`); wireframe latch mounted after Motion boundaries and before Dry (`:243-254`) with the declared icon and active amber (`physicsPaintStudio.css:616-621`).
-- Header order and chrome: delete-selection, preview-stroke-size, spline-pointer, view-toggle, close (`PhysicsPaintStrokeSettingsDialog.tsx:942-1006`); 22x22, opacity 0.4 disabled and blue `#2d5be3` pressed state (`physicsPaintStudio.css:6219-6248,6272-6276`); `SplinePointer size={12}`, `onPointerDown` stopPropagation, `aria-pressed` from the gate (`:377-391`).
-- Overlay draw order is exactly envelope, spine, rungs, anchors, handles (`VectorPathOverlay.tsx:300-310,333-534`); marker extents counter-scaled by the effective zoom (`:323-325`); wireframe two-pass spine and rungs match the shipped polyline law (`:356-464`). Hand-painted bands in wireframe use the shipped `buildStrokeBand` and the declared `0.14/0.07` fill and `3.5/1.5` edges (`ScriptStrokeOverlay.tsx:375-449`).
-- Every icon-only control audited carries both `aria-label` and a `title` (pen, wireframe, picker, Dry, Re-read, Trash, all header buttons).
+- Draw order within the vector overlay is envelope → spine → rungs → anchors → selection ring → handles (`VectorPathOverlay.tsx:462-695`), matching §6 items 1-5 in order.
+- Marker extents are zoom-fixed: square 9×9 (`ANCHOR_BODY_PX`, `vectorPathHandles.ts:51`), circle r 3.5 (`:57`), handle r 3.5 (`:60`), divided by `scale` (`VectorPathOverlay.tsx:455-457`) with `vectorEffect="non-scaling-stroke"` on every stroke.
+- Under Spline the whole handle block returns nothing and every anchor renders as the auto circle (`ownsHandles = !spline && anchor.kind === 'bezier'` `:450`; handles `:657-695`), so no square or dot implies a control the mode does not own.
+- Hand-painted wireframe: shipped band plus centreline, with bounds box and serial badge now drawn unconditionally (`ScriptStrokeOverlay.tsx:437-540`).
+- The rail separator (21×1, `margin: 1px 0`, `#5a5e63`) matches the derived geometry (`physicsPaintStudio.css:701-707`; spec `:166`); rail order is paint row → separator → pen, and the wireframe latch sits between Motion boundaries and Dry (`PhysicsPaintToolRail.tsx:134-279`).
+- Every icon-only control carries both `aria-label` and `title` (rail, header, list-row trash).
 
-**WARNING — wireframe-only chrome suppression.** With wireframe on and no selection surface active, the overlay deliberately skips the bounds box and the serial badge (`ScriptStrokeOverlay.tsx:488,506`; comment `:152-155`). Contract draw-order item 6 requires the existing transform box / serial badge / lift ribbon to remain "unchanged, on top" (`61-UI-SPEC.md:338`). Chrome does return once Select is entered, so the surface is usable, but the construction view silently drops the serial identity the contract keeps.
+**WARNING — the construction layer is above the chrome the contract keeps on top.** `VECTOR_PATH_Z_INDEX = 41` with the comment "Immediately above the stroke overlay (40), below the brush cursor (50)" (`VectorPathOverlay.tsx:110-111`); the script overlay mounts at `zIndex: 40` (`ScriptStrokeOverlay.tsx:614,630`). Under wireframe both overlays draw at once, so a vector stroke's translucent envelope, two-pass spine and markers sit over the serial badges (white chip at `fillOpacity 0.82`), the dashed bounds boxes and the transform box of hand-painted strokes. The contract's wireframe law lists "Existing transform box / serial badge / lift ribbon — unchanged, on top" as item 6 (`61-UI-SPEC.md:342`). The badge text keeps its white halo and stays legible, so this is not a readability blocker — but the declared stack order is inverted.
 
-**WARNING — marker styling.** Bézier handles render as `#f59e0b` at `fillOpacity 0.6` with a 1px white stroke (`VectorPathOverlay.tsx:518-528`, `HANDLE_OPACITY 0.6` at `:98`), while contract item 5 declares solid `#f59e0b` circles joined by a `0.6` connector (`61-UI-SPEC.md:337`). The connectors are correct; the dots read softer than declared.
+**Minor:** the 61-22 selected-anchor ring (`VectorPathOverlay.tsx:617-653`) is a seventh canvas element not present in the declared draw order; it is visually coherent (accent `#38bdf8`, 1.5px, mirrors the marker's shape) but the contract was not amended. The 61-22 list-view Anchor width mount (`PhysicsPaintStrokeSettingsDialog.tsx:1422-1432`) is appended inside the row list with only the list's 6px gap and no divider, so it reads as another list row rather than a separate control.
 
-### Pillar 3: Color (3/4)
+### Pillar 3: Color (4/4)
+
+No deviations found. Evidence:
+- Envelope law: `fillOpacity={selected ? 0.14 : 0.07}`, `stroke={strokeColour}`, `strokeWidth={selected ? 3.5 : 1.5}`, non-scaling, no `strokeOpacity` (`VectorPathOverlay.tsx:462-477`); identical law on the hand-painted band (`ScriptStrokeOverlay.tsx:437-449`). This is the exact declared band fill/edge (`61-UI-SPEC.md:152,168`).
+- Rungs: `#111111` 1.5 @0.55 under `#ffffff` 1 @0.9 (`VectorPathOverlay.tsx:562-583`) — the declared derived value (`spec :167`).
+- Anchors: Bézier square `#f59e0b`, auto circle `#38bdf8`, both 1px `#111111` under wireframe (`:590-615`); handles `#f59e0b` solid dots joined by a 1px @0.6 connector (`:670-690`) — §6 items 4-5 exactly.
+- Chrome: rail active amber `#f59e0b` / border `#fbbf24` / icon `#241a05` (`physicsPaintStudio.css:616-626`); header on-state `#2d5be3` (`:6272-6276`); sheet `rgba(28,30,34,0.9)` (`PhysicsPaintStrokeSettingsDialog.tsx:261`); destructive `#ef4444` confined to Mixed, trash and the lift ribbon.
+- Accent discipline: blue only on pressed header buttons, active segmented options and the stepper fill; rail amber only on the one active rail button; `#38bdf8` only on selected structure and auto anchors; `#f59e0b` only on user-owned control points. No new accent use was added to any dialog control by 61-21…61-31.
+- 60/30/10 holds: dominant sheet/rail/canvas surfaces, secondary control faces, accent only on active state.
+
+Minor observation (no action required): outside wireframe the anchor markers' 1px stroke is `#ffffff` (`markerStroke = wireframe ? OUTLINE_DARK : OUTLINE_LIGHT`, `VectorPathOverlay.tsx` render scope), which the contract only spells out as `#111111` for the wireframe law; the white two-pass outline is the shipped idiom and reads correctly.
+
+### Pillar 4: Typography (3/4)
 
 Matches:
-- Chrome: rail active amber `#f59e0b` / border `#fbbf24` / icon `#241a05` (`physicsPaintStudio.css:616-621`); pressed header `#2d5be3` (`:6272-6276`); sheet surface `rgba(28,30,34,0.9)` (`PhysicsPaintStrokeSettingsDialog.tsx:257`); destructive/Mixed `#ef4444` (`:294`); segmented active uses the token `var(--color-accent)` (`:349-350`; `index.css:25`), not a second literal.
-- Canvas palette constants are the declared set: `#38bdf8`, `#f59e0b`, `#111111`, `#ffffff`, lift `#ef4444` (`VectorPathOverlay.tsx:93-100`; `ScriptStrokeOverlay.tsx:68-73`).
-- Accent discipline holds: amber only on the active rail button, blue only on pressed header / active segment / stepper progress, `#38bdf8` only on selected structure and auto anchors, `#f59e0b` only on owned control points. No new accent use was added to any dialog control.
+- `ANCHOR_WIDTH_READOUT_STYLE` (`PhysicsPaintStrokeSettingsDialog.tsx:319-324`) is exactly `10px / 600 / var(--sidebar-text-secondary) / fontVariantNumeric: 'tabular-nums'`, matching the `BrushResponsePanel` reference (`view/BrushResponsePanel.tsx:61-73`) and spec `:125,196`. `BELOW_STYLE` (`SliderStepper.tsx:158-164`) overrides only layout, so the span's type survives.
+- `ANCHOR_WIDTH_CAPTION_STYLE` (`:306-312`) and `ADVANCED_WET_NOTE_STYLE` (`:344-351`) carry `fontWeight: 600`; the advanced note alone sets `lineHeight: 1.5`.
+- The only unset weight is `MIXED_CAPTION_STYLE` (`:299-303`, italic, `#ef4444`) — the declared 400 exception (`spec :120`).
+- The Render and Curve rows use the declared `SEGMENT_GROUP_STYLE` + `SEGMENT_STYLE` / `SEGMENT_ACTIVE_STYLE` constants (`:353-374`, `:1676,1686,1723,1733`), keep the global uppercase rule with no opt-out (`spec :126`), and the filter row alone keeps its sentence-case opt-out (`FILTER_SEGMENT_STYLE` `:381-390`).
 
-**WARNING — three canvas alpha/stroke deviations from the declared band and handle law:**
-1. Editing envelope fill `#38bdf8` at `0.12` (`VectorPathOverlay.tsx:349`, `ENVELOPE_FILL_OPACITY 0.12` at `:100`) vs the declared band fill "stroke colour @0.14 selected / @0.07 unselected" (`61-UI-SPEC.md:152`). The wireframe branch correctly uses `0.14/0.07` (`:338`); only the editing envelope is off.
-2. The wireframe envelope edge adds `strokeOpacity={0.5}` (`VectorPathOverlay.tsx:340`) while the declared edge is "stroke colour, 1.5px / 3.5px" (`61-UI-SPEC.md:168`) — the vector envelope edge is half-transparent where the hand-painted band edge is not (`ScriptStrokeOverlay.tsx:445-446`), so the two envelope types do not read identically.
-3. Handle fill opacity / white stroke as described under Visuals.
-
-### Pillar 4: Typography (2/4)
-
-Matches:
-- Labels reuse `PAINT_ROW_LABEL_STYLE` 11px/600 (`PhysicsPaintStrokeSettingsDialog.tsx:277-281`); no new size class was introduced; segmented Render buttons keep the global uppercase rule with no opt-out (`FILTER_SEGMENT_*` opt-out applies only to the filter row, `:354-367`); the advanced note alone uses line-height 1.5 (`:322-329`) as declared (`61-UI-SPEC.md:124`); chevrons are 12px and the row 24px (`:309-320`, `:1776-1779`).
-
-**WARNING — the anchor-width readout is unstyled.** `below` receives a plain string (`:1698-1700`), so it renders at the sheet's inherited size/weight/colour instead of the mandated 10px/600/secondary span with `font-variant-numeric: tabular-nums` (`61-UI-SPEC.md:125,312`; reference implementation `BrushResponsePanel.tsx:61-73`; unstyled slot `SliderStepper.tsx:158-164,600-602`). This is the phase's only new numeric readout and the contract names it explicitly.
-
-**WARNING — two new 400-weight strings.** `ANCHOR_WIDTH_CAPTION_STYLE` (`:297-303`) and `ADVANCED_WET_NOTE_STYLE` (`:322-329`) set no `font-weight`, so both render at 400 — outside the declared "two weights 600/700" table whose only 400 exception is the italic `Mixed` caption (`61-UI-SPEC.md:113-121`). The file's only `fontWeight` declaration is 600 (`:279`). If the 400 explanation weight is intentional, the contract's exception list should say so; otherwise set 600.
+**WARNING — segmented rows render 600 where the table declares 700.** The Typography table's weight row says "700 — Segmented-button text and the pinned tab row only" (`61-UI-SPEC.md:116`). `SEGMENT_STYLE` (`PhysicsPaintStrokeSettingsDialog.tsx:358-369`) sets no `font-weight`, and the global `button` rule is `font-weight: 600` (`physicsPaintStudio.css:174-190`), so BOTH the 61-12 `Render` row and the 61-31 `Curve` row render 10px/600. The spec's own parenthetical ("SEGMENT_STYLE inherits the global button weight rules") contradicts its 700 line — the implementation follows the constants but misses the declared weight. Either set `fontWeight: 700` on the segments or amend the table to 600.
 
 ### Pillar 5: Spacing (4/4)
 
 No issues found. Evidence:
-- New vertical rhythm uses the declared scale and shipped exceptions only: `SCROLL_CONTENT_STYLE` gap 10px / padding `10px 12px 0` (`:263-268`; declared exception), `SECTION_STYLE` gap 15px (`:271-275`; declared exception), `SEGMENT_LABEL_ROW_STYLE` gap 6px / marginBottom 4px (`:283-288`; 6px declared exception, 4px = xs), `ADVANCED_ROW_STYLE` 24px row / 4px gap / zero padding (`:309-320`; declared component dimension), `ADVANCED_WET_NOTE_STYLE` marginTop 4px (`:326`), `ANCHOR_WIDTH_CAPTION_STYLE` marginTop 4px (`:300`).
-- Component dimensions match their declared sources: 35x35 rail buttons, 22x22 header buttons, 20px segment height (`:336-338`), 46x17 stepper value box (`SliderStepper.tsx`), 21px separator width with `1px 0` margin declared as component geometry (`61-UI-SPEC.md:98`).
-- No arbitrary `[..px]` Tailwind values exist (the project styles with CSS custom properties and inline style objects); no off-scale new gap was found in the phase's added styles.
+- New vertical rhythm uses only declared values: `SCROLL_CONTENT_STYLE` gap 10px / padding `10px 12px 0` (`PhysicsPaintStrokeSettingsDialog.tsx:271-276`; 10px exception), `SECTION_STYLE` gap 15px (`:279-284`; 15px exception), `SEGMENT_LABEL_ROW_STYLE` gap 6px / marginBottom 4px (`:292-297`; 6px exception + xs), `ANCHOR_WIDTH_CAPTION_STYLE` marginTop 4px (`:308`), `ADVANCED_ROW_STYLE` 24px row / 4px gap / zero padding (`:331-341`; declared component dimension), `ADVANCED_WET_NOTE_STYLE` marginTop 4px (`:346`), `SEGMENT_GROUP_STYLE` gap 4px (`:353-356`).
+- Rail: column `gap: 7px`, padding `10px` (`physicsPaintStudio.css:667-677`); separator 21×1 with `margin: 1px 0` declared as component geometry (`:701-707`; spec `:98`); the footer group's `marginTop: 8px` (`PhysicsPaintToolRail.tsx:316`) is sm.
+- Component dimensions match their declared sources: rail buttons 35×35 (`:694-697`), unscoped icon buttons 32×32 (`:679-690`), header buttons 22×22 (`:6219-6237`), segmented height 20px (`:358-369`), canvas anchors 9 / radius 3.5 / hit pad 8.
+- No arbitrary `[..px]` values exist (the project styles with CSS custom properties and inline style objects); no off-scale gap was introduced by 61-21…61-31.
 
-### Pillar 6: Experience Design (2/4)
+### Pillar 6: Experience Design (3/4)
 
 Matches:
-- Draw law is complete on input: click places an auto anchor, Alt+click a corner (`VectorPathOverlay.tsx:697-705`), first-anchor finish (`:680-691`), duplicate-adjacency refusal (`:693-696`), double-click finish (`:709-713`), Enter finishes / Escape cancels (`:214-229`), Delete/Backspace removes selected anchors (`:244-271`).
-- Keyboard host shortcut: bare `V` (`physicsPaintStudioKeyboard.ts:386-388`), gated by the existing paint-edit mode guards.
-- Disabled reasons and opacity: spline-pointer opacity 0.4 with the reason in `title` (`PhysicsPaintStrokeSettingsDialog.tsx:982-990`); Draft is `role="switch"`, `aria-checked`, forced on and `disabled` under wireframe with the exact reason (`:1073-1109`); rail paint/picker/dry controls state why they are inert (`PhysicsPaintToolRail.tsx:136-147,191-194,259-262`).
-- Loading: the wireframe OFF path disables every rail control for the single-flight settle (`PhysicsPaintToolRail.tsx:120,247`; `scriptStrokeEdition.ts:196-215`), and the latch clears before the re-bake so no overlay is half-drawn.
-- Empty/error/partial: empty width caption, Mixed captions on Render / width / wet globals, press-active writes nothing, unreadable paths are refused whole through the fixed error line (`PhysicsPaintStudio.tsx:10044-10056`), and a closed gate exits path edit through the shipped lifecycle effect (`strokeSettingsModel.ts:864-866`).
-- Undo granularity is pinned one entry per finished path and per edit gesture (61-09/61-10/61-11/61-12 summaries and their tests).
+- Draw law is complete: click places an auto anchor, Alt+click a corner (`VectorPathOverlay.tsx:917-926`), first-anchor finish (`:899-911`), duplicate-adjacency refusal (`:913-916`), double-click finish (`:929-933`), Enter finishes / Escape cancels (`:288-294`), Delete/Backspace removes selected anchors (`:303-336`). A zero/one-anchor finish drops the draft without committing (`:251-267`).
+- Live rubber band in the draw state (`:395-420`, `:1149-1151`, `:1177-1189`), display-only — a move never places an anchor (D-06).
+- Keyboard: bare `V` latches the pen (`physicsPaintStudioKeyboard.ts:383-390`); the window dispatcher stands down for text-entry targets (`VectorPathOverlay.tsx:356`), so Enter/Delete in a dialog field are untouched.
+- Refusal and busy channels: anchor-width commit publishes a reason through the shared capsule (`PhysicsPaintStudio.tsx:11708-11712`); Draft settle refusals publish `DRAFT_SETTLE_BUSY_MESSAGE` / `WIREFRAME_SETTLE_REFUSED_MESSAGE` (`:5418,5439-5441`); the vector rejection publishes to both the capsule and `lastError` (`:10316-10318`). The capsule carries `aria-live="polite"` (`PhysicsPaintWorkflowStrip.tsx:1227`).
+- Disabled coverage is complete and reasoned: spline-pointer opacity 0.4 with the reason in `title` (`PhysicsPaintStrokeSettingsDialog.tsx:1044-1047`; CSS `:6245-6248`), Draft forced on and disabled under wireframe with the exact copy (`:1132-1146`), rail paint row / Select / Dry under wireframe (`PhysicsPaintToolRail.tsx:147-154,223-224,271-274`).
+- Empty/partial: list empty states, Anchor width empty caption, red italic Mixed on Render/Curve/width/wet globals, active-option press writes nothing (`:1687-1691,1734-1738`), the Curve row writes only vector ids so hand-painted strokes in a mixed selection are never touched (`strokeSettingsModel.ts:222-260`).
+- Gesture robustness (61-28): a press always ends the previous gesture and releases its pointer (`VectorPathOverlay.tsx:966-979`); continue/finish refuse a drag whose target is no longer the open edit (`:1068,1107`); the edit-lifetime effect clears and releases when the edit closes or retargets (`:787-804`).
+- Undo granularity: one snapshot pair per path, per edit gesture and per mode switch; a curve-mode write never bumps the seed salt (61-30/61-31 summaries; `beginAquarelleCurveModeEdit`).
 
-**WARNING — missing live rubber-band preview.** As detailed in Top Fix 1: the spec's draw-state canvas column requires a live rubber-band spine to the cursor (`61-UI-SPEC.md:287`), but the draft's `cursor` station is never read and no pointer-move updates it. The user sees only committed segments and a crosshair until the next click.
+**WARNING — no pre-press affordance on the canvas.** In the edit state the overlay's cursor is `default` and its only interactive feedback happens after `pointerdown` (`VectorPathOverlay.tsx:1144,1146`). The same press can start a handle drag, promote-and-drag an anchor, or insert an anchor on the spine (`hitTestVectorPath` priority at `:987-1056`), yet nothing under the pointer changes to say which. On a dense path (handles near anchors, anchors near the spine) the user commits a gesture before learning what it was. The contract's hit-priority law exists (`spec :343`) but no hover law does; the interaction surface is the phase's headline and this is its main remaining feedback gap.
 
-**WARNING — the Picker is disabled rather than disarmed under wireframe.** Contract §5 says "the picker is disarmed" (`61-UI-SPEC.md:323`); the implementation exits the latch on wireframe ON (`PhysicsPaintStudio.tsx:5443-5444`) and additionally disables the picker button with a new reason (`PhysicsPaintToolRail.tsx:191-194`). Colour sampling is non-depositing and harmless while the bake is suspended, so the stricter gate removes a function the contract did not remove. This is a small interaction divergence, not a task blocker.
-
-**Unverified live backstops (recorded, not scored):** E5 disclosure overflow, E6 settle-window disabled state, E7 dense-overlay usability (the contract's one unresolved assumption — no stroke cap; Wave 0 reference is 10 strokes at 1920x1080), and the E8 crisp-sweep thumb. The code contains the crisp branch (`watercolorStrokeThumb.ts:82-101,165-190`) and the preset row carries name/hint/thumb (`PhysicsPaintBrushMenu.tsx:173-198`; `brushMenuPresets.ts:26-29` imports the preset through the brush branch while the lift branch filters it out), but the pixels were not inspected. The plans' human-judgment UAT rows (61-11 D3, 61-12 D2/D4, 61-13 D2/D5, 61-14 D5) remain open.
+**Unverified live backstops (recorded, not scored):** the native UAT rows 61-21 A/B (rubber band), 61-22 A-C (list Anchor width, selection ring), 61-26/61-27 (Shift+A refusal, refusal copy), 61-28 (drag lifetime) and 61-31 A-F (Curve row shape change, one-undo round trip, authored-handle restoration, Mixed conversion, hand-painted absence, spline insert, save/reopen parity) were not exercised — they require the real engine frame and the Studio window.
 
 ---
 
 ## Minor Recommendations
 
-1. Align the canvas overlay with the declared colour law: editing envelope `0.14` selected / `0.07` unselected (or amend the contract to `0.12`), drop `strokeOpacity 0.5` on the wireframe envelope edge, and render handle dots solid `#f59e0b` per §6 item 5.
-2. Render the serial badge and bounds chrome under wireframe-only as the contract's draw-order item 6 states, or record the suppression as an approved contract amendment (the `Select` surface already restores them).
-3. Re-enable the Picker under wireframe (keep only the disarm) to match §5, or document the stricter gate.
-4. Decide the 400-weight explanation voice: set the two new captions to 600, or add them to the Typography exception table.
-5. Resolve the spec-side inconsistency on rung thickness — §6 item 3 says 1px, the derived table says `#111111` 1.5px under `#ffffff` 1px; the code follows the derived table, which appears to be the intended law.
-6. Exercise the four held-out visual rows live when the Studio is next open; this audit could not capture screenshots or interaction states.
+1. Align `ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE` with the declared refusal grammar (`Anchor width rejected — the path edit is no longer open on this stroke. Nothing changed.`) or record the new string in the Copywriting Contract.
+2. Record `DRAFT_SETTLE_BUSY_MESSAGE` in the contract, and prefer naming the action ("Another edit is still settling — wait for it, then set the width again") over the generic "try again".
+3. Resolve the Typography contradiction: set `fontWeight: 700` on `SEGMENT_STYLE`, or amend the table's segmented-button row to 600 (which is what the shipped global `button` rule and `SEGMENT_STYLE` currently produce).
+4. Amend `61-UI-SPEC.md` §6 to add the elements shipped after the contract: the 61-21 rubber band (now the second item in the draw order), the 61-22 selected-anchor ring (between anchors and handles), and the 61-22 list-view Anchor width mount.
+5. Consider giving the list-view Anchor width slider a separating rule or its own section header; today it inherits only the list's 6px gap and visually joins the row stack while it is inert until Edit path opens.
+6. Exercise the native UAT rows listed above when the Studio is next open; this audit could not capture screenshots or interaction states, and the Z-order finding in particular deserves one live frame with a mixed vector + hand-painted sheet under wireframe.
 
 ---
 
 ## Files Audited
 
-- `.planning/phases/61-vector-painting-tool/61-UI-SPEC.md`
+- `.planning/phases/61-vector-painting-tool/61-UI-SPEC.md` (design contract / baseline)
 - `.planning/phases/61-vector-painting-tool/61-CONTEXT.md`
-- `.planning/phases/61-vector-painting-tool/61-01-SUMMARY.md` through `61-14-SUMMARY.md`
+- `.planning/phases/61-vector-painting-tool/61-UI-REVIEW.md` (superseded 17/24 review — continuity)
+- `.planning/phases/61-vector-painting-tool/61-21-SUMMARY.md` through `61-31-SUMMARY.md`
 - `app/src/components/physic-paint/view/PhysicsPaintToolRail.tsx`
 - `app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx`
 - `app/src/components/physic-paint/view/strokeSettingsModel.ts`
-- `app/src/components/physic-paint/view/vectorPathSession.ts`
-- `app/src/components/physic-paint/view/vectorPathHandles.ts`
 - `app/src/components/physic-paint/view/scriptStrokeEdition.ts`
+- `app/src/components/physic-paint/view/aquarelleVectorPathCommit.ts`
+- `app/src/components/physic-paint/view/vectorPathHandles.ts`
 - `app/src/components/physic-paint/view/physicsPaintStudioKeyboard.ts`
-- `app/src/components/physic-paint/view/PhysicsPaintBrushMenu.tsx`
-- `app/src/components/physic-paint/view/brushMenuPresets.ts`
-- `app/src/components/physic-paint/view/watercolorStrokeThumb.ts`
 - `app/src/components/physic-paint/view/BrushResponsePanel.tsx`
-- `app/src/components/physic-paint/view/aquarelleStrokeBand.ts` (referenced by the wireframe band law)
+- `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` (status capsule)
 - `app/src/components/physic-paint/engine/VectorPathOverlay.tsx`
 - `app/src/components/physic-paint/engine/ScriptStrokeOverlay.tsx`
-- `app/src/components/physic-paint/PhysicsPaintStudio.tsx` (record seams, refusal copy, wireframe toggle handler)
+- `app/src/components/physic-paint/PhysicsPaintStudio.tsx` (record seams, refusal publish, settle messages)
 - `app/src/components/shared/SliderStepper.tsx`
 - `app/src/components/physic-paint/physicsPaintStudio.css`
 - `app/src/index.css`
 - `packages/efx-watercolor/src/playground/brushes.ts`
+
+Registry Safety: not applicable — no `components.json` exists (shadcn is not initialized) and `61-UI-SPEC.md:358-360` declares no registry blocks; the audit was skipped per the gate.
