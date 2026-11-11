@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="34" failures="11" errors="0" time="0.438">
+    <testsuite name="src/payload/toStudioStroke.test.ts" timestamp="2026-11-10T12:56:24.386Z" hostname="efx2.home" tests="14" failures="3" errors="0" skipped="0" time="0.005310208">
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="toStudioStroke paint seed salt (261031-cf9) &gt; yields hashMutationId(mutationId) when no salt is recorded" time="0.000585333">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="toStudioStroke paint seed salt (261031-cf9) &gt; folds a finite salt through mixStrokeSeed" time="0.000344875">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="toStudioStroke paint seed salt (261031-cf9) &gt; salt 0 is valid and differs from an absent salt" time="0.000121417">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="toStudioStroke paint seed salt (261031-cf9) &gt; different salts produce different seeds; the same salt reproduces the seed" time="0.000104916">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="toStudioStroke paint seed salt (261031-cf9) &gt; truncates a fractional salt to its integer part" time="0.000076375">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="paintSeedSaltOf &gt; returns null for an absent key" time="0.000075875">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="paintSeedSaltOf &gt; returns null for NaN, Infinity, a string and a negative value" time="0.000084709">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="paintSeedSaltOf &gt; truncates 4.7 to 4 and accepts 0 as a salt" time="0.000057625">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="paint seed salt persistence &gt; round-trips through payloadCodec and re-projects to the same seed" time="0.000256083">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="paint seed salt persistence &gt; leaves the engine-params projection unchanged" time="0.00019475">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="vector path engine block (61-03 D-12 / D-14) &gt; copies anchors and renderMode into the engine block unchanged" time="0.002174625">
+            <failure message="expected undefined to deeply equal [ Array(2) ]" type="AssertionError">
+AssertionError: expected undefined to deeply equal [ Array(2) ]
+
+- Expected: 
+Array [
+  Object {
+    &quot;kind&quot;: &quot;auto&quot;,
+    &quot;x&quot;: 20,
+    &quot;y&quot;: 32,
+  },
+  Object {
+    &quot;in&quot;: Object {
+      &quot;x&quot;: 40,
+      &quot;y&quot;: 30,
+    },
+    &quot;kind&quot;: &quot;bezier&quot;,
+    &quot;out&quot;: Object {
+      &quot;x&quot;: 48,
+      &quot;y&quot;: 34,
+    },
+    &quot;x&quot;: 44,
+    &quot;y&quot;: 32,
+  },
+]
+
++ Received: 
+undefined
+
+ ❯ src/payload/toStudioStroke.test.ts:191:35
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="vector path engine block (61-03 D-12 / D-14) &gt; adds no key at all when neither field is present (byte-identical shape)" time="0.000091708">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="vector path engine block (61-03 D-12 / D-14) &gt; copies renderMode ALONE when a hand-painted stroke carries a mode (D-14)" time="0.000229791">
+            <failure message="expected undefined to be &apos;simple-ribbon&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be &apos;simple-ribbon&apos; // Object.is equality
+
+- Expected: 
+&quot;simple-ribbon&quot;
+
++ Received: 
+undefined
+
+ ❯ src/payload/toStudioStroke.test.ts:204:38
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="vector path engine block (61-03 D-12 / D-14) &gt; round-trips a bezier anchor whose handles have zero length exactly" time="0.000370125">
+            <failure message="expected undefined to deeply equal [ { x: 10, y: 10, …(3) }, …(1) ]" type="AssertionError">
+AssertionError: expected undefined to deeply equal [ { x: 10, y: 10, …(3) }, …(1) ]
+
+- Expected: 
+Array [
+  Object {
+    &quot;in&quot;: Object {
+      &quot;x&quot;: 10,
+      &quot;y&quot;: 10,
+    },
+    &quot;kind&quot;: &quot;bezier&quot;,
+    &quot;out&quot;: Object {
+      &quot;x&quot;: 10,
+      &quot;y&quot;: 10,
+    },
+    &quot;x&quot;: 10,
+    &quot;y&quot;: 10,
+  },
+  Object {
+    &quot;in&quot;: Object {
+      &quot;x&quot;: 20,
+      &quot;y&quot;: 20,
+    },
+    &quot;kind&quot;: &quot;bezier&quot;,
+    &quot;out&quot;: Object {
+      &quot;x&quot;: 20,
+      &quot;y&quot;: 20,
+    },
+    &quot;x&quot;: 20,
+    &quot;y&quot;: 20,
+  },
+]
+
++ Received: 
+undefined
+
+ ❯ src/payload/toStudioStroke.test.ts:215:35
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/payload/vectorPath.test.ts" timestamp="2026-11-10T12:56:24.388Z" hostname="efx2.home" tests="20" failures="8" errors="0" skipped="0" time="0.0240225">
+        <testcase classname="src/payload/vectorPath.test.ts" name="isVectorStroke &gt; is true for a payload carrying a non-empty anchor list" time="0.013213333">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/payload/vectorPath.test.ts:53:54
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="isVectorStroke &gt; is false for a payload with no anchors and for an EMPTY anchor list" time="0.000392167">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="isVectorStroke &gt; is false when the anchor list is malformed" time="0.000202666">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; declares exactly two modes in this order, defaulting to watercolor" time="0.001423542">
+            <failure message="expected [] to deeply equal [ &apos;watercolor&apos;, &apos;simple-ribbon&apos; ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ &apos;watercolor&apos;, &apos;simple-ribbon&apos; ]
+
+- Expected
++ Received
+
+- Array [
+-   &quot;watercolor&quot;,
+-   &quot;simple-ribbon&quot;,
+- ]
++ Array []
+
+ ❯ src/payload/vectorPath.test.ts:76:36
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; resolves an absent mode to watercolor and passes both modes through" time="0.0014505">
+            <failure message="expected &apos;watercolor&apos; to be &apos;simple-ribbon&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;watercolor&apos; to be &apos;simple-ribbon&apos; // Object.is equality
+
+Expected: &quot;simple-ribbon&quot;
+Received: &quot;watercolor&quot;
+
+ ❯ src/payload/vectorPath.test.ts:83:57
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; resolves any unknown value to watercolor" time="0.000221333">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; isAquarelleRenderMode is a strict membership test" time="0.000504208">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/payload/vectorPath.test.ts:94:49
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; returns a frozen copy of a well-formed anchor list, unchanged" time="0.001329084">
+            <failure message="expected undefined to deeply equal [ Array(2) ]" type="AssertionError">
+AssertionError: expected undefined to deeply equal [ Array(2) ]
+
+- Expected: 
+Array [
+  Object {
+    &quot;kind&quot;: &quot;auto&quot;,
+    &quot;x&quot;: 20,
+    &quot;y&quot;: 32,
+  },
+  Object {
+    &quot;in&quot;: Object {
+      &quot;x&quot;: 40,
+      &quot;y&quot;: 30,
+    },
+    &quot;kind&quot;: &quot;bezier&quot;,
+    &quot;out&quot;: Object {
+      &quot;x&quot;: 48,
+      &quot;y&quot;: 34,
+    },
+    &quot;x&quot;: 44,
+    &quot;y&quot;: 32,
+  },
+]
+
++ Received: 
+undefined
+
+ ❯ src/payload/vectorPath.test.ts:109:24
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the WHOLE list for a NaN coordinate" time="0.000163208">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the whole list for an unknown anchor kind" time="0.000104791">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the whole list for a non-finite handle" time="0.000126166">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the whole list for a width outside the published range" time="0.000119333">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses an empty list and a non-array without throwing" time="0.000858084">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; accepts both published width bounds exactly" time="0.000715959">
+            <failure message="expected undefined to deeply equal [ Array(1) ]" type="AssertionError">
+AssertionError: expected undefined to deeply equal [ Array(1) ]
+
+- Expected: 
+Array [
+  Object {
+    &quot;kind&quot;: &quot;auto&quot;,
+    &quot;width&quot;: 0.2,
+    &quot;x&quot;: 0,
+    &quot;y&quot;: 0,
+  },
+]
+
++ Received: 
+undefined
+
+ ❯ src/payload/vectorPath.test.ts:159:7
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; anchorsEqual is true for two deep-equal lists" time="0.000441042">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/payload/vectorPath.test.ts:172:85
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; anchorsEqual is false when a width factor differs by 1e-9" time="0.000143916">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; anchorsEqual is false when a handle or a kind differs" time="0.000128292">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; vectorPathsEqual compares the mode too, with absent resolving to watercolor" time="0.000377709">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/payload/vectorPath.test.ts:192:82
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="the anchor type is re-exported, never redeclared &gt; re-exports VectorAnchor as AquarelleAnchor from src/vector/spine" time="0.000434834">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="the anchor type is re-exported, never redeclared &gt; carries no per-anchor brush type and no per-anchor colour member (VEC-04)" time="0.000363917">
+        </testcase>
+    </testsuite>
+</testsuites>

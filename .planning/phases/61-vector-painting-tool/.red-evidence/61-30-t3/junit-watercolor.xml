@@ -1,0 +1,2233 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="66" failures="3" errors="0" time="0.313">
+    <testsuite name="src/payload/vectorPath.test.ts" timestamp="2026-11-11T14:07:07.443Z" hostname="efx2.home" tests="33" failures="3" errors="0" skipped="0" time="0.025770959">
+        <testcase classname="src/payload/vectorPath.test.ts" name="isVectorStroke &gt; is true for a payload carrying a non-empty anchor list" time="0.000563709">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="isVectorStroke &gt; is false for a payload with no anchors and for an EMPTY anchor list" time="0.000121875">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="isVectorStroke &gt; is false when the anchor list is malformed" time="0.000078042">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; declares exactly two modes in this order, defaulting to watercolor" time="0.000274292">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; resolves an absent mode to watercolor and passes both modes through" time="0.00007525">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; resolves any unknown value to watercolor" time="0.000080167">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; isAquarelleRenderMode is a strict membership test" time="0.000088416">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve mode (G-20: explicit evaluation discriminator, absent means Bézier) &gt; declares exactly bezier and spline in this order, defaulting to bezier, and the guard is a strict membership test" time="0.000142">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve mode (G-20: explicit evaluation discriminator, absent means Bézier) &gt; resolves an absent mode and bezier to bezier, and passes spline through" time="0.000066833">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve mode (G-20: explicit evaluation discriminator, absent means Bézier) &gt; resolves any unknown value to bezier" time="0.0000735">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve mode (G-20: explicit evaluation discriminator, absent means Bézier) &gt; recordedCurveModeField writes nothing for the default and one key otherwise" time="0.000383625">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve evaluation (G-20: spline is a view, never a rewrite) &gt; resolveCurveAnchors returns the input list as-is for bezier" time="0.00004075">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve evaluation (G-20: spline is a view, never a rewrite) &gt; resolveCurveAnchors derives the spline view with every anchor auto and no stored handles" time="0.003436834">
+            <failure message="expected [ { x: 0.2, y: 0.5, …(3) }, …(2) ] not to be [ { x: 0.2, y: 0.5, …(3) }, …(2) ] // Object.is equality" type="AssertionError">
+AssertionError: expected [ { x: 0.2, y: 0.5, …(3) }, …(2) ] not to be [ { x: 0.2, y: 0.5, …(3) }, …(2) ] // Object.is equality
+
+Compared values have no visual difference.
+
+ ❯ src/payload/vectorPath.test.ts:181:22
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve evaluation (G-20: spline is a view, never a rewrite) &gt; resolveCurveAnchors never mutates or aliases the input when deriving the spline view" time="0.000576458">
+            <failure message="expected [ { x: 0.2, y: 0.5, …(3) }, …(2) ] not to be [ { x: 0.2, y: 0.5, …(3) }, …(2) ] // Object.is equality" type="AssertionError">
+AssertionError: expected [ { x: 0.2, y: 0.5, …(3) }, …(2) ] not to be [ { x: 0.2, y: 0.5, …(3) }, …(2) ] // Object.is equality
+
+Compared values have no visual difference.
+
+ ❯ src/payload/vectorPath.test.ts:205:22
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve evaluation (G-20: spline is a view, never a rewrite) &gt; evaluateAquarellePath samples the mode evaluation view and the two modes differ" time="0.016852333">
+            <failure message="expected { points: [ …(302) ], …(1) } to deeply equal { points: [ …(302) ], …(1) }" type="AssertionError">
+AssertionError: expected { points: [ …(302) ], …(1) } to deeply equal { points: [ …(302) ], …(1) }
+
+- Expected
++ Received
+
+  Object {
+    &quot;points&quot;: Array [
+      Object {
+        &quot;x&quot;: 0.2,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.20199999999999999,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5019734222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.20400000000000007,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;y&quot;: 0.5038940444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.20600000000000002,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5057624,
+      },
+      Object {
+        &quot;x&quot;: 0.20800000000000002,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5075790222222224,
+      },
+      Object {
+        &quot;x&quot;: 0.21000000000000002,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5093444444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.212,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5110591999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.21400000000000002,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5127238222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.216,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5143388444444444,
+      },
+      Object {
+-       &quot;x&quot;: 0.218,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;x&quot;: 0.21799999999999997,
++       &quot;y&quot;: 0.5159047999999999,
+      },
+      Object {
+-       &quot;x&quot;: 0.22000000000000003,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.22,
++       &quot;y&quot;: 0.5174222222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.22200000000000003,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;x&quot;: 0.22199999999999998,
++       &quot;y&quot;: 0.5188916444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.22400000000000006,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5203136,
+      },
+      Object {
+        &quot;x&quot;: 0.226,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5216886222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.22799999999999998,
+-       &quot;y&quot;: 0.4999999999999999,
++       &quot;y&quot;: 0.5230172444444443,
+      },
+      Object {
+-       &quot;x&quot;: 0.23000000000000004,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.23,
++       &quot;y&quot;: 0.5243,
+      },
+      Object {
+        &quot;x&quot;: 0.232,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5255374222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.234,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5267300444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.23600000000000002,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5278784,
+      },
+      Object {
+        &quot;x&quot;: 0.238,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5289830222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.24000000000000005,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.24,
++       &quot;y&quot;: 0.5300444444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.24200000000000002,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5310632,
+      },
+      Object {
+-       &quot;x&quot;: 0.244,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;x&quot;: 0.24399999999999997,
++       &quot;y&quot;: 0.5320398222222221,
+      },
+      Object {
+        &quot;x&quot;: 0.246,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5329748444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.24799999999999997,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5338687999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.25,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5347222222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.252,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.25199999999999995,
++       &quot;y&quot;: 0.5355356444444443,
+      },
+      Object {
+        &quot;x&quot;: 0.254,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;y&quot;: 0.5363096,
+      },
+      Object {
+-       &quot;x&quot;: 0.25600000000000006,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.256,
++       &quot;y&quot;: 0.5370446222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.258,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;x&quot;: 0.25799999999999995,
++       &quot;y&quot;: 0.5377412444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.26000000000000006,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;y&quot;: 0.5384000000000001,
+      },
+      Object {
+-       &quot;x&quot;: 0.262,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.26199999999999996,
++       &quot;y&quot;: 0.5390214222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.264,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5396060444444444,
+      },
+      Object {
+-       &quot;x&quot;: 0.266,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.26599999999999996,
++       &quot;y&quot;: 0.5401544,
+      },
+      Object {
+        &quot;x&quot;: 0.268,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5406670222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.26999999999999996,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;x&quot;: 0.2699999999999999,
++       &quot;y&quot;: 0.5411444444444443,
+      },
+      Object {
+-       &quot;x&quot;: 0.272,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.27199999999999996,
++       &quot;y&quot;: 0.5415872,
+      },
+      Object {
+        &quot;x&quot;: 0.274,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5419958222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.27599999999999997,
+-       &quot;y&quot;: 0.4999999999999999,
++       &quot;x&quot;: 0.2759999999999999,
++       &quot;y&quot;: 0.5423708444444444,
+      },
+      Object {
+-       &quot;x&quot;: 0.278,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.27799999999999997,
++       &quot;y&quot;: 0.5427128,
+      },
+      Object {
+        &quot;x&quot;: 0.28,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;y&quot;: 0.5430222222222224,
+      },
+      Object {
+-       &quot;x&quot;: 0.28200000000000003,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.282,
++       &quot;y&quot;: 0.5432996444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.28400000000000003,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;y&quot;: 0.5435456,
+      },
+      Object {
+-       &quot;x&quot;: 0.2860000000000001,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;x&quot;: 0.28600000000000003,
++       &quot;y&quot;: 0.5437606222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.288,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5439452444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.29,
+-       &quot;y&quot;: 0.4999999999999999,
++       &quot;y&quot;: 0.5440999999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.292,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5442254222222223,
+      },
+      Object {
+-       &quot;x&quot;: 0.29400000000000004,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.294,
++       &quot;y&quot;: 0.5443220444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.296,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5443903999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.29800000000000004,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5444310222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.30000000000000004,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;y&quot;: 0.5444444444444444,
+      },
+      Object {
+-       &quot;x&quot;: 0.302,
+-       &quot;y&quot;: 0.4999999999999999,
++       &quot;x&quot;: 0.30199999999999994,
++       &quot;y&quot;: 0.5444311999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.304,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5443918222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.30600000000000005,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;y&quot;: 0.5443268444444446,
+      },
+      Object {
+        &quot;x&quot;: 0.308,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5442368,
+      },
+      Object {
+        &quot;x&quot;: 0.30999999999999994,
+-       &quot;y&quot;: 0.4999999999999999,
++       &quot;y&quot;: 0.5441222222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.3120000000000001,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;x&quot;: 0.31200000000000006,
++       &quot;y&quot;: 0.5439836444444446,
+      },
+      Object {
+-       &quot;x&quot;: 0.31400000000000006,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.314,
++       &quot;y&quot;: 0.5438216,
+      },
+      Object {
+        &quot;x&quot;: 0.31599999999999995,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5436366222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.31800000000000006,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.31799999999999995,
++       &quot;y&quot;: 0.5434292444444444,
+      },
+      Object {
+-       &quot;x&quot;: 0.32,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.31999999999999995,
++       &quot;y&quot;: 0.5431999999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.322,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5429494222222221,
+      },
+      Object {
+        &quot;x&quot;: 0.324,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5426780444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.32600000000000007,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;y&quot;: 0.5423864,
+      },
+      Object {
+        &quot;x&quot;: 0.32799999999999996,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5420750222222221,
+      },
+      Object {
+        &quot;x&quot;: 0.33,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5417444444444445,
+      },
+      Object {
+-       &quot;x&quot;: 0.3320000000000001,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.332,
++       &quot;y&quot;: 0.5413952000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.334,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;y&quot;: 0.5410278222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.33599999999999997,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;x&quot;: 0.3359999999999999,
++       &quot;y&quot;: 0.5406428444444443,
+      },
+      Object {
+        &quot;x&quot;: 0.338,
+-       &quot;y&quot;: 0.5000000000000001,
++       &quot;y&quot;: 0.5402408000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.34,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5398222222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.34199999999999997,
+-       &quot;y&quot;: 0.4999999999999999,
++       &quot;y&quot;: 0.5393876444444443,
+      },
+      Object {
+-       &quot;x&quot;: 0.34400000000000003,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.344,
++       &quot;y&quot;: 0.5389376,
+      },
+      Object {
+        &quot;x&quot;: 0.34600000000000003,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5384726222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.3479999999999999,
+-       &quot;y&quot;: 0.4999999999999999,
++       &quot;y&quot;: 0.5379932444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.35,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5375,
+      },
+      Object {
+        &quot;x&quot;: 0.352,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5369934222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.354,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5364740444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.356,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5359424,
+      },
+      Object {
+        &quot;x&quot;: 0.358,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5353990222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.36,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5348444444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.362,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5342792,
+      },
+      Object {
+        &quot;x&quot;: 0.36399999999999993,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5337038222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.36599999999999994,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5331188444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.368,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5325248,
+      },
+      Object {
+        &quot;x&quot;: 0.37,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5319222222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.372,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5313116444444443,
+      },
+      Object {
+        &quot;x&quot;: 0.374,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5306936,
+      },
+      Object {
+        &quot;x&quot;: 0.376,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5300686222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.378,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5294372444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.38,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5288,
+      },
+      Object {
+        &quot;x&quot;: 0.382,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5281574222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.384,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5275100444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.386,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5268584000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.388,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5262030222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.39,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5255444444444445,
+      },
+      Object {
+-       &quot;x&quot;: 0.39200000000000007,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.392,
++       &quot;y&quot;: 0.5248832000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.39399999999999996,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5242198222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.396,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.3959999999999999,
++       &quot;y&quot;: 0.5235548444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.398,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5228888,
+      },
+      Object {
+        &quot;x&quot;: 0.39999999999999997,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5222222222222221,
+      },
+      Object {
+        &quot;x&quot;: 0.402,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5215556444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.404,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5208896,
+      },
+      Object {
+        &quot;x&quot;: 0.40599999999999997,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5202246222222222,
+      },
+      Object {
+-       &quot;x&quot;: 0.40800000000000003,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.408,
++       &quot;y&quot;: 0.5195612444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.4099999999999999,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5188999999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.412,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5182414222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.41400000000000003,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5175860444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.416,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5169344,
+      },
+      Object {
+        &quot;x&quot;: 0.418,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5162870222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.42,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5156444444444445,
+      },
+      Object {
+-       &quot;x&quot;: 0.422,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.42199999999999993,
++       &quot;y&quot;: 0.5150072,
+      },
+      Object {
+-       &quot;x&quot;: 0.424,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.42399999999999993,
++       &quot;y&quot;: 0.5143758222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.42599999999999993,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5137508444444444,
+      },
+      Object {
+-       &quot;x&quot;: 0.42800000000000005,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.428,
++       &quot;y&quot;: 0.5131328000000001,
+      },
+      Object {
+-       &quot;x&quot;: 0.43000000000000005,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.43,
++       &quot;y&quot;: 0.5125222222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.43199999999999994,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5119196444444445,
+      },
+      Object {
+-       &quot;x&quot;: 0.434,
+-       &quot;y&quot;: 0.5,
++       &quot;x&quot;: 0.43399999999999994,
++       &quot;y&quot;: 0.5113255999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.436,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5107406222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.438,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5101652444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.44,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5096,
+      },
+      Object {
+        &quot;x&quot;: 0.442,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5090454222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.44399999999999995,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5085020444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.44599999999999995,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5079703999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.44799999999999995,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5074510222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.45,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5069444444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.45199999999999996,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5064512,
+      },
+      Object {
+        &quot;x&quot;: 0.454,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5059718222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.45600000000000007,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5055068444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.45799999999999996,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5050568,
+      },
+      Object {
+        &quot;x&quot;: 0.46,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5046222222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.46199999999999997,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5042036444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.46399999999999997,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5038016,
+      },
+      Object {
+        &quot;x&quot;: 0.46599999999999997,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5034166222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.468,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5030492444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.47000000000000003,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5027,
+      },
+      Object {
+        &quot;x&quot;: 0.472,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5023694222222223,
+      },
+      Object {
+        &quot;x&quot;: 0.47400000000000003,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5020580444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.476,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5017664,
+      },
+      Object {
+        &quot;x&quot;: 0.478,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5014950222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.48,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5012444444444445,
+      },
+      Object {
+        &quot;x&quot;: 0.482,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5010152,
+      },
+      Object {
+        &quot;x&quot;: 0.484,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5008078222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.486,
+-       &quot;y&quot;: 0.49999999999999994,
++       &quot;y&quot;: 0.5006228444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.488,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5004608,
+      },
+      Object {
+        &quot;x&quot;: 0.49,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5003222222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.492,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5002076444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.494,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5001175999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.49600000000000005,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5000526222222222,
+      },
+      Object {
+        &quot;x&quot;: 0.498,
+-       &quot;y&quot;: 0.5,
++       &quot;y&quot;: 0.5000132444444444,
+      },
+      Object {
+        &quot;x&quot;: 0.5,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5019867549668874,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.5039735099337749,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5059602649006623,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5079470198675496,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.5099337748344372,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.5119205298013246,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.5139072847682119,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.5158940397350993,
+        &quot;y&quot;: 0.4999999999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.5178807947019868,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5198675496688742,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5218543046357615,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+-       &quot;x&quot;: 0.5238410596026492,
++       &quot;x&quot;: 0.523841059602649,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.5258278145695365,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.5278145695364237,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5298013245033114,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5317880794701987,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5337748344370861,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.5357615894039737,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.5377483443708609,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5397350993377483,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5417218543046357,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.5437086092715232,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5456953642384107,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.547682119205298,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.5496688741721855,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.551655629139073,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5536423841059603,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5556291390728476,
+        &quot;y&quot;: 0.4999999999999999,
+      },
+      Object {
+-       &quot;x&quot;: 0.5576158940397352,
++       &quot;x&quot;: 0.5576158940397351,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5596026490066225,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.56158940397351,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.5635761589403975,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.5655629139072849,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.5675496688741722,
++       &quot;x&quot;: 0.5675496688741721,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.5695364238410596,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.571523178807947,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5735099337748344,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.575496688741722,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.5774834437086093,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.5794701986754968,
++       &quot;x&quot;: 0.5794701986754967,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.581456953642384,
++       &quot;x&quot;: 0.5814569536423839,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5834437086092715,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5854304635761589,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+-       &quot;x&quot;: 0.5874172185430465,
++       &quot;x&quot;: 0.5874172185430464,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.5894039735099339,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+-       &quot;x&quot;: 0.5913907284768212,
++       &quot;x&quot;: 0.5913907284768211,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.5933774834437087,
++       &quot;x&quot;: 0.5933774834437086,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.5953642384105959,
+        &quot;y&quot;: 0.49999999999999983,
+      },
+      Object {
+-       &quot;x&quot;: 0.5973509933774835,
++       &quot;x&quot;: 0.5973509933774834,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.5993377483443709,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+-       &quot;x&quot;: 0.6013245033112584,
++       &quot;x&quot;: 0.6013245033112583,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.6033112582781457,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+-       &quot;x&quot;: 0.6052980132450332,
++       &quot;x&quot;: 0.6052980132450331,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6072847682119205,
++       &quot;x&quot;: 0.6072847682119203,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.609271523178808,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.6112582781456954,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6132450331125828,
++       &quot;x&quot;: 0.6132450331125827,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+-       &quot;x&quot;: 0.6152317880794703,
++       &quot;x&quot;: 0.6152317880794702,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.6172185430463576,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.619205298013245,
+        &quot;y&quot;: 0.4999999999999999,
+      },
+      Object {
+-       &quot;x&quot;: 0.6211920529801325,
++       &quot;x&quot;: 0.6211920529801324,
+        &quot;y&quot;: 0.4999999999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.6231788079470199,
+        &quot;y&quot;: 0.4999999999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.6251655629139073,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.6271523178807948,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+-       &quot;x&quot;: 0.6291390728476821,
++       &quot;x&quot;: 0.629139072847682,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6311258278145696,
++       &quot;x&quot;: 0.6311258278145695,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6331125827814569,
++       &quot;x&quot;: 0.6331125827814568,
+        &quot;y&quot;: 0.4999999999999999,
+      },
+      Object {
+-       &quot;x&quot;: 0.6350993377483444,
++       &quot;x&quot;: 0.6350993377483443,
+        &quot;y&quot;: 0.4999999999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.6370860927152316,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+-       &quot;x&quot;: 0.6390728476821194,
++       &quot;x&quot;: 0.6390728476821192,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+-       &quot;x&quot;: 0.6410596026490067,
++       &quot;x&quot;: 0.6410596026490066,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6430463576158941,
++       &quot;x&quot;: 0.643046357615894,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.6450331125827814,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6470198675496689,
++       &quot;x&quot;: 0.6470198675496687,
+        &quot;y&quot;: 0.4999999999999999,
+      },
+      Object {
+        &quot;x&quot;: 0.6490066225165563,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.6509933774834437,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6529801324503313,
++       &quot;x&quot;: 0.6529801324503312,
+        &quot;y&quot;: 0.5000000000000001,
+      },
+      Object {
+        &quot;x&quot;: 0.6549668874172185,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.656953642384106,
++       &quot;x&quot;: 0.6569536423841059,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.6589403973509935,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6609271523178809,
++       &quot;x&quot;: 0.6609271523178807,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+-       &quot;x&quot;: 0.6629139072847684,
++       &quot;x&quot;: 0.6629139072847683,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6649006622516558,
++       &quot;x&quot;: 0.6649006622516557,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.666887417218543,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.6688741721854305,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.670860927152318,
++       &quot;x&quot;: 0.6708609271523179,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.6728476821192053,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6748344370860928,
++       &quot;x&quot;: 0.6748344370860926,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+-       &quot;x&quot;: 0.6768211920529802,
++       &quot;x&quot;: 0.6768211920529801,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6788079470198677,
++       &quot;x&quot;: 0.6788079470198676,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.680794701986755,
++       &quot;x&quot;: 0.6807947019867548,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.6827814569536423,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+-       &quot;x&quot;: 0.68476821192053,
++       &quot;x&quot;: 0.6847682119205298,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.6867549668874173,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6887417218543047,
++       &quot;x&quot;: 0.6887417218543046,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6907284768211922,
++       &quot;x&quot;: 0.6907284768211921,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6927152317880796,
++       &quot;x&quot;: 0.6927152317880795,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.694701986754967,
++       &quot;x&quot;: 0.6947019867549669,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6966887417218544,
++       &quot;x&quot;: 0.6966887417218542,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.6986754966887418,
++       &quot;x&quot;: 0.6986754966887416,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7006622516556291,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7026490066225166,
++       &quot;x&quot;: 0.7026490066225165,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7046357615894041,
++       &quot;x&quot;: 0.7046357615894039,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7066225165562915,
++       &quot;x&quot;: 0.7066225165562914,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7086092715231789,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7105960264900663,
++       &quot;x&quot;: 0.7105960264900661,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7125827814569536,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+-       &quot;x&quot;: 0.7145695364238411,
++       &quot;x&quot;: 0.714569536423841,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7165562913907286,
++       &quot;x&quot;: 0.7165562913907284,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.718543046357616,
++       &quot;x&quot;: 0.7185430463576159,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7205298013245034,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7225165562913908,
++       &quot;x&quot;: 0.7225165562913907,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7245033112582783,
++       &quot;x&quot;: 0.7245033112582782,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7264900662251657,
++       &quot;x&quot;: 0.7264900662251654,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7284768211920531,
++       &quot;x&quot;: 0.7284768211920529,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7304635761589404,
++       &quot;x&quot;: 0.7304635761589403,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7324503311258279,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7344370860927154,
++       &quot;x&quot;: 0.7344370860927152,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7364238410596027,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7384105960264902,
++       &quot;x&quot;: 0.73841059602649,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7403973509933777,
++       &quot;x&quot;: 0.7403973509933774,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.742384105960265,
++       &quot;x&quot;: 0.7423841059602649,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7443708609271524,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7463576158940398,
++       &quot;x&quot;: 0.7463576158940397,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7483443708609272,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7503311258278147,
++       &quot;x&quot;: 0.7503311258278145,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7523178807947021,
++       &quot;x&quot;: 0.752317880794702,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7543046357615895,
++       &quot;x&quot;: 0.7543046357615893,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7562913907284768,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7582781456953643,
++       &quot;x&quot;: 0.7582781456953642,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7602649006622517,
++       &quot;x&quot;: 0.7602649006622515,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7622516556291391,
++       &quot;x&quot;: 0.762251655629139,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7642384105960266,
++       &quot;x&quot;: 0.7642384105960265,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.766225165562914,
++       &quot;x&quot;: 0.7662251655629139,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7682119205298014,
++       &quot;x&quot;: 0.7682119205298013,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7701986754966887,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7721854304635762,
++       &quot;x&quot;: 0.7721854304635761,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7741721854304636,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7761589403973511,
++       &quot;x&quot;: 0.776158940397351,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7781456953642385,
++       &quot;x&quot;: 0.7781456953642384,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7801324503311259,
++       &quot;x&quot;: 0.7801324503311258,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7821192052980133,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.7841059602649006,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.7860927152317881,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+-       &quot;x&quot;: 0.7880794701986756,
++       &quot;x&quot;: 0.7880794701986755,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7900662251655629,
+        &quot;y&quot;: 0.49999999999999994,
+      },
+      Object {
+        &quot;x&quot;: 0.7920529801324504,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7940397350993378,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7960264900662253,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.7980132450331126,
+        &quot;y&quot;: 0.5,
+      },
+      Object {
+        &quot;x&quot;: 0.8,
+        &quot;y&quot;: 0.5,
+      },
+    ],
+    &quot;stations&quot;: Array [
+      0,
+-     0.001999999999999974,
+-     0.004000000000000059,
+-     0.006000000000000005,
+-     0.008000000000000007,
+-     0.010000000000000009,
+-     0.011999999999999983,
+-     0.014000000000000012,
+-     0.015999999999999986,
+-     0.017999999999999988,
+-     0.020000000000000018,
+-     0.02200000000000002,
+-     0.02400000000000005,
+-     0.025999999999999995,
+-     0.02799999999999997,
+-     0.030000000000000027,
+-     0.032,
+-     0.034,
+-     0.036000000000000004,
+-     0.03799999999999998,
+-     0.040000000000000036,
+-     0.04200000000000001,
+-     0.043999999999999984,
+-     0.045999999999999985,
+-     0.04799999999999996,
+-     0.04999999999999999,
+-     0.05199999999999999,
+-     0.05399999999999999,
+-     0.05600000000000005,
+-     0.057999999999999996,
+-     0.06000000000000005,
+-     0.062,
+-     0.064,
+-     0.066,
+-     0.068,
+-     0.06999999999999995,
+-     0.07200000000000001,
+-     0.07400000000000001,
+-     0.07599999999999996,
+-     0.07800000000000001,
+-     0.08000000000000002,
+-     0.08200000000000002,
+-     0.08400000000000002,
+-     0.08600000000000008,
+-     0.08799999999999997,
+-     0.08999999999999997,
+-     0.09199999999999997,
+-     0.09400000000000003,
+-     0.09599999999999997,
+-     0.09800000000000003,
+-     0.10000000000000003,
+-     0.10199999999999998,
+-     0.10399999999999998,
+-     0.10600000000000004,
+-     0.10799999999999998,
+-     0.10999999999999993,
+-     0.1120000000000001,
+-     0.11400000000000005,
+-     0.11599999999999994,
+-     0.11800000000000005,
+-     0.12,
+-     0.122,
+-     0.124,
+-     0.12600000000000006,
+-     0.12799999999999995,
+-     0.13,
+-     0.13200000000000006,
+-     0.134,
+-     0.13599999999999995,
+-     0.138,
+-     0.14,
+-     0.14199999999999996,
+-     0.14400000000000002,
+-     0.14600000000000002,
+-     0.1479999999999999,
+-     0.14999999999999997,
+-     0.15199999999999997,
+-     0.15399999999999997,
+-     0.15599999999999997,
+-     0.15799999999999997,
+-     0.15999999999999998,
+-     0.16199999999999998,
+-     0.16399999999999992,
+-     0.16599999999999993,
+-     0.16799999999999998,
+-     0.16999999999999998,
+-     0.172,
+-     0.174,
+-     0.176,
+-     0.178,
+-     0.18,
+-     0.182,
+-     0.184,
+-     0.186,
+-     0.188,
+-     0.19,
+-     0.19200000000000006,
+-     0.19399999999999995,
+-     0.196,
+-     0.198,
+-     0.19999999999999996,
+-     0.202,
+-     0.20400000000000001,
+-     0.20599999999999996,
+-     0.20800000000000002,
+-     0.2099999999999999,
+-     0.21199999999999997,
+-     0.21400000000000002,
+-     0.21599999999999997,
+-     0.21799999999999997,
+-     0.21999999999999997,
+-     0.22199999999999998,
+-     0.22399999999999998,
+-     0.22599999999999992,
+-     0.22800000000000004,
+-     0.23000000000000004,
+-     0.23199999999999993,
+-     0.23399999999999999,
+-     0.236,
+-     0.238,
+-     0.24,
+-     0.242,
+-     0.24399999999999994,
+-     0.24599999999999994,
+-     0.24799999999999994,
+-     0.25,
+-     0.25199999999999995,
+-     0.254,
+-     0.25600000000000006,
+-     0.25799999999999995,
+-     0.26,
+-     0.26199999999999996,
+-     0.26399999999999996,
+-     0.26599999999999996,
+-     0.268,
+-     0.27,
+-     0.27199999999999996,
+-     0.274,
+-     0.27599999999999997,
+-     0.27799999999999997,
+-     0.27999999999999997,
+-     0.282,
+-     0.284,
+-     0.286,
+-     0.288,
+-     0.29,
+-     0.292,
+-     0.294,
+-     0.29600000000000004,
+-     0.298,
+-     0.3,
+-     0.30198675496688737,
+-     0.30397350993377487,
+-     0.30596026490066225,
+-     0.30794701986754963,
+-     0.30993377483443724,
+-     0.3119205298013246,
+-     0.3139072847682119,
+-     0.3158940397350993,
+-     0.31788079470198677,
+-     0.31986754966887415,
+-     0.32185430463576153,
+-     0.32384105960264914,
+-     0.3258278145695365,
+-     0.3278145695364237,
+-     0.3298013245033114,
+-     0.33178807947019867,
+-     0.33377483443708605,
+-     0.33576158940397366,
+-     0.33774834437086093,
+-     0.3397350993377483,
+-     0.3417218543046357,
+-     0.3437086092715232,
+-     0.3456953642384107,
+-     0.34768211920529796,
+-     0.34966887417218545,
+-     0.35165562913907294,
+-     0.35364238410596033,
+-     0.3556291390728476,
+-     0.3576158940397352,
+-     0.3596026490066225,
+-     0.36158940397350997,
+-     0.36357615894039746,
+-     0.36556291390728485,
+-     0.36754966887417223,
+-     0.3695364238410596,
+-     0.371523178807947,
+-     0.3735099337748344,
+-     0.375496688741722,
+-     0.37748344370860926,
+-     0.37947019867549675,
+-     0.381456953642384,
+-     0.3834437086092715,
+-     0.3854304635761589,
+-     0.3874172185430465,
+-     0.3894039735099339,
+-     0.39139072847682116,
+-     0.39337748344370865,
+-     0.3953642384105959,
+-     0.39735099337748353,
+-     0.3993377483443709,
+-     0.4013245033112584,
+-     0.4033112582781457,
+-     0.4052980132450332,
+-     0.40728476821192044,
+-     0.40927152317880794,
+-     0.41125827814569543,
+-     0.4132450331125828,
+-     0.4152317880794703,
+-     0.4172185430463576,
+-     0.41920529801324496,
+-     0.42119205298013246,
+-     0.42317880794701984,
+-     0.42516556291390734,
+-     0.42715231788079483,
+-     0.4291390728476821,
+-     0.4311258278145696,
+-     0.43311258278145687,
+-     0.43509933774834436,
+-     0.43708609271523163,
+-     0.43907284768211935,
+-     0.44105960264900673,
+-     0.4430463576158941,
+-     0.4450331125827814,
+-     0.4470198675496689,
+-     0.44900662251655626,
+-     0.45099337748344365,
+-     0.45298013245033125,
+-     0.4549668874172185,
+-     0.456953642384106,
+-     0.4589403973509935,
+-     0.4609271523178809,
+-     0.4629139072847684,
+-     0.46490066225165577,
+-     0.46688741721854304,
+-     0.46887417218543054,
+-     0.47086092715231803,
+-     0.4728476821192053,
+-     0.4748344370860928,
+-     0.4768211920529802,
+-     0.4788079470198677,
+-     0.48079470198675495,
+-     0.48278145695364233,
+-     0.48476821192052993,
+-     0.4867549668874173,
+-     0.4887417218543047,
+-     0.4907284768211922,
+-     0.4927152317880796,
+-     0.49470198675496696,
+-     0.49668874172185434,
+-     0.49867549668874184,
+-     0.5006622516556292,
+-     0.5026490066225167,
+-     0.5046357615894042,
+-     0.5066225165562915,
+-     0.5086092715231789,
+-     0.5105960264900663,
+-     0.5125827814569537,
+-     0.5145695364238412,
+-     0.5165562913907287,
+-     0.518543046357616,
+-     0.5205298013245034,
+-     0.5225165562913908,
+-     0.5245033112582783,
+-     0.5264900662251657,
+-     0.5284768211920532,
+-     0.5304635761589405,
+-     0.532450331125828,
+-     0.5344370860927155,
+-     0.5364238410596027,
+-     0.5384105960264902,
+-     0.5403973509933777,
+-     0.5423841059602651,
+-     0.5443708609271525,
+-     0.5463576158940399,
+-     0.5483443708609272,
+-     0.5503311258278147,
+-     0.5523178807947021,
+-     0.5543046357615895,
+-     0.5562913907284769,
+-     0.5582781456953644,
+-     0.5602649006622518,
+-     0.5622516556291391,
+-     0.5642384105960266,
+-     0.566225165562914,
+-     0.5682119205298014,
+-     0.5701986754966888,
+-     0.5721854304635763,
+-     0.5741721854304637,
+-     0.5761589403973512,
+-     0.5781456953642385,
+-     0.5801324503311259,
+-     0.5821192052980133,
+-     0.5841059602649007,
+-     0.5860927152317882,
+-     0.5880794701986757,
+-     0.590066225165563,
+-     0.5920529801324504,
+-     0.5940397350993378,
+-     0.5960264900662253,
+-     0.5980132450331126,
+-     0.6000000000000001,
++     0.0028096966503806517,
++     0.005582563347590346,
++     0.008319487256283205,
++     0.011021359995379636,
++     0.013689077301001728,
++     0.016323538653025736,
++     0.018925646864210742,
++     0.021496307631070393,
++     0.02403642904588013,
++     0.02654692106946717,
++     0.029028694964720343,
++     0.031482662691072104,
++     0.03390973626053897,
++     0.0363108270562779,
++     0.03868684511498644,
++     0.04103869837487526,
++     0.04336729189134354,
++     0.04567352702288914,
++     0.04795830059018787,
++     0.05022250401166468,
++     0.05246702241924688,
++     0.05469273375833332,
++     0.0569005078763195,
++     0.05909120560428391,
++     0.061265677836661904,
++     0.06342476461389078,
++     0.06556929421312128,
++     0.06770008225212477,
++     0.06981793081151083,
++     0.07192362758027313,
++     0.07401794502953218,
++     0.0761016396191293,
++     0.07817545104144054,
++     0.0802401015064627,
++     0.08229629507183321,
++     0.08434471702103599,
++     0.0863860332925858,
++     0.08842088996251615,
++     0.09044991278199739,
++     0.0924737067714156,
++     0.0944928558717503,
++     0.0965079226535987,
++     0.09851944808372616,
++     0.10052795134858236,
++     0.10253392973380372,
++     0.10453785855834495,
++     0.10654019116154233,
++     0.10854135894110888,
++     0.1105417714398047,
++     0.11254181647830994,
++     0.11454186033165621,
++     0.11654224794644064,
++     0.11854330319595405,
++     0.1205453291703048,
++     0.12254860849859636,
++     0.12455340370023024,
++     0.12655995756244653,
++     0.12856849354128072,
++     0.13057921618319732,
++     0.13259231156476986,
++     0.13460794774789328,
++     0.1366262752481448,
++     0.13864742751405046,
++     0.1406715214151562,
++     0.14269865773695617,
++     0.14472892168087462,
++     0.14676238336765532,
++     0.14879909834265362,
++     0.1508391080816767,
++     0.15288244049615296,
++     0.15492911043655325,
++     0.15697912019310933,
++     0.159032459993003,
++     0.16108910849331287,
++     0.16314903326911792,
++     0.16521219129625453,
++     0.16727852942832525,
++     0.16934798486763977,
++     0.171420485629855,
++     0.17349595100215226,
++     0.17557429199486144,
++     0.17765541178650252,
++     0.17973920616227326,
++     0.18182556394606192,
++     0.18391436742611256,
++     0.1860054927745114,
++     0.18809881046069965,
++     0.19019418565925386,
++     0.19229147865220253,
++     0.1943905452261766,
++     0.19649123706471308,
++     0.19859340213605278,
++     0.20069688507679062,
++     0.20280152757175382,
++     0.20490716873049447,
++     0.2070136454607976,
++     0.20912079283961316,
++     0.21122844448182967,
++     0.21333643290731397,
++     0.2154445899066447,
++     0.21755274690597545,
++     0.21966073533145966,
++     0.22176838697367618,
++     0.22387553435249177,
++     0.2259820110827949,
++     0.22808765224153557,
++     0.23019229473649883,
++     0.23229577767723666,
++     0.23439794274857634,
++     0.23649863458711282,
++     0.23859770116108686,
++     0.24069499415403553,
++     0.24279036935258974,
++     0.24488368703877805,
++     0.2469748123871769,
++     0.24906361586722744,
++     0.2511499736510161,
++     0.2532337680267869,
++     0.25531488781842804,
++     0.2573932288111372,
++     0.25946869418343443,
++     0.26154119494564965,
++     0.26361065038496423,
++     0.2656769885170349,
++     0.2677401465441716,
++     0.2698000713199766,
++     0.2718567198202866,
++     0.2739100596201803,
++     0.27596006937673634,
++     0.2780067393171367,
++     0.28005007173161295,
++     0.28209008147063597,
++     0.2841267964456344,
++     0.2861602581324151,
++     0.28819052207633356,
++     0.2902176583981334,
++     0.2922417522992393,
++     0.29426290456514487,
++     0.2962812320653964,
++     0.29829686824851975,
++     0.30030996363009227,
++     0.30232068627200887,
++     0.30432922225084313,
++     0.30633577611305945,
++     0.3083405713146932,
++     0.31034385064298486,
++     0.3123458766173357,
++     0.3143469318668491,
++     0.3163473194816334,
++     0.3183473633349798,
++     0.3203341183018672,
++     0.3223208732687547,
++     0.3243076282356421,
++     0.32629438320252946,
++     0.32828113816941706,
++     0.33026789313630445,
++     0.3322546481031917,
++     0.3342414030700791,
++     0.3362281580369666,
++     0.338214913003854,
++     0.34020166797074136,
++     0.34218842293762886,
++     0.34417517790451635,
++     0.3461619328714035,
++     0.3481486878382912,
++     0.3501354428051785,
++     0.3521221977720659,
++     0.3541089527389535,
++     0.35609570770584076,
++     0.35808246267272814,
++     0.3600692176396155,
++     0.362055972606503,
++     0.3640427275733905,
++     0.3660294825402778,
++     0.3680162375071653,
++     0.37000299247405277,
++     0.37198974744094015,
++     0.3739765024078274,
++     0.3759632573747149,
++     0.3779500123416023,
++     0.3799367673084898,
++     0.3819235222753773,
++     0.3839102772422647,
++     0.38589703220915195,
++     0.38788378717603944,
++     0.3898705421429268,
++     0.3918572971098142,
++     0.3938440520767018,
++     0.3958308070435891,
++     0.39781756201047647,
++     0.39980431697736374,
++     0.40179107194425134,
++     0.4037778269111387,
++     0.4057645818780262,
++     0.4077513368449137,
++     0.4097380918118009,
++     0.41172484677868837,
++     0.41371160174557575,
++     0.41569835671246325,
++     0.41768511167935074,
++     0.4196718666462381,
++     0.4216586216131255,
++     0.4236453765800129,
++     0.42563213154690016,
++     0.42761888651378777,
++     0.42960564148067526,
++     0.43159239644756253,
++     0.43357915141445,
++     0.4355659063813374,
++     0.4375526613482248,
++     0.4395394163151122,
++     0.44152617128199967,
++     0.44351292624888716,
++     0.44549968121577466,
++     0.4474864361826618,
++     0.4494731911495493,
++     0.4514599461164366,
++     0.4534467010833241,
++     0.45543345605021146,
++     0.45742021101709907,
++     0.45940696598398645,
++     0.46139372095087383,
++     0.4633804759177612,
++     0.4653672308846485,
++     0.4673539858515361,
++     0.4693407408184235,
++     0.47132749578531097,
++     0.47331425075219835,
++     0.47530100571908573,
++     0.47728776068597334,
++     0.4792745156528605,
++     0.4812612706197481,
++     0.4832480255866355,
++     0.48523478055352287,
++     0.48722153552041036,
++     0.48920829048729775,
++     0.49119504545418513,
++     0.4931818004210724,
++     0.4951685553879599,
++     0.4971553103548474,
++     0.49914206532173466,
++     0.5011288202886222,
++     0.5031155752555097,
++     0.5051023302223971,
++     0.5070890851892844,
++     0.5090758401561719,
++     0.5110625951230593,
++     0.5130493500899467,
++     0.5150361050568341,
++     0.5170228600237214,
++     0.5190096149906089,
++     0.5209963699574963,
++     0.5229831249243837,
++     0.5249698798912712,
++     0.5269566348581587,
++     0.528943389825046,
++     0.5309301447919335,
++     0.5329168997588208,
++     0.5349036547257082,
++     0.5368904096925957,
++     0.5388771646594832,
++     0.5408639196263705,
++     0.542850674593258,
++     0.5448374295601452,
++     0.5468241845270327,
++     0.5488109394939201,
++     0.5507976944608077,
++     0.552784449427695,
++     0.5547712043945825,
++     0.5567579593614698,
++     0.5587447143283573,
++     0.5607314692952448,
++     0.5627182242621322,
++     0.5647049792290195,
++     0.566691734195907,
++     0.5686784891627943,
++     0.5706652441296818,
++     0.5726519990965692,
++     0.5746387540634567,
++     0.576625509030344,
++     0.5786122639972313,
++     0.5805990189641188,
++     0.5825857739310063,
++     0.5845725288978937,
++     0.5865592838647811,
++     0.5885460388316686,
++     0.5905327937985559,
++     0.5925195487654434,
++     0.5945063037323308,
++     0.5964930586992182,
++     0.5984798136661056,
++     0.6004665686329931,
++     0.6024533235998805,
++     0.604440078566768,
++     0.6064268335336553,
++     0.6084135885005427,
++     0.6104003434674302,
++     0.6123870984343176,
++     0.6143738534012051,
++     0.6163606083680924,
++     0.6183473633349799,
+    ],
+  }
+
+ ❯ src/payload/vectorPath.test.ts:216:20
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; returns a frozen copy of a well-formed anchor list, unchanged" time="0.000153208">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the WHOLE list for a NaN coordinate" time="0.000064792">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the whole list for an unknown anchor kind" time="0.000048875">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the whole list for a non-finite handle" time="0.000058666">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the whole list for a width outside the published range" time="0.000055875">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses an empty list and a non-array without throwing" time="0.000347875">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; accepts both published width bounds exactly" time="0.000073708">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; anchorsEqual is true for two deep-equal lists" time="0.000097042">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; anchorsEqual is false when a width factor differs by 1e-9" time="0.000041292">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; anchorsEqual is false when a handle or a kind differs" time="0.000055375">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; vectorPathsEqual compares the mode too, with absent resolving to watercolor" time="0.000091792">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="projectVectorPath — sparse width (D-10) &gt; omits an explicit default factor and keeps exactly one non-default factor" time="0.000209375">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="projectVectorPath — sparse width (D-10) &gt; keeps a fully uniform list free of width keys, and isUniformWidthProfile agrees" time="0.000104416">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="projectVectorPath — sparse width (D-10) &gt; returns a frozen list, a fresh array, and never mutates its input" time="0.000139083">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="projectVectorPath — sparse width (D-10) &gt; preserves anchor order exactly (61-02 stations index into it)" time="0.000120916">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode persistence &gt; keeps simple-ribbon across a JSON round trip of the path" time="0.000066792">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="the anchor type is re-exported, never redeclared &gt; re-exports VectorAnchor as AquarelleAnchor from src/vector/spine" time="0.000243916">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="the anchor type is re-exported, never redeclared &gt; carries no per-anchor brush type and no per-anchor colour member (VEC-04)" time="0.000189958">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/vector/spine.test.ts" timestamp="2026-11-11T14:07:07.446Z" hostname="efx2.home" tests="33" failures="0" errors="0" skipped="0" time="0.049511125">
+        <testcase classname="src/vector/spine.test.ts" name="resolveAnchorHandles — the auto-smooth law &gt; derives the middle anchor handles from its neighbours: P +- (P_next - P_prev) / 6" time="0.000965375">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="resolveAnchorHandles — the auto-smooth law &gt; gives the endpoints a one-sided tangent: P0 + (P1 - P0) / 3 and its mirror" time="0.00014825">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="resolveAnchorHandles — the auto-smooth law &gt; returns both handles at the anchor for a single-anchor list" time="0.000091541">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="resolveAnchorHandles — the auto-smooth law &gt; does not mutate the anchors it reads" time="0.0001115">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="resolveAnchorHandles — bezier anchors &gt; returns the stored handles unchanged" time="0.000103208">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="resolveAnchorHandles — bezier anchors &gt; keeps zero-length corner handles as zero-length — no auto promotion" time="0.000084583">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="resolveAnchorHandles — bezier anchors &gt; falls back to the auto law when the stored handles are missing or non-finite" time="0.000071042">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="sampleVectorPath &gt; keeps a collinear path on its line with strictly increasing x" time="0.010224959">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="sampleVectorPath &gt; reports strictly increasing stations whose last entry is pathLength" time="0.004839375">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="sampleVectorPath &gt; pins the first and last anchor at their emitted stations" time="0.000285958">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="sampleVectorPath &gt; samples no wider than PATH_SAMPLE_STEP_UV between consecutive points" time="0.004486916">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="degenerate anchor lists &gt; drops a duplicated position before evaluating" time="0.000145916">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="degenerate anchor lists &gt; evaluates a duplicated list without NaN and without a zero-length segment" time="0.00212975">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="degenerate anchor lists &gt; reads neighbours from the normalised list so a duplicate cannot shift the handles" time="0.000100292">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="degenerate anchor lists &gt; samples a single anchor to exactly one point and zero length" time="0.000095959">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="degenerate anchor lists &gt; samples an empty list to zero points and never throws" time="0.000079667">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="degenerate anchor lists &gt; drops non-finite anchors" time="0.000055875">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="clampAnchorWidth &gt; guards the published 0.2..2.0 range and defaults non-finite input" time="0.000095125">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="clampAnchorWidth &gt; never lowers a factor that is already inside the range" time="0.000176375">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="isUniformWidthProfile &gt; reports a list with no factor at all as uniform" time="0.000097875">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="isUniformWidthProfile &gt; reports a list where every factor is exactly 1 as uniform" time="0.000049709">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="isUniformWidthProfile &gt; reports a single edited anchor as non-uniform" time="0.000045541">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="anchorWidthAt &gt; reads 1 where no factor is set and the edited factor at its anchor station" time="0.00025925">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="anchorWidthAt &gt; interpolates linearly on arc length between the two bracketing anchors" time="0.000079125">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="anchorWidthAt &gt; holds the nearest factor before the first and after the last station" time="0.000315958">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="anchorWidthAt &gt; returns the default for a list without anchors and 1 for a single anchor" time="0.000042917">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="sampleVectorWidths &gt; returns one factor per point, all inside the published range" time="0.015081083">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="sampleVectorWidths &gt; rises to the edited factor then falls back — non-decreasing then non-increasing" time="0.007051">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="sampleVectorWidths &gt; carries a 1.8 factor through untouched — nothing clamps it to 1" time="0.000814958">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="sampleVectorWidths &gt; returns exactly 1 for every point of a uniform profile" time="0.000446875">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="sampleVectorWidths &gt; reads the final factor for points at or beyond the end of the spine" time="0.000099083">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="determinism scan coverage &gt; the spine module carries no unseeded RNG source" time="0.000046958">
+        </testcase>
+        <testcase classname="src/vector/spine.test.ts" name="determinism scan coverage &gt; the determinism contract declares src/vector as a scanned root" time="0.000047167">
+        </testcase>
+    </testsuite>
+</testsuites>

@@ -1,0 +1,72 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor
+
+ ❯ src/adapter/engineAdapter.test.ts (27 tests | 4 failed | 8 skipped) 7ms
+   × resolveStrokeWidthFactors (61-04) > derives one Float32Array entry per point: authored maximum, held ends 2ms
+     → expected null to be an instance of Float32Array
+   × resolveStrokeWidthFactors (61-04) > two consecutive resolutions are element-wise identical (pure, no clock/RNG) 0ms
+     → expected null not to be null
+   × resolveStrokeWidthFactors (61-04) > a one-point grid reads the first anchor factor 0ms
+     → expected null not to be null
+   × resolveStrokeWidthFactors (61-04) > holds out-of-range factors at the nearest published end, always finite 0ms
+     → expected null not to be null
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/adapter/engineAdapter.test.ts > resolveStrokeWidthFactors (61-04) > derives one Float32Array entry per point: authored maximum, held ends
+AssertionError: expected null to be an instance of Float32Array
+ ❯ src/adapter/engineAdapter.test.ts:552:21
+    550|     const factors = resolveStrokeWidthFactors(payload, pts)
+    551| 
+    552|     expect(factors).toBeInstanceOf(Float32Array)
+       |                     ^
+    553|     expect(factors?.length).toBe(pts.length)
+    554| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/adapter/engineAdapter.test.ts > resolveStrokeWidthFactors (61-04) > two consecutive resolutions are element-wise identical (pure, no clock/RNG)
+AssertionError: expected null not to be null
+ ❯ src/adapter/engineAdapter.test.ts:567:24
+    565|     const second = resolveStrokeWidthFactors(payload, pts)
+    566| 
+    567|     expect(second).not.toBeNull()
+       |                        ^
+    568|     expect(second?.length).toBe(first?.length)
+    569|     for (let index = 0; index < (first?.length ?? 0); index++) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/adapter/engineAdapter.test.ts > resolveStrokeWidthFactors (61-04) > a one-point grid reads the first anchor factor
+AssertionError: expected null not to be null
+ ❯ src/adapter/engineAdapter.test.ts:582:25
+    580|     const factors = resolveStrokeWidthFactors(payload, [single])
+    581| 
+    582|     expect(factors).not.toBeNull()
+       |                         ^
+    583|     expect(factors!.length).toBe(1)
+    584|     expect(factors![0]).toBeCloseTo(1.8, 5)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/adapter/engineAdapter.test.ts > resolveStrokeWidthFactors (61-04) > holds out-of-range factors at the nearest published end, always finite
+AssertionError: expected null not to be null
+ ❯ src/adapter/engineAdapter.test.ts:596:25
+    594|     const factors = resolveStrokeWidthFactors(payload, pts)
+    595| 
+    596|     expect(factors).not.toBeNull()
+       |                         ^
+    597|     const values = Array.from(factors!)
+    598|     for (const value of values) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 15 passed | 8 skipped (27)
+   Start at  14:17:00
+   Duration  392ms (transform 103ms, setup 0ms, collect 201ms, tests 7ms, environment 0ms, prepare 29ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-04-t2/junit.xml
+undefined
+/Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/adapter/engineAdapter.test.ts --reporter=default --reporter=junit --outputFile=/Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-04-t2/junit.xml

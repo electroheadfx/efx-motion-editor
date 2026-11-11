@@ -1,0 +1,1171 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="157" failures="14" errors="0" time="0.949">
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" timestamp="2026-11-10T15:32:37.647Z" hostname="efx2.home" tests="8" failures="8" errors="0" skipped="0" time="0.006743208">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; mounts exactly one spline-pointer button in the header row" time="0.003238542">
+            <failure message="expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:56:50
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; sits between the preview-stroke-size and view-toggle neighbours" time="0.000297541">
+            <failure message="expected -1 to be greater than 32916" type="AssertionError">
+AssertionError: expected -1 to be greater than 32916
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:66:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; carries the shipped 22x22 header chrome and no laid-out text" time="0.000198708">
+            <failure message="missing start marker: data-testid=&quot;stroke-settings-spline-pointer&quot;: expected -1 to be greater than -1" type="AssertionError">
+AssertionError: missing start marker: data-testid=&quot;stroke-settings-spline-pointer&quot;: expected -1 to be greater than -1
+ ❯ regionOf src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:36:57
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:71:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; binds aria-pressed, the fixed aria-label and the gate title" time="0.000152167">
+            <failure message="missing start marker: data-testid=&quot;stroke-settings-spline-pointer&quot;: expected -1 to be greater than -1" type="AssertionError">
+AssertionError: missing start marker: data-testid=&quot;stroke-settings-spline-pointer&quot;: expected -1 to be greater than -1
+ ❯ regionOf src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:36:57
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:82:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; stops the press so the drag-handle header never swallows the click" time="0.000157958">
+            <failure message="missing start marker: data-testid=&quot;stroke-settings-spline-pointer&quot;: expected -1 to be greater than -1" type="AssertionError">
+AssertionError: missing start marker: data-testid=&quot;stroke-settings-spline-pointer&quot;: expected -1 to be greater than -1
+ ❯ regionOf src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:36:57
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:90:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; enters and leaves path edit through the session actions only" time="0.000151584">
+            <failure message="missing start marker: data-testid=&quot;stroke-settings-spline-pointer&quot;: expected -1 to be greater than -1" type="AssertionError">
+AssertionError: missing start marker: data-testid=&quot;stroke-settings-spline-pointer&quot;: expected -1 to be greater than -1
+ ❯ regionOf src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:36:57
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:95:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; declares the two disabled reasons verbatim in the model" time="0.000997">
+            <failure message="expected &apos;// ==================================…&apos; to contain &apos;export const PATH_EDIT_SINGLE_DISABLE…&apos;" type="AssertionError">
+AssertionError: expected &apos;// ==================================…&apos; to contain &apos;export const PATH_EDIT_SINGLE_DISABLE…&apos;
+
+- Expected
++ Received
+
+- export const PATH_EDIT_SINGLE_DISABLED_REASON = &apos;Edit path — select one vector stroke&apos;;
++ // ============================================================
++ //  strokeSettingsModel — the pure core of the Stroke Settings
++ //  dialog (quick 261024-p5q).
++ //
++ //  One locked field registry per engine, mixed reads whose
++ //  representative is the FIRST-SELECTED stroke (ReadonlySet
++ //  insertion order), canonical-unit patch builders, the open /
++ //  dismissal-edge resolution law and the view-supplied bundle
++ //  contract. No Preact, no signals, no DOM.
++ //
++ //  The dialog is the ONLY editing surface: these helpers never
++ //  touch Studio globals, the sidebar, the top bar or the shared
++ //  script-edition port.
++ // ============================================================
++
++ import { DEFAULT_CANONICAL_PARAMS } from &apos;@efxlab/efx-watercolor&apos;;
++ import { findTip } from &apos;@efxlab/efx-watercolor/brushes&apos;;
++ import { paintSeedSaltOf } from &apos;@efxlab/efx-watercolor/payload&apos;;
++ import type {
++   SelectableScriptStroke,
++   ScriptStrokeSize,
++   ScriptStrokeTool,
++ } from &apos;./scriptStrokeEdition&apos;;
++ import type { ScriptStrokeTransform } from &apos;./scriptStrokeTransform&apos;;
++
++ export type StrokeSettingsModule = &apos;brush&apos; | &apos;watercolor&apos;;
++
++ export interface StrokeSettingsFieldOption {
++   readonly label: string;
++   readonly value: number;
++ }
++
++ /**
++  * One row of a Paint section. `key` is the UI identity; the canonically
++  * stored param is `paramKey ?? key` (smoothing displays Off/Soft/Med/High
++  * but stores `antiAlias` 0..3).
++  */
++ export interface StrokeSettingsField {
++   readonly key: string;
++   readonly label: string;
++   readonly min: number;
++   readonly max: number;
++   readonly step: number;
++   readonly kind: &apos;numeric&apos; | &apos;segmented&apos;;
++   readonly options?: readonly StrokeSettingsFieldOption[];
++   readonly paramKey?: string;
++   /**
++    * Value used when a stroke carries no finite entry for the param.
++    * Water color fields use the canonical defaults; brush fields leave it
++    * undefined and fall back to `min` (PaintStroke.params is total — the
++    * fallback is a guard, never a value the engine hands out).
++    */
++   readonly fallback?: number;
++ }
++
++ /** Brush Paint-tab fields (Move tool). Erase strength and Spread are absent. */
++ export const BRUSH_SETTINGS_FIELDS: readonly StrokeSettingsField[] = Object.freeze([
++   Object.freeze({ key: &apos;size&apos;, label: &apos;Size&apos;, min: 1, max: 800, step: 1, kind: &apos;numeric&apos; as const }),
++   Object.freeze({ key: &apos;opacity&apos;, label: &apos;Opacity&apos;, min: 10, max: 100, step: 1, kind: &apos;numeric&apos; as const }),
++   Object.freeze({ key: &apos;edgeDetail&apos;, label: &apos;Shape detail&apos;, min: 0, max: 100, step: 1, kind: &apos;numeric&apos; as const }),
++   Object.freeze({ key: &apos;pickup&apos;, label: &apos;Blending&apos;, min: 0, max: 100, step: 1, kind: &apos;numeric&apos; as const }),
++   Object.freeze({
++     key: &apos;smoothing&apos;,
++     label: &apos;Smoothing&apos;,
++     min: 0,
++     max: 3,
++     step: 1,
++     kind: &apos;segmented&apos; as const,
++     paramKey: &apos;antiAlias&apos;,
++     options: Object.freeze([
++       Object.freeze({ label: &apos;Off&apos;, value: 0 }),
++       Object.freeze({ label: &apos;Soft&apos;, value: 1 }),
++       Object.freeze({ label: &apos;Med&apos;, value: 2 }),
++       Object.freeze({ label: &apos;High&apos;, value: 3 }),
++     ]),
++   }),
++ ]);
++
++ /** Water color Paint-tab fields (Select mode), in canonical units. */
++ export const WATERCOLOR_SETTINGS_FIELDS: readonly StrokeSettingsField[] = Object.freeze([
++   Object.freeze({
++     key: &apos;size&apos;,
++     label: &apos;Size&apos;,
++     min: 1,
++     max: 800,
++     step: 1,
++     kind: &apos;numeric&apos; as const,
++     fallback: DEFAULT_CANONICAL_PARAMS.size,
++   }),
++   Object.freeze({ key: &apos;load&apos;, label: &apos;Pigment&apos;, min: 0, max: 100, step: 1, kind: &apos;numeric&apos; as const, fallback: DEFAULT_CANONICAL_PARAMS.load }),
++   Object.freeze({ key: &apos;water&apos;, label: &apos;Water&apos;, min: 0, max: 100, step: 1, kind: &apos;numeric&apos; as const, fallback: DEFAULT_CANONICAL_PARAMS.water }),
++   Object.freeze({ key: &apos;flow&apos;, label: &apos;Flow&apos;, min: 0, max: 100, step: 1, kind: &apos;numeric&apos; as const, fallback: DEFAULT_CANONICAL_PARAMS.flow }),
++   Object.freeze({ key: &apos;bleed&apos;, label: &apos;Bleed&apos;, min: 0, max: 100, step: 1, kind: &apos;numeric&apos; as const, fallback: DEFAULT_CANONICAL_PARAMS.bleed }),
++   Object.freeze({ key: &apos;edge&apos;, label: &apos;Edges&apos;, min: 0, max: 100, step: 1, kind: &apos;numeric&apos; as const, fallback: DEFAULT_CANONICAL_PARAMS.edge }),
++   Object.freeze({ key: &apos;granulation&apos;, label: &apos;Grain&apos;, min: 0, max: 100, step: 1, kind: &apos;numeric&apos; as const, fallback: DEFAULT_CANONICAL_PARAMS.granulation }),
++   Object.freeze({ key: &apos;dry&apos;, label: &apos;Dry speed&apos;, min: 0, max: 100, step: 1, kind: &apos;numeric&apos; as const, fallback: DEFAULT_CANONICAL_PARAMS.dry }),
++ ]);
++
++ export function strokeSettingsFields(module: StrokeSettingsModule): readonly StrokeSettingsField[] {
++   return module === &apos;watercolor&apos; ? WATERCOLOR_SETTINGS_FIELDS : BRUSH_SETTINGS_FIELDS;
++ }
++
++ /** The narrow per-stroke appearance the dialog hydrates from. */
++ export interface ScriptStrokeAppearance {
++   readonly mutationId: number;
++   readonly params: Readonly&lt;Record&lt;string, number&gt;&gt;;
++   readonly color: string | null;
++ }
++
++ /** One canonical-unit batch write (params merged, color replaced). */
++ export interface ScriptStrokeAppearancePatch {
++   readonly params?: Readonly&lt;Record&lt;string, number&gt;&gt;;
++   readonly color?: string;
++   /** 261031-cf9: the Paint seed variation flag (see the appearance door). */
++   readonly paintSeedVariation?: boolean;
++ }
++
++ export interface NumericFieldReading {
++   readonly value: number;
++   readonly mixed: boolean;
++ }
++
++ export interface ColorFieldReading {
++   readonly color: string;
++   readonly mixed: boolean;
++ }
++
++ /** The overlay&apos;s neutral for a stroke recorded without an explicit color. */
++ export const NEUTRAL_STROKE_COLOR = &apos;#111827&apos;;
++
++ function storedKey(field: StrokeSettingsField): string {
++   return field.paramKey ?? field.key;
++ }
++
++ function fieldDefault(field: StrokeSettingsField): number {
++   return field.fallback ?? field.min;
++ }
++
++ function readFiniteParam(
++   params: Readonly&lt;Record&lt;string, number&gt;&gt; | undefined,
++   key: string,
++   fallback: number,
++ ): number {
++   const value = params?.[key];
++   return typeof value === &apos;number&apos; &amp;&amp; Number.isFinite(value) ? value : fallback;
++ }
++
++ function appearanceMap(
++   appearances: readonly ScriptStrokeAppearance[],
++ ): Map&lt;number, ScriptStrokeAppearance&gt; {
++   const map = new Map&lt;number, ScriptStrokeAppearance&gt;();
++   for (const appearance of appearances) map.set(appearance.mutationId, appearance);
++   return map;
++ }
++
++ /**
++  * Absolute when every selected stroke agrees; otherwise mixed with the
++  * FIRST-SELECTED id&apos;s value (selection insertion order, never registry
++  * order). Missing/non-finite params resolve to the field default before
++  * the comparison, so a genuinely absent key never reads as &quot;mixed&quot;.
++  */
++ export function readNumericField(
++   appearances: readonly ScriptStrokeAppearance[],
++   orderedIds: readonly number[],
++   field: StrokeSettingsField,
++ ): NumericFieldReading {
++   const byId = appearanceMap(appearances);
++   const key = storedKey(field);
++   const fallback = fieldDefault(field);
++   const values = orderedIds.map((id) =&gt; readFiniteParam(byId.get(id)?.params, key, fallback));
++   if (values.length === 0) return { value: fallback, mixed: false };
++   const first = values[0]!;
++   return { value: first, mixed: values.some((value) =&gt; value !== first) };
++ }
++
++ /**
++  * Representative color from the FIRST-SELECTED id; mixed when any visible
++  * color differs (a later repeat of the representative does not cancel it).
++  */
++ export function readColorField(
++   appearances: readonly ScriptStrokeAppearance[],
++   orderedIds: readonly number[],
++ ): ColorFieldReading {
++   const byId = appearanceMap(appearances);
++   const colors = orderedIds.map((id) =&gt; byId.get(id)?.color ?? NEUTRAL_STROKE_COLOR);
++   if (colors.length === 0) return { color: NEUTRAL_STROKE_COLOR, mixed: false };
++   const first = colors[0]!;
++   return { color: first, mixed: colors.some((color) =&gt; color !== first) };
++ }
++
++ /** Canonical-unit params patch for one committed row. */
++ export function buildAppearancePatch(
++   module: StrokeSettingsModule,
++   fieldKey: string,
++   value: number,
++ ): ScriptStrokeAppearancePatch {
++   const field = strokeSettingsFields(module).find((candidate) =&gt; candidate.key === fieldKey);
++   const key = field ? storedKey(field) : fieldKey;
++   return { params: { [key]: value } };
++ }
++
++ /** Color-only patch for one color commit. */
++ export function buildColorPatch(color: string): ScriptStrokeAppearancePatch {
++   return { color };
++ }
++
++ /**
++  * 261031-cf9: the Paint seed variation switch reads ON only when the
++  * selection is non-empty and EVERY selected stroke carries a finite
++  * non-negative `paintSeedSalt` (the reserved host key inside the stroke
++  * params). Mixed, absent or malformed salts read OFF — the switch then
++  * commits ON for the whole selection, so a mixed read is the only safe
++  * representative.
++  */
++ export function readPaintSeedVariation(
++   appearances: readonly ScriptStrokeAppearance[],
++ ): boolean {
++   if (appearances.length === 0) return false;
++   return appearances.every((appearance) =&gt; paintSeedSaltOf(appearance.params) !== null);
++ }
++
++ /** The switch&apos;s whole-selection flag patch. */
++ export function buildPaintSeedVariationPatch(enabled: boolean): ScriptStrokeAppearancePatch {
++   return { paintSeedVariation: enabled };
++ }
++
++ // ============================================================
++ //  Stroke list laws (quick 261031-euf). Pure display derivations
++ //  over the frame listing: row labels, the kind filter, the tip
++ //  name, the topmost-first order and the finer filters. No
++ //  Preact, no signals, no DOM — the dialog reads them in its
++ //  render body and never writes.
++ // ============================================================
++
++ export type StrokeListTypeFilter = &apos;all&apos; | &apos;paint&apos; | &apos;lift&apos;;
++
++ /** Closed four-way map (the engine&apos;s tool union is closed on these). */
++ const STROKE_TOOL_LABELS: Readonly&lt;Record&lt;ScriptStrokeTool, string&gt;&gt; = Object.freeze({
++   brush: &apos;Brush&apos;,
++   water: &apos;Water&apos;,
++   pen: &apos;Pen&apos;,
++   lift: &apos;Eraser&apos;,
++ });
++
++ export function strokeToolLabel(tool: ScriptStrokeTool): string {
++   return STROKE_TOOL_LABELS[tool];
++ }
++
++ /** The kind predicate, mirroring `matchesAquarelleStrokeFilter`. */
++ export function matchesStrokeTypeFilter(
++   stroke: Pick&lt;SelectableScriptStroke, &apos;kind&apos;&gt;,
++   filter: StrokeListTypeFilter,
++ ): boolean {
++   if (filter === &apos;all&apos;) return true;
++   return filter === &apos;lift&apos; ? stroke.kind === &apos;lift&apos; : stroke.kind === &apos;paint&apos;;
++ }
++
++ /**
++  * The recorded tip&apos;s display name. Fail-closed: an unknown id (a preset id,
++  * a deleted custom tip) renders the raw recorded string — never a blank.
++  */
++ export function resolveStrokeTipName(brushId: string): string {
++   return findTip(brushId)?.name ?? brushId;
++ }
++
++ /**
++  * A NEW array ordered topmost-first (position 1 first), the creation serial
++  * ascending as the tie-break. The input array and its objects are untouched.
++  */
++ export function sortStrokesTopmostFirst(
++   strokes: readonly SelectableScriptStroke[],
++ ): SelectableScriptStroke[] {
++   return [...strokes].sort((left, right) =&gt; (
++     left.stackPosition !== right.stackPosition
++       ? left.stackPosition - right.stackPosition
++       : left.serial - right.serial
++   ));
++ }
++
++ // ============================================================
++ //  Finer list filters (quick 261031-euf Task 2). Pure option
++ //  derivation, row filtering, effective-filter resolution and
++ //  the summary string. The OPTION lists are deliberately
++ //  derived from the rows that will actually be filtered: tools
++ //  from the type-filtered rows, tips from the tool-filtered
++ //  rows, so the dropdowns never offer an empty combination.
++ // ============================================================
++
++ export const ALL_TOOL_FILTER_LABEL = &apos;All tools&apos;;
++ export const ALL_TIP_FILTER_LABEL = &apos;All tips&apos;;
++
++ /** The engine&apos;s closed tool union, in its canonical display order. */
++ const STROKE_TOOL_ORDER: readonly ScriptStrokeTool[] = Object.freeze([
++   &apos;brush&apos;,
++   &apos;water&apos;,
++   &apos;pen&apos;,
++   &apos;lift&apos;,
++ ]);
++
++ export type StrokeToolFilterValue = ScriptStrokeTool | &apos;all&apos;;
++
++ /** The tools PRESENT in the given rows, in canonical order. */
++ export function listStrokeToolOptions(
++   strokes: readonly Pick&lt;SelectableScriptStroke, &apos;tool&apos;&gt;[],
++ ): ScriptStrokeTool[] {
++   const present = new Set&lt;ScriptStrokeTool&gt;();
++   for (const stroke of strokes) present.add(stroke.tool);
++   return STROKE_TOOL_ORDER.filter((tool) =&gt; present.has(tool));
++ }
++
++ /** One tip dropdown entry: the recorded id and its resolved display name. */
++ export interface StrokeTipOption {
++   readonly brushId: string;
++   readonly name: string;
++ }
++
++ /**
++  * Distinct tips in FIRST-APPEARANCE order with resolved names (the raw id is
++  * the fail-closed fallback for a preset or a deleted custom tip).
++  */
++ export function listStrokeTipOptions(
++   strokes: readonly Pick&lt;SelectableScriptStroke, &apos;brushId&apos;&gt;[],
++ ): StrokeTipOption[] {
++   const out: StrokeTipOption[] = [];
++   const seen = new Set&lt;string&gt;();
++   for (const stroke of strokes) {
++     if (seen.has(stroke.brushId)) continue;
++     seen.add(stroke.brushId);
++     out.push({ brushId: stroke.brushId, name: resolveStrokeTipName(stroke.brushId) });
++   }
++   return out;
++ }
++
++ export interface StrokeListFilter {
++   readonly tool: StrokeToolFilterValue;
++   readonly tip: string;
++ }
++
++ /** Rows matching the finer filters; &apos;all&apos; matches everything. NEW array. */
++ export function filterStrokeListRows(
++   strokes: readonly SelectableScriptStroke[],
++   filter: StrokeListFilter,
++ ): SelectableScriptStroke[] {
++   return strokes.filter((stroke) =&gt; (
++     (filter.tool === &apos;all&apos; || stroke.tool === filter.tool)
++     &amp;&amp; (filter.tip === &apos;all&apos; || stroke.brushId === filter.tip)
++   ));
++ }
++
++ /** The stored tool when the current rows offer it, else &apos;all&apos; (read-only). */
++ export function resolveStrokeToolFilter(
++   stored: StrokeToolFilterValue,
++   options: readonly ScriptStrokeTool[],
++ ): StrokeToolFilterValue {
++   return stored !== &apos;all&apos; &amp;&amp; options.includes(stored) ? stored : &apos;all&apos;;
++ }
++
++ /** The stored tip when the current rows offer it, else &apos;all&apos; (read-only). */
++ export function resolveStrokeTipFilter(
++   stored: string,
++   optionIds: readonly string[],
++ ): string {
++   return stored !== &apos;all&apos; &amp;&amp; optionIds.includes(stored) ? stored : &apos;all&apos;;
++ }
++
++ /**
++  * The list&apos;s summary line over the FULL frame listing (the filters never
++  * change the counts): `F&lt;frame&gt; · N strokes · P paint · E erasers`.
++  */
++ export function strokeListSummary(
++   playFrame: number,
++   strokes: readonly Pick&lt;SelectableScriptStroke, &apos;kind&apos;&gt;[],
++ ): string {
++   let paint = 0;
++   let erasers = 0;
++   for (const stroke of strokes) {
++     if (stroke.kind === &apos;lift&apos;) erasers += 1;
++     else paint += 1;
++   }
++   return `F${playFrame} · ${strokes.length} strokes · ${paint} paint · ${erasers} erasers`;
++ }
++
++ export interface StrokeSettingsOpenArgs {
++   readonly surfaceActive: boolean;
++   readonly selectionSize: number;
++   readonly dismissed: boolean;
++   readonly sawEmptySinceDismiss: boolean;
++   /**
++    * 261029-eur: keep the dialog open on an EMPTY selection (watercolor Edit
++    * mode shows its filter row and &quot;Select a stroke to edit.&quot; caption instead
++    * of vanishing). An explicit close still wins until select mode exits and
++    * re-enters, so the saw-empty re-arm edge is switched OFF here too.
++    */
++   readonly keepOpenOnEmpty?: boolean;
++ }
++
++ /**
++  * Open only for an active surface with a non-empty selection that has not
++  * been dismissed — unless the selection emptied after the dismissal (the
++  * one edge that re-arms it), or the surface keeps the dialog open on empty.
++  */
++ export function resolveStrokeSettingsOpen(args: StrokeSettingsOpenArgs): boolean {
++   return args.surfaceActive
++     &amp;&amp; (args.selectionSize &gt; 0 || args.keepOpenOnEmpty === true)
++     &amp;&amp; (!args.dismissed || args.sawEmptySinceDismiss);
++ }
++
++ export interface SawEmptyArgs {
++   readonly dismissed: boolean;
++   readonly surfaceActive: boolean;
++   readonly selectionSize: number;
++   /** 261029-eur: under keep-open-on-empty the re-arm edge is inert. */
++   readonly keepOpenOnEmpty?: boolean;
++ }
++
++ /** The plain (non-signal) dismissal-edge marker law. */
++ export function shouldMarkSawEmpty(args: SawEmptyArgs): boolean {
++   return args.dismissed
++     &amp;&amp; args.surfaceActive
++     &amp;&amp; args.selectionSize === 0
++     &amp;&amp; args.keepOpenOnEmpty !== true;
++ }
++
++ // ============================================================
++ //  261101-jmm: the sheet&apos;s view law — LIST FIRST. The stroke list
++ //  is the default surface and stays visible while strokes are
++ //  selected; the Geometry/Stack/Paint tabs are an explicit request
++ //  the user makes from the header icon. A settings request never
++ //  survives the selection being observed EMPTY (a close/reopen, a
++ //  leave and re-enter of Move/Select, or a delete that empties the
++ //  selection): the invalidation marker re-arms the list.
++ // ============================================================
++
++ export type StrokeSettingsView = &apos;list&apos; | &apos;settings&apos;;
++
++ /**
++  * The view a render shows. A settings request over an EMPTY selection falls
++  * back to the list (never an empty settings panel); every other request is
++  * honoured as asked. Pure render-time derivation — never a signal write.
++  */
++ export function resolveStrokeSettingsView(
++   requested: StrokeSettingsView,
++   selectionSize: number,
++ ): StrokeSettingsView {
++   return requested === &apos;settings&apos; &amp;&amp; selectionSize &gt; 0 ? &apos;settings&apos; : &apos;list&apos;;
++ }
++
++ export interface StrokeSettingsViewInvalidationArgs {
++   readonly requested: StrokeSettingsView;
++   readonly selectionSize: number;
++ }
++
++ /**
++  * The staleness gate for the settings REQUEST: a settings request survives a
++  * non-empty -&gt; non-empty selection change but never survives the selection
++  * being observed empty. Gates a plain (non-signal) module marker written
++  * idempotently in the render body — the `shouldMarkSawEmpty` precedent — so
++  * the gate notifies no subscriber and cannot start a reactive loop.
++  */
++ export function shouldInvalidateStrokeSettingsView(
++   args: StrokeSettingsViewInvalidationArgs,
++ ): boolean {
++   return args.requested === &apos;settings&apos; &amp;&amp; args.selectionSize === 0;
++ }
++
++ /**
++  * The inclusive DISPLAYED range between the shift anchor and the clicked row.
++  * Both indices address `orderedIds` (the rendered order), so the result keeps
++  * the displayed order — never the selection&apos;s insertion order. Anything that
++  * is not an integer index inside `0..length - 1` (an empty list, a negative
++  * index, a fractional index, an index past the end) resolves to no ids, which
++  * the caller must treat as &quot;no range&quot;.
++  */
++ export function resolveStrokeListRange(
++   orderedIds: readonly number[],
++   anchorIndex: number,
++   clickedIndex: number,
++ ): number[] {
++   const last = orderedIds.length - 1;
++   if (last &lt; 0) return [];
++   if (!Number.isInteger(anchorIndex) || !Number.isInteger(clickedIndex)) return [];
++   if (anchorIndex &lt; 0 || clickedIndex &lt; 0) return [];
++   if (anchorIndex &gt; last || clickedIndex &gt; last) return [];
++   const start = Math.min(anchorIndex, clickedIndex);
++   const end = Math.max(anchorIndex, clickedIndex);
++   return orderedIds.slice(start, end + 1);
++ }
++
++ /**
++  * The view-supplied callback bundle. The dialog never consumes the shared
++  * ScriptStrokeEditionPort — the Studio chooses the active module&apos;s engine
++  * paths and hands them in. Geometry members may be async (the watercolor
++  * re-bake is awaited): the dialog only advances its session baseline on a
++  * true result.
++  */
++ export interface StrokeSettingsDialogBundle {
++   readonly module: StrokeSettingsModule;
++   /** Brush surface gate: the Move tool is active. */
++   readonly brushMoveActive: boolean;
++   readonly playFrame: number;
++   readonly canvasSize: ScriptStrokeSize;
++   /**
++    * 261029-eur: the Studio&apos;s watercolor passthrough must keep listing with the
++    * default `&apos;all&apos;` filter, so Stack positions and neighbours stay GLOBAL even
++    * while the dialog&apos;s stroke-type filter narrows the overlay.
++    */
++   listStrokes(playFrame: number, size: ScriptStrokeSize): SelectableScriptStroke[];
++   readAppearance(ids: readonly number[], playFrame: number): ScriptStrokeAppearance[];
++   applyAppearance(ids: readonly number[], patch: ScriptStrokeAppearancePatch): boolean | Promise&lt;boolean&gt;;
++   moveStrokes(ids: readonly number[], dxPx: number, dyPx: number): boolean | Promise&lt;boolean&gt;;
++   transformStrokes(ids: readonly number[], transform: ScriptStrokeTransform): boolean | Promise&lt;boolean&gt;;
++   /**
++    * 261024-vga: place ONE stroke at an exact stack position (1 = topmost).
++    * Present only where the module supports reordering — its absence hides
++    * the Stack section entirely.
++    */
++   readonly reorderStroke?: (mutationId: number, positionFromTop: number) =&gt; boolean | void;
++   /**
++    * 261024-vga UAT: close the sheet by LEAVING the Move/Select surface and
++    * restoring the previous tool. Without it, the dialog falls back to the
++    * legacy sticky dismissal (hidden until the selection goes empty).
++    */
++   readonly closeMoveMode?: () =&gt; void;
++   /**
++    * 261029-eur: keep the sheet open on an EMPTY selection (Water color Edit
++    * mode shows its filter row and caption instead of vanishing). Absent
++    * falls back to the module law — watercolor keeps it open.
++    */
++   readonly keepOpenOnEmpty?: boolean;
++   /**
++    * 261101-jmm: the SAME delete path as Backspace/Delete (`aquarelleStrokesOnFrame`
++    * guards, one undoable edit, one re-bake). The row trash passes exactly its
++    * own `mutationId`; the header trash passes the whole current selection.
++    * Absent hides both affordances. The dialog never touches the engine.
++    */
++   readonly deleteStrokes?: (ids: readonly number[]) =&gt; boolean | Promise&lt;boolean&gt; | void;
++   /**
++    * 261101-o2m: the ONE recompute the sheet runs when it closes (D-04&apos;s dialog
++    * close exit). The dialog never writes `draftMode` false itself — a dirty
++    * Draft may only leave through this settle. Absent means there is nothing to
++    * settle (the sheet stays Live).
++    */
++   readonly settleDraft?: () =&gt; boolean | Promise&lt;boolean&gt;;
++   /**
++    * 261101-o2m: the pre-Draft base arming the switch&apos;s ON click awaits before
++    * it may write `draftMode`. It resolves the frame&apos;s durable base BEFORE the
++    * script diverges, so the later settle cannot fail closed on
++    * `durable-base-unknown`. Absent means the sheet may enter Draft directly.
++    */
++   readonly armDraft?: () =&gt; Promise&lt;boolean&gt;;
++ }
++
++ // ============================================================
++ //  Geometry session law (Task 3). Session-relative only: every
++ //  control applies the delta from ITS last APPLIED value, so a
++ //  refused commit never compounds and the display always states
++ //  what the strokes actually received. Nothing persists.
++ // ============================================================
++
++ export interface StrokeGeometryPoint {
++   readonly x: number;
++   readonly y: number;
++ }
++
++ /** The four geometry rows&apos; cumulative display values. */
++ export interface StrokeGeometrySession {
++   readonly uniformPct: number;
++   readonly scaleXPct: number;
++   readonly scaleYPct: number;
++   readonly rotationDeg: number;
++ }
++
++ export const FRESH_STROKE_GEOMETRY_SESSION: StrokeGeometrySession = Object.freeze({
++   uniformPct: 100,
++   scaleXPct: 100,
++   scaleYPct: 100,
++   rotationDeg: 0,
++ });
++
++ /** Track display ranges only — typed commits may exceed them. */
++ export const STROKE_SCALE_RANGE = Object.freeze({ min: 10, max: 500 });
++ export const STROKE_ROTATION_RANGE = Object.freeze({ min: -360, max: 360 });
++ /** X/Y typed absolute targets (canvas px). */
++ export const STROKE_POSITION_RANGE = Object.freeze({ min: 0, max: 2000 });
++
++ export type StrokeGeometryControl = &apos;uniform&apos; | &apos;scaleX&apos; | &apos;scaleY&apos; | &apos;rotation&apos;;
++
++ export interface StrokeGeometryMoveDelta {
++   readonly dxPx: number;
++   readonly dyPx: number;
++ }
++
++ export interface StrokeGeometryTransformResult {
++   readonly transform: ScriptStrokeTransform;
++   readonly nextSession: StrokeGeometrySession;
++ }
++
++ /** Percent displays are user-facing: keep float drift out of the session. */
++ function roundSession(value: number): number {
++   return Math.round(value * 1000) / 1000;
++ }
++
++ /**
++  * X/Y typed absolute target -&gt; integer delta from the LIVE selection centre.
++  * A sub-pixel target (both rounded deltas zero) is a no-op, never a write.
++  */
++ export function geometryMoveDelta(
++   nextCenter: StrokeGeometryPoint,
++   liveCenter: StrokeGeometryPoint,
++ ): StrokeGeometryMoveDelta | null {
++   if (!Number.isFinite(nextCenter.x) || !Number.isFinite(nextCenter.y)) return null;
++   if (!Number.isFinite(liveCenter.x) || !Number.isFinite(liveCenter.y)) return null;
++   const dxPx = Math.round(nextCenter.x - liveCenter.x);
++   const dyPx = Math.round(nextCenter.y - liveCenter.y);
++   if (dxPx === 0 &amp;&amp; dyPx === 0) return null;
++   return { dxPx, dyPx };
++ }
++
++ /**
++  * One geometry row&apos;s commit. The factor/delta is relative to that row&apos;s last
++  * APPLIED value; uniform also compounds the single-axis displays. Null means
++  * &quot;write nothing&quot; (same value, non-finite input, zero baseline). Typed values
++  * may exceed the track ranges — only the track is bounded. Every transform
++  * anchors at the selection centre.
++  */
++ export function geometryTransform(
++   control: StrokeGeometryControl,
++   nextValue: number,
++   session: StrokeGeometrySession,
++   center: StrokeGeometryPoint,
++ ): StrokeGeometryTransformResult | null {
++   if (!Number.isFinite(nextValue)) return null;
++   if (!Number.isFinite(center.x) || !Number.isFinite(center.y)) return null;
++
++   if (control === &apos;rotation&apos;) {
++     const rotationDeg = nextValue;
++     const deltaDeg = rotationDeg - session.rotationDeg;
++     if (deltaDeg === 0) return null;
++     return {
++       transform: {
++         kind: &apos;rotate&apos;,
++         centerX: center.x,
++         centerY: center.y,
++         anchorX: center.x,
++         anchorY: center.y,
++         angleRad: (deltaDeg * Math.PI) / 180,
++         scaleX: 1,
++         scaleY: 1,
++       },
++       nextSession: { ...session, rotationDeg },
++     };
++   }
++
++   const nextPct = nextValue;
++   if (control === &apos;uniform&apos;) {
++     if (session.uniformPct &lt;= 0) return null;
++     const factor = nextPct / session.uniformPct;
++     if (factor === 1) return null;
++     return {
++       transform: {
++         kind: &apos;scale&apos;,
++         centerX: center.x,
++         centerY: center.y,
++         anchorX: center.x,
++         anchorY: center.y,
++         angleRad: 0,
++         scaleX: factor,
++         scaleY: factor,
++       },
++       nextSession: {
++         uniformPct: nextPct,
++         scaleXPct: roundSession(session.scaleXPct * factor),
++         scaleYPct: roundSession(session.scaleYPct * factor),
++         rotationDeg: session.rotationDeg,
++       },
++     };
++   }
++
++   const baseline = control === &apos;scaleX&apos; ? session.scaleXPct : session.scaleYPct;
++   if (baseline &lt;= 0) return null;
++   const factor = nextPct / baseline;
++   if (factor === 1) return null;
++   return {
++     transform: {
++       kind: &apos;scale&apos;,
++       centerX: center.x,
++       centerY: center.y,
++       anchorX: center.x,
++       anchorY: center.y,
++       angleRad: 0,
++       scaleX: control === &apos;scaleX&apos; ? factor : 1,
++       scaleY: control === &apos;scaleY&apos; ? factor : 1,
++     },
++     nextSession: {
++       ...session,
++       ...(control === &apos;scaleX&apos; ? { scaleXPct: nextPct } : { scaleYPct: nextPct }),
++     },
++   };
++ }
++
++ // SCRATCH STUB — uncommitted, shape only: lets the RED run load the module so
++ // every failure is an assertion on the planned behaviour.
++ export const PATH_EDIT_LABEL = &apos;&apos;;
++ export const PATH_EDIT_SINGLE_DISABLED_REASON = &apos;&apos;;
++ export const PATH_EDIT_MULTI_DISABLED_REASON = &apos;&apos;;
++ export interface PathEditGateArgs {
++   readonly selectionSize: number;
++   readonly vectorStrokeCount: number;
++   readonly selectedMutationId: number | null;
++   readonly pathEditMutationId: string | null;
++ }
++ export function resolvePathEditGate(_args: PathEditGateArgs): { enabled: boolean; title: string; pressed: boolean } {
++   return { enabled: false, title: &apos;&apos;, pressed: false };
++ }
++ export function shouldExitPathEdit(_args: { pathEditActive: boolean; gateEnabled: boolean }): boolean {
++   return false;
++ }
++
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:107:25
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; cannot strand the user: close and a closed gate both exit path edit" time="0.001080125">
+            <failure message="expected &apos;const closeSurface = useCallback(() =…&apos; to contain &apos;exitPathEdit();&apos;" type="AssertionError">
+AssertionError: expected &apos;const closeSurface = useCallback(() =…&apos; to contain &apos;exitPathEdit();&apos;
+
+- Expected
++ Received
+
+- exitPathEdit();
++ const closeSurface = useCallback(() =&gt; {
++     if (closeMoveMode) {
++       closeMoveMode();
++       return;
++     }
++     // EVENT-handler write (never a render body). The ONLY reset site is the
++     // setAquarelleSelectMode off -&gt; on choke point.
++     aquarelleStrokeSettingsDismissed.value = true;
++     sawEmptySinceDismiss = false;
++   
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:122:26
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/strokeSettingsModel.test.ts" timestamp="2026-11-10T15:32:37.651Z" hostname="efx2.home" tests="149" failures="6" errors="0" skipped="0" time="0.072734625">
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field registry: the locked per-engine sets &gt; brush exposes size / opacity / shape detail / blending / smoothing only" time="0.001140459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field registry: the locked per-engine sets &gt; water color exposes size (1..800) plus the seven 0..100 canonical globals" time="0.000212833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field registry: the locked per-engine sets &gt; erase strength and Spread are absent from both registries" time="0.000806417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field reads: absolute, mixed, first-selected representative &gt; returns the absolute value when every selected stroke agrees" time="0.000143084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field reads: absolute, mixed, first-selected representative &gt; returns mixed with the FIRST-SELECTED value when the selection differs" time="0.000074208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field reads: absolute, mixed, first-selected representative &gt; falls back to the field default for a missing or non-finite key" time="0.000109792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field reads: absolute, mixed, first-selected representative &gt; reads the representative colour from the first-selected id and flags any difference" time="0.000106917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field reads: absolute, mixed, first-selected representative &gt; maps a null colour to the overlay neutral and still reports mixed repeats" time="0.000072459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q patch builders: canonical units only &gt; builds brush and watercolor params patches" time="0.000121083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q patch builders: canonical units only &gt; maps the smoothing segment to antiAlias 0..3" time="0.000080125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q patch builders: canonical units only &gt; builds a colour-only patch" time="0.000059291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q open resolution and the dismissal edge &gt; opens only for an active surface with a non-empty, non-dismissed selection" time="0.000088708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q open resolution and the dismissal edge &gt; reopens a dismissed dialog only after the selection emptied while active" time="0.000065917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q open resolution and the dismissal edge &gt; marks saw-empty only while dismissed, active and empty" time="0.000067541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q open resolution and the dismissal edge &gt; the bundle contract carries appearance and geometry members as boolean | Promise&lt;boolean&gt;" time="0.000161791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; renders its card only through resolveStrokeSettingsOpen" time="0.002098417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; Escape outside the dialog hides it; an editable field inside owns its own Escape" time="0.000446041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; a dismissed non-empty selection stays hidden; empty-then-reselect reopens it" time="0.000251375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; the close button falls back to the sticky dismissal without closeMoveMode" time="0.000137792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; the close button LEAVES Move mode when the bundle provides closeMoveMode" time="0.000599959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; Escape also LEAVES Move mode when the bundle provides closeMoveMode" time="0.000158833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; header drag persists across selection changes and dismiss/reopen" time="0.000476625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; the Size row is a release-commit SliderStepper that commits one bundle patch for the whole selection" time="0.000885417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; structural pins: test ids, signal reads, no useState, no color tab yet" time="0.000133625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; renders every brush Paint field as a release-commit SliderStepper" time="0.002572083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; renders the full water color field set in canonical units" time="0.002857792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; shows Mixed on differing numeric rows and on the smoothing group" time="0.00057325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; marks the agreed smoothing segment active and hides the Mixed caption" time="0.000304916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; shows the selected strokes colour as a read-only thumb with a red Mixed badge" time="0.000405833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; hides the Mixed badge when every selected stroke agrees" time="0.000302875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; uses the Document sound header chrome and the app scrollbar" time="0.0000975">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; puts Geometry, Stack and Paint on ONE pinned tab row, Geometry by default" time="0.001191667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; switches content per tab and keeps the color readout inside Paint" time="0.001452958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; omits the Stack tab when the bundle has no reorderStroke" time="0.000342209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; gives the color block the full row and shows hex + rgb beneath it" time="0.000348292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; offers a bottom resize grip for the sheet height" time="0.000175666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; pins the UAT ranges: size 800, scale 500, position 2000" time="0.000087958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; lets every dialog slider accept typed values beyond the track range" time="0.00027575">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; structural pins: no picker, no Studio writes, no useState" time="0.000227375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; starts every control at its identity value" time="0.000068417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; compounds uniform scale per commit about the selection centre" time="0.000166208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; updates one scale axis without touching the other" time="0.000096084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; applies the rotation delta about the centre" time="0.000085542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; accepts typed values beyond the track ranges and refuses same-value or non-finite input" time="0.000079875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; rounds typed X/Y targets to integer pixel deltas and refuses sub-pixel moves" time="0.000068792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; renders X / Y / scale / rotation as release-commit free-entry rows" time="0.001441875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; awaits each transform and advances the session only on a true result" time="0.000987458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; keeps the previous session value when the commit is refused" time="0.000274292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; re-baselines scale and rotation on a selection membership change" time="0.000909792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; moves by the typed absolute X/Y delta and ignores a no-op target" time="0.000341583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; structural pins: selection-box centre source, no persistent transform record" time="0.000142542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; renders the Stack tab for BOTH modules and mounts its section only when opened" time="0.001333916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; is absent when the bundle provides no reorderStroke" time="0.000482625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; shows the dot, serial, position and both neighbours for one selected stroke" time="0.000458625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; renders an em dash at each stack edge" time="0.003583417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; renders the position row as a release-commit free-entry SliderStepper without range bypass" time="0.000516">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; commits one reorder per gesture and nothing for the current position" time="0.000756333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; collapses the Enter + blur pair into ONE call and frees the next gesture" time="0.000353958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; re-keys the position row after a refused commit so the typed value never survives" time="0.000550584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; re-keys after a void (watercolor) commit too" time="0.000661708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; a same-position commit changes neither the call count nor the slider key" time="0.000483708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; disables the section with the hint for a multi-stroke selection" time="0.000515333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; disables the section when the single selected id is absent from the listing" time="0.000282125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur keep-open-on-empty open law &gt; opens an empty selection only when the surface keeps the sheet open" time="0.000056917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur keep-open-on-empty open law &gt; an explicit close still wins under keep-open-on-empty" time="0.000040625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur keep-open-on-empty open law &gt; switches the saw-empty marker OFF under keep-open-on-empty" time="0.000045458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; renders the Paint | Eraser | All row for water color only, defaulting to Paint" time="0.000482291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; hides the Paint tab in Eraser mode and falls a paint request back to Geometry" time="0.001547667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; hides the Paint tab whenever an eraser stroke is selected, even on All" time="0.000582833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; the close button swallows the header press so its click still fires" time="0.000128958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; keeps the sheet open on an empty water color selection" time="0.000401208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; the filter buttons write the shared filter signal" time="0.000314875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; an explicit close writes the module flag and wins until select mode re-enters" time="0.00029925">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; structural pins: no per-instance dismissal ref, module signal read in the body" time="0.000089375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 readPaintSeedVariation and its patch builder &gt; reads ON only when the selection is non-empty and EVERY appearance carries a finite non-negative salt" time="0.000122667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 readPaintSeedVariation and its patch builder &gt; builds the explicit true/false patch" time="0.00005075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 the Paint seed variation switch row &gt; is the FIRST Geometry child on water color, with the shared switch chrome" time="0.000872541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 the Paint seed variation switch row &gt; reads ON when every appearance carries a salt and clicking sends OFF for the whole selection" time="0.000469208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 the Paint seed variation switch row &gt; clicking from OFF sends the true flag once for the whole selection" time="0.000419333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 the Paint seed variation switch row &gt; is absent for the brush module and reads OFF on a mixed/saltless selection" time="0.000551625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 the Paint seed variation switch row &gt; structural pins: no row padding constant and the shared switch chrome" time="0.000124416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf stroke list model &gt; maps each recorded tool to its display label" time="0.000050083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf stroke list model &gt; matches the stroke-kind filter (paint = any non-lift kind)" time="0.000057958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf stroke list model &gt; resolves the tip name through findTip with the raw brushId fallback" time="0.000046917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf stroke list model &gt; sorts a NEW array topmost-first by position, never mutating the input" time="0.00010125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf stroke list model &gt; breaks a same-position tie by the creation serial" time="0.000048667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf fine-filter state &gt; defaults both fine filters to All" time="0.000042667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf fine-filter state &gt; both setters are compare-then-write — 1000 identical writes notify zero times" time="0.000326375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf fine-filter state &gt; every select-mode call resets both — entry, re-entry while ON and exit" time="0.000073833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf fine-filter state &gt; the type filter resets both only when its value actually changes" time="0.000051333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; lists only the present tools in the canonical brush/water/pen/lift order" time="0.000065416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; dedupes tips in first-appearance order with their resolved names" time="0.000064208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; filters rows by tool and tip, with All matching everything" time="0.000115708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; resolves a stored filter to itself only while it is offered" time="0.000072333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; summarizes the FULL frame listing with the exact string" time="0.000044041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; no offered tool/tip combination yields zero rows" time="0.000122416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; lists the frame strokes topmost-first with no tab row and no old caption" time="0.000621208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; clicking a row selects exactly that stroke and KEEPS the list" time="0.00077075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; a non-empty selection renders the list rows and the toggle reveals the tabs" time="0.000785709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; the brush sheet renders no list, no rows and no type chrome" time="0.000368458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; the Paint/Eraser/All filter narrows the rows and lift rows read Eraser" time="0.000226167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; renders the finer filters on an empty selection: present tools only, resolved tip names" time="0.000325208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; hides the tip select when only one tip is present" time="0.000150334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; the tool select filters the rows through the module signal" time="0.00049125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; the tip select narrows rows and an orphaned tip resets to All on a tool change" time="0.000398417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; a stored filter the rows do not offer renders as All and writes nothing" time="0.000176667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; shows the frame summary over the full listing, unaffected by the filters" time="0.000158541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; distinguishes an empty frame from a filter with no match" time="0.000403">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; no offered tool/tip combination in the dialog yields zero rows" time="0.001752708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; lives inside the app scroll area and keeps the chrome sentence case" time="0.000786041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; the brush sheet renders none of the finer-filter chrome" time="0.000143459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; pins the sentence-case CSS for the selects and the rows" time="0.0001505">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; resolves the view: a settings request over an empty selection falls back to the list" time="0.000070417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; invalidates ONLY a settings request observed over an empty selection" time="0.000054125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; natively disables the view toggle on an empty selection" time="0.000249958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; keeps the list while a stroke is selected and round-trips through the toggle" time="0.000874375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; never restores a settings request after the selection was observed empty" time="0.000938125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; re-asserts an invalidated request so the header toggle never dead-clicks" time="0.000060375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; keeps the settings view across a non-empty selection change" time="0.000706916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; renders the type filter, fine filters and summary in the LIST view only" time="0.000708708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; leaves the brush sheet unchanged: no toggle, no list, its tabs as today" time="0.000549917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; resolves the inclusive DISPLAYED range and rejects invalid indices" time="0.00015425">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; plain replaces, Cmd and Ctrl toggle, Shift takes the displayed range" time="0.000933125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; Shift before any plain or Cmd click behaves as a plain click" time="0.000127583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; marks a selected row wrapper with is-selected" time="0.000189917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; a row trash deletes only its own stroke and never touches the selection" time="0.000547584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; the global trash is disabled below two strokes and deletes the whole selection" time="0.000346458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; a delete that empties the selection renders the list, and the request stays invalidated" time="0.000908833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-mvg &quot;Preview stroke size&quot; switch &gt; defaults OFF and toggles the session signal from the header in BOTH views" time="0.000709417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-mvg &quot;Preview stroke size&quot; switch &gt; is not gated by the selection size and carries the header chrome" time="0.000154834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-mvg &quot;Preview stroke size&quot; switch &gt; renders no switch for a brush bundle" time="0.000124584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; renders below the header and above the view gate in BOTH views" time="0.000632667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; is a role=switch control labelled Draft, OFF by default, and stops the header drag" time="0.000162292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; awaits the bundle arm before it writes Draft ON" time="0.001574542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; leaves Draft OFF when the arm refuses, and enters directly without an arm" time="0.00149325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; routes the OFF click through the bundle settle instead of writing the signal" time="0.001511166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; leaves Draft ON and does not throw when the bundle has no settle" time="0.00040975">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; renders no strip for a brush bundle" time="0.000153083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; settles exactly once when the sheet closes" time="0.000154958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; closes without a settle and does not throw" time="0.000150833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m cache eye &gt; defaults visible, is never disabled, and hides then shows the sheet" time="0.000859958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m cache eye &gt; is available in Draft too, and Draft and Preview never reset each other" time="0.000315167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m cache eye &gt; renders no eye for a brush bundle (the strip is watercolor-only)" time="0.000132875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; enables for exactly one selected vector stroke and titles itself Edit path" time="0.004553458">
+            <failure message="expected { enabled: false, title: &apos;&apos;, …(1) } to deeply equal { enabled: true, title: &apos;&apos;, …(1) }" type="AssertionError">
+AssertionError: expected { enabled: false, title: &apos;&apos;, …(1) } to deeply equal { enabled: true, title: &apos;&apos;, …(1) }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;enabled&quot;: true,
++   &quot;enabled&quot;: false,
+    &quot;pressed&quot;: false,
+    &quot;title&quot;: &quot;&quot;,
+  }
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3450:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; refuses a single selection that is not a vector stroke" time="0.000298292">
+            <failure message="expected &apos;&apos; to be &apos;Edit path — select one vector stroke&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;&apos; to be &apos;Edit path — select one vector stroke&apos; // Object.is equality
+
+- Expected
++ Received
+
+- Edit path — select one vector stroke
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3462:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; refuses a multi-selection with the single-stroke reason" time="0.000183167">
+            <failure message="expected &apos;&apos; to be &apos;Edit path — select a single vector st…&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;&apos; to be &apos;Edit path — select a single vector st…&apos; // Object.is equality
+
+- Expected
++ Received
+
+- Edit path — select a single vector stroke
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3474:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; refuses an empty selection with the single-stroke reason" time="0.000169042">
+            <failure message="expected &apos;&apos; to be &apos;Edit path — select one vector stroke&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;&apos; to be &apos;Edit path — select one vector stroke&apos; // Object.is equality
+
+- Expected
++ Received
+
+- Edit path — select one vector stroke
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3486:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; reports pressed only while the session edits the SELECTED stroke" time="0.000211959">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3496:79
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; requests an exit only when an edit is open under a closed gate" time="0.000172917">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3509:78
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

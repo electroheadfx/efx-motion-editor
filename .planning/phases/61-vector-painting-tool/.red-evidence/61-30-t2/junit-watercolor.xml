@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="84" failures="6" errors="0" time="0.616">
+    <testsuite name="src/payload/codec.test.ts" timestamp="2026-11-11T14:00:48.478Z" hostname="efx2.home" tests="35" failures="2" errors="0" skipped="0" time="0.032760667">
+        <testcase classname="src/payload/codec.test.ts" name="toStudioStroke tick quantisation and cap &gt; diffusionFrames=1000 clamps cuisson to DIFFUSION_CAP 600" time="0.000627333">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="toStudioStroke tick quantisation and cap &gt; diffusionFrames=0 or undefined yields cuisson === 0" time="0.000122958">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="toStudioStroke tick quantisation and cap &gt; pts ticks are integers (sample index), never floats or raw ms" time="0.00019425">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="toStudioStroke tick quantisation and cap &gt; diffusionFrames &gt; 600 clamps to 600 at serialize (engine bag + cuisson)" time="0.000287875">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="serialize → parse round-trip &gt; round-trips a stroke including toolOverrides and engine fields" time="0.000460625">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="serialize → parse round-trip &gt; round-trips a Dry event" time="0.000104666">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="serialize → parse round-trip &gt; preserves stroke order and Dry-event order exactly (no sort, no dedupe)" time="0.000265833">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry event is a distinguished payload union member (D-16) &gt; Dry event { kind: &apos;dry&apos;, tick } has no pts and no brush fields" time="0.000118875">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry event is a distinguished payload union member (D-16) &gt; Dry is a member of the same payload union as strokes (not a separate events array)" time="0.000394833">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry event is a distinguished payload union member (D-16) &gt; payload source has zero &quot;events:&quot; second-array markers (D-16)" time="0.000470958">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry ordering (tick, recordedOrder) &gt; mixed [stroke(tick=3), dry(tick=5), stroke(tick=5)] replays stroke, dry, stroke" time="0.000093459">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry ordering (tick, recordedOrder) &gt; equal ticks keep recordedOrder (total order, no unstable swap)" time="0.000052125">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry ordering (tick, recordedOrder) &gt; a Dry at tick T applies after strokes with tick &lt; T and before strokes with tick &gt; T" time="0.00005325">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="parse is total and fail-closed &gt; parse(malformed) returns null and never throws" time="0.000633084">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="parse is total and fail-closed &gt; parse(unknown schemaVersion) returns null (no dual-format reader)" time="0.000067792">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="parse is total and fail-closed &gt; parse accepts the exact AQUARELLE_SCHEMA_VERSION" time="0.00005775">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="record → serialize → parse → replay determinism (AQUA-06) &gt; same script survives the codec and replays byte-identical pixels" time="0.022148833">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="payloadCodec seam &gt; exposes serialize/parse matching the EngineAdapter contract" time="0.00007575">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="payloadCodec seam &gt; serialize is total over the union (stroke and Dry) without throwing" time="0.000136917">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; unreadable aquarelle wire (unknown schemaVersion) fails parse and classifies as malformed-engine-payload" time="0.000216208">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; malformed aquarelle wire (bad shape) fails parse and never throws" time="0.000153125">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; a foreign-engine script at the envelope classifies as engine-mismatch, not malformed" time="0.000120709">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; an unknown engine id classifies as unknown-engine-id (named &quot;unknown paint module&quot; line)" time="0.00005425">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; a legacy pre-envelope kind classifies as unreadable-legacy-script (clean break, no reader)" time="0.000041416">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; PIN: a refused parse writes nothing — parse is total, pure, and side-effect free" time="0.000519709">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; classifyAquarellePayloadFailure maps parse-null to malformed-engine-payload and parse-ok to null" time="0.000088833">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; buildEngineMismatchRefusal carries the package-id pair in detail for the named line" time="0.000056917">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; round-trips a vector event deep-equal including its single 1.8 width factor" time="0.000343292">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; parses to null when an anchor list is malformed" time="0.000206083">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; parses to null when renderMode is not a member of the closed union" time="0.000152125">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; re-serialises a parsed vector event deep-equal (faithful pass-through)" time="0.000174625">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; still round-trips an event with neither vector field exactly as today" time="0.000102042">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; round-trips a curveMode and keeps an absent key absent (61-30 G-20)" time="0.001971875">
+            <failure message="expected undefined to be &apos;spline&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be &apos;spline&apos; // Object.is equality
+
+- Expected: 
+&quot;spline&quot;
+
++ Received: 
+undefined
+
+ ❯ src/payload/codec.test.ts:599:79
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; parses to null when curveMode is not a member of the closed union (fail closed)" time="0.001308541">
+            <failure message="expected { pts: [ …(4) ], ticks: 3, …(9) } to be null" type="AssertionError">
+AssertionError: expected { pts: [ …(4) ], ticks: 3, …(9) } to be null
+
+- Expected: 
+null
+
++ Received: 
+Object {
+  &quot;brushId&quot;: &quot;wc/round-medium&quot;,
+  &quot;color&quot;: &quot;#2244aa&quot;,
+  &quot;cuisson&quot;: 0,
+  &quot;engine&quot;: Object {
+    &quot;brushId&quot;: &quot;wc/round-medium&quot;,
+    &quot;color&quot;: &quot;#2244aa&quot;,
+    &quot;curveMode&quot;: &quot;linear&quot;,
+    &quot;diffusionFrames&quot;: undefined,
+    &quot;mutationId&quot;: 42,
+    &quot;params&quot;: Object {
+      &quot;flow&quot;: 50,
+      &quot;size&quot;: 12,
+      &quot;water&quot;: 50,
+    },
+    &quot;playFrame&quot;: undefined,
+    &quot;timestamp&quot;: 1000,
+    &quot;tool&quot;: &quot;brush&quot;,
+    &quot;toolOverrides&quot;: Object {
+      &quot;aspect&quot;: 1,
+      &quot;capacity&quot;: 1.1,
+      &quot;grain&quot;: 1,
+      &quot;rotation&quot;: 1,
+      &quot;scatter&quot;: 0.8,
+      &quot;sizeCurve&quot;: 1,
+      &quot;tip&quot;: 1.2,
+      &quot;wetRound&quot;: 0.9,
+    },
+  },
+  &quot;motion&quot;: null,
+  &quot;playFrame&quot;: null,
+  &quot;pts&quot;: Array [
+    Object {
+      &quot;p&quot;: 0.5,
+      &quot;tick&quot;: 0,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 20,
+      &quot;y&quot;: 32,
+    },
+    Object {
+      &quot;p&quot;: 0.6,
+      &quot;tick&quot;: 1,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 28,
+      &quot;y&quot;: 32,
+    },
+    Object {
+      &quot;p&quot;: 0.5,
+      &quot;tick&quot;: 2,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 36,
+      &quot;y&quot;: 32,
+    },
+    Object {
+      &quot;p&quot;: 0.4,
+      &quot;tick&quot;: 3,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 44,
+      &quot;y&quot;: 32,
+    },
+  ],
+  &quot;recordedOrder&quot;: 1000,
+  &quot;ticks&quot;: 3,
+  &quot;toolOverrides&quot;: Object {
+    &quot;aspect&quot;: 1,
+    &quot;capacity&quot;: 1.1,
+    &quot;grain&quot;: 1,
+    &quot;rotation&quot;: 1,
+    &quot;scatter&quot;: 0.8,
+    &quot;sizeCurve&quot;: 1,
+    &quot;tip&quot;: 1.2,
+    &quot;wetRound&quot;: 0.9,
+  },
+  &quot;traceSeed&quot;: 2850896287,
+}
+
+ ❯ src/payload/codec.test.ts:613:36
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; classifyAquarellePayloadFailure still names a malformed engine block" time="0.000125958">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/payload/toStudioStroke.test.ts" timestamp="2026-11-11T14:00:48.481Z" hostname="efx2.home" tests="20" failures="1" errors="0" skipped="0" time="0.005449667">
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="toStudioStroke paint seed salt (261031-cf9) &gt; yields hashMutationId(mutationId) when no salt is recorded" time="0.0006275">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="toStudioStroke paint seed salt (261031-cf9) &gt; folds a finite salt through mixStrokeSeed" time="0.00035075">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="toStudioStroke paint seed salt (261031-cf9) &gt; salt 0 is valid and differs from an absent salt" time="0.000117833">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="toStudioStroke paint seed salt (261031-cf9) &gt; different salts produce different seeds; the same salt reproduces the seed" time="0.00009525">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="toStudioStroke paint seed salt (261031-cf9) &gt; truncates a fractional salt to its integer part" time="0.000074209">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="paintSeedSaltOf &gt; returns null for an absent key" time="0.000073458">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="paintSeedSaltOf &gt; returns null for NaN, Infinity, a string and a negative value" time="0.000085792">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="paintSeedSaltOf &gt; truncates 4.7 to 4 and accepts 0 as a salt" time="0.000059042">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="paint seed salt persistence &gt; round-trips through payloadCodec and re-projects to the same seed" time="0.000294">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="paint seed salt persistence &gt; leaves the engine-params projection unchanged" time="0.000196334">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="vector path engine block (61-03 D-12 / D-14) &gt; copies anchors and renderMode into the engine block unchanged" time="0.000164375">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="vector path engine block (61-03 D-12 / D-14) &gt; adds no key at all when neither field is present (byte-identical shape)" time="0.0000675">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="vector path engine block (61-03 D-12 / D-14) &gt; copies renderMode ALONE when a hand-painted stroke carries a mode (D-14)" time="0.000079667">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="vector path engine block (61-03 D-12 / D-14) &gt; round-trips a bezier anchor whose handles have zero length exactly" time="0.000103083">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="curve mode engine block (61-30 G-20) &gt; copies a spline mode into the engine block unchanged" time="0.001688875">
+            <failure message="expected undefined to be &apos;spline&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be &apos;spline&apos; // Object.is equality
+
+- Expected: 
+&quot;spline&quot;
+
++ Received: 
+undefined
+
+ ❯ src/payload/toStudioStroke.test.ts:233:37
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="curve mode engine block (61-30 G-20) &gt; invents no curveMode key when the field is absent (byte-identical shape)" time="0.000070916">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="sparse vector width projection (61-03 D-10) &gt; writes no width key for a fully uniform stroke" time="0.000271333">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="sparse vector width projection (61-03 D-10) &gt; drops an explicit default factor through the engine block (uniform stores nothing)" time="0.000096834">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="sparse vector width projection (61-03 D-10) &gt; keeps exactly one width key when one of three anchors reads 1.8" time="0.000105083">
+        </testcase>
+        <testcase classname="src/payload/toStudioStroke.test.ts" name="sparse vector width projection (61-03 D-10) &gt; preserves 1.8 and 0.3 with no clamp to 1 through the engine block and the wire codec" time="0.000223">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/payload/vectorPath.test.ts" timestamp="2026-11-11T14:00:48.482Z" hostname="efx2.home" tests="29" failures="3" errors="0" skipped="0" time="0.010396709">
+        <testcase classname="src/payload/vectorPath.test.ts" name="isVectorStroke &gt; is true for a payload carrying a non-empty anchor list" time="0.001224">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="isVectorStroke &gt; is false for a payload with no anchors and for an EMPTY anchor list" time="0.000116167">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="isVectorStroke &gt; is false when the anchor list is malformed" time="0.000079375">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; declares exactly two modes in this order, defaulting to watercolor" time="0.000290292">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; resolves an absent mode to watercolor and passes both modes through" time="0.000080416">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; resolves any unknown value to watercolor" time="0.000082708">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode (D-12: explicit discriminator, absent means watercolour) &gt; isAquarelleRenderMode is a strict membership test" time="0.000089333">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve mode (G-20: explicit evaluation discriminator, absent means Bézier) &gt; declares exactly bezier and spline in this order, defaulting to bezier, and the guard is a strict membership test" time="0.003286334">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/payload/vectorPath.test.ts:122:44
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve mode (G-20: explicit evaluation discriminator, absent means Bézier) &gt; resolves an absent mode and bezier to bezier, and passes spline through" time="0.000838417">
+            <failure message="expected &apos;bezier&apos; to be &apos;spline&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;bezier&apos; to be &apos;spline&apos; // Object.is equality
+
+Expected: &quot;spline&quot;
+Received: &quot;bezier&quot;
+
+ ❯ src/payload/vectorPath.test.ts:135:49
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve mode (G-20: explicit evaluation discriminator, absent means Bézier) &gt; resolves any unknown value to bezier" time="0.000085">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="curve mode (G-20: explicit evaluation discriminator, absent means Bézier) &gt; recordedCurveModeField writes nothing for the default and one key otherwise" time="0.001009416">
+            <failure message="expected {} to deeply equal { curveMode: &apos;spline&apos; }" type="AssertionError">
+AssertionError: expected {} to deeply equal { curveMode: &apos;spline&apos; }
+
+- Expected
++ Received
+
+- Object {
+-   &quot;curveMode&quot;: &quot;spline&quot;,
+- }
++ Object {}
+
+ ❯ src/payload/vectorPath.test.ts:149:46
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; returns a frozen copy of a well-formed anchor list, unchanged" time="0.0000965">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the WHOLE list for a NaN coordinate" time="0.000054083">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the whole list for an unknown anchor kind" time="0.000039708">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the whole list for a non-finite handle" time="0.000071083">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses the whole list for a width outside the published range" time="0.000072916">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; refuses an empty list and a non-array without throwing" time="0.000309125">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="normaliseAquarelleAnchors &gt; accepts both published width bounds exactly" time="0.000071583">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; anchorsEqual is true for two deep-equal lists" time="0.000072541">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; anchorsEqual is false when a width factor differs by 1e-9" time="0.000037541">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; anchorsEqual is false when a handle or a kind differs" time="0.000053459">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="anchorsEqual / vectorPathsEqual &gt; vectorPathsEqual compares the mode too, with absent resolving to watercolor" time="0.000083625">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="projectVectorPath — sparse width (D-10) &gt; omits an explicit default factor and keeps exactly one non-default factor" time="0.000198125">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="projectVectorPath — sparse width (D-10) &gt; keeps a fully uniform list free of width keys, and isUniformWidthProfile agrees" time="0.000089042">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="projectVectorPath — sparse width (D-10) &gt; returns a frozen list, a fresh array, and never mutates its input" time="0.000078583">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="projectVectorPath — sparse width (D-10) &gt; preserves anchor order exactly (61-02 stations index into it)" time="0.000096209">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="render mode persistence &gt; keeps simple-ribbon across a JSON round trip of the path" time="0.000054292">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="the anchor type is re-exported, never redeclared &gt; re-exports VectorAnchor as AquarelleAnchor from src/vector/spine" time="0.000227292">
+        </testcase>
+        <testcase classname="src/payload/vectorPath.test.ts" name="the anchor type is re-exported, never redeclared &gt; carries no per-anchor brush type and no per-anchor colour member (VEC-04)" time="0.000187084">
+        </testcase>
+    </testsuite>
+</testsuites>

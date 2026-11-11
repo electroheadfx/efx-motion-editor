@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="19" failures="14" errors="0" time="0.579">
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" timestamp="2026-11-10T12:45:09.323Z" hostname="efx2.home" tests="7" failures="7" errors="0" skipped="0" time="0.006202959">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; renders exactly one vector-pen entry after the four paint buttons" time="0.003964875">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:153:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; draws the separator immediately before the pen, aria-hidden" time="0.000331208">
+            <failure message="Cannot read properties of undefined (reading &apos;type&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;type&apos;)
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:171:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; carries the approved label, title and button grammar" time="0.000235292">
+            <failure message="Cannot read properties of undefined (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;props&apos;)
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:179:16
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; reports aria-pressed from the session and latches on click" time="0.000230625">
+            <failure message="Cannot read properties of undefined (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;props&apos;)
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:186:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; is a host tool: latching it never changes the paint tool" time="0.00025225">
+            <failure message="Cannot read properties of undefined (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;props&apos;)
+ ❯ click src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:136:24
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:201:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; is disabled with the rail" time="0.000190625">
+            <failure message="Cannot read properties of undefined (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;props&apos;)
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:219:25
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="the rail separator rule (physicsPaintStudio.css) &gt; is the derived 1px #5a5e63 rule, 21px wide" time="0.000564333">
+            <failure message="the separator rule exists: expected -1 to be greater than -1" type="AssertionError">
+AssertionError: the separator rule exists: expected -1 to be greater than -1
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:227:52
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/vectorPathSession.test.ts" timestamp="2026-11-10T12:45:09.325Z" hostname="efx2.home" tests="12" failures="7" errors="0" skipped="0" time="0.006070959">
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; starts clean and clears every sibling surface on entry" time="0.003076708">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:65:35
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; exits the vector pen without touching the paint tool or arming a sibling" time="0.000209958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; toggles the pen on and back off" time="0.000252792">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:88:35
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; enters path edit and clears select, the picker and the pen" time="0.000260875">
+            <failure message="expected null to be &apos;m7&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected null to be &apos;m7&apos; // Object.is equality
+
+- Expected: 
+&quot;m7&quot;
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:101:38
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; clears path edit without re-arming anything" time="0.000112417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; writes each signal once for identical calls (idempotent setters)" time="0.000294667">
+            <failure message="expected 1 to be 2 // Object.is equality" type="AssertionError">
+AssertionError: expected 1 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:126:28
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; builds the draw draft from a first anchor and appends at the cursor" time="0.000662375">
+            <failure message="Target cannot be null or undefined." type="AssertionError">
+AssertionError: Target cannot be null or undefined.
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:134:45
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; begins a draft when the first anchor is appended to an empty session" time="0.00014925">
+            <failure message="Target cannot be null or undefined." type="AssertionError">
+AssertionError: Target cannot be null or undefined.
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:145:45
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; keeps the draft across a tool toggle and clears it only explicitly" time="0.000148542">
+            <failure message="Target cannot be null or undefined." type="AssertionError">
+AssertionError: Target cannot be null or undefined.
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:154:45
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; returns every signal to its initial value on reset, idempotently" time="0.000123708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="the four paint tools stay closed &gt; WATERCOLOR_RAIL_TOOLS still has exactly four entries" time="0.000172042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="the four paint tools stay closed &gt; AquarelleTool still has exactly four members" time="0.00013175">
+        </testcase>
+    </testsuite>
+</testsuites>

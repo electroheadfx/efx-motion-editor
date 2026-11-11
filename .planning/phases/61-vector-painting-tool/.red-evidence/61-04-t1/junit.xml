@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="10" failures="7" errors="0" time="0.296">
+    <testsuite name="src/playground/engineScriptWidth.test.ts" timestamp="2026-11-10T13:06:02.607Z" hostname="efx2.home" tests="10" failures="7" errors="0" skipped="0" time="0.006724125">
+        <testcase classname="src/playground/engineScriptWidth.test.ts" name="sizeMult width factor (61-04 VEC-03) &gt; leaves every existing no-argument call site at factor 1" time="0.000567291">
+        </testcase>
+        <testcase classname="src/playground/engineScriptWidth.test.ts" name="sizeMult width factor (61-04 VEC-03) &gt; multiplies the footprint by exactly the factor it is given (1.8x)" time="0.00236975">
+            <failure message="expected 1 to be close to 1.8, received difference is 0.8, but expected 5e-13" type="AssertionError">
+AssertionError: expected 1 to be close to 1.8, received difference is 0.8, but expected 5e-13
+ ❯ src/playground/engineScriptWidth.test.ts:113:55
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineScriptWidth.test.ts" name="the queued sample carries its own width (61-04) &gt; writes the factor onto the sample queued by scriptBegin" time="0.000691458">
+            <failure message="expected undefined to be 1.8 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 1.8 // Object.is equality
+
+- Expected: 
+1.8
+
++ Received: 
+undefined
+
+ ❯ src/playground/engineScriptWidth.test.ts:131:40
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineScriptWidth.test.ts" name="the queued sample carries its own width (61-04) &gt; clamps the factor into the published 0.2..2.0 range and defaults a non-finite one to 1" time="0.000200041">
+            <failure message="expected undefined to be 2 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 2 // Object.is equality
+
+- Expected: 
+2
+
++ Received: 
+undefined
+
+ ❯ src/playground/engineScriptWidth.test.ts:135:38
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineScriptWidth.test.ts" name="the queued sample carries its own width (61-04) &gt; stamps each sample at its own width, never at the last one set" time="0.001083792">
+            <failure message="expected [ undefined, undefined ] to deeply equal [ 1, 1.8 ]" type="AssertionError">
+AssertionError: expected [ undefined, undefined ] to deeply equal [ 1, 1.8 ]
+
+- Expected
++ Received
+
+  Array [
+-   1,
+-   1.8,
++   undefined,
++   undefined,
+  ]
+
+ ❯ src/playground/engineScriptWidth.test.ts:145:52
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineScriptWidth.test.ts" name="the queued sample carries its own width (61-04) &gt; starts the active stroke width ramp at 1" time="0.000180458">
+            <failure message="expected undefined to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 1 // Object.is equality
+
+- Expected: 
+1
+
++ Received: 
+undefined
+
+ ❯ src/playground/engineScriptWidth.test.ts:150:38
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineScriptWidth.test.ts" name="the queued sample carries its own width (61-04) &gt; advances the ramp from the consumed sample, not from a mutable script field" time="0.000220208">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/playground/engineScriptWidth.test.ts:158:63
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineScriptWidth.test.ts" name="between two samples the factor interpolates (61-04) &gt; ramps linearly along the segment and holds its ends instead of extrapolating" time="0.0006535">
+            <failure message="expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ src/playground/engineScriptWidth.test.ts:167:41
+            </failure>
+        </testcase>
+        <testcase classname="src/playground/engineScriptWidth.test.ts" name="scriptScale keeps its own meaning (C-03 prohibition) &gt; keeps the footprint clamp assignment character-for-character, with no second writer" time="0.000182292">
+        </testcase>
+        <testcase classname="src/playground/engineScriptWidth.test.ts" name="scriptScale keeps its own meaning (C-03 prohibition) &gt; still caps a scripted maxRadius at 1x — the clamp is untouched by the new channel" time="0.000086291">
+        </testcase>
+    </testsuite>
+</testsuites>

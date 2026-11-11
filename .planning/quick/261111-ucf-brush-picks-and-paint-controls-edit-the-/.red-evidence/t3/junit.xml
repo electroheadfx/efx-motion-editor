@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="97" failures="6" errors="0" time="1.321">
+    <testsuite name="src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts" timestamp="2026-11-11T21:18:57.952Z" hostname="efx2.home" tests="9" failures="2" errors="0" skipped="0" time="0.007966416">
+        <testcase classname="src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts" name="AquarelleGlobalsPanel sliders (I-02) &gt; renders the 7 named global slider labels in playground order" time="0.001714292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts" name="AquarelleGlobalsPanel sliders (I-02) &gt; never renders a local size/scale control or a Hand row" time="0.000507417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts" name="AquarelleGlobalsPanel sliders (I-02) &gt; renders nothing but the 7 sliders + Reset (no response chrome)" time="0.000284542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts" name="AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01) &gt; renders a Reset control after the sliders" time="0.000193916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts" name="AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01) &gt; Reset writes the ×100 playground defaults through setAquarelleParam and never writes size" time="0.000314375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts" name="261018-gqo spacing rhythm &gt; globals panel rides the shared option-group row gap" time="0.000159375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts" name="261018-gqo spacing rhythm &gt; CSS gives rule headers margin and module sections the UAT 15px row gap" time="0.0005435">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts" name="quick 261111-ucf globals release commits + Reset batch &gt; Reset commits ONE seven-key params patch after the seven live writes" time="0.003200334">
+            <failure message="the batch is ONE call: expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: the batch is ONE call: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts:296:44
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts" name="quick 261111-ucf globals release commits + Reset batch &gt; source pins: the GlobalSlider passthrough and the ONE Reset batch" time="0.000544667">
+            <failure message="one GlobalSlider passthrough: expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: one GlobalSlider passthrough: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts:306:96
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/BrushResponsePanel.test.ts" timestamp="2026-11-11T21:18:57.954Z" hostname="efx2.home" tests="7" failures="1" errors="0" skipped="0" time="0.005761292">
+        <testcase classname="src/components/physic-paint/view/BrushResponsePanel.test.ts" name="BrushResponsePanel placeholder and always-on sliders (I-02 / 261018-l05) &gt; shows the Select-a-brush placeholder when no tip is selected" time="0.000702042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushResponsePanel.test.ts" name="BrushResponsePanel placeholder and always-on sliders (I-02 / 261018-l05) &gt; renders no toggle chrome and no section title; placeholder-only when no tip" time="0.000237">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushResponsePanel.test.ts" name="BrushResponsePanel placeholder and always-on sliders (I-02 / 261018-l05) &gt; renders the 8 multiplier rows on first render when a tip is selected" time="0.001673375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushResponsePanel.test.ts" name="BrushResponsePanel multiplier band and effective readout (D-08) &gt; multiplier band is 0.5–2.0 with default 1.0" time="0.000101">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushResponsePanel.test.ts" name="BrushResponsePanel multiplier band and effective readout (D-08) &gt; setAquarelleMultiplier clamps into the band" time="0.0001">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushResponsePanel.test.ts" name="BrushResponsePanel multiplier band and effective readout (D-08) &gt; effective-value readout computes global × multiplier" time="0.000069166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushResponsePanel.test.ts" name="quick 261111-ucf brush-response release wiring &gt; source pins: one MultiplierSlider passthrough and one clamped commit" time="0.002292625">
+            <failure message="one slider passthrough: expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: one slider passthrough: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/BrushResponsePanel.test.ts:220:90
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" timestamp="2026-11-11T21:18:57.955Z" hostname="efx2.home" tests="42" failures="1" errors="0" skipped="0" time="0.035408166">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs) &gt; hosts the track options behind the Track tab: active track name, opacity slider value, and blend select value" time="0.003944625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs) &gt; keeps the track controls out of the Paint panel (47 UAT)" time="0.000669375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs) &gt; commits the track opacity only when the thumb is released (48-06 UAT)" time="0.001089208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs) &gt; commits the selected blend mode once and offers exactly the five BlendMode options" time="0.00089325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs) &gt; re-renders to the new active track values when the active track changes (D-05)" time="0.0007395">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs) &gt; keeps the manually selected tab across re-renders — no auto-select fights the user&apos;s choice (47 UAT)" time="0.000976334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs) &gt; 49-06 UAT round 2: a selected Bg clip shows the Background option tab — a THIRD tab that never replaces Track option" time="0.000613708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs) &gt; 49-06 UAT round 2: clearing the Bg selection returns the panel to the manual tab (Track option)" time="0.0003855">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel session controls &gt; releases capture and removes resize listeners on pointerup" time="0.000303708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel session controls &gt; releases capture and removes resize listeners on pointercancel" time="0.00018625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel session controls &gt; ignores move and end events from another pointer" time="0.000168875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel session controls &gt; removes resize listeners and releases capture on lost capture and explicit unmount cleanup" time="0.000219083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel session controls &gt; releases the previous drag before a replacement drag captures the same handle" time="0.000182542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="PhysicsPaintRightPanel scroll hierarchy (260905-epb) &gt; pins the tools pane tablist as a sibling of the scroll area with the tab panel inside it" time="0.000359625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="PhysicsPaintRightPanel scroll hierarchy (260905-epb) &gt; pins the secondary pane tablist as a sibling of the scroll area with the tab panel inside it" time="0.000717583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="PhysicsPaintRightPanel scroll hierarchy (260905-epb) &gt; keeps the primary pane tablist as a sibling of the scroll area (UI checklist row 6)" time="0.000352625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Motion tab Rotation/Scale (261030-ey9) &gt; renders Rotate and Scale after Deform and Move, reading the four-member wiggle record" time="0.001300458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Motion tab Rotation/Scale (261030-ey9) &gt; writes Rotate and Scale through onPlayWiggleChange with the other members preserved and clamped" time="0.000710542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Onion tab (261108) &gt; renders both onion controls through the shared SliderStepper, clamped" time="0.000886125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Onion tab (261108) &gt; writes onion changes through onOnionChange with the other flags preserved" time="0.000510834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Audio tab (261008-ryq) &gt; renders one row per clip with the selected highlight, filename and frame span" time="0.000959292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Audio tab (261008-ryq) &gt; row click calls onSelectClip with that clip id (select + reveal + open live in the Studio handler)" time="0.00038725">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Audio tab (261008-ryq) &gt; trash rides the shared two-step arm: first press selects + requestRemove, second press confirms" time="0.001525083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Audio tab (261008-ryq) &gt; (261009-ofk) a missing clip renders its row with the missing class and a Relink button" time="0.000512167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Audio tab (261008-ryq) &gt; (261009-ofk) clicking Relink sets selectedSoundId to that clip id and calls onImportRequest(&apos;replace&apos;) once" time="0.000397292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Audio tab (261008-ryq) &gt; (261009-ofk) a present clip renders no Relink button" time="0.000278959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Audio tab (261008-ryq) &gt; Import disarms first then requests the append import" time="0.000344625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Audio tab (261008-ryq) &gt; renders no audio arm (null, no crash) when the tab is opened without ports" time="0.000304208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; is the LAST top-pane tab in watercolor mode (after Color/Brush/Paper)" time="0.000900917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; renders the gauge only on the Memory tab: contextual scripts, the selected frame, then frame caches" time="0.001162458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; shows the watercolor figure for the selected frame" time="0.000523458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; renders an empty Memory body (no throw, no figures) when the section is absent" time="0.000668208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; re-renders an unavailable line (no figures) when the read returns null" time="0.000363583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; shows the per-key purge only for a selected frame that has a script" time="0.001022708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; shows each action only when it has something to purge" time="0.001522917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; offers the rail-range purge only for a selected key rail with scripts" time="0.001453041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; shows the frame purge again once the rail is deselected" time="0.000724041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; confirms the rail-range purge with the frame span" time="0.000834708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; hides clear-all when the rail holds no scripts at all" time="0.000469167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; confirms the per-key purge, and Cancel changes nothing" time="0.000852041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="Physics Paint right panel Memory tab (quick-261023-ors) &gt; confirms clear-all with the active-rail wording, and Cancel changes nothing" time="0.000770875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts" name="quick 261111-ucf Paint-tab size release commit &gt; onCommit forwards one size patch and onChange still calls the live handler" time="0.003473042">
+            <failure message="the size stepper exposes onCommit: expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality" type="AssertionError">
+AssertionError: the size stepper exposes onCommit: expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts:1234:80
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" timestamp="2026-11-11T21:18:57.959Z" hostname="efx2.home" tests="39" failures="2" errors="0" skipped="0" time="0.080925667">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="PhysicsPaintTopBar small-width responsiveness (36.15-06 fix) &gt; lets the studio top row grow beyond 58px so wrapped controls are never crushed" time="0.000836542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="PhysicsPaintTopBar small-width responsiveness (36.15-06 fix) &gt; keeps the topbar as one non-wrapping row — centered tools, no grid columns" time="0.000555459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="PhysicsPaintTopBar small-width responsiveness (36.15-06 fix) &gt; pins the tool cluster to the right edge at every width (261029-hy2)" time="0.00047075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="PhysicsPaintTopBar small-width responsiveness (36.15-06 fix) &gt; hides the last optional watercolor knobs via container queries (I-11 follow-up)" time="0.000485458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="PhysicsPaintTopBar small-width responsiveness (36.15-06 fix) &gt; hides Water at the deepest threshold, inside the existing media blocks (261029-hy2 CR-02)" time="0.000385">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="PhysicsPaintTopBar small-width responsiveness (36.15-06 fix) &gt; folds the Eraser cluster instead of clipping it at narrow widths (261029-hy2 CR-02)" time="0.000389916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261027-gh9g top bar brush trigger + centered sliders &gt; renders the active brush trigger with the preset id in the left slot" time="0.000694542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261027-gh9g top bar brush trigger + centered sliders &gt; the trigger opens the dropdown with its own viewport anchor" time="0.000373208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261027-gh9g top bar brush trigger + centered sliders &gt; source has no module switcher and seats the trigger in the left slot" time="0.000245167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261027-gh9g top bar brush trigger + centered sliders &gt; keeps the seating CSS contract: 15px separator, larger thumb, one scrolling row" time="0.000358791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261029-hy2 tool pill + settings-cluster gating &gt; renders the tool icon, name and aria-label for both tools" time="0.000308875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261029-hy2 tool pill + settings-cluster gating &gt; the eraser pill carries the shape testid and the shared trigger attribute" time="0.000062667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261029-hy2 tool pill + settings-cluster gating &gt; both pills honor the bar disabled prop" time="0.00019125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261029-hy2 tool pill + settings-cluster gating &gt; renders the brush pill but no settings cluster for Water and Pen" time="0.000242834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261029-hy2 tool pill + settings-cluster gating &gt; the pill opens its own dropdown with the tool target and the viewport anchor" time="0.000251417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261029-hy2 tool pill + settings-cluster gating &gt; replaces the native shape picker with the eraser pill (261029-hy2)" time="0.000205625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261017-vcn top bar slim (I-04 remainder) &gt; renders Brush size + Pigment and no Background / Grain rows" time="0.000854333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261018-f15 watercolor top-bar aquarelle globals &gt; watercolor branch shows the primary Pigment control, then Water / Edges / Grain" time="0.062974417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261018-f15 watercolor top-bar aquarelle globals &gt; Water / Edges / Grain route to setAquarelleParam; Pigment is the primary control (source pin)" time="0.000196167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="260923-bcm Studio live wiring source pins &gt; handleGrainScaleChange writes settings, paper-display, mirror, and fallback without an engine call" time="0.000852208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="260923-bcm Studio live wiring source pins &gt; handleGrainStrengthChange writes settings, paper-display, mirror, and fallback without an engine call" time="0.000777292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="260923-bcm Studio live wiring source pins &gt; setGrainScale is updateSetting only with no engine visible-background call" time="0.000137375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="260923-bcm Studio live wiring source pins &gt; settings.grainScale rides the rightPanel memo (grain left the TopBar), playback composition, and canvasStack deps" time="0.001166209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="260923-bcm Studio live wiring source pins &gt; StudioView PlaybackBackground effect deps include props.background.grainScale" time="0.000131541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="260923-bcm Studio live wiring source pins &gt; engine actions destructure and export setGrainScale for the grain handlers" time="0.000972875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="260923-bcm grain scale hydration defaults &gt; makeInitial settings default grainScale to 1" time="0.00005875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261027-k6j Script switch &gt; seats right after the brush trigger in the left cluster" time="0.000186917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261027-k6j Script switch &gt; renders a keyboard-operable role=&quot;switch&quot; mirrored to the session signal" time="0.000197">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261027-k6j Script switch &gt; source pins the switch contract and never uses useState" time="0.000114542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261027-k6j Script switch &gt; pins the reference track/knob/label CSS contract" time="0.000407792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261028-k03b / 261029-eur Eraser tool controls &gt; swaps the brush cluster for Eraser strength + the Edit switch" time="0.000168875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261028-k03b / 261029-eur Eraser tool controls &gt; renders the Edit switch as a role=&quot;switch&quot; driving the real setter" time="0.000354459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261028-k03b / 261029-eur Eraser tool controls &gt; disables the Edit switch when the frame has nothing to select" time="0.000058042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261028-k03b / 261029-eur Eraser tool controls &gt; pins the eraser icon, strength bounds and the Edit wiring in source" time="0.000493875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261028-k03b / 261029-eur Eraser tool controls &gt; pins the switch :disabled arm and drops the retired Select rule" time="0.000359042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="261028-k03b / 261029-eur Eraser tool controls &gt; seats the eraser pill in the left slot, before the strength row" time="0.000160375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="quick 261111-ucf top-bar slider release commits &gt; each brush slider commits its mapped key exactly once, and only on release" time="0.002779083">
+            <failure message="physics-brush-size exposes onCommit: expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality" type="AssertionError">
+AssertionError: physics-brush-size exposes onCommit: expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ src/components/physic-paint/view/PhysicsPaintTopBar.test.ts:913:74
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="quick 261111-ucf top-bar slider release commits &gt; the Eraser cluster never commits a paint param" time="0.000112667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTopBar.test.ts" name="quick 261111-ucf top-bar slider release commits &gt; source pins: one commit passthrough and one paint-controls import" time="0.000627791">
+            <failure message="one updateCommit builder: expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: one updateCommit builder: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintTopBar.test.ts:944:87
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

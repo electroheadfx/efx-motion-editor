@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="17" failures="1" errors="0" time="0.602">
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" timestamp="2026-11-10T21:59:04.920Z" hostname="efx2.home" tests="17" failures="1" errors="0" skipped="0" time="0.008844459">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; renders exactly one vector-pen entry after the four paint buttons" time="0.002138417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; draws the separator immediately before the pen, aria-hidden" time="0.000222667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; carries the approved label, title and button grammar" time="0.000192833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; reports aria-pressed from the session and latches on click" time="0.000540125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; is a host tool: latching it never changes the paint tool" time="0.000169333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; is disabled with the rail" time="0.000136375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe latch (61-13) &gt; renders exactly one wireframe entry between the motion boundary and Dry" time="0.0002515">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe latch (61-13) &gt; carries the approved wireframe grammar, label and title" time="0.000243958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe latch (61-13) &gt; reports aria-pressed from the latch and fires the toggle handler" time="0.00055025">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe latch (61-13) &gt; is disabled with the rail and while the OFF settle is in flight (E6 backstop)" time="0.000206709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; disables the whole paint row with its reason and renders it deselected" time="0.000387292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; disables Dry and the picker with their reasons" time="0.000103209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; keeps the vector pen and the latch itself available — an empty sheet never locks" time="0.000100333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; restores the paint row when the latch clears" time="0.00015225">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; disables Select with its reason while the wireframe is on" time="0.002296709">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:376:36
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; restores the shipped Select copy and enablement when the latch clears" time="0.000216708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="the rail separator rule (physicsPaintStudio.css) &gt; is the derived 1px #5a5e63 rule, 21px wide" time="0.0003875">
+        </testcase>
+    </testsuite>
+</testsuites>

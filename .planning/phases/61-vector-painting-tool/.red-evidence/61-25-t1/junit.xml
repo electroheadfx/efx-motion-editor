@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="20" failures="4" errors="0" time="0.729">
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" timestamp="2026-11-11T11:33:01.040Z" hostname="efx2.home" tests="20" failures="4" errors="0" skipped="0" time="0.014438292">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; renders exactly one vector-pen entry after the four paint buttons" time="0.002253125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; draws the separator immediately before the pen, aria-hidden" time="0.00023025">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; carries the approved label, title and button grammar" time="0.002887583">
+            <failure message="expected &apos;Vector pen — draw a vector path (V)&apos; to be &apos;Vector pen (V) — click to place a smo…&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;Vector pen — draw a vector path (V)&apos; to be &apos;Vector pen (V) — click to place a smo…&apos; // Object.is equality
+
+Expected: &quot;Vector pen (V) — click to place a smooth anchor · hold Alt for a corner · Enter or double-click to finish · click the first anchor to finish there&quot;
+Received: &quot;Vector pen — draw a vector path (V)&quot;
+
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:210:30
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; reports aria-pressed from the session and latches on click" time="0.00058025">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; is a host tool: latching it never changes the paint tool" time="0.0001615">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the fifth entry (D-05 / C-01) &gt; is disabled with the rail" time="0.000142">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe latch (61-13) &gt; renders exactly one wireframe entry between the motion boundary and Dry" time="0.000256042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe latch (61-13) &gt; carries the approved wireframe grammar, label and title" time="0.00024525">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe latch (61-13) &gt; reports aria-pressed from the latch and fires the toggle handler" time="0.000554958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe latch (61-13) &gt; is disabled with the rail and while the OFF settle is in flight (E6 backstop)" time="0.000211958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; disables the whole paint row with its reason and renders it deselected" time="0.0002805">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; disables Dry with its reason and keeps the picker disarmed, not disabled" time="0.000699542">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:346:36
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; keeps the vector pen and the latch itself available — an empty sheet never locks" time="0.000116833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; restores the paint row when the latch clears" time="0.000153792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; disables Select with its reason while the wireframe is on" time="0.000136875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — the wireframe gates (61-13 Task 3) &gt; restores the shipped Select copy and enablement when the latch clears" time="0.000196375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — 61-25 UI-01/UI-05 &gt; teaches the whole draw law in the pen tooltip, character-for-character" time="0.000516917">
+            <failure message="expected &apos;Vector pen — draw a vector path (V)&apos; to be &apos;Vector pen (V) — click to place a smo…&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;Vector pen — draw a vector path (V)&apos; to be &apos;Vector pen (V) — click to place a smo…&apos; // Object.is equality
+
+Expected: &quot;Vector pen (V) — click to place a smooth anchor · hold Alt for a corner · Enter or double-click to finish · click the first anchor to finish there&quot;
+Received: &quot;Vector pen — draw a vector path (V)&quot;
+
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:426:30
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — 61-25 UI-01/UI-05 &gt; keeps the Picker pressable under wireframe with its shipped title and session verdict" time="0.00353225">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:435:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="WatercolorRail — 61-25 UI-01/UI-05 &gt; still disables every depositing control under wireframe and leaves the pen available" time="0.000225375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintToolRail.test.ts" name="the rail separator rule (physicsPaintStudio.css) &gt; is the derived 1px #5a5e63 rule, 21px wide" time="0.000437167">
+        </testcase>
+    </testsuite>
+</testsuites>

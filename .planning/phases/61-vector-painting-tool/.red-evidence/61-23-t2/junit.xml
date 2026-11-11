@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="45" failures="2" errors="0" time="1.189">
+    <testsuite name="src/components/physic-paint/view/aquarelleColorPicker.test.ts" timestamp="2026-11-11T11:00:23.976Z" hostname="efx2.home" tests="45" failures="2" errors="0" skipped="0" time="0.010683583">
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="compositeRgbaOver — straight-alpha source-over &gt; an opaque top layer replaces the base completely" time="0.000748167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="compositeRgbaOver — straight-alpha source-over &gt; a fully transparent top layer leaves the base unchanged" time="0.000162333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="compositeRgbaOver — straight-alpha source-over &gt; composites 50% white over opaque black to mid grey at full opacity" time="0.000132">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="compositeRgbaOver — straight-alpha source-over &gt; two empty layers stay empty" time="0.000065708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="compositePickLayers — bottom→top fold &gt; respects bottom→top order so an opaque upper layer wins" time="0.000169459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="compositePickLayers — bottom→top fold &gt; skips null layers" time="0.000101208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="compositePickLayers — bottom→top fold &gt; returns a fully transparent composite for an empty or all-null list" time="0.000107291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="transmittancePixelToPigment — the display-path law (rasterAlpha.ts) &gt; a fully white transmittance pixel is no pigment" time="0.000070708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="transmittancePixelToPigment — the display-path law (rasterAlpha.ts) &gt; a pure red transmittance pixel is fully opaque pure red pigment" time="0.000093958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="transmittancePixelToPigment — the display-path law (rasterAlpha.ts) &gt; a light wash converts to the same pigment alpha the display path computes" time="0.000096583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="transmittancePixelToPigment — the display-path law (rasterAlpha.ts) &gt; a near-min channel keeps its proportional pigment weight" time="0.000069167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="rgbaToHex — the one normalized color string &gt; emits lower-case zero-padded #rrggbb" time="0.000093084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="rgbaToHex — the one normalized color string &gt; clamps out-of-range channels and rounds fractions" time="0.000056333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="rgbaToHex — the one normalized color string &gt; never emits an alpha channel — straight-alpha picks read as solid color" time="0.00003975">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="picker state — two signals, one active verdict &gt; defaults to disarmed" time="0.000139">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="picker state — two signals, one active verdict &gt; disarm clears both the latch and the Alt hold" time="0.000138833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="picker state — two signals, one active verdict &gt; a repeated same-value set keeps the value (compare-then-write)" time="0.000110125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="picker state — two signals, one active verdict &gt; toggling the latch twice returns to disarmed" time="0.000080625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="picker state — two signals, one active verdict &gt; releasing Alt alone disarms a held (non-latched) picker" time="0.000067125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="disarm laws — a paint tool or Move/Edit leaves the picker &gt; a paint-tool pick disarms a latched picker even when the tool is already active" time="0.000148666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="disarm laws — a paint tool or Move/Edit leaves the picker &gt; a paint-tool pick keeps the active tool compare-then-write" time="0.000056458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="disarm laws — a paint tool or Move/Edit leaves the picker &gt; entering Move/Edit disarms the picker" time="0.000108375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="disarm laws — a paint tool or Move/Edit leaves the picker &gt; leaving Move/Edit leaves the picker untouched" time="0.000048667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-17 G-6 the picker latch releases the vector pen &gt; latching the picker releases the vector pen and arms the picker" time="0.000093667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-17 G-6 the picker latch releases the vector pen &gt; latching the picker closes an open path edit and clears its anchor selection" time="0.000125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-17 G-6 the picker latch releases the vector pen &gt; disarmAquarellePicker touches neither the pen nor the path edit" time="0.000069459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-17 G-6 the picker latch releases the vector pen &gt; a repeated latch notifies the picker once and the pen never" time="0.000123542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-23 G-19 the open path edit outranks the picker &gt; routes both the visor gate and the pick seam to false while Alt is held during an edit" time="0.000053958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-23 G-19 the open path edit outranks the picker &gt; is not Alt-specific — a latched pick is likewise false during an edit" time="0.000043708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-23 G-19 the open path edit outranks the picker &gt; reads the edit lifetime, never a one-shot latch — the verdict returns true when the edit closes" time="0.000082417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-23 G-19 the open path edit outranks the picker &gt; an Alt keydown during an edit writes nothing and notifies no subscriber" time="0.002555791">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/physic-paint/view/aquarelleColorPicker.test.ts:354:45
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-23 G-19 the open path edit outranks the picker &gt; never swallows a release — a stale Alt still clears, an already-false release is the compare-then-write no-op" time="0.000081833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-23 G-19 the open path edit outranks the picker &gt; arms again after the edit closes with one real write" time="0.000257042">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/physic-paint/view/aquarelleColorPicker.test.ts:383:43
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="61-23 G-19 the open path edit outranks the picker &gt; re-pins both shipped 61-17 directions around the guard" time="0.000081666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="the picker module keeps its one-way edge (T-61-60) &gt; imports only the signals runtime and the dependency-free latch leaf" time="0.000078125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="wiring pins — the pick is consumed at the canvas-stack capture phase &gt; the Studio view consumes a pick before the Roto edit intent" time="0.000213042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="wiring pins — the pick is consumed at the canvas-stack capture phase &gt; the Studio passes the pick handler into the canvas stack" time="0.000802625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="wiring pins — the pick is consumed at the canvas-stack capture phase &gt; the left rail renders the Picker button outside the paint-tool row" time="0.000124334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="photo pointer mapping (UAT round 3) &gt; maps a point inside the photo to its source pixel" time="0.000110333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="photo pointer mapping (UAT round 3) &gt; rejects points outside the photo rect" time="0.00004675">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="photo pointer mapping (UAT round 3) &gt; inverts the transform rotation" time="0.000045709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="photo pointer mapping (UAT round 3) &gt; rejects a degenerate scale" time="0.000031083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="wiring pins — UAT round 2/3 (visor, photo sampling, slider hit area) &gt; the picker pointer is a lucide Pipette visor above the tracks group" time="0.00070725">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="wiring pins — UAT round 2/3 (visor, photo sampling, slider hit area) &gt; the pick samples the store composite and prefers a photo layer" time="0.000859">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleColorPicker.test.ts" name="wiring pins — UAT round 2/3 (visor, photo sampling, slider hit area) &gt; the photo-reference opacity slider input spans the whole track" time="0.000391542">
+        </testcase>
+    </testsuite>
+</testsuites>

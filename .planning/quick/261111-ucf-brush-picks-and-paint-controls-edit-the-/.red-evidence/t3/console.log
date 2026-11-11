@@ -1,0 +1,284 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/MetaField.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/events/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/events/AsyncEventDispatcher.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/events/EventDispatcherBase.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/events/EventDispatcher.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/events/FlagDispatcher.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/events/ValueDispatcher.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/ObjectMetaField.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/BoolMetaField.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/ColorMetaField.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/types/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/types/BBox.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/CompoundSignalContext.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/tweening/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/tweening/interpolationFunctions.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/beginSlide.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/useScene.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/useThread.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/DetailedError.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/capitalize.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/createRef.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/createRefArray.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/createRefMap.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/debug.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/deprecate.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/errorToLog.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/ExperimentalError.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/experimentalLog.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/bootstrap.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/plugin/DefaultPlugin.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/plugin/makePlugin.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/Logger.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/ProjectMetadata.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/presets.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/SettingsMetadata.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/ImageExporter.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/PlaybackManager.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/PlaybackStatus.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/Player.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/media/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/media/AudioData.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/media/AudioManager.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/media/AudioManagerPool.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/media/AudioResourceManager.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/media/loadImage.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/timeEvents/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/timeEvents/EditableTimeEvents.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/timeEvents/ReadOnlyTimeEvents.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/SharedWebGLContext.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/Presenter.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/Stage.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/Project.js" points to missing source files
+ ❯ src/components/physic-paint/view/BrushResponsePanel.test.ts (7 tests | 1 failed) 6ms
+   × quick 261111-ucf brush-response release wiring > source pins: one MultiplierSlider passthrough and one clamped commit 2ms
+     → one slider passthrough: expected +0 to be 1 // Object.is equality
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/Renderer.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/app/TimeEstimator.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/getContext.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/math.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/proxyUtils.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/range.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/Semaphore.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/useContext.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/useDuration.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/usePlayback.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/useRandom.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/GeneratorScene.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/decorators/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/decorators/decorate.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/decorators/lazy.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/decorators/threadable.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/threading/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/threading/cancel.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/threading/join.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/threading/names.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/threading/spawn.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/threading/Thread.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/all.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/any.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/chain.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/delay.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/scheduling.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/every.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/loop.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/loopFor.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/loopUntil.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/noop.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/run.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/flow/sequence.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/threading/ThreadGenerator.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/threading/threads.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/LifecycleEvents.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/Scene.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/Random.js" points to missing source files
+ ❯ src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts (9 tests | 2 failed) 8ms
+   × quick 261111-ucf globals release commits + Reset batch > Reset commits ONE seven-key params patch after the seven live writes 3ms
+     → the batch is ONE call: expected [] to have a length of 1 but got +0
+   × quick 261111-ucf globals release commits + Reset batch > source pins: the GlobalSlider passthrough and the ONE Reset batch 1ms
+     → one GlobalSlider passthrough: expected +0 to be 1 // Object.is equality
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/SceneState.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/Shaders.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/Slides.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/Sounds.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/Variables.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/Inspectable.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/SceneMetadata.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/scenes/Threadable.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/utils/useTime.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/tweening/spring.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/tweening/timingFunctions.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/tweening/tween.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/SignalContext.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/DependencyContext.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/symbols.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/utils.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/ComputedContext.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/createComputed.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/createComputedAsync.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/createDeferredEffect.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/DeferredEffectContext.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/createEffect.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/EffectContext.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/createSignal.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/signals/Vector2SignalContext.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/types/Spacing.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/types/Vector.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/types/Matrix2D.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/types/Type.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/types/Origin.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/types/Color.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/types/Matrix.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/EnumMetaField.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/ExporterMetaFile.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/MetaFile.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/NumberMetaField.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/RangeMetaField.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/StringMetaField.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/meta/Vector2MetaField.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/plugin/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/transitions/index.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/transitions/fadeTransition.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/transitions/useTransition.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/transitions/slideTransition.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/transitions/waitTransition.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/transitions/zoomInTransition.js" points to missing source files
+Sourcemap for "/Users/lmarques/Dev/efx-motion-editor/node_modules/.pnpm/@efxlab+motion-canvas-core@4.0.0/node_modules/@efxlab/motion-canvas-core/lib/transitions/zoomOutTransition.js" points to missing source files
+ ❯ src/components/physic-paint/view/PhysicsPaintTopBar.test.ts (39 tests | 2 failed) 81ms
+   × quick 261111-ucf top-bar slider release commits > each brush slider commits its mapped key exactly once, and only on release 3ms
+     → physics-brush-size exposes onCommit: expected 'undefined' to be 'function' // Object.is equality
+   × quick 261111-ucf top-bar slider release commits > source pins: one commit passthrough and one paint-controls import 1ms
+     → one updateCommit builder: expected +0 to be 1 // Object.is equality
+ ❯ src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts (42 tests | 1 failed) 35ms
+   × quick 261111-ucf Paint-tab size release commit > onCommit forwards one size patch and onChange still calls the live handler 3ms
+     → the size stepper exposes onCommit: expected 'undefined' to be 'function' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts > quick 261111-ucf globals release commits + Reset batch > Reset commits ONE seven-key params patch after the seven live writes
+AssertionError: the batch is ONE call: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts:296:44
+    294|     (reset!.props as { onClick?: () => void }).onClick!();
+    295| 
+    296|     expect(calls, 'the batch is ONE call').toHaveLength(1);
+       |                                            ^
+    297|     expect(calls[0]!.ids).toEqual([10721]);
+    298|     expect(calls[0]!.patch).toEqual({ params: RESET_EXPECTED });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts > quick 261111-ucf globals release commits + Reset batch > source pins: the GlobalSlider passthrough and the ONE Reset batch
+AssertionError: one GlobalSlider passthrough: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts:306:96
+    304|       readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'A…
+    305|     );
+    306|     expect(body.split('onCommit={props.onCommit}').length - 1, 'one Gl…
+       |                                                                                                ^
+    307|     expect(
+    308|       body.split('commitAquarelleSelectionParam(key, value)').length -…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  src/components/physic-paint/view/BrushResponsePanel.test.ts > quick 261111-ucf brush-response release wiring > source pins: one MultiplierSlider passthrough and one clamped commit
+AssertionError: one slider passthrough: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/BrushResponsePanel.test.ts:220:90
+    218|       readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'B…
+    219|     );
+    220|     expect(body.split('onCommit={props.onCommit}').length - 1, 'one sl…
+       |                                                                                          ^
+    221|     expect(
+    222|       body.split('commitAquarelleSelectionMultiplier(field, value)').l…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts > quick 261111-ucf Paint-tab size release commit > onCommit forwards one size patch and onChange still calls the live handler
+AssertionError: the size stepper exposes onCommit: expected 'undefined' to be 'function' // Object.is equality
+
+Expected: "function"
+Received: "undefined"
+
+ ❯ src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts:1234:80
+    1232|     const props = baseProps();
+    1233|     const stepper = findStepper(renderPanel(props), 'paint-tab-brush-s…
+    1234|     expect(typeof stepper.props.onCommit, 'the size stepper exposes on…
+       |                                                                                ^
+    1235| 
+    1236|     (stepper.props.onCommit as (value: number) => void)(44);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintTopBar.test.ts > quick 261111-ucf top-bar slider release commits > each brush slider commits its mapped key exactly once, and only on release
+AssertionError: physics-brush-size exposes onCommit: expected 'undefined' to be 'function' // Object.is equality
+
+Expected: "function"
+Received: "undefined"
+
+ ❯ src/components/physic-paint/view/PhysicsPaintTopBar.test.ts:913:74
+    911|     for (const [id] of released) {
+    912|       expect(byId(id), `${id} must render`).toBeDefined();
+    913|       expect(typeof byId(id)!.props?.onCommit, `${id} exposes onCommit…
+       |                                                                          ^
+    914|     }
+    915|     // A drag (onChange) never commits: the port is silent until a rel…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintTopBar.test.ts > quick 261111-ucf top-bar slider release commits > source pins: one commit passthrough and one paint-controls import
+AssertionError: one updateCommit builder: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintTopBar.test.ts:944:87
+    942|   it('source pins: one commit passthrough and one paint-controls impor…
+    943|     const body = stripComments(topBarSource());
+    944|     expect(body.split('const updateCommit =').length - 1, 'one updateC…
+       |                                                                                       ^
+    945|     expect(body.split('onCommit={updateCommit}').length - 1, 'one TopB…
+    946|     const imports = body.match(/from '\.\/aquarellePaintControls'/g) ?…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+ Test Files  4 failed (4)
+      Tests  6 failed | 91 passed (97)
+   Start at  22:18:56
+   Duration  1.30s (transform 976ms, setup 0ms, collect 3.11s, tests 130ms, environment 0ms, prepare 109ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/quick/261111-ucf-brush-picks-and-paint-controls-edit-the-/.red-evidence/t3/junit.xml
+undefined
+/Users/lmarques/Dev/efx-motion-editor/app:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/components/physic-paint/view/PhysicsPaintTopBar.test.ts src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts src/components/physic-paint/view/AquarelleGlobalsPanel.test.ts src/components/physic-paint/view/BrushResponsePanel.test.ts --reporter=default --reporter=junit --outputFile=/Users/lmarques/Dev/efx-motion-editor/.planning/quick/261111-ucf-brush-picks-and-paint-controls-edit-the-/.red-evidence/t3/junit.xml

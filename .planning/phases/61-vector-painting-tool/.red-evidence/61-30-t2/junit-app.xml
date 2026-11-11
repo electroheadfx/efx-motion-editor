@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="49" failures="4" errors="0" time="0.362">
+    <testsuite name="src/lib/mceFieldContract.test.ts" timestamp="2026-11-11T14:00:49.319Z" hostname="efx2.home" tests="17" failures="1" errors="0" skipped="0" time="0.007181667">
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="TS ↔ Rust .mce field-diff contract &gt; parses both declaration surfaces" time="0.000648375">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="TS ↔ Rust .mce field-diff contract &gt; declares the same set of .mce members in both languages" time="0.000318667">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="TS ↔ Rust .mce field-diff contract &gt; agrees on every wire key of every .mce member" time="0.000175334">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="TS ↔ Rust .mce field-diff contract &gt; catches a field declared in only one language (self-test of the diff)" time="0.000461">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 56 .mce field set (DATA-04 / D-27) &gt; declares paper display state on the fond (id, strength, scale) in both languages" time="0.00021225">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 56 .mce field set (DATA-04 / D-27) &gt; declares the aquarelle brush property surface in both languages" time="0.000228708">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 56 .mce field set (DATA-04 / D-27) &gt; declares the per-engine stroke payload carrier (opaque engine slot) in both languages" time="0.000096541">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 56 .mce field set (DATA-04 / D-27) &gt; declares the brush-pack snapshot in both languages (D-23 inline .mce data)" time="0.000105959">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 56 .mce field set (DATA-04 / D-27) &gt; brushPack is NOT an ALLOWED_ONE_LANGUAGE entry (D-23 two-language by design)" time="0.000089709">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 61 vector field set (VEC-06 / REL-02) &gt; declares the vector anchor shape in both languages" time="0.000188125">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 61 vector field set (VEC-06 / REL-02) &gt; declares the vector path shape in both languages" time="0.003158416">
+            <failure message="MceAquarelleVectorPath.curveMode: TS side is missing the key: expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: MceAquarelleVectorPath.curveMode: TS side is missing the key: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ expectMemberKeys src/lib/mceFieldContract.test.ts:160:75
+ ❯ src/lib/mceFieldContract.test.ts:283:5
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 61 vector field set (VEC-06 / REL-02) &gt; the in-handle wire key is the rename target of a named field, never a raw identifier" time="0.000134333">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 61 vector field set (VEC-06 / REL-02) &gt; did not claim a one-language exception for any vector field" time="0.000096542">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 61 envelope round trip (REL-02) &gt; carries a vector engine block through save/load deep-equal and byte-identical" time="0.000219708">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 61 envelope round trip (REL-02) &gt; carries a curve mode through save/load deep-equal and byte-identical (61-30 G-20)" time="0.000140167">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 61 envelope round trip (REL-02) &gt; keeps the engine slot opaque: an unknown engine key round-trips untouched" time="0.000220292">
+        </testcase>
+        <testcase classname="src/lib/mceFieldContract.test.ts" name="Phase 61 envelope round trip (REL-02) &gt; the one-language exception list is unchanged by this plan (literal snapshot)" time="0.000070416">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" timestamp="2026-11-11T14:00:49.321Z" hostname="efx2.home" tests="32" failures="3" errors="0" skipped="0" time="0.022965958">
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="JSON baseline codec &gt; round-trips the fixture exactly" time="0.001654875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="JSON baseline codec &gt; encodes an empty timeline as &quot;[]&quot; (2 bytes)" time="0.00013225">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="JSON baseline codec &gt; rejects malformed JSON with a typed error" time="0.000229708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="JSON baseline codec &gt; rejects structurally invalid parsed events" time="0.000092">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; pins the magic/version constants" time="0.000108875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; round-trips every metadata field exactly and points within tolerance" time="0.008149834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; preserves playFrame 0 versus null" time="0.000343291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; decodes an empty timeline from the 24-byte header" time="0.0000605">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; is byte-deterministic and reports real encoded sizes" time="0.005241417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; clamps out-of-range point fields on decode (documented lossy policy)" time="0.000164417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; keeps the live no-pressure sentinel -1 across the wire (261027 UAT round 10)" time="0.000099541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; round-trips a two-anchor vector stroke deep-equal, order preserved" time="0.000307875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; round-trips renderMode &apos;simple-ribbon&apos; and leaves an absent mode absent" time="0.000154083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; costs a hand-painted stroke one vector-flags byte, and a mode one more (D-14)" time="0.000063083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; decodes the same bytes twice to deep-equal objects (idempotence)" time="0.0001645">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; fails closed when the stream is cut inside the anchor block" time="0.000125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; rejects a hostile anchor count before reading any anchor" time="0.00006425">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 curve mode (61-30 G-20) &gt; round-trips curveMode &apos;spline&apos; and leaves an absent mode absent" time="0.001808417">
+            <failure message="expected undefined to be &apos;spline&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be &apos;spline&apos; // Object.is equality
+
+- Expected: 
+&quot;spline&quot;
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:612:48
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 curve mode (61-30 G-20) &gt; costs exactly one byte for a curve mode and nothing when absent" time="0.000676083">
+            <failure message="expected 94 to be 95 // Object.is equality" type="AssertionError">
+AssertionError: expected 94 to be 95 // Object.is equality
+
+- Expected
++ Received
+
+- 95
++ 94
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:622:31
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 curve mode (61-30 G-20) &gt; refuses an unmapped curve-mode code (fail closed, never defaults)" time="0.000527834">
+            <failure message="expected &apos;invalid-count&apos; to be &apos;invalid-value&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;invalid-count&apos; to be &apos;invalid-value&apos; // Object.is equality
+
+Expected: &quot;invalid-value&quot;
+Received: &quot;invalid-count&quot;
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:631:67
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 encode/decode fixed point (61-05) &gt; is byte-identical when a decoded vector stroke is re-encoded" time="0.0003195">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 encode/decode fixed point (61-05) &gt; leaves no width residue on a uniform path" time="0.000239875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 encode/decode fixed point (61-05) &gt; is byte-stable across three passes and decodes idempotently" time="0.000662458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; pins the minimal one-stroke layout used by the corrupt-byte helpers" time="0.000055875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; validates the header before allocating" time="0.000191334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; rejects trailing bytes" time="0.000046958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; fails closed on truncated strings" time="0.000049791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; rejects a point count that cannot fit before reading points" time="0.000079709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; rejects a totalPointCount that disagrees with the event bodies" time="0.000074458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; rejects unknown tags and non-finite metadata" time="0.000121541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; refuses unsupported motion, unknown tools, and bad override entries on encode" time="0.000140333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; refuses non-finite numeric state and oversized strings on encode" time="0.000150875">
+        </testcase>
+    </testsuite>
+</testsuites>
