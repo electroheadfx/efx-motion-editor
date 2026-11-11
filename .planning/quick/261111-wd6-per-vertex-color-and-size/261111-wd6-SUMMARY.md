@@ -144,9 +144,10 @@ coverage:
   - id: D7
     description: "Live UAT (five rows, handed to the user — vitest is blind to the GPU): (1) select two anchors, pick a colour → only those vertices change in ONE undo step; (2) reopen/re-bake and Play → same colours and wash, second bake pixel-identical; (3) change one anchor's vertex size → width tapers there while its colour is unchanged; (4) after a coloured stroke, a colourless stroke and a bucket fill inherit nothing; (5) save/close/reopen → colours survive and an older build refuses the coloured file closed."
     requirement: QUICK-261111-WD6
-    verification: []
+    verification:
+      - "UAT PASSED 2026-11-12 (user-confirmed): all five rows passed in the live Studio — per-vertex colour commits to the selected anchors in ONE undo step, re-bake and Play keep the colours and wash (second bake pixel-identical), one anchor's vertex size tapers without changing its colour, a following colourless stroke and bucket fill inherit no pigment, and save/close/reopen keeps the colours with an older build refusing the coloured file closed"
     human_judgment: true
-    rationale: "WebGL deposits, re-bake pixel parity, the native undo entry and the cross-build reopen cannot be proven under vitest; the plan hands these five rows to the user and forbids claiming them from CI."
+    rationale: "WebGL deposits, re-bake pixel parity, the native undo entry and the cross-build reopen cannot be proven under vitest; the plan handed these five rows to the user and forbade claiming them from CI — that row passed 2026-11-12."
 
 duration: 17min
 completed: 2026-11-12
@@ -243,7 +244,7 @@ None beyond the plan's threat model. T-wd6-01 (colour block decode), T-wd6-03 (c
 
 ## Next Phase Readiness
 
-- Handed to the user for live UAT (not claimed here): the five native rows in the plan's `<verification>` — per-vertex colour in one undo step, reopen/re-bake and Play parity, vertex-size taper with colour intact, no pigment leak into a colourless stroke or bucket fill, and save/close/reopen survival with fail-closed refusal by an older build.
+- Shipped: the five native rows passed on 2026-11-12 (user-confirmed) — per-vertex colour in one undo step, reopen/re-bake and Play parity, vertex-size taper with colour intact, no pigment leak into a colourless stroke or bucket fill, and save/close/reopen survival with fail-closed refusal by an older build.
 - No AQTL version bump, no migration, no second size channel, no clear-to-inherit control. `RightPanelColorTab.tsx`, `AquarelleCanvasLayer.tsx`, `studioScriptSnapshotCodec.ts`, `VectorPathOverlay.tsx`, `toStudioStroke.ts`, the payload `codec.ts` and `aquarelleStrokeSelection.ts` are untouched.
 
 ---

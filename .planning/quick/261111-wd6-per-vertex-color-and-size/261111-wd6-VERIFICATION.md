@@ -1,8 +1,8 @@
 ---
 phase: 261111-wd6-per-vertex-color-and-size
 verified: 2026-11-11T23:33:40Z
-status: human_needed
-score: 7/9 must-haves verified
+status: passed
+score: 9/9 must-haves verified (the two GPU-blind truths confirmed by live UAT 2026-11-12)
 covered_files:
   - ".planning/quick/261111-wd6-per-vertex-color-and-size/261111-wd6-PLAN.md"
   - ".planning/quick/261111-wd6-per-vertex-color-and-size/261111-wd6-SUMMARY.md"
@@ -63,7 +63,7 @@ human_verification:
 
 **Phase Goal:** Revise VEC-04 so a vector anchor may carry its own colour while per-vertex "size" stays the EXISTING anchor width factor exposed as the vertex size (no second size channel).
 **Verified:** 2026-11-11T23:33:40Z
-**Status:** human_needed
+**Status:** passed — all code-level must-haves verified, and the five live-UAT rows below were confirmed by the user on 2026-11-12
 **Re-verification:** No — initial verification
 
 ## Goal Achievement
@@ -176,6 +176,8 @@ No ORPHANED requirements: no additional REQUIREMENTS.md ID is mapped to this qui
 No `TBD`/`FIXME`/`XXX` debt markers in any file modified by this quick. No stub, hollow-prop or console-only implementations found. WR-01 (silent dropped refusal) and IN-03/IN-04 from the review are fixed in `0dbd47e96` and re-verified here.
 
 ### Human Verification Required
+
+> **UAT RESULT: PASSED** — user-confirmed 2026-11-12. All five rows below passed in the live Studio.
 
 ### 1. Per-vertex colour commit
 
