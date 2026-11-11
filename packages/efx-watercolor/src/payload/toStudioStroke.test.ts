@@ -14,7 +14,7 @@
 //    · payload codec round-trip preserves the salt and the same seed
 //    · the engine-params projection stays inert to the key
 //
-//  61-03 adds the vector-path pins: `anchors` and `renderMode` are
+//  61-03 adds the vector-path pins: `anchors` and `curveMode` are
 //  copied into the opaque engine block ONLY when present, so a plain
 //  stroke keeps its exact pre-vector key set (D-14 independence).
 // ============================================================
@@ -158,12 +158,11 @@ describe('paint seed salt persistence', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 4. Vector path engine block (61-03 D-12 / D-14)
+// 4. Vector path engine block (61-03 D-14)
 //
-//  The two new fields ride the opaque engine slot, which is the ONE
-//  persistence carrier. Each is copied ONLY when present, so a plain
-//  hand-painted stroke keeps today's exact key set and a stroke that
-//  carries just a mode gains that key and no other.
+//  The anchor list rides the opaque engine slot, which is the ONE
+//  persistence carrier. It is copied ONLY when present, so a plain
+//  hand-painted stroke keeps today's exact key set.
 // ---------------------------------------------------------------------------
 
 /** Key set of the engine block BEFORE this plan — pinned literally. */
@@ -184,27 +183,16 @@ const VECTOR_ANCHORS: readonly AquarelleAnchor[] = [
   { x: 44, y: 32, kind: 'bezier', in: { x: 40, y: 30 }, out: { x: 48, y: 34 } },
 ]
 
-describe('vector path engine block (61-03 D-12 / D-14)', () => {
-  it('copies anchors and renderMode into the engine block unchanged', () => {
-    const stroke = toStudioStroke(
-      makeRuntimeStroke({ anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
-    )
+describe('vector path engine block (61-03 D-14)', () => {
+  it('copies anchors into the engine block unchanged', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ anchors: VECTOR_ANCHORS }))
     expect(stroke.engine.anchors).toEqual(VECTOR_ANCHORS)
-    expect(stroke.engine.renderMode).toBe('simple-ribbon')
   })
 
-  it('adds no key at all when neither field is present (byte-identical shape)', () => {
+  it('adds no key at all when the field is absent (byte-identical shape)', () => {
     const stroke = toStudioStroke(makeRuntimeStroke())
     expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS])
     expect('anchors' in stroke.engine).toBe(false)
-    expect('renderMode' in stroke.engine).toBe(false)
-  })
-
-  it('copies renderMode ALONE when a hand-painted stroke carries a mode (D-14)', () => {
-    const stroke = toStudioStroke(makeRuntimeStroke({ renderMode: 'simple-ribbon' }))
-    expect(stroke.engine.renderMode).toBe('simple-ribbon')
-    expect('anchors' in stroke.engine).toBe(false)
-    expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS, 'renderMode'])
   })
 
   it('round-trips a bezier anchor whose handles have zero length exactly', () => {
@@ -215,16 +203,15 @@ describe('vector path engine block (61-03 D-12 / D-14)', () => {
     const stroke = toStudioStroke(makeRuntimeStroke({ anchors: cornerAnchors }))
     expect(stroke.engine.anchors).toEqual(cornerAnchors)
     expect(stroke.engine.anchors?.[0]?.in).toEqual({ x: 10, y: 10 })
-    expect(stroke.engine.renderMode).toBeUndefined()
   })
 })
 
 // ---------------------------------------------------------------------------
 // 4b. Curve mode engine block (61-30 G-20)
 //
-//  `curveMode` mirrors `renderMode` exactly: it rides the opaque engine
-//  slot, is copied ONLY when present, and lands AFTER the render-mode
-//  member so a stroke that carries neither keeps today's key order.
+//  `curveMode` rides the opaque engine slot, is copied ONLY when present,
+//  and lands AFTER the anchor member so a stroke that carries neither keeps
+//  today's key order.
 // ---------------------------------------------------------------------------
 
 describe('curve mode engine block (61-30 G-20)', () => {
@@ -232,7 +219,6 @@ describe('curve mode engine block (61-30 G-20)', () => {
     const stroke = toStudioStroke(makeRuntimeStroke({ curveMode: 'spline' }))
     expect(stroke.engine.curveMode).toBe('spline')
     expect('anchors' in stroke.engine).toBe(false)
-    expect('renderMode' in stroke.engine).toBe(false)
     expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS, 'curveMode'])
   })
 

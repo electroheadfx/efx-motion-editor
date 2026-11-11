@@ -32,7 +32,7 @@ import {
   type AquarellePoint,
   type AquarelleStrokePayload,
 } from '../../src/payload/toStudioStroke'
-import type { AquarelleAnchor, AquarelleRenderMode } from '../../src/payload/vectorPath'
+import type { AquarelleAnchor } from '../../src/payload/vectorPath'
 import { sampleVectorPath } from '../../src/vector/spine'
 import { createAquarelleEngineAdapter } from '../../src/adapter/engineAdapter'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
@@ -185,7 +185,6 @@ function makeStroke(
   mutationId = MUTATION_ID,
   anchors?: readonly AquarelleAnchor[],
   params: Readonly<Record<string, number>> = DEFAULT_CANONICAL_PARAMS,
-  renderMode?: AquarelleRenderMode,
 ): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
@@ -197,8 +196,6 @@ function makeStroke(
     timestamp: 0,
     // 61-04: absent anchors keep the hand-painted projection byte-identical.
     ...(anchors === undefined ? {} : { anchors }),
-    // 61-07: the stroke-scoped deposit mode; absent keeps the pre-phase shape.
-    ...(renderMode === undefined ? {} : { renderMode }),
   })
 }
 
@@ -682,165 +679,6 @@ function runWidthScenario(renderer: string): void {
     },
     env: { renderer: String(renderer), userAgent: navigator.userAgent },
     verdict: `${pass ? 'VECTOR-WIDTH PASS' : 'VECTOR-WIDTH FAIL'} observed=${observed}`,
-    totalProbeMs: Math.round(performance.now() - t0),
-  })
-}
-
-// --- ribbon arms (61-07) ----------------------------------------------------
-
-// The seven canonical wet globals (0..100). Arm 2 lowers all seven to 0 and
-// raises exactly one at a time, so a shared bag that reaches the deposit
-// must move the capture for each key on its own (D-13).
-const RIBBON_GLOBALS = ['water', 'load', 'flow', 'bleed', 'dry', 'edge', 'granulation'] as const
-type RibbonGlobal = (typeof RIBBON_GLOBALS)[number]
-
-const RIBBON_SCENARIO_SIZE = WIDTH_SCENARIO_SIZE
-const RIBBON_RATIO_GATE = 0.6
-const RIBBON_EDGE_BAND = { top: 0.64, bottom: 0.36 } as const
-
-const RIBBON_ZERO_PARAMS: Readonly<Record<string, number>> = {
-  ...DEFAULT_CANONICAL_PARAMS,
-  size: RIBBON_SCENARIO_SIZE,
-  water: 0,
-  load: 0,
-  flow: 0,
-  bleed: 0,
-  dry: 0,
-  edge: 0,
-  granulation: 0,
-}
-
-/** One adapter replay of the vertical spine in the given render mode. */
-function runRibbonCapture(
-  params: Readonly<Record<string, number>>,
-  renderMode: AquarelleRenderMode,
-): Uint8ClampedArray {
-  const adapter = createPinnedAdapter(WIDTH_SHEET, WIDTH_SHEET)
-  try {
-    const stroke = makeStroke(
-      resampleAnchors(WIDTH_ANCHORS, WIDTH_SCENARIO_DENSITY),
-      MUTATION_ID,
-      undefined,
-      params,
-      renderMode,
-    )
-    runStroke(adapter, stroke)
-    return captureAdapter(adapter)
-  } finally {
-    adapter.dispose()
-  }
-}
-
-/**
- * 61-07: the edge-transition width on the widest row — the horizontal
- * distance in pixels across which the deposit falls from 90% to 10% of that
- * row's plateau. Each side is scanned from the outside in; the wider side is
- * reported (the slower edge), so a soft bloom cannot hide behind a crisp
- * left flank. Returns -1 when the arm painted nothing measurable.
- */
-function measureEdgeTransitionPx(
-  buffer: Uint8ClampedArray,
-  width: number,
-  height: number,
-): number {
-  const top = Math.round((1 - RIBBON_EDGE_BAND.top) * height)
-  const bottom = Math.round((1 - RIBBON_EDGE_BAND.bottom) * height)
-  const deposit = (x: number, y: number): number => {
-    const i = (y * width + x) * 4
-    return 255 - Math.min(buffer[i]!, buffer[i + 1]!, buffer[i + 2]!)
-  }
-
-  // The widest row is the one carrying the most visibly painted pixels.
-  let widestRow = -1
-  let widestCount = 0
-  for (let y = top; y <= bottom; y += 1) {
-    let count = 0
-    for (let x = 0; x < width; x += 1) if (deposit(x, y) > 8) count += 1
-    if (count > widestCount) {
-      widestCount = count
-      widestRow = y
-    }
-  }
-  if (widestRow < 0) return -1
-
-  const row: number[] = []
-  let plateau = 0
-  for (let x = 0; x < width; x += 1) {
-    const d = deposit(x, widestRow)
-    row.push(d)
-    if (d > plateau) plateau = d
-  }
-  if (plateau <= 8) return -1
-
-  const hi = 0.9 * plateau
-  const lo = 0.1 * plateau
-  const sideWidth = (from: number, step: number): number => {
-    let x10 = -1
-    for (let x = from; x >= 0 && x < width; x += step) {
-      if (x10 < 0 && row[x]! >= lo) x10 = x
-      if (x10 >= 0 && row[x]! >= hi) return Math.abs(x - x10)
-    }
-    return -1
-  }
-  const left = sideWidth(0, 1)
-  const right = sideWidth(width - 1, -1)
-  const sides = [left, right].filter((value) => value >= 0)
-  return sides.length === 0 ? -1 : Math.max(...sides)
-}
-
-/**
- * 61-07 / VEC-04: the ribbon deposit measured on real pixels, in two arms.
- * Arm 1 replays the SAME stroke geometry and params in both modes and
- * compares the edge-transition width (the clean sweep must read at most
- * 0.6x the wet bloom). Arm 2 proves the shared parameter bag still reaches
- * the deposit: with all seven globals at 0, raising any single one to 100
- * must change the capture digest on its own.
- */
-function runRibbonScenario(renderer: string): void {
-  const t0 = performance.now()
-
-  const wetParams: Readonly<Record<string, number>> = RIBBON_ZERO_PARAMS
-  const watercolorEdge = measureEdgeTransitionPx(
-    runRibbonCapture(wetParams, 'watercolor'),
-    WIDTH_SHEET,
-    WIDTH_SHEET,
-  )
-  const ribbonEdge = measureEdgeTransitionPx(
-    runRibbonCapture(wetParams, 'simple-ribbon'),
-    WIDTH_SHEET,
-    WIDTH_SHEET,
-  )
-  if (watercolorEdge <= 0) throw new Error('ribbon scenario: watercolour arm painted nothing measurable')
-  if (ribbonEdge < 0) throw new Error('ribbon scenario: ribbon arm painted nothing measurable')
-  const ratio = round3(ribbonEdge / watercolorEdge)
-
-  const baselineBuffer = runRibbonCapture(RIBBON_ZERO_PARAMS, 'simple-ribbon')
-  const baselinePainted = paintedPixels(baselineBuffer)
-  if (baselinePainted === 0) throw new Error('ribbon scenario: all-zero bag deposited nothing')
-  const baseline = hashPixels(baselineBuffer)
-  const wetDelta: Record<string, string> = { baseline }
-  let wet = 0
-  for (const key of RIBBON_GLOBALS) {
-    const digest = hashPixels(
-      runRibbonCapture({ ...RIBBON_ZERO_PARAMS, [key]: 100 }, 'simple-ribbon'),
-    )
-    wetDelta[key] = digest
-    if (digest !== baseline) wet += 1
-  }
-
-  const pass = ratio <= RIBBON_RATIO_GATE && wet === RIBBON_GLOBALS.length
-  writeResult({
-    scenario: 'ribbon',
-    kind: 'auto',
-    sheet: `${WIDTH_SHEET}x${WIDTH_SHEET}`,
-    density: WIDTH_SCENARIO_DENSITY,
-    size: RIBBON_SCENARIO_SIZE,
-    edgeTransitionPx: { watercolor: watercolorEdge, ribbon: ribbonEdge, ratio, gate: RIBBON_RATIO_GATE },
-    wetDelta,
-    wetCount: wet,
-    baselinePainted,
-    env: { renderer: String(renderer), userAgent: navigator.userAgent },
-    verdict: `${pass ? 'VECTOR-RIBBON PASS' : 'VECTOR-RIBBON FAIL'} ratio=${ratio} wet=${wet}/${RIBBON_GLOBALS.length}`,
     totalProbeMs: Math.round(performance.now() - t0),
   })
 }
@@ -1484,21 +1322,6 @@ function main(): void {
         scenario: 'width',
         widthRatio: { baseRadiusPx: 0, scaledRadiusPx: 0, observed: 0 },
         verdict: `VECTOR-WIDTH FAIL ${message}`,
-        error: message,
-      })
-    }
-    return
-  }
-  if (scenario === 'ribbon') {
-    try {
-      runRibbonScenario(renderer)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      writeResult({
-        scenario: 'ribbon',
-        edgeTransitionPx: { watercolor: 0, ribbon: 0, ratio: 0 },
-        wetDelta: { baseline: '' },
-        verdict: `VECTOR-RIBBON FAIL ${message}`,
         error: message,
       })
     }

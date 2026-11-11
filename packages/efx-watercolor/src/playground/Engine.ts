@@ -11,15 +11,6 @@ import { WET_THRESHOLD, isSheetWet } from './wetState';
 
 export type Tool = 'brush' | 'water' | 'pen' | 'lift';
 
-/**
- * 61-07 (D-12): how a stroke deposits. `simple-ribbon` is the clean
- * sweep along the spine; `watercolor` is the wet deposit every stroke
- * shipped before this phase uses. The mode is a STROKE property —
- * never a path property — and is selected explicitly, never inferred
- * from a parameter value being zero.
- */
-export type StrokeRenderMode = 'watercolor' | 'simple-ribbon';
-
 /** All sliders are normalised 0..1. */
 export interface Params {
   size: number;
@@ -129,9 +120,6 @@ interface Stroke {
   // sample boundary; both are 1 for a stroke without a width profile.
   widthFrom: number;
   widthTo: number;
-  // 61-07 (D-12): the stroke's explicit deposit mode. A scripted stroke gets
-  // it from scriptBegin; an interactive one is seeded from the active brush.
-  renderMode: StrokeRenderMode;
 }
 
 /** 61-04 / T-61-11: bound a scripted width factor and default a bad one. */
@@ -188,11 +176,6 @@ const PAN_KEEP = 48;           // CSS px of the sheet that always stays on scree
 const FIX_DURATION = 1.2;
 const MASK_BLOCK = 16;         // texels per wet-mask cell
 const MASK_EVERY = 10;         // frames between wet-mask readbacks that trim the active rect
-// 61-07: the simple-ribbon profile's rim width, as a fraction of the dab
-// radius. Coverage is solid inside `radius × (1 − RIBBON_RIM_FRAC)` and
-// smoothsteps to zero across the rim. Exported so the probe and the tests
-// can name the one number the visual law is fixed on.
-export const RIBBON_RIM_FRAC = 0.08;
 const MASK_MARGIN = MASK_BLOCK + 8;
 const PROTECT_MARGIN = 24;     // texels around a dab / fill band saved for undo, where its water and pigment spread to
 const DESK = [1, 1, 1];      // the table the sheet lies on (sRGB)
@@ -876,13 +859,8 @@ export class WatercolorEngine {
    * — a footprint multiplier carried on the sample, bounded to the published
    * 0.2..2.0 range. It is NOT `maxRadius` and is never routed through
    * `scriptScale`: that clamp stays the footprint cap it always was (C-03).
-   *
-   * `renderMode` (61-07, D-12) is the stroke's explicit deposit mode. The
-   * argument always wins over the loaded brush, which is what keeps a
-   * replay deterministic and independent of whichever brush happened to be
-   * loaded. Omitted means `watercolor`.
    */
-  scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = 'Stroke', maxRadius?: number, tiltX = 0, tiltY = 0, widthScale = 1, renderMode: StrokeRenderMode = 'watercolor'): boolean {
+  scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = 'Stroke', maxRadius?: number, tiltX = 0, tiltY = 0, widthScale = 1): boolean {
     if (this.stroke) return false;
     if (step !== false) this.beginStep('script', step);
     this.scriptScale = maxRadius ? Math.min(1, maxRadius / this.radius(tool, 1, 0)) : 1;
@@ -890,7 +868,7 @@ export class WatercolorEngine {
       pointerId: SCRIPT_POINTER, pointerType: 'pen', tool, started: false, ending: false,
       x: 0, y: 0, cx: 0, cy: 0, pr: 0, t: this.clock(), speed: 0, simPressure: 0.45, carry: 0, travelled: 0, moved: false,
       dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
-      widthFrom: 1, widthTo: 1, renderMode,
+      widthFrom: 1, widthTo: 1,
     };
     this.queue.push({ x, y, p: scriptPressure(pressure), t: this.clock(), tx: tiltX, ty: tiltY, w: scriptWidthFactor(widthScale) });
     this.schedule();
@@ -1510,10 +1488,6 @@ export class WatercolorEngine {
         x: 0, y: 0, cx: 0, cy: 0, pr: 0, t: e.timeStamp, speed: 0, simPressure: 0.45, carry: 0, travelled: 0, moved: false,
         dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
         widthFrom: 1, widthTo: 1,
-        // 61-07 (D-14): the live canvas seeds the mode from the active
-        // brush, so what it paints is what a reopen re-bakes. The preset's
-        // mode arrives through setBrush(buildBrushForStroke(...)).
-        renderMode: this.brush.renderMode ?? 'watercolor',
       };
       if (tool !== this.tool) this.callbacks.onStrokeTool?.(tool);
       this.beginStep('stroke', STROKE_LABEL[tool]);
@@ -1785,54 +1759,6 @@ export class WatercolorEngine {
     switch (s.tool) {
       case 'brush': {
         const b = this.brush;
-        // 61-07 (D-12 / D-13): the simple-ribbon deposit. The branch is
-        // selected EXPLICITLY from the stroke's render mode — never from a
-        // parameter value being zero. Each of the seven wet globals is its
-        // OWN blend weight on its own deposit term, so with all seven at
-        // zero this deposits the plain sweep and raising any single one
-        // changes the pixels by itself:
-        //   water       widens/softens the rim and is the only wetness
-        //   load        adds the pigment-density fade with travelled distance
-        //   flow        adds the speed edge term and the velocity splat
-        //   bleed       widens the rim (the diffusion term)
-        //   edge        darkens a tide ring inside the rim
-        //   granulation gates the deposit with the paper grain
-        //   dry         hardens the rim and shortens the wet
-        // No floored expression from the watercolour branch below is reused
-        // (`0.25 + 0.75 * P.water`, `0.15 * exp(P.load * 2.8)`): at zero
-        // those floors would still deposit wetness.
-        if (s.renderMode === 'simple-ribbon') {
-          const speedEdge = clamp(s.speed, 0, 1);
-          const rim = RIBBON_RIM_FRAC
-            * (1 + 0.6 * P.water)          // water: widens and softens the rim
-            * (1 + 0.9 * P.bleed)          // bleed: the diffusion term widens it
-            * (1 - 0.5 * P.dry)            // dry: hardens the rim
-            * (1 - 0.35 * P.flow * speedEdge); // flow: the speed-driven edge term
-          // The brush empties as it travels; `load` is the weight of that fade,
-          // so load 0 keeps one flat density from end to end.
-          const fade = Math.exp(-Math.min(1, s.travelled / (2 * b.capacity)) * 3);
-          // The coefficient carries the plain sweep to a full-opacity core (the
-          // clean-sweep look), so the tone response resolves the physical rim —
-          // RIBBON_RIM_FRAC of the radius — as the edge instead of a translucent
-          // ramp. Spacing/tip normalisation mirrors the watercolour branch so the
-          // same wet globals drive both modes at the same strength.
-          const sweep = 2 * Math.min(b.spacing, 1) / 1.8
-            * clamp(Math.sqrt(0.5 / b.tipMean), 0.7, 2.2) * (0.4 + 0.6 * pr) * b.load * dwell;
-          const amount = sweep * (1 + 1.6 * P.load * fade);
-          const wet = P.water * b.water * (0.7 + 0.3 * pr) * (1 - 0.75 * P.dry);
-          const c = this.pigment.coeffs;
-          const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
-          const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, this.pigment.white * amount * 1.6];
-          this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
-            this.brushInk(dx, dy, dr, angle, c0, c1, P.granulation, 0.5, rim, P.edge);
-            // `water` is the only wetness here: at zero the fluid sim is
-            // never woken, exactly like the shipped waterless chalk.
-            if (wet > 0) this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, 0, 0.5, rim, 0);
-          });
-          // `flow` is the weight of the velocity splat; zero contributes none.
-          if (moving && P.flow > 0) this.splatVelocity(x, y, r * 1.2, vx, vy, (15 + P.flow * 95) * 0.25 * b.flow);
-          break;
-        }
         // the brush empties as it travels; a dry brush skips the valleys of the paper
         const reservoir = 0.25 + 0.75 * Math.exp(-s.travelled / ((1.5 + 3 * P.water) * b.capacity));
         const dryness = clamp(b.grain + (1 - b.grain) * clamp((0.5 - reservoir) * 2.5, 0, 1) * 0.6, 0, 1);
@@ -1920,7 +1846,7 @@ export class WatercolorEngine {
     }
   }
 
-  private drawStamp(t: Target, x: number, y: number, r: number, angle: number, c0: number[], c1: number[], round: number, grain: number, grainThr: number, ribbon = 0, edge = 0) {
+  private drawStamp(t: Target, x: number, y: number, r: number, angle: number, c0: number[], c1: number[], round: number, grain: number, grainThr: number) {
     const { gl, g } = this;
     const b = this.brush;
     const p = this.programs.stamp;
@@ -1937,31 +1863,27 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uGrainThr, grainThr);
     gl.uniform1f(p.u.uRough, b.roughness ?? 0);
     gl.uniform1f(p.u.uJitter, b.stampJitter ?? 0);
-    // 61-07: 0 keeps the watercolour tip/round profile byte for byte;
-    // > 0 is the simple-ribbon rim and its tide ring.
-    gl.uniform1f(p.u.uRibbon, ribbon);
-    gl.uniform1f(p.u.uEdge, edge);
     gl.uniform4fv(p.u.uColor0, c0);
     gl.uniform4fv(p.u.uColor1, c1);
     g.draw(t, this.stampRect(x, y, r, t.w, t.h, Math.sqrt(1 + b.aspect * b.aspect) * 1.02));
   }
 
-  private brushInk(x: number, y: number, r: number, angle: number, c0: number[], c1: number[], grain: number, grainThr: number, ribbon = 0, edge = 0) {
+  private brushInk(x: number, y: number, r: number, angle: number, c0: number[], c1: number[], grain: number, grainThr: number) {
     const { gl } = this;
     this.touch(this.stampRect(x, y, r, this.dw, this.dh, 1.5));
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE);
-    this.drawStamp(this.ink.read, x, y, r, angle, c0, c1, 0, grain, grainThr, ribbon, edge);
+    this.drawStamp(this.ink.read, x, y, r, angle, c0, c1, 0, grain, grainThr);
     gl.disable(gl.BLEND);
   }
 
-  private brushWet(x: number, y: number, r: number, angle: number, amount: number, round: number, grain: number, grainThr: number, ribbon = 0, edge = 0) {
+  private brushWet(x: number, y: number, r: number, angle: number, amount: number, round: number, grain: number, grainThr: number) {
     const { gl } = this;
     this.touch(this.stampRect(x, y, r, this.dw, this.dh, 1.5));
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.MAX);
-    this.drawStamp(this.wet.read, x, y, r, angle, [amount, 0, 0, 0], [0, 0, 0, 0], round, grain, grainThr, ribbon, edge);
+    this.drawStamp(this.wet.read, x, y, r, angle, [amount, 0, 0, 0], [0, 0, 0, 0], round, grain, grainThr);
     gl.blendEquation(gl.FUNC_ADD);
     gl.disable(gl.BLEND);
     this.wetPeak = Math.max(this.wetPeak * this.wetDecay(), amount);

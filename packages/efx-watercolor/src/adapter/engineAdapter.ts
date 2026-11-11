@@ -32,7 +32,6 @@ import type {
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
 import { toStudioStroke } from '../payload/toStudioStroke'
 import { isUniformWidthProfile, sampleVectorWidths } from '../vector/spine'
-import { resolveAquarelleRenderMode } from '../payload/vectorPath'
 import {
   isAquarelleDryEvent,
   type AquarelleDryEvent,
@@ -289,8 +288,6 @@ export function createAquarelleEngineAdapter(
         // speed exactly like the live pointer path. Tilt rides through too so
         // asymmetric tips keep their recorded azimuth. The width factor is the
         // vector profile's per-sample channel, never a maxRadius clamp (C-03).
-        // 61-07: the mode is normalised at the payload boundary (T-61-21) and
-        // rides the SAME one scriptBegin call — never a second deposit path.
         engine.scriptBegin(
           asTool(active.stroke.engine.tool),
           p.x,
@@ -301,7 +298,6 @@ export function createAquarelleEngineAdapter(
           p.tx,
           p.ty,
           widthFactor,
-          resolveAquarelleRenderMode(active.stroke.engine.renderMode),
         )
       } else {
         engine.scriptMove(p.x, p.y, p.p, virtualNow, p.tx, p.ty, widthFactor)

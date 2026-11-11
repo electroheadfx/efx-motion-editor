@@ -56,12 +56,6 @@ export interface BrushPreset {
    * instead of repeating one contour.
    */
   stampJitter: number;
-  /**
-   * 61-07 (D-12): absent means the wet watercolour deposit — every preset
-   * that shipped before this phase. Set only by the preset that ships the
-   * clean sweep; the live stroke begin seeds its mode from here.
-   */
-  renderMode?: 'simple-ribbon';
   custom?: boolean;
 }
 
@@ -341,22 +335,6 @@ export const BRUSH_PRESETS: BrushPreset[] = [
         return m;
       })(n);
     },
-  }),
-  // 61-07 (D-12/D-13): THE clean-sweep preset. Its only job is the mode — the
-  // stamp branch then deposits one solid sweep with a single rim. The wet
-  // multipliers stay at BASE's neutral 1: `water`, `load`, `flow` and
-  // `capacity` are the brush-side weights the engine multiplies into the wet
-  // terms, so zeroing them would stop a raised global from reaching the
-  // deposit and falsify D-13's blend-back law. Crispness only: tight spacing
-  // (an unbroken silhouette, no dab lattice), no grain (the paper tooth is a
-  // wet texture), no scatter or size jitter (a sweep follows the spine), and
-  // a hard-edged round tip.
-  define({
-    id: 'simple-ribbon', name: 'Simple ribbon',
-    hint: 'Clean sweep along the path — no wet bleed. The wet sliders stay at zero until you raise them.',
-    renderMode: 'simple-ribbon',
-    spacing: 0.14, wetRound: 0.35, grain: 0, scatter: 0, sizeJitter: 0, roughness: 0,
-    tip: n => tip((_u, _v, r) => soft(r, 0.9))(n),
   }),
 ];
 

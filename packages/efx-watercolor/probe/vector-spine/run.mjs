@@ -18,11 +18,10 @@ const outDir = '/tmp/vector-spine'
 const bundlePath = join(here, 'probe.bundle.js')
 
 // 61-04: `--scenario width` replays the per-sample width channel and writes
-// /tmp/vector-spine/width-result.json. 61-07: `--scenario ribbon` measures the
-// simple-ribbon edge against watercolour and writes ribbon-result.json.
-// Neither may ever overwrite the committed phase evidence (result.json),
-// which the uniform-path byte-identity pins.
-const SCENARIOS = ['width', 'ribbon', 'natural', 'real']
+// /tmp/vector-spine/width-result.json. No scratch scenario may ever overwrite
+// the committed phase evidence (result.json), which the uniform-path
+// byte-identity pins.
+const SCENARIOS = ['width', 'natural', 'real']
 const args = process.argv.slice(2)
 const scenarioFlag = args.indexOf('--scenario')
 const scenario = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
@@ -31,22 +30,19 @@ if (scenario !== undefined && !SCENARIOS.includes(scenario)) {
   process.exit(1)
 }
 const widthScenario = scenario === 'width'
-const ribbonScenario = scenario === 'ribbon'
 const naturalScenario = scenario === 'natural'
 const realScenario = scenario === 'real'
-const scratchScenario = widthScenario || ribbonScenario || naturalScenario || realScenario
+const scratchScenario = widthScenario || naturalScenario || realScenario
 const pageQuery = scratchScenario ? `?scenario=${scenario}` : ''
 const resultPath = join(
   outDir,
   widthScenario
     ? 'width-result.json'
-    : ribbonScenario
-      ? 'ribbon-result.json'
-      : naturalScenario
-        ? 'natural-result.json'
-        : realScenario
-          ? 'real-result.json'
-          : 'result.json',
+    : naturalScenario
+      ? 'natural-result.json'
+      : realScenario
+        ? 'real-result.json'
+        : 'result.json',
 )
 
 const esbuildCandidates = [
@@ -155,20 +151,6 @@ if (widthScenario) {
     console.error(`[probe] DOM saved to ${join(outDir, 'dom.html')}`)
     process.exit(1)
   }
-} else if (ribbonScenario) {
-  if (
-    typeof result.edgeTransitionPx !== 'object' ||
-    result.edgeTransitionPx === null ||
-    typeof result.wetDelta !== 'object' ||
-    result.wetDelta === null
-  ) {
-    console.error(
-      `[probe] ribbon result has no edgeTransitionPx/wetDelta (verdict=${result.verdict ?? '(missing)'})`,
-    )
-    writeFileSync(join(outDir, 'dom.html'), dom)
-    console.error(`[probe] DOM saved to ${join(outDir, 'dom.html')}`)
-    process.exit(1)
-  }
 } else if (naturalScenario || realScenario) {
   if (typeof result.arms !== 'object' || result.arms === null) {
     console.error(`[probe] ${scenario} result has no arms (verdict=${result.verdict ?? '(missing)'})`)
@@ -202,12 +184,11 @@ if ((naturalScenario || realScenario) && typeof result.sheetPng === 'string') {
 }
 
 console.log('')
-if (widthScenario || ribbonScenario) {
+if (widthScenario) {
   console.log(result.verdict)
   console.log(`result JSON: ${resultPath}`)
   // exitCode (not exit) so the buffered stdout above is flushed.
-  const passPattern = widthScenario ? /^VECTOR-WIDTH PASS/ : /^VECTOR-RIBBON PASS/
-  process.exitCode = passPattern.test(result.verdict) ? 0 : 1
+  process.exitCode = /^VECTOR-WIDTH PASS/.test(result.verdict) ? 0 : 1
 } else if (naturalScenario || realScenario) {
   console.log(result.verdict)
   for (const [arm, metrics] of Object.entries(result.arms)) {

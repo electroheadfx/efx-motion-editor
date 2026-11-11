@@ -521,12 +521,13 @@ describe('cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25)
 })
 
 // ---------------------------------------------------------------------------
-// 9. Vector path wire validation (61-03 T-61-08 / D-12)
+// 9. Vector path wire validation (61-03 T-61-08)
 //
-//  The two new optional engine fields are VALIDATED, not passed through
-//  blind: a malformed anchor list or an unknown render mode makes the whole
-//  event unreadable (null), never a repaired event. An event with neither
-//  field round-trips exactly as it did before this plan.
+//  The optional engine fields are VALIDATED, not passed through blind: a
+//  malformed anchor list or an unknown curve mode makes the whole event
+//  unreadable (null), never a repaired event. An event with neither field
+//  round-trips exactly as it did before this plan. A legacy `renderMode`
+//  key is inert data: it is neither validated nor interpreted.
 // ---------------------------------------------------------------------------
 
 const WIRE_ANCHORS: readonly AquarelleAnchor[] = [
@@ -541,11 +542,10 @@ function wrapStroke(stroke: StudioStroke<AquarelleStrokePayload>): unknown {
 
 describe('wire validation of the vector fields (61-03 T-61-08)', () => {
   it('round-trips a vector event deep-equal including its single 1.8 width factor', () => {
-    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS, renderMode: 'simple-ribbon' })
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
     const parsed = parse(serialize(stroke))
     expect(parsed).not.toBeNull()
     const round = parsed as StudioStroke<AquarelleStrokePayload>
-    expect(round.engine.renderMode).toBe('simple-ribbon')
     expect(round.engine.anchors).toEqual(WIRE_ANCHORS)
     expect(round.engine.anchors?.filter((anchor) => 'width' in anchor)).toHaveLength(1)
     expect(round.engine.anchors?.[1]?.width).toBe(1.8)
@@ -569,27 +569,26 @@ describe('wire validation of the vector fields (61-03 T-61-08)', () => {
     }
   })
 
-  it('parses to null when renderMode is not a member of the closed union', () => {
-    const stroke = makeStrokeEvent({ renderMode: 'simple-ribbon' })
+  it('accepts a legacy renderMode key as inert data', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
     const raw = {
       ...stroke,
-      engine: { ...stroke.engine, renderMode: 'oil' },
+      engine: { ...stroke.engine, renderMode: 'simple-ribbon' },
     } as unknown as StudioStroke<AquarelleStrokePayload>
-    expect(parse(wrapStroke(raw))).toBeNull()
+    expect(parse(wrapStroke(raw))).not.toBeNull()
   })
 
   it('re-serialises a parsed vector event deep-equal (faithful pass-through)', () => {
-    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS, renderMode: 'simple-ribbon' })
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
     const parsed = parse(serialize(stroke))
     expect(parsed).not.toBeNull()
     expect(serialize(parsed!)).toEqual(serialize(stroke))
   })
 
-  it('still round-trips an event with neither vector field exactly as today', () => {
+  it('still round-trips an event with no vector field exactly as today', () => {
     const stroke = makeStrokeEvent()
     expect(parse(serialize(stroke))).toEqual(stroke)
     expect('anchors' in stroke.engine).toBe(false)
-    expect('renderMode' in stroke.engine).toBe(false)
   })
 
   it('round-trips a curveMode and keeps an absent key absent (61-30 G-20)', () => {
@@ -622,11 +621,5 @@ describe('wire validation of the vector fields (61-03 T-61-08)', () => {
       engine: { ...stroke.engine, anchors: [{ x: 0, y: 0, kind: 'auto', width: 3 }] },
     } as unknown as StudioStroke<AquarelleStrokePayload>
     expect(classifyAquarellePayloadFailure(wrapStroke(malformed))).toBe('malformed-engine-payload')
-    // ... and an unknown render mode is the same named refusal.
-    const badMode = {
-      ...stroke,
-      engine: { ...stroke.engine, renderMode: 'oil' },
-    } as unknown as StudioStroke<AquarelleStrokePayload>
-    expect(classifyAquarellePayloadFailure(wrapStroke(badMode))).toBe('malformed-engine-payload')
   })
 })

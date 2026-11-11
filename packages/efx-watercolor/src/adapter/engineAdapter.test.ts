@@ -28,12 +28,10 @@ import {
   resolveStrokeWidthFactors,
 } from './engineAdapter'
 import { PAPERS } from '../playground/papers'
-import { BRUSH_PRESETS } from '../playground/brushes'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
 import { toStudioStroke, DIFFUSION_CAP } from '../payload/toStudioStroke'
 import type { AquarelleStroke } from '../payload/toStudioStroke'
 import type { AquarelleAnchor } from '../payload/vectorPath'
-import * as VectorPathModule from '../payload/vectorPath'
 import { ANCHOR_WIDTH_DEFAULT, ANCHOR_WIDTH_MAX, ANCHOR_WIDTH_MIN } from '../vector/spine'
 
 // ---------------------------------------------------------------------------
@@ -628,123 +626,13 @@ describe('resolveStrokeWidthFactors (61-04)', () => {
     expect(moveLine).toBeDefined()
 
     // The width factor is the argument AFTER the 2D tilt pair at both call
-    // sites — begin(...tiltX, tiltY, widthFactor, renderMode) /
-    // move(...tiltX, tiltY, widthFactor). A refactor that drops it silently
-    // reverts to the capped footprint (C-03), so the source contract pins it.
-    // 61-07 appended the render mode after it on the SAME scriptBegin call —
-    // never a second deposit path (T-61-22) — so the begin call is multi-line
-    // now and its argument block is pinned instead of its last source line.
+    // sites — begin(...tiltX, tiltY, widthFactor) / move(...tiltX, tiltY,
+    // widthFactor). A refactor that drops it silently reverts to the capped
+    // footprint (C-03), so the source contract pins it.
     const beginBlock = feed.slice(feed.indexOf('scriptBegin('), feed.indexOf('scriptMove('))
     expect(beginBlock).toContain('widthFactor,')
-    expect(beginBlock).toContain('resolveAquarelleRenderMode(active.stroke.engine.renderMode)')
     expect(moveLine!.trimEnd().endsWith('widthFactor)')).toBe(true)
     // Both read the per-sample entry derived once at activation.
     expect(feed).toContain('active.widths')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// 8. 61-07 — the simple-ribbon preset, the brush-id mapping and the
-//    conditional record-time mode term (D-12 / D-13 / D-14).
-//
-//    The two mapping helpers are read through the module namespace so a RED
-//    run fails on the planned assertion instead of on a missing named import.
-// ---------------------------------------------------------------------------
-
-function resolveBrushMode(brushId: string | undefined): unknown {
-  return (
-    VectorPathModule as unknown as {
-      resolveRenderModeForBrushId?: (id: string | undefined) => unknown
-    }
-  ).resolveRenderModeForBrushId?.(brushId)
-}
-
-function recordedModeField(brushId: string | undefined): unknown {
-  return (
-    VectorPathModule as unknown as {
-      recordedRenderModeField?: (id: string | undefined) => unknown
-    }
-  ).recordedRenderModeField?.(brushId)
-}
-
-const SIMPLE_RIBBON_HINT =
-  'Clean sweep along the path — no wet bleed. The wet sliders stay at zero until you raise them.'
-
-describe('simple-ribbon brush preset (61-07)', () => {
-  it('ships exactly one ribbon preset with the approved name and hint', () => {
-    const ribbons = BRUSH_PRESETS.filter((preset) => preset.renderMode === 'simple-ribbon')
-    expect(ribbons).toHaveLength(1)
-    expect(ribbons[0]!.id).toBe('simple-ribbon')
-    expect(ribbons[0]!.name).toBe('Simple ribbon')
-    expect(ribbons[0]!.hint).toBe(SIMPLE_RIBBON_HINT)
-  })
-
-  it('keeps the brush-side wet multipliers neutral so a raised global still reaches the deposit', () => {
-    const preset = BRUSH_PRESETS.find((candidate) => candidate.id === 'simple-ribbon')
-    expect(preset).toBeDefined()
-    // D-13: these are the multipliers the engine folds into the wet terms.
-    // Zeroing them would make the preset deaf to water/load/flow.
-    expect(preset!.water).toBe(1)
-    expect(preset!.load).toBe(1)
-    expect(preset!.flow).toBe(1)
-    expect(preset!.capacity).toBe(1)
-    // Crispness-only overrides (the clean-sweep look).
-    expect(preset!.grain).toBe(0)
-    expect(preset!.scatter).toBe(0)
-  })
-})
-
-describe('brush-id → render-mode mapping (61-07 D-12/D-14)', () => {
-  it('maps only the simple-ribbon preset id to the ribbon mode', () => {
-    expect(resolveBrushMode('simple-ribbon')).toBe('simple-ribbon')
-    expect(resolveBrushMode('chalk')).toBe('watercolor')
-    expect(resolveBrushMode('wc/round-medium')).toBe('watercolor')
-  })
-
-  it('resolves an absent brush id to watercolour', () => {
-    expect(resolveBrushMode(undefined)).toBe('watercolor')
-  })
-
-  it('keeps the mapping a pure string comparison — no playground import', () => {
-    const source = readFileSync(
-      resolve(dirname(fileURLToPath(import.meta.url)), '../payload/vectorPath.ts'),
-      'utf8',
-    )
-    expect(source).not.toContain('playground/')
-  })
-})
-
-describe('recordedRenderModeField — the conditional canonical term (61-07)', () => {
-  it('returns { renderMode: simple-ribbon } for the ribbon brush', () => {
-    expect(recordedModeField('simple-ribbon')).toEqual({ renderMode: 'simple-ribbon' })
-  })
-
-  it('returns an EMPTY object for every other brush id and for undefined', () => {
-    // A default-mode hand-painted stroke must gain no key: same pre-phase
-    // key set, same byte cost (REL-02).
-    expect(recordedModeField('chalk')).toEqual({})
-    expect(recordedModeField('wc/round-medium')).toEqual({})
-    expect(recordedModeField(undefined)).toEqual({})
-    expect(Object.keys(recordedModeField('chalk') as object)).toHaveLength(0)
-  })
-})
-
-describe('renderMode payload round-trip (61-07 VEC-06)', () => {
-  it('carries renderMode: simple-ribbon through the script codec unchanged', () => {
-    const adapter = createAquarelleEngineAdapter()
-    const projected = toStudioStroke(makeStrokePayload({ renderMode: 'simple-ribbon' }))
-    const reparsed = adapter.payloadCodec.parse(adapter.payloadCodec.serialize(projected))
-    expect(reparsed).not.toBeNull()
-    expect(reparsed?.engine.renderMode).toBe('simple-ribbon')
-    adapter.dispose()
-  })
-
-  it('leaves an absent mode absent — no key is invented (REL-02)', () => {
-    const adapter = createAquarelleEngineAdapter()
-    const projected = toStudioStroke(makeStrokePayload())
-    const reparsed = adapter.payloadCodec.parse(adapter.payloadCodec.serialize(projected))
-    expect(reparsed).not.toBeNull()
-    expect('renderMode' in (reparsed!.engine as object)).toBe(false)
-    adapter.dispose()
   })
 })

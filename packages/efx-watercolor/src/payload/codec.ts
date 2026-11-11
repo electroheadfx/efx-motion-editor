@@ -11,9 +11,10 @@
 //  deep-equals x. Ticks are integer host-grid values (DATA-03).
 //  No unseeded RNG (D-20). No second events array (D-16).
 //
-//  schemaVersion stays 1 because `anchors`, `renderMode` and `curveMode`
-//  are optional additions whose ABSENCE is the documented state, not a
-//  legacy path.
+//  schemaVersion stays 1 because `anchors` and `curveMode` are optional
+//  additions whose ABSENCE is the documented state, not a legacy path. A
+//  legacy `renderMode` key, if an older payload still carries one, is an
+//  ignored extra field: no mode is read or written anywhere.
 // ============================================================
 
 import type { StudioStroke, StudioPoint } from '@efxlab/efx-paint-host/animation'
@@ -28,11 +29,7 @@ import {
   DIFFUSION_CAP,
   type AquarelleStrokePayload,
 } from './toStudioStroke'
-import {
-  isAquarelleCurveMode,
-  isAquarelleRenderMode,
-  normaliseAquarelleAnchors,
-} from './vectorPath'
+import { isAquarelleCurveMode, normaliseAquarelleAnchors } from './vectorPath'
 
 /** Script payload schema version (P5 / DATA-01 — unknown refuses). */
 export const AQUARELLE_SCHEMA_VERSION = 1
@@ -120,14 +117,11 @@ function isStrokeShape(value: unknown): value is StudioStroke<AquarelleStrokePay
   if (typeof engine['brushId'] !== 'string') return false
   if (!isRecord(engine['params'])) return false
   if (!isFiniteNumber(engine['timestamp'])) return false
-  // 61-03 / 61-30 (T-61-08): the three optional vector fields are VALIDATED,
+  // 61-03 / 61-30 (T-61-08): the two optional vector fields are VALIDATED,
   // never passed through blind. Absent is valid and means "not a vector
-  // stroke" / "watercolour" / "Bézier"; a malformed list or an unknown mode
-  // refuses the event.
+  // stroke" / "Bézier"; a malformed list or an unknown mode refuses the event.
   const anchors = engine['anchors']
   if (anchors !== undefined && normaliseAquarelleAnchors(anchors) === undefined) return false
-  const renderMode = engine['renderMode']
-  if (renderMode !== undefined && !isAquarelleRenderMode(renderMode)) return false
   const curveMode = engine['curveMode']
   if (curveMode !== undefined && !isAquarelleCurveMode(curveMode)) return false
   return true

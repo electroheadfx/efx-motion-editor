@@ -11,7 +11,6 @@
 //    D-29 / P1    engine-2 never imports engine-1 (clean-room)
 // ============================================================
 
-import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,7 +18,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { createAquarelleEngineAdapter } from './adapter/engineAdapter'
-import type { AquarelleRenderMode } from './payload/vectorPath'
 import type { AquarelleStrokePayload } from './payload/toStudioStroke'
 import { toStudioStroke } from './payload/toStudioStroke'
 
@@ -60,7 +58,6 @@ const replayEngine = vi.hoisted(() => {
     paperTexture = 1
     isAwake = false
     private readonly surface: FakeCanvas
-    private mode: 'watercolor' | 'simple-ribbon' = 'watercolor'
     private readonly dabs: Array<{ x: number; y: number; p: number }> = []
 
     constructor(surface: FakeCanvas) {
@@ -86,9 +83,7 @@ const replayEngine = vi.hoisted(() => {
       _tiltX?: number,
       _tiltY?: number,
       _widthScale?: number,
-      renderMode: 'watercolor' | 'simple-ribbon' = 'watercolor',
     ): boolean {
-      this.mode = renderMode
       this.dabs.push({ x, y, p })
       return true
     }
@@ -104,22 +99,20 @@ const replayEngine = vi.hoisted(() => {
 
     resetSheet(): void {
       this.dabs.length = 0
-      this.mode = 'watercolor'
     }
 
-    /** Export one deterministic pixel per fed sample, tagged by mode. */
+    /** Export one deterministic pixel per fed sample. */
     exportCanvas(): FakeCanvas {
       const ctx = this.surface.getContext('2d')
       if (!ctx) return this.surface
       const image = ctx.createImageData(this.surface.width, this.surface.height)
-      const modeTag = this.mode === 'simple-ribbon' ? 0x22 : 0x11
       for (const dab of this.dabs) {
         const px =
           ((Math.trunc(dab.x) % this.surface.width) + this.surface.width) % this.surface.width
         const py =
           ((Math.trunc(dab.y) % this.surface.height) + this.surface.height) % this.surface.height
         const at = (py * this.surface.width + px) * 4
-        image.data[at] = modeTag
+        image.data[at] = 0x11
         image.data[at + 1] = Math.min(255, Math.max(0, Math.round(dab.p * 255)))
         image.data[at + 2] = this.dabs.length & 0xff
         image.data[at + 3] = 255
@@ -211,7 +204,7 @@ function makeMockCanvas(width: number, height: number): {
   return { canvas: canvasRef as unknown as HTMLCanvasElement, pixels }
 }
 
-function makeStroke(renderMode?: AquarelleRenderMode): StudioStroke<AquarelleStrokePayload> {
+function makeStroke(): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color: '#2244aa',
@@ -225,8 +218,6 @@ function makeStroke(renderMode?: AquarelleRenderMode): StudioStroke<AquarelleStr
     ],
     mutationId: 42,
     timestamp: 1000,
-    // 61-07: absent keeps the pre-phase payload shape; present is the mode.
-    ...(renderMode === undefined ? {} : { renderMode }),
   })
 }
 
@@ -259,23 +250,19 @@ function withSeededMathRandom<T>(seed: number, fn: () => T): T {
   }
 }
 
-function replayBytes(renderMode?: AquarelleRenderMode): Uint8ClampedArray {
+function replayBytes(): Uint8ClampedArray {
   const width = 64
   const height = 64
   const { canvas, pixels } = makeMockCanvas(width, height)
   const adapter = withSeededMathRandom(PAPER_SEED, () =>
     createAquarelleEngineAdapter({ width, height, canvas }),
   )
-  adapter.applyStroke(makeStroke(renderMode))
+  adapter.applyStroke(makeStroke())
   for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
   adapter.captureFrame()
   const copy = pixels.slice()
   adapter.dispose()
   return copy
-}
-
-function replayDigest(renderMode?: AquarelleRenderMode): string {
-  return createHash('sha256').update(Buffer.from(replayBytes(renderMode))).digest('hex')
 }
 
 // ---------------------------------------------------------------------------
@@ -295,27 +282,6 @@ describe('determinism contract', () => {
     expect(stroke.traceSeed).toBe(hashMutationId(42))
     const again = makeStroke()
     expect(again.traceSeed).toBe(stroke.traceSeed)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// 1b. 61-07 — the render mode is replay input, not a rendering accident
-//     (VEC-06 / D-12): each mode is self-identical across fresh adapters and
-//     the two modes deposit different bytes.
-// ---------------------------------------------------------------------------
-
-describe('render-mode replay contract (61-07)', () => {
-  it('replays each mode byte-identically on two fresh adapters', () => {
-    expect(replayDigest('watercolor')).toBe(replayDigest('watercolor'))
-    expect(replayDigest('simple-ribbon')).toBe(replayDigest('simple-ribbon'))
-  })
-
-  it('the two modes produce different digests — the mode changes the deposit', () => {
-    expect(replayDigest('watercolor')).not.toBe(replayDigest('simple-ribbon'))
-  })
-
-  it('an absent mode replays as the watercolour default (REL-02)', () => {
-    expect(replayDigest()).toBe(replayDigest('watercolor'))
   })
 })
 

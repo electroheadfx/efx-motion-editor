@@ -4,7 +4,6 @@
 //
 //  Standing pins for VEC-01 / VEC-03 / VEC-04:
 //    · vector-ness is implied by a NON-EMPTY anchor list
-//    · render mode is explicit and an absent mode means watercolour (D-12)
 //    · a malformed anchor list is refused WHOLE — undefined, never a
 //      partially repaired list, never a throw (T-61-08)
 //    · the width factor is the ONLY per-anchor paint property
@@ -26,19 +25,15 @@ import {
 } from '../vector/spine'
 import {
   AQUARELLE_CURVE_MODES,
-  AQUARELLE_RENDER_MODES,
   DEFAULT_AQUARELLE_CURVE_MODE,
-  DEFAULT_AQUARELLE_RENDER_MODE,
   anchorsEqual,
   evaluateAquarellePath,
   isAquarelleCurveMode,
-  isAquarelleRenderMode,
   isVectorStroke,
   normaliseAquarelleAnchors,
   projectVectorPath,
   recordedCurveModeField,
   resolveAquarelleCurveMode,
-  resolveAquarelleRenderMode,
   resolveCurveAnchors,
   vectorPathsEqual,
   type AquarelleAnchor,
@@ -82,40 +77,8 @@ describe('isVectorStroke', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 2. Render mode — explicit, and absent means watercolour (D-12)
-// ---------------------------------------------------------------------------
-
-describe('render mode (D-12: explicit discriminator, absent means watercolour)', () => {
-  it('declares exactly two modes in this order, defaulting to watercolor', () => {
-    expect(AQUARELLE_RENDER_MODES).toEqual(['watercolor', 'simple-ribbon'])
-    expect(DEFAULT_AQUARELLE_RENDER_MODE).toBe('watercolor')
-  })
-
-  it('resolves an absent mode to watercolor and passes both modes through', () => {
-    expect(resolveAquarelleRenderMode(undefined)).toBe('watercolor')
-    expect(resolveAquarelleRenderMode('watercolor')).toBe('watercolor')
-    expect(resolveAquarelleRenderMode('simple-ribbon')).toBe('simple-ribbon')
-  })
-
-  it('resolves any unknown value to watercolor', () => {
-    expect(resolveAquarelleRenderMode('oil')).toBe('watercolor')
-    expect(resolveAquarelleRenderMode(null)).toBe('watercolor')
-    expect(resolveAquarelleRenderMode(3)).toBe('watercolor')
-    expect(resolveAquarelleRenderMode({ mode: 'simple-ribbon' })).toBe('watercolor')
-  })
-
-  it('isAquarelleRenderMode is a strict membership test', () => {
-    expect(isAquarelleRenderMode('watercolor')).toBe(true)
-    expect(isAquarelleRenderMode('simple-ribbon')).toBe(true)
-    expect(isAquarelleRenderMode('oil')).toBe(false)
-    expect(isAquarelleRenderMode(undefined)).toBe(false)
-    expect(isAquarelleRenderMode(null)).toBe(false)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// 2b. Curve mode (G-20: an evaluation mode over the SAME anchor list, never
-//     a third anchor kind and never a rewrite of authored data)
+// 2. Curve mode (G-20: an evaluation mode over the SAME anchor list, never
+//    a third anchor kind and never a rewrite of authored data)
 // ---------------------------------------------------------------------------
 
 describe('curve mode (G-20: explicit evaluation discriminator, absent means Bézier)', () => {
@@ -313,26 +276,12 @@ describe('anchorsEqual / vectorPathsEqual', () => {
     expect(anchorsEqual(base, [{ x: 10, y: 10, kind: 'auto' }])).toBe(false)
   })
 
-  it('vectorPathsEqual compares the mode too, with absent resolving to watercolor', () => {
+  it('vectorPathsEqual compares the anchors and nothing else', () => {
     expect(vectorPathsEqual({ anchors: TWO_ANCHORS }, { anchors: TWO_ANCHORS })).toBe(true)
+    expect(vectorPathsEqual({}, { anchors: [] })).toBe(true)
     expect(
-      vectorPathsEqual(
-        { anchors: TWO_ANCHORS, renderMode: 'watercolor' },
-        { anchors: TWO_ANCHORS },
-      ),
-    ).toBe(true)
-    expect(
-      vectorPathsEqual(
-        { anchors: TWO_ANCHORS, renderMode: 'simple-ribbon' },
-        { anchors: TWO_ANCHORS },
-      ),
+      vectorPathsEqual({ anchors: TWO_ANCHORS }, { anchors: [TWO_ANCHORS[0]!] }),
     ).toBe(false)
-    expect(
-      vectorPathsEqual(
-        { anchors: TWO_ANCHORS, renderMode: 'simple-ribbon' },
-        { anchors: TWO_ANCHORS, renderMode: 'simple-ribbon' },
-      ),
-    ).toBe(true)
   })
 })
 
@@ -395,18 +344,19 @@ describe('projectVectorPath — sparse width (D-10)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 6. Render mode survives serialisation (D-12 across a JSON round trip)
+// 6. A legacy renderMode key is inert data (no mode exists any more)
 // ---------------------------------------------------------------------------
 
-describe('render mode persistence', () => {
-  it('keeps simple-ribbon across a JSON round trip of the path', () => {
+describe('legacy renderMode key', () => {
+  it('survives a JSON round trip as an ignored extra field', () => {
     const path = { anchors: TWO_ANCHORS, renderMode: 'simple-ribbon' as const }
     const round = JSON.parse(JSON.stringify(path)) as {
       anchors: readonly AquarelleAnchor[]
       renderMode: unknown
     }
-    expect(resolveAquarelleRenderMode(round.renderMode)).toBe('simple-ribbon')
     expect(anchorsEqual(round.anchors, TWO_ANCHORS)).toBe(true)
+    expect(round.renderMode).toBe('simple-ribbon')
+    expect(isVectorStroke(round)).toBe(true)
   })
 })
 

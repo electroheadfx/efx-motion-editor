@@ -6,12 +6,10 @@
 //       with no anchors is a hand-painted stroke and carries no
 //       vector key at all — there is no boolean flag that could
 //       disagree with the data.
-//    2. RENDER MODE is an explicit per-stroke discriminator (D-12).
-//       `watercolor` is the default and an ABSENT mode resolves to
-//       it, so a stroke written before this phase renders exactly as
-//       it did (REL-02). The mode is never inferred from a zeroed
-//       parameter and never a global setting, and it applies to both
-//       stroke families (D-14).
+//    2. NUMBERING STAYS PUT. The removed render-mode discriminator
+//       keeps its AQTL bit slot in the reader only, so files written
+//       while it existed still open; nothing writes or interprets a
+//       render mode here.
 //    3. ANCHORS are absolute document-uv points carrying an optional
 //       absolute handle pair and an optional width multiplier. The
 //       width factor is the ONLY per-anchor paint property (VEC-03 /
@@ -42,18 +40,6 @@ export type {
   VectorAnchorKind as AquarelleAnchorKind,
 } from '../vector/spine'
 
-/** How a stroke is rendered (D-12). Any brush can render either way. */
-export type AquarelleRenderMode = 'watercolor' | 'simple-ribbon'
-
-/** The closed render-mode union, in declaration order. */
-export const AQUARELLE_RENDER_MODES: readonly AquarelleRenderMode[] = Object.freeze([
-  'watercolor',
-  'simple-ribbon',
-])
-
-/** An absent mode means watercolour (D-12 / REL-02). */
-export const DEFAULT_AQUARELLE_RENDER_MODE: AquarelleRenderMode = 'watercolor'
-
 /** Tolerance of every float comparison in this module. */
 const EQUALITY_EPSILON = 1e-9
 
@@ -74,44 +60,6 @@ function numbersEqual(a: number, b: number): boolean {
 function samePoint(a: Vec2 | undefined, b: Vec2 | undefined): boolean {
   if (a === undefined || b === undefined) return a === b
   return numbersEqual(a.x, b.x) && numbersEqual(a.y, b.y)
-}
-
-/** Strict membership test over the closed render-mode union. */
-export function isAquarelleRenderMode(value: unknown): value is AquarelleRenderMode {
-  return (AQUARELLE_RENDER_MODES as readonly unknown[]).includes(value)
-}
-
-/** The mode a stroke renders with; anything unknown reads watercolour. */
-export function resolveAquarelleRenderMode(value: unknown): AquarelleRenderMode {
-  return isAquarelleRenderMode(value) ? value : DEFAULT_AQUARELLE_RENDER_MODE
-}
-
-/** 61-07: the shipped preset id that selects the clean-sweep deposit. */
-export const SIMPLE_RIBBON_BRUSH_ID = 'simple-ribbon'
-
-/**
- * The render mode a brush id implies (D-12/D-14). A pure string comparison:
- * the payload layer must never look into the playground's preset list, so the
- * mapping cannot drift with the brush array and stays testable without WebGL.
- */
-export function resolveRenderModeForBrushId(brushId: string | undefined): AquarelleRenderMode {
-  return brushId === SIMPLE_RIBBON_BRUSH_ID
-    ? 'simple-ribbon'
-    : DEFAULT_AQUARELLE_RENDER_MODE
-}
-
-/**
- * The conditional canonical term for the recorded stroke: `{ renderMode }`
- * ONLY when the brush implies a non-default mode, else an empty object. A
- * plain hand-painted stroke therefore keeps its exact pre-phase key set and
- * byte cost (REL-02), and the field can never disagree with the brush id the
- * record path already stores.
- */
-export function recordedRenderModeField(
-  brushId: string | undefined,
-): { renderMode?: AquarelleRenderMode } {
-  const mode = resolveRenderModeForBrushId(brushId)
-  return mode === DEFAULT_AQUARELLE_RENDER_MODE ? {} : { renderMode: mode }
 }
 
 // ---------------------------------------------------------------------------
@@ -320,21 +268,15 @@ export function projectVectorPath(anchors: readonly VectorAnchor[]): readonly Ve
   return Object.freeze(projected)
 }
 
-/** The two persisted members a vector path is compared on. */
+/** The persisted member a vector path is compared on. */
 export interface AquarelleVectorPathShape {
   readonly anchors?: readonly VectorAnchor[]
-  readonly renderMode?: unknown
 }
 
-/**
- * Full path equality: the anchor list plus the render mode, with an absent
- * mode resolving to watercolour so `{ anchors }` equals `{ anchors,
- * renderMode: 'watercolor' }`.
- */
+/** Path equality: the anchor list, and nothing else. */
 export function vectorPathsEqual(
   a: AquarelleVectorPathShape,
   b: AquarelleVectorPathShape,
 ): boolean {
-  if (!anchorsEqual(a.anchors ?? [], b.anchors ?? [])) return false
-  return resolveAquarelleRenderMode(a.renderMode) === resolveAquarelleRenderMode(b.renderMode)
+  return anchorsEqual(a.anchors ?? [], b.anchors ?? [])
 }
