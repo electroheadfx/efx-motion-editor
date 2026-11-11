@@ -18,19 +18,31 @@
 //  61-17 (G-6): the ONE permitted sibling import is the dependency-free
 //  `vectorPathLatches` leaf, so latching the picker can release the
 //  vector pen and an open path edit without importing the session.
+//  61-23 (G-19): the reverse direction too — while a path edit is OPEN the
+//  ONE armed verdict is false, so no consumer renders or samples a picker.
+//  Alt wears two hats: outside an edit it is the temporary pick, inside an
+//  edit it is the handle-break modifier read from the pointer event
+//  (`event.altKey` in `continueEditDrag`), never from session state. The
+//  61-17 entry-edge law is unchanged: latching the picker still releases the
+//  pen and closes the edit.
 // ============================================================
 
 import { computed, signal } from '@preact/signals';
-import { exitPathEdit, exitVectorPen } from './vectorPathLatches';
+import { exitPathEdit, exitVectorPen, pathEditMutationId } from './vectorPathLatches';
 
 /** Session-only UI state — never persisted. */
 export const aquarellePickerLatched = signal(false);
 /** True only while the Alt key is held (the temporary picker). */
 export const aquarellePickerAltHeld = signal(false);
 
-/** The one armed verdict: a latched rail pick or a held Alt. */
+/**
+ * The one armed verdict: a latched rail pick or a held Alt, and NOT while a
+ * vector path edit owns the canvas (61-23 / G-19).
+ */
 export const aquarellePickerActive = computed(
-  () => aquarellePickerLatched.value || aquarellePickerAltHeld.value,
+  () =>
+    (aquarellePickerLatched.value || aquarellePickerAltHeld.value) &&
+    pathEditMutationId.value === null,
 );
 
 /** Compare-then-write (efx-preact-reactivity rule 3). */
@@ -66,9 +78,17 @@ export function disarmAquarellePicker(): void {
 /**
  * The stable dispatch-time probe event handlers call. Always `.peek()` —
  * never a value read in a render body.
+ *
+ * A DIRECT predicate over the three signals (not a computed `.peek()`): a
+ * computed that nobody read stays dirty after a source write, and this probe
+ * must be fresh at dispatch time (T-61-71). 61-23 (G-19): an open path edit
+ * is never armed, so the pick seam agrees with the visor's one computed.
  */
 export function isAquarellePickerArmed(): boolean {
-  return aquarellePickerActive.peek();
+  return (
+    (aquarellePickerLatched.peek() || aquarellePickerAltHeld.peek()) &&
+    pathEditMutationId.peek() === null
+  );
 }
 
 /**
