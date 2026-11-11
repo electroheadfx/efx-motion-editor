@@ -90,6 +90,7 @@ import {
   stepAquarelleStrokeInScript,
   transformAquarelleStrokesInScript,
   translateAquarelleStrokesInScript,
+  updateAquarelleCurveModeInScript,
   updateAquarellePathInScript,
   updateAquarelleRenderModeInScript,
   updateAquarelleStrokesInScript,
@@ -924,13 +925,31 @@ export function beginAquarelleRenderModeEdit(
   return storeAquarelleEdit({ before, after });
 }
 
-// SCRATCH STUB (61-31 RED): replaced by the GREEN implementation.
-/** 61-31 (G-20): set one curve-evaluation mode as a single edit. */
+/**
+ * 61-31 (G-20 / D-01 revised): set one curve-evaluation mode on one stroke or
+ * the whole selection as a single edit (mode write + its re-sampled points =
+ * ONE `aquarelle-script` ledger command), so a mixed selection flips in one
+ * undo step rather than one per stroke. Same ghost clear, in-flight guard and
+ * snapshot pair as the render-mode wrapper.
+ *
+ * Deliberately does NOT call `bumpAquarellePaintSeedSalts`: a mode flip
+ * re-samples the geometry through a different evaluation, it does not re-roll
+ * the texture — the stroke's stochastic paint must survive the flip, exactly as
+ * it does for a render-mode change.
+ */
 export function beginAquarelleCurveModeEdit(
-  _mutationIds: number | readonly number[],
-  _mode: AquarelleCurveMode,
+  mutationIds: number | readonly number[],
+  mode: AquarelleCurveMode,
 ): number | null {
-  return null;
+  // A mode commit must never leave a released ghost behind.
+  clearAquarelleStrokeDrag();
+  if (aquarelleScriptEditInFlight) return null;
+  const ids = normalizeAquarelleMutationIds(mutationIds);
+  if (ids.length === 0) return null;
+  const before = captureAquarelleSnapshot();
+  if (updateAquarelleCurveModeInScript(ids, mode) === 0) return null;
+  const after = captureAquarelleSnapshot();
+  return storeAquarelleEdit({ before, after });
 }
 
 /**

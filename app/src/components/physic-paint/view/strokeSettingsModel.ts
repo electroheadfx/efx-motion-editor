@@ -18,6 +18,7 @@ import { findTip } from '@efxlab/efx-watercolor/brushes';
 import {
   DEFAULT_AQUARELLE_RENDER_MODE,
   paintSeedSaltOf,
+  resolveAquarelleCurveMode,
   type AquarelleAnchor,
   type AquarelleCurveMode,
   type AquarelleRenderMode,
@@ -183,7 +184,6 @@ export function readRenderMode(appearances: readonly ScriptStrokeAppearance[]): 
   return { mode: first, mixed: false };
 }
 
-// SCRATCH STUB (61-31 RED): replaced by the GREEN implementation.
 /** 61-31 (G-20): the `Curve` row's reading over the VECTOR appearances only. */
 export interface CurveModeReading {
   /** The agreed mode, or null when the vector strokes disagree. */
@@ -200,12 +200,34 @@ export interface CurveModeOption {
   readonly label: string;
 }
 
-/** SCRATCH STUB (61-31 RED): the GREEN implementation fills the two options. */
-export const CURVE_MODE_OPTIONS: readonly CurveModeOption[] = Object.freeze([]);
+/**
+ * 61-31 (G-20 / D-01 revised): the two options, in UI-SPEC order. `id` is the
+ * test-id suffix (`-option-bezier` / `-option-spline`); the global button rule
+ * uppercases `label` in the sheet. Constants only — no user text can reach it.
+ */
+export const CURVE_MODE_OPTIONS: readonly CurveModeOption[] = Object.freeze([
+  Object.freeze({ id: 'bezier' as const, mode: 'bezier' as const, label: 'Bézier' }),
+  Object.freeze({ id: 'spline' as const, mode: 'spline' as const, label: 'Spline' }),
+]);
 
-/** SCRATCH STUB (61-31 RED): always reads the unavailable empty state. */
-export function readCurveMode(_appearances: readonly ScriptStrokeAppearance[]): CurveModeReading {
-  return { mode: null, mixed: false, available: false };
+/**
+ * 61-31 (G-20 / D-01 revised): the selection's curve-evaluation mode. Spline is
+ * an EVALUATION MODE over the same anchor list, never a third anchor kind, so
+ * only the VECTOR appearances take part: a hand-painted stroke has no path to
+ * evaluate, and giving it a mode would write inert data — it can neither make
+ * the row available nor contribute a disagreement. Absent counts as the
+ * default, so an explicit `bezier` and a stroke written before this phase read
+ * the SAME; any disagreement between vector strokes is mixed with no
+ * representative.
+ */
+export function readCurveMode(appearances: readonly ScriptStrokeAppearance[]): CurveModeReading {
+  const modes = appearances
+    .filter((appearance) => appearance.vector === true)
+    .map((appearance) => resolveAquarelleCurveMode(appearance.curveMode));
+  if (modes.length === 0) return { mode: null, mixed: false, available: false };
+  const first = modes[0]!;
+  if (modes.some((mode) => mode !== first)) return { mode: null, mixed: true, available: true };
+  return { mode: first, mixed: false, available: true };
 }
 
 /** One canonical-unit batch write (params merged, color replaced). */
@@ -695,6 +717,13 @@ export interface StrokeSettingsDialogBundle {
    * key and needs no vector read. Absent hides the Render row.
    */
   readonly applyRenderMode?: (ids: readonly number[], mode: AquarelleRenderMode) => boolean | Promise<boolean>;
+  /**
+   * 61-31 (G-20): write one curve-evaluation mode on every VECTOR stroke of the
+   * selection as ONE history entry. An evaluation mode over the same anchors:
+   * the write re-samples the replay points and never rewrites a stored kind or
+   * handle. Absent hides the Curve row.
+   */
+  readonly applyCurveMode?: (ids: readonly number[], mode: AquarelleCurveMode) => boolean | Promise<boolean>;
 }
 
 // ============================================================
