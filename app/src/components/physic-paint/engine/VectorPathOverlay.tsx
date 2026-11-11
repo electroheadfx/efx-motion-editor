@@ -99,9 +99,9 @@ const OUTLINE_DARK = '#111111';
 const OUTLINE_LIGHT = '#ffffff';
 /** User-owned control (a bezier anchor and its handles) — the 26102x accent. */
 const OWNED_CONTROL_COLOR = '#f59e0b';
+/** The handle CONNECTOR's opacity — the dot itself stays solid (§6 item 5). */
 const HANDLE_OPACITY = 0.6;
 const SPINE_STROKE_PX = 1.5;
-const ENVELOPE_FILL_OPACITY = 0.12;
 
 /** Immediately above the stroke overlay (40), below the brush cursor (50). */
 const VECTOR_PATH_Z_INDEX = 41;
@@ -412,10 +412,12 @@ function draftPreviewPointsOf(
  * effective zoom, so the chrome keeps its screen size at every zoom.
  *
  * The editing chrome is unchanged (61-09/61-10). `wireframe` (61-13) swaps it
- * for the construction view: the envelope is always drawn in the stroke's own
- * colour, the spine is a two-pass dark/light line (or the accent for the live
- * target), rungs appear ONLY at anchors carrying an explicit width factor,
- * and every marker wears the dark hairline instead of the light one.
+ * for the construction view: the spine becomes a two-pass dark/light line (or
+ * the accent for the live target), rungs appear ONLY at anchors carrying an
+ * explicit width factor, and every marker wears the dark hairline instead of
+ * the light one. Both branches draw the envelope per the colour table's band
+ * law (61-25 UI-03): the stroke's own colour at 0.14/0.07 fill, 3.5/1.5 edge,
+ * no extra stroke opacity.
  */
 function renderPath(
   drawn: DrawnVectorPath,
@@ -433,33 +435,23 @@ function renderPath(
   const anchorSizePx = ANCHOR_BODY_PX / scale;
   const coreRadiusPx = ANCHOR_CORE_RADIUS_PX / scale;
   const handleRadiusPx = HANDLE_BODY_PX / 2 / scale;
-  // 61-13: the wireframe envelope wears the stroke's own colour; the pen draft
-  // has none, so it falls back to the vector accent.
-  const wireframeEnvelopeColor = color ?? SELECTED_SPINE_COLOR;
+  // 61-25 (UI-03): BOTH envelope branches follow the colour table's band law —
+  // the stroke's own colour (the pen draft has none, so it falls back to the
+  // vector accent), fill 0.14 selected / 0.07 unselected, edge 3.5 / 1.5, and
+  // no extra stroke opacity.
+  const envelopeColor = color ?? SELECTED_SPINE_COLOR;
   const markerStroke = wireframe ? OUTLINE_DARK : OUTLINE_LIGHT;
 
   return (
     <g key={drawn.key}>
-      {envelope === null ? null : wireframe ? (
+      {envelope === null ? null : (
         <path
           data-testid="vector-path-envelope"
           d={envelope}
-          fill={wireframeEnvelopeColor}
+          fill={envelopeColor}
           fillOpacity={selected ? 0.14 : 0.07}
-          stroke={wireframeEnvelopeColor}
-          strokeOpacity={0.5}
+          stroke={envelopeColor}
           strokeWidth={selected ? 3.5 : 1.5}
-          vectorEffect="non-scaling-stroke"
-        />
-      ) : (
-        <path
-          data-testid="vector-path-envelope"
-          d={envelope}
-          fill={SELECTED_SPINE_COLOR}
-          fillOpacity={ENVELOPE_FILL_OPACITY}
-          stroke={SELECTED_SPINE_COLOR}
-          strokeOpacity={0.5}
-          strokeWidth={1}
           vectorEffect="non-scaling-stroke"
         />
       )}
@@ -660,15 +652,14 @@ function renderPath(
                     strokeWidth={1}
                     vectorEffect="non-scaling-stroke"
                   />
+                  {/* 61-25 (UI-03 / §6 item 5): the dot is SOLID — only the
+                      connector above carries the 0.6 opacity. */}
                   <circle
                     data-testid="vector-path-handle"
                     cx={point.x}
                     cy={point.y}
                     r={handleRadiusPx}
                     fill={OWNED_CONTROL_COLOR}
-                    fillOpacity={HANDLE_OPACITY}
-                    stroke={OUTLINE_LIGHT}
-                    strokeWidth={1}
                     vectorEffect="non-scaling-stroke"
                   />
                 </g>

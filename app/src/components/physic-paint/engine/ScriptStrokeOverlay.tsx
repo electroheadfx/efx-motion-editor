@@ -149,10 +149,10 @@ export function ScriptStrokeOverlay(props: {
   // Narrow subscriptions: the port's listing repaints the outlines when the
   // script changes; the selected SET drives the highlights.
   const interactive = selectMode || moveArmed || drag !== null || transformPreview !== null;
-  // A wireframe-only surface is a CONSTRUCTION view, not a selection view:
-  // the band and centreline draw, the selection chrome (bounds box, serial
-  // badge) does not. Once a selection/drag surface is on, chrome returns.
-  const wireframeOnly = wireframe && !interactive;
+  // 61-25 (UI-04 / §6 item 6): the wireframe-only surface is a CONSTRUCTION
+  // view, and the contract draws "existing transform box / serial badge / lift
+  // ribbon — unchanged, on top" of it. The band and centreline join the chrome
+  // rather than replacing it, so strokes keep the identity the contract names.
   const playFrame = props.getPlayFrame();
   const size = { width: props.width, height: props.height };
   const strokes = props.port.listStrokes(playFrame, size);
@@ -484,8 +484,9 @@ export function ScriptStrokeOverlay(props: {
               {/* Selected: a solid box in the stroke's own colour. Unselected:
                   the quiet dashed reference frame. A lift has no box — its
                   ribbon is the shape and the bounds only drive the union box.
-                  61-13: the wireframe-only construction view draws no chrome. */}
-              {wireframeOnly || entry.kind === 'lift' ? null : (
+                  61-25 (§6 item 6): the construction view keeps the transform
+                  box — chrome is drawn ON TOP of the wireframe, never instead. */}
+              {entry.kind === 'lift' ? null : (
                 <rect
                   x={entry.bounds.x + offsetX}
                   y={entry.bounds.y + offsetY}
@@ -501,10 +502,9 @@ export function ScriptStrokeOverlay(props: {
               )}
               {/* 261022-ujp: creation-order id · position from the top of the
                   stack. Overlay only — never part of the baked pixels. The chip
-                  keeps the text readable over any wash. 61-13: skipped on the
-                  wireframe-only construction view. */}
-              {wireframeOnly ? null : (
-                <>
+                  keeps the text readable over any wash. 61-25 (§6 item 6): the
+                  serial badge stays on top of the construction view. */}
+              <>
                   <rect
                     x={badgeX - 4}
                     y={badgeY - 13}
@@ -537,8 +537,7 @@ export function ScriptStrokeOverlay(props: {
                   >
                     {label}
                   </text>
-                </>
-              )}
+              </>
             </g>
           );
         })}
