@@ -22,6 +22,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { effect } from '@preact/signals';
 import {
+  evaluateAquarellePath,
+  normaliseVectorAnchors,
   resolveAnchorHandles,
   sampleVectorPath,
   type AquarelleStroke,
@@ -2009,5 +2011,189 @@ describe('61-28 CR-01 - the edit-lifetime drag law', () => {
     expect(finishBody.indexOf('vectorPathEditDrag.value = null;')).toBeLessThan(
       finishBody.indexOf('props.onPathEdit('),
     );
+  });
+});
+
+// ============================================================
+//  61-31 (G-20) — the overlay tells the truth about the mode it
+//  draws and edits. Every drawn path resolves its OWN stroke's
+//  mode (never the edit target's); the open edit's helpers always
+//  receive the target's mode, so a spline gesture can never write
+//  an authored kind or handle (T-61-92).
+// ============================================================
+describe('61-31 G-20 - the overlay draws and edits through each path curve mode', () => {
+  const EDIT_ID = 99001;
+  const OTHER_ID = 99002;
+
+  function overlaySource(): string {
+    return readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  it('captures the edit target mode, draws each recorded path through its own mode and drafts through the default', () => {
+    const source = overlaySource();
+
+    // The SAME resolution loop that captures the target's anchors captures its
+    // mode through the shipped resolver — never a second loop, never a guess.
+    expect(source).toContain(
+      'let editTargetCurveMode: AquarelleCurveMode = DEFAULT_AQUARELLE_CURVE_MODE;',
+    );
+    const resolutionAt = source.indexOf('if (String(mutationId) !== editMutationId) continue;');
+    expect(resolutionAt).toBeGreaterThan(-1);
+    const resolutionBlock = source.slice(
+      resolutionAt,
+      source.indexOf('useEffect(() => {', resolutionAt),
+    );
+    expect(resolutionBlock).toContain(
+      'editTargetCurveMode = resolveAquarelleCurveMode(candidate.curveMode);',
+    );
+
+    // The recorded loop: each stroke's OWN mode, never the edit target's — a
+    // spline path reads as a spline while another stroke is being edited.
+    const recordedAt = source.indexOf(
+      'for (const [mutationId, stroke] of (showStructure ? recordedStrokes : [])) {',
+    );
+    expect(recordedAt).toBeGreaterThan(-1);
+    const recordedBlock = source.slice(recordedAt, source.indexOf('recorded.push(drawn);', recordedAt));
+    expect(recordedBlock).toContain('curveMode: resolveAquarelleCurveMode(stroke.curveMode),');
+    expect(recordedBlock).not.toContain('editTargetCurveMode');
+
+    // The draft: always the default, because a draft is recorded Bézier.
+    const draftAt = source.indexOf("drawnPathOf('draft'");
+    expect(draftAt).toBeGreaterThan(-1);
+    const draftBlock = source.slice(draftAt, source.indexOf('});', draftAt));
+    expect(draftBlock).toContain('curveMode: DEFAULT_AQUARELLE_CURVE_MODE,');
+    expect(draftBlock).not.toContain('editTargetCurveMode');
+  });
+
+  it('threads the mode through drawnPathOf and all four edit-helper call sites', () => {
+    const source = overlaySource();
+
+    // One path's chrome and geometry always agree: the mode view feeds the
+    // handle resolve AND the projection.
+    const drawnPathAt = source.indexOf('function drawnPathOf(');
+    expect(drawnPathAt).toBeGreaterThan(-1);
+    const drawnPathEnd = source.indexOf('/**', drawnPathAt);
+    expect(drawnPathEnd).toBeGreaterThan(drawnPathAt);
+    const drawnPathBody = source.slice(drawnPathAt, drawnPathEnd);
+    expect(drawnPathBody).toContain(
+      'const curveMode = options.curveMode ?? DEFAULT_AQUARELLE_CURVE_MODE;',
+    );
+    expect(drawnPathBody).toContain(
+      'handles: resolveAnchorHandles(resolveCurveAnchors(normalised, curveMode)),',
+    );
+    expect(drawnPathBody).toContain('curveMode,');
+
+    // Every edit helper of the start-drag resolution receives the open
+    // target's mode (T-61-92): handle resolve, hit test, promotion and insert.
+    const dragAt = source.indexOf('const startEditDrag =');
+    expect(dragAt).toBeGreaterThan(-1);
+    const dragEnd = source.indexOf('const continueEditDrag =', dragAt);
+    expect(dragEnd).toBeGreaterThan(dragAt);
+    const dragBody = source.slice(dragAt, dragEnd);
+    expect(dragBody).toContain(
+      'const handles = resolveAnchorHandles(resolveCurveAnchors(editTargetAnchors, editTargetCurveMode));',
+    );
+    expect(dragBody).toContain('hitTestVectorPath(');
+    expect(dragBody).toContain('promoteAnchorForDrag(editTargetAnchors, target.index, editTargetCurveMode)');
+    expect(dragBody).toContain(
+      'insertAnchorOnSegment(editTargetAnchors, segment, pointerUv, editTargetCurveMode)',
+    );
+    // No edit helper may run without it, and a spline grab releases without a
+    // promotion to preserve.
+    expect(dragBody.split('editTargetCurveMode').length - 1).toBeGreaterThanOrEqual(5);
+    expect(dragBody).toContain("wasPromoted: editTargetCurveMode !== 'spline' && current.kind !== 'bezier'");
+  });
+
+  it('under Spline draws no handle dot and only circle anchors, leaving the Bezier chrome untouched', () => {
+    const source = overlaySource();
+    const renderAt = source.indexOf('function renderPath(');
+    expect(renderAt).toBeGreaterThan(-1);
+    const renderEnd = source.indexOf('// --- The component', renderAt);
+    expect(renderEnd).toBeGreaterThan(renderAt);
+    const renderBody = source.slice(renderAt, renderEnd);
+
+    // The drawn mode decides the chrome, citing the UI-SPEC's ownership law
+    // (§340-341): amber marks a control the user OWNS.
+    expect(renderBody).toContain(
+      'const { anchors, handles, projection, color, selected, curveMode } = drawn;',
+    );
+    expect(renderBody).toContain("const spline = curveMode === 'spline';");
+    expect(renderBody).toContain('61-UI-SPEC §340-341');
+    expect(renderBody).toContain(
+      "const ownsHandles = (anchor: VectorAnchor): boolean => !spline && anchor.kind === 'bezier';",
+    );
+    // Under Spline EVERY anchor takes the auto-smooth circle branch, and the
+    // entire handle block returns nothing — no dot, no square.
+    expect(renderBody).toContain('{spline ? null : anchors.map((anchor, index) => {');
+    expect(renderBody).toContain('return ownsHandles(anchor) ? (');
+    // The shipped Bezier palette literals survive byte for byte.
+    expect(renderBody).toContain('fill={OWNED_CONTROL_COLOR}');
+    expect(renderBody).toContain('fill={SELECTED_SPINE_COLOR}');
+
+    // Behavioural half: the same bezier-carrying anchor list draws as circles
+    // with zero dots under Spline, and as the shipped square + two dots under
+    // Bezier (the positive control).
+    const handAnchors: readonly VectorAnchor[] = [
+      auto(0.2, 0.5),
+      { x: 0.6, y: 0.5, kind: 'bezier', in: { x: 0.6, y: 0.6 }, out: { x: 0.6, y: 0.4 } },
+    ];
+    vectorPenActive.value = true;
+    const splineTree = render(
+      VectorPathOverlay(propsWith([[11, vectorStroke({ anchors: handAnchors, curveMode: 'spline' })]])),
+    );
+    const splineAnchors = nodesWithTestId(splineTree, 'vector-path-anchor');
+    expect(splineAnchors).toHaveLength(2);
+    expect(splineAnchors.every((node) => node.type === 'circle')).toBe(true);
+    expect(nodesWithTestId(splineTree, 'vector-path-handle')).toHaveLength(0);
+
+    const bezierTree = render(VectorPathOverlay(propsWith([[11, vectorStroke({ anchors: handAnchors })]])));
+    const bezierAnchors = nodesWithTestId(bezierTree, 'vector-path-anchor');
+    expect(bezierAnchors.map((node) => node.type)).toEqual(['circle', 'rect']);
+    expect(nodesWithTestId(bezierTree, 'vector-path-handle')).toHaveLength(2);
+  });
+
+  it('renders a spline stroke through the spline evaluation while the same stroke without a mode renders Bezier', () => {
+    // The middle handle bends the authored Bezier away from the derived-auto
+    // spline, so a wrong mode is visible in the drawn spine itself.
+    const curveAnchors: readonly VectorAnchor[] = [
+      { x: 0.2, y: 0.2, kind: 'bezier', in: { x: 0.1, y: 0.2 }, out: { x: 0.35, y: 0.9 } },
+      auto(0.8, 0.2),
+    ];
+    const normalised = normaliseVectorAnchors(curveAnchors);
+    const spineOf = (mode: 'bezier' | 'spline'): string =>
+      evaluateAquarellePath(normalised, mode)
+        .points.map((point) => {
+          const at = uvToScreen(point, WIDTH, HEIGHT);
+          return `${at.x},${at.y}`;
+        })
+        .join(' ');
+
+    vectorPenActive.value = true;
+    const splineTree = render(
+      VectorPathOverlay(propsWith([[11, vectorStroke({ anchors: curveAnchors, curveMode: 'spline' })]])),
+    );
+    const splineSpines = nodesWithTestId(splineTree, 'vector-path-spine');
+    expect(splineSpines).toHaveLength(1);
+    expect(String(splineSpines[0]!.props['points'])).toBe(spineOf('spline'));
+
+    const bezierTree = render(
+      VectorPathOverlay(propsWith([[11, vectorStroke({ anchors: curveAnchors })]])),
+    );
+    const bezierSpines = nodesWithTestId(bezierTree, 'vector-path-spine');
+    expect(bezierSpines).toHaveLength(1);
+    expect(String(bezierSpines[0]!.props['points'])).toBe(spineOf('bezier'));
+    // The two evaluations genuinely differ, so the assertions above have teeth.
+    expect(spineOf('spline')).not.toBe(spineOf('bezier'));
   });
 });
