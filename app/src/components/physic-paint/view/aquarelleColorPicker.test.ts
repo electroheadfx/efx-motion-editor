@@ -344,6 +344,73 @@ describe('61-23 G-19 the open path edit outranks the picker', () => {
     expect(aquarellePickerActive.value).toBe(true);
     expect(isAquarellePickerArmed()).toBe(true);
   });
+
+  it('an Alt keydown during an edit writes nothing and notifies no subscriber', () => {
+    pathEditMutationId.value = 'm17';
+    const runs = countRuns(() => aquarellePickerAltHeld.value);
+    try {
+      setAquarellePickerAltHeld(true);
+
+      expect(aquarellePickerAltHeld.peek()).toBe(false);
+      // The initial read only — the refused write notifies nothing.
+      expect(runs.runs()).toBe(1);
+    } finally {
+      runs.dispose();
+    }
+  });
+
+  it('never swallows a release — a stale Alt still clears, an already-false release is the compare-then-write no-op', () => {
+    pathEditMutationId.value = 'm17';
+    // A stale writer armed Alt directly while the edit is open: the release
+    // must still land, or the picker would stay armed past the edit.
+    aquarellePickerAltHeld.value = true;
+    setAquarellePickerAltHeld(false);
+    expect(aquarellePickerAltHeld.peek()).toBe(false);
+
+    // Already false: the shipped compare-then-write returns before the guard.
+    const runs = countRuns(() => aquarellePickerAltHeld.value);
+    try {
+      setAquarellePickerAltHeld(false);
+      expect(runs.runs()).toBe(1);
+    } finally {
+      runs.dispose();
+    }
+  });
+
+  it('arms again after the edit closes with one real write', () => {
+    pathEditMutationId.value = 'm17';
+    setAquarellePickerAltHeld(true);
+    expect(aquarellePickerAltHeld.peek()).toBe(false);
+
+    exitPathEdit();
+    const runs = countRuns(() => aquarellePickerAltHeld.value);
+    try {
+      setAquarellePickerAltHeld(true);
+
+      expect(aquarellePickerAltHeld.peek()).toBe(true);
+      expect(aquarellePickerActive.value).toBe(true);
+      expect(isAquarellePickerArmed()).toBe(true);
+      // The initial read plus exactly one real write.
+      expect(runs.runs()).toBe(2);
+    } finally {
+      runs.dispose();
+    }
+  });
+
+  it('re-pins both shipped 61-17 directions around the guard', () => {
+    // Entry edge: enterPathEdit still disarms the picker.
+    setAquarellePickerAltHeld(true);
+    expect(aquarellePickerAltHeld.peek()).toBe(true);
+    enterPathEdit('m17');
+    expect(pathEditMutationId.peek()).toBe('m17');
+    expect(aquarellePickerAltHeld.peek()).toBe(false);
+    expect(isAquarellePickerArmed()).toBe(false);
+
+    // The latch's own entry edge still closes the open edit.
+    setAquarellePickerLatched(true);
+    expect(pathEditMutationId.peek()).toBeNull();
+    expect(isAquarellePickerArmed()).toBe(true);
+  });
 });
 
 // T-61-60: the latch leaf is the picker's ONLY sibling import, so no future
