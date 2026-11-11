@@ -1716,6 +1716,11 @@ export function restoreAquarelleRecordTimeline(
       engine.anchors !== undefined ? normaliseAquarelleAnchors(engine.anchors) : undefined;
     const renderMode =
       engine.renderMode !== undefined ? resolveAquarelleRenderMode(engine.renderMode) : undefined;
+    // 61-30 (G-20): the curve mode rides the same conditional-spread law — a
+    // stroke saved as spline must reopen as spline, or every later replay and
+    // edit would silently fall back to Bézier.
+    const curveMode =
+      engine.curveMode !== undefined ? resolveAquarelleCurveMode(engine.curveMode) : undefined;
     const stroke: AquarelleStroke = {
       tool: engine.tool,
       color: engine.color,
@@ -1736,6 +1741,7 @@ export function restoreAquarelleRecordTimeline(
       playFrame: engine.playFrame,
       ...(anchors !== undefined ? { anchors } : {}),
       ...(renderMode !== undefined ? { renderMode } : {}),
+      ...(curveMode !== undefined ? { curveMode } : {}),
     };
     const entry = toStudioStroke(stroke);
     payloadTimeline.push(entry);

@@ -202,6 +202,9 @@ export function aquarelleStrokeFromScriptEvent(
     playFrame: destinationFrame,
     ...(engine.anchors !== undefined ? { anchors: engine.anchors } : {}),
     ...(engine.renderMode !== undefined ? { renderMode: engine.renderMode } : {}),
+    // 61-30 (G-20): a copied/duplicated spline stroke must stay a spline
+    // stroke; absent stays absent so a hand-painted event keeps its key set.
+    ...(engine.curveMode !== undefined ? { curveMode: engine.curveMode } : {}),
   };
 }
 
