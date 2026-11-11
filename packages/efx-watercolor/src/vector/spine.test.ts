@@ -11,6 +11,9 @@
 //    2. bezier anchors round-trip their stored handles
 //    3. the sampled path: collinear, monotone stations
 //    4. duplicate / single / empty fallbacks
+//    5. the sparse width law
+//    6. the per-vertex colour law (261111-wd6)
+//    7. determinism scan coverage
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -24,10 +27,13 @@ import {
   PATH_SAMPLE_STEP_UV,
   anchorWidthAt,
   clampAnchorWidth,
+  isUniformColorProfile,
   isUniformWidthProfile,
+  normaliseAnchorColor,
   normaliseVectorAnchors,
   pathLength,
   resolveAnchorHandles,
+  sampleVectorColors,
   sampleVectorPath,
   sampleVectorWidths,
   type VectorAnchor,
@@ -392,6 +398,105 @@ describe('sampleVectorWidths', () => {
     expect(widths[0]).toBe(1)
     expect(widths[1]).toBeCloseTo(1.6, 12)
     expect(widths[2]).toBeCloseTo(1.6, 12)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 6. The per-vertex colour law (261111-wd6) — explicit, sparse, canonical
+// ---------------------------------------------------------------------------
+
+/** The MID_18 shape with an explicit colour on the middle anchor instead. */
+const MID_RED: readonly VectorAnchor[] = [
+  { x: 0, y: 0, kind: 'auto' },
+  { x: 1, y: 0, kind: 'auto', color: '#ff0000' },
+  { x: 2, y: 0, kind: 'auto' },
+]
+
+describe('normaliseAnchorColor', () => {
+  it('canonicalises 3, 6 and 8 digit hex to lowercase #rrggbb', () => {
+    expect(normaliseAnchorColor('#ABC')).toBe('#aabbcc')
+    expect(normaliseAnchorColor('abc')).toBe('#aabbcc')
+    expect(normaliseAnchorColor('#AABBCC')).toBe('#aabbcc')
+    expect(normaliseAnchorColor('#aabbccdd')).toBe('#aabbcc')
+  })
+
+  it('returns undefined for anything that is not a 3/6/8 digit hex colour', () => {
+    expect(normaliseAnchorColor('#abcd')).toBeUndefined()
+    expect(normaliseAnchorColor('#xyz')).toBeUndefined()
+    expect(normaliseAnchorColor('')).toBeUndefined()
+    expect(normaliseAnchorColor(42)).toBeUndefined()
+    expect(normaliseAnchorColor(null)).toBeUndefined()
+    expect(normaliseAnchorColor(undefined)).toBeUndefined()
+  })
+})
+
+describe('isUniformColorProfile', () => {
+  it('reports a list with no colour at all as uniform', () => {
+    expect(isUniformColorProfile(COLLINEAR)).toBe(true)
+    expect(isUniformColorProfile(MID_18)).toBe(true)
+  })
+
+  it('reports one explicitly coloured anchor as non-uniform', () => {
+    expect(isUniformColorProfile(MID_RED)).toBe(false)
+  })
+})
+
+describe('sampleVectorColors', () => {
+  const BASE = '#103c65'
+
+  it('returns one canonical colour per point with the endpoints held on the base', () => {
+    const path = sampleVectorPath(MID_RED)
+    const colors = sampleVectorColors(MID_RED, path.points, BASE)
+    expect(colors).toHaveLength(path.points.length)
+    for (const color of colors) {
+      expect(color).toMatch(/^#[0-9a-f]{6}$/)
+      // Every entry round-trips through the package normaliser unchanged.
+      expect(normaliseAnchorColor(color)).toBe(color)
+    }
+    expect(colors[0]).toBe(BASE)
+    expect(colors[colors.length - 1]).toBe(BASE)
+  })
+
+  it('reaches the coloured anchor exactly and rises then falls on the way', () => {
+    const path = sampleVectorPath(MID_RED)
+    const colors = sampleVectorColors(MID_RED, path.points, BASE)
+    const red = colors.map((color) => Number.parseInt(color.slice(1, 3), 16))
+    let peak = 0
+    for (let index = 1; index < red.length; index++) if (red[index]! > red[peak]!) peak = index
+    for (let index = 1; index <= peak; index++) expect(red[index]!).toBeGreaterThanOrEqual(red[index - 1]!)
+    for (let index = peak + 1; index < red.length; index++) expect(red[index]!).toBeLessThanOrEqual(red[index - 1]!)
+    expect(colors[peak]).toBe('#ff0000')
+  })
+
+  it('is deterministic: two calls over the same inputs are deep-equal', () => {
+    const path = sampleVectorPath(MID_RED)
+    expect(sampleVectorColors(MID_RED, path.points, BASE)).toEqual(
+      sampleVectorColors(MID_RED, path.points, BASE),
+    )
+  })
+
+  it('reads the normalised base for a uniform profile and for a point grid with no anchors', () => {
+    const path = sampleVectorPath(COLLINEAR)
+    expect(sampleVectorColors(COLLINEAR, path.points, '#ABC')).toEqual(
+      path.points.map(() => '#aabbcc'),
+    )
+    expect(sampleVectorColors([], [{ x: 0, y: 0 }], BASE)).toEqual([BASE])
+    expect(sampleVectorColors(COLLINEAR, [], BASE)).toEqual([])
+  })
+
+  it('returns one entry for a one-point grid', () => {
+    expect(sampleVectorColors(MID_RED, [{ x: 1, y: 0 }], BASE)).toEqual(['#ff0000'])
+  })
+
+  it('falls back to the base for a malformed authored colour, never throws', () => {
+    const malformed: VectorAnchor[] = [
+      { x: 0, y: 0, kind: 'auto' },
+      { x: 1, y: 0, kind: 'auto', color: '#xyz' },
+      { x: 2, y: 0, kind: 'auto' },
+    ]
+    expect(isUniformColorProfile(malformed)).toBe(false)
+    const path = sampleVectorPath(malformed)
+    expect(sampleVectorColors(malformed, path.points, BASE)).toEqual(path.points.map(() => BASE))
   })
 })
 

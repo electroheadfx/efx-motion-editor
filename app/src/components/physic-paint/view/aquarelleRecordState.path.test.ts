@@ -517,6 +517,52 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     expect(after.points).toEqual(before.points);
     expect(aquarelleStrokesRevision.value).toBe(revision + 1);
   });
+
+  it('treats an anchor-colour-only change as a write — never the silent 0', () => {
+    const id = 61814;
+    recordAquarelleStroke(id, g17VectorStroke(id));
+    const before = getRecordedAquarelleStroke(id)!;
+    const revision = aquarelleStrokesRevision.value;
+    // 261111-wd6: only the middle anchor gains a colour. The spine is
+    // unchanged, so only a colour-aware anchorsEqual can see the edit.
+    const colourOnly: readonly AquarelleAnchor[] = G17_PRE_ANCHORS.map((anchor, index) =>
+      index === 1 ? { ...anchor, color: '#ff0000' } : anchor,
+    );
+
+    expect(updateAquarellePathInScript(id, colourOnly)).toBe(1);
+
+    const after = getRecordedAquarelleStroke(id)!;
+    expect(after.anchors![1]!.color).toBe('#ff0000');
+    expect('color' in after.anchors![0]!).toBe(false);
+    expect('color' in after.anchors![2]!).toBe(false);
+    // The spine is unchanged, but it is a FRESH re-derived array.
+    expect(after.points).not.toBe(before.points);
+    expect(after.points).toEqual(before.points);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+
+    // The identical second call stores nothing, bumps nothing and returns 0.
+    expect(updateAquarellePathInScript(id, colourOnly)).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+  });
+
+  it('carries an explicit anchor colour through a translate untouched (both entry halves)', () => {
+    const id = 9107;
+    const coloured: readonly AquarelleAnchor[] = [
+      { x: 0.2, y: 0.4, kind: 'auto', color: '#ff0000', width: 1.5 },
+      { x: 0.6, y: 0.8, kind: 'auto' },
+    ];
+    recordAquarelleStroke(id, stroke(id, [point(0.2, 0.4), point(0.6, 0.8)], coloured));
+    const index = getRecordedAquarellePayloadTimeline().length - 1;
+
+    expect(translateAquarelleStrokesInScript([id], 0.1, 0.2)).toBe(1);
+
+    const moved = getRecordedAquarelleStroke(id)!;
+    expect(moved.anchors![0]!.color).toBe('#ff0000');
+    expect(moved.anchors![0]!.width).toBe(1.5);
+    expect('color' in moved.anchors![1]!).toBe(false);
+    // The opaque engine block carries the same anchors (T-61-34).
+    expect(timelineStrokeAt(index).engine.anchors![0]!.color).toBe('#ff0000');
+  });
 });
 
 // ============================================================

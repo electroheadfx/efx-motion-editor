@@ -6,8 +6,8 @@
 //    · vector-ness is implied by a NON-EMPTY anchor list
 //    · a malformed anchor list is refused WHOLE — undefined, never a
 //      partially repaired list, never a throw (T-61-08)
-//    · the width factor is the ONLY per-anchor paint property
-//      (VEC-03 / VEC-04): no per-anchor brush and no per-anchor colour
+//    · an anchor carries no per-anchor brush, and since 261111-wd6 it
+//      may carry ONE explicit per-vertex colour (VEC-04 revised)
 //    · the anchor type is 61-02's VectorAnchor re-exported, never a
 //      second declaration (one structural type, one definition)
 // ============================================================
@@ -165,6 +165,17 @@ describe('curve evaluation (G-20: spline is a view, never a rewrite)', () => {
     })
   })
 
+  it('resolveCurveAnchors preserves an explicit colour on the derived view and on a placed corner', () => {
+    const stored: readonly AquarelleAnchor[] = [
+      { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.1, y: 0.4 }, out: { x: 0.3, y: 0.6 }, color: '#ff0000' },
+      { x: 0.8, y: 0.5, kind: 'bezier', in: { x: 0.8, y: 0.5 }, out: { x: 0.8, y: 0.5 }, color: '#00ff00', width: 1.6 },
+    ]
+    const view = resolveCurveAnchors(stored, 'spline')
+    expect(view[0]!.color).toBe('#ff0000')
+    expect(view[1]!.color).toBe('#00ff00')
+    expect(view[1]!.width).toBe(1.6)
+  })
+
   it('resolveCurveAnchors never mutates or aliases the input when deriving the spline view', () => {
     const stored: AquarelleAnchor[] = STORED.map((anchor) => ({ ...anchor }))
     const snapshot = JSON.parse(JSON.stringify(stored)) as readonly AquarelleAnchor[]
@@ -249,6 +260,24 @@ describe('normaliseAquarelleAnchors', () => {
       normaliseAquarelleAnchors([{ x: 0, y: 0, kind: 'auto', width: ANCHOR_WIDTH_MAX }]),
     ).toEqual([{ x: 0, y: 0, kind: 'auto', width: ANCHOR_WIDTH_MAX }])
   })
+
+  it('keeps an explicit anchor colour and canonicalises a non-canonical one', () => {
+    const normalised = normaliseAquarelleAnchors([
+      { x: 20, y: 32, kind: 'auto', color: '#FF0000' },
+    ])
+    expect(normalised).toEqual([{ x: 20, y: 32, kind: 'auto', color: '#ff0000' }])
+    expect(normalised![0]!.color).toBe('#ff0000')
+  })
+
+  it('refuses the WHOLE list for a malformed colour', () => {
+    expect(
+      normaliseAquarelleAnchors([
+        { x: 20, y: 32, kind: 'auto' },
+        { x: 30, y: 32, kind: 'auto', color: '#xyz' },
+      ]),
+    ).toBeUndefined()
+    expect(normaliseAquarelleAnchors([{ x: 20, y: 32, kind: 'auto', color: 42 }])).toBeUndefined()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -281,6 +310,18 @@ describe('anchorsEqual / vectorPathsEqual', () => {
     expect(vectorPathsEqual({}, { anchors: [] })).toBe(true)
     expect(
       vectorPathsEqual({ anchors: TWO_ANCHORS }, { anchors: [TWO_ANCHORS[0]!] }),
+    ).toBe(false)
+  })
+
+  it('anchorsEqual compares the explicit colour and treats both-absent as equal', () => {
+    const plain: readonly AquarelleAnchor[] = [{ x: 10, y: 10, kind: 'auto' }]
+    expect(anchorsEqual(plain, [{ x: 10, y: 10, kind: 'auto' }])).toBe(true)
+    expect(anchorsEqual(plain, [{ x: 10, y: 10, kind: 'auto', color: '#ff0000' }])).toBe(false)
+    expect(
+      anchorsEqual(
+        [{ x: 10, y: 10, kind: 'auto', color: '#ff0000' }],
+        [{ x: 10, y: 10, kind: 'auto', color: '#00ff00' }],
+      ),
     ).toBe(false)
   })
 })
@@ -323,6 +364,18 @@ describe('projectVectorPath — sparse width (D-10)', () => {
     expect(projected).not.toBe(input)
     expect(input[1]!.width).toBe(ANCHOR_WIDTH_DEFAULT)
     expect('width' in input[1]!).toBe(true)
+  })
+
+  it('keeps an explicit colour even at the default width and writes no colour key otherwise', () => {
+    const projected = projectVectorPath([
+      { x: 0, y: 0, kind: 'auto' },
+      { x: 10, y: 0, kind: 'auto', color: '#103c65' },
+      { x: 20, y: 0, kind: 'auto', width: ANCHOR_WIDTH_DEFAULT, color: '#ff0000' },
+    ])
+    expect('color' in projected[0]!).toBe(false)
+    expect(projected[1]!.color).toBe('#103c65')
+    expect(projected[2]!.color).toBe('#ff0000')
+    expect('width' in projected[2]!).toBe(false)
   })
 
   it('preserves anchor order exactly (61-02 stations index into it)', () => {
@@ -373,7 +426,7 @@ describe('the anchor type is re-exported, never redeclared', () => {
     expect(source).not.toMatch(/type AquarelleAnchor\s*=/)
   })
 
-  it('carries no per-anchor brush type and no per-anchor colour member (VEC-04)', () => {
+  it('carries no per-anchor brush identity, and colour is the one paint member (VEC-04 revised)', () => {
     const source = readFileSync(VECTOR_PATH_SOURCE, 'utf8')
     // 61-07: `resolveRenderModeForBrushId`/`recordedRenderModeField` map a
     // STROKE-level brush id to the stroke's render mode — they are not anchor
@@ -387,7 +440,7 @@ describe('the anchor type is re-exported, never redeclared', () => {
     expect(anchorRegion.length).toBeGreaterThan(0)
     expect(/\bbrushId\b/.test(anchorRegion)).toBe(false)
     expect(/\bbrushType\b/.test(anchorRegion)).toBe(false)
-    expect(/\bcolour?\b\s*:/.test(anchorRegion)).toBe(false)
-    expect(/\bcolor\s*:/.test(anchorRegion)).toBe(false)
+    // 261111-wd6 revises VEC-04: a vertex may carry its own explicit colour.
+    expect(/\bcolor\?:\s*string\b/.test(anchorRegion)).toBe(true)
   })
 })
