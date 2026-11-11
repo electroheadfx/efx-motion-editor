@@ -2715,9 +2715,19 @@ export function PhysicsPaintStudio() {
   // Shift+A: enter Move/Edit when needed, then select every stroke the live
   // filter lists — or clear the selection when that whole list already is.
   const handleToggleSelectAllAquarelleStrokes = useCallback(() => {
+    // 61-17 (G-6 / D-16): the wireframe view is a no-capture view — the Select
+    // entry choke point refuses entry outright while it is on. 61-26 (WR-01):
+    // the shortcut refuses here too, before ANY write. A selection written
+    // behind a refused entry would have no outline, no hit-test and no rail
+    // surface, and would surface the next time Select is entered.
+    if (wireframeMode.peek()) return;
     if (!aquarelleSelectMode.peek()) {
       if (!watercolorMoveAvailable.peek()) return;
       setAquarelleSelectMode(true);
+      // The entry choke point stays authoritative: it can still refuse (the
+      // same wireframe gate, a scriptless key). The write below must never
+      // depend on the attempt having succeeded.
+      if (!aquarelleSelectMode.peek()) return;
     }
     const playFrame = launchContextRef.current?.startFrame ?? 0;
     const ids = listAquarelleStrokeSelectionIds(playFrame);
