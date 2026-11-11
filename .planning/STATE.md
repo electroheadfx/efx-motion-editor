@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-27-PLAN.md
-last_updated: "2026-11-11T11:51:11.972Z"
+stopped_at: Completed 61-28-PLAN.md
+last_updated: "2026-11-11T11:57:50.562Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: e2c9c02b29f322e5548c80a70145b989f40f10d7
+state_head: 38a91ef382ed7be6bab44ed7d79ad85d9e280f17
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 62
-  completed_plans: 58
+  completed_plans: 59
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 28 of 31
+Plan: 29 of 31
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 61 execution started
 
@@ -116,6 +116,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P26 | 7 min | 3 tasks | 2 files |
 | Phase 61 P25 | 9 min | 3 tasks | 7 files |
 | Phase 61 P27 | 7 min | 3 tasks | 8 files |
+| Phase 61 P28 | 3 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -329,6 +330,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: 61-27: the settle and Anchor width refusals publish through setApplyMessage/setApplyStatus('error')/setLastError but never claim scriptApplyRefusalOwnedRef, so no surface swallows another's message
 - [Phase 61]: 61-27: publishRefusal is optional on StrokeSettingsDialogBundle, keeping the shipped silent fallback and the dialog engine-free
 - [Phase 61]: 61-27: three shipped pins were repointed, never deleted — the 61-13 Studio import marker and two dialog commit-call literals — preserving every behavioral assertion
+- [Phase 61]: The edit-lifetime effect keys on the primitive editMutationId and compares String(drag.mutationId) === editMutationId, covering edit close and retarget with one law; the live-drag early return precedes every clearing step
+- [Phase 61]: A start-of-gesture reset runs before the target check in startEditDrag, so a press that hits nothing still ends the previous gesture and the CR-01 phantom-commit path is closed
+- [Phase 61]: Target guards in continueEditDrag/finishEditDrag perform no cleanup — the effect owns it — and sit before every preview write and onPathEdit, leaving the T-61-30 clear-before-commit order untouched
 
 ### Pending Todos
 
@@ -421,8 +425,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T11:51:10.704Z
-Stopped at: Completed 61-27-PLAN.md
+Last session: 2026-11-11T11:57:49.308Z
+Stopped at: Completed 61-28-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
