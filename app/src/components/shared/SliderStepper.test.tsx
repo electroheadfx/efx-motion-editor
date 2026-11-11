@@ -660,6 +660,20 @@ describe('slider-stepper — onCommit gesture boundary (261111-tul)', () => {
     return value!;
   }
 
+  function trackOf(tree: AnyVNode): AnyVNode {
+    const track = byClass(tree, 'slider-stepper-track');
+    expect(track).toBeDefined();
+    return track!;
+  }
+
+  /** A 100px-wide track starting at x=0 — `clientX` maps straight to a fraction. */
+  function trackTarget(width = 100) {
+    return {
+      setPointerCapture: () => {},
+      getBoundingClientRect: () => ({ left: 0, top: 0, width, height: 22, right: width, bottom: 22 }),
+    };
+  }
+
   it('a typed blur commits exactly once with the parsed value', () => {
     const onChange = vi.fn();
     const onCommit = vi.fn();
@@ -742,5 +756,95 @@ describe('slider-stepper — onCommit gesture boundary (261111-tul)', () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(onCommit).toHaveBeenCalledOnce();
     expect(onCommit).toHaveBeenCalledWith(13);
+  });
+
+  it('a track drag emits onChange continuously and commits once at release with the gesture value', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const track = trackOf(tree);
+
+    track.props.onPointerDown({ clientX: 20, preventDefault: () => {}, currentTarget: trackTarget() });
+    track.props.onPointerMove({ clientX: 40, currentTarget: trackTarget() });
+    expect(onChange).toHaveBeenNthCalledWith(1, 20);
+    expect(onChange).toHaveBeenNthCalledWith(2, 40);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    // The commit carries 40 — neither the stale prop (13) nor the first move (20).
+    track.props.onPointerUp();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(40);
+  });
+
+  it('commitOnRelease keeps its draft and commits the same value at release', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({
+      value: 0.5,
+      min: 0,
+      max: 1,
+      step: 0.01,
+      commitOnRelease: true,
+      onChange,
+      onCommit,
+    });
+    const track = trackOf(tree);
+
+    track.props.onPointerDown({ clientX: 80, preventDefault: () => {}, currentTarget: trackTarget() });
+    track.props.onPointerMove({ clientX: 60, currentTarget: trackTarget() });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+
+    track.props.onPointerUp();
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit.mock.calls[0][0]).toBe(onChange.mock.calls[0][0]);
+  });
+
+  it('a cancelled drag commits the value it reached; a late release adds nothing', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const track = trackOf(tree);
+
+    track.props.onPointerDown({ clientX: 30, preventDefault: () => {}, currentTarget: trackTarget() });
+    expect(onChange).toHaveBeenCalledWith(30);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    track.props.onPointerCancel();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(30);
+
+    track.props.onPointerUp();
+    expect(onCommit).toHaveBeenCalledOnce();
+  });
+
+  it('an equal-value release commits; a gesture that computed no value does not', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 40, min: 0, max: 100, step: 1, onChange, onCommit });
+    const track = trackOf(tree);
+
+    track.props.onPointerDown({ clientX: 40, preventDefault: () => {}, currentTarget: trackTarget() });
+    expect(onChange).not.toHaveBeenCalled();
+    track.props.onPointerUp();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(40);
+
+    const emptyChange = vi.fn();
+    const emptyCommit = vi.fn();
+    const emptyTree = renderStepper({
+      value: 40,
+      min: 0,
+      max: 100,
+      step: 1,
+      onChange: emptyChange,
+      onCommit: emptyCommit,
+    });
+    const emptyTrack = trackOf(emptyTree);
+    // A zero-width track maps no value at all.
+    emptyTrack.props.onPointerDown({ clientX: 40, preventDefault: () => {}, currentTarget: trackTarget(0) });
+    emptyTrack.props.onPointerUp();
+    expect(emptyCommit).not.toHaveBeenCalled();
   });
 });

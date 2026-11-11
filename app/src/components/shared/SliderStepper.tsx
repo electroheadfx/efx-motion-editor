@@ -314,6 +314,10 @@ export function SliderStepper({
    *  and stays silent. Cleared per gesture (onFocus resets it, and a blur
    *  always consumes it), so it can never suppress a later gesture's commit. */
   const suppressBlurCommit = useRef(false);
+  /** quick 261111-tul: the live track gesture's last computed value. The
+   *  release commits THIS, never the `value` prop — the parent may not have
+   *  re-rendered the last move into the prop yet (T-TUL-01). */
+  const lastTrackValue = useRef<number | null>(null);
   /** quick 261105-sk3: the raw text while typing (null = not typing). The
    *  controlled `value` prop must never clamp or reformat a half-typed number,
    *  so the draft owns the box until blur/Enter/Escape clears it. Preact 11
@@ -424,6 +428,9 @@ export function SliderStepper({
 
   const emitTrackValue = (next: number | null) => {
     if (next === null) return;
+    // The gesture value is recorded on ONE boundary whether or not the knob
+    // follows a local draft, so release behaves identically with commitOnRelease.
+    if (onCommit) lastTrackValue.current = next;
     if (commitOnRelease) {
       draft.value = next;
       return;
@@ -436,6 +443,7 @@ export function SliderStepper({
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     dragging.current = true;
+    lastTrackValue.current = null;
     startCoalescing();
     emitTrackValue(valueFromPointer(event.currentTarget, event.clientX));
   };
@@ -453,6 +461,13 @@ export function SliderStepper({
       draft.value = null;
       if (next !== value || mixed) onChange(next);
     }
+    // pointercancel routes here too (the track wires it to this handler): a
+    // cancelled drag commits the value it reached — the gesture already
+    // applied it live through onChange, so the commit only mirrors a real
+    // change. A gesture that computed no value leaves the ref null: silence.
+    const committed = lastTrackValue.current;
+    lastTrackValue.current = null;
+    if (onCommit && committed !== null) onCommit(committed);
     stopCoalescing();
   };
 
