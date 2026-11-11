@@ -423,6 +423,7 @@ function renderPath(
   width: number,
   height: number,
   wireframe: boolean,
+  selectedAnchors: readonly number[],
 ): JSX.Element {
   const { anchors, handles, projection, color, selected } = drawn;
   const spinePoints = projection.spine.map((point) => `${point.x},${point.y}`).join(' ');
@@ -601,6 +602,41 @@ function renderPath(
           />
         );
       })}
+      {/* 61-22 (G-11): the missing feedback for `vectorAnchorSelection` — one
+          accent ring per selected index, drawn over the anchor marker. The
+          index space is `drawnPathOf`'s normalised anchor list, the same list
+          the selection was resolved from; a missing point fails closed. */}
+      {selectedAnchors.map((index) => {
+        const anchor = anchors[index];
+        const point = projection.anchors[index];
+        if (anchor === undefined || point === undefined) return null;
+        return anchor.kind === 'bezier' ? (
+          <rect
+            key={`anchor-selection-${index}`}
+            data-testid="vector-path-anchor-selection"
+            x={point.x - (anchorSizePx + 6) / 2}
+            y={point.y - (anchorSizePx + 6) / 2}
+            width={anchorSizePx + 6}
+            height={anchorSizePx + 6}
+            fill="none"
+            stroke={SELECTED_SPINE_COLOR}
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : (
+          <circle
+            key={`anchor-selection-${index}`}
+            data-testid="vector-path-anchor-selection"
+            cx={point.x}
+            cy={point.y}
+            r={coreRadiusPx + 3}
+            fill="none"
+            stroke={SELECTED_SPINE_COLOR}
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+        );
+      })}
       {anchors.map((anchor, index) => {
         if (anchor.kind !== 'bezier') return null;
         const resolved = handles[index];
@@ -684,6 +720,10 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   // 61-13 (D-16): the session-only wireframe latch. This leaf is the narrow
   // subscriber; the Studio never reads it in its own render body.
   const wireframe = wireframeMode.value;
+  // 61-22 (G-11): the anchor selection is written by the path-edit pointer
+  // handlers (through `.peek()`); this render-body read is the ONE subscriber
+  // that turns it into visible chrome. Pure read: no write, no effect.
+  const anchorSelection = vectorAnchorSelection.value;
 
   // Path edit (61-10): resolve the stroke the session names. The id is a
   // session string and the registry is keyed by number, so the match is
@@ -1051,7 +1091,14 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
           pointerEvents: 'none',
         }}
       >
-        {recorded.map((drawn) => renderPath(drawn, scale, props.width, props.height, wireframe))}
+        {recorded.map((drawn) => renderPath(
+          drawn,
+          scale,
+          props.width,
+          props.height,
+          wireframe,
+          drawn.selected ? anchorSelection : [],
+        ))}
         {/* 61-21 (IN-01): the provisional spine, drawn BEFORE the committed
             draft path so the placed segments stay legible. */}
         {draftPreviewPoints === null ? null : (
@@ -1065,7 +1112,14 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
             vectorEffect="non-scaling-stroke"
           />
         )}
-        {draftPath === null ? null : renderPath(draftPath, scale, props.width, props.height, wireframe)}
+        {draftPath === null ? null : renderPath(
+          draftPath,
+          scale,
+          props.width,
+          props.height,
+          wireframe,
+          draftPath.selected ? anchorSelection : [],
+        )}
       </svg>
     </div>
   );
