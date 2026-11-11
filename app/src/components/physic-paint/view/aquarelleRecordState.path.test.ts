@@ -167,7 +167,7 @@ function sampledSpinePoints(anchors: readonly AquarelleAnchor[]): readonly Aquar
 function g17VectorStroke(mutationId: number): AquarelleStroke {
   return {
     ...stroke(mutationId, sampledSpinePoints(G17_PRE_ANCHORS), G17_PRE_ANCHORS),
-    renderMode: 'vector',
+    renderMode: 'simple-ribbon',
   };
 }
 
