@@ -1,0 +1,493 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="219" failures="4" errors="0" time="1.145">
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" timestamp="2026-11-11T11:44:03.842Z" hostname="efx2.home" tests="43" failures="3" errors="0" skipped="0" time="0.011343458">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; mounts exactly one spline-pointer button in the header row" time="0.000564417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; sits between the preview-stroke-size and view-toggle neighbours" time="0.000140333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; carries the shipped 22x22 header chrome and no laid-out text" time="0.000251208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; binds aria-pressed, the fixed aria-label and the gate title" time="0.000095125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; stops the press so the drag-handle header never swallows the click" time="0.000074208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; enters and leaves path edit through the session actions only" time="0.000128458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; declares the two disabled reasons verbatim in the model" time="0.000125375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 Edit path header button (E2) &gt; cannot strand the user: close and a closed gate both exit path edit" time="0.000195792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-27 WR-04 — selecting another stroke closes the open path edit &gt; computes the target-mismatch marker in the render body, never a session write" time="0.003125792">
+            <failure message="expected &apos;const pathEditActive = pathEditMutati…&apos; to contain &apos;const pathEditTargetMismatch =&apos;" type="AssertionError">
+AssertionError: expected &apos;const pathEditActive = pathEditMutati…&apos; to contain &apos;const pathEditTargetMismatch =&apos;
+
+- Expected
++ Received
+
+- const pathEditTargetMismatch =
++ const pathEditActive = pathEditMutationId.value !== null;
++   if (shouldExitPathEdit({ pathEditActive, gateEnabled: pathEditGateEnabled })) {
++     pathEditExitRequested = true;
++   }
++
++   
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:173:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-27 WR-04 — selecting another stroke closes the open path edit &gt; passes both ids to the target-aware exit predicate" time="0.000715625">
+            <failure message="expected &apos;const pathEditActive = pathEditMutati…&apos; to contain &apos;selectedMutationId,&apos;" type="AssertionError">
+AssertionError: expected &apos;const pathEditActive = pathEditMutati…&apos; to contain &apos;selectedMutationId,&apos;
+
+- Expected
++ Received
+
+- selectedMutationId,
++ const pathEditActive = pathEditMutationId.value !== null;
++   if (shouldExitPathEdit({ pathEditActive, gateEnabled: pathEditGateEnabled })) {
++     pathEditExitRequested = true;
++   }
++
++   
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:181:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-27 WR-04 — selecting another stroke closes the open path edit &gt; rides the shipped lifecycle effect through the mismatch dependency" time="0.000436166">
+            <failure message="missing end marker: }, [open, bundle, pathEditGateEnabled, pathEditTargetMismatch]);: expected -1 to be greater than 24653" type="AssertionError">
+AssertionError: missing end marker: }, [open, bundle, pathEditGateEnabled, pathEditTargetMismatch]);: expected -1 to be greater than 24653
+ ❯ regionOf src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:50:51
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:186:23
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E2 rows: the Edit path disabled state &gt; E2 error: the disabled reason is the model literal and rides title only" time="0.000132167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E2 rows: the Edit path disabled state &gt; E2 overflow: the shipped 22x22 chrome is fixed and the icon is the ONLY child" time="0.000156083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E2 rows: the Edit path disabled state &gt; E2 long-text: the reason lives in the native title, never in the DOM" time="0.00008325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E4 rows: the Anchor width block &gt; E4 empty: zero anchors selected reads 1.0, disabled, with the exact caption" time="0.000174709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E4 rows: the Anchor width block &gt; E4 error: the band is bound from the model constants and clamps, never an error UI" time="0.000176666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E4 rows: the Anchor width block &gt; E4 partial: the shipped mixed prop is bound from the reading" time="0.000074625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E4 rows: the Anchor width block &gt; E4 overflow: the shipped SliderStepper owns the fixed gutter" time="0.000090167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E4 rows: the Anchor width block &gt; E4 long-text: the label is constant and the readout is numeric" time="0.000068792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E4 rows: the Anchor width block &gt; mounts under the Size row and is NOT an appearance-field registry entry" time="0.000262791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E4 rows: the Anchor width block &gt; 61-19 inert: no open path edit reads empty and one caption span serves both reasons" time="0.000129375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E4 rows: the Anchor width block &gt; 61-19 inert cause: the reading is shadowed by the resolved target, never guessed" time="0.000324166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E4 rows: the Anchor width block &gt; 61-19 live: the shipped commit call and clamp are untouched, and no local writer exists" time="0.000074583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-11 E4 rows: the Anchor width block &gt; 61-19 no new surface: one stepper, and the caption testid still precedes its style" time="0.000117459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Render row (E3) &gt; mounts exactly one Render block as the FIRST row of the Paint tab" time="0.000155958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Render row (E3) &gt; offers exactly the two option ids, both from the model constants" time="0.000160125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Render row (E3) &gt; binds the group label, the row label and the shipped Mixed caption" time="0.000128666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Render row (E3) &gt; marks an option active only for the selection mode and skips the active press" time="0.000091333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Render row (E3) &gt; is gated on the Paint tab and the watercolor module, never on anchors" time="0.000144417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Render row (E3) &gt; never routes the mode through the numeric field path" time="0.000119709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Advanced wet-globals disclosure (E5) &gt; mounts exactly one collapsed disclosure after the numeric field map" time="0.000271792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Advanced wet-globals disclosure (E5) &gt; is a simple-ribbon presentation only — watercolor mode mounts nothing" time="0.000123">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Advanced wet-globals disclosure (E5) &gt; binds aria-expanded and swaps the two 12px chevrons" time="0.000109375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Advanced wet-globals disclosure (E5) &gt; maps the seven model rows to one SliderStepper each, committing per stroke" time="0.000259417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-12 Advanced wet-globals disclosure (E5) &gt; renders the UI-SPEC note verbatim in one line-height 1.5 element" time="0.000114292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-22 G-11 — the Anchor width control in the list view &gt; mounts the control in the default list view behind anchorWidthListVisible" time="0.000149958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-22 G-11 — the Anchor width control in the list view &gt; shares ONE component between the two mounts" time="0.0001165">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-22 G-11 — the Anchor width control in the list view &gt; keeps every shipped E4 identifier inside the component body" time="0.000152958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-22 G-11 — the Anchor width control in the list view &gt; declares the component AFTER the Paint-tab gate" time="0.000096417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-22 G-11 — the Anchor width control in the list view &gt; feeds the list-view mount the Size reading of the SAME ids" time="0.000101167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-25 UI-02/UI-05 — the declared readout and explanation weights &gt; renders the readout inside the declared span and nothing beyond the four properties" time="0.00025375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-25 UI-02/UI-05 — the declared readout and explanation weights &gt; keeps exactly the one declared style in the E4 region, and still no fixed width" time="0.000074125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts" name="61-25 UI-02/UI-05 — the declared readout and explanation weights &gt; sets both explanation strings at 600 — the italic red Mixed stays the only 400" time="0.000218541">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/strokeSettingsModel.test.ts" timestamp="2026-11-11T11:44:03.849Z" hostname="efx2.home" tests="176" failures="1" errors="0" skipped="0" time="0.073782458">
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field registry: the locked per-engine sets &gt; brush exposes size / opacity / shape detail / blending / smoothing only" time="0.001133333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field registry: the locked per-engine sets &gt; water color exposes size (1..800) plus the seven 0..100 canonical globals" time="0.00020425">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field registry: the locked per-engine sets &gt; erase strength and Spread are absent from both registries" time="0.000789542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field reads: absolute, mixed, first-selected representative &gt; returns the absolute value when every selected stroke agrees" time="0.000146375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field reads: absolute, mixed, first-selected representative &gt; returns mixed with the FIRST-SELECTED value when the selection differs" time="0.000071584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field reads: absolute, mixed, first-selected representative &gt; falls back to the field default for a missing or non-finite key" time="0.00011475">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field reads: absolute, mixed, first-selected representative &gt; reads the representative colour from the first-selected id and flags any difference" time="0.000103084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q field reads: absolute, mixed, first-selected representative &gt; maps a null colour to the overlay neutral and still reports mixed repeats" time="0.000081708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q patch builders: canonical units only &gt; builds brush and watercolor params patches" time="0.000118292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q patch builders: canonical units only &gt; maps the smoothing segment to antiAlias 0..3" time="0.000074834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q patch builders: canonical units only &gt; builds a colour-only patch" time="0.000055834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q open resolution and the dismissal edge &gt; opens only for an active surface with a non-empty, non-dismissed selection" time="0.000084583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q open resolution and the dismissal edge &gt; reopens a dismissed dialog only after the selection emptied while active" time="0.000072333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q open resolution and the dismissal edge &gt; marks saw-empty only while dismissed, active and empty" time="0.000069209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q open resolution and the dismissal edge &gt; the bundle contract carries appearance and geometry members as boolean | Promise&lt;boolean&gt;" time="0.000159292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; renders its card only through resolveStrokeSettingsOpen" time="0.002346958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; Escape outside the dialog hides it; an editable field inside owns its own Escape" time="0.000482667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; a dismissed non-empty selection stays hidden; empty-then-reselect reopens it" time="0.000270959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; the close button falls back to the sticky dismissal without closeMoveMode" time="0.000159208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; the close button LEAVES Move mode when the bundle provides closeMoveMode" time="0.0005875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; Escape also LEAVES Move mode when the bundle provides closeMoveMode" time="0.000166292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; header drag persists across selection changes and dismiss/reopen" time="0.00050975">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; the Size row is a release-commit SliderStepper that commits one bundle patch for the whole selection" time="0.000912583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog shell &gt; structural pins: test ids, signal reads, no useState, no color tab yet" time="0.000155875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; renders every brush Paint field as a release-commit SliderStepper" time="0.002143166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; renders the full water color field set in canonical units" time="0.002706125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; shows Mixed on differing numeric rows and on the smoothing group" time="0.000511209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; marks the agreed smoothing segment active and hides the Mixed caption" time="0.000303584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; shows the selected strokes colour as a read-only thumb with a red Mixed badge" time="0.000373833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; hides the Mixed badge when every selected stroke agrees" time="0.000331666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; uses the Document sound header chrome and the app scrollbar" time="0.000085208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; puts Geometry, Stack and Paint on ONE pinned tab row, Geometry by default" time="0.001129167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; switches content per tab and keeps the color readout inside Paint" time="0.00142675">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; omits the Stack tab when the bundle has no reorderStroke" time="0.000351292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; gives the color block the full row and shows hex + rgb beneath it" time="0.0003705">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; offers a bottom resize grip for the sheet height" time="0.000171583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; pins the UAT ranges: size 800, scale 500, position 2000" time="0.000097125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; lets every dialog slider accept typed values beyond the track range" time="0.000254333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog fields and shared color &gt; structural pins: no picker, no Studio writes, no useState" time="0.000243041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; starts every control at its identity value" time="0.000066458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; compounds uniform scale per commit about the selection centre" time="0.000176375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; updates one scale axis without touching the other" time="0.000082">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; applies the rotation delta about the centre" time="0.000082167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; accepts typed values beyond the track ranges and refuses same-value or non-finite input" time="0.000091291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q geometry session and deltas &gt; rounds typed X/Y targets to integer pixel deltas and refuses sub-pixel moves" time="0.000072125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; renders X / Y / scale / rotation as release-commit free-entry rows" time="0.001524625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; awaits each transform and advances the session only on a true result" time="0.001033458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; keeps the previous session value when the commit is refused" time="0.0002935">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; re-baselines scale and rotation on a selection membership change" time="0.000912708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; moves by the typed absolute X/Y delta and ignores a no-op target" time="0.000333209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-p5q dialog geometry &gt; structural pins: selection-box centre source, no persistent transform record" time="0.000158458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; renders the Stack tab for BOTH modules and mounts its section only when opened" time="0.001401916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; is absent when the bundle provides no reorderStroke" time="0.000477625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; shows the dot, serial, position and both neighbours for one selected stroke" time="0.000453416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; renders an em dash at each stack edge" time="0.000547917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; renders the position row as a release-commit free-entry SliderStepper without range bypass" time="0.000403833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; commits one reorder per gesture and nothing for the current position" time="0.001188458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; collapses the Enter + blur pair into ONE call and frees the next gesture" time="0.000335959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; re-keys the position row after a refused commit so the typed value never survives" time="0.000519125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; re-keys after a void (watercolor) commit too" time="0.000677209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; a same-position commit changes neither the call count nor the slider key" time="0.000490333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; disables the section with the hint for a multi-stroke selection" time="0.000616167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261024-vga Stack section: exact paint-order placement &gt; disables the section when the single selected id is absent from the listing" time="0.000389625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur keep-open-on-empty open law &gt; opens an empty selection only when the surface keeps the sheet open" time="0.000065667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur keep-open-on-empty open law &gt; an explicit close still wins under keep-open-on-empty" time="0.000047334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur keep-open-on-empty open law &gt; switches the saw-empty marker OFF under keep-open-on-empty" time="0.000041208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; renders the Paint | Eraser | All row for water color only, defaulting to Paint" time="0.000529291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; hides the Paint tab in Eraser mode and falls a paint request back to Geometry" time="0.001719167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; hides the Paint tab whenever an eraser stroke is selected, even on All" time="0.000652458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; the close button swallows the header press so its click still fires" time="0.00015175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; keeps the sheet open on an empty water color selection" time="0.000464875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; the filter buttons write the shared filter signal" time="0.000394916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; an explicit close writes the module flag and wins until select mode re-enters" time="0.000369125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261029-eur dialog filter row, Paint-tab law and open-on-empty &gt; structural pins: no per-instance dismissal ref, module signal read in the body" time="0.0000965">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 readPaintSeedVariation and its patch builder &gt; reads ON only when the selection is non-empty and EVERY appearance carries a finite non-negative salt" time="0.000112834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 readPaintSeedVariation and its patch builder &gt; builds the explicit true/false patch" time="0.000061875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 the Paint seed variation switch row &gt; is the FIRST Geometry child on water color, with the shared switch chrome" time="0.001050083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 the Paint seed variation switch row &gt; reads ON when every appearance carries a salt and clicking sends OFF for the whole selection" time="0.000526167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 the Paint seed variation switch row &gt; clicking from OFF sends the true flag once for the whole selection" time="0.000466792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 the Paint seed variation switch row &gt; is absent for the brush module and reads OFF on a mixed/saltless selection" time="0.000600167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-cf9 the Paint seed variation switch row &gt; structural pins: no row padding constant and the shared switch chrome" time="0.000124333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf stroke list model &gt; maps each recorded tool to its display label" time="0.0000455">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf stroke list model &gt; matches the stroke-kind filter (paint = any non-lift kind)" time="0.000057375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf stroke list model &gt; resolves the tip name through findTip with the raw brushId fallback" time="0.000043">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf stroke list model &gt; sorts a NEW array topmost-first by position, never mutating the input" time="0.000107792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf stroke list model &gt; breaks a same-position tie by the creation serial" time="0.000042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf fine-filter state &gt; defaults both fine filters to All" time="0.000034666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf fine-filter state &gt; both setters are compare-then-write — 1000 identical writes notify zero times" time="0.000295167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf fine-filter state &gt; every select-mode call resets both — entry, re-entry while ON and exit" time="0.000075708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf fine-filter state &gt; the type filter resets both only when its value actually changes" time="0.000049083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; lists only the present tools in the canonical brush/water/pen/lift order" time="0.000063334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; dedupes tips in first-appearance order with their resolved names" time="0.000060292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; filters rows by tool and tip, with All matching everything" time="0.000121083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; resolves a stored filter to itself only while it is offered" time="0.000071291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; summarizes the FULL frame listing with the exact string" time="0.000044125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf finer filter model &gt; no offered tool/tip combination yields zero rows" time="0.000120916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; lists the frame strokes topmost-first with no tab row and no old caption" time="0.000669291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; clicking a row selects exactly that stroke and KEEPS the list" time="0.000823459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; a non-empty selection renders the list rows and the toggle reveals the tabs" time="0.000849334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; the brush sheet renders no list, no rows and no type chrome" time="0.000362834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; the Paint/Eraser/All filter narrows the rows and lift rows read Eraser" time="0.000260209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; renders the finer filters on an empty selection: present tools only, resolved tip names" time="0.000358292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; hides the tip select when only one tip is present" time="0.00016475">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; the tool select filters the rows through the module signal" time="0.000540125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; the tip select narrows rows and an orphaned tip resets to All on a tool change" time="0.000445417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; a stored filter the rows do not offer renders as All and writes nothing" time="0.000199375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; shows the frame summary over the full listing, unaffected by the filters" time="0.000175334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; distinguishes an empty frame from a filter with no match" time="0.00045075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; no offered tool/tip combination in the dialog yields zero rows" time="0.002030042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; lives inside the app scroll area and keeps the chrome sentence case" time="0.000935125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; the brush sheet renders none of the finer-filter chrome" time="0.000171458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261031-euf empty-selection stroke list dialog &gt; pins the sentence-case CSS for the selects and the rows" time="0.000141375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; resolves the view: a settings request over an empty selection falls back to the list" time="0.000064292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; invalidates ONLY a settings request observed over an empty selection" time="0.000048666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; natively disables the view toggle on an empty selection" time="0.0002735">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; keeps the list while a stroke is selected and round-trips through the toggle" time="0.001031459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; never restores a settings request after the selection was observed empty" time="0.001116708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; re-asserts an invalidated request so the header toggle never dead-clicks" time="0.000061042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; keeps the settings view across a non-empty selection change" time="0.000758125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; renders the type filter, fine filters and summary in the LIST view only" time="0.000760167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; leaves the brush sheet unchanged: no toggle, no list, its tabs as today" time="0.000541125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; resolves the inclusive DISPLAYED range and rejects invalid indices" time="0.000144541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; plain replaces, Cmd and Ctrl toggle, Shift takes the displayed range" time="0.001037">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; Shift before any plain or Cmd click behaves as a plain click" time="0.000150167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; marks a selected row wrapper with is-selected" time="0.00019075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; a row trash deletes only its own stroke and never touches the selection" time="0.000473">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; the global trash is disabled below two strokes and deletes the whole selection" time="0.000331417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-jmm list-first stroke settings sheet &gt; a delete that empties the selection renders the list, and the request stays invalidated" time="0.000906917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-mvg &quot;Preview stroke size&quot; switch &gt; defaults OFF and toggles the session signal from the header in BOTH views" time="0.000773209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-mvg &quot;Preview stroke size&quot; switch &gt; is not gated by the selection size and carries the header chrome" time="0.000174042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-mvg &quot;Preview stroke size&quot; switch &gt; renders no switch for a brush bundle" time="0.000147542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; renders below the header and above the view gate in BOTH views" time="0.000701333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; is a role=switch control labelled Draft, OFF by default, and stops the header drag" time="0.000186125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; awaits the bundle arm before it writes Draft ON" time="0.002348625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; leaves Draft OFF when the arm refuses, and enters directly without an arm" time="0.001696292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; routes the OFF click through the bundle settle instead of writing the signal" time="0.001682917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; leaves Draft ON and does not throw when the bundle has no settle" time="0.000403792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; renders no strip for a brush bundle" time="0.000146958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; settles exactly once when the sheet closes" time="0.000151375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m Draft strip &gt; closes without a settle and does not throw" time="0.000124">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m cache eye &gt; defaults visible, is never disabled, and hides then shows the sheet" time="0.00083825">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m cache eye &gt; is available in Draft too, and Draft and Preview never reset each other" time="0.000315875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="261101-o2m cache eye &gt; renders no eye for a brush bundle (the strip is watercolor-only)" time="0.000122208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; enables for exactly one selected vector stroke and titles itself Edit path" time="0.000065792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; refuses a single selection that is not a vector stroke" time="0.000044">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; refuses a multi-selection with the single-stroke reason" time="0.000040542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; refuses an empty selection with the single-stroke reason" time="0.000049084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; reports pressed only while the session edits the SELECTED stroke" time="0.000057584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; requests an exit only when an edit is open under a closed gate" time="0.000045042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; exits when the selection names a different stroke than the open edit" time="0.004077208">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3537:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 path-edit gate (Edit path header button) &gt; keeps an open edit on a selection that still names its stroke" time="0.000055333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-19 anchor-width target (the width commit writes one named path) &gt; targets nothing for an empty selection" time="0.000035042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-19 anchor-width target (the width commit writes one named path) &gt; targets nothing when no path edit is open" time="0.000036875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-19 anchor-width target (the width commit writes one named path) &gt; targets nothing when the open edit names a different stroke" time="0.000028708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-19 anchor-width target (the width commit writes one named path) &gt; targets the selected stroke when the open edit names it" time="0.000028792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-19 anchor-width target (the width commit writes one named path) &gt; targets nothing for a multi-selection" time="0.000034958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-19 anchor-width target (the width commit writes one named path) &gt; targets nothing for a non-integer id or an empty session id" time="0.000041459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 Anchor width reading (Paint tab) &gt; pins the band constants and reads an empty anchor selection at 1.0" time="0.000124083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 Anchor width reading (Paint tab) &gt; reads an absent width as 1.0 and reports mixed across differing factors" time="0.000054708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 Anchor width reading (Paint tab) &gt; takes the FIRST selected index as the representative value" time="0.000036167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 Anchor width reading (Paint tab) &gt; computes the effective px from Size x the anchor factor, never a scale" time="0.000060583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 Anchor width reading (Paint tab) &gt; clamps a typed factor into the band and keeps 1.0 as the sparse default" time="0.00005875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 E4 error, partial and long-text rows &gt; E4 error: clamps BOTH ends and reports no error surface" time="0.000113208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 E4 error, partial and long-text rows &gt; E4 partial: mixed stays reportable and each anchor keeps its own factor" time="0.000089667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-11 E4 error, partial and long-text rows &gt; E4 long-text: the readout stays numeric at the top of the band" time="0.000049541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Render mode reading (Paint tab) &gt; reads simple-ribbon when every selected stroke carries it" time="0.000044792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Render mode reading (Paint tab) &gt; reads mixed with no representative when the selection disagrees" time="0.00004375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Render mode reading (Paint tab) &gt; treats an absent mode as watercolor and never as mixed" time="0.000050333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Render mode reading (Paint tab) &gt; reads the default for an empty selection" time="0.00002925">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Render mode reading (Paint tab) &gt; E3 long-text: the two option labels are the fixed UI-SPEC constants" time="0.000051042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Render mode reading (Paint tab) &gt; never enters the numeric field registry" time="0.000102666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Advanced wet globals (E5) &gt; is exactly the Water color rows minus Size, frozen" time="0.000070416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Advanced wet globals (E5) &gt; E5 long-text: asserts the seven labels by name and Size as absent" time="0.000081375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Advanced wet globals (E5) &gt; carries the UI-SPEC note verbatim" time="0.000038292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Advanced wet globals (E5) &gt; reads 0 for an absent or non-finite wet key" time="0.000109834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/strokeSettingsModel.test.ts" name="61-12 Advanced wet globals (E5) &gt; reads the stored value and reports a mixed selection" time="0.000080167">
+        </testcase>
+    </testsuite>
+</testsuites>

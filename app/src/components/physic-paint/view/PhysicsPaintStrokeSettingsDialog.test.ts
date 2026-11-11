@@ -150,6 +150,52 @@ describe('61-11 Edit path header button (E2)', () => {
 });
 
 // ============================================================
+//  61-27 (WR-04) — the exit is TARGET-AWARE.
+//
+//  The shipped exit predicate only asked "is the gate closed". A one-stroke
+//  selection keeps the gate ENABLED, so an open edit on stroke A survived a
+//  click on stroke B: the sheet showed B while every canvas drag still wrote
+//  A's anchors. The render body now computes the target mismatch and the
+//  shipped lifecycle effect gains it as a dependency, so the marker reaches
+//  the ONE performer whenever the two ids disagree.
+// ============================================================
+
+describe('61-27 WR-04 — selecting another stroke closes the open path edit', () => {
+  const GUARD_START = 'const pathEditActive = pathEditMutationId.value !== null;';
+  const GUARD_END = 'const effectiveRequest';
+
+  function guardRegion(): string {
+    return regionOf(dialogSource, GUARD_START, GUARD_END);
+  }
+
+  it('computes the target-mismatch marker in the render body, never a session write', () => {
+    const guard = guardRegion();
+    expect(guard).toContain('const pathEditTargetMismatch =');
+    expect(guard).toContain('pathEditExitRequested = true;');
+    expect(guard).not.toContain('exitPathEdit(');
+  });
+
+  it('passes both ids to the target-aware exit predicate', () => {
+    const guard = guardRegion();
+    expect(guard).toContain('shouldExitPathEdit({');
+    expect(guard).toContain('selectedMutationId,');
+    expect(guard).toContain('pathEditMutationId: pathEditMutationId.value,');
+  });
+
+  it('rides the shipped lifecycle effect through the mismatch dependency', () => {
+    const lifecycle = regionOf(
+      dialogSource,
+      'const wasOpen = wasOpenRef.current;',
+      '}, [open, bundle, pathEditGateEnabled, pathEditTargetMismatch]);',
+    );
+    expect(lifecycle).toContain('pathEditExitRequested = false;');
+    expect(lifecycle).toContain('exitPathEdit();');
+    // Still the ONE shipped effect: the exit added no third useEffect.
+    expect(countOf(dialogSource, 'useEffect(')).toBe(2);
+  });
+});
+
+// ============================================================
 //  61-11 Task 3 — close the E2 and E4 UI-consideration rows.
 //
 //  Row ledger (every applicable row this plan carries):

@@ -1,0 +1,102 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts (43 tests | 3 failed) 11ms
+   × 61-27 WR-04 — selecting another stroke closes the open path edit > computes the target-mismatch marker in the render body, never a session write 3ms
+     → expected 'const pathEditActive = pathEditMutati…' to contain 'const pathEditTargetMismatch ='
+   × 61-27 WR-04 — selecting another stroke closes the open path edit > passes both ids to the target-aware exit predicate 1ms
+     → expected 'const pathEditActive = pathEditMutati…' to contain 'selectedMutationId,'
+   × 61-27 WR-04 — selecting another stroke closes the open path edit > rides the shipped lifecycle effect through the mismatch dependency 0ms
+     → missing end marker: }, [open, bundle, pathEditGateEnabled, pathEditTargetMismatch]);: expected -1 to be greater than 24653
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts (176 tests | 1 failed) 74ms
+   × 61-11 path-edit gate (Edit path header button) > exits when the selection names a different stroke than the open edit 4ms
+     → expected false to be true // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts > 61-27 WR-04 — selecting another stroke closes the open path edit > computes the target-mismatch marker in the render body, never a session write
+AssertionError: expected 'const pathEditActive = pathEditMutati…' to contain 'const pathEditTargetMismatch ='
+
+- Expected
++ Received
+
+- const pathEditTargetMismatch =
++ const pathEditActive = pathEditMutationId.value !== null;
++   if (shouldExitPathEdit({ pathEditActive, gateEnabled: pathEditGateEnabled })) {
++     pathEditExitRequested = true;
++   }
++
++   
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:173:19
+    171|   it('computes the target-mismatch marker in the render body, never a …
+    172|     const guard = guardRegion();
+    173|     expect(guard).toContain('const pathEditTargetMismatch =');
+       |                   ^
+    174|     expect(guard).toContain('pathEditExitRequested = true;');
+    175|     expect(guard).not.toContain('exitPathEdit(');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts > 61-27 WR-04 — selecting another stroke closes the open path edit > passes both ids to the target-aware exit predicate
+AssertionError: expected 'const pathEditActive = pathEditMutati…' to contain 'selectedMutationId,'
+
+- Expected
++ Received
+
+- selectedMutationId,
++ const pathEditActive = pathEditMutationId.value !== null;
++   if (shouldExitPathEdit({ pathEditActive, gateEnabled: pathEditGateEnabled })) {
++     pathEditExitRequested = true;
++   }
++
++   
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:181:19
+    179|     const guard = guardRegion();
+    180|     expect(guard).toContain('shouldExitPathEdit({');
+    181|     expect(guard).toContain('selectedMutationId,');
+       |                   ^
+    182|     expect(guard).toContain('pathEditMutationId: pathEditMutationId.va…
+    183|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts > 61-27 WR-04 — selecting another stroke closes the open path edit > rides the shipped lifecycle effect through the mismatch dependency
+AssertionError: missing end marker: }, [open, bundle, pathEditGateEnabled, pathEditTargetMismatch]);: expected -1 to be greater than 24653
+ ❯ regionOf src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:50:51
+     48|   expect(start, `missing start marker: ${startMarker}`).toBeGreaterTha…
+     49|   const end = source.indexOf(endMarker, start + startMarker.length);
+     50|   expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(star…
+       |                                                   ^
+     51|   return source.slice(start, end);
+     52| }
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:186:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/components/physic-paint/view/strokeSettingsModel.test.ts > 61-11 path-edit gate (Edit path header button) > exits when the selection names a different stroke than the open edit
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3537:9
+    3535|       selectedMutationId: 8,
+    3536|       pathEditMutationId: '7',
+    3537|     })).toBe(true);
+       |         ^
+    3538|     // An emptied selection is the same disagreement: the edit names a…
+    3539|     // the sheet no longer selects.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 215 passed (219)
+   Start at  12:44:02
+   Duration  1.13s (transform 408ms, setup 0ms, collect 1.12s, tests 85ms, environment 0ms, prepare 55ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-27-t1/junit.xml

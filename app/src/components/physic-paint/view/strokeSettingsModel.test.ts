@@ -3519,9 +3519,39 @@ describe('61-11 path-edit gate (Edit path header button)', () => {
   });
 
   it('requests an exit only when an edit is open under a closed gate', () => {
-    expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: false })).toBe(true);
-    expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: true })).toBe(false);
-    expect(shouldExitPathEdit({ pathEditActive: false, gateEnabled: false })).toBe(false);
+    expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: false, selectedMutationId: null, pathEditMutationId: null })).toBe(true);
+    expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: true, selectedMutationId: 7, pathEditMutationId: '7' })).toBe(false);
+    expect(shouldExitPathEdit({ pathEditActive: false, gateEnabled: false, selectedMutationId: null, pathEditMutationId: null })).toBe(false);
+  });
+
+  // 61-27 (WR-04): the exit predicate is TARGET-AWARE. The gate stays enabled
+  // for ANY one-vector-stroke selection, so "gate closed" alone let an open
+  // edit on stroke A survive a click on stroke B — the sheet showed B while
+  // every canvas drag still wrote A's anchors.
+  it('exits when the selection names a different stroke than the open edit', () => {
+    expect(shouldExitPathEdit({
+      pathEditActive: true,
+      gateEnabled: true,
+      selectedMutationId: 8,
+      pathEditMutationId: '7',
+    })).toBe(true);
+    // An emptied selection is the same disagreement: the edit names a stroke
+    // the sheet no longer selects.
+    expect(shouldExitPathEdit({
+      pathEditActive: true,
+      gateEnabled: true,
+      selectedMutationId: null,
+      pathEditMutationId: '7',
+    })).toBe(true);
+  });
+
+  it('keeps an open edit on a selection that still names its stroke', () => {
+    expect(shouldExitPathEdit({
+      pathEditActive: true,
+      gateEnabled: true,
+      selectedMutationId: 7,
+      pathEditMutationId: '7',
+    })).toBe(false);
   });
 });
 
