@@ -193,6 +193,15 @@ export const wireframeMode = signal(false);
 export const WIREFRAME_SETTLE_REFUSED_MESSAGE = 'Draft recompute refused — wireframe is on. Turn wireframe off to re-render.';
 
 /**
+ * 61-27 (IN-02): the ONE fixed busy-settle refusal — the combined physical /
+ * applying / mutation-locked / script-edit-in-flight gate refused the settle
+ * while another edit is running. Same contract as the wireframe line: one
+ * bounded terminal state, resolve false, never reject, never interpolated
+ * (UI-SPEC copy contract). Without it a track switch aborted in silence.
+ */
+export const DRAFT_SETTLE_BUSY_MESSAGE = 'Another edit is settling — try again.';
+
+/**
  * ON: arm Draft FIRST, then flip the latch — a subscriber that sees the latch
  * on must already observe Draft on, and the OFF settle needs Draft to exist.
  * OFF: clear this latch ONLY; the Studio's settle owns the Draft exit (clear

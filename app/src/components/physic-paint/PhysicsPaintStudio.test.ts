@@ -6964,9 +6964,12 @@ describe('61-13 wireframe latch — session-only, Draft-generalising', () => {
   });
 
   it('imports the whole latch surface from the ONE edition module', () => {
+    // 61-27 (IN-02): the import block gained `DRAFT_SETTLE_BUSY_MESSAGE` as its
+    // first member, so this shipped start marker was repointed at the new head
+    // of the SAME import — every symbol assertion below is unchanged.
     const editionImport = regionOf(
       studio,
-      'import {\n  deleteSelectedScriptStroke,',
+      'import {\n  DRAFT_SETTLE_BUSY_MESSAGE,\n  deleteSelectedScriptStroke,',
       "} from './view/scriptStrokeEdition';",
     );
     for (const symbol of [

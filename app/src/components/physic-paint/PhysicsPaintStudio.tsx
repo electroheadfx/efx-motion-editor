@@ -304,6 +304,7 @@ import {
   toggleAquarelleSelectMode,
 } from './view/aquarelleStrokeSelection';
 import {
+  DRAFT_SETTLE_BUSY_MESSAGE,
   deleteSelectedScriptStroke,
   draftMode,
   draftPixelsDirty,
@@ -5421,12 +5422,23 @@ export function PhysicsPaintStudio() {
     if (!draftMode.peek() && !draftPixelsDirty.peek()) return Promise.resolve(true);
     // Single-flight: two exits racing each other join ONE recompute.
     if (draftSettlePromiseRef.current) return draftSettlePromiseRef.current;
+    // 61-27 (IN-02): a settle the gates refuse is still a REFUSAL — it
+    // publishes one bounded line through the shared capsule before resolving
+    // false, so every caller's fail-closed abort (the track switch included)
+    // is visible. This refusal owns no sheet state, so it never claims
+    // `scriptApplyRefusalOwnedRef` — that flag would swallow another surface's
+    // message.
     if (
       isPhysicalMutationLocked()
       || rotoScript.applying.peek()
       || rotoScript.mutationLocked.peek()
       || isAquarelleScriptEditInFlight()
-    ) return Promise.resolve(false);
+    ) {
+      setApplyMessage(DRAFT_SETTLE_BUSY_MESSAGE);
+      setApplyStatus('error');
+      setLastError(DRAFT_SETTLE_BUSY_MESSAGE);
+      return Promise.resolve(false);
+    }
     const run = (async () => {
       const playFrame = launchContextRef.current?.startFrame ?? 0;
       setAquarelleScriptEditInFlight(true);
@@ -5516,7 +5528,8 @@ export function PhysicsPaintStudio() {
     void settleDraftScript()
       .then((settled) => {
         // Fail closed: a refused recompute keeps the session on the outgoing
-        // track; the settle has already surfaced its refusal message.
+        // track. Every false exit from the settle has published its reason
+        // (61-27 IN-02), so this aborted switch is never silent.
         if (!settled) return;
         commitSwitch();
       })
