@@ -6,10 +6,10 @@ current_phase: 61
 current_phase_name: Vector Painting Tool
 status: verifying
 stopped_at: Completed 61-31-PLAN.md
-last_updated: "2026-11-11T20:48:57.594Z"
+last_updated: "2026-11-11T21:22:54.730Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: 1ce179f3c5dd2307a444fbb7af868e849d01fd3c
+state_head: 73d704c1d182f54f58ccaa0f264f98eb501d5527
 progress:
   total_phases: 4
   completed_phases: 2
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 Phase: 61 (Vector Painting Tool) — EXECUTING
 Plan: 31 of 31
 Status: Phase complete — ready for verification
-Last activity: 2026-11-11 - Completed quick task 261111-tul: SliderStepper commit boundary
+Last activity: 2026-11-11 - Completed quick task 261111-ucf: brush picks and paint-control releases edit the selected strokes
 
 Progress: [█████░░░░░] 50%
 
@@ -344,6 +344,7 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: 61-31: the Studio hydrates curveMode/vector in a SECOND .map() pass so the shipped 61-12 render-mode source pins stay byte-identical
 - [Phase 61]: 61-31: the draft always draws DEFAULT_AQUARELLE_CURVE_MODE and the recorded loop draws each stroke's own mode — a spline path never inherits the edit target's mode
 - [Phase 61]: 61-31: under Spline wasPromoted is false (promotion returns the list untouched) so a grab-and-release commits nothing; chrome shape follows ownership per 61-UI-SPEC §340-341, including the 61-22 selection ring
+- [Phase 61]: Quick 261111-ucf: every brush pick and paint-control release now commits onto the selected paint strokes through one aquarellePaintControls seam (filter 'paint'); the patch carries the POST-pick bag, Reset is one seven-key batch, and lift strokes are never addressed
 
 ### Pending Todos
 
@@ -428,6 +429,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261109-uj0 | Phase 60 cached-key paint, compiled-build regression: localized capture gate FAILED packaged UAT (near-blank snapshots overwrote fresh paint, including keyboard-arrow navigation); acceptance reverted to the global-only 0.3 mean in 0c0520917, with the localized 12x12 measurement and a non-DEV console.warn kept as rejection diagnostics; quick CLOSED as rollback+diagnostic (22:21 rebuild verified, keyboard repro gone). Follow-up 9e0bd2597 makes the gate color-aware (paper-relative per-channel pigment path, floor 0.5) because luminance rejected yellow/orange washes while red/blue passed; packaged UAT PASSED 2026-11-09 (user-confirmed) | 2026-11-09 | 9e0bd2597 | [261109-uj0-phase-60-issue-the-faint-wet-wash-captur](./quick/261109-uj0-phase-60-issue-the-faint-wet-wash-captur/) |
 | 261111-t74 | Selection edit port + brush patch — selected strokes accept a brush id and per-brush multipliers as one undoable edit (automated-ready; no UI consumer yet) | 2026-11-11 | be4118871 | [261111-t74-selection-edit-port-brush-patch](./quick/261111-t74-selection-edit-port-brush-patch/) |
 | 261111-tul | SliderStepper commit boundary: optional onCommit fires once per gesture at the release boundaries (track pointerup/cancel, typed Enter/blur, ± press end, keyboard activation) with the gesture's own value, Enter+blur deduped, equal-value commits allowed, absent prop byte-identical (automated-ready; no consumer wired) | 2026-11-11 | 1ce179f3c | [261111-tul-sliderstepper-commit-boundary-milestone-](./quick/261111-tul-sliderstepper-commit-boundary-milestone-/) |
+| 261111-ucf | Brush picks and paint-control releases edit the SELECTED paint strokes through one aquarellePaintControls seam (pickAquarelleBrush, param/params/multiplier commits with filter 'paint'); all four pick surfaces and every slider release wired, Globals Reset is ONE seven-key batch, lift strokes never addressed, live brush/slider behaviour unchanged (automated-ready; visible UAT pending) | 2026-11-11 | 73d704c1d | [261111-ucf-brush-picks-and-paint-controls-edit-the-](./quick/261111-ucf-brush-picks-and-paint-controls-edit-the-/) |
 
 ## Roadmap Evolution
 
@@ -438,7 +440,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T14:26:36.769Z
+Last session: 2026-11-11T21:22:37.520Z
 Stopped at: Completed 61-31-PLAN.md
 Resume file: None
 
