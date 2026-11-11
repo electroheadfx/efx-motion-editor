@@ -278,6 +278,7 @@ import {
   aquarelleSelectMode,
   aquarelleStrokesOnFrame,
   beginAquarelleAppearanceEdit,
+  beginAquarelleCurveModeEdit,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
   beginAquarellePaintSeedRerollEdit,
@@ -333,6 +334,7 @@ import {
 import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';
 import type { AquarelleRenderMode } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import {
@@ -9240,6 +9242,77 @@ export function PhysicsPaintStudio() {
     clearOwnedScriptApplyRefusal,
   ]);
 
+  // 61-31 (G-20): the Paint tab's `Curve` row. Same shape as the render-mode
+  // handler — one batch + its re-bake = ONE `aquarelle-script` ledger entry —
+  // but the commit seam is the curve-mode wrapper, which replaces the
+  // evaluation mode and re-samples the points in the SAME write; the authored
+  // anchors and their handles are never rewritten. Guards are peek-only: the
+  // handler must not subscribe the Studio body.
+  const handleAquarelleCurveModeStrokes = useCallback(async (
+    ids: readonly number[],
+    mode: AquarelleCurveMode,
+  ): Promise<boolean> => {
+    if (isPhysicalMutationLocked()) return false;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;
+    if (isAquarelleScriptEditInFlight()) return false;
+    // Stale ids never leak across frames: keep only live strokes of the
+    // current edit frame before the batch edit.
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
+    if (frameIds.length === 0) return false;
+    // 261028-k03d: recover a legacy key's missing durable base before the edit.
+    await ensureAquarelleDurableBaseRef.current(playFrame);
+    // 261101-o2m (WR-03): read the Draft state AFTER the await.
+    const draft = draftMode.peek();
+    // One curve-mode batch = one edit with before/after script snapshots.
+    const editId = beginAquarelleCurveModeEdit(frameIds, mode);
+    if (editId === null) return false;
+    if (draft) {
+      rotoMoveHistory.recordAquarelleScriptEdit(editId);
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return true;
+    }
+    setAquarelleScriptEditInFlight(true);
+    try {
+      // The recorded timeline IS the script (same replay source as delete).
+      aquarelleResetSheetRef.current?.();
+      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+      if (ok) {
+        rotoMoveHistory.recordAquarelleScriptEdit(editId);
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+        return true;
+      }
+      // Failed re-bake: put the pre-edit curve mode back exactly.
+      restoreAquarelleEditSnapshot(editId, 'undo');
+      const error = rotoScript.error.peek();
+      const message = buildRotoScriptApplyRefusalMessage(error)
+        ?? error?.message
+        ?? 'Could not re-apply the watercolor script — the curve mode was restored.';
+      setLastError(message);
+      setApplyMessage(message);
+      setApplyStatus('error');
+      scriptApplyRefusalOwnedRef.current = true;
+      return false;
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    rotoTimelineModel,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+  ]);
+
   // 261024-mz5 Task 3: corner-scale / top-rotate of the whole watercolor
   // selection. The overlay wrote only the live preview during the gesture; this
   // release path transforms every recorded stroke + its payload-timeline entry
@@ -11539,6 +11612,7 @@ export function PhysicsPaintStudio() {
       canvasHeight,
       handleAquarelleAppearanceStrokes,
       handleAquarelleRenderModeStrokes,
+      handleAquarelleCurveModeStrokes,
       handleAquarelleMoveStrokes,
       handleAquarelleTransformStrokes,
       handleAquarellePlaceStroke,
@@ -11570,6 +11644,17 @@ export function PhysicsPaintStudio() {
           return stroke?.renderMode === undefined
             ? appearance
             : { ...appearance, renderMode: stroke.renderMode };
+        }).map((appearance) => {
+          // 61-31 (G-20): the curve reading needs the recorded stroke's mode and
+          // whether it carries a path at all. Both obey the same sparse-field
+          // contract as renderMode: an absent key stays absent.
+          const stroke = getRecordedAquarelleStroke(appearance.mutationId);
+          if (stroke === undefined) return appearance;
+          return {
+            ...appearance,
+            ...(stroke.curveMode === undefined ? {} : { curveMode: stroke.curveMode }),
+            vector: stroke.anchors !== undefined,
+          };
         }),
         applyAppearance: (ids, patch: ScriptStrokeAppearancePatch) =>
           handleAquarelleAppearanceStrokes(ids, patch),
@@ -11577,6 +11662,10 @@ export function PhysicsPaintStudio() {
         // selection — vector or hand-painted — is written by one
         // `beginAquarelleRenderModeEdit`, so the batch is one undo entry.
         applyRenderMode: (ids, mode) => handleAquarelleRenderModeStrokes(ids, mode),
+        // 61-31 (G-20): the Curve row's ONE commit seam. The vector strokes of
+        // the selection are written by one `beginAquarelleCurveModeEdit`, so
+        // the batch is one undo entry and the seed salts are untouched.
+        applyCurveMode: (ids, mode) => handleAquarelleCurveModeStrokes(ids, mode),
         moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
         transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
         // 61-11 (VEC-02 / VEC-03): the vector gate and the Anchor width

@@ -16,6 +16,7 @@ import {
   AQUARELLE_ANCHOR_WIDTH_MAX,
   AQUARELLE_ANCHOR_WIDTH_MIN,
   AQUARELLE_ANCHOR_WIDTH_STEP,
+  CURVE_MODE_OPTIONS,
   FRESH_STROKE_GEOMETRY_SESSION,
   RENDER_MODE_OPTIONS,
   SIMPLE_RIBBON_GLOBALS,
@@ -35,6 +36,7 @@ import {
   matchesStrokeTypeFilter,
   readAnchorWidthReading,
   readColorField,
+  readCurveMode,
   readNumericField,
   readPaintSeedVariation,
   readRenderMode,
@@ -812,6 +814,9 @@ export function PhysicsPaintStrokeSettingsDialog({
   // 61-12 (VEC-04): the Paint tab's Render row reading. The mode rides the
   // appearance objects the bundle hydrates — never a numeric field.
   const renderModeReading = readRenderMode(appearances);
+  // 61-31 (G-20): the Curve row reading. Spline is an evaluation mode over the
+  // same anchors, so only the VECTOR appearances participate.
+  const curveModeReading = readCurveMode(appearances);
   // 61-12 (D-13): the disclosure's own open state, ref-held and read here
   // (render-body READ only — the click handler owns the write).
   const advancedWetOpenSignal: Signal<boolean> = advancedWetOpenRef.current;
@@ -1684,6 +1689,53 @@ export function PhysicsPaintStrokeSettingsDialog({
                             // writes nothing — no edit, no undo entry.
                             if (active) return;
                             void bundle.applyRenderMode?.(ids, option.mode);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {/* 61-31 (G-20 / D-01 revised): the curve-evaluation switch.
+                  Spline is a read-time view over the SAME anchors, so the row
+                  mounts only when the selection holds a VECTOR stroke and the
+                  bundle can commit — a hand-painted-only selection hides it
+                  instead of writing an inert key. */}
+              {engineModule === 'watercolor' && curveModeReading.available && bundle.applyCurveMode !== undefined ? (
+                <div data-testid="stroke-settings-curve-mode-block">
+                  <div style={SEGMENT_LABEL_ROW_STYLE}>
+                    <span style={PAINT_ROW_LABEL_STYLE}>Curve</span>
+                    {curveModeReading.mixed ? (
+                      <span
+                        data-testid="stroke-settings-curve-mode-mixed"
+                        style={MIXED_CAPTION_STYLE}
+                      >
+                        Mixed
+                      </span>
+                    ) : null}
+                  </div>
+                  <div
+                    role="group"
+                    aria-label="Curve"
+                    data-testid="stroke-settings-curve-mode"
+                    style={SEGMENT_GROUP_STYLE}
+                  >
+                    {CURVE_MODE_OPTIONS.map((option) => {
+                      const active = !curveModeReading.mixed && curveModeReading.mode === option.mode;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          data-testid={`stroke-settings-curve-mode-option-${option.id}`}
+                          aria-pressed={active}
+                          style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
+                          onClick={() => {
+                            // Pressing the mode the selection already holds
+                            // writes nothing — no edit, no undo entry.
+                            if (active) return;
+                            void bundle.applyCurveMode?.(ids, option.mode);
                           }}
                         >
                           {option.label}
