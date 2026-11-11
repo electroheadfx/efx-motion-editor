@@ -697,6 +697,10 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   // handlers never re-render the surface mid-gesture; the visual preview
   // travels on a signal.
   const dragRef = useRef<PathEditDragState | null>(null);
+  // 61-28 (CR-01): the overlay's own element. The edit-lifetime effect below
+  // reaches the captured pointer through this ref — the pointer handlers that
+  // would otherwise release it are unbound the moment the edit closes.
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
 
   // Narrow reads: this leaf is the only subscriber to the session latches.
   const penActive = vectorPenActive.value;
@@ -750,6 +754,25 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       window.removeEventListener('keydown', onKeyDown, true);
     };
   }, [penActive, editMutationId]);
+
+  useEffect(() => {
+    // 61-28 (CR-01) — the edit-lifetime law: a drag belongs to the edit that
+    // opened it. Two cases end it here — the edit CLOSED (the latch went null),
+    // and the edit RETARGETED to another stroke. Both are cancelled, never
+    // flushed: an abandoned gesture must not write anchors into any stroke, so
+    // this effect commits nothing. It releases the pointer the gesture
+    // captured, which no pointer handler can do once the edit is closed.
+    const drag = dragRef.current;
+    if (drag === null) return;
+    // The drag still belongs to the open edit: this render is unrelated, and a
+    // live gesture is never cleared by it.
+    if (editMutationId !== null && String(drag.mutationId) === editMutationId) return;
+    dragRef.current = null;
+    // Compare-then-write (efx-preact-reactivity): an already-clear preview is
+    // not written again.
+    if (vectorPathEditDrag.peek() !== null) vectorPathEditDrag.value = null;
+    releasePointerCapture(surfaceRef.current, drag.pointerId);
+  }, [editMutationId]);
 
   const playFrame = props.getPlayFrame();
   // 61-UAT: spines, anchors, handles and rungs are CONSTRUCTION chrome, never
@@ -999,6 +1022,10 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   const continueEditDrag = (event: TargetedPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (drag === null) return;
+    // 61-28 (CR-01): a drag whose stroke is no longer the open edit's target
+    // can neither preview nor commit. The cleanup effect owns the clearing;
+    // this guard makes a same-tick stray event harmless.
+    if (editTargetMutationId === null || drag.mutationId !== editTargetMutationId) return;
     const pointerUv = pointerUvOf(event);
     if (pointerUv === null) return;
 
@@ -1034,6 +1061,10 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   const finishEditDrag = (event?: TargetedPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (drag === null) return;
+    // 61-28 (CR-01): the same target law as continueEditDrag — a non-matching
+    // drag is refused before any clear, any commit and any release. A release
+    // never flushes an abandoned gesture.
+    if (editTargetMutationId === null || drag.mutationId !== editTargetMutationId) return;
     dragRef.current = null;
     // Clear BEFORE the commit so a same-tick repeat gesture finds nothing
     // (the T-61-30 clear-before-commit law).
@@ -1061,6 +1092,8 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   return (
     <div
       data-testid="vector-path-overlay"
+      // 61-28 (CR-01): the element the edit-lifetime effect releases from.
+      ref={surfaceRef}
       style={{
         position: 'absolute',
         inset: '0',
