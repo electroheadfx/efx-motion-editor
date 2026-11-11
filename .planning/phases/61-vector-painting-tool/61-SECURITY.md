@@ -176,6 +176,100 @@ mitigations were verified at L1 (grep depth) against the shipped implementation,
 
 ---
 
+### Plan 61-21 — gap closure (T-61-66, T-61-67)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-66 | Tampering | `VectorPathOverlay` pointermove during draw | medium | mitigate | The handler writes the draft cursor only; no anchor, record, commit or bake call exists on the move path, and the reviewed acceptance criterion forbids one on render. | closed |
+| T-61-67 | Denial of service (local input) | `handleVectorPathWindowKey` capture-phase yield | medium | mitigate | The yield predicate covers text fields and every focusable control; plain canvas targets keep the shipped handling, pinned by a positive case in both directions. | closed |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; the widening is one selector string. | closed |
+
+### Plan 61-22 — gap closure (T-61-68, T-61-69)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-68 | Tampering | list-view `AnchorWidthControl` mount | medium | mitigate | The mount reuses `resolveAnchorWidthTarget`'s single-selection law through `anchorWidthAvailable`; a multi-selection or anchorless stroke mounts nothing, so the commit cannot address another stroke's anchors. | closed |
+| T-61-69 | Denial of service (local render) | `renderPath` selection ring | low | mitigate | The ring skips a missing projected point and bounds-checks the index; the selection signal is normalised upstream by `setVectorAnchorSelection`, so no unbounded loop exists. | closed |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; both tasks reuse shipped modules. | closed |
+
+### Plan 61-23 — gap closure (T-61-70, T-61-71)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-70 | Spoofing (local input ambiguity) | `setAquarellePickerAltHeld` during a path edit | medium | mitigate | The setter refuses an arming write while `pathEditMutationId` is non-null, and the edit reads Alt from the pointer event instead; the two meanings can never coexist. | closed |
+| T-61-71 | Information disclosure (state staleness) | `isAquarellePickerArmed` | low | mitigate | The predicate reads the three signals directly at dispatch time instead of a computed `.peek()`, so a stale cached verdict cannot arm a pick. | closed |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; the change is one computed source, one predicate and one guard clause. | closed |
+
+### Plan 61-24 — gap closure (T-61-72, T-61-73, T-61-74)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-72 | Tampering | `aquarelleStrokeFromScriptEvent` | medium | mitigate | The projection copies only the event's own fields, allocates a fresh mutation id at record time, and never mutates the source event; the destination key id is resolved from the destination frame. | closed |
+| T-61-73 | Tampering | `addKey` post-add copy | medium | mitigate | The copy runs only after `addEmptyKey` resolves true, only on the `clone` branch, and the destination frame is the un-navigated `currentFrame`; a blank branch cannot copy. | closed |
+| T-61-74 | Denial of service (local state) | in-flight latch across the copy | low | mitigate | One `.finally` releases the latch after both awaits; a copy rejection is caught inside the success continuation and published, never left unhandled. | closed |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; every change reuses shipped modules. | closed |
+
+### Plan 61-25 — gap closure (T-61-75, T-61-76)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-75 | Tampering | presentation constants across four files | low | mitigate | Values are copied from the UI-SPEC tables and pinned by source tests; no interpolation and no user-supplied text reaches any of them. | closed |
+| T-61-76 | Denial of service (local) | Picker re-enabled under wireframe | low | mitigate | Picking is non-depositing and does not settle or bake; the paint row, Dry and Select stay disabled with their reasons, so no unbounded re-bake can start from this change. | closed |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; the change is constants, styles and two JSX conditions. | closed |
+
+### Plan 61-26 — gap closure (T-61-77, T-61-78, T-61-79)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-77 | Spoofing (mode/selection divergence) | `handleToggleSelectAllAquarelleStrokes` | medium | mitigate | A wireframe early-return plus a post-entry Select re-check; the selection write is reachable only when Select mode is genuinely on. | closed |
+| T-61-78 | Repudiation (false restore claim) | `commitAquarelleVectorPathEdit.onFailure` | medium | mitigate | Content-checked re-anchor before the restore, the restore result consumed in `restored`, and a fallback that distinguishes a real rollback from a fail-closed one. | closed |
+| T-61-79 | Tampering (script/pixel divergence) | `handleAquarelleStrokeEnd` vector tail | medium | mitigate | A false bake result arms `draftPixelsDirty`, which the save gate already defers on and the ONE settle clears after re-applying the frame. | closed |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; the change is three guard clauses in one file. | closed |
+
+### Plan 61-27 — gap closure (T-61-80, T-61-81, T-61-82)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-80 | Repudiation (silent settle refusal) | `settleDraftScript` busy branch | medium | mitigate | One fixed published line through the three capsule writers before resolving false; the track switch's fail-closed abort becomes visible. | closed |
+| T-61-81 | Spoofing (commit shown as applied) | dialog Anchor width `onChange` | low | mitigate | The boolean is consumed; false publishes the refusal and the controlled stepper keeps the document reading. | closed |
+| T-61-82 | Tampering (edit targets a deselected stroke) | `shouldExitPathEdit` + lifecycle effect | high | mitigate | The exit predicate compares the selected stroke with the open edit and the effect's dependency array carries the mismatch, so the session write always runs. | closed |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; one predicate signature, one constant, one optional port and two guard clauses. | closed |
+
+### Plan 61-28 — gap closure (T-61-83, T-61-84, T-61-85)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-83 | Tampering (cross-stroke commit) | `finishEditDrag` / `continueEditDrag` | high | mitigate | A target guard refuses any drag whose `mutationId` is not the open edit's stroke, and the cleanup effect removes the drag entirely on close/retarget. | closed |
+| T-61-84 | Denial of service (stuck pointer capture) | overlay root / `startEditDrag` | medium | mitigate | The cleanup effect releases the captured pointer on edit close, and every new press releases the previous drag's capture first. | closed |
+| T-61-85 | Spoofing (stale preview) | `vectorPathEditDrag` | low | mitigate | The effect clears the preview compare-then-write when the edit ends; the render body's `showStructure` already suppresses the surface. | closed |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; one ref, one effect and three guard clauses in one leaf. | closed |
+
+### Plan 61-29 — gap closure (T-61-86, T-61-87)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-86 | Tampering (stale geometry in the document) | `updateAquarellePathInScript` | high | mitigate | The write re-derives `points` from the anchors it stores, so the record can never hold a spine that disagrees with its path. | closed |
+| T-61-87 | Repudiation (a committed gesture that never renders) | path edit -> rebake -> replay | high | mitigate | The diagnostic proves the broken layer in writing and the regression pin asserts the replay input, not just the registry. | closed |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; the fix is one derived local and one spread field. | closed |
+
+### Plan 61-30 — gap closure (T-61-88, T-61-89, T-61-90)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-88 | Tampering (silent re-interpretation of authored geometry) | `resolveCurveAnchors` / `promoteAnchorForDrag` / `hitTestVectorPath` | high | mitigate | Spline evaluates a frozen view that drops handles from the view only; promotion returns the list untouched and handle targets are never offered under spline, so a switch round trip returns the authored bytes. | closed |
+| T-61-89 | Repudiation (switch committed but never rendered) | `updateAquarelleCurveModeInScript` / `updateAquarellePathInScript` | high | mitigate | Both doors re-sample points from the mode-aware evaluator and reproject the entry at the same index in the same write, so the next replay draws the switched curve. | closed |
+| T-61-90 | Denial of service (undecodable saved script) | `scriptTimelineCodec` vector flag bit | medium | accept | A project saved with a spline stroke cannot be decoded by the shipped build. The consequence is disclosed at Task 1's checkpoint, is one-way by project law, and is never triggered unless a user explicitly switches a stroke. | closed (accepted — AR-61-05) |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; every change is a pure-module edit or a plain record mutation. | closed |
+
+### Plan 61-31 — gap closure (T-61-91, T-61-92, T-61-93)
+
+| Threat ID | Category | Component | Severity | Disposition | Mitigation Plan | Status |
+|-----------|----------|-----------|----------|-------------|-----------------|--------|
+| T-61-91 | Spoofing (a switch that misstates the stroke) | `readCurveMode` / dialog Curve row | medium | mitigate | The row reads only the hydrated appearances, absent reads the default, a disagreement shows Mixed with no lit option, and the active press writes nothing. | closed |
+| T-61-92 | Tampering (authored handles rewritten by a spline gesture) | overlay drag, hit test, insert | high | mitigate | Under Spline hit-testing offers no handle, promotion returns the list untouched and insertion writes an auto anchor, so no gesture can change a stored kind or handle. | closed |
+| T-61-93 | Repudiation (switch committed but the canvas still draws or edits Bézier) | `drawnPathOf` / recorded loop / edit helpers | high | mitigate | Each path resolves its own mode and every sampling, hit test and insert is routed through it; the shipped revision read repaints after the switch. | closed |
+| T-61-SC | Tampering | npm/pnpm package installs | high | mitigate | No dependency is added; the work is one row, one wrapper, one handler and per-stroke reads. | closed |
+
 ## Accepted Risks Log
 
 | Risk ID | Threat Ref | Rationale | Accepted By | Date |
@@ -184,6 +278,7 @@ mitigations were verified at L1 (grep depth) against the shipped implementation,
 | AR-61-02 | T-61-10 | The engine slot is opaque by design (D-11); unknown engine keys surviving is the intended contract, not a leak — the envelope never interprets them | Project owner (plan 61-03 disposition) | 2026-11-10 |
 | AR-61-03 | T-61-24 | Whether a crisp thumb faithfully represents the ribbon mode is an aesthetic judgment; the E8 held-out visual check in `61-VALIDATION.md` covers it | Project owner (plan 61-07 disposition) | 2026-11-10 |
 | AR-61-04 | T-61-47 | Wireframe density cost is bounded by the measured reference stroke count (10 strokes under 33 ms at 1080p); responsiveness at the reference count is a manual-only row | Project owner (plan 61-13 disposition) | 2026-11-10 |
+| AR-61-05 | T-61-90 | A project saved with a spline stroke cannot be decoded by the shipped build. Disclosed at 61-30's scope checkpoint and accepted there; one-way by project law (`feedback_no_backward_compat`), and never triggered unless a user explicitly switches a stroke | Project owner (61-30 Task 1 checkpoint, answered `per-stroke`) | 2026-11-11 |
 
 *Accepted risks do not resurface in future audit runs.*
 
@@ -205,3 +300,11 @@ mitigations were verified at L1 (grep depth) against the shipped implementation,
 - [x] `status: verified` set in frontmatter
 
 **Approval:** verified 2026-11-10
+
+## Security Audit 2026-11-11
+
+| Metric | Count |
+|---|---|
+| Threats found | 93 |
+| Closed | 93 |
+| Open | 0 |
