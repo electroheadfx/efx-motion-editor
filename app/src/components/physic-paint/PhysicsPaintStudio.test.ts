@@ -7663,3 +7663,65 @@ describe('61-26 WR-03 — a vector stroke committed during an in-flight bake mar
     expect(bakeAt).toBeLessThan(catchAt);
   });
 });
+
+// ============================================================
+//  quick 261111-t74 — the selection brush patch stays one edit.
+//
+//  The selection edit port is the ONLY new registration: it
+//  forwards to the shipped appearance handler, so a brush patch
+//  inherits one undo entry, one revision bump and one seed
+//  re-roll. The record-state write keeps exactly one bump and one
+//  same-index replacement led by a fresh stroke object, and the
+//  merged multiplier bag is fully materialised.
+// ============================================================
+
+describe('quick 261111-t74 — the selection brush patch stays one edit', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const REGISTRATION = 'setAquarelleSelectionEditPort({';
+  const APPEARANCE_REF = 'aquarelleAppearanceCommitRef.current = handleAquarelleAppearanceStrokes;';
+  const WRITE_START = 'export function updateAquarelleStrokesInScript(';
+  const WRITE_END = 'export function updateAquarelleCurveModeInScript(';
+
+  function writeRegion(): string {
+    return regionOf(aquarelleRecordStateSource, WRITE_START, WRITE_END);
+  }
+
+  it('registers exactly one selection edit port, after the appearance ref', () => {
+    expect(studio.split(REGISTRATION).length - 1).toBe(1);
+    const registrationAt = studio.indexOf(REGISTRATION);
+    const refAt = studio.indexOf(APPEARANCE_REF);
+    expect(refAt).toBeGreaterThan(-1);
+    expect(registrationAt).toBeGreaterThan(refAt);
+  });
+
+  it('the registration only forwards ids and patch to the appearance handler', () => {
+    const registration = regionOf(studio, REGISTRATION, '});');
+    expect(registration.split('applyAppearance:').length - 1).toBe(1);
+    expect(registration).toContain('handleAquarelleAppearanceStrokes(ids, patch)');
+  });
+
+  it('the record-state write performs exactly one bump and one replacement', () => {
+    const write = writeRegion();
+    expect(write.split('bumpAquarelleStrokesRevision()').length - 1).toBe(1);
+    expect(write.split('payloadTimeline[index] =').length - 1).toBe(1);
+  });
+
+  it('the replacement is a fresh object carrying a materialised multiplier bag', () => {
+    const write = writeRegion();
+    // The complete-bag base is the ONE neutral reference in this write.
+    expect(write.split('NEUTRAL_TOOL_OVERRIDES').length - 1).toBe(1);
+    // The merged bag is written through the conditional spread, once.
+    expect(write.split('toolOverrides: nextOverrides').length - 1).toBe(1);
+    // The stroke is REPLACED (spread into a new object), never mutated in
+    // place — the before/after snapshots keep their references.
+    expect(write).toContain('const nextStroke: AquarelleStroke = {');
+    expect(write).toContain('...stroke,');
+  });
+});

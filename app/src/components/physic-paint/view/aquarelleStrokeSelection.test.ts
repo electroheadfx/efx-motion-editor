@@ -2267,4 +2267,28 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     expect(getRecordedAquarelleStroke(10317)).toBe(before);
     expect(getRecordedAquarelleStroke(10317)!.toolOverrides).toBe(before.toolOverrides);
   });
+
+  it('a brush change re-rolls the paint seed inside the SAME edit, and undo restores it', () => {
+    // The salt is seeded on the RECORDED stroke (the local `stroke()` helper
+    // writes `params: { size }` alone); `paintSeedVariation` is a patch field
+    // only, so the shipped appearance door's re-roll must see this salt.
+    recordAquarelleStroke(10320, saltedStroke({
+      points: [point(0.1, 0.5)],
+      playFrame: 820,
+      salt: 0,
+    }));
+    const before = getRecordedAquarelleStroke(10320)!;
+    expect(paintSeedSaltOf(before.params)).toBe(0);
+
+    const editId = beginAquarelleAppearanceEdit([10320], { brushId: 'chalk' });
+    expect(editId).not.toBeNull();
+    const after = getRecordedAquarelleStroke(10320)!;
+    expect(after.brushId).toBe('chalk');
+    // The brush change rides the appearance door's seed re-roll (0 -> 1).
+    expect(paintSeedSaltOf(after.params)).toBe(1);
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(10320)).toBe(before);
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(10320)!.params)).toBe(0);
+  });
 });
