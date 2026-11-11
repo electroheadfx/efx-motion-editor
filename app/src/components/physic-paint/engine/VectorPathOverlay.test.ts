@@ -1290,6 +1290,93 @@ describe('VectorPathOverlay — the text-entry key guard (61-16)', () => {
   });
 });
 
+// 61-21 (WR-05): the same capture-phase listener must also stand down for a
+// focused CONTROL that owns its own keystrokes even though it is not a text
+// field — Enter activates the button, Delete reaches the role control — while a
+// plain canvas target keeps today's commit/delete handling.
+describe('VectorPathOverlay — the focusable-control key guard (61-21 WR-05)', () => {
+  const EDIT_ID = 96003;
+
+  function editedStroke(): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    vectorPenActive.value = true;
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  it('stands down on a focused button or role control and still commits/deletes on the canvas', () => {
+    const onCommitPath = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+
+    // Enter aimed at a focused <button>: the button activates, the draft stays.
+    const onButton = {
+      key: 'Enter',
+      target: {
+        tagName: 'BUTTON',
+        closest: (selector: string) => (selector.includes('button') ? {} : null),
+      },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(
+      onButton,
+      { onCommitPath, onCancelPath: () => {} },
+      { getRecordedStrokes: () => new Map(), onPathEdit: () => {} },
+    );
+    expect(onCommitPath).not.toHaveBeenCalled();
+    expect(onButton.preventDefault).not.toHaveBeenCalled();
+    expect(onButton.stopPropagation).not.toHaveBeenCalled();
+    expect(draftAnchors()).toHaveLength(2);
+
+    // Delete aimed at a focused role=menuitem: the control handles it, no
+    // anchor is deleted.
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([0]);
+    const onPathEdit = vi.fn();
+    const editHandlers = {
+      getRecordedStrokes: () => new Map([[EDIT_ID, editedStroke()]]),
+      onPathEdit,
+    };
+    const draftHandlers = { onCommitPath: () => {}, onCancelPath: () => {} };
+
+    const onMenuItem = {
+      key: 'Delete',
+      target: {
+        tagName: 'DIV',
+        closest: (selector: string) => (selector.includes('[role="menuitem"]') ? {} : null),
+      },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(onMenuItem, draftHandlers, editHandlers);
+    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(onMenuItem.preventDefault).not.toHaveBeenCalled();
+    expect(vectorAnchorSelection.peek()).toEqual([0]);
+
+    // The canvas still owns the same key.
+    const onCanvas = {
+      key: 'Delete',
+      target: { tagName: 'CANVAS', closest: () => null },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(onCanvas, draftHandlers, editHandlers);
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    expect(onCanvas.preventDefault).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('VectorPathOverlay — authority boundary (T-61-31)', () => {
   it('never imports an engine, bake or adapter module and never records', () => {
     const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');

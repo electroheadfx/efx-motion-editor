@@ -18,6 +18,9 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isTextEntryTarget } from './shortcutTextTarget';
+// 61-21 (WR-05): the widened predicate is exercised through the module
+// surface, so the pin observes the module's ONE exported yield predicate.
+import * as shortcutTextTargetSurface from './shortcutTextTarget';
 
 describe('shortcutTextTarget — the text-entry predicate (61-16)', () => {
   it('is false for every non-element target', () => {
@@ -60,5 +63,70 @@ describe('shortcutTextTarget — the text-entry predicate (61-16)', () => {
     expect(source).not.toContain('document.');
     expect(source).not.toContain('window.');
     expect(source).not.toMatch(/^import /m);
+  });
+});
+
+// 61-21 (WR-05): the capture-phase listener owns Enter/Escape/Delete for the
+// canvas, so any target that owns its OWN keystrokes must stand it down. A
+// focused control is such a target even though it is not a text field: Enter
+// activates the button and Delete/Backspace edit the control, never the path.
+describe('61-21 WR-05 — the focusable-control yield', () => {
+  const isKeyboardOwnedTargetFromModule = (
+    shortcutTextTargetSurface as unknown as {
+      isKeyboardOwnedTarget?: (target: unknown) => boolean;
+    }
+  ).isKeyboardOwnedTarget;
+
+  it('is true for every focusable non-text control the listener must yield to', () => {
+    expect(typeof isKeyboardOwnedTargetFromModule).toBe('function');
+    // A real focused control answers its own ancestor walk; the fake answers the
+    // selector query the same way, so the pin observes the predicate's matching.
+    const controlTarget = (token: string) => ({
+      tagName: 'DIV',
+      closest: (selector: string) => (selector.includes(token) ? {} : null),
+    });
+    for (const token of [
+      'button',
+      'a[href]',
+      '[role="button"]',
+      '[role="menuitem"]',
+      '[role="link"]',
+      '[role="tab"]',
+    ]) {
+      expect(isKeyboardOwnedTargetFromModule!(controlTarget(token)), token).toBe(true);
+    }
+    // The canvas owns no keystrokes: the vector keys keep working there.
+    expect(isKeyboardOwnedTargetFromModule!({ tagName: 'DIV', closest: () => null })).toBe(false);
+    expect(isKeyboardOwnedTargetFromModule!({ tagName: 'CANVAS', closest: () => null })).toBe(false);
+  });
+
+  it('covers the six focusable controls and the shipped text-entry four in one selector', () => {
+    const source = readFileSync(resolve(__dirname, './shortcutTextTarget.ts'), 'utf8');
+    const selector = /const \w+_SELECTOR = '([^']+)'/.exec(source)?.[1] ?? '';
+    for (const token of [
+      'input',
+      'textarea',
+      'select',
+      '[contenteditable="true"]',
+      'button',
+      'a[href]',
+      '[role="button"]',
+      '[role="menuitem"]',
+      '[role="link"]',
+      '[role="tab"]',
+    ]) {
+      expect(selector, token).toContain(token);
+    }
+    // One constant, one predicate: no second selector grows beside it.
+    expect(source.match(/_SELECTOR = '/g) ?? []).toHaveLength(1);
+  });
+
+  it('stays dependency-free: no DOM global and no type-identity reference', () => {
+    const source = readFileSync(resolve(__dirname, './shortcutTextTarget.ts'), 'utf8');
+    expect(source).not.toContain('document');
+    expect(source).not.toContain('window');
+    expect(source).not.toContain('HTMLElement');
+    expect(source).not.toContain('Element');
+    expect(source).not.toContain('instanceof');
   });
 });
