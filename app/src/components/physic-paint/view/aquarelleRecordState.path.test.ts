@@ -21,6 +21,7 @@ import {
 } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleStrokesRevision,
+  getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
   recordAquarelleStroke,
@@ -30,6 +31,11 @@ import {
   updateAquarellePathInScript,
   type AquarelleStrokeTransform,
 } from './aquarelleRecordState';
+import {
+  beginAquarellePathEdit,
+  restoreAquarelleEditSnapshot,
+  setAquarelleScriptEditInFlight,
+} from './aquarelleStrokeSelection';
 
 type AquarelleTimelineStroke = ReturnType<typeof aquarelleToStudioStroke>;
 
@@ -427,5 +433,77 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
       expect(sample.tw).toBe(0);
     }
     expect(after.points).toHaveLength(sampledSpinePoints(G17_NEXT_ANCHORS).length);
+  });
+
+  it('feeds the new spine to every replay through getAquarelleEventsForFrame', () => {
+    const id = 61809;
+    recordAquarelleStroke(id, g17VectorStroke(id));
+    const expected = sampledSpinePoints(G17_NEXT_ANCHORS);
+
+    expect(updateAquarellePathInScript(id, G17_NEXT_ANCHORS)).toBe(1);
+
+    // The exact replay input the bake consumes: the frame's events.
+    const replay = getAquarelleEventsForFrame(601).filter(
+      (event): event is AquarelleTimelineStroke => !('kind' in event),
+    );
+    expect(replay).toHaveLength(1);
+    const entry = replay[0]!;
+    expect(entry.engine.mutationId).toBe(id);
+    // Both halves of the entry agree on the NEW path ...
+    expect(entry.engine.anchors).toEqual(getRecordedAquarelleStroke(id)!.anchors);
+    // ... and the deposited geometry IS the re-sampled spine.
+    expect(entry.pts).toHaveLength(expected.length);
+    expect(entry.pts.map((p) => [p.x, p.y])).toEqual(expected.map((p) => [p.x, p.y]));
+  });
+
+  it('restores the pre-edit spine on undo and the re-sampled spine on redo in ONE step', () => {
+    const id = 61811;
+    recordAquarelleStroke(id, g17VectorStroke(id));
+    const before = getRecordedAquarelleStroke(id)!;
+    const beforePoints = before.points;
+    expect(beforePoints).toHaveLength(302);
+    const expected = sampledSpinePoints(G17_NEXT_ANCHORS);
+
+    // One gesture through the real selection wrapper.
+    setAquarelleScriptEditInFlight(false);
+    const editId = beginAquarellePathEdit(id, G17_NEXT_ANCHORS);
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(expected.length);
+
+    // UNDO: the old anchors AND the old points come back in one step.
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    const undone = getRecordedAquarelleStroke(id)!;
+    expectAnchor(undone.anchors![1], { x: 0.5, y: 0.5, kind: 'auto' });
+    expect(undone.points).toBe(beforePoints);
+    expect(undone.points[0]!.y).toBeCloseTo(0.5, 12);
+    expect(undone.points[150]!.y).toBeCloseTo(0.5, 12);
+
+    // REDO: the edited side, points included.
+    expect(restoreAquarelleEditSnapshot(editId!, 'redo')).not.toBeNull();
+    const redone = getRecordedAquarelleStroke(id)!;
+    expectAnchor(redone.anchors![1], { x: 0.5, y: 0.62, kind: 'auto' });
+    expect(redone.points).toHaveLength(expected.length);
+    expect(redone.points).toEqual(expected);
+  });
+
+  it('treats an anchors-only change as a write even when the sampled spine is identical', () => {
+    const id = 61813;
+    recordAquarelleStroke(id, g17VectorStroke(id));
+    const before = getRecordedAquarelleStroke(id)!;
+    const revision = aquarelleStrokesRevision.value;
+    // A width factor changes the persisted path but not the spine: the change
+    // test reads anchors, never points.
+    const widthOnly: readonly AquarelleAnchor[] = G17_PRE_ANCHORS.map((anchor, index) =>
+      index === 1 ? { ...anchor, width: 1.5 } : anchor,
+    );
+
+    expect(updateAquarellePathInScript(id, widthOnly)).toBe(1);
+
+    const after = getRecordedAquarelleStroke(id)!;
+    expectAnchor(after.anchors![1], { x: 0.5, y: 0.5, kind: 'auto', width: 1.5 });
+    // The spine is unchanged, but it is a FRESH re-derived array.
+    expect(after.points).not.toBe(before.points);
+    expect(after.points).toEqual(before.points);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
   });
 });

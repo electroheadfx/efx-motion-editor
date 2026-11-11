@@ -692,8 +692,20 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
 
     const strokeAfter = getRecordedAquarelleStroke(EDIT_ID)!;
     expect(strokeAfter.anchors).toEqual(nextAnchors);
+    // The POINTS MUST MOVE: they are the replay's geometry (`toStudioStroke`
+    // maps points into `pts`), so they are the spine sampled from the new
+    // anchors in the commit's six-field shape — never the pre-edit spine.
+    const expectedPoints = sampleVectorPath(nextAnchors).points.map((point) => ({
+      x: point.x,
+      y: point.y,
+      p: 1,
+      tx: 0,
+      ty: 0,
+      tw: 0,
+    }));
+    expect(strokeAfter.points).toEqual(expectedPoints);
+    expect(strokeAfter.points).not.toEqual(editedStroke().points);
     // Every other field survives the path write.
-    expect(strokeAfter.points).toEqual(editedStroke().points);
     expect(strokeAfter.params).toEqual(editedStroke().params);
     const entryAfter = registryEntry();
     expect(entryAfter).not.toBe(entryBefore);
