@@ -6754,6 +6754,45 @@ describe('61-27 IN-02 — a settle refused by a running mutation says so', () =>
   });
 });
 
+// 61-27 (IN-03): the dialog's ONE refusal channel. The sheet is engine-free, so
+// a refused Anchor width commit leaves through the bundle port — the Studio
+// supplies it with the shared capsule's three writers, and claims no ownership.
+describe('61-27 IN-03 — the dialog bundle supplies publishRefusal', () => {
+  const BUNDLE_START = 'const bundle: StrokeSettingsDialogBundle = {';
+  const BUNDLE_END = 'return bundle;';
+
+  function bundleRegion(): string {
+    const start = studio.indexOf(BUNDLE_START);
+    expect(start, `missing start marker: ${BUNDLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(BUNDLE_END, start + BUNDLE_START.length);
+    expect(end, `missing end marker: ${BUNDLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('writes the message, the error status and the last error through the shared capsule', () => {
+    const bundle = bundleRegion();
+    const publishAt = bundle.indexOf('publishRefusal: (message) => {');
+    expect(publishAt, 'missing the refusal port').toBeGreaterThan(-1);
+    const publishBlock = bundle.slice(publishAt, bundle.indexOf('\n        },', publishAt));
+    expect(publishBlock).toContain('setApplyMessage(message);');
+    expect(publishBlock).toContain("setApplyStatus('error');");
+    expect(publishBlock).toContain('setLastError(message);');
+  });
+
+  it('leaves the refusal unowned and the width commit contract untouched', () => {
+    const bundle = bundleRegion();
+    const publishAt = bundle.indexOf('publishRefusal: (message) => {');
+    expect(publishAt, 'missing the refusal port').toBeGreaterThan(-1);
+    const publishBlock = bundle.slice(publishAt, bundle.indexOf('\n        },', publishAt));
+    // The width refusal owns no sheet state — it must not claim the owned flag.
+    expect(publishBlock).not.toContain('scriptApplyRefusalOwnedRef');
+    // `applyAnchorWidths` keeps its boolean contract: still one commit result.
+    expect(bundle).toContain(
+      'return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);',
+    );
+  });
+});
+
 // 61-11 Task 2: the Anchor width bundle members. The dialog never touches the
 // record store — `readVectorAnchors` is the ONE read seam (the gate and the
 // Paint row share it), and `applyAnchorWidths` builds the WHOLE next list and

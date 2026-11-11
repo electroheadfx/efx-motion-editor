@@ -27,6 +27,7 @@ import { PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE,
   AQUARELLE_ANCHOR_WIDTH_DEFAULT,
   AQUARELLE_ANCHOR_WIDTH_MAX,
   AQUARELLE_ANCHOR_WIDTH_MIN,
@@ -3583,6 +3584,30 @@ describe('61-19 anchor-width target (the width commit writes one named path)', (
   it('targets nothing for a non-integer id or an empty session id', () => {
     expect(resolveAnchorWidthTarget({ ids: [7.5], pathEditMutationId: '7.5' })).toBeNull();
     expect(resolveAnchorWidthTarget({ ids: [7], pathEditMutationId: '' })).toBeNull();
+  });
+});
+
+// 61-27 (IN-03): the refused Anchor width commit's ONE reason and the bundle's
+// ONE refusal channel. The commit's boolean used to be discarded, so a refusal
+// (wrong target, missing stroke, in-flight lock) looked exactly like a success.
+describe('61-27 IN-03 — the refused Anchor width commit copy', () => {
+  it('ships the refusal as one fixed, non-interpolated string plus one optional port', () => {
+    expect(ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE).toBe(
+      'Anchor width not applied — the path edit is no longer open on this stroke.',
+    );
+    const source = readFileSync(
+      fileURLToPath(new URL('./strokeSettingsModel.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(source).toContain(
+      "export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Anchor width not applied — the path edit is no longer open on this stroke.';",
+    );
+    // One declaration, one fixed single-quoted string — no interpolation.
+    expect(source.split('export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE =').length - 1).toBe(1);
+    expect(source).not.toContain('export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = `');
+    // The sheet's ONE refusal channel: optional, so an absent Studio port keeps
+    // the shipped silent behaviour.
+    expect(source).toContain('readonly publishRefusal?: (message: string) => void;');
   });
 });
 

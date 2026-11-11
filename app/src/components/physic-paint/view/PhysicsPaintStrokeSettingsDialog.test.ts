@@ -199,6 +199,52 @@ describe('61-27 WR-04 — selecting another stroke closes the open path edit', (
 });
 
 // ============================================================
+//  61-27 (IN-03) — a refused Anchor width commit says so.
+//
+//  `void bundle.applyAnchorWidths?.(...)` discarded the boolean, so a refusal
+//  (wrong target, missing stroke, in-flight lock) was indistinguishable from a
+//  success: the knob snapped back with no explanation. The commit now consumes
+//  the result and publishes the ONE refusal line through the bundle's optional
+//  `publishRefusal` port — absent stays silent, exactly as shipped.
+// ============================================================
+
+describe('61-27 IN-03 — a refused Anchor width commit publishes its refusal', () => {
+  const CONTROL_START = 'function AnchorWidthControl(props: AnchorWidthControlProps) {';
+  const CONTROL_END = 'data-testid="stroke-settings-anchor-width-caption"';
+
+  function anchorWidthRegion(): string {
+    return regionOf(dialogSource, CONTROL_START, CONTROL_END);
+  }
+
+  it('consumes the commit result and publishes only on an exact false', () => {
+    const block = anchorWidthRegion();
+    expect(block).toContain('Promise.resolve(bundle.applyAnchorWidths?.(');
+    expect(block).toContain('.then((applied) => {');
+    const guardAt = block.indexOf('if (applied === false)');
+    expect(guardAt, 'the refusal branch is missing').toBeGreaterThan(-1);
+    const publishAt = block.indexOf('bundle.publishRefusal?.(ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE);');
+    expect(publishAt, 'the refusal is not published').toBeGreaterThan(guardAt);
+    // The dialog is engine-free: the refusal leaves through the bundle port,
+    // never through a Studio signal write.
+    expect(block).not.toContain('setApplyMessage');
+    expect(block).not.toContain('setApplyStatus');
+    expect(block).not.toContain('setLastError');
+  });
+
+  it('stays silent when the port is absent, and the empty caption and readout are untouched', () => {
+    const block = anchorWidthRegion();
+    // The optional call IS the shipped silent fallback: no port, no throw.
+    expect(block).toContain('bundle.publishRefusal?.(');
+    expect(block).not.toContain('bundle.publishRefusal(');
+    // The per-vertex readout and the empty-selection caption are unchanged.
+    expect(block).toContain('data-testid="stroke-settings-anchor-width-readout"');
+    expect(block).toContain('`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`');
+    expect(dialogSource).toContain('? ANCHOR_WIDTH_NO_EDIT_REASON');
+    expect(dialogSource).toContain("'Select anchors on the canvas to set their width.'");
+  });
+});
+
+// ============================================================
 //  61-11 Task 3 — close the E2 and E4 UI-consideration rows.
 //
 //  Row ledger (every applicable row this plan carries):

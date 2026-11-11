@@ -1,0 +1,190 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts (45 tests | 2 failed) 13ms
+   × 61-27 IN-03 — a refused Anchor width commit publishes its refusal > consumes the commit result and publishes only on an exact false 4ms
+     → expected 'function AnchorWidthControl(props: An…' to contain 'Promise.resolve(bundle.applyAnchorWid…'
+   × 61-27 IN-03 — a refused Anchor width commit publishes its refusal > stays silent when the port is absent, and the empty caption and readout are untouched 1ms
+     → expected 'function AnchorWidthControl(props: An…' to contain 'bundle.publishRefusal?.('
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts (404 tests | 2 failed) 120ms
+   × 61-27 IN-03 — the dialog bundle supplies publishRefusal > writes the message, the error status and the last error through the shared capsule 7ms
+     → missing the refusal port: expected -1 to be greater than -1
+   × 61-27 IN-03 — the dialog bundle supplies publishRefusal > leaves the refusal unowned and the width commit contract untouched 0ms
+     → missing the refusal port: expected -1 to be greater than -1
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts (177 tests | 1 failed) 70ms
+   × 61-27 IN-03 — the refused Anchor width commit copy > ships the refusal as one fixed, non-interpolated string plus one optional port 3ms
+     → expected undefined to be 'Anchor width not applied — the path e…' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-27 IN-03 — the dialog bundle supplies publishRefusal > writes the message, the error status and the last error through the shared capsule
+AssertionError: missing the refusal port: expected -1 to be greater than -1
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:6775:51
+    6773|     const bundle = bundleRegion();
+    6774|     const publishAt = bundle.indexOf('publishRefusal: (message) => {');
+    6775|     expect(publishAt, 'missing the refusal port').toBeGreaterThan(-1);
+       |                                                   ^
+    6776|     const publishBlock = bundle.slice(publishAt, bundle.indexOf('\n   …
+    6777|     expect(publishBlock).toContain('setApplyMessage(message);');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-27 IN-03 — the dialog bundle supplies publishRefusal > leaves the refusal unowned and the width commit contract untouched
+AssertionError: missing the refusal port: expected -1 to be greater than -1
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:6785:51
+    6783|     const bundle = bundleRegion();
+    6784|     const publishAt = bundle.indexOf('publishRefusal: (message) => {');
+    6785|     expect(publishAt, 'missing the refusal port').toBeGreaterThan(-1);
+       |                                                   ^
+    6786|     const publishBlock = bundle.slice(publishAt, bundle.indexOf('\n   …
+    6787|     // The width refusal owns no sheet state — it must not claim the o…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts > 61-27 IN-03 — a refused Anchor width commit publishes its refusal > consumes the commit result and publishes only on an exact false
+AssertionError: expected 'function AnchorWidthControl(props: An…' to contain 'Promise.resolve(bundle.applyAnchorWid…'
+
+- Expected
++ Received
+
+- Promise.resolve(bundle.applyAnchorWidths?.(
++ function AnchorWidthControl(props: AnchorWidthControlProps) {
++   const { bundle, ids, reading, anchorWidthReading, anchorWidthTarget } = props;
++   const anchorWidthEmpty = anchorWidthReading.count === 0;
++   return (
++     <div data-testid="stroke-settings-anchor-width">
++       <SliderStepper
++         label="Anchor width"
++         ariaLabel="Anchor width"
++         value={anchorWidthEmpty
++           ? AQUARELLE_ANCHOR_WIDTH_DEFAULT
++           : anchorWidthReading.value}
++         min={AQUARELLE_ANCHOR_WIDTH_MIN}
++         max={AQUARELLE_ANCHOR_WIDTH_MAX}
++         step={AQUARELLE_ANCHOR_WIDTH_STEP}
++         precision={1}
++         mixed={anchorWidthReading.mixed}
++         disabled={anchorWidthEmpty}
++         commitOnRelease
++         allowOutOfRangeEntry
++         // `→ {n} px` from the REAL per-vertex radius: Size x factor.
++         // Empty means there is no vertex to measure — the caption below
++         // says what to do instead. 61-25 (UI-02): the readout is a declared
++         // span, never a bare string.
++         below={anchorWidthEmpty
++           ? undefined
++           : (
++             <span
++               data-testid="stroke-settings-anchor-width-readout"
++               style={ANCHOR_WIDTH_READOUT_STYLE}
++             >
++               {`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`}
++             </span>
++           )}
++         onChange={(value) => {
++           void bundle.applyAnchorWidths?.(
++             ids,
++             anchorWidthPatchValue(value),
++           );
++         }}
++       />
++       {anchorWidthEmpty ? (
++         <span
++           
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:221:19
+    219|   it('consumes the commit result and publishes only on an exact false'…
+    220|     const block = anchorWidthRegion();
+    221|     expect(block).toContain('Promise.resolve(bundle.applyAnchorWidths?…
+       |                   ^
+    222|     expect(block).toContain('.then((applied) => {');
+    223|     const guardAt = block.indexOf('if (applied === false)');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts > 61-27 IN-03 — a refused Anchor width commit publishes its refusal > stays silent when the port is absent, and the empty caption and readout are untouched
+AssertionError: expected 'function AnchorWidthControl(props: An…' to contain 'bundle.publishRefusal?.('
+
+- Expected
++ Received
+
+- bundle.publishRefusal?.(
++ function AnchorWidthControl(props: AnchorWidthControlProps) {
++   const { bundle, ids, reading, anchorWidthReading, anchorWidthTarget } = props;
++   const anchorWidthEmpty = anchorWidthReading.count === 0;
++   return (
++     <div data-testid="stroke-settings-anchor-width">
++       <SliderStepper
++         label="Anchor width"
++         ariaLabel="Anchor width"
++         value={anchorWidthEmpty
++           ? AQUARELLE_ANCHOR_WIDTH_DEFAULT
++           : anchorWidthReading.value}
++         min={AQUARELLE_ANCHOR_WIDTH_MIN}
++         max={AQUARELLE_ANCHOR_WIDTH_MAX}
++         step={AQUARELLE_ANCHOR_WIDTH_STEP}
++         precision={1}
++         mixed={anchorWidthReading.mixed}
++         disabled={anchorWidthEmpty}
++         commitOnRelease
++         allowOutOfRangeEntry
++         // `→ {n} px` from the REAL per-vertex radius: Size x factor.
++         // Empty means there is no vertex to measure — the caption below
++         // says what to do instead. 61-25 (UI-02): the readout is a declared
++         // span, never a bare string.
++         below={anchorWidthEmpty
++           ? undefined
++           : (
++             <span
++               data-testid="stroke-settings-anchor-width-readout"
++               style={ANCHOR_WIDTH_READOUT_STYLE}
++             >
++               {`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`}
++             </span>
++           )}
++         onChange={(value) => {
++           void bundle.applyAnchorWidths?.(
++             ids,
++             anchorWidthPatchValue(value),
++           );
++         }}
++       />
++       {anchorWidthEmpty ? (
++         <span
++           
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:237:19
+    235|     const block = anchorWidthRegion();
+    236|     // The optional call IS the shipped silent fallback: no port, no t…
+    237|     expect(block).toContain('bundle.publishRefusal?.(');
+       |                   ^
+    238|     expect(block).not.toContain('bundle.publishRefusal(');
+    239|     // The per-vertex readout and the empty-selection caption are unch…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  src/components/physic-paint/view/strokeSettingsModel.test.ts > 61-27 IN-03 — the refused Anchor width commit copy > ships the refusal as one fixed, non-interpolated string plus one optional port
+AssertionError: expected undefined to be 'Anchor width not applied — the path e…' // Object.is equality
+
+- Expected: 
+"Anchor width not applied — the path edit is no longer open on this stroke."
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3595:49
+    3593| describe('61-27 IN-03 — the refused Anchor width commit copy', () => {
+    3594|   it('ships the refusal as one fixed, non-interpolated string plus one…
+    3595|     expect(ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE).toBe(
+       |                                                 ^
+    3596|       'Anchor width not applied — the path edit is no longer open on t…
+    3597|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+ Test Files  3 failed (3)
+      Tests  5 failed | 621 passed (626)
+   Start at  12:47:10
+   Duration  981ms (transform 584ms, setup 0ms, collect 1.31s, tests 203ms, environment 0ms, prepare 110ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-27-t3/junit.xml
