@@ -521,3 +521,96 @@ describe('61-12 Advanced wet-globals disclosure (E5)', () => {
     expect(noteStyle).toContain('lineHeight: 1.5');
   });
 });
+
+// ============================================================
+//  61-22 (G-11) — the Anchor width control reaches the DEFAULT list view.
+//
+//  The control was correct but discoverable only through the header sliders
+//  icon and the SETTINGS view. The fix extracts ONE internal component and
+//  mounts it twice: under Size in the Paint tab (the shipped position) and in
+//  the list view for exactly one selected vector stroke. The gate reuses
+//  `anchorWidthAvailable`, so a multi-selection or an anchorless stroke mounts
+//  nothing (T-61-68). The component is DECLARED after the sheet component so
+//  the shipped `blockAt > gateAt` region pin keeps its meaning.
+// ============================================================
+
+describe('61-22 G-11 — the Anchor width control in the list view', () => {
+  const LIST_WRAPPER = 'data-testid="stroke-settings-list-anchor-width"';
+  const BLOCK_START = 'data-testid="stroke-settings-anchor-width"';
+  const BLOCK_END = 'data-testid="stroke-settings-anchor-width-caption"';
+  const GATE = "if (field.key !== 'size' || !anchorWidthAvailable) return row;";
+
+  it('mounts the control in the default list view behind anchorWidthListVisible', () => {
+    // ONE conditional wrapper: an invisible control leaves no empty node.
+    expect(countOf(dialogSource, LIST_WRAPPER)).toBe(1);
+    const mount = regionOf(dialogSource, '{anchorWidthListVisible', ') : null}');
+    expect(mount).toContain(LIST_WRAPPER);
+    expect(mount).toContain('<AnchorWidthControl');
+    // Ordered after the stroke rows, inside the list container.
+    const listAt = dialogSource.indexOf('data-testid="stroke-settings-list"');
+    const rowsAt = dialogSource.indexOf('listRows.map((stroke, index) => {');
+    const mountAt = dialogSource.indexOf(LIST_WRAPPER);
+    expect(listAt).toBeGreaterThan(-1);
+    expect(rowsAt).toBeGreaterThan(listAt);
+    expect(mountAt).toBeGreaterThan(rowsAt);
+  });
+
+  it('shares ONE component between the two mounts', () => {
+    expect(countOf(dialogSource, '<AnchorWidthControl')).toBe(2);
+    expect(countOf(dialogSource, 'function AnchorWidthControl(')).toBe(1);
+    // ONE root block: the list mount wraps the same component and never
+    // re-declares the `stroke-settings-anchor-width` element.
+    expect(countOf(dialogSource, '<div data-testid="stroke-settings-anchor-width">')).toBe(1);
+    // The Paint-tab mount replaces the inline block at the shipped gate.
+    const gateAt = dialogSource.indexOf(GATE);
+    expect(gateAt).toBeGreaterThan(-1);
+    expect(dialogSource.indexOf('<AnchorWidthControl', gateAt)).toBeGreaterThan(gateAt);
+  });
+
+  it('keeps every shipped E4 identifier inside the component body', () => {
+    const component = regionOf(
+      dialogSource,
+      'function AnchorWidthControl(',
+      'export const MemoizedPhysicsPaintStrokeSettingsDialog',
+    );
+    expect(component).toContain('const anchorWidthEmpty = anchorWidthReading.count === 0;');
+    expect(component).toContain('mixed={anchorWidthReading.mixed}');
+    expect(component).toContain('void bundle.applyAnchorWidths?.(');
+    expect(component).toContain('anchorWidthPatchValue(value)');
+    expect(component).toContain(
+      '`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`',
+    );
+    expect(component).toContain('label="Anchor width"');
+    expect(component).toContain('ariaLabel="Anchor width"');
+    expect(component).toContain('ANCHOR_WIDTH_CAPTION_STYLE');
+    // The shipped region still holds exactly one stepper and no style attribute.
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(countOf(block, '<SliderStepper')).toBe(1);
+    expect(block).not.toContain('style=');
+  });
+
+  it('declares the component AFTER the Paint-tab gate', () => {
+    const gateAt = dialogSource.indexOf(GATE);
+    const declarationAt = dialogSource.indexOf('function AnchorWidthControl(');
+    expect(gateAt).toBeGreaterThan(-1);
+    expect(declarationAt).toBeGreaterThan(gateAt);
+    // The shipped `blockAt > gateAt` ordering pin resolves the FIRST block
+    // occurrence — the component body — so it must stay after the gate too.
+    expect(dialogSource.indexOf(BLOCK_START)).toBeGreaterThan(gateAt);
+  });
+
+  it('feeds the list-view mount the Size reading of the SAME ids', () => {
+    expect(dialogSource).toContain(
+      "const anchorWidthSizeField = numericFields.find((field) => field.key === 'size');",
+    );
+    expect(dialogSource).toContain(
+      'const anchorWidthSizeReading = anchorWidthSizeField === undefined',
+    );
+    expect(dialogSource).toContain('readNumericField(appearances, ids, anchorWidthSizeField)');
+    expect(dialogSource).toContain(
+      'const anchorWidthListVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;',
+    );
+    const mount = regionOf(dialogSource, '{anchorWidthListVisible', ') : null}');
+    expect(mount).toContain('reading={anchorWidthSizeReading}');
+  });
+});
