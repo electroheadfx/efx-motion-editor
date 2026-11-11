@@ -53,6 +53,8 @@ import {
   strokeListSummary,
   strokeSettingsFields,
   strokeToolLabel,
+  type AnchorWidthReading,
+  type NumericFieldReading,
   type StrokeGeometryControl,
   type StrokeGeometrySession,
   type StrokeSettingsDialogBundle,
@@ -764,6 +766,16 @@ export function PhysicsPaintStrokeSettingsDialog({
   const anchorWidthAvailable = engineModule === 'watercolor'
     && selectedVectorAnchors !== null
     && bundle.applyAnchorWidths !== undefined;
+  // 61-22 (G-11): the DEFAULT list view's mount gate. `anchorWidthAvailable`
+  // already implies a SINGLE selected vector stroke — `selectedVectorAnchors`
+  // is resolved only for `selection.size === 1` — so this mount cannot address
+  // another stroke's anchors (T-61-68). The Size reading rides the SAME ids as
+  // the Paint row, so the px readout cannot disagree between the two mounts.
+  const anchorWidthSizeField = numericFields.find((field) => field.key === 'size');
+  const anchorWidthSizeReading = anchorWidthSizeField === undefined
+    ? null
+    : readNumericField(appearances, ids, anchorWidthSizeField);
+  const anchorWidthListVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;
 
   const colorReading = readColorField(appearances, ids);
   const colorRgb = hexToRgba(colorReading.color);
@@ -1368,6 +1380,21 @@ export function PhysicsPaintStrokeSettingsDialog({
                   </div>
                 );
               })}
+              {/* 61-22 (G-11): the DEFAULT list view surfaces the SAME Anchor
+                  width control for exactly one selected vector stroke. The
+                  conditional mount leaves no empty node when the gate closes
+                  (multi-selection or a stroke without anchors). */}
+              {anchorWidthListVisible && anchorWidthSizeReading !== null ? (
+                <div data-testid="stroke-settings-list-anchor-width">
+                  <AnchorWidthControl
+                    bundle={bundle}
+                    ids={ids}
+                    reading={anchorWidthSizeReading}
+                    anchorWidthReading={anchorWidthReading}
+                    anchorWidthTarget={anchorWidthTarget}
+                  />
+                </div>
+              ) : null}
             </div>
           ) : (
             <>
@@ -1686,48 +1713,16 @@ export function PhysicsPaintStrokeSettingsDialog({
               // anchor, never an appearance param, so it must not ride
               // `readNumericField` / `buildAppearancePatch`.
               if (field.key !== 'size' || !anchorWidthAvailable) return row;
-              const anchorWidthEmpty = anchorWidthReading.count === 0;
               return [
                 row,
-                <div key="anchor-width" data-testid="stroke-settings-anchor-width">
-                  <SliderStepper
-                    label="Anchor width"
-                    ariaLabel="Anchor width"
-                    value={anchorWidthEmpty
-                      ? AQUARELLE_ANCHOR_WIDTH_DEFAULT
-                      : anchorWidthReading.value}
-                    min={AQUARELLE_ANCHOR_WIDTH_MIN}
-                    max={AQUARELLE_ANCHOR_WIDTH_MAX}
-                    step={AQUARELLE_ANCHOR_WIDTH_STEP}
-                    precision={1}
-                    mixed={anchorWidthReading.mixed}
-                    disabled={anchorWidthEmpty}
-                    commitOnRelease
-                    allowOutOfRangeEntry
-                    // `→ {n} px` from the REAL per-vertex radius: Size x factor.
-                    // Empty means there is no vertex to measure — the caption
-                    // below says what to do instead.
-                    below={anchorWidthEmpty
-                      ? undefined
-                      : `→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`}
-                    onChange={(value) => {
-                      void bundle.applyAnchorWidths?.(
-                        ids,
-                        anchorWidthPatchValue(value),
-                      );
-                    }}
-                  />
-                  {anchorWidthEmpty ? (
-                    <span
-                      data-testid="stroke-settings-anchor-width-caption"
-                      style={ANCHOR_WIDTH_CAPTION_STYLE}
-                    >
-                      {anchorWidthTarget === null
-                        ? ANCHOR_WIDTH_NO_EDIT_REASON
-                        : 'Select anchors on the canvas to set their width.'}
-                    </span>
-                  ) : null}
-                </div>,
+                <AnchorWidthControl
+                  key="anchor-width"
+                  bundle={bundle}
+                  ids={ids}
+                  reading={reading}
+                  anchorWidthReading={anchorWidthReading}
+                  anchorWidthTarget={anchorWidthTarget}
+                />,
               ];
             })}
             {segmentedFields.map((field) => {
@@ -1849,6 +1844,71 @@ export function PhysicsPaintStrokeSettingsDialog({
       >
         <span style={RESIZE_GRIP_STYLE} />
       </div>
+    </div>
+  );
+}
+
+/** 61-22 (G-11): the ONE Anchor width control's inputs. */
+interface AnchorWidthControlProps {
+  readonly bundle: StrokeSettingsDialogBundle;
+  readonly ids: readonly number[];
+  readonly reading: NumericFieldReading;
+  readonly anchorWidthReading: AnchorWidthReading;
+  readonly anchorWidthTarget: number | null;
+}
+
+/**
+ * 61-22 (G-11): the shipped Anchor width block, extracted so the DEFAULT list
+ * view can mount the SAME control the Paint tab carries. The D-09 law is
+ * untouched: the value is a MULTIPLIER of the stroke's Size, the band stays
+ * 0.2..2.0, and the commit stays `bundle.applyAnchorWidths`.
+ *
+ * Declared AFTER the sheet component on purpose: the shipped E4 region pins
+ * resolve the FIRST `stroke-settings-anchor-width` occurrence in the file and
+ * require it to sit after the `field.key !== 'size'` gate.
+ */
+function AnchorWidthControl(props: AnchorWidthControlProps) {
+  const { bundle, ids, reading, anchorWidthReading, anchorWidthTarget } = props;
+  const anchorWidthEmpty = anchorWidthReading.count === 0;
+  return (
+    <div data-testid="stroke-settings-anchor-width">
+      <SliderStepper
+        label="Anchor width"
+        ariaLabel="Anchor width"
+        value={anchorWidthEmpty
+          ? AQUARELLE_ANCHOR_WIDTH_DEFAULT
+          : anchorWidthReading.value}
+        min={AQUARELLE_ANCHOR_WIDTH_MIN}
+        max={AQUARELLE_ANCHOR_WIDTH_MAX}
+        step={AQUARELLE_ANCHOR_WIDTH_STEP}
+        precision={1}
+        mixed={anchorWidthReading.mixed}
+        disabled={anchorWidthEmpty}
+        commitOnRelease
+        allowOutOfRangeEntry
+        // `→ {n} px` from the REAL per-vertex radius: Size x factor.
+        // Empty means there is no vertex to measure — the caption below
+        // says what to do instead.
+        below={anchorWidthEmpty
+          ? undefined
+          : `→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`}
+        onChange={(value) => {
+          void bundle.applyAnchorWidths?.(
+            ids,
+            anchorWidthPatchValue(value),
+          );
+        }}
+      />
+      {anchorWidthEmpty ? (
+        <span
+          data-testid="stroke-settings-anchor-width-caption"
+          style={ANCHOR_WIDTH_CAPTION_STYLE}
+        >
+          {anchorWidthTarget === null
+            ? ANCHOR_WIDTH_NO_EDIT_REASON
+            : 'Select anchors on the canvas to set their width.'}
+        </span>
+      ) : null}
     </div>
   );
 }
