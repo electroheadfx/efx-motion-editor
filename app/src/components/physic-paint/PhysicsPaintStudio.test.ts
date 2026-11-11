@@ -6889,12 +6889,24 @@ describe('261111-wd6 — the Color tab per-vertex branch', () => {
     const region = colorHandlerRegion();
     expect(region).toContain('vectorPathSession.vectorAnchorSelection.peek()');
     expect(region).toContain('buildAnchorColorCommit(');
-    expect(region).toContain('aquarellePathEditCommitRef.current?.(target, next)');
+    expect(region).toContain('const commit = aquarellePathEditCommitRef.current');
+    expect(region).toContain('commit(target, next)');
     // The anchor branch returns before the shipped whole-stroke commit.
-    expect(region.indexOf('aquarellePathEditCommitRef.current?.('))
+    expect(region.indexOf('commit(target, next)'))
       .toBeLessThan(region.indexOf('aquarelleAppearanceCommitRef.current?.(ids, { color })'));
     // The whole-stroke fallback is unchanged.
     expect(region).toContain('aquarelleAppearanceCommitRef.current?.(ids, { color })');
+  });
+
+  // WR-01: a refused commit used to be discarded by `void …?.()`, so the picker
+  // moved and no vertex changed with no explanation. The Vertex size path
+  // already publishes (61-27); the colour branch must too.
+  it('publishes a refused anchor-colour commit instead of swallowing it', () => {
+    const region = colorHandlerRegion();
+    expect(region).toContain('if (editId !== null) return;');
+    expect(region).toContain('setApplyMessage(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE)');
+    expect(region).toContain("setApplyStatus('error')");
+    expect(region).toContain('setLastError(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE)');
   });
 
   it('wires the ONE path-edit commit through the render-body ref', () => {

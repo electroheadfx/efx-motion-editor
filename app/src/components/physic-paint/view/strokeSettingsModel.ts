@@ -936,6 +936,15 @@ export const ANCHOR_WIDTH_NO_EDIT_REASON =
 export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Vertex size not applied — the path edit is no longer open on this stroke.';
 
 /**
+ * 261111-wd6: the ONE reason a refused per-vertex colour commit publishes.
+ * The anchor branch used to discard the commit promise, so a refusal (locked
+ * surface, in-flight edit, declined begin, failed rebake) looked exactly like
+ * a success — the picker moved and no vertex changed. Same shape as the
+ * Vertex size line: fixed, non-interpolated, one line for every refusal path.
+ */
+export const ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE = 'Vertex colour not applied — the path edit could not be committed on this stroke.';
+
+/**
  * The Paint row's reading. `value` is the FIRST selected anchor's factor (the
  * first-selected precedent every numeric field follows), `mixed` when any
  * listed anchor disagrees, and `count` how many of the listed indices the path

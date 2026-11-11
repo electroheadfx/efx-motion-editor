@@ -478,7 +478,7 @@ describe('buildAnchorColorCommit — one explicit per-vertex colour (261111-wd6)
     expect(again![0]).toEqual(colored[0]);
   });
 
-  it('writes nothing when only unknown indices ride beside a real one', () => {
+  it('writes the known index and ignores the unknown one beside it', () => {
     const next = buildAnchorColorCommit(shaped, [1, 7], '#ff0000')!;
     expect(next[1]!.color).toBe('#ff0000');
     expect(next).toHaveLength(3);

@@ -328,6 +328,7 @@ import {
   runAquarelleScriptRebake,
 } from './view/aquarelleVectorPathCommit';
 import {
+  ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE,
   resolveAnchorWidthTarget,
   type ScriptStrokeAppearancePatch,
   type StrokeSettingsDialogBundle,
@@ -7474,13 +7475,21 @@ export function PhysicsPaintStudio() {
         ids,
         pathEditMutationId: vectorPathSession.pathEditMutationId.peek(),
       });
-      if (target !== null) {
+      const commit = aquarellePathEditCommitRef.current;
+      if (target !== null && commit !== null) {
         const stroke = getRecordedAquarelleStroke(target);
         const anchors = stroke ? normaliseAquarelleAnchors(stroke.anchors) : undefined;
         if (anchors !== undefined) {
           const next = buildAnchorColorCommit(anchors, anchorSelection, color);
           if (next !== null) {
-            void aquarellePathEditCommitRef.current?.(target, next);
+            // 261111-wd6 (WR-01): a refused commit must publish, never look
+            // like a success — the Vertex size commit already does (61-27).
+            void commit(target, next).then((editId) => {
+              if (editId !== null) return;
+              setApplyMessage(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE);
+              setApplyStatus('error');
+              setLastError(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE);
+            });
             return;
           }
         }

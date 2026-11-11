@@ -425,15 +425,17 @@ function mixAnchorColor(
   }
 }
 
+/**
+ * Private to `sampleVectorColors`, which guards the empty list before calling:
+ * `anchors` is never empty here, so there is no neutral colour to fall back to.
+ */
 function colorAtStation(
   anchors: readonly VectorAnchor[],
   anchorStations: readonly number[],
   anchorColors: readonly AnchorColorChannels[],
-  base: AnchorColorChannels,
   station: number,
 ): AnchorColorChannels {
   const last = anchors.length - 1
-  if (last < 0) return base
   if (last === 0) return anchorColors[0]!
   if (!Number.isFinite(station) || station <= anchorStations[0]!) return anchorColors[0]!
   if (station >= anchorStations[last]!) return anchorColors[last]!
@@ -474,7 +476,6 @@ export function sampleVectorColors(
   const normalisedBase = normaliseAnchorColor(baseColor)
   if (normalisedBase === undefined) return points.map(() => baseColor)
   if (isUniformColorProfile(normalised)) return points.map(() => normalisedBase)
-  const base = anchorColorChannels(normalisedBase)
   const anchorColors = normalised.map((anchor) =>
     anchorColorChannels(normaliseAnchorColor(anchor.color) ?? normalisedBase),
   )
@@ -494,7 +495,7 @@ export function sampleVectorColors(
       }
     }
     return formatAnchorColor(
-      colorAtStation(normalised, anchorStations, anchorColors, base, stations[nearest] ?? 0),
+      colorAtStation(normalised, anchorStations, anchorColors, stations[nearest] ?? 0),
     )
   })
 }
