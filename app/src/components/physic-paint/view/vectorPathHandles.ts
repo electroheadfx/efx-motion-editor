@@ -585,16 +585,63 @@ export const VECTOR_STROKE_BASE_PRESSURE = 0.5;
 /** How far into the path (fraction of its length) the pen works up to speed. */
 const VECTOR_PRESSURE_TAPER_FRACTION = 0.055;
 /** The pressure multiplier at the very first / very last sample. */
-const VECTOR_PRESSURE_TAPER_FLOOR = 0.55;
-/** The two low-frequency terms that give the profile its hand-made feel. */
+const VECTOR_PRESSURE_TAPER_FLOOR = 0.42;
+/**
+ * How much a turn loads the pen. A hand SLOWS into a corner, so the corner is
+ * where the same brush pools the most pigment — that is the blob a hand-drawn
+ * zigzag shows at every direction change and a path had none of.
+ */
+const VECTOR_PRESSURE_TURN_GAIN = 0.42;
+/** The two low-frequency terms that give the profile its hand-made drift. */
 const VECTOR_PRESSURE_WOBBLE = [
-  { cycles: 1.7, amplitude: 0.13 },
-  { cycles: 4.1, amplitude: 0.06 },
+  { cycles: 1.1, amplitude: 0.18 },
+  { cycles: 3.3, amplitude: 0.09 },
 ] as const;
+/** Samples either side of a turn that still carry its load. */
+const VECTOR_PRESSURE_TURN_SPREAD = 4;
 
 function smoothstep01(value: number): number {
   const t = Math.min(1, Math.max(0, value));
   return t * t * (3 - 2 * t);
+}
+
+/**
+ * Per-sample "the hand was slow here" in [0, 1], from the path's own turning
+ * angle: the angle between the chords entering and leaving each sample, read
+ * over a 2-sample window and then spread across its neighbours. Pure geometry
+ * — no seed, no timing — so the same path always yields the same profile.
+ */
+function vectorSpineTurnLoad(points: readonly { x: number; y: number }[]): number[] {
+  const count = points.length;
+  const turn = new Array<number>(count).fill(0);
+  if (count < 3) return turn;
+  for (let index = 0; index < count; index += 1) {
+    const before = points[Math.max(0, index - 2)]!;
+    const here = points[index]!;
+    const after = points[Math.min(count - 1, index + 2)]!;
+    const ax = here.x - before.x;
+    const ay = here.y - before.y;
+    const bx = after.x - here.x;
+    const by = after.y - here.y;
+    const la = Math.hypot(ax, ay);
+    const lb = Math.hypot(bx, by);
+    if (la <= 0 || lb <= 0) continue;
+    const cosine = Math.min(1, Math.max(-1, (ax * bx + ay * by) / (la * lb)));
+    turn[index] = Math.acos(cosine) / (Math.PI / 2);
+  }
+  const spread = new Array<number>(count).fill(0);
+  for (let index = 0; index < count; index += 1) {
+    let sum = 0;
+    let hits = 0;
+    for (let offset = -VECTOR_PRESSURE_TURN_SPREAD; offset <= VECTOR_PRESSURE_TURN_SPREAD; offset += 1) {
+      const peer = index + offset;
+      if (peer < 0 || peer >= count) continue;
+      sum += turn[peer]!;
+      hits += 1;
+    }
+    spread[index] = hits === 0 ? 0 : Math.min(1, sum / hits);
+  }
+  return spread;
 }
 
 /**
@@ -615,11 +662,13 @@ function vectorSpinePressurePhase(points: readonly { x: number; y: number }[]): 
  *
  * A hand stroke is organic because the engine derives pressure from pointer
  * speed; a path has neither speed nor pressure, so a constant value deposits
- * one flat, maximum-ish wash that looks nothing like the same brush used by
- * hand. This profile restores the missing variation WITHOUT touching geometry:
- * a short ramp at each end (the pen touches down and lifts) plus two bounded
- * low-frequency terms for the hand's own drift. It is deterministic per path
- * and stored in the recorded points, so replay, reopen and export keep it.
+ * one flat wash that looks nothing like the same brush used by hand. This
+ * profile restores the missing variation WITHOUT touching geometry:
+ *   - a short ramp at each end (the pen touches down and lifts),
+ *   - a turn term: the hand slows into a corner, so the corner pools pigment,
+ *   - two low-frequency terms for the hand's own drift.
+ * It is deterministic per path (geometry seeds it) and stored in the recorded
+ * points, so replay, reopen and export keep it.
  *
  * `simple-ribbon` is the clean-sweep mode and keeps the flat base pressure —
  * its contract is a clean ribbon, not a wet pen.
@@ -633,6 +682,7 @@ export function vectorSpinePressures(
     return points.map(() => VECTOR_STROKE_BASE_PRESSURE);
   }
   const phase = vectorSpinePressurePhase(points);
+  const turnLoad = vectorSpineTurnLoad(points);
   const span = points.length === 1 ? 1 : points.length - 1;
   return points.map((_point, index) => {
     const u = index / span;
@@ -649,7 +699,8 @@ export function vectorSpinePressures(
       const { cycles, amplitude } = VECTOR_PRESSURE_WOBBLE[term]!;
       wobble += amplitude * Math.sin(2 * Math.PI * (cycles * u + phase * (term + 1)));
     }
-    return Math.min(0.8, Math.max(0.16, VECTOR_STROKE_BASE_PRESSURE * taper * wobble));
+    const loaded = VECTOR_STROKE_BASE_PRESSURE + VECTOR_PRESSURE_TURN_GAIN * (turnLoad[index] ?? 0);
+    return Math.min(0.95, Math.max(0.16, loaded * taper * wobble));
   });
 }
 

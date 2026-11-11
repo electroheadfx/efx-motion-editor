@@ -572,7 +572,7 @@ describe('vectorSpinePressures — the natural pen profile', () => {
     expect(pressures).toHaveLength(spine.length);
     for (const pressure of pressures) {
       expect(pressure).toBeGreaterThanOrEqual(0.16);
-      expect(pressure).toBeLessThanOrEqual(0.8);
+      expect(pressure).toBeLessThanOrEqual(0.95);
     }
     const middle = pressures[Math.floor(pressures.length / 2)]!;
     expect(pressures[0]!).toBeLessThan(middle * 0.8);
@@ -593,6 +593,17 @@ describe('vectorSpinePressures — the natural pen profile', () => {
     const pressures = vectorSpinePressures(spine, 'watercolor');
     const window = pressures.slice(10, 54);
     expect(new Set(window.map((pressure) => pressure.toFixed(4))).size).toBeGreaterThan(8);
+  });
+
+  it('loads the pen into a turn, so a corner pools more than a straight run', () => {
+    const straight = vectorSpinePressures(spine, 'watercolor');
+    // Same span, but the path turns sharply every eight samples.
+    const zigzag = spine.map((point, index) => ({
+      x: point.x,
+      y: 0.5 + (index % 16 < 8 ? 0.12 : -0.12),
+    }));
+    const zigzagPressures = vectorSpinePressures(zigzag, 'watercolor');
+    expect(Math.max(...zigzagPressures)).toBeGreaterThan(Math.max(...straight) + 0.15);
   });
 
   it('keeps the clean-sweep mode flat at the base pressure', () => {
