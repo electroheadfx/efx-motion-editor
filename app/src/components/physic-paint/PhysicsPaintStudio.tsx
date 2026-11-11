@@ -8826,7 +8826,17 @@ export function PhysicsPaintStudio() {
       // re-bake (the commit painted no engine dabs). Tailed after the record
       // so the timeline already contains this exact stroke; a failed record
       // throws into the catch and never bakes.
-      if (isVectorAquarelleStroke(stroke)) void bakeAquarelleVectorCommit();
+      // 61-26 (WR-03): the bake's boolean is the only proof those pixels
+      // exist. A false here means an in-flight re-bake refused without a
+      // terminal callback — the stroke is in the script and nowhere on the
+      // sheet. Arm the stale-sheet invariant; the ONE Draft/wireframe settle
+      // is the only route that re-applies the whole frame. Never publish: the
+      // gesture DID commit, and the apply-refusal ownership is not ours.
+      if (isVectorAquarelleStroke(stroke)) {
+        void bakeAquarelleVectorCommit().then((baked) => {
+          if (!baked) setDraftPixelsDirty(true);
+        });
+      }
     } catch {
       // A malformed recorded stroke must not kill the live surface — drop it.
     }

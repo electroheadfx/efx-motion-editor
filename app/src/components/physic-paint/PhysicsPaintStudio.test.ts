@@ -6577,7 +6577,9 @@ describe('61-15 vector draw bake seam in the Studio', () => {
 
   it('tails the stroke end with exactly one vector bake, after the record and the lift erase', () => {
     const handler = strokeEndRegion();
-    const TAIL = 'if (isVectorAquarelleStroke(stroke)) void bakeAquarelleVectorCommit();';
+    // 61-26 (WR-03): the tail is a continuation that consumes the bake's
+    // boolean, not the fire-and-forget call it replaced.
+    const TAIL = 'void bakeAquarelleVectorCommit().then((baked) => {';
     expect(handler.split(TAIL).length - 1).toBe(1);
     const tryAt = handler.indexOf('    try {');
     const recordAt = handler.indexOf('recordAquarelleStrokeWhenEnabled(');
@@ -6591,6 +6593,12 @@ describe('61-15 vector draw bake seam in the Studio', () => {
     expect(tailAt).toBeGreaterThan(eraseAt);
     // A refused record (the catch) never bakes.
     expect(tailAt).toBeLessThan(handler.indexOf('    } catch {'));
+    // 61-26 (WR-03): still guarded by the vector predicate, and the
+    // continuation arms the stale-sheet retry on a false result.
+    const vectorGuardAt = handler.indexOf('if (isVectorAquarelleStroke(stroke)) {');
+    expect(vectorGuardAt).toBeGreaterThan(-1);
+    expect(vectorGuardAt).toBeLessThan(tailAt);
+    expect(handler).toContain('if (!baked) setDraftPixelsDirty(true);');
     expect(studio).toContain(
       '  }, [bakeAquarelleVectorCommit, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);',
     );
