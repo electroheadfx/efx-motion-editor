@@ -289,9 +289,9 @@ Plans:
 - [ ] 61-26-PLAN.md — Shift+A under wireframe, an honest failed-restore capsule, and a committed in-flight bake marks the sheet stale (WR-01, WR-02, WR-03) — wave 2, after 61-24
 - [ ] 61-27-PLAN.md — Selecting another stroke closes the open path edit, and the two silent refusals publish (WR-04, IN-02, IN-03) — wave 4, after 61-22, 61-25 and 61-26
 - [ ] 61-28-PLAN.md — An interrupted path-edit drag can neither preview nor commit across an edit boundary (CR-01) — wave 4, after 61-25
-- [ ] 61-29-PLAN.md — A committed path edit reaches the payload's sampled points, with the written diagnosis preceding the fix (G-17) — wave 1
-- [ ] 61-30-PLAN.md — Spline curve mode: the persisted field, the single evaluator and the mode-aware re-sample, behind a one-way decision checkpoint (G-20) — wave 2, after 61-29
-- [ ] 61-31-PLAN.md — Spline curve mode: the Curve switch, its one-edit commit seam and the mode-aware canvas chrome (G-20) — wave 5, after 61-27, 61-28, 61-29 and 61-30
+- [ ] 61-29-PLAN.md — A committed path edit reaches the payload's sampled points, with the written diagnosis preceding the fix (G-17) — wave 5, after 61-21 and 61-28 (the overlay suite is edited one plan at a time: 61-22 and 61-25 sit in between)
+- [ ] 61-30-PLAN.md — Spline curve mode: the persisted field, the single evaluator and the mode-aware re-sample, behind a one-way decision checkpoint (G-20) — wave 6, after 61-29
+- [ ] 61-31-PLAN.md — Spline curve mode: the Curve switch, its one-edit commit seam and the mode-aware canvas chrome (G-20) — wave 7, after 61-27, 61-28, 61-29 and 61-30
 
 
 **Spike before the data model is locked**: per-vertex watercolour feasibility (segment runs vs payload extension), the sampling law, seam quality, stroke-count cost, and the determinism pin. The renderer, not the pen tool, is the scope risk.
