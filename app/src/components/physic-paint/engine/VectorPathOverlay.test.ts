@@ -1912,4 +1912,90 @@ describe('61-28 CR-01 - the edit-lifetime drag law', () => {
 
     expect(onPathEdit).not.toHaveBeenCalled();
   });
+
+  // The harness materializes the vnode tree and calls the component directly,
+  // so a mounted re-render with a surviving dragRef is not expressible: the
+  // edit-lifetime effect and the two target guards are pinned by source text.
+  // The start-of-gesture reset above is pinned behaviourally, through the real
+  // pointer handlers.
+
+  it('adds one editMutationId-keyed effect that clears the drag, the preview and the capture', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+
+    // The overlay owns its element, so the effect can release a capture whose
+    // pointer handlers are no longer bound.
+    expect(source).toContain('const surfaceRef = useRef<HTMLDivElement | null>(null);');
+    expect(source).toContain('ref={surfaceRef}');
+
+    // Exactly ONE new effect, keyed on the primitive editMutationId. The
+    // shipped key-listener effect keys on [penActive, editMutationId] and is
+    // not this one.
+    expect(source.split('}, [editMutationId]);').length - 1).toBe(1);
+    const depAt = source.indexOf('}, [editMutationId]);');
+    expect(depAt).toBeGreaterThan(-1);
+    const effectBlock = source.slice(source.lastIndexOf('useEffect(() => {', depAt), depAt);
+
+    expect(effectBlock).toContain('const drag = dragRef.current;');
+    expect(effectBlock).toContain('if (drag === null) return;');
+    expect(effectBlock).toContain('dragRef.current = null;');
+    // Compare-then-write: an already-clear preview is not written again.
+    expect(effectBlock).toContain(
+      'if (vectorPathEditDrag.peek() !== null) vectorPathEditDrag.value = null;',
+    );
+    expect(effectBlock).toContain('releasePointerCapture(surfaceRef.current, drag.pointerId);');
+    // An abandoned gesture is CANCELLED, never flushed — the effect commits
+    // nothing by itself.
+    expect(effectBlock).not.toContain('onPathEdit');
+  });
+
+  it('keeps a live gesture when the drag still belongs to the open edit', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    const depAt = source.indexOf('}, [editMutationId]);');
+    expect(depAt).toBeGreaterThan(-1);
+    const effectBlock = source.slice(source.lastIndexOf('useEffect(() => {', depAt), depAt);
+
+    // A render that still names the drag's stroke returns untouched, and every
+    // clearing step sits AFTER that early return.
+    const keepAt = effectBlock.indexOf(
+      'if (editMutationId !== null && String(drag.mutationId) === editMutationId) return;',
+    );
+    expect(keepAt).toBeGreaterThan(-1);
+    expect(effectBlock.indexOf('dragRef.current = null;')).toBeGreaterThan(keepAt);
+    expect(effectBlock.indexOf('vectorPathEditDrag.value = null;')).toBeGreaterThan(keepAt);
+    expect(effectBlock.indexOf('releasePointerCapture(surfaceRef.current, drag.pointerId);'))
+      .toBeGreaterThan(keepAt);
+  });
+
+  it('refuses a non-matching drag before any preview write or commit in both handlers', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    const guard =
+      'if (editTargetMutationId === null || drag.mutationId !== editTargetMutationId) return;';
+    // The SAME guard, in both drag continuations.
+    expect(source.split(guard).length - 1).toBe(2);
+
+    const continueAt = source.indexOf('const continueEditDrag =');
+    const finishAt = source.indexOf('const finishEditDrag =');
+    const cancelAt = source.indexOf('const cancelEditDrag =');
+    expect(continueAt).toBeGreaterThan(-1);
+    expect(finishAt).toBeGreaterThan(continueAt);
+    expect(cancelAt).toBeGreaterThan(finishAt);
+    const continueBody = source.slice(continueAt, finishAt);
+    const finishBody = source.slice(finishAt, cancelAt);
+
+    // No preview write may precede the guard.
+    expect(continueBody).toContain(guard);
+    expect(continueBody.indexOf(guard)).toBeLessThan(
+      continueBody.indexOf('vectorPathEditDrag.value = {'),
+    );
+    // No clear, no commit and no release may precede the guard either.
+    expect(finishBody).toContain(guard);
+    expect(finishBody.indexOf(guard)).toBeLessThan(
+      finishBody.indexOf('vectorPathEditDrag.value = null;'),
+    );
+    expect(finishBody.indexOf(guard)).toBeLessThan(finishBody.indexOf('props.onPathEdit('));
+    // The shipped clear-before-commit law is untouched (T-61-30).
+    expect(finishBody.indexOf('vectorPathEditDrag.value = null;')).toBeLessThan(
+      finishBody.indexOf('props.onPathEdit('),
+    );
+  });
 });
