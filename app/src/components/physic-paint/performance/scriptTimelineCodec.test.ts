@@ -649,18 +649,19 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
 
     const colourless = encodeScriptTimelineBinary([coloredVectorStroke()]);
     expect(colourless[VECTOR_FLAG_OFFSET] & VECTOR_FLAG_ANCHOR_COLOR).toBe(0);
-    // Every anchor pays exactly one presence byte; nothing else grows.
-    expect(colourless.byteLength).toBe(120);
+    // No block at all: the colourless path is byte-identical to pre-change.
+    expect(colourless.byteLength).toBe(118);
   });
 
   it('costs one presence byte per anchor plus 1 + 2 + UTF-8 bytes for a colour', () => {
     const colourless = encodeScriptTimelineBinary([coloredVectorStroke()]);
     const coloured = encodeScriptTimelineBinary([coloredVectorStroke('#ff0000')]);
-    // presence marker + u16 length + 7 UTF-8 bytes for `#ff0000`.
-    expect(coloured.byteLength).toBe(colourless.byteLength + 1 + 2 + 7);
+    // Coloured anchor: presence + u16 length + 7 UTF-8 bytes for `#ff0000`.
+    // The colourless anchor inside the same path: its presence byte alone.
+    expect(coloured.byteLength).toBe(colourless.byteLength + 1 + 2 + 7 + 1);
 
     const short = encodeScriptTimelineBinary([coloredVectorStroke('#0f0')]);
-    expect(short.byteLength).toBe(colourless.byteLength + 1 + 2 + 4);
+    expect(short.byteLength).toBe(colourless.byteLength + 1 + 2 + 4 + 1);
 
     expect(coloured[VECTOR_FLAG_OFFSET] & VECTOR_FLAG_ANCHOR_COLOR).not.toBe(0);
   });
@@ -686,9 +687,19 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
   });
 
   it('fails closed when the stream is cut inside the colour string', () => {
-    const bytes = encodeScriptTimelineBinary([coloredVectorStroke('#ff0000')]);
-    // Single anchor from 76: x/y/kind/handleFlags/widthPresence (11 bytes),
-    // then colour presence (87), u16 length (88), UTF-8 (90..96).
+    // One anchor only, so the anchor-count lower bound cannot fire first and
+    // the cut really lands inside the UTF-8 string.
+    const base = minimalStroke();
+    const single: StudioStroke<AquarelleStrokePayload> = {
+      ...base,
+      engine: {
+        ...base.engine,
+        anchors: [{ x: 0.25, y: 0.5, kind: 'auto', color: '#ff0000' }],
+      },
+    };
+    const bytes = encodeScriptTimelineBinary([single]);
+    // From the anchor start (76): x/y/kind/handleFlags/widthPresence (11
+    // bytes), then colour presence (87), u16 length (88), UTF-8 (90..96).
     // Cutting at 94 leaves 4 of the 7 string bytes.
     const cut = bytes.slice(0, 94);
     new DataView(cut.buffer, cut.byteOffset, cut.byteLength).setUint32(

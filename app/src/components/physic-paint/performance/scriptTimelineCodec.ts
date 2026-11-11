@@ -33,21 +33,27 @@
 //      f64 value) in sorted key order; u8 toolOverrides mask + f64
 //      values; u8 mutationId presence + u32; u8 diffusionFrames
 //      presence + u32; f64 timestamp; u8 playFrame presence + i32.
-//    Vector block (61-05 / 61-30), AFTER the engine block's playFrame
-//      presence and BEFORE pointCount: u8 vectorFlags (bit 0 = a non-empty
-//      anchor list follows, bit 1 = LEGACY optional byte, never written,
-//      bit 2 = a curve-mode byte follows), then when bit 0 is set u16
+//    Vector block (61-05 / 61-30 / 261111-wd6), AFTER the engine block's
+//      playFrame presence and BEFORE pointCount: u8 vectorFlags (bit 0 = a
+//      non-empty anchor list follows, bit 1 = LEGACY optional byte, never
+//      written, bit 2 = a curve-mode byte follows, bit 3 = every anchor
+//      carries a colour-presence byte), then when bit 0 is set u16
 //      anchorCount + per anchor u8-order: f32 x, f32 y, u8 kindCode
 //      (auto=0, bezier=1), u8 handleFlags (bit 0 in-present, bit 1
 //      out-present), the conditional f32 handle pairs, u8 widthPresent +
-//      conditional f32 width; then when bit 1 is set ONE byte is read and
-//      ignored (files written while the removed render mode existed);
-//      then when bit 2 is set u8 curveModeCode (bezier=0, spline=1) —
-//      WRITTEN LAST so every pre-existing offset in the block stays
-//      stable. The block sits inside the engine slot because that slot is
-//      the opaque carrier: appending there leaves every pre-existing
-//      field's offset stable. A hand-painted stroke with no mode pays
-//      exactly one flags byte.
+//      conditional f32 width, and — only when bit 3 is set — u8
+//      colorPresent + conditional u16-length UTF-8 colour, written LAST
+//      inside the anchor so every pre-existing anchor offset stays stable;
+//      then when bit 1 is set ONE byte is read and ignored (files written
+//      while the removed render mode existed); then when bit 2 is set u8
+//      curveModeCode (bezier=0, spline=1) — WRITTEN LAST so every
+//      pre-existing offset in the block stays stable. The block sits
+//      inside the engine slot because that slot is the opaque carrier:
+//      appending there leaves every pre-existing field's offset stable. A
+//      hand-painted stroke with no mode pays exactly one flags byte, and a
+//      path with no anchor colour sets no bit 3 and writes no colour byte.
+//      An older reader refuses bit 3 (reserved-flags check): fail closed,
+//      exactly like every other unknown vector flag.
 //    Point record (16 bytes): u16 x, u16 y, u16 p, i16 tx, i16 ty,
 //      i16 tw, u32 tick.
 //
@@ -175,12 +181,19 @@ const VECTOR_FLAG_ANCHORS = 1 << 0;
 // Removed mode's bit: never written, still read so pre-removal files open.
 const VECTOR_FLAG_LEGACY_BYTE = 1 << 1;
 const VECTOR_FLAG_CURVE_MODE = 1 << 2;
-const VECTOR_FLAGS_MASK = VECTOR_FLAG_ANCHORS | VECTOR_FLAG_LEGACY_BYTE | VECTOR_FLAG_CURVE_MODE;
+// 261111-wd6: per-anchor colour block (presence byte + verbatim string).
+const VECTOR_FLAG_ANCHOR_COLOR = 1 << 3;
+const VECTOR_FLAGS_MASK =
+  VECTOR_FLAG_ANCHORS | VECTOR_FLAG_LEGACY_BYTE | VECTOR_FLAG_CURVE_MODE | VECTOR_FLAG_ANCHOR_COLOR;
 const ANCHOR_HANDLE_IN = 1 << 0;
 const ANCHOR_HANDLE_OUT = 1 << 1;
 const ANCHOR_HANDLE_MASK = ANCHOR_HANDLE_IN | ANCHOR_HANDLE_OUT;
 
-/** x + y (two f32) + kind + handleFlags + widthPresent. */
+/**
+ * x + y (two f32) + kind + handleFlags + widthPresent. A colour block is
+ * optional (bit 3), so this stays a safe lower bound for the hostile-count
+ * check.
+ */
 const MIN_ANCHOR_BYTE_LENGTH = 4 + 4 + 1 + 1 + 1;
 
 const UTF8_ENCODER = new TextEncoder();
@@ -492,7 +505,12 @@ function writeVec2(writer: BinaryWriter, value: unknown, what: string): void {
   writer.f32(assertFinite(point.y, `${what}.y`));
 }
 
-function encodeAnchor(writer: BinaryWriter, raw: unknown, index: number): void {
+function encodeAnchor(
+  writer: BinaryWriter,
+  raw: unknown,
+  index: number,
+  colorBlock: boolean,
+): void {
   const what = `engine.anchors[${index}]`;
   if (typeof raw !== 'object' || raw === null) {
     fail('invalid-value', `${what} must be an anchor object`);
@@ -518,6 +536,23 @@ function encodeAnchor(writer: BinaryWriter, raw: unknown, index: number): void {
   const width = anchor['width'];
   writer.u8(width === undefined ? 0 : 1);
   if (width !== undefined) writer.f32(assertFinite(width, `${what}.width`));
+
+  // 261111-wd6: the colour block closes the anchor so every pre-existing
+  // anchor offset keeps its position. The string is written VERBATIM — the
+  // package normaliser owns canonicalisation; this layer only refuses a
+  // non-string, never repairs one.
+  if (colorBlock) {
+    const color = anchor['color'];
+    if (color === undefined) {
+      writer.u8(0);
+    } else {
+      if (typeof color !== 'string') {
+        fail('invalid-value', `${what}.color must be a string`);
+      }
+      writer.u8(1);
+      writer.string(color, `${what}.color`);
+    }
+  }
 }
 
 /**
@@ -547,9 +582,27 @@ function encodeVectorBlock(
     fail('invalid-value', `unknown engine.curveMode "${String(curveMode)}"`);
   }
 
+  // 261111-wd6: the colour block is all-or-nothing per path — one anchor
+  // naming a colour turns on the bit that makes every anchor write its
+  // presence byte, so a colourless path gains nothing.
+  let hasAnchorColor = false;
+  if (anchors !== undefined) {
+    for (const raw of anchors) {
+      if (
+        typeof raw === 'object' &&
+        raw !== null &&
+        (raw as Readonly<Record<string, unknown>>)['color'] !== undefined
+      ) {
+        hasAnchorColor = true;
+        break;
+      }
+    }
+  }
+
   let flags = 0;
   if (anchors !== undefined) flags |= VECTOR_FLAG_ANCHORS;
   if (curveMode !== undefined) flags |= VECTOR_FLAG_CURVE_MODE;
+  if (hasAnchorColor) flags |= VECTOR_FLAG_ANCHOR_COLOR;
   writer.u8(flags);
 
   if (anchors !== undefined) {
@@ -558,7 +611,7 @@ function encodeVectorBlock(
     }
     writer.u16(anchors.length);
     for (let index = 0; index < anchors.length; index += 1) {
-      encodeAnchor(writer, anchors[index], index);
+      encodeAnchor(writer, anchors[index], index, hasAnchorColor);
     }
   }
 
@@ -765,7 +818,7 @@ function decodeVec2(
   };
 }
 
-function decodeAnchor(reader: BinaryReader, index: number): AquarelleAnchor {
+function decodeAnchor(reader: BinaryReader, index: number, colorBlock: boolean): AquarelleAnchor {
   const what = `engine.anchors[${index}]`;
   const x = assertFinite(reader.f32(), `${what}.x`);
   const y = assertFinite(reader.f32(), `${what}.y`);
@@ -784,8 +837,14 @@ function decodeAnchor(reader: BinaryReader, index: number): AquarelleAnchor {
     (handleFlags & ANCHOR_HANDLE_OUT) !== 0 ? decodeVec2(reader, `${what}.out`) : undefined;
   const hasWidth = reader.presence(`${what}.width`);
   const width = hasWidth ? assertFinite(reader.f32(), `${what}.width`) : undefined;
+  // 261111-wd6: the colour block closes the anchor, mirroring the encoder.
+  // Verbatim on the wire — never canonicalised here.
+  const color =
+    colorBlock && reader.presence(`${what}.color`)
+      ? reader.string(`${what}.color`)
+      : undefined;
   // Optional members are materialised only when their flag carried them, so a
-  // projected uniform stroke round-trips without width keys.
+  // projected uniform stroke round-trips without width or colour keys.
   return {
     x,
     y,
@@ -793,6 +852,7 @@ function decodeAnchor(reader: BinaryReader, index: number): AquarelleAnchor {
     ...(handleIn !== undefined ? { in: handleIn } : {}),
     ...(handleOut !== undefined ? { out: handleOut } : {}),
     ...(width !== undefined ? { width } : {}),
+    ...(color !== undefined ? { color } : {}),
   };
 }
 
@@ -823,8 +883,9 @@ function decodeVectorBlock(reader: BinaryReader): {
       fail('invalid-count', 'anchor count exceeds the remaining body bytes', reader.offset);
     }
     const anchors: AquarelleAnchor[] = [];
+    const colorBlock = (flags & VECTOR_FLAG_ANCHOR_COLOR) !== 0;
     for (let index = 0; index < anchorCount; index += 1) {
-      anchors.push(decodeAnchor(reader, index));
+      anchors.push(decodeAnchor(reader, index, colorBlock));
     }
     result.anchors = anchors;
   }

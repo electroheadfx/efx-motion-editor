@@ -477,7 +477,8 @@ pub struct Vec2Wire {
 /// anchor block shipped in 61-05: `x` / `y` are document-uv, `kind` is the
 /// closed `auto` / `bezier` union, and `in` / `out` carry absolute handle
 /// endpoints only for a `bezier` anchor. `width` is the sparse per-anchor width
-/// factor (D-10) — absent reads 1.
+/// factor (D-10) — absent reads 1. `color` is the explicit per-vertex colour
+/// (261111-wd6) in canonical `#rrggbb` — absent inherits the stroke colour.
 ///
 /// Contract declaration (REL-02): this is a declaration surface, not a second
 /// parser — the engine slot stays opaque on the wire. `in` is a Rust keyword,
@@ -493,6 +494,7 @@ pub struct MceAquarelleAnchor {
     pub in_: Option<Vec2Wire>,
     pub out: Option<Vec2Wire>,
     pub width: Option<f32>,
+    pub color: Option<String>,
 }
 
 /// The persisted vector-path shape of one stroke (VEC-06 / 61-06): a non-empty

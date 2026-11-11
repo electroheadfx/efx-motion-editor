@@ -334,6 +334,9 @@ export interface MceBrushPackSnapshot {
  * closed `auto` / `bezier` union, and `in` / `out` carry absolute handle
  * endpoints only for a `bezier` anchor. `width` is the sparse per-anchor width
  * factor (D-10) — absent reads 1, and a uniform stroke stores no width at all.
+ * `color` is the explicit per-vertex colour (261111-wd6) in canonical
+ * `#rrggbb` — absent inherits the stroke colour, and unlike `width` an
+ * explicit colour is always stored.
  *
  * Declaration only: the engine slot stays opaque on the wire, so the host
  * still never parses these keys (`MceEngineStrokePayload.engine` carries them).
@@ -345,6 +348,7 @@ export interface MceAquarelleAnchor {
   in?: { x: number; y: number };
   out?: { x: number; y: number };
   width?: number;
+  color?: string;
 }
 
 /**
