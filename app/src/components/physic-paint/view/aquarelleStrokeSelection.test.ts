@@ -1822,7 +1822,7 @@ function sampledModePoints(
       }))
     : anchors;
   const sampled = resampleVectorPaintPoints(sampleVectorPath(source).points);
-  const pressures = vectorSpinePressures(sampled, 'watercolor');
+  const pressures = vectorSpinePressures(sampled);
   return sampled.map((p, index) => ({
     ...point(p.x, p.y),
     p: pressures[index]!,

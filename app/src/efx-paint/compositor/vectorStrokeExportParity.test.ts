@@ -5,7 +5,7 @@
 //
 //  The bake consumes the PROJECTION's output, never the live
 //  recorded stroke, so the seams that can silently drop a width
-//  factor, a render mode or an anchor list are:
+//  factor or an anchor list are:
 //
 //    recorded AquarelleStroke -> toStudioStroke (61-03)
 //      -> AQTL v2 encode/decode (61-05)
@@ -152,10 +152,10 @@ describe('61-14 vector stroke export parity', () => {
     resetAquarelleRecordState();
   });
 
-  it('reopen parity: a vector stroke keeps its pts, anchor list and render mode', () => {
+  it('reopen parity: a vector stroke keeps its pts and anchor list', () => {
     recordAquarelleStroke(
       201,
-      stroke(201, { brushId: 'simple-ribbon', anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+      stroke(201, { brushId: 'wc/round-medium', anchors: VECTOR_ANCHORS }),
     );
     const saved = [...getRecordedAquarellePayloadTimeline()];
     const savedEntry = strokeEntryAt(saved);
@@ -178,7 +178,6 @@ describe('61-14 vector stroke export parity', () => {
     expect(reopenedEntry.engine.anchors, 'engine.anchors').toStrictEqual(
       savedEntry.engine.anchors,
     );
-    expect(reopenedEntry.engine.renderMode, 'engine.renderMode').toBe('simple-ribbon');
 
     // The projected anchor shapes, named field by field.
     const anchors = reopenedEntry.engine.anchors!;
@@ -202,8 +201,7 @@ describe('61-14 vector stroke export parity', () => {
     recordAquarelleStroke(
       203,
       stroke(203, {
-        brushId: 'simple-ribbon',
-        renderMode: 'simple-ribbon',
+        brushId: 'wc/round-medium',
         anchors: [
           { x: 0, y: 0, kind: 'auto', width: 1 },
           { x: 1, y: 1, kind: 'bezier' },
@@ -224,44 +222,25 @@ describe('61-14 vector stroke export parity', () => {
   });
 
   it('reopen parity: a default hand-painted stroke keeps its exact pre-phase shape', () => {
-    // No anchors, no renderMode: the pre-vector stroke shape (REL-02).
+    // No anchors: the pre-vector stroke shape (REL-02).
     recordAquarelleStroke(205, stroke(205));
     const savedEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline());
     expect('anchors' in savedEntry.engine).toBe(false);
-    expect('renderMode' in savedEntry.engine).toBe(false);
 
     const reopenedEntry = strokeEntryAt(reopen([...getRecordedAquarellePayloadTimeline()]));
     expect(reopenedEntry).toStrictEqual(savedEntry);
     expect('anchors' in reopenedEntry.engine).toBe(false);
-    expect('renderMode' in reopenedEntry.engine).toBe(false);
-  });
-
-  it('reopen parity: a hand-painted stroke keeps its render mode and never gains a path', () => {
-    // D-14: the mode applies to BOTH families — a hand-painted stroke
-    // carries `renderMode` with NO anchor list, before and after reopen.
-    recordAquarelleStroke(
-      207,
-      stroke(207, { brushId: 'simple-ribbon', renderMode: 'simple-ribbon' }),
-    );
-    const savedEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline());
-    expect('anchors' in savedEntry.engine).toBe(false);
-    expect(savedEntry.engine.renderMode).toBe('simple-ribbon');
-
-    const reopenedEntry = strokeEntryAt(reopen([...getRecordedAquarellePayloadTimeline()]));
-    expect(reopenedEntry).toStrictEqual(savedEntry);
-    expect('anchors' in reopenedEntry.engine).toBe(false);
-    expect(reopenedEntry.engine.renderMode, 'engine.renderMode').toBe('simple-ribbon');
   });
 
   it('reopen parity: the engine event count and order match the source', () => {
     recordAquarelleStroke(
       211,
-      stroke(211, { brushId: 'simple-ribbon', anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+      stroke(211, { brushId: 'wc/round-medium', anchors: VECTOR_ANCHORS }),
     );
     recordAquarelleStroke(213, stroke(213));
     recordAquarelleStroke(
       215,
-      stroke(215, { brushId: 'simple-ribbon', renderMode: 'simple-ribbon' }),
+      stroke(215, { brushId: 'wc/round-medium' }),
     );
     const saved = [...getRecordedAquarellePayloadTimeline()];
     const savedIds = saved.map((event) => strokeEntryAt([event]).engine.mutationId);
@@ -274,43 +253,11 @@ describe('61-14 vector stroke export parity', () => {
     expect(savedIds).toStrictEqual([211, 213, 215]);
   });
 
-  it('both render modes are carried literally on both stroke families', () => {
-    // Neither mode ever defaults to the other: an explicit 'watercolor' stays
-    // explicit, and D-14 gives the hand-painted family the same two modes.
-    recordAquarelleStroke(
-      221,
-      stroke(221, { brushId: 'simple-ribbon', anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
-    );
-    recordAquarelleStroke(223, stroke(223, { anchors: VECTOR_ANCHORS, renderMode: 'watercolor' }));
-    recordAquarelleStroke(
-      225,
-      stroke(225, { brushId: 'simple-ribbon', renderMode: 'simple-ribbon' }),
-    );
-    recordAquarelleStroke(227, stroke(227, { brushId: 'round', renderMode: 'watercolor' }));
-
-    const reopened = reopen([...getRecordedAquarellePayloadTimeline()]);
-    expect(reopened).toHaveLength(4);
-    expect(strokeEntryAt(reopened, 0).engine.renderMode).toBe('simple-ribbon');
-    expect(strokeEntryAt(reopened, 1).engine.renderMode).toBe('watercolor');
-    expect(strokeEntryAt(reopened, 2).engine.renderMode).toBe('simple-ribbon');
-    expect(strokeEntryAt(reopened, 3).engine.renderMode).toBe('watercolor');
-    for (const index of [0, 1, 2, 3]) {
-      expect(
-        'renderMode' in strokeEntryAt(reopened, index).engine,
-        `renderMode present at entry ${index}`,
-      ).toBe(true);
-    }
-    // The hand-painted family keeps its mode without ever gaining a path.
-    expect('anchors' in strokeEntryAt(reopened, 2).engine).toBe(false);
-    expect('anchors' in strokeEntryAt(reopened, 3).engine).toBe(false);
-  });
-
   it('sparse width factors [1.8, absent, 0.4] reopen exactly and a uniform factor stores no key', () => {
     recordAquarelleStroke(
       231,
       stroke(231, {
-        brushId: 'simple-ribbon',
-        renderMode: 'simple-ribbon',
+        brushId: 'wc/round-medium',
         anchors: [
           { x: 0, y: 0, kind: 'auto', width: Math.fround(1.8) },
           { x: 0.5, y: 0.5, kind: 'auto' },
@@ -353,7 +300,7 @@ describe('61-14 vector stroke export parity', () => {
   it('a path edit, undone then redone, yields byte-identical bake inputs', () => {
     recordAquarelleStroke(
       251,
-      stroke(251, { brushId: 'simple-ribbon', anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+      stroke(251, { brushId: 'wc/round-medium', anchors: VECTOR_ANCHORS }),
     );
     const beforeSerialised = JSON.stringify(strokeEntryAt(getRecordedAquarellePayloadTimeline()));
 
@@ -381,7 +328,7 @@ describe('61-14 vector stroke export parity', () => {
   it('the codec is deterministic: two encodes match byte for byte and two decodes match entry for entry', () => {
     recordAquarelleStroke(
       241,
-      stroke(241, { brushId: 'simple-ribbon', anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+      stroke(241, { brushId: 'wc/round-medium', anchors: VECTOR_ANCHORS }),
     );
     const saved = [...getRecordedAquarellePayloadTimeline()];
 
@@ -399,9 +346,9 @@ describe('61-14 vector stroke export parity', () => {
   it('view flags never reach the persisted bytes: wireframe on and off serialise identically', () => {
     recordAquarelleStroke(
       261,
-      stroke(261, { brushId: 'simple-ribbon', anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+      stroke(261, { brushId: 'wc/round-medium', anchors: VECTOR_ANCHORS }),
     );
-    recordAquarelleStroke(263, stroke(263, { brushId: 'simple-ribbon', renderMode: 'simple-ribbon' }));
+    recordAquarelleStroke(263, stroke(263, { brushId: 'wc/round-medium' }));
     const events = [...getRecordedAquarellePayloadTimeline()];
     // ONE document: the flag toggle must be the only variable between the two
     // serialisations (createEfxPaintDocument mints fresh ids per call).

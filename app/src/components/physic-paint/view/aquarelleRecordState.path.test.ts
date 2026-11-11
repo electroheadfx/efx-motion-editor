@@ -18,7 +18,6 @@ import {
   type AquarelleCurveMode,
   type AquarellePayloadEvent,
   type AquarellePoint,
-  type AquarelleRenderMode,
   type AquarelleStroke,
 } from '@efxlab/efx-watercolor/payload';
 import {
@@ -39,11 +38,7 @@ import {
   restoreAquarelleEditSnapshot,
   setAquarelleScriptEditInFlight,
 } from './aquarelleStrokeSelection';
-import {
-  VECTOR_STROKE_BASE_PRESSURE,
-  resampleVectorPaintPoints,
-  vectorSpinePressures,
-} from './vectorPathHandles';
+import { resampleVectorPaintPoints, vectorSpinePressures } from './vectorPathHandles';
 
 type AquarelleTimelineStroke = ReturnType<typeof aquarelleToStudioStroke>;
 
@@ -162,10 +157,9 @@ const G17_WIDE_ANCHORS: readonly AquarelleAnchor[] = [
 /** The exact six-field shape `buildVectorStroke` stamps onto a fresh commit. */
 function sampledSpinePoints(
   anchors: readonly AquarelleAnchor[],
-  renderMode: AquarelleRenderMode = 'simple-ribbon',
 ): readonly AquarellePoint[] {
   const sampled = resampleVectorPaintPoints(sampleVectorPath(anchors).points);
-  const pressures = vectorSpinePressures(sampled, renderMode);
+  const pressures = vectorSpinePressures(sampled);
   return sampled.map((p, index) => ({
     x: p.x,
     y: p.y,
@@ -178,10 +172,7 @@ function sampledSpinePoints(
 
 /** A recorded vector stroke whose `points` are the spine sampled from its anchors. */
 function g17VectorStroke(mutationId: number): AquarelleStroke {
-  return {
-    ...stroke(mutationId, sampledSpinePoints(G17_PRE_ANCHORS), G17_PRE_ANCHORS),
-    renderMode: 'simple-ribbon',
-  };
+  return stroke(mutationId, sampledSpinePoints(G17_PRE_ANCHORS), G17_PRE_ANCHORS);
 }
 
 describe('61-10 aquarelle whole-stroke moves carry the vector path', () => {
@@ -412,7 +403,7 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     // The projection keeps the sample fields and re-ticks the new spine.
     for (const sampleIndex of [0, midIndex, lastIndex]) {
       const sample = entry.pts[sampleIndex]!;
-      expect(sample.p).toBe(VECTOR_STROKE_BASE_PRESSURE);
+      expect(sample.p).toBe(-1);
       expect(sample.tx).toBe(0);
       expect(sample.ty).toBe(0);
       expect(sample.tw).toBe(0);
@@ -443,9 +434,9 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     expect(updateAquarellePathInScript(id, G17_NEXT_ANCHORS)).toBe(1);
 
     const after = getRecordedAquarelleStroke(id)!;
-    // No renderMode on this stroke = watercolor, so the re-derived spine wears
-    // the natural pen profile — the same one `buildVectorStroke` would stamp.
-    const expected = sampledSpinePoints(G17_NEXT_ANCHORS, 'watercolor');
+    // The re-derived spine wears the mouse sentinel — the same shape
+    // `buildVectorStroke` stamps.
+    const expected = sampledSpinePoints(G17_NEXT_ANCHORS);
     expect(after.points).toEqual(expected);
     for (const sample of after.points) {
       expect(sample.tx).toBe(0);
@@ -563,11 +554,10 @@ function splineView(anchors: readonly AquarelleAnchor[]): readonly AquarelleAnch
 function sampledModePoints(
   anchors: readonly AquarelleAnchor[],
   mode: 'bezier' | 'spline',
-  renderMode: AquarelleRenderMode = 'simple-ribbon',
 ): readonly AquarellePoint[] {
   const source = mode === 'spline' ? splineView(anchors) : anchors;
   const sampled = resampleVectorPaintPoints(sampleVectorPath(source).points);
-  const pressures = vectorSpinePressures(sampled, renderMode);
+  const pressures = vectorSpinePressures(sampled);
   return sampled.map((p, index) => ({
     x: p.x,
     y: p.y,
@@ -582,7 +572,6 @@ function sampledModePoints(
 function curveStroke(mutationId: number, mode?: 'bezier' | 'spline'): AquarelleStroke {
   return {
     ...stroke(mutationId, sampledModePoints(CURVE_ANCHORS, mode ?? 'bezier'), CURVE_ANCHORS),
-    renderMode: 'simple-ribbon',
     ...(mode === undefined ? {} : { curveMode: mode }),
   };
 }

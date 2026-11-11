@@ -453,12 +453,10 @@ describe('VectorPathOverlay — draw gesture (task 2)', () => {
     handleVectorPathKey({ key: 'Enter' }, { onCommitPath, onCancelPath: () => {} });
     const commit = onCommitPath.mock.calls[0]![0] as {
       anchors: readonly VectorDraftAnchor[];
-      renderMode: string;
       curveMode: string;
       points: readonly { x: number; y: number }[];
     };
     expect(commit.anchors).toEqual([auto(0.3, 0.5), auto(0.7, 0.5)]);
-    expect(commit.renderMode).toBe('simple-ribbon');
     // G-20: a new path defaults to spline, and its points are the spline view.
     expect(commit.curveMode).toBe('spline');
     expect(commit.curveMode).toBe(DEFAULT_VECTOR_PATH_CURVE_MODE);
@@ -715,7 +713,7 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
     // maps points into `pts`), so they are the spine sampled from the new
     // anchors in the commit's six-field shape — never the pre-edit spine.
     const sampled = resampleVectorPaintPoints(sampleVectorPath(nextAnchors).points);
-    const pressures = vectorSpinePressures(sampled, 'watercolor');
+    const pressures = vectorSpinePressures(sampled);
     const expectedPoints = sampled.map((point, index) => ({
       x: point.x,
       y: point.y,

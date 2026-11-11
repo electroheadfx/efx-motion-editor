@@ -2531,8 +2531,6 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // handleAquarellePlaceStroke — same mapper, same capsule.
     // 261101-o2m: a tenth site — the Draft settle's recompute refusal — same
     // mapper, same capsule.
-    // 61-12: an eleventh site — the render-mode re-bake failure in
-    // handleAquarelleRenderModeStrokes — same mapper, same capsule.
     // 61-15: a twelfth site — the vector draw re-bake failure in
     // bakeAquarelleVectorCommit — same mapper, same capsule.
     // 61-15: a thirteenth site — the path-edit re-bake failure in
@@ -2540,7 +2538,7 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // 61-31: a fourteenth site — the curve-mode re-bake failure in
     // handleAquarelleCurveModeStrokes — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(15); // one import + fourteen call sites
+    expect(mentions).toBe(14); // one import + thirteen call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
@@ -5618,11 +5616,10 @@ describe('quick 261028-k03d — key-payload recovery and non-blanking failures',
     // 261029-lsr: the manual force-re-render (rail / Shift+R) recovers too.
     // 261101-o2m: the Draft entry arm and the Draft settle's belt join them —
     // both are no-ops once the arm has resolved the frame's durable base.
-    // 61-12: the render-mode batch joins the timeline edits.
     // 61-15: the shared vector path edit commit joins them.
     // 61-31: the curve-mode batch joins them.
-    expect(calls, 'delete + move + appearance + render mode + curve mode + transform + apply + rebake target + draft arm + draft settle + path edit').toBe(11);
-    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleRenderModeStrokes', 'handleAquarelleCurveModeStrokes', 'handleAquarelleTransformStrokes', 'commitAquarelleVectorPathEdit']) {
+    expect(calls, 'delete + move + appearance + curve mode + transform + apply + rebake target + draft arm + draft settle + path edit').toBe(10);
+    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleCurveModeStrokes', 'handleAquarelleTransformStrokes', 'commitAquarelleVectorPathEdit']) {
       const start = studio.indexOf(`const ${handler} = useCallback`);
       expect(start, `${handler} exists`).toBeGreaterThan(-1);
       const call = studio.indexOf('await ensureAquarelleDurableBaseRef.current(', start);
@@ -7201,79 +7198,6 @@ describe('61-13 wireframe gates — reasons, Draft ownership, idempotency', () =
     // Initial run + exactly one notified transition. VectorPathOverlay reads
     // this signal only, so one notification is one overlay pass.
     expect(passes).toBe(2);
-  });
-});
-
-// ============================================================
-//  61-12 Task 1 — the Render row's two Studio seams (VEC-04).
-//
-//  The appearance hydration carries the recorded stroke's `renderMode` so the
-//  dialog's reading is a pure projection, and `applyRenderMode` routes the
-//  WHOLE selection through exactly ONE `beginAquarelleRenderModeEdit` — the
-//  batch is one undo entry (T-61-41), never one per stroke.
-// ============================================================
-
-describe('61-12 Render mode bundle wiring in the Studio', () => {
-  const BUNDLE_START = 'const bundle: StrokeSettingsDialogBundle = {';
-  const BUNDLE_END = 'return bundle;';
-
-  function bundleRegion(): string {
-    const start = studio.indexOf(BUNDLE_START);
-    expect(start, `missing start marker: ${BUNDLE_START}`).toBeGreaterThan(-1);
-    const end = studio.indexOf(BUNDLE_END, start + BUNDLE_START.length);
-    expect(end, `missing end marker: ${BUNDLE_END}`).toBeGreaterThan(start);
-    return studio.slice(start, end);
-  }
-
-  it('hydrates renderMode from the recorded stroke, keeping an absent field absent', () => {
-    const bundle = bundleRegion();
-    expect(bundle).toContain('readAppearance: (ids, frame) => readAquarelleStrokeAppearance(ids, frame)');
-    expect(bundle).toContain('const stroke = getRecordedAquarelleStroke(appearance.mutationId);');
-    expect(bundle).toContain('return stroke?.renderMode === undefined');
-    expect(bundle).toContain(': { ...appearance, renderMode: stroke.renderMode };');
-  });
-
-  it('commits the whole selection through exactly one render-mode edit', () => {
-    const bundle = bundleRegion();
-    expect(bundle).toContain('applyRenderMode: (ids, mode) => handleAquarelleRenderModeStrokes(ids, mode),');
-    // ONE commit site for the whole file and ONE call per commit.
-    expect(studio.split('beginAquarelleRenderModeEdit(').length - 1).toBe(1);
-    expect(studio).toContain('const editId = beginAquarelleRenderModeEdit(frameIds, mode);');
-    expect(studio).toContain('const handleAquarelleRenderModeStrokes = useCallback(async (');
-  });
-
-  it('reuses the appearance handler law: guards, Draft branch, ONE re-bake, restore on failure', () => {
-    const start = studio.indexOf('const handleAquarelleRenderModeStrokes = useCallback(async (');
-    expect(start).toBeGreaterThan(-1);
-    const end = studio.indexOf('const handleAquarelleTransformStrokes = useCallback(async (', start);
-    expect(end).toBeGreaterThan(start);
-    const handler = studio.slice(start, end);
-    expect(handler).toContain('if (isPhysicalMutationLocked()) return false;');
-    expect(handler).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;');
-    expect(handler).toContain("if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;");
-    expect(handler).toContain('if (isAquarelleScriptEditInFlight()) return false;');
-    expect(handler).toContain('const frameIds = aquarelleStrokesOnFrame(ids, playFrame);');
-    expect(handler).toContain('await ensureAquarelleDurableBaseRef.current(playFrame);');
-    // Draft: record + mark dirty, never reset or re-apply.
-    const draftAt = handler.indexOf('if (draft) {');
-    const resetAt = handler.indexOf('aquarelleResetSheetRef.current?.()');
-    expect(draftAt).toBeGreaterThan(-1);
-    expect(resetAt).toBeGreaterThan(draftAt);
-    expect(handler.slice(draftAt, resetAt)).toContain('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
-    expect(handler.slice(draftAt, resetAt)).toContain('setDraftPixelsDirty(true);');
-    // Live: reset, re-apply, record on success, restore on failure.
-    expect(handler).toContain('await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
-    expect(handler).toContain('restoreAquarelleEditSnapshot(editId, \'undo\');');
-    expect(handler).toContain('setAquarelleScriptEditInFlight(false);');
-  });
-
-  it('declares the render-mode type import and forwards the handler into the memo deps', () => {
-    expect(studio).toContain("import type { AquarelleRenderMode } from '@efxlab/efx-watercolor/payload';");
-    const memoStart = studio.indexOf('const strokeSettingsDialog = strokeSettingsDialogPropsMemo.resolve(');
-    expect(memoStart).toBeGreaterThan(-1);
-    const memoDepEnd = studio.indexOf('() => {', memoStart);
-    expect(memoDepEnd).toBeGreaterThan(memoStart);
-    expect(studio.slice(memoStart, memoDepEnd)).toContain('handleAquarelleRenderModeStrokes');
   });
 });
 

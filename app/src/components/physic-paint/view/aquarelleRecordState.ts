@@ -20,19 +20,16 @@ import {
   evaluateAquarellePath,
   isAquarelleCurveMode,
   isAquarelleDryEvent,
-  isAquarelleRenderMode,
   normaliseAquarelleAnchors,
   paintSeedSaltOf,
   projectVectorPath,
   resolveAquarelleCurveMode,
-  resolveAquarelleRenderMode,
   toStudioStroke,
   type AquarelleAnchor,
   type AquarelleCurveMode,
   type AquarelleDryEvent,
   type AquarellePayloadEvent,
   type AquarellePoint,
-  type AquarelleRenderMode,
   type AquarelleStroke,
   type AquarelleStrokePayload,
   type AquarelleTool,
@@ -224,84 +221,6 @@ export function setAquarelleParam(key: AquarelleGlobalKey, value: number): void 
 }
 
 /**
- * 61-12 (D-13): the seven wet globals behind the Advanced disclosure — every
- * AQUA-04 global except `size` (the shared brush slider, D-05) and `lift`
- * (the Eraser strength). The ribbon preset zeroes EXACTLY these.
- */
-export type AquarelleWetKey =
-  | 'load'
-  | 'water'
-  | 'flow'
-  | 'bleed'
-  | 'edge'
-  | 'granulation'
-  | 'dry';
-
-export const AQUARELLE_WET_KEYS: readonly AquarelleWetKey[] = Object.freeze([
-  'load',
-  'water',
-  'flow',
-  'bleed',
-  'edge',
-  'granulation',
-  'dry',
-] as const);
-
-/**
- * 61-12 (D-13): the seven values the live bag held BEFORE the ribbon preset
- * was picked (null when not in ribbon mode). Session memory only — never
- * persisted and never written into a recorded stroke; leaving the preset
- * restores it into the live bag.
- */
-export const aquarelleSimpleRibbonWetMemory = signal<
-  Readonly<Record<AquarelleWetKey, number>> | null
->(null);
-
-/**
- * 61-12 (D-13): the batch form of `setAquarelleParam`. Builds the next bag
- * ONCE, compare-then-writes over the seven wet keys and assigns
- * `aquarelleParams.value` AT MOST ONCE — one store write, one render. A
- * non-finite value is ignored, never written into the document. Returns
- * whether it wrote.
- */
-export function setAquarelleWetGlobals(
-  patch: Readonly<Partial<Record<AquarelleWetKey, number>>>,
-): boolean {
-  const current = aquarelleParams.value;
-  const next: AquarelleGlobalParams = { ...current };
-  let changed = false;
-  for (const key of AQUARELLE_WET_KEYS) {
-    const value = patch[key];
-    if (value === undefined || !Number.isFinite(value)) continue;
-    if (next[key] === value) continue;
-    next[key] = value;
-    changed = true;
-  }
-  if (!changed) return false;
-  aquarelleParams.value = next;
-  return true;
-}
-
-/** The live bag's seven wet values, in canonical key order. */
-function snapshotAquarelleWetGlobals(): Record<AquarelleWetKey, number> {
-  const live = aquarelleParams.value;
-  const captured = {} as Record<AquarelleWetKey, number>;
-  for (const key of AQUARELLE_WET_KEYS) captured[key] = live[key];
-  return captured;
-}
-
-/** D-13: a plain ribbon deposits with every wet term at zero. */
-const ZERO_AQUARELLE_WET_GLOBALS: Readonly<Record<AquarelleWetKey, number>> = Object.freeze({
-  load: 0,
-  water: 0,
-  flow: 0,
-  bleed: 0,
-  edge: 0,
-  granulation: 0,
-  dry: 0,
-});
-
-/**
  * 261030-cnq: picking a paint tool leaves the color picker — the disarm runs
  * BEFORE the equality early-return, so a pick of the already-active tool still
  * leaves the picker (re-arming the same brush must not stay in sampling mode).
@@ -338,22 +257,6 @@ export function selectAquarelleTip(tipId: string | null): void {
   // A successful pick is a brush-tool variant pick — flip the tool first
   // so a re-pick of the already-selected id still returns to Brush.
   if (nextId !== null) setAquarelleTool('brush');
-  // 61-12 (D-13): the ribbon preset is a RENDER-MODE pick. Zero the seven wet
-  // globals (remembering the pre-ribbon values first) or restore them on any
-  // other pick. Runs BEFORE the identity early-return, so re-picking the
-  // ribbon re-establishes the zeros instead of returning.
-  if (preset?.renderMode === 'simple-ribbon') {
-    if (aquarelleSimpleRibbonWetMemory.value === null) {
-      aquarelleSimpleRibbonWetMemory.value = snapshotAquarelleWetGlobals();
-    }
-    setAquarelleWetGlobals(ZERO_AQUARELLE_WET_GLOBALS);
-  } else {
-    const rememberedWet = aquarelleSimpleRibbonWetMemory.value;
-    if (rememberedWet !== null) {
-      setAquarelleWetGlobals(rememberedWet);
-      aquarelleSimpleRibbonWetMemory.value = null;
-    }
-  }
   const currentId = aquarelleSelectedTipId.value;
   if (currentId === nextId) return;
 
@@ -928,66 +831,10 @@ export function updateAquarelleStrokesInScript(
 }
 
 /**
- * 61-12 (VEC-04 / T-61-40): write one render mode on every target stroke.
- *
- * The mode is a STROKE property (D-12/D-14), never a path property: this door
- * reads no anchors and writes none, so an anchorless hand-painted stroke is
- * written exactly like a vector one, and a malformed anchor list can never
- * refuse a mode change.
- *
- * Batch law (mirrors `updateAquarelleStrokesInScript`): validate the mode
- * against the closed union BEFORE resolving any target, de-duplicate the ids,
- * then resolve every target — skipping only missing, deleted,
- * out-of-timeline and already-matching strokes. Each write is a PURE field
- * replacement (`renderMode` and nothing else), reprojected through
- * `toStudioStroke` and stored at the SAME timeline index, so one revision
- * bump and one history entry cover the whole selection.
- */
-export function updateAquarelleRenderModeInScript(
-  mutationIds: readonly number[],
-  mode: AquarelleRenderMode,
-): number {
-  // Strict membership over AQUARELLE_RENDER_MODES: an unknown mode refuses
-  // the whole batch, never a silent fall back to the watercolour default.
-  if (!isAquarelleRenderMode(mode)) return 0;
-
-  const targets: Array<{ mutationId: number; stroke: AquarelleStroke; index: number }> = [];
-  const seen = new Set<number>();
-  for (const mutationId of mutationIds) {
-    if (!Number.isFinite(mutationId)) continue;
-    if (seen.has(mutationId)) continue;
-    seen.add(mutationId);
-    const stroke = recordedStrokes.get(mutationId);
-    const entry = recordedStrokeEntries.get(mutationId);
-    if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) continue;
-    const index = payloadTimeline.indexOf(entry);
-    if (index < 0) continue;
-    // D-12: an absent mode IS watercolour, so an already-matching stroke is a
-    // no-op — a pre-phase stroke never gains a key for a value it already has.
-    if (resolveAquarelleRenderMode(stroke.renderMode) === mode) continue;
-    targets.push({ mutationId, stroke, index });
-  }
-  if (targets.length === 0) return 0;
-
-  for (const { mutationId, stroke, index } of targets) {
-    // Pure field replacement: no `anchors` key is synthesised on an anchorless
-    // stroke and no existing anchor list is copied, normalised or rewritten.
-    const nextStroke: AquarelleStroke = { ...stroke, renderMode: mode };
-    const nextEntry = toStudioStroke(nextStroke);
-    recordedStrokes.set(mutationId, nextStroke);
-    recordedStrokeEntries.set(mutationId, nextEntry);
-    // SAME index — replay order is preserved (replace only, never splice).
-    payloadTimeline[index] = nextEntry;
-  }
-  bumpAquarelleStrokesRevision();
-  return targets.length;
-}
-
-/**
  * 61-30 (G-20 / T-61-89): switch the curve-evaluation mode on every target
  * stroke and re-sample its points from the new evaluation in the SAME write.
  *
- * Mirrors `updateAquarelleRenderModeInScript`'s batch law: validate the mode
+ * Mirrors `updateAquarelleStrokesInScript`'s batch law: validate the mode
  * against the closed union BEFORE resolving any target (an unknown mode
  * refuses the whole batch, never a silent Bézier fall back), de-duplicate the
  * ids, then resolve every target — skipping missing, deleted, out-of-timeline,
@@ -1031,10 +878,7 @@ export function updateAquarelleCurveModeInScript(
     // The paint sampler — the same step `buildVectorStroke` uses, so a mode
     // switch replays with the stroke's own wet lifetime.
     const paintSpine = resampleVectorPaintPoints(sampledSpine);
-    const pressures = vectorSpinePressures(
-      paintSpine,
-      resolveAquarelleRenderMode(stroke.renderMode),
-    );
+    const pressures = vectorSpinePressures(paintSpine);
     targets.push({
       mutationId,
       stroke,
@@ -1090,14 +934,13 @@ export function updateAquarelleCurveModeInScript(
  * stroke stays spline across an anchor edit, and its points are the spline
  * evaluation of the new path (the mode key rides the spread unchanged).
  *
- * Idempotent: an unchanged anchor list and render mode store nothing, bump
- * nothing and return 0. The persisted form drops a width factor equal to 1
- * (D-10), so a drag can never leave width residue behind.
+ * Idempotent: an unchanged anchor list stores nothing, bumps nothing and
+ * returns 0. The persisted form drops a width factor equal to 1 (D-10), so a
+ * drag can never leave width residue behind.
  */
 export function updateAquarellePathInScript(
   mutationId: number,
   anchors: readonly AquarelleAnchor[],
-  renderMode?: AquarelleRenderMode,
 ): number {
   if (!Number.isFinite(mutationId)) return 0;
   const stroke = recordedStrokes.get(mutationId);
@@ -1108,9 +951,7 @@ export function updateAquarellePathInScript(
   const normalised = normaliseAquarelleAnchors(anchors);
   if (normalised === undefined) return 0;
   const nextAnchors = projectVectorPath(normalised);
-  const currentMode = resolveAquarelleRenderMode(stroke.renderMode);
-  const nextMode = renderMode === undefined ? currentMode : resolveAquarelleRenderMode(renderMode);
-  if (anchorsEqual(stroke.anchors ?? [], nextAnchors) && currentMode === nextMode) return 0;
+  if (anchorsEqual(stroke.anchors ?? [], nextAnchors)) return 0;
   // 61-29 (G-17): re-derive the replay spine from the anchors just stored.
   // `toStudioStroke` projects these points into the payload's `pts`, and they
   // are stamped with the exact six-field shape `buildVectorStroke` writes.
@@ -1120,7 +961,7 @@ export function updateAquarellePathInScript(
     resolveAquarelleCurveMode(stroke.curveMode),
   );
   const paintSpine = resampleVectorPaintPoints(sampledSpine);
-  const pressures = vectorSpinePressures(paintSpine, nextMode);
+  const pressures = vectorSpinePressures(paintSpine);
   const nextPoints = paintSpine.map((point, sampleIndex) => ({
     x: point.x,
     y: point.y,
@@ -1129,9 +970,7 @@ export function updateAquarellePathInScript(
     ty: 0,
     tw: 0,
   }));
-  const nextStroke: AquarelleStroke = renderMode === undefined
-    ? { ...stroke, points: nextPoints, anchors: nextAnchors }
-    : { ...stroke, points: nextPoints, anchors: nextAnchors, renderMode: nextMode };
+  const nextStroke: AquarelleStroke = { ...stroke, points: nextPoints, anchors: nextAnchors };
   // Regenerate through the ONE projection so the payload's opaque engine block
   // carries the same anchors the stroke holds (T-61-34).
   const nextEntry = toStudioStroke(nextStroke);
@@ -1720,16 +1559,14 @@ export function restoreAquarelleRecordTimeline(
       continue;
     }
     const engine = event.engine as AquarelleStrokePayload;
-    // 61-05: seed the vector path and render mode beside `playFrame`, so a
-    // reopened vector stroke stays editable as a path. Both keys are written
-    // ONLY when the payload carried them — a hand-painted stroke keeps its
-    // exact pre-vector shape. A present-but-malformed anchor list is omitted
-    // here on purpose: the refusal surfaces at path edit and export, never by
-    // dropping the event or aborting the restore.
+    // 61-05: seed the vector path beside `playFrame`, so a reopened vector
+    // stroke stays editable as a path. The key is written ONLY when the
+    // payload carried it — a hand-painted stroke keeps its exact pre-vector
+    // shape. A present-but-malformed anchor list is omitted here on purpose:
+    // the refusal surfaces at path edit and export, never by dropping the
+    // event or aborting the restore.
     const anchors =
       engine.anchors !== undefined ? normaliseAquarelleAnchors(engine.anchors) : undefined;
-    const renderMode =
-      engine.renderMode !== undefined ? resolveAquarelleRenderMode(engine.renderMode) : undefined;
     // 61-30 (G-20): the curve mode rides the same conditional-spread law — a
     // stroke saved as spline must reopen as spline, or every later replay and
     // edit would silently fall back to Bézier.
@@ -1754,7 +1591,6 @@ export function restoreAquarelleRecordTimeline(
       timestamp: engine.timestamp,
       playFrame: engine.playFrame,
       ...(anchors !== undefined ? { anchors } : {}),
-      ...(renderMode !== undefined ? { renderMode } : {}),
       ...(curveMode !== undefined ? { curveMode } : {}),
     };
     const entry = toStudioStroke(stroke);

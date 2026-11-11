@@ -40,7 +40,6 @@ import {
   resolveAnchorHandles,
   resolveAquarelleCurveMode,
   resolveCurveAnchors,
-  resolveRenderModeForBrushId,
   sampleVectorPath,
   type AquarelleCurveMode,
   type AquarelleStroke,
@@ -48,11 +47,7 @@ import {
   type Vec2,
   type VectorAnchor,
 } from '@efxlab/efx-watercolor/payload';
-import {
-  aquarelleBrushForActiveTool,
-  aquarelleStrokesRevision,
-  isAquarelleStrokeDeleted,
-} from '../view/aquarelleRecordState';
+import { aquarelleStrokesRevision, isAquarelleStrokeDeleted } from '../view/aquarelleRecordState';
 import { physicsPaintCanvasZoom } from '../view/physicsPaintCanvasZoom';
 import { wireframeMode } from '../view/scriptStrokeEdition';
 import { isKeyboardOwnedTarget } from '../view/shortcutTextTarget';
@@ -262,9 +257,6 @@ export function finishVectorPath(handlers: VectorPathGestureHandlers): void {
   if (normalised.length < 2 || points.length === 0) return;
   handlers.onCommitPath({
     anchors: normalised,
-    // The SAME brush-id law the record path stamps: the commit can never
-    // disagree with the brush the layer's snapshot stores (61-07 D-14).
-    renderMode: resolveRenderModeForBrushId(aquarelleBrushForActiveTool().brushId),
     curveMode,
     points,
   });

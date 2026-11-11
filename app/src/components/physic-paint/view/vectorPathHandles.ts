@@ -37,7 +37,6 @@ import {
   resolveCurveAnchors,
   sampleVectorWidths,
   type AquarelleCurveMode,
-  type AquarelleRenderMode,
   type AquarelleStroke,
   type AquarelleTool,
   type ResolvedAnchorHandles,
@@ -108,7 +107,6 @@ export const DEFAULT_VECTOR_PATH_CURVE_MODE: AquarelleCurveMode = 'spline';
 /** What the overlay hands the Studio seam when a path is finished. */
 export interface VectorPathCommit {
   readonly anchors: readonly VectorAnchor[];
-  readonly renderMode: AquarelleRenderMode;
   /** The mode the path was sampled and is recorded with (G-20). */
   readonly curveMode: AquarelleCurveMode;
   readonly points: readonly Vec2[];
@@ -755,25 +753,18 @@ function vectorSpinePressurePhase(points: readonly { x: number; y: number }[]): 
  * stroke's samples and the engine's own law produces the pressure — no
  * invented band. The probe's real-data A/B is the pin: peak ink 115.8 vs the
  * hand's 117.4, core width 114.6 vs 120.1 px, halo 188.9 vs 186.4 px.
- *
- * `simple-ribbon` is the clean-sweep mode and keeps the flat base pressure —
- * its contract is a clean ribbon, not a wet pen.
  */
 export function vectorSpinePressures(
   points: readonly { x: number; y: number }[],
-  renderMode: AquarelleRenderMode,
 ): readonly number[] {
   if (points.length === 0) return [];
-  if (renderMode === 'simple-ribbon') {
-    return points.map(() => VECTOR_STROKE_BASE_PRESSURE);
-  }
   return points.map(() => VECTOR_PRESSURE_SENTINEL);
 }
 
 /**
  * The pure half of the layer's commit seam: a finished path plus its
  * record-time source becomes a complete `AquarelleStroke`. Every required
- * field is written explicitly — anchors and renderMode are the vector-half's
+ * field is written explicitly — anchors and curveMode are the vector-half's
  * contribution, the rest come from the same `snapshotAquarelleRecord()` /
  * selection expressions the hand-painted `onStrokeEnd` literal already uses.
  * The path is PAINT-sampled (not geometry-sampled) and those samples carry
@@ -784,13 +775,12 @@ export function buildVectorStroke(
   source: VectorStrokeSource,
 ): AquarelleStroke {
   const paintPoints = resampleVectorPaintPoints(commit.points);
-  const pressures = vectorSpinePressures(paintPoints, commit.renderMode);
+  const pressures = vectorSpinePressures(paintPoints);
   return {
     tool: source.tool,
     color: source.color,
     params: { ...source.params },
     brushId: source.brushId,
-    renderMode: commit.renderMode,
     ...recordedCurveModeField(commit.curveMode),
     anchors: [...commit.anchors],
     points: paintPoints.map((point, index) => ({

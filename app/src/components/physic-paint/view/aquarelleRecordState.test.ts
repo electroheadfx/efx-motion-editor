@@ -14,7 +14,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type {
   AquarelleAnchor,
   AquarelleDryEvent,
-  AquarelleRenderMode,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
@@ -74,7 +73,7 @@ function fixtureStroke(
 function vectorStroke(
   playFrame: number,
   mutationId: number,
-  options: { anchors?: unknown; renderMode?: AquarelleRenderMode } = {},
+  options: { anchors?: unknown } = {},
 ): StudioStroke<AquarelleStrokePayload> {
   const base = fixtureStroke(playFrame, mutationId);
   const anchors = options.anchors as readonly AquarelleAnchor[] | undefined;
@@ -83,7 +82,6 @@ function vectorStroke(
     engine: {
       ...base.engine,
       ...(anchors !== undefined ? { anchors } : {}),
-      ...(options.renderMode !== undefined ? { renderMode: options.renderMode } : {}),
     },
   };
 }
@@ -97,10 +95,8 @@ beforeEach(() => {
 });
 
 describe('61-05 reopen-lossless vector restore', () => {
-  it('seeds the anchor path, the sparse width factor and the render mode', () => {
-    restoreAquarelleRecordTimeline([
-      vectorStroke(7, 102, { anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
-    ]);
+  it('seeds the anchor path and the sparse width factor', () => {
+    restoreAquarelleRecordTimeline([vectorStroke(7, 102, { anchors: VECTOR_ANCHORS })]);
 
     const stroke = getRecordedAquarelleStroke(102);
     expect(stroke).toBeDefined();
@@ -108,16 +104,14 @@ describe('61-05 reopen-lossless vector restore', () => {
     expect(stroke!.anchors).toHaveLength(2);
     expect(stroke!.anchors!.filter((anchor) => anchor.width !== undefined)).toHaveLength(1);
     expect(stroke!.anchors![0]!.width).toBeCloseTo(1.8, 6);
-    expect(stroke!.renderMode).toBe('simple-ribbon');
 
     // The projected timeline entry (same object the replay consumes) keeps
-    // the path and the mode too, so a reopen is editable as a path.
+    // the path too, so a reopen is editable as a path.
     const entry = getRecordedAquarellePayloadTimeline()[0] as StudioStroke<AquarelleStrokePayload>;
     expect(entry.engine.anchors).toEqual(VECTOR_ANCHORS);
-    expect(entry.engine.renderMode).toBe('simple-ribbon');
   });
 
-  it('restores no render-mode key when the payload carried none', () => {
+  it('invents no removed render-mode key', () => {
     restoreAquarelleRecordTimeline([vectorStroke(7, 103, { anchors: VECTOR_ANCHORS })]);
 
     const stroke = getRecordedAquarelleStroke(103)!;
@@ -129,7 +123,7 @@ describe('61-05 reopen-lossless vector restore', () => {
     restoreAquarelleRecordTimeline(
       [
         fixtureStroke(7, 101),
-        vectorStroke(7, 102, { anchors: VECTOR_ANCHORS, renderMode: 'simple-ribbon' }),
+        vectorStroke(7, 102, { anchors: VECTOR_ANCHORS }),
         fixtureDry(9),
       ],
       new Map([[101, 'key-a'], [102, 'key-b']]),
@@ -155,7 +149,7 @@ describe('61-05 reopen-lossless vector restore', () => {
     ] as unknown as readonly AquarelleAnchor[];
 
     restoreAquarelleRecordTimeline([
-      vectorStroke(7, 104, { anchors: malformed, renderMode: 'simple-ribbon' }),
+      vectorStroke(7, 104, { anchors: malformed }),
       fixtureStroke(9, 105),
     ]);
 

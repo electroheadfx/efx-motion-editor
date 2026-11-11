@@ -5,7 +5,6 @@ import type {
   AquarelleAnchor,
   AquarelleDryEvent,
   AquarellePayloadEvent,
-  AquarelleRenderMode,
   AquarelleStroke,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
@@ -264,7 +263,6 @@ function aquarelleEvent(
     cuisson?: number;
     engineDiffusionFrames?: number;
     anchors?: readonly AquarelleAnchor[];
-    renderMode?: AquarelleRenderMode;
   } = {},
 ): StudioStroke<AquarelleStrokePayload> {
   const playFrame = overrides.playFrame ?? 3;
@@ -292,10 +290,9 @@ function aquarelleEvent(
       diffusionFrames: overrides.engineDiffusionFrames ?? overrides.cuisson ?? 0,
       timestamp: recordedOrder,
       playFrame,
-      // 61-24: conditional spreads keep every pre-vector fixture key-for-key
-      // identical — only the vector fixtures gain these two terms.
+      // 61-24: a conditional spread keeps every pre-vector fixture key-for-key
+      // identical — only the vector fixtures gain the anchor term.
       ...(overrides.anchors !== undefined ? { anchors: overrides.anchors } : {}),
-      ...(overrides.renderMode !== undefined ? { renderMode: overrides.renderMode } : {}),
     },
   };
 }
@@ -417,14 +414,13 @@ describe('61-24 G-15 — the script projection carries the vector path', () => {
     { x: 0.6, y: 0.7, kind: 'auto' },
   ];
 
-  it('projects a vector event with its anchors and render mode', () => {
+  it('projects a vector event with its anchors', () => {
     const projected = aquarelleStrokeFromScriptEvent(
-      aquarelleEvent(41, { anchors: VECTOR_PATH, renderMode: 'simple-ribbon' }),
+      aquarelleEvent(41, { anchors: VECTOR_PATH }),
       9,
     );
 
     expect(projected.anchors).toEqual(VECTOR_PATH);
-    expect(projected.renderMode).toBe('simple-ribbon');
   });
 
   it('adds no vector key to a hand-painted event', () => {
@@ -435,7 +431,7 @@ describe('61-24 G-15 — the script projection carries the vector path', () => {
   });
 
   it('records the copy with its anchors intact under a fresh id without mutating the source', () => {
-    const source = aquarelleEvent(41, { anchors: VECTOR_PATH, renderMode: 'simple-ribbon' });
+    const source = aquarelleEvent(41, { anchors: VECTOR_PATH });
     const before = JSON.stringify(source);
     const recorded: Array<{ id: number; stroke: AquarelleStroke }> = [];
 
@@ -450,7 +446,6 @@ describe('61-24 G-15 — the script projection carries the vector path', () => {
     expect(recorded[0].id).toBe(777);
     expect(recorded[0].stroke.mutationId).toBe(777);
     expect(recorded[0].stroke.anchors).toEqual(VECTOR_PATH);
-    expect(recorded[0].stroke.renderMode).toBe('simple-ribbon');
     expect(recorded[0].stroke).not.toBe(source);
     expect(JSON.stringify(source)).toBe(before);
     expect(source.playFrame).toBe(3);

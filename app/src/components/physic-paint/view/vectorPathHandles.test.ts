@@ -33,7 +33,6 @@ import {
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
   VECTOR_PAINT_SAMPLE_STEP_UV,
-  VECTOR_STROKE_BASE_PRESSURE,
   buildAnchorWidthCommit,
   buildDraftPath,
   buildVectorStroke,
@@ -574,18 +573,12 @@ describe('vectorSpinePressures — the recorded sample pressure', () => {
     // A hand stroke records -1 on every sample; the engine derives pressure
     // from the spacing (speed). The vector stroke must be the same kind of
     // sample, or it bypasses the physics that makes the hand look natural.
-    expect(vectorSpinePressures(spine, 'watercolor')).toEqual(spine.map(() => -1));
+    expect(vectorSpinePressures(spine)).toEqual(spine.map(() => -1));
   });
 
-  it('keeps the clean-sweep mode flat at the base pressure', () => {
-    expect(vectorSpinePressures(spine, 'simple-ribbon')).toEqual(
-      spine.map(() => VECTOR_STROKE_BASE_PRESSURE),
-    );
-  });
-
-  it('returns one pressure per sample for every mode', () => {
-    expect(vectorSpinePressures([], 'watercolor')).toEqual([]);
-    expect(vectorSpinePressures([{ x: 0.5, y: 0.5 }], 'watercolor')).toEqual([-1]);
+  it('returns one pressure per sample', () => {
+    expect(vectorSpinePressures([])).toEqual([]);
+    expect(vectorSpinePressures([{ x: 0.5, y: 0.5 }])).toEqual([-1]);
   });
 });
 
@@ -670,7 +663,6 @@ describe('buildVectorStroke — every required field has a stated source', () =>
     const anchors = [auto(0.2, 0.5), auto(0.8, 0.5)];
     const commit: VectorPathCommit = {
       anchors,
-      renderMode: 'simple-ribbon',
       curveMode: DEFAULT_VECTOR_PATH_CURVE_MODE,
       points: [
         { x: 0.2, y: 0.5 },
@@ -681,7 +673,7 @@ describe('buildVectorStroke — every required field has a stated source', () =>
     const stroke = buildVectorStroke(commit, {
       color: '#103c65',
       params: { size: 40, dry: 30 },
-      brushId: 'simple-ribbon',
+      brushId: 'wc/round-medium',
       toolOverrides,
       tool: 'brush',
       diffusionFrames: 120,
@@ -690,20 +682,19 @@ describe('buildVectorStroke — every required field has a stated source', () =>
     });
 
     expect(stroke.anchors).toEqual(anchors);
-    expect(stroke.renderMode).toBe('simple-ribbon');
     // New paths default to spline, and the mode is written EXPLICITLY — the
     // storage default stays Bézier, so absence can never mean spline.
     expect(DEFAULT_VECTOR_PATH_CURVE_MODE).toBe('spline');
     expect(stroke.curveMode).toBe('spline');
-    // A vector path carries no pressure input: its samples record the
-    // engine's pressureless-device value, never a full-pressure stamp.
+    // A vector path carries no pressure input: its samples carry the mouse
+    // sentinel, so the engine derives pressure from the spacing.
     expect(stroke.points).toEqual([
-      { x: 0.2, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
-      { x: 0.8, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      { x: 0.2, y: 0.5, p: -1, tx: 0, ty: 0, tw: 0 },
+      { x: 0.8, y: 0.5, p: -1, tx: 0, ty: 0, tw: 0 },
     ]);
     expect(stroke.color).toBe('#103c65');
     expect(stroke.params).toEqual({ size: 40, dry: 30 });
-    expect(stroke.brushId).toBe('simple-ribbon');
+    expect(stroke.brushId).toBe('wc/round-medium');
     expect(stroke.toolOverrides).toEqual(toolOverrides);
     expect(stroke.tool).toBe('brush');
     expect(stroke.diffusionFrames).toBe(120);
@@ -717,7 +708,6 @@ describe('buildVectorStroke — every required field has a stated source', () =>
     const stroke = buildVectorStroke(
       {
         anchors: [auto(0, 0)],
-        renderMode: 'watercolor',
         curveMode: DEFAULT_VECTOR_PATH_CURVE_MODE,
         points: [{ x: 0, y: 0 }],
       },
@@ -740,7 +730,6 @@ describe('buildVectorStroke — every required field has a stated source', () =>
     const stroke = buildVectorStroke(
       {
         anchors: [auto(0.2, 0.5), auto(0.8, 0.5)],
-        renderMode: 'watercolor',
         curveMode: 'bezier',
         points: [
           { x: 0.2, y: 0.5 },

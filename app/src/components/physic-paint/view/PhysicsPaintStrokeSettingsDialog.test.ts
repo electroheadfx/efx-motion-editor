@@ -25,9 +25,6 @@ import {
   AQUARELLE_ANCHOR_WIDTH_MIN,
   AQUARELLE_ANCHOR_WIDTH_STEP,
   CURVE_MODE_OPTIONS,
-  RENDER_MODE_OPTIONS,
-  SIMPLE_RIBBON_GLOBALS,
-  SIMPLE_RIBBON_WET_NOTE,
   WATERCOLOR_SETTINGS_FIELDS,
 } from './strokeSettingsModel';
 
@@ -430,109 +427,6 @@ describe('61-11 E4 rows: the Anchor width block', () => {
 });
 
 // ============================================================
-//  61-12 Task 1 — the Render row (VEC-04 / E3).
-//
-//  Row ledger:
-//    E3 partial   — pinned below: the shipped red italic `Mixed` beside the
-//                   label, never a third "mixed" segment.
-//    E3 overflow  — pinned below: two constant labels in the shipped segment
-//                   row inside the fixed 520px sheet.
-//    E3 long-text — pinned below: model constants only, zero interpolation, so
-//                   no user-supplied text can reach the row.
-//
-//  The mode is a STROKE property (D-12/D-14): the mount path never consults
-//  anchors, so a hand-painted selection still gets the row, and the shipped
-//  Eraser rule still closes the whole Paint tab (and therefore the row).
-// ============================================================
-
-describe('61-12 Render row (E3)', () => {
-  const BLOCK_START = 'data-testid="stroke-settings-render-mode-block"';
-  const GROUP = 'data-testid="stroke-settings-render-mode"';
-  const NEXT_ROW = 'data-testid="stroke-settings-color"';
-
-  function renderBlock(): string {
-    return regionOf(dialogSource, BLOCK_START, NEXT_ROW);
-  }
-
-  it('mounts exactly one Render block as the FIRST row of the Paint tab', () => {
-    expect(countOf(dialogSource, BLOCK_START)).toBe(1);
-    expect(countOf(dialogSource, GROUP)).toBe(1);
-    const paintAt = dialogSource.indexOf('data-testid="stroke-settings-paint"');
-    const blockAt = dialogSource.indexOf(BLOCK_START);
-    const colorLabelAt = dialogSource.indexOf('<span style={PAINT_ROW_LABEL_STYLE}>Color</span>');
-    const colorAt = dialogSource.indexOf(NEXT_ROW);
-    expect(paintAt).toBeGreaterThan(-1);
-    expect(blockAt, 'the Render row mounts inside the Paint tab').toBeGreaterThan(paintAt);
-    expect(colorLabelAt, 'the Render row precedes the Color label').toBeGreaterThan(blockAt);
-    expect(colorAt, 'the Render row precedes the Color row').toBeGreaterThan(colorLabelAt);
-  });
-
-  it('offers exactly the two option ids, both from the model constants', () => {
-    const block = renderBlock();
-    expect(block).toContain('RENDER_MODE_OPTIONS.map((option) => {');
-    expect(block).toContain('data-testid={`stroke-settings-render-mode-option-${option.id}`}');
-    expect(block).toContain('{option.label}');
-    // ONE template test id — the two ids come from the two model options.
-    expect(countOf(dialogSource, 'stroke-settings-render-mode-option-')).toBe(1);
-    expect(RENDER_MODE_OPTIONS.map((option) => option.id)).toEqual(['watercolor', 'ribbon']);
-    expect(RENDER_MODE_OPTIONS.map((option) => option.label)).toEqual(['Watercolor', 'Ribbon']);
-  });
-
-  it('binds the group label, the row label and the shipped Mixed caption', () => {
-    const block = renderBlock();
-    expect(block).toContain('role="group"');
-    expect(block).toContain('aria-label="Render"');
-    expect(block).toContain('<span style={PAINT_ROW_LABEL_STYLE}>Render</span>');
-    expect(block).toContain('style={MIXED_CAPTION_STYLE}');
-    // The caption is the single word, never a value or a second sentence.
-    expect(block).toMatch(/>\s*Mixed\s*<\/span>/);
-  });
-
-  it('marks an option active only for the selection mode and skips the active press', () => {
-    const block = renderBlock();
-    expect(block).toContain(
-      'const active = !renderModeReading.mixed && renderModeReading.mode === option.mode;',
-    );
-    expect(block).toContain('aria-pressed={active}');
-    // Pressing the mode the selection already holds writes nothing.
-    expect(block).toContain('if (active) return;');
-    expect(block).toContain('void bundle.applyRenderMode?.(ids, option.mode);');
-  });
-
-  it('is gated on the Paint tab and the watercolor module, never on anchors', () => {
-    const block = renderBlock();
-    // D-12/D-14: the row is a stroke property, so no anchor read can gate it.
-    expect(block).not.toContain('readVectorAnchors');
-    expect(block).not.toContain('anchorWidth');
-    // The module gate is the nearest gate BEFORE the block and sits inside the
-    // Paint-tab section (so the Eraser filter that closes the tab closes it).
-    const paintAt = dialogSource.indexOf('data-testid="stroke-settings-paint"');
-    const blockAt = dialogSource.indexOf(BLOCK_START);
-    const mountAt = dialogSource.lastIndexOf("engineModule === 'watercolor' ? (", blockAt);
-    expect(mountAt).toBeGreaterThan(paintAt);
-    // The Eraser rule that closes the tab (and therefore the row) is unchanged.
-    expect(dialogSource).toContain(
-      "const paintTabAvailable = strokeTypeFilter !== 'lift' && !selectionHasLift;",
-    );
-  });
-
-  it('never routes the mode through the numeric field path', () => {
-    const block = renderBlock();
-    expect(block).not.toContain('readNumericField');
-    expect(block).not.toContain('buildAppearancePatch');
-    expect(block).not.toContain('segmentedFields');
-    expect(WATERCOLOR_SETTINGS_FIELDS.map((field) => field.key)).not.toContain('renderMode');
-  });
-});
-
-// ============================================================
-//  61-31 (G-20) — the Curve row: the per-selection Bezier /
-//  Spline switch. Spline is an EVALUATION MODE over the same
-//  anchors, so the row mounts only when the selection holds a
-//  vector stroke and the bundle can commit — a hand-painted-only
-//  selection hides it instead of writing an inert key.
-// ============================================================
-
 describe('61-31 Curve row (G-20)', () => {
   const BLOCK_START = 'data-testid="stroke-settings-curve-mode-block"';
   const GROUP = 'data-testid="stroke-settings-curve-mode"';
@@ -550,12 +444,10 @@ describe('61-31 Curve row (G-20)', () => {
     expect(dialogSource).toContain(
       "{engineModule === 'watercolor' && curveModeReading.available && bundle.applyCurveMode !== undefined ? (",
     );
-    // Immediately AFTER the Render block and BEFORE the Color row.
-    const renderAt = dialogSource.indexOf('data-testid="stroke-settings-render-mode-block"');
+    // Before the Color row.
     const curveAt = dialogSource.indexOf(BLOCK_START);
     const colorAt = dialogSource.indexOf('data-testid="stroke-settings-color"');
-    expect(renderAt).toBeGreaterThan(-1);
-    expect(curveAt).toBeGreaterThan(renderAt);
+    expect(curveAt).toBeGreaterThan(-1);
     expect(colorAt).toBeGreaterThan(curveAt);
   });
 
@@ -597,118 +489,6 @@ describe('61-31 Curve row (G-20)', () => {
     expect(block).not.toContain('readNumericField');
   });
 });
-
-// ── 61-12 Task 3: the Advanced wet-globals disclosure (D-13 / E5) ────
-
-describe('61-12 Advanced wet-globals disclosure (E5)', () => {
-  const BLOCK = 'data-testid="stroke-settings-advanced-wet-globals-block"';
-  const ROW = 'data-testid="stroke-settings-advanced-wet-globals"';
-  const BODY = 'data-testid="stroke-settings-advanced-wet-globals-body"';
-  const NOTE = 'data-testid="stroke-settings-advanced-wet-globals-note"';
-  // The block's own close: the paint section's final `</div>` and its
-  // `) : null}` — indented less than any closer inside the block.
-  const BLOCK_END = '\n            </div>\n          ) : null}';
-
-  function disclosureBlock(): string {
-    return regionOf(dialogSource, BLOCK, BLOCK_END);
-  }
-
-  it('mounts exactly one collapsed disclosure after the numeric field map', () => {
-    expect(countOf(dialogSource, BLOCK)).toBe(1);
-    expect(countOf(dialogSource, ROW)).toBe(1);
-    expect(countOf(dialogSource, BODY)).toBe(1);
-    expect(countOf(dialogSource, NOTE)).toBe(1);
-
-    const paintAt = dialogSource.indexOf('data-testid="stroke-settings-paint"');
-    const numericAt = dialogSource.indexOf('{numericFields.map((field) => {');
-    const blockAt = dialogSource.indexOf(BLOCK);
-    expect(paintAt).toBeGreaterThan(-1);
-    expect(numericAt).toBeGreaterThan(paintAt);
-    expect(blockAt, 'the disclosure mounts inside the Paint tab').toBeGreaterThan(paintAt);
-    expect(blockAt, 'the disclosure sits after the last numeric field').toBeGreaterThan(numericAt);
-
-    // Collapsed by default: the local signal starts false and the body is
-    // behind the open branch only.
-    expect(dialogSource).toContain(
-      'if (!advancedWetOpenRef.current) advancedWetOpenRef.current = signal<boolean>(false);',
-    );
-    expect(disclosureBlock()).toContain('{advancedWetOpen ? (');
-    // Local view state only — no effect, no engine call (T-61-43).
-    expect(countOf(dialogSource, 'useEffect(')).toBe(2);
-  });
-
-  it('is a simple-ribbon presentation only — watercolor mode mounts nothing', () => {
-    const block = disclosureBlock();
-    // The mount gate is the NEAREST gate before the block (the block test id
-    // is inside the gate's JSX, so the gate line itself is outside the slice).
-    const blockAt = dialogSource.indexOf(BLOCK);
-    const gateAt = dialogSource.lastIndexOf(
-      "engineModule === 'watercolor' && renderModeReading.mode === 'simple-ribbon' ? (",
-      blockAt,
-    );
-    expect(gateAt).toBeGreaterThan(-1);
-    expect(blockAt - gateAt).toBeLessThan(200);
-    // A mixed selection reads mode null, so it mounts nothing either.
-    expect(block).not.toContain('renderModeReading.mixed');
-    // The seven rows are ADDITIONAL: the shared field map is untouched.
-    expect(block).not.toContain('numericFields');
-    expect(block).not.toContain('segmentedFields');
-    expect(block).not.toContain("field.key === 'size'");
-  });
-
-  it('binds aria-expanded and swaps the two 12px chevrons', () => {
-    const block = disclosureBlock();
-    expect(block).toContain('aria-expanded={advancedWetOpen}');
-    expect(block).toContain('<ChevronDown size={12} aria-hidden="true" />');
-    expect(block).toContain('<ChevronRight size={12} aria-hidden="true" />');
-    // Open ⇒ ChevronDown, collapsed ⇒ ChevronRight.
-    expect(block.indexOf('<ChevronDown')).toBeGreaterThan(-1);
-    expect(block.indexOf('<ChevronDown')).toBeLessThan(block.indexOf('<ChevronRight'));
-    const rowStyle = regionOf(dialogSource, 'const ADVANCED_ROW_STYLE', '};');
-    expect(rowStyle).toContain("height: '24px'");
-    expect(block).toContain('<span style={PAINT_ROW_LABEL_STYLE}>Advanced — wet globals</span>');
-  });
-
-  it('maps the seven model rows to one SliderStepper each, committing per stroke', () => {
-    const block = disclosureBlock();
-    expect(block).toContain('{SIMPLE_RIBBON_GLOBALS.map((field) => {');
-    expect(block).toContain('const reading = readSimpleRibbonGlobal(appearances, field.key);');
-    // ONE template row: the seven rows come from the model list.
-    expect(countOf(block, '<SliderStepper')).toBe(1);
-    expect(block).toContain('mixed={reading.mixed}');
-    expect(block).toContain(
-      "buildAppearancePatch('watercolor', field.key, value)",
-    );
-    expect(block).toContain('void bundle.applyAppearance(');
-    // Exactly seven rows, and Size is not one of them.
-    expect(SIMPLE_RIBBON_GLOBALS).toHaveLength(7);
-    expect(SIMPLE_RIBBON_GLOBALS.map((field) => field.label)).not.toContain('Size');
-  });
-
-  it('renders the UI-SPEC note verbatim in one line-height 1.5 element', () => {
-    const block = disclosureBlock();
-    expect(block).toContain('{SIMPLE_RIBBON_WET_NOTE}');
-    // One fixed sentence — never interpolated with a value.
-    expect(block).not.toMatch(/\$\{SIMPLE_RIBBON_WET_NOTE\}/);
-    expect(SIMPLE_RIBBON_WET_NOTE).toBe(
-      'All seven sit at zero for a plain ribbon. Raise any to blend physics back in.',
-    );
-    const noteStyle = regionOf(dialogSource, 'const ADVANCED_WET_NOTE_STYLE', '};');
-    expect(noteStyle).toContain('lineHeight: 1.5');
-  });
-});
-
-// ============================================================
-//  61-22 (G-11) — the Anchor width control reaches the DEFAULT list view.
-//
-//  The control was correct but discoverable only through the header sliders
-//  icon and the SETTINGS view. The fix extracts ONE internal component and
-//  mounts it twice: under Size in the Paint tab (the shipped position) and in
-//  the list view for exactly one selected vector stroke. The gate reuses
-//  `anchorWidthAvailable`, so a multi-selection or an anchorless stroke mounts
-//  nothing (T-61-68). The component is DECLARED after the sheet component so
-//  the shipped `blockAt > gateAt` region pin keeps its meaning.
-// ============================================================
 
 describe('61-22 G-11 — the Anchor width control in the list view', () => {
   const LIST_WRAPPER = 'data-testid="stroke-settings-list-anchor-width"';
@@ -845,9 +625,6 @@ describe('61-25 UI-02/UI-05 — the declared readout and explanation weights', (
     const captionStyle = regionOf(dialogSource, 'const ANCHOR_WIDTH_CAPTION_STYLE', '};');
     expect(captionStyle).toContain('fontWeight: 600');
     expect(countOf(captionStyle, 'fontWeight:')).toBe(1);
-    const noteStyle = regionOf(dialogSource, 'const ADVANCED_WET_NOTE_STYLE', '};');
-    expect(noteStyle).toContain('fontWeight: 600');
-    expect(countOf(noteStyle, 'fontWeight:')).toBe(1);
     // The Mixed caption declares no weight — its italic red 400 is the only
     // light text the sheet keeps.
     const mixedStyle = regionOf(dialogSource, 'const MIXED_CAPTION_STYLE', '};');

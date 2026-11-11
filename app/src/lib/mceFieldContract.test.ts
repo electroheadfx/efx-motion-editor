@@ -268,7 +268,7 @@ describe('Phase 56 .mce field set (DATA-04 / D-27)', () => {
 // These two rows put the shape under the same pin as every other .mce member.
 //
 // The key sets mirror the AQTL v2 field names from 61-05 exactly, including
-// the `in` / `out` handle pair and the camelCase `renderMode` wire key.
+// the `in` / `out` handle pair and the camelCase `curveMode` wire key.
 // ---------------------------------------------------------------------------
 
 describe('Phase 61 vector field set (VEC-06 / REL-02)', () => {
@@ -278,9 +278,9 @@ describe('Phase 61 vector field set (VEC-06 / REL-02)', () => {
   });
 
   it('declares the vector path shape in both languages', () => {
-    // VEC-06 / D-12 / G-20: the non-empty anchor list plus the optional
-    // render mode and the optional curve-evaluation mode.
-    expectMemberKeys('MceAquarelleVectorPath', ['anchors', 'renderMode', 'curveMode']);
+    // VEC-06 / G-20: the non-empty anchor list plus the optional
+    // curve-evaluation mode.
+    expectMemberKeys('MceAquarelleVectorPath', ['anchors', 'curveMode']);
   });
 
   it('the in-handle wire key is the rename target of a named field, never a raw identifier', () => {
@@ -308,8 +308,8 @@ describe('Phase 61 vector field set (VEC-06 / REL-02)', () => {
 //
 // The vector fields ride the already-opaque `MceEngineStrokePayload.engine`
 // slot, so the envelope risk is not corruption but silent loss: one JSON
-// save/load must return the anchor block, the sparse width factor and the
-// render mode untouched, byte for byte. The same round trip also proves the
+// save/load must return the anchor block and the sparse width factor
+// untouched, byte for byte. The same round trip also proves the
 // slot stayed OPAQUE — an engine key this phase never imagined survives too,
 // so no strict schema was introduced alongside the declarations.
 //
@@ -331,7 +331,6 @@ describe('Phase 61 envelope round trip (REL-02)', () => {
         width: 1.8,
       },
     ],
-    renderMode: 'simple-ribbon',
   };
 
   function roundTrip(payload: MceEngineStrokePayload): {
@@ -351,7 +350,6 @@ describe('Phase 61 envelope round trip (REL-02)', () => {
     expect(reopened).toEqual(payload);
     const engine = reopened.engine as unknown as MceAquarelleVectorPath;
     expect(engine.anchors).toEqual(VECTOR_PATH.anchors);
-    expect(engine.renderMode).toBe('simple-ribbon');
     // Exactly one width key: the uniform anchor stores nothing (D-10).
     expect(Object.keys(engine.anchors[0]!)).toEqual([
       'x', 'y', 'kind',

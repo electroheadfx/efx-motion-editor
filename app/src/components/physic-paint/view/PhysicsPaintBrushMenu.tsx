@@ -119,8 +119,7 @@ export function PhysicsPaintBrushMenu() {
         // catalog's cards route through the BRUSH pick path, which would flip
         // the tool back to Brush) and no separator. A pick writes the lift tip
         // through setAquarelleLiftTipId — never the brush seam.
-        // 61-07 (D-12): an eraser picks a tip shape, not a render mode — the
-        // ribbon preset is filtered out of this branch by brushMenuPresets.
+        // An eraser picks a tip shape from the same shipped preset list.
         <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
           <div ref={listRef} class="physics-paint-brush-menu-list">
             {brushMenuPresets('lift').map((preset) => {
@@ -170,8 +169,7 @@ export function PhysicsPaintBrushMenu() {
           <div class="physics-paint-brush-menu-separator" aria-hidden="true" />
           <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
             <div ref={listRef} class="physics-paint-brush-menu-list">
-              {/* 61-07 (D-12): the brush branch lists every preset — picking
-                  the ribbon row selects the clean sweep for the next stroke. */}
+              {/* The brush branch lists every shipped preset. */}
               {brushMenuPresets('brush').map((preset) => {
                 const selected = preset.id === selectedId;
                 return (

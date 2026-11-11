@@ -27,7 +27,6 @@ import {
   type AquarelleAnchor,
   type AquarelleCurveMode,
   type AquarellePayloadEvent,
-  type AquarelleRenderMode,
   type AquarelleStroke,
   type AquarelleStrokePayload,
   type AquarelleTool,
@@ -92,7 +91,6 @@ import {
   translateAquarelleStrokesInScript,
   updateAquarelleCurveModeInScript,
   updateAquarellePathInScript,
-  updateAquarelleRenderModeInScript,
   updateAquarelleStrokesInScript,
   type AquarelleStackStepDirection,
   type AquarelleStrokeRegistrySnapshot,
@@ -910,32 +908,6 @@ export function beginAquarelleAppearanceEdit(
 }
 
 /**
- * 61-12 (VEC-04 / T-61-41): set one render mode on one stroke or the whole
- * selection as a single edit (mode write + its re-bake = ONE
- * `aquarelle-script` ledger command), so a mixed selection flips in one undo
- * step rather than one per stroke. Same ghost clear, in-flight guard and
- * snapshot pair as move/appearance.
- *
- * Deliberately does NOT call `bumpAquarellePaintSeedSalts`: a render-mode
- * change is not a paint re-roll — the stroke's stochastic texture must survive
- * the mode flip.
- */
-export function beginAquarelleRenderModeEdit(
-  mutationIds: number | readonly number[],
-  mode: AquarelleRenderMode,
-): number | null {
-  // A mode commit must never leave a released ghost behind.
-  clearAquarelleStrokeDrag();
-  if (aquarelleScriptEditInFlight) return null;
-  const ids = normalizeAquarelleMutationIds(mutationIds);
-  if (ids.length === 0) return null;
-  const before = captureAquarelleSnapshot();
-  if (updateAquarelleRenderModeInScript(ids, mode) === 0) return null;
-  const after = captureAquarelleSnapshot();
-  return storeAquarelleEdit({ before, after });
-}
-
-/**
  * 61-31 (G-20 / D-01 revised): set one curve-evaluation mode on one stroke or
  * the whole selection as a single edit (mode write + its re-sampled points =
  * ONE `aquarelle-script` ledger command), so a mixed selection flips in one
@@ -978,13 +950,12 @@ export function beginAquarelleCurveModeEdit(
 export function beginAquarellePathEdit(
   mutationId: number,
   anchors: readonly AquarelleAnchor[],
-  renderMode?: AquarelleRenderMode,
 ): number | null {
   clearAquarelleStrokeDrag();
   if (aquarelleScriptEditInFlight) return null;
   if (!Number.isFinite(mutationId)) return null;
   const before = captureAquarelleSnapshot();
-  if (updateAquarellePathInScript(mutationId, anchors, renderMode) === 0) return null;
+  if (updateAquarellePathInScript(mutationId, anchors) === 0) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }

@@ -16,12 +16,10 @@
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
 import { findTip } from '@efxlab/efx-watercolor/brushes';
 import {
-  DEFAULT_AQUARELLE_RENDER_MODE,
   paintSeedSaltOf,
   resolveAquarelleCurveMode,
   type AquarelleAnchor,
   type AquarelleCurveMode,
-  type AquarelleRenderMode,
 } from '@efxlab/efx-watercolor/payload';
 import type {
   SelectableScriptStroke,
@@ -103,19 +101,6 @@ export const WATERCOLOR_SETTINGS_FIELDS: readonly StrokeSettingsField[] = Object
   Object.freeze({ key: 'dry', label: 'Dry speed', min: 0, max: 100, step: 1, kind: 'numeric' as const, fallback: DEFAULT_CANONICAL_PARAMS.dry }),
 ]);
 
-/**
- * 61-12 (D-13): the seven wet globals behind the Advanced disclosure. Exactly
- * the Water color Paint rows MINUS `size` — Size is the shared brush slider
- * (D-05), not a wet term, and `lift` is the Eraser strength, never a global.
- */
-export const SIMPLE_RIBBON_GLOBALS: readonly StrokeSettingsField[] = Object.freeze(
-  WATERCOLOR_SETTINGS_FIELDS.filter((field) => field.key !== 'size'),
-);
-
-/** The UI-SPEC Advanced disclosure note, verbatim and never interpolated. */
-export const SIMPLE_RIBBON_WET_NOTE =
-  'All seven sit at zero for a plain ribbon. Raise any to blend physics back in.';
-
 export function strokeSettingsFields(module: StrokeSettingsModule): readonly StrokeSettingsField[] {
   return module === 'watercolor' ? WATERCOLOR_SETTINGS_FIELDS : BRUSH_SETTINGS_FIELDS;
 }
@@ -126,14 +111,8 @@ export interface ScriptStrokeAppearance {
   readonly params: Readonly<Record<string, number>>;
   readonly color: string | null;
   /**
-   * 61-12 (VEC-04 / D-12): the stroke's render discriminator. Absent means
-   * watercolour — the field is sparse on the recorded stroke, so the reading
-   * applies the default rather than inventing a third "unknown" state.
-   */
-  readonly renderMode?: AquarelleRenderMode;
-  /**
    * 61-31 (G-20): the stroke's curve-evaluation discriminator. Absent means
-   * Bézier — same sparse-field contract as `renderMode`.
+   * Bézier.
    */
   readonly curveMode?: AquarelleCurveMode;
   /**
@@ -142,46 +121,6 @@ export interface ScriptStrokeAppearance {
    * row available, so `vector` absent/false excludes it from the reading.
    */
   readonly vector?: boolean;
-}
-
-/** 61-12 (VEC-04 / E3): the `Render` row's two-option reading. */
-export interface RenderModeReading {
-  /** The agreed mode, or null when the selection disagrees. */
-  readonly mode: AquarelleRenderMode | null;
-  readonly mixed: boolean;
-}
-
-/** One `Render` row option — the model owns both the id and the copy. */
-export interface RenderModeOption {
-  readonly id: 'watercolor' | 'ribbon';
-  readonly mode: AquarelleRenderMode;
-  readonly label: string;
-}
-
-/**
- * 61-12 (VEC-04 / E3): the two options, in UI-SPEC order. `id` is the test-id
- * suffix (`-option-watercolor` / `-option-ribbon`); the global button rule
- * uppercases `label` in the sheet. Constants only — no user text can reach it.
- */
-export const RENDER_MODE_OPTIONS: readonly RenderModeOption[] = Object.freeze([
-  Object.freeze({ id: 'watercolor' as const, mode: 'watercolor' as const, label: 'Watercolor' }),
-  Object.freeze({ id: 'ribbon' as const, mode: 'simple-ribbon' as const, label: 'Ribbon' }),
-]);
-
-/**
- * 61-12 (VEC-04 / D-12): the selection's render mode. Absent counts as the
- * default, so an anchorless hand-painted stroke and an explicit `watercolor`
- * stroke read the SAME; any disagreement is mixed with no representative.
- */
-export function readRenderMode(appearances: readonly ScriptStrokeAppearance[]): RenderModeReading {
-  if (appearances.length === 0) {
-    return { mode: DEFAULT_AQUARELLE_RENDER_MODE, mixed: false };
-  }
-  const modes = appearances.map((appearance) =>
-    appearance.renderMode ?? DEFAULT_AQUARELLE_RENDER_MODE);
-  const first = modes[0]!;
-  if (modes.some((mode) => mode !== first)) return { mode: null, mixed: true };
-  return { mode: first, mixed: false };
 }
 
 /** 61-31 (G-20): the `Curve` row's reading over the VECTOR appearances only. */
@@ -710,13 +649,6 @@ export interface StrokeSettingsDialogBundle {
    * fallback; the dialog itself stays engine-free and never writes a signal.
    */
   readonly publishRefusal?: (message: string) => void;
-  /**
-   * 61-12 (VEC-04 / T-61-41): write one render mode on EVERY selected paint
-   * stroke as ONE history entry, so the whole batch is one undo step. The mode
-   * is a stroke property (D-12/D-14) — the write adds or removes no `anchors`
-   * key and needs no vector read. Absent hides the Render row.
-   */
-  readonly applyRenderMode?: (ids: readonly number[], mode: AquarelleRenderMode) => boolean | Promise<boolean>;
   /**
    * 61-31 (G-20): write one curve-evaluation mode on every VECTOR stroke of the
    * selection as ONE history entry. An evaluation mode over the same anchors:

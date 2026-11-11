@@ -668,7 +668,6 @@ describe('61-14 close-out — a path edit rotates the key, a view flag never doe
       timestamp: mutationId,
       playFrame: FRAME,
       anchors: FRAME_ANCHORS,
-      renderMode: 'simple-ribbon',
     };
   }
 

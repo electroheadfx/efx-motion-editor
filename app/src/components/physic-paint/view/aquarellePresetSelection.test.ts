@@ -70,7 +70,6 @@ describe('I-03 playground preset ids on the tip seam', () => {
       'dagger',
       'stipple',
       // 61-07 (D-12): the clean-sweep preset ships last.
-      'simple-ribbon',
     ]);
   });
 

@@ -35,18 +35,19 @@
 //      presence + u32; f64 timestamp; u8 playFrame presence + i32.
 //    Vector block (61-05 / 61-30), AFTER the engine block's playFrame
 //      presence and BEFORE pointCount: u8 vectorFlags (bit 0 = a non-empty
-//      anchor list follows, bit 1 = a render-mode byte follows, bit 2 = a
-//      curve-mode byte follows), then when bit 0 is set u16 anchorCount +
-//      per anchor u8-order: f32 x, f32 y, u8 kindCode (auto=0, bezier=1),
-//      u8 handleFlags (bit 0 in-present, bit 1 out-present), the
-//      conditional f32 handle pairs, u8 widthPresent + conditional f32
-//      width; then when bit 1 is set u8 renderModeCode (watercolor=0,
-//      simple-ribbon=1); then when bit 2 is set u8 curveModeCode
-//      (bezier=0, spline=1) — WRITTEN LAST so every pre-existing offset in
-//      the block stays stable. The block sits inside the engine slot
-//      because that slot is the opaque carrier: appending there leaves
-//      every pre-existing field's offset stable. A hand-painted stroke with
-//      no mode pays exactly one flags byte.
+//      anchor list follows, bit 1 = LEGACY optional byte, never written,
+//      bit 2 = a curve-mode byte follows), then when bit 0 is set u16
+//      anchorCount + per anchor u8-order: f32 x, f32 y, u8 kindCode
+//      (auto=0, bezier=1), u8 handleFlags (bit 0 in-present, bit 1
+//      out-present), the conditional f32 handle pairs, u8 widthPresent +
+//      conditional f32 width; then when bit 1 is set ONE byte is read and
+//      ignored (files written while the removed render mode existed);
+//      then when bit 2 is set u8 curveModeCode (bezier=0, spline=1) —
+//      WRITTEN LAST so every pre-existing offset in the block stays
+//      stable. The block sits inside the engine slot because that slot is
+//      the opaque carrier: appending there leaves every pre-existing
+//      field's offset stable. A hand-painted stroke with no mode pays
+//      exactly one flags byte.
 //    Point record (16 bytes): u16 x, u16 y, u16 p, i16 tx, i16 ty,
 //      i16 tw, u32 tick.
 //
@@ -82,7 +83,6 @@ import type {
   AquarelleCurveMode,
   AquarelleDryEvent,
   AquarellePayloadEvent,
-  AquarelleRenderMode,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
@@ -162,16 +162,6 @@ const VECTOR_KIND_CODE: Readonly<Record<string, number>> = {
   bezier: 1,
 };
 
-const VECTOR_RENDER_MODE_NAMES: readonly AquarelleRenderMode[] = [
-  'watercolor',
-  'simple-ribbon',
-];
-
-const VECTOR_RENDER_MODE_CODE: Readonly<Record<string, number>> = {
-  watercolor: 0,
-  'simple-ribbon': 1,
-};
-
 // 61-30 (G-20): curve evaluation is a per-stroke mode over the SAME anchor
 // kinds, so it earns its own flag bit and code byte — never a third kind.
 const VECTOR_CURVE_MODE_NAMES: readonly AquarelleCurveMode[] = ['bezier', 'spline'];
@@ -182,10 +172,10 @@ const VECTOR_CURVE_MODE_CODE: Readonly<Record<string, number>> = {
 };
 
 const VECTOR_FLAG_ANCHORS = 1 << 0;
-const VECTOR_FLAG_RENDER_MODE = 1 << 1;
+// Removed mode's bit: never written, still read so pre-removal files open.
+const VECTOR_FLAG_LEGACY_BYTE = 1 << 1;
 const VECTOR_FLAG_CURVE_MODE = 1 << 2;
-const VECTOR_FLAGS_MASK =
-  VECTOR_FLAG_ANCHORS | VECTOR_FLAG_RENDER_MODE | VECTOR_FLAG_CURVE_MODE;
+const VECTOR_FLAGS_MASK = VECTOR_FLAG_ANCHORS | VECTOR_FLAG_LEGACY_BYTE | VECTOR_FLAG_CURVE_MODE;
 const ANCHOR_HANDLE_IN = 1 << 0;
 const ANCHOR_HANDLE_OUT = 1 << 1;
 const ANCHOR_HANDLE_MASK = ANCHOR_HANDLE_IN | ANCHOR_HANDLE_OUT;
@@ -549,14 +539,6 @@ function encodeVectorBlock(
     anchors = rawAnchors as readonly unknown[];
   }
 
-  const renderMode: unknown = engine.renderMode;
-  if (
-    renderMode !== undefined &&
-    VECTOR_RENDER_MODE_CODE[renderMode as string] === undefined
-  ) {
-    fail('invalid-value', `unknown engine.renderMode "${String(renderMode)}"`);
-  }
-
   const curveMode: unknown = engine.curveMode;
   if (
     curveMode !== undefined &&
@@ -567,7 +549,6 @@ function encodeVectorBlock(
 
   let flags = 0;
   if (anchors !== undefined) flags |= VECTOR_FLAG_ANCHORS;
-  if (renderMode !== undefined) flags |= VECTOR_FLAG_RENDER_MODE;
   if (curveMode !== undefined) flags |= VECTOR_FLAG_CURVE_MODE;
   writer.u8(flags);
 
@@ -581,12 +562,8 @@ function encodeVectorBlock(
     }
   }
 
-  if (renderMode !== undefined) {
-    writer.u8(VECTOR_RENDER_MODE_CODE[renderMode as string]!);
-  }
-
-  // 61-30: written LAST so the render-mode byte (and every pre-existing
-  // offset in the block) keeps its position.
+  // 61-30: written LAST so every pre-existing offset in the block keeps
+  // its position. The removed mode's bit and byte are never written.
   if (curveMode !== undefined) {
     writer.u8(VECTOR_CURVE_MODE_CODE[curveMode as string]!);
   }
@@ -821,7 +798,6 @@ function decodeAnchor(reader: BinaryReader, index: number): AquarelleAnchor {
 
 function decodeVectorBlock(reader: BinaryReader): {
   anchors?: readonly AquarelleAnchor[];
-  renderMode?: AquarelleRenderMode;
   curveMode?: AquarelleCurveMode;
 } {
   const flags = reader.u8();
@@ -830,7 +806,6 @@ function decodeVectorBlock(reader: BinaryReader): {
   }
   const result: {
     anchors?: readonly AquarelleAnchor[];
-    renderMode?: AquarelleRenderMode;
     curveMode?: AquarelleCurveMode;
   } = {};
   if ((flags & VECTOR_FLAG_ANCHORS) !== 0) {
@@ -853,13 +828,10 @@ function decodeVectorBlock(reader: BinaryReader): {
     }
     result.anchors = anchors;
   }
-  if ((flags & VECTOR_FLAG_RENDER_MODE) !== 0) {
-    const modeCode = reader.u8();
-    const renderMode = VECTOR_RENDER_MODE_NAMES[modeCode];
-    if (renderMode === undefined) {
-      fail('invalid-tag', `unknown render mode code ${modeCode}`, reader.offset - 1);
-    }
-    result.renderMode = renderMode;
+  // Legacy optional byte: files written while the removed render mode
+  // existed still carry it. Read and discard — no mode is reconstructed.
+  if ((flags & VECTOR_FLAG_LEGACY_BYTE) !== 0) {
+    reader.u8();
   }
   // 61-30: the curve-mode byte is read LAST, mirroring the encoder. An
   // unmapped code is refused — never defaulted to Bézier.
@@ -962,7 +934,6 @@ function decodeStroke(reader: BinaryReader): {
     timestamp,
     playFrame: enginePlayFrame,
     ...(vector.anchors !== undefined ? { anchors: vector.anchors } : {}),
-    ...(vector.renderMode !== undefined ? { renderMode: vector.renderMode } : {}),
     ...(vector.curveMode !== undefined ? { curveMode: vector.curveMode } : {}),
   };
 

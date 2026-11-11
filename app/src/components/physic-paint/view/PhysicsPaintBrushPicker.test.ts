@@ -136,20 +136,16 @@ describe('261027-gh9g top-bar brush dropdown', () => {
   // painted tip shapes, has NO "Open modal" entry (the catalog's cards pick
   // brushes through selectAquarelleTip, which would flip the tool to Brush),
   // and a pick writes ONLY the lift tip.
-  // 61-07 (D-12): an eraser picks a tip shape, not a render mode — presets
-  // carrying a render mode (the ribbon) are filtered out of this branch.
   it('lift mode lists the tip shapes with no Open modal action', () => {
     aquarelleActiveTool.value = 'lift';
     setAquarelleBrushMenuOpen(true, undefined, 'lift');
     const tree = PhysicsPaintBrushMenu() as TestVNode;
     const ids = buttonTestIds(collect(tree));
     expect(ids).not.toContain('watercolor-brush-menu-open-modal');
-    const liftPresets = BRUSH_PRESETS.filter((preset) => preset.renderMode === undefined);
-    for (const preset of liftPresets) {
+    for (const preset of BRUSH_PRESETS) {
       expect(ids).toContain(`watercolor-brush-menu-item-${preset.id}`);
     }
-    expect(ids).not.toContain('watercolor-brush-menu-item-simple-ribbon');
-    expect(ids.filter((id) => id.startsWith('watercolor-brush-menu-item-')).length).toBe(liftPresets.length);
+    expect(ids.filter((id) => id.startsWith('watercolor-brush-menu-item-')).length).toBe(BRUSH_PRESETS.length);
     expect(aquarelleBrushMenuTarget.value).toBe('lift');
     expect(String(tree.props?.['aria-label'])).toBe('Eraser shapes');
   });

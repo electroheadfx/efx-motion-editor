@@ -26,7 +26,6 @@ import {
   DEFAULT_PAPER,
   PAPERS,
   pigmentFromHex,
-  recordedRenderModeField,
   toEngineParams,
   WatercolorEngine,
   type PaperPreset,
@@ -583,11 +582,6 @@ export function AquarelleCanvasLayer(props: {
               // CANONICAL AQUA-04 globals — never the mapped bag.
               params: { ...snap.params },
               brushId: recordedBrushId,
-              // 61-07 (D-12): the mode is written ONLY when the brush implies a
-              // non-default one — a plain hand-painted stroke gains no key
-              // (same pre-phase key set and byte cost). The mode is a stroke
-              // property, never a path property (D-14).
-              ...recordedRenderModeField(recordedBrushId),
               points,
               toolOverrides: { ...snap.toolOverrides },
               // Visible settle window (D-19, cap 600) — the SAME cap the live

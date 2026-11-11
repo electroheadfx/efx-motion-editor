@@ -19,7 +19,6 @@ import type {
   AquarellePayloadEvent,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
-import { resolveAquarelleRenderMode } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import {
   POINT_DEGREE_STEP,
@@ -272,21 +271,6 @@ function vectorStroke(): StudioStroke<AquarelleStrokePayload> {
   return { ...base, engine: { ...base.engine, anchors: VECTOR_ANCHORS } };
 }
 
-function vectorStrokeWithMode(
-  mode: 'watercolor' | 'simple-ribbon',
-): StudioStroke<AquarelleStrokePayload> {
-  const base = vectorStroke();
-  return { ...base, engine: { ...base.engine, renderMode: mode } };
-}
-
-/** A hand-painted stroke (no anchors) that carries an explicit render mode. */
-function handPaintedWithMode(
-  mode: 'watercolor' | 'simple-ribbon',
-): StudioStroke<AquarelleStrokePayload> {
-  const base = minimalStroke();
-  return { ...base, engine: { ...base.engine, renderMode: mode } };
-}
-
 /** A hand-painted stroke that carries an explicit curve-evaluation mode. */
 function handPaintedWithCurveMode(
   mode: 'bezier' | 'spline',
@@ -530,43 +514,37 @@ describe('AQTL v2 vector payload (61-05)', () => {
     expect(anchors[1]!.out).toEqual({ x: 1, y: 0 });
   });
 
-  it("round-trips renderMode 'simple-ribbon' and leaves an absent mode absent", () => {
-    const withMode = vectorStrokeWithMode('simple-ribbon');
-    const [decoded] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([withMode]));
-    expect(asStroke(decoded).engine.renderMode).toBe('simple-ribbon');
-    expect(decoded).toEqual(withMode);
+  it('skips the legacy optional byte and decodes the same stroke', () => {
+    // Files written while the removed render mode existed carry flag bit 1 and
+    // one byte after the anchors. The decoder must read and ignore it.
+    const plain = encodeScriptTimelineBinary([vectorStroke()]);
+    const LEGACY_FLAG_OFFSET = VECTOR_ANCHOR_COUNT_OFFSET - 1;
+    const POINT_COUNT_OFFSET = VECTOR_ANCHOR_COUNT_OFFSET + 43;
+    const legacy = new Uint8Array(plain.byteLength + 1);
+    legacy.set(plain.subarray(0, POINT_COUNT_OFFSET), 0);
+    legacy[POINT_COUNT_OFFSET] = 0; // legacy mode byte
+    legacy.set(plain.subarray(POINT_COUNT_OFFSET), POINT_COUNT_OFFSET + 1);
+    const view = new DataView(legacy.buffer);
+    view.setUint8(LEGACY_FLAG_OFFSET, view.getUint8(LEGACY_FLAG_OFFSET) | 0x02);
+    view.setUint32(16, legacy.byteLength - 24, true);
 
-    // Absent stays absent on the wire and decodes through the absent-means-
-    // watercolour law — materialising the key would break the byte fixed point.
-    const [without] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([vectorStroke()]));
-    const engine = asStroke(without).engine;
-    expect('renderMode' in engine).toBe(false);
-    expect(resolveAquarelleRenderMode(engine.renderMode)).toBe('watercolor');
+    const [decoded] = decodeScriptTimelineBinary(legacy);
+    expect(decoded).toEqual(decodeScriptTimelineBinary(plain)[0]);
   });
 
-  it('costs a hand-painted stroke one vector-flags byte, and a mode one more (D-14)', () => {
+  it('costs a hand-painted stroke one vector-flags byte', () => {
     // The version field keeps its u16 width, so bumping it costs nothing: the
     // ONLY structural addition for a hand-painted stroke is the single u8
-    // vector-flags byte. (The plan's prose says "plus 2"; its own parenthetical
-    // — "the version byte is the same width; the vector-flags byte is the only
-    // addition" — and its byte-layout table both fix the exact delta at 1, and
-    // the artifacts table is the authority for the on-disk layout.)
+    // vector-flags byte.
     const V1_MINIMAL_BYTE_LENGTH = 93;
     const handPainted = minimalStroke();
     expect(encodeScriptTimelineBinary([handPainted]).byteLength).toBe(
       V1_MINIMAL_BYTE_LENGTH + 1,
     );
-
-    // D-14: a mode applies to a hand-painted stroke too, and costs exactly the
-    // one mode byte on top.
-    const modeOnly = handPaintedWithMode('watercolor');
-    expect(encodeScriptTimelineBinary([modeOnly]).byteLength).toBe(
-      V1_MINIMAL_BYTE_LENGTH + 2,
-    );
   });
 
   it('decodes the same bytes twice to deep-equal objects (idempotence)', () => {
-    const bytes = encodeScriptTimelineBinary([vectorStrokeWithMode('simple-ribbon')]);
+    const bytes = encodeScriptTimelineBinary([vectorStroke()]);
     const first = decodeScriptTimelineBinary(bytes);
     const second = decodeScriptTimelineBinary(bytes);
     expect(second).toEqual(first);
@@ -634,16 +612,11 @@ describe('AQTL v2 curve mode (61-30 G-20)', () => {
 
 // ---------------------------------------------------------------------------
 // 61-05 task 3 — the codec-level determinism the reopen path relies on.
-//
-// SCOPE: packages/efx-watercolor/src/determinismContract.test.ts is OWNED BY
-// 61-07 in this same wave (it parameterises its replay arm by render mode).
-// This plan must not write, read or modify that file — two same-wave plans
-// owning it is exactly why this task was re-scoped to the codec seam.
 // ---------------------------------------------------------------------------
 
 describe('AQTL v2 encode/decode fixed point (61-05)', () => {
   it('is byte-identical when a decoded vector stroke is re-encoded', () => {
-    const stroke = vectorStrokeWithMode('simple-ribbon');
+    const stroke = vectorStroke();
     const first = encodeScriptTimelineBinary([stroke]);
     const decoded = decodeScriptTimelineBinary(first);
 
@@ -667,7 +640,7 @@ describe('AQTL v2 encode/decode fixed point (61-05)', () => {
   });
 
   it('is byte-stable across three passes and decodes idempotently', () => {
-    const first = encodeScriptTimelineBinary([vectorStrokeWithMode('simple-ribbon')]);
+    const first = encodeScriptTimelineBinary([vectorStroke()]);
     let bytes = first;
     for (let pass = 0; pass < 3; pass += 1) {
       bytes = encodeScriptTimelineBinary(decodeScriptTimelineBinary(bytes));

@@ -284,7 +284,6 @@ import {
   beginAquarellePaintSeedRerollEdit,
   beginAquarellePathEdit,
   beginAquarellePlaceEdit,
-  beginAquarelleRenderModeEdit,
   beginAquarelleReorderEdit,
   beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
@@ -336,7 +335,6 @@ import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-waterc
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';
-import type { AquarelleRenderMode } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import {
   beginAquarelleLiftPreview,
@@ -9217,77 +9215,6 @@ export function PhysicsPaintStudio() {
   // at event time; assignment is a plain render-body ref write (port precedent).
   aquarelleAppearanceCommitRef.current = handleAquarelleAppearanceStrokes;
 
-  // 61-12 (VEC-04 / T-61-41): the Paint tab's `Render` row. Same shape as the
-  // appearance handler — one batch + its re-bake = ONE `aquarelle-script`
-  // ledger entry — but the commit seam is the render-mode wrapper, which
-  // replaces the mode field and NOTHING else (D-12/D-14: the mode is a stroke
-  // property; no `anchors` key is created, dropped or rewritten). Guards are
-  // peek-only: the handler must not subscribe the Studio body.
-  const handleAquarelleRenderModeStrokes = useCallback(async (
-    ids: readonly number[],
-    mode: AquarelleRenderMode,
-  ): Promise<boolean> => {
-    if (isPhysicalMutationLocked()) return false;
-    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
-    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;
-    if (isAquarelleScriptEditInFlight()) return false;
-    // Stale ids never leak across frames: keep only live strokes of the
-    // current edit frame before the batch edit.
-    const playFrame = launchContextRef.current?.startFrame ?? 0;
-    const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
-    if (frameIds.length === 0) return false;
-    // 261028-k03d: recover a legacy key's missing durable base before the edit.
-    await ensureAquarelleDurableBaseRef.current(playFrame);
-    // 261101-o2m (WR-03): read the Draft state AFTER the await.
-    const draft = draftMode.peek();
-    // One render-mode batch = one edit with before/after script snapshots.
-    const editId = beginAquarelleRenderModeEdit(frameIds, mode);
-    if (editId === null) return false;
-    if (draft) {
-      rotoMoveHistory.recordAquarelleScriptEdit(editId);
-      setDraftPixelsDirty(true);
-      setLastError(null);
-      clearOwnedScriptApplyRefusal();
-      return true;
-    }
-    setAquarelleScriptEditInFlight(true);
-    try {
-      // The recorded timeline IS the script (same replay source as delete).
-      aquarelleResetSheetRef.current?.();
-      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
-      if (ok) {
-        rotoMoveHistory.recordAquarelleScriptEdit(editId);
-        setLastError(null);
-        clearOwnedScriptApplyRefusal();
-        return true;
-      }
-      // Failed re-bake: put the pre-edit render mode back exactly.
-      restoreAquarelleEditSnapshot(editId, 'undo');
-      const error = rotoScript.error.peek();
-      const message = buildRotoScriptApplyRefusalMessage(error)
-        ?? error?.message
-        ?? 'Could not re-apply the watercolor script — the render mode was restored.';
-      setLastError(message);
-      setApplyMessage(message);
-      setApplyStatus('error');
-      scriptApplyRefusalOwnedRef.current = true;
-      return false;
-    } finally {
-      setAquarelleScriptEditInFlight(false);
-    }
-  }, [
-    isPhysicalMutationLocked,
-    rotoScript,
-    rotoTimelineModel,
-    // The hook returns a fresh wrapper each render; its recorder is the
-    // stable useCallback — depend on it, never the wrapper object.
-    rotoMoveHistory.recordAquarelleScriptEdit,
-    setLastError,
-    setApplyMessage,
-    setApplyStatus,
-    clearOwnedScriptApplyRefusal,
-  ]);
-
   // 61-31 (G-20): the Paint tab's `Curve` row. Same shape as the render-mode
   // handler — one batch + its re-bake = ONE `aquarelle-script` ledger entry —
   // but the commit seam is the curve-mode wrapper, which replaces the
@@ -11657,7 +11584,6 @@ export function PhysicsPaintStudio() {
       canvasWidth,
       canvasHeight,
       handleAquarelleAppearanceStrokes,
-      handleAquarelleRenderModeStrokes,
       handleAquarelleCurveModeStrokes,
       handleAquarelleMoveStrokes,
       handleAquarelleTransformStrokes,
@@ -11681,19 +11607,10 @@ export function PhysicsPaintStudio() {
         playFrame,
         canvasSize,
         listStrokes: (frame, size) => listSelectableAquarelleStrokes(frame, size),
-        // 61-12 (VEC-04 / D-12): the appearance hydration plus the recorded
-        // stroke's render discriminator. An absent field stays absent, so the
-        // dialog's reading applies the watercolor default rather than treating
-        // a hand-painted stroke as a third state.
+        // 61-31 (G-20): the curve reading needs the recorded stroke's mode and
+        // whether it carries a path at all. Both obey the sparse-field contract:
+        // an absent key stays absent.
         readAppearance: (ids, frame) => readAquarelleStrokeAppearance(ids, frame).map((appearance) => {
-          const stroke = getRecordedAquarelleStroke(appearance.mutationId);
-          return stroke?.renderMode === undefined
-            ? appearance
-            : { ...appearance, renderMode: stroke.renderMode };
-        }).map((appearance) => {
-          // 61-31 (G-20): the curve reading needs the recorded stroke's mode and
-          // whether it carries a path at all. Both obey the same sparse-field
-          // contract as renderMode: an absent key stays absent.
           const stroke = getRecordedAquarelleStroke(appearance.mutationId);
           if (stroke === undefined) return appearance;
           return {
@@ -11704,10 +11621,6 @@ export function PhysicsPaintStudio() {
         }),
         applyAppearance: (ids, patch: ScriptStrokeAppearancePatch) =>
           handleAquarelleAppearanceStrokes(ids, patch),
-        // 61-12 (VEC-04 / T-61-41): the Render row's ONE commit seam. The whole
-        // selection — vector or hand-painted — is written by one
-        // `beginAquarelleRenderModeEdit`, so the batch is one undo entry.
-        applyRenderMode: (ids, mode) => handleAquarelleRenderModeStrokes(ids, mode),
         // 61-31 (G-20): the Curve row's ONE commit seam. The vector strokes of
         // the selection are written by one `beginAquarelleCurveModeEdit`, so
         // the batch is one undo entry and the seed salts are untouched.

@@ -239,7 +239,7 @@ describe('Water color stroke-end bridges through aquarelleStrokeToPaintStroke', 
 //  the mode is a stroke property, never a path property.
 // ============================================================
 
-describe('record-time render-mode stamp (61-07)', () => {
+describe('record-time stroke literal (61-07)', () => {
   const layer = readFileSync(resolve(__dirname, './AquarelleCanvasLayer.tsx'), 'utf8');
 
   /** The recorded AquarelleStroke literal inside onStrokeEnd. */
@@ -250,12 +250,6 @@ describe('record-time render-mode stamp (61-07)', () => {
     expect(end).toBeGreaterThan(start);
     return layer.slice(start, end);
   }
-
-  it('spreads exactly one recordedRenderModeField call into the recorded stroke', () => {
-    const calls = layer.split('recordedRenderModeField(').length - 1;
-    expect(calls).toBe(1);
-    expect(recordedStrokeLiteral()).toContain('...recordedRenderModeField(recordedBrushId)');
-  });
 
   it('stamps the SAME brush id the literal records', () => {
     const literal = recordedStrokeLiteral();

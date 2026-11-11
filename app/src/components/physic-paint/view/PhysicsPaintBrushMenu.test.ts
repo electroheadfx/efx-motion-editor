@@ -12,10 +12,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BRUSH_PRESETS, type BrushPreset } from '@efxlab/efx-watercolor';
-import { brushMenuPresets, filterLiftPresets } from './brushMenuPresets';
+import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
+import { brushMenuPresets } from './brushMenuPresets';
 
-const RIBBON_ID = 'simple-ribbon';
 const SOURCE = readFileSync(resolve(__dirname, './PhysicsPaintBrushMenu.tsx'), 'utf8');
 
 function sourceRegion(startMarker: string, endMarker: string): string {
@@ -26,44 +25,11 @@ function sourceRegion(startMarker: string, endMarker: string): string {
   return SOURCE.slice(start, end);
 }
 
-describe('brushMenuPresets (61-07)', () => {
-  it('the brush list is the complete shipped preset list, in order', () => {
-    expect(brushMenuPresets('brush').map((preset) => preset.id)).toEqual(
-      BRUSH_PRESETS.map((preset) => preset.id),
-    );
-  });
-
-  it('the ribbon preset appears exactly once in the brush list', () => {
-    const ribbons = brushMenuPresets('brush').filter((preset) => preset.id === RIBBON_ID);
-    expect(ribbons).toHaveLength(1);
-    expect(ribbons[0]!.renderMode).toBe('simple-ribbon');
-    expect(ribbons[0]!.name).toBe('Simple ribbon');
-  });
-
-  it('the lift list excludes the ribbon preset and keeps every shipped tip shape', () => {
-    const lift = brushMenuPresets('lift');
-    expect(lift.some((preset) => preset.id === RIBBON_ID)).toBe(false);
-    expect(lift.every((preset) => preset.renderMode === undefined)).toBe(true);
-    expect(lift.map((preset) => preset.id)).toEqual(
-      BRUSH_PRESETS.filter((preset) => preset.renderMode === undefined).map((preset) => preset.id),
-    );
-    for (const id of ['filbert', 'round', 'chalk']) {
-      expect(lift.some((preset) => preset.id === id), `${id} stays in the lift list`).toBe(true);
-    }
-    // The filter removes exactly one shipped row — nothing else moves.
-    expect(lift).toHaveLength(BRUSH_PRESETS.length - 1);
-  });
-
-  it('a filter that empties the list returns an empty list — no new copy', () => {
-    // The shipped no-match state is unchanged: the menu renders the empty
-    // list itself and carries no count-dependent copy or badge.
-    const allRibbon: Array<Pick<BrushPreset, 'id' | 'renderMode'>> = [
-      { id: 'a', renderMode: 'simple-ribbon' },
-      { id: 'b', renderMode: 'simple-ribbon' },
-    ];
-    expect(filterLiftPresets(allRibbon)).toEqual([]);
-    expect(SOURCE).not.toContain('presets.length');
-    expect(SOURCE).not.toContain('badge');
+describe('brushMenuPresets', () => {
+  it('both lists are the complete shipped preset list, in order', () => {
+    const shipped = BRUSH_PRESETS.map((preset) => preset.id);
+    expect(brushMenuPresets('brush').map((preset) => preset.id)).toEqual(shipped);
+    expect(brushMenuPresets('lift').map((preset) => preset.id)).toEqual(shipped);
   });
 });
 
@@ -72,7 +38,6 @@ describe('PhysicsPaintBrushMenu wiring (61-07)', () => {
     const lift = sourceRegion("menuTarget === 'lift' ? (", '\n      ) : (');
     expect(lift).toContain("brushMenuPresets('lift')");
     expect(lift).not.toContain("brushMenuPresets('brush')");
-    expect(lift).toContain('tip shape, not a render mode');
 
     const brush = sourceRegion('\n      ) : (', '\n      )}\n    </div>');
     expect(brush).toContain("brushMenuPresets('brush')");

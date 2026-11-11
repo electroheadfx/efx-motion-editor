@@ -36,11 +36,6 @@ import {
   PATH_EDIT_LABEL,
   PATH_EDIT_MULTI_DISABLED_REASON,
   PATH_EDIT_SINGLE_DISABLED_REASON,
-  RENDER_MODE_OPTIONS,
-  SIMPLE_RIBBON_GLOBALS,
-  SIMPLE_RIBBON_WET_NOTE,
-  readRenderMode,
-  readSimpleRibbonGlobal,
   resolveAnchorWidthTarget,
   resolvePathEditGate,
   shouldExitPathEdit,
@@ -3747,73 +3742,6 @@ describe('61-11 E4 error, partial and long-text rows', () => {
 // discriminator on the stroke, never a numeric appearance param — the reading
 // is pure over the appearance objects, and an absent field means watercolour
 // (D-12) rather than an unknown state.
-describe('61-12 Render mode reading (Paint tab)', () => {
-  function appearanceOf(
-    mutationId: number,
-    renderMode?: 'watercolor' | 'simple-ribbon',
-  ): ScriptStrokeAppearance {
-    return renderMode === undefined
-      ? { mutationId, params: {}, color: null }
-      : { mutationId, params: {}, color: null, renderMode };
-  }
-
-  it('reads simple-ribbon when every selected stroke carries it', () => {
-    expect(readRenderMode([
-      appearanceOf(1, 'simple-ribbon'),
-      appearanceOf(2, 'simple-ribbon'),
-    ])).toEqual({ mode: 'simple-ribbon', mixed: false });
-  });
-
-  it('reads mixed with no representative when the selection disagrees', () => {
-    expect(readRenderMode([
-      appearanceOf(1, 'watercolor'),
-      appearanceOf(2, 'simple-ribbon'),
-    ])).toEqual({ mode: null, mixed: true });
-    // Order never decides the mixed state — either direction is mixed.
-    expect(readRenderMode([
-      appearanceOf(1, 'simple-ribbon'),
-      appearanceOf(2, 'watercolor'),
-    ])).toEqual({ mode: null, mixed: true });
-  });
-
-  it('treats an absent mode as watercolor and never as mixed', () => {
-    expect(readRenderMode([appearanceOf(1)])).toEqual({ mode: 'watercolor', mixed: false });
-    // An absent field and an explicit default are the SAME mode.
-    expect(readRenderMode([appearanceOf(1), appearanceOf(2, 'watercolor')]))
-      .toEqual({ mode: 'watercolor', mixed: false });
-    expect(readRenderMode([appearanceOf(1), appearanceOf(2)]))
-      .toEqual({ mode: 'watercolor', mixed: false });
-  });
-
-  it('reads the default for an empty selection', () => {
-    expect(readRenderMode([])).toEqual({ mode: 'watercolor', mixed: false });
-  });
-
-  it('E3 long-text: the two option labels are the fixed UI-SPEC constants', () => {
-    expect(RENDER_MODE_OPTIONS.map((option) => [option.id, option.mode, option.label])).toEqual([
-      ['watercolor', 'watercolor', 'Watercolor'],
-      ['ribbon', 'simple-ribbon', 'Ribbon'],
-    ]);
-    // The ids are the test-id suffixes the dialog renders; the labels are the
-    // only copy the row ever shows.
-    expect(`stroke-settings-render-mode-option-${RENDER_MODE_OPTIONS[1]!.id}`)
-      .toBe('stroke-settings-render-mode-option-ribbon');
-  });
-
-  it('never enters the numeric field registry', () => {
-    const keys = WATERCOLOR_SETTINGS_FIELDS.map((field) => field.key);
-    expect(keys).not.toContain('renderMode');
-    expect(keys).not.toContain('render-mode');
-    // The row is dispatched off the string union, not the numeric path.
-    expect(RENDER_MODE_OPTIONS.every((option) => typeof option.mode === 'string')).toBe(true);
-  });
-});
-
-// 61-31 (G-20): the `Curve` row's reading law. Spline is an EVALUATION MODE
-// over the same anchor list, so only VECTOR appearances take part in the
-// agreement: an absent key reads Bézier, a hand-painted stroke beside a spline
-// one is not a disagreement, and a selection with no vector stroke never makes
-// the row available — the row hides instead of writing an inert key.
 describe('61-31 curve mode reading (Paint tab)', () => {
   function appearanceOf(
     mutationId: number,
@@ -3860,86 +3788,5 @@ describe('61-31 curve mode reading (Paint tab)', () => {
       appearanceOf(1, { vector: true, curveMode: 'spline' }),
       appearanceOf(2, { vector: true }),
     ])).toEqual({ mode: null, mixed: true, available: true });
-  });
-});
-
-// ── 61-12 Task 3: the Advanced wet-globals disclosure model (D-13 / E5) ──
-
-describe('61-12 Advanced wet globals (E5)', () => {
-  function appearanceOf(id: number, params: Record<string, number> = {}) {
-    return { mutationId: id, params, color: '#103c65' };
-  }
-
-  it('is exactly the Water color rows minus Size, frozen', () => {
-    expect(SIMPLE_RIBBON_GLOBALS).toEqual(
-      WATERCOLOR_SETTINGS_FIELDS.filter((field) => field.key !== 'size'),
-    );
-    expect(SIMPLE_RIBBON_GLOBALS.map((field) => field.key)).toEqual([
-      'load',
-      'water',
-      'flow',
-      'bleed',
-      'edge',
-      'granulation',
-      'dry',
-    ]);
-    expect(Object.isFrozen(SIMPLE_RIBBON_GLOBALS)).toBe(true);
-  });
-
-  it('E5 long-text: asserts the seven labels by name and Size as absent', () => {
-    expect(SIMPLE_RIBBON_GLOBALS.map((field) => field.label)).toEqual([
-      'Pigment',
-      'Water',
-      'Flow',
-      'Bleed',
-      'Edges',
-      'Grain',
-      'Dry speed',
-    ]);
-    expect(SIMPLE_RIBBON_GLOBALS.map((field) => field.label)).not.toContain('Size');
-    // Every row is a numeric 0..100 stepper: the disclosure reuses SliderStepper.
-    expect(SIMPLE_RIBBON_GLOBALS.every((field) =>
-      field.kind === 'numeric' && field.min === 0 && field.max === 100 && field.step === 1,
-    )).toBe(true);
-  });
-
-  it('carries the UI-SPEC note verbatim', () => {
-    expect(SIMPLE_RIBBON_WET_NOTE).toBe(
-      'All seven sit at zero for a plain ribbon. Raise any to blend physics back in.',
-    );
-    // One fixed sentence — never interpolated with a value.
-    expect(SIMPLE_RIBBON_WET_NOTE).not.toContain('${');
-  });
-
-  it('reads 0 for an absent or non-finite wet key', () => {
-    expect(readSimpleRibbonGlobal([], 'water')).toEqual({ value: 0, mixed: false });
-    expect(readSimpleRibbonGlobal([appearanceOf(1)], 'water'))
-      .toEqual({ value: 0, mixed: false });
-    expect(readSimpleRibbonGlobal([appearanceOf(1, { water: Number.NaN })], 'water'))
-      .toEqual({ value: 0, mixed: false });
-    // The stored key IS the field key — no paramKey alias among the seven.
-    expect(readSimpleRibbonGlobal([appearanceOf(1, { water: 0 })], 'water'))
-      .toEqual({ value: 0, mixed: false });
-  });
-
-  it('reads the stored value and reports a mixed selection', () => {
-    expect(readSimpleRibbonGlobal([
-      appearanceOf(1, { water: 0, flow: 12 }),
-      appearanceOf(2, { water: 0, flow: 12 }),
-    ], 'flow')).toEqual({ value: 12, mixed: false });
-    // Absent reads 0, so an absent key and an explicit 0 agree.
-    expect(readSimpleRibbonGlobal([
-      appearanceOf(1, { water: 0 }),
-      appearanceOf(2),
-    ], 'water')).toEqual({ value: 0, mixed: false });
-    // A genuinely raised term against an absent one is mixed.
-    expect(readSimpleRibbonGlobal([
-      appearanceOf(1, { water: 40 }),
-      appearanceOf(2),
-    ], 'water')).toEqual({ value: 40, mixed: true });
-    expect(readSimpleRibbonGlobal([
-      appearanceOf(1),
-      appearanceOf(2, { water: 40 }),
-    ], 'water')).toEqual({ value: 0, mixed: true });
   });
 });
