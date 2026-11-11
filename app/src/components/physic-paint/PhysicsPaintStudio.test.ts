@@ -6517,7 +6517,9 @@ describe('61-10 vector path edit wiring in the Studio', () => {
     expect(commit).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
     // ...and on failure the pre-edit script is restored BEFORE the capsule
     // publishes, then the gesture reports null so no ledger entry is taken.
-    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo');");
+    // 61-26 (WR-02): the restore result is consumed, so the marker is the
+    // consuming tail rather than the discarded statement it replaced.
+    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo') !== null;");
     const publishAt = commit.indexOf('setApplyMessage(message);');
     expect(restoreAt).toBeGreaterThan(-1);
     expect(publishAt).toBeGreaterThan(restoreAt);
@@ -7200,7 +7202,9 @@ describe('61-20 G-8: a vector path edit is exactly one undo entry', () => {
     // the defer route owns the other (and only other) site after 61-20 Task 2.
     const recordAt = success.indexOf(RECORD);
     const rebakeAt = commit.indexOf('runAquarelleScriptRebake({');
-    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo');");
+    // 61-26 (WR-02): the restore result is consumed, so the marker is the
+    // consuming tail rather than the discarded statement it replaced.
+    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo') !== null;");
     const beginAt = commit.indexOf('beginAquarellePathEdit(');
     expect(recordAt).toBeGreaterThan(-1);
     expect(successAt).toBeGreaterThan(-1);
@@ -7247,7 +7251,9 @@ describe('61-20 G-8: a vector path edit is exactly one undo entry', () => {
     const commit = commitRegion();
     // One per success route — the defer route and the re-bake onSuccess tail.
     expect(commit.split(RECORD).length - 1).toBe(2);
-    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo');");
+    // 61-26 (WR-02): the restore result is consumed, so the marker is the
+    // consuming tail rather than the discarded statement it replaced.
+    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo') !== null;");
     expect(restoreAt).toBeGreaterThan(-1);
     const sites: number[] = [];
     for (let at = commit.indexOf('rotoMoveHistory.recordAquarelleScriptEdit('); at !== -1; at = commit.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(', at + 1)) {

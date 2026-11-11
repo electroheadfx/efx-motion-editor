@@ -10174,11 +10174,21 @@ export function PhysicsPaintStudio() {
       },
       onFailure: () => {
         // Put the pre-edit script back exactly, BEFORE publishing.
-        restoreAquarelleEditSnapshot(editId, 'undo');
+        // 61-26 (WR-02): the restore is revision-authoritative, so any bump
+        // since the edit began makes it fail closed and leaves the script
+        // half-applied behind a "restored" capsule. Re-anchor the ATTEMPTED
+        // side first — it is content-checked, so the normal failure (this
+        // edit's own side still live) re-seats the revision and the restore
+        // succeeds, while a foreign mutation still fails closed and the
+        // honest could-not-roll-back copy below fires.
+        reanchorAquarelleEditFromLiveContent(editId, 'undo');
+        const restored = restoreAquarelleEditSnapshot(editId, 'undo') !== null;
         const error = rotoScript.error.peek();
         const message = buildRotoScriptApplyRefusalMessage(error)
           ?? error?.message
-          ?? 'Could not re-apply the watercolor script — the path edit was restored.';
+          ?? (restored
+            ? 'Could not re-apply the watercolor script — the path edit was restored.'
+            : 'Could not re-apply the watercolor script — the path edit could not be rolled back.');
         setLastError(message);
         setApplyMessage(message);
         setApplyStatus('error');
