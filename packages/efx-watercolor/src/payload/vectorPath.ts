@@ -160,10 +160,25 @@ export function recordedCurveModeField(
 }
 
 /**
+ * A corner is a `bezier` anchor whose two handles sit ON the anchor — the
+ * shape the draw gesture places (Shift+click) and the shape a spline must not
+ * smooth away. Any stored handle length means the anchor is a curve control,
+ * which spline owns again.
+ */
+function isCornerAnchor(anchor: VectorAnchor): boolean {
+  if (anchor.kind !== 'bezier') return false;
+  const { in: handleIn, out: handleOut } = anchor;
+  if (!isFinitePoint(handleIn) || !isFinitePoint(handleOut)) return false;
+  return handleIn.x === anchor.x && handleIn.y === anchor.y
+    && handleOut.x === anchor.x && handleOut.y === anchor.y;
+}
+
+/**
  * The evaluation VIEW of an anchor list (G-20). `bezier` returns the list
- * untouched; `spline` returns a frozen list where every anchor is `auto` and
- * carries its width, so the spine's derived-smooth family owns the tangents.
- * Authored handles are dropped from the VIEW only — the document keeps them.
+ * untouched; `spline` turns every anchor into the derived-smooth view EXCEPT
+ * a placed corner, which keeps its identity so a sharp angle survives the
+ * mode. Widths always survive. Authored handles on a smoothed anchor are
+ * dropped from the VIEW only — the document keeps them.
  */
 export function resolveCurveAnchors(
   anchors: readonly VectorAnchor[],
@@ -171,6 +186,16 @@ export function resolveCurveAnchors(
 ): readonly VectorAnchor[] {
   if (curveMode !== 'spline') return anchors
   const view = anchors.map((anchor) => {
+    if (isCornerAnchor(anchor)) {
+      const corner: VectorAnchor = {
+        x: anchor.x,
+        y: anchor.y,
+        kind: 'bezier',
+        in: { x: anchor.in!.x, y: anchor.in!.y },
+        out: { x: anchor.out!.x, y: anchor.out!.y },
+      }
+      return anchor.width === undefined ? corner : { ...corner, width: anchor.width }
+    }
     const plain: VectorAnchor = { x: anchor.x, y: anchor.y, kind: 'auto' }
     return anchor.width === undefined ? plain : { ...plain, width: anchor.width }
   })

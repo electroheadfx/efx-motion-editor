@@ -922,7 +922,9 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     if (current !== null && isAdjacentToLast(current.anchors, pointerUv, props.width, props.height, scale)) {
       return;
     }
-    const anchor: VectorDraftAnchor = event.altKey
+    // Shift places a corner. Alt is the app-wide colour picker in paint mode,
+    // so it can never be the draw surface's modifier.
+    const anchor: VectorDraftAnchor = event.shiftKey
       ? {
         x: pointerUv.x,
         y: pointerUv.y,

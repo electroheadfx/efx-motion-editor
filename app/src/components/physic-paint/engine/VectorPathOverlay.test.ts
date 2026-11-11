@@ -4,7 +4,7 @@
 //  Laws pinned here:
 //    - the overlay draws one spine polyline plus one marker per
 //      anchor, and NOTHING for a hand-painted or off-frame stroke;
-//    - the draw gesture: plain click = smooth anchor, Alt+click =
+//    - the draw gesture: plain click = smooth anchor, Shift+click =
 //      corner, adjacency refusal, first-anchor finish, Enter and
 //      double-click finish, Escape cancels with zero commits;
 //    - the draft is cleared BEFORE the commit runs, so a second
@@ -66,6 +66,7 @@ import {
   buildAnchorWidthCommit,
   buildDraftPath,
   buildVectorStroke,
+  resampleVectorPaintPoints,
   uvToScreen,
   vectorSpinePressures,
   type VectorPathCommit,
@@ -209,6 +210,7 @@ function pointerEvent(
   return {
     button: 0,
     altKey: false,
+    shiftKey: false,
     pointerId: 1,
     clientX: x,
     clientY: y,
@@ -346,11 +348,18 @@ describe('VectorPathOverlay — draw gesture (task 2)', () => {
     expect(draftAnchors()).toEqual([auto(0.5, 0.5), auto(0.7, 0.4)]);
   });
 
-  it('places a corner (bezier with zero-length handles) on Alt+click', () => {
+  it('places a corner (bezier with zero-length handles) on Shift+click', () => {
+    const root = render(VectorPathOverlay(propsWith()))!;
+    press(root, clickAt(0.5, 0.5));
+    press(root, clickAt(0.7, 0.4, { shiftKey: true }));
+    expect(draftAnchors()).toEqual([auto(0.5, 0.5), bezier(0.7, 0.4)]);
+  });
+
+  it('leaves Alt+click placing a plain smooth anchor', () => {
     const root = render(VectorPathOverlay(propsWith()))!;
     press(root, clickAt(0.5, 0.5));
     press(root, clickAt(0.7, 0.4, { altKey: true }));
-    expect(draftAnchors()).toEqual([auto(0.5, 0.5), bezier(0.7, 0.4)]);
+    expect(draftAnchors()).toEqual([auto(0.5, 0.5), auto(0.7, 0.4)]);
   });
 
   it('refuses a click within the adjacency radius of the last anchor', () => {
@@ -698,7 +707,7 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
     // The POINTS MUST MOVE: they are the replay's geometry (`toStudioStroke`
     // maps points into `pts`), so they are the spine sampled from the new
     // anchors in the commit's six-field shape — never the pre-edit spine.
-    const sampled = sampleVectorPath(nextAnchors).points;
+    const sampled = resampleVectorPaintPoints(sampleVectorPath(nextAnchors).points);
     const pressures = vectorSpinePressures(sampled, 'watercolor');
     const expectedPoints = sampled.map((point, index) => ({
       x: point.x,

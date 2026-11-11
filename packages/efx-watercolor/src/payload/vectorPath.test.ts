@@ -162,30 +162,34 @@ describe('curve evaluation (G-20: spline is a view, never a rewrite)', () => {
   const STORED: readonly AquarelleAnchor[] = [
     { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.1, y: 0.4 }, out: { x: 0.3, y: 0.6 } },
     { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 },
-    { x: 0.8, y: 0.5, kind: 'bezier', in: { x: 0.7, y: 0.5 }, out: { x: 0.9, y: 0.5 } },
+    // A placed corner: both handles sit ON the anchor.
+    { x: 0.8, y: 0.5, kind: 'bezier', in: { x: 0.8, y: 0.5 }, out: { x: 0.8, y: 0.5 } },
   ]
 
-  /** The derived-auto view, written out here so the test never asks the code under test. */
+  /** The derived view, written out here so the test never asks the code under test. */
   const SPLINE_VIEW: readonly AquarelleAnchor[] = [
     { x: 0.2, y: 0.5, kind: 'auto' },
     { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 },
-    { x: 0.8, y: 0.5, kind: 'auto' },
+    { x: 0.8, y: 0.5, kind: 'bezier', in: { x: 0.8, y: 0.5 }, out: { x: 0.8, y: 0.5 } },
   ]
 
   it('resolveCurveAnchors returns the input list as-is for bezier', () => {
     expect(resolveCurveAnchors(STORED, 'bezier')).toBe(STORED)
   })
 
-  it('resolveCurveAnchors derives the spline view with every anchor auto and no stored handles', () => {
+  it('resolveCurveAnchors smooths curves but keeps a placed corner', () => {
     const view = resolveCurveAnchors(STORED, 'spline')
     expect(view).not.toBe(STORED)
     expect(view).toEqual(SPLINE_VIEW)
     expect(Object.isFrozen(view)).toBe(true)
-    for (const anchor of view) {
-      expect(anchor.kind).toBe('auto')
-      expect('in' in anchor).toBe(false)
-      expect('out' in anchor).toBe(false)
-    }
+    // The authored curve control is smoothed away…
+    expect(view[0]!.kind).toBe('auto')
+    expect('in' in view[0]!).toBe(false)
+    expect('out' in view[0]!).toBe(false)
+    // …and the corner keeps its kind and its on-anchor handles.
+    expect(view[2]!.kind).toBe('bezier')
+    expect(view[2]!.in).toEqual({ x: 0.8, y: 0.5 })
+    expect(view[2]!.out).toEqual({ x: 0.8, y: 0.5 })
     // The width factor is a paint property, not an evaluation one.
     expect(view[1]!.width).toBe(1.8)
     // The DOCUMENT keeps the authored handles — a view is never a write-back.
@@ -204,6 +208,7 @@ describe('curve evaluation (G-20: spline is a view, never a rewrite)', () => {
     const view = resolveCurveAnchors(stored, 'spline')
     expect(view).not.toBe(stored)
     expect(view[0]).not.toBe(stored[0])
+    expect(view[2]).not.toBe(stored[2])
     expect(stored).toEqual(snapshot)
   })
 
@@ -211,10 +216,10 @@ describe('curve evaluation (G-20: spline is a view, never a rewrite)', () => {
     const bezier = evaluateAquarellePath(STORED, 'bezier')
     const spline = evaluateAquarellePath(STORED, 'spline')
     expect(bezier).toEqual(sampleVectorPath(STORED))
-    // A stored off-curve handle has no effect under spline: the sampled spine is
+    // An authored handle has no effect under spline: the sampled spine is
     // exactly the one over the derived-auto view.
     expect(spline).toEqual(sampleVectorPath(SPLINE_VIEW))
-    // Non-degenerate: the two evaluations really do draw different curves.
+    // Non-degenerate: smoothing the first anchor really does draw another curve.
     expect(spline.points).not.toEqual(bezier.points)
   })
 })
