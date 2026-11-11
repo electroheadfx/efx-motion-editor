@@ -907,6 +907,17 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
 
   const startEditDrag = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    // 61-28 (CR-01) — the start-of-gesture law: a press ALWAYS ends the gesture
+    // before it, even a press that hits nothing. An abandoned drag otherwise
+    // survives inside the mounted leaf and rides a later release into a commit;
+    // the pointer it captured is released here with it. Compare-then-write, so
+    // a press with no open drag writes nothing.
+    const previousDrag = dragRef.current;
+    if (previousDrag !== null) {
+      dragRef.current = null;
+      if (vectorPathEditDrag.peek() !== null) vectorPathEditDrag.value = null;
+      releasePointerCapture(event.currentTarget, previousDrag.pointerId);
+    }
     if (editTargetMutationId === null || editTargetAnchors === null) return;
     event.preventDefault();
     event.stopPropagation();
