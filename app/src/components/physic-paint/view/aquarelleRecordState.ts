@@ -51,7 +51,11 @@ import {
 import { disarmAquarellePicker } from './aquarelleColorPicker';
 import { exitRailMotionEditing } from './railMotionEditingMode';
 import { reorderForStackPosition, targetIndexForStackPosition } from './stackOrder';
-import { VECTOR_STROKE_BASE_PRESSURE, vectorSpinePressures } from './vectorPathHandles';
+import {
+  VECTOR_STROKE_BASE_PRESSURE,
+  resampleVectorPaintPoints,
+  vectorSpinePressures,
+} from './vectorPathHandles';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
 export interface AquarelleGlobalParams {
@@ -1024,8 +1028,11 @@ export function updateAquarelleCurveModeInScript(
     if (anchors === undefined) continue;
     const nextAnchors = projectVectorPath(anchors);
     const { points: sampledSpine } = evaluateAquarellePath(nextAnchors, mode);
+    // The paint sampler — the same step `buildVectorStroke` uses, so a mode
+    // switch replays with the stroke's own wet lifetime.
+    const paintSpine = resampleVectorPaintPoints(sampledSpine);
     const pressures = vectorSpinePressures(
-      sampledSpine,
+      paintSpine,
       resolveAquarelleRenderMode(stroke.renderMode),
     );
     targets.push({
@@ -1033,7 +1040,7 @@ export function updateAquarelleCurveModeInScript(
       stroke,
       index,
       // The re-derived points carry `buildVectorStroke`'s exact shape.
-      nextPoints: sampledSpine.map((point, sampleIndex) => ({
+      nextPoints: paintSpine.map((point, sampleIndex) => ({
         x: point.x,
         y: point.y,
         p: pressures[sampleIndex] ?? VECTOR_STROKE_BASE_PRESSURE,
@@ -1112,8 +1119,9 @@ export function updateAquarellePathInScript(
     nextAnchors,
     resolveAquarelleCurveMode(stroke.curveMode),
   );
-  const pressures = vectorSpinePressures(sampledSpine, nextMode);
-  const nextPoints = sampledSpine.map((point, sampleIndex) => ({
+  const paintSpine = resampleVectorPaintPoints(sampledSpine);
+  const pressures = vectorSpinePressures(paintSpine, nextMode);
+  const nextPoints = paintSpine.map((point, sampleIndex) => ({
     x: point.x,
     y: point.y,
     p: pressures[sampleIndex] ?? VECTOR_STROKE_BASE_PRESSURE,

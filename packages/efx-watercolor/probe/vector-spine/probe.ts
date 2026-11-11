@@ -33,6 +33,7 @@ import {
   type AquarelleStrokePayload,
 } from '../../src/payload/toStudioStroke'
 import type { AquarelleAnchor, AquarelleRenderMode } from '../../src/payload/vectorPath'
+import { sampleVectorPath } from '../../src/vector/spine'
 import { createAquarelleEngineAdapter } from '../../src/adapter/engineAdapter'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 
@@ -844,6 +845,409 @@ function runRibbonScenario(renderer: string): void {
   })
 }
 
+// --- natural pen scenario (SCRATCH, 61 gap closure) -------------------------
+//
+// A hand-painted mouse stroke is replayed through the SAME adapter as a
+// vector stroke. Its samples carry the p = -1 sentinel, so the engine derives
+// pressure from the spacing the hand produced (slow at turns = dense samples
+// = high pressure). The vector arms carry explicit pressures: the shipped
+// profile (base 0.5) and a candidate calibrated to the hand's band. The sheet
+// is captured as one PNG so the three arms can be compared by eye and by
+// cross-section metrics.
+
+const NATURAL_SHEET = 640
+const NATURAL_SIZE = 18
+const NATURAL_COLOR = '#b4761f'
+const NATURAL_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.22, y: 0.24, kind: 'auto' },
+  { x: 0.74, y: 0.44, kind: 'auto' },
+  { x: 0.28, y: 0.58, kind: 'auto' },
+  { x: 0.72, y: 0.80, kind: 'auto' },
+]
+
+interface NaturalPoint {
+  x: number
+  y: number
+}
+
+function naturalSpine(): NaturalPoint[] {
+  return sampleVectorPath(NATURAL_ANCHORS).points.map((point) => ({ x: point.x, y: point.y }))
+}
+
+function stationsOf(points: readonly NaturalPoint[]): number[] {
+  const stations: number[] = []
+  let running = 0
+  for (let index = 0; index < points.length; index += 1) {
+    if (index > 0) {
+      const a = points[index - 1]!
+      const b = points[index]!
+      running += Math.hypot(b.x - a.x, b.y - a.y)
+    }
+    stations.push(running)
+  }
+  return stations
+}
+
+function pointAtDistance(
+  points: readonly NaturalPoint[],
+  stations: readonly number[],
+  distance: number,
+): NaturalPoint {
+  const total = stations[stations.length - 1] ?? 0
+  if (distance <= 0) return points[0]!
+  if (distance >= total) return points[points.length - 1]!
+  let low = 0
+  let high = stations.length - 1
+  while (low + 1 < high) {
+    const middle = (low + high) >> 1
+    if (stations[middle]! <= distance) low = middle
+    else high = middle
+  }
+  const from = stations[low]!
+  const to = stations[high]!
+  const t = to > from ? (distance - from) / (to - from) : 0
+  const a = points[low]!
+  const b = points[high]!
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+}
+
+function smooth01(value: number): number {
+  const t = Math.min(1, Math.max(0, value))
+  return t * t * (3 - 2 * t)
+}
+
+/** |turn angle| per spine point over a 16-sample window, spread ±24 samples. */
+function naturalTurnLoad(points: readonly NaturalPoint[]): number[] {
+  const count = points.length
+  const turn = new Array<number>(count).fill(0)
+  if (count < 3) return turn
+  for (let index = 0; index < count; index += 1) {
+    const before = points[Math.max(0, index - 8)]!
+    const here = points[index]!
+    const after = points[Math.min(count - 1, index + 8)]!
+    const ax = here.x - before.x
+    const ay = here.y - before.y
+    const bx = after.x - here.x
+    const by = after.y - here.y
+    const la = Math.hypot(ax, ay)
+    const lb = Math.hypot(bx, by)
+    if (la <= 0 || lb <= 0) continue
+    const cosine = Math.min(1, Math.max(-1, (ax * bx + ay * by) / (la * lb)))
+    turn[index] = Math.acos(cosine) / (Math.PI / 2)
+  }
+  const spread = new Array<number>(count).fill(0)
+  for (let index = 0; index < count; index += 1) {
+    let sum = 0
+    let hits = 0
+    for (let offset = -24; offset <= 24; offset += 1) {
+      const peer = index + offset
+      if (peer < 0 || peer >= count) continue
+      sum += turn[peer]!
+      hits += 1
+    }
+    spread[index] = hits === 0 ? 0 : Math.min(1, sum / hits)
+  }
+  return spread
+}
+
+function naturalPhase(points: readonly NaturalPoint[]): number {
+  const first = points[0]
+  const last = points[points.length - 1]
+  if (first === undefined || last === undefined) return 0
+  const raw = Math.sin(first.x * 12.9898 + first.y * 78.233 + last.x * 37.719 + last.y * 43.313) * 43758.5453
+  return raw - Math.floor(raw)
+}
+
+/**
+ * The hand arm: emit samples along the spine at a spacing equal to a plausible
+ * hand speed / 60. The engine sees one sample per tick, so spacing IS speed.
+ * Slow at turns, with a little drift; p keeps the mouse sentinel.
+ */
+function naturalHandPoints(
+  spine: readonly NaturalPoint[],
+  turn: readonly number[],
+): AquarellePoint[] {
+  const stations = stationsOf(spine)
+  const total = stations[stations.length - 1] ?? 0
+  if (total <= 0) return []
+  const points: AquarellePoint[] = []
+  const count = spine.length
+  let travelled = 0
+  while (travelled <= total) {
+    const point = pointAtDistance(spine, stations, travelled)
+    points.push({ x: point.x, y: point.y, p: -1, tx: 0, ty: 0, tw: 0 })
+    const u = travelled / total
+    const localTurn = turn[Math.min(count - 1, Math.round(u * (count - 1)))] ?? 0
+    const speed = (0.42 - 0.29 * localTurn) * (1 + 0.10 * Math.sin(2 * Math.PI * (2.3 * u + 0.17)))
+    travelled += Math.max(0.0016, speed / 60)
+  }
+  return points
+}
+
+/** The shipped profile (base 0.5) — duplicated here because the probe cannot
+ *  import app code. */
+function naturalCurrentPressures(
+  spine: readonly NaturalPoint[],
+  turn: readonly number[],
+): number[] {
+  const phase = naturalPhase(spine)
+  const span = spine.length === 1 ? 1 : spine.length - 1
+  return spine.map((_point, index) => {
+    const u = index / span
+    const taper = 0.42
+      + (1 - 0.42) * Math.min(smooth01(u / 0.055), smooth01((1 - u) / 0.055))
+    const wobble = 1
+      + 0.18 * Math.sin(2 * Math.PI * (1.1 * u + phase))
+      + 0.09 * Math.sin(2 * Math.PI * (3.3 * u + 2 * phase))
+    const loaded = 0.5 + 0.42 * (turn[index] ?? 0)
+    return Math.min(0.95, Math.max(0.16, loaded * taper * wobble))
+  })
+}
+
+/** Candidate: the hand's own pressure band, with turns pooling pigment. */
+function naturalProposedPressures(
+  spine: readonly NaturalPoint[],
+  turn: readonly number[],
+): number[] {
+  const phase = naturalPhase(spine)
+  const span = spine.length === 1 ? 1 : spine.length - 1
+  return spine.map((_point, index) => {
+    const u = index / span
+    const land = Math.min(smooth01(u / 0.05), smooth01((1 - u) / 0.05))
+    const body = 0.88
+      + 0.09 * Math.sin(2 * Math.PI * (1.4 * u + phase))
+      + 0.045 * Math.sin(2 * Math.PI * (4.1 * u + 2 * phase))
+    const loaded = Math.min(1, body + 0.20 * (turn[index] ?? 0))
+    return Math.min(1, Math.max(0.16, 0.45 + (loaded - 0.45) * land))
+  })
+}
+
+/**
+ * Paint-sample the spine at a fixed arc-length step and evaluate the pressure
+ * law on THOSE samples (the profile's index runs over the painted points, not
+ * the 0.002 geometry walk). A hand stroke's samples are its pointer events;
+ * this is the vector equivalent.
+ */
+function resampleVectorArm(
+  spine: readonly NaturalPoint[],
+  stepUv: number,
+  pressuresOf: (points: readonly NaturalPoint[], turn: readonly number[]) => number[],
+): AquarellePoint[] {
+  const stations = stationsOf(spine)
+  const total = stations[stations.length - 1] ?? 0
+  if (total <= 0) return []
+  const samples: NaturalPoint[] = []
+  let travelled = 0
+  while (travelled <= total) {
+    samples.push(pointAtDistance(spine, stations, travelled))
+    travelled += stepUv
+  }
+  const last = spine[spine.length - 1]!
+  const final = samples[samples.length - 1]!
+  if (Math.hypot(final.x - last.x, final.y - last.y) > 1e-6) samples.push(last)
+  const turn = naturalTurnLoad(samples)
+  const pressures = pressuresOf(samples, turn)
+  return samples.map((point, index) => ({
+    x: point.x,
+    y: point.y,
+    p: pressures[index] ?? 0.5,
+    tx: 0,
+    ty: 0,
+    tw: 0,
+  }))
+}
+
+function makeNaturalStroke(points: AquarellePoint[]): StudioStroke<AquarelleStrokePayload> {
+  const stroke = makeStroke(points, MUTATION_ID, undefined, {
+    ...DEFAULT_CANONICAL_PARAMS,
+    size: NATURAL_SIZE,
+  })
+  return {
+    ...stroke,
+    color: NATURAL_COLOR,
+    engine: { ...stroke.engine, color: NATURAL_COLOR },
+  }
+}
+
+function runNaturalArm(points: AquarellePoint[]): {
+  canvas: HTMLCanvasElement
+  pixels: Uint8ClampedArray
+} {
+  const adapter = createPinnedAdapter(NATURAL_SHEET, NATURAL_SHEET)
+  try {
+    runStroke(adapter, makeNaturalStroke(points))
+    const canvas = adapter.captureFrame() as HTMLCanvasElement
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('natural: no 2D context')
+    return { canvas, pixels: new Uint8ClampedArray(ctx.getImageData(0, 0, canvas.width, canvas.height).data) }
+  } finally {
+    adapter.dispose()
+  }
+}
+
+interface NaturalArmMetrics {
+  paintedPixels: number
+  bodyPixels: number
+  meanPeakInk: number
+  peakSd: number
+  meanWidthPx: number
+  widthSd: number
+}
+
+function measureNaturalArm(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  spine: readonly NaturalPoint[],
+): NaturalArmMetrics {
+  const luminanceAt = (x: number, y: number): number => {
+    const index = (y * width + x) * 4
+    return 0.299 * pixels[index]! + 0.587 * pixels[index + 1]! + 0.114 * pixels[index + 2]!
+  }
+  const corners = [luminanceAt(1, 1), luminanceAt(width - 2, 1), luminanceAt(1, height - 2), luminanceAt(width - 2, height - 2)]
+  const background = corners.reduce((sum, value) => sum + value, 0) / corners.length
+  const inkAt = (x: number, y: number): number => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return 0
+    return Math.max(0, background - luminanceAt(x, y))
+  }
+
+  let paintedPixels = 0
+  let bodyPixels = 0
+  for (let index = 0; index < pixels.length; index += 4) {
+    const ink = Math.max(0, background - (0.299 * pixels[index]! + 0.587 * pixels[index + 1]! + 0.114 * pixels[index + 2]!))
+    if (ink > 16) paintedPixels += 1
+    if (ink > 96) bodyPixels += 1
+  }
+
+  const stations = stationsOf(spine)
+  const total = stations[stations.length - 1] ?? 0
+  const peaks: number[] = []
+  const widths: number[] = []
+  const stationsCount = 60
+  for (let k = 1; k < stationsCount; k += 1) {
+    const distance = (total * k) / stationsCount
+    const point = pointAtDistance(spine, stations, distance)
+    const ahead = pointAtDistance(spine, stations, Math.min(total, distance + 0.004))
+    const behind = pointAtDistance(spine, stations, Math.max(0, distance - 0.004))
+    const tx = ahead.x - behind.x
+    const ty = ahead.y - behind.y
+    const length = Math.hypot(tx, ty) || 1
+    const nx = -ty / length
+    const ny = tx / length
+    const cx = point.x * width
+    const cy = (1 - point.y) * height
+    let peak = 0
+    const profile: number[] = []
+    for (let offset = -36; offset <= 36; offset += 1) {
+      const ink = inkAt(Math.round(cx + nx * offset), Math.round(cy - ny * offset))
+      profile.push(ink)
+      if (ink > peak) peak = ink
+    }
+    const edge = Math.max(18, peak * 0.5)
+    let widthCount = 0
+    for (const ink of profile) if (ink >= edge) widthCount += 1
+    peaks.push(peak)
+    widths.push(widthCount)
+  }
+
+  const mean = (values: number[]): number => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)
+  const sd = (values: number[]): number => {
+    const average = mean(values)
+    return Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / Math.max(1, values.length))
+  }
+
+  return {
+    paintedPixels,
+    bodyPixels,
+    meanPeakInk: round3(mean(peaks)),
+    peakSd: round3(sd(peaks)),
+    meanWidthPx: round3(mean(widths)),
+    widthSd: round3(sd(widths)),
+  }
+}
+
+function runNaturalScenario(renderer: string): void {
+  const t0 = performance.now()
+  const spine = naturalSpine()
+  const turn = naturalTurnLoad(spine)
+
+  const hand = naturalHandPoints(spine, turn)
+  const currentPressures = naturalCurrentPressures(spine, turn)
+  const proposedPressures = naturalProposedPressures(spine, turn)
+  const current = spine.map((point, index) => ({
+    x: point.x,
+    y: point.y,
+    p: currentPressures[index] ?? 0.5,
+    tx: 0,
+    ty: 0,
+    tw: 0,
+  }))
+  const proposed = spine.map((point, index) => ({
+    x: point.x,
+    y: point.y,
+    p: proposedPressures[index] ?? 0.5,
+    tx: 0,
+    ty: 0,
+    tw: 0,
+  }))
+  const coarse = resampleVectorArm(spine, 0.006, naturalProposedPressures)
+  const coarseCurrent = resampleVectorArm(spine, 0.006, naturalCurrentPressures)
+
+  const armHand = runNaturalArm(hand)
+  const armCurrent = runNaturalArm(current)
+  const armProposed = runNaturalArm(proposed)
+  const armCoarse = runNaturalArm(coarse)
+  const armCoarseCurrent = runNaturalArm(coarseCurrent)
+
+  const columns = 5
+  const sheet = document.createElement('canvas')
+  sheet.width = NATURAL_SHEET * columns + 8 * (columns - 1)
+  sheet.height = NATURAL_SHEET + 28
+  const sheetCtx = sheet.getContext('2d')
+  if (!sheetCtx) throw new Error('natural: no composite context')
+  sheetCtx.fillStyle = '#ffffff'
+  sheetCtx.fillRect(0, 0, sheet.width, sheet.height)
+  const arms = [armHand, armCurrent, armProposed, armCoarse, armCoarseCurrent]
+  for (let index = 0; index < arms.length; index += 1) {
+    sheetCtx.drawImage(arms[index]!.canvas, index * (NATURAL_SHEET + 8), 0)
+  }
+  sheetCtx.fillStyle = '#111111'
+  sheetCtx.font = 'bold 13px system-ui, sans-serif'
+  const labels = [
+    'HAND',
+    'VEC 0.5 dense',
+    'VEC 0.88 dense',
+    'VEC 0.88 step .006',
+    'VEC 0.5 step .006',
+  ]
+  for (let index = 0; index < labels.length; index += 1) {
+    sheetCtx.fillText(labels[index]!, index * (NATURAL_SHEET + 8) + 8, NATURAL_SHEET + 20)
+  }
+
+  writeResult({
+    scenario: 'natural',
+    sheet: `${NATURAL_SHEET}x${NATURAL_SHEET}`,
+    size: NATURAL_SIZE,
+    anchors: NATURAL_ANCHORS,
+    sampleCounts: {
+      handPoints: hand.length,
+      densePoints: spine.length,
+      coarsePoints: coarse.length,
+    },
+    arms: {
+      hand: measureNaturalArm(armHand.pixels, NATURAL_SHEET, NATURAL_SHEET, spine),
+      current: measureNaturalArm(armCurrent.pixels, NATURAL_SHEET, NATURAL_SHEET, spine),
+      proposed: measureNaturalArm(armProposed.pixels, NATURAL_SHEET, NATURAL_SHEET, spine),
+      coarse: measureNaturalArm(armCoarse.pixels, NATURAL_SHEET, NATURAL_SHEET, spine),
+      coarseCurrent: measureNaturalArm(armCoarseCurrent.pixels, NATURAL_SHEET, NATURAL_SHEET, spine),
+    },
+    sheetPng: sheet.toDataURL('image/png'),
+    env: { renderer: String(renderer), userAgent: navigator.userAgent },
+    verdict: 'NATURAL-PEN MEASURED',
+    totalProbeMs: Math.round(performance.now() - t0),
+  })
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -905,6 +1309,20 @@ function main(): void {
         edgeTransitionPx: { watercolor: 0, ribbon: 0, ratio: 0 },
         wetDelta: { baseline: '' },
         verdict: `VECTOR-RIBBON FAIL ${message}`,
+        error: message,
+      })
+    }
+    return
+  }
+  if (scenario === 'natural') {
+    try {
+      runNaturalScenario(renderer)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      writeResult({
+        scenario: 'natural',
+        arms: {},
+        verdict: `NATURAL-PEN FAIL ${message}`,
         error: message,
       })
     }

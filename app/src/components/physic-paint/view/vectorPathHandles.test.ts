@@ -31,6 +31,7 @@ import {
   DRAG_THRESHOLD_PX,
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
+  VECTOR_PAINT_SAMPLE_STEP_UV,
   VECTOR_STROKE_BASE_PRESSURE,
   buildAnchorWidthCommit,
   buildDraftPath,
@@ -45,6 +46,7 @@ import {
   pointToSegmentDistancePx,
   projectVectorPath,
   promoteAnchorForDrag,
+  resampleVectorPaintPoints,
   screenPadToUv,
   screenToUv,
   selectAnchor,
@@ -567,16 +569,26 @@ describe('vectorSpinePressures — the natural pen profile', () => {
     y: 0.5,
   }));
 
-  it('tapers at both ends and stays bounded in between', () => {
+  it('lands at the engine start pressure, lifts at both ends and stays bounded in between', () => {
     const pressures = vectorSpinePressures(spine, 'watercolor');
     expect(pressures).toHaveLength(spine.length);
     for (const pressure of pressures) {
       expect(pressure).toBeGreaterThanOrEqual(0.16);
-      expect(pressure).toBeLessThanOrEqual(0.95);
+      expect(pressure).toBeLessThanOrEqual(1);
     }
     const middle = pressures[Math.floor(pressures.length / 2)]!;
     expect(pressures[0]!).toBeLessThan(middle * 0.8);
     expect(pressures[pressures.length - 1]!).toBeLessThan(middle * 0.8);
+  });
+
+  it('carries the body in the band a mouse speed-derived pressure reaches', () => {
+    const pressures = vectorSpinePressures(spine, 'watercolor');
+    const body = pressures.slice(8, -8);
+    const mean = body.reduce((sum, pressure) => sum + pressure, 0) / body.length;
+    // The old flat 0.5 body read as an airbrush under the deposit law's grain
+    // threshold; the hand's own replay sits around 0.8-1.0.
+    expect(mean).toBeGreaterThan(0.75);
+    expect(mean).toBeLessThanOrEqual(1);
   });
 
   it('is deterministic and seeded by the path geometry, not by time', () => {
@@ -603,13 +615,48 @@ describe('vectorSpinePressures — the natural pen profile', () => {
       y: 0.5 + (index % 16 < 8 ? 0.12 : -0.12),
     }));
     const zigzagPressures = vectorSpinePressures(zigzag, 'watercolor');
-    expect(Math.max(...zigzagPressures)).toBeGreaterThan(Math.max(...straight) + 0.15);
+    // The body is already near the top of the band, so the turn shows as a
+    // wider load across the stroke, not as headroom above the straight peak.
+    const bodyMean = (values: readonly number[]) =>
+      values.slice(8, -8).reduce((sum, pressure) => sum + pressure, 0) / (values.length - 16);
+    expect(bodyMean(zigzagPressures)).toBeGreaterThan(bodyMean(straight) + 0.03);
   });
 
   it('keeps the clean-sweep mode flat at the base pressure', () => {
     expect(vectorSpinePressures(spine, 'simple-ribbon')).toEqual(
       spine.map(() => VECTOR_STROKE_BASE_PRESSURE),
     );
+  });
+});
+
+describe('resampleVectorPaintPoints — the paint sampler', () => {
+  it('keeps both endpoints and never spaces samples wider than the step', () => {
+    const geometry = Array.from({ length: 400 }, (_unused, index) => ({
+      x: 0.1 + 0.8 * (index / 399),
+      y: 0.5,
+    }));
+    const paint = resampleVectorPaintPoints(geometry);
+    expect(paint.length).toBeGreaterThan(100);
+    expect(paint.length).toBeLessThan(geometry.length);
+    expect(paint[0]).toEqual(geometry[0]);
+    expect(paint[paint.length - 1]).toEqual(geometry[geometry.length - 1]);
+    for (let index = 1; index < paint.length; index += 1) {
+      const previous = paint[index - 1]!;
+      const point = paint[index]!;
+      expect(Math.hypot(point.x - previous.x, point.y - previous.y)).toBeLessThanOrEqual(
+        VECTOR_PAINT_SAMPLE_STEP_UV + 1e-9,
+      );
+    }
+  });
+
+  it('returns a short path as its own two endpoints', () => {
+    const short = [{ x: 0.5, y: 0.5 }, { x: 0.501, y: 0.5 }];
+    expect(resampleVectorPaintPoints(short)).toEqual(short);
+  });
+
+  it('passes an empty or single-point spine through untouched', () => {
+    expect(resampleVectorPaintPoints([])).toEqual([]);
+    expect(resampleVectorPaintPoints([{ x: 0.4, y: 0.6 }])).toEqual([{ x: 0.4, y: 0.6 }]);
   });
 });
 

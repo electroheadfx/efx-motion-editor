@@ -27,7 +27,7 @@ import {
 } from '@efxlab/efx-watercolor/payload';
 import { buildBrushForStroke, toEngineParams } from '@efxlab/efx-watercolor';
 import { liftEngineSize, liftRadiusDoc } from '../roto/aquarelleLiftErase';
-import { vectorSpinePressures } from './vectorPathHandles';
+import { resampleVectorPaintPoints, vectorSpinePressures } from './vectorPathHandles';
 import {
   aquarelleStrokesRevision,
   bumpAquarellePaintSeedSalts,
@@ -1821,7 +1821,7 @@ function sampledModePoints(
         ...(anchor.width === undefined ? {} : { width: anchor.width }),
       }))
     : anchors;
-  const sampled = sampleVectorPath(source).points;
+  const sampled = resampleVectorPaintPoints(sampleVectorPath(source).points);
   const pressures = vectorSpinePressures(sampled, 'watercolor');
   return sampled.map((p, index) => ({
     ...point(p.x, p.y),

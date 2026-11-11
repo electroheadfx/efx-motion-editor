@@ -41,6 +41,7 @@ import {
 } from './aquarelleStrokeSelection';
 import {
   VECTOR_STROKE_BASE_PRESSURE,
+  resampleVectorPaintPoints,
   vectorSpinePressures,
 } from './vectorPathHandles';
 
@@ -163,7 +164,7 @@ function sampledSpinePoints(
   anchors: readonly AquarelleAnchor[],
   renderMode: AquarelleRenderMode = 'simple-ribbon',
 ): readonly AquarellePoint[] {
-  const sampled = sampleVectorPath(anchors).points;
+  const sampled = resampleVectorPaintPoints(sampleVectorPath(anchors).points);
   const pressures = vectorSpinePressures(sampled, renderMode);
   return sampled.map((p, index) => ({
     x: p.x,
@@ -363,8 +364,8 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     const id = 61801;
     recordAquarelleStroke(id, g17VectorStroke(id));
     const before = getRecordedAquarelleStroke(id)!;
-    // The pre-edit spine is the horizontal path: 302 stations, all y = 0.5.
-    expect(before.points).toHaveLength(302);
+    // The pre-edit spine is the horizontal path, paint-sampled; all y = 0.5.
+    expect(before.points).toHaveLength(sampledSpinePoints(G17_PRE_ANCHORS).length);
     expect(before.points[0]!.y).toBe(0.5);
     const revision = aquarelleStrokesRevision.value;
     const expected = sampledSpinePoints(G17_NEXT_ANCHORS);
@@ -379,8 +380,10 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     // `points` into the replay's `pts`, so these points ARE what Shift+R paints.
     expect(after.points[0]!.x).toBeCloseTo(expected[0]!.x, 12);
     expect(after.points[0]!.y).toBeCloseTo(expected[0]!.y, 12);
-    expect(after.points[150]!.y).toBeCloseTo(expected[150]!.y, 12);
-    expect(after.points[301]!.y).toBeCloseTo(expected[301]!.y, 12);
+    const midIndex = Math.floor(expected.length / 2);
+    expect(after.points[midIndex]!.y).toBeCloseTo(expected[midIndex]!.y, 12);
+    const lastIndex = expected.length - 1;
+    expect(after.points[lastIndex]!.y).toBeCloseTo(expected[lastIndex]!.y, 12);
     expect(after.points).toHaveLength(expected.length);
     expect(after.points).not.toEqual(before.points);
   });
@@ -400,12 +403,14 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     // ... but the replay's pts MUST agree with it.
     expect(entry.pts[0]!.x).toBeCloseTo(expected[0]!.x, 12);
     expect(entry.pts[0]!.y).toBeCloseTo(expected[0]!.y, 12);
-    expect(entry.pts[150]!.y).toBeCloseTo(expected[150]!.y, 12);
-    expect(entry.pts[301]!.y).toBeCloseTo(expected[301]!.y, 12);
+    const midIndex = Math.floor(expected.length / 2);
+    expect(entry.pts[midIndex]!.y).toBeCloseTo(expected[midIndex]!.y, 12);
+    const lastIndex = expected.length - 1;
+    expect(entry.pts[lastIndex]!.y).toBeCloseTo(expected[lastIndex]!.y, 12);
     expect(entry.pts).toHaveLength(expected.length);
     expect(entry.pts[0]!.y).toBeCloseTo(entry.engine.anchors![0]!.y, 12);
     // The projection keeps the sample fields and re-ticks the new spine.
-    for (const sampleIndex of [0, 150, 301]) {
+    for (const sampleIndex of [0, midIndex, lastIndex]) {
       const sample = entry.pts[sampleIndex]!;
       expect(sample.p).toBe(VECTOR_STROKE_BASE_PRESSURE);
       expect(sample.tx).toBe(0);
@@ -476,7 +481,7 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     recordAquarelleStroke(id, g17VectorStroke(id));
     const before = getRecordedAquarelleStroke(id)!;
     const beforePoints = before.points;
-    expect(beforePoints).toHaveLength(302);
+    expect(beforePoints).toHaveLength(sampledSpinePoints(G17_PRE_ANCHORS).length);
     const expected = sampledSpinePoints(G17_NEXT_ANCHORS);
 
     // One gesture through the real selection wrapper.
@@ -491,7 +496,7 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     expectAnchor(undone.anchors![1], { x: 0.5, y: 0.5, kind: 'auto' });
     expect(undone.points).toBe(beforePoints);
     expect(undone.points[0]!.y).toBeCloseTo(0.5, 12);
-    expect(undone.points[150]!.y).toBeCloseTo(0.5, 12);
+    expect(undone.points[Math.floor(beforePoints.length / 2)]!.y).toBeCloseTo(0.5, 12);
 
     // REDO: the edited side, points included.
     expect(restoreAquarelleEditSnapshot(editId!, 'redo')).not.toBeNull();
@@ -561,7 +566,7 @@ function sampledModePoints(
   renderMode: AquarelleRenderMode = 'simple-ribbon',
 ): readonly AquarellePoint[] {
   const source = mode === 'spline' ? splineView(anchors) : anchors;
-  const sampled = sampleVectorPath(source).points;
+  const sampled = resampleVectorPaintPoints(sampleVectorPath(source).points);
   const pressures = vectorSpinePressures(sampled, renderMode);
   return sampled.map((p, index) => ({
     x: p.x,
@@ -620,7 +625,8 @@ describe('61-30 G-20 — the curve-mode switch re-samples the path', () => {
     expect(switchedEntry).not.toBe(beforeEntry);
     expect(switchedEntry.engine.curveMode).toBe('spline');
     expect(switchedEntry.pts).toHaveLength(splinePoints.length);
-    expect(switchedEntry.pts[150]!.y).toBeCloseTo(splinePoints[150]!.y, 12);
+    const midIndex = Math.floor(splinePoints.length / 2);
+    expect(switchedEntry.pts[midIndex]!.y).toBeCloseTo(splinePoints[midIndex]!.y, 12);
     expect(aquarelleStrokesRevision.value).toBe(revision + 1);
 
     // A second identical call is a no-op — one mode, one write, one bump.
@@ -664,11 +670,12 @@ describe('61-30 G-20 — the curve-mode switch re-samples the path', () => {
     // ... and the re-derived points ARE the spline evaluation of the edited path.
     expect(after.points).toEqual(expected);
     expect(after.points).not.toEqual(sampledModePoints(EDITED_CURVE_ANCHORS, 'bezier'));
-    expect(after.points[150]!.y).toBeCloseTo(expected[150]!.y, 12);
+    const midIndex = Math.floor(expected.length / 2);
+    expect(after.points[midIndex]!.y).toBeCloseTo(expected[midIndex]!.y, 12);
     // The payload entry agrees on both halves in the same write.
     const entry = timelineStrokeAt(index);
     expect(entry.engine.curveMode).toBe('spline');
-    expect(entry.pts[150]!.y).toBeCloseTo(expected[150]!.y, 12);
+    expect(entry.pts[midIndex]!.y).toBeCloseTo(expected[midIndex]!.y, 12);
     expect(aquarelleStrokesRevision.value).toBe(revision + 1);
   });
 });

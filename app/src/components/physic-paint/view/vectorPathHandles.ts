@@ -577,28 +577,47 @@ export function buildAnchorWidthCommit(
  * A vector path has no pressure input: the pen places anchors, it does not
  * press. The engine's deposit law reads `p` first (`pressureOf`), so a
  * constant value here is a constant footprint and a constant deposit. `0.5`
- * is the value the engine already records for a pressureless device, so the
- * path lands at the brush's nominal size instead of its absolute maximum.
+ * is the value the engine already records for a pressureless device; the
+ * clean-sweep ribbon keeps it (its contract is a flat sweep, not a wet pen),
+ * and it is the fallback for a sample the profile did not fill.
  */
 export const VECTOR_STROKE_BASE_PRESSURE = 0.5;
 
-/** How far into the path (fraction of its length) the pen works up to speed. */
-const VECTOR_PRESSURE_TAPER_FRACTION = 0.055;
-/** The pressure multiplier at the very first / very last sample. */
-const VECTOR_PRESSURE_TAPER_FLOOR = 0.42;
+/**
+ * Arc-length distance between two PAINT samples, in document uv.
+ *
+ * The replay feeds one sample per host tick, so sample spacing IS the hand's
+ * speed and sample count IS the stroke's wet lifetime. A 0.002 uv geometry
+ * walk paints a vector stroke over 3-5x the ticks a hand takes, which lets the
+ * wash spread and dry into the pale, even halo a hand-drawn stroke never has.
+ * 0.006 uv is the measured hand cadence (probe: headless WebGL2, same brush):
+ * at this step the vector arm's core density, width and variation match the
+ * hand arm's.
+ */
+export const VECTOR_PAINT_SAMPLE_STEP_UV = 0.006;
+
+/**
+ * The body pressure of the natural profile, in the band a mouse's
+ * speed-derived pressure actually reaches (`clamp(1.18 - speed * 0.95)` at
+ * ordinary drawing speeds). The probe's hand arm sat at ~0.9; a lower base
+ * reads as an airbrush, not a brush.
+ */
+const VECTOR_PAINT_BASE_PRESSURE = 0.88;
+/** The pressure the engine itself starts a mouse stroke at (`simPressure`). */
+const VECTOR_PRESSURE_LAND_PRESSURE = 0.45;
+/** How far into the path (fraction of its length) the pen lands / lifts. */
+const VECTOR_PRESSURE_LAND_FRACTION = 0.05;
 /**
  * How much a turn loads the pen. A hand SLOWS into a corner, so the corner is
  * where the same brush pools the most pigment — that is the blob a hand-drawn
  * zigzag shows at every direction change and a path had none of.
  */
-const VECTOR_PRESSURE_TURN_GAIN = 0.42;
+const VECTOR_PRESSURE_TURN_GAIN = 0.2;
 /** The two low-frequency terms that give the profile its hand-made drift. */
-const VECTOR_PRESSURE_WOBBLE = [
-  { cycles: 1.1, amplitude: 0.18 },
-  { cycles: 3.3, amplitude: 0.09 },
+const VECTOR_PRESSURE_DRIFT = [
+  { cycles: 1.4, amplitude: 0.09 },
+  { cycles: 4.1, amplitude: 0.045 },
 ] as const;
-/** Samples either side of a turn that still carry its load. */
-const VECTOR_PRESSURE_TURN_SPREAD = 4;
 
 function smoothstep01(value: number): number {
   const t = Math.min(1, Math.max(0, value));
@@ -606,19 +625,58 @@ function smoothstep01(value: number): number {
 }
 
 /**
+ * Resample an evaluated spine at a fixed arc-length step, keeping the exact
+ * first and last points. This is the PAINT sampling, not the geometry walk:
+ * the stroke stores these points, so the replay's tick count (and therefore
+ * its wet lifetime) follows the same law at commit and at every re-derivation.
+ */
+export function resampleVectorPaintPoints(
+  points: readonly Vec2[],
+  stepUv: number = VECTOR_PAINT_SAMPLE_STEP_UV,
+): readonly Vec2[] {
+  if (points.length <= 2) return [...points];
+  const stations: number[] = [0];
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1]!;
+    const point = points[index]!;
+    stations.push(stations[index - 1]! + Math.hypot(point.x - previous.x, point.y - previous.y));
+  }
+  const total = stations[stations.length - 1]!;
+  if (!(total > 0) || !(stepUv > 0)) return [...points];
+  const count = Math.max(2, Math.ceil(total / stepUv) + 1);
+  const resampled: Vec2[] = [];
+  let cursor = 1;
+  for (let sample = 0; sample < count; sample += 1) {
+    const distance = (total * sample) / (count - 1);
+    while (cursor < points.length - 1 && stations[cursor]! < distance) cursor += 1;
+    const to = points[cursor]!;
+    const from = points[cursor - 1]!;
+    const fromStation = stations[cursor - 1]!;
+    const span = stations[cursor]! - fromStation;
+    const t = span > 0 ? Math.min(1, Math.max(0, (distance - fromStation) / span)) : 0;
+    resampled.push({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+  }
+  return resampled;
+}
+
+/**
  * Per-sample "the hand was slow here" in [0, 1], from the path's own turning
  * angle: the angle between the chords entering and leaving each sample, read
- * over a 2-sample window and then spread across its neighbours. Pure geometry
- * — no seed, no timing — so the same path always yields the same profile.
+ * over a window and then spread across its neighbours. Pure geometry — no
+ * seed, no timing — so the same path always yields the same profile. Both
+ * windows scale with the sample count, so a short path is not swallowed whole
+ * by a single corner.
  */
 function vectorSpineTurnLoad(points: readonly { x: number; y: number }[]): number[] {
   const count = points.length;
   const turn = new Array<number>(count).fill(0);
   if (count < 3) return turn;
+  const window = Math.max(2, Math.min(8, Math.round(count * 0.032)));
+  const spreadRadius = Math.max(2, Math.min(24, Math.round(count * 0.096)));
   for (let index = 0; index < count; index += 1) {
-    const before = points[Math.max(0, index - 2)]!;
+    const before = points[Math.max(0, index - window)]!;
     const here = points[index]!;
-    const after = points[Math.min(count - 1, index + 2)]!;
+    const after = points[Math.min(count - 1, index + window)]!;
     const ax = here.x - before.x;
     const ay = here.y - before.y;
     const bx = after.x - here.x;
@@ -633,7 +691,7 @@ function vectorSpineTurnLoad(points: readonly { x: number; y: number }[]): numbe
   for (let index = 0; index < count; index += 1) {
     let sum = 0;
     let hits = 0;
-    for (let offset = -VECTOR_PRESSURE_TURN_SPREAD; offset <= VECTOR_PRESSURE_TURN_SPREAD; offset += 1) {
+    for (let offset = -spreadRadius; offset <= spreadRadius; offset += 1) {
       const peer = index + offset;
       if (peer < 0 || peer >= count) continue;
       sum += turn[peer]!;
@@ -662,9 +720,12 @@ function vectorSpinePressurePhase(points: readonly { x: number; y: number }[]): 
  *
  * A hand stroke is organic because the engine derives pressure from pointer
  * speed; a path has neither speed nor pressure, so a constant value deposits
- * one flat wash that looks nothing like the same brush used by hand. This
- * profile restores the missing variation WITHOUT touching geometry:
- *   - a short ramp at each end (the pen touches down and lifts),
+ * one flat wash that looks nothing like the same brush used by hand. The
+ * profile lives in the SAME band a mouse's speed-derived pressure reaches,
+ * which is why it survives the deposit law's grain threshold and reads as a
+ * loaded brush rather than a pale airbrush:
+ *   - the pen lands at the engine's own stroke-start pressure and lifts over
+ *     the first / last few percent (a hand cannot press instantly),
  *   - a turn term: the hand slows into a corner, so the corner pools pigment,
  *   - two low-frequency terms for the hand's own drift.
  * It is deterministic per path (geometry seeds it) and stored in the recorded
@@ -686,21 +747,24 @@ export function vectorSpinePressures(
   const span = points.length === 1 ? 1 : points.length - 1;
   return points.map((_point, index) => {
     const u = index / span;
-    const taper = VECTOR_PRESSURE_TAPER_FLOOR
-      + (1 - VECTOR_PRESSURE_TAPER_FLOOR)
-        * Math.min(
-          smoothstep01(u / VECTOR_PRESSURE_TAPER_FRACTION),
-          smoothstep01((1 - u) / VECTOR_PRESSURE_TAPER_FRACTION),
-        );
-    let wobble = 1;
+    const land = Math.min(
+      smoothstep01(u / VECTOR_PRESSURE_LAND_FRACTION),
+      smoothstep01((1 - u) / VECTOR_PRESSURE_LAND_FRACTION),
+    );
+    let drift = 0;
     // Each term carries its own phase offset, so the two sines never collapse
     // into one at the same starting angle.
-    for (let term = 0; term < VECTOR_PRESSURE_WOBBLE.length; term += 1) {
-      const { cycles, amplitude } = VECTOR_PRESSURE_WOBBLE[term]!;
-      wobble += amplitude * Math.sin(2 * Math.PI * (cycles * u + phase * (term + 1)));
+    for (let term = 0; term < VECTOR_PRESSURE_DRIFT.length; term += 1) {
+      const { cycles, amplitude } = VECTOR_PRESSURE_DRIFT[term]!;
+      drift += amplitude * Math.sin(2 * Math.PI * (cycles * u + phase * (term + 1)));
     }
-    const loaded = VECTOR_STROKE_BASE_PRESSURE + VECTOR_PRESSURE_TURN_GAIN * (turnLoad[index] ?? 0);
-    return Math.min(0.95, Math.max(0.16, loaded * taper * wobble));
+    const loaded = Math.min(
+      1,
+      VECTOR_PAINT_BASE_PRESSURE + drift + VECTOR_PRESSURE_TURN_GAIN * (turnLoad[index] ?? 0),
+    );
+    const pressure = VECTOR_PRESSURE_LAND_PRESSURE
+      + (loaded - VECTOR_PRESSURE_LAND_PRESSURE) * land;
+    return Math.min(1, Math.max(0.16, pressure));
   });
 }
 
@@ -710,13 +774,15 @@ export function vectorSpinePressures(
  * field is written explicitly — anchors and renderMode are the vector-half's
  * contribution, the rest come from the same `snapshotAquarelleRecord()` /
  * selection expressions the hand-painted `onStrokeEnd` literal already uses.
- * Sampled spine points carry the natural pen profile and no tilt.
+ * The path is PAINT-sampled (not geometry-sampled) and those samples carry
+ * the natural pen profile and no tilt.
  */
 export function buildVectorStroke(
   commit: VectorPathCommit,
   source: VectorStrokeSource,
 ): AquarelleStroke {
-  const pressures = vectorSpinePressures(commit.points, commit.renderMode);
+  const paintPoints = resampleVectorPaintPoints(commit.points);
+  const pressures = vectorSpinePressures(paintPoints, commit.renderMode);
   return {
     tool: source.tool,
     color: source.color,
@@ -724,7 +790,7 @@ export function buildVectorStroke(
     brushId: source.brushId,
     renderMode: commit.renderMode,
     anchors: [...commit.anchors],
-    points: commit.points.map((point, index) => ({
+    points: paintPoints.map((point, index) => ({
       x: point.x,
       y: point.y,
       p: pressures[index] ?? VECTOR_STROKE_BASE_PRESSURE,
