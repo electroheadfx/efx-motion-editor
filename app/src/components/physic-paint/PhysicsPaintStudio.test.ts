@@ -7485,3 +7485,65 @@ describe('61-26 WR-02 — a failed path-edit re-bake restores for real or says i
     expect(failure).not.toMatch(/restoreAquarelleEditSnapshot\(editId, 'undo'\);[ \t]*$/m);
   });
 });
+
+// 61-26 (WR-03): a vector stroke paints no engine dabs, so its only pixels are
+// the re-bake. `runAquarelleScriptRebake`'s in-flight branch calls no terminal
+// callback, so a draw that lands during another edit's bake returns false with
+// the stroke in the script and nowhere on the sheet. The continuation arms the
+// ONE stale-sheet invariant, which the next Draft/wireframe settle clears.
+describe('61-26 WR-03 — a vector stroke committed during an in-flight bake marks the sheet stale', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const HANDLER_START = 'const handleAquarelleStrokeEnd = useCallback(';
+  const HANDLER_END = 'const handleAquarelleStrokeSettled = useCallback(';
+  const DISCARDED_BAKE = 'void bakeAquarelleVectorCommit();';
+  const CONTINUATION = 'void bakeAquarelleVectorCommit().then((baked) => {';
+  const STALE_ARM = 'if (!baked) setDraftPixelsDirty(true);';
+  const VECTOR_TAIL_GUARD = 'if (isVectorAquarelleStroke(stroke)) {';
+
+  function strokeEndRegion(): string {
+    return regionOf(studio, HANDLER_START, HANDLER_END);
+  }
+
+  it('consumes the bake result through a continuation instead of discarding it', () => {
+    const handler = strokeEndRegion();
+    expect(handler).toContain(CONTINUATION);
+    // Guarded by the vector predicate: an ordinary dabs stroke never bakes.
+    const guardAt = handler.indexOf(VECTOR_TAIL_GUARD);
+    const continueAt = handler.indexOf(CONTINUATION);
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(continueAt).toBeGreaterThan(guardAt);
+  });
+
+  it('arms the stale-sheet invariant when the bake reports false', () => {
+    const handler = strokeEndRegion();
+    expect(handler).toContain(STALE_ARM);
+    // The continuation publishes NOTHING: the gesture DID commit, so an error
+    // capsule here would steal the apply-refusal ownership.
+    const tail = regionOf(handler, VECTOR_TAIL_GUARD, '    } catch {');
+    expect(tail).not.toContain('setApplyMessage');
+    expect(tail).not.toContain('setApplyStatus');
+    expect(tail).not.toContain('setLastError');
+  });
+
+  it('no longer fires the bake as a discarded statement', () => {
+    const handler = strokeEndRegion();
+    expect(handler).not.toContain(DISCARDED_BAKE);
+  });
+
+  it('still records the stroke before it bakes', () => {
+    const handler = strokeEndRegion();
+    const recordAt = handler.indexOf('recordAquarelleStrokeWhenEnabled(');
+    const bakeAt = handler.indexOf('bakeAquarelleVectorCommit().then(');
+    const catchAt = handler.indexOf('    } catch {');
+    expect(recordAt).toBeGreaterThan(-1);
+    expect(bakeAt).toBeGreaterThan(recordAt);
+    expect(bakeAt).toBeLessThan(catchAt);
+  });
+});
