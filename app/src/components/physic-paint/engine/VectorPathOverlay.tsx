@@ -34,11 +34,15 @@ import { signal } from '@preact/signals';
 import type { JSX, TargetedPointerEvent } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import {
+  DEFAULT_AQUARELLE_CURVE_MODE,
   clampAnchorWidth,
   normaliseVectorAnchors,
   resolveAnchorHandles,
+  resolveAquarelleCurveMode,
+  resolveCurveAnchors,
   resolveRenderModeForBrushId,
   sampleVectorPath,
+  type AquarelleCurveMode,
   type AquarelleStroke,
   type ResolvedAnchorHandles,
   type Vec2,
@@ -222,6 +226,8 @@ export function releasePointerCapture(
 interface DrawnVectorPath {
   readonly key: string;
   readonly anchors: readonly VectorAnchor[];
+  /** 61-31 (G-20): the mode this path is drawn and edited through. */
+  readonly curveMode: AquarelleCurveMode;
   readonly handles: readonly ResolvedAnchorHandles[];
   readonly projection: VectorPathProjection;
   /** 61-13: the recorded stroke's own colour; null for the pen draft. */
@@ -363,16 +369,23 @@ function drawnPathOf(
     readonly alwaysEnvelope?: boolean;
     readonly color?: string | null;
     readonly selected?: boolean;
+    readonly curveMode?: AquarelleCurveMode;
   } = {},
 ): DrawnVectorPath | null {
   const normalised = normaliseVectorAnchors(anchors);
   if (normalised.length === 0) return null;
+  // 61-31 (G-20): one path's chrome and geometry always agree — the mode view
+  // feeds the handle resolve AND the projection. An absent mode reads Bézier,
+  // so every pre-existing path draws exactly as before (REL-02).
+  const curveMode = options.curveMode ?? DEFAULT_AQUARELLE_CURVE_MODE;
   return {
     key,
     anchors: normalised,
-    handles: resolveAnchorHandles(normalised),
+    curveMode,
+    handles: resolveAnchorHandles(resolveCurveAnchors(normalised, curveMode)),
     projection: projectVectorPath(normalised, width, height, {
       alwaysEnvelope: options.alwaysEnvelope === true,
+      curveMode,
     }),
     color: options.color ?? null,
     selected: options.selected === true,
@@ -427,7 +440,14 @@ function renderPath(
   wireframe: boolean,
   selectedAnchors: readonly number[],
 ): JSX.Element {
-  const { anchors, handles, projection, color, selected } = drawn;
+  const { anchors, handles, projection, color, selected, curveMode } = drawn;
+  // 61-31 (G-20) — ownership decides the shape (61-UI-SPEC §340-341): the amber
+  // square marks a control the user OWNS. Under Spline every tangent is
+  // derived, so no anchor owns one; the derived handles of a stored `bezier`
+  // anchor are not controls, and neither a square nor a dot may imply
+  // otherwise. Under Bézier both branches are the shipped ones, unchanged.
+  const spline = curveMode === 'spline';
+  const ownsHandles = (anchor: VectorAnchor): boolean => !spline && anchor.kind === 'bezier';
   const spinePoints = projection.spine.map((point) => `${point.x},${point.y}`).join(' ');
   const envelope = projection.envelope.length < 3
     ? null
@@ -567,7 +587,7 @@ function renderPath(
       {projection.anchors.map((point, index) => {
         const anchor = anchors[index];
         if (anchor === undefined) return null;
-        return anchor.kind === 'bezier' ? (
+        return ownsHandles(anchor) ? (
           <rect
             key={`anchor-${index}`}
             data-testid="vector-path-anchor"
@@ -602,7 +622,9 @@ function renderPath(
         const anchor = anchors[index];
         const point = projection.anchors[index];
         if (anchor === undefined || point === undefined) return null;
-        return anchor.kind === 'bezier' ? (
+        // 61-31 (G-20): the ring mirrors the marker's shape, so under Spline it
+        // is a circle around the circle — never a square implying ownership.
+        return ownsHandles(anchor) ? (
           <rect
             key={`anchor-selection-${index}`}
             data-testid="vector-path-anchor-selection"
@@ -629,7 +651,10 @@ function renderPath(
           />
         );
       })}
-      {anchors.map((anchor, index) => {
+      {/* 61-31 (G-20): under Spline the entire handle block returns nothing —
+          no stored handle is a user-owned control, so no dot is drawn
+          (61-UI-SPEC §340-341 / T-61-92). */}
+      {spline ? null : anchors.map((anchor, index) => {
         if (anchor.kind !== 'bezier') return null;
         const resolved = handles[index];
         const anchorPoint = projection.anchors[index];
@@ -726,6 +751,9 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   const recordedStrokes = props.getRecordedStrokes();
   let editTargetMutationId: number | null = null;
   let editTargetAnchors: readonly VectorAnchor[] | null = null;
+  // 61-31 (G-20): the SAME resolution captures the target's evaluation mode, so
+  // an edit gesture can never run in a mode the drawn path is not using.
+  let editTargetCurveMode: AquarelleCurveMode = DEFAULT_AQUARELLE_CURVE_MODE;
   if (editMutationId !== null) {
     for (const [mutationId, candidate] of recordedStrokes) {
       if (String(mutationId) !== editMutationId) continue;
@@ -734,6 +762,7 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       if (candidateAnchors === undefined || candidateAnchors.length === 0) continue;
       editTargetMutationId = mutationId;
       editTargetAnchors = candidateAnchors;
+      editTargetCurveMode = resolveAquarelleCurveMode(candidate.curveMode);
       break;
     }
   }
@@ -797,6 +826,9 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       color: typeof stroke.color === 'string' && stroke.color.length > 0 ? stroke.color : null,
       // The open path edit is the live target and wears the louder chrome.
       selected: editMutationId !== null && String(mutationId) === editMutationId,
+      // 61-31 (G-20): the stroke's OWN mode — a spline path reads as a spline
+      // even while another stroke is the edit target.
+      curveMode: resolveAquarelleCurveMode(stroke.curveMode),
     });
     if (drawn === null) continue;
     recorded.push(drawn);
@@ -806,6 +838,9 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     : drawnPathOf('draft', draft.anchors, props.width, props.height, {
       alwaysEnvelope: wireframe,
       selected: penActive,
+      // 61-31 (G-20): a draft is always recorded Bézier, so it never inherits
+      // the open edit target's mode.
+      curveMode: DEFAULT_AQUARELLE_CURVE_MODE,
     });
   // 61-21 (IN-01): the live rubber band to the cursor — display-only.
   const draftPreviewPoints = draftPreviewPointsOf(draft, props.width, props.height);
@@ -946,7 +981,9 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     event.stopPropagation();
     const pointerUv = pointerUvOf(event);
     if (pointerUv === null) return;
-    const handles = resolveAnchorHandles(editTargetAnchors);
+    // 61-31 (G-20): the open target's mode owns the whole gesture — its handle
+    // view, its hit test, its promotion and its insert (T-61-92).
+    const handles = resolveAnchorHandles(resolveCurveAnchors(editTargetAnchors, editTargetCurveMode));
     const target = hitTestVectorPath(
       editTargetAnchors,
       handles,
@@ -954,6 +991,7 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       props.width,
       props.height,
       scale,
+      editTargetCurveMode,
     );
 
     if (target !== null && target.kind !== 'anchor') {
@@ -988,14 +1026,16 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       setVectorAnchorSelection(
         selectAnchor(vectorAnchorSelection.peek(), target.index, additive),
       );
-      const promoted = promoteAnchorForDrag(editTargetAnchors, target.index);
+      const promoted = promoteAnchorForDrag(editTargetAnchors, target.index, editTargetCurveMode);
       dragRef.current = {
         kind: 'anchor',
         mutationId: editTargetMutationId,
         index: target.index,
         startUv: pointerUv,
         anchorsAtStart: promoted,
-        wasPromoted: current.kind !== 'bezier',
+        // 61-31 (G-20): under Spline promotion returns the list untouched, so
+        // there is no promotion to preserve on a grab-and-release.
+        wasPromoted: editTargetCurveMode !== 'spline' && current.kind !== 'bezier',
         pointerId: event.pointerId,
         moved: false,
         latest: promoted,
@@ -1013,7 +1053,7 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     // inserted anchor becomes the selection.
     const segment = spineSegmentAt(editTargetAnchors, pointerUv);
     if (segment === null) return;
-    const next = insertAnchorOnSegment(editTargetAnchors, segment, pointerUv);
+    const next = insertAnchorOnSegment(editTargetAnchors, segment, pointerUv, editTargetCurveMode);
     if (next.length === editTargetAnchors.length) return;
     setVectorAnchorSelection([segment + 1]);
     props.onPathEdit(editTargetMutationId, next);

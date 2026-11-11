@@ -2022,9 +2022,6 @@ describe('61-28 CR-01 - the edit-lifetime drag law', () => {
 //  an authored kind or handle (T-61-92).
 // ============================================================
 describe('61-31 G-20 - the overlay draws and edits through each path curve mode', () => {
-  const EDIT_ID = 99001;
-  const OTHER_ID = 99002;
-
   function overlaySource(): string {
     return readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
   }
