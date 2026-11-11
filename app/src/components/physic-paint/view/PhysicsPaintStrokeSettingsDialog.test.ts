@@ -251,9 +251,11 @@ describe('61-11 E4 rows: the Anchor width block', () => {
   it('E4 overflow: the shipped SliderStepper owns the fixed gutter', () => {
     const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
     expect(block).toContain('<SliderStepper');
-    // No bespoke control, no width style: the shared 46x17 value box and the
-    // fixed label column are the shipped geometry.
-    expect(block).not.toContain('style=');
+    // 61-25 (UI-02): the ONE declared style in the region is the readout
+    // span's constant — no bespoke geometry, and the shared 46x17 value box
+    // and fixed label column still own the gutter.
+    expect(countOf(block, 'style=')).toBe(1);
+    expect(block).toContain('style={ANCHOR_WIDTH_READOUT_STYLE}');
     expect(block).not.toContain('width:');
   });
 
@@ -318,7 +320,9 @@ describe('61-11 E4 rows: the Anchor width block', () => {
   it('61-19 no new surface: one stepper, and the caption testid still precedes its style', () => {
     const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
     expect(countOf(block, '<SliderStepper')).toBe(1);
-    expect(block).not.toContain('style=');
+    // 61-25 (UI-02): exactly one style — the declared readout constant.
+    expect(countOf(block, 'style=')).toBe(1);
+    expect(block).toContain('style={ANCHOR_WIDTH_READOUT_STYLE}');
     // The testid must stay BEFORE the style attribute: the shipped region pin
     // ends at the testid, which is what keeps the block's no-`style=` pin true.
     const caption = regionOf(dialogSource, BLOCK_END, '</span>');
@@ -586,7 +590,9 @@ describe('61-22 G-11 — the Anchor width control in the list view', () => {
     // The shipped region still holds exactly one stepper and no style attribute.
     const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
     expect(countOf(block, '<SliderStepper')).toBe(1);
-    expect(block).not.toContain('style=');
+    // 61-25 (UI-02): exactly one style — the declared readout constant.
+    expect(countOf(block, 'style=')).toBe(1);
+    expect(block).toContain('style={ANCHOR_WIDTH_READOUT_STYLE}');
   });
 
   it('declares the component AFTER the Paint-tab gate', () => {
@@ -612,5 +618,67 @@ describe('61-22 G-11 — the Anchor width control in the list view', () => {
     );
     const mount = regionOf(dialogSource, '{anchorWidthListVisible', ') : null}');
     expect(mount).toContain('reading={anchorWidthSizeReading}');
+  });
+});
+
+// ============================================================
+//  61-25 (UI-02 / UI-05) — the declared typography.
+//
+//  The `→ n px` readout rendered as a bare string and inherited the sheet's
+//  body type; the two explanation strings set no weight. The fix reuses the
+//  `BrushResponsePanel` multiplier grammar for the readout and pins both
+//  explanations at 600 — the italic red `Mixed` stays the only 400.
+// ============================================================
+
+describe('61-25 UI-02/UI-05 — the declared readout and explanation weights', () => {
+  const BLOCK_START = 'data-testid="stroke-settings-anchor-width"';
+  const BLOCK_END = 'data-testid="stroke-settings-anchor-width-caption"';
+
+  it('renders the readout inside the declared span and nothing beyond the four properties', () => {
+    // The span is the `below` slot's only child and carries the SAME template.
+    const readout = regionOf(
+      dialogSource,
+      'data-testid="stroke-settings-anchor-width-readout"',
+      '</span>',
+    );
+    expect(readout).toContain('style={ANCHOR_WIDTH_READOUT_STYLE}');
+    expect(readout).toContain(
+      '`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`',
+    );
+    // Empty still mounts no readout: the null branch stays `undefined`.
+    expect(dialogSource).toContain('below={anchorWidthEmpty');
+    expect(dialogSource).toContain('? undefined');
+
+    // The constant IS the BrushResponsePanel multiplier grammar — four
+    // declared properties, in that order, and nothing else.
+    const styleBlock = regionOf(dialogSource, 'const ANCHOR_WIDTH_READOUT_STYLE', '};');
+    const keys = [...styleBlock.matchAll(/^\s{2}([A-Za-z]+):/gm)].map((match) => match[1]);
+    expect(keys).toEqual(['fontSize', 'fontWeight', 'color', 'fontVariantNumeric']);
+    expect(styleBlock).toContain("fontSize: '10px'");
+    expect(styleBlock).toContain('fontWeight: 600');
+    expect(styleBlock).toContain("color: 'var(--sidebar-text-secondary, #9aa5b1)'");
+    expect(styleBlock).toContain("fontVariantNumeric: 'tabular-nums'");
+  });
+
+  it('keeps exactly the one declared style in the E4 region, and still no fixed width', () => {
+    const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
+    expect(countOf(block, 'style=')).toBe(1);
+    expect(block).toContain('style={ANCHOR_WIDTH_READOUT_STYLE}');
+    expect(block).not.toContain('width:');
+  });
+
+  it('sets both explanation strings at 600 — the italic red Mixed stays the only 400', () => {
+    const captionStyle = regionOf(dialogSource, 'const ANCHOR_WIDTH_CAPTION_STYLE', '};');
+    expect(captionStyle).toContain('fontWeight: 600');
+    expect(countOf(captionStyle, 'fontWeight:')).toBe(1);
+    const noteStyle = regionOf(dialogSource, 'const ADVANCED_WET_NOTE_STYLE', '};');
+    expect(noteStyle).toContain('fontWeight: 600');
+    expect(countOf(noteStyle, 'fontWeight:')).toBe(1);
+    // The Mixed caption declares no weight — its italic red 400 is the only
+    // light text the sheet keeps.
+    const mixedStyle = regionOf(dialogSource, 'const MIXED_CAPTION_STYLE', '};');
+    expect(mixedStyle).not.toContain('fontWeight');
+    const weights = [...dialogSource.matchAll(/fontWeight:\s*(\d+)/g)].map((match) => match[1]);
+    expect(new Set(weights)).toEqual(new Set(['600']));
   });
 });
