@@ -19,6 +19,7 @@ import { signal } from '@preact/signals';
 import { WatercolorRail } from './PhysicsPaintToolRail';
 import { resetForStudioOpen, vectorPenActive } from './vectorPathSession';
 import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
+import { setAquarellePickerLatched } from './aquarelleColorPicker';
 import { draftMode, draftPixelsDirty, wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
 
 vi.mock('preact/hooks', async (importOriginal) => {
@@ -166,6 +167,7 @@ function resetWireframeSignals(): void {
 afterEach(() => {
   resetForStudioOpen();
   setAquarelleTool('brush');
+  setAquarellePickerLatched(false);
   resetWireframeSignals();
 });
 
@@ -203,7 +205,11 @@ describe('WatercolorRail — the fifth entry (D-05 / C-01)', () => {
     const nav = renderRail();
     const pen = penButton(nav);
     expect(pen.props?.['aria-label']).toBe('Vector pen');
-    expect(pen.props?.title).toBe('Vector pen — draw a vector path (V)');
+    // 61-25 (UI-01): the Copywriting Contract's Primary CTA, verbatim — the
+    // tooltip is the phase's only teaching surface for the draw law.
+    expect(pen.props?.title).toBe(
+      'Vector pen (V) — click to place a smooth anchor · hold Alt for a corner · Enter or double-click to finish · click the first anchor to finish there',
+    );
     expect(pen.props?.class).toBe('physics-paint-icon-button');
     expect(pen.props?.disabled).toBe(false);
   });
@@ -328,15 +334,19 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
     }
   });
 
-  it('disables Dry and the picker with their reasons', () => {
+  it('disables Dry with its reason and keeps the picker disarmed, not disabled', () => {
     wireframeMode.value = true;
     const nav = renderRail();
     const dry = button(nav, 'aquarelle-dry')!;
     expect(dry.props?.disabled).toBe(true);
     expect(dry.props?.title).toBe('Dry (F) — turn wireframe off to paint');
+    // 61-25 (UI-05 / §5): the contract disarms the picker; it never removes the
+    // function, so the button stays pressable with its shipped title.
     const picker = button(nav, 'aquarelle-picker-toggle')!;
-    expect(picker.props?.disabled).toBe(true);
-    expect(picker.props?.title).toBe('Picker (I) — turn wireframe off to pick');
+    expect(picker.props?.disabled).toBe(false);
+    expect(picker.props?.title).toBe(
+      'Picker (I) — click the canvas to sample the color under the cursor · hold Alt for a temporary picker',
+    );
   });
 
   it('keeps the vector pen and the latch itself available — an empty sheet never locks', () => {
@@ -400,6 +410,58 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
     )!;
     expect(railOff.props?.title).toBe(SHIPPED_SELECT_TITLE);
     expect(railOff.props?.disabled).toBe(true);
+  });
+});
+
+// 61-25 (UI-01 / UI-05): gap closure over the 61-UI-REVIEW warnings. The pen
+// tooltip is the Copywriting Contract's Primary CTA verbatim; under wireframe
+// the Picker is DISARMED (pressable, shipped title) while every depositing
+// control stays disabled with its reason.
+describe('WatercolorRail — 61-25 UI-01/UI-05', () => {
+  const PEN_TOOLTIP =
+    'Vector pen (V) — click to place a smooth anchor · hold Alt for a corner · Enter or double-click to finish · click the first anchor to finish there';
+
+  it('teaches the whole draw law in the pen tooltip, character-for-character', () => {
+    const pen = penButton(renderRail());
+    expect(pen.props?.title).toBe(PEN_TOOLTIP);
+    // The accessible name is unchanged — only the tooltip carries the law.
+    expect(pen.props?.['aria-label']).toBe('Vector pen');
+  });
+
+  it('keeps the Picker pressable under wireframe with its shipped title and session verdict', () => {
+    wireframeMode.value = true;
+    const idle = button(renderRail(), 'aquarelle-picker-toggle')!;
+    expect(idle, 'the picker is rendered').toBeTruthy();
+    expect(idle.props?.disabled).toBe(false);
+    expect(idle.props?.title).toBe(
+      'Picker (I) — click the canvas to sample the color under the cursor · hold Alt for a temporary picker',
+    );
+    expect(idle.props?.['aria-pressed']).toBe(false);
+    expect(String(idle.props?.class)).not.toContain('active');
+
+    // Arming under wireframe lands exactly as outside it: the rendered
+    // aria-pressed is the one armed verdict.
+    setAquarellePickerLatched(true);
+    const armed = button(renderRail(), 'aquarelle-picker-toggle')!;
+    expect(armed.props?.disabled).toBe(false);
+    expect(armed.props?.['aria-pressed']).toBe(true);
+    expect(String(armed.props?.class)).toContain('active');
+  });
+
+  it('still disables every depositing control under wireframe and leaves the pen available', () => {
+    wireframeMode.value = true;
+    const nav = renderRail();
+    expect(button(nav, 'aquarelle-dry')!.props?.title).toBe('Dry (F) — turn wireframe off to paint');
+    expect(button(nav, 'aquarelle-dry')!.props?.disabled).toBe(true);
+    const paint = directChildren(nav).slice(0, 4);
+    expect(paint.map((node) => node.props?.title)).toEqual([
+      'Brush (B) — turn wireframe off to paint',
+      'Water (W) — turn wireframe off to paint',
+      'Pen (P) — turn wireframe off to paint',
+      'Eraser (E) — turn wireframe off to paint',
+    ]);
+    for (const node of paint) expect(node.props?.disabled).toBe(true);
+    expect(penButton(nav).props?.disabled).toBe(false);
   });
 });
 
