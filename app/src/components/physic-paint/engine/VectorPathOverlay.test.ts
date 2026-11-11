@@ -1559,3 +1559,104 @@ describe('VectorPathOverlay — the wireframe drawing law (61-13)', () => {
     expect(source).not.toContain('buildLiftRibbon(');
   });
 });
+
+// 61-22 (G-11): a selected anchor of the OPEN path edit must be visibly
+// distinct — `renderPath` never read `vectorAnchorSelection`, so a selected
+// anchor rendered exactly like an unselected one. The ring is additive, uses
+// the shipped accent only, and is drawn for the open edit's path alone.
+describe('61-22 G-11 — the selected-anchor ring', () => {
+  const EDIT_ID = 96001;
+  const OTHER_ID = 96002;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  it('draws one ring around the selected anchor and none for an unselected index', () => {
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([1]);
+    const tree = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]])));
+    const rings = nodesWithTestId(tree, 'vector-path-anchor-selection');
+    expect(rings).toHaveLength(1);
+    // Anchor 1 is an `auto` anchor at uv (0.5, 0.5) → a circle at its projected
+    // point; index 0 (uv 0.2, 0.5) wears no ring.
+    const at = uvToScreen({ x: 0.5, y: 0.5 }, WIDTH, HEIGHT);
+    expect(rings[0]!.type).toBe('circle');
+    expect(rings[0]!.props['cx']).toBeCloseTo(at.x, 9);
+    expect(rings[0]!.props['cy']).toBeCloseTo(at.y, 9);
+    expect(rings[0]!.props['fill']).toBe('none');
+    expect(rings[0]!.props['vectorEffect']).toBe('non-scaling-stroke');
+  });
+
+  it('fails closed on an empty or out-of-range selection', () => {
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([]);
+    expect(
+      nodesWithTestId(
+        render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]]))),
+        'vector-path-anchor-selection',
+      ),
+    ).toHaveLength(0);
+
+    setVectorAnchorSelection([9]);
+    let tree: unknown = null;
+    expect(() => {
+      tree = VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]]));
+    }).not.toThrow();
+    expect(nodesWithTestId(render(tree), 'vector-path-anchor-selection')).toHaveLength(0);
+
+    // Positive control in the same law: a valid index still draws exactly one,
+    // so the zero above is a real boundary decision, not a missing control.
+    setVectorAnchorSelection([0]);
+    expect(
+      nodesWithTestId(
+        render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]]))),
+        'vector-path-anchor-selection',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('rings only the open edit’s path, never a second recorded vector stroke', () => {
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([1]);
+    const other = vectorStroke({
+      mutationId: OTHER_ID,
+      anchors: [auto(0.1, 0.7), auto(0.4, 0.7), auto(0.7, 0.7)],
+    });
+    const tree = render(
+      VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()], [OTHER_ID, other]])),
+    );
+    const rings = nodesWithTestId(tree, 'vector-path-anchor-selection');
+    // Exactly one ring: the other path receives an EMPTY selection.
+    expect(rings).toHaveLength(1);
+    const at = uvToScreen({ x: 0.5, y: 0.5 }, WIDTH, HEIGHT);
+    expect(rings[0]!.props['cx']).toBeCloseTo(at.x, 9);
+    expect(rings[0]!.props['cy']).toBeCloseTo(at.y, 9);
+  });
+
+  it('static: the ring is accent-only and adds no colour literal', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    const at = source.indexOf('data-testid="vector-path-anchor-selection"');
+    expect(at).toBeGreaterThan(-1);
+    const block = source.slice(Math.max(0, at - 600), at + 600);
+    expect(block).toContain('stroke={SELECTED_SPINE_COLOR}');
+    expect(block).toContain('fill="none"');
+    expect(block).toContain('strokeWidth={1.5}');
+    // The palette is the shipped four literals — the ring introduces none.
+    const hexes = [...source.matchAll(/'#[0-9a-fA-F]{3,6}'/g)].map((match) => match[0]);
+    expect(new Set(hexes)).toEqual(
+      new Set(["'#38bdf8'", "'#111111'", "'#ffffff'", "'#f59e0b'"]),
+    );
+  });
+});
