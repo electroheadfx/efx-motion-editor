@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-24-PLAN.md
-last_updated: "2026-11-11T11:12:00.470Z"
+stopped_at: Completed 61-22-PLAN.md
+last_updated: "2026-11-11T11:20:19.658Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: 25a71f04d45f5a6332cbec09f3295ef72aadf140
+state_head: 60707964371d5ef53f62831ecf872e8e702d6664
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 62
-  completed_plans: 54
+  completed_plans: 55
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 24 of 31
+Plan: 25 of 31
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 61 execution started
 
@@ -112,6 +112,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P21 | 6 | 2 tasks | 6 files |
 | Phase 61 P23 | 3 min | 2 tasks | 2 files |
 | Phase 61 P24 | 8 min | 2 tasks | 8 files |
+| Phase 61 P22 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -306,6 +307,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: The vector terms ride conditional spreads exactly like toStudioStroke, so a hand-painted event keeps its pre-vector key set and an absent vector field stays absent (no anchors: undefined)
 - [Phase 61]: +Key copies the script RECORD-ONLY inside the addEmptyKey success continuation: the cloned bytes already equal base-script, so applying would double-paint, and a copy rejection can never reach the shipped add-failure message
 - [Phase 61]: One recordAquarelleScriptCopyForFrames seam serves both Duplicate and +Key; the Studio pin asserts exactly one copyAquarelleScriptToFrame call site
+- [Phase 61]: G-11: the Anchor width block is extracted into ONE AnchorWidthControl declared after the sheet component; the list view and the Paint tab mount the same stepper, clamp and commit seam
+- [Phase 61]: G-11: the list-view mount gate is anchorWidthAvailable && a Size reading of the same ids (anchorWidthListVisible); a multi-selection or anchorless stroke mounts nothing
+- [Phase 61]: G-11: the selected-anchor ring is a pure render output of a sixth renderPath parameter fed drawn.selected ? selection : []; only the open edit path wears rings and the palette gains no colour
 
 ### Pending Todos
 
@@ -398,8 +402,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T11:11:59.193Z
-Stopped at: Completed 61-24-PLAN.md
+Last session: 2026-11-11T11:20:18.256Z
+Stopped at: Completed 61-22-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
