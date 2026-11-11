@@ -5,7 +5,6 @@ import type { CSSProperties, TargetedPointerEvent } from 'preact';
 import { Eye, EyeOff, List, Settings2, SlidersHorizontal, Spline, SplinePointer, Trash2, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
-import { hexToRgba } from '../../../lib/colorUtils';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
@@ -32,7 +31,6 @@ import {
   listStrokeToolOptions,
   matchesStrokeTypeFilter,
   readAnchorWidthReading,
-  readColorField,
   readCurveMode,
   readNumericField,
   readPaintSeedVariation,
@@ -106,10 +104,13 @@ import { enterPathEdit, exitPathEdit, pathEditMutationId, vectorAnchorSelection 
  * not edited here: a read-only thumb shows the selected strokes' color and
  * the one shared picker in the sidebar Color tab commits the change.
  *
- * 261024-vga UAT revision: one pinned tab row (Geometry | Stack | Paint),
- * Geometry by default, all three on one row. The color readout moved into
- * Paint. The tabs hold no stroke data — a ref-held signal holds only the
- * active tab key.
+ * 261024-vga UAT revision: one pinned tab row (Geometry | Stack), Geometry by
+ * default, both on one row. The tabs hold no stroke data — a ref-held signal
+ * holds only the active tab key.
+ *
+ * quick 261111-vg4: the Paint tab is GONE. Per-stroke size/color/wet editing
+ * lives in the sidebar Paint/Brush tabs and the top bar (quick 261111-ucf) —
+ * this sheet edits GEOMETRY only, never a duplicate paint surface.
  *
  * Dismissal (exact law): `dismissed` is a signal written ONLY by Escape and
  * the header close button. `sawEmptySinceDismiss` is a plain module flag
@@ -122,8 +123,8 @@ import { enterPathEdit, exitPathEdit, pathEditMutationId, vectorAnchorSelection 
  *
  * 261101-jmm view (exact law): watercolor is LIST FIRST. The ref-held
  * `settingsViewRef` defaults to 'list' and the stroke list stays visible while
- * strokes are selected; the Geometry/Stack/Paint tabs mount only after the
- * header toggle is clicked, and the same button (now a list icon) returns.
+ * strokes are selected; the Geometry/Stack tabs mount only after the header
+ * toggle is clicked, and the same button (now a list icon) returns.
  * An EMPTY selection invalidates a pending settings request through the plain
  * `strokeSettingsViewInvalidated` marker — the `sawEmptySinceDismiss`
  * precedent, written idempotently in the render body — so a close/reopen, a
@@ -182,12 +183,11 @@ interface DragStart {
   readonly rect: { left: number; top: number; width: number } | null;
 }
 
-type StrokeSettingsTab = 'geometry' | 'stack' | 'paint';
+type StrokeSettingsTab = 'geometry' | 'stack';
 
 const STROKE_SETTINGS_TABS: ReadonlyArray<{ key: StrokeSettingsTab; label: string }> = [
   { key: 'geometry', label: 'Geometry' },
   { key: 'stack', label: 'Stack' },
-  { key: 'paint', label: 'Paint' },
 ];
 
 /**
@@ -344,7 +344,7 @@ const SEGMENT_ACTIVE_STYLE: CSSProperties = {
 /**
  * 261031-euf: the type-filter row is sentence case — the global button rule
  * uppercases every other segmented control, so the filter row gets its own
- * copy instead of changing Stack/Paint.
+ * copy instead of changing Stack.
  */
 const FILTER_SEGMENT_STYLE: CSSProperties = {
   ...SEGMENT_STYLE,
@@ -363,26 +363,6 @@ const FINE_FILTERS_ROW_STYLE: CSSProperties = {
 };
 
 const LIST_SUMMARY_STYLE: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: '10px',
-  color: 'var(--sidebar-text-secondary, #9aa5b1)',
-  fontVariantNumeric: 'tabular-nums',
-};
-
-const COLOR_BLOCK_STYLE: CSSProperties = {
-  width: '100%',
-  height: '48px',
-  boxSizing: 'border-box',
-  borderRadius: '6px',
-  border: '1px solid rgba(255, 255, 255, 0.22)',
-  boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.22)',
-};
-
-const COLOR_READOUT_ROW_STYLE: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: '8px',
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   fontSize: '10px',
   color: 'var(--sidebar-text-secondary, #9aa5b1)',
@@ -705,18 +685,12 @@ export function PhysicsPaintStrokeSettingsDialog({
   // from the rendered rows (never from the selection's insertion order).
   const displayedIds = listRows.map((stroke) => stroke.mutationId);
   const listSummary = strokeListSummary(bundle.playFrame, strokes);
-  // 261029-eur: the Paint tab hides whenever an ERASER stroke is in play —
-  // either the filter is Eraser, or a lift sits in the selection (a lift has
-  // no paint rows). A requested Paint falls back to Geometry while hidden.
-  const selectionHasLift = strokes.some(
-    (stroke) => selection.has(stroke.mutationId) && stroke.kind === 'lift',
-  );
-  const paintTabAvailable = strokeTypeFilter !== 'lift' && !selectionHasLift;
+  // quick 261111-vg4: the tab set is FIXED — Geometry | Stack. No filter or
+  // selection state can surface a third tab; only Stack steps aside without a
+  // `reorderStroke` seam, and a requested Stack then falls back to Geometry.
   const activeSettingsTab: StrokeSettingsTab = requestedSettingsTab === 'stack' && !stackTabAvailable
     ? 'geometry'
-    : requestedSettingsTab === 'paint' && !paintTabAvailable
-      ? 'geometry'
-      : requestedSettingsTab;
+    : requestedSettingsTab;
 
   const ids = [...selection];
   const appearances = bundle.readAppearance(ids, bundle.playFrame);
@@ -725,13 +699,13 @@ export function PhysicsPaintStrokeSettingsDialog({
   /**
    * Brush only: Opacity is a real composited alpha and leads Geometry.
    * Water color has no global opacity — its canonical Pigment (`load`) is
-   * already a Paint row, so Geometry does not mirror it under the name Opacity.
+   * edited from the sidebar Paint tab, so Geometry does not mirror it under
+   * the name Opacity.
    */
   const opacityField = engineModule === 'watercolor'
     ? undefined
     : fields.find((field) => field.key === 'opacity');
   const numericFields = fields.filter((field) => field.kind === 'numeric');
-  const segmentedFields = fields.filter((field) => field.kind === 'segmented');
   const opacityReading = opacityField ? readNumericField(appearances, ids, opacityField) : null;
   // 261031-cf9: the switch is watercolor-only and derived from the salt each
   // appearance carries — never a second boolean.
@@ -770,8 +744,6 @@ export function PhysicsPaintStrokeSettingsDialog({
     : readNumericField(appearances, ids, anchorWidthSizeField);
   const anchorWidthVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;
 
-  const colorReading = readColorField(appearances, ids);
-  const colorRgb = hexToRgba(colorReading.color);
   // 61-31 (G-20): the Curve row reading. Spline is an evaluation mode over the
   // same anchors, so only the VECTOR appearances participate. The row MOUNTS IN
   // GEOMETRY, after the transform rows.
@@ -1225,7 +1197,6 @@ export function PhysicsPaintStrokeSettingsDialog({
         >
           {STROKE_SETTINGS_TABS.map((tab) => {
             if (tab.key === 'stack' && !stackTabAvailable) return null;
-            if (tab.key === 'paint' && !paintTabAvailable) return null;
             const active = activeSettingsTab === tab.key;
             return (
               <button
@@ -1661,113 +1632,6 @@ export function PhysicsPaintStrokeSettingsDialog({
                   Bottom
                 </button>
               </div>
-            </div>
-          ) : null}
-
-          {activeSettingsTab === 'paint' ? (
-            <div style={SECTION_STYLE} data-testid="stroke-settings-paint">
-              <span style={PAINT_ROW_LABEL_STYLE}>Color</span>
-              <div
-                data-testid="stroke-settings-color"
-                style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
-              >
-                <div
-                  data-testid="stroke-settings-color-thumb"
-                  title={colorReading.color}
-                  style={{ ...COLOR_BLOCK_STYLE, backgroundColor: colorReading.color }}
-                />
-                <div style={COLOR_READOUT_ROW_STYLE}>
-                  <span data-testid="stroke-settings-color-hex">{colorReading.color.toUpperCase()}</span>
-                  <span data-testid="stroke-settings-color-rgb">
-                    {`rgb(${colorRgb.r}, ${colorRgb.g}, ${colorRgb.b})`}
-                  </span>
-                  {colorReading.mixed ? (
-                    <span data-testid="stroke-settings-color-mixed" style={MIXED_CAPTION_STYLE}>
-                      Mixed
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              {numericFields.map((field) => {
-              const reading = readNumericField(appearances, ids, field);
-              const row = (
-                <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
-                  <SliderStepper
-                    label={field.label}
-                    ariaLabel={field.label}
-                    value={reading.value}
-                    min={field.min}
-                    max={field.max}
-                    step={field.step}
-                    mixed={reading.mixed}
-                    commitOnRelease
-                    allowOutOfRangeEntry
-                    onChange={(value) => {
-                      void bundle.applyAppearance(
-                        ids,
-                        buildAppearancePatch(engineModule, field.key, value),
-                      );
-                    }}
-                  />
-                </div>
-              );
-              // 61-11 (E4): the Anchor width block sits DIRECTLY under Size and
-              // OUTSIDE the appearance-field registry — the factor is per
-              // anchor, never an appearance param, so it must not ride
-              // `readNumericField` / `buildAppearancePatch`.
-              if (field.key !== 'size' || !anchorWidthAvailable) return row;
-              return [
-                row,
-                <AnchorWidthControl
-                  key="anchor-width"
-                  bundle={bundle}
-                  ids={ids}
-                  reading={reading}
-                  anchorWidthReading={anchorWidthReading}
-                  anchorWidthTarget={anchorWidthTarget}
-                />,
-              ];
-            })}
-            {segmentedFields.map((field) => {
-              const reading = readNumericField(appearances, ids, field);
-              return (
-                <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
-                  <div style={SEGMENT_LABEL_ROW_STYLE}>
-                    <span style={PAINT_ROW_LABEL_STYLE}>{field.label}</span>
-                    {reading.mixed ? (
-                      <span
-                        data-testid={`stroke-settings-${field.key}-mixed`}
-                        style={MIXED_CAPTION_STYLE}
-                      >
-                        Mixed
-                      </span>
-                    ) : null}
-                  </div>
-                  <div role="group" aria-label={field.label} style={SEGMENT_GROUP_STYLE}>
-                    {(field.options ?? []).map((option) => {
-                      const active = !reading.mixed && reading.value === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          data-testid={`stroke-settings-${field.key}-option-${option.value}`}
-                          aria-pressed={active}
-                          style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
-                          onClick={() => {
-                            void bundle.applyAppearance(
-                              ids,
-                              buildAppearancePatch(engineModule, field.key, option.value),
-                            );
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
             </div>
           ) : null}
             </>

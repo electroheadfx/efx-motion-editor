@@ -198,14 +198,6 @@ export interface NumericFieldReading {
   readonly mixed: boolean;
 }
 
-export interface ColorFieldReading {
-  readonly color: string;
-  readonly mixed: boolean;
-}
-
-/** The overlay's neutral for a stroke recorded without an explicit color. */
-export const NEUTRAL_STROKE_COLOR = '#111827';
-
 function storedKey(field: StrokeSettingsField): string {
   return field.paramKey ?? field.key;
 }
@@ -269,21 +261,6 @@ export function readSimpleRibbonGlobal(
   return { value: first, mixed: values.some((value) => value !== first) };
 }
 
-/**
- * Representative color from the FIRST-SELECTED id; mixed when any visible
- * color differs (a later repeat of the representative does not cancel it).
- */
-export function readColorField(
-  appearances: readonly ScriptStrokeAppearance[],
-  orderedIds: readonly number[],
-): ColorFieldReading {
-  const byId = appearanceMap(appearances);
-  const colors = orderedIds.map((id) => byId.get(id)?.color ?? NEUTRAL_STROKE_COLOR);
-  if (colors.length === 0) return { color: NEUTRAL_STROKE_COLOR, mixed: false };
-  const first = colors[0]!;
-  return { color: first, mixed: colors.some((color) => color !== first) };
-}
-
 /** Canonical-unit params patch for one committed row. */
 export function buildAppearancePatch(
   module: StrokeSettingsModule,
@@ -293,11 +270,6 @@ export function buildAppearancePatch(
   const field = strokeSettingsFields(module).find((candidate) => candidate.key === fieldKey);
   const key = field ? storedKey(field) : fieldKey;
   return { params: { [key]: value } };
-}
-
-/** Color-only patch for one color commit. */
-export function buildColorPatch(color: string): ScriptStrokeAppearancePatch {
-  return { color };
 }
 
 /**

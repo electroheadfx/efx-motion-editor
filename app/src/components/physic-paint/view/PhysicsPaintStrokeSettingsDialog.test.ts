@@ -359,16 +359,17 @@ describe('61-11 E4 rows: the Anchor width block', () => {
     expect(block).toContain('`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`');
   });
 
-  it('mounts under the Size row and is NOT an appearance-field registry entry', () => {
+  it('is NOT an appearance-field registry entry and its bare block stays inside the component body', () => {
     // The registry is the appearance field list; the width factor is not one of
     // its params (it belongs to the anchors, not to `params`).
     expect(WATERCOLOR_SETTINGS_FIELDS.map((field) => field.key)).not.toContain('anchorWidth');
-    const gateAt = dialogSource.indexOf(
-      "if (field.key !== 'size' || !anchorWidthAvailable) return row;",
-    );
+    // quick 261111-vg4: the Paint in-map gate is gone, so the FIRST bare
+    // `stroke-settings-anchor-width` occurrence must be the COMPONENT body —
+    // the two mounts wrap it under their own testids.
+    const declarationAt = dialogSource.indexOf('function AnchorWidthControl(');
     const blockAt = dialogSource.indexOf(BLOCK_START);
-    expect(gateAt).toBeGreaterThan(-1);
-    expect(blockAt).toBeGreaterThan(gateAt);
+    expect(declarationAt).toBeGreaterThan(-1);
+    expect(blockAt).toBeGreaterThan(declarationAt);
     // The block commits through the anchor seam, never the appearance patch.
     const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
     expect(block).toContain('bundle.applyAnchorWidths?.(');
@@ -494,12 +495,11 @@ describe('61-31 Curve row (G-20)', () => {
   });
 });
 
-describe('61-22 G-11 — the Anchor width control in the list view', () => {
+describe('61-22 G-11 — the Anchor width control in the list view and Geometry', () => {
   const LIST_WRAPPER = 'data-testid="stroke-settings-list-anchor-width"';
   const GEOMETRY_WRAPPER = 'data-testid="stroke-settings-geometry-anchor-width"';
   const BLOCK_START = 'data-testid="stroke-settings-anchor-width"';
   const BLOCK_END = 'data-testid="stroke-settings-anchor-width-caption"';
-  const GATE = "if (field.key !== 'size' || !anchorWidthAvailable) return row;";
   const MOUNT_GATE = '{anchorWidthVisible && anchorWidthSizeReading !== null ? (';
 
   it('mounts the control in the default list view behind anchorWidthVisible', () => {
@@ -544,17 +544,13 @@ describe('61-22 G-11 — the Anchor width control in the list view', () => {
     expect(mount).toContain('anchorWidthTarget={anchorWidthTarget}');
   });
 
-  it('shares ONE component between the mounts', () => {
-    // list + Geometry + the Paint in-map insertion still present until Task 3.
-    expect(countOf(dialogSource, '<AnchorWidthControl')).toBe(3);
+  it('shares ONE component between the two mounts', () => {
+    // quick 261111-vg4: list + Geometry are the only mounts.
+    expect(countOf(dialogSource, '<AnchorWidthControl')).toBe(2);
     expect(countOf(dialogSource, 'function AnchorWidthControl(')).toBe(1);
     // ONE root block: each mount wraps the same component and never
     // re-declares the `stroke-settings-anchor-width` element.
     expect(countOf(dialogSource, '<div data-testid="stroke-settings-anchor-width">')).toBe(1);
-    // The Paint-tab mount replaces the inline block at the shipped gate.
-    const gateAt = dialogSource.indexOf(GATE);
-    expect(gateAt).toBeGreaterThan(-1);
-    expect(dialogSource.indexOf('<AnchorWidthControl', gateAt)).toBeGreaterThan(gateAt);
   });
 
   it('keeps every shipped E4 identifier inside the component body', () => {
@@ -583,14 +579,17 @@ describe('61-22 G-11 — the Anchor width control in the list view', () => {
     expect(block).toContain('style={ANCHOR_WIDTH_READOUT_STYLE}');
   });
 
-  it('declares the component AFTER the Paint-tab gate', () => {
-    const gateAt = dialogSource.indexOf(GATE);
+  it('declares the component AFTER both mount wrappers', () => {
+    const listAt = dialogSource.indexOf(LIST_WRAPPER);
+    const geometryAt = dialogSource.indexOf(GEOMETRY_WRAPPER);
     const declarationAt = dialogSource.indexOf('function AnchorWidthControl(');
-    expect(gateAt).toBeGreaterThan(-1);
-    expect(declarationAt).toBeGreaterThan(gateAt);
-    // The shipped `blockAt > gateAt` ordering pin resolves the FIRST block
-    // occurrence — the component body — so it must stay after the gate too.
-    expect(dialogSource.indexOf(BLOCK_START)).toBeGreaterThan(gateAt);
+    expect(listAt).toBeGreaterThan(-1);
+    expect(geometryAt).toBeGreaterThan(-1);
+    expect(declarationAt).toBeGreaterThan(listAt);
+    expect(declarationAt).toBeGreaterThan(geometryAt);
+    // The E4 region pins resolve the FIRST bare block occurrence — the
+    // component body — so it must stay after both mounts too.
+    expect(dialogSource.indexOf(BLOCK_START)).toBeGreaterThan(declarationAt);
   });
 
   it('feeds the list-view mount the Size reading of the SAME ids', () => {
@@ -606,6 +605,71 @@ describe('61-22 G-11 — the Anchor width control in the list view', () => {
     );
     const mount = regionOf(dialogSource, '{anchorWidthVisible', ') : null}');
     expect(mount).toContain('reading={anchorWidthSizeReading}');
+  });
+});
+
+// ============================================================
+//  quick 261111-vg4 — the sheet is Geometry | Stack only.
+//
+//  The Paint tab was the last duplicate per-stroke paint editor: quick
+//  261111-ucf moved brush picks and paint-control releases onto the selected
+//  strokes, so per-stroke size/color/wet editing lives in the sidebar
+//  Paint/Brush tabs and the top bar. The union narrowing makes every leftover
+//  `'paint'` writer/reader a typecheck failure; these pins hold the rendered
+//  law and the deleted helpers.
+// ============================================================
+
+describe('quick 261111-vg4 — the two-tab sheet', () => {
+  it('pins the tab union to geometry | stack and the registry to two entries', () => {
+    expect(dialogSource).toContain("type StrokeSettingsTab = 'geometry' | 'stack';");
+    const registry = regionOf(
+      dialogSource,
+      'const STROKE_SETTINGS_TABS:',
+      '];',
+    );
+    expect(registry).toContain("{ key: 'geometry', label: 'Geometry' }");
+    expect(registry).toContain("{ key: 'stack', label: 'Stack' }");
+    expect(registry).not.toContain('paint');
+    // Two ENTRY literals (the type annotation's `{ key: StrokeSettingsTab…`
+    // carries no quote, so it is not counted).
+    expect(countOf(registry, "{ key: '")).toBe(2);
+  });
+
+  it('leaves no Paint tab, block, color readout, field map or style behind', () => {
+    expect(dialogSource).not.toContain('data-testid="stroke-settings-paint"');
+    expect(dialogSource).not.toContain('paintTabAvailable');
+    expect(dialogSource).not.toContain('selectionHasLift');
+    expect(dialogSource).not.toContain('data-testid="stroke-settings-color"');
+    expect(dialogSource).not.toContain('segmentedFields');
+    expect(dialogSource).not.toContain('hexToRgba');
+    // The LIST type filter (All | Eraser | Paint) is a different surface and
+    // stays — only the TAB was removed.
+    expect(dialogSource).toContain("{ key: 'paint', label: 'Paint', filter: 'paint' },");
+  });
+
+  it('keeps the surviving Geometry survivors and the fixed stack fallback', () => {
+    // Geometry carries the seed switch, Opacity, the transform rows, the
+    // Anchor width mount and the Curve row.
+    expect(dialogSource).toContain('data-testid="stroke-settings-geometry"');
+    expect(dialogSource).toContain('data-testid="stroke-settings-geometry-anchor-width"');
+    expect(dialogSource).toContain('data-testid="stroke-settings-curve-mode-block"');
+    expect(dialogSource).toContain('data-testid="stroke-settings-stack"');
+    // The only fallback left is the stack tab without its commit seam.
+    expect(dialogSource).toContain(
+      "const activeSettingsTab: StrokeSettingsTab = requestedSettingsTab === 'stack' && !stackTabAvailable",
+    );
+    expect(countOf(dialogSource, 'tab.key === ')).toBe(1);
+  });
+
+  it('deletes the Paint-only model color helpers and keeps the survivors', () => {
+    expect(modelSource).not.toContain('buildColorPatch');
+    expect(modelSource).not.toContain('readColorField');
+    expect(modelSource).not.toContain('NEUTRAL_STROKE_COLOR');
+    expect(modelSource).not.toContain('ColorFieldReading');
+    // The seams the surviving rows ride stay.
+    expect(modelSource).toContain('export function buildAppearancePatch(');
+    expect(modelSource).toContain('export function readNumericField(');
+    expect(modelSource).toContain('readonly applyCurveMode?');
   });
 });
 
