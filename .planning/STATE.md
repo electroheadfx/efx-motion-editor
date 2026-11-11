@@ -6,10 +6,10 @@ current_phase: 61
 current_phase_name: Vector Painting Tool
 status: verifying
 stopped_at: Completed 61-31-PLAN.md
-last_updated: "2026-11-11T22:06:34.462Z"
+last_updated: "2026-11-11T23:34:55.179Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: 828b58f48fe86830d469fe62e31f3ce30aadffd9
+state_head: 0dbd47e96b77b9b8fa6426ef4ce64b1f517b7dac
 progress:
   total_phases: 4
   completed_phases: 2
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 Phase: 61 (Vector Painting Tool) — EXECUTING
 Plan: 31 of 31
 Status: Phase complete — ready for verification
-Last activity: 2026-11-11 - Completed quick task 261111-vg4: remove the Stroke Settings Paint tab
+Last activity: 2026-11-12 - Completed quick task 261111-wd6: per-vertex color and size
 
 Progress: [█████░░░░░] 50%
 
@@ -431,6 +431,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261111-tul | SliderStepper commit boundary: optional onCommit fires once per gesture at the release boundaries (track pointerup/cancel, typed Enter/blur, ± press end, keyboard activation) with the gesture's own value, Enter+blur deduped, equal-value commits allowed, absent prop byte-identical (automated-ready; no consumer wired) | 2026-11-11 | 1ce179f3c | [261111-tul-sliderstepper-commit-boundary-milestone-](./quick/261111-tul-sliderstepper-commit-boundary-milestone-/) |
 | 261111-ucf | Brush picks and paint-control releases edit the SELECTED paint strokes through one aquarellePaintControls seam (pickAquarelleBrush, param/params/multiplier commits with filter 'paint'); all four pick surfaces and every slider release wired, Globals Reset is ONE seven-key batch, lift strokes never addressed, live brush/slider behaviour unchanged (UAT approved 2026-11-11) | 2026-11-11 | 73d704c1d | [261111-ucf-brush-picks-and-paint-controls-edit-the-](./quick/261111-ucf-brush-picks-and-paint-controls-edit-the-/) |
 | 261111-vg4 | Remove the Stroke Settings Paint tab — dialog is Geometry \| Stack only; Curve row and Anchor width mount moved into Geometry; per-stroke paint editing lives in the sidebar/top bar (UAT approved 2026-11-11) | 2026-11-11 | 828b58f48 | [261111-vg4-remove-the-stroke-settings-paint-tab](./quick/261111-vg4-remove-the-stroke-settings-paint-tab/) |
+| 261111-wd6 | Per-vertex colour on vector anchors (sparse, explicit); per-vertex size stays the Anchor width factor, relabelled Vertex size; engine per-sample pigment + AQTL bit 3 (UAT pending) | 2026-11-12 | 0dbd47e96 | [261111-wd6-per-vertex-color-and-size](./quick/261111-wd6-per-vertex-color-and-size/) |
 
 ## Roadmap Evolution
 
