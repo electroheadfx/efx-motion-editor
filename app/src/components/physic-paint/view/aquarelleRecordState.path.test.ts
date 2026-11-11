@@ -138,6 +138,13 @@ const G17_NEXT_ANCHORS: readonly AquarelleAnchor[] = [
   { x: 0.8, y: 0.58, kind: 'auto' },
 ];
 
+/** A WIDER path whose sampled station count differs from the pre-edit spine. */
+const G17_WIDE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.05, y: 0.5, kind: 'auto' },
+  { x: 0.5, y: 0.5, kind: 'auto' },
+  { x: 0.95, y: 0.5, kind: 'auto' },
+];
+
 /** The exact six-field shape `buildVectorStroke` stamps onto a fresh commit. */
 function sampledSpinePoints(anchors: readonly AquarelleAnchor[]): readonly AquarellePoint[] {
   return sampleVectorPath(anchors).points.map((p) => ({
@@ -388,5 +395,37 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
       expect(sample.tw).toBe(0);
       expect(sample.tick).toBe(sampleIndex);
     }
+  });
+
+  it('re-derives the point count from the anchor geometry on every path write', () => {
+    const id = 61805;
+    // The pre-edit spine is whatever was recorded; a widened path must not
+    // reuse its station count.
+    recordAquarelleStroke(id, stroke(id, [point(0.2, 0.5), point(0.8, 0.5)], G17_PRE_ANCHORS));
+    expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(2);
+    const expected = sampledSpinePoints(G17_WIDE_ANCHORS);
+    expect(expected.length).not.toBe(sampleVectorPath(G17_PRE_ANCHORS).points.length);
+
+    expect(updateAquarellePathInScript(id, G17_WIDE_ANCHORS)).toBe(1);
+
+    expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(expected.length);
+  });
+
+  it('stamps every re-derived sample with the buildVectorStroke point shape', () => {
+    const id = 61807;
+    // Non-default sample fields on the recorded points prove the write
+    // RE-DERIVES the spine instead of carrying the old one.
+    recordAquarelleStroke(id, stroke(id, [point(0.2, 0.5), point(0.8, 0.5)], G17_PRE_ANCHORS));
+
+    expect(updateAquarellePathInScript(id, G17_NEXT_ANCHORS)).toBe(1);
+
+    const after = getRecordedAquarelleStroke(id)!;
+    for (const sample of after.points) {
+      expect(sample.p).toBe(1);
+      expect(sample.tx).toBe(0);
+      expect(sample.ty).toBe(0);
+      expect(sample.tw).toBe(0);
+    }
+    expect(after.points).toHaveLength(sampledSpinePoints(G17_NEXT_ANCHORS).length);
   });
 });

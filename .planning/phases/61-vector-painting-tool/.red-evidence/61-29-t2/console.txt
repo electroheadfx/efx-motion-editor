@@ -1,0 +1,83 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts (9 tests | 4 failed) 8ms
+   × 61-29 G-17 — the path write carries the replay geometry > re-samples the recorded points from the new anchors so every replay paints the new curve 2ms
+     → expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13
+   × 61-29 G-17 — the path write carries the replay geometry > keeps the payload entry’s pts and engine.anchors on the same path 0ms
+     → expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13
+   × 61-29 G-17 — the path write carries the replay geometry > re-derives the point count from the anchor geometry on every path write 2ms
+     → expected [ …(2) ] to have a length of 451 but got 2
+   × 61-29 G-17 — the path write carries the replay geometry > stamps every re-derived sample with the buildVectorStroke point shape 0ms
+     → expected 0.25 to be 1 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/view/aquarelleRecordState.path.test.ts > 61-29 G-17 — the path write carries the replay geometry > re-samples the recorded points from the new anchors so every replay paints the new curve
+AssertionError: expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts:363:32
+    361|     // `points` into the replay's `pts`, so these points ARE what Shif…
+    362|     expect(after.points[0]!.x).toBeCloseTo(expected[0]!.x, 12);
+    363|     expect(after.points[0]!.y).toBeCloseTo(expected[0]!.y, 12);
+       |                                ^
+    364|     expect(after.points[150]!.y).toBeCloseTo(expected[150]!.y, 12);
+    365|     expect(after.points[301]!.y).toBeCloseTo(expected[301]!.y, 12);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/components/physic-paint/view/aquarelleRecordState.path.test.ts > 61-29 G-17 — the path write carries the replay geometry > keeps the payload entry’s pts and engine.anchors on the same path
+AssertionError: expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts:384:29
+    382|     // ... but the replay's pts MUST agree with it.
+    383|     expect(entry.pts[0]!.x).toBeCloseTo(expected[0]!.x, 12);
+    384|     expect(entry.pts[0]!.y).toBeCloseTo(expected[0]!.y, 12);
+       |                             ^
+    385|     expect(entry.pts[150]!.y).toBeCloseTo(expected[150]!.y, 12);
+    386|     expect(entry.pts[301]!.y).toBeCloseTo(expected[301]!.y, 12);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/components/physic-paint/view/aquarelleRecordState.path.test.ts > 61-29 G-17 — the path write carries the replay geometry > re-derives the point count from the anchor geometry on every path write
+AssertionError: expected [ …(2) ] to have a length of 451 but got 2
+
+- Expected
++ Received
+
+- 451
++ 2
+
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts:411:52
+    409|     expect(updateAquarellePathInScript(id, G17_WIDE_ANCHORS)).toBe(1);
+    410| 
+    411|     expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(expect…
+       |                                                    ^
+    412|   });
+    413| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/components/physic-paint/view/aquarelleRecordState.path.test.ts > 61-29 G-17 — the path write carries the replay geometry > stamps every re-derived sample with the buildVectorStroke point shape
+AssertionError: expected 0.25 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0.25
+
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts:424:24
+    422|     const after = getRecordedAquarelleStroke(id)!;
+    423|     for (const sample of after.points) {
+    424|       expect(sample.p).toBe(1);
+       |                        ^
+    425|       expect(sample.tx).toBe(0);
+    426|       expect(sample.ty).toBe(0);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 5 passed (9)
+   Start at  13:04:44
+   Duration  524ms (transform 151ms, setup 0ms, collect 281ms, tests 8ms, environment 0ms, prepare 44ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-29-t2/junit.xml
