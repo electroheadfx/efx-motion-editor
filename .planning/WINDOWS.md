@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 12
+open_count: 14
 waived_count: 18
 fixed_count: 91
-total_count: 121
-last_updated: 2026-11-11T11:28:45.928Z
+total_count: 123
+last_updated: 2026-11-11T11:50:07.646Z
 ---
 
 # Broken Windows Ledger
@@ -136,6 +136,8 @@ last_updated: 2026-11-11T11:28:45.928Z
 | 119 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-13 Tasks 1-3: shipped pins updated for the one-active-surface wireframe clause, the new disabled/title literals and the VectorSquare import (Rule 1). | open |  | 2026-11-10T15:25:49.384Z |  |
 | 120 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-26 Task 2 GREEN repointed three shipped restore markers to the consuming form restoreAquarelleEditSnapshot(editId, 'undo') !== null; ordering assertions preserved (Rule 3 - Blocking). | open |  | 2026-11-11T11:28:45.763Z |  |
 | 121 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-26 Task 3 GREEN repointed the shipped stroke-end TAIL pin to the bake continuation and added vector-guard + stale-arm assertions (Rule 3 - Blocking). | open |  | 2026-11-11T11:28:45.928Z |  |
+| 122 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-27 Task 2 GREEN repointed the shipped 61-13 scriptStrokeEdition import pin to start at DRAFT_SETTLE_BUSY_MESSAGE, keeping every symbol assertion (Rule 3 - Blocking). | open |  | 2026-11-11T11:50:07.489Z |  |
+| 123 | 61 | deviation | app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts |  | 61-27 Task 3 GREEN repointed two shipped commit-call pins (61-19 live and 61-22 G-11 identifiers) from the bare 'void bundle.applyAnchorWidths?.' to its consuming form, preserving every other assertion (Rule 3 - Blocking). | open |  | 2026-11-11T11:50:07.646Z |  |
 
 ````json
 [
@@ -1637,6 +1639,32 @@ last_updated: 2026-11-11T11:28:45.928Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-11T11:28:45.928Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 122,
+    "kind": "deviation",
+    "phase": "61",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
+    "line": null,
+    "description": "61-27 Task 2 GREEN repointed the shipped 61-13 scriptStrokeEdition import pin to start at DRAFT_SETTLE_BUSY_MESSAGE, keeping every symbol assertion (Rule 3 - Blocking).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-11T11:50:07.489Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 123,
+    "kind": "deviation",
+    "phase": "61",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts",
+    "line": null,
+    "description": "61-27 Task 3 GREEN repointed two shipped commit-call pins (61-19 live and 61-22 G-11 identifiers) from the bare 'void bundle.applyAnchorWidths?.' to its consuming form, preserving every other assertion (Rule 3 - Blocking).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-11T11:50:07.646Z",
     "resolved_at": null,
     "milestone": "v2.1.0"
   }

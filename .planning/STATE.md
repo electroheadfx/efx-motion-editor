@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-25-PLAN.md
-last_updated: "2026-11-11T11:40:34.774Z"
+stopped_at: Completed 61-27-PLAN.md
+last_updated: "2026-11-11T11:51:11.972Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: ef6f913ecd2dcc7023d02eff7b0b8c91744149e1
+state_head: e2c9c02b29f322e5548c80a70145b989f40f10d7
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 62
-  completed_plans: 57
+  completed_plans: 58
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 27 of 31
+Plan: 28 of 31
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 61 execution started
 
@@ -115,6 +115,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P22 | 4min | 2 tasks | 4 files |
 | Phase 61 P26 | 7 min | 3 tasks | 2 files |
 | Phase 61 P25 | 9 min | 3 tasks | 7 files |
+| Phase 61 P27 | 7 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -322,6 +323,12 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: Both envelope branches share one band law (color ?? SELECTED_SPINE_COLOR at 0.14/0.07 fill, 3.5/1.5 edge, no strokeOpacity); ENVELOPE_FILL_OPACITY was deleted and handle dots are solid with only the connector translucent
 - [Phase 61]: The wireframe-only chrome suppression was deleted outright — bounds box and serial badge render for every non-lift entry, the wireframeOnly binding is gone, and comments cite §6 item 6
 - [Phase 61]: The width readout is a declared span with exactly the four BrushResponsePanel properties; both explanation strings are 600 and the italic red Mixed stays the only 400
+- [Phase 61]: 61-27: shouldExitPathEdit compares pathEditMutationId !== String(selectedMutationId) — the same string forms resolvePathEditGate.pressed uses — rather than coercing either id
+- [Phase 61]: 61-27: the lifecycle effect dependency is the render-body pathEditTargetMismatch boolean, so the effect stays marker-driven and no signal write enters a render body
+- [Phase 61]: 61-27: resolvePathEditGate was left target-blind — target awareness on the gate would permanently disable the Edit path button when no edit is open
+- [Phase 61]: 61-27: the settle and Anchor width refusals publish through setApplyMessage/setApplyStatus('error')/setLastError but never claim scriptApplyRefusalOwnedRef, so no surface swallows another's message
+- [Phase 61]: 61-27: publishRefusal is optional on StrokeSettingsDialogBundle, keeping the shipped silent fallback and the dialog engine-free
+- [Phase 61]: 61-27: three shipped pins were repointed, never deleted — the 61-13 Studio import marker and two dialog commit-call literals — preserving every behavioral assertion
 
 ### Pending Todos
 
@@ -414,8 +421,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T11:40:33.552Z
-Stopped at: Completed 61-25-PLAN.md
+Last session: 2026-11-11T11:51:10.704Z
+Stopped at: Completed 61-27-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
