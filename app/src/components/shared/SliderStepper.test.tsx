@@ -642,3 +642,105 @@ describe('slider-stepper — commitOnInput live commit (261105-sk3)', () => {
     expect(valueOf(third).props.value).toBe('24');
   });
 });
+
+/**
+ * quick 261111-tul — the gesture commit boundary.
+ *
+ * `onChange` is a continuous value stream; `onCommit` fires exactly once per
+ * gesture at its release boundary (typed blur/Enter, track pointerup/cancel,
+ * ± press end, keyboard activation) and carries the value the gesture reached
+ * — never the possibly-stale `value` prop. It fires even when that value
+ * equals `value`, and stays silent for Escape, disabled controls, preset ends
+ * and gestures that computed no value.
+ */
+describe('slider-stepper — onCommit gesture boundary (261111-tul)', () => {
+  function valueOf(tree: AnyVNode): AnyVNode {
+    const value = byClass(tree, 'slider-stepper-value');
+    expect(value, 'value readout').toBeDefined();
+    return value!;
+  }
+
+  it('a typed blur commits exactly once with the parsed value', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+
+    const element = { value: '21' };
+    valueOf(tree).props.onBlur({ currentTarget: element });
+
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(21);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(21);
+    expect(element.value).toBe('21');
+  });
+
+  it('Enter commits once and its blur adds nothing; a second gesture commits again', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const value = valueOf(tree);
+
+    const element = { value: '21', blur: vi.fn() };
+    value.props.onKeyDown({ key: 'Enter', currentTarget: element });
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(21);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(21);
+    expect(element.blur).toHaveBeenCalled();
+
+    // The blur Enter triggers still runs the shipped double parse — only the
+    // commit is deduped.
+    value.props.onBlur({ currentTarget: element });
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith(21);
+
+    // The suppression is consumed per gesture, never sticky.
+    value.props.onKeyDown({ key: 'Enter', currentTarget: element });
+    value.props.onBlur({ currentTarget: element });
+    expect(onCommit).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenCalledTimes(4);
+  });
+
+  it('Escape commits nothing — not even the blur it triggers', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const value = valueOf(tree);
+
+    const element = { value: '99', blur: vi.fn() };
+    value.props.onKeyDown({ key: 'Escape', currentTarget: element });
+    expect(element.value).toBe('13');
+
+    value.props.onBlur({ currentTarget: element });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('an unparseable entry commits the displayed value', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+
+    const element = { value: 'abc' };
+    valueOf(tree).props.onBlur({ currentTarget: element });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(13);
+    expect(element.value).toBe('13');
+  });
+
+  it('a typed value equal to the prop commits while onChange keeps its equality guard', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+
+    valueOf(tree).props.onBlur({ currentTarget: { value: '13' } });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(13);
+  });
+});

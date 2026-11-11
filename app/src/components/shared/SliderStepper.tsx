@@ -29,6 +29,19 @@ export interface SliderStepperProps {
   label: string;
   value: number;
   onChange: (value: number) => void;
+  /**
+   * quick 261111-tul: the gesture commit boundary. `onChange` stays a
+   * continuous value stream; `onCommit` fires exactly once per gesture at the
+   * release boundaries — track pointerup/pointercancel, typed Enter, typed
+   * blur, ± press end and keyboard activation — and carries the value the
+   * gesture actually reached, never the possibly-stale `value` prop. It fires
+   * even when the committed value equals `value` (Selection commits bind to
+   * the live brush, not to the selection), and never for Escape, a disabled
+   * control, a preset-list end, or a gesture that computed no value. With
+   * `onCommit` absent every existing emission, guard, coalescing bracket and
+   * rendered output stays byte-identical.
+   */
+  onCommit?: (value: number) => void;
   step?: number;
   presets?: readonly number[];
   resolveStep?: (value: number) => number;
@@ -265,6 +278,7 @@ export function SliderStepper({
   label,
   value,
   onChange,
+  onCommit,
   step = 1,
   presets,
   resolveStep,
@@ -295,6 +309,11 @@ export function SliderStepper({
   const repeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pressing = useRef(false);
   const dragging = useRef(false);
+  /** quick 261111-tul: the Enter/Escape marker. Enter already committed and
+   *  Escape must not commit, so the blur each one triggers consumes the marker
+   *  and stays silent. Cleared per gesture (onFocus resets it, and a blur
+   *  always consumes it), so it can never suppress a later gesture's commit. */
+  const suppressBlurCommit = useRef(false);
   /** quick 261105-sk3: the raw text while typing (null = not typing). The
    *  controlled `value` prop must never clamp or reformat a half-typed number,
    *  so the draft owns the box until blur/Enter/Escape clears it. Preact 11
@@ -449,15 +468,22 @@ export function SliderStepper({
     max: allowOutOfRangeEntry ? undefined : max,
   });
 
-  const commitInput = (element: HTMLInputElement) => {
+  /** Returns the value the typed commit reports (quick 261111-tul). An
+   *  unparseable entry reports the displayed/unchanged `value` — the box
+   *  reverts, so the commit reports what the box now shows. A parseable entry
+   *  reports the committed value even when it equals `value`: the equal-value
+   *  law belongs to `onCommit`, while `onChange` keeps its equality guard. */
+  const commitInput = (element: HTMLInputElement): number => {
     const next = commitStepperInput(element.value, commitOptions());
     if (next !== null) {
       if (next !== value || mixed) onChange(next);
       element.value = formatStepperValue(next, step, precision, presets);
-    } else {
-      element.value = display;
+      liveDraft.current = null;
+      return next;
     }
+    element.value = display;
     liveDraft.current = null;
+    return value;
   };
 
   /** quick 261105-sk3: the live commit. The raw text is stored FIRST so empty
@@ -515,21 +541,33 @@ export function SliderStepper({
           aria-describedby={ariaDescribedBy}
           data-testid="slider-stepper-value"
           onFocus={(event) => {
+            // A marker orphaned by a blur that never fired (e.g. the element
+            // left the document) must not swallow this gesture's commit.
+            suppressBlurCommit.current = false;
             startCoalescing();
             onFocus?.(event);
           }}
           onBlur={(event) => {
-            commitInput(event.currentTarget);
+            const committed = commitInput(event.currentTarget);
+            // Enter/Escape already settled this gesture: the blur they trigger
+            // consumes the marker instead of committing a second time.
+            const suppressed = suppressBlurCommit.current;
+            suppressBlurCommit.current = false;
+            if (onCommit && !suppressed) onCommit(committed);
             stopCoalescing();
             onBlur?.();
           }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
-              commitInput(event.currentTarget);
+              const committed = commitInput(event.currentTarget);
+              suppressBlurCommit.current = true;
+              if (onCommit) onCommit(committed);
               event.currentTarget.blur();
             } else if (event.key === 'Escape') {
               event.currentTarget.value = display;
               liveDraft.current = null;
+              // Escape is a refusal, never a commit — silence its blur too.
+              suppressBlurCommit.current = true;
               event.currentTarget.blur();
             }
           }}
