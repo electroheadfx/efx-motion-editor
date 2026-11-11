@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-26-PLAN.md
-last_updated: "2026-11-11T11:29:20.628Z"
+stopped_at: Completed 61-25-PLAN.md
+last_updated: "2026-11-11T11:40:34.774Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: d7540b0a658c6a119fa4f880fbb6897319b2ae20
+state_head: ef6f913ecd2dcc7023d02eff7b0b8c91744149e1
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 62
-  completed_plans: 56
+  completed_plans: 57
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 26 of 31
+Plan: 27 of 31
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 61 execution started
 
@@ -114,6 +114,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P24 | 8 min | 2 tasks | 8 files |
 | Phase 61 P22 | 4min | 2 tasks | 4 files |
 | Phase 61 P26 | 7 min | 3 tasks | 2 files |
+| Phase 61 P25 | 9 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -316,6 +317,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: The path-edit failure capsule ternaries on the consumed restore result (restoreAquarelleEditSnapshot !== null), keeping the apply error ahead of it — a refused rollback can no longer claim a restore
 - [Phase 61]: The WR-03 draw site consumes the bake boolean through .then((baked) => { if (!baked) setDraftPixelsDirty(true); }): a refused in-flight bake arms the ONE stale-sheet invariant and publishes no capsule
 - [Phase 61]: Four shipped Studio pins were repointed, never deleted, at the mandated consuming forms (three restore markers + the stroke-end TAIL), preserving every ordering assertion and strengthening the TAIL with the vector-guard and stale-arm pins
+- [Phase 61]: The pen tooltip is the Copywriting Contract string verbatim in a module-scope VECTOR_PEN_TOOLTIP constant — the phase's only draw-law teaching surface cannot drift inline again
+- [Phase 61]: Under wireframe the Picker is disarmed, not disabled: the wireframe term left disabled={railDisabled}, the shipped title stays, and every depositing control keeps its deactivation reason
+- [Phase 61]: Both envelope branches share one band law (color ?? SELECTED_SPINE_COLOR at 0.14/0.07 fill, 3.5/1.5 edge, no strokeOpacity); ENVELOPE_FILL_OPACITY was deleted and handle dots are solid with only the connector translucent
+- [Phase 61]: The wireframe-only chrome suppression was deleted outright — bounds box and serial badge render for every non-lift entry, the wireframeOnly binding is gone, and comments cite §6 item 6
+- [Phase 61]: The width readout is a declared span with exactly the four BrushResponsePanel properties; both explanation strings are 600 and the italic red Mixed stays the only 400
 
 ### Pending Todos
 
@@ -408,8 +414,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T11:29:19.355Z
-Stopped at: Completed 61-26-PLAN.md
+Last session: 2026-11-11T11:40:33.552Z
+Stopped at: Completed 61-25-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
