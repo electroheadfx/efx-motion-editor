@@ -10,7 +10,10 @@
  * Assertion style: scalar predicates. Render tests materialize the
  * vnode tree (no DOM environment).
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   BrushesDocker,
   setBrushesDockerSearch,
@@ -18,7 +21,21 @@ import {
   setBrushesDockerImportFailure,
   resetBrushesDockerUi,
 } from './BrushesDocker';
-import { selectAquarelleTip, aquarelleSelectedTipId } from './aquarelleRecordState';
+import {
+  selectAquarelleTip,
+  aquarelleSelectedTipId,
+  aquarelleToolOverrides,
+  recordAquarelleStroke,
+} from './aquarelleRecordState';
+import {
+  setAquarelleSelectMode,
+  setAquarelleSelectionEditPort,
+} from './aquarelleStrokeSelection';
+import {
+  clearScriptStrokeSelection,
+  setScriptStrokeSelection,
+} from './scriptStrokeEdition';
+import type { ScriptStrokeAppearancePatch } from './strokeSettingsModel';
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -223,3 +240,69 @@ describe('BrushesDocker partial (AQUA-03)', () => {
     expect(textContent(tree)).toContain('Missing brush — wc/gone-tip');
   });
 });
+
+// quick 261111-ucf — docker rows are pick surfaces: a row pick keeps
+// the armed selection and commits the picked id + the post-pick bag
+// through the paint-control seam. Id band 10661+.
+describe('quick 261111-ucf docker row picks commit through the seam', () => {
+  afterEach(() => {
+    setAquarelleSelectionEditPort(null);
+    setAquarelleSelectMode(false);
+    clearScriptStrokeSelection();
+  });
+
+  it('a row pick keeps the armed selection and commits the picked id + live bag', () => {
+    recordAquarelleStroke(10661, stroke10661([point10661(0.4, 0.5)]));
+    const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
+    const promise = Promise.resolve(true);
+    setAquarelleSelectionEditPort({
+      applyAppearance: (ids, patch) => {
+        calls.push({ ids, patch });
+        return promise;
+      },
+    });
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([10661]);
+
+    const tree = renderDocker();
+    const row = [...walk(tree)].find(
+      (n) => n.props?.['data-testid'] === 'brush-row-wc/round-medium',
+    );
+    expect(row, 'round-medium row must render').toBeTruthy();
+    (row!.props as { onClick?: () => void }).onClick!();
+
+    expect(aquarelleSelectedTipId.value, 'the live tip changed').toBe('wc/round-medium');
+    expect(calls, 'exactly one port call').toHaveLength(1);
+    expect(calls[0]!.patch.brushId).toBe('wc/round-medium');
+    expect(calls[0]!.patch.toolOverrides).toEqual(aquarelleToolOverrides.peek());
+  });
+
+  it('source pin: the row and the import-success site are the two pick calls', () => {
+    const source = stripComments(
+      readFileSync(resolve(__dirname, 'BrushesDocker.tsx'), 'utf8'),
+    );
+    expect(source.split('pickAquarelleBrush(').length - 1, 'row + import success').toBe(2);
+    const imports = source.match(/from '\.\/aquarellePaintControls'/g) ?? [];
+    expect(imports, 'one paint-controls import').toHaveLength(1);
+  });
+});
+
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+}
+
+function point10661(x: number, y: number): AquarellePoint {
+  return { x, y, p: 1, tx: 0, ty: 0, tw: 0 };
+}
+
+function stroke10661(points: readonly AquarellePoint[]): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#103c65',
+    params: { size: 12 },
+    brushId: 'round',
+    points,
+    timestamp: 0,
+    playFrame: 801,
+  };
+}

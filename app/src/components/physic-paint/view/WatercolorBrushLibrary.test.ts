@@ -19,17 +19,26 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BRUSH_PRESETS, buildBrush } from '@efxlab/efx-watercolor';
 import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
+import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleActiveTool,
   aquarelleSelectedTipId,
   aquarelleToolOverrides,
+  recordAquarelleStroke,
   selectAquarelleTip,
   setAquarelleTool,
 } from './aquarelleRecordState';
 import {
   aquarelleSelectMode,
   setAquarelleSelectMode,
+  setAquarelleSelectionEditPort,
 } from './aquarelleStrokeSelection';
+import {
+  clearScriptStrokeSelection,
+  scriptSelectedStrokeIds,
+  setScriptStrokeSelection,
+} from './scriptStrokeEdition';
+import type { ScriptStrokeAppearancePatch } from './strokeSettingsModel';
 import {
   STROKE_THUMB_HEIGHT,
   STROKE_THUMB_WIDTH,
@@ -592,3 +601,66 @@ describe('blitStrokeThumb is DPR-aware (261029-uoz)', () => {
     });
   });
 });
+
+// quick 261111-ucf — a library card is a pick surface. An ARMED
+// selection survives the pick (the pick is about to edit it);
+// an unarmed Edit mode still disarms exactly as the WR-03 test
+// above pins. Id band 10651+.
+describe('quick 261111-ucf library card picks edit the armed selection', () => {
+  beforeEach(() => {
+    originalDocument = globalThis.document;
+    resetSelection();
+  });
+
+  afterEach(() => {
+    Object.assign(globalThis, { document: originalDocument });
+    setAquarelleSelectionEditPort(null);
+    setAquarelleSelectMode(false);
+    clearScriptStrokeSelection();
+  });
+
+  it('keeps Select mode and the selection, then commits the picked id + live bag', () => {
+    recordAquarelleStroke(10651, stroke10651([point10651(0.2, 0.5)]));
+    const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
+    const promise = Promise.resolve(true);
+    setAquarelleSelectionEditPort({
+      applyAppearance: (ids, patch) => {
+        calls.push({ ids, patch });
+        return promise;
+      },
+    });
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([10651]);
+
+    const tree = renderLibrary();
+    const card = cardNodes(tree).find(
+      (c) => c.props?.['data-testid'] === 'watercolor-brush-card-round',
+    );
+    expect(card, 'round card must render').toBeTruthy();
+    (card!.props as { onClick?: () => void }).onClick!();
+
+    expect(aquarelleSelectMode.value, 'armed selection survives the pick').toBe(true);
+    expect([...scriptSelectedStrokeIds.peek()], 'selection survives the pick').toEqual([10651]);
+    expect(aquarelleSelectedTipId.value, 'the live tip changed').toBe('round');
+    expect(calls, 'exactly one port call').toHaveLength(1);
+    expect(calls[0]!.ids).toEqual([10651]);
+    expect(calls[0]!.patch.brushId).toBe('round');
+    expect(calls[0]!.patch.toolOverrides).toEqual(aquarelleToolOverrides.peek());
+  });
+});
+
+function point10651(x: number, y: number): AquarellePoint {
+  return { x, y, p: 1, tx: 0, ty: 0, tw: 0 };
+}
+
+function stroke10651(points: readonly AquarellePoint[]): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#103c65',
+    params: { size: 12 },
+    brushId: 'round',
+    points,
+    timestamp: 0,
+    playFrame: 801,
+  };
+}
