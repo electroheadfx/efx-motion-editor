@@ -1,0 +1,38 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ✓ src/components/physic-paint/view/g17-probe.test.ts (1 test) 3ms
+stdout | src/components/physic-paint/view/g17-probe.test.ts > G-17 probe > observes probes 1, 2 and 4
+=== PROBE 1: updateAquarellePathInScript write ===
+write returned: 1
+pre-edit stored points length: 302
+post-write stored points length: 302
+sampleVectorPath(NEXT).points length: 304
+stored[0]: {"x":0.2,"y":0.5,"p":1,"tx":0,"ty":0,"tw":0}
+sampled[0]: {"x":0.2,"y":0.6,"p":1,"tx":0,"ty":0,"tw":0}
+stored[last]: {"x":0.8,"y":0.5,"p":1,"tx":0,"ty":0,"tw":0}
+sampled[last]: {"x":0.8,"y":0.58,"p":1,"tx":0,"ty":0,"tw":0}
+stored points EQUAL pre-edit points: true
+stored points EQUAL sampled NEXT spine: false
+stored anchors[1]: {"x":0.5,"y":0.62,"kind":"auto"}
+revision delta from the direct write: 1
+=== PROBE 2: getAquarelleEventsForFrame entry ===
+events on frame: 1
+entry pts length: 302
+entry pts[0]: {"x":0.2,"y":0.5,"p":1,"tx":0,"ty":0,"tw":0,"tick":0}
+entry engine.anchors[1]: {"x":0.5,"y":0.62,"kind":"auto"}
+entry pts EQUAL sampled NEXT spine: false
+entry pts EQUAL pre-edit points: false
+entry halves agree (pts[0].y == anchors[0].y): false
+=== PROBE 4: beginAquarellePathEdit (the selection wrapper) ===
+returned edit id: 1
+edit id is non-null: true
+revision delta: 1
+stored anchors[1].y after wrapper edit: 0.64
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  13:01:46
+   Duration  523ms (transform 200ms, setup 0ms, collect 334ms, tests 3ms, environment 0ms, prepare 28ms)
+

@@ -1,0 +1,41 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts (7 tests | 2 failed) 6ms
+   × 61-29 G-17 — the path write carries the replay geometry > re-samples the recorded points from the new anchors so every replay paints the new curve 2ms
+     → expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13
+   × 61-29 G-17 — the path write carries the replay geometry > keeps the payload entry’s pts and engine.anchors on the same path 0ms
+     → expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/view/aquarelleRecordState.path.test.ts > 61-29 G-17 — the path write carries the replay geometry > re-samples the recorded points from the new anchors so every replay paints the new curve
+AssertionError: expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts:356:32
+    354|     // `points` into the replay's `pts`, so these points ARE what Shif…
+    355|     expect(after.points[0]!.x).toBeCloseTo(expected[0]!.x, 12);
+    356|     expect(after.points[0]!.y).toBeCloseTo(expected[0]!.y, 12);
+       |                                ^
+    357|     expect(after.points[150]!.y).toBeCloseTo(expected[150]!.y, 12);
+    358|     expect(after.points[301]!.y).toBeCloseTo(expected[301]!.y, 12);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/components/physic-paint/view/aquarelleRecordState.path.test.ts > 61-29 G-17 — the path write carries the replay geometry > keeps the payload entry’s pts and engine.anchors on the same path
+AssertionError: expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts:377:29
+    375|     // ... but the replay's pts MUST agree with it.
+    376|     expect(entry.pts[0]!.x).toBeCloseTo(expected[0]!.x, 12);
+    377|     expect(entry.pts[0]!.y).toBeCloseTo(expected[0]!.y, 12);
+       |                             ^
+    378|     expect(entry.pts[150]!.y).toBeCloseTo(expected[150]!.y, 12);
+    379|     expect(entry.pts[301]!.y).toBeCloseTo(expected[301]!.y, 12);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 5 passed (7)
+   Start at  13:03:28
+   Duration  401ms (transform 107ms, setup 0ms, collect 209ms, tests 6ms, environment 0ms, prepare 28ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-29-t1/junit.xml

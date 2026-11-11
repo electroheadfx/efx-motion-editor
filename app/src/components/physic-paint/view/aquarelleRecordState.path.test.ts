@@ -12,6 +12,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  sampleVectorPath,
   toStudioStroke as aquarelleToStudioStroke,
   type AquarelleAnchor,
   type AquarellePayloadEvent,
@@ -111,6 +112,51 @@ const SCALE_2: AquarelleStrokeTransform = {
   scaleX: 2,
   scaleY: 2,
 };
+
+// ============================================================
+//  61-29 G-17 — a committed path edit must reach the rendered
+//  paint. `toStudioStroke` projects `points` into the replay's
+//  `pts`, so the recorded points ARE the geometry every replay
+//  deposits; a write that replaces `anchors` but keeps the old
+//  points leaves the entry's two halves disagreeing and a forced
+//  Shift+R reproduces the PRE-edit curve.
+//
+//  The two paths below sample to different spines (302 vs 304
+//  stations) so a stale array is distinguishable by BOTH its
+//  coordinates and its length.
+// ============================================================
+
+const G17_PRE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.2, y: 0.5, kind: 'auto' },
+  { x: 0.5, y: 0.5, kind: 'auto' },
+  { x: 0.8, y: 0.5, kind: 'auto' },
+];
+
+const G17_NEXT_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.2, y: 0.6, kind: 'auto' },
+  { x: 0.5, y: 0.62, kind: 'auto' },
+  { x: 0.8, y: 0.58, kind: 'auto' },
+];
+
+/** The exact six-field shape `buildVectorStroke` stamps onto a fresh commit. */
+function sampledSpinePoints(anchors: readonly AquarelleAnchor[]): readonly AquarellePoint[] {
+  return sampleVectorPath(anchors).points.map((p) => ({
+    x: p.x,
+    y: p.y,
+    p: 1,
+    tx: 0,
+    ty: 0,
+    tw: 0,
+  }));
+}
+
+/** A recorded vector stroke whose `points` are the spine sampled from its anchors. */
+function g17VectorStroke(mutationId: number): AquarelleStroke {
+  return {
+    ...stroke(mutationId, sampledSpinePoints(G17_PRE_ANCHORS), G17_PRE_ANCHORS),
+    renderMode: 'vector',
+  };
+}
 
 describe('61-10 aquarelle whole-stroke moves carry the vector path', () => {
   beforeEach(() => {
@@ -280,5 +326,67 @@ describe('61-10 aquarelle whole-stroke moves carry the vector path', () => {
     // ... while the hand-painted one gained no key.
     expect('anchors' in timelineStrokeAt(plainIndex).engine).toBe(false);
     expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+  });
+});
+
+describe('61-29 G-17 — the path write carries the replay geometry', () => {
+  beforeEach(() => {
+    resetAquarelleRecordState();
+  });
+
+  it('re-samples the recorded points from the new anchors so every replay paints the new curve', () => {
+    const id = 61801;
+    recordAquarelleStroke(id, g17VectorStroke(id));
+    const before = getRecordedAquarelleStroke(id)!;
+    // The pre-edit spine is the horizontal path: 302 stations, all y = 0.5.
+    expect(before.points).toHaveLength(302);
+    expect(before.points[0]!.y).toBe(0.5);
+    const revision = aquarelleStrokesRevision.value;
+    const expected = sampledSpinePoints(G17_NEXT_ANCHORS);
+
+    expect(updateAquarellePathInScript(id, G17_NEXT_ANCHORS)).toBe(1);
+
+    const after = getRecordedAquarelleStroke(id)!;
+    // The anchors moved — this half already worked at HEAD ...
+    expectAnchor(after.anchors![1], { x: 0.5, y: 0.62, kind: 'auto' });
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+    // ... and the stored spine MUST move with them: `toStudioStroke` projects
+    // `points` into the replay's `pts`, so these points ARE what Shift+R paints.
+    expect(after.points[0]!.x).toBeCloseTo(expected[0]!.x, 12);
+    expect(after.points[0]!.y).toBeCloseTo(expected[0]!.y, 12);
+    expect(after.points[150]!.y).toBeCloseTo(expected[150]!.y, 12);
+    expect(after.points[301]!.y).toBeCloseTo(expected[301]!.y, 12);
+    expect(after.points).toHaveLength(expected.length);
+    expect(after.points).not.toEqual(before.points);
+  });
+
+  it('keeps the payload entry’s pts and engine.anchors on the same path', () => {
+    const id = 61803;
+    recordAquarelleStroke(id, g17VectorStroke(id));
+    const index = getRecordedAquarellePayloadTimeline().length - 1;
+    const expected = sampledSpinePoints(G17_NEXT_ANCHORS);
+
+    expect(updateAquarellePathInScript(id, G17_NEXT_ANCHORS)).toBe(1);
+
+    const entry = timelineStrokeAt(index);
+    const strokeAfter = getRecordedAquarelleStroke(id)!;
+    // The opaque copy already moved at HEAD ...
+    expect(entry.engine.anchors).toEqual(strokeAfter.anchors);
+    // ... but the replay's pts MUST agree with it.
+    expect(entry.pts[0]!.x).toBeCloseTo(expected[0]!.x, 12);
+    expect(entry.pts[0]!.y).toBeCloseTo(expected[0]!.y, 12);
+    expect(entry.pts[150]!.y).toBeCloseTo(expected[150]!.y, 12);
+    expect(entry.pts[301]!.y).toBeCloseTo(expected[301]!.y, 12);
+    expect(entry.pts).toHaveLength(expected.length);
+    expect(entry.pts[0]!.y).toBeCloseTo(entry.engine.anchors![0]!.y, 12);
+    // The projection keeps the sample fields and re-ticks the new spine.
+    for (const sampleIndex of [0, 150, 301]) {
+      const sample = entry.pts[sampleIndex]!;
+      expect(sample.p).toBe(1);
+      expect(sample.tx).toBe(0);
+      expect(sample.ty).toBe(0);
+      expect(sample.tw).toBe(0);
+      expect(sample.tick).toBe(sampleIndex);
+    }
   });
 });
