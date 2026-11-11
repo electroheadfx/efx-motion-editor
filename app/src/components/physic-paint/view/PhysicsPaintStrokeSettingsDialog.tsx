@@ -297,7 +297,7 @@ const MIXED_CAPTION_STYLE: CSSProperties = {
   color: '#ef4444',
 };
 
-/** 61-11 (E4 empty): the Anchor width block's quiet caption under the row. */
+/** 61-11 (E4 empty): the vertex-size block's quiet caption under the row. */
 const ANCHOR_WIDTH_CAPTION_STYLE: CSSProperties = {
   display: 'block',
   marginTop: '4px',
@@ -1654,7 +1654,7 @@ export function PhysicsPaintStrokeSettingsDialog({
   );
 }
 
-/** 61-22 (G-11): the ONE Anchor width control's inputs. */
+/** 61-22 (G-11): the ONE Vertex size control's inputs. */
 interface AnchorWidthControlProps {
   readonly bundle: StrokeSettingsDialogBundle;
   readonly ids: readonly number[];
@@ -1664,7 +1664,7 @@ interface AnchorWidthControlProps {
 }
 
 /**
- * 61-22 (G-11): the shipped Anchor width block, extracted so the DEFAULT list
+ * 61-22 (G-11): the shipped Vertex size block, extracted so the DEFAULT list
  * view and the Geometry section mount the SAME control. The D-09 law is
  * untouched: the value is a MULTIPLIER of the stroke's Size, the band stays
  * 0.2..2.0, and the commit stays `bundle.applyAnchorWidths`.
@@ -1680,8 +1680,8 @@ function AnchorWidthControl(props: AnchorWidthControlProps) {
   return (
     <div data-testid="stroke-settings-anchor-width">
       <SliderStepper
-        label="Anchor width"
-        ariaLabel="Anchor width"
+        label="Vertex size"
+        ariaLabel="Vertex size"
         value={anchorWidthEmpty
           ? AQUARELLE_ANCHOR_WIDTH_DEFAULT
           : anchorWidthReading.value}
@@ -1728,7 +1728,7 @@ function AnchorWidthControl(props: AnchorWidthControlProps) {
         >
           {anchorWidthTarget === null
             ? ANCHOR_WIDTH_NO_EDIT_REASON
-            : 'Select anchors on the canvas to set their width.'}
+            : 'Select anchors on the canvas to set their size.'}
         </span>
       ) : null}
     </div>

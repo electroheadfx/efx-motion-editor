@@ -922,18 +922,18 @@ export const ANCHOR_WIDTH_EMPTY_READING: AnchorWidthReading = {
   count: 0,
 };
 
-/** 61-19 (G-5): why the Anchor width control is inert when no path edit is open. */
+/** 61-19 (G-5): why the Vertex size control is inert when no path edit is open. */
 export const ANCHOR_WIDTH_NO_EDIT_REASON =
-  'Open Edit path on this stroke to set anchor widths.';
+  'Open Edit path on this stroke to set vertex sizes.';
 
 /**
- * 61-27 (IN-03): the ONE reason a refused Anchor width commit publishes. The
+ * 61-27 (IN-03): the ONE reason a refused Vertex size commit publishes. The
  * commit's boolean used to be discarded, so a refusal (wrong target, missing
  * stroke, in-flight lock) looked exactly like a success — the knob snapped back
  * with no explanation. Fixed and non-interpolated: the same line for every
  * refusal path.
  */
-export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Anchor width not applied — the path edit is no longer open on this stroke.';
+export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Vertex size not applied — the path edit is no longer open on this stroke.';
 
 /**
  * The Paint row's reading. `value` is the FIRST selected anchor's factor (the

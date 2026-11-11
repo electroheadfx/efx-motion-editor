@@ -31,6 +31,7 @@ import {
   clampAnchorWidth,
   evaluateAquarellePath,
   isUniformWidthProfile,
+  normaliseAnchorColor,
   normaliseVectorAnchors,
   recordedCurveModeField,
   resolveAnchorHandles,
@@ -578,6 +579,42 @@ export function buildAnchorWidthCommit(
     if (!targets.has(index)) return anchor;
     return width === ANCHOR_WIDTH_DEFAULT ? withoutWidth(anchor) : { ...withoutWidth(anchor), width };
   });
+}
+
+// --- The colour commit (261111-wd6) ---------------------------------------
+
+/**
+ * The pure half of a per-vertex colour commit: write the CANONICAL colour on
+ * every listed anchor in one pass and leave every other anchor reference-
+ * identical. Returns null — never a no-op list — when the package normaliser
+ * refuses the colour, when the selection is empty, or when the selection
+ * names no existing anchor; the caller then falls through to the shipped
+ * stroke-level commit.
+ *
+ * Unlike width there is NO default elision: an explicit colour is stored even
+ * when it equals the stroke colour (explicit wins over inherit). The caller
+ * drives the result through ONE edit wrapper (VEC-07).
+ */
+export function buildAnchorColorCommit(
+  anchors: readonly VectorAnchor[],
+  indices: readonly number[],
+  color: string,
+): readonly VectorAnchor[] | null {
+  const next = normaliseAnchorColor(color);
+  if (next === undefined) return null;
+  const targets = new Set(normaliseAnchorSelection(indices));
+  if (targets.size === 0) return null;
+  let namesAnchor = false;
+  for (const index of targets) {
+    if (index < anchors.length) {
+      namesAnchor = true;
+      break;
+    }
+  }
+  if (!namesAnchor) return null;
+  return anchors.map((anchor, index) =>
+    targets.has(index) ? { ...anchor, color: next } : anchor,
+  );
 }
 
 // --- The commit's stroke half --------------------------------------------

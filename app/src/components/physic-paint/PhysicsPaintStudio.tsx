@@ -111,7 +111,7 @@ import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import * as vectorPathSession from './view/vectorPathSession';
-import { buildAnchorWidthCommit } from './view/vectorPathHandles';
+import { buildAnchorColorCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
@@ -810,6 +810,12 @@ export function PhysicsPaintStudio() {
   // pointing at the latest one. The brush path calls its adapter directly.
   const aquarelleAppearanceCommitRef = useRef<
     ((ids: readonly number[], patch: ScriptStrokeAppearancePatch) => Promise<boolean>) | null
+  >(null);
+  // 261111-wd6: the Color tab's per-vertex branch writes through the ONE
+  // path-edit commit, which is declared later in the body (TDZ) — the same
+  // render-body ref convention as `aquarelleAppearanceCommitRef`.
+  const aquarellePathEditCommitRef = useRef<
+    ((mutationId: number, anchors: readonly AquarelleAnchor[]) => Promise<number | null>) | null
   >(null);
   // 261031-cf9: the Rebake handler is declared above the history hook it must
   // record through (TDZ), so the ledger recorder travels by ref (the same
@@ -7457,6 +7463,29 @@ export function PhysicsPaintStudio() {
     const ids = [...scriptSelectedStrokeIds.peek()];
     if (ids.length === 0) return;
     if (!aquarelleSelectMode.peek()) return;
+    // 261111-wd6: with anchors selected on the OPEN path edit, the Color tab
+    // writes the explicit per-vertex colour through the ONE path-edit commit
+    // — one undo entry and one re-bake, never one per anchor. No anchor
+    // selection (or no open edit, or a refused colour) keeps the shipped
+    // stroke-level commit below unchanged.
+    const anchorSelection = vectorPathSession.vectorAnchorSelection.peek();
+    if (anchorSelection.length > 0) {
+      const target = resolveAnchorWidthTarget({
+        ids,
+        pathEditMutationId: vectorPathSession.pathEditMutationId.peek(),
+      });
+      if (target !== null) {
+        const stroke = getRecordedAquarelleStroke(target);
+        const anchors = stroke ? normaliseAquarelleAnchors(stroke.anchors) : undefined;
+        if (anchors !== undefined) {
+          const next = buildAnchorColorCommit(anchors, anchorSelection, color);
+          if (next !== null) {
+            void aquarellePathEditCommitRef.current?.(target, next);
+            return;
+          }
+        }
+      }
+    }
     void aquarelleAppearanceCommitRef.current?.(ids, { color });
   }, []);
   const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, selectedKeyRailInspector, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleOpenRotoKeyRailCycleEdit, handleCloseRotoKeyRail, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
@@ -10286,6 +10315,9 @@ export function PhysicsPaintStudio() {
     setApplyStatus,
     clearOwnedScriptApplyRefusal,
   ]);
+  // 261111-wd6: the Color tab's anchor branch reaches this commit by ref
+  // (the handler that uses it is declared earlier in the body).
+  aquarellePathEditCommitRef.current = commitAquarelleVectorPathEdit;
 
   // 61-10 (VEC-02 / T-61-34): the ONE path-edit seam. The overlay hands the
   // full next anchor list; this handler is the only writer. A missing stroke or
