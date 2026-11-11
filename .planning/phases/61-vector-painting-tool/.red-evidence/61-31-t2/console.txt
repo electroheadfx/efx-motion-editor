@@ -1,0 +1,207 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts (49 tests | 4 failed) 11ms
+   × 61-31 Curve row (G-20) > mounts the Curve block only when a vector stroke is selected and the bundle can commit 3ms
+     → expected +0 to be 1 // Object.is equality
+   × 61-31 Curve row (G-20) > renders one button per model option, lit only for the agreed mode 0ms
+     → missing start marker: data-testid="stroke-settings-curve-mode-block": expected -1 to be greater than -1
+   × 61-31 Curve row (G-20) > renders the shipped Mixed caption when the vector strokes disagree 0ms
+     → missing start marker: data-testid="stroke-settings-curve-mode-block": expected -1 to be greater than -1
+   × 61-31 Curve row (G-20) > calls the bundle once for the other mode and never for the active one 0ms
+     → missing start marker: data-testid="stroke-settings-curve-mode-block": expected -1 to be greater than -1
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts (406 tests | 2 failed) 130ms
+   × 61-31 Curve mode bundle wiring in the Studio > hydrates curveMode and the vector flag, and exposes applyCurveMode 12ms
+     → expected 'const bundle: StrokeSettingsDialogBun…' to contain '...(stroke.curveMode === undefined ? …'
+   × 61-31 Curve mode bundle wiring in the Studio > shares the render-mode handler law: guards, Draft branch, ONE wrapper call per batch 1ms
+     → missing start marker: const handleAquarelleCurveModeStrokes = useCallback(async (: expected -1 to be greater than -1
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-31 Curve mode bundle wiring in the Studio > hydrates curveMode and the vector flag, and exposes applyCurveMode
+AssertionError: expected 'const bundle: StrokeSettingsDialogBun…' to contain '...(stroke.curveMode === undefined ? …'
+
+- Expected
++ Received
+
+- ...(stroke.curveMode === undefined ? {} : { curveMode: stroke.curveMode }),
++ const bundle: StrokeSettingsDialogBundle = {
++         module: 'watercolor',
++         // Water color's edition surface is Select mode, never a Move tool.
++         brushMoveActive: false,
++         playFrame,
++         canvasSize,
++         listStrokes: (frame, size) => listSelectableAquarelleStrokes(frame, size),
++         // 61-12 (VEC-04 / D-12): the appearance hydration plus the recorded
++         // stroke's render discriminator. An absent field stays absent, so the
++         // dialog's reading applies the watercolor default rather than treating
++         // a hand-painted stroke as a third state.
++         readAppearance: (ids, frame) => readAquarelleStrokeAppearance(ids, frame).map((appearance) => {
++           const stroke = getRecordedAquarelleStroke(appearance.mutationId);
++           return stroke?.renderMode === undefined
++             ? appearance
++             : { ...appearance, renderMode: stroke.renderMode };
++         }),
++         applyAppearance: (ids, patch: ScriptStrokeAppearancePatch) =>
++           handleAquarelleAppearanceStrokes(ids, patch),
++         // 61-12 (VEC-04 / T-61-41): the Render row's ONE commit seam. The whole
++         // selection — vector or hand-painted — is written by one
++         // `beginAquarelleRenderModeEdit`, so the batch is one undo entry.
++         applyRenderMode: (ids, mode) => handleAquarelleRenderModeStrokes(ids, mode),
++         moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
++         transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
++         // 61-11 (VEC-02 / VEC-03): the vector gate and the Anchor width
++         // reading's ONE read seam. The dialog never touches the record store —
++         // a single non-vector selection (or a malformed path) resolves null,
++         // which is exactly what disables the entrance.
++         readVectorAnchors: (ids) => {
++           if (ids.length !== 1) return null;
++           const stroke = getRecordedAquarelleStroke(ids[0]!);
++           if (!stroke) return null;
++           return normaliseAquarelleAnchors(stroke.anchors) ?? null;
++         },
++         // 61-11 (VEC-03 / T-61-38) + 61-19 (G-5): the Anchor width commit. The
++         // target comes from the OPEN path edit — never `ids[0]` — because the
++         // anchor indices belong to that edit; a mismatch or absent edit refuses.
++         // The write routes through the shared path-edit commit so a multi-anchor
++         // change is ONE undo entry and ONE re-bake — never one per anchor.
++         applyAnchorWidths: (ids, value) => {
++           const target = resolveAnchorWidthTarget({
++             ids,
++             pathEditMutationId: vectorPathSession.pathEditMutationId.peek(),
++           });
++           if (target === null) return false;
++           const stroke = getRecordedAquarelleStroke(target);
++           if (!stroke) return false;
++           const anchors = normaliseAquarelleAnchors(stroke.anchors);
++           if (!anchors) return false;
++           const next = buildAnchorWidthCommit(
++             anchors,
++             vectorPathSession.vectorAnchorSelection.peek(),
++             value,
++           );
++           return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);
++         },
++         // 61-27 (IN-03): the sheet's ONE refusal channel. A commit the open
++         // path edit's target check declined publishes its reason through the
++         // shared capsule, so the knob snap-back is explained. It claims NO
++         // ownership — that flag belongs to the script-apply surface, and
++         // claiming it here would swallow that surface's own message.
++         publishRefusal: (message) => {
++           setApplyMessage(message);
++           setApplyStatus('error');
++           setLastError(message);
++         },
++         reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
++         // 261101-jmm: the sheet's row/global trash uses the SAME handler as
++         // Backspace/Delete — one undoable edit, one re-bake, the frame guards
++         // intact. The dialog never touches the engine.
++         deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),
++         // 261029-eur UAT: close LEAVES the surface — the same result as
++         // releasing Cmd or toggling the rail Select off, so painting resumes
++         // with the paint tool that was active. `keepOpenOnEmpty` only keeps the
++         // sheet up while the surface IS active (an empty filtered set).
++         closeMoveMode: () => {
++           if (aquarelleSelectMode.peek()) toggleAquarelleSelectMode();
++         },
++         keepOpenOnEmpty: true,
++         // 261101-o2m: the strip's Draft switch. ON awaits the pre-edit base
++         // arming; OFF routes through the ONE recompute (never a raw write).
++         settleDraft: () => settleDraftScript(),
++         armDraft: () => armDraftBase(),
++       };
++       
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7302:20
+    7300|     const bundle = bundleRegion();
+    7301|     // Same sparse-field contract as renderMode: an absent key stays a…
+    7302|     expect(bundle).toContain('...(stroke.curveMode === undefined ? {} …
+       |                    ^
+    7303|     // Vector-ness is the presence of an anchor list — never a second …
+    7304|     expect(bundle).toContain('vector: stroke.anchors !== undefined,');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-31 Curve mode bundle wiring in the Studio > shares the render-mode handler law: guards, Draft branch, ONE wrapper call per batch
+AssertionError: missing start marker: const handleAquarelleCurveModeStrokes = useCallback(async (: expected -1 to be greater than -1
+ ❯ curveHandlerRegion src/components/physic-paint/PhysicsPaintStudio.test.ts:7293:61
+    7291|   function curveHandlerRegion(): string {
+    7292|     const start = studio.indexOf(HANDLER_START);
+    7293|     expect(start, `missing start marker: ${HANDLER_START}`).toBeGreate…
+       |                                                             ^
+    7294|     const end = studio.indexOf(HANDLER_END, start + HANDLER_START.leng…
+    7295|     expect(end, `missing end marker: ${HANDLER_END}`).toBeGreaterThan(…
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7319:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts > 61-31 Curve row (G-20) > mounts the Curve block only when a vector stroke is selected and the bundle can commit
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:545:48
+    543| 
+    544|   it('mounts the Curve block only when a vector stroke is selected and…
+    545|     expect(countOf(dialogSource, BLOCK_START)).toBe(1);
+       |                                                ^
+    546|     expect(countOf(dialogSource, GROUP)).toBe(1);
+    547|     // The reading is a render-body projection of the hydrated appeara…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts > 61-31 Curve row (G-20) > renders one button per model option, lit only for the agreed mode
+AssertionError: missing start marker: data-testid="stroke-settings-curve-mode-block": expected -1 to be greater than -1
+ ❯ regionOf src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:49:57
+     47| function regionOf(source: string, startMarker: string, endMarker: stri…
+     48|   const start = source.indexOf(startMarker);
+     49|   expect(start, `missing start marker: ${startMarker}`).toBeGreaterTha…
+       |                                                         ^
+     50|   const end = source.indexOf(endMarker, start + startMarker.length);
+     51|   expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(star…
+ ❯ curveBlock src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:541:12
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:563:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts > 61-31 Curve row (G-20) > renders the shipped Mixed caption when the vector strokes disagree
+AssertionError: missing start marker: data-testid="stroke-settings-curve-mode-block": expected -1 to be greater than -1
+ ❯ regionOf src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:49:57
+     47| function regionOf(source: string, startMarker: string, endMarker: stri…
+     48|   const start = source.indexOf(startMarker);
+     49|   expect(start, `missing start marker: ${startMarker}`).toBeGreaterTha…
+       |                                                         ^
+     50|   const end = source.indexOf(endMarker, start + startMarker.length);
+     51|   expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(star…
+ ❯ curveBlock src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:541:12
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:579:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts > 61-31 Curve row (G-20) > calls the bundle once for the other mode and never for the active one
+AssertionError: missing start marker: data-testid="stroke-settings-curve-mode-block": expected -1 to be greater than -1
+ ❯ regionOf src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:49:57
+     47| function regionOf(source: string, startMarker: string, endMarker: stri…
+     48|   const start = source.indexOf(startMarker);
+     49|   expect(start, `missing start marker: ${startMarker}`).toBeGreaterTha…
+       |                                                         ^
+     50|   const end = source.indexOf(endMarker, start + startMarker.length);
+     51|   expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(star…
+ ❯ curveBlock src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:541:12
+ ❯ src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts:588:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+ Test Files  2 failed (2)
+      Tests  6 failed | 449 passed (455)
+   Start at  15:19:53
+   Duration  523ms (transform 314ms, setup 0ms, collect 494ms, tests 141ms, environment 0ms, prepare 54ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-31-t2/junit.xml
+undefined
+/Users/lmarques/Dev/efx-motion-editor/app:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts src/components/physic-paint/PhysicsPaintStudio.test.ts --reporter=default --reporter=junit --outputFile=/Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-31-t2/junit.xml

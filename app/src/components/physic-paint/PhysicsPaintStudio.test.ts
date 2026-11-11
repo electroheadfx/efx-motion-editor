@@ -7267,6 +7267,80 @@ describe('61-12 Render mode bundle wiring in the Studio', () => {
 });
 
 // ============================================================
+//  61-31 (G-20) — the Curve row's two Studio seams: the appearance
+//  hydration attaches the recorded stroke's `curveMode` and its
+//  vector-ness, and `applyCurveMode` routes the WHOLE selection
+//  through exactly ONE `beginAquarelleCurveModeEdit` — one undo
+//  entry, never one per stroke.
+// ============================================================
+
+describe('61-31 Curve mode bundle wiring in the Studio', () => {
+  const BUNDLE_START = 'const bundle: StrokeSettingsDialogBundle = {';
+  const BUNDLE_END = 'return bundle;';
+  const HANDLER_START = 'const handleAquarelleCurveModeStrokes = useCallback(async (';
+  const HANDLER_END = 'const handleAquarelleTransformStrokes = useCallback(async (';
+
+  function bundleRegion(): string {
+    const start = studio.indexOf(BUNDLE_START);
+    expect(start, `missing start marker: ${BUNDLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(BUNDLE_END, start + BUNDLE_START.length);
+    expect(end, `missing end marker: ${BUNDLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  function curveHandlerRegion(): string {
+    const start = studio.indexOf(HANDLER_START);
+    expect(start, `missing start marker: ${HANDLER_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(HANDLER_END, start + HANDLER_START.length);
+    expect(end, `missing end marker: ${HANDLER_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('hydrates curveMode and the vector flag, and exposes applyCurveMode', () => {
+    const bundle = bundleRegion();
+    // Same sparse-field contract as renderMode: an absent key stays absent.
+    expect(bundle).toContain('...(stroke.curveMode === undefined ? {} : { curveMode: stroke.curveMode }),');
+    // Vector-ness is the presence of an anchor list — never a second store.
+    expect(bundle).toContain('vector: stroke.anchors !== undefined,');
+    // The commit seam routes the whole selection through the new handler.
+    expect(bundle).toContain(
+      'applyCurveMode: (ids, mode) => handleAquarelleCurveModeStrokes(ids, mode),',
+    );
+    // The type import is declared and the handler joins the memo's deps.
+    expect(studio).toContain("import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';");
+    const memoStart = studio.indexOf('const strokeSettingsDialog = strokeSettingsDialogPropsMemo.resolve(');
+    expect(memoStart).toBeGreaterThan(-1);
+    const memoDepEnd = studio.indexOf('() => {', memoStart);
+    expect(memoDepEnd).toBeGreaterThan(memoStart);
+    expect(studio.slice(memoStart, memoDepEnd)).toContain('handleAquarelleCurveModeStrokes,');
+  });
+
+  it('shares the render-mode handler law: guards, Draft branch, ONE wrapper call per batch', () => {
+    const handler = curveHandlerRegion();
+    expect(handler).toContain('if (isPhysicalMutationLocked()) return false;');
+    expect(handler).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;');
+    expect(handler).toContain("if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;");
+    expect(handler).toContain('if (isAquarelleScriptEditInFlight()) return false;');
+    expect(handler).toContain('const frameIds = aquarelleStrokesOnFrame(ids, playFrame);');
+    expect(handler).toContain('await ensureAquarelleDurableBaseRef.current(playFrame);');
+    // Draft: record + mark dirty, never reset or re-apply.
+    const draftAt = handler.indexOf('if (draft) {');
+    const resetAt = handler.indexOf('aquarelleResetSheetRef.current?.()');
+    expect(draftAt).toBeGreaterThan(-1);
+    expect(resetAt).toBeGreaterThan(draftAt);
+    expect(handler.slice(draftAt, resetAt)).toContain('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
+    expect(handler.slice(draftAt, resetAt)).toContain('setDraftPixelsDirty(true);');
+    // Live: reset, re-apply, record on success, restore on failure.
+    expect(handler).toContain('await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
+    expect(handler).toContain("restoreAquarelleEditSnapshot(editId, 'undo');");
+    expect(handler).toContain('setAquarelleScriptEditInFlight(false);');
+    // ONE commit site for the whole file and ONE call per accepted batch.
+    expect(studio.split('beginAquarelleCurveModeEdit(').length - 1).toBe(1);
+    expect(handler).toContain('const editId = beginAquarelleCurveModeEdit(frameIds, mode);');
+  });
+});
+
+// ============================================================
 //  61-20 Task 1 — the ledger half of G-8 (VEC-07).
 //
 //  `beginAquarellePathEdit` stores the edit in the edits map and returns an id;

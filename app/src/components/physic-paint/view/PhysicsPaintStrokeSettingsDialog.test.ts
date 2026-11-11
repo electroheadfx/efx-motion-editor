@@ -24,6 +24,7 @@ import {
   AQUARELLE_ANCHOR_WIDTH_MAX,
   AQUARELLE_ANCHOR_WIDTH_MIN,
   AQUARELLE_ANCHOR_WIDTH_STEP,
+  CURVE_MODE_OPTIONS,
   RENDER_MODE_OPTIONS,
   SIMPLE_RIBBON_GLOBALS,
   SIMPLE_RIBBON_WET_NOTE,
@@ -521,6 +522,79 @@ describe('61-12 Render row (E3)', () => {
     expect(block).not.toContain('buildAppearancePatch');
     expect(block).not.toContain('segmentedFields');
     expect(WATERCOLOR_SETTINGS_FIELDS.map((field) => field.key)).not.toContain('renderMode');
+  });
+});
+
+// ============================================================
+//  61-31 (G-20) — the Curve row: the per-selection Bezier /
+//  Spline switch. Spline is an EVALUATION MODE over the same
+//  anchors, so the row mounts only when the selection holds a
+//  vector stroke and the bundle can commit — a hand-painted-only
+//  selection hides it instead of writing an inert key.
+// ============================================================
+
+describe('61-31 Curve row (G-20)', () => {
+  const BLOCK_START = 'data-testid="stroke-settings-curve-mode-block"';
+  const GROUP = 'data-testid="stroke-settings-curve-mode"';
+
+  function curveBlock(): string {
+    return regionOf(dialogSource, BLOCK_START, 'data-testid="stroke-settings-color"');
+  }
+
+  it('mounts the Curve block only when a vector stroke is selected and the bundle can commit', () => {
+    expect(countOf(dialogSource, BLOCK_START)).toBe(1);
+    expect(countOf(dialogSource, GROUP)).toBe(1);
+    // The reading is a render-body projection of the hydrated appearances.
+    expect(dialogSource).toContain('const curveModeReading = readCurveMode(appearances);');
+    // The mount gate: watercolor engine + a vector stroke + a commit seam.
+    expect(dialogSource).toContain(
+      "{engineModule === 'watercolor' && curveModeReading.available && bundle.applyCurveMode !== undefined ? (",
+    );
+    // Immediately AFTER the Render block and BEFORE the Color row.
+    const renderAt = dialogSource.indexOf('data-testid="stroke-settings-render-mode-block"');
+    const curveAt = dialogSource.indexOf(BLOCK_START);
+    const colorAt = dialogSource.indexOf('data-testid="stroke-settings-color"');
+    expect(renderAt).toBeGreaterThan(-1);
+    expect(curveAt).toBeGreaterThan(renderAt);
+    expect(colorAt).toBeGreaterThan(curveAt);
+  });
+
+  it('renders one button per model option, lit only for the agreed mode', () => {
+    const block = curveBlock();
+    expect(block).toContain('CURVE_MODE_OPTIONS.map((option) => {');
+    expect(block).toContain('data-testid={`stroke-settings-curve-mode-option-${option.id}`}');
+    expect(block).toContain('aria-pressed={active}');
+    expect(block).toContain('{option.label}');
+    // ONE template test id — the two ids come from the two model options.
+    expect(countOf(dialogSource, 'stroke-settings-curve-mode-option-')).toBe(1);
+    expect(CURVE_MODE_OPTIONS.map((option) => option.id)).toEqual(['bezier', 'spline']);
+    expect(CURVE_MODE_OPTIONS.map((option) => option.label)).toEqual(['Bézier', 'Spline']);
+    // The agreed mode is the only lit option; a mixed reading lights none.
+    expect(block).toContain(
+      'const active = !curveModeReading.mixed && curveModeReading.mode === option.mode;',
+    );
+  });
+
+  it('renders the shipped Mixed caption when the vector strokes disagree', () => {
+    const block = curveBlock();
+    expect(block).toContain('data-testid="stroke-settings-curve-mode-mixed"');
+    expect(block).toContain('style={MIXED_CAPTION_STYLE}');
+    expect(block).toMatch(/>\s*Mixed\s*<\/span>/);
+    // Mixed means NO lit option — the active expression already refuses it.
+    expect(block).toContain('!curveModeReading.mixed &&');
+  });
+
+  it('calls the bundle once for the other mode and never for the active one', () => {
+    const block = curveBlock();
+    // Pressing the mode the selection already holds writes nothing.
+    expect(block).toContain('if (active) return;');
+    expect(block).toContain('void bundle.applyCurveMode?.(ids, option.mode);');
+    // ONE call site in the whole source.
+    expect(countOf(dialogSource, 'bundle.applyCurveMode?.(')).toBe(1);
+    // A stroke-level mode: no numeric path and no anchor read can gate it.
+    expect(block).not.toContain('readVectorAnchors');
+    expect(block).not.toContain('anchorWidth');
+    expect(block).not.toContain('readNumericField');
   });
 });
 
