@@ -3439,14 +3439,14 @@ describe('61-19 anchor-width target (the width commit writes one named path)', (
 describe('61-27 IN-03 — the refused Anchor width commit copy', () => {
   it('ships the refusal as one fixed, non-interpolated string plus one optional port', () => {
     expect(ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE).toBe(
-      'Anchor width not applied — the path edit is no longer open on this stroke.',
+      'Vertex size not applied — the path edit is no longer open on this stroke.',
     );
     const source = readFileSync(
       fileURLToPath(new URL('./strokeSettingsModel.ts', import.meta.url)),
       'utf8',
     );
     expect(source).toContain(
-      "export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Anchor width not applied — the path edit is no longer open on this stroke.';",
+      "export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Vertex size not applied — the path edit is no longer open on this stroke.';",
     );
     // One declaration, one fixed single-quoted string — no interpolation.
     expect(source.split('export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE =').length - 1).toBe(1);
@@ -3624,7 +3624,7 @@ describe('61-22 G-11 — the Anchor width mounts (Geometry + list)', () => {
     const geometryTree = renderDialogTab(bundle, 'geometry');
     expect(findByTestId(geometryTree, 'stroke-settings-geometry-anchor-width')).toBeDefined();
     expect(
-      findComponent(geometryTree, (props) => props.ariaLabel === 'Anchor width'),
+      findComponent(geometryTree, (props) => props.ariaLabel === 'Vertex size'),
     ).toBeDefined();
     // Stack never carries the Geometry wrapper.
     expect(
@@ -3666,7 +3666,7 @@ describe('61-22 G-11 — the Anchor width mounts (Geometry + list)', () => {
     setScriptStrokeSelection([7]);
     const geometryTree = renderDialogTab(bundle, 'geometry');
 
-    const stepper = findComponent(geometryTree, (props) => props.ariaLabel === 'Anchor width')!;
+    const stepper = findComponent(geometryTree, (props) => props.ariaLabel === 'Vertex size')!;
     expect(stepper.props.disabled).toBe(true);
     expect(stepper.props.value).toBe(AQUARELLE_ANCHOR_WIDTH_DEFAULT);
     expect(findByTestId(geometryTree, 'stroke-settings-anchor-width-caption')).toBeDefined();

@@ -33,6 +33,7 @@ import {
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
   VECTOR_PAINT_SAMPLE_STEP_UV,
+  buildAnchorColorCommit,
   buildAnchorWidthCommit,
   buildDraftPath,
   buildVectorStroke,
@@ -418,6 +419,69 @@ describe('buildAnchorWidthCommit — one sparse width write (61-10 task 2)', () 
     expect(next).not.toBe(anchors);
     buildAnchorWidthCommit(anchors, [0], 1.8);
     expect('width' in anchors[0]!).toBe(false);
+  });
+});
+
+// 261111-wd6: the colour sibling of the width commit. One pass over the list,
+// canonical colour from the package normaliser, no default elision — an
+// explicit colour is always stored, even when it equals the stroke colour.
+describe('buildAnchorColorCommit — one explicit per-vertex colour (261111-wd6)', () => {
+  const shaped = [
+    { ...auto(0.2, 0.5), width: 1.8 },
+    bezier(0.5, 0.5, { x: 0.4, y: 0.4 }, { x: 0.6, y: 0.6 }),
+    auto(0.8, 0.5),
+  ];
+
+  it('writes every listed index and leaves the rest reference-identical', () => {
+    const next = buildAnchorColorCommit(shaped, [0, 2], '#ff0000');
+    expect(next).not.toBeNull();
+    expect(next![0]!.color).toBe('#ff0000');
+    expect(next![1]).toBe(shaped[1]);
+    expect(next![2]!.color).toBe('#ff0000');
+    // The input stays colourless.
+    expect('color' in shaped[0]!).toBe(false);
+    expect('color' in shaped[2]!).toBe(false);
+  });
+
+  it('preserves width and both handles on every target', () => {
+    const next = buildAnchorColorCommit(shaped, [0, 1], '#0f0');
+    expect(next![0]!.width).toBe(1.8);
+    expect(next![0]!.x).toBe(0.2);
+    expect(next![1]!.in).toEqual({ x: 0.4, y: 0.4 });
+    expect(next![1]!.out).toEqual({ x: 0.6, y: 0.6 });
+    expect(next![1]!.kind).toBe('bezier');
+  });
+
+  it('canonicalises the colour through the package normaliser', () => {
+    expect(buildAnchorColorCommit(shaped, [0], '#FF0000')![0]!.color).toBe('#ff0000');
+    expect(buildAnchorColorCommit(shaped, [0], '#0f0')![0]!.color).toBe('#00ff00');
+  });
+
+  it('returns null for a malformed colour or an empty selection', () => {
+    expect(buildAnchorColorCommit(shaped, [0], '#xyz')).toBeNull();
+    expect(buildAnchorColorCommit(shaped, [0], '')).toBeNull();
+    expect(buildAnchorColorCommit(shaped, [0], 'red')).toBeNull();
+    expect(buildAnchorColorCommit(shaped, [], '#ff0000')).toBeNull();
+  });
+
+  it('returns null when the selection names no existing anchor', () => {
+    expect(buildAnchorColorCommit(shaped, [7], '#ff0000')).toBeNull();
+    expect(buildAnchorColorCommit(shaped, [7, 9], '#ff0000')).toBeNull();
+  });
+
+  it('still yields a new list for the anchor\'s existing colour', () => {
+    const colored = buildAnchorColorCommit(shaped, [0], '#ff0000')!;
+    const again = buildAnchorColorCommit(colored, [0], '#ff0000');
+    expect(again).not.toBeNull();
+    expect(again).not.toBe(colored);
+    expect(again![0]).not.toBe(colored[0]);
+    expect(again![0]).toEqual(colored[0]);
+  });
+
+  it('writes nothing when only unknown indices ride beside a real one', () => {
+    const next = buildAnchorColorCommit(shaped, [1, 7], '#ff0000')!;
+    expect(next[1]!.color).toBe('#ff0000');
+    expect(next).toHaveLength(3);
   });
 });
 

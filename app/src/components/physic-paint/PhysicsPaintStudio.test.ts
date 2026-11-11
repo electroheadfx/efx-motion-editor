@@ -6864,7 +6864,44 @@ describe('61-11 Anchor width bundle wiring in the Studio', () => {
   });
 
   it('composes the pure width commit from the shared handle module', () => {
-    expect(studio).toContain("import { buildAnchorWidthCommit } from './view/vectorPathHandles';");
+    expect(studio).toContain(
+      "import { buildAnchorColorCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';",
+    );
+  });
+});
+
+// 261111-wd6: the Color tab writes an explicit per-vertex colour to the LIVE
+// anchor selection through the ONE path-edit commit — one undo entry and one
+// re-bake per gesture, never one per anchor. An empty anchor selection keeps
+// the shipped stroke-level colour commit byte-for-byte.
+describe('261111-wd6 — the Color tab per-vertex branch', () => {
+  const HANDLER_START = 'const handleRightPanelColorCommit = useCallback(';
+
+  function colorHandlerRegion(): string {
+    const start = studio.indexOf(HANDLER_START);
+    expect(start, `missing start marker: ${HANDLER_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf('const rightPanel = rightPanelPropsMemo.resolve(', start);
+    expect(end, 'missing the right-panel memo boundary').toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('routes a live anchor selection through the shared path-edit commit', () => {
+    const region = colorHandlerRegion();
+    expect(region).toContain('vectorPathSession.vectorAnchorSelection.peek()');
+    expect(region).toContain('buildAnchorColorCommit(');
+    expect(region).toContain('aquarellePathEditCommitRef.current?.(target, next)');
+    // The anchor branch returns before the shipped whole-stroke commit.
+    expect(region.indexOf('aquarellePathEditCommitRef.current?.('))
+      .toBeLessThan(region.indexOf('aquarelleAppearanceCommitRef.current?.(ids, { color })'));
+    // The whole-stroke fallback is unchanged.
+    expect(region).toContain('aquarelleAppearanceCommitRef.current?.(ids, { color })');
+  });
+
+  it('wires the ONE path-edit commit through the render-body ref', () => {
+    expect(studio.split('aquarellePathEditCommitRef.current = commitAquarelleVectorPathEdit;').length - 1)
+      .toBe(1);
+    // The anchor branch owns no begin of its own; the file-wide count stays 1.
+    expect(studio.split('beginAquarellePathEdit(').length - 1).toBe(1);
   });
 });
 

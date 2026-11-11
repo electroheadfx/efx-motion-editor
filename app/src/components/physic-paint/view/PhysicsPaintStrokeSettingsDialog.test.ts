@@ -238,7 +238,7 @@ describe('61-27 IN-03 — a refused Anchor width commit publishes its refusal', 
     expect(block).toContain('data-testid="stroke-settings-anchor-width-readout"');
     expect(block).toContain('`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`');
     expect(dialogSource).toContain('? ANCHOR_WIDTH_NO_EDIT_REASON');
-    expect(dialogSource).toContain("'Select anchors on the canvas to set their width.'");
+    expect(dialogSource).toContain("'Select anchors on the canvas to set their size.'");
   });
 });
 
@@ -308,7 +308,7 @@ describe('61-11 E4 rows: the Anchor width block', () => {
     // caption that outlives the disabled state.
     const emptyBranch = regionOf(dialogSource, '{anchorWidthEmpty ? (', ') : null}');
     expect(emptyBranch).toContain(BLOCK_END);
-    expect(emptyBranch).toContain('Select anchors on the canvas to set their width.');
+    expect(emptyBranch).toContain('Select anchors on the canvas to set their size.');
     // And the empty branch is defined by the reading's count, not a size guess.
     expect(dialogSource).toContain('const anchorWidthEmpty = anchorWidthReading.count === 0;');
   });
@@ -354,8 +354,8 @@ describe('61-11 E4 rows: the Anchor width block', () => {
 
   it('E4 long-text: the label is constant and the readout is numeric', () => {
     const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
-    expect(block).toContain('label="Anchor width"');
-    expect(block).toContain('ariaLabel="Anchor width"');
+    expect(block).toContain('label="Vertex size"');
+    expect(block).toContain('ariaLabel="Vertex size"');
     expect(block).toContain('`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`');
   });
 
@@ -386,7 +386,7 @@ describe('61-11 E4 rows: the Anchor width block', () => {
     // The span references the constant by NAME (the value is asserted in the
     // inert-cause case below); the shipped empty copy stays in the same span.
     expect(emptyBranch).toContain('ANCHOR_WIDTH_NO_EDIT_REASON');
-    expect(emptyBranch).toContain('Select anchors on the canvas to set their width.');
+    expect(emptyBranch).toContain('Select anchors on the canvas to set their size.');
   });
 
   it('61-19 inert cause: the reading is shadowed by the resolved target, never guessed', () => {
@@ -401,7 +401,7 @@ describe('61-11 E4 rows: the Anchor width block', () => {
       mixed: false,
       count: 0,
     });
-    expect(ANCHOR_WIDTH_NO_EDIT_REASON).toBe('Open Edit path on this stroke to set anchor widths.');
+    expect(ANCHOR_WIDTH_NO_EDIT_REASON).toBe('Open Edit path on this stroke to set vertex sizes.');
   });
 
   it('61-19 live: the shipped commit call and clamp are untouched, and no local writer exists', () => {
@@ -568,8 +568,8 @@ describe('61-22 G-11 — the Anchor width control in the list view and Geometry'
     expect(component).toContain(
       '`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`',
     );
-    expect(component).toContain('label="Anchor width"');
-    expect(component).toContain('ariaLabel="Anchor width"');
+    expect(component).toContain('label="Vertex size"');
+    expect(component).toContain('ariaLabel="Vertex size"');
     expect(component).toContain('ANCHOR_WIDTH_CAPTION_STYLE');
     // The shipped region still holds exactly one stepper and no style attribute.
     const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
