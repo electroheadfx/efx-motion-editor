@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-21-PLAN.md
-last_updated: "2026-11-11T10:57:05.722Z"
+stopped_at: Completed 61-23-PLAN.md
+last_updated: "2026-11-11T11:02:13.013Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: 3e7b731b9c72beabcce4cc17a3697dff7162963b
+state_head: 1d8447ece57cc89116cc48569533f06bd82289e4
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 62
-  completed_plans: 52
+  completed_plans: 53
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 22 of 31
+Plan: 23 of 31
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 61 execution started
 
@@ -110,6 +110,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P19 | 9min | 2 tasks | 6 files |
 | Phase 61 P20 | 5 | 2 tasks | 2 files |
 | Phase 61 P21 | 6 | 2 tasks | 6 files |
+| Phase 61 P23 | 3 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -298,6 +299,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: The draw cursor writer is the session's one preview write: compare-then-write, anchors carried by reference, returns whether anything changed — a pointer move can never place or commit an anchor (D-06)
 - [Phase 61]: The provisional rubber band reuses sampleVectorPath with the draft anchors plus an auto cursor anchor and renders before the committed spine; the test expects the sampler's own output, never a hand-drawn chord
 - [Phase 61]: The capture-phase yield is renamed isKeyboardOwnedTarget over ONE duck-typed ten-token selector; the five shipped text-entry pins were retargeted with unchanged expectations and plain div/canvas targets keep today's keys
+- [Phase 61]: The picker guard lives in the ONE computed verdict, not in each consumer — the visor, rail chip and brush-ring gate need no change
+- [Phase 61]: isAquarellePickerArmed reads the three signals directly instead of a computed peek, so the dispatch-time probe is never stale (T-61-71)
+- [Phase 61]: An Alt arming write is refused during an open path edit; a release always lands so no hold leaks past the edit
 
 ### Pending Todos
 
@@ -390,8 +394,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T10:57:04.279Z
-Stopped at: Completed 61-21-PLAN.md
+Last session: 2026-11-11T11:02:11.720Z
+Stopped at: Completed 61-23-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

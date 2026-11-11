@@ -235,7 +235,7 @@ Plans:
   4. A vector stroke persists in `.mce` (declared in both TS and Rust), survives reopen, and exports exactly as previewed while keeping hide/solo, ordering, opacity, and background behavior.
   5. Deterministic replay: the same vector stroke produces the same raster across runs, undo/redo, and reopen, and undo/redo covers each vector operation.
 
-**Plans:** 21/31 plans executed (14 executed + 6 gap-closure executed + 11 new gap-closure pending)
+**Plans:** 22/31 plans executed (14 executed + 6 gap-closure executed + 11 new gap-closure pending)
 
 Plans:
 **Wave 1**
@@ -283,7 +283,7 @@ Plans:
 **Gap closure round 2** *(from 61-VERIFICATION.md and 61-UAT.md; waves are relative to this set, and the one-way spline decision sits at 61-30's first task)*
 - [x] 61-21-PLAN.md — Vector pen: a live rubber-band spine follows the pointer, and the vector key listener yields to every focused control (IN-01, WR-05) — wave 1
 - [ ] 61-22-PLAN.md — Anchor width discovers from the sheet's default list view, and a selected anchor is visibly distinct (G-11) — wave 2, after 61-21
-- [ ] 61-23-PLAN.md — The colour picker cannot exist during a vector path edit, and Alt inside the edit is only the handle break (G-19) — wave 1
+- [x] 61-23-PLAN.md — The colour picker cannot exist during a vector path edit, and Alt inside the edit is only the handle break (G-19) — wave 1
 - [ ] 61-24-PLAN.md — +Key records the previous key's vector script, anchors and render mode beside its raster bytes (G-15) — wave 1
 - [ ] 61-25-PLAN.md — Vector pen copy contract, the Anchor width readout grammar, the overlay band/marker/chrome law and the wireframe-only badges (UI-01..UI-05) — wave 3, after 61-21 and 61-22
 - [ ] 61-26-PLAN.md — Shift+A under wireframe, an honest failed-restore capsule, and a committed in-flight bake marks the sheet stale (WR-01, WR-02, WR-03) — wave 2, after 61-24
@@ -330,7 +330,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 59. Rail Motion Channels & v7 Interface | 25/25 | Complete    | 2026-11-08 |
 | 60. Studio Timeline Horizontal Zoom | 6/6 | Complete    | 2026-11-09 |
-| 61. Vector Painting Tool | 21/31 | In Progress | - |
+| 61. Vector Painting Tool | 22/31 | In Progress | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
 
 **Execution Order:** 59 → 60 → 61 → 62 (global numbering continues; Phase 57 is retired and never reused)
