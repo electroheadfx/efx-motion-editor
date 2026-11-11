@@ -535,6 +535,22 @@ describe('scriptStrokeEdition — wireframe holds Draft (61-18)', () => {
   });
 });
 
+// 61-27 (IN-02): the busy-settle refusal. The physical-lock / applying /
+// mutation-locked / script-edit-in-flight gate used to resolve false with no
+// message, so a track switch aborted silently. This line is the ONE reason the
+// busy branch publishes — fixed, never interpolated, like its wireframe sibling.
+describe('61-27 IN-02 — the busy settle refusal copy', () => {
+  it('ships the busy refusal as one fixed, non-interpolated string', () => {
+    const source = readFileSync(resolve(__dirname, './scriptStrokeEdition.ts'), 'utf8');
+    const DECLARATION =
+      "export const DRAFT_SETTLE_BUSY_MESSAGE = 'Another edit is settling — try again.';";
+    expect(source).toContain(DECLARATION);
+    // One declaration, one fixed single-quoted string: no template literal and
+    // no interpolation anywhere in the constant's declaration.
+    expect(source.split('export const DRAFT_SETTLE_BUSY_MESSAGE =').length - 1).toBe(1);
+  });
+});
+
 // 261101-o2m (D-02): the cache eye is a DISPLAY-ONLY session preference. It
 // hides the committed sheet; it never gates a commit, a capture, a save or an
 // export, and it is independent of every other session view preference.

@@ -6701,6 +6701,59 @@ describe('61-18 the wireframe settle refusal in the Studio', () => {
   });
 });
 
+// 61-27 (IN-02): a settle refused because another mutation holds the gates must
+// publish its reason. The wireframe branch already does; this branch used to
+// resolve false silently, which made `switchActiveTrack`'s fail-closed abort
+// invisible.
+describe('61-27 IN-02 — a settle refused by a running mutation says so', () => {
+  const SETTLE_START = 'const settleDraftScript = useCallback(';
+  const SETTLE_END = '// 61-13 (D-16): the wireframe latch.';
+
+  function settleRegion(): string {
+    const start = studio.indexOf(SETTLE_START);
+    expect(start, `missing start marker: ${SETTLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(SETTLE_END, start + SETTLE_START.length);
+    expect(end, `missing end marker: ${SETTLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('publishes the busy refusal through the capsule before resolving false', () => {
+    const settle = settleRegion();
+    const BUSY_ANCHOR = 'isAquarelleScriptEditInFlight()';
+    const busyAt = settle.indexOf(BUSY_ANCHOR);
+    expect(busyAt, 'the combined busy gate is gone').toBeGreaterThan(-1);
+    // The wireframe reason keeps precedence: it runs FIRST, ahead of the busy gate.
+    const wireframeAt = settle.indexOf('if (wireframeMode.peek()) {');
+    expect(wireframeAt).toBeGreaterThan(-1);
+    expect(wireframeAt).toBeLessThan(busyAt);
+    const busyBlock = settle.slice(busyAt, settle.indexOf('\n    }', busyAt));
+    expect(busyBlock).toContain('setApplyMessage(DRAFT_SETTLE_BUSY_MESSAGE);');
+    expect(busyBlock).toContain("setApplyStatus('error');");
+    expect(busyBlock).toContain('setLastError(DRAFT_SETTLE_BUSY_MESSAGE);');
+    // A bounded terminal state: resolve false, never reject.
+    expect(busyBlock).toContain('return Promise.resolve(false);');
+    expect(busyBlock).not.toContain('throw');
+    // This refusal owns no sheet state — it must not swallow another surface's
+    // message or claim an apply failure it did not cause.
+    expect(busyBlock).not.toContain('scriptApplyRefusalOwnedRef');
+    // ONE copy of the copy: imported through the session seam, never redeclared.
+    expect(studio).toContain('  DRAFT_SETTLE_BUSY_MESSAGE,');
+    expect(studio).not.toContain('const DRAFT_SETTLE_BUSY_MESSAGE');
+  });
+
+  it('keeps the track switch failing closed on the now-visible refusal', () => {
+    const start = studio.indexOf('const switchActiveTrack = useCallback(');
+    expect(start, 'missing the guarded track switch').toBeGreaterThan(-1);
+    const end = studio.indexOf('/**\n   * 261101-o2m (D-04, play exit)', start);
+    expect(end).toBeGreaterThan(start);
+    const region = studio.slice(start, end);
+    expect(region).toContain('if (!settled) return;');
+    // The comment states the now-true law: every false exit publishes a reason.
+    expect(region).toContain('Every false exit from the settle has published its reason');
+    expect(region).not.toContain('already surfaced its refusal message');
+  });
+});
+
 // 61-11 Task 2: the Anchor width bundle members. The dialog never touches the
 // record store — `readVectorAnchors` is the ONE read seam (the gate and the
 // Paint row share it), and `applyAnchorWidths` builds the WHOLE next list and
