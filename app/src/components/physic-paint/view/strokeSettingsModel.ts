@@ -19,6 +19,7 @@ import {
   DEFAULT_AQUARELLE_RENDER_MODE,
   paintSeedSaltOf,
   type AquarelleAnchor,
+  type AquarelleCurveMode,
   type AquarelleRenderMode,
 } from '@efxlab/efx-watercolor/payload';
 import type {
@@ -129,6 +130,17 @@ export interface ScriptStrokeAppearance {
    * applies the default rather than inventing a third "unknown" state.
    */
   readonly renderMode?: AquarelleRenderMode;
+  /**
+   * 61-31 (G-20): the stroke's curve-evaluation discriminator. Absent means
+   * Bézier — same sparse-field contract as `renderMode`.
+   */
+  readonly curveMode?: AquarelleCurveMode;
+  /**
+   * 61-31 (G-20): whether the stroke carries a vector path. Hydrated from the
+   * presence of anchors; a hand-painted stroke must never make the `Curve`
+   * row available, so `vector` absent/false excludes it from the reading.
+   */
+  readonly vector?: boolean;
 }
 
 /** 61-12 (VEC-04 / E3): the `Render` row's two-option reading. */
@@ -169,6 +181,31 @@ export function readRenderMode(appearances: readonly ScriptStrokeAppearance[]): 
   const first = modes[0]!;
   if (modes.some((mode) => mode !== first)) return { mode: null, mixed: true };
   return { mode: first, mixed: false };
+}
+
+// SCRATCH STUB (61-31 RED): replaced by the GREEN implementation.
+/** 61-31 (G-20): the `Curve` row's reading over the VECTOR appearances only. */
+export interface CurveModeReading {
+  /** The agreed mode, or null when the vector strokes disagree. */
+  readonly mode: AquarelleCurveMode | null;
+  readonly mixed: boolean;
+  /** True only when at least one vector stroke is in the selection. */
+  readonly available: boolean;
+}
+
+/** One `Curve` row option — the model owns both the id and the copy. */
+export interface CurveModeOption {
+  readonly id: 'bezier' | 'spline';
+  readonly mode: AquarelleCurveMode;
+  readonly label: string;
+}
+
+/** SCRATCH STUB (61-31 RED): the GREEN implementation fills the two options. */
+export const CURVE_MODE_OPTIONS: readonly CurveModeOption[] = Object.freeze([]);
+
+/** SCRATCH STUB (61-31 RED): always reads the unavailable empty state. */
+export function readCurveMode(_appearances: readonly ScriptStrokeAppearance[]): CurveModeReading {
+  return { mode: null, mixed: false, available: false };
 }
 
 /** One canonical-unit batch write (params merged, color replaced). */

@@ -62,6 +62,7 @@ import {
   matchesStrokeTypeFilter,
   readAnchorWidthReading,
   readColorField,
+  readCurveMode,
   readNumericField,
   readPaintSeedVariation,
   resolveStrokeListRange,
@@ -3805,6 +3806,60 @@ describe('61-12 Render mode reading (Paint tab)', () => {
     expect(keys).not.toContain('render-mode');
     // The row is dispatched off the string union, not the numeric path.
     expect(RENDER_MODE_OPTIONS.every((option) => typeof option.mode === 'string')).toBe(true);
+  });
+});
+
+// 61-31 (G-20): the `Curve` row's reading law. Spline is an EVALUATION MODE
+// over the same anchor list, so only VECTOR appearances take part in the
+// agreement: an absent key reads Bézier, a hand-painted stroke beside a spline
+// one is not a disagreement, and a selection with no vector stroke never makes
+// the row available — the row hides instead of writing an inert key.
+describe('61-31 curve mode reading (Paint tab)', () => {
+  function appearanceOf(
+    mutationId: number,
+    options: { readonly curveMode?: 'bezier' | 'spline'; readonly vector?: boolean } = {},
+  ): ScriptStrokeAppearance {
+    return {
+      mutationId,
+      params: {},
+      color: null,
+      ...(options.curveMode === undefined ? {} : { curveMode: options.curveMode }),
+      ...(options.vector === undefined ? {} : { vector: options.vector }),
+    };
+  }
+
+  it('reads unavailable with no mode for an empty selection', () => {
+    expect(readCurveMode([])).toEqual({ mode: null, mixed: false, available: false });
+  });
+
+  it('never makes the row available for a hand-painted-only selection', () => {
+    expect(readCurveMode([appearanceOf(1), appearanceOf(2, { vector: false })]))
+      .toEqual({ mode: null, mixed: false, available: false });
+  });
+
+  it('reads bezier for a vector stroke with no stored mode', () => {
+    expect(readCurveMode([appearanceOf(1, { vector: true })]))
+      .toEqual({ mode: 'bezier', mixed: false, available: true });
+  });
+
+  it('reads spline when every vector stroke agrees and ignores hand-painted strokes', () => {
+    expect(readCurveMode([
+      appearanceOf(1, { vector: true, curveMode: 'spline' }),
+      appearanceOf(2, { vector: true, curveMode: 'spline' }),
+    ])).toEqual({ mode: 'spline', mixed: false, available: true });
+    // A hand-painted stroke is not a curve participant, so it cannot create a
+    // disagreement beside a spline vector stroke.
+    expect(readCurveMode([
+      appearanceOf(1, { vector: true, curveMode: 'spline' }),
+      appearanceOf(2),
+    ])).toEqual({ mode: 'spline', mixed: false, available: true });
+  });
+
+  it('reads mixed with no representative when vector strokes disagree', () => {
+    expect(readCurveMode([
+      appearanceOf(1, { vector: true, curveMode: 'spline' }),
+      appearanceOf(2, { vector: true }),
+    ])).toEqual({ mode: null, mixed: true, available: true });
   });
 });
 

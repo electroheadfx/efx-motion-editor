@@ -25,6 +25,7 @@ import {
 import {
   isAquarelleDryEvent,
   type AquarelleAnchor,
+  type AquarelleCurveMode,
   type AquarellePayloadEvent,
   type AquarelleRenderMode,
   type AquarelleStroke,
@@ -921,6 +922,15 @@ export function beginAquarelleRenderModeEdit(
   if (updateAquarelleRenderModeInScript(ids, mode) === 0) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
+}
+
+// SCRATCH STUB (61-31 RED): replaced by the GREEN implementation.
+/** 61-31 (G-20): set one curve-evaluation mode as a single edit. */
+export function beginAquarelleCurveModeEdit(
+  _mutationIds: number | readonly number[],
+  _mode: AquarelleCurveMode,
+): number | null {
+  return null;
 }
 
 /**

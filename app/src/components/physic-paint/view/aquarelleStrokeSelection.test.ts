@@ -19,6 +19,8 @@ import {
   PAINT_SEED_SALT_PARAM,
   isAquarelleDryEvent,
   paintSeedSaltOf,
+  sampleVectorPath,
+  type AquarelleAnchor,
   type AquarellePayloadEvent,
   type AquarellePoint,
   type AquarelleStroke,
@@ -55,6 +57,7 @@ import {
   aquarelleStrokesOnFrame,
   aquarelleStrokeTypeFilter,
   beginAquarelleAppearanceEdit,
+  beginAquarelleCurveModeEdit,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
   beginAquarellePaintSeedRerollEdit,
@@ -1786,5 +1789,137 @@ describe('261031-euf stroke list fine-filter state', () => {
       clearScriptStrokeSelection();
       setAquarelleSelectMode(false);
     }
+  });
+});
+
+// ============================================================
+//  61-31 (G-20) — the curve-mode batch edit. The mode is an
+//  EVALUATION MODE over the authored anchors: flipping it
+//  re-samples the points from the new evaluation but never
+//  re-rolls the stochastic texture (no seed-salt bump), and the
+//  whole selection is ONE history entry.
+// ============================================================
+
+/** An authored path with one off-curve bezier anchor, so spline differs from bezier. */
+const CURVE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.2, y: 0.5, kind: 'auto' },
+  { x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.4, y: 0.9 }, out: { x: 0.6, y: 0.1 } },
+  { x: 0.8, y: 0.5, kind: 'auto' },
+];
+
+/** The sampled spine of one evaluation mode, stamped with the vector commit shape. */
+function sampledModePoints(
+  anchors: readonly AquarelleAnchor[],
+  mode: 'bezier' | 'spline',
+): readonly AquarellePoint[] {
+  const source = mode === 'spline'
+    ? anchors.map((anchor) => ({
+        x: anchor.x,
+        y: anchor.y,
+        kind: 'auto' as const,
+        ...(anchor.width === undefined ? {} : { width: anchor.width }),
+      }))
+    : anchors;
+  return sampleVectorPath(source).points.map((p) => point(p.x, p.y));
+}
+
+/** A recorded vector stroke; the salt proves a mode flip cannot re-roll the seed. */
+function curveStroke(mutationId: number): AquarelleStroke {
+  return {
+    ...stroke({ points: sampledModePoints(CURVE_ANCHORS, 'bezier'), playFrame: 901 }),
+    mutationId,
+    anchors: CURVE_ANCHORS,
+    params: { size: 12, [PAINT_SEED_SALT_PARAM]: 7 },
+  };
+}
+
+describe('61-31 curve-mode batch edit (G-20)', () => {
+  it('records two strokes in ONE edit, and one undo restores both', () => {
+    const control = 63101;
+    const first = 63103;
+    const second = 63105;
+    recordAquarelleStroke(control, curveStroke(control));
+    recordAquarelleStroke(first, curveStroke(first));
+    recordAquarelleStroke(second, curveStroke(second));
+    const firstStroke = getRecordedAquarelleStroke(first)!;
+    const secondStroke = getRecordedAquarelleStroke(second)!;
+    const firstEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), first);
+    const secondEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), second);
+
+    // A one-stroke control edit gives the ledger's current id.
+    const controlEditId = beginAquarelleCurveModeEdit([control], 'spline');
+    expect(controlEditId).not.toBeNull();
+
+    const batchEditId = beginAquarelleCurveModeEdit([first, second], 'spline');
+    expect(batchEditId).not.toBeNull();
+    // The id counter advanced by EXACTLY one for the two-stroke batch.
+    expect(batchEditId).toBe(controlEditId! + 1);
+    expect(getRecordedAquarelleStroke(first)!.curveMode).toBe('spline');
+    expect(getRecordedAquarelleStroke(second)!.curveMode).toBe('spline');
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), first).engine.curveMode)
+      .toBe('spline');
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), second).engine.curveMode)
+      .toBe('spline');
+
+    // ONE undo restores both strokes and both payload entries.
+    expect(restoreAquarelleEditSnapshot(batchEditId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(first)).toBe(firstStroke);
+    expect(getRecordedAquarelleStroke(second)).toBe(secondStroke);
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), first)).toBe(firstEntry);
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), second)).toBe(secondEntry);
+    expect('curveMode' in getRecordedAquarelleStroke(first)!).toBe(false);
+  });
+
+  it('a repeat press stores nothing; switching back drops the key and restores the authored points', () => {
+    const id = 63111;
+    const other = 63113;
+    recordAquarelleStroke(id, curveStroke(id));
+    recordAquarelleStroke(other, curveStroke(other));
+    const before = getRecordedAquarelleStroke(id)!;
+
+    const firstEditId = beginAquarelleCurveModeEdit([id], 'spline');
+    expect(firstEditId).not.toBeNull();
+    // Spline re-samples the points from the derived evaluation.
+    expect(getRecordedAquarelleStroke(id)!.points)
+      .toEqual(sampledModePoints(CURVE_ANCHORS, 'spline'));
+    expect(getRecordedAquarelleStroke(id)!.points).not.toEqual(before.points);
+
+    // Pressing the mode the stroke already holds returns null and writes nothing.
+    const unchanged = getRecordedAquarelleStroke(id)!;
+    const unchangedEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), id);
+    expect(beginAquarelleCurveModeEdit([id], 'spline')).toBeNull();
+    expect(getRecordedAquarelleStroke(id)).toBe(unchanged);
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), id)).toBe(unchangedEntry);
+    // No history entry was consumed: the next accepted flip is EXACTLY one id later.
+    const nextEditId = beginAquarelleCurveModeEdit([other], 'spline');
+    expect(nextEditId).toBe(firstEditId! + 1);
+
+    // Switching back to bezier drops the key and restores the authored points.
+    const backEditId = beginAquarelleCurveModeEdit([id], 'bezier');
+    expect(backEditId).not.toBeNull();
+    const restored = getRecordedAquarelleStroke(id)!;
+    expect('curveMode' in restored).toBe(false);
+    expect(restored.anchors).toEqual(CURVE_ANCHORS);
+    expect(restored.points).toEqual(sampledModePoints(CURVE_ANCHORS, 'bezier'));
+    expect(restored.points).toEqual(before.points);
+    expect('curveMode' in strokeEntryAt(getRecordedAquarellePayloadTimeline(), id).engine)
+      .toBe(false);
+  });
+
+  it('never re-rolls the paint: the flip leaves traceSeed and the salt untouched', () => {
+    const id = 63121;
+    recordAquarelleStroke(id, curveStroke(id));
+    const beforeStroke = getRecordedAquarelleStroke(id)!;
+    const beforeSeed = entrySeed(id);
+    // The 7 salt is folded into the seed, so a re-roll would change this value.
+    expect(beforeSeed).toBe(expectedSaltedSeed(id, 7));
+
+    const editId = beginAquarelleCurveModeEdit([id], 'spline');
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(id)!.curveMode).toBe('spline');
+    expect(entrySeed(id)).toBe(beforeSeed);
+    // The params object (and its salt key) is the same reference — never re-seeded.
+    expect(getRecordedAquarelleStroke(id)!.params).toBe(beforeStroke.params);
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(id)!.params)).toBe(7);
   });
 });

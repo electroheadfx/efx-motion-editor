@@ -1,0 +1,137 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/view/aquarelleStrokeSelection.test.ts (79 tests | 3 failed) 126ms
+   × 61-31 curve-mode batch edit (G-20) > records two strokes in ONE edit, and one undo restores both 4ms
+     → expected null not to be null
+   × 61-31 curve-mode batch edit (G-20) > a repeat press stores nothing; switching back drops the key and restores the authored points 0ms
+     → expected null not to be null
+   × 61-31 curve-mode batch edit (G-20) > never re-rolls the paint: the flip leaves traceSeed and the salt untouched 0ms
+     → expected null not to be null
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts (182 tests | 3 failed) 98ms
+   × 61-31 curve mode reading (Paint tab) > reads bezier for a vector stroke with no stored mode 6ms
+     → expected { mode: null, mixed: false, …(1) } to deeply equal { mode: 'bezier', mixed: false, …(1) }
+   × 61-31 curve mode reading (Paint tab) > reads spline when every vector stroke agrees and ignores hand-painted strokes 0ms
+     → expected { mode: null, mixed: false, …(1) } to deeply equal { mode: 'spline', mixed: false, …(1) }
+   × 61-31 curve mode reading (Paint tab) > reads mixed with no representative when vector strokes disagree 0ms
+     → expected { mode: null, mixed: false, …(1) } to deeply equal { mode: null, mixed: true, …(1) }
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/view/aquarelleStrokeSelection.test.ts > 61-31 curve-mode batch edit (G-20) > records two strokes in ONE edit, and one undo restores both
+AssertionError: expected null not to be null
+ ❯ src/components/physic-paint/view/aquarelleStrokeSelection.test.ts:1851:31
+    1849|     // A one-stroke control edit gives the ledger's current id.
+    1850|     const controlEditId = beginAquarelleCurveModeEdit([control], 'spli…
+    1851|     expect(controlEditId).not.toBeNull();
+       |                               ^
+    1852| 
+    1853|     const batchEditId = beginAquarelleCurveModeEdit([first, second], '…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  src/components/physic-paint/view/aquarelleStrokeSelection.test.ts > 61-31 curve-mode batch edit (G-20) > a repeat press stores nothing; switching back drops the key and restores the authored points
+AssertionError: expected null not to be null
+ ❯ src/components/physic-paint/view/aquarelleStrokeSelection.test.ts:1881:29
+    1879| 
+    1880|     const firstEditId = beginAquarelleCurveModeEdit([id], 'spline');
+    1881|     expect(firstEditId).not.toBeNull();
+       |                             ^
+    1882|     // Spline re-samples the points from the derived evaluation.
+    1883|     expect(getRecordedAquarelleStroke(id)!.points)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  src/components/physic-paint/view/aquarelleStrokeSelection.test.ts > 61-31 curve-mode batch edit (G-20) > never re-rolls the paint: the flip leaves traceSeed and the salt untouched
+AssertionError: expected null not to be null
+ ❯ src/components/physic-paint/view/aquarelleStrokeSelection.test.ts:1918:24
+    1916| 
+    1917|     const editId = beginAquarelleCurveModeEdit([id], 'spline');
+    1918|     expect(editId).not.toBeNull();
+       |                        ^
+    1919|     expect(getRecordedAquarelleStroke(id)!.curveMode).toBe('spline');
+    1920|     expect(entrySeed(id)).toBe(beforeSeed);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  src/components/physic-paint/view/strokeSettingsModel.test.ts > 61-31 curve mode reading (Paint tab) > reads bezier for a vector stroke with no stored mode
+AssertionError: expected { mode: null, mixed: false, …(1) } to deeply equal { mode: 'bezier', mixed: false, …(1) }
+
+- Expected
++ Received
+
+  Object {
+-   "available": true,
++   "available": false,
+    "mixed": false,
+-   "mode": "bezier",
++   "mode": null,
+  }
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3842:8
+    3840|   it('reads bezier for a vector stroke with no stored mode', () => {
+    3841|     expect(readCurveMode([appearanceOf(1, { vector: true })]))
+    3842|       .toEqual({ mode: 'bezier', mixed: false, available: true });
+       |        ^
+    3843|   });
+    3844| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  src/components/physic-paint/view/strokeSettingsModel.test.ts > 61-31 curve mode reading (Paint tab) > reads spline when every vector stroke agrees and ignores hand-painted strokes
+AssertionError: expected { mode: null, mixed: false, …(1) } to deeply equal { mode: 'spline', mixed: false, …(1) }
+
+- Expected
++ Received
+
+  Object {
+-   "available": true,
++   "available": false,
+    "mixed": false,
+-   "mode": "spline",
++   "mode": null,
+  }
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3849:9
+    3847|       appearanceOf(1, { vector: true, curveMode: 'spline' }),
+    3848|       appearanceOf(2, { vector: true, curveMode: 'spline' }),
+    3849|     ])).toEqual({ mode: 'spline', mixed: false, available: true });
+       |         ^
+    3850|     // A hand-painted stroke is not a curve participant, so it cannot …
+    3851|     // disagreement beside a spline vector stroke.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  src/components/physic-paint/view/strokeSettingsModel.test.ts > 61-31 curve mode reading (Paint tab) > reads mixed with no representative when vector strokes disagree
+AssertionError: expected { mode: null, mixed: false, …(1) } to deeply equal { mode: null, mixed: true, …(1) }
+
+- Expected
++ Received
+
+  Object {
+-   "available": true,
+-   "mixed": true,
++   "available": false,
++   "mixed": false,
+    "mode": null,
+  }
+
+ ❯ src/components/physic-paint/view/strokeSettingsModel.test.ts:3862:9
+    3860|       appearanceOf(1, { vector: true, curveMode: 'spline' }),
+    3861|       appearanceOf(2, { vector: true }),
+    3862|     ])).toEqual({ mode: null, mixed: true, available: true });
+       |         ^
+    3863|   });
+    3864| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+ Test Files  2 failed (2)
+      Tests  6 failed | 255 passed (261)
+   Start at  15:17:17
+   Duration  1.07s (transform 524ms, setup 0ms, collect 1.24s, tests 224ms, environment 0ms, prepare 87ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-31-t1/junit.xml
+undefined
+/Users/lmarques/Dev/efx-motion-editor/app:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/components/physic-paint/view/strokeSettingsModel.test.ts src/components/physic-paint/view/aquarelleStrokeSelection.test.ts --reporter=default --reporter=junit --outputFile=/Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-31-t1/junit.xml
