@@ -2142,4 +2142,129 @@ describe('quick 261111-t74 — a selection brush patch is one script edit', () =
     expect(calls[0]!.ids).toEqual([10341, 10342]);
     expect(calls[0]!.patch).toBe(patch);
   });
+
+  it('a partial bag on an absent basis materialises all eight multipliers', () => {
+    recordAquarelleStroke(10310, stroke({ points: [point(0.1, 0.5)], playFrame: 740 }));
+    const before = getRecordedAquarelleStroke(10310)!;
+    expect('toolOverrides' in before).toBe(false);
+
+    expect(updateAquarelleStrokesInScript([10310], { toolOverrides: { aspect: 2 } })).toBe(1);
+
+    const bag = getRecordedAquarelleStroke(10310)!.toolOverrides;
+    expect(bag).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, aspect: 2 });
+    expect(Object.keys(bag!).sort()).toEqual(Object.keys(NEUTRAL_TOOL_OVERRIDES).sort());
+    const entry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), 10310);
+    expect(entry.toolOverrides).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, aspect: 2 });
+    expect(entry.engine.toolOverrides).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, aspect: 2 });
+  });
+
+  it('the merge preserves fields the patch does not name', () => {
+    recordAquarelleStroke(10311, stroke({
+      points: [point(0.2, 0.5)],
+      playFrame: 741,
+      toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES, grain: 1.5 },
+    }));
+
+    expect(updateAquarelleStrokesInScript([10311], { toolOverrides: { aspect: 2 } })).toBe(1);
+
+    const bag = getRecordedAquarelleStroke(10311)!.toolOverrides!;
+    expect(bag.grain).toBe(1.5);
+    expect(bag.aspect).toBe(2);
+    expect(bag).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, grain: 1.5, aspect: 2 });
+  });
+
+  it('a non-finite multiplier refuses the WHOLE batch before any write', () => {
+    recordAquarelleStroke(10312, stroke({ points: [point(0.3, 0.5)], playFrame: 742 }));
+    const before = getRecordedAquarelleStroke(10312)!;
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(
+      updateAquarelleStrokesInScript([10312], {
+        params: { load: 70 },
+        toolOverrides: { aspect: Number.NaN },
+      }),
+    ).toBe(0);
+    expect(
+      updateAquarelleStrokesInScript([10312], {
+        toolOverrides: { aspect: Number.POSITIVE_INFINITY },
+      }),
+    ).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(10312)).toBe(before);
+    expect(getRecordedAquarelleStroke(10312)!.params).toEqual({ size: 12 });
+  });
+
+  it('an unknown multiplier name is refused rather than stored', () => {
+    recordAquarelleStroke(10313, stroke({ points: [point(0.4, 0.5)], playFrame: 743 }));
+    const before = getRecordedAquarelleStroke(10313)!;
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(
+      updateAquarelleStrokesInScript([10313], {
+        // `roughness` is a real BrushPreset field but not one of the eight.
+        toolOverrides: { roughness: 1 } as unknown as Partial<AquarelleToolOverrides>,
+      }),
+    ).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(10313)).toBe(before);
+    expect('toolOverrides' in getRecordedAquarelleStroke(10313)!).toBe(false);
+  });
+
+  it('a neutral or empty multiplier patch is a no-op and materialises no bag', () => {
+    recordAquarelleStroke(10314, stroke({ points: [point(0.5, 0.5)], playFrame: 744 }));
+    const before = getRecordedAquarelleStroke(10314)!;
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(updateAquarelleStrokesInScript([10314], { toolOverrides: { aspect: 1 } })).toBe(0);
+    expect(updateAquarelleStrokesInScript([10314], { toolOverrides: {} })).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(10314)).toBe(before);
+    expect('toolOverrides' in getRecordedAquarelleStroke(10314)!).toBe(false);
+  });
+
+  it('one call writes brush, multipliers and params with exactly one bump', () => {
+    recordAquarelleStroke(10315, stroke({
+      points: [point(0.6, 0.5)],
+      playFrame: 745,
+      brushId: 'round',
+    }));
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(
+      updateAquarelleStrokesInScript([10315], {
+        brushId: 'chalk',
+        toolOverrides: { aspect: 1.4 },
+        params: { load: 70 },
+      }),
+    ).toBe(1);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    const after = getRecordedAquarelleStroke(10315)!;
+    expect(after.brushId).toBe('chalk');
+    expect(after.params.load).toBe(70);
+    expect(after.toolOverrides).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, aspect: 1.4 });
+  });
+
+  it('a brush + multiplier edit restores the pre-edit bag by reference on undo', () => {
+    recordAquarelleStroke(10317, stroke({
+      points: [point(0.7, 0.5)],
+      playFrame: 746,
+      toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES, grain: 1.5 },
+    }));
+    const before = getRecordedAquarelleStroke(10317)!;
+
+    const editId = beginAquarelleAppearanceEdit([10317], {
+      brushId: 'chalk',
+      toolOverrides: { aspect: 1.4 },
+    });
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(10317)).not.toBe(before);
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(10317)).toBe(before);
+    expect(getRecordedAquarelleStroke(10317)!.toolOverrides).toBe(before.toolOverrides);
+  });
 });

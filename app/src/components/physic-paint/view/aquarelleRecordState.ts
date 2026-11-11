@@ -36,6 +36,7 @@ import {
 } from '@efxlab/efx-watercolor/payload';
 import {
   NEUTRAL_TOOL_OVERRIDES,
+  TOOL_OVERRIDE_FIELDS,
   findTip,
   toolOverridesFromTip,
   type AquarelleToolOverrides,
@@ -743,6 +744,13 @@ export interface AquarelleStrokeAppearancePatch {
    * two resolution branches stay explicit.
    */
   readonly brushId?: string;
+  /**
+   * quick 261111-t74: a PARTIAL bag of the eight multipliers. Merged onto a
+   * COMPLETE base (neutral + the stroke's stored bag) before the write, so a
+   * hole can never reach `toStudioStroke` or the engine; an unknown key or a
+   * non-finite value refuses the WHOLE batch before any target is resolved.
+   */
+  readonly toolOverrides?: Partial<AquarelleToolOverrides>;
 }
 
 /**
@@ -775,6 +783,7 @@ export function updateAquarelleStrokesInScript(
   const hasColor = patch.color !== undefined;
   const hasFlag = patch.paintSeedVariation !== undefined;
   const hasBrush = patch.brushId !== undefined;
+  const hasOverrides = patch.toolOverrides !== undefined;
   // Validate the WHOLE patch first: one unknown key or non-finite value
   // refuses the batch before anything is drained or touched.
   for (const [key, value] of paramEntries) {
@@ -800,7 +809,21 @@ export function updateAquarelleStrokesInScript(
       nextBrushId = preset.id;
     }
   }
-  if (paramEntries.length === 0 && !hasColor && !hasFlag && !hasBrush) return 0;
+  // quick 261111-t74: the multiplier bag is validated entry by entry — a
+  // ninth key or a non-finite value refuses the WHOLE batch, exactly like the
+  // params guard. Nothing is clamped or normalised beyond the finite check.
+  let overrideEntries: ReadonlyArray<readonly [keyof AquarelleToolOverrides, number]> = [];
+  if (hasOverrides) {
+    const bag = patch.toolOverrides;
+    if (typeof bag !== 'object' || bag === null || Array.isArray(bag)) return 0;
+    const entries = Object.entries(bag);
+    for (const [key, value] of entries) {
+      if (!TOOL_OVERRIDE_FIELDS.includes(key as keyof AquarelleToolOverrides)) return 0;
+      if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+    }
+    overrideEntries = entries as Array<[keyof AquarelleToolOverrides, number]>;
+  }
+  if (paramEntries.length === 0 && !hasColor && !hasFlag && !hasBrush && !hasOverrides) return 0;
   const seedVariation = patch.paintSeedVariation;
 
   const targets: Array<{
@@ -810,6 +833,7 @@ export function updateAquarelleStrokesInScript(
     nextParams: Record<string, number>;
     nextColor: string | null;
     nextBrushId: string;
+    nextOverrides: AquarelleToolOverrides | null;
   }> = [];
   const seen = new Set<number>();
   for (const mutationId of mutationIds) {
@@ -831,6 +855,27 @@ export function updateAquarelleStrokesInScript(
     if (hasColor && nextColor !== stroke.color) changed = true;
     const targetBrushId = nextBrushId ?? stroke.brushId;
     if (hasBrush && targetBrushId !== stroke.brushId) changed = true;
+    let nextOverrides: AquarelleToolOverrides | null = null;
+    if (hasOverrides) {
+      // Materialise the COMPLETE eight-multiplier bag: the stroke's stored bag
+      // (absent = neutral) is the base and the patch's entries replace it. A
+      // fresh object per target — the stored bag, the neutral constant and the
+      // patch are never mutated, and no hole can reach the engine.
+      const base: AquarelleToolOverrides = {
+        ...NEUTRAL_TOOL_OVERRIDES,
+        ...stroke.toolOverrides,
+      };
+      const merged: AquarelleToolOverrides = { ...base };
+      for (const [key, value] of overrideEntries) merged[key] = value;
+      nextOverrides = merged;
+      // A neutral patch is a no-op and never materialises a bag.
+      for (const key of TOOL_OVERRIDE_FIELDS) {
+        if (base[key] !== merged[key]) {
+          changed = true;
+          break;
+        }
+      }
+    }
     if (seedVariation === true && paintSeedSaltOf(nextParams) === null) {
       nextParams[PAINT_SEED_SALT_PARAM] = 0;
       changed = true;
@@ -839,11 +884,27 @@ export function updateAquarelleStrokesInScript(
       changed = true;
     }
     if (!changed) continue;
-    targets.push({ mutationId, stroke, index, nextParams, nextColor, nextBrushId: targetBrushId });
+    targets.push({
+      mutationId,
+      stroke,
+      index,
+      nextParams,
+      nextColor,
+      nextBrushId: targetBrushId,
+      nextOverrides,
+    });
   }
   if (targets.length === 0) return 0;
 
-  for (const { mutationId, stroke, index, nextParams, nextColor, nextBrushId: targetBrushId } of targets) {
+  for (const {
+    mutationId,
+    stroke,
+    index,
+    nextParams,
+    nextColor,
+    nextBrushId: targetBrushId,
+    nextOverrides,
+  } of targets) {
     // `brushId` is required on the stroke record, so the resolved value is
     // always the validated patch id or the stroke's own — never undefined.
     // `toStudioStroke` re-projects it into BOTH entry slots.
@@ -852,6 +913,9 @@ export function updateAquarelleStrokesInScript(
       params: nextParams,
       color: nextColor,
       brushId: targetBrushId,
+      // Only a patch that carried multipliers writes a bag: every other path
+      // preserves the stroke's exact key set through the spread above.
+      ...(nextOverrides === null ? {} : { toolOverrides: nextOverrides }),
     };
     // Regenerate through the ONE projection so the engine payload carries the
     // new canonical params/colour; pts/cuisson/recordedOrder re-derive from

@@ -14,7 +14,7 @@
 // ============================================================
 
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
-import { findTip } from '@efxlab/efx-watercolor/brushes';
+import { findTip, type AquarelleToolOverrides } from '@efxlab/efx-watercolor/brushes';
 import {
   paintSeedSaltOf,
   resolveAquarelleCurveMode,
@@ -183,6 +183,14 @@ export interface ScriptStrokeAppearancePatch {
    * survive a brush change untouched.
    */
   readonly brushId?: string;
+  /**
+   * quick 261111-t74: a PARTIAL bag of the eight per-brush multipliers. The
+   * record-state door merges it onto the stroke's own bag — absent fields keep
+   * the stroke's value and an absent stored bag counts as neutral — so the
+   * engine always receives the complete eight-field bag. An unknown multiplier
+   * name (or a non-finite value) is refused, never stored.
+   */
+  readonly toolOverrides?: Partial<AquarelleToolOverrides>;
 }
 
 export interface NumericFieldReading {
