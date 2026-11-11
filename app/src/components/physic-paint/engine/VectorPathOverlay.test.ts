@@ -1841,3 +1841,75 @@ describe('61-25 UI-03/UI-04 — the band, marker and chrome law', () => {
     expect(source).not.toContain('wireframeOnly');
   });
 });
+
+// 61-28 (CR-01): an anchor or handle drag is owned by the edit that opened it.
+// A press ALWAYS ends the gesture before it — even a press that hits nothing —
+// so an abandoned drag can never ride a later release into a commit, and the
+// pointer it captured is released with it.
+describe('61-28 CR-01 - the edit-lifetime drag law', () => {
+  const EDIT_ID = 98001;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  /** ONE overlay element, shared by every event of a gesture sequence. */
+  function overlaySurface() {
+    return {
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: WIDTH, height: HEIGHT }),
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+      hasPointerCapture: vi.fn((): boolean => true),
+    };
+  }
+
+  it('ends the previous drag when a new press hits nothing, and releases its capture', () => {
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]])))!;
+    const surface = overlaySurface();
+
+    press(root, clickAt(0.2, 0.5, { currentTarget: surface, pointerId: 1 }));
+    expect(surface.setPointerCapture).toHaveBeenCalledTimes(1);
+    expect(surface.setPointerCapture).toHaveBeenCalledWith(1);
+
+    // A second pointer landing on empty canvas: no anchor, no handle, no spine.
+    press(root, clickAt(0.5, 0.9, { currentTarget: surface, pointerId: 2 }));
+
+    // The abandoned gesture no longer owns the element and no longer previews.
+    expect(surface.releasePointerCapture).toHaveBeenCalledTimes(1);
+    expect(surface.releasePointerCapture).toHaveBeenCalledWith(1);
+    expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+
+  it('commits nothing from the abandoned drag after the empty press', () => {
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+    const surface = overlaySurface();
+
+    press(root, clickAt(0.2, 0.5, { currentTarget: surface, pointerId: 1 }));
+    (root.props['onPointerMove'] as (e: unknown) => void)(
+      clickAt(0.26, 0.55, { currentTarget: surface, pointerId: 1 }),
+    );
+    expect(onPathEdit).not.toHaveBeenCalled();
+
+    // The second press hits nothing — it still ends the first gesture.
+    press(root, clickAt(0.5, 0.9, { currentTarget: surface, pointerId: 2 }));
+    // The release that follows finds no drag: nothing is committed.
+    (root.props['onPointerUp'] as (e: unknown) => void)(
+      clickAt(0.5, 0.9, { currentTarget: surface, pointerId: 2 }),
+    );
+
+    expect(onPathEdit).not.toHaveBeenCalled();
+  });
+});
