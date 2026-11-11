@@ -4,17 +4,17 @@ milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
 current_phase: 61
 current_phase_name: Vector Painting Tool
-status: executing
-stopped_at: Completed 61-30-PLAN.md
-last_updated: "2026-11-11T14:11:38.048Z"
+status: verifying
+stopped_at: Completed 61-31-PLAN.md
+last_updated: "2026-11-11T14:26:38.053Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: 09a51ceb3ade5a11a3fdc6a826a7f02e4dbf060f
+state_head: 0f563c9abc277a61369ec86a2470216a25cb0ec4
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 62
-  completed_plans: 61
+  completed_plans: 62
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
 Plan: 31 of 31
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-11 — Phase 61 execution started
 
 Progress: [█████░░░░░] 50%
@@ -119,6 +119,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P28 | 3 min | 2 tasks | 2 files |
 | Phase 61 P29 | 7 min | 3 tasks | 3 files |
 | Phase 61 P30 | 10 | 2 tasks | 15 files |
+| Phase 61 P31 | 11min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -339,6 +340,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: Re-derived vector points carry buildVectorStroke's exact six-field stamp (p 1, tx 0, ty 0, tw 0); the overlay points assertion was retargeted to the sampled law, never deleted
 - [Phase 61]: 61-30 (G-20): spline is an EVALUATION MODE over the same anchor list, never a third anchor kind and never a rewrite of authored data; an absent curveMode reads bezier so every pre-existing document stays byte-identical, and switching back drops the key
 - [Phase 61]: 61-30 scope (user decision at the plan checkpoint): per-stroke curveMode mirroring the shipped per-stroke renderMode in every layer; the document-level variant was rejected and the one-way persistence consequence accepted for projects that use the switch
+- [Phase 61]: 61-31: per-stroke curveMode behind an explicit Paint-tab row (never document-level); availability reads vector === true so hand-painted-only selections show no row and mixed selections convert only vector strokes
+- [Phase 61]: 61-31: the Studio hydrates curveMode/vector in a SECOND .map() pass so the shipped 61-12 render-mode source pins stay byte-identical
+- [Phase 61]: 61-31: the draft always draws DEFAULT_AQUARELLE_CURVE_MODE and the recorded loop draws each stroke's own mode — a spline path never inherits the edit target's mode
+- [Phase 61]: 61-31: under Spline wasPromoted is false (promotion returns the list untouched) so a grab-and-release commits nothing; chrome shape follows ownership per 61-UI-SPEC §340-341, including the 61-22 selection ring
 
 ### Pending Todos
 
@@ -431,8 +436,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T14:11:32.209Z
-Stopped at: Completed 61-30-PLAN.md
+Last session: 2026-11-11T14:26:36.769Z
+Stopped at: Completed 61-31-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
