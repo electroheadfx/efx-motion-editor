@@ -7322,3 +7322,93 @@ describe('61-24 G-15 — +Key and Duplicate share one script-copy body', () => {
     expect(keyUtilitiesLiteral).not.toContain('bakeAquarelle');
   });
 });
+
+// 61-26 (WR-01): Shift+A must never write a stroke selection behind a refused
+// Select entry. `setAquarelleSelectMode(true)` returns early under the
+// wireframe view (61-17), so the handler's write cannot depend on the attempt
+// having succeeded: a selection written there would exist with no outline, no
+// hit-test and no rail surface, and would surface the next time Select opens.
+describe('61-26 WR-01 — Shift+A under the wireframe leaves no orphan selection', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const SELECT_ALL_START = 'const handleToggleSelectAllAquarelleStrokes = useCallback(() => {';
+  const SELECT_ALL_END = '// The Water color half of the same law:';
+  const ENTRY_ATTEMPT = 'setAquarelleSelectMode(true);';
+  const ENTRY_RECHECK = 'if (!aquarelleSelectMode.peek()) return;';
+  const SELECTION_WRITE = 'setAquarelleStrokeSelection(';
+
+  function selectAllRegion(): string {
+    return regionOf(studio, SELECT_ALL_START, SELECT_ALL_END);
+  }
+
+  it('refuses up front on the wireframe view, before any read or write', () => {
+    const handler = selectAllRegion();
+    const GUARD = 'if (wireframeMode.peek()) return;';
+    const guardAt = handler.indexOf(GUARD);
+    const availabilityAt = handler.indexOf('watercolorMoveAvailable.peek()');
+    const entryAt = handler.indexOf(ENTRY_ATTEMPT);
+    const writeAt = handler.indexOf(SELECTION_WRITE);
+    expect(guardAt).toBeGreaterThan(-1);
+    // The guard is the FIRST statement: nothing reads the mode or the
+    // availability gate before it, so no write can precede it.
+    expect(handler.slice(0, guardAt)).not.toContain('setAquarelleSelectMode');
+    expect(handler.slice(0, guardAt)).not.toContain(SELECTION_WRITE);
+    expect(availabilityAt).toBeGreaterThan(guardAt);
+    expect(entryAt).toBeGreaterThan(guardAt);
+    expect(writeAt).toBeGreaterThan(guardAt);
+  });
+
+  it('re-checks the authoritative Select entry before any selection write', () => {
+    const handler = selectAllRegion();
+    const entryBlock = regionOf(
+      handler,
+      'if (!aquarelleSelectMode.peek()) {',
+      'const playFrame = launchContextRef.current?.startFrame ?? 0;',
+    );
+    expect(entryBlock).toContain(ENTRY_ATTEMPT);
+    expect(entryBlock).toContain(ENTRY_RECHECK);
+    const entryAt = handler.indexOf(ENTRY_ATTEMPT);
+    const recheckAt = handler.indexOf(ENTRY_RECHECK, entryAt);
+    const writeAt = handler.indexOf(SELECTION_WRITE);
+    expect(entryAt).toBeGreaterThan(-1);
+    expect(recheckAt).toBeGreaterThan(entryAt);
+    expect(writeAt).toBeGreaterThan(recheckAt);
+  });
+
+  it('leaves the accepted path byte-identical', () => {
+    const handler = selectAllRegion();
+    expect(handler).toContain('const playFrame = launchContextRef.current?.startFrame ?? 0;');
+    expect(handler).toContain('const ids = listAquarelleStrokeSelectionIds(playFrame);');
+    expect(handler).toContain('const selected = scriptSelectedStrokeIds.peek();');
+    expect(handler).toContain('const allSelected = ids.length > 0 && ids.every((id) => selected.has(id));');
+    expect(handler).toContain('setAquarelleStrokeSelection(allSelected ? [] : ids);');
+    // ONE entry attempt, ONE selection write, and the empty dependency list
+    // that keeps the handler out of the Studio body's subscriptions.
+    expect(handler.split(ENTRY_ATTEMPT).length - 1).toBe(1);
+    expect(handler.split(SELECTION_WRITE).length - 1).toBe(1);
+    expect(handler).toContain('  }, []);');
+  });
+
+  it('keeps the Shift+A dispatch routed to the shipped action slot', () => {
+    const keyboard = readFileSync(
+      fileURLToPath(new URL('./view/physicsPaintStudioKeyboard.ts', import.meta.url)),
+      'utf8',
+    );
+    const shiftA = regionOf(
+      keyboard,
+      "key === 'a' && actions.toggleSelectAllAquarelleStrokes",
+      "if (event.key === '?'",
+    );
+    expect(shiftA).toContain('event.preventDefault();');
+    expect(shiftA).toContain('actions.toggleSelectAllAquarelleStrokes();');
+    // Shift+A owns no other action — the select-mode toggle stays on the rail.
+    expect(shiftA).not.toContain('toggleAquarelleSelectMode');
+    expect(studio.split('toggleSelectAllAquarelleStrokes:').length - 1).toBe(1);
+  });
+});
