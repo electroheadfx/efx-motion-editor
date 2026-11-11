@@ -23,6 +23,7 @@ import { resolve } from 'node:path';
 import { effect } from '@preact/signals';
 import {
   resolveAnchorHandles,
+  sampleVectorPath,
   type AquarelleStroke,
   type VectorAnchor,
 } from '@efxlab/efx-watercolor/payload';
@@ -63,6 +64,7 @@ import {
   buildAnchorWidthCommit,
   buildDraftPath,
   buildVectorStroke,
+  uvToScreen,
   type VectorPathCommit,
 } from '../view/vectorPathHandles';
 import {
@@ -460,6 +462,86 @@ describe('VectorPathOverlay — draw gesture (task 2)', () => {
     expect(source).toContain("window.removeEventListener('keydown'");
     // 61-10: the same listener carries the open path edit's Delete/Backspace.
     expect(source).toContain('if (!penActive && editMutationId === null) return');
+  });
+});
+
+// 61-21 (IN-01): the draw state shows the curve the NEXT click will produce.
+// A pointer move writes the draft's `cursor` station through the one session
+// writer and the overlay draws a provisional dashed spine from the last placed
+// anchor to it. Nothing is placed, recorded or committed by a move (D-06).
+describe('61-21 IN-01 — the live rubber band', () => {
+  const DRAFT_ANCHORS = [auto(0.2, 0.5), auto(0.6, 0.5)] as const;
+  const CURSOR = { x: 0.8, y: 0.4 };
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    vectorPenActive.value = true;
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  it('draws one provisional spine to the cursor, and none without a cursor', () => {
+    vectorDrawDraft.value = { anchors: [...DRAFT_ANCHORS], cursor: CURSOR };
+    const tree = render(VectorPathOverlay(propsWith()));
+    const previews = nodesWithTestId(tree, 'vector-path-draft-preview');
+    expect(previews).toHaveLength(1);
+
+    // The points are the ONE spine module's samples of anchors + cursor,
+    // screen-projected — never a hand-drawn chord.
+    const expected = sampleVectorPath([...DRAFT_ANCHORS, { ...CURSOR, kind: 'auto' }]).points
+      .map((point) => {
+        const at = uvToScreen(point, WIDTH, HEIGHT);
+        return `${at.x},${at.y}`;
+      })
+      .join(' ');
+    expect(previews[0]!.props['points']).toBe(expected);
+    expect(previews[0]!.props['fill']).toBe('none');
+    expect(previews[0]!.props['strokeDasharray']).toBe('4 3');
+
+    // No cursor station = no rubber band.
+    vectorDrawDraft.value = { anchors: [...DRAFT_ANCHORS], cursor: null };
+    expect(
+      nodesWithTestId(render(VectorPathOverlay(propsWith())), 'vector-path-draft-preview'),
+    ).toHaveLength(0);
+  });
+
+  it('never places an anchor or commits from a pointer move, and draws the preview before the spine', () => {
+    const onCommitPath = vi.fn();
+    vectorDrawDraft.value = { anchors: [...DRAFT_ANCHORS], cursor: null };
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
+    expect(onPointerMove, 'the draw state has no pointer-move handler').toBeTypeOf('function');
+
+    onPointerMove!(clickAt(CURSOR.x, CURSOR.y));
+
+    expect(vectorDrawDraft.peek()?.cursor).toEqual(CURSOR);
+    expect(vectorDrawDraft.peek()?.anchors).toHaveLength(2);
+    expect(onCommitPath).not.toHaveBeenCalled();
+
+    // Re-render at the new station: ONE provisional line, still two anchors,
+    // and no marker or handle for the cursor.
+    const tree = render(VectorPathOverlay(propsWith([], { onCommitPath })));
+    const nodes = [...walk(tree)];
+    const previews = nodesWithTestId(tree, 'vector-path-draft-preview');
+    expect(previews).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'vector-path-anchor')).toHaveLength(2);
+    expect(nodesWithTestId(tree, 'vector-path-handle')).toHaveLength(0);
+
+    // Drawn BEFORE the committed draft spine, so the placed path stays legible.
+    const previewIndex = nodes.findIndex(
+      (node) => node.props?.['data-testid'] === 'vector-path-draft-preview',
+    );
+    const spineIndex = nodes.findIndex(
+      (node) => node.props?.['data-testid'] === 'vector-path-spine',
+    );
+    expect(previewIndex).toBeGreaterThanOrEqual(0);
+    expect(spineIndex).toBeGreaterThan(previewIndex);
+    expect(onCommitPath).not.toHaveBeenCalled();
   });
 });
 

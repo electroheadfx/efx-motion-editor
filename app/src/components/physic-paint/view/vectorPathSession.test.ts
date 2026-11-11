@@ -31,6 +31,9 @@ import {
 import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
 import { aquarelleSelectMode, setAquarelleSelectMode } from './aquarelleStrokeSelection';
 import { aquarellePickerActive, disarmAquarellePicker, setAquarellePickerLatched } from './aquarelleColorPicker';
+// The draft cursor writer is exercised through the module surface, so the pin
+// observes the module's ONE public writer rather than a test-local copy.
+import * as vectorPathSessionSurface from './vectorPathSession';
 
 /** Count how many times a read runs — an `effect()` re-runs only on a REAL write. */
 function countRuns(read: () => unknown): { runs: () => number; dispose: () => void } {
@@ -190,6 +193,54 @@ describe('vectorPathSession — the vector pen and path-edit session', () => {
     resetForStudioOpen();
     expect(penRuns.runs()).toBe(1);
     penRuns.dispose();
+  });
+});
+
+// 61-21 (IN-01): the draft's `cursor` station is the ONE place the live
+// rubber band reads from. `moveVectorDraftCursor` writes it compare-first, so a
+// stationary pointer notifies zero effects, and it never places an anchor: a
+// pointer move is a PREVIEW, not a gesture (D-06).
+describe('61-21 IN-01 — the draft cursor writer', () => {
+  const moveVectorDraftCursor = (
+    vectorPathSessionSurface as unknown as {
+      moveVectorDraftCursor?: (point: { readonly x: number; readonly y: number }) => boolean;
+    }
+  ).moveVectorDraftCursor;
+
+  it('writes the cursor station through the one writer and keeps the anchor list', () => {
+    expect(typeof moveVectorDraftCursor).toBe('function');
+    beginVectorDraft({ x: 0.1, y: 0.2, kind: 'auto' });
+    const anchorsBefore = vectorDrawDraft.peek()!.anchors;
+
+    expect(moveVectorDraftCursor!({ x: 0.4, y: 0.3 })).toBe(true);
+
+    const draft = vectorDrawDraft.peek()!;
+    expect(draft.cursor).toEqual({ x: 0.4, y: 0.3 });
+    // The anchors are CARRIED, never rebuilt: a cursor write places nothing.
+    expect(draft.anchors).toBe(anchorsBefore);
+    expect(draft.anchors).toHaveLength(1);
+  });
+
+  it('notifies nothing for an identical station and writes nothing without a draft', () => {
+    expect(typeof moveVectorDraftCursor).toBe('function');
+
+    // No draft: the writer refuses and leaves the signal empty.
+    expect(moveVectorDraftCursor!({ x: 0.4, y: 0.3 })).toBe(false);
+    expect(vectorDrawDraft.peek()).toBeNull();
+
+    // A draft whose cursor already sits on the station: zero real writes on top
+    // of the effect's initial run (efx-preact-reactivity: compare-then-write).
+    beginVectorDraft({ x: 0.1, y: 0.2, kind: 'auto' });
+    const runs = countRuns(() => vectorDrawDraft.value);
+    expect(moveVectorDraftCursor!({ x: 0.1, y: 0.2 })).toBe(false);
+    expect(runs.runs()).toBe(1);
+    runs.dispose();
+
+    // A different station is exactly one write.
+    const movedRuns = countRuns(() => vectorDrawDraft.value);
+    expect(moveVectorDraftCursor!({ x: 0.25, y: 0.25 })).toBe(true);
+    expect(movedRuns.runs()).toBe(2);
+    movedRuns.dispose();
   });
 });
 
