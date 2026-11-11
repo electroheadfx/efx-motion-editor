@@ -273,8 +273,9 @@ describe('Phase 56 .mce field set (DATA-04 / D-27)', () => {
 
 describe('Phase 61 vector field set (VEC-06 / REL-02)', () => {
   it('declares the vector anchor shape in both languages', () => {
-    // VEC-06: x, y, kind, the optional handle pair and the sparse width factor.
-    expectMemberKeys('MceAquarelleAnchor', ['x', 'y', 'kind', 'in', 'out', 'width']);
+    // VEC-06 / 261111-wd6: x, y, kind, the optional handle pair, the sparse
+    // width factor and the optional explicit colour.
+    expectMemberKeys('MceAquarelleAnchor', ['x', 'y', 'kind', 'in', 'out', 'width', 'color']);
   });
 
   it('declares the vector path shape in both languages', () => {

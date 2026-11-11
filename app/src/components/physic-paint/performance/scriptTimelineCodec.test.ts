@@ -611,6 +611,117 @@ describe('AQTL v2 curve mode (61-30 G-20)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 261111-wd6 — the per-vertex colour block in AQTL v2.
+//
+//  A new vector flag bit (1 << 3) and, per anchor, a presence byte plus the
+//  verbatim colour string written LAST inside that anchor (after the width).
+//  A path with no anchor colour never sets the bit and never writes a block
+//  byte, so every pre-existing byte stays put. The reader validates the
+//  presence marker and the u16 length before reading, exactly like every
+//  other string on this wire.
+// ---------------------------------------------------------------------------
+
+describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
+  // Same prefix as every one-stroke fixture: the vector-flags byte sits just
+  // before the anchor count.
+  const VECTOR_FLAG_OFFSET = 73;
+  const VECTOR_FLAG_ANCHOR_COLOR = 1 << 3;
+
+  /** Two `auto` anchors, no widths, no handles; the first may carry a colour. */
+  function coloredVectorStroke(color?: string): StudioStroke<AquarelleStrokePayload> {
+    const base = minimalStroke();
+    return {
+      ...base,
+      engine: {
+        ...base.engine,
+        anchors: [
+          { x: 0.25, y: 0.5, kind: 'auto', ...(color === undefined ? {} : { color }) },
+          { x: 0.75, y: 0.125, kind: 'auto' },
+        ],
+      },
+    };
+  }
+
+  it('leaves an anchor-colourless path byte-identical (bit 3 clear)', () => {
+    const plain = encodeScriptTimelineBinary([minimalStroke()]);
+    expect(plain.byteLength).toBe(94);
+    expect(plain[VECTOR_FLAG_OFFSET]).toBe(0);
+
+    const colourless = encodeScriptTimelineBinary([coloredVectorStroke()]);
+    expect(colourless[VECTOR_FLAG_OFFSET] & VECTOR_FLAG_ANCHOR_COLOR).toBe(0);
+    // Every anchor pays exactly one presence byte; nothing else grows.
+    expect(colourless.byteLength).toBe(120);
+  });
+
+  it('costs one presence byte per anchor plus 1 + 2 + UTF-8 bytes for a colour', () => {
+    const colourless = encodeScriptTimelineBinary([coloredVectorStroke()]);
+    const coloured = encodeScriptTimelineBinary([coloredVectorStroke('#ff0000')]);
+    // presence marker + u16 length + 7 UTF-8 bytes for `#ff0000`.
+    expect(coloured.byteLength).toBe(colourless.byteLength + 1 + 2 + 7);
+
+    const short = encodeScriptTimelineBinary([coloredVectorStroke('#0f0')]);
+    expect(short.byteLength).toBe(colourless.byteLength + 1 + 2 + 4);
+
+    expect(coloured[VECTOR_FLAG_OFFSET] & VECTOR_FLAG_ANCHOR_COLOR).not.toBe(0);
+  });
+
+  it('round-trips the colour verbatim and materialises no key on a colourless anchor', () => {
+    const stroke = coloredVectorStroke('#ff0000');
+    const [decoded] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([stroke]));
+    expect(decoded).toEqual(stroke);
+    const anchors = asStroke(decoded).engine.anchors!;
+    expect(anchors[0]!.color).toBe('#ff0000');
+    expect('color' in anchors[1]!).toBe(false);
+
+    // The wire is verbatim: this layer never canonicalises a colour.
+    const upper = coloredVectorStroke('#FF0000');
+    const [upperDecoded] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([upper]));
+    expect(asStroke(upperDecoded).engine.anchors![0]!.color).toBe('#FF0000');
+  });
+
+  it('is byte-identical when a decoded coloured stroke is re-encoded', () => {
+    const first = encodeScriptTimelineBinary([coloredVectorStroke('#103c65')]);
+    const decoded = decodeScriptTimelineBinary(first);
+    expect(encodeScriptTimelineBinary(decoded)).toEqual(first);
+  });
+
+  it('fails closed when the stream is cut inside the colour string', () => {
+    const bytes = encodeScriptTimelineBinary([coloredVectorStroke('#ff0000')]);
+    // Single anchor from 76: x/y/kind/handleFlags/widthPresence (11 bytes),
+    // then colour presence (87), u16 length (88), UTF-8 (90..96).
+    // Cutting at 94 leaves 4 of the 7 string bytes.
+    const cut = bytes.slice(0, 94);
+    new DataView(cut.buffer, cut.byteOffset, cut.byteLength).setUint32(
+      16,
+      cut.byteLength - 24,
+      true,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(cut))).toBe('truncated');
+  });
+
+  it('refuses a colour presence marker that is not 0 or 1', () => {
+    const bytes = encodeScriptTimelineBinary([coloredVectorStroke('#ff0000')]);
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(87, 2);
+    expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
+  });
+
+  it('refuses a non-string anchor colour at encode (fail closed)', () => {
+    const stroke = coloredVectorStroke();
+    (asStroke(stroke).engine.anchors![0] as unknown as { color?: unknown }).color = 42;
+    expect(expectedCode(() => encodeScriptTimelineBinary([stroke]))).toBe('invalid-value');
+  });
+
+  it('still refuses an unknown vector flag bit', () => {
+    const bytes = encodeScriptTimelineBinary([coloredVectorStroke()]);
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(
+      VECTOR_FLAG_OFFSET,
+      VECTOR_FLAG_ANCHOR_COLOR | 0x10,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 61-05 task 3 — the codec-level determinism the reopen path relies on.
 // ---------------------------------------------------------------------------
 
