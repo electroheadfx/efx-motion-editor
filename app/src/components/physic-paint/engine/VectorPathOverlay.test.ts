@@ -961,6 +961,24 @@ describe('VectorPathOverlay — handle drag, insert, delete, width (task 2)', ()
     expect(vectorAnchorSelection.peek()).toEqual([]);
   });
 
+  it('ends an in-flight drag BEFORE the Delete write lands (61 CR-01 residual)', () => {
+    // A drag commits `anchorsAtStart` on release, so a Delete that arrives
+    // mid-gesture is undone by the pointerup unless the gesture dies first.
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    setVectorAnchorSelection([0]);
+    const order: string[] = [];
+    handleVectorPathEditKey(
+      { key: 'Delete', preventDefault: vi.fn(), stopPropagation: vi.fn() },
+      {
+        getRecordedStrokes: () => new Map([[EDIT_ID, stroke]]),
+        onPathEdit: () => order.push('edit'),
+        cancelActiveDrag: () => order.push('cancel'),
+      },
+    );
+    expect(order).toEqual(['cancel', 'edit']);
+  });
+
   it('deletes every selected anchor in ONE commit and clears the selection', () => {
     enterPathEdit(String(EDIT_ID));
     const stroke = editedStroke();

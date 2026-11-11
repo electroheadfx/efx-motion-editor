@@ -297,6 +297,12 @@ export function handleVectorPathKey(
 export interface VectorPathEditKeyHandlers {
   readonly getRecordedStrokes: () => ReadonlyMap<number, AquarelleStroke>;
   readonly onPathEdit: (mutationId: number, anchors: readonly VectorAnchor[]) => void;
+  /**
+   * 61 CR-01 (residual): end any in-flight drag BEFORE this key's write lands.
+   * A drag commits `anchorsAtStart` on release, so a Delete that arrives
+   * mid-gesture would otherwise be undone by the pointerup.
+   */
+  readonly cancelActiveDrag?: () => void;
 }
 
 /**
@@ -332,6 +338,9 @@ export function handleVectorPathEditKey(
   event.preventDefault?.();
   event.stopPropagation?.();
   clearVectorAnchorSelection();
+  // 61 CR-01 (residual): the delete lands first, so the gesture that was
+  // holding `anchorsAtStart` must not survive to re-commit it on release.
+  handlers.cancelActiveDrag?.();
   handlers.onPathEdit(targetMutationId, next);
 }
 
@@ -710,14 +719,13 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     onCancelPath: props.onCancelPath,
   };
   // The edit key's host seam rides its own ref, like the draft handlers above.
+  // 61 CR-01 (residual): `.current` is assigned at the END of this body, after
+  // `cancelEditDrag` exists — the seam needs it to end a drag the Delete lands
+  // inside. The window listener below only reads the ref at event time.
   const editKeyHandlersRef = useRef<VectorPathEditKeyHandlers>({
     getRecordedStrokes: props.getRecordedStrokes,
     onPathEdit: props.onPathEdit,
   });
-  editKeyHandlersRef.current = {
-    getRecordedStrokes: props.getRecordedStrokes,
-    onPathEdit: props.onPathEdit,
-  };
   // The in-flight anchor / handle drag (path edit). A ref so the pointer
   // handlers never re-render the surface mid-gesture; the visual preview
   // travels on a signal.
@@ -1127,6 +1135,14 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     dragRef.current = null;
     vectorPathEditDrag.value = null;
     if (drag !== null) releasePointerCapture(event?.currentTarget, drag.pointerId);
+  };
+
+  // 61 CR-01 (residual): assigned here, where `cancelEditDrag` is in scope, so
+  // a Delete handled by the key seam ends the gesture before its own write.
+  editKeyHandlersRef.current = {
+    getRecordedStrokes: props.getRecordedStrokes,
+    onPathEdit: props.onPathEdit,
+    cancelActiveDrag: () => cancelEditDrag(),
   };
 
   return (
