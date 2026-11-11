@@ -27,12 +27,15 @@
 
 import {
   ANCHOR_WIDTH_DEFAULT,
+  DEFAULT_AQUARELLE_CURVE_MODE,
   clampAnchorWidth,
+  evaluateAquarellePath,
   isUniformWidthProfile,
   normaliseVectorAnchors,
   resolveAnchorHandles,
-  sampleVectorPath,
+  resolveCurveAnchors,
   sampleVectorWidths,
+  type AquarelleCurveMode,
   type AquarelleRenderMode,
   type AquarelleStroke,
   type AquarelleTool,
@@ -165,6 +168,9 @@ export function pointToSegmentDistancePx(
  * anchors are tested from the nearest out so overlapping markers resolve
  * deterministically. The pad is a SCREEN-pixel value, so it is applied as
  * `distance * scale`.
+ *
+ * 61-30 (G-20): under `spline` every tangent is derived, so no stored handle
+ * is a user-owned control — the handle loop is skipped entirely (T-61-88).
  */
 export function hitTestVectorPath(
   anchors: readonly VectorAnchor[],
@@ -173,6 +179,7 @@ export function hitTestVectorPath(
   width: number,
   height: number,
   scale: number,
+  curveMode: AquarelleCurveMode = DEFAULT_AQUARELLE_CURVE_MODE,
 ): VectorHitTarget | null {
   const pointer = uvToScreen(pointerUv, width, height);
   if (!Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return null;
@@ -182,7 +189,7 @@ export function hitTestVectorPath(
 
   let bestHandle: VectorHitTarget | null = null;
   let bestHandleDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < anchors.length; index += 1) {
+  for (let index = 0; curveMode !== 'spline' && index < anchors.length; index += 1) {
     if (anchors[index]!.kind !== 'bezier') continue;
     const resolved = handles[index];
     if (resolved === undefined) continue;
@@ -272,12 +279,17 @@ export interface DraftVectorPath {
  * Evaluate the draft anchors through the one spine module. The returned
  * anchor list is the NORMALISED list, so the committed path is exactly the
  * curve the user saw (a duplicate or non-finite anchor can never reach the
- * document — T-61-28).
+ * document — T-61-28). 61-30 (G-20): the points come from the mode's
+ * evaluation view while the anchors stay the STORED ones — a draft is never
+ * rewritten by the mode it is drawn with.
  */
-export function buildDraftPath(draftAnchors: readonly VectorAnchor[]): DraftVectorPath {
+export function buildDraftPath(
+  draftAnchors: readonly VectorAnchor[],
+  curveMode: AquarelleCurveMode = DEFAULT_AQUARELLE_CURVE_MODE,
+): DraftVectorPath {
   const anchors = normaliseVectorAnchors(draftAnchors);
   if (anchors.length === 0) return { anchors: [], points: [] };
-  const { points } = sampleVectorPath(anchors);
+  const { points } = evaluateAquarellePath(anchors, curveMode);
   return { anchors, points };
 }
 
@@ -325,18 +337,26 @@ function buildEnvelope(
  * `alwaysEnvelope` (61-13 wireframe) draws the swept envelope even for a
  * uniform profile: the wireframe is a CONSTRUCTION view, so it shows the
  * stroke's actual width unconditionally. Editing chrome keeps the D-10 law.
+ *
+ * 61-30 (G-20): `curveMode` selects the evaluation view for the SPINE only —
+ * the markers and the width profile always read the stored anchors, because
+ * a mode is not an anchor edit.
  */
 export function projectVectorPath(
   anchors: readonly VectorAnchor[],
   width: number,
   height: number,
-  options: { readonly alwaysEnvelope?: boolean } = {},
+  options: { readonly alwaysEnvelope?: boolean; readonly curveMode?: AquarelleCurveMode } = {},
 ): VectorPathProjection {
   const normalised = normaliseVectorAnchors(anchors);
   if (normalised.length === 0) return { anchors: [], spine: [], widths: [], envelope: [] };
-  const { points } = sampleVectorPath(normalised);
+  const { points } = evaluateAquarellePath(
+    normalised,
+    options.curveMode ?? DEFAULT_AQUARELLE_CURVE_MODE,
+  );
   if (points.length === 0) return { anchors: [], spine: [], widths: [], envelope: [] };
   const spine = points.map((point) => uvToScreen(point, width, height));
+  // The width profile indexes the STORED anchors, never the spline view.
   const widths = sampleVectorWidths(normalised, points);
   const envelope = options.alwaysEnvelope === true || !isUniformWidthProfile(normalised)
     ? buildEnvelope(spine, widths, height)
@@ -357,11 +377,17 @@ export function projectVectorPath(
  * auto-with-override state — the moment the user takes control, they own it.
  * An already-bezier anchor is carried untouched (same anchor object), and the
  * input list is never mutated.
+ *
+ * 61-30 (G-20): under `spline` every tangent is derived, so an anchor drag
+ * owns nothing to freeze — the list is returned untouched with every kind and
+ * handle intact (T-61-88).
  */
 export function promoteAnchorForDrag(
   anchors: readonly VectorAnchor[],
   index: number,
+  curveMode: AquarelleCurveMode = DEFAULT_AQUARELLE_CURVE_MODE,
 ): readonly VectorAnchor[] {
+  if (curveMode === 'spline') return [...anchors];
   const anchor = anchors[index];
   if (anchor === undefined || anchor.kind === 'bezier') return [...anchors];
   const resolved = resolveAnchorHandles(anchors)[index];
@@ -442,11 +468,16 @@ export function moveHandleTo(
  * stored: re-resolving the list derives them like every other `auto` anchor
  * (D-03's counter-case: a new anchor starts unowned). The input list is never
  * mutated and untouched anchors are carried by reference.
+ *
+ * 61-30 (G-20): under `spline` the basis handles come from the derived-auto
+ * view, so the click is projected onto the curve the user actually sees while
+ * the stored anchors keep their authored kinds and handles.
  */
 export function insertAnchorOnSegment(
   anchors: readonly VectorAnchor[],
   segmentIndex: number,
   pointUv: Vec2,
+  curveMode: AquarelleCurveMode = DEFAULT_AQUARELLE_CURVE_MODE,
 ): readonly VectorAnchor[] {
   const normalised = normaliseVectorAnchors(anchors);
   if (normalised.length < 2) return [...normalised];
@@ -457,7 +488,7 @@ export function insertAnchorOnSegment(
     : lastSegment;
   const start = normalised[segment]!;
   const end = normalised[segment + 1]!;
-  const handles = resolveAnchorHandles(normalised);
+  const handles = resolveAnchorHandles(resolveCurveAnchors(normalised, curveMode));
   const controlA = handles[segment]?.out ?? start;
   const controlB = handles[segment + 1]?.in ?? end;
   // Chord projection: the station the click falls on along the segment.

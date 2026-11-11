@@ -12,22 +12,26 @@
 
 import { signal } from '@preact/signals';
 import {
+  DEFAULT_AQUARELLE_CURVE_MODE,
   DIFFUSION_CAP,
   PAINT_SEED_SALT_PARAM,
   anchorsEqual,
   createDryEvent,
+  evaluateAquarellePath,
+  isAquarelleCurveMode,
   isAquarelleDryEvent,
   isAquarelleRenderMode,
   normaliseAquarelleAnchors,
   paintSeedSaltOf,
   projectVectorPath,
+  resolveAquarelleCurveMode,
   resolveAquarelleRenderMode,
-  sampleVectorPath,
   toStudioStroke,
   type AquarelleAnchor,
   type AquarelleCurveMode,
   type AquarelleDryEvent,
   type AquarellePayloadEvent,
+  type AquarellePoint,
   type AquarelleRenderMode,
   type AquarelleStroke,
   type AquarelleStrokePayload,
@@ -975,17 +979,81 @@ export function updateAquarelleRenderModeInScript(
 }
 
 /**
- * 61-30 (G-20): switch the curve-evaluation mode on every target stroke and
- * re-sample its points from the new evaluation in the SAME write.
+ * 61-30 (G-20 / T-61-89): switch the curve-evaluation mode on every target
+ * stroke and re-sample its points from the new evaluation in the SAME write.
+ *
+ * Mirrors `updateAquarelleRenderModeInScript`'s batch law: validate the mode
+ * against the closed union BEFORE resolving any target (an unknown mode
+ * refuses the whole batch, never a silent Bézier fall back), de-duplicate the
+ * ids, then resolve every target — skipping missing, deleted, out-of-timeline,
+ * already-matching and ANCHORLESS strokes (a hand-painted stroke has no path
+ * to evaluate, so the mode would be inert data).
+ *
+ * The stored path is never rewritten: only the mode and the derived points
+ * change. Switching back to the default DROPS the key rather than storing
+ * `bezier`, so an untouched document keeps its exact bytes (REL-02). One
+ * revision bump and one history entry cover the whole selection.
  */
 export function updateAquarelleCurveModeInScript(
   mutationIds: readonly number[],
   mode: AquarelleCurveMode,
 ): number {
-  // SCRATCH STUB (61-30 RED): writes nothing until the batch door lands.
-  void mutationIds
-  void mode
-  return 0
+  if (!isAquarelleCurveMode(mode)) return 0;
+
+  const targets: Array<{
+    mutationId: number;
+    stroke: AquarelleStroke;
+    index: number;
+    nextPoints: readonly AquarellePoint[];
+  }> = [];
+  const seen = new Set<number>();
+  for (const mutationId of mutationIds) {
+    if (!Number.isFinite(mutationId)) continue;
+    if (seen.has(mutationId)) continue;
+    seen.add(mutationId);
+    const stroke = recordedStrokes.get(mutationId);
+    const entry = recordedStrokeEntries.get(mutationId);
+    if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) continue;
+    const index = payloadTimeline.indexOf(entry);
+    if (index < 0) continue;
+    // An absent mode IS Bézier, so an already-matching stroke is a no-op.
+    if (resolveAquarelleCurveMode(stroke.curveMode) === mode) continue;
+    // Anchorless = hand-painted: there is no path to evaluate, so nothing to write.
+    const anchors = normaliseAquarelleAnchors(stroke.anchors);
+    if (anchors === undefined) continue;
+    const nextAnchors = projectVectorPath(anchors);
+    const { points: sampledSpine } = evaluateAquarellePath(nextAnchors, mode);
+    targets.push({
+      mutationId,
+      stroke,
+      index,
+      // The re-derived points carry `buildVectorStroke`'s exact shape.
+      nextPoints: sampledSpine.map((point) => ({
+        x: point.x,
+        y: point.y,
+        p: 1,
+        tx: 0,
+        ty: 0,
+        tw: 0,
+      })),
+    });
+  }
+  if (targets.length === 0) return 0;
+
+  for (const { mutationId, stroke, index, nextPoints } of targets) {
+    const nextStroke: AquarelleStroke = { ...stroke, points: nextPoints };
+    // The default mode is expressed by the ABSENT key: switching back must
+    // drop the previous mode, never store `curveMode: 'bezier'`.
+    delete nextStroke.curveMode;
+    if (mode !== DEFAULT_AQUARELLE_CURVE_MODE) nextStroke.curveMode = mode;
+    const nextEntry = toStudioStroke(nextStroke);
+    recordedStrokes.set(mutationId, nextStroke);
+    recordedStrokeEntries.set(mutationId, nextEntry);
+    // SAME index — replay order is preserved (replace only, never splice).
+    payloadTimeline[index] = nextEntry;
+  }
+  bumpAquarelleStrokesRevision();
+  return targets.length;
 }
 
 /**
@@ -1005,6 +1073,10 @@ export function updateAquarelleCurveModeInScript(
  * `buildVectorStroke`'s exact shape (p 1, no tilt), so a replayed edit is
  * indistinguishable from a freshly drawn stroke. Params, diffusionFrames,
  * timestamp and playFrame still survive the path write.
+ *
+ * 61-30 (G-20): the re-sample goes through the stroke's CURVE MODE — a spline
+ * stroke stays spline across an anchor edit, and its points are the spline
+ * evaluation of the new path (the mode key rides the spread unchanged).
  *
  * Idempotent: an unchanged anchor list and render mode store nothing, bump
  * nothing and return 0. The persisted form drops a width factor equal to 1
@@ -1030,7 +1102,11 @@ export function updateAquarellePathInScript(
   // 61-29 (G-17): re-derive the replay spine from the anchors just stored.
   // `toStudioStroke` projects these points into the payload's `pts`, and they
   // are stamped with the exact six-field shape `buildVectorStroke` writes.
-  const { points: sampledSpine } = sampleVectorPath(nextAnchors);
+  // 61-30 (G-20): the evaluation honours the stroke's stored curve mode.
+  const { points: sampledSpine } = evaluateAquarellePath(
+    nextAnchors,
+    resolveAquarelleCurveMode(stroke.curveMode),
+  );
   const nextPoints = sampledSpine.map((point) => ({
     x: point.x,
     y: point.y,

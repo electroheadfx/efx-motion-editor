@@ -169,19 +169,25 @@ export function resolveCurveAnchors(
   anchors: readonly VectorAnchor[],
   curveMode: AquarelleCurveMode,
 ): readonly VectorAnchor[] {
-  // SCRATCH STUB (61-30 RED): returns the list untouched until the view lands.
-  void curveMode
-  return anchors
+  if (curveMode !== 'spline') return anchors
+  const view = anchors.map((anchor) => {
+    const plain: VectorAnchor = { x: anchor.x, y: anchor.y, kind: 'auto' }
+    return anchor.width === undefined ? plain : { ...plain, width: anchor.width }
+  })
+  return Object.freeze(view)
 }
 
-/** One `sampleVectorPath` walk over the mode's evaluation view (G-20). */
+/**
+ * One `sampleVectorPath` walk over the mode's evaluation view (G-20): Bézier
+ * evaluates the authored list unchanged, spline evaluates the derived-auto
+ * view. This is the ONE place the mode chooses an evaluation — every caller
+ * that needs points goes through here, never the raw spine sampler.
+ */
 export function evaluateAquarellePath(
   anchors: readonly VectorAnchor[],
   curveMode: AquarelleCurveMode,
 ): SampledVectorPath {
-  // SCRATCH STUB (61-30 RED): always evaluates Bézier until the dispatch lands.
-  void curveMode
-  return sampleVectorPath(anchors)
+  return sampleVectorPath(resolveCurveAnchors(anchors, curveMode))
 }
 
 type MutableAnchor = {
