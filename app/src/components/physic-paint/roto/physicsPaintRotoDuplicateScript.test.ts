@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation';
 import type {
+  AquarelleAnchor,
   AquarelleDryEvent,
   AquarellePayloadEvent,
+  AquarelleRenderMode,
   AquarelleStroke,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
@@ -257,7 +259,13 @@ function aquarelleToolOverrides(): {
 
 function aquarelleEvent(
   recordedOrder: number,
-  overrides: { playFrame?: number; cuisson?: number; engineDiffusionFrames?: number } = {},
+  overrides: {
+    playFrame?: number;
+    cuisson?: number;
+    engineDiffusionFrames?: number;
+    anchors?: readonly AquarelleAnchor[];
+    renderMode?: AquarelleRenderMode;
+  } = {},
 ): StudioStroke<AquarelleStrokePayload> {
   const playFrame = overrides.playFrame ?? 3;
   return {
@@ -284,6 +292,10 @@ function aquarelleEvent(
       diffusionFrames: overrides.engineDiffusionFrames ?? overrides.cuisson ?? 0,
       timestamp: recordedOrder,
       playFrame,
+      // 61-24: conditional spreads keep every pre-vector fixture key-for-key
+      // identical — only the vector fixtures gain these two terms.
+      ...(overrides.anchors !== undefined ? { anchors: overrides.anchors } : {}),
+      ...(overrides.renderMode !== undefined ? { renderMode: overrides.renderMode } : {}),
     },
   };
 }
@@ -392,6 +404,56 @@ describe('copyAquarelleScriptToFrame', () => {
     expect(count).toBe(0);
     expect(allocateMutationId).not.toHaveBeenCalled();
     expect(record).not.toHaveBeenCalled();
+  });
+});
+
+// 61-24 (G-15): a copied key must stay a re-editable VECTOR stroke, so the
+// projection carries the vector path and its render mode. The carry is
+// conditional — an absent field stays absent, so a hand-painted source key's
+// copy keeps today's exact key set (D-01/D-12).
+describe('61-24 G-15 — the script projection carries the vector path', () => {
+  const VECTOR_PATH: readonly AquarelleAnchor[] = [
+    { x: 0.1, y: 0.2, kind: 'bezier', in: { x: 0.05, y: 0.15 }, out: { x: 0.15, y: 0.25 }, width: 1.8 },
+    { x: 0.6, y: 0.7, kind: 'auto' },
+  ];
+
+  it('projects a vector event with its anchors and render mode', () => {
+    const projected = aquarelleStrokeFromScriptEvent(
+      aquarelleEvent(41, { anchors: VECTOR_PATH, renderMode: 'simple-ribbon' }),
+      9,
+    );
+
+    expect(projected.anchors).toEqual(VECTOR_PATH);
+    expect(projected.renderMode).toBe('simple-ribbon');
+  });
+
+  it('adds no vector key to a hand-painted event', () => {
+    const projected = aquarelleStrokeFromScriptEvent(aquarelleEvent(41), 9);
+
+    expect('anchors' in projected).toBe(false);
+    expect('renderMode' in projected).toBe(false);
+  });
+
+  it('records the copy with its anchors intact under a fresh id without mutating the source', () => {
+    const source = aquarelleEvent(41, { anchors: VECTOR_PATH, renderMode: 'simple-ribbon' });
+    const before = JSON.stringify(source);
+    const recorded: Array<{ id: number; stroke: AquarelleStroke }> = [];
+
+    const count = copyAquarelleScriptToFrame({
+      events: [source],
+      destinationFrame: 9,
+      allocateMutationId: () => 777,
+      record: (id, stroke) => { recorded.push({ id, stroke }); },
+    });
+
+    expect(count).toBe(1);
+    expect(recorded[0].id).toBe(777);
+    expect(recorded[0].stroke.mutationId).toBe(777);
+    expect(recorded[0].stroke.anchors).toEqual(VECTOR_PATH);
+    expect(recorded[0].stroke.renderMode).toBe('simple-ribbon');
+    expect(recorded[0].stroke).not.toBe(source);
+    expect(JSON.stringify(source)).toBe(before);
+    expect(source.playFrame).toBe(3);
   });
 });
 
