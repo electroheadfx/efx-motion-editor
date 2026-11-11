@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-29-PLAN.md
-last_updated: "2026-11-11T12:08:23.453Z"
+stopped_at: Completed 61-30-PLAN.md
+last_updated: "2026-11-11T14:11:38.048Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: 91b3d569fab74cfa96862ae18f50e548aa36312f
+state_head: 09a51ceb3ade5a11a3fdc6a826a7f02e4dbf060f
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 62
-  completed_plans: 60
+  completed_plans: 61
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 30 of 31
+Plan: 31 of 31
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 61 execution started
 
@@ -118,6 +118,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P27 | 7 min | 3 tasks | 8 files |
 | Phase 61 P28 | 3 min | 2 tasks | 2 files |
 | Phase 61 P29 | 7 min | 3 tasks | 3 files |
+| Phase 61 P30 | 10 | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -336,6 +337,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: Target guards in continueEditDrag/finishEditDrag perform no cleanup — the effect owns it — and sit before every preview write and onPathEdit, leaving the T-61-30 clear-before-commit order untouched
 - [Phase 61]: G-17 root cause confirmed at the path write: updateAquarellePathInScript carried the stale points through the spread while toStudioStroke projects points into the replay's pts; the write now re-derives the spine from the projected anchors after the idempotency return
 - [Phase 61]: Re-derived vector points carry buildVectorStroke's exact six-field stamp (p 1, tx 0, ty 0, tw 0); the overlay points assertion was retargeted to the sampled law, never deleted
+- [Phase 61]: 61-30 (G-20): spline is an EVALUATION MODE over the same anchor list, never a third anchor kind and never a rewrite of authored data; an absent curveMode reads bezier so every pre-existing document stays byte-identical, and switching back drops the key
+- [Phase 61]: 61-30 scope (user decision at the plan checkpoint): per-stroke curveMode mirroring the shipped per-stroke renderMode in every layer; the document-level variant was rejected and the one-way persistence consequence accepted for projects that use the switch
 
 ### Pending Todos
 
@@ -428,8 +431,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T12:08:22.171Z
-Stopped at: Completed 61-29-PLAN.md
+Last session: 2026-11-11T14:11:32.209Z
+Stopped at: Completed 61-30-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
