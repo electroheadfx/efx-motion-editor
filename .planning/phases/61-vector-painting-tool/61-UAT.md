@@ -1,19 +1,18 @@
 ---
 status: testing
 phase: 61-vector-painting-tool
-source: [61-VERIFICATION.md, 61-REVIEW.md]
+source: [61-VERIFICATION.md, 61-REVIEW.md, 61-UI-REVIEW.md, 61-VALIDATION.md]
 started: 2026-11-10T23:40:00Z
-updated: 2026-11-11T00:45:00Z
+updated: 2026-11-11T16:20:00Z
 ---
 
 ## Current Test
 
-number: 9
-name: A committed path edit updates the rendered paint
+number: R1
+name: R1 — Vertex-drag responsiveness at the reference count
 expected: |
-  Releasing an edited anchor re-bakes the sheet so the watercolor paint follows
-  the new path — both on the automatic re-bake and on the rail's forced
-  Re-render (Shift+R).
+  Dragging and committing anchors stays native-feeling on the 10-stroke
+  reference sheet at 1920x1080 (probe raster cost: 772.6 ms per sheet re-bake).
 awaiting: user response
 
 ## Tests
@@ -73,6 +72,54 @@ expected: User would like spline editing instead of / in addition to Bézier, se
 result: [requested]
 detail: Scope question, not a defect. 61-CONTEXT D-01 defines exactly TWO anchor kinds — Bézier with coupled handles, and auto-smooth whose handles are derived from its neighbours — and D-04 explicitly REJECTED a user-selectable Catmull-Rom curve family. Painted-stroke curve editing is Phase 62. Granting this means revisiting D-01/D-04 and deciding whether the switch is per-anchor, per-stroke or a document setting.
 
+## Post gap-closure re-test (2026-11-11)
+
+Rows R1–R10 re-test the eleven gap-closure plans (61-21 … 61-31). The original
+rows above stay as the historical record; these are the live pass criteria for
+`61-VERIFICATION.md`'s ten `human_verification` items.
+
+### R1. Vertex-drag responsiveness at the reference count (truth 13)
+expected: Drag and commit stay native-feeling on the 10-stroke reference sheet at 1920x1080. Probe raster cost is 772.6 ms per sheet re-bake, so this is a judgment call.
+result: [pending]
+
+### R2. CR-01: a mid-drag Delete survives the release (truth 19)
+expected: Start an anchor drag, press Delete mid-drag, release — the deleted anchor STAYS deleted and no phantom edit is recorded. Then start a drag, press Escape or switch stroke, reopen the edit — no stale gesture commits. A normal drag still lands exactly one undoable edit.
+result: [pending]
+detail: The seam now ends the drag before its write (`9be725501`, pinned by an ordering test). The mounted edit-close effect still needs a live gesture.
+
+### R3. G-17: a committed path edit updates the rendered paint
+expected: Releasing an edited anchor re-bakes the sheet so the wash follows the new curve — after the ordinary bake, after a Draft settle, and after a forced Shift+R replay; one undo returns the paint to the pre-edit curve.
+result: [pending]
+detail: Confirmed cause was the stale replay spine carried through `updateAquarellePathInScript`'s spread; the write now re-derives `points` from the stored anchors (61-29).
+
+### R4. G-11: per-vertex width is discoverable in the default list view
+expected: With one vector stroke selected, the Anchor width control is visible in the default list view; dragging it moves that vertex's width; with no path edit open it is inert with `ANCHOR_WIDTH_NO_EDIT_REASON`; the selected anchor wears the ring and loses it on deselect.
+result: [pending]
+
+### R5. G-15: +Key inherits the vector
+expected: `+Key` on a vector-bearing previous real key yields a key with the same painted result that is re-editable (anchor markers on Edit vector); a hand-painted source behaves as today; a forced copy failure still creates the key and says only that the script could not be copied.
+result: [pending]
+
+### R6. G-19: the picker is hidden during a path edit
+expected: With Edit path open the Pipette visor never appears over the canvas and the rail's Picker chip stays unlit; holding Alt and dragging a handle breaks the tangent; after the edit Alt picks as before.
+result: [pending]
+
+### R7. G-20 / Curve row (rows A–F)
+expected: The Curve row appears for vector strokes only; switching Bézier <-> Spline changes the drawn shape and is one undo; authored handles return after switching back; Mixed converts honestly; hand-painted strokes are never touched; a spline insert lands on the drawn curve; a saved spline reopens identically.
+result: [pending]
+
+### R8. 61-26/61-27 refusal seams
+expected: Shift+A under wireframe changes nothing and restores normal selection after wireframe off; a failed path-edit bake's capsule matches whether the pre-edit path actually came back; a vector stroke drawn during an in-flight bake reappears at the next settle with no error capsule; selecting another stroke closes the open edit; a focused header button + Enter activates the button and touches no anchor.
+result: [pending]
+
+### R9. 61-20 undo row
+expected: One Cmd+Z reverts a whole path edit (anchor or handle drag, Draft mode, and a forced failing re-bake); Redo re-applies; a failed re-bake leaves the undo stack unchanged and restores the pre-edit path.
+result: [pending]
+
+### R10. UI review held-out rows and the five new warnings
+expected: Per 61-UI-SPEC: E5 overflow, E6 rail loading, E7 canvas loading/populated, E8 Simple-ribbon thumb; plus the 20/24 re-audit's new warnings — Curve row copy/teaching, refusal grammar, wireframe z-order (VectorPathOverlay z=41 over the ScriptStrokeOverlay chrome at z=40), segmented weight 600 vs 700, and a pre-press hover affordance.
+result: [pending]
+
 ## Summary
 
 total: 11
@@ -82,6 +129,15 @@ pending: 0
 skipped: 0
 blocked: 0
 requested: 1
+
+## Summary — post gap-closure re-test
+
+total: 10
+passed: 0
+issues: 0
+pending: 10
+skipped: 0
+blocked: 0
 
 ## Gaps
 
@@ -94,7 +150,7 @@ requested: 1
 - **G-14** — Stroke width preview. CLOSED: user-confirmed working.
 - **G-16** — Bézier handles not editable. CLOSED by G-9; user-confirmed.
 
-### Open — to be planned
+### Implemented in the gap-closure wave — re-test pending (see rows R2–R7)
 
 - **G-11 — Per-vertex width is undiscoverable.** The control is correct and functional but needs: exactly one vector stroke selected, the sheet's hidden settings view, and at least one anchor selected. Surface it from the default list view and/or give anchor selection a visible treatment (currently `renderPath` never reads `vectorAnchorSelection`, so a selected anchor looks identical to an unselected one).
 
