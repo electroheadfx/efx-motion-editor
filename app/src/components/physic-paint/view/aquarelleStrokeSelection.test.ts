@@ -27,6 +27,7 @@ import {
 } from '@efxlab/efx-watercolor/payload';
 import { buildBrushForStroke, toEngineParams } from '@efxlab/efx-watercolor';
 import { liftEngineSize, liftRadiusDoc } from '../roto/aquarelleLiftErase';
+import { vectorSpinePressures } from './vectorPathHandles';
 import {
   aquarelleStrokesRevision,
   bumpAquarellePaintSeedSalts,
@@ -1820,7 +1821,12 @@ function sampledModePoints(
         ...(anchor.width === undefined ? {} : { width: anchor.width }),
       }))
     : anchors;
-  return sampleVectorPath(source).points.map((p) => point(p.x, p.y));
+  const sampled = sampleVectorPath(source).points;
+  const pressures = vectorSpinePressures(sampled, 'watercolor');
+  return sampled.map((p, index) => ({
+    ...point(p.x, p.y),
+    p: pressures[index]!,
+  }));
 }
 
 /** A recorded vector stroke; the salt proves a mode flip cannot re-roll the seed. */

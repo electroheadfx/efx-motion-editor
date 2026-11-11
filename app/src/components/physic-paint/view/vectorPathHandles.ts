@@ -572,18 +572,100 @@ export function buildAnchorWidthCommit(
 // --- The commit's stroke half --------------------------------------------
 
 /**
+ * The pressure a vector stroke's spine is built around.
+ *
+ * A vector path has no pressure input: the pen places anchors, it does not
+ * press. The engine's deposit law reads `p` first (`pressureOf`), so a
+ * constant value here is a constant footprint and a constant deposit. `0.5`
+ * is the value the engine already records for a pressureless device, so the
+ * path lands at the brush's nominal size instead of its absolute maximum.
+ */
+export const VECTOR_STROKE_BASE_PRESSURE = 0.5;
+
+/** How far into the path (fraction of its length) the pen works up to speed. */
+const VECTOR_PRESSURE_TAPER_FRACTION = 0.055;
+/** The pressure multiplier at the very first / very last sample. */
+const VECTOR_PRESSURE_TAPER_FLOOR = 0.55;
+/** The two low-frequency terms that give the profile its hand-made feel. */
+const VECTOR_PRESSURE_WOBBLE = [
+  { cycles: 1.7, amplitude: 0.13 },
+  { cycles: 4.1, amplitude: 0.06 },
+] as const;
+
+function smoothstep01(value: number): number {
+  const t = Math.min(1, Math.max(0, value));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * A stable per-path phase in [0, 1) — the path's OWN geometry seeds it, so the
+ * same path always re-derives the same profile. Time would reshuffle the
+ * stroke on every reopen/edit; geometry cannot.
+ */
+function vectorSpinePressurePhase(points: readonly { x: number; y: number }[]): number {
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first === undefined || last === undefined) return 0;
+  const raw = Math.sin(first.x * 12.9898 + first.y * 78.233 + last.x * 37.719 + last.y * 43.313) * 43758.5453;
+  return raw - Math.floor(raw);
+}
+
+/**
+ * The natural pen profile a vector stroke is recorded with (VEC-01 follow-up).
+ *
+ * A hand stroke is organic because the engine derives pressure from pointer
+ * speed; a path has neither speed nor pressure, so a constant value deposits
+ * one flat, maximum-ish wash that looks nothing like the same brush used by
+ * hand. This profile restores the missing variation WITHOUT touching geometry:
+ * a short ramp at each end (the pen touches down and lifts) plus two bounded
+ * low-frequency terms for the hand's own drift. It is deterministic per path
+ * and stored in the recorded points, so replay, reopen and export keep it.
+ *
+ * `simple-ribbon` is the clean-sweep mode and keeps the flat base pressure —
+ * its contract is a clean ribbon, not a wet pen.
+ */
+export function vectorSpinePressures(
+  points: readonly { x: number; y: number }[],
+  renderMode: AquarelleRenderMode,
+): readonly number[] {
+  if (points.length === 0) return [];
+  if (renderMode === 'simple-ribbon') {
+    return points.map(() => VECTOR_STROKE_BASE_PRESSURE);
+  }
+  const phase = vectorSpinePressurePhase(points);
+  const span = points.length === 1 ? 1 : points.length - 1;
+  return points.map((_point, index) => {
+    const u = index / span;
+    const taper = VECTOR_PRESSURE_TAPER_FLOOR
+      + (1 - VECTOR_PRESSURE_TAPER_FLOOR)
+        * Math.min(
+          smoothstep01(u / VECTOR_PRESSURE_TAPER_FRACTION),
+          smoothstep01((1 - u) / VECTOR_PRESSURE_TAPER_FRACTION),
+        );
+    let wobble = 1;
+    // Each term carries its own phase offset, so the two sines never collapse
+    // into one at the same starting angle.
+    for (let term = 0; term < VECTOR_PRESSURE_WOBBLE.length; term += 1) {
+      const { cycles, amplitude } = VECTOR_PRESSURE_WOBBLE[term]!;
+      wobble += amplitude * Math.sin(2 * Math.PI * (cycles * u + phase * (term + 1)));
+    }
+    return Math.min(0.8, Math.max(0.16, VECTOR_STROKE_BASE_PRESSURE * taper * wobble));
+  });
+}
+
+/**
  * The pure half of the layer's commit seam: a finished path plus its
  * record-time source becomes a complete `AquarelleStroke`. Every required
  * field is written explicitly — anchors and renderMode are the vector-half's
  * contribution, the rest come from the same `snapshotAquarelleRecord()` /
  * selection expressions the hand-painted `onStrokeEnd` literal already uses.
- * Sampled spine points carry full pressure and no tilt: the width profile,
- * not pressure, shapes a vector stroke.
+ * Sampled spine points carry the natural pen profile and no tilt.
  */
 export function buildVectorStroke(
   commit: VectorPathCommit,
   source: VectorStrokeSource,
 ): AquarelleStroke {
+  const pressures = vectorSpinePressures(commit.points, commit.renderMode);
   return {
     tool: source.tool,
     color: source.color,
@@ -591,10 +673,10 @@ export function buildVectorStroke(
     brushId: source.brushId,
     renderMode: commit.renderMode,
     anchors: [...commit.anchors],
-    points: commit.points.map((point) => ({
+    points: commit.points.map((point, index) => ({
       x: point.x,
       y: point.y,
-      p: 1,
+      p: pressures[index] ?? VECTOR_STROKE_BASE_PRESSURE,
       tx: 0,
       ty: 0,
       tw: 0,

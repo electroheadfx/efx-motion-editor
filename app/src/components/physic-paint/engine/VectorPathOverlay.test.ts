@@ -67,6 +67,7 @@ import {
   buildDraftPath,
   buildVectorStroke,
   uvToScreen,
+  vectorSpinePressures,
   type VectorPathCommit,
 } from '../view/vectorPathHandles';
 import {
@@ -697,10 +698,12 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
     // The POINTS MUST MOVE: they are the replay's geometry (`toStudioStroke`
     // maps points into `pts`), so they are the spine sampled from the new
     // anchors in the commit's six-field shape — never the pre-edit spine.
-    const expectedPoints = sampleVectorPath(nextAnchors).points.map((point) => ({
+    const sampled = sampleVectorPath(nextAnchors).points;
+    const pressures = vectorSpinePressures(sampled, 'watercolor');
+    const expectedPoints = sampled.map((point, index) => ({
       x: point.x,
       y: point.y,
-      p: 1,
+      p: pressures[index]!,
       tx: 0,
       ty: 0,
       tw: 0,

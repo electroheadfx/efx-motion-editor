@@ -18,6 +18,7 @@ import {
   type AquarelleCurveMode,
   type AquarellePayloadEvent,
   type AquarellePoint,
+  type AquarelleRenderMode,
   type AquarelleStroke,
 } from '@efxlab/efx-watercolor/payload';
 import {
@@ -38,6 +39,10 @@ import {
   restoreAquarelleEditSnapshot,
   setAquarelleScriptEditInFlight,
 } from './aquarelleStrokeSelection';
+import {
+  VECTOR_STROKE_BASE_PRESSURE,
+  vectorSpinePressures,
+} from './vectorPathHandles';
 
 type AquarelleTimelineStroke = ReturnType<typeof aquarelleToStudioStroke>;
 
@@ -154,11 +159,16 @@ const G17_WIDE_ANCHORS: readonly AquarelleAnchor[] = [
 ];
 
 /** The exact six-field shape `buildVectorStroke` stamps onto a fresh commit. */
-function sampledSpinePoints(anchors: readonly AquarelleAnchor[]): readonly AquarellePoint[] {
-  return sampleVectorPath(anchors).points.map((p) => ({
+function sampledSpinePoints(
+  anchors: readonly AquarelleAnchor[],
+  renderMode: AquarelleRenderMode = 'simple-ribbon',
+): readonly AquarellePoint[] {
+  const sampled = sampleVectorPath(anchors).points;
+  const pressures = vectorSpinePressures(sampled, renderMode);
+  return sampled.map((p, index) => ({
     x: p.x,
     y: p.y,
-    p: 1,
+    p: pressures[index]!,
     tx: 0,
     ty: 0,
     tw: 0,
@@ -397,7 +407,7 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     // The projection keeps the sample fields and re-ticks the new spine.
     for (const sampleIndex of [0, 150, 301]) {
       const sample = entry.pts[sampleIndex]!;
-      expect(sample.p).toBe(1);
+      expect(sample.p).toBe(VECTOR_STROKE_BASE_PRESSURE);
       expect(sample.tx).toBe(0);
       expect(sample.ty).toBe(0);
       expect(sample.tw).toBe(0);
@@ -428,13 +438,16 @@ describe('61-29 G-17 — the path write carries the replay geometry', () => {
     expect(updateAquarellePathInScript(id, G17_NEXT_ANCHORS)).toBe(1);
 
     const after = getRecordedAquarelleStroke(id)!;
+    // No renderMode on this stroke = watercolor, so the re-derived spine wears
+    // the natural pen profile — the same one `buildVectorStroke` would stamp.
+    const expected = sampledSpinePoints(G17_NEXT_ANCHORS, 'watercolor');
+    expect(after.points).toEqual(expected);
     for (const sample of after.points) {
-      expect(sample.p).toBe(1);
       expect(sample.tx).toBe(0);
       expect(sample.ty).toBe(0);
       expect(sample.tw).toBe(0);
     }
-    expect(after.points).toHaveLength(sampledSpinePoints(G17_NEXT_ANCHORS).length);
+    expect(after.points).toHaveLength(expected.length);
   });
 
   it('feeds the new spine to every replay through getAquarelleEventsForFrame', () => {
@@ -545,12 +558,15 @@ function splineView(anchors: readonly AquarelleAnchor[]): readonly AquarelleAnch
 function sampledModePoints(
   anchors: readonly AquarelleAnchor[],
   mode: 'bezier' | 'spline',
+  renderMode: AquarelleRenderMode = 'simple-ribbon',
 ): readonly AquarellePoint[] {
   const source = mode === 'spline' ? splineView(anchors) : anchors;
-  return sampleVectorPath(source).points.map((p) => ({
+  const sampled = sampleVectorPath(source).points;
+  const pressures = vectorSpinePressures(sampled, renderMode);
+  return sampled.map((p, index) => ({
     x: p.x,
     y: p.y,
-    p: 1,
+    p: pressures[index]!,
     tx: 0,
     ty: 0,
     tw: 0,

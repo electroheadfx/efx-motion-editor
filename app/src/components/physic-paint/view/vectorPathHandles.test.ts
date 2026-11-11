@@ -31,6 +31,7 @@ import {
   DRAG_THRESHOLD_PX,
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
+  VECTOR_STROKE_BASE_PRESSURE,
   buildAnchorWidthCommit,
   buildDraftPath,
   buildVectorStroke,
@@ -48,6 +49,7 @@ import {
   screenToUv,
   selectAnchor,
   uvToScreen,
+  vectorSpinePressures,
   type VectorPathCommit,
 } from './vectorPathHandles';
 
@@ -559,6 +561,47 @@ describe('61-30 curve mode — spline evaluates a view and never rewrites the pa
   });
 });
 
+describe('vectorSpinePressures — the natural pen profile', () => {
+  const spine = Array.from({ length: 64 }, (_unused, index) => ({
+    x: 0.1 + 0.8 * (index / 63),
+    y: 0.5,
+  }));
+
+  it('tapers at both ends and stays bounded in between', () => {
+    const pressures = vectorSpinePressures(spine, 'watercolor');
+    expect(pressures).toHaveLength(spine.length);
+    for (const pressure of pressures) {
+      expect(pressure).toBeGreaterThanOrEqual(0.16);
+      expect(pressure).toBeLessThanOrEqual(0.8);
+    }
+    const middle = pressures[Math.floor(pressures.length / 2)]!;
+    expect(pressures[0]!).toBeLessThan(middle * 0.8);
+    expect(pressures[pressures.length - 1]!).toBeLessThan(middle * 0.8);
+  });
+
+  it('is deterministic and seeded by the path geometry, not by time', () => {
+    expect(vectorSpinePressures(spine, 'watercolor')).toEqual(
+      vectorSpinePressures(spine, 'watercolor'),
+    );
+    const shifted = spine.map((point) => ({ ...point, y: point.y + 0.1 }));
+    expect(vectorSpinePressures(shifted, 'watercolor')).not.toEqual(
+      vectorSpinePressures(spine, 'watercolor'),
+    );
+  });
+
+  it('varies along the path instead of stamping one flat value', () => {
+    const pressures = vectorSpinePressures(spine, 'watercolor');
+    const window = pressures.slice(10, 54);
+    expect(new Set(window.map((pressure) => pressure.toFixed(4))).size).toBeGreaterThan(8);
+  });
+
+  it('keeps the clean-sweep mode flat at the base pressure', () => {
+    expect(vectorSpinePressures(spine, 'simple-ribbon')).toEqual(
+      spine.map(() => VECTOR_STROKE_BASE_PRESSURE),
+    );
+  });
+});
+
 describe('buildVectorStroke — every required field has a stated source', () => {
   it('projects a commit plus its record-time source into a complete stroke', () => {
     const anchors = [auto(0.2, 0.5), auto(0.8, 0.5)];
@@ -584,9 +627,11 @@ describe('buildVectorStroke — every required field has a stated source', () =>
 
     expect(stroke.anchors).toEqual(anchors);
     expect(stroke.renderMode).toBe('simple-ribbon');
+    // A vector path carries no pressure input: its samples record the
+    // engine's pressureless-device value, never a full-pressure stamp.
     expect(stroke.points).toEqual([
-      { x: 0.2, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0 },
-      { x: 0.8, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0 },
+      { x: 0.2, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      { x: 0.8, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
     ]);
     expect(stroke.color).toBe('#103c65');
     expect(stroke.params).toEqual({ size: 40, dry: 30 });

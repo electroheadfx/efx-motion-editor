@@ -51,6 +51,7 @@ import {
 import { disarmAquarellePicker } from './aquarelleColorPicker';
 import { exitRailMotionEditing } from './railMotionEditingMode';
 import { reorderForStackPosition, targetIndexForStackPosition } from './stackOrder';
+import { VECTOR_STROKE_BASE_PRESSURE, vectorSpinePressures } from './vectorPathHandles';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
 export interface AquarelleGlobalParams {
@@ -1023,15 +1024,19 @@ export function updateAquarelleCurveModeInScript(
     if (anchors === undefined) continue;
     const nextAnchors = projectVectorPath(anchors);
     const { points: sampledSpine } = evaluateAquarellePath(nextAnchors, mode);
+    const pressures = vectorSpinePressures(
+      sampledSpine,
+      resolveAquarelleRenderMode(stroke.renderMode),
+    );
     targets.push({
       mutationId,
       stroke,
       index,
       // The re-derived points carry `buildVectorStroke`'s exact shape.
-      nextPoints: sampledSpine.map((point) => ({
+      nextPoints: sampledSpine.map((point, sampleIndex) => ({
         x: point.x,
         y: point.y,
-        p: 1,
+        p: pressures[sampleIndex] ?? VECTOR_STROKE_BASE_PRESSURE,
         tx: 0,
         ty: 0,
         tw: 0,
@@ -1107,10 +1112,11 @@ export function updateAquarellePathInScript(
     nextAnchors,
     resolveAquarelleCurveMode(stroke.curveMode),
   );
-  const nextPoints = sampledSpine.map((point) => ({
+  const pressures = vectorSpinePressures(sampledSpine, nextMode);
+  const nextPoints = sampledSpine.map((point, sampleIndex) => ({
     x: point.x,
     y: point.y,
-    p: 1,
+    p: pressures[sampleIndex] ?? VECTOR_STROKE_BASE_PRESSURE,
     tx: 0,
     ty: 0,
     tw: 0,
