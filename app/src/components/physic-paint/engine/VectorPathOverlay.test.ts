@@ -63,6 +63,7 @@ import {
   type VectorDraftAnchor,
 } from '../view/vectorPathSession';
 import {
+  DEFAULT_VECTOR_PATH_CURVE_MODE,
   buildAnchorWidthCommit,
   buildDraftPath,
   buildVectorStroke,
@@ -453,11 +454,17 @@ describe('VectorPathOverlay — draw gesture (task 2)', () => {
     const commit = onCommitPath.mock.calls[0]![0] as {
       anchors: readonly VectorDraftAnchor[];
       renderMode: string;
+      curveMode: string;
       points: readonly { x: number; y: number }[];
     };
     expect(commit.anchors).toEqual([auto(0.3, 0.5), auto(0.7, 0.5)]);
     expect(commit.renderMode).toBe('simple-ribbon');
-    expect(commit.points).toEqual(buildDraftPath([auto(0.3, 0.5), auto(0.7, 0.5)]).points);
+    // G-20: a new path defaults to spline, and its points are the spline view.
+    expect(commit.curveMode).toBe('spline');
+    expect(commit.curveMode).toBe(DEFAULT_VECTOR_PATH_CURVE_MODE);
+    expect(commit.points).toEqual(
+      buildDraftPath([auto(0.3, 0.5), auto(0.7, 0.5)], DEFAULT_VECTOR_PATH_CURVE_MODE).points,
+    );
   });
 
   it('prevents default and stops propagation so no paint stroke starts underneath', () => {
@@ -2067,7 +2074,7 @@ describe('61-31 G-20 - the overlay draws and edits through each path curve mode'
     resetForStudioOpen();
   });
 
-  it('captures the edit target mode, draws each recorded path through its own mode and drafts through the default', () => {
+  it('captures the edit target mode, draws each recorded path through its own mode and drafts through the draw default', () => {
     const source = overlaySource();
 
     // The SAME resolution loop that captures the target's anchors captures its
@@ -2095,11 +2102,11 @@ describe('61-31 G-20 - the overlay draws and edits through each path curve mode'
     expect(recordedBlock).toContain('curveMode: resolveAquarelleCurveMode(stroke.curveMode),');
     expect(recordedBlock).not.toContain('editTargetCurveMode');
 
-    // The draft: always the default, because a draft is recorded Bézier.
+    // The draft: the DRAW default, because a new path is recorded spline.
     const draftAt = source.indexOf("drawnPathOf('draft'");
     expect(draftAt).toBeGreaterThan(-1);
     const draftBlock = source.slice(draftAt, source.indexOf('});', draftAt));
-    expect(draftBlock).toContain('curveMode: DEFAULT_AQUARELLE_CURVE_MODE,');
+    expect(draftBlock).toContain('curveMode: DEFAULT_VECTOR_PATH_CURVE_MODE,');
     expect(draftBlock).not.toContain('editTargetCurveMode');
   });
 

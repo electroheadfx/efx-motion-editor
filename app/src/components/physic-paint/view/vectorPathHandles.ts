@@ -32,6 +32,7 @@ import {
   evaluateAquarellePath,
   isUniformWidthProfile,
   normaliseVectorAnchors,
+  recordedCurveModeField,
   resolveAnchorHandles,
   resolveCurveAnchors,
   sampleVectorWidths,
@@ -94,10 +95,22 @@ export interface VectorPathProjection {
   readonly envelope: readonly CanvasPoint[];
 }
 
+/**
+ * The mode a NEWLY drawn path is recorded with. `DEFAULT_AQUARELLE_CURVE_MODE`
+ * stays the STORAGE default (an absent key in an existing document means
+ * Bézier), so a new path always writes its mode explicitly instead of relying
+ * on absence. Spline is the draw/edit default because every anchor the pen
+ * places is smooth unless Shift made it a corner, and a spline edit keeps
+ * deriving tangents instead of freezing them into kinks.
+ */
+export const DEFAULT_VECTOR_PATH_CURVE_MODE: AquarelleCurveMode = 'spline';
+
 /** What the overlay hands the Studio seam when a path is finished. */
 export interface VectorPathCommit {
   readonly anchors: readonly VectorAnchor[];
   readonly renderMode: AquarelleRenderMode;
+  /** The mode the path was sampled and is recorded with (G-20). */
+  readonly curveMode: AquarelleCurveMode;
   readonly points: readonly Vec2[];
 }
 
@@ -778,6 +791,7 @@ export function buildVectorStroke(
     params: { ...source.params },
     brushId: source.brushId,
     renderMode: commit.renderMode,
+    ...recordedCurveModeField(commit.curveMode),
     anchors: [...commit.anchors],
     points: paintPoints.map((point, index) => ({
       x: point.x,

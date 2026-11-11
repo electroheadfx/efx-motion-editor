@@ -61,6 +61,7 @@ import {
   ANCHOR_BODY_PX,
   ANCHOR_CORE_RADIUS_PX,
   ANCHOR_HIT_PAD_PX,
+  DEFAULT_VECTOR_PATH_CURVE_MODE,
   DRAG_THRESHOLD_PX,
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
@@ -254,13 +255,17 @@ export function finishVectorPath(handlers: VectorPathGestureHandlers): void {
   const anchors = draft.anchors;
   clearVectorDraft();
   if (anchors.length < 2) return;
-  const { anchors: normalised, points } = buildDraftPath(anchors);
+  // G-20: the path is sampled AND recorded in the draw default — the stroke
+  // the user sees while drafting is the stroke that is committed.
+  const curveMode = DEFAULT_VECTOR_PATH_CURVE_MODE;
+  const { anchors: normalised, points } = buildDraftPath(anchors, curveMode);
   if (normalised.length < 2 || points.length === 0) return;
   handlers.onCommitPath({
     anchors: normalised,
     // The SAME brush-id law the record path stamps: the commit can never
     // disagree with the brush the layer's snapshot stores (61-07 D-14).
     renderMode: resolveRenderModeForBrushId(aquarelleBrushForActiveTool().brushId),
+    curveMode,
     points,
   });
 }
@@ -415,10 +420,12 @@ function draftPreviewPointsOf(
 ): string | null {
   if (draft === null || draft.cursor === null || draft.anchors.length === 0) return null;
   const cursor = draft.cursor;
-  const { points } = sampleVectorPath([
+  // Same evaluation view the finished path is sampled through, so the rubber
+  // band never disagrees with the stroke Enter commits (G-20).
+  const { points } = sampleVectorPath(resolveCurveAnchors([
     ...draft.anchors,
     { x: cursor.x, y: cursor.y, kind: 'auto' },
-  ]);
+  ], DEFAULT_VECTOR_PATH_CURVE_MODE));
   if (points.length === 0) return null;
   return points
     .map((point) => {
@@ -846,9 +853,9 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     : drawnPathOf('draft', draft.anchors, props.width, props.height, {
       alwaysEnvelope: wireframe,
       selected: penActive,
-      // 61-31 (G-20): a draft is always recorded Bézier, so it never inherits
-      // the open edit target's mode.
-      curveMode: DEFAULT_AQUARELLE_CURVE_MODE,
+      // G-20: a draft reads the DRAW default (a new path is recorded spline),
+      // so it never inherits the open edit target's mode.
+      curveMode: DEFAULT_VECTOR_PATH_CURVE_MODE,
     });
   // 61-21 (IN-01): the live rubber band to the cursor — display-only.
   const draftPreviewPoints = draftPreviewPointsOf(draft, props.width, props.height);

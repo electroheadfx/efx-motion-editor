@@ -28,6 +28,7 @@ import {
   ANCHOR_BODY_PX,
   ANCHOR_CORE_RADIUS_PX,
   ANCHOR_HIT_PAD_PX,
+  DEFAULT_VECTOR_PATH_CURVE_MODE,
   DRAG_THRESHOLD_PX,
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
@@ -670,6 +671,7 @@ describe('buildVectorStroke — every required field has a stated source', () =>
     const commit: VectorPathCommit = {
       anchors,
       renderMode: 'simple-ribbon',
+      curveMode: DEFAULT_VECTOR_PATH_CURVE_MODE,
       points: [
         { x: 0.2, y: 0.5 },
         { x: 0.8, y: 0.5 },
@@ -689,6 +691,10 @@ describe('buildVectorStroke — every required field has a stated source', () =>
 
     expect(stroke.anchors).toEqual(anchors);
     expect(stroke.renderMode).toBe('simple-ribbon');
+    // New paths default to spline, and the mode is written EXPLICITLY — the
+    // storage default stays Bézier, so absence can never mean spline.
+    expect(DEFAULT_VECTOR_PATH_CURVE_MODE).toBe('spline');
+    expect(stroke.curveMode).toBe('spline');
     // A vector path carries no pressure input: its samples record the
     // engine's pressureless-device value, never a full-pressure stamp.
     expect(stroke.points).toEqual([
@@ -709,7 +715,12 @@ describe('buildVectorStroke — every required field has a stated source', () =>
     const params = { size: 40 };
     const toolOverrides = { ...NEUTRAL_TOOL_OVERRIDES };
     const stroke = buildVectorStroke(
-      { anchors: [auto(0, 0)], renderMode: 'watercolor', points: [{ x: 0, y: 0 }] },
+      {
+        anchors: [auto(0, 0)],
+        renderMode: 'watercolor',
+        curveMode: DEFAULT_VECTOR_PATH_CURVE_MODE,
+        points: [{ x: 0, y: 0 }],
+      },
       {
         color: null,
         params,
@@ -723,5 +734,31 @@ describe('buildVectorStroke — every required field has a stated source', () =>
     );
     expect(stroke.params).not.toBe(params);
     expect(stroke.toolOverrides).not.toBe(toolOverrides);
+  });
+
+  it('omits the curve-mode key when a commit is explicitly Bézier', () => {
+    const stroke = buildVectorStroke(
+      {
+        anchors: [auto(0.2, 0.5), auto(0.8, 0.5)],
+        renderMode: 'watercolor',
+        curveMode: 'bezier',
+        points: [
+          { x: 0.2, y: 0.5 },
+          { x: 0.8, y: 0.5 },
+        ],
+      },
+      {
+        color: null,
+        params: {},
+        brushId: 'wc/round-medium',
+        toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES },
+        tool: 'brush',
+        diffusionFrames: 0,
+        timestamp: 1,
+        playFrame: 0,
+      },
+    );
+    // Bézier is expressed by ABSENCE, never by a stored default value.
+    expect('curveMode' in stroke).toBe(false);
   });
 });
