@@ -138,16 +138,12 @@ export const DEFAULT_AQUARELLE_CURVE_MODE: AquarelleCurveMode = 'bezier'
 
 /** Strict membership test over the closed curve-mode union. */
 export function isAquarelleCurveMode(value: unknown): value is AquarelleCurveMode {
-  // SCRATCH STUB (61-30 RED): answers the closed union once the guard lands.
-  void value
-  return false
+  return (AQUARELLE_CURVE_MODES as readonly unknown[]).includes(value)
 }
 
 /** The mode a stroke evaluates with; anything unknown reads Bézier. */
 export function resolveAquarelleCurveMode(value: unknown): AquarelleCurveMode {
-  // SCRATCH STUB (61-30 RED): reads the default until the resolver lands.
-  void value
-  return DEFAULT_AQUARELLE_CURVE_MODE
+  return isAquarelleCurveMode(value) ? value : DEFAULT_AQUARELLE_CURVE_MODE
 }
 
 /**
@@ -156,11 +152,9 @@ export function resolveAquarelleCurveMode(value: unknown): AquarelleCurveMode {
  * Bézier drops the key so an untouched document keeps today's exact bytes.
  */
 export function recordedCurveModeField(
-  curveMode: unknown,
+  curveMode: AquarelleCurveMode,
 ): { curveMode?: AquarelleCurveMode } {
-  // SCRATCH STUB (61-30 RED): writes nothing until the helper lands.
-  void curveMode
-  return {}
+  return curveMode === DEFAULT_AQUARELLE_CURVE_MODE ? {} : { curveMode }
 }
 
 type MutableAnchor = {

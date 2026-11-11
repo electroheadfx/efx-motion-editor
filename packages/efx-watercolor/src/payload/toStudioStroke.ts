@@ -194,6 +194,7 @@ export function toStudioStroke(
       // pre-vector key set and a mode-only stroke gains that key alone.
       ...(s.anchors !== undefined ? { anchors: projectVectorPath(s.anchors) } : {}),
       ...(s.renderMode !== undefined ? { renderMode: s.renderMode } : {}),
+      ...(s.curveMode !== undefined ? { curveMode: s.curveMode } : {}),
     },
   }
 }

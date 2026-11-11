@@ -349,11 +349,14 @@ export interface MceAquarelleAnchor {
 
 /**
  * The persisted vector-path shape of one stroke (VEC-06 / 61-06): a non-empty
- * anchor list plus an optional render mode (D-12, absent reads `watercolor`).
- * Mirrors the AQTL v2 field names from 61-05. The opaqueness law is unchanged —
- * these keys ride inside `MceEngineStrokePayload.engine`, never as host fields.
+ * anchor list plus an optional render mode (D-12, absent reads `watercolor`)
+ * and an optional curve-evaluation mode (G-20, absent reads `bezier`).
+ * Mirrors the AQTL v2 field names from 61-05 / 61-30. The opaqueness law is
+ * unchanged — these keys ride inside `MceEngineStrokePayload.engine`, never as
+ * host fields.
  */
 export interface MceAquarelleVectorPath {
   anchors: MceAquarelleAnchor[];
   renderMode?: string;
+  curveMode?: string;
 }

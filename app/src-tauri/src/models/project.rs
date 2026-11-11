@@ -496,12 +496,15 @@ pub struct MceAquarelleAnchor {
 }
 
 /// The persisted vector-path shape of one stroke (VEC-06 / 61-06): a non-empty
-/// anchor list plus an optional render mode (D-12, absent reads `watercolor`).
-/// Mirrors the AQTL v2 field names from 61-05.
+/// anchor list plus an optional render mode (D-12, absent reads `watercolor`)
+/// and an optional curve-evaluation mode (G-20, absent reads `bezier`).
+/// Mirrors the AQTL v2 field names from 61-05 / 61-30.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MceAquarelleVectorPath {
     pub anchors: Vec<MceAquarelleAnchor>,
     #[serde(rename = "renderMode")]
     pub render_mode: Option<String>,
+    #[serde(rename = "curveMode")]
+    pub curve_mode: Option<String>,
 }
