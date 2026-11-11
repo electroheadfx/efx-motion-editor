@@ -7412,3 +7412,70 @@ describe('61-26 WR-01 — Shift+A under the wireframe leaves no orphan selection
     expect(studio.split('toggleSelectAllAquarelleStrokes:').length - 1).toBe(1);
   });
 });
+
+// 61-26 (WR-02): a failed path-edit re-bake must publish what the script is
+// ACTUALLY in. The restore is revision-authoritative, so a foreign bump makes
+// it fail closed without touching the script — publishing "restored" there
+// would describe a rollback that never ran. The re-anchor is content-checked:
+// the normal failure (this edit's own attempted side still live) re-seats the
+// revision so the restore succeeds, and a real foreign mutation still fails
+// closed with the honest copy.
+describe('61-26 WR-02 — a failed path-edit re-bake restores for real or says it could not', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
+  const COMMIT_END = 'const handleAquarelleVectorPathEdit = useCallback(';
+  const REANCHOR = "reanchorAquarelleEditFromLiveContent(editId, 'undo')";
+  const RESTORE = "restoreAquarelleEditSnapshot(editId, 'undo')";
+  const RESTORED_LINE = "? 'Could not re-apply the watercolor script — the path edit was restored.'";
+  const NOT_ROLLED_BACK_LINE =
+    ": 'Could not re-apply the watercolor script — the path edit could not be rolled back.'";
+
+  function failureRegion(): string {
+    const commit = regionOf(studio, COMMIT_START, COMMIT_END);
+    return regionOf(commit, 'onFailure:', '  }, [');
+  }
+
+  it('re-anchors the attempted side before the authority-checked restore', () => {
+    const failure = failureRegion();
+    const anchorAt = failure.indexOf(REANCHOR);
+    const restoreAt = failure.indexOf(RESTORE);
+    expect(anchorAt).toBeGreaterThan(-1);
+    expect(restoreAt).toBeGreaterThan(anchorAt);
+  });
+
+  it('consumes the restore result instead of discarding it', () => {
+    const failure = failureRegion();
+    expect(failure).toContain(
+      "const restored = restoreAquarelleEditSnapshot(editId, 'undo') !== null;",
+    );
+  });
+
+  it('ternaries the fallback copy on the restore result, keeping the apply error ahead of it', () => {
+    const failure = failureRegion();
+    expect(failure).toContain('?? (restored');
+    expect(failure).toContain(RESTORED_LINE);
+    expect(failure).toContain(NOT_ROLLED_BACK_LINE);
+    const mapperAt = failure.indexOf('buildRotoScriptApplyRefusalMessage(error)');
+    const messageAt = failure.indexOf('error?.message');
+    const ternaryAt = failure.indexOf('(restored');
+    expect(mapperAt).toBeGreaterThan(-1);
+    expect(messageAt).toBeGreaterThan(mapperAt);
+    expect(ternaryAt).toBeGreaterThan(messageAt);
+    // Neither line is reachable as an unconditional `??` fallback on its own.
+    expect(failure).not.toContain(
+      "?? 'Could not re-apply the watercolor script — the path edit was restored.'",
+    );
+  });
+
+  it('no longer discards the restore as a standalone statement', () => {
+    const failure = failureRegion();
+    expect(failure).not.toMatch(/restoreAquarelleEditSnapshot\(editId, 'undo'\);[ \t]*$/m);
+  });
+});
