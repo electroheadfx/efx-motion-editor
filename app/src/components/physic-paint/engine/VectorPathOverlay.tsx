@@ -51,7 +51,7 @@ import {
 } from '../view/aquarelleRecordState';
 import { physicsPaintCanvasZoom } from '../view/physicsPaintCanvasZoom';
 import { wireframeMode } from '../view/scriptStrokeEdition';
-import { isTextEntryTarget } from '../view/shortcutTextTarget';
+import { isKeyboardOwnedTarget } from '../view/shortcutTextTarget';
 import type { CanvasPoint } from '../view/scriptStrokeEdition';
 import {
   ANCHOR_BODY_PX,
@@ -347,7 +347,7 @@ export function handleVectorPathWindowKey(
   draftHandlers: VectorPathGestureHandlers,
   editHandlers: VectorPathEditKeyHandlers,
 ): void {
-  if (isTextEntryTarget(event.target)) return;
+  if (isKeyboardOwnedTarget(event.target)) return;
   handleVectorPathKey(event, draftHandlers);
   handleVectorPathEditKey(event, editHandlers);
 }

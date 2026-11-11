@@ -17,32 +17,32 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { isTextEntryTarget } from './shortcutTextTarget';
+import { isKeyboardOwnedTarget } from './shortcutTextTarget';
 // 61-21 (WR-05): the widened predicate is exercised through the module
 // surface, so the pin observes the module's ONE exported yield predicate.
 import * as shortcutTextTargetSurface from './shortcutTextTarget';
 
 describe('shortcutTextTarget — the text-entry predicate (61-16)', () => {
   it('is false for every non-element target', () => {
-    expect(isTextEntryTarget(null)).toBe(false);
-    expect(isTextEntryTarget(undefined)).toBe(false);
-    expect(isTextEntryTarget({})).toBe(false);
-    expect(isTextEntryTarget('div')).toBe(false);
-    expect(isTextEntryTarget(7)).toBe(false);
+    expect(isKeyboardOwnedTarget(null)).toBe(false);
+    expect(isKeyboardOwnedTarget(undefined)).toBe(false);
+    expect(isKeyboardOwnedTarget({})).toBe(false);
+    expect(isKeyboardOwnedTarget('div')).toBe(false);
+    expect(isKeyboardOwnedTarget(7)).toBe(false);
   });
 
   it('is true for every form tag, case-insensitively', () => {
-    expect(isTextEntryTarget({ tagName: 'INPUT' })).toBe(true);
-    expect(isTextEntryTarget({ tagName: 'input' })).toBe(true);
-    expect(isTextEntryTarget({ tagName: 'TEXTAREA' })).toBe(true);
-    expect(isTextEntryTarget({ tagName: 'SELECT' })).toBe(true);
+    expect(isKeyboardOwnedTarget({ tagName: 'INPUT' })).toBe(true);
+    expect(isKeyboardOwnedTarget({ tagName: 'input' })).toBe(true);
+    expect(isKeyboardOwnedTarget({ tagName: 'TEXTAREA' })).toBe(true);
+    expect(isKeyboardOwnedTarget({ tagName: 'SELECT' })).toBe(true);
   });
 
   it('is true for a contenteditable element, by flag or by a closest() hit', () => {
-    expect(isTextEntryTarget({ tagName: 'DIV', isContentEditable: true })).toBe(true);
-    expect(isTextEntryTarget({ tagName: 'DIV', closest: () => ({}) })).toBe(true);
-    expect(isTextEntryTarget({ tagName: 'DIV', closest: () => null })).toBe(false);
-    expect(isTextEntryTarget({ tagName: 'DIV', isContentEditable: false })).toBe(false);
+    expect(isKeyboardOwnedTarget({ tagName: 'DIV', isContentEditable: true })).toBe(true);
+    expect(isKeyboardOwnedTarget({ tagName: 'DIV', closest: () => ({}) })).toBe(true);
+    expect(isKeyboardOwnedTarget({ tagName: 'DIV', closest: () => null })).toBe(false);
+    expect(isKeyboardOwnedTarget({ tagName: 'DIV', isContentEditable: false })).toBe(false);
   });
 
   it('answers false and never throws when closest() throws', () => {
@@ -52,8 +52,8 @@ describe('shortcutTextTarget — the text-entry predicate (61-16)', () => {
         throw new Error('detached');
       },
     };
-    expect(() => isTextEntryTarget(detached)).not.toThrow();
-    expect(isTextEntryTarget(detached)).toBe(false);
+    expect(() => isKeyboardOwnedTarget(detached)).not.toThrow();
+    expect(isKeyboardOwnedTarget(detached)).toBe(false);
   });
 
   it('the source carries no DOM global and no instanceof (the leaf law)', () => {
