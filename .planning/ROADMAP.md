@@ -235,7 +235,7 @@ Plans:
   4. A vector stroke persists in `.mce` (declared in both TS and Rust), survives reopen, and exports exactly as previewed while keeping hide/solo, ordering, opacity, and background behavior.
   5. Deterministic replay: the same vector stroke produces the same raster across runs, undo/redo, and reopen, and undo/redo covers each vector operation.
 
-**Plans:** 20/20 plans executed (14 executed + 6 gap-closure)
+**Plans:** 31 plans (14 executed + 6 gap-closure executed + 11 new gap-closure pending)
 
 Plans:
 **Wave 1**
@@ -279,6 +279,19 @@ Plans:
 - [x] 61-18-PLAN.md — Wireframe capture law: Draft cannot leave and the Draft settle refuses while wireframe is on, and Select states why it is inert (G-7) — wave 2, after 61-15
 - [x] 61-19-PLAN.md — Anchor width target: the width commit writes the path the open edit names or refuses, with an inert reason in the dialog (G-5, G-8) — wave 3, after 61-15
 - [x] 61-20-PLAN.md — Vector path-edit ledger: one undo entry per completed edit on both success routes, none on failure, and no second writer (G-8) — wave 4, after 61-15
+
+**Gap closure round 2** *(from 61-VERIFICATION.md and 61-UAT.md; waves are relative to this set, and the one-way spline decision sits at 61-30's first task)*
+- [ ] 61-21-PLAN.md — Vector pen: a live rubber-band spine follows the pointer, and the vector key listener yields to every focused control (IN-01, WR-05) — wave 1
+- [ ] 61-22-PLAN.md — Anchor width discovers from the sheet's default list view, and a selected anchor is visibly distinct (G-11) — wave 2, after 61-21
+- [ ] 61-23-PLAN.md — The colour picker cannot exist during a vector path edit, and Alt inside the edit is only the handle break (G-19) — wave 1
+- [ ] 61-24-PLAN.md — +Key records the previous key's vector script, anchors and render mode beside its raster bytes (G-15) — wave 1
+- [ ] 61-25-PLAN.md — Vector pen copy contract, the Anchor width readout grammar, the overlay band/marker/chrome law and the wireframe-only badges (UI-01..UI-05) — wave 3, after 61-21 and 61-22
+- [ ] 61-26-PLAN.md — Shift+A under wireframe, an honest failed-restore capsule, and a committed in-flight bake marks the sheet stale (WR-01, WR-02, WR-03) — wave 2, after 61-24
+- [ ] 61-27-PLAN.md — Selecting another stroke closes the open path edit, and the two silent refusals publish (WR-04, IN-02, IN-03) — wave 4, after 61-22, 61-25 and 61-26
+- [ ] 61-28-PLAN.md — An interrupted path-edit drag can neither preview nor commit across an edit boundary (CR-01) — wave 4, after 61-25
+- [ ] 61-29-PLAN.md — A committed path edit reaches the payload's sampled points, with the written diagnosis preceding the fix (G-17) — wave 1
+- [ ] 61-30-PLAN.md — Spline curve mode: the persisted field, the single evaluator and the mode-aware re-sample, behind a one-way decision checkpoint (G-20) — wave 2, after 61-29
+- [ ] 61-31-PLAN.md — Spline curve mode: the Curve switch, its one-edit commit seam and the mode-aware canvas chrome (G-20) — wave 5, after 61-27, 61-28, 61-29 and 61-30
 
 
 **Spike before the data model is locked**: per-vertex watercolour feasibility (segment runs vs payload extension), the sampling law, seam quality, stroke-count cost, and the determinism pin. The renderer, not the pen tool, is the scope risk.
