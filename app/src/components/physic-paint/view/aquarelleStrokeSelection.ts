@@ -646,8 +646,18 @@ export function isAquarelleScriptEditInFlight(): boolean {
   return aquarelleScriptEditInFlight;
 }
 
+/**
+ * Bumped on every in-flight transition. The flag itself is a plain boolean
+ * (every holder is an async script edit), so a seam that must ACT when the
+ * sheet becomes free — the deferred vector re-bake — needs this one reactive
+ * edge instead of polling.
+ */
+export const aquarelleScriptEditInFlightRevision = signal(0);
+
 export function setAquarelleScriptEditInFlight(inFlight: boolean): void {
+  if (aquarelleScriptEditInFlight === inFlight) return;
   aquarelleScriptEditInFlight = inFlight;
+  aquarelleScriptEditInFlightRevision.value += 1;
 }
 
 // 261022-tv1: delete-named aliases kept so existing callers/tests compile

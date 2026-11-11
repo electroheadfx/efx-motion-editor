@@ -288,6 +288,7 @@ import {
   beginAquarelleReorderEdit,
   beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
+  aquarelleScriptEditInFlightRevision,
   cycleAquarelleStrokeTypeFilter,
   isAquarelleDeleteInFlight,
   isAquarelleScriptEditInFlight,
@@ -8711,6 +8712,44 @@ export function PhysicsPaintStudio() {
       },
     });
   }, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);
+  // 61 UAT ("the second vector is empty"): a vector commit's ONLY pixels are
+  // that re-bake, and `runAquarelleScriptRebake` refuses while another script
+  // edit owns the sheet. Dropping the refusal leaves the stroke in the script
+  // and nowhere on the sheet — and with Draft off nothing else ever re-applies
+  // it. A refused commit is therefore QUEUED, never lost: the drain effect
+  // re-runs the exact bake the moment the sheet is free.
+  const vectorCommitBakePendingRef = useRef(false);
+  const vectorCommitBakeBlocked = useCallback(
+    () => isAquarelleScriptEditInFlight()
+      || rotoScript.applying.peek()
+      || rotoScript.mutationLocked.peek(),
+    [rotoScript],
+  );
+  const drainVectorCommitBake = useCallback(() => {
+    if (!vectorCommitBakePendingRef.current) return;
+    if (vectorCommitBakeBlocked()) return;
+    vectorCommitBakePendingRef.current = false;
+    void bakeAquarelleVectorCommit().then((baked) => {
+      // A false here is a GENUINE apply failure (the refusal case was filtered
+      // by the blocked check above), so it must not re-arm: retrying a failing
+      // apply on every latch edge would loop. The capsule was already
+      // published; the stale-sheet invariant covers the later settle.
+      if (!baked) setDraftPixelsDirty(true);
+    });
+  }, [bakeAquarelleVectorCommit, vectorCommitBakeBlocked]);
+  useEffect(() => {
+    // ONE reactive edge per latch transition: the revision covers the shared
+    // in-flight boolean, the two signals cover the script controller. No
+    // polling and no timer — a drain that finds the sheet still busy simply
+    // waits for the next edge.
+    const dispose = effect(() => {
+      void aquarelleScriptEditInFlightRevision.value;
+      void rotoScript.applying.value;
+      void rotoScript.mutationLocked.value;
+      drainVectorCommitBake();
+    });
+    return dispose;
+  }, [drainVectorCommitBake, rotoScript]);
   const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
     // 3.6 (261027-klx): the app-owned ledger allocates the id and emits the
     // completion SYNCHRONOUSLY — no engine, no rasterization and no pending
@@ -8848,14 +8887,21 @@ export function PhysicsPaintStudio() {
       // is the only route that re-applies the whole frame. Never publish: the
       // gesture DID commit, and the apply-refusal ownership is not ours.
       if (isVectorAquarelleStroke(stroke)) {
-        void bakeAquarelleVectorCommit().then((baked) => {
-          if (!baked) setDraftPixelsDirty(true);
-        });
+        if (vectorCommitBakeBlocked()) {
+          // The sheet is owned by another script edit: QUEUE the pixels. The
+          // drain effect re-runs the exact bake on the next latch edge.
+          vectorCommitBakePendingRef.current = true;
+          setDraftPixelsDirty(true);
+        } else {
+          void bakeAquarelleVectorCommit().then((baked) => {
+            if (!baked) setDraftPixelsDirty(true);
+          });
+        }
       }
     } catch {
       // A malformed recorded stroke must not kill the live surface — drop it.
     }
-  }, [bakeAquarelleVectorCommit, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);
+  }, [bakeAquarelleVectorCommit, vectorCommitBakeBlocked, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);
   const handleAquarelleStrokeSettled = useCallback((stroke: AquarelleStroke, ticks: number) => {
     const mutationId = aquarelleStrokeMutationIdsRef.current.get(stroke);
     if (mutationId !== undefined) setAquarelleStrokeDiffusionFrames(mutationId, ticks);

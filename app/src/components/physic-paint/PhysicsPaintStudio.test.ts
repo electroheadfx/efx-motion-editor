@@ -6602,9 +6602,17 @@ describe('61-15 vector draw bake seam in the Studio', () => {
     expect(vectorGuardAt).toBeGreaterThan(-1);
     expect(vectorGuardAt).toBeLessThan(tailAt);
     expect(handler).toContain('if (!baked) setDraftPixelsDirty(true);');
+    // 61 UAT: a commit that lands while another script edit owns the sheet is
+    // QUEUED, never dropped — its only pixels are this re-bake.
+    expect(handler).toContain('if (vectorCommitBakeBlocked()) {');
+    expect(handler).toContain('vectorCommitBakePendingRef.current = true;');
     expect(studio).toContain(
-      '  }, [bakeAquarelleVectorCommit, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);',
+      '  }, [bakeAquarelleVectorCommit, vectorCommitBakeBlocked, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);',
     );
+    // The drain runs on a latch edge (one evaluation per transition), never
+    // on a timer or a polling loop.
+    expect(studio).toContain('void aquarelleScriptEditInFlightRevision.value;');
+    expect(studio).toContain('const drainVectorCommitBake = useCallback(');
     // The callback bakes the live sheet through reset + apply, and defers
     // pixels in Draft or wireframe.
     const bakeStart = studio.indexOf('const bakeAquarelleVectorCommit = useCallback(');
