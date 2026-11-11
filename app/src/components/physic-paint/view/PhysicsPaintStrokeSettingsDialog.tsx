@@ -304,7 +304,20 @@ const ANCHOR_WIDTH_CAPTION_STYLE: CSSProperties = {
   display: 'block',
   marginTop: '4px',
   fontSize: '10px',
+  fontWeight: 600,
   color: 'var(--sidebar-text-secondary, #9aa5b1)',
+};
+
+/**
+ * 61-25 (UI-02): the `→ {n} px` readout rides the BrushResponsePanel
+ * multiplier grammar — 10px, 600, secondary text, tabular figures and nothing
+ * else. A declared constant keeps the four properties from drifting inline.
+ */
+const ANCHOR_WIDTH_READOUT_STYLE: CSSProperties = {
+  fontSize: '10px',
+  fontWeight: 600,
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+  fontVariantNumeric: 'tabular-nums',
 };
 
 /**
@@ -329,6 +342,7 @@ const ADVANCED_WET_NOTE_STYLE: CSSProperties = {
   display: 'block',
   marginTop: '4px',
   fontSize: '10px',
+  fontWeight: 600,
   lineHeight: 1.5,
   color: 'var(--sidebar-text-secondary, #9aa5b1)',
 };
@@ -1888,10 +1902,18 @@ function AnchorWidthControl(props: AnchorWidthControlProps) {
         allowOutOfRangeEntry
         // `→ {n} px` from the REAL per-vertex radius: Size x factor.
         // Empty means there is no vertex to measure — the caption below
-        // says what to do instead.
+        // says what to do instead. 61-25 (UI-02): the readout is a declared
+        // span, never a bare string.
         below={anchorWidthEmpty
           ? undefined
-          : `→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`}
+          : (
+            <span
+              data-testid="stroke-settings-anchor-width-readout"
+              style={ANCHOR_WIDTH_READOUT_STYLE}
+            >
+              {`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`}
+            </span>
+          )}
         onChange={(value) => {
           void bundle.applyAnchorWidths?.(
             ids,
