@@ -1660,3 +1660,184 @@ describe('61-22 G-11 — the selected-anchor ring', () => {
     );
   });
 });
+
+// 61-25 (UI-03 / UI-04): gap closure over the 61-UI-REVIEW warnings. Both
+// envelope branches obey the colour table's band law (stroke colour @0.14
+// selected / @0.07 unselected, edge 3.5/1.5, no extra stroke opacity), handle
+// dots are solid `#f59e0b` with only the connector translucent, and the
+// wireframe-only construction view keeps the transform box and serial badge
+// the contract draws on top (§6 item 6).
+describe('61-25 UI-03/UI-04 — the band, marker and chrome law', () => {
+  const SIZE = { width: WIDTH, height: HEIGHT };
+  const EDIT_ID = 97001;
+  const OTHER_ID = 97002;
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    wireframeMode.value = false;
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  /** A non-uniform profile — the editing chrome draws an envelope only then. */
+  function weightedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({
+      anchors: [
+        auto(0.2, 0.5),
+        { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 },
+        auto(0.8, 0.5),
+      ],
+      ...overrides,
+    });
+  }
+
+  function portOver(rows: ReturnType<typeof listSelectableAquarelleStrokes>) {
+    return {
+      isActive: () => false,
+      listStrokes: () => rows,
+      hitTestStroke: () => null,
+      deleteStrokes: () => {},
+      moveStrokes: () => {},
+      transformStrokes: () => {},
+      stepStroke: () => {},
+    };
+  }
+
+  function overlayProps(port: ReturnType<typeof portOver>) {
+    return {
+      width: WIDTH,
+      height: HEIGHT,
+      getPlayFrame: () => FRAME,
+      port,
+      selectMode: false,
+      moveArmed: false,
+      onDeleteStrokes: () => {},
+      onMoveStrokes: () => {},
+      testId: 'stroke-overlay-wireframe',
+      badgeTestId: 'stroke-badge-wireframe',
+      ghostTestId: 'stroke-ghost-wireframe',
+    };
+  }
+
+  function onlyEnvelope(tree: unknown): TestVNode {
+    const envelopes = nodesWithTestId(tree, 'vector-path-envelope');
+    expect(envelopes, 'exactly one envelope').toHaveLength(1);
+    return envelopes[0]!;
+  }
+
+  it('draws the editing envelope in the stroke’s own colour at 0.14/0.07, 3.5/1.5, with no stroke opacity', () => {
+    // Selected: the open path edit is the louder chrome.
+    enterPathEdit(String(EDIT_ID));
+    const selected = onlyEnvelope(
+      render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]]))),
+    );
+    expect(selected.props['fill']).toBe('#103c65');
+    expect(selected.props['fillOpacity']).toBe(0.14);
+    expect(selected.props['stroke']).toBe('#103c65');
+    expect(selected.props['strokeWidth']).toBe(3.5);
+    expect(Object.prototype.hasOwnProperty.call(selected.props, 'strokeOpacity')).toBe(false);
+    expect(selected.props['vectorEffect']).toBe('non-scaling-stroke');
+
+    // Unselected: the pen's construction view, no edit — the quiet band.
+    exitPathEdit();
+    vectorPenActive.value = true;
+    const unselected = onlyEnvelope(
+      render(VectorPathOverlay(propsWith([[OTHER_ID, weightedStroke({ color: '#7a2e12' })]]))),
+    );
+    expect(unselected.props['fill']).toBe('#7a2e12');
+    expect(unselected.props['fillOpacity']).toBe(0.07);
+    expect(unselected.props['stroke']).toBe('#7a2e12');
+    expect(unselected.props['strokeWidth']).toBe(1.5);
+    expect(Object.prototype.hasOwnProperty.call(unselected.props, 'strokeOpacity')).toBe(false);
+  });
+
+  it('gives the wireframe envelope the same band law and keeps no envelope-fill constant', () => {
+    wireframeMode.value = true;
+    const unselected = onlyEnvelope(
+      render(VectorPathOverlay(propsWith([[OTHER_ID, weightedStroke({ color: '#7a2e12' })]]))),
+    );
+    expect(unselected.props['fill']).toBe('#7a2e12');
+    expect(unselected.props['fillOpacity']).toBe(0.07);
+    expect(unselected.props['stroke']).toBe('#7a2e12');
+    expect(unselected.props['strokeWidth']).toBe(1.5);
+    expect(Object.prototype.hasOwnProperty.call(unselected.props, 'strokeOpacity')).toBe(false);
+
+    enterPathEdit(String(EDIT_ID));
+    const selected = onlyEnvelope(
+      render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]]))),
+    );
+    expect(selected.props['fill']).toBe('#103c65');
+    expect(selected.props['fillOpacity']).toBe(0.14);
+    expect(selected.props['strokeWidth']).toBe(3.5);
+    expect(Object.prototype.hasOwnProperty.call(selected.props, 'strokeOpacity')).toBe(false);
+
+    // The stray constant is gone, and no envelope keeps the old 0.5 edge.
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    expect(source).not.toContain('ENVELOPE_FILL_OPACITY');
+    expect(source).not.toContain('strokeOpacity={0.5}');
+  });
+
+  it('draws every handle dot solid #f59e0b while only the connector is translucent', () => {
+    vectorPenActive.value = true;
+    const stroke = vectorStroke({
+      anchors: [
+        auto(0.2, 0.5),
+        { x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.62 }, out: { x: 0.5, y: 0.38 } },
+        auto(0.8, 0.5),
+      ],
+    });
+    const tree = render(VectorPathOverlay(propsWith([[OTHER_ID, stroke]])));
+    const handles = nodesWithTestId(tree, 'vector-path-handle');
+    expect(handles).toHaveLength(2);
+    for (const handle of handles) {
+      expect(handle.type).toBe('circle');
+      expect(handle.props['fill']).toBe('#f59e0b');
+      expect(Object.prototype.hasOwnProperty.call(handle.props, 'fillOpacity')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(handle.props, 'stroke')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(handle.props, 'strokeWidth')).toBe(false);
+    }
+    const connectors = [...walk(tree)].filter(
+      (node) => node.type === 'line' && node.props?.stroke === '#f59e0b',
+    );
+    expect(connectors).toHaveLength(2);
+    for (const connector of connectors) {
+      expect(connector.props['strokeOpacity']).toBe(0.6);
+      expect(connector.props['strokeWidth']).toBe(1);
+    }
+  });
+
+  it('keeps the bounds box and serial badge in the wireframe-only view, and leaves the lift ribbon unchanged', () => {
+    const paint = vectorStroke({ mutationId: 97011, anchors: undefined });
+    const lift = vectorStroke({ mutationId: 97012, tool: 'lift', anchors: undefined });
+    recordAquarelleStroke(97011, paint, 'frame-key');
+    recordAquarelleStroke(97012, lift, 'frame-key');
+    wireframeMode.value = true;
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    expect(rows).toHaveLength(2);
+
+    const tree = render(ScriptStrokeOverlay(overlayProps(portOver(rows))));
+    // The unselected bounds box is the one dashed reference frame; a lift
+    // still keeps no box (its ribbon is the shape).
+    const bounds = [...walk(tree)].filter(
+      (node) => node.type === 'rect' && node.props?.strokeDasharray === '4 3',
+    );
+    expect(bounds).toHaveLength(1);
+    expect(bounds[0]!.props['fill']).toBe('none');
+    expect(bounds[0]!.props['stroke']).toBe('#111111');
+    expect(bounds[0]!.props['opacity']).toBe(0.45);
+    // §6 item 6: the serial identity stays on top of the construction view.
+    expect(nodesWithTestId(tree, 'stroke-badge-wireframe')).toHaveLength(2);
+    // The lift ribbon is untouched — still drawn, still the only shape it has.
+    expect(nodesWithTestId(tree, 'stroke-lift-ribbon')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'stroke-size-band')).toHaveLength(1);
+
+    // No dead construction-view gate survives in the source.
+    const source = readFileSync(resolve(__dirname, './ScriptStrokeOverlay.tsx'), 'utf8');
+    expect(source).not.toContain('wireframeOnly');
+  });
+});
