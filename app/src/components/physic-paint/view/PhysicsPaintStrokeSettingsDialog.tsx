@@ -772,7 +772,8 @@ export function PhysicsPaintStrokeSettingsDialog({
   const colorReading = readColorField(appearances, ids);
   const colorRgb = hexToRgba(colorReading.color);
   // 61-31 (G-20): the Curve row reading. Spline is an evaluation mode over the
-  // same anchors, so only the VECTOR appearances participate.
+  // same anchors, so only the VECTOR appearances participate. The row MOUNTS IN
+  // GEOMETRY, after the transform rows.
   const curveModeReading = readCurveMode(appearances);
 
   const applied = strokeSettingsDragOffset.value;
@@ -1518,6 +1519,53 @@ export function PhysicsPaintStrokeSettingsDialog({
                   onChange={(value) => commitGeometryTransform('rotation', value)}
                 />
               </div>
+              {/* 61-31 (G-20 / D-01 revised): the curve-evaluation switch.
+                  Spline is a read-time view over the SAME anchors, so the row
+                  mounts only when the selection holds a VECTOR stroke and the
+                  bundle can commit — a hand-painted-only selection hides it
+                  instead of writing an inert key. */}
+              {engineModule === 'watercolor' && curveModeReading.available && bundle.applyCurveMode !== undefined ? (
+                <div data-testid="stroke-settings-curve-mode-block">
+                  <div style={SEGMENT_LABEL_ROW_STYLE}>
+                    <span style={PAINT_ROW_LABEL_STYLE}>Curve</span>
+                    {curveModeReading.mixed ? (
+                      <span
+                        data-testid="stroke-settings-curve-mode-mixed"
+                        style={MIXED_CAPTION_STYLE}
+                      >
+                        Mixed
+                      </span>
+                    ) : null}
+                  </div>
+                  <div
+                    role="group"
+                    aria-label="Curve"
+                    data-testid="stroke-settings-curve-mode"
+                    style={SEGMENT_GROUP_STYLE}
+                  >
+                    {CURVE_MODE_OPTIONS.map((option) => {
+                      const active = !curveModeReading.mixed && curveModeReading.mode === option.mode;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          data-testid={`stroke-settings-curve-mode-option-${option.id}`}
+                          aria-pressed={active}
+                          style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
+                          onClick={() => {
+                            // Pressing the mode the selection already holds
+                            // writes nothing — no edit, no undo entry.
+                            if (active) return;
+                            void bundle.applyCurveMode?.(ids, option.mode);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               </div>
             ) : (
               <span data-testid="stroke-settings-geometry-empty" style={PAINT_ROW_LABEL_STYLE}>
@@ -1603,53 +1651,6 @@ export function PhysicsPaintStrokeSettingsDialog({
 
           {activeSettingsTab === 'paint' ? (
             <div style={SECTION_STYLE} data-testid="stroke-settings-paint">
-              {/* 61-31 (G-20 / D-01 revised): the curve-evaluation switch.
-                  Spline is a read-time view over the SAME anchors, so the row
-                  mounts only when the selection holds a VECTOR stroke and the
-                  bundle can commit — a hand-painted-only selection hides it
-                  instead of writing an inert key. */}
-              {engineModule === 'watercolor' && curveModeReading.available && bundle.applyCurveMode !== undefined ? (
-                <div data-testid="stroke-settings-curve-mode-block">
-                  <div style={SEGMENT_LABEL_ROW_STYLE}>
-                    <span style={PAINT_ROW_LABEL_STYLE}>Curve</span>
-                    {curveModeReading.mixed ? (
-                      <span
-                        data-testid="stroke-settings-curve-mode-mixed"
-                        style={MIXED_CAPTION_STYLE}
-                      >
-                        Mixed
-                      </span>
-                    ) : null}
-                  </div>
-                  <div
-                    role="group"
-                    aria-label="Curve"
-                    data-testid="stroke-settings-curve-mode"
-                    style={SEGMENT_GROUP_STYLE}
-                  >
-                    {CURVE_MODE_OPTIONS.map((option) => {
-                      const active = !curveModeReading.mixed && curveModeReading.mode === option.mode;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          data-testid={`stroke-settings-curve-mode-option-${option.id}`}
-                          aria-pressed={active}
-                          style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
-                          onClick={() => {
-                            // Pressing the mode the selection already holds
-                            // writes nothing — no edit, no undo entry.
-                            if (active) return;
-                            void bundle.applyCurveMode?.(ids, option.mode);
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
               <span style={PAINT_ROW_LABEL_STYLE}>Color</span>
               <div
                 data-testid="stroke-settings-color"

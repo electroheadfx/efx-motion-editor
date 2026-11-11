@@ -3789,4 +3789,42 @@ describe('61-31 curve mode reading (Paint tab)', () => {
       appearanceOf(2, { vector: true }),
     ])).toEqual({ mode: null, mixed: true, available: true });
   });
+
+  function curveBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearanceOf(id, { vector: true })),
+      reorderStroke: () => true,
+      applyCurveMode: () => true,
+      ...overrides,
+    }).bundle;
+  }
+
+  it('renders the Curve row inside Geometry and nowhere on Stack', () => {
+    const bundle = curveBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    const geometryTree = renderDialogTab(bundle, 'geometry');
+    expect(findByTestId(geometryTree, 'stroke-settings-geometry')).toBeDefined();
+    expect(findByTestId(geometryTree, 'stroke-settings-curve-mode-block')).toBeDefined();
+    expect(findByTestId(renderDialogTab(bundle, 'stack'), 'stroke-settings-curve-mode-block'))
+      .toBeUndefined();
+  });
+
+  it('gates the Geometry Curve row on the commit seam', () => {
+    const bundle = createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearanceOf(id, { vector: true })),
+      reorderStroke: () => true,
+    }).bundle;
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    expect(findByTestId(renderDialogTab(bundle, 'geometry'), 'stroke-settings-curve-mode-block'))
+      .toBeUndefined();
+  });
 });

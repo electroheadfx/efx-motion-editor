@@ -432,7 +432,7 @@ describe('61-31 Curve row (G-20)', () => {
   const GROUP = 'data-testid="stroke-settings-curve-mode"';
 
   function curveBlock(): string {
-    return regionOf(dialogSource, BLOCK_START, 'data-testid="stroke-settings-color"');
+    return regionOf(dialogSource, BLOCK_START, 'data-testid="stroke-settings-stack"');
   }
 
   it('mounts the Curve block only when a vector stroke is selected and the bundle can commit', () => {
@@ -444,11 +444,15 @@ describe('61-31 Curve row (G-20)', () => {
     expect(dialogSource).toContain(
       "{engineModule === 'watercolor' && curveModeReading.available && bundle.applyCurveMode !== undefined ? (",
     );
-    // Before the Color row.
-    const curveAt = dialogSource.indexOf(BLOCK_START);
-    const colorAt = dialogSource.indexOf('data-testid="stroke-settings-color"');
-    expect(curveAt).toBeGreaterThan(-1);
-    expect(colorAt).toBeGreaterThan(curveAt);
+    // Inside Geometry, after the transform rows and before the Stack section.
+    const geometryAt = dialogSource.indexOf('data-testid="stroke-settings-geometry"');
+    const rotationAt = dialogSource.indexOf('data-testid="stroke-settings-geometry-rotation"');
+    const blockAt = dialogSource.indexOf(BLOCK_START);
+    const stackAt = dialogSource.indexOf('data-testid="stroke-settings-stack"');
+    expect(geometryAt).toBeGreaterThan(-1);
+    expect(rotationAt).toBeGreaterThan(geometryAt);
+    expect(blockAt).toBeGreaterThan(rotationAt);
+    expect(stackAt).toBeGreaterThan(blockAt);
   });
 
   it('renders one button per model option, lit only for the agreed mode', () => {
