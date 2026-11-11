@@ -309,15 +309,6 @@ export function SliderStepper({
   const repeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pressing = useRef(false);
   const dragging = useRef(false);
-  /** quick 261111-tul: the Enter/Escape marker. Enter already committed and
-   *  Escape must not commit, so the blur each one triggers consumes the marker
-   *  and stays silent. Cleared per gesture (onFocus resets it, and a blur
-   *  always consumes it), so it can never suppress a later gesture's commit. */
-  const suppressBlurCommit = useRef(false);
-  /** quick 261111-tul: the live track gesture's last computed value. The
-   *  release commits THIS, never the `value` prop — the parent may not have
-   *  re-rendered the last move into the prop yet (T-TUL-01). */
-  const lastTrackValue = useRef<number | null>(null);
   /** quick 261105-sk3: the raw text while typing (null = not typing). The
    *  controlled `value` prop must never clamp or reformat a half-typed number,
    *  so the draft owns the box until blur/Enter/Escape clears it. Preact 11
@@ -328,6 +319,23 @@ export function SliderStepper({
    *  Held in a ref-wrapped signal so it survives re-renders (48-06). */
   const draftRef = useRef(signal<number | null>(null));
   const draft = draftRef.current;
+  // The 261111-tul gesture refs are allocated AFTER `draftRef` on purpose:
+  // they are handler-only state, so keeping the render-read refs at their
+  // pre-quick hook offsets keeps the dialog harness's traversal band stable.
+  /** quick 261111-tul: the Enter/Escape marker. Enter already committed and
+   *  Escape must not commit, so the blur each one triggers consumes the marker
+   *  and stays silent. Cleared per gesture (onFocus resets it, and a blur
+   *  always consumes it), so it can never suppress a later gesture's commit. */
+  const suppressBlurCommit = useRef(false);
+  /** quick 261111-tul: the live track gesture's last computed value. The
+   *  release commits THIS, never the `value` prop — the parent may not have
+   *  re-rendered the last move into the prop yet (T-TUL-01). */
+  const lastTrackValue = useRef<number | null>(null);
+  /** quick 261111-tul: the last value a ± press gesture reached (repeat ticks
+   *  included), committed once at press end. Cleared at press start and read
+   *  before the press-end early return, so the second press-end route
+   *  (pointerup + pointerleave) finds null (T-TUL-02). */
+  const pressValue = useRef<number | null>(null);
 
   const display = mixed ? MIXED_DISPLAY : formatStepperValue(value, step, precision, presets);
   /** quick 261105-sk3: the draft wins while typing so the clamp/formatted
@@ -357,7 +365,11 @@ export function SliderStepper({
     }
   };
 
-  const stepBy = (direction: 1 | -1) => {
+  /** Returns the value this step reached, or null when no step ran (the
+   *  preset-list end already performed its cleanup). The equality guard still
+   *  governs `onChange` only: the returned value feeds the gesture commit even
+   *  when it equals `value` (the equal-value law). */
+  const stepBy = (direction: 1 | -1): number | null => {
     const typed = parseStepperInput(valueRef.current?.value ?? '');
     const base = Number.isFinite(typed) ? typed : value;
     if (presets && presets.length > 0) {
@@ -366,32 +378,47 @@ export function SliderStepper({
         clearRepeat();
         pressing.current = false;
         stopCoalescing();
-        return;
+        return null;
       }
       if (next !== value || mixed) onChange(next);
-      return;
+      return next;
     }
     const effectiveStep = resolveStep ? resolveStep(base) : step;
     const next = allowOutOfRangeEntry
       ? clampToStep(base + direction * effectiveStep, effectiveStep)
       : clampToStep(base + direction * effectiveStep, effectiveStep, min, max);
     if (next !== value || mixed) onChange(next);
+    return next;
   };
 
   const handlePressStart = (direction: 1 | -1) => (event: TargetedPointerEvent<HTMLButtonElement>) => {
+    // Reset FIRST so a disabled / preset-end press can never inherit the
+    // previous gesture's value (T-TUL-03).
+    pressValue.current = null;
     if (disabled || (presets != null && presets.length > 0 && nextPresetFrom(presets, value, direction) === undefined)) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pressing.current = true;
     clearRepeat();
     startCoalescing();
-    stepBy(direction);
+    pressValue.current = stepBy(direction);
     delayTimer.current = setTimeout(() => {
-      repeatTimer.current = setInterval(() => stepBy(direction), NUMERIC_STEPPER_REPEAT_INTERVAL_MS);
+      repeatTimer.current = setInterval(() => {
+        const stepped = stepBy(direction);
+        // A null return means the preset end already ran its cleanup; keep
+        // the last value the hold actually reached.
+        if (stepped !== null) pressValue.current = stepped;
+      }, NUMERIC_STEPPER_REPEAT_INTERVAL_MS);
     }, NUMERIC_STEPPER_REPEAT_DELAY_MS);
   };
 
   const handlePressEnd = () => {
+    // Read and clear BEFORE the early return: one commit per press gesture,
+    // including hold-to-repeat, while the follow-on pointerup/pointerleave
+    // route finds null and adds nothing (T-TUL-02).
+    const committed = pressValue.current;
+    pressValue.current = null;
+    if (onCommit && committed !== null) onCommit(committed);
     if (!pressing.current) return;
     pressing.current = false;
     clearRepeat();
@@ -401,7 +428,11 @@ export function SliderStepper({
   const handleClick = (direction: 1 | -1) => (event: TargetedMouseEvent<HTMLButtonElement>) => {
     if (disabled || event.detail !== 0) return;
     if (presets != null && presets.length > 0 && nextPresetFrom(presets, value, direction) === undefined) return;
-    stepBy(direction);
+    // Keyboard/AT activation has no press lifecycle: its single step commits
+    // immediately. A real click (detail !== 0) returned above and belongs to
+    // the pointer path, so it never double-commits here.
+    const stepped = stepBy(direction);
+    if (onCommit && stepped !== null) onCommit(stepped);
   };
 
   /** Map a pointer x to the track value, snapped to the commit grid. */

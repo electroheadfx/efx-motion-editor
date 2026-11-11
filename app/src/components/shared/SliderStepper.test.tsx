@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { SliderStepper } from './SliderStepper';
+import { NUMERIC_STEPPER_REPEAT_DELAY_MS, NUMERIC_STEPPER_REPEAT_INTERVAL_MS } from './NumericStepper';
 
 type AnyVNode = VNode<Record<string, any>>;
 
@@ -674,6 +675,25 @@ describe('slider-stepper — onCommit gesture boundary (261111-tul)', () => {
     };
   }
 
+  function plusOf(tree: AnyVNode): AnyVNode {
+    const plus = findAll(tree, (vnode) => vnode.props?.['data-testid'] === 'slider-stepper-plus')[0];
+    expect(plus, 'plus cell').toBeDefined();
+    return plus!;
+  }
+
+  /** Pointer press on a stepper cell — the − / + path (NumericStepper D-24). */
+  function pointerDown(target: AnyVNode, pointerId = 7): void {
+    (target.props as any).onPointerDown({
+      preventDefault: vi.fn(),
+      pointerId,
+      currentTarget: { setPointerCapture: vi.fn() },
+    });
+  }
+
+  function pointerUp(target: AnyVNode): void {
+    (target.props as any).onPointerUp();
+  }
+
   it('a typed blur commits exactly once with the parsed value', () => {
     const onChange = vi.fn();
     const onCommit = vi.fn();
@@ -846,5 +866,136 @@ describe('slider-stepper — onCommit gesture boundary (261111-tul)', () => {
     emptyTrack.props.onPointerDown({ clientX: 40, preventDefault: () => {}, currentTarget: trackTarget(0) });
     emptyTrack.props.onPointerUp();
     expect(emptyCommit).not.toHaveBeenCalled();
+  });
+
+  it('one ± press commits once at release; the follow-on leave adds nothing', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const plus = plusOf(tree);
+
+    pointerDown(plus);
+    expect(onChange).toHaveBeenCalledWith(14);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    pointerUp(plus);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(14);
+
+    // pointerleave shares the same press-end handler — the ref was consumed.
+    plus.props.onPointerLeave();
+    expect(onCommit).toHaveBeenCalledOnce();
+  });
+
+  it('keyboard activation commits after its step; a real click does not double', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+
+    plusOf(tree).props.onClick({ detail: 0 });
+    expect(onChange).toHaveBeenCalledWith(14);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(14);
+
+    // A real mouse click belongs to the pointer path — this handler ignores it.
+    const clickChange = vi.fn();
+    const clickCommit = vi.fn();
+    const clickTree = renderStepper({
+      value: 13,
+      min: 0,
+      max: 100,
+      step: 1,
+      onChange: clickChange,
+      onCommit: clickCommit,
+    });
+    plusOf(clickTree).props.onClick({ detail: 1 });
+    expect(clickChange).not.toHaveBeenCalled();
+    expect(clickCommit).not.toHaveBeenCalled();
+  });
+
+  it('hold-to-repeat commits once at release, not on the repeat ticks', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    vi.useFakeTimers();
+    try {
+      const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+      const plus = plusOf(tree);
+
+      pointerDown(plus);
+      vi.advanceTimersByTime(NUMERIC_STEPPER_REPEAT_DELAY_MS + NUMERIC_STEPPER_REPEAT_INTERVAL_MS * 3);
+      expect(onChange.mock.calls.length).toBeGreaterThan(1);
+      expect(onCommit).not.toHaveBeenCalled();
+
+      pointerUp(plus);
+      expect(onCommit).toHaveBeenCalledOnce();
+      expect(onCommit).toHaveBeenCalledWith(14);
+
+      const settledChanges = onChange.mock.calls.length;
+      vi.advanceTimersByTime(NUMERIC_STEPPER_REPEAT_INTERVAL_MS * 10);
+      expect(onChange.mock.calls.length).toBe(settledChanges);
+      expect(onCommit).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('disabled controls and preset-list ends never commit', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, disabled: true, onChange, onCommit });
+    const plus = plusOf(tree);
+    pointerDown(plus);
+    pointerUp(plus);
+    plus.props.onClick({ detail: 0 });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+
+    const presetChange = vi.fn();
+    const presetCommit = vi.fn();
+    const presetTree = renderStepper({
+      value: 24,
+      presets: [12, 24],
+      onChange: presetChange,
+      onCommit: presetCommit,
+    });
+    const presetPlus = plusOf(presetTree);
+    expect(presetPlus.props.disabled).toBe(true);
+    pointerDown(presetPlus);
+    pointerUp(presetPlus);
+    presetPlus.props.onClick({ detail: 0 });
+    expect(presetChange).not.toHaveBeenCalled();
+    expect(presetCommit).not.toHaveBeenCalled();
+  });
+
+  it('a cancelled press commits the value it reached', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const plus = plusOf(tree);
+
+    pointerDown(plus);
+    plus.props.onPointerCancel();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(14);
+
+    pointerUp(plus);
+    expect(onCommit).toHaveBeenCalledOnce();
+  });
+
+  it('a step that lands on the current value still commits', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 80, min: 1, max: 80, step: 1, onChange, onCommit });
+    const plus = plusOf(tree);
+
+    pointerDown(plus);
+    // Clamped to 80, so the onChange equality guard holds...
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+
+    // ...but the gesture still reached 80 and commits it at release.
+    pointerUp(plus);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(80);
   });
 });
