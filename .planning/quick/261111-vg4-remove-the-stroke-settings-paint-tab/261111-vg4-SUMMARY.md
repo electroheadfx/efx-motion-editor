@@ -96,9 +96,10 @@ coverage:
   - id: D5
     description: "Live UAT: only Geometry and Stack exist in a real watercolor stroke sheet; Curve switches a selected vector stroke between Bézier and Spline from Geometry; Anchor width drag/release works from both the list view and Geometry while the sidebar and top bar still edit size/color/wet."
     requirement: QUICK-261111-VG4
-    verification: []
+    verification:
+      - "UAT PASSED 2026-11-11 (user-confirmed): the real watercolor sheet shows only Geometry and Stack, Curve switches the selected vector stroke between Bézier and Spline from Geometry, Anchor width commits from both the list view and Geometry, and the sidebar/top bar still edit size/color/wet for the selection"
     human_judgment: true
-    rationale: "The plan requires a live UAT row before calling the feature shipped; the automated suites prove the pins and render harness but cannot prove the visible sheet, the native drag feel or the untouched sidebar/top-bar edit paths."
+    rationale: "The plan required a live UAT row before calling the feature shipped; the automated suites prove the pins and render harness but cannot prove the visible sheet, the native drag feel or the untouched sidebar/top-bar edit paths — that row passed 2026-11-11."
 
 duration: 14min
 completed: 2026-11-11
@@ -174,7 +175,7 @@ None - the change removes surface (a whole tab and four helpers) and adds no end
 
 ## Next Phase Readiness
 
-- Automated side is ready; the plan's live UAT row (D5) is still required before calling the feature shipped: open a watercolor stroke sheet, confirm only Geometry and Stack, switch a selected vector stroke between Bézier and Spline from Geometry, drag/release Anchor width from both the list view and Geometry, and confirm the sidebar and top bar still edit size/color/wet.
+- Shipped: the sheet is Geometry | Stack only, the Curve row and both Anchor width mounts live in Geometry, and the live UAT row (D5) passed on 2026-11-11 (user-confirmed) — Curve switches Bézier/Spline from Geometry, Anchor width commits from the list view and Geometry, and the sidebar and top bar still edit size/color/wet.
 - Only the four listed files were staged; `packages/efx-watercolor/probe/vector-spine/result.json` and the pre-existing `.red-evidence` directories remain untouched.
 
 ---

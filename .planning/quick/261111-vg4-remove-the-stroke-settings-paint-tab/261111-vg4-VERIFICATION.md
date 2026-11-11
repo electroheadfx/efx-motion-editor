@@ -1,7 +1,7 @@
 ---
 phase: 261111-vg4-remove-the-stroke-settings-paint-tab
 verified: 2026-11-11T22:05:39Z
-status: human_needed
+status: passed
 score: 5/5 must-haves verified
 covered_files:
   - .planning/quick/261111-vg4-remove-the-stroke-settings-paint-tab/261111-vg4-PLAN.md
@@ -29,7 +29,7 @@ human_verification:
 
 **Task Goal:** The Stroke Settings dialog becomes Geometry | Stack only; paint editing lives in the sidebar Paint/Brush tabs and the top bar. Move the Curve row and the Anchor width mount into Geometry, delete the Paint block, prune Paint-only model helpers, and retarget the tab-row and Paint-tab test suites.
 **Verified:** 2026-11-11T22:05:39Z at HEAD `828b58f48` (`gsd/phase-61-vector-painting-tool`)
-**Status:** human_needed (all code-level must-haves verified; the plan's live UAT row is outstanding)
+**Status:** passed — all code-level must-haves verified, and the visible live-UAT rows below were confirmed by the user on 2026-11-11
 **Re-verification:** No — initial verification (no prior VERIFICATION.md existed)
 
 ## Goal Achievement
@@ -99,6 +99,8 @@ No probes are declared or implied by this quick (not a migration/CLI phase; PLAN
 
 ### Human Verification Required
 
+> **UAT RESULT: PASSED** — user-confirmed 2026-11-11. All three rows below passed in the live Studio.
+
 #### 1. Two-tab sheet under every filter
 
 **Test:** Open a watercolor stroke sheet and inspect the settings tab row with the Paint, Eraser and All filters, and with a lift stroke selected.
@@ -119,7 +121,7 @@ No probes are declared or implied by this quick (not a migration/CLI phase; PLAN
 
 ### Gaps Summary
 
-None. All five must-have truths are verified in the live tree at HEAD `828b58f48` with deterministic evidence (source anchors, grep counts, render-harness assertions, and reproduced test runs). The phase goal — a Geometry | Stack-only Stroke Settings sheet with the Curve row and both Anchor width mounts inside Geometry and the Paint tab plus its four model color helpers deleted — is achieved in code. The status is `human_needed` solely because the plan's live UAT row (D5) is still outstanding; no gap blocks it.
+None. All five must-have truths are verified in the live tree at HEAD `828b58f48` with deterministic evidence (source anchors, grep counts, render-harness assertions, and reproduced test runs). The phase goal — a Geometry | Stack-only Stroke Settings sheet with the Curve row and both Anchor width mounts inside Geometry and the Paint tab plus its four model color helpers deleted — is achieved in code. The live UAT row (D5) recorded above passed on 2026-11-11 (user-confirmed), so the feature is shipped, not merely automated-ready.
 
 ---
 
