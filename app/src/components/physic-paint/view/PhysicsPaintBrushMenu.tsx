@@ -22,11 +22,11 @@ import {
   aquarelleBrushMenuTarget,
   aquarelleLiftTipId,
   aquarelleSelectedTipId,
-  selectAquarelleTip,
   setAquarelleBrushMenuOpen,
   setAquarelleBrushModalOpen,
   setAquarelleLiftTipId,
 } from './aquarelleRecordState';
+import { pickAquarelleBrush } from './aquarellePaintControls';
 // 261029-hy2 CR-01: the catalog's open path must raise its sheet — the seat
 // sits UNDER the Settings sheet, so click-to-front alone can never reach it.
 import { SHEET_ID_BRUSHES, bringSheetToFront } from './floatingSheetStack';
@@ -182,7 +182,7 @@ export function PhysicsPaintBrushMenu() {
                     data-testid={`watercolor-brush-menu-item-${preset.id}`}
                     title={preset.hint}
                     onClick={() => {
-                      selectAquarelleTip(preset.id);
+                      void pickAquarelleBrush(preset.id);
                       setAquarelleBrushMenuOpen(false);
                     }}
                   >

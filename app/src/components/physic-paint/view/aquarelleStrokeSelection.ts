@@ -664,22 +664,47 @@ export function aquarelleSelectionEditActive(): boolean {
 }
 
 /**
+ * Options for one appearance commit (quick 261111-ucf).
+ *
+ * `filter` defaults to `'all'`, which preserves the 261111-t74 forwarding
+ * exactly: the whole selection, paint AND lift ids, in selection order. The
+ * paint controls pass `'paint'`, which is what keeps a lift (eraser) stroke
+ * out of every pick and slider-release edit.
+ */
+export interface AquarelleSelectionEditOptions {
+  filter?: AquarelleStrokeTypeFilter;
+}
+
+/**
  * Commit an appearance patch onto the current selection. Returns `null` when
- * there is NO ATTEMPT — Select mode off, an empty selection, or no registered
- * port — so the caller keeps its own path. A non-null resolution of `false`
- * means the Studio REFUSED the edit (guards, in-flight, failed re-bake).
+ * there is NO ATTEMPT — Select mode off, an empty selection, no registered
+ * port, or (with a filter) no selected stroke left after filtering — so the
+ * caller keeps its own path. A non-null resolution of `false` means the Studio
+ * REFUSED the edit (guards, in-flight, failed re-bake).
  *
  * The ids are snapshotted into a fresh array before the port is called: a
  * selection change during the async commit can never mutate the forwarded
- * list.
+ * list. A filtered-away selection is a no-attempt too: the port is never
+ * touched, so a lift-only selection cannot open an empty undo entry.
  */
 export function commitAquarelleSelectionAppearance(
   patch: ScriptStrokeAppearancePatch,
+  options?: AquarelleSelectionEditOptions,
 ): Promise<boolean> | null {
   if (!aquarelleSelectionEditActive()) return null;
   const port = aquarelleSelectionEditPort;
   if (!port) return null;
-  return port.applyAppearance([...scriptSelectedStrokeIds.peek()], patch);
+  const filter = options?.filter ?? 'all';
+  let ids = [...scriptSelectedStrokeIds.peek()];
+  if (filter !== 'all') {
+    const entries = getRecordedAquarelleStrokeEntries();
+    ids = ids.filter((mutationId) => {
+      const stroke = entries.get(mutationId);
+      return stroke !== undefined && matchesAquarelleStrokeFilter(stroke, filter);
+    });
+    if (ids.length === 0) return null;
+  }
+  return port.applyAppearance(ids, patch);
 }
 
 // ============================================================

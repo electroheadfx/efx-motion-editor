@@ -25,6 +25,10 @@ function sourceRegion(startMarker: string, endMarker: string): string {
   return SOURCE.slice(start, end);
 }
 
+function countOf(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
 describe('brushMenuPresets', () => {
   it('both lists are the complete shipped preset list, in order', () => {
     const shipped = BRUSH_PRESETS.map((preset) => preset.id);
@@ -56,5 +60,21 @@ describe('PhysicsPaintBrushMenu wiring (61-07)', () => {
       expect(branch).toContain('title={preset.hint}');
       expect(branch).toContain('{preset.name}');
     }
+  });
+});
+
+// quick 261111-ucf — the brush branch is the first tenant of the ONE
+// paint-control seam; the lift branch keeps the raw eraser setter.
+describe('quick 261111-ucf brush pick wiring', () => {
+  it('routes the brush branch through the paint-control seam and never the lift branch', () => {
+    const lift = sourceRegion("menuTarget === 'lift' ? (", '\n      ) : (');
+    expect(countOf(lift, 'setAquarelleLiftTipId('), 'lift branch keeps its raw setter').toBe(1);
+    expect(lift, 'lift branch never commits a paint pick').not.toContain('pickAquarelleBrush(');
+
+    const brush = sourceRegion('\n      ) : (', '\n      )}\n    </div>');
+    expect(countOf(brush, 'pickAquarelleBrush('), 'brush branch picks through the seam').toBe(1);
+
+    const imports = SOURCE.match(/from '\.\/aquarellePaintControls'/g) ?? [];
+    expect(imports, 'one paint-controls import').toHaveLength(1);
   });
 });
