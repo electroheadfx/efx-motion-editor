@@ -6,10 +6,10 @@ current_phase: 61
 current_phase_name: Vector Painting Tool
 status: verifying
 stopped_at: Completed 61-31-PLAN.md
-last_updated: "2026-11-11T20:26:39.561Z"
+last_updated: "2026-11-11T20:48:57.594Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: be41188719cc32cac0a42f83af144f16eeeb4813
+state_head: 1ce179f3c5dd2307a444fbb7af868e849d01fd3c
 progress:
   total_phases: 4
   completed_phases: 2
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 Phase: 61 (Vector Painting Tool) — EXECUTING
 Plan: 31 of 31
 Status: Phase complete — ready for verification
-Last activity: 2026-11-11 - Completed quick task 261111-t74: selection edit port + brush patch
+Last activity: 2026-11-11 - Completed quick task 261111-tul: SliderStepper commit boundary
 
 Progress: [█████░░░░░] 50%
 
@@ -427,6 +427,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261109-pwt | Phase 60 cached-key paint: first return to a key that already had cached paint now shows paint added since the last cache commit (settle the pending destination capture once the destination is displayed; faint wet washes no longer dropped by the capture ink gate; UAT approved 2026-11-09) | 2026-11-09 | 8b1508db8 | [261109-pwt-phase-60-issue-with-paint-on-cached-key-](./quick/261109-pwt-phase-60-issue-with-paint-on-cached-key-/) |
 | 261109-uj0 | Phase 60 cached-key paint, compiled-build regression: localized capture gate FAILED packaged UAT (near-blank snapshots overwrote fresh paint, including keyboard-arrow navigation); acceptance reverted to the global-only 0.3 mean in 0c0520917, with the localized 12x12 measurement and a non-DEV console.warn kept as rejection diagnostics; quick CLOSED as rollback+diagnostic (22:21 rebuild verified, keyboard repro gone). Follow-up 9e0bd2597 makes the gate color-aware (paper-relative per-channel pigment path, floor 0.5) because luminance rejected yellow/orange washes while red/blue passed; packaged UAT PASSED 2026-11-09 (user-confirmed) | 2026-11-09 | 9e0bd2597 | [261109-uj0-phase-60-issue-the-faint-wet-wash-captur](./quick/261109-uj0-phase-60-issue-the-faint-wet-wash-captur/) |
 | 261111-t74 | Selection edit port + brush patch — selected strokes accept a brush id and per-brush multipliers as one undoable edit (automated-ready; no UI consumer yet) | 2026-11-11 | be4118871 | [261111-t74-selection-edit-port-brush-patch](./quick/261111-t74-selection-edit-port-brush-patch/) |
+| 261111-tul | SliderStepper commit boundary: optional onCommit fires once per gesture at the release boundaries (track pointerup/cancel, typed Enter/blur, ± press end, keyboard activation) with the gesture's own value, Enter+blur deduped, equal-value commits allowed, absent prop byte-identical (automated-ready; no consumer wired) | 2026-11-11 | 1ce179f3c | [261111-tul-sliderstepper-commit-boundary-milestone-](./quick/261111-tul-sliderstepper-commit-boundary-milestone-/) |
 
 ## Roadmap Evolution
 
