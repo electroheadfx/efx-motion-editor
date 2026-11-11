@@ -22,6 +22,7 @@ import {
   paintSeedSaltOf,
   projectVectorPath,
   resolveAquarelleRenderMode,
+  sampleVectorPath,
   toStudioStroke,
   type AquarelleAnchor,
   type AquarelleDryEvent,
@@ -980,8 +981,15 @@ export function updateAquarelleRenderModeInScript(
  * target BEFORE mutating, normalise the incoming list (`normaliseAquarelleAnchors`
  * refuses a malformed list — T-61-32), REPLACE the stroke and regenerate its
  * entry through the ONE projection, and write it at the SAME timeline index.
- * Every other field is carried through the spread, so points, params,
- * diffusionFrames, timestamp and playFrame survive the path write.
+ *
+ * 61-29 (G-17): the anchor write RE-DERIVES the sampled spine from the anchors
+ * it just stored. `toStudioStroke` projects `points` into the payload's `pts` —
+ * the geometry every replay deposits — so carrying the old `points` through the
+ * spread left the entry's two halves disagreeing and made a forced replay
+ * (Shift+R) reproduce the PRE-edit curve. The re-derived points carry
+ * `buildVectorStroke`'s exact shape (p 1, no tilt), so a replayed edit is
+ * indistinguishable from a freshly drawn stroke. Params, diffusionFrames,
+ * timestamp and playFrame still survive the path write.
  *
  * Idempotent: an unchanged anchor list and render mode store nothing, bump
  * nothing and return 0. The persisted form drops a width factor equal to 1
@@ -1004,9 +1012,21 @@ export function updateAquarellePathInScript(
   const currentMode = resolveAquarelleRenderMode(stroke.renderMode);
   const nextMode = renderMode === undefined ? currentMode : resolveAquarelleRenderMode(renderMode);
   if (anchorsEqual(stroke.anchors ?? [], nextAnchors) && currentMode === nextMode) return 0;
+  // 61-29 (G-17): re-derive the replay spine from the anchors just stored.
+  // `toStudioStroke` projects these points into the payload's `pts`, and they
+  // are stamped with the exact six-field shape `buildVectorStroke` writes.
+  const { points: sampledSpine } = sampleVectorPath(nextAnchors);
+  const nextPoints = sampledSpine.map((point) => ({
+    x: point.x,
+    y: point.y,
+    p: 1,
+    tx: 0,
+    ty: 0,
+    tw: 0,
+  }));
   const nextStroke: AquarelleStroke = renderMode === undefined
-    ? { ...stroke, anchors: nextAnchors }
-    : { ...stroke, anchors: nextAnchors, renderMode: nextMode };
+    ? { ...stroke, points: nextPoints, anchors: nextAnchors }
+    : { ...stroke, points: nextPoints, anchors: nextAnchors, renderMode: nextMode };
   // Regenerate through the ONE projection so the payload's opaque engine block
   // carries the same anchors the stroke holds (T-61-34).
   const nextEntry = toStudioStroke(nextStroke);
