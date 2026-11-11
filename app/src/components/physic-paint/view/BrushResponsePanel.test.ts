@@ -13,6 +13,9 @@
  * Render tests materialize the vnode tree (no DOM environment).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
 import {
   MULTIPLIER_DEFAULT,
@@ -206,3 +209,24 @@ describe('BrushResponsePanel multiplier band and effective readout (D-08)', () =
     expect(effectiveMultiplierValue(12, 2.0)).toBe(24);
   });
 });
+
+// quick 261111-ucf — each response row commits its clamped multiplier at
+// the release boundary while onChange keeps the shipped live setter.
+describe('quick 261111-ucf brush-response release wiring', () => {
+  it('source pins: one MultiplierSlider passthrough and one clamped commit', () => {
+    const body = stripComments(
+      readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'BrushResponsePanel.tsx'), 'utf8'),
+    );
+    expect(body.split('onCommit={props.onCommit}').length - 1, 'one slider passthrough').toBe(1);
+    expect(
+      body.split('commitAquarelleSelectionMultiplier(field, value)').length - 1,
+      'one multiplier release commit',
+    ).toBe(1);
+    const imports = body.match(/from '\.\/aquarellePaintControls'/g) ?? [];
+    expect(imports, 'one paint-controls import').toHaveLength(1);
+  });
+});
+
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+}

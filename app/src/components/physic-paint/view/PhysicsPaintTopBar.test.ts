@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { signal } from '@preact/signals';
 import { Eraser, Paintbrush } from 'lucide-preact';
+import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   LiftEditSwitch,
   PhysicsPaintTopBar,
@@ -18,6 +19,7 @@ import {
   aquarelleBrushMenuOpen,
   aquarelleBrushMenuTarget,
   aquarelleScriptRecordingEnabled,
+  recordAquarelleStroke,
   setAquarelleScriptRecordingEnabled,
   setAquarelleTool,
 } from './aquarelleRecordState';
@@ -26,7 +28,13 @@ import {
   aquarelleStrokeSettingsDismissed,
   aquarelleStrokeTypeFilter,
   setAquarelleSelectMode,
+  setAquarelleSelectionEditPort,
 } from './aquarelleStrokeSelection';
+import {
+  clearScriptStrokeSelection,
+  setScriptStrokeSelection,
+} from './scriptStrokeEdition';
+import type { ScriptStrokeAppearancePatch } from './strokeSettingsModel';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
@@ -865,3 +873,93 @@ describe('261028-k03b / 261029-eur Eraser tool controls', () => {
     }
   });
 });
+
+// quick 261111-ucf — every brush slider commits ONCE at its release
+// boundary; the Eraser cluster never commits a paint param. Id band
+// 10701+.
+describe('quick 261111-ucf top-bar slider release commits', () => {
+  afterEach(() => {
+    setAquarelleSelectionEditPort(null);
+    setAquarelleSelectMode(false);
+    clearScriptStrokeSelection();
+  });
+
+  it('each brush slider commits its mapped key exactly once, and only on release', () => {
+    setAquarelleTool('brush');
+    recordAquarelleStroke(10701, stroke10701([point10701(0.2, 0.5)]));
+    const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
+    const promise = Promise.resolve(true);
+    setAquarelleSelectionEditPort({
+      applyAppearance: (ids, patch) => {
+        calls.push({ ids, patch });
+        return promise;
+      },
+    });
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([10701]);
+
+    const nodes = childrenOf(renderTopBar(baseTopBarProps())) as AnyVNode[];
+    const byId = (id: string) => nodes.find((n) => n.props?.id === id);
+    const released: Array<[string, string]> = [
+      ['physics-brush-size', 'size'],
+      ['physics-aquarelle-pigment', 'load'],
+      ['physics-aquarelle-water', 'water'],
+      ['physics-aquarelle-edges', 'edge'],
+      ['physics-aquarelle-grain', 'granulation'],
+    ];
+
+    for (const [id] of released) {
+      expect(byId(id), `${id} must render`).toBeDefined();
+      expect(typeof byId(id)!.props?.onCommit, `${id} exposes onCommit`).toBe('function');
+    }
+    // A drag (onChange) never commits: the port is silent until a release.
+    expect(calls).toHaveLength(0);
+
+    for (const [id, key] of released) {
+      (byId(id)!.props.onCommit as (value: number) => void)(37);
+      expect(calls[calls.length - 1]!.patch, `${id} forwards ${key}`).toEqual({ params: { [key]: 37 } });
+    }
+    expect(calls, 'one patch per release').toHaveLength(5);
+    expect(calls.map((call) => call.ids)).toEqual([
+      [10701], [10701], [10701], [10701], [10701],
+    ]);
+  });
+
+  it('the Eraser cluster never commits a paint param', () => {
+    setAquarelleTool('lift');
+    try {
+      const nodes = childrenOf(renderTopBar(baseTopBarProps())) as AnyVNode[];
+      const byId = (id: string) => nodes.find((n) => n.props?.id === id);
+      expect(byId('physics-lift-size'), 'lift size renders').toBeDefined();
+      expect(byId('physics-lift-size')!.props?.onCommit).toBeUndefined();
+      expect(byId('physics-lift-strength'), 'lift strength renders').toBeDefined();
+      expect(byId('physics-lift-strength')!.props?.onCommit).toBeUndefined();
+    } finally {
+      setAquarelleTool('brush');
+    }
+  });
+
+  it('source pins: one commit passthrough and one paint-controls import', () => {
+    const body = stripComments(topBarSource());
+    expect(body.split('const updateCommit =').length - 1, 'one updateCommit builder').toBe(1);
+    expect(body.split('onCommit={updateCommit}').length - 1, 'one TopBarSlider passthrough').toBe(1);
+    const imports = body.match(/from '\.\/aquarellePaintControls'/g) ?? [];
+    expect(imports, 'one paint-controls import').toHaveLength(1);
+  });
+});
+
+function point10701(x: number, y: number): AquarellePoint {
+  return { x, y, p: 1, tx: 0, ty: 0, tw: 0 };
+}
+
+function stroke10701(points: readonly AquarellePoint[]): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#103c65',
+    params: { size: 12 },
+    brushId: 'round',
+    points,
+    timestamp: 0,
+    playFrame: 801,
+  };
+}

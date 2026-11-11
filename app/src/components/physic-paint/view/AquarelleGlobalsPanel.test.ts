@@ -12,14 +12,25 @@
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
  * Render tests materialize the vnode tree (no DOM environment).
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleParams,
+  recordAquarelleStroke,
   setAquarelleParam,
 } from './aquarelleRecordState';
+import {
+  setAquarelleSelectMode,
+  setAquarelleSelectionEditPort,
+} from './aquarelleStrokeSelection';
+import {
+  clearScriptStrokeSelection,
+  setScriptStrokeSelection,
+} from './scriptStrokeEdition';
+import type { ScriptStrokeAppearancePatch } from './strokeSettingsModel';
 import { AquarelleGlobalsPanel } from './AquarelleGlobalsPanel';
 
 vi.mock('preact/hooks', async (importOriginal) => {
@@ -251,3 +262,77 @@ describe('261018-gqo spacing rhythm', () => {
     expect(styles).toMatch(/\.physics-paint-module-section\s*\{[^}]*gap:\s*15px/);
   });
 });
+
+// quick 261111-ucf — each global row commits at its release boundary and
+// Reset sends ONE seven-key batch after its seven live writes. Id band
+// 10721+.
+describe('quick 261111-ucf globals release commits + Reset batch', () => {
+  afterEach(() => {
+    setAquarelleSelectionEditPort(null);
+    setAquarelleSelectMode(false);
+    clearScriptStrokeSelection();
+  });
+
+  it('Reset commits ONE seven-key params patch after the seven live writes', () => {
+    recordAquarelleStroke(10721, stroke10721([point10721(0.5, 0.5)]));
+    const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
+    const promise = Promise.resolve(true);
+    setAquarelleSelectionEditPort({
+      applyAppearance: (ids, patch) => {
+        calls.push({ ids, patch });
+        return promise;
+      },
+    });
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([10721]);
+
+    const tree = renderPanel();
+    const reset = [...walk(tree)].find(
+      (n) => n.type === 'button' && n.props?.['data-testid'] === 'aquarelle-params-reset',
+    );
+    expect(reset, 'Reset control must render').toBeTruthy();
+    (reset!.props as { onClick?: () => void }).onClick!();
+
+    expect(calls, 'the batch is ONE call').toHaveLength(1);
+    expect(calls[0]!.ids).toEqual([10721]);
+    expect(calls[0]!.patch).toEqual({ params: RESET_EXPECTED });
+    expect(Object.keys(calls[0]!.patch.params ?? {}), 'size is never committed').not.toContain('size');
+  });
+
+  it('source pins: the GlobalSlider passthrough and the ONE Reset batch', () => {
+    const body = stripComments(
+      readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'AquarelleGlobalsPanel.tsx'), 'utf8'),
+    );
+    expect(body.split('onCommit={props.onCommit}').length - 1, 'one GlobalSlider passthrough').toBe(1);
+    expect(
+      body.split('commitAquarelleSelectionParam(key, value)').length - 1,
+      'one per-row release commit',
+    ).toBe(1);
+    expect(
+      body.split('commitAquarelleSelectionParams(next)').length - 1,
+      'one Reset batch',
+    ).toBe(1);
+    const imports = body.match(/from '\.\/aquarellePaintControls'/g) ?? [];
+    expect(imports, 'one paint-controls import').toHaveLength(1);
+  });
+});
+
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+}
+
+function point10721(x: number, y: number): AquarellePoint {
+  return { x, y, p: 1, tx: 0, ty: 0, tw: 0 };
+}
+
+function stroke10721(points: readonly AquarellePoint[]): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#103c65',
+    params: { size: 12 },
+    brushId: 'round',
+    points,
+    timestamp: 0,
+    playFrame: 801,
+  };
+}
