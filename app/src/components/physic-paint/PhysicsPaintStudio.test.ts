@@ -5294,10 +5294,13 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
   });
 
   it('allocates duplicate-script copies through the same ledger, never an engine', () => {
+    // 61-24 (G-15): the body moved out of the inline duplicate port into the
+    // one shared `recordAquarelleScriptCopyForFrames` seam — the pin follows
+    // the same body, with the same markers and the same negative assertion.
     const recordCopy = slice(
       studio,
-      'recordAquarelleScriptCopy: async (sourceFrame, destinationFrame) => {',
-      'return recorded > 0;',
+      'const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {',
+      'const rotoNavigation = useRotoNavigationCoordinator',
     );
     expect(recordCopy).toContain('allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({');
     expect(recordCopy).not.toContain('enqueueRecordedStroke');

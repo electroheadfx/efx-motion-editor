@@ -3832,6 +3832,41 @@ export function PhysicsPaintStudio() {
     physicPaintVersion.value++;
   }, []);
 
+  // 61-24 (G-15): the ONE script-copy seam. Duplicate records the source key's
+  // recorded timeline onto the promoted blank key; +Key records the previous
+  // real key's timeline onto the key it just created. Both are RECORD-ONLY —
+  // the bytes already equal base∘script (`ensureAquarelleDurableBase` inverts
+  // them on the next durable edit), so the timeline is recorded, never applied,
+  // and a second implementation must never exist.
+  const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {
+    const launch = launchContextRef.current;
+    if (!launch) return false;
+    // Fresh ids through the SAME allocation the live stroke-end path
+    // uses (allocateStrokeMutation + recordAquarelleStroke): the
+    // duplicate is what Move / Delete / stack-step edit, never the
+    // source. The ledger emits each completion synchronously.
+    const recorded = copyAquarelleScriptToFrame({
+      events: getAquarelleEventsForFrame(sourceFrame),
+      destinationFrame,
+      allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({
+        primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),
+      }),
+      // 261027: the copy belongs to the DESTINATION key, never to
+      // the frame number it happens to occupy.
+      record: (mutationId, stroke) => {
+        recordAquarelleStroke(
+          mutationId,
+          stroke,
+          resolveStudioScriptKeyIdForFrame(
+            studioScriptSnapshotIdentityRef.current,
+            destinationFrame,
+          ),
+        );
+      },
+    });
+    return recorded > 0;
+  };
+
   const rotoNavigation = useRotoNavigationCoordinator<RenderedFramePayload>({
     workflowMode,
     beforeNavigation: rotoScript.prepareNavigation,
@@ -3873,6 +3908,10 @@ export function PhysicsPaintStudio() {
       setApplyMessage,
       setApplyStatus,
       setLastError,
+      // 61-24 (G-15): +Key records the previous real key's script (vector path
+      // included) onto the key it just created — the same record-only seam
+      // Duplicate uses, so a cloned key is re-editable instead of paint-only.
+      copyScriptToNewKey: ({ sourceAppFrame, destinationAppFrame }) => recordAquarelleScriptCopyForFrames(sourceAppFrame, destinationAppFrame),
       // Quick 261023-bxm: Duplicate settles the SOURCE key's displayed paint
       // before cloning when the record carries no inline bytes. The display
       // authority is the same cached-first lookup the canvas renders from
@@ -3952,34 +3991,7 @@ export function PhysicsPaintStudio() {
               targetFrame: frame,
             }),
             applyAquarelleEvents: (events) => rotoScript.applyAquarelleTimeline(events),
-            recordAquarelleScriptCopy: async (sourceFrame, destinationFrame) => {
-              const launch = launchContextRef.current;
-              if (!launch) return false;
-              // Fresh ids through the SAME allocation the live stroke-end path
-              // uses (allocateStrokeMutation + recordAquarelleStroke): the
-              // duplicate is what Move / Delete / stack-step edit, never the
-              // source. The ledger emits each completion synchronously.
-              const recorded = copyAquarelleScriptToFrame({
-                events: getAquarelleEventsForFrame(sourceFrame),
-                destinationFrame,
-                allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({
-                  primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),
-                }),
-                // 261027: the copy belongs to the DESTINATION key, never to
-                // the frame number it happens to occupy.
-                record: (mutationId, stroke) => {
-                  recordAquarelleStroke(
-                    mutationId,
-                    stroke,
-                    resolveStudioScriptKeyIdForFrame(
-                      studioScriptSnapshotIdentityRef.current,
-                      destinationFrame,
-                    ),
-                  );
-                },
-              });
-              return recorded > 0;
-            },
+            recordAquarelleScriptCopy: recordAquarelleScriptCopyForFrames,
           },
         );
         if (outcome.outcome === 'aborted') {
