@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 61
 current_phase_name: Vector Painting Tool
 status: executing
-stopped_at: Completed 61-22-PLAN.md
-last_updated: "2026-11-11T11:20:19.658Z"
+stopped_at: Completed 61-26-PLAN.md
+last_updated: "2026-11-11T11:29:20.628Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 61 execution started
-state_head: 60707964371d5ef53f62831ecf872e8e702d6664
+state_head: d7540b0a658c6a119fa4f880fbb6897319b2ae20
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 62
-  completed_plans: 55
+  completed_plans: 56
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
 ## Current Position
 
 Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 25 of 31
+Plan: 26 of 31
 Status: Ready to execute
 Last activity: 2026-11-11 — Phase 61 execution started
 
@@ -113,6 +113,7 @@ Progress: [█████░░░░░] 50%
 | Phase 61 P23 | 3 min | 2 tasks | 2 files |
 | Phase 61 P24 | 8 min | 2 tasks | 8 files |
 | Phase 61 P22 | 4min | 2 tasks | 4 files |
+| Phase 61 P26 | 7 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -310,6 +311,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: G-11: the Anchor width block is extracted into ONE AnchorWidthControl declared after the sheet component; the list view and the Paint tab mount the same stepper, clamp and commit seam
 - [Phase 61]: G-11: the list-view mount gate is anchorWidthAvailable && a Size reading of the same ids (anchorWidthListVisible); a multi-selection or anchorless stroke mounts nothing
 - [Phase 61]: G-11: the selected-anchor ring is a pure render output of a sixth renderPath parameter fed drawn.selected ? selection : []; only the open edit path wears rings and the palette gains no colour
+- [Phase 61]: Shift+A refuses up front on wireframeMode before any read or write, then re-checks aquarelleSelectMode after the entry attempt — the entry choke point stays authoritative rather than being duplicated
+- [Phase 61]: The WR-02 failure tail re-anchors the attempted side before the revision-authoritative restore, so the routine bumped-revision failure rolls back for real while a foreign mutation still fails closed
+- [Phase 61]: The path-edit failure capsule ternaries on the consumed restore result (restoreAquarelleEditSnapshot !== null), keeping the apply error ahead of it — a refused rollback can no longer claim a restore
+- [Phase 61]: The WR-03 draw site consumes the bake boolean through .then((baked) => { if (!baked) setDraftPixelsDirty(true); }): a refused in-flight bake arms the ONE stale-sheet invariant and publishes no capsule
+- [Phase 61]: Four shipped Studio pins were repointed, never deleted, at the mandated consuming forms (three restore markers + the stroke-end TAIL), preserving every ordering assertion and strengthening the TAIL with the vector-guard and stale-arm pins
 
 ### Pending Todos
 
@@ -402,8 +408,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T11:20:18.256Z
-Stopped at: Completed 61-22-PLAN.md
+Last session: 2026-11-11T11:29:19.355Z
+Stopped at: Completed 61-26-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

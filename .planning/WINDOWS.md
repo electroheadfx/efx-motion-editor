@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 10
+open_count: 12
 waived_count: 18
 fixed_count: 91
-total_count: 119
-last_updated: 2026-11-10T15:25:49.384Z
+total_count: 121
+last_updated: 2026-11-11T11:28:45.928Z
 ---
 
 # Broken Windows Ledger
@@ -134,6 +134,8 @@ last_updated: 2026-11-10T15:25:49.384Z
 | 117 | 61 | deviation | app/src/components/physic-paint/view/vectorPathHandles.ts |  | 61-13 Task 2: projectVectorPath gained an alwaysEnvelope option outside the plan's Task 2 file list so uniform-profile strokes show an envelope under wireframe (Rule 3). | open |  | 2026-11-10T15:25:49.016Z |  |
 | 118 | 61 | deviation | app/src/components/physic-paint/engine/ScriptStrokeOverlay.tsx |  | 61-13 Task 2: empty-sheet wireframe branch now returns null instead of mounting an empty svg (Rule 1). | open |  | 2026-11-10T15:25:49.216Z |  |
 | 119 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-13 Tasks 1-3: shipped pins updated for the one-active-surface wireframe clause, the new disabled/title literals and the VectorSquare import (Rule 1). | open |  | 2026-11-10T15:25:49.384Z |  |
+| 120 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-26 Task 2 GREEN repointed three shipped restore markers to the consuming form restoreAquarelleEditSnapshot(editId, 'undo') !== null; ordering assertions preserved (Rule 3 - Blocking). | open |  | 2026-11-11T11:28:45.763Z |  |
+| 121 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-26 Task 3 GREEN repointed the shipped stroke-end TAIL pin to the bake continuation and added vector-guard + stale-arm assertions (Rule 3 - Blocking). | open |  | 2026-11-11T11:28:45.928Z |  |
 
 ````json
 [
@@ -1609,6 +1611,32 @@ last_updated: 2026-11-10T15:25:49.384Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-10T15:25:49.384Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 120,
+    "kind": "deviation",
+    "phase": "61",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
+    "line": null,
+    "description": "61-26 Task 2 GREEN repointed three shipped restore markers to the consuming form restoreAquarelleEditSnapshot(editId, 'undo') !== null; ordering assertions preserved (Rule 3 - Blocking).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-11T11:28:45.763Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 121,
+    "kind": "deviation",
+    "phase": "61",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
+    "line": null,
+    "description": "61-26 Task 3 GREEN repointed the shipped stroke-end TAIL pin to the bake continuation and added vector-guard + stale-arm assertions (Rule 3 - Blocking).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-11T11:28:45.928Z",
     "resolved_at": null,
     "milestone": "v2.1.0"
   }
