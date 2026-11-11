@@ -47,9 +47,11 @@ import {
 } from './aquarelleRecordState';
 import {
   AQUARELLE_STROKE_FILTER_DEFAULT,
+  type AquarelleSelectionEditPort,
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
   aquarelleSelectedStrokeMutationIds,
+  aquarelleSelectionEditActive,
   aquarelleStrokeBoundsPx,
   aquarelleStrokePointsPx,
   aquarelleStrokeSettingsDismissed,
@@ -66,6 +68,7 @@ import {
   beginAquarelleReorderEdit,
   beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
+  commitAquarelleSelectionAppearance,
   cycleAquarelleStrokeTypeFilter,
   hitTestAquarelleStroke,
   listAquarelleStrokeSelectionIds,
@@ -81,6 +84,7 @@ import {
   selectAquarelleStroke,
   type SelectableAquarelleStroke,
   setAquarelleScriptEditInFlight,
+  setAquarelleSelectionEditPort,
   setAquarelleSelectMode,
   setAquarelleStrokeTipFilter,
   setAquarelleStrokeToolFilter,
@@ -102,6 +106,7 @@ import {
   type CanvasPoint,
 } from './scriptStrokeEdition';
 import { paintRadiusDocFor } from './aquarelleStrokeBand';
+import type { ScriptStrokeAppearancePatch } from './strokeSettingsModel';
 import {
   enterPathEdit,
   enterVectorPen,
@@ -1927,5 +1932,214 @@ describe('61-31 curve-mode batch edit (G-20)', () => {
     // The params object (and its salt key) is the same reference — never re-seeded.
     expect(getRecordedAquarelleStroke(id)!.params).toBe(beforeStroke.params);
     expect(paintSeedSaltOf(getRecordedAquarelleStroke(id)!.params)).toBe(7);
+  });
+});
+
+// ============================================================
+//  quick 261111-t74 — a selection brush patch is one script
+//  edit.
+//
+//  `brushId` and `toolOverrides` join the appearance patch so a
+//  brush pick can commit onto the selection through the SAME
+//  one-edit / one-undo door (`beginAquarelleAppearanceEdit`), and
+//  a peek-only selection edit port forwards the selected ids to
+//  the Studio's shipped appearance handler. No UI consumer is
+//  wired in this quick — this is data plumbing.
+// ============================================================
+
+describe('quick 261111-t74 — a selection brush patch is one script edit', () => {
+  afterEach(() => {
+    // The port is a plain module variable: a leaked fake would forward the
+    // NEXT case's commit. Clear it before the mode reset.
+    setAquarelleSelectionEditPort(null);
+    setAquarelleSelectMode(false);
+    clearScriptStrokeSelection();
+  });
+
+  it('a brush-only patch writes the id on the stroke and both entry slots, one bump', () => {
+    recordAquarelleStroke(10301, stroke({
+      points: [point(0.1, 0.4), point(0.3, 0.6)],
+      playFrame: 731,
+      size: 12,
+      timestamp: 10,
+      diffusionFrames: 42,
+      brushId: 'round',
+    }));
+    const before = getRecordedAquarelleStroke(10301)!;
+    const eventsBefore = [...getRecordedAquarellePayloadTimeline()];
+    const indexBefore = entryIndexOf(eventsBefore, 10301);
+    const entryBefore = strokeEntryAt(eventsBefore, 10301);
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(updateAquarelleStrokesInScript([10301], { brushId: 'chalk' })).toBe(1);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    const after = getRecordedAquarelleStroke(10301)!;
+    expect(after).not.toBe(before);
+    expect(after.brushId).toBe('chalk');
+    // Appearance data only: points, params, colour and the measured cuisson
+    // survive the write untouched.
+    expect(after.params).toEqual(before.params);
+    expect(after.color).toBe(before.color);
+    expect(after.points).toBe(before.points);
+    expect(after.diffusionFrames).toBe(42);
+    expect(after.timestamp).toBe(10);
+
+    const eventsAfter = getRecordedAquarellePayloadTimeline();
+    expect(eventsAfter).toHaveLength(eventsBefore.length);
+    // The regenerated entry lands on the SAME index (replay order preserved).
+    expect(entryIndexOf(eventsAfter, 10301)).toBe(indexBefore);
+    const entryAfter = strokeEntryAt(eventsAfter, 10301);
+    expect(entryAfter).not.toBe(entryBefore);
+    expect(entryAfter.brushId).toBe('chalk');
+    expect(entryAfter.engine.brushId).toBe('chalk');
+    expect(entryAfter.pts).toEqual(entryBefore.pts);
+    expect(entryAfter.ticks).toBe(entryBefore.ticks);
+    expect(entryAfter.cuisson).toBe(entryBefore.cuisson);
+    expect(entryAfter.recordedOrder).toBe(entryBefore.recordedOrder);
+  });
+
+  it('accepts a namespaced tip id through the findTip branch', () => {
+    recordAquarelleStroke(10306, stroke({
+      points: [point(0.2, 0.5)],
+      playFrame: 732,
+      brushId: 'round',
+    }));
+    expect(updateAquarelleStrokesInScript([10306], { brushId: 'wc/round-small' })).toBe(1);
+    expect(getRecordedAquarelleStroke(10306)!.brushId).toBe('wc/round-small');
+    const entry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), 10306);
+    expect(entry.brushId).toBe('wc/round-small');
+    expect(entry.engine.brushId).toBe('wc/round-small');
+  });
+
+  it('an unresolvable brush id refuses the WHOLE batch before any write', () => {
+    recordAquarelleStroke(10302, stroke({ points: [point(0.3, 0.5)], playFrame: 733 }));
+    const before = getRecordedAquarelleStroke(10302)!;
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    // A valid params field never rescues an invalid brush id.
+    expect(
+      updateAquarelleStrokesInScript([10302], { params: { load: 70 }, brushId: 'not-a-brush' }),
+    ).toBe(0);
+    expect(updateAquarelleStrokesInScript([10302], { brushId: '' })).toBe(0);
+    expect(
+      updateAquarelleStrokesInScript([10302], { brushId: 42 as unknown as string }),
+    ).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(10302)).toBe(before);
+    expect(getRecordedAquarelleStroke(10302)!.params).toEqual({ size: 12 });
+    expect(getRecordedAquarelleStroke(10302)!.brushId).toBe('round');
+  });
+
+  it('a brush id the stroke already carries is a no-op — zero, no bump', () => {
+    recordAquarelleStroke(10307, stroke({
+      points: [point(0.4, 0.5)],
+      playFrame: 734,
+      brushId: 'round',
+    }));
+    const before = getRecordedAquarelleStroke(10307)!;
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(updateAquarelleStrokesInScript([10307], { brushId: 'round' })).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(10307)).toBe(before);
+  });
+
+  it('a two-stroke brush change is ONE edit whose undo restores both by reference', () => {
+    recordAquarelleStroke(10304, stroke({ points: [point(0.1, 0.5)], playFrame: 735 }));
+    recordAquarelleStroke(10305, stroke({ points: [point(0.2, 0.5)], playFrame: 735 }));
+    const firstBefore = getRecordedAquarelleStroke(10304)!;
+    const secondBefore = getRecordedAquarelleStroke(10305)!;
+
+    const editId = beginAquarelleAppearanceEdit([10304, 10305], { brushId: 'chalk' });
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(10304)).not.toBe(firstBefore);
+    expect(getRecordedAquarelleStroke(10304)!.brushId).toBe('chalk');
+    expect(getRecordedAquarelleStroke(10305)!.brushId).toBe('chalk');
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(10304)).toBe(firstBefore);
+    expect(getRecordedAquarelleStroke(10305)).toBe(secondBefore);
+  });
+
+  it('the active probe needs Select mode on AND a non-empty selection', () => {
+    recordAquarelleStroke(10308, stroke({ points: [point(0.5, 0.5)], playFrame: 736 }));
+    setAquarelleSelectMode(false);
+    setScriptStrokeSelection([10308]);
+    expect(aquarelleSelectionEditActive()).toBe(false);
+
+    setAquarelleSelectMode(true);
+    clearScriptStrokeSelection();
+    expect(aquarelleSelectionEditActive()).toBe(false);
+
+    setScriptStrokeSelection([10308]);
+    expect(aquarelleSelectionEditActive()).toBe(true);
+  });
+
+  it('the active probe is peek-only — a selection change never re-runs the effect', () => {
+    recordAquarelleStroke(10309, stroke({ points: [point(0.6, 0.5)], playFrame: 737 }));
+    setAquarelleSelectMode(true);
+    let runs = 0;
+    const dispose = effect(() => {
+      aquarelleSelectionEditActive();
+      runs += 1;
+    });
+    try {
+      expect(runs).toBe(1);
+      setScriptStrokeSelection([10309]);
+      expect(runs).toBe(1);
+    } finally {
+      dispose();
+    }
+  });
+
+  it('returns a no-attempt null when inactive or when no port is registered', () => {
+    recordAquarelleStroke(10303, stroke({ points: [point(0.7, 0.5)], playFrame: 738 }));
+    setAquarelleSelectionEditPort({
+      applyAppearance: () => Promise.resolve(true),
+    });
+
+    // Select mode off, non-empty selection.
+    setAquarelleSelectMode(false);
+    setScriptStrokeSelection([10303]);
+    expect(commitAquarelleSelectionAppearance({ brushId: 'chalk' })).toBeNull();
+
+    // Select mode on, empty selection.
+    setAquarelleSelectMode(true);
+    clearScriptStrokeSelection();
+    expect(commitAquarelleSelectionAppearance({ brushId: 'chalk' })).toBeNull();
+
+    // Live selection, no registered port.
+    setScriptStrokeSelection([10303]);
+    setAquarelleSelectionEditPort(null);
+    expect(commitAquarelleSelectionAppearance({ brushId: 'chalk' })).toBeNull();
+  });
+
+  it('forwards a snapshotted id list and the same patch to the registered port', () => {
+    recordAquarelleStroke(10341, stroke({ points: [point(0.1, 0.5)], playFrame: 739 }));
+    recordAquarelleStroke(10342, stroke({ points: [point(0.2, 0.5)], playFrame: 739 }));
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([10341, 10342]);
+
+    const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
+    const result = Promise.resolve(true);
+    const port: AquarelleSelectionEditPort = {
+      applyAppearance: (ids, patch) => {
+        calls.push({ ids, patch });
+        return result;
+      },
+    };
+    setAquarelleSelectionEditPort(port);
+
+    const patch: ScriptStrokeAppearancePatch = { brushId: 'chalk' };
+    expect(commitAquarelleSelectionAppearance(patch)).toBe(result);
+    // Clearing the selection AFTER the call cannot change the forwarded ids.
+    clearScriptStrokeSelection();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.ids).toEqual([10341, 10342]);
+    expect(calls[0]!.patch).toBe(patch);
   });
 });

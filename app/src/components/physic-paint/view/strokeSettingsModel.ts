@@ -175,6 +175,14 @@ export interface ScriptStrokeAppearancePatch {
   readonly color?: string;
   /** 261031-cf9: the Paint seed variation flag (see the appearance door). */
   readonly paintSeedVariation?: boolean;
+  /**
+   * quick 261111-t74: the recorded brush/tip id the stroke paints with. The
+   * record-state door is the validator — only an id `findTip` resolves or a
+   * `BRUSH_PRESETS` id is accepted, and nothing is coerced or defaulted. This
+   * is appearance data, never geometry: points, anchors and the authored path
+   * survive a brush change untouched.
+   */
+  readonly brushId?: string;
 }
 
 export interface NumericFieldReading {

@@ -300,6 +300,7 @@ import {
   restoreAquarelleSnapshotRaw,
   setAquarelleDeleteInFlight,
   setAquarelleScriptEditInFlight,
+  setAquarelleSelectionEditPort,
   setAquarelleSelectMode,
   setAquarelleStrokeSelection,
   toggleAquarelleSelectMode,
@@ -9214,6 +9215,15 @@ export function PhysicsPaintStudio() {
   // 261024-p5q UAT: the early sidebar color-commit handler resolves this ref
   // at event time; assignment is a plain render-body ref write (port precedent).
   aquarelleAppearanceCommitRef.current = handleAquarelleAppearanceStrokes;
+  // quick 261111-t74: the ONE selection appearance edit port. A plain
+  // render-body write of a module variable (the ref above and
+  // setScriptStrokeEditionPorts precedent — no signal, no subscription). It
+  // forwards to the SAME appearance handler, so a selection brush change
+  // inherits ONE undo entry, the shared re-bake and the shipped paint-seed
+  // re-roll instead of opening a second edit path.
+  setAquarelleSelectionEditPort({
+    applyAppearance: (ids, patch) => handleAquarelleAppearanceStrokes(ids, patch),
+  });
 
   // 61-31 (G-20): the Paint tab's `Curve` row. Same shape as the render-mode
   // handler — one batch + its re-bake = ONE `aquarelle-script` ledger entry —

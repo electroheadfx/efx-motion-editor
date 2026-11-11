@@ -736,6 +736,13 @@ export interface AquarelleStrokeAppearancePatch {
    * `AQUARELLE_GLOBAL_KEYS` (the slider set) does not contain it.
    */
   readonly paintSeedVariation?: boolean;
+  /**
+   * quick 261111-t74: the recorded brush/tip id. Validated against `findTip`
+   * or a `BRUSH_PRESETS` id BEFORE any target is resolved — an unknown, empty
+   * or non-string id refuses the WHOLE batch. A preset is not a tip, so the
+   * two resolution branches stay explicit.
+   */
+  readonly brushId?: string;
 }
 
 /**
@@ -767,6 +774,7 @@ export function updateAquarelleStrokesInScript(
   const paramEntries = params ? Object.entries(params) : [];
   const hasColor = patch.color !== undefined;
   const hasFlag = patch.paintSeedVariation !== undefined;
+  const hasBrush = patch.brushId !== undefined;
   // Validate the WHOLE patch first: one unknown key or non-finite value
   // refuses the batch before anything is drained or touched.
   for (const [key, value] of paramEntries) {
@@ -775,7 +783,24 @@ export function updateAquarelleStrokesInScript(
   }
   if (hasColor && (typeof patch.color !== 'string' || patch.color.length === 0)) return 0;
   if (hasFlag && typeof patch.paintSeedVariation !== 'boolean') return 0;
-  if (paramEntries.length === 0 && !hasColor && !hasFlag) return 0;
+  // quick 261111-t74: the brush id is resolved up front through the shipped
+  // findTip-then-preset idiom (a preset is NOT a tip). Nothing is coerced or
+  // defaulted — an id neither lookup resolves refuses the WHOLE batch, so an
+  // unknown brush can never silently repaint the stroke.
+  let nextBrushId: string | null = null;
+  if (hasBrush) {
+    const value = patch.brushId;
+    if (typeof value !== 'string' || value.length === 0) return 0;
+    const tip = findTip(value);
+    if (tip) {
+      nextBrushId = tip.id;
+    } else {
+      const preset = BRUSH_PRESETS.find((entry) => entry.id === value);
+      if (!preset) return 0;
+      nextBrushId = preset.id;
+    }
+  }
+  if (paramEntries.length === 0 && !hasColor && !hasFlag && !hasBrush) return 0;
   const seedVariation = patch.paintSeedVariation;
 
   const targets: Array<{
@@ -784,6 +809,7 @@ export function updateAquarelleStrokesInScript(
     index: number;
     nextParams: Record<string, number>;
     nextColor: string | null;
+    nextBrushId: string;
   }> = [];
   const seen = new Set<number>();
   for (const mutationId of mutationIds) {
@@ -803,6 +829,8 @@ export function updateAquarelleStrokesInScript(
     }
     const nextColor: string | null = hasColor ? (patch.color as string) : stroke.color;
     if (hasColor && nextColor !== stroke.color) changed = true;
+    const targetBrushId = nextBrushId ?? stroke.brushId;
+    if (hasBrush && targetBrushId !== stroke.brushId) changed = true;
     if (seedVariation === true && paintSeedSaltOf(nextParams) === null) {
       nextParams[PAINT_SEED_SALT_PARAM] = 0;
       changed = true;
@@ -811,12 +839,20 @@ export function updateAquarelleStrokesInScript(
       changed = true;
     }
     if (!changed) continue;
-    targets.push({ mutationId, stroke, index, nextParams, nextColor });
+    targets.push({ mutationId, stroke, index, nextParams, nextColor, nextBrushId: targetBrushId });
   }
   if (targets.length === 0) return 0;
 
-  for (const { mutationId, stroke, index, nextParams, nextColor } of targets) {
-    const nextStroke: AquarelleStroke = { ...stroke, params: nextParams, color: nextColor };
+  for (const { mutationId, stroke, index, nextParams, nextColor, nextBrushId: targetBrushId } of targets) {
+    // `brushId` is required on the stroke record, so the resolved value is
+    // always the validated patch id or the stroke's own — never undefined.
+    // `toStudioStroke` re-projects it into BOTH entry slots.
+    const nextStroke: AquarelleStroke = {
+      ...stroke,
+      params: nextParams,
+      color: nextColor,
+      brushId: targetBrushId,
+    };
     // Regenerate through the ONE projection so the engine payload carries the
     // new canonical params/colour; pts/cuisson/recordedOrder re-derive from
     // the preserved points and diffusionFrames.

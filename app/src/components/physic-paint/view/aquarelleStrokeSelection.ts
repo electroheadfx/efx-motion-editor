@@ -626,6 +626,63 @@ export const aquarelleScriptStrokeEditionPort: Pick<
 };
 
 // ============================================================
+//  quick 261111-t74 — the selection appearance edit port.
+//
+//  A plain module variable, modelled on `scriptStrokeEdition`'s
+//  ports: the Studio writes it in its render body, there is no
+//  signal and no subscription. The port exists so a brush pick can
+//  commit onto the selection through the ONE appearance handler
+//  it already ships (`beginAquarelleAppearanceEdit`), inheriting
+//  one undo entry, one revision bump and the seed re-roll instead
+//  of opening a second edit path.
+// ============================================================
+
+/** The one member the Studio binds: forward ids + patch to the appearance door. */
+export interface AquarelleSelectionEditPort {
+  applyAppearance(
+    ids: readonly number[],
+    patch: ScriptStrokeAppearancePatch,
+  ): Promise<boolean>;
+}
+
+let aquarelleSelectionEditPort: AquarelleSelectionEditPort | null = null;
+
+export function setAquarelleSelectionEditPort(
+  port: AquarelleSelectionEditPort | null,
+): void {
+  aquarelleSelectionEditPort = port;
+}
+
+/**
+ * PEEK-ONLY: true only while Select mode is on AND the selection is
+ * non-empty. `.peek()` never subscribes, so an event-time caller (the future
+ * brush pick) can ask without making its caller re-render on every selection
+ * change — the render-body rule for this module (efx-preact-reactivity §5).
+ */
+export function aquarelleSelectionEditActive(): boolean {
+  return scriptSelectMode.peek() && scriptSelectedStrokeIds.peek().size > 0;
+}
+
+/**
+ * Commit an appearance patch onto the current selection. Returns `null` when
+ * there is NO ATTEMPT — Select mode off, an empty selection, or no registered
+ * port — so the caller keeps its own path. A non-null resolution of `false`
+ * means the Studio REFUSED the edit (guards, in-flight, failed re-bake).
+ *
+ * The ids are snapshotted into a fresh array before the port is called: a
+ * selection change during the async commit can never mutate the forwarded
+ * list.
+ */
+export function commitAquarelleSelectionAppearance(
+  patch: ScriptStrokeAppearancePatch,
+): Promise<boolean> | null {
+  if (!aquarelleSelectionEditActive()) return null;
+  const port = aquarelleSelectionEditPort;
+  if (!port) return null;
+  return port.applyAppearance([...scriptSelectedStrokeIds.peek()], patch);
+}
+
+// ============================================================
 //  Delete edits (261022-pim). A delete is one in-memory script
 //  mutation; the caller owns the async re-bake and must clear
 //  the in-flight flag when it settles. Task 3 attaches
