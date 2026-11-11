@@ -36,6 +36,7 @@ import { photoPixelAt } from './aquarellePhotoPick';
 import {
   enterPathEdit,
   enterVectorPen,
+  exitPathEdit,
   pathEditMutationId,
   resetForStudioOpen,
   setVectorAnchorSelection,
@@ -301,8 +302,54 @@ describe('61-17 G-6 the picker latch releases the vector pen', () => {
   });
 });
 
+// 61-23 (G-19): an open vector path edit outranks the picker. `enterPathEdit`
+// already disarms it (61-17), but Alt is ALSO the path edit's handle-break
+// modifier, so the Alt keydown re-armed the temporary picker and the Pipette
+// visor reappeared over the canvas. The ONE armed verdict stops at an open edit,
+// so no consumer needs its own guard.
+describe('61-23 G-19 the open path edit outranks the picker', () => {
+  afterEach(() => {
+    exitPathEdit();
+    disarmAquarellePicker();
+  });
+
+  it('routes both the visor gate and the pick seam to false while Alt is held during an edit', () => {
+    pathEditMutationId.value = 'm17';
+    aquarellePickerAltHeld.value = true;
+
+    expect(aquarellePickerActive.value).toBe(false);
+    expect(isAquarellePickerArmed()).toBe(false);
+  });
+
+  it('is not Alt-specific — a latched pick is likewise false during an edit', () => {
+    pathEditMutationId.value = 'm17';
+    aquarellePickerLatched.value = true;
+
+    expect(aquarellePickerActive.value).toBe(false);
+    expect(isAquarellePickerArmed()).toBe(false);
+  });
+
+  it('reads the edit lifetime, never a one-shot latch — the verdict returns true when the edit closes', () => {
+    // Alt held BEFORE the edit opens. The latch is written directly here
+    // because `enterPathEdit` disarms the picker on its own entry edge (61-17);
+    // this case isolates the guard's lifetime semantics from that entry edge.
+    setAquarellePickerAltHeld(true);
+    expect(aquarellePickerActive.value).toBe(true);
+
+    pathEditMutationId.value = 'm17';
+    expect(aquarellePickerActive.value).toBe(false);
+    expect(isAquarellePickerArmed()).toBe(false);
+
+    pathEditMutationId.value = null;
+    expect(aquarellePickerActive.value).toBe(true);
+    expect(isAquarellePickerArmed()).toBe(true);
+  });
+});
+
 // T-61-60: the latch leaf is the picker's ONLY sibling import, so no future
 // edit can recreate the evaluation cycle the one-way edge exists to prevent.
+// 61-23 extends — never weakens — the pin: the second line still names the
+// dependency-free leaf, now carrying `pathEditMutationId` for the G-19 guard.
 describe('the picker module keeps its one-way edge (T-61-60)', () => {
   const pickerSrc = readFileSync(resolve(__dirname, './aquarelleColorPicker.ts'), 'utf8');
 
@@ -310,7 +357,7 @@ describe('the picker module keeps its one-way edge (T-61-60)', () => {
     const importLines = pickerSrc.split('\n').filter((line) => line.startsWith('import '));
     expect(importLines).toEqual([
       "import { computed, signal } from '@preact/signals';",
-      "import { exitPathEdit, exitVectorPen } from './vectorPathLatches';",
+      "import { exitPathEdit, exitVectorPen, pathEditMutationId } from './vectorPathLatches';",
     ]);
   });
 });
