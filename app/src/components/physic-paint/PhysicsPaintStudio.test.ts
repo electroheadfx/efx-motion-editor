@@ -7272,3 +7272,50 @@ describe('61-20 G-8: a vector path edit is exactly one undo entry', () => {
     expect(drawBake).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
   });
 });
+
+// 61-24 (G-15): +Key records the previous real key's script onto the new key.
+// Duplicate already owned that record seam; the two callers must share ONE
+// implementation — a second copy path would let the two drift.
+describe('61-24 G-15 — +Key and Duplicate share one script-copy body', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('declares one recordAquarelleScriptCopyForFrames body carrying the shipped ledger allocation', () => {
+    const shared = regionOf(
+      studio,
+      'const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {',
+      'const rotoNavigation = useRotoNavigationCoordinator',
+    );
+    // The body is the duplicate's shipped one, verbatim.
+    expect(shared).toContain('copyAquarelleScriptToFrame({');
+    expect(shared).toContain('allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({');
+    expect(shared).toContain('resolveStudioScriptKeyIdForFrame(');
+    expect(shared).toContain('return recorded > 0;');
+    expect(shared).not.toContain('enqueueRecordedStroke');
+    // ONE copy implementation in the whole Studio.
+    expect(studio.split('copyAquarelleScriptToFrame(').length - 1).toBe(1);
+  });
+
+  it('binds Duplicate and +Key to that one body', () => {
+    const duplicatePort = regionOf(
+      studio,
+      'duplicateWithScript: async ({ sourceKeyId, sourceAppFrame }) => {',
+      'playback: {',
+    );
+    expect(duplicatePort).toContain('recordAquarelleScriptCopy: recordAquarelleScriptCopyForFrames,');
+    expect(duplicatePort).not.toContain('recordAquarelleScriptCopy: async (');
+
+    const keyUtilitiesLiteral = regionOf(studio, 'keyUtilities: {', 'duplicateWithScript: async (');
+    expect(keyUtilitiesLiteral).toContain(
+      'copyScriptToNewKey: ({ sourceAppFrame, destinationAppFrame }) => recordAquarelleScriptCopyForFrames(sourceAppFrame, destinationAppFrame),',
+    );
+    // +Key is record-only: the shared body is never wrapped in an apply/bake.
+    expect(keyUtilitiesLiteral).not.toContain('applyAquarelleTimeline');
+    expect(keyUtilitiesLiteral).not.toContain('bakeAquarelle');
+  });
+});

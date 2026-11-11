@@ -27,7 +27,7 @@ import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR, type RotoDisplayedKeyPaint } from '../roto/physicsPaintRotoDuplicateSourcePaint';
 import type { PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { isRotoSessionCopiedKeyGroup, type RotoSessionCopiedKey } from '../roto/physicsPaintRotoSession';
-import { useRotoKeyUtilities, type RotoDuplicateWithScriptOutcome, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
+import { ROTO_ADD_KEY_SCRIPT_COPY_FAILED, useRotoKeyUtilities, type RotoDuplicateWithScriptOutcome, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
 
 const createdRefs = (preactHooks as unknown as { __createdRefs: Array<{ current: unknown }> }).__createdRefs;
 
@@ -87,6 +87,7 @@ interface HarnessOptions {
   resolveDisplayedKeyPaint?: (appFrame: number) => RotoDisplayedKeyPaint | null;
   bakeRotoKeyPaint?: (paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => Promise<boolean>;
   duplicateWithScript?: (input: { sourceKeyId: string; sourceAppFrame: number }) => Promise<RotoDuplicateWithScriptOutcome>;
+  copyScriptToNewKey?: (input: { sourceAppFrame: number; destinationAppFrame: number }) => Promise<boolean>;
 }
 
 function createHarness(options: HarnessOptions = {}) {
@@ -129,6 +130,7 @@ function createHarness(options: HarnessOptions = {}) {
     resolveDisplayedKeyPaint: options.resolveDisplayedKeyPaint,
     bakeRotoKeyPaint: options.bakeRotoKeyPaint,
     duplicateWithScript: options.duplicateWithScript,
+    copyScriptToNewKey: options.copyScriptToNewKey,
   };
   const utils = useRotoKeyUtilities(input);
   const copiedKeyRef = createdRefs[refIndex] as { current: unknown };
@@ -783,5 +785,119 @@ describe('useRotoKeyUtilities duplicateWithScript (261023-cxc)', () => {
     harness.utils.duplicateKey();
     await flushAsync();
     expect(duplicateWithScript).toHaveBeenCalledTimes(2);
+  });
+});
+
+// 61-24 (G-15): +Key promotes the current frame onto a key cloned from the
+// nearest previous REAL key. The clone carries the previous key's PAINT; the
+// previous key's watercolor SCRIPT (its vector path included) must travel
+// with it, or the new key is un-editable. Record-only: the cloned bytes
+// already equal base∘script, so the script is recorded, never applied.
+describe('61-24 G-15 — +Key records the previous key script onto the new key', () => {
+  it('copies exactly once with the previous and destination frames, after the key exists', async () => {
+    const copyScriptToNewKey = vi.fn(async (_input: { sourceAppFrame: number; destinationAppFrame: number }) => true);
+    const harness = createHarness({
+      currentFrame: 8,
+      realKeyFrames: [realKeyFrame(2), realKeyFrame(5)],
+      records: [realKeyRecord('key-2', 2), realKeyRecord('key-5', 5)],
+      cachedRotoFrames: [],
+      copyScriptToNewKey,
+    });
+
+    harness.utils.addKey();
+    await flushAsync();
+
+    expect(harness.addEmptyKey).toHaveBeenCalledTimes(1);
+    expect(copyScriptToNewKey).toHaveBeenCalledTimes(1);
+    expect(copyScriptToNewKey).toHaveBeenCalledWith({ sourceAppFrame: 5, destinationAppFrame: 8 });
+  });
+
+  it('never copies on the blank branch, and a missing port keeps the shipped behaviour', async () => {
+    const copyScriptToNewKey = vi.fn(async () => true);
+    const blank = createHarness({
+      currentFrame: 0,
+      realKeyFrames: [realKeyFrame(3)],
+      records: [realKeyRecord('key-later', 3)],
+      cachedRotoFrames: [],
+      copyScriptToNewKey,
+    });
+
+    blank.utils.addKey();
+    await flushAsync();
+
+    expect(blank.addEmptyKey).toHaveBeenCalledTimes(1);
+    expect(copyScriptToNewKey).not.toHaveBeenCalled();
+    expect(blank.setApplyStatus).not.toHaveBeenCalledWith('error');
+
+    // No port at all: today's +Key, unchanged.
+    const legacy = createHarness({
+      currentFrame: 8,
+      realKeyFrames: [realKeyFrame(5)],
+      records: [realKeyRecord('key-5', 5)],
+      cachedRotoFrames: [],
+    });
+
+    legacy.utils.addKey();
+    await flushAsync();
+
+    expect(legacy.addEmptyKey).toHaveBeenCalledTimes(1);
+    expect(legacy.setApplyStatus).not.toHaveBeenCalledWith('error');
+  });
+
+  it('never copies when the key itself could not be added, and keeps the shipped failure surface', async () => {
+    const copyScriptToNewKey = vi.fn(async () => true);
+    const harness = createHarness({
+      currentFrame: 8,
+      realKeyFrames: [realKeyFrame(5)],
+      records: [realKeyRecord('key-5', 5)],
+      cachedRotoFrames: [],
+      copyScriptToNewKey,
+    });
+    harness.addEmptyKey.mockRejectedValueOnce(new Error('bridge offline'));
+
+    harness.utils.addKey();
+    await flushAsync();
+
+    expect(harness.addEmptyKey).toHaveBeenCalledTimes(1);
+    expect(copyScriptToNewKey).not.toHaveBeenCalled();
+    expect(harness.setApplyStatus).toHaveBeenCalledWith('error');
+    expect(harness.setApplyMessage).toHaveBeenCalledWith('Could not add an empty Roto key.');
+    expect(harness.setLastError).toHaveBeenCalledWith('bridge offline');
+  });
+
+  it('a copy failure publishes only the copy failure and holds the latch until it settles', async () => {
+    let settleCopy!: (copied: boolean) => void;
+    const copyScriptToNewKey = vi.fn((_input: { sourceAppFrame: number; destinationAppFrame: number }) => new Promise<boolean>((resolve) => {
+      settleCopy = resolve;
+    }));
+    const harness = createHarness({
+      currentFrame: 8,
+      realKeyFrames: [realKeyFrame(5)],
+      records: [realKeyRecord('key-5', 5)],
+      cachedRotoFrames: [],
+      copyScriptToNewKey,
+    });
+
+    harness.utils.addKey();
+    await flushAsync();
+
+    expect(harness.addEmptyKey).toHaveBeenCalledTimes(1);
+    expect(copyScriptToNewKey).toHaveBeenCalledTimes(1);
+
+    // The copy is still pending: a second click in the same tick is refused,
+    // so no second key can be promoted while the script is being recorded.
+    harness.utils.addKey();
+    await flushAsync();
+    expect(harness.addEmptyKey).toHaveBeenCalledTimes(1);
+
+    if (!settleCopy) throw new Error('expected a pending copy');
+    settleCopy(false);
+    await flushAsync();
+
+    // The key stays — only the copy failed.
+    expect(harness.setApplyStatus).toHaveBeenCalledWith('error');
+    expect(harness.setApplyMessage).toHaveBeenCalledWith(ROTO_ADD_KEY_SCRIPT_COPY_FAILED);
+    expect(harness.setLastError).toHaveBeenCalledWith(ROTO_ADD_KEY_SCRIPT_COPY_FAILED);
+    expect(harness.setApplyMessage).not.toHaveBeenCalledWith('Could not add an empty Roto key.');
   });
 });
