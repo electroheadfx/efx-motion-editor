@@ -876,15 +876,29 @@ export function resolveAnchorWidthTarget(args: AnchorWidthTargetArgs): number | 
 export interface PathEditExitArgs {
   readonly pathEditActive: boolean;
   readonly gateEnabled: boolean;
+  /**
+   * 61-27 (WR-04): the selection's stroke id and the open edit's session id.
+   * The gate only answers "may the Edit path button be pressed", so it stays
+   * ENABLED for any one-vector-stroke selection — leaving the mode therefore
+   * needs its own target comparison.
+   */
+  readonly selectedMutationId: number | null;
+  readonly pathEditMutationId: string | null;
 }
 
 /**
- * Leaving the mode is mandatory whenever the gate closes: a path edit that
- * points at nothing would strand the overlay. The dialog keeps its render
- * body signal-free — this predicate only DECIDES, the effect performs.
+ * Leaving the mode is mandatory whenever the gate closes OR the selection no
+ * longer names the edited stroke: a path edit that points at anything else
+ * would strand the overlay on a stroke the sheet is not showing. The dialog
+ * keeps its render body signal-free — this predicate only DECIDES, the
+ * effect performs.
  */
 export function shouldExitPathEdit(args: PathEditExitArgs): boolean {
-  return args.pathEditActive && !args.gateEnabled;
+  if (!args.pathEditActive) return false;
+  if (!args.gateEnabled) return true;
+  // The session id is a string, the selection id a number — compare the same
+  // string forms `resolvePathEditGate.pressed` uses.
+  return args.pathEditMutationId !== String(args.selectedMutationId);
 }
 
 // ── The Anchor width control (E4 / VEC-03) ──────────────────────────

@@ -143,7 +143,10 @@ describe('61-11 Edit path header button (E2)', () => {
     expect(guard).not.toContain('exitPathEdit(');
     // The shipped lifecycle effect consumes the marker (no NEW useEffect).
     expect(countOf(dialogSource, 'useEffect(')).toBe(2);
-    const lifecycle = regionOf(dialogSource, 'const wasOpen = wasOpenRef.current;', '}, [open, bundle, pathEditGateEnabled]);');
+    // 61-27 (WR-04): the dependency tail gained the target-mismatch marker, so
+    // this shipped end marker was repointed at the new array (nothing else in
+    // the region changed).
+    const lifecycle = regionOf(dialogSource, 'const wasOpen = wasOpenRef.current;', '}, [open, bundle, pathEditGateEnabled, pathEditTargetMismatch]);');
     expect(lifecycle).toContain('pathEditExitRequested = false;');
     expect(lifecycle).toContain('exitPathEdit();');
   });

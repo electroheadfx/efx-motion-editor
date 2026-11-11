@@ -601,7 +601,19 @@ export function PhysicsPaintStrokeSettingsDialog({
   // out of the mode: deletion, a re-selection, a filter that empties, and the
   // rail-toggle close. The shipped lifecycle effect performs the write.
   const pathEditActive = pathEditMutationId.value !== null;
-  if (shouldExitPathEdit({ pathEditActive, gateEnabled: pathEditGateEnabled })) {
+  // 61-27 (WR-04): the gate stays ENABLED while any one vector stroke is
+  // selected, so a bare "gate closed" exit let an open edit on stroke A
+  // survive a click on stroke B. This render-body marker is the dependency
+  // that changes when the edit's target and the selection disagree — without
+  // it the exit marker below would never reach the ONE lifecycle effect.
+  const pathEditTargetMismatch = selectedMutationId === null
+    || String(selectedMutationId) !== pathEditMutationId.value;
+  if (shouldExitPathEdit({
+    pathEditActive,
+    gateEnabled: pathEditGateEnabled,
+    selectedMutationId,
+    pathEditMutationId: pathEditMutationId.value,
+  })) {
     pathEditExitRequested = true;
   }
 
@@ -672,7 +684,10 @@ export function PhysicsPaintStrokeSettingsDialog({
       return;
     }
     bringSheetToFront(SHEET_ID_STROKE_SETTINGS);
-  }, [open, bundle, pathEditGateEnabled]);
+    // 61-27 (WR-04): `pathEditTargetMismatch` is what re-runs this effect when
+    // two SINGLE vector strokes swap — `pathEditGateEnabled` never changes on
+    // that edge, which is exactly why the exit never fired.
+  }, [open, bundle, pathEditGateEnabled, pathEditTargetMismatch]);
 
   useEffect(() => {
     if (!open) return undefined;
