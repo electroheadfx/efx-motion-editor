@@ -758,16 +758,17 @@ export function PhysicsPaintStrokeSettingsDialog({
   const anchorWidthAvailable = engineModule === 'watercolor'
     && selectedVectorAnchors !== null
     && bundle.applyAnchorWidths !== undefined;
-  // 61-22 (G-11): the DEFAULT list view's mount gate. `anchorWidthAvailable`
-  // already implies a SINGLE selected vector stroke — `selectedVectorAnchors`
-  // is resolved only for `selection.size === 1` — so this mount cannot address
-  // another stroke's anchors (T-61-68). The Size reading rides the SAME ids as
-  // the Paint row, so the px readout cannot disagree between the two mounts.
+  // 61-22 (G-11): the ONE mount gate for BOTH Anchor width mounts — the
+  // DEFAULT list view and the Geometry section. `anchorWidthAvailable` already
+  // implies a SINGLE selected vector stroke — `selectedVectorAnchors` is
+  // resolved only for `selection.size === 1` — so neither mount can address
+  // another stroke's anchors (T-61-68). The Size reading rides the SAME ids in
+  // both places, so the px readout cannot disagree between the two mounts.
   const anchorWidthSizeField = numericFields.find((field) => field.key === 'size');
   const anchorWidthSizeReading = anchorWidthSizeField === undefined
     ? null
     : readNumericField(appearances, ids, anchorWidthSizeField);
-  const anchorWidthListVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;
+  const anchorWidthVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;
 
   const colorReading = readColorField(appearances, ids);
   const colorRgb = hexToRgba(colorReading.color);
@@ -1373,7 +1374,7 @@ export function PhysicsPaintStrokeSettingsDialog({
                   width control for exactly one selected vector stroke. The
                   conditional mount leaves no empty node when the gate closes
                   (multi-selection or a stroke without anchors). */}
-              {anchorWidthListVisible && anchorWidthSizeReading !== null ? (
+              {anchorWidthVisible && anchorWidthSizeReading !== null ? (
                 <div data-testid="stroke-settings-list-anchor-width">
                   <AnchorWidthControl
                     bundle={bundle}
@@ -1519,6 +1520,20 @@ export function PhysicsPaintStrokeSettingsDialog({
                   onChange={(value) => commitGeometryTransform('rotation', value)}
                 />
               </div>
+              {/* 61-22 (G-11): Geometry carries the SAME Anchor width control
+                  the list view mounts, under the transform rows. The shared
+                  `anchorWidthVisible` gate leaves no empty node here either. */}
+              {anchorWidthVisible && anchorWidthSizeReading !== null ? (
+                <div data-testid="stroke-settings-geometry-anchor-width">
+                  <AnchorWidthControl
+                    bundle={bundle}
+                    ids={ids}
+                    reading={anchorWidthSizeReading}
+                    anchorWidthReading={anchorWidthReading}
+                    anchorWidthTarget={anchorWidthTarget}
+                  />
+                </div>
+              ) : null}
               {/* 61-31 (G-20 / D-01 revised): the curve-evaluation switch.
                   Spline is a read-time view over the SAME anchors, so the row
                   mounts only when the selection holds a VECTOR stroke and the
@@ -1786,13 +1801,14 @@ interface AnchorWidthControlProps {
 
 /**
  * 61-22 (G-11): the shipped Anchor width block, extracted so the DEFAULT list
- * view can mount the SAME control the Paint tab carries. The D-09 law is
+ * view and the Geometry section mount the SAME control. The D-09 law is
  * untouched: the value is a MULTIPLIER of the stroke's Size, the band stays
  * 0.2..2.0, and the commit stays `bundle.applyAnchorWidths`.
  *
  * Declared AFTER the sheet component on purpose: the shipped E4 region pins
  * resolve the FIRST `stroke-settings-anchor-width` occurrence in the file and
- * require it to sit after the `field.key !== 'size'` gate.
+ * require it to be the component body, never one of the mount wrappers (which
+ * carry their own `stroke-settings-{list,geometry}-anchor-width` testids).
  */
 function AnchorWidthControl(props: AnchorWidthControlProps) {
   const { bundle, ids, reading, anchorWidthReading, anchorWidthTarget } = props;

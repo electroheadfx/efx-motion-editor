@@ -496,14 +496,16 @@ describe('61-31 Curve row (G-20)', () => {
 
 describe('61-22 G-11 — the Anchor width control in the list view', () => {
   const LIST_WRAPPER = 'data-testid="stroke-settings-list-anchor-width"';
+  const GEOMETRY_WRAPPER = 'data-testid="stroke-settings-geometry-anchor-width"';
   const BLOCK_START = 'data-testid="stroke-settings-anchor-width"';
   const BLOCK_END = 'data-testid="stroke-settings-anchor-width-caption"';
   const GATE = "if (field.key !== 'size' || !anchorWidthAvailable) return row;";
+  const MOUNT_GATE = '{anchorWidthVisible && anchorWidthSizeReading !== null ? (';
 
-  it('mounts the control in the default list view behind anchorWidthListVisible', () => {
+  it('mounts the control in the default list view behind anchorWidthVisible', () => {
     // ONE conditional wrapper: an invisible control leaves no empty node.
     expect(countOf(dialogSource, LIST_WRAPPER)).toBe(1);
-    const mount = regionOf(dialogSource, '{anchorWidthListVisible', ') : null}');
+    const mount = regionOf(dialogSource, '{anchorWidthVisible', ') : null}');
     expect(mount).toContain(LIST_WRAPPER);
     expect(mount).toContain('<AnchorWidthControl');
     // Ordered after the stroke rows, inside the list container.
@@ -515,10 +517,38 @@ describe('61-22 G-11 — the Anchor width control in the list view', () => {
     expect(mountAt).toBeGreaterThan(rowsAt);
   });
 
-  it('shares ONE component between the two mounts', () => {
-    expect(countOf(dialogSource, '<AnchorWidthControl')).toBe(2);
+  it('mounts the SAME control in Geometry under the transform rows', () => {
+    expect(countOf(dialogSource, GEOMETRY_WRAPPER)).toBe(1);
+    // ONE visible gate declaration feeds BOTH mounts.
+    expect(countOf(
+      dialogSource,
+      'const anchorWidthVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;',
+    )).toBe(1);
+    expect(countOf(dialogSource, MOUNT_GATE)).toBe(2);
+    // Ordered after Rotation and before the Curve row / Stack section.
+    const rotationAt = dialogSource.indexOf('data-testid="stroke-settings-geometry-rotation"');
+    const mountAt = dialogSource.indexOf(GEOMETRY_WRAPPER);
+    const curveAt = dialogSource.indexOf('data-testid="stroke-settings-curve-mode-block"');
+    const stackAt = dialogSource.indexOf('data-testid="stroke-settings-stack"');
+    expect(rotationAt).toBeGreaterThan(-1);
+    expect(mountAt).toBeGreaterThan(rotationAt);
+    expect(curveAt).toBeGreaterThan(mountAt);
+    expect(stackAt).toBeGreaterThan(curveAt);
+    // The wrapper carries the component's whole input surface.
+    const mount = regionOf(dialogSource, GEOMETRY_WRAPPER, 'data-testid="stroke-settings-curve-mode-block"');
+    expect(mount).toContain('<AnchorWidthControl');
+    expect(mount).toContain('bundle={bundle}');
+    expect(mount).toContain('ids={ids}');
+    expect(mount).toContain('reading={anchorWidthSizeReading}');
+    expect(mount).toContain('anchorWidthReading={anchorWidthReading}');
+    expect(mount).toContain('anchorWidthTarget={anchorWidthTarget}');
+  });
+
+  it('shares ONE component between the mounts', () => {
+    // list + Geometry + the Paint in-map insertion still present until Task 3.
+    expect(countOf(dialogSource, '<AnchorWidthControl')).toBe(3);
     expect(countOf(dialogSource, 'function AnchorWidthControl(')).toBe(1);
-    // ONE root block: the list mount wraps the same component and never
+    // ONE root block: each mount wraps the same component and never
     // re-declares the `stroke-settings-anchor-width` element.
     expect(countOf(dialogSource, '<div data-testid="stroke-settings-anchor-width">')).toBe(1);
     // The Paint-tab mount replaces the inline block at the shipped gate.
@@ -572,9 +602,9 @@ describe('61-22 G-11 — the Anchor width control in the list view', () => {
     );
     expect(dialogSource).toContain('readNumericField(appearances, ids, anchorWidthSizeField)');
     expect(dialogSource).toContain(
-      'const anchorWidthListVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;',
+      'const anchorWidthVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;',
     );
-    const mount = regionOf(dialogSource, '{anchorWidthListVisible', ') : null}');
+    const mount = regionOf(dialogSource, '{anchorWidthVisible', ') : null}');
     expect(mount).toContain('reading={anchorWidthSizeReading}');
   });
 });

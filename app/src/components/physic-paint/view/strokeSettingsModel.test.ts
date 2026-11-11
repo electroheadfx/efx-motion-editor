@@ -3738,6 +3738,91 @@ describe('61-11 E4 error, partial and long-text rows', () => {
   });
 });
 
+// 61-22 (G-11): the Anchor width control's TWO mounts. The default list view
+// and the Geometry section read the SAME Size reading for the SAME ids and
+// commit through the SAME `bundle.applyAnchorWidths` seam.
+describe('61-22 G-11 — the Anchor width mounts (Geometry + list)', () => {
+  const sizeAppearance = (id: number): ScriptStrokeAppearance => ({
+    mutationId: id,
+    params: { size: 12 },
+    color: null,
+    vector: true,
+  });
+
+  function anchorBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map(sizeAppearance),
+      readVectorAnchors: () => [],
+      applyAnchorWidths: () => true,
+      reorderStroke: () => true,
+      ...overrides,
+    }).bundle;
+  }
+
+  it('mounts the wrapper and the shared stepper on Geometry, and the wrapper in the list', () => {
+    const bundle = anchorBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    // The DEFAULT view is the list, and it surfaces the wrapper.
+    const listTree = renderDialog(bundle);
+    expect(findByTestId(listTree, 'stroke-settings-list-anchor-width')).toBeDefined();
+
+    const geometryTree = renderDialogTab(bundle, 'geometry');
+    expect(findByTestId(geometryTree, 'stroke-settings-geometry-anchor-width')).toBeDefined();
+    expect(
+      findComponent(geometryTree, (props) => props.ariaLabel === 'Anchor width'),
+    ).toBeDefined();
+    // Stack never carries the Geometry wrapper.
+    expect(
+      findByTestId(renderDialogTab(bundle, 'stack'), 'stroke-settings-geometry-anchor-width'),
+    ).toBeUndefined();
+  });
+
+  it('renders neither wrapper without the vector read', () => {
+    const bundle = createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map(sizeAppearance),
+      applyAnchorWidths: () => true,
+    }).bundle;
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-list-anchor-width')).toBeUndefined();
+    expect(
+      findByTestId(renderDialogTab(bundle, 'geometry'), 'stroke-settings-geometry-anchor-width'),
+    ).toBeUndefined();
+  });
+
+  it('renders neither wrapper when the vector read resolves null', () => {
+    const bundle = anchorBundle({ readVectorAnchors: () => null });
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-list-anchor-width')).toBeUndefined();
+    expect(
+      findByTestId(renderDialogTab(bundle, 'geometry'), 'stroke-settings-geometry-anchor-width'),
+    ).toBeUndefined();
+  });
+
+  it('keeps the D-09 empty reading inside the Geometry mount: inert stepper and caption', () => {
+    const bundle = anchorBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    const geometryTree = renderDialogTab(bundle, 'geometry');
+
+    const stepper = findComponent(geometryTree, (props) => props.ariaLabel === 'Anchor width')!;
+    expect(stepper.props.disabled).toBe(true);
+    expect(stepper.props.value).toBe(AQUARELLE_ANCHOR_WIDTH_DEFAULT);
+    expect(findByTestId(geometryTree, 'stroke-settings-anchor-width-caption')).toBeDefined();
+  });
+});
+
 // 61-12 (VEC-04 / E3): the `Render` row's reading law. The mode is a string
 // discriminator on the stroke, never a numeric appearance param — the reading
 // is pure over the appearance objects, and an absent field means watercolour
