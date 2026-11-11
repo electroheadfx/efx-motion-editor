@@ -22,7 +22,7 @@ const bundlePath = join(here, 'probe.bundle.js')
 // simple-ribbon edge against watercolour and writes ribbon-result.json.
 // Neither may ever overwrite the committed phase evidence (result.json),
 // which the uniform-path byte-identity pins.
-const SCENARIOS = ['width', 'ribbon', 'natural']
+const SCENARIOS = ['width', 'ribbon', 'natural', 'real']
 const args = process.argv.slice(2)
 const scenarioFlag = args.indexOf('--scenario')
 const scenario = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
@@ -33,7 +33,8 @@ if (scenario !== undefined && !SCENARIOS.includes(scenario)) {
 const widthScenario = scenario === 'width'
 const ribbonScenario = scenario === 'ribbon'
 const naturalScenario = scenario === 'natural'
-const scratchScenario = widthScenario || ribbonScenario || naturalScenario
+const realScenario = scenario === 'real'
+const scratchScenario = widthScenario || ribbonScenario || naturalScenario || realScenario
 const pageQuery = scratchScenario ? `?scenario=${scenario}` : ''
 const resultPath = join(
   outDir,
@@ -43,7 +44,9 @@ const resultPath = join(
       ? 'ribbon-result.json'
       : naturalScenario
         ? 'natural-result.json'
-        : 'result.json',
+        : realScenario
+          ? 'real-result.json'
+          : 'result.json',
 )
 
 const esbuildCandidates = [
@@ -166,9 +169,9 @@ if (widthScenario) {
     console.error(`[probe] DOM saved to ${join(outDir, 'dom.html')}`)
     process.exit(1)
   }
-} else if (naturalScenario) {
+} else if (naturalScenario || realScenario) {
   if (typeof result.arms !== 'object' || result.arms === null) {
-    console.error(`[probe] natural result has no arms (verdict=${result.verdict ?? '(missing)'})`)
+    console.error(`[probe] ${scenario} result has no arms (verdict=${result.verdict ?? '(missing)'})`)
     writeFileSync(join(outDir, 'dom.html'), dom)
     console.error(`[probe] DOM saved to ${join(outDir, 'dom.html')}`)
     process.exit(1)
@@ -188,10 +191,13 @@ if (!scratchScenario) {
   // scratch scenarios write /tmp only: they must never overwrite this file.
   writeFileSync(join(here, 'result.json'), payload)
 }
-if (naturalScenario && typeof result.sheetPng === 'string') {
+if ((naturalScenario || realScenario) && typeof result.sheetPng === 'string') {
   const prefix = 'data:image/png;base64,'
   if (result.sheetPng.startsWith(prefix)) {
-    writeFileSync(join(outDir, 'natural-sheet.png'), Buffer.from(result.sheetPng.slice(prefix.length), 'base64'))
+    writeFileSync(
+      join(outDir, `${naturalScenario ? 'natural' : 'real'}-sheet.png`),
+      Buffer.from(result.sheetPng.slice(prefix.length), 'base64'),
+    )
   }
 }
 
@@ -202,12 +208,13 @@ if (widthScenario || ribbonScenario) {
   // exitCode (not exit) so the buffered stdout above is flushed.
   const passPattern = widthScenario ? /^VECTOR-WIDTH PASS/ : /^VECTOR-RIBBON PASS/
   process.exitCode = passPattern.test(result.verdict) ? 0 : 1
-} else if (naturalScenario) {
+} else if (naturalScenario || realScenario) {
   console.log(result.verdict)
   for (const [arm, metrics] of Object.entries(result.arms)) {
-    console.log(`${arm.padEnd(9)}: ${JSON.stringify(metrics)}`)
+    console.log(`${arm.padEnd(20)}: ${JSON.stringify(metrics)}`)
   }
-  console.log(`sheet PNG : ${join(outDir, 'natural-sheet.png')}`)
+  if (result.sampleCounts) console.log(`samples   : ${JSON.stringify(result.sampleCounts)}`)
+  console.log(`sheet PNG : ${join(outDir, `${naturalScenario ? 'natural' : 'real'}-sheet.png`)}`)
   console.log(`result JSON: ${resultPath}`)
 } else {
   console.log('================ vector-spine feasibility ================')

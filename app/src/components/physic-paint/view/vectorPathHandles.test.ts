@@ -563,63 +563,17 @@ describe('61-30 curve mode — spline evaluates a view and never rewrites the pa
   });
 });
 
-describe('vectorSpinePressures — the natural pen profile', () => {
+describe('vectorSpinePressures — the recorded sample pressure', () => {
   const spine = Array.from({ length: 64 }, (_unused, index) => ({
     x: 0.1 + 0.8 * (index / 63),
     y: 0.5,
   }));
 
-  it('lands at the engine start pressure, lifts at both ends and stays bounded in between', () => {
-    const pressures = vectorSpinePressures(spine, 'watercolor');
-    expect(pressures).toHaveLength(spine.length);
-    for (const pressure of pressures) {
-      expect(pressure).toBeGreaterThanOrEqual(0.16);
-      expect(pressure).toBeLessThanOrEqual(1);
-    }
-    const middle = pressures[Math.floor(pressures.length / 2)]!;
-    expect(pressures[0]!).toBeLessThan(middle * 0.8);
-    expect(pressures[pressures.length - 1]!).toBeLessThan(middle * 0.8);
-  });
-
-  it('carries the body in the band a mouse speed-derived pressure reaches', () => {
-    const pressures = vectorSpinePressures(spine, 'watercolor');
-    const body = pressures.slice(8, -8);
-    const mean = body.reduce((sum, pressure) => sum + pressure, 0) / body.length;
-    // The old flat 0.5 body read as an airbrush under the deposit law's grain
-    // threshold; the hand's own replay sits around 0.8-1.0.
-    expect(mean).toBeGreaterThan(0.75);
-    expect(mean).toBeLessThanOrEqual(1);
-  });
-
-  it('is deterministic and seeded by the path geometry, not by time', () => {
-    expect(vectorSpinePressures(spine, 'watercolor')).toEqual(
-      vectorSpinePressures(spine, 'watercolor'),
-    );
-    const shifted = spine.map((point) => ({ ...point, y: point.y + 0.1 }));
-    expect(vectorSpinePressures(shifted, 'watercolor')).not.toEqual(
-      vectorSpinePressures(spine, 'watercolor'),
-    );
-  });
-
-  it('varies along the path instead of stamping one flat value', () => {
-    const pressures = vectorSpinePressures(spine, 'watercolor');
-    const window = pressures.slice(10, 54);
-    expect(new Set(window.map((pressure) => pressure.toFixed(4))).size).toBeGreaterThan(8);
-  });
-
-  it('loads the pen into a turn, so a corner pools more than a straight run', () => {
-    const straight = vectorSpinePressures(spine, 'watercolor');
-    // Same span, but the path turns sharply every eight samples.
-    const zigzag = spine.map((point, index) => ({
-      x: point.x,
-      y: 0.5 + (index % 16 < 8 ? 0.12 : -0.12),
-    }));
-    const zigzagPressures = vectorSpinePressures(zigzag, 'watercolor');
-    // The body is already near the top of the band, so the turn shows as a
-    // wider load across the stroke, not as headroom above the straight peak.
-    const bodyMean = (values: readonly number[]) =>
-      values.slice(8, -8).reduce((sum, pressure) => sum + pressure, 0) / (values.length - 16);
-    expect(bodyMean(zigzagPressures)).toBeGreaterThan(bodyMean(straight) + 0.03);
+  it('records the mouse pressure sentinel, so the engine owns the pressure', () => {
+    // A hand stroke records -1 on every sample; the engine derives pressure
+    // from the spacing (speed). The vector stroke must be the same kind of
+    // sample, or it bypasses the physics that makes the hand look natural.
+    expect(vectorSpinePressures(spine, 'watercolor')).toEqual(spine.map(() => -1));
   });
 
   it('keeps the clean-sweep mode flat at the base pressure', () => {
@@ -627,26 +581,76 @@ describe('vectorSpinePressures — the natural pen profile', () => {
       spine.map(() => VECTOR_STROKE_BASE_PRESSURE),
     );
   });
+
+  it('returns one pressure per sample for every mode', () => {
+    expect(vectorSpinePressures([], 'watercolor')).toEqual([]);
+    expect(vectorSpinePressures([{ x: 0.5, y: 0.5 }], 'watercolor')).toEqual([-1]);
+  });
 });
 
 describe('resampleVectorPaintPoints — the paint sampler', () => {
-  it('keeps both endpoints and never spaces samples wider than the step', () => {
+  it('pins the base cadence to the live project’s measured hand spacing', () => {
+    // Recorded mouse strokes: 0.014-0.033 uv mean spacing, 19-86 samples.
+    // 0.04 base (before the corner slowdown and drift) lands in that band.
+    expect(VECTOR_PAINT_SAMPLE_STEP_UV).toBe(0.04);
+  });
+
+  it('keeps both endpoints and samples at the measured hand cadence', () => {
+    // A 0.8 uv straight path: the live project's mouse strokes cover ~0.03 uv
+    // per sample, so this is ~20-25 samples, not the geometry walk's 400.
     const geometry = Array.from({ length: 400 }, (_unused, index) => ({
       x: 0.1 + 0.8 * (index / 399),
       y: 0.5,
     }));
     const paint = resampleVectorPaintPoints(geometry);
-    expect(paint.length).toBeGreaterThan(100);
-    expect(paint.length).toBeLessThan(geometry.length);
+    expect(paint.length).toBeGreaterThan(14);
+    expect(paint.length).toBeLessThan(30);
     expect(paint[0]).toEqual(geometry[0]);
     expect(paint[paint.length - 1]).toEqual(geometry[geometry.length - 1]);
+    const meanSpacing = 0.8 / (paint.length - 1);
+    expect(meanSpacing).toBeGreaterThan(0.025);
+    expect(meanSpacing).toBeLessThan(0.05);
     for (let index = 1; index < paint.length; index += 1) {
       const previous = paint[index - 1]!;
       const point = paint[index]!;
-      expect(Math.hypot(point.x - previous.x, point.y - previous.y)).toBeLessThanOrEqual(
-        VECTOR_PAINT_SAMPLE_STEP_UV + 1e-9,
-      );
+      expect(Math.hypot(point.x - previous.x, point.y - previous.y)).toBeLessThanOrEqual(0.08 + 1e-9);
     }
+  });
+
+  it('lands a 1.4 uv path near the hand sample count the live project measures', () => {
+    const geometry = Array.from({ length: 700 }, (_unused, index) => ({
+      x: 0.1 + 1.4 * (index / 699),
+      y: 0.5,
+    }));
+    const paint = resampleVectorPaintPoints(geometry);
+    // The recorded hand stroke beside the vector used 45 samples for ~1.33 uv;
+    // the old geometry walk gave this path 700 ticks (24 s of wet time).
+    expect(paint.length).toBeGreaterThan(30);
+    expect(paint.length).toBeLessThan(50);
+  });
+
+  it('slows the samples into a corner', () => {
+    const straight = Array.from({ length: 400 }, (_unused, index) => ({
+      x: 0.1 + 0.8 * (index / 399),
+      y: 0.5,
+    }));
+    const zigzag = straight.map((point, index) => ({
+      x: point.x,
+      y: 0.5 + (index % 16 < 8 ? 0.12 : -0.12),
+    }));
+    const meanStep = (geometry: readonly { x: number; y: number }[]) => {
+      const paint = resampleVectorPaintPoints(geometry);
+      let total = 0;
+      for (let index = 1; index < paint.length; index += 1) {
+        const previous = paint[index - 1]!;
+        const point = paint[index]!;
+        total += Math.hypot(point.x - previous.x, point.y - previous.y);
+      }
+      return total / (paint.length - 1);
+    };
+    // A slower pen per unit of path = tighter spacing. The final interval is
+    // clamped to the endpoint, so compare the mean, not the minimum.
+    expect(meanStep(zigzag)).toBeLessThan(meanStep(straight) - 0.003);
   });
 
   it('returns a short path as its own two endpoints', () => {

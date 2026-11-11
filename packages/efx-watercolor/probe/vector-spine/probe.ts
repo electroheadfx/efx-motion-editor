@@ -1092,6 +1092,7 @@ interface NaturalArmMetrics {
   peakSd: number
   meanWidthPx: number
   widthSd: number
+  meanHaloWidthPx: number
 }
 
 function measureNaturalArm(
@@ -1099,6 +1100,7 @@ function measureNaturalArm(
   width: number,
   height: number,
   spine: readonly NaturalPoint[],
+  offsetRange = 36,
 ): NaturalArmMetrics {
   const luminanceAt = (x: number, y: number): number => {
     const index = (y * width + x) * 4
@@ -1123,6 +1125,7 @@ function measureNaturalArm(
   const total = stations[stations.length - 1] ?? 0
   const peaks: number[] = []
   const widths: number[] = []
+  const halos: number[] = []
   const stationsCount = 60
   for (let k = 1; k < stationsCount; k += 1) {
     const distance = (total * k) / stationsCount
@@ -1138,16 +1141,21 @@ function measureNaturalArm(
     const cy = (1 - point.y) * height
     let peak = 0
     const profile: number[] = []
-    for (let offset = -36; offset <= 36; offset += 1) {
+    for (let offset = -offsetRange; offset <= offsetRange; offset += 1) {
       const ink = inkAt(Math.round(cx + nx * offset), Math.round(cy - ny * offset))
       profile.push(ink)
       if (ink > peak) peak = ink
     }
     const edge = Math.max(18, peak * 0.5)
     let widthCount = 0
-    for (const ink of profile) if (ink >= edge) widthCount += 1
+    let haloCount = 0
+    for (const ink of profile) {
+      if (ink >= edge) widthCount += 1
+      if (ink >= 12) haloCount += 1
+    }
     peaks.push(peak)
     widths.push(widthCount)
+    halos.push(haloCount)
   }
 
   const mean = (values: number[]): number => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)
@@ -1163,6 +1171,7 @@ function measureNaturalArm(
     peakSd: round3(sd(peaks)),
     meanWidthPx: round3(mean(widths)),
     widthSd: round3(sd(widths)),
+    meanHaloWidthPx: round3(mean(halos)),
   }
 }
 
@@ -1248,6 +1257,187 @@ function runNaturalScenario(renderer: string): void {
   })
 }
 
+// --- real-stroke comparison (SCRATCH, 61 gap closure) ----------------------
+//
+// The live project's own strokes, decoded from its saved SNAP: one recorded
+// mouse stroke and the vector path drawn beside it with the same brush
+// (round, size 40, every global 50). All arms replay on a 1080 square sheet.
+// They differ ONLY in how the vector spine is sampled and pressed, so the
+// capture answers the artist's question directly: does the vector now paint
+// like the hand beside it?
+
+const REAL_SHEET = 1080
+const REAL_MUTATION = 0x51c0dd
+const REAL_HAND_POINTS: readonly (readonly [number, number])[] = [[0.38613,0.86183],[0.36779,0.8502],[0.34946,0.83857],[0.32288,0.81785],[0.28418,0.78518],[0.24306,0.74537],[0.21515,0.71125],[0.19495,0.68673],[0.18563,0.67468],[0.18329,0.67004],[0.18476,0.66963],[0.18947,0.67179],[0.19419,0.67398],[0.1989,0.67614],[0.2036,0.67831],[0.21299,0.68237],[0.24625,0.69631],[0.26012,0.7014],[0.26943,0.70365],[0.27146,0.70401],[0.27253,0.70401],[0.27561,0.70401],[0.27803,0.7022],[0.27803,0.6983],[0.27163,0.66972],[0.23964,0.60529],[0.2078,0.56486],[0.16631,0.51798],[0.14026,0.48482],[0.12828,0.46741],[0.13591,0.46615],[0.15409,0.46728],[0.21057,0.4894],[0.31406,0.53799],[0.41108,0.57945],[0.44544,0.59165],[0.45084,0.59327],[0.45153,0.59054],[0.4522,0.58781],[0.43645,0.5256],[0.41781,0.45623],[0.39942,0.38309],[0.3924,0.33019],[0.3924,0.29975],[0.3924,0.28566]];
+const REAL_VECTOR_ANCHORS: readonly AquarelleAnchor[] = [{"x":0.91753,"y":0.90422,"kind":"auto"},{"x":0.69653,"y":0.71688,"kind":"bezier","in":{"x":0.69653,"y":0.71688},"out":{"x":0.69653,"y":0.71688}},{"x":0.91801,"y":0.74524,"kind":"auto"},{"x":0.74876,"y":0.5565,"kind":"auto"},{"x":0.69584,"y":0.49484,"kind":"bezier","in":{"x":0.69584,"y":0.49484},"out":{"x":0.69584,"y":0.49484}},{"x":0.90384,"y":0.52479,"kind":"bezier","in":{"x":0.90384,"y":0.52479},"out":{"x":0.90384,"y":0.52479}},{"x":0.75531,"y":0.38548,"kind":"bezier","in":{"x":0.75531,"y":0.38548},"out":{"x":0.75531,"y":0.38548}},{"x":0.72549,"y":0.27201,"kind":"auto"}];
+const REAL_PARAMS: Readonly<Record<string, number>> = {"bleed":50,"dry":50,"edge":50,"flow":50,"granulation":50,"lift":22,"load":50,"size":40,"water":50};
+const REAL_BRUSH = "round";
+const REAL_COLOR = "#103c65";
+const REAL_SEED = 1882439339;
+
+function makeRealStroke(points: AquarellePoint[]): StudioStroke<AquarelleStrokePayload> {
+  const stroke = toStudioStroke({
+    tool: 'brush',
+    color: REAL_COLOR,
+    params: { ...REAL_PARAMS },
+    brushId: REAL_BRUSH,
+    points,
+    mutationId: REAL_MUTATION,
+    timestamp: 0,
+  })
+  return { ...stroke, traceSeed: REAL_SEED }
+}
+
+function runRealArm(points: AquarellePoint[]): {
+  canvas: HTMLCanvasElement
+  pixels: Uint8ClampedArray
+} {
+  const adapter = createPinnedAdapter(REAL_SHEET, REAL_SHEET)
+  try {
+    runStroke(adapter, makeRealStroke(points))
+    const canvas = adapter.captureFrame() as HTMLCanvasElement
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('real: no 2D context')
+    return { canvas, pixels: new Uint8ClampedArray(ctx.getImageData(0, 0, canvas.width, canvas.height).data) }
+  } finally {
+    adapter.dispose()
+  }
+}
+
+const REAL_SAMPLE_BASE = 0.04
+const REAL_STEP_TURN_SLOWDOWN = 0.4
+const REAL_STEP_DRIFT = [
+  { cycles: 1.3, amplitude: 0.18 },
+  { cycles: 3.7, amplitude: 0.08 },
+] as const
+const REAL_STEP_MIN = 0.008
+const REAL_STEP_MAX = 0.08
+
+/** The shipped sampler: hand cadence from curvature + drift. */
+function realPaintSample(points: readonly NaturalPoint[]): NaturalPoint[] {
+  const stations = stationsOf(points)
+  const total = stations[stations.length - 1] ?? 0
+  if (!(total > 0)) return [...points]
+  const turn = naturalTurnLoad(points)
+  const phase = naturalPhase(points)
+  const samples: NaturalPoint[] = [pointAtDistance(points, stations, 0)]
+  let travelled = 0
+  while (travelled < total && samples.length < 20000) {
+    const u = travelled / total
+    const localTurn = turn[Math.min(turn.length - 1, Math.round(u * (turn.length - 1)))] ?? 0
+    let drift = 1
+    for (let term = 0; term < REAL_STEP_DRIFT.length; term += 1) {
+      const { cycles, amplitude } = REAL_STEP_DRIFT[term]!
+      drift += amplitude * Math.sin(2 * Math.PI * (cycles * u + phase * (term + 1)))
+    }
+    const step = Math.min(REAL_STEP_MAX, Math.max(REAL_STEP_MIN, REAL_SAMPLE_BASE * (1 - REAL_STEP_TURN_SLOWDOWN * localTurn) * drift))
+    travelled += step
+    samples.push(pointAtDistance(points, stations, Math.min(total, travelled)))
+  }
+  return samples
+}
+
+/** The shipped profile: the band the engine derives for recorded mouse strokes. */
+function realPaintPressures(samples: readonly NaturalPoint[]): number[] {
+  const phase = naturalPhase(samples)
+  const turn = naturalTurnLoad(samples)
+  const span = samples.length === 1 ? 1 : samples.length - 1
+  return samples.map((_point, index) => {
+    const u = index / span
+    const land = Math.min(smooth01(u / 0.05), smooth01((1 - u) / 0.05))
+    let drift = 0
+    drift += 0.09 * Math.sin(2 * Math.PI * (1.4 * u + phase))
+    drift += 0.045 * Math.sin(2 * Math.PI * (4.1 * u + 2 * phase))
+    const loaded = Math.min(0.6, 0.3 + drift + 0.16 * (turn[index] ?? 0))
+    const pressure = 0.45 + (loaded - 0.45) * land
+    return Math.min(0.6, Math.max(0.14, pressure))
+  })
+}
+
+function runRealScenario(renderer: string): void {
+  const t0 = performance.now()
+  const spine = naturalSpineFromAnchors(REAL_VECTOR_ANCHORS)
+  const handPoints: AquarellePoint[] = REAL_HAND_POINTS.map(([x, y]) => ({ x, y, p: -1, tx: 0, ty: 0, tw: 0 }))
+
+  const newSamples = realPaintSample(spine)
+  const newPressures = realPaintPressures(newSamples)
+  const vecNew: AquarellePoint[] = newSamples.map((point, index) => ({
+    x: point.x, y: point.y, p: newPressures[index] ?? 0.5, tx: 0, ty: 0, tw: 0,
+  }))
+  const interimSamples = resampleVectorArm(spine, 0.006, naturalProposedPressures)
+  const vecSentinel: AquarellePoint[] = newSamples.map((point) => ({
+    x: point.x, y: point.y, p: -1, tx: 0, ty: 0, tw: 0,
+  }))
+  const oldPressures = naturalCurrentPressures(spine, naturalTurnLoad(spine))
+  const vecOld: AquarellePoint[] = spine.map((point, index) => ({
+    x: point.x, y: point.y, p: oldPressures[index] ?? 0.5, tx: 0, ty: 0, tw: 0,
+  }))
+
+  const armHand = runRealArm(handPoints)
+  const armNew = runRealArm(vecNew)
+  const armSentinel = runRealArm(vecSentinel)
+  const armInterim = runRealArm(interimSamples)
+  const armOld = runRealArm(vecOld)
+
+  const handSpine: NaturalPoint[] = REAL_HAND_POINTS.map(([x, y]) => ({ x, y }))
+  const metrics = {
+    hand: measureNaturalArm(armHand.pixels, REAL_SHEET, REAL_SHEET, handSpine, 160),
+    vectorNew: measureNaturalArm(armNew.pixels, REAL_SHEET, REAL_SHEET, spine, 160),
+    vectorSentinel: measureNaturalArm(armSentinel.pixels, REAL_SHEET, REAL_SHEET, spine, 160),
+    vectorInterim006: measureNaturalArm(armInterim.pixels, REAL_SHEET, REAL_SHEET, spine, 160),
+    vectorOldGeometryWalk: measureNaturalArm(armOld.pixels, REAL_SHEET, REAL_SHEET, spine, 160),
+  }
+
+  const columns = 5
+  const small = 432
+  const sheet = document.createElement('canvas')
+  sheet.width = small * columns + 8 * (columns - 1)
+  sheet.height = small + 28
+  const sheetCtx = sheet.getContext('2d')
+  if (!sheetCtx) throw new Error('real: no composite context')
+  sheetCtx.fillStyle = '#ffffff'
+  sheetCtx.fillRect(0, 0, sheet.width, sheet.height)
+  const arms = [armHand, armNew, armSentinel, armInterim, armOld]
+  for (let index = 0; index < arms.length; index += 1) {
+    sheetCtx.drawImage(arms[index]!.canvas, index * (small + 8), 0, small, small)
+  }
+  sheetCtx.fillStyle = '#111111'
+  sheetCtx.font = 'bold 13px system-ui, sans-serif'
+  const labels = [
+    'HAND 45 pts',
+    'VEC p 0.14-0.6',
+    'VEC sentinel (engine)',
+    'VEC interim p 0.45-1',
+    'VEC old 693 pts',
+  ]
+  for (let index = 0; index < labels.length; index += 1) {
+    sheetCtx.fillText(labels[index]!, index * (small + 8) + 8, small + 20)
+  }
+
+  writeResult({
+    scenario: 'real',
+    sheet: `${REAL_SHEET}x${REAL_SHEET}`,
+    brush: REAL_BRUSH,
+    params: REAL_PARAMS,
+    sampleCounts: {
+      hand: handPoints.length,
+      vectorNew: vecNew.length,
+      vectorSentinel: vecSentinel.length,
+      vectorInterim: interimSamples.length,
+      vectorOld: vecOld.length,
+    },
+    arms: metrics,
+    sheetPng: sheet.toDataURL('image/png'),
+    env: { renderer: String(renderer), userAgent: navigator.userAgent },
+    verdict: 'REAL-STROKE COMPARED',
+    totalProbeMs: Math.round(performance.now() - t0),
+  })
+}
+
+function naturalSpineFromAnchors(anchors: readonly AquarelleAnchor[]): NaturalPoint[] {
+  return sampleVectorPath(anchors).points.map((point) => ({ x: point.x, y: point.y }))
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -1323,6 +1513,20 @@ function main(): void {
         scenario: 'natural',
         arms: {},
         verdict: `NATURAL-PEN FAIL ${message}`,
+        error: message,
+      })
+    }
+    return
+  }
+  if (scenario === 'real') {
+    try {
+      runRealScenario(renderer)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      writeResult({
+        scenario: 'real',
+        arms: {},
+        verdict: `REAL-STROKE FAIL ${message}`,
         error: message,
       })
     }

@@ -584,56 +584,48 @@ export function buildAnchorWidthCommit(
 export const VECTOR_STROKE_BASE_PRESSURE = 0.5;
 
 /**
- * Arc-length distance between two PAINT samples, in document uv.
+ * Base arc-length distance between two PAINT samples, in document uv.
  *
  * The replay feeds one sample per host tick, so sample spacing IS the hand's
- * speed and sample count IS the stroke's wet lifetime. A 0.002 uv geometry
- * walk paints a vector stroke over 3-5x the ticks a hand takes, which lets the
- * wash spread and dry into the pale, even halo a hand-drawn stroke never has.
- * 0.006 uv is the measured hand cadence (probe: headless WebGL2, same brush):
- * at this step the vector arm's core density, width and variation match the
- * hand arm's.
+ * speed and sample count IS the stroke's wet lifetime. The live project's own
+ * recorded mouse strokes (same brush, 1080 square) carry 19-86 samples with a
+ * 0.014-0.033 uv mean spacing and replay in 0.3-1.4 s. The old 0.002 uv
+ * geometry walk gave a 1.4 uv path 232-700 samples — a 4-24 s wash that spread
+ * into the broad, even cloud a hand never paints. This base (with the turn
+ * slowdown and drift below) lands a 1.4 uv path at ~40 samples / 0.65 s.
  */
-export const VECTOR_PAINT_SAMPLE_STEP_UV = 0.006;
+export const VECTOR_PAINT_SAMPLE_STEP_UV = 0.04;
 
-/**
- * The body pressure of the natural profile, in the band a mouse's
- * speed-derived pressure actually reaches (`clamp(1.18 - speed * 0.95)` at
- * ordinary drawing speeds). The probe's hand arm sat at ~0.9; a lower base
- * reads as an airbrush, not a brush.
- */
-const VECTOR_PAINT_BASE_PRESSURE = 0.88;
-/** The pressure the engine itself starts a mouse stroke at (`simPressure`). */
-const VECTOR_PRESSURE_LAND_PRESSURE = 0.45;
-/** How far into the path (fraction of its length) the pen lands / lifts. */
-const VECTOR_PRESSURE_LAND_FRACTION = 0.05;
-/**
- * How much a turn loads the pen. A hand SLOWS into a corner, so the corner is
- * where the same brush pools the most pigment — that is the blob a hand-drawn
- * zigzag shows at every direction change and a path had none of.
- */
-const VECTOR_PRESSURE_TURN_GAIN = 0.2;
-/** The two low-frequency terms that give the profile its hand-made drift. */
-const VECTOR_PRESSURE_DRIFT = [
-  { cycles: 1.4, amplitude: 0.09 },
-  { cycles: 4.1, amplitude: 0.045 },
+/** The step multiplier at a full turn: the hand slows into a corner. */
+const VECTOR_PAINT_STEP_TURN_SLOWDOWN = 0.4;
+/** Deterministic low-frequency pacing drift, so spacing is never robotic. */
+const VECTOR_PAINT_STEP_DRIFT = [
+  { cycles: 1.3, amplitude: 0.18 },
+  { cycles: 3.7, amplitude: 0.08 },
 ] as const;
-
-function smoothstep01(value: number): number {
-  const t = Math.min(1, Math.max(0, value));
-  return t * t * (3 - 2 * t);
-}
+const VECTOR_PAINT_STEP_MIN_UV = 0.008;
+const VECTOR_PAINT_STEP_MAX_UV = 0.08;
 
 /**
- * Resample an evaluated spine at a fixed arc-length step, keeping the exact
- * first and last points. This is the PAINT sampling, not the geometry walk:
- * the stroke stores these points, so the replay's tick count (and therefore
- * its wet lifetime) follows the same law at commit and at every re-derivation.
+ * The pressure sentinel a mouse records: "no device pressure, derive it from
+ * speed". A vector stroke is built from exactly the samples a mouse stroke
+ * records — this sentinel and a hand-cadence spacing — so the engine's own
+ * pressure law (`clamp(1.18 - speed * 0.95, 0.12, 1)` smoothed per tick) is
+ * the ONLY owner of the vector's pressure. The probe measured this against the
+ * live project's own hand stroke: peak ink 115.8 vs 117.4, core width 114.6
+ * vs 120.1 px, halo 188.9 vs 186.4 px.
  */
-export function resampleVectorPaintPoints(
-  points: readonly Vec2[],
-  stepUv: number = VECTOR_PAINT_SAMPLE_STEP_UV,
-): readonly Vec2[] {
+const VECTOR_PRESSURE_SENTINEL = -1;
+
+/**
+ * Paint-sample an evaluated spine the way the recorded mouse strokes are
+ * sampled: a hand's cadence, not the geometry walk's. The step varies with
+ * the path's own turning angle (slow into corners) plus a deterministic drift,
+ * and the first / last points are exact. The stroke stores these points, so the
+ * replay's tick count (its wet lifetime) follows the same law at commit and at
+ * every re-derivation.
+ */
+export function resampleVectorPaintPoints(points: readonly Vec2[]): readonly Vec2[] {
   if (points.length <= 2) return [...points];
   const stations: number[] = [0];
   for (let index = 1; index < points.length; index += 1) {
@@ -642,19 +634,45 @@ export function resampleVectorPaintPoints(
     stations.push(stations[index - 1]! + Math.hypot(point.x - previous.x, point.y - previous.y));
   }
   const total = stations[stations.length - 1]!;
-  if (!(total > 0) || !(stepUv > 0)) return [...points];
-  const count = Math.max(2, Math.ceil(total / stepUv) + 1);
-  const resampled: Vec2[] = [];
-  let cursor = 1;
-  for (let sample = 0; sample < count; sample += 1) {
-    const distance = (total * sample) / (count - 1);
-    while (cursor < points.length - 1 && stations[cursor]! < distance) cursor += 1;
-    const to = points[cursor]!;
-    const from = points[cursor - 1]!;
-    const fromStation = stations[cursor - 1]!;
-    const span = stations[cursor]! - fromStation;
-    const t = span > 0 ? Math.min(1, Math.max(0, (distance - fromStation) / span)) : 0;
-    resampled.push({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+  if (!(total > 0)) return [...points];
+  const turnLoad = vectorSpineTurnLoad(points);
+  const phase = vectorSpinePressurePhase(points);
+  const pointAt = (distance: number): Vec2 => {
+    if (distance <= 0) return { ...points[0]! };
+    if (distance >= total) return { ...points[points.length - 1]! };
+    let low = 0;
+    let high = stations.length - 1;
+    while (low + 1 < high) {
+      const middle = (low + high) >> 1;
+      if (stations[middle]! <= distance) low = middle;
+      else high = middle;
+    }
+    const fromStation = stations[low]!;
+    const span = stations[high]! - fromStation;
+    const t = span > 0 ? (distance - fromStation) / span : 0;
+    const from = points[low]!;
+    const to = points[high]!;
+    return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+  };
+  const resampled: Vec2[] = [pointAt(0)];
+  let travelled = 0;
+  while (travelled < total && resampled.length < 20000) {
+    const u = travelled / total;
+    const localTurn = turnLoad[Math.min(turnLoad.length - 1, Math.round(u * (turnLoad.length - 1)))] ?? 0;
+    let drift = 1;
+    for (let term = 0; term < VECTOR_PAINT_STEP_DRIFT.length; term += 1) {
+      const { cycles, amplitude } = VECTOR_PAINT_STEP_DRIFT[term]!;
+      drift += amplitude * Math.sin(2 * Math.PI * (cycles * u + phase * (term + 1)));
+    }
+    const step = Math.min(
+      VECTOR_PAINT_STEP_MAX_UV,
+      Math.max(
+        VECTOR_PAINT_STEP_MIN_UV,
+        VECTOR_PAINT_SAMPLE_STEP_UV * (1 - VECTOR_PAINT_STEP_TURN_SLOWDOWN * localTurn) * drift,
+      ),
+    );
+    travelled += step;
+    resampled.push(pointAt(Math.min(total, travelled)));
   }
   return resampled;
 }
@@ -716,20 +734,14 @@ function vectorSpinePressurePhase(points: readonly { x: number; y: number }[]): 
 }
 
 /**
- * The natural pen profile a vector stroke is recorded with (VEC-01 follow-up).
+ * The per-sample pressure a vector stroke is recorded with.
  *
- * A hand stroke is organic because the engine derives pressure from pointer
- * speed; a path has neither speed nor pressure, so a constant value deposits
- * one flat wash that looks nothing like the same brush used by hand. The
- * profile lives in the SAME band a mouse's speed-derived pressure reaches,
- * which is why it survives the deposit law's grain threshold and reads as a
- * loaded brush rather than a pale airbrush:
- *   - the pen lands at the engine's own stroke-start pressure and lifts over
- *     the first / last few percent (a hand cannot press instantly),
- *   - a turn term: the hand slows into a corner, so the corner pools pigment,
- *   - two low-frequency terms for the hand's own drift.
- * It is deterministic per path (geometry seeds it) and stored in the recorded
- * points, so replay, reopen and export keep it.
+ * A mouse records the pressure sentinel, and the engine derives pressure from
+ * the sample spacing (the hand's speed). A vector stroke is built the same
+ * way: paint-sampled at the hand's cadence, so its samples ARE a mouse
+ * stroke's samples and the engine's own law produces the pressure — no
+ * invented band. The probe's real-data A/B is the pin: peak ink 115.8 vs the
+ * hand's 117.4, core width 114.6 vs 120.1 px, halo 188.9 vs 186.4 px.
  *
  * `simple-ribbon` is the clean-sweep mode and keeps the flat base pressure —
  * its contract is a clean ribbon, not a wet pen.
@@ -742,30 +754,7 @@ export function vectorSpinePressures(
   if (renderMode === 'simple-ribbon') {
     return points.map(() => VECTOR_STROKE_BASE_PRESSURE);
   }
-  const phase = vectorSpinePressurePhase(points);
-  const turnLoad = vectorSpineTurnLoad(points);
-  const span = points.length === 1 ? 1 : points.length - 1;
-  return points.map((_point, index) => {
-    const u = index / span;
-    const land = Math.min(
-      smoothstep01(u / VECTOR_PRESSURE_LAND_FRACTION),
-      smoothstep01((1 - u) / VECTOR_PRESSURE_LAND_FRACTION),
-    );
-    let drift = 0;
-    // Each term carries its own phase offset, so the two sines never collapse
-    // into one at the same starting angle.
-    for (let term = 0; term < VECTOR_PRESSURE_DRIFT.length; term += 1) {
-      const { cycles, amplitude } = VECTOR_PRESSURE_DRIFT[term]!;
-      drift += amplitude * Math.sin(2 * Math.PI * (cycles * u + phase * (term + 1)));
-    }
-    const loaded = Math.min(
-      1,
-      VECTOR_PAINT_BASE_PRESSURE + drift + VECTOR_PRESSURE_TURN_GAIN * (turnLoad[index] ?? 0),
-    );
-    const pressure = VECTOR_PRESSURE_LAND_PRESSURE
-      + (loaded - VECTOR_PRESSURE_LAND_PRESSURE) * land;
-    return Math.min(1, Math.max(0.16, pressure));
-  });
+  return points.map(() => VECTOR_PRESSURE_SENTINEL);
 }
 
 /**
