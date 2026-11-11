@@ -62,6 +62,13 @@ export function setAquarellePickerLatched(next: boolean): void {
 /** Compare-then-write (efx-preact-reactivity rule 3). */
 export function setAquarellePickerAltHeld(next: boolean): void {
   if (aquarellePickerAltHeld.peek() === next) return;
+  // 61-23 (G-19): Alt is context-ambiguous. Inside an open path edit it means
+  // "break the handle" — the overlay reads `event.altKey` straight off the
+  // pointer — never "temporary pick". A keydown that armed the session signal
+  // here would resurface the picker the instant the edit closes, a picker the
+  // user never armed after it. Only the ARMING write is refused; a release
+  // (`next === false`) always lands so the hold can never stick.
+  if (next && pathEditMutationId.peek() !== null) return;
   aquarellePickerAltHeld.value = next;
 }
 
