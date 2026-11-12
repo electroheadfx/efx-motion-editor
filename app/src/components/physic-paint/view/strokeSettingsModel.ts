@@ -16,6 +16,7 @@
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
 import { findTip, type AquarelleToolOverrides } from '@efxlab/efx-watercolor/brushes';
 import {
+  ANCHOR_WIDTH_MAX,
   paintSeedSaltOf,
   resolveAquarelleCurveMode,
   type AquarelleAnchor,
@@ -898,10 +899,22 @@ export function shouldExitPathEdit(args: PathEditExitArgs): boolean {
 //  D-09: an anchor's width is a MULTIPLIER of the stroke's brush Size, never a
 //  pixel radius. The band is deliberately wider than the multiplier band —
 //  `MULTIPLIER_MIN` stays the shipped 0.5, untouched — because a vector path
-//  can pinch to 0.2 and swell to 2.0.
+//  can pinch to 0.2 and swell to 20.0.
+//
+//  quick 261112-i6d: there is ONE commit/storage ceiling and it is the
+//  payload's `ANCHOR_WIDTH_MAX` — the constant the package clamp, the engine's
+//  scripted width channel and the reopen guard all read. `SLIDER_MAX` below is
+//  the ×10 DRAG affordance only (the track the knob spans); it is never a
+//  clamp, so a free-typed value above it still reaches the document through
+//  `anchorWidthPatchValue`.
 
 export const AQUARELLE_ANCHOR_WIDTH_MIN = 0.2;
-export const AQUARELLE_ANCHOR_WIDTH_MAX = 2;
+/** The ONE commit/storage ceiling — an ALIAS of the package authority, never a
+ *  second literal, so the app and the payload guard can never disagree. */
+export const AQUARELLE_ANCHOR_WIDTH_MAX = ANCHOR_WIDTH_MAX;
+/** The slider TRACK ceiling (×10 drag affordance). Display/drag only — never a
+ *  clamp; typed entry above it passes to `anchorWidthPatchValue`. */
+export const AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX = 10;
 export const AQUARELLE_ANCHOR_WIDTH_STEP = 0.1;
 export const AQUARELLE_ANCHOR_WIDTH_DEFAULT = 1;
 

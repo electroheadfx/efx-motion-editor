@@ -14,6 +14,7 @@ import {
   AQUARELLE_ANCHOR_WIDTH_DEFAULT,
   AQUARELLE_ANCHOR_WIDTH_MAX,
   AQUARELLE_ANCHOR_WIDTH_MIN,
+  AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX,
   AQUARELLE_ANCHOR_WIDTH_STEP,
   CURVE_MODE_OPTIONS,
   FRESH_STROKE_GEOMETRY_SESSION,
@@ -1667,7 +1668,15 @@ interface AnchorWidthControlProps {
  * 61-22 (G-11): the shipped Vertex size block, extracted so the DEFAULT list
  * view and the Geometry section mount the SAME control. The D-09 law is
  * untouched: the value is a MULTIPLIER of the stroke's Size, the band stays
- * 0.2..2.0, and the commit stays `bundle.applyAnchorWidths`.
+ * 0.2..20.0, and the commit stays `bundle.applyAnchorWidths`.
+ *
+ * quick 261112-i6d: `max` is the package storage ceiling while `sliderMax`
+ * (×10) is the TRACK only — the drag affordance. Out-of-range entry lets
+ * typed commits and ± steps pass the track, and `anchorWidthPatchValue` is
+ * the ONE clamp deciding what reaches the document. A stored factor above ×10
+ * leaves the `below` readout showing its true product (Size x factor px) with
+ * the knob pinned at the track end (SliderStepper clamps the fraction to
+ * [0,1]).
  *
  * Declared AFTER the sheet component on purpose: the shipped E4 region pins
  * resolve the FIRST `stroke-settings-anchor-width` occurrence in the file and
@@ -1687,6 +1696,7 @@ function AnchorWidthControl(props: AnchorWidthControlProps) {
           : anchorWidthReading.value}
         min={AQUARELLE_ANCHOR_WIDTH_MIN}
         max={AQUARELLE_ANCHOR_WIDTH_MAX}
+        sliderMax={AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX}
         step={AQUARELLE_ANCHOR_WIDTH_STEP}
         precision={1}
         mixed={anchorWidthReading.mixed}

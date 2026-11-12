@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effect } from '@preact/signals';
 import type { VNode } from 'preact';
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
-import { PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
+import { ANCHOR_WIDTH_MAX, PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
@@ -31,6 +31,7 @@ import {
   AQUARELLE_ANCHOR_WIDTH_DEFAULT,
   AQUARELLE_ANCHOR_WIDTH_MAX,
   AQUARELLE_ANCHOR_WIDTH_MIN,
+  AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX,
   AQUARELLE_ANCHOR_WIDTH_STEP,
   BRUSH_SETTINGS_FIELDS,
   PATH_EDIT_LABEL,
@@ -3475,7 +3476,12 @@ describe('61-11 Anchor width reading (Geometry + list)', () => {
 
   it('pins the band constants and reads an empty anchor selection at 1.0', () => {
     expect(AQUARELLE_ANCHOR_WIDTH_MIN).toBe(0.2);
-    expect(AQUARELLE_ANCHOR_WIDTH_MAX).toBe(2);
+    // quick 261112-i6d: the app ceiling is an ALIAS of the package authority —
+    // never a second literal, so the app clamp and the reopen guard can never
+    // disagree about what is storable.
+    expect(AQUARELLE_ANCHOR_WIDTH_MAX).toBe(ANCHOR_WIDTH_MAX);
+    // ×10 is the TRACK ceiling only — the drag affordance, never a clamp.
+    expect(AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX).toBe(10);
     expect(AQUARELLE_ANCHOR_WIDTH_STEP).toBe(0.1);
     expect(AQUARELLE_ANCHOR_WIDTH_DEFAULT).toBe(1);
     expect(readAnchorWidthReading([], [])).toEqual({ value: 1, mixed: false, count: 0 });
@@ -3521,9 +3527,13 @@ describe('61-11 Anchor width reading (Geometry + list)', () => {
   });
 
   it('clamps a typed factor into the band and keeps 1.0 as the sparse default', () => {
-    expect(anchorWidthPatchValue(2.5)).toBe(2);
+    // quick 261112-i6d: 2.5 is INSIDE the raised band now — the ONE clamp in
+    // `anchorWidthPatchValue` decides what reaches the document.
+    expect(anchorWidthPatchValue(2.5)).toBe(2.5);
     expect(anchorWidthPatchValue(0.1)).toBe(0.2);
     expect(anchorWidthPatchValue(1.8)).toBe(1.8);
+    // Above the storage ceiling it lands exactly on the package constant.
+    expect(anchorWidthPatchValue(AQUARELLE_ANCHOR_WIDTH_MAX + 1)).toBe(AQUARELLE_ANCHOR_WIDTH_MAX);
     // Exactly 1 means "drop the key" at the commit, so the value must survive.
     expect(anchorWidthPatchValue(1)).toBe(1);
     // A non-finite entry resolves to the default instead of reaching a document.
@@ -3554,8 +3564,12 @@ describe('61-11 E4 error, partial and long-text rows', () => {
     expect(anchorWidthPatchValue(-1)).toBe(0.2);
     expect(anchorWidthPatchValue(0.2)).toBe(0.2);
     expect(anchorWidthPatchValue(2)).toBe(2);
-    expect(anchorWidthPatchValue(2.0001)).toBe(2);
-    expect(anchorWidthPatchValue(99)).toBe(2);
+    expect(anchorWidthPatchValue(2.0001)).toBe(2.0001);
+    expect(anchorWidthPatchValue(99)).toBe(AQUARELLE_ANCHOR_WIDTH_MAX);
+    // quick 261112-i6d: the ceiling itself is accepted, and an above-TRACK
+    // factor still reports its TRUE product px (the knob pins at the end).
+    expect(anchorWidthPatchValue(20)).toBe(20);
+    expect(anchorWidthEffectivePx(40, 20)).toBe(800);
     // Total: the value is always a finite number inside the band.
     for (const input of [-Infinity, Infinity, Number.NaN, 1e9, -1e9]) {
       const value = anchorWidthPatchValue(input);

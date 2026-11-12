@@ -17,12 +17,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { ANCHOR_WIDTH_MAX } from '@efxlab/efx-watercolor/payload';
 import {
   ANCHOR_WIDTH_EMPTY_READING,
   ANCHOR_WIDTH_NO_EDIT_REASON,
   AQUARELLE_ANCHOR_WIDTH_DEFAULT,
   AQUARELLE_ANCHOR_WIDTH_MAX,
   AQUARELLE_ANCHOR_WIDTH_MIN,
+  AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX,
   AQUARELLE_ANCHOR_WIDTH_STEP,
   CURVE_MODE_OPTIONS,
   WATERCOLOR_SETTINGS_FIELDS,
@@ -316,7 +318,9 @@ describe('61-11 E4 rows: the Anchor width block', () => {
   it('E4 error: the band is bound from the model constants and clamps, never an error UI', () => {
     const block = regionOf(dialogSource, BLOCK_START, BLOCK_END);
     expect(block).toContain('min={AQUARELLE_ANCHOR_WIDTH_MIN}');
+    // `max` is the commit/storage ceiling; `sliderMax` (×10) is the TRACK.
     expect(block).toContain('max={AQUARELLE_ANCHOR_WIDTH_MAX}');
+    expect(block).toContain('sliderMax={AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX}');
     expect(block).toContain('step={AQUARELLE_ANCHOR_WIDTH_STEP}');
     expect(block).toContain('precision={1}');
     expect(block).toContain('allowOutOfRangeEntry');
@@ -328,7 +332,9 @@ describe('61-11 E4 rows: the Anchor width block', () => {
     expect(block).not.toContain('MIXED_CAPTION_STYLE');
     // The constants themselves are the shipped D-09 band.
     expect(AQUARELLE_ANCHOR_WIDTH_MIN).toBe(0.2);
-    expect(AQUARELLE_ANCHOR_WIDTH_MAX).toBe(2);
+    // quick 261112-i6d: the app ceiling is an ALIAS of the package authority.
+    expect(AQUARELLE_ANCHOR_WIDTH_MAX).toBe(ANCHOR_WIDTH_MAX);
+    expect(AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX).toBe(10);
     expect(AQUARELLE_ANCHOR_WIDTH_STEP).toBe(0.1);
     expect(AQUARELLE_ANCHOR_WIDTH_DEFAULT).toBe(1);
   });
