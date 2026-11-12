@@ -873,3 +873,22 @@ describe('61-25 UI-02/UI-05 — the declared readout and explanation weights', (
     expect(new Set(weights)).toEqual(new Set(['600']));
   });
 });
+
+// 261112-n3f UAT: the cache eye and Draft are view preferences of the OPEN
+// sheet. Closing it must never strand the committed sheet hidden (the user
+// would paint over invisible strokes) and must settle a dirty Draft.
+describe('261112-n3f — closing the sheet restores the surface', () => {
+  it('resets the cache eye on the open -> closed edge, before the Draft settle', () => {
+    const closeEdge = regionOf(
+      dialogSource,
+      'const wasOpen = wasOpenRef.current;',
+      'if (pathEditExitRequested) {',
+    );
+    expect(closeEdge).toContain('setFrozenCacheVisible(true);');
+    expect(closeEdge).toContain('bundle?.settleDraft?.()');
+    // The restore precedes the settle: a closed panel never keeps the sheet
+    // hidden while the recompute runs.
+    expect(closeEdge.indexOf('setFrozenCacheVisible(true);'))
+      .toBeLessThan(closeEdge.indexOf('bundle?.settleDraft?.()'));
+  });
+});

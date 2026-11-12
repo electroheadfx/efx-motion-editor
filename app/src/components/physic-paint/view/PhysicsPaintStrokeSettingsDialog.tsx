@@ -537,9 +537,15 @@ export function PhysicsPaintStrokeSettingsDialog({
     // 261101-o2m (D-04): the dialog-close recompute exit. X, Escape and the
     // rail-toggle close all land here — the sheet never writes the Draft
     // signal itself, so a dirty Draft is settled, never silently dropped.
+    // 261112-n3f UAT: closing the sheet also restores the committed sheet —
+    // the cache eye is a view preference of the OPEN surface, so a closed
+    // panel must never leave the user painting over an invisible sheet.
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = open;
-    if (wasOpen && !open) void bundle?.settleDraft?.();
+    if (wasOpen && !open) {
+      setFrozenCacheVisible(true);
+      void bundle?.settleDraft?.();
+    }
     // 61-11 (T-61-37): consume the render body's exit marker. This effect is
     // the ONE performer of the session write; a marker that is already clear
     // writes nothing, and the actions themselves are compare-then-write, so a

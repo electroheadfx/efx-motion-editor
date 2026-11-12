@@ -48,6 +48,7 @@ import {
   scriptStrokeDrag,
   selectScriptStroke,
   setDraftMode,
+  setFrozenCacheVisible,
   setScriptSelectMode,
   setScriptStrokeDrag,
   setScriptStrokeSelection,
@@ -370,6 +371,13 @@ export function setAquarelleSelectMode(
   // silent no-op exactly when a previous exit's settle was refused — Draft
   // stays ON because those pixels are still stale, and the next exit retries.
   if (on && !was) setDraftMode(false);
+  // 261112-n3f UAT: the cache eye is a view preference of THIS surface only.
+  // Leaving the tool (rail toggle, a paint tool, Escape, the sheet's close)
+  // must never strand the committed sheet hidden — the user would paint with
+  // invisible strokes and no explanation. Reset on the genuine on -> off edge;
+  // compare-then-write, and it precedes the delegation for the same
+  // early-return reason as every reset above.
+  if (!on && was) setFrozenCacheVisible(true);
   setScriptSelectMode(on);
   if (on && !was && aquarelleStrokeSettingsDismissed.peek()) {
     aquarelleStrokeSettingsDismissed.value = false;

@@ -100,9 +100,11 @@ import {
   distanceToSegmentPx,
   draftMode,
   draftPixelsDirty,
+  frozenCacheVisible,
   scriptSelectedStrokeIds,
   setDraftMode,
   setDraftPixelsDirty,
+  setFrozenCacheVisible,
   setScriptStrokeSelection,
   setStrokeSizePreview,
   setWireframeMode,
@@ -129,6 +131,8 @@ const SHEET = { width: 400, height: 200 };
 beforeEach(() => {
   resetAquarelleStrokeFineFilters();
   setStrokeSizePreview(false);
+  // 261112-n3f UAT: the committed-sheet eye is a session signal too.
+  setFrozenCacheVisible(true);
   // 261101-o2m: clear the invariant before the mode (the leave guard refuses
   // the mode reset while the pixels are dirty).
   setDraftPixelsDirty(false);
@@ -455,6 +459,44 @@ describe('261101-o2m Draft reset on the select-mode edge', () => {
       // Draft stays ON — those pixels really are stale — and no false is
       // broadcast to a subscriber.
       expect(draftMode.value).toBe(true);
+      expect(runs).toBe(before);
+    } finally {
+      dispose();
+    }
+  });
+});
+
+// 261112-n3f UAT: the "Hide the committed sheet" eye belongs to the editing
+// surface only. Leaving the tool by ANY route (rail toggle, a paint tool,
+// Escape, the sheet's own close) must never strand the committed sheet hidden
+// — the user would then paint with invisible strokes and no explanation.
+describe('261112-n3f the cache eye resets on the Select exit edge', () => {
+  afterEach(() => {
+    setAquarelleSelectMode(false);
+    setFrozenCacheVisible(true);
+  });
+
+  it('restores the committed sheet on a genuine on -> off exit', () => {
+    setAquarelleSelectMode(true);
+    setFrozenCacheVisible(false);
+    expect(frozenCacheVisible.peek()).toBe(false);
+
+    setAquarelleSelectMode(false);
+
+    expect(frozenCacheVisible.peek()).toBe(true);
+  });
+
+  it('does not broadcast the reset when the sheet was already visible', () => {
+    setAquarelleSelectMode(true);
+    let runs = 0;
+    const dispose = effect(() => {
+      void frozenCacheVisible.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      setAquarelleSelectMode(false);
+      expect(frozenCacheVisible.peek()).toBe(true);
       expect(runs).toBe(before);
     } finally {
       dispose();
