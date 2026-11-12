@@ -1,19 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 61-vector-painting-tool
 source: [61-VERIFICATION.md, 61-REVIEW.md, 61-UI-REVIEW.md, 61-VALIDATION.md]
 started: 2026-11-10T23:40:00Z
-updated: 2026-11-11T16:20:00Z
+updated: 2026-11-12T10:56:44.836Z
 ---
 
 ## Current Test
 
-number: R1
-name: R1 — Vertex-drag responsiveness at the reference count
-expected: |
-  Dragging and committing anchors stays native-feeling on the 10-stroke
-  reference sheet at 1920x1080 (probe raster cost: 772.6 ms per sheet re-bake).
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -29,7 +24,7 @@ detail: Implied by test 1 — anchors are grabbable and draggable. Note: selecti
 
 ### 3. Assign a vertex to the size/width property
 expected: A selected anchor can be given a width (size) value, and the stroke renders with that per-vertex width.
-result: [failed]
+result: issue
 detail: User: "I don't know how change size stroke size per vertex (a corner vector)". NOT a broken gate — a discoverability failure. The control renders only in the sheet's SETTINGS view (sliders icon in the header; the default view is the stroke list), directly under the Size row, and only when exactly one vector stroke is selected.
 
 ### 4. Switch tool modes both ways
@@ -49,7 +44,7 @@ detail: User: "stroke size preview work, I missed it".
 
 ### 7. New keys inherit the vector from the previous key
 expected: Starting a vector on a key and adding a new key copies the vector path onto the new key.
-result: [failed]
+result: issue
 detail: `+Key` clones raster bytes only (`useRotoKeyUtilities.ts:411-445`); no script copy. The Duplicate path's projection `aquarelleStrokeFromScriptEvent` (`roto/physicsPaintRotoDuplicateScript.ts:172`) drops `anchors` and `renderMode`, so it cannot be reused verbatim either.
 
 ### 8. Bézier anchors and handles are editable
@@ -59,87 +54,133 @@ detail: User: "I tested edit vector with alt it works". Alt+drag breaks the tang
 
 ### 9. A committed path edit updates the rendered paint
 expected: Releasing an edited anchor re-bakes the sheet so the paint follows the new path.
-result: [failed]
+result: issue
 detail: User: "re-render doesn't update like the vector edit, I tried too to force re-render ... The blue watercolor doesn't follow the vector I edit". The spine moves (overlay reads the edited registry) but the paint stays at the ORIGINAL geometry — and the rail's forced Re-render (Shift+R) reproduces the same stale result, so this is NOT only the Draft defer route: the re-apply itself produces the pre-edit geometry.
 
 ### 10. The color picker is hidden during vector edit
 expected: A path edit owns the canvas; the color picker is not shown over it.
-result: [failed]
+result: issue
 detail: User: "Just need to hide the color picker for vector edit". `enterPathEdit` disarms the picker (`vectorPathSession.ts:80`) but the picker surface remains visible.
 
 ### 11. Spline (auto-smooth) editing mode alongside Bézier — FEATURE REQUEST
 expected: User would like spline editing instead of / in addition to Bézier, selectable with a switch.
-result: [requested]
+result: issue
 detail: Scope question, not a defect. 61-CONTEXT D-01 defines exactly TWO anchor kinds — Bézier with coupled handles, and auto-smooth whose handles are derived from its neighbours — and D-04 explicitly REJECTED a user-selectable Catmull-Rom curve family. Painted-stroke curve editing is Phase 62. Granting this means revisiting D-01/D-04 and deciding whether the switch is per-anchor, per-stroke or a document setting.
 
-## Post gap-closure re-test (2026-11-11)
+**Post gap-closure re-test (2026-11-11).** Rows 12–21 (labelled R1–R10) re-test the eleven
+gap-closure plans (61-21 … 61-31). The original rows above stay as the historical record; these
+are the live pass criteria for `61-VERIFICATION.md`'s ten `human_verification` items.
 
-Rows R1–R10 re-test the eleven gap-closure plans (61-21 … 61-31). The original
-rows above stay as the historical record; these are the live pass criteria for
-`61-VERIFICATION.md`'s ten `human_verification` items.
-
-### R1. Vertex-drag responsiveness at the reference count (truth 13)
+### 12. R1 — Vertex-drag responsiveness at the reference count (truth 13)
 expected: Drag and commit stay native-feeling on the 10-stroke reference sheet at 1920x1080. Probe raster cost is 772.6 ms per sheet re-bake, so this is a judgment call.
-result: [pending]
+result: pass
 
-### R2. CR-01: a mid-drag Delete survives the release (truth 19)
+### 13. R2 — CR-01: a mid-drag Delete survives the release (truth 19)
 expected: Start an anchor drag, press Delete mid-drag, release — the deleted anchor STAYS deleted and no phantom edit is recorded. Then start a drag, press Escape or switch stroke, reopen the edit — no stale gesture commits. A normal drag still lands exactly one undoable edit.
-result: [pending]
-detail: The seam now ends the drag before its write (`9be725501`, pinned by an ordering test). The mounted edit-close effect still needs a live gesture.
+result: pass
+detail: User-confirmed 2026-11-12. The seam ends the drag before its write (`9be725501`, pinned by an ordering test); the mounted edit-close effect is now live-verified too.
 
-### R3. G-17: a committed path edit updates the rendered paint
+### 14. R3 — G-17: a committed path edit updates the rendered paint
 expected: Releasing an edited anchor re-bakes the sheet so the wash follows the new curve — after the ordinary bake, after a Draft settle, and after a forced Shift+R replay; one undo returns the paint to the pre-edit curve.
-result: [pending]
-detail: Confirmed cause was the stale replay spine carried through `updateAquarellePathInScript`'s spread; the write now re-derives `points` from the stored anchors (61-29).
+result: pass
+detail: User-confirmed 2026-11-12; closes the phase's highest-priority gap (G-17). Cause was the stale replay spine carried through `updateAquarellePathInScript`'s spread; the write now re-derives `points` from the stored anchors (61-29).
 
-### R4. G-11: per-vertex width is discoverable in the default list view
-expected: With one vector stroke selected, the Anchor width control is visible in the default list view; dragging it moves that vertex's width; with no path edit open it is inert with `ANCHOR_WIDTH_NO_EDIT_REASON`; the selected anchor wears the ring and loses it on deselect.
-result: [pending]
+### 15. R4 — G-11 / VEC-03+04: Vertex size and per-vertex colour
+expected: With one vector stroke selected, the "Vertex size" control is visible in the default list view and in Stroke Settings → Geometry; dragging it moves that vertex's width; with no path edit open it is inert with "Open Edit path on this stroke to set vertex sizes."; the selected anchor wears the ring and loses it on deselect. With anchors selected on the open path edit, the sidebar Color tab recolours THOSE anchors in one undo and the wash blends between them; with no anchor selected the Color tab still recolours the whole stroke.
+result: pass
+detail: User: "its beautiful very nice work". Closes G-11 and confirms the per-vertex colour feature end to end.
 
-### R5. G-15: +Key inherits the vector
+### 16. R5 — G-15: +Key inherits the vector
 expected: `+Key` on a vector-bearing previous real key yields a key with the same painted result that is re-editable (anchor markers on Edit vector); a hand-painted source behaves as today; a forced copy failure still creates the key and says only that the script could not be copied.
-result: [pending]
+result: pass
+detail: User-confirmed 2026-11-12. Closes G-15.
 
-### R6. G-19: the picker is hidden during a path edit
+### 17. R6 — G-19: the picker is hidden during a path edit
 expected: With Edit path open the Pipette visor never appears over the canvas and the rail's Picker chip stays unlit; holding Alt and dragging a handle breaks the tangent; after the edit Alt picks as before.
-result: [pending]
+result: pass
+detail: User-confirmed 2026-11-12. Closes G-19.
 
-### R7. G-20 / Curve row (rows A–F)
-expected: The Curve row appears for vector strokes only; switching Bézier <-> Spline changes the drawn shape and is one undo; authored handles return after switching back; Mixed converts honestly; hand-painted strokes are never touched; a spline insert lands on the drawn curve; a saved spline reopens identically.
-result: [pending]
+### 18. R7 — G-20 / Curve row in Stroke Settings → Geometry (rows A–F)
+expected: Stroke Settings shows Geometry + Stack only (the Paint tab is gone). The Curve row appears in Geometry for vector strokes only; switching Bézier <-> Spline changes the drawn shape and is one undo; authored handles return after switching back; Mixed converts honestly; hand-painted strokes are never touched; a spline insert lands on the drawn curve; a saved spline reopens identically.
+result: pass
+detail: User-confirmed 2026-11-12 (rows A–F including the Geometry relocation from quick 261111-vg4).
 
-### R8. 61-26/61-27 refusal seams
+### 19. R8 — 61-26/61-27 refusal seams
 expected: Shift+A under wireframe changes nothing and restores normal selection after wireframe off; a failed path-edit bake's capsule matches whether the pre-edit path actually came back; a vector stroke drawn during an in-flight bake reappears at the next settle with no error capsule; selecting another stroke closes the open edit; a focused header button + Enter activates the button and touches no anchor.
-result: [pending]
+result: pass
+detail: User-confirmed 2026-11-12.
 
-### R9. 61-20 undo row
+### 20. R9 — 61-20 undo row
 expected: One Cmd+Z reverts a whole path edit (anchor or handle drag, Draft mode, and a forced failing re-bake); Redo re-applies; a failed re-bake leaves the undo stack unchanged and restores the pre-edit path.
-result: [pending]
+result: pass
+detail: User-confirmed 2026-11-12.
 
-### R10. UI review held-out rows and the five new warnings
-expected: Per 61-UI-SPEC: E5 overflow, E6 rail loading, E7 canvas loading/populated, E8 Simple-ribbon thumb; plus the 20/24 re-audit's new warnings — Curve row copy/teaching, refusal grammar, wireframe z-order (VectorPathOverlay z=41 over the ScriptStrokeOverlay chrome at z=40), segmented weight 600 vs 700, and a pre-press hover affordance.
-result: [pending]
+### 21. R10 — UI review held-out rows and the outstanding warnings
+expected: Per 61-UI-SPEC: E5 overflow, E6 rail loading, E7 canvas loading/populated. (The E8 Simple-ribbon thumb row is retired — `cb49cc728` removed the ribbon engine from `packages/efx-watercolor`.) Plus the re-audit's outstanding warnings — Curve row copy/teaching, refusal grammar, wireframe z-order (VectorPathOverlay z=41 over the ScriptStrokeOverlay chrome at z=40), segmented weight 600 vs 700, and a pre-press hover affordance.
+result: pass
+detail: User-confirmed 2026-11-12.
 
 ## Summary
 
-total: 11
-passed: 6
-issues: 4
+total: 21
+passed: 16
+issues: 5
 pending: 0
 skipped: 0
 blocked: 0
-requested: 1
-
-## Summary — post gap-closure re-test
-
-total: 10
-passed: 0
-issues: 0
-pending: 10
-skipped: 0
-blocked: 0
+resolved: 5
 
 ## Gaps
+
+### Resolution records (2026-11-12)
+
+Each gap below was diagnosed, planned in the gap-closure wave, executed, and
+live-verified by re-test rows 12–21.
+
+- gap_id: G-11
+  truth: "A selected anchor can be given a width (size) value, and the stroke renders with that per-vertex width."
+  test: 3
+  status: resolved
+  resolved_by: 61-22-PLAN.md
+  resolved_at: 2026-11-12
+  reason: "User reported: I don't know how change size stroke size per vertex (a corner vector)"
+  severity: major
+
+- gap_id: G-15
+  truth: "Starting a vector on a key and adding a new key copies the vector path onto the new key."
+  test: 7
+  status: resolved
+  resolved_by: 61-24-PLAN.md
+  resolved_at: 2026-11-12
+  reason: "User reported: +Key clones raster bytes only; no script copy, so the new key cannot be re-edited"
+  severity: major
+
+- gap_id: G-17
+  truth: "Releasing an edited anchor re-bakes the sheet so the paint follows the new path."
+  test: 9
+  status: resolved
+  resolved_by: 61-29-PLAN.md
+  resolved_at: 2026-11-12
+  reason: "User reported: re-render doesn't update like the vector edit; the blue watercolor doesn't follow the vector I edit"
+  severity: blocker
+
+- gap_id: G-19
+  truth: "A path edit owns the canvas; the color picker is not shown over it."
+  test: 10
+  status: resolved
+  resolved_by: 61-23-PLAN.md
+  resolved_at: 2026-11-12
+  reason: "User reported: Just need to hide the color picker for vector edit"
+  severity: minor
+
+- gap_id: G-20
+  truth: "Spline editing selectable alongside Bézier with a switch."
+  test: 11
+  status: resolved
+  resolved_by: 61-30-PLAN.md
+  resolved_at: 2026-11-12
+  reason: "User requested: spline editing instead of / in addition to Bézier, selectable with a switch"
+  severity: minor
 
 ### Closed since the first UAT round (do not re-plan)
 
