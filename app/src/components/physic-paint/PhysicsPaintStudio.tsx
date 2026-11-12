@@ -111,7 +111,7 @@ import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import * as vectorPathSession from './view/vectorPathSession';
-import { buildAnchorColorCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
+import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
@@ -7482,6 +7482,12 @@ export function PhysicsPaintStudio() {
         if (anchors !== undefined) {
           const next = buildAnchorColorCommit(anchors, anchorSelection, color);
           if (next !== null) {
+            // 261112-hfk (CR-01): an unchanged gesture yields the same null
+            // edit id as a refusal (in flight/unchanged, per the commit's own
+            // docstring), so a no-op must return before the commit and publish
+            // nothing; a genuine refusal still publishes through the untouched
+            // block below.
+            if (anchorColorCommitIsNoOp(anchors, next)) return;
             // 261111-wd6 (WR-01): a refused commit must publish, never look
             // like a success — the Vertex size commit already does (61-27).
             void commit(target, next).then((editId) => {

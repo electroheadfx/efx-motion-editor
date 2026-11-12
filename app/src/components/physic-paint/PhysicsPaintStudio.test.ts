@@ -6865,7 +6865,7 @@ describe('61-11 Anchor width bundle wiring in the Studio', () => {
 
   it('composes the pure width commit from the shared handle module', () => {
     expect(studio).toContain(
-      "import { buildAnchorColorCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';",
+      "import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';",
     );
   });
 });
@@ -6914,6 +6914,29 @@ describe('261111-wd6 — the Color tab per-vertex branch', () => {
       .toBe(1);
     // The anchor branch owns no begin of its own; the file-wide count stays 1.
     expect(studio.split('beginAquarellePathEdit(').length - 1).toBe(1);
+  });
+
+  // CR-01: an unchanged gesture produces the same null edit id as a refusal
+  // (the commit's anchorsEqual early return), so the no-op must be decided
+  // BEFORE the commit — otherwise releasing an unmoved colour box publishes
+  // the false "Vertex colour not applied" banner.
+  it('skips an unchanged colour before committing (261112-hfk CR-01)', () => {
+    const region = colorHandlerRegion();
+    const buildAt = region.indexOf('buildAnchorColorCommit(');
+    const guardAt = region.indexOf('anchorColorCommitIsNoOp(anchors, next)');
+    const commitAt = region.indexOf('commit(target, next)');
+    expect(buildAt, 'missing the build marker').toBeGreaterThan(-1);
+    expect(guardAt, 'missing the no-op guard').toBeGreaterThan(-1);
+    expect(commitAt, 'missing the commit marker').toBeGreaterThan(-1);
+    expect(guardAt).toBeGreaterThan(buildAt);
+    expect(guardAt).toBeLessThan(commitAt);
+    // ONE guard, never a second.
+    expect(region.split('anchorColorCommitIsNoOp(anchors, next)').length - 1).toBe(1);
+    // The genuine-refusal publication is untouched.
+    expect(region).toContain('if (editId !== null) return;');
+    expect(region).toContain('setApplyMessage(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE)');
+    expect(region).toContain("setApplyStatus('error')");
+    expect(region).toContain('setLastError(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE)');
   });
 });
 
