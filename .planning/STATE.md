@@ -2,39 +2,39 @@
 gsd_state_version: "1.0"
 milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
-current_phase: 61
-current_phase_name: Vector Painting Tool
-status: verifying
-stopped_at: Completed 61-31-PLAN.md
-last_updated: "2026-11-11T23:34:55.179Z"
-last_activity: 2026-11-11
-last_activity_desc: Phase 61 execution started
-state_head: 0dbd47e96b77b9b8fa6426ef4ce64b1f517b7dac
+current_phase: 62
+current_phase_name: Painted-Stroke Curve Editing
+status: planning
+stopped_at: Phase 61 complete, ready to plan Phase 62
+last_updated: "2026-11-12T11:28:25.971Z"
+last_activity: 2026-11-12
+last_activity_desc: Phase 61 complete, transitioned to Phase 62
+state_head: edea48c0d3abccc244e2c0c256a48757b197ea29
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 62
   completed_plans: 62
-  percent: 50
+  percent: 75
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
+See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 61 — Vector Painting Tool
+**Current focus:** Phase 62 — Painted-Stroke Curve Editing
 
 ## Current Position
 
-Phase: 61 (Vector Painting Tool) — EXECUTING
-Plan: 31 of 31
-Status: Phase complete — ready for verification
-Last activity: 2026-11-12 - Completed quick task 261111-wd6: per-vertex color and size
+Phase: 62 — Painted-Stroke Curve Editing
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-12 — Phase 61 complete, transitioned to Phase 62
 
-Progress: [█████░░░░░] 50%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [█████░░░░░] 50%
 | 62. Painted-Stroke Curve Editing | TBD | - | - |
 | 59 | 25 | - | - |
 | 60 | 6 | - | - |
+| 61 | 31 | - | - |
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -345,6 +346,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: 61-31: the draft always draws DEFAULT_AQUARELLE_CURVE_MODE and the recorded loop draws each stroke's own mode — a spline path never inherits the edit target's mode
 - [Phase 61]: 61-31: under Spline wasPromoted is false (promotion returns the list untouched) so a grab-and-release commits nothing; chrome shape follows ownership per 61-UI-SPEC §340-341, including the 61-22 selection ring
 - [Phase 61]: Quick 261111-ucf: every brush pick and paint-control release now commits onto the selected paint strokes through one aquarellePaintControls seam (filter 'paint'); the patch carries the POST-pick bag, Reset is one seven-key batch, and lift strokes are never addressed
+- [Phase 61]: Quick 261111-wd6: per-vertex colour is a sparse anchor `color?` — absent means the stroke colour, and a colour equal to the stroke colour is stored only when the user set it; RGB is lerped between neighbouring anchors so the wash never steps at a sample boundary
+- [Phase 61]: Quick 261111-wd6: per-vertex SIZE stays the shipped anchor width factor relabelled "Vertex size" — no second size channel was introduced, and VEC-04's former "width is the only per-vertex property" law is superseded by explicit user direction
+- [Phase 61]: Quick 261111-vg4: Stroke Settings is Geometry | Stack only; the Curve row and the Vertex size control both mount in Geometry while the list view keeps its own Vertex size mount
+- [Phase 61]: The simple-ribbon engine and the `renderMode` field were deleted rather than migrated (payload, engine branch, shaders, preset, adapter, probe, AQTL byte, Rust model); the decoder still skips the legacy byte so older scripts load
+- [Phase 61]: Vector strokes replay as a mouse stroke with speed owning the pressure at a hand's cadence — a flat synthetic pressure read as a dead stroke beside hand-painted work
 
 ### Pending Todos
 
@@ -356,7 +362,8 @@ None yet.
 - [post-Phase 60] Code review of the interleaved quick/debug commits raised WR-05 (cursor seat re-applies the rail transform to already-transformed coordinates — ring renders `s²` when rail scale ≠ 1) and WR-06 (roto settle can force-reload the base mid-playback). Not phase-60 scope; unverified by UAT.
 - `.mce` paint-field enforcement does not exist yet — `mceFieldContract.test.ts` covers `Mce*` interfaces only while the paint document rides as `HashMap<String, Value>`; motion persistence needs a dedicated load → save byte-identical round-trip pin.
 - Four persistence carriers must move as one change or motion silently fails: `serializeRuntimeIntoDocument`, `encodeValidatedEfxPaintTrackContent`, `buildEfxPaintDocumentSyncFingerprint`, and the layer change token (this defect class already cost PKG-06 and BKG-09).
-- Phase 61 is spike-gated: per-vertex watercolour feasibility (segment runs vs payload extension) before the data model is locked.
+- [Phase 61] Three code-review findings remain open after the 2026-11-12 re-review (all recorded in `61-REVIEW-DISPOSITION.md`, 8/8 open): CR-01 an unchanged per-vertex colour commit publishes a false "not applied" banner because a no-op returns the same `null` as a refusal; WR-01 the paint-control seam discards its `Promise<boolean>` so a refused patch leaves the live control diverged with no message; WR-02 the new orphan-focus window key route has no floating-dialog guard, so Studio shortcuts reach the canvas through Stroke Settings. The verifier judged none a must-have blocker, but CR-01 is user-visible.
+- [Phase 61] Quick 261111-wd6 revised VEC-04 mid-phase; the Phase 61 verification records three accepted overrides (61-03 colour prohibition, 61-10 per-vertex-paint-properties prohibition, and truth 11's simple-ribbon render-mode clause). Anyone re-reading older plans should treat those clauses as superseded rather than violated.
 - v2.0.1 debt carried in PROJECT.md Context: VIS-02/04 token drift, mixed rail-set header accent, the one-shot prompt's pending window, and the unconfirmed 261105-p9i live native UAT rows.
 
 ## Deferred Items
@@ -442,11 +449,12 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-11T21:22:37.520Z
-Stopped at: Completed 61-31-PLAN.md
+Last session: 2026-11-12T11:30:00.000Z
+Stopped at: Phase 61 complete, ready to plan Phase 62
 Resume file: None
 
 ## Operator Next Steps
 
-- Phase 60 is complete (6/6 plans, live UAT 5/5, verification 20/20 must-haves, security threats_open 0). Next: `/gsd-discuss-phase 61`, then `/gsd-plan-phase 61` — Vector painting tool.
-- Open review findings for Phase 60 (non-blocking): WR-02 (6px gutter omitted from three pointer→frame projections — pre-existing) and IN-01..04 (info). ROADMAP SC2/SC5 wording still cites the superseded "Fit / session-only" contract; REQUIREMENTS.md is authoritative until the milestone close.
+- Phase 61 is complete (31/31 plans, live UAT 21/21, verification 19/19 passed, security threats_open 0, regression gate 427 files / 8,942 tests green). Next: `/gsd-discuss-phase 62`, then `/gsd-plan-phase 62` — painted-stroke curve editing.
+- Open code-review findings for Phase 61 (non-blocking, recorded in 61-REVIEW-DISPOSITION.md, 8/8 open): CR-01 an unchanged per-vertex colour commit publishes a false "not applied" banner; WR-01 paint-control refusals are swallowed so the live slider diverges from the selected strokes; WR-02 the orphan-focus window key route has no floating-dialog guard. Candidate for a follow-up quick.
+- VEC-04 was revised mid-phase by the user: per-vertex colour is supported (sparse anchor `color?`), per-vertex size remains the anchor width factor exposed as "Vertex size", and the former "width is the only per-vertex property" law is superseded. Phase 61's recorded overrides (61-03 colour prohibition, 61-10 per-vertex-paint-properties prohibition, truth 11's simple-ribbon render-mode clause) are accepted by Laurent Marques on 2026-11-12.
