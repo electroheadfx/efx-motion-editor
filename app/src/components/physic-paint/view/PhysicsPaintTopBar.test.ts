@@ -282,6 +282,10 @@ describe('261027-gh9g top bar brush trigger + centered sliders', () => {
     const pill = getCssRuleBlock(styles, '.physics-paint-topbar-brush-pill {');
     expect(pill, '15px separator faces the status pill').toContain('margin-left: 15px');
     expect(pill, 'the pill matches the top-bar control height').toContain('height: 38px');
+    expect(pill, '2px between the dropdown and the Script mode checkbox').toContain('gap: 2px');
+    const logo = getCssRuleBlock(styles, '.physics-paint-topbar-logo {');
+    expect(logo).toContain('width: 40px');
+    expect(logo).toContain('max-height: 40px');
     const thumb = getCssRuleBlock(styles, '.physics-paint-brush-trigger-thumb {');
     expect(thumb, 'the brush thumb is larger than the old switcher').toContain('width: 96px');
     expect(thumb).toContain('height: 28px');
@@ -736,44 +740,48 @@ describe('261027-k6j Script switch', () => {
     expect(pill!.props?.children).toBe('Engine fail');
   });
 
-  it('renders a keyboard-operable role="switch" mirrored to the session signal', () => {
+  it('renders a checkbox mirrored to the session signal, label at its right', () => {
     const previous = aquarelleScriptRecordingEnabled.value;
     setAquarelleScriptRecordingEnabled(true);
     try {
       const tree = renderSwitch();
-      expect(tree.type).toBe('button');
-      expect(tree.props?.type).toBe('button');
-      expect(tree.props?.role).toBe('switch');
-      expect(tree.props?.['aria-checked']).toBe('true');
-      expect(String(tree.props?.class)).toContain('is-on');
-      // No aria-label: the visible text is the accessible name.
-      expect(tree.props?.['aria-label']).toBeUndefined();
+      expect(tree.type).toBe('label');
+      expect(String(tree.props?.class)).toContain('physics-paint-script-checkbox');
+      const input = childrenOf(tree).find((n) => (n as AnyVNode).type === 'input') as AnyVNode | undefined;
+      expect(input, 'the checkbox input renders').toBeDefined();
+      expect(input!.props?.type).toBe('checkbox');
+      expect(input!.props?.checked, 'checked by default').toBe(true);
+      // No aria-label: the visible label text is the accessible name.
+      expect(input!.props?.['aria-label']).toBeUndefined();
       const label = childrenOf(tree).find(
-        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-switch-label',
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-checkbox-label',
       ) as AnyVNode | undefined;
-      expect(label?.props?.children).toBe('Paint script');
+      expect(label?.props?.children).toBe('Script mode');
 
       setAquarelleScriptRecordingEnabled(false);
       const offTree = renderSwitch();
-      expect(offTree.props?.['aria-checked']).toBe('false');
-      expect(String(offTree.props?.class)).not.toContain('is-on');
+      const offInput = childrenOf(offTree).find((n) => (n as AnyVNode).type === 'input') as AnyVNode;
+      expect(offInput.props?.checked).toBe(false);
+      // The caption is a stable mode label — it never flips with the state.
       const offLabel = childrenOf(offTree).find(
-        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-switch-label',
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-checkbox-label',
       ) as AnyVNode | undefined;
-      expect(offLabel?.props?.children).toBe('Paint raster');
+      expect(offLabel?.props?.children).toBe('Script mode');
 
-      // Clicking flips through the setter, reading the signal at click time.
-      (offTree.props?.onClick as () => void)();
+      // Toggling flips through the setter, reading the event's checked state.
+      (offInput.props?.onChange as (event: { currentTarget: { checked: boolean } }) => void)({
+        currentTarget: { checked: true },
+      });
       expect(aquarelleScriptRecordingEnabled.value).toBe(true);
     } finally {
       setAquarelleScriptRecordingEnabled(previous);
     }
   });
 
-  it('source pins the switch contract and never uses useState', () => {
+  it('source pins the checkbox contract and never uses useState', () => {
     const body = stripComments(topBarSource());
-    expect(body).toContain('role="switch"');
-    expect(body).toContain('aria-checked');
+    expect(body).toContain('type="checkbox"');
+    expect(body).toContain('checked={enabled}');
     expect(body).toContain('setAquarelleScriptRecordingEnabled');
     expect(body).not.toContain('useState');
   });
@@ -793,31 +801,17 @@ describe('261027-k6j Script switch', () => {
     expect(onKnob).toContain('translateX(18px)');
     const label = getCssRuleBlock(styles, '.physics-paint-script-switch-label {');
     expect(label).toContain('font-size: 12px');
-    // quick-261112: in the top bar the label sits UNDER the toggle (two rows)
-    // and is centered over it; the paint-mode caption is weight 400.
+    // quick-261112: the top-bar Edit switch stacks its label UNDER the toggle.
     const stacked = getCssRuleBlock(styles, '.physics-paint-topbar .physics-paint-script-switch {');
     expect(stacked).toContain('flex-direction: column');
     expect(stacked).not.toContain('column-reverse');
     expect(stacked).toContain('align-items: center');
-    const caption = getCssRuleBlock(
-      styles,
-      '.physics-paint-topbar-brush-pill .physics-paint-script-switch-label {',
-    );
-    expect(caption).toContain('font-weight: 600');
-    expect(caption).toContain('line-height: 1');
-    expect(caption).toContain('font-size: 10px');
-    expect(caption).toContain('margin-top: 2px');
-    const pillTrack = getCssRuleBlock(
-      styles,
-      '.physics-paint-topbar-brush-pill .physics-paint-script-switch-track {',
-    );
-    expect(pillTrack, 'the toggle matches the label width').toContain('width: 100%');
-    expect(pillTrack, 'the toggle is 18px tall').toContain('height: 18px');
-    const pillKnobOn = getCssRuleBlock(
-      styles,
-      '.physics-paint-topbar-brush-pill .physics-paint-script-switch.is-on .physics-paint-script-switch-knob {',
-    );
-    expect(pillKnobOn).toContain('left: calc(100% - 17px)');
+    // quick-261112: the paint-mode control is a native checkbox + caption.
+    const checkbox = getCssRuleBlock(styles, '.physics-paint-script-checkbox {');
+    expect(checkbox).toContain('display: inline-flex');
+    expect(checkbox).toContain('align-items: center');
+    const checkboxInput = getCssRuleBlock(styles, '.physics-paint-script-checkbox-input {');
+    expect(checkboxInput).toContain('accent-color: #2f9fe0');
   });
 });
 

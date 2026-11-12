@@ -145,25 +145,24 @@ export function TopBarBrushTrigger(props: {
  * Never disabled — recording mode is orthogonal to mutation/apply locks.
  */
 export function ScriptRecordingSwitch() {
-  // Narrow read (same idiom as aquarelleParams.value): only this switch
+  // Narrow read (same idiom as aquarelleParams.value): only this control
   // re-renders when the session flag flips.
   const enabled = aquarelleScriptRecordingEnabled.value;
   return (
-    <button
-      type="button"
-      class={`physics-paint-script-switch${enabled ? ' is-on' : ''}`}
-      role="switch"
-      aria-checked={enabled ? 'true' : 'false'}
+    <label
+      class="physics-paint-script-checkbox"
       title={enabled
         ? 'Script on — strokes are recorded into the key script'
         : 'Script off — strokes paint pixels without a script entry'}
-      onClick={() => setAquarelleScriptRecordingEnabled(!aquarelleScriptRecordingEnabled.peek())}
     >
-      <span class="physics-paint-script-switch-track" aria-hidden="true">
-        <span class="physics-paint-script-switch-knob" />
-      </span>
-      <span class="physics-paint-script-switch-label">{enabled ? 'Paint script' : 'Paint raster'}</span>
-    </button>
+      <input
+        type="checkbox"
+        class="physics-paint-script-checkbox-input"
+        checked={enabled}
+        onChange={(event) => setAquarelleScriptRecordingEnabled(event.currentTarget.checked)}
+      />
+      <span class="physics-paint-script-checkbox-label">Script mode</span>
+    </label>
   );
 }
 
