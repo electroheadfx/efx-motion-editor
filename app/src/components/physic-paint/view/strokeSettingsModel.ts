@@ -492,48 +492,6 @@ export function shouldMarkSawEmpty(args: SawEmptyArgs): boolean {
     && args.keepOpenOnEmpty !== true;
 }
 
-// ============================================================
-//  261101-jmm: the sheet's view law — LIST FIRST. The stroke list
-//  is the default surface and stays visible while strokes are
-//  selected; the Geometry/Stack/Paint tabs are an explicit request
-//  the user makes from the header icon. A settings request never
-//  survives the selection being observed EMPTY (a close/reopen, a
-//  leave and re-enter of Move/Select, or a delete that empties the
-//  selection): the invalidation marker re-arms the list.
-// ============================================================
-
-export type StrokeSettingsView = 'list' | 'settings';
-
-/**
- * The view a render shows. A settings request over an EMPTY selection falls
- * back to the list (never an empty settings panel); every other request is
- * honoured as asked. Pure render-time derivation — never a signal write.
- */
-export function resolveStrokeSettingsView(
-  requested: StrokeSettingsView,
-  selectionSize: number,
-): StrokeSettingsView {
-  return requested === 'settings' && selectionSize > 0 ? 'settings' : 'list';
-}
-
-export interface StrokeSettingsViewInvalidationArgs {
-  readonly requested: StrokeSettingsView;
-  readonly selectionSize: number;
-}
-
-/**
- * The staleness gate for the settings REQUEST: a settings request survives a
- * non-empty -> non-empty selection change but never survives the selection
- * being observed empty. Gates a plain (non-signal) module marker written
- * idempotently in the render body — the `shouldMarkSawEmpty` precedent — so
- * the gate notifies no subscriber and cannot start a reactive loop.
- */
-export function shouldInvalidateStrokeSettingsView(
-  args: StrokeSettingsViewInvalidationArgs,
-): boolean {
-  return args.requested === 'settings' && args.selectionSize === 0;
-}
-
 /**
  * The inclusive DISPLAYED range between the shift anchor and the clicked row.
  * Both indices address `orderedIds` (the rendered order), so the result keeps
