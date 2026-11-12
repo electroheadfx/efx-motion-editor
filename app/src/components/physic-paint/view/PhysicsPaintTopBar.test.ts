@@ -12,12 +12,11 @@ import {
   PhysicsPaintTopBar,
   ScriptRecordingSwitch,
   TopBarBrushTrigger,
-  TopBarWaterToolButton,
+  TopBarDryButton,
   type PhysicsPaintTopBarProps,
 } from './PhysicsPaintTopBar';
 import { activeModule } from '../../shared/activeModule';
 import {
-  aquarelleActiveTool,
   aquarelleBrushMenuAnchor,
   aquarelleBrushMenuOpen,
   aquarelleBrushMenuTarget,
@@ -26,7 +25,7 @@ import {
   setAquarelleScriptRecordingEnabled,
   setAquarelleTool,
 } from './aquarelleRecordState';
-import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
+import { wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
 import {
   aquarelleSelectMode,
   aquarelleStrokeSettingsDismissed,
@@ -765,6 +764,10 @@ describe('261027-k6j Script switch', () => {
     expect(onKnob).toContain('translateX(18px)');
     const label = getCssRuleBlock(styles, '.physics-paint-script-switch-label {');
     expect(label).toContain('font-size: 12px');
+    // quick-261112: in the top bar the label sits ABOVE the toggle (two rows).
+    const stacked = getCssRuleBlock(styles, '.physics-paint-topbar .physics-paint-script-switch {');
+    expect(stacked).toContain('flex-direction: column-reverse');
+    expect(stacked).toContain('align-items: flex-start');
   });
 });
 
@@ -975,7 +978,7 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
 // quick-261112: Undo | Redo | Water lead the settings cluster — the trio moved
 // up from the left rail and renders for every tool.
 describe('quick-261112 top-bar action cluster', () => {
-  it('seats Undo, Redo and the Water tool at the head of the settings cluster', () => {
+  it('seats Undo, Redo and Flash-dry at the head of the settings cluster', () => {
     const tree = renderTopBar(baseTopBarProps());
     const nodes = childrenOf(tree) as AnyVNode[];
     const primary = nodes.find((n) => n.props?.['class'] === 'physics-paint-topbar-primary');
@@ -989,7 +992,7 @@ describe('quick-261112 top-bar action cluster', () => {
     expect(actionChildren[0]?.props?.item?.id).toBe('undo');
     expect(actionChildren[1]?.type).toBe(PhysicsPaintHistoryActionButton);
     expect(actionChildren[1]?.props?.item?.id).toBe('redo');
-    expect(actionChildren[2]?.type).toBe(TopBarWaterToolButton);
+    expect(actionChildren[2]?.type).toBe(TopBarDryButton);
   });
 
   it('keeps Undo/Redo count-free and fires the routed action', () => {
@@ -1014,27 +1017,33 @@ describe('quick-261112 top-bar action cluster', () => {
     expect(onAction).toHaveBeenCalledTimes(1);
   });
 
-  it('the Water tool keeps the rail gate: dry sheet disables, wet sheet selects it', () => {
-    const previousWet = aquarelleHasWetPaint.value;
-    const previousTool = aquarelleActiveTool.value;
+  it('the Dry button keeps the rail gate and its record-path wiring', () => {
+    const previousWireframe = wireframeMode.value;
+    const previousSettle = wireframeSettleInFlight.value;
     try {
-      aquarelleHasWetPaint.value = false;
-      setAquarelleTool('brush');
-      const dry = TopBarWaterToolButton({ disabled: false }) as AnyVNode;
-      expect(dry.props?.disabled).toBe(true);
-      expect(dry.props?.title).toBe('Water (W) — needs standing water');
+      wireframeMode.value = false;
+      wireframeSettleInFlight.value = false;
+      const ready = TopBarDryButton({ disabled: false }) as AnyVNode;
+      expect(ready.props?.['data-testid']).toBe('aquarelle-dry');
+      expect(ready.props?.['aria-label']).toBe('Dry');
+      expect(ready.props?.disabled).toBe(false);
+      expect(ready.props?.title).toBe('Flash-dry the sheet (F). Recorded in the script.');
+      expect(ready.props?.onClick).toBeTypeOf('function');
 
-      aquarelleHasWetPaint.value = true;
-      const wet = TopBarWaterToolButton({ disabled: false }) as AnyVNode;
-      expect(wet.props?.disabled).toBe(false);
-      expect(wet.props?.['aria-label']).toBe('Water');
-      expect(wet.props?.['aria-pressed']).toBe(false);
-      (wet.props?.onClick as () => void)();
-      expect(aquarelleActiveTool.value).toBe('water');
-      expect(TopBarWaterToolButton({ disabled: false }).props?.['aria-pressed']).toBe(true);
+      // The construction view disables the action and states the reason.
+      wireframeMode.value = true;
+      const gated = TopBarDryButton({ disabled: false }) as AnyVNode;
+      expect(gated.props?.disabled).toBe(true);
+      expect(gated.props?.title).toBe('Dry (F) — turn wireframe off to paint');
+
+      // The Studio's lock and the OFF re-bake window both disable it.
+      wireframeMode.value = false;
+      expect(TopBarDryButton({ disabled: true }).props?.disabled).toBe(true);
+      wireframeSettleInFlight.value = true;
+      expect(TopBarDryButton({ disabled: false }).props?.disabled).toBe(true);
     } finally {
-      aquarelleHasWetPaint.value = previousWet;
-      setAquarelleTool(previousTool);
+      wireframeMode.value = previousWireframe;
+      wireframeSettleInFlight.value = previousSettle;
     }
   });
 });

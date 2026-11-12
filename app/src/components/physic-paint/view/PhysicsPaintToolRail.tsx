@@ -1,12 +1,13 @@
 import { memo } from 'preact/compat';
 import type { ReadonlySignal } from '@preact/signals';
-import { Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, VectorSquare, Wind } from 'lucide-preact';
+import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, VectorSquare } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
 import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
+import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
+import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
 import {
   aquarelleSelectMode,
   setAquarelleSelectMode,
@@ -56,8 +57,8 @@ const VECTOR_PEN_TOOLTIP =
   'Vector pen (V) — click to place a smooth anchor · hold Alt for a corner · Enter or double-click to finish · click the first anchor to finish there';
 
 /**
- * UI checklist rows 8/9: Water color rail = Brush | Pen | Lift | Dry.
- * quick-261112: the Water tool moved to the top-bar action cluster.
+ * UI checklist rows 8/9: Water color rail = Brush | Water | Pen | Lift.
+ * quick-261112: the Flash-dry action left for the top-bar action cluster.
  */
 const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   id: AquarelleTool;
@@ -66,6 +67,7 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   Icon: (props: { size?: number }) => ComponentChildren;
 }> = Object.freeze([
   { id: 'brush', label: 'Brush', shortcut: 'B', Icon: Paintbrush },
+  { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplet },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
@@ -94,6 +96,9 @@ export function WatercolorRail({
   onToggleWireframe: () => void;
 }) {
   const active = aquarelleActiveTool.value;
+  // 261029-lel: Water only acts on live standing water — grey it while the
+  // sheet is dry (a body read here is the sanctioned leaf subscription).
+  const wetAvailable = aquarelleHasWetPaint.value;
   // Select/Move is the ONLY active tool while select mode is on; the previous
   // paint tool is shown deselected.
   const selectActive = aquarelleSelectMode.value;
@@ -125,6 +130,7 @@ export function WatercolorRail({
         // 61-13 (D-16): the wireframe latch also deselects it — nothing may
         // bake while the construction view is up, so no paint tool is "on".
         const isActive = !selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === id && !wireframeActive;
+        const waterGated = id === 'water' && !wetAvailable;
         // 61-13: the paint row's disable reason. The latch never silently
         // switches tools — it states why the press is inert.
         const wireframeReason = shortcut === undefined
@@ -135,13 +141,16 @@ export function WatercolorRail({
             key={id}
             type="button"
             class={`physics-paint-icon-button${isActive ? ' active' : ''}`}
-            disabled={railDisabled || wireframeActive}
+            disabled={railDisabled || wireframeActive || (id === 'water' && !wetAvailable)}
             title={wireframeActive
               ? wireframeReason
-              : shortcut ? `${label} (${shortcut})` : label}
+              : waterGated ? 'Water (W) — needs standing water' : shortcut ? `${label} (${shortcut})` : label}
             aria-label={label}
             aria-pressed={isActive}
             onClick={() => {
+              // Defense in depth: a programmatic click must not select Water
+              // while the sheet is dry (261029-lel).
+              if (id === 'water' && !aquarelleHasWetPaint.peek()) return;
               // 61-08 (D-06): a paint tool press leaves the vector pen and ends
               // path edit — the four input surfaces are mutually exclusive.
               exitVectorPen();
@@ -246,21 +255,8 @@ export function WatercolorRail({
       >
         <VectorSquare size={18} />
       </button>
-      <button
-        type="button"
-        class="physics-paint-icon-button"
-        data-testid="aquarelle-dry"
-        disabled={railDisabled || wireframeActive}
-        title={wireframeActive
-          ? 'Dry (F) — turn wireframe off to paint'
-          : 'Flash-dry the sheet (F). Recorded in the script.'}
-        aria-label="Dry"
-        onClick={() => emitAquarelleDry(aquarelleRecordClock())}
-      >
-        <Wind size={18} />
-      </button>
-      {/* 261018-cy1 / quick-261112: Undo/Redo moved to the top-bar action
-          cluster; Trash stays the rail's clear-frame action. */}
+      {/* 261018-cy1 / quick-261112: Undo/Redo and Flash-dry moved to the
+          top-bar action cluster; Trash stays the rail's clear-frame action. */}
       <button
         type="button"
         class="physics-paint-icon-button"

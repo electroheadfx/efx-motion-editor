@@ -33,8 +33,8 @@ describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
     expect(rail).toContain(
       // 61-08 (D-05): PenTool joins the icon set for the vector pen host tool;
       // 61-13 (D-16): VectorSquare joins it for the wireframe latch. Still no
-      // Hand icon. quick-261112: Droplet left with the Water tool.
-      "import { Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, VectorSquare, Wind } from 'lucide-preact';",
+      // Hand icon. quick-261112: Wind left with the Dry action.
+      "import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, VectorSquare } from 'lucide-preact';",
     );
     expect(rail).toContain("import { memo } from 'preact/compat';");
     // Only the hand session used hooks — both imports leave with it.
@@ -63,7 +63,6 @@ describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
       'aquarelle-picker-toggle',
       'aquarelle-select-toggle',
       'aquarelle-motion-boundary-toggle',
-      'aquarelle-dry',
       'aquarelle-rebake-script',
     ]) {
       expect(rail).toContain(`data-testid="${testId}"`);

@@ -892,6 +892,17 @@ button.destructive {
   white-space: nowrap;
 }
 
+/* quick-261112: the top-bar mode switches stack the label above the toggle
+   (Script mode / Pixel mode, Edit) instead of sitting beside it. */
+.physics-paint-topbar .physics-paint-script-switch {
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  height: auto;
+  padding: 1px 2px;
+}
+
 /* The dropdown is viewport-fixed: the top bar is an overflow-x scroller, so an
    absolutely positioned child would be clipped. */
 .physics-paint-brush-menu {

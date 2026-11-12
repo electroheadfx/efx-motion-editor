@@ -263,18 +263,18 @@ describe('Water gate (261029-lel)', () => {
 });
 
 describe('Dry action button (D-15)', () => {
-  // 261017-w4x I-06 (Q4): Dry lives ONLY in the left vertical tool rail
-  // (WatercolorRail in PhysicsPaintToolRail.tsx). The module section no longer
-  // mounts a Dry control — pins source-scan the rail, which is byte-untouched.
-  it('rail Dry carries the UI-SPEC tooltip and the aquarelle-dry testid', () => {
-    const railSource = readFileSync(resolve(__dirname, 'PhysicsPaintToolRail.tsx'), 'utf8');
-    expect(railSource.indexOf('data-testid="aquarelle-dry"'), 'rail must host the Dry entry point').toBeGreaterThan(-1);
+  // 261017-w4x I-06 (Q4) / quick-261112: Dry lives ONLY in the Studio top bar
+  // (TopBarDryButton in PhysicsPaintTopBar.tsx). The module section no longer
+  // mounts a Dry control — pins source-scan the top bar.
+  it('the top-bar Dry carries the UI-SPEC tooltip and the aquarelle-dry testid', () => {
+    const topBarSource = readFileSync(resolve(__dirname, 'PhysicsPaintTopBar.tsx'), 'utf8');
+    expect(topBarSource.indexOf('data-testid="aquarelle-dry"'), 'the top bar must host the Dry entry point').toBeGreaterThan(-1);
     // 61-13: the UI-SPEC copy is the LIVE title; the wireframe latch swaps in
     // its own reason while the construction view is up.
-    expect(railSource.indexOf(`'${DRY_TOOLTIP}'`), 'rail Dry keeps the UI-SPEC copy').toBeGreaterThan(-1);
+    expect(topBarSource.indexOf(`'${DRY_TOOLTIP}'`), 'the top-bar Dry keeps the UI-SPEC copy').toBeGreaterThan(-1);
   });
 
-  it('is not inside AquarelleToolRow nor the module section (rail-only slot)', () => {
+  it('is not inside AquarelleToolRow nor the module section (top-bar-only slot)', () => {
     const row = renderToolRow();
     expect(textContent(row)).not.toContain('Dry');
     const mod = renderModule();
@@ -288,13 +288,13 @@ describe('Dry action button (D-15)', () => {
       findButtons(mod).some((b) => textContent(b).trim() === 'Dry'),
       'module must not host a Dry action button',
     ).toBe(false);
-    const railSource = readFileSync(resolve(__dirname, 'PhysicsPaintToolRail.tsx'), 'utf8');
-    expect(railSource.indexOf('data-testid="aquarelle-dry"'), 'rail keeps the Dry control').toBeGreaterThan(-1);
+    const topBarSource = readFileSync(resolve(__dirname, 'PhysicsPaintTopBar.tsx'), 'utf8');
+    expect(topBarSource.indexOf('data-testid="aquarelle-dry"'), 'the top bar keeps the Dry control').toBeGreaterThan(-1);
   });
 
-  it('rail click path emits the record-path Dry event', () => {
-    const railSource = readFileSync(resolve(__dirname, 'PhysicsPaintToolRail.tsx'), 'utf8');
-    expect(railSource.indexOf('emitAquarelleDry(aquarelleRecordClock())'), 'rail must fire the record-clock Dry').toBeGreaterThan(-1);
+  it('the top-bar click path emits the record-path Dry event', () => {
+    const topBarSource = readFileSync(resolve(__dirname, 'PhysicsPaintTopBar.tsx'), 'utf8');
+    expect(topBarSource.indexOf('emitAquarelleDry(aquarelleRecordClock())'), 'the top bar must fire the record-clock Dry').toBeGreaterThan(-1);
     // The module section must not be a second Dry emitter (comment-stripped so
     // docs naming the rail seam never trip the negative scan).
     const moduleSource = readFileSync(resolve(__dirname, 'WatercolorModuleSection.tsx'), 'utf8');

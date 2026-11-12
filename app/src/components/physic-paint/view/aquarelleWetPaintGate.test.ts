@@ -97,18 +97,18 @@ describe('aquarelleHasWetPaint tool fallback', () => {
 });
 
 describe('wiring contracts (261029-lel)', () => {
-  it('the top-bar Water tool is the only wet-gated entry and guards its click', () => {
-    // quick-261112: the Water tool moved from the left rail to the top-bar
-    // action cluster — the dry-sheet + wireframe gates moved with it.
-    const topBar = readFileSync(resolve(__dirname, './PhysicsPaintTopBar.tsx'), 'utf8');
-    expect(topBar).toContain('disabled={railDisabled || wireframeActive || !wetAvailable}');
-    expect(topBar).toContain('if (!aquarelleHasWetPaint.peek()) return;');
-    expect(topBar).toContain("wetAvailable ? 'Water (W)' : 'Water (W) — needs standing water'");
-
+  it('the left rail disables only the Water entry and guards its click', () => {
     const rail = readFileSync(resolve(__dirname, './PhysicsPaintToolRail.tsx'), 'utf8');
+    // 61-13 extended the SAME expression with the wireframe gate: the water
+    // clause still disables Water alone, the latch disables the whole row.
+    expect(rail).toContain('disabled={railDisabled || wireframeActive || (id === \'water\' && !wetAvailable)}');
+    expect(rail).toContain('if (id === \'water\' && !aquarelleHasWetPaint.peek()) return;');
+    expect(rail).toContain("waterGated ? 'Water (W) — needs standing water'");
+    // Brush / Pen / Eraser must keep the plain frame/session `disabled`.
     const body = rail.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(body, 'the rail no longer carries the wet gate').not.toContain('aquarelleHasWetPaint');
-    expect(body, 'the rail no longer carries the Water entry').not.toContain("id === 'water'");
+    expect(body).not.toContain('id === \'brush\' && !wetAvailable');
+    expect(body).not.toContain('id === \'pen\' && !wetAvailable');
+    expect(body).not.toContain('id === \'lift\' && !wetAvailable');
   });
 
   it('the live canvas layer publishes from the rAF tick only while no stroke is in flight', () => {

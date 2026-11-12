@@ -1,7 +1,7 @@
 import type { TargetedMouseEvent } from 'preact';
 import type { ReadonlySignal } from '@preact/signals';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
-import { ChevronDown, Droplet, Eraser, Paintbrush } from 'lucide-preact';
+import { ChevronDown, Eraser, Paintbrush, Wind } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
@@ -12,17 +12,14 @@ import {
   aquarelleBrushMenuOpen,
   aquarelleLiftTipId,
   aquarelleParams,
+  aquarelleRecordClock,
   aquarelleScriptRecordingEnabled,
   aquarelleSelectedTipId,
+  emitAquarelleDry,
   setAquarelleBrushMenuOpen,
   setAquarelleParam,
   setAquarelleScriptRecordingEnabled,
-  setAquarelleTool,
 } from './aquarelleRecordState';
-import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
-import { aquarellePickerActive } from './aquarelleColorPicker';
-import { railMotionSelectedChannel } from './railMotionEditingMode';
-import { exitPathEdit, exitVectorPen, vectorPenActive } from './vectorPathSession';
 import { wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
 import {
@@ -249,44 +246,27 @@ function TopBarSlider(props: {
 }
 
 /**
- * quick-261112: the Water tool moved from the left rail to the head of the
- * top-bar settings cluster. Availability, active-surface law and click wiring
- * are the rail's shipped ones — only the seat changed. Signal reads live in
- * this leaf so the memoized bar is untouched by tool/selection changes.
+ * quick-261112: the Flash-dry action moved from the left rail to the head of
+ * the top-bar settings cluster, before the sliders. The wireframe gate and
+ * copy are the rail's shipped ones — only the seat changed. The wireframe
+ * reads live in this leaf so the memoized bar stays untouched.
  */
-export function TopBarWaterToolButton({ disabled }: { disabled: boolean }) {
-  const active = aquarelleActiveTool.value;
-  const selectActive = aquarelleSelectMode.value;
-  const pickerActive = aquarellePickerActive.value;
-  const motionBoundaryActive = railMotionSelectedChannel.value !== null;
-  const penActive = vectorPenActive.value;
+export function TopBarDryButton({ disabled }: { disabled: boolean }) {
   const wireframeActive = wireframeMode.value;
   const railDisabled = disabled || wireframeSettleInFlight.value;
-  // Water only acts on live standing water — grey it while the sheet is dry.
-  const wetAvailable = aquarelleHasWetPaint.value;
-  const waterActive = !selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === 'water' && !wireframeActive;
   return (
     <button
       type="button"
-      class={`physics-paint-icon-button${waterActive ? ' active' : ''}`}
-      data-testid="aquarelle-water-tool"
-      disabled={railDisabled || wireframeActive || !wetAvailable}
+      class="physics-paint-icon-button"
+      data-testid="aquarelle-dry"
+      disabled={railDisabled || wireframeActive}
       title={wireframeActive
-        ? 'Water (W) — turn wireframe off to paint'
-        : wetAvailable ? 'Water (W)' : 'Water (W) — needs standing water'}
-      aria-label="Water"
-      aria-pressed={waterActive}
-      onClick={() => {
-        // Defense in depth: a programmatic click must not select Water while
-        // the sheet is dry (261029-lel).
-        if (!aquarelleHasWetPaint.peek()) return;
-        exitVectorPen();
-        exitPathEdit();
-        setAquarelleSelectMode(false);
-        setAquarelleTool('water');
-      }}
+        ? 'Dry (F) — turn wireframe off to paint'
+        : 'Flash-dry the sheet (F). Recorded in the script.'}
+      aria-label="Dry"
+      onClick={() => emitAquarelleDry(aquarelleRecordClock())}
     >
-      <Droplet size={18} />
+      <Wind size={18} />
     </button>
   );
 }
@@ -405,8 +385,8 @@ export function PhysicsPaintTopBar({
       </div>
 
       {/* Settings cluster: pinned to the right edge at every width.
-          quick-261112: Undo/Redo and the Water tool LEAD the cluster and render
-          for every tool — Water and Pen have no settings of their own, but the
+          quick-261112: Undo/Redo and Flash-dry LEAD the cluster and render for
+          every tool — Water and Pen have no settings of their own, but the
           action trio must stay reachable. The tool settings themselves render
           only for Brush and Eraser; the last optional knobs hide via container
           queries.
@@ -426,7 +406,7 @@ export function PhysicsPaintTopBar({
             disabled={disabled}
             onAction={onRedo}
           />
-          <TopBarWaterToolButton disabled={disabled} />
+          <TopBarDryButton disabled={disabled} />
         </div>
         {toolOwnsSettings ? (
           <div class="physics-paint-topbar-settings">

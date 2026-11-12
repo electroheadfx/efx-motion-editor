@@ -195,7 +195,7 @@ describe('single-engine right panel (261027-klx)', () => {
     );
     expect(topBar, 'the bar mounts history actions').toContain('onUndo');
     expect(topBar, 'the bar mounts history actions').toContain('onRedo');
-    expect(topBar, 'the Water tool moved into the action cluster').toContain('<TopBarWaterToolButton');
+    expect(topBar, 'Flash-dry moved into the action cluster').toContain('<TopBarDryButton');
   });
 
   it('Paper tab branch mounts the paper surface with no activeModule gate', () => {
