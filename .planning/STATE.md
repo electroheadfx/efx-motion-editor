@@ -5,10 +5,10 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: planning
-stopped_at: Completed quick 261112-lq4-01-PLAN.md (automated-ready; 4 native UAT rows pending)
+stopped_at: Quick 261112-lq4 closed (UAT approved); Phase 62 ready to plan
 last_updated: "2026-11-12T15:06:17.903Z"
 last_activity: 2026-11-12
-last_activity_desc: Phase 61 complete, transitioned to Phase 62
+last_activity_desc: Quick 261112-lq4 UAT approved (four-tab stroke settings sheet)
 state_head: 82f9ae5cde07c2e408e1c6155aa680709dd6c3fc
 progress:
   total_phases: 4
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 Phase: 62 — Painted-Stroke Curve Editing
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-12 - Completed quick task 261112-lq4: ui-stroke-vector modal redesign (automated-ready; native UAT pending)
+Last activity: 2026-11-12 - Quick task 261112-lq4 CLOSED: stroke settings sheet redesigned into four tabs (List default | Geometry | Stack | Curve), filter row merged into the tool dropdown, header controls moved into the Draft strip — UAT approved
 
 Progress: [████████░░] 75%
 
@@ -442,7 +442,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261111-wd6 | Per-vertex colour on vector anchors (sparse, explicit); per-vertex size stays the Anchor width factor, relabelled Vertex size; engine per-sample pigment + AQTL bit 3 (UAT approved 2026-11-12) | 2026-11-12 | 0dbd47e96 | [261111-wd6-per-vertex-color-and-size](./quick/261111-wd6-per-vertex-color-and-size/) |
 | 261112-hfk | Fix CR-01 (Phase 61 review): an unchanged per-vertex colour commit publishes a false refused banner; a no-op now returns before the path-edit commit and publishes nothing, genuine refusals still publish (pure predicate + wiring pins) (UAT approved 2026-11-12) | 2026-11-12 | 749d79dec | [261112-hfk-fix-cr-01-from-planning-phases-61-vector](./quick/261112-hfk-fix-cr-01-from-planning-phases-61-vector/) |
 | 261112-i6d | Vector edit enhancements: double-click a vector stroke enters the path edit; Alt+click a vertex toggles it to a straight corner and back in vector and spline modes; Geometry Round/Straight Corner row over the selected anchors; Vertex size track to x10 with free entry to x20; orange glow/halo selected-vertex chrome; path-edit re-bake canvas veil (blocking, composited wheel, stroke counter) as the ONE indicator — the apply pill stands down (UAT approved 2026-11-12) | 2026-11-12 | 34728c5e4 | [261112-i6d-vector-enhancement-double-click-stroke-t](./quick/261112-i6d-vector-enhancement-double-click-stroke-t/) |
-| 261112-lq4 | Stroke settings sheet redesign: four tabs (List default \| Geometry \| Stack \| Curve), Paint \| Eraser \| All row merged into the tool dropdown, Edit path and Preview stroke size moved into the Draft strip, cache caption removed, Vertex size / Curve / Corner moved to the Curve tab | 2026-11-12 | 82f9ae5cd | [261112-lq4-ui-stroke-vector-modal-redesign](./quick/261112-lq4-ui-stroke-vector-modal-redesign/) |
+| 261112-lq4 | Stroke settings sheet redesign: four tabs (List default \| Geometry \| Stack \| Curve), Paint \| Eraser \| All row merged into the tool dropdown, Edit path and Preview stroke size moved into the Draft strip, cache caption removed, Vertex size / Curve / Corner moved to the Curve tab (UAT approved 2026-11-12) | 2026-11-12 | 82f9ae5cd | [261112-lq4-ui-stroke-vector-modal-redesign](./quick/261112-lq4-ui-stroke-vector-modal-redesign/) |
 
 ## Roadmap Evolution
 
@@ -454,7 +454,7 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-11-12T15:05:00.815Z
-Stopped at: Completed quick 261112-lq4-01-PLAN.md (automated-ready; 4 native UAT rows pending)
+Stopped at: Quick 261112-lq4 closed (UAT approved); Phase 62 ready to plan
 Resume file: None
 
 ## Operator Next Steps

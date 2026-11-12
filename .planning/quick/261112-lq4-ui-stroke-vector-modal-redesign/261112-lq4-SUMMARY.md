@@ -123,6 +123,7 @@ duration: 39min
 started: 2026-11-12T14:24:48Z
 completed: 2026-11-12T15:03:08Z
 status: complete
+uat_approved: 2026-11-12
 ---
 
 # Quick 261112-lq4: Four-tab Stroke/Vector sheet Summary
@@ -233,7 +234,7 @@ Scope checks:
 - The dialog reads `aquarelleStrokeTypeFilter.value` and never imports/calls its setter.
 - Exactly one `<AnchorWidthControl` mount and one `<div data-testid="stroke-settings-anchor-width">` declaration survive; the only mount wrapper carries `stroke-settings-curve-anchor-width`.
 
-## Native UAT Rows (handed to the user — not claimed here)
+## Native UAT Rows — approved 2026-11-12
 
 1. Watercolor Select on a frame with brush, water, pen and eraser strokes: the sheet shows ONE tool dropdown (All tools, then Brush/Water/Pen, plus Eraser when the top bar admits lift rows) and no Paint | Eraser | All row; changing the tool still re-resolves the tip and narrows the rows.
 2. The sheet body shows List | Geometry | Stack, with List default; Geometry shows seed variation, Opacity (brush) and X/Y/Scale/Scale X/Scale Y/Rotation only; selecting one vector stroke adds Curve, and that tab shows Vertex size, Curve and Corner; Stack disappears without a reorder seam and Curve disappears without a single vector stroke — both land back on List.
@@ -250,7 +251,7 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- The four-tab sheet is automated-ready; the four native UAT rows above are the closing gate.
+- The four-tab sheet passed live UAT on 2026-11-12; the quick task is closed.
 - No dependency, CSS or Studio seam changed, so the Studio regression suite stays a valid guard for future stroke-settings work.
 
 ---
