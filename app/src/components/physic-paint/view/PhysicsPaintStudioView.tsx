@@ -1,7 +1,7 @@
 import type { ComponentChildren, ComponentProps, CSSProperties, TargetedPointerEvent } from 'preact';
 import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { ReadonlySignal, Signal } from '@preact/signals';
+import { signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { MemoizedPhysicsPaintCanvasMount } from '../engine/MemoizedPhysicsPaintCanvasMount';
@@ -37,6 +37,7 @@ import { AquarelleBrushCursor } from '../engine/AquarelleCanvasLayer';
 import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 import { MemoizedPhysicsPaintStrokeSettingsDialog } from './PhysicsPaintStrokeSettingsDialog';
 import type { StrokeSettingsDialogBundle } from './strokeSettingsModel';
+import { pathEditRebakeActive } from './vectorPathSession';
 import type { RotoRailConversionDialogBundle } from '../hooks/useRotoTimelineActions';
 import { clearScriptStrokeSelection, scriptSelectedStrokeIds } from './scriptStrokeEdition';
 import { shouldClearSelectionOnCanvasRegionPointerDown } from './scriptSelectionDeselect';
@@ -577,6 +578,10 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
               pattern). It previously rendered inside the workflow strip, whose
               overflow-y:hidden clipped it away: the pill never appeared. */}
           <PhysicsPaintApplyProgressPill rotoScript={workflow.rotoScript} />
+          {/* 261112-i6d: the path-edit re-bake veil — the canvas is genuinely
+              input-locked during the replay, so the wait is stated rather than
+              left to look like a dead click. */}
+          <PathEditRebakeVeil />
           {/* 261104-uyv: the floating zoom pill — a region sibling AFTER the
               clipping viewport and the apply pill, so it is never clipped and
               keeps its seat astride the canvas area. Same picker step-aside as
@@ -676,6 +681,60 @@ function PhysicsPaintApplyProgressPill({ rotoScript }: { rotoScript: PhysicsPain
         />
       </span>
       <span class="physics-paint-apply-progress-label">Applying {applyProgress.completed}/{applyProgress.total}</span>
+    </div>
+  );
+}
+
+/** A fast re-bake must not flash the veil; a slow one must not strobe on exit. */
+const PATH_EDIT_VEIL_DELAY_MS = 150;
+const PATH_EDIT_VEIL_MIN_MS = 350;
+
+/**
+ * 261112-i6d: the canvas veil for a path-edit re-bake. A path edit replays the
+ * WHOLE script and the engine locks its input for the duration, so the canvas
+ * is genuinely inert while it runs — the wait was real but invisible, and a
+ * second click read as a dead control. The veil states it.
+ *
+ * Timing lives here, not in the commit: the signal is the honest in-flight
+ * edge (opened by the rebake's own latch), and the delay/minimum are pure
+ * presentation. `shown` is a component-local signal so the animation never
+ * re-renders the Studio.
+ */
+function PathEditRebakeVeil() {
+  const active = pathEditRebakeActive.value;
+  const shown = useRef(signal(false)).current;
+  const shownAtRef = useRef(0);
+
+  useEffect(() => {
+    if (active) {
+      const timer = window.setTimeout(() => {
+        shownAtRef.current = performance.now();
+        shown.value = true;
+      }, PATH_EDIT_VEIL_DELAY_MS);
+      return () => window.clearTimeout(timer);
+    }
+    if (!shown.peek()) return undefined;
+    const remaining = Math.max(
+      0,
+      PATH_EDIT_VEIL_MIN_MS - (performance.now() - shownAtRef.current),
+    );
+    const timer = window.setTimeout(() => { shown.value = false; }, remaining);
+    return () => window.clearTimeout(timer);
+  }, [active, shown]);
+
+  if (!shown.value) return null;
+  return (
+    <div
+      class="physics-paint-rebake-veil"
+      data-testid="physics-paint-rebake-veil"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div class="physics-paint-rebake-card">
+        <span class="physics-paint-rebake-spinner" aria-hidden="true" />
+        <span class="physics-paint-rebake-label">Rendering…</span>
+      </div>
     </div>
   );
 }

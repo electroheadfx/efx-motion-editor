@@ -80,6 +80,20 @@ export function enterPathEdit(mutationId: string): void {
   disarmAquarellePicker();
 }
 
+/**
+ * 261112-i6d: the open path edit is re-baking the script. A path edit replays
+ * the WHOLE script, so the engine lock it takes is real but invisible — this
+ * flag is what the canvas veil renders. It is deliberately path-edit SCOPED:
+ * the shared script-edit latch also covers Script applies, which already carry
+ * their own progress pill, and a veil there would be a second story.
+ */
+export const pathEditRebakeActive = signal(false);
+
+/** Idempotent by construction (`writeIfChanged`) — a no-op transition never bumps. */
+export function setPathEditRebakeActive(active: boolean): void {
+  writeIfChanged(pathEditRebakeActive, active);
+}
+
 /** Start a draft from its first anchor; the cursor starts at that anchor. */
 export function beginVectorDraft(anchor: VectorDraftAnchor): void {
   vectorDrawDraft.value = {

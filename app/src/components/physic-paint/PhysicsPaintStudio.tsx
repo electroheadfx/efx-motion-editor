@@ -10291,8 +10291,17 @@ export function PhysicsPaintStudio() {
     setApplyStatus('applying');
     const ok = await runAquarelleScriptRebake({
       isInFlight: isAquarelleScriptEditInFlight,
-      beginInFlight: () => setAquarelleScriptEditInFlight(true),
-      endInFlight: () => setAquarelleScriptEditInFlight(false),
+      // The veil is bracketed by the rebake's OWN latch, never around the
+      // call: a refused (already in flight) rebake opens and closes nothing,
+      // so the canvas never flashes a blocker for work it did not start.
+      beginInFlight: () => {
+        setAquarelleScriptEditInFlight(true);
+        vectorPathSession.setPathEditRebakeActive(true);
+      },
+      endInFlight: () => {
+        setAquarelleScriptEditInFlight(false);
+        vectorPathSession.setPathEditRebakeActive(false);
+      },
       resetSheet: () => aquarelleResetSheetRef.current?.(),
       applyTimeline: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)),
       onSuccess: () => {

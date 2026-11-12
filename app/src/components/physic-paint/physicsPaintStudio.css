@@ -6411,6 +6411,60 @@ button.destructive {
   white-space: nowrap;
 }
 
+/* 261112-i6d: the path-edit re-bake veil. A path edit replays the WHOLE script
+   and the engine locks its input for the duration, so the canvas is genuinely
+   inert while it runs — this states why. It sits above the canvas stack and the
+   apply pill (z 60) but BELOW the floating sheets (z 70+), so the control the
+   user just pressed stays visible; the component itself is delayed 150 ms and
+   held 350 ms so a fast bake never flashes it. */
+.physics-paint-rebake-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 65;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 22, 25, 0.38);
+  cursor: progress;
+  animation: physics-paint-rebake-veil-in 120ms ease-out both;
+}
+
+.physics-paint-rebake-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(28, 30, 34, 0.92);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.physics-paint-rebake-spinner {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: #7fa1ff;
+  animation: physics-paint-rebake-spin 700ms linear infinite;
+}
+
+.physics-paint-rebake-label {
+  color: #d5dbe2;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@keyframes physics-paint-rebake-veil-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes physics-paint-rebake-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Mode segmented control — 3 equal segments on a recessed rail. */
 .physics-paint-photo-reference-mode {
   display: flex;
