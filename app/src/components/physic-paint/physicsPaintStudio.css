@@ -518,23 +518,31 @@ button.destructive {
   min-width: 140px;
 }
 
-/* quick-261112: Undo | Redo | Water lead the right settings cluster and render
-   for every tool, so they sit outside the tool-settings condition. */
+/* quick-261112: Undo | Redo | Flash-dry render for every tool and sit CENTERED
+   between the brush dropdown and the right settings — the auto margins split
+   the free space the settings leave behind. 38px matches the dropdown height. */
 .physics-paint-topbar-actions {
   display: flex;
   align-items: center;
   flex: 0 0 auto;
-  gap: 6px;
+  gap: 8px;
+  margin-inline: auto;
+}
+
+.physics-paint-topbar-actions .physics-paint-icon-button {
+  width: 38px;
+  height: 38px;
 }
 
 /* quick-261112: the tool settings keep their own query container, so the
-   leading action trio never eats into the optional-knob hide thresholds. */
+   action trio never eats into the optional-knob hide thresholds. They shrink
+   with the bar (never grow) — the free space is what centers the trio. */
 .physics-paint-topbar-settings {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   gap: 8px 10px;
   min-width: 0;
   container-type: inline-size;
@@ -893,14 +901,20 @@ button.destructive {
 }
 
 /* quick-261112: the top-bar mode switches stack the label above the toggle
-   (Script mode / Pixel mode, Edit) instead of sitting beside it. */
+   (Paint script / Paint raster, Edit) and center it over the toggle. */
 .physics-paint-topbar .physics-paint-script-switch {
   flex-direction: column-reverse;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   gap: 2px;
   height: auto;
   padding: 1px 2px;
+}
+
+/* The switch now opens the bar — the brush trigger's 15px separator does the
+   spacing, so the switch drops its own left inset. */
+.physics-paint-topbar-left > .physics-paint-script-switch {
+  margin-left: 0;
 }
 
 /* The dropdown is viewport-fixed: the top bar is an overflow-x scroller, so an

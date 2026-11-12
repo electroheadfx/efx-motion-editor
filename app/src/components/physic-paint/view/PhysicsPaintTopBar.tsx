@@ -162,7 +162,7 @@ export function ScriptRecordingSwitch() {
       <span class="physics-paint-script-switch-track" aria-hidden="true">
         <span class="physics-paint-script-switch-knob" />
       </span>
-      <span class="physics-paint-script-switch-label">{enabled ? 'Script mode' : 'Pixel mode'}</span>
+      <span class="physics-paint-script-switch-label">{enabled ? 'Paint script' : 'Paint raster'}</span>
     </button>
   );
 }
@@ -316,7 +316,6 @@ export function PhysicsPaintTopBar({
   onRedo,
 }: PhysicsPaintTopBarProps) {
   recordPhysicsPaintPerformanceCounter('render.topBar');
-  const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
   const statusTone = getPhysicsPaintEngineStatusTone({ ready });
   // Narrow signal reads: picking a brush or opening the dropdown re-renders
   // only this bar.
@@ -353,11 +352,17 @@ export function PhysicsPaintTopBar({
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
-      {/* Left slot: status pill + tool pill (261018-k1o / 261027-gh9g). */}
+      {/* Left slot: Paint script/raster switch + tool pill (261018-k1o /
+          261027-gh9g). quick-261112: the switch takes the retired "Engine
+          ready" pill's seat; a failed engine swaps it back for a status pill. */}
       <div class="physics-paint-topbar-left">
-        <div class="physics-paint-topbar-status" aria-live="polite">
-          <span class={`physics-paint-status-pill ${statusTone}`}>{statusCopy}</span>
-        </div>
+        {ready ? (
+          <ScriptRecordingSwitch />
+        ) : (
+          <div class="physics-paint-topbar-status" aria-live="polite">
+            <span class={`physics-paint-status-pill ${statusTone}`}>Engine fail</span>
+          </div>
+        )}
         {/* 261027-gh9g / 261029-hy2: the module switcher is gone from the
             Studio top bar — a single Water color mode. ONE pill for both
             tools: the Eraser tool shows its own icon + shape, every other
@@ -381,7 +386,6 @@ export function PhysicsPaintTopBar({
             disabled={disabled}
           />
         )}
-        <ScriptRecordingSwitch />
       </div>
 
       {/* Settings cluster: pinned to the right edge at every width.

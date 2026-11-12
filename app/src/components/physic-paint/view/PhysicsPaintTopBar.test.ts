@@ -217,19 +217,18 @@ describe('261027-gh9g top bar brush trigger + centered sliders', () => {
     const trigger = leftDesc.find(
       (n) => typeof (n as AnyVNode).props?.onToggle === 'function',
     ) as AnyVNode | undefined;
-    const isStatusPill = (n: unknown) => String((n as AnyVNode).props?.['class'] ?? '').includes('physics-paint-status-pill');
 
     expect(trigger, 'brush trigger seats in the left slot').toBeTruthy();
     // 261028-k03c D1: FILBERT is the new-Brush default (was the 261027-gh9f
     // dry CHALK stick).
     expect(trigger!.props?.presetId).toBe('filbert');
     expect(primaryDesc.some((n) => typeof (n as AnyVNode).props?.onToggle === 'function'), 'primary holds sliders only').toBe(false);
-    expect(leftDesc.some(isStatusPill), 'status pill stays in the left slot').toBe(true);
-
-    const pillIdx = leftDesc.findIndex(isStatusPill);
+    // quick-261112: the Paint script/raster switch takes the old Engine-ready
+    // pill's seat — it leads the left cluster.
+    const switchIdx = leftDesc.findIndex((n) => (n as AnyVNode).type === ScriptRecordingSwitch);
     const triggerIdx = leftDesc.findIndex((n) => typeof (n as AnyVNode).props?.onToggle === 'function');
-    expect(pillIdx, 'status pill renders ahead of the trigger').toBeGreaterThan(-1);
-    expect(triggerIdx, 'brush trigger follows the status pill').toBeGreaterThan(pillIdx);
+    expect(switchIdx, 'the switch leads the left slot').toBeGreaterThan(-1);
+    expect(triggerIdx, 'brush trigger follows the switch').toBeGreaterThan(switchIdx);
   });
 
   it('the trigger opens the dropdown with its own viewport anchor', () => {
@@ -263,9 +262,12 @@ describe('261027-gh9g top bar brush trigger + centered sliders', () => {
     expect(primaryStart).toBeGreaterThan(leftStart);
     expect(triggerAt, 'brush trigger follows the left-slot opening tag').toBeGreaterThan(leftStart);
     expect(triggerAt, 'brush trigger precedes the primary cluster').toBeLessThan(primaryStart);
+    // quick-261112: the switch/pill branch precedes the trigger in the left slot.
     const statusAt = body.indexOf('physics-paint-topbar-status', leftStart);
-    expect(statusAt, 'status pill precedes the trigger in the left slot').toBeGreaterThan(leftStart);
-    expect(triggerAt, 'brush trigger follows the status pill').toBeGreaterThan(statusAt);
+    const switchAt = body.indexOf('<ScriptRecordingSwitch />', leftStart);
+    expect(switchAt, 'the switch leads the left slot').toBeGreaterThan(leftStart);
+    expect(triggerAt, 'brush trigger follows the switch').toBeGreaterThan(switchAt);
+    expect(statusAt, 'the failure pill still seats in the left slot').toBeGreaterThan(leftStart);
   });
 
   it('keeps the seating CSS contract: 15px separator, larger thumb, one scrolling row', () => {
@@ -685,7 +687,7 @@ describe('261027-k6j Script switch', () => {
     return ScriptRecordingSwitch() as AnyVNode;
   }
 
-  it('seats right after the brush trigger in the left cluster', () => {
+  it('seats in the Engine-ready pill slot, ahead of the brush trigger', () => {
     const previousModule = activeModule.value;
     activeModule.value = 'watercolor';
     try {
@@ -701,10 +703,19 @@ describe('261027-k6j Script switch', () => {
       const switchIdx = leftDesc.findIndex((n) => (n as AnyVNode).type === ScriptRecordingSwitch);
       expect(triggerIdx, 'brush trigger seats in the left slot').toBeGreaterThan(-1);
       expect(switchIdx, 'Script switch seats in the left slot').toBeGreaterThan(-1);
-      expect(switchIdx, 'the switch follows the brush trigger').toBeGreaterThan(triggerIdx);
+      expect(switchIdx, 'the switch leads the brush trigger').toBeLessThan(triggerIdx);
     } finally {
       activeModule.value = previousModule;
     }
+  });
+
+  it('a failed engine replaces the switch with the Engine fail pill', () => {
+    const tree = renderTopBar({ ...baseTopBarProps(), ready: false });
+    const nodes = childrenOf(tree) as AnyVNode[];
+    expect(nodes.some((n) => n.type === ScriptRecordingSwitch), 'no switch without an engine').toBe(false);
+    const pill = nodes.find((n) => String(n.props?.['class'] ?? '').includes('physics-paint-status-pill'));
+    expect(pill, 'the failure pill renders').toBeDefined();
+    expect(pill!.props?.children).toBe('Engine fail');
   });
 
   it('renders a keyboard-operable role="switch" mirrored to the session signal', () => {
@@ -722,7 +733,7 @@ describe('261027-k6j Script switch', () => {
       const label = childrenOf(tree).find(
         (n) => (n as AnyVNode).props?.class === 'physics-paint-script-switch-label',
       ) as AnyVNode | undefined;
-      expect(label?.props?.children).toBe('Script mode');
+      expect(label?.props?.children).toBe('Paint script');
 
       setAquarelleScriptRecordingEnabled(false);
       const offTree = renderSwitch();
@@ -731,7 +742,7 @@ describe('261027-k6j Script switch', () => {
       const offLabel = childrenOf(offTree).find(
         (n) => (n as AnyVNode).props?.class === 'physics-paint-script-switch-label',
       ) as AnyVNode | undefined;
-      expect(offLabel?.props?.children).toBe('Pixel mode');
+      expect(offLabel?.props?.children).toBe('Paint raster');
 
       // Clicking flips through the setter, reading the signal at click time.
       (offTree.props?.onClick as () => void)();
@@ -764,10 +775,11 @@ describe('261027-k6j Script switch', () => {
     expect(onKnob).toContain('translateX(18px)');
     const label = getCssRuleBlock(styles, '.physics-paint-script-switch-label {');
     expect(label).toContain('font-size: 12px');
-    // quick-261112: in the top bar the label sits ABOVE the toggle (two rows).
+    // quick-261112: in the top bar the label sits ABOVE the toggle (two rows)
+    // and is centered over it.
     const stacked = getCssRuleBlock(styles, '.physics-paint-topbar .physics-paint-script-switch {');
     expect(stacked).toContain('flex-direction: column-reverse');
-    expect(stacked).toContain('align-items: flex-start');
+    expect(stacked).toContain('align-items: center');
   });
 });
 
@@ -993,6 +1005,17 @@ describe('quick-261112 top-bar action cluster', () => {
     expect(actionChildren[1]?.type).toBe(PhysicsPaintHistoryActionButton);
     expect(actionChildren[1]?.props?.item?.id).toBe('redo');
     expect(actionChildren[2]?.type).toBe(TopBarDryButton);
+  });
+
+  it('centers the trio between the dropdown and the settings at dropdown height', () => {
+    const styles = css();
+    const actions = getCssRuleBlock(styles, '.physics-paint-topbar-actions {');
+    expect(actions, 'auto margins split the free space the settings leave').toContain('margin-inline: auto');
+    const buttons = getCssRuleBlock(styles, '.physics-paint-topbar-actions .physics-paint-icon-button {');
+    expect(buttons, 'buttons match the brush dropdown height').toContain('height: 38px');
+    expect(buttons).toContain('width: 38px');
+    const settings = getCssRuleBlock(styles, '.physics-paint-topbar-settings {');
+    expect(settings, 'settings shrink with the bar, never grow').toContain('flex: 0 1 auto');
   });
 
   it('keeps Undo/Redo count-free and fires the routed action', () => {
