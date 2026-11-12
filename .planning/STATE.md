@@ -445,7 +445,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261112-lq4 | Stroke settings sheet redesign: four tabs (List default \| Geometry \| Stack \| Curve), Paint \| Eraser \| All row merged into the tool dropdown, Edit path and Preview stroke size moved into the Draft strip, cache caption removed, Vertex size / Curve / Corner moved to the Curve tab (UAT approved 2026-11-12) | 2026-11-12 | 82f9ae5cd | [261112-lq4-ui-stroke-vector-modal-redesign](./quick/261112-lq4-ui-stroke-vector-modal-redesign/) |
 | 29 | Hide Vertex size and Corner blocks in the Curve tab unless a vertex is selected (UAT approved 2026-11-12) | 2026-11-12 | 72a69dc94 | — |
 | 261112-n3f | Unify the stroke-size preview into one toggle (vertex-aware, off by default) and remove the vector envelope self-intersection lines (UAT approved, including follow-up 39007da12 restoring the committed sheet on leaving the surface) | 2026-11-12 | 8f5ae4c82 | [261112-n3f-unify-the-stroke-size-preview-into-one-t](./quick/261112-n3f-unify-the-stroke-size-preview-into-one-t/) |
-| 31 | Studio UI polish: Water tool + Undo/Redo moved to the top-bar action cluster, cache-load notice published as info (no stale red tone), right-sidebar tab scrollbars use the blue thumb, Script switch labels Script mode / Pixel mode | 2026-11-12 | be50196c1 | — |
+| 31 | Studio UI polish: Flash-dry + Undo/Redo moved to the top-bar action cluster (Water stays in the rail), cache-load notice published as info (no stale red tone), right-sidebar tab scrollbars use the blue thumb, Script/Edit switches stack label above toggle and read Script mode / Pixel mode | 2026-11-12 | 78e68d340 | — |
 
 ## Roadmap Evolution
 
