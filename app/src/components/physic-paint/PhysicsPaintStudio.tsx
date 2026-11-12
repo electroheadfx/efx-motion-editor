@@ -336,6 +336,7 @@ import {
 import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import { anchorsEqual } from '@efxlab/efx-watercolor/payload';
 import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import {
@@ -11714,6 +11715,13 @@ export function PhysicsPaintStudio() {
             vectorPathSession.vectorAnchorSelection.peek(),
             value,
           );
+          // quick 261112-i6d: the width sibling of the shipped colour CR-01
+          // no-op law (261112-hfk). An unchanged list exits the commit with the
+          // same null edit id as a refusal, so typing a value above the ceiling
+          // while the stored factor already sits on it would publish the false
+          // "Vertex size not applied" banner. Return BEFORE the commit; the
+          // genuine-refusal publication below stays byte-identical.
+          if (anchorsEqual(anchors, next)) return true;
           return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);
         },
         // 61-27 (IN-03): the sheet's ONE refusal channel. A commit the open

@@ -12,6 +12,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  ANCHOR_WIDTH_MAX,
   sampleVectorPath,
   toStudioStroke as aquarelleToStudioStroke,
   type AquarelleAnchor,
@@ -308,9 +309,13 @@ describe('61-10 aquarelle whole-stroke moves carry the vector path', () => {
     const timeline = [...getRecordedAquarellePayloadTimeline()];
 
     // Non-finite coordinate, empty list, out-of-range width, unknown id: all 0.
+    // quick 261112-i6d: the width probe reads the PACKAGE ceiling, so it stays
+    // above the (raised) bound instead of becoming a valid stored factor.
     expect(updateAquarellePathInScript(id, [{ x: Number.NaN, y: 0.5, kind: 'auto' }])).toBe(0);
     expect(updateAquarellePathInScript(id, [])).toBe(0);
-    expect(updateAquarellePathInScript(id, [{ x: 0.2, y: 0.4, kind: 'auto', width: 9 }])).toBe(0);
+    expect(
+      updateAquarellePathInScript(id, [{ x: 0.2, y: 0.4, kind: 'auto', width: ANCHOR_WIDTH_MAX + 1 }]),
+    ).toBe(0);
     expect(updateAquarellePathInScript(999999, PATH)).toBe(0);
 
     expect(aquarelleStrokesRevision.value).toBe(revision);

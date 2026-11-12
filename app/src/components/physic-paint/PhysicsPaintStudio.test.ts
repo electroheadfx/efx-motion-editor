@@ -6868,6 +6868,38 @@ describe('61-11 Anchor width bundle wiring in the Studio', () => {
       "import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';",
     );
   });
+
+  // quick 261112-i6d: the width sibling of the shipped colour CR-01 no-op law.
+  // An unchanged list exits the commit with the same null edit id as a refusal
+  // (the commit's anchorsEqual early return), so the no-op must be decided
+  // BEFORE the commit — otherwise a clamped repeat publishes the false
+  // "Vertex size not applied" banner.
+  it('skips an unchanged width before committing (261112-i6d width no-op)', () => {
+    const bundle = bundleRegion();
+    const widthAt = bundle.indexOf('applyAnchorWidths: (ids, value) => {');
+    expect(widthAt, 'missing the width member').toBeGreaterThan(-1);
+    const region = bundle.slice(widthAt, bundle.indexOf('reorderStroke:', widthAt));
+    const buildAt = region.indexOf('const next = buildAnchorWidthCommit(');
+    const guardAt = region.indexOf('anchorsEqual(anchors, next)');
+    const commitAt = region.indexOf('commitAquarelleVectorPathEdit(');
+    expect(buildAt, 'missing the build marker').toBeGreaterThan(-1);
+    expect(guardAt, 'missing the no-op guard').toBeGreaterThan(-1);
+    expect(commitAt, 'missing the commit marker').toBeGreaterThan(-1);
+    expect(guardAt).toBeGreaterThan(buildAt);
+    expect(guardAt).toBeLessThan(commitAt);
+    // ONE guard, never a second.
+    expect(region.split('anchorsEqual(anchors, next)').length - 1).toBe(1);
+    // The genuine-refusal contract is untouched: the same commit tail still
+    // resolves false for a refused or in-flight edit.
+    expect(region).toContain(
+      'return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);',
+    );
+    // The verbatim payload import pinned above stays byte-identical; the
+    // guard's predicate rides its OWN same-module line beside it.
+    expect(studio).toContain("import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';");
+    expect(studio.split("import { anchorsEqual } from '@efxlab/efx-watercolor/payload';").length - 1)
+      .toBe(1);
+  });
 });
 
 // 261111-wd6: the Color tab writes an explicit per-vertex colour to the LIVE
