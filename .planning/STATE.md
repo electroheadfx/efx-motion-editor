@@ -6,10 +6,10 @@ current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: planning
 stopped_at: Phase 61 complete, ready to plan Phase 62
-last_updated: "2026-11-12T11:39:25.644Z"
+last_updated: "2026-11-12T12:59:35.729Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 61 complete, transitioned to Phase 62
-state_head: 749d79dec7ee6fabb538f6d236ac13c4257929cb
+state_head: bc42217f84a2dbd9598799ed5c965a0e69939e74
 progress:
   total_phases: 4
   completed_phases: 3
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 Phase: 62 — Painted-Stroke Curve Editing
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-12 - Completed quick task 261112-hfk: Fix CR-01 (unchanged per-vertex colour published a false refusal banner)
+Last activity: 2026-11-12 - Completed quick task 261112-i6d: Vector edit enhancements (double-click entry, Alt+click tangent break, vertex size x10, orange selection) — live UAT pending
 
 Progress: [████████░░] 75%
 
@@ -440,6 +440,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261111-vg4 | Remove the Stroke Settings Paint tab — dialog is Geometry \| Stack only; Curve row and Anchor width mount moved into Geometry; per-stroke paint editing lives in the sidebar/top bar (UAT approved 2026-11-11) | 2026-11-11 | 828b58f48 | [261111-vg4-remove-the-stroke-settings-paint-tab](./quick/261111-vg4-remove-the-stroke-settings-paint-tab/) |
 | 261111-wd6 | Per-vertex colour on vector anchors (sparse, explicit); per-vertex size stays the Anchor width factor, relabelled Vertex size; engine per-sample pigment + AQTL bit 3 (UAT approved 2026-11-12) | 2026-11-12 | 0dbd47e96 | [261111-wd6-per-vertex-color-and-size](./quick/261111-wd6-per-vertex-color-and-size/) |
 | 261112-hfk | Fix CR-01 (Phase 61 review): an unchanged per-vertex colour commit publishes a false refused banner; a no-op now returns before the path-edit commit and publishes nothing, genuine refusals still publish (pure predicate + wiring pins) (UAT approved 2026-11-12) | 2026-11-12 | 749d79dec | [261112-hfk-fix-cr-01-from-planning-phases-61-vector](./quick/261112-hfk-fix-cr-01-from-planning-phases-61-vector/) |
+| 261112-i6d | Vector edit enhancements: double-click a vector stroke enters the path edit; Alt+click a vertex breaks its tangent into a straight corner in vector and spline modes; Vertex size track to x10 with free entry to x20; orange glow/halo selected-vertex chrome (live UAT pending) | 2026-11-12 | bc42217f8 | [261112-i6d-vector-enhancement-double-click-stroke-t](./quick/261112-i6d-vector-enhancement-double-click-stroke-t/) |
 
 ## Roadmap Evolution
 
