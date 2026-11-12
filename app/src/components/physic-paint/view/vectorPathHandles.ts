@@ -30,14 +30,16 @@ import {
   DEFAULT_AQUARELLE_CURVE_MODE,
   clampAnchorWidth,
   evaluateAquarellePath,
-  isCornerAnchor,
   isUniformWidthProfile,
   normaliseAnchorColor,
   normaliseVectorAnchors,
+  readAnchorCornerState,
   recordedCurveModeField,
   resolveAnchorHandles,
   resolveCurveAnchors,
   sampleVectorWidths,
+  withAnchorCornerState,
+  type AnchorCornerState,
   type AquarelleCurveMode,
   type AquarelleStroke,
   type AquarelleTool,
@@ -472,33 +474,54 @@ export function moveHandleTo(
 }
 
 /**
- * 261112-i6d — Alt+click on a vertex: write the ONE straight-corner shape,
- * a `bezier` anchor with both handles exactly on the point. This is a tangent
- * break, never a second anchor model: under Spline `resolveCurveAnchors` keeps
- * a corner verbatim while smoothing every other anchor, so the SAME write
- * yields a sharp angle in BOTH curve modes; under Bézier the stored handles
- * collapse onto the anchor. Spreading the anchor preserves `width` and
- * `color`, and every other anchor stays reference-identical.
+ * The pure half of a corner commit (261112-i6d): write the requested corner
+ * state on every listed anchor in one pass and leave every other anchor
+ * reference-identical. The shape itself comes from the package's
+ * `withAnchorCornerState` — under Spline `resolveCurveAnchors` keeps a
+ * straight corner verbatim while smoothing every other anchor, so the SAME
+ * write yields a sharp angle in BOTH curve modes; under Bézier the stored
+ * handles collapse onto the anchor. `width` and `color` survive both branches.
  *
- * A no-op (invalid index, absent anchor, already a corner) returns the INPUT
- * reference — the caller's identity check is the whole commit decision. This
- * never touches the per-drag Alt decoupling inside `moveHandleTo`.
+ * A list whose every listed anchor already holds the requested state returns
+ * the INPUT reference — the caller's identity check is the whole no-op
+ * decision, and the caller drives the result through ONE edit wrapper.
  */
-export function breakAnchorTangent(
+export function buildAnchorCornerCommit(
+  anchors: readonly VectorAnchor[],
+  indices: readonly number[],
+  state: AnchorCornerState,
+): readonly VectorAnchor[] {
+  const targets = new Set(
+    normaliseAnchorSelection(indices).filter((index) => index < anchors.length),
+  );
+  let changed = false;
+  const next = anchors.map((anchor, index) => {
+    if (!targets.has(index)) return anchor;
+    const written = withAnchorCornerState(anchor, state);
+    if (written !== anchor) changed = true;
+    return written;
+  });
+  return changed ? next : anchors;
+}
+
+/**
+ * 261112-i6d — Alt+click on a vertex TOGGLES the corner state: a curved vertex
+ * becomes a straight corner, a straight corner returns to the derived-smooth
+ * round shape. One law for both curve modes, never a second anchor model.
+ *
+ * An invalid index or an absent anchor returns the INPUT reference — the
+ * caller's identity check is the whole commit decision. This never touches
+ * the per-drag Alt decoupling inside `moveHandleTo`.
+ */
+export function toggleAnchorCorner(
   anchors: readonly VectorAnchor[],
   index: number,
 ): readonly VectorAnchor[] {
   if (!Number.isInteger(index) || index < 0 || index >= anchors.length) return anchors;
   const anchor = anchors[index];
-  if (anchor === undefined || isCornerAnchor(anchor)) return anchors;
-  const next = [...anchors];
-  next[index] = {
-    ...anchor,
-    kind: 'bezier',
-    in: { x: anchor.x, y: anchor.y },
-    out: { x: anchor.x, y: anchor.y },
-  };
-  return next;
+  if (anchor === undefined) return anchors;
+  const next: AnchorCornerState = readAnchorCornerState(anchor) === 'straight' ? 'round' : 'straight';
+  return buildAnchorCornerCommit(anchors, [index], next);
 }
 
 // --- Insert on a segment (61-10 Task 2) -----------------------------------

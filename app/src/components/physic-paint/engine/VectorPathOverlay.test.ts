@@ -2417,7 +2417,7 @@ describe('261112-i6d — double-click a vector stroke to enter the path edit', (
 // no drag state and no pointer capture. Alt on a HANDLE dot keeps the shipped
 // handle drag (whose per-move Alt breaks the coupling), so the new branch must
 // sit below the handle branch.
-describe('261112-i6d — Alt+click a vertex breaks the tangent', () => {
+describe('261112-i6d — Alt+click a vertex toggles its corner', () => {
   const EDIT_ID = 98001;
 
   function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
@@ -2495,7 +2495,7 @@ describe('261112-i6d — Alt+click a vertex breaks the tangent', () => {
     expect(vectorPathEditDrag.peek()).toBeNull();
   });
 
-  it('commits nothing on an already-corner vertex but still selects it', () => {
+  it('toggles an already-corner vertex back to the round shape and still selects it', () => {
     const cornerAnchors: readonly VectorAnchor[] = [
       auto(0.2, 0.5),
       { x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 0.5, y: 0.5 } },
@@ -2506,7 +2506,12 @@ describe('261112-i6d — Alt+click a vertex breaks the tangent', () => {
     const root = renderEdit(stroke, onPathEdit);
     press(root, clickAt(0.5, 0.5, { altKey: true }));
 
-    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, next] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(next[1]).toEqual({ x: 0.5, y: 0.5, kind: 'auto' });
+    expect(next[0]).toEqual(cornerAnchors[0]);
+    expect(next[2]).toEqual(cornerAnchors[2]);
     expect(vectorAnchorSelection.peek()).toEqual([1]);
     expect(vectorPathEditDrag.peek()).toBeNull();
   });

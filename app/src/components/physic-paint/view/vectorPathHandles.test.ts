@@ -36,8 +36,8 @@ import {
   HANDLE_BODY_PX,
   VECTOR_PAINT_SAMPLE_STEP_UV,
   anchorColorCommitIsNoOp,
-  breakAnchorTangent,
   buildAnchorColorCommit,
+  buildAnchorCornerCommit,
   buildAnchorWidthCommit,
   buildDraftPath,
   buildVectorStroke,
@@ -55,6 +55,7 @@ import {
   screenPadToUv,
   screenToUv,
   selectAnchor,
+  toggleAnchorCorner,
   uvToScreen,
   vectorSpinePressures,
   type VectorPathCommit,
@@ -327,14 +328,15 @@ describe('moveHandleTo — coupling and the break modifier (61-10 task 2)', () =
   });
 });
 
-// 261112-i6d: Alt+click on a vertex — ONE straight-corner write that BOTH
-// curve modes honour (Spline preserves it verbatim through `resolveCurveAnchors`,
-// Bézier collapses the stored handles onto the anchor). Returning the input
-// reference is the no-op signal the caller tests by identity.
-describe('breakAnchorTangent — the one straight-corner write (261112-i6d)', () => {
+// 261112-i6d: Alt+click on a vertex — ONE corner law BOTH curve modes honour
+// (Spline preserves a straight corner verbatim through `resolveCurveAnchors`,
+// Bézier collapses the stored handles onto the anchor), and the SAME law runs
+// backwards: a corner returns to the derived-smooth round shape. Returning the
+// input reference is the no-op signal the caller tests by identity.
+describe('toggleAnchorCorner — the one corner toggle (261112-i6d)', () => {
   it('turns an auto anchor into a bezier corner with both handles on the point', () => {
     const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
-    const next = breakAnchorTangent(anchors, 1);
+    const next = toggleAnchorCorner(anchors, 1);
 
     expect(next).not.toBe(anchors);
     expect(next).toHaveLength(3);
@@ -352,7 +354,7 @@ describe('breakAnchorTangent — the one straight-corner write (261112-i6d)', ()
       bezier(0.5, 0.5, { x: 0.35, y: 0.2 }, { x: 0.7, y: 0.8 }),
       auto(0.8, 0.5),
     ];
-    const next = breakAnchorTangent(anchors, 1);
+    const next = toggleAnchorCorner(anchors, 1);
 
     expect(next[1]!.kind).toBe('bezier');
     expect(next[1]!.in).toEqual({ x: 0.5, y: 0.5 });
@@ -364,7 +366,7 @@ describe('breakAnchorTangent — the one straight-corner write (261112-i6d)', ()
   it('preserves width and per-vertex colour, carrying the neighbours by reference', () => {
     const shaped: VectorAnchor = { ...auto(0.5, 0.5), width: 1.8, color: '#ff0000' };
     const anchors = [auto(0.2, 0.5), shaped, auto(0.8, 0.5)];
-    const next = breakAnchorTangent(anchors, 1);
+    const next = toggleAnchorCorner(anchors, 1);
 
     expect(next[1]!.width).toBe(1.8);
     expect(next[1]!.color).toBe('#ff0000');
@@ -375,20 +377,59 @@ describe('breakAnchorTangent — the one straight-corner write (261112-i6d)', ()
     expect(shaped.kind).toBe('auto');
   });
 
-  it('returns the input reference for an already-corner anchor and invalid indices', () => {
+  it('toggles a straight corner back to the derived round shape', () => {
+    const corner: VectorAnchor = {
+      x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 0.5, y: 0.5 },
+    };
+    const anchors = [auto(0.2, 0.5), corner, auto(0.8, 0.5)];
+    const next = toggleAnchorCorner(anchors, 1);
+
+    expect(next).not.toBe(anchors);
+    expect(next[1]).toEqual({ x: 0.5, y: 0.5, kind: 'auto' });
+    expect(next[1]!.in).toBeUndefined();
+    expect(next[1]!.out).toBeUndefined();
+    expect(next[0]).toBe(anchors[0]);
+    expect(next[2]).toBe(anchors[2]);
+    // The authored corner is never mutated.
+    expect(corner.kind).toBe('bezier');
+    expect(corner.in).toEqual({ x: 0.5, y: 0.5 });
+  });
+
+  it('keeps width and per-vertex colour when returning to round', () => {
+    const corner: VectorAnchor = {
+      x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 0.5, y: 0.5 },
+      width: 1.8, color: '#ff0000',
+    };
+    const next = toggleAnchorCorner([auto(0.2, 0.5), corner], 1);
+
+    expect(next[1]!.kind).toBe('auto');
+    expect(next[1]!.width).toBe(1.8);
+    expect(next[1]!.color).toBe('#ff0000');
+  });
+
+  it('round-trips: corner then round returns to the auto anchor', () => {
+    const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
+    const corner = toggleAnchorCorner(anchors, 1);
+    const round = toggleAnchorCorner(corner, 1);
+
+    expect(round[1]).toEqual({ x: 0.5, y: 0.5, kind: 'auto' });
+    expect(round[0]).toBe(anchors[0]);
+    expect(round[2]).toBe(anchors[2]);
+  });
+
+  it('returns the input reference for invalid indices', () => {
     const corner: VectorAnchor = {
       x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 0.5, y: 0.5 },
     };
     const anchors = [auto(0.2, 0.5), corner];
-    expect(breakAnchorTangent(anchors, 1)).toBe(anchors);
-    expect(breakAnchorTangent(anchors, -1)).toBe(anchors);
-    expect(breakAnchorTangent(anchors, 1.5)).toBe(anchors);
-    expect(breakAnchorTangent(anchors, 99)).toBe(anchors);
+    expect(toggleAnchorCorner(anchors, -1)).toBe(anchors);
+    expect(toggleAnchorCorner(anchors, 1.5)).toBe(anchors);
+    expect(toggleAnchorCorner(anchors, 99)).toBe(anchors);
   });
 
   it('survives Spline evaluation: the corner keeps its bezier identity and handles', () => {
     const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
-    const spline = resolveCurveAnchors(breakAnchorTangent(anchors, 1), 'spline');
+    const spline = resolveCurveAnchors(toggleAnchorCorner(anchors, 1), 'spline');
 
     // The corner is the ONE anchor the spline does not smooth away.
     expect(spline[1]!.kind).toBe('bezier');
@@ -397,6 +438,40 @@ describe('breakAnchorTangent — the one straight-corner write (261112-i6d)', ()
     // Positive control: its neighbours ARE smoothed by the same evaluation.
     expect(spline[0]!.kind).toBe('auto');
     expect(spline[2]!.kind).toBe('auto');
+  });
+});
+
+// 261112-i6d: the Corner row is a SETTER, never a toggle — it writes the state
+// the user pressed on every selected anchor, and an already-satisfied list
+// returns the INPUT reference so the commit short-circuits exactly like the
+// width and colour commits.
+describe('buildAnchorCornerCommit — the Corner row setter (261112-i6d)', () => {
+  it('writes the requested state on every selected anchor in one pass', () => {
+    const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
+    const next = buildAnchorCornerCommit(anchors, [0, 2], 'straight');
+
+    expect(next[0]!.kind).toBe('bezier');
+    expect(next[0]!.in).toEqual({ x: 0.2, y: 0.5 });
+    expect(next[0]!.out).toEqual({ x: 0.2, y: 0.5 });
+    expect(next[2]!.kind).toBe('bezier');
+    expect(next[2]!.in).toEqual({ x: 0.8, y: 0.5 });
+    // An unlisted anchor stays reference-identical.
+    expect(next[1]).toBe(anchors[1]);
+  });
+
+  it('returns the input reference when every selected anchor already holds the state', () => {
+    const anchors = [auto(0.2, 0.5), auto(0.5, 0.5)];
+    expect(buildAnchorCornerCommit(anchors, [0, 1], 'round')).toBe(anchors);
+
+    const corners = buildAnchorCornerCommit(anchors, [1], 'straight');
+    expect(buildAnchorCornerCommit(corners, [1], 'straight')).toBe(corners);
+    expect(buildAnchorCornerCommit(corners, [1], 'round')[1]).toEqual({ x: 0.5, y: 0.5, kind: 'auto' });
+  });
+
+  it('ignores out-of-range and negative indices', () => {
+    const anchors = [auto(0.2, 0.5)];
+    expect(buildAnchorCornerCommit(anchors, [5, -1], 'straight')).toBe(anchors);
+    expect(buildAnchorCornerCommit(anchors, [], 'straight')).toBe(anchors);
   });
 });
 

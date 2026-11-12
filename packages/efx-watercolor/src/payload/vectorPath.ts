@@ -130,6 +130,45 @@ export function isCornerAnchor(anchor: VectorAnchor): boolean {
 }
 
 /**
+ * The two corner states one vertex can hold (261112-i6d). `straight` is the
+ * placed-corner shape both modes honour; `round` is the derived-smooth shape
+ * the spine owns. Reading is deliberately the SIMPLE question — "is this a
+ * corner?" — so a stored handle that the mode smooths away still reads round.
+ */
+export type AnchorCornerState = 'round' | 'straight';
+
+/** The corner state of one anchor; the ONE reader both surfaces share. */
+export function readAnchorCornerState(anchor: VectorAnchor): AnchorCornerState {
+  return isCornerAnchor(anchor) ? 'straight' : 'round';
+}
+
+/**
+ * The canonical anchor for one corner state. `straight` collapses both handles
+ * onto the point; `round` drops to the derived-auto shape so the spine derives
+ * the tangent again (a stored handle in either mode would otherwise keep a
+ * kink the user asked to remove). Paint survives both branches. An anchor
+ * already holding the requested shape is returned by REFERENCE, so a caller's
+ * identity check is the whole no-op decision.
+ */
+export function withAnchorCornerState(
+  anchor: VectorAnchor,
+  state: AnchorCornerState,
+): VectorAnchor {
+  if (state === 'straight') {
+    if (isCornerAnchor(anchor)) return anchor;
+    return {
+      ...anchor,
+      kind: 'bezier',
+      in: { x: anchor.x, y: anchor.y },
+      out: { x: anchor.x, y: anchor.y },
+    };
+  }
+  if (anchor.kind === 'auto' && anchor.in === undefined && anchor.out === undefined) return anchor;
+  const { in: _in, out: _out, ...rest } = anchor;
+  return { ...rest, kind: 'auto' };
+}
+
+/**
  * The evaluation VIEW of an anchor list (G-20). `bezier` returns the list
  * untouched; `spline` turns every anchor into the derived-smooth view EXCEPT
  * a placed corner, which keeps its identity so a sharp angle survives the

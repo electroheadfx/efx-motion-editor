@@ -61,7 +61,6 @@ import {
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
   VECTOR_ENVELOPE_BASE_UV,
-  breakAnchorTangent,
   buildDraftPath,
   deleteAnchorsAt,
   hitTestVectorPath,
@@ -74,6 +73,7 @@ import {
   promoteAnchorForDrag,
   screenToUv,
   selectAnchor,
+  toggleAnchorCorner,
   uvToScreen,
   type VectorPathCommit,
   type VectorPathProjection,
@@ -1094,18 +1094,20 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       setVectorAnchorSelection(
         selectAnchor(vectorAnchorSelection.peek(), target.index, additive),
       );
-      // 261112-i6d: Alt+click breaks the tangent into the ONE corner shape —
-      // in BOTH curve modes (under Spline `resolveCurveAnchors` preserves it).
-      // The branch sits AFTER the selection write (a click always selects that
-      // vertex, even when the write is a no-op) and BEFORE `promoteAnchorForDrag`,
-      // so no drag state exists and no pointer is captured: a click is a
-      // completed gesture, exactly like the spine-insert branch below. The
-      // handle branch above keeps its priority, so Alt on a handle dot still
-      // starts the shipped handle drag whose PER-MOVE Alt breaks the coupling.
-      // Alt is structurally safe here: the colour picker cannot arm during an
-      // open path edit and the Studio's pick handler is inert in Select mode.
+      // 261112-i6d: Alt+click TOGGLES the vertex between the one straight-
+      // corner shape and the derived-smooth round shape — in BOTH curve modes
+      // (under Spline `resolveCurveAnchors` preserves a corner, and a round
+      // anchor is smoothed by the same evaluation). The branch sits AFTER the
+      // selection write (a click always selects that vertex, even when the
+      // write is a no-op) and BEFORE `promoteAnchorForDrag`, so no drag state
+      // exists and no pointer is captured: a click is a completed gesture,
+      // exactly like the spine-insert branch below. The handle branch above
+      // keeps its priority, so Alt on a handle dot still starts the shipped
+      // handle drag whose PER-MOVE Alt breaks the coupling. Alt is structurally
+      // safe here: the colour picker cannot arm during an open path edit and
+      // the Studio's pick handler is inert in Select mode.
       if (event.altKey) {
-        const next = breakAnchorTangent(editTargetAnchors, target.index);
+        const next = toggleAnchorCorner(editTargetAnchors, target.index);
         if (next !== editTargetAnchors) props.onPathEdit(editTargetMutationId, next);
         return;
       }
