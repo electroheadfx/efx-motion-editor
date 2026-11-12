@@ -1,7 +1,7 @@
 import type { TargetedMouseEvent } from 'preact';
 import type { ReadonlySignal } from '@preact/signals';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
-import { ChevronDown, Eraser, Paintbrush, Wind } from 'lucide-preact';
+import { ChevronDown, Eraser, Paintbrush, RefreshCcwDot, Wind } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
@@ -86,6 +86,10 @@ export interface PhysicsPaintTopBarProps {
   historyAvailability: ReadonlySignal<PaintHistoryAvailability>;
   onUndo: () => void;
   onRedo: () => void;
+  /** quick-261112: re-render moved up from the left rail — frame-scoped
+   *  availability, read in the button leaf. */
+  rebakeAvailable: ReadonlySignal<boolean>;
+  onRebakeScript: () => void;
 }
 
 /**
@@ -245,6 +249,38 @@ function TopBarSlider(props: {
 }
 
 /**
+ * quick-261112: re-render moved from the left rail into the centered action
+ * cluster (before Undo). The frame-scoped availability is read in this leaf.
+ */
+export function TopBarRebakeButton({
+  disabled,
+  rebakeAvailable,
+  onRebakeScript,
+}: {
+  disabled: boolean;
+  rebakeAvailable: ReadonlySignal<boolean>;
+  onRebakeScript: () => void;
+}) {
+  const available = rebakeAvailable.value;
+  const railDisabled = disabled || wireframeSettleInFlight.value;
+  return (
+    <button
+      type="button"
+      class="physics-paint-icon-button"
+      data-testid="aquarelle-rebake-script"
+      disabled={railDisabled || !available}
+      title={available
+        ? 'Re-render this frame from its script (Shift+R)'
+        : 'Re-render (Shift+R) — this frame has no paint script'}
+      aria-label="Re-render from script"
+      onClick={onRebakeScript}
+    >
+      <RefreshCcwDot size={18} />
+    </button>
+  );
+}
+
+/**
  * quick-261112: the Flash-dry action moved from the left rail to the head of
  * the top-bar settings cluster, before the sliders. The wireframe gate and
  * copy are the rail's shipped ones — only the seat changed. The wireframe
@@ -313,6 +349,8 @@ export function PhysicsPaintTopBar({
   historyAvailability,
   onUndo,
   onRedo,
+  rebakeAvailable,
+  onRebakeScript,
 }: PhysicsPaintTopBarProps) {
   recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusTone = getPhysicsPaintEngineStatusTone({ ready });
@@ -408,6 +446,11 @@ export function PhysicsPaintTopBar({
           own controls — Size + Eraser strength (eraser icon) + Edit. */}
       <div class="physics-paint-topbar-primary">
         <div class="physics-paint-topbar-actions" data-testid="physics-topbar-actions">
+          <TopBarRebakeButton
+            disabled={disabled}
+            rebakeAvailable={rebakeAvailable}
+            onRebakeScript={onRebakeScript}
+          />
           <PhysicsPaintHistoryActionButton
             item={TOP_BAR_HISTORY_ITEMS[0]}
             historyAvailability={historyAvailability}

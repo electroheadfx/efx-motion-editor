@@ -7159,7 +7159,7 @@ export function PhysicsPaintStudio() {
   const handleOpacityChange = useCallback((value: number) => {
     setAquarelleParam('load', value);
   }, []);
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange, watercolorMoveAvailable, historyAvailability, undo, redo], () => ({
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange, watercolorMoveAvailable, historyAvailability, undo, redo, rebakeScriptAvailable, handleRebakeScript], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
     ready: readyToApply,
@@ -7175,11 +7175,13 @@ export function PhysicsPaintStudio() {
     // 261029-eur: the Eraser Edit switch's enable gate (current edit frame).
     // Signal object passed by IDENTITY — the top-bar leaf reads `.value`.
     moveAvailable: watercolorMoveAvailable,
-    // quick-261112: Undo/Redo left the rail for the top-bar action cluster.
-    // Same handlers, same narrow availability subscriber.
+    // quick-261112: Undo/Redo and re-render left the rail for the top-bar
+    // action cluster. Same handlers, same narrow availability subscribers.
     historyAvailability,
     onUndo: undo,
     onRedo: redo,
+    rebakeAvailable: rebakeScriptAvailable,
+    onRebakeScript: () => { void handleRebakeScript(); },
   }));
   // 261107 UAT: the left-rail Motion boundaries tool. Turning it ON deploys
   // the selected rail's motion block and re-selects the last animated
@@ -7245,12 +7247,10 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([staticControlsLocked, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, rebakeScriptAvailable, handleRebakeScript, handleToggleMotionBoundaries, handleToggleWireframe], () => ({
+  const toolRail = toolRailPropsMemo.resolve([staticControlsLocked, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, handleToggleMotionBoundaries, handleToggleWireframe], () => ({
     selectAvailable: watercolorMoveAvailable,
-    rebakeAvailable: rebakeScriptAvailable,
     disabled: staticControlsLocked,
     onClearFrame: clearActiveSource,
-    onRebakeScript: () => { void handleRebakeScript(); },
     onActiveColorChanged: handleActiveColorChanged,
     onToggleMotionBoundaries: handleToggleMotionBoundaries,
     onToggleWireframe: handleToggleWireframe,

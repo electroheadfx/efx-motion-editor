@@ -1,6 +1,6 @@
 import { memo } from 'preact/compat';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, VectorSquare } from 'lucide-preact';
+import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, Scan, VectorSquare } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
@@ -19,7 +19,7 @@ import { exitPathEdit, exitVectorPen, toggleVectorPen, vectorPenActive } from '.
 import { wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
-export type PhysicsPaintRailAction = 'clear-frame' | 'rebake-script';
+export type PhysicsPaintRailAction = 'clear-frame';
 
 export interface PhysicsPaintToolRailItem {
   id: PhysicsPaintRailAction;
@@ -40,12 +40,6 @@ export interface PhysicsPaintToolRailItem {
  */
 export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
   { id: 'clear-frame', label: 'Clear current Roto frame', icon: clearCanvasIcon, kind: 'action' },
-  {
-    id: 'rebake-script',
-    label: 'Re-render this frame from its script',
-    tooltip: 'Re-render this frame from its script (Shift+R)',
-    kind: 'action',
-  },
 ];
 
 /**
@@ -75,9 +69,7 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
 export function WatercolorRail({
   disabled,
   selectAvailable,
-  rebakeAvailable,
   onClearFrame,
-  onRebakeScript,
   onActiveColorChanged,
   onToggleMotionBoundaries,
   onToggleWireframe,
@@ -85,10 +77,7 @@ export function WatercolorRail({
   disabled: boolean;
   /** Frame-scoped: the current key must own a Water color script. */
   selectAvailable: ReadonlySignal<boolean>;
-  /** 261029-lsr: the force-re-render escape hatch — paint script on this frame. */
-  rebakeAvailable: ReadonlySignal<boolean>;
   onClearFrame: () => void;
-  onRebakeScript: () => void;
   onActiveColorChanged?: (color: string) => void;
   /** 261107: deploy the motion lane + re-select the last animated property. */
   onToggleMotionBoundaries: () => void;
@@ -121,7 +110,6 @@ export function WatercolorRail({
   const wireframeActive = wireframeMode.value;
   const railDisabled = disabled || wireframeSettleInFlight.value;
   const clearItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'clear-frame')!;
-  const rebakeItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'rebake-script')!;
   return (
     <nav class="physics-paint-tool-rail" aria-label="Water color tools">
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {
@@ -255,21 +243,8 @@ export function WatercolorRail({
       >
         <VectorSquare size={18} />
       </button>
-      {/* 261018-cy1 / quick-261112: Undo/Redo and Flash-dry moved to the
-          top-bar action cluster; Trash stays the rail's clear-frame action. */}
-      <button
-        type="button"
-        class="physics-paint-icon-button"
-        data-testid="aquarelle-rebake-script"
-        disabled={railDisabled || !rebakeAvailable.value}
-        title={rebakeAvailable.value
-          ? `${rebakeItem.label} (Shift+R)`
-          : 'Re-render (Shift+R) — this frame has no paint script'}
-        aria-label="Re-render from script"
-        onClick={onRebakeScript}
-      >
-        <RefreshCcwDot size={18} />
-      </button>
+      {/* 261018-cy1 / quick-261112: Undo/Redo, Flash-dry and re-render moved
+          to the top-bar action cluster; Trash stays the rail's clear action. */}
       <button
         type="button"
         class="physics-paint-icon-button"
@@ -290,12 +265,8 @@ export function WatercolorRail({
 export interface PhysicsPaintToolRailProps {
   /** quick-261026-odd — gates Water color Select; the current key must own a script. */
   selectAvailable: ReadonlySignal<boolean>;
-  /** 261029-lsr: force-re-render enablement — the frame must own a paint script. */
-  rebakeAvailable: ReadonlySignal<boolean>;
   disabled?: boolean;
   onClearFrame: () => void;
-  /** 261029-lsr: reset the sheet and replay the frame's script (escape hatch). */
-  onRebakeScript: () => void;
   /** Fired after a swatch swap/promote with the new foreground hex so the engine color follows. */
   onActiveColorChanged?: (color: string) => void;
   /** 261107: deploy the motion lane + re-select the last animated property. */
@@ -307,28 +278,24 @@ export interface PhysicsPaintToolRailProps {
 // 38-11: the rail is wrapped in preact/compat memo — a startFrame-only Studio
 // render feeds referentially stable props (38-11 identity memo in the Studio),
 // the default shallow compare returns equal, and Preact skips this subtree.
-// quick-261112: Undo/Redo left for the top-bar action cluster — the rail keeps
-// only the history-free clear/re-bake actions.
+// quick-261112: Undo/Redo, re-render and Flash-dry left for the top-bar action
+// cluster — the rail keeps tools, the latches and the clear action.
 function PhysicsPaintToolRailImpl({
   selectAvailable,
-  rebakeAvailable,
   disabled = false,
   onClearFrame,
-  onRebakeScript,
   onActiveColorChanged,
   onToggleMotionBoundaries,
   onToggleWireframe,
 }: PhysicsPaintToolRailProps) {
   recordPhysicsPaintPerformanceCounter('render.toolRailImpl');
   // 261027-klx: Water color is the only module — the rail is the aquarelle
-  // tool row, Dry, Move/Select and the shared clear actions.
+  // tool row plus Move/Select and the shared clear action.
   return (
     <WatercolorRail
       disabled={disabled}
       selectAvailable={selectAvailable}
-      rebakeAvailable={rebakeAvailable}
       onClearFrame={onClearFrame}
-      onRebakeScript={onRebakeScript}
       onActiveColorChanged={onActiveColorChanged}
       onToggleMotionBoundaries={onToggleMotionBoundaries}
       onToggleWireframe={onToggleWireframe}

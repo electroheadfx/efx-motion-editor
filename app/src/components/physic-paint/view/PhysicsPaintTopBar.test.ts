@@ -13,6 +13,7 @@ import {
   ScriptRecordingSwitch,
   TopBarBrushTrigger,
   TopBarDryButton,
+  TopBarRebakeButton,
   type PhysicsPaintTopBarProps,
 } from './PhysicsPaintTopBar';
 import { activeModule } from '../../shared/activeModule';
@@ -77,6 +78,8 @@ function baseTopBarProps(): PhysicsPaintTopBarProps {
     historyAvailability: signal({ undo: 1, redo: 1 }),
     onUndo: vi.fn(),
     onRedo: vi.fn(),
+    rebakeAvailable: signal(false),
+    onRebakeScript: vi.fn(),
   };
 }
 
@@ -136,12 +139,12 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 
   it('hides the last optional watercolor knobs via container queries (I-11 follow-up)', () => {
     const styles = css();
-    // quick-261112: the action trio's 155px leads the cluster — every
-    // threshold shifts by it (740→895, 590→745; narrow 607→760).
-    expect(styles, 'Grain hides first at wide viewports').toContain('@container (max-width: 894px)');
-    expect(styles, 'Edges hides last').toContain('@container (max-width: 744px)');
+    // quick-261112: the action quartet's 206px leads the cluster — every
+    // threshold shifts by it (740→946, 590→796; narrow 607→811).
+    expect(styles, 'Grain hides first at wide viewports').toContain('@container (max-width: 945px)');
+    expect(styles, 'Edges hides last').toContain('@container (max-width: 795px)');
     expect(styles, 'narrow-viewport thresholds follow the 115px control width').toContain(
-      '@container (max-width: 759px)',
+      '@container (max-width: 810px)',
     );
     // Pigment is the primary control in Water color, never an optional knob.
     expect(styles).not.toContain('.physics-paint-topbar-optional-pigment');
@@ -158,8 +161,8 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 
   it('hides Water at the deepest threshold, inside the existing media blocks (261029-hy2 CR-02)', () => {
     const styles = css();
-    const wideStart = styles.indexOf('@media (min-width: 1181px) {\n  @container (max-width: 894px)');
-    const narrowStart = styles.indexOf('@media (max-width: 1180px) {\n  @container (max-width: 759px)');
+    const wideStart = styles.indexOf('@media (min-width: 1181px) {\n  @container (max-width: 945px)');
+    const narrowStart = styles.indexOf('@media (max-width: 1180px) {\n  @container (max-width: 810px)');
     const chainEnd = styles.indexOf('.physics-paint-segmented-row {');
     expect(wideStart, 'the wide hide-chain block exists').toBeGreaterThan(-1);
     expect(narrowStart, 'the narrow hide-chain block exists').toBeGreaterThan(wideStart);
@@ -167,14 +170,14 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
     const wide = styles.slice(wideStart, narrowStart);
     const narrow = styles.slice(narrowStart, chainEnd);
     // 3 visible controls = 3 × 140 + 2 × 10 = 440 / 3 × 115 + 2 × 8 = 361,
-    // plus the action trio's 155 / 153 → 595 / 514.
-    expect(wide).toContain('@container (max-width: 594px)');
-    expect(narrow).toContain('@container (max-width: 513px)');
+    // plus the action quartet's 206 / 204 → 646 / 565.
+    expect(wide).toContain('@container (max-width: 645px)');
+    expect(narrow).toContain('@container (max-width: 564px)');
     const waterSelector = '.physics-paint-topbar-primary .physics-paint-topbar-optional-water';
     expect(wide, 'the Water tier lives in the wide block').toContain(waterSelector);
     expect(narrow, 'the Water tier lives in the narrow block').toContain(waterSelector);
     // No new base @media above the first one: the tier follows the Edges tier.
-    expect(wide.indexOf(waterSelector)).toBeGreaterThan(wide.indexOf('@container (max-width: 744px)'));
+    expect(wide.indexOf(waterSelector)).toBeGreaterThan(wide.indexOf('@container (max-width: 795px)'));
     expect(narrow.indexOf(waterSelector)).toBeGreaterThan(narrow.indexOf('@container (max-width: 483px)'));
     // Out-ranks .physics-paint-topbar-control's display:flex (source order).
     const controlAt = styles.indexOf('.physics-paint-topbar-control {');
@@ -1022,7 +1025,7 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
 // quick-261112: Undo | Redo | Water lead the settings cluster — the trio moved
 // up from the left rail and renders for every tool.
 describe('quick-261112 top-bar action cluster', () => {
-  it('seats Undo, Redo and Flash-dry at the head of the settings cluster', () => {
+  it('seats Re-render, Undo, Redo and Flash-dry at the head of the settings cluster', () => {
     const tree = renderTopBar(baseTopBarProps());
     const nodes = childrenOf(tree) as AnyVNode[];
     const primary = nodes.find((n) => n.props?.['class'] === 'physics-paint-topbar-primary');
@@ -1032,11 +1035,34 @@ describe('quick-261112 top-bar action cluster', () => {
     ) as AnyVNode | undefined;
     expect(actions, 'the action cluster leads the settings').toBeDefined();
     const actionChildren = (actions!.props?.children as AnyVNode[]) ?? [];
-    expect(actionChildren[0]?.type).toBe(PhysicsPaintHistoryActionButton);
-    expect(actionChildren[0]?.props?.item?.id).toBe('undo');
+    expect(actionChildren[0]?.type).toBe(TopBarRebakeButton);
     expect(actionChildren[1]?.type).toBe(PhysicsPaintHistoryActionButton);
-    expect(actionChildren[1]?.props?.item?.id).toBe('redo');
-    expect(actionChildren[2]?.type).toBe(TopBarDryButton);
+    expect(actionChildren[1]?.props?.item?.id).toBe('undo');
+    expect(actionChildren[2]?.type).toBe(PhysicsPaintHistoryActionButton);
+    expect(actionChildren[2]?.props?.item?.id).toBe('redo');
+    expect(actionChildren[3]?.type).toBe(TopBarDryButton);
+  });
+
+  it('the Re-render button follows the frame availability and fires the replay', () => {
+    const onRebakeScript = vi.fn();
+    const unavailable = TopBarRebakeButton({
+      disabled: false,
+      rebakeAvailable: signal(false),
+      onRebakeScript,
+    }) as AnyVNode;
+    expect(unavailable.props?.['data-testid']).toBe('aquarelle-rebake-script');
+    expect(unavailable.props?.disabled).toBe(true);
+    expect(unavailable.props?.title).toBe('Re-render (Shift+R) — this frame has no paint script');
+
+    const ready = TopBarRebakeButton({
+      disabled: false,
+      rebakeAvailable: signal(true),
+      onRebakeScript,
+    }) as AnyVNode;
+    expect(ready.props?.disabled).toBe(false);
+    expect(ready.props?.title).toBe('Re-render this frame from its script (Shift+R)');
+    (ready.props?.onClick as () => void)();
+    expect(onRebakeScript).toHaveBeenCalledTimes(1);
   });
 
   it('centers the trio between the dropdown and the settings at dropdown height', () => {

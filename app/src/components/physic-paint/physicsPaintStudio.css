@@ -565,34 +565,34 @@ button.destructive {
    Pigment control (and Brush size) always stay. Thresholds follow the control
    widths (140px + 10px gap at wide viewports, 115px + 8px below 1180px):
    5 controls = 5 × 140 + 4 × 10 = 740 and 5 × 115 + 4 × 8 = 607;
-   4 = 590 / 484; 3 = 440 / 361. quick-261112: the action trio (3 × 43px +
-   2 × 8px = 145px) plus its cluster gap now leads the same cluster, so every
-   threshold shifts by 155px (wide) / 153px (narrow) — 895/745/595 and
-   760/637/514. The right-pinned cluster overflows off the unscrollable START
+   4 = 590 / 484; 3 = 440 / 361. quick-261112: the action quartet (4 × 43px +
+   3 × 8px = 196px) plus its cluster gap now leads the same cluster, so every
+   threshold shifts by 206px (wide) / 204px (narrow) — 946/796/646 and
+   811/688/565. The right-pinned cluster overflows off the unscrollable START
    edge, so the Water tier is what keeps the leading Brush size control
-   reachable below ~935px.
+   reachable below ~985px.
    These rules MUST follow .physics-paint-topbar-control's display:flex — the
    descendant selector keeps them winning at equal source order. */
 @media (min-width: 1181px) {
-  @container (max-width: 894px) {
+  @container (max-width: 945px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
   }
-  @container (max-width: 744px) {
+  @container (max-width: 795px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
   }
-  @container (max-width: 594px) {
+  @container (max-width: 645px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-water { display: none; }
   }
 }
 
 @media (max-width: 1180px) {
-  @container (max-width: 759px) {
+  @container (max-width: 810px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
   }
-  @container (max-width: 636px) {
+  @container (max-width: 687px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
   }
-  @container (max-width: 513px) {
+  @container (max-width: 564px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-water { display: none; }
   }
 }

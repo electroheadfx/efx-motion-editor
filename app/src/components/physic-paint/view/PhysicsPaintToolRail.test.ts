@@ -124,9 +124,7 @@ function railProps(overrides: Partial<RailPropsWithWireframe> = {}): RailPropsWi
   return {
     disabled: false,
     selectAvailable: signal(false),
-    rebakeAvailable: signal(false),
     onClearFrame: () => {},
-    onRebakeScript: () => {},
     onActiveColorChanged: () => {},
     onToggleMotionBoundaries: () => {},
     onToggleWireframe: () => {},
@@ -257,12 +255,13 @@ describe('WatercolorRail — the wireframe latch (61-13)', () => {
     const wireIndex = ordered.findIndex(
       (node) => node.props?.['data-testid'] === 'aquarelle-wireframe-toggle',
     );
-    // quick-261112: Dry left for the top-bar action cluster — re-bake follows.
-    const rebakeIndex = ordered.findIndex((node) => node.props?.['data-testid'] === 'aquarelle-rebake-script');
+    // quick-261112: Dry and re-render left for the top-bar action cluster —
+    // Trash is the next rail control after the wireframe latch.
+    const trashIndex = ordered.findIndex((node) => node.props?.['aria-label'] === 'Trash');
     expect(motionIndex, 'the motion boundary is above it').toBeGreaterThan(-1);
-    expect(rebakeIndex, 're-bake is below it').toBeGreaterThan(-1);
+    expect(trashIndex, 'Trash is below it').toBeGreaterThan(-1);
     expect(wireIndex).toBe(motionIndex + 1);
-    expect(rebakeIndex).toBe(wireIndex + 1);
+    expect(trashIndex).toBe(wireIndex + 1);
   });
 
   it('carries the approved wireframe grammar, label and title', () => {
@@ -304,7 +303,7 @@ describe('WatercolorRail — the wireframe latch (61-13)', () => {
     expect(button(nav, 'aquarelle-wireframe-toggle')!.props?.disabled).toBe(true);
     expect(penButton(nav).props?.disabled).toBe(true);
     expect(button(nav, 'aquarelle-motion-boundary-toggle')!.props?.disabled).toBe(true);
-    expect(button(nav, 'aquarelle-rebake-script')!.props?.disabled).toBe(true);
+    expect(directChildren(nav).find((node) => node.props?.['aria-label'] === 'Trash')!.props?.disabled).toBe(true);
   });
 });
 
