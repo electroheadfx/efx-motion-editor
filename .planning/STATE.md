@@ -5,10 +5,10 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: planning
-stopped_at: Quick 261112-n3f implemented (verification human_needed — 7 live UAT rows pending); Phase 62 ready to plan
+stopped_at: Quick 261112-n3f UAT approved; follow-up cache-eye exit fix (39007da12) live UAT pending; Phase 62 ready to plan
 last_updated: "2026-11-12T16:28:37.041Z"
 last_activity: 2026-11-12
-last_activity_desc: Quick 261112-n3f implemented (stroke-size preview unified; masked envelope edge); live UAT pending
+last_activity_desc: Quick 261112-n3f UAT approved; cache-eye/committed-sheet restored on leaving the stroke surface (39007da12); live re-check pending
 state_head: 8f5ae4c82c3c944421339f1fe79800019d795790
 progress:
   total_phases: 4
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 Phase: 62 — Painted-Stroke Curve Editing
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-12 - Completed quick task 261112-n3f: stroke-size preview unified behind the one "Preview stroke size" switch (vertex-aware, OFF by default), the vector envelope's interior self-intersection lines removed via a masked edge on both the Edit-path and Select/Move surfaces — automated gates green, 7 live UAT rows pending
+Last activity: 2026-11-12 - Quick task 261112-n3f UAT APPROVED: stroke-size preview unified behind the one "Preview stroke size" switch (vertex-aware, OFF by default) and the vector envelope's interior self-intersection lines removed via a masked edge on both the Edit-path and Select/Move surfaces. Follow-up reported by the user and fixed in 39007da12: the "Hide the committed sheet" eye (and Draft) are surface-local view preferences now restored/reset when the sheet closes or the tool is left — live re-check pending
 
 Progress: [████████░░] 75%
 
@@ -444,7 +444,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261112-i6d | Vector edit enhancements: double-click a vector stroke enters the path edit; Alt+click a vertex toggles it to a straight corner and back in vector and spline modes; Geometry Round/Straight Corner row over the selected anchors; Vertex size track to x10 with free entry to x20; orange glow/halo selected-vertex chrome; path-edit re-bake canvas veil (blocking, composited wheel, stroke counter) as the ONE indicator — the apply pill stands down (UAT approved 2026-11-12) | 2026-11-12 | 34728c5e4 | [261112-i6d-vector-enhancement-double-click-stroke-t](./quick/261112-i6d-vector-enhancement-double-click-stroke-t/) |
 | 261112-lq4 | Stroke settings sheet redesign: four tabs (List default \| Geometry \| Stack \| Curve), Paint \| Eraser \| All row merged into the tool dropdown, Edit path and Preview stroke size moved into the Draft strip, cache caption removed, Vertex size / Curve / Corner moved to the Curve tab (UAT approved 2026-11-12) | 2026-11-12 | 82f9ae5cd | [261112-lq4-ui-stroke-vector-modal-redesign](./quick/261112-lq4-ui-stroke-vector-modal-redesign/) |
 | 29 | Hide Vertex size and Corner blocks in the Curve tab unless a vertex is selected (UAT approved 2026-11-12) | 2026-11-12 | 72a69dc94 | — |
-| 261112-n3f | Unify the stroke-size preview into one toggle (vertex-aware, off by default) and remove the vector envelope self-intersection lines | 2026-11-12 | 8f5ae4c82 | [261112-n3f-unify-the-stroke-size-preview-into-one-t](./quick/261112-n3f-unify-the-stroke-size-preview-into-one-t/) |
+| 261112-n3f | Unify the stroke-size preview into one toggle (vertex-aware, off by default) and remove the vector envelope self-intersection lines (UAT approved; follow-up 39007da12 restores the committed sheet on leaving the surface) | 2026-11-12 | 8f5ae4c82 | [261112-n3f-unify-the-stroke-size-preview-into-one-t](./quick/261112-n3f-unify-the-stroke-size-preview-into-one-t/) |
 
 ## Roadmap Evolution
 
