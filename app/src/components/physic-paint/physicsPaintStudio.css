@@ -7442,11 +7442,10 @@ input[type="range"].physics-paint-photo-reference-slider-input {
 }
 
 /* Active-track marking (UAT 2026-10-19 selection law; v2.0.1 v7): a darker
-   tool-blue bed (#2B4BB5) with the selected rail type's bright colour as the
-   3px left accent (--track-accent, set from data-rail-type), falling back to
-   the neutral #8A939C. */
+   tool-blue bed (#2B4BB5) with the orange selection accent as the 3px left
+   bar (#F59E0B — the same family as rail selection and the armed Push). */
 .physics-paint-track-row-header-active {
-  border-left: 3px solid var(--track-accent, #8A939C);
+  border-left: 3px solid #F59E0B;
   border-bottom-color: #3A5BC7;
   background: #2B4BB5;
 }
