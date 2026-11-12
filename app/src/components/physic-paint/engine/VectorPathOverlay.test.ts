@@ -84,7 +84,13 @@ import {
 import { ScriptStrokeOverlay } from './ScriptStrokeOverlay';
 import { requestAquarellePathEdit } from './AquarelleStrokeOverlay';
 import { buildStrokeBand } from '../view/aquarelleStrokeBand';
-import { scriptSelectedStrokeIds, setScriptStrokeSelection, wireframeMode } from '../view/scriptStrokeEdition';
+import {
+  scriptSelectedStrokeIds,
+  setScriptStrokeSelection,
+  setStrokeSizePreview,
+  strokeSizePreview,
+  wireframeMode,
+} from '../view/scriptStrokeEdition';
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -260,6 +266,10 @@ function draftAnchors(): readonly VectorDraftAnchor[] {
 beforeEach(() => {
   resetForStudioOpen();
   aquarelleSelectedTipId.value = 'wc/round-medium';
+  // 261112-n3f: the preview switch and the pen latch are session state — no
+  // case may inherit either from the one before it.
+  setStrokeSizePreview(false);
+  vectorPenActive.value = false;
 });
 
 afterEach(() => {
@@ -267,6 +277,8 @@ afterEach(() => {
   aquarelleSelectedTipId.value = 'wc/round-medium';
   clearVectorDraft();
   wireframeMode.value = false;
+  setStrokeSizePreview(false);
+  vectorPenActive.value = false;
 });
 
 describe('VectorPathOverlay — rendered geometry (task 1)', () => {
@@ -1821,56 +1833,177 @@ describe('61-25 UI-03/UI-04 — the band, marker and chrome law', () => {
     return envelopes[0]!;
   }
 
-  it('draws the editing envelope in the stroke’s own colour at 0.14/0.07, 3.5/1.5, with no stroke opacity', () => {
+  function onlyEnvelopeEdge(tree: unknown): TestVNode {
+    const edges = nodesWithTestId(tree, 'vector-path-envelope-edge');
+    expect(edges, 'exactly one envelope edge').toHaveLength(1);
+    return edges[0]!;
+  }
+
+  it('draws no envelope for a path edit while the preview switch is off', () => {
+    // 261112-n3f: opening a path edit no longer turns the width preview on.
+    enterPathEdit(String(EDIT_ID));
+    const tree = render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]])));
+    expect(strokeSizePreview.value).toBe(false);
+    expect(nodesWithTestId(tree, 'vector-path-envelope')).toHaveLength(0);
+    expect(nodesWithTestId(tree, 'vector-path-envelope-edge')).toHaveLength(0);
+    // The construction chrome is not the preview: the spine and anchors stay.
+    expect(nodesWithTestId(tree, 'vector-path-spine')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'vector-path-anchor')).toHaveLength(3);
+  });
+
+  it('draws the per-vertex envelope only while the preview switch is on', () => {
+    enterPathEdit(String(EDIT_ID));
+    setStrokeSizePreview(true);
+    const on = render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]])));
+    expect(nodesWithTestId(on, 'vector-path-envelope')).toHaveLength(1);
+    expect(nodesWithTestId(on, 'vector-path-envelope-edge')).toHaveLength(1);
+
+    // Toggling OFF inside the same edit removes both — the switch owns the
+    // preview, and the edit itself stays open.
+    setStrokeSizePreview(false);
+    const off = render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]])));
+    expect(nodesWithTestId(off, 'vector-path-envelope')).toHaveLength(0);
+    expect(nodesWithTestId(off, 'vector-path-envelope-edge')).toHaveLength(0);
+    expect(pathEditMutationId.value).toBe(String(EDIT_ID));
+  });
+
+  it('keeps the wireframe envelope for a uniform profile whatever the switch says', () => {
+    // Construction view: unconditional, uniform profile included, switch OFF.
+    wireframeMode.value = true;
+    const inWireframe = render(VectorPathOverlay(propsWith([[OTHER_ID, vectorStroke()]])));
+    expect(strokeSizePreview.value).toBe(false);
+    expect(nodesWithTestId(inWireframe, 'vector-path-envelope')).toHaveLength(1);
+    expect(nodesWithTestId(inWireframe, 'vector-path-envelope-edge')).toHaveLength(1);
+
+    // D-10: the editing chrome still refuses a uniform profile. Latch the PEN
+    // with no wireframe and the switch ON so the overlay really renders its
+    // structure — a hidden surface would pass this half vacuously.
+    wireframeMode.value = false;
+    vectorPenActive.value = true;
+    setStrokeSizePreview(true);
+    const editing = render(VectorPathOverlay(propsWith([[OTHER_ID, vectorStroke()]])));
+    expect(nodesWithTestId(editing, 'vector-path-spine')).toHaveLength(1);
+    expect(nodesWithTestId(editing, 'vector-path-anchor')).toHaveLength(3);
+    expect(nodesWithTestId(editing, 'vector-path-envelope')).toHaveLength(0);
+    expect(nodesWithTestId(editing, 'vector-path-envelope-edge')).toHaveLength(0);
+  });
+
+  it('masks the edge with the filled polygon while the fill stays unmasked', () => {
+    setStrokeSizePreview(true);
+    enterPathEdit(String(EDIT_ID));
+    const tree = render(
+      VectorPathOverlay(
+        propsWith([
+          [EDIT_ID, weightedStroke()],
+          [OTHER_ID, weightedStroke({ color: '#7a2e12' })],
+        ]),
+      ),
+    );
+    const fills = nodesWithTestId(tree, 'vector-path-envelope');
+    const edges = nodesWithTestId(tree, 'vector-path-envelope-edge');
+    const masks = [...walk(tree)].filter((node) => node.type === 'mask');
+    expect(fills).toHaveLength(2);
+    expect(edges).toHaveLength(2);
+    expect(masks).toHaveLength(2);
+
+    for (let index = 0; index < fills.length; index += 1) {
+      const fill = fills[index]!;
+      const edge = edges[index]!;
+      // The wash survives: the fill is never masked and carries no stroke.
+      expect(Object.prototype.hasOwnProperty.call(fill.props, 'mask')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(fill.props, 'stroke')).toBe(false);
+      expect(edge.props['d']).toBe(fill.props['d']);
+      // The edge's mask reference resolves to a mask built from the SAME ring.
+      const url = edge.props['mask'];
+      expect(typeof url).toBe('string');
+      const id = String(url).replace(/^url\(#/, '').replace(/\)$/, '');
+      const mask = masks.find((node) => node.props['id'] === id);
+      expect(mask, `mask ${id}`).toBeDefined();
+      expect(mask!.props['maskUnits']).toBe('userSpaceOnUse');
+      const children = childrenOf(mask!) as TestVNode[];
+      expect(children).toHaveLength(2);
+      const cover = children[0]!;
+      expect(cover.type).toBe('rect');
+      expect(cover.props['fill']).toBe('white');
+      expect(cover.props['width']).toBe(WIDTH);
+      expect(cover.props['height']).toBe(HEIGHT);
+      const cut = children[1]!;
+      expect(cut.type).toBe('path');
+      expect(cut.props['fill']).toBe('black');
+      expect(cut.props['d']).toBe(fill.props['d']);
+    }
+    // Two simultaneously drawn paths never share a mask id.
+    const ids = masks.map((mask) => mask.props['id']);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it('draws the editing envelope in the stroke’s own colour at 0.14/0.07, with a split fill and a masked 2x edge', () => {
+    // 261112-n3f: the switch is the ONE gate — every render here turns it on.
+    setStrokeSizePreview(true);
     // Selected: the open path edit is the louder chrome.
     enterPathEdit(String(EDIT_ID));
-    const selected = onlyEnvelope(
-      render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]]))),
-    );
+    const selectedTree = render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]])));
+    const selected = onlyEnvelope(selectedTree);
     expect(selected.props['fill']).toBe('#103c65');
     expect(selected.props['fillOpacity']).toBe(0.14);
-    expect(selected.props['stroke']).toBe('#103c65');
-    expect(selected.props['strokeWidth']).toBe(3.5);
-    expect(Object.prototype.hasOwnProperty.call(selected.props, 'strokeOpacity')).toBe(false);
-    expect(selected.props['vectorEffect']).toBe('non-scaling-stroke');
+    // The fill is UNMASKED and carries no stroke — the wash survives.
+    expect(Object.prototype.hasOwnProperty.call(selected.props, 'mask')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(selected.props, 'stroke')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(selected.props, 'strokeWidth')).toBe(false);
+    const selectedEdge = onlyEnvelopeEdge(selectedTree);
+    expect(selectedEdge.props['stroke']).toBe('#103c65');
+    // Doubled authored width: the mask hides the half inside the band, so the
+    // VISIBLE edge stays at the 61-25 law's 3.5 selected.
+    expect(selectedEdge.props['strokeWidth']).toBe(7);
+    expect(Object.prototype.hasOwnProperty.call(selectedEdge.props, 'strokeOpacity')).toBe(false);
+    expect(selectedEdge.props['vectorEffect']).toBe('non-scaling-stroke');
+    expect(String(selectedEdge.props['mask'])).toMatch(/^url\(#.+\)$/);
 
     // Unselected: the pen's construction view, no edit — the quiet band.
     exitPathEdit();
     vectorPenActive.value = true;
-    const unselected = onlyEnvelope(
-      render(VectorPathOverlay(propsWith([[OTHER_ID, weightedStroke({ color: '#7a2e12' })]]))),
+    const unselectedTree = render(
+      VectorPathOverlay(propsWith([[OTHER_ID, weightedStroke({ color: '#7a2e12' })]]))
     );
+    const unselected = onlyEnvelope(unselectedTree);
     expect(unselected.props['fill']).toBe('#7a2e12');
     expect(unselected.props['fillOpacity']).toBe(0.07);
-    expect(unselected.props['stroke']).toBe('#7a2e12');
-    expect(unselected.props['strokeWidth']).toBe(1.5);
-    expect(Object.prototype.hasOwnProperty.call(unselected.props, 'strokeOpacity')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(unselected.props, 'mask')).toBe(false);
+    const unselectedEdge = onlyEnvelopeEdge(unselectedTree);
+    expect(unselectedEdge.props['stroke']).toBe('#7a2e12');
+    // The visible 1.5 law, doubled for the mask trim.
+    expect(unselectedEdge.props['strokeWidth']).toBe(3);
+    expect(Object.prototype.hasOwnProperty.call(unselectedEdge.props, 'strokeOpacity')).toBe(false);
   });
 
   it('gives the wireframe envelope the same band law and keeps no envelope-fill constant', () => {
     wireframeMode.value = true;
-    const unselected = onlyEnvelope(
-      render(VectorPathOverlay(propsWith([[OTHER_ID, weightedStroke({ color: '#7a2e12' })]]))),
+    const unselectedTree = render(
+      VectorPathOverlay(propsWith([[OTHER_ID, weightedStroke({ color: '#7a2e12' })]]))
     );
+    const unselected = onlyEnvelope(unselectedTree);
     expect(unselected.props['fill']).toBe('#7a2e12');
     expect(unselected.props['fillOpacity']).toBe(0.07);
-    expect(unselected.props['stroke']).toBe('#7a2e12');
-    expect(unselected.props['strokeWidth']).toBe(1.5);
-    expect(Object.prototype.hasOwnProperty.call(unselected.props, 'strokeOpacity')).toBe(false);
+    const unselectedEdge = onlyEnvelopeEdge(unselectedTree);
+    expect(unselectedEdge.props['stroke']).toBe('#7a2e12');
+    expect(unselectedEdge.props['strokeWidth']).toBe(3);
+    expect(Object.prototype.hasOwnProperty.call(unselectedEdge.props, 'strokeOpacity')).toBe(false);
 
     enterPathEdit(String(EDIT_ID));
-    const selected = onlyEnvelope(
-      render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]]))),
-    );
+    const selectedTree = render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]])));
+    const selected = onlyEnvelope(selectedTree);
     expect(selected.props['fill']).toBe('#103c65');
     expect(selected.props['fillOpacity']).toBe(0.14);
-    expect(selected.props['strokeWidth']).toBe(3.5);
-    expect(Object.prototype.hasOwnProperty.call(selected.props, 'strokeOpacity')).toBe(false);
+    const selectedEdge = onlyEnvelopeEdge(selectedTree);
+    expect(selectedEdge.props['strokeWidth']).toBe(7);
+    expect(Object.prototype.hasOwnProperty.call(selectedEdge.props, 'strokeOpacity')).toBe(false);
 
     // The stray constant is gone, and no envelope keeps the old 0.5 edge.
     const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
     expect(source).not.toContain('ENVELOPE_FILL_OPACITY');
     expect(source).not.toContain('strokeOpacity={0.5}');
+    // 261112-n3f: the interior crossings are removed by a mask, never a filter.
+    expect(source).not.toContain('<filter');
   });
 
   it('draws every handle dot solid #f59e0b while only the connector is translucent', () => {

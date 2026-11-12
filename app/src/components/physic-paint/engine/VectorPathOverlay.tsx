@@ -49,7 +49,7 @@ import {
 } from '@efxlab/efx-watercolor/payload';
 import { aquarelleStrokesRevision, isAquarelleStrokeDeleted } from '../view/aquarelleRecordState';
 import { physicsPaintCanvasZoom } from '../view/physicsPaintCanvasZoom';
-import { wireframeMode } from '../view/scriptStrokeEdition';
+import { strokeSizePreview, wireframeMode } from '../view/scriptStrokeEdition';
 import { isKeyboardOwnedTarget } from '../view/shortcutTextTarget';
 import type { CanvasPoint } from '../view/scriptStrokeEdition';
 import {
@@ -241,6 +241,17 @@ interface DrawnVectorPath {
 
 function finiteScale(scale: number): number {
   return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+/**
+ * 261112-n3f: the ONE envelope mask id per drawn path. `drawn.key` is
+ * `stroke-<mutationId>` or `draft`, and exactly one overlay mounts per
+ * document, so the id is deterministic and unique without a counter or a
+ * hook. Every character outside the attribute charset is reduced to `-`, so
+ * no key can break the `id` or its `url(#…)` reference (T-261112-n3f-01).
+ */
+function envelopeMaskId(key: string): string {
+  return `vector-envelope-mask-${key.replace(/[^A-Za-z0-9_-]/g, '-')}`;
 }
 
 // --- Finish / cancel ------------------------------------------------------
@@ -443,9 +454,18 @@ function draftPreviewPointsOf(
  * for the construction view: the spine becomes a two-pass dark/light line (or
  * the accent for the live target), rungs appear ONLY at anchors carrying an
  * explicit width factor, and every marker wears the dark hairline instead of
- * the light one. Both branches draw the envelope per the colour table's band
- * law (61-25 UI-03): the stroke's own colour at 0.14/0.07 fill, 3.5/1.5 edge,
- * no extra stroke opacity.
+ * the light one.
+ *
+ * 261112-n3f: the editing chrome draws the width envelope ONLY while the
+ * shared "Preview stroke size" switch is on (`preview`) — opening a path edit
+ * or storing a non-uniform profile no longer draws one by itself. The
+ * wireframe is still the unconditional construction view (`alwaysEnvelope`),
+ * so it paints the envelope whatever the switch says (61-13).
+ *
+ * Both branches paint the envelope per the colour table's band law (61-25
+ * UI-03) as TWO nodes: an UNMASKED fill carrying the stroke's own colour at
+ * 0.14/0.07 (the wash survives), plus a MASKED edge at the doubled authored
+ * width, so the VISIBLE edge stays at 3.5 selected / 1.5 unselected.
  */
 function renderPath(
   drawn: DrawnVectorPath,
@@ -453,6 +473,7 @@ function renderPath(
   width: number,
   height: number,
   wireframe: boolean,
+  preview: boolean,
   selectedAnchors: readonly number[],
 ): JSX.Element {
   const { anchors, handles, projection, color, selected, curveMode } = drawn;
@@ -476,19 +497,56 @@ function renderPath(
   // no extra stroke opacity.
   const envelopeColor = color ?? SELECTED_SPINE_COLOR;
   const markerStroke = wireframe ? OUTLINE_DARK : OUTLINE_LIGHT;
+  // 261112-n3f: the ONE preview gate. The wireframe keeps its unconditional
+  // construction envelope; the editing chrome shows it only on the switch.
+  const showEnvelope = wireframe || preview;
+  const maskId = envelopeMaskId(drawn.key);
 
   return (
     <g key={drawn.key}>
-      {envelope === null ? null : (
-        <path
-          data-testid="vector-path-envelope"
-          d={envelope}
-          fill={envelopeColor}
-          fillOpacity={selected ? 0.14 : 0.07}
-          stroke={envelopeColor}
-          strokeWidth={selected ? 3.5 : 1.5}
-          vectorEffect="non-scaling-stroke"
-        />
+      {envelope === null || !showEnvelope ? null : (
+        <>
+          {/* 261112-n3f: the mask is built from the SAME closed ring the fill
+              paints, so only the outline survives. The ring is
+              self-intersecting by construction (`buildEnvelope`), and its
+              stroke is what painted the crossing straight lines inside the
+              band; masking removes them (no polygon union, no SVG filter —
+              this file's own law). */}
+          <defs>
+            <mask
+              id={maskId}
+              maskUnits="userSpaceOnUse"
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+            >
+              <rect x={0} y={0} width={width} height={height} fill="white" />
+              {/* Black = hidden; the default nonzero rule matches the fill. */}
+              <path d={envelope} fill="black" />
+            </mask>
+          </defs>
+          {/* The fill is NEVER masked — masking it would erase the wash. */}
+          <path
+            data-testid="vector-path-envelope"
+            d={envelope}
+            fill={envelopeColor}
+            fillOpacity={selected ? 0.14 : 0.07}
+          />
+          {/* The edge is the ONLY masked node. An SVG stroke straddles the
+              path, and the mask hides the half that falls inside the filled
+              band, so the authored width is DOUBLED to keep the VISIBLE edge
+              at the 61-25 band law's 3.5 selected / 1.5 unselected. */}
+          <path
+            data-testid="vector-path-envelope-edge"
+            d={envelope}
+            fill="none"
+            stroke={envelopeColor}
+            strokeWidth={(selected ? 3.5 : 1.5) * 2}
+            vectorEffect="non-scaling-stroke"
+            mask={`url(#${maskId})`}
+          />
+        </>
       )}
       {wireframe ? (
         selected ? (
@@ -806,6 +864,10 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   // 61-13 (D-16): the session-only wireframe latch. This leaf is the narrow
   // subscriber; the Studio never reads it in its own render body.
   const wireframe = wireframeMode.value;
+  // 261112-n3f — the ONE "Preview stroke size" preference, read in this narrow
+  // leaf (the only subscriber). Never written here, never read by the Studio
+  // render body; the switch owns the vector width preview on every surface.
+  const previewStrokeSize = strokeSizePreview.value;
   // 61-22 (G-11): the anchor selection is written by the path-edit pointer
   // handlers (through `.peek()`); this render-body read is the ONE subscriber
   // that turns it into visible chrome. Pure read: no write, no effect.
@@ -1265,6 +1327,7 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
           props.width,
           props.height,
           wireframe,
+          previewStrokeSize,
           drawn.selected ? anchorSelection : [],
         ))}
         {/* 61-21 (IN-01): the provisional spine, drawn BEFORE the committed
@@ -1286,6 +1349,7 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
           props.width,
           props.height,
           wireframe,
+          previewStrokeSize,
           draftPath.selected ? anchorSelection : [],
         )}
       </svg>
