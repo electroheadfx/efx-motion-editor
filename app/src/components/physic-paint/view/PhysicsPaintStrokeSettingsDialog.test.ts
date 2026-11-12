@@ -539,6 +539,9 @@ describe('261112-i6d Corner row — the per-vertex round/straight switch', () =>
       'const cornerReading = anchorWidthTarget === null || selectedVectorAnchors === null',
     );
     expect(dialogSource).toContain('{cornerAvailable ? (');
+    // The gate also requires a REAL anchor selection — the block disappears
+    // when no vertex is selected.
+    expect(dialogSource).toContain('&& cornerReading.count > 0');
     // 261112-lq4: inside the Curve tab, after the Curve row and before Stack.
     const curveSectionAt = dialogSource.indexOf('data-testid="stroke-settings-curve"');
     const curveAt = dialogSource.indexOf('data-testid="stroke-settings-curve-mode-block"');
@@ -597,10 +600,13 @@ describe('61-22 G-11 — the Anchor width control in the Curve tab', () => {
     expect(dialogSource).not.toContain('data-testid="stroke-settings-list-anchor-width"');
     expect(dialogSource).not.toContain('data-testid="stroke-settings-geometry-anchor-width"');
     expect(countOf(dialogSource, MOUNT_GATE)).toBe(1);
+    // The gate also requires a REAL anchor selection, so the block
+    // disappears — never mounts inert — when no vertex is selected.
     expect(countOf(
       dialogSource,
-      'const anchorWidthVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;',
+      'const anchorWidthVisible = anchorWidthAvailable',
     )).toBe(1);
+    expect(dialogSource).toContain('&& anchorWidthReading.count > 0;');
     // Ordered inside the Curve section: after its opening and before the
     // Curve row (the sibling that follows it).
     const curveAt = dialogSource.indexOf('data-testid="stroke-settings-curve"');
@@ -672,8 +678,10 @@ describe('61-22 G-11 — the Anchor width control in the Curve tab', () => {
     );
     expect(dialogSource).toContain('readNumericField(appearances, ids, anchorWidthSizeField)');
     expect(dialogSource).toContain(
-      'const anchorWidthVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;',
+      'const anchorWidthVisible = anchorWidthAvailable',
     );
+    // No selected vertex, no block.
+    expect(dialogSource).toContain('&& anchorWidthReading.count > 0;');
     const mount = regionOf(dialogSource, '{anchorWidthVisible', ') : null}');
     expect(mount).toContain('reading={anchorWidthSizeReading}');
   });

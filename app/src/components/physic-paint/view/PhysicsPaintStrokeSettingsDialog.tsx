@@ -684,7 +684,12 @@ export function PhysicsPaintStrokeSettingsDialog({
   const anchorWidthSizeReading = anchorWidthSizeField === undefined
     ? null
     : readNumericField(appearances, ids, anchorWidthSizeField);
-  const anchorWidthVisible = anchorWidthAvailable && anchorWidthSizeReading !== null;
+  // The block is CONTEXT-GATED on a real anchor selection — with no selected
+  // vertex the reading is the empty constant, so the block disappears instead
+  // of mounting inert with a caption.
+  const anchorWidthVisible = anchorWidthAvailable
+    && anchorWidthSizeReading !== null
+    && anchorWidthReading.count > 0;
 
   // 61-31 (G-20) / 261112-lq4: the Curve row reading. Spline is an evaluation
   // mode over the same anchors, so only the VECTOR appearances participate. The
@@ -697,8 +702,10 @@ export function PhysicsPaintStrokeSettingsDialog({
   const cornerReading = anchorWidthTarget === null || selectedVectorAnchors === null
     ? ANCHOR_CORNER_EMPTY_READING
     : readAnchorCornerReading(selectedVectorAnchors, vectorAnchorSelection.value);
+  // Same context rule as Vertex size: no selected vertex, no block.
   const cornerAvailable = engineModule === 'watercolor'
     && selectedVectorAnchors !== null
+    && cornerReading.count > 0
     && bundle.applyAnchorCorners !== undefined;
 
   const applied = strokeSettingsDragOffset.value;
@@ -1455,8 +1462,9 @@ export function PhysicsPaintStrokeSettingsDialog({
                   state Alt+click toggles through the SAME commit seam, on the
                   SAME anchor selection the Vertex size control reads — a
                   setter, never a toggle, so pressing the held state writes
-                  nothing. Empty selection keeps the row visible and inert with
-                  the reason, exactly like Vertex size. */}
+                  nothing. Like Vertex size, the block is CONTEXT-GATED on a
+                  real anchor selection and disappears when no vertex is
+                  selected. */}
               {cornerAvailable ? (
                 <div data-testid="stroke-settings-corner-block">
                   <div style={SEGMENT_LABEL_ROW_STYLE}>

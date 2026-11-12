@@ -103,6 +103,12 @@ import {
   setAquarelleStrokeToolFilter,
   setAquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
+import {
+  clearVectorAnchorSelection,
+  enterPathEdit,
+  exitPathEdit,
+  setVectorAnchorSelection,
+} from './vectorPathSession';
 import { resetFloatingSheetStack } from './floatingSheetStack';
 import type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
@@ -924,7 +930,9 @@ describe('261024-p5q dialog geometry fields', () => {
     const curveTree = renderDialogTab(bundle, 'curve');
     expect(findByTestId(curveTree, 'stroke-settings-curve')).toBeDefined();
     expect(findByTestId(curveTree, 'stroke-settings-curve-mode-block')).toBeDefined();
-    expect(findByTestId(curveTree, 'stroke-settings-corner-block')).toBeDefined();
+    // The vertex-context rows need a selected vertex — absent here.
+    expect(findByTestId(curveTree, 'stroke-settings-curve-anchor-width')).toBeUndefined();
+    expect(findByTestId(curveTree, 'stroke-settings-corner-block')).toBeUndefined();
     expect(findByTestId(curveTree, 'stroke-settings-list')).toBeUndefined();
     expect(findByTestId(curveTree, 'stroke-settings-geometry')).toBeUndefined();
     expect(findByTestId(curveTree, 'stroke-settings-stack')).toBeUndefined();
@@ -3740,23 +3748,43 @@ describe('61-22 G-11 — the Anchor width mount (Curve)', () => {
     vector: true,
   });
 
+  const ANCHORS = [
+    { x: 0, y: 0, kind: 'auto' as const },
+    { x: 40, y: 0, kind: 'auto' as const },
+  ];
+
   function anchorBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
     return createBundle({
       module: 'watercolor',
       brushMoveActive: false,
       listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
       readAppearance: (ids) => ids.map(sizeAppearance),
-      readVectorAnchors: () => [],
+      readVectorAnchors: () => ANCHORS,
       applyAnchorWidths: () => true,
+      applyAnchorCorners: () => true,
+      applyCurveMode: () => true,
       reorderStroke: () => true,
       ...overrides,
     }).bundle;
   }
 
-  it('mounts the wrapper and the shared stepper in the Curve tab only', () => {
-    const bundle = anchorBundle();
+  // The vertex-context blocks need a real anchor selection — an open path
+  // edit plus at least one listed anchor.
+  function openAnchorContext(): void {
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
+    enterPathEdit('7');
+    setVectorAnchorSelection([1]);
+  }
+
+  afterEach(() => {
+    exitPathEdit();
+    clearVectorAnchorSelection();
+  });
+
+  it('mounts the wrapper and the shared stepper in the Curve tab only', () => {
+    const bundle = anchorBundle();
+    openAnchorContext();
 
     const curveTree = renderDialogTab(bundle, 'curve');
     expect(findByTestId(curveTree, 'stroke-settings-curve')).toBeDefined();
@@ -3802,16 +3830,30 @@ describe('61-22 G-11 — the Anchor width mount (Curve)', () => {
     ).toBeUndefined();
   });
 
-  it('keeps the D-09 empty reading inside the Curve mount: inert stepper and caption', () => {
+  it('hides the vertex-context blocks when no vertex is selected', () => {
     const bundle = anchorBundle();
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
+    exitPathEdit();
+    clearVectorAnchorSelection();
+    const curveTree = renderDialogTab(bundle, 'curve');
+
+    // The Curve row is stroke-level and stays; the two vertex rows disappear.
+    expect(findByTestId(curveTree, 'stroke-settings-curve-mode-block')).toBeDefined();
+    expect(findByTestId(curveTree, 'stroke-settings-curve-anchor-width')).toBeUndefined();
+    expect(findByTestId(curveTree, 'stroke-settings-corner-block')).toBeUndefined();
+  });
+
+  it('mounts Vertex size and Corner once a vertex is selected', () => {
+    const bundle = anchorBundle();
+    openAnchorContext();
     const curveTree = renderDialogTab(bundle, 'curve');
 
     const stepper = findComponent(curveTree, (props) => props.ariaLabel === 'Vertex size')!;
-    expect(stepper.props.disabled).toBe(true);
+    expect(stepper).toBeDefined();
+    expect(stepper.props.disabled).toBe(false);
     expect(stepper.props.value).toBe(AQUARELLE_ANCHOR_WIDTH_DEFAULT);
-    expect(findByTestId(curveTree, 'stroke-settings-anchor-width-caption')).toBeDefined();
+    expect(findByTestId(curveTree, 'stroke-settings-corner-block')).toBeDefined();
   });
 });
 
