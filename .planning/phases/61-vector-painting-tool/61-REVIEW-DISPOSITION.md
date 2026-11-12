@@ -5,16 +5,20 @@ titles: json
 findings:
   - id: CR-01
     severity: critical
-    disposition: fixed
-    title: "Residual half of the earlier CR-01: a mid-drag Delete is undone on release — the key seam wrote the new anchors but left the drag alive, so the pointerup re-committed `anchorsAtStart`"
+    disposition: open
+    title: "Unchanged per-vertex colour commit publishes a false \"refused\" banner"
   - id: WR-01
     severity: warning
     disposition: open
-    title: "The widened 61-21 predicate lets Delete fall through to whole-stroke deletion during a path edit on a focused control"
+    title: "Paint-control seam swallows refusals; live value and selected strokes silently diverge"
   - id: WR-02
     severity: warning
     disposition: open
-    title: "+Key publishes ROTO_ADD_KEY_SCRIPT_COPY_FAILED when the previous real key has no recorded paint (a no-op should succeed)"
+    title: "Orphan-focus window key route has no floating-surface guard"
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "`brushMenuPresets` parameter is dead generality"
   - id: WR-03
     severity: warning
     disposition: open
@@ -23,10 +27,6 @@ findings:
     severity: warning
     disposition: open
     title: "The new curve-mode failure branch omits the reanchor/restore result the path-edit seam already carries"
-  - id: IN-01
-    severity: info
-    disposition: open
-    title: "The Curve row discards `applyCurveMode`'s boolean — guard refusals stay silent"
   - id: IN-02
     severity: info
     disposition: open
@@ -35,29 +35,24 @@ findings:
     severity: info
     disposition: open
     title: "`recordedCurveModeField` has no production caller (necessity) — three seams inline the same rule"
+open: 8
+total: 8
+recorded: 2026-11-12T11:15:42.909Z
 ---
 
-# Phase 61 — Review Disposition
+# Phase 61: Code Review Disposition
 
-Report: `61-REVIEW.md` (incremental, 39 files changed since `ab91201db5`).
+| Finding | Severity | Disposition | Source |
+|---------|----------|-------------|--------|
+| CR-01 | critical | open | - |
+| WR-01 | warning | open | - |
+| WR-02 | warning | open | - |
+| IN-01 | info | open | - |
+| WR-03 | warning | open | `keyActionInFlightRef` claimed after the first await — double-run window (not in the current review) |
+| WR-04 | warning | open | Curve-mode failure branch drops the reanchor/restore result (not in the current review) |
+| IN-02 | info | open | Encode guard fails open on prototype keys (not in the current review) |
+| IN-03 | info | open | `recordedCurveModeField` has no caller (not in the current review) |
 
-| ID | Severity | Disposition | Finding |
-|----|----------|-------------|---------|
-| CR-01 | critical | **fixed** (`9be725501`) | Mid-drag Delete undone on release |
-| WR-01 | warning | open | Widened key predicate lets Delete delete the whole stroke during a path edit |
-| WR-02 | warning | open | +Key reports a copy failure when there was simply nothing to copy |
-| WR-03 | warning | open | `keyActionInFlightRef` claimed after the first await — double-run window |
-| WR-04 | warning | open | Curve-mode failure branch drops the reanchor/restore result |
-| IN-01 | info | open | Curve row discards its apply boolean |
-| IN-02 | info | open | Encode guard fails open on prototype keys |
-| IN-03 | info | open | `recordedCurveModeField` has no caller |
-
-**Totals:** 1 critical (fixed), 4 warnings open, 3 info open.
-
-The blocker was fixed in this run because it defeats VEC-07's one-edit-per-operation
-guarantee and VEC-02's edit correctness: the user's Delete was visibly undone by the
-pointerup. The fix adds `cancelActiveDrag` to the key seam's handler contract and calls it
-before the write, pinned by an overlay test asserting cancel-before-edit ordering.
-
-The four warnings and three infos are triaged open — each is a narrower correctness or UX
-seam that deserves its own pass rather than a rushed edit at phase close.
+Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
+Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
+Re-running the gate keeps every row it can. A row the current review no longer reports is kept and its Source cell flagged, so a finding does not leave this record silently. ONE exception: when a finding id is REUSED by a different finding, the earlier decision cannot keep a row — the id is taken — and it is dropped. A RECORDED decision (anything but `open`) is named on the console when that happens; a row still at `open` is replaced silently, because `open` records no decision to lose.
