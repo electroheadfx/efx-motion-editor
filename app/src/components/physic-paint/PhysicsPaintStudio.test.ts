@@ -6569,9 +6569,10 @@ describe('61-15 vector draw bake seam in the Studio', () => {
     expect(refusalBlock).toContain('return;');
     expect(refusalBlock).not.toContain('aquarelleResetSheetRef');
     expect(refusalBlock).not.toContain('allocateStrokeMutation');
-    // One fixed module constant, owned by the leaf seam.
+    // The fixed module constants, owned by the leaf seam. 261112-i6d adds the
+    // rebuild status line beside the Script-Off refusal.
     expect(studio).toContain(
-      "import {\n  VECTOR_PATH_SCRIPT_OFF_MESSAGE,\n  isVectorAquarelleStroke,\n  resolveVectorCommitRoute,\n  runAquarelleScriptRebake,\n} from './view/aquarelleVectorPathCommit';",
+      "import {\n  VECTOR_PATH_REBUILDING_MESSAGE,\n  VECTOR_PATH_SCRIPT_OFF_MESSAGE,\n  isVectorAquarelleStroke,\n  resolveVectorCommitRoute,\n  runAquarelleScriptRebake,\n} from './view/aquarelleVectorPathCommit';",
     );
   });
 
@@ -6849,8 +6850,10 @@ describe('61-11 Anchor width bundle wiring in the Studio', () => {
     // The recorded stroke read follows the TARGET, not the dialog selection.
     expect(bundle).toContain('const stroke = getRecordedAquarelleStroke(target);');
     // ONE shared writer for the whole gesture; a null edit id resolves false.
+    // 261112-i6d adds the Corner member, which reaches the SAME shared commit
+    // (two members, one writer) — never a second edit wrapper.
     expect(bundle).toContain('return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);');
-    expect(bundle.split('commitAquarelleVectorPathEdit(').length - 1).toBe(1);
+    expect(bundle.split('commitAquarelleVectorPathEdit(').length - 1).toBe(2);
     // The Studio's ONE begin lives in the shared commit — exactly one in the
     // whole file, and it belongs to that commit, not to this bundle.
     const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
@@ -6865,7 +6868,7 @@ describe('61-11 Anchor width bundle wiring in the Studio', () => {
 
   it('composes the pure width commit from the shared handle module', () => {
     expect(studio).toContain(
-      "import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';",
+      "import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';",
     );
   });
 
@@ -6899,6 +6902,54 @@ describe('61-11 Anchor width bundle wiring in the Studio', () => {
     expect(studio).toContain("import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';");
     expect(studio.split("import { anchorsEqual } from '@efxlab/efx-watercolor/payload';").length - 1)
       .toBe(1);
+  });
+});
+
+// 261112-i6d: the Corner row writes the round/straight state on the LIVE
+// anchor selection through the SAME path-edit commit the Alt+click gesture
+// uses — one undo entry, one re-bake, one shape law. An unchanged list
+// short-circuits before the commit exactly like the width no-op.
+describe('261112-i6d Corner bundle wiring and rebuild status in the Studio', () => {
+  const BUNDLE_START = 'const bundle: StrokeSettingsDialogBundle = {';
+  const BUNDLE_END = 'return bundle;';
+
+  function bundleRegion(): string {
+    const start = studio.indexOf(BUNDLE_START);
+    expect(start, `missing start marker: ${BUNDLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(BUNDLE_END, start + BUNDLE_START.length);
+    expect(end, `missing end marker: ${BUNDLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('supplies applyAnchorCorners through the ONE target and commit seam', () => {
+    const bundle = bundleRegion();
+    expect(bundle).toContain('applyAnchorCorners: (ids, state) => {');
+    // The SAME target decision the Vertex size member uses.
+    expect(bundle).toContain('const target = resolveAnchorWidthTarget({');
+    // The pure builder and the live anchor selection.
+    expect(bundle).toContain('const next = buildAnchorCornerCommit(');
+    expect(bundle).toContain('vectorPathSession.vectorAnchorSelection.peek(),');
+    // An unchanged list is a success, never a refusal.
+    expect(bundle).toContain('if (next === anchors) return true;');
+  });
+
+  it('publishes the rebuild line before the rebake and clears it on success', () => {
+    const commitStart = studio.indexOf('const commitAquarelleVectorPathEdit = useCallback(');
+    expect(commitStart, 'missing the commit').toBeGreaterThan(-1);
+    const commitEnd = studio.indexOf('const handleAquarelleVectorPathEdit = useCallback(', commitStart);
+    const commit = studio.slice(commitStart, commitEnd);
+    const publishAt = commit.indexOf('setApplyMessage(VECTOR_PATH_REBUILDING_MESSAGE);');
+    const rebakeAt = commit.indexOf('runAquarelleScriptRebake({');
+    const successAt = commit.indexOf('onSuccess: () => {');
+    expect(publishAt, 'missing the rebuild publish').toBeGreaterThan(-1);
+    // Published BEFORE the await, so the silent replay always has a status.
+    expect(publishAt).toBeLessThan(rebakeAt);
+    expect(successAt).toBeGreaterThan(rebakeAt);
+    // Success clears BOTH fields — the capsule rests, and no `success` state
+    // lingers to swallow a later message.
+    const success = commit.slice(successAt, commit.indexOf('onFailure:', successAt));
+    expect(success).toContain("setApplyStatus('idle');");
+    expect(success).toContain('setApplyMessage(null);');
   });
 });
 

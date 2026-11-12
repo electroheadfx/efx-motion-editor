@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ANCHOR_WIDTH_MAX } from '@efxlab/efx-watercolor/payload';
 import {
+  ANCHOR_CORNER_OPTIONS,
   ANCHOR_WIDTH_EMPTY_READING,
   ANCHOR_WIDTH_NO_EDIT_REASON,
   AQUARELLE_ANCHOR_WIDTH_DEFAULT,
@@ -439,7 +440,9 @@ describe('61-31 Curve row (G-20)', () => {
   const GROUP = 'data-testid="stroke-settings-curve-mode"';
 
   function curveBlock(): string {
-    return regionOf(dialogSource, BLOCK_START, 'data-testid="stroke-settings-stack"');
+    // Bounded by the NEXT Geometry row (261112-i6d's Corner block), never the
+    // Stack section — a later sibling must not leak into this region.
+    return regionOf(dialogSource, BLOCK_START, 'data-testid="stroke-settings-corner-block"');
   }
 
   it('mounts the Curve block only when a vector stroke is selected and the bundle can commit', () => {
@@ -498,6 +501,65 @@ describe('61-31 Curve row (G-20)', () => {
     expect(block).not.toContain('readVectorAnchors');
     expect(block).not.toContain('anchorWidth');
     expect(block).not.toContain('readNumericField');
+  });
+});
+
+// ============================================================
+describe('261112-i6d Corner row — the per-vertex round/straight switch', () => {
+  const BLOCK_START = 'data-testid="stroke-settings-corner-block"';
+  const GROUP = 'data-testid="stroke-settings-corner"';
+
+  function cornerBlock(): string {
+    return regionOf(dialogSource, BLOCK_START, 'data-testid="stroke-settings-stack"');
+  }
+
+  it('mounts the Corner block inside Geometry, after the Curve row', () => {
+    expect(countOf(dialogSource, BLOCK_START)).toBe(1);
+    expect(countOf(dialogSource, GROUP)).toBe(1);
+    // The reading shares the ONE path-edit target and anchor selection.
+    expect(dialogSource).toContain(
+      'const cornerReading = anchorWidthTarget === null || selectedVectorAnchors === null',
+    );
+    expect(dialogSource).toContain('{cornerAvailable ? (');
+    // Inside Geometry, after the Curve row and before the Stack section.
+    const curveAt = dialogSource.indexOf('data-testid="stroke-settings-curve-mode-block"');
+    const blockAt = dialogSource.indexOf(BLOCK_START);
+    const stackAt = dialogSource.indexOf('data-testid="stroke-settings-stack"');
+    expect(curveAt).toBeGreaterThan(-1);
+    expect(blockAt).toBeGreaterThan(curveAt);
+    expect(stackAt).toBeGreaterThan(blockAt);
+  });
+
+  it('renders one button per corner option, lit only for the agreed state', () => {
+    const block = cornerBlock();
+    expect(block).toContain('ANCHOR_CORNER_OPTIONS.map((option) => {');
+    expect(block).toContain('data-testid={`stroke-settings-corner-option-${option.id}`}');
+    expect(block).toContain('aria-pressed={active}');
+    // ONE template test id — the two ids come from the two model options.
+    expect(countOf(dialogSource, 'stroke-settings-corner-option-')).toBe(1);
+    expect(ANCHOR_CORNER_OPTIONS.map((option) => option.id)).toEqual(['round', 'straight']);
+    expect(ANCHOR_CORNER_OPTIONS.map((option) => option.label)).toEqual(['Round', 'Straight']);
+    expect(block).toContain(
+      'const active = !cornerReading.mixed && cornerReading.state === option.state;',
+    );
+  });
+
+  it('states the empty-selection reason instead of writing an inert value', () => {
+    const block = cornerBlock();
+    expect(block).toContain('disabled={cornerReading.count === 0}');
+    expect(block).toContain('data-testid="stroke-settings-corner-caption"');
+    expect(block).toContain('ANCHOR_CORNER_NO_EDIT_REASON');
+    expect(block).toContain("'Select vertices on the canvas to set their corner.'");
+  });
+
+  it('calls the bundle once for the other state and never for the active one', () => {
+    const block = cornerBlock();
+    // Pressing the state the selection already holds writes nothing.
+    expect(block).toContain('if (active) return;');
+    expect(block).toContain('bundle.applyAnchorCorners?.(ids, option.state)');
+    expect(countOf(dialogSource, 'bundle.applyAnchorCorners?.(')).toBe(1);
+    // A refused commit publishes the ONE fixed line.
+    expect(block).toContain('bundle.publishRefusal?.(ANCHOR_CORNER_COMMIT_REFUSED_MESSAGE)');
   });
 });
 

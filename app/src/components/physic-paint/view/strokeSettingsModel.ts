@@ -18,7 +18,9 @@ import { findTip, type AquarelleToolOverrides } from '@efxlab/efx-watercolor/bru
 import {
   ANCHOR_WIDTH_MAX,
   paintSeedSaltOf,
+  readAnchorCornerState,
   resolveAquarelleCurveMode,
+  type AnchorCornerState,
   type AquarelleAnchor,
   type AquarelleCurveMode,
 } from '@efxlab/efx-watercolor/payload';
@@ -645,6 +647,16 @@ export interface StrokeSettingsDialogBundle {
    * handle. Absent hides the Curve row.
    */
   readonly applyCurveMode?: (ids: readonly number[], mode: AquarelleCurveMode) => boolean | Promise<boolean>;
+  /**
+   * 261112-i6d: write one corner state on the SELECTED anchors of the open
+   * path edit as ONE history entry — the same commit seam and the same bare
+   * roll call Alt+click uses, so the row and the gesture can never disagree.
+   * Absent hides the Corner row.
+   */
+  readonly applyAnchorCorners?: (
+    ids: readonly number[],
+    state: AnchorCornerState,
+  ) => boolean | Promise<boolean>;
 }
 
 // ============================================================
@@ -956,6 +968,66 @@ export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Vertex size not applied — 
  * Vertex size line: fixed, non-interpolated, one line for every refusal path.
  */
 export const ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE = 'Vertex colour not applied — the path edit could not be committed on this stroke.';
+
+// ── The Corner row (261112-i6d) ─────────────────────────────────────
+//
+//  One corner state per vertex, round or straight, shared with the Alt+click
+//  gesture (`toggleAnchorCorner`). The row is a SETTER, never a toggle: it
+//  reads the selection and writes the state the user pressed, so pressing the
+//  state the selection already holds writes nothing.
+
+/** 261112-i6d: the Corner row's two buttons, in declaration order. */
+export const ANCHOR_CORNER_OPTIONS: readonly AnchorCornerOption[] = Object.freeze([
+  Object.freeze({ id: 'round' as const, state: 'round' as const, label: 'Round' }),
+  Object.freeze({ id: 'straight' as const, state: 'straight' as const, label: 'Straight' }),
+]);
+
+export interface AnchorCornerOption {
+  readonly id: AnchorCornerState;
+  readonly state: AnchorCornerState;
+  readonly label: string;
+}
+
+/** 261112-i6d: why the Corner row is inert when no path edit is open. */
+export const ANCHOR_CORNER_NO_EDIT_REASON =
+  'Open Edit path on this stroke to set vertex corners.';
+
+/** 261112-i6d: the ONE reason a refused corner commit publishes. */
+export const ANCHOR_CORNER_COMMIT_REFUSED_MESSAGE = 'Vertex corner not applied — the path edit is no longer open on this stroke.';
+
+/** 261112-i6d: the reading when no listed anchor exists to describe. */
+export const ANCHOR_CORNER_EMPTY_READING: AnchorCornerReading = {
+  state: null,
+  mixed: false,
+  count: 0,
+};
+
+export interface AnchorCornerReading {
+  /** The FIRST listed anchor's state — the first-selected precedent. */
+  readonly state: AnchorCornerState | null;
+  readonly mixed: boolean;
+  readonly count: number;
+}
+
+/**
+ * 261112-i6d: the Corner row's reading. Mirrors `readAnchorWidthReading`:
+ * only the listed indices the path actually carries participate, and an empty
+ * participation reads the empty constant so the row can state why it is inert.
+ */
+export function readAnchorCornerReading(
+  anchors: readonly AquarelleAnchor[],
+  indices: readonly number[],
+): AnchorCornerReading {
+  const states: AnchorCornerState[] = [];
+  for (const index of indices) {
+    const anchor = Number.isInteger(index) && index >= 0 ? anchors[index] : undefined;
+    if (!anchor) continue;
+    states.push(readAnchorCornerState(anchor));
+  }
+  if (states.length === 0) return ANCHOR_CORNER_EMPTY_READING;
+  const first = states[0]!;
+  return { state: first, mixed: states.some((state) => state !== first), count: states.length };
+}
 
 /**
  * The Paint row's reading. `value` is the FIRST selected anchor's factor (the

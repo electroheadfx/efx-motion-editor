@@ -111,7 +111,7 @@ import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import * as vectorPathSession from './view/vectorPathSession';
-import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
+import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
@@ -322,6 +322,7 @@ import {
   WIREFRAME_SETTLE_REFUSED_MESSAGE,
 } from './view/scriptStrokeEdition';
 import {
+  VECTOR_PATH_REBUILDING_MESSAGE,
   VECTOR_PATH_SCRIPT_OFF_MESSAGE,
   isVectorAquarelleStroke,
   resolveVectorCommitRoute,
@@ -10282,6 +10283,12 @@ export function PhysicsPaintStudio() {
       clearOwnedScriptApplyRefusal();
       return editId;
     }
+    // 261112-i6d: a path edit re-bakes the WHOLE script, so the gesture is
+    // silent for as long as the replay takes — a dead click unless the strip
+    // says otherwise. Publish before the await; `onSuccess` hides it and
+    // `onFailure` replaces it with the rollback copy, so no path ends here.
+    setApplyMessage(VECTOR_PATH_REBUILDING_MESSAGE);
+    setApplyStatus('applying');
     const ok = await runAquarelleScriptRebake({
       isInFlight: isAquarelleScriptEditInFlight,
       beginInFlight: () => setAquarelleScriptEditInFlight(true),
@@ -10295,6 +10302,11 @@ export function PhysicsPaintStudio() {
         rotoMoveHistory.recordAquarelleScriptEdit(editId);
         setLastError(null);
         clearOwnedScriptApplyRefusal();
+        // 261112-i6d: the rebuild line is done. Clearing BOTH fields returns
+        // the capsule to rest without leaving the `success` state behind — a
+        // later message written without a status move would be filtered out.
+        setApplyMessage(null);
+        setApplyStatus('idle');
       },
       onFailure: () => {
         // Put the pre-edit script back exactly, BEFORE publishing.
@@ -11722,6 +11734,30 @@ export function PhysicsPaintStudio() {
           // "Vertex size not applied" banner. Return BEFORE the commit; the
           // genuine-refusal publication below stays byte-identical.
           if (anchorsEqual(anchors, next)) return true;
+          return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);
+        },
+        // 261112-i6d: the Corner row's commit. It shares the Vertex size
+        // control's target and anchor selection, and writes through the SAME
+        // path-edit commit, so the row and the Alt+click gesture can never
+        // disagree about the shape or mint two undo entries for one change.
+        applyAnchorCorners: (ids, state) => {
+          const target = resolveAnchorWidthTarget({
+            ids,
+            pathEditMutationId: vectorPathSession.pathEditMutationId.peek(),
+          });
+          if (target === null) return false;
+          const stroke = getRecordedAquarelleStroke(target);
+          if (!stroke) return false;
+          const anchors = normaliseAquarelleAnchors(stroke.anchors);
+          if (!anchors) return false;
+          const next = buildAnchorCornerCommit(
+            anchors,
+            vectorPathSession.vectorAnchorSelection.peek(),
+            state,
+          );
+          // Same no-op law as the width and colour commits: an unchanged list
+          // returns the input reference and must not publish a refusal.
+          if (next === anchors) return true;
           return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);
         },
         // 61-27 (IN-03): the sheet's ONE refusal channel. A commit the open

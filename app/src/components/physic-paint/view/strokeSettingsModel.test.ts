@@ -27,6 +27,8 @@ import { ANCHOR_WIDTH_MAX, PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  ANCHOR_CORNER_EMPTY_READING,
+  ANCHOR_CORNER_OPTIONS,
   ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE,
   AQUARELLE_ANCHOR_WIDTH_DEFAULT,
   AQUARELLE_ANCHOR_WIDTH_MAX,
@@ -55,6 +57,7 @@ import {
   listStrokeTipOptions,
   listStrokeToolOptions,
   matchesStrokeTypeFilter,
+  readAnchorCornerReading,
   readAnchorWidthReading,
   readCurveMode,
   readNumericField,
@@ -3465,6 +3468,61 @@ describe('61-27 IN-03 — the refused Anchor width commit copy', () => {
 //  representative value, whether the selected anchors disagree, and how
 //  many of them the path actually carries. The effective-px readout is
 //  Size x factor — never the clamped `scriptScale` (T-61-39).
+
+// ============================================================
+//  261112-i6d — the Corner row. One state per vertex, shared with the
+//  Alt+click gesture: `straight` is the placed corner both modes honour,
+//  `round` is everything the spine is allowed to smooth.
+// ============================================================
+
+describe('261112-i6d Corner reading (Geometry)', () => {
+  const auto = (x: number) => ({ x, y: 0, kind: 'auto' as const });
+  const corner = (x: number) => ({
+    x,
+    y: 0,
+    kind: 'bezier' as const,
+    in: { x, y: 0 },
+    out: { x, y: 0 },
+  });
+
+  it('pins the two options in declaration order', () => {
+    expect(ANCHOR_CORNER_OPTIONS.map((option) => option.id)).toEqual(['round', 'straight']);
+    expect(ANCHOR_CORNER_OPTIONS.map((option) => option.label)).toEqual(['Round', 'Straight']);
+  });
+
+  it('reads an empty participation as the empty constant', () => {
+    expect(readAnchorCornerReading([], [])).toEqual(ANCHOR_CORNER_EMPTY_READING);
+    // Indices the path does not carry are dropped, never counted.
+    expect(readAnchorCornerReading([auto(0)], [0, 3])).toEqual({
+      state: 'round',
+      mixed: false,
+      count: 1,
+    });
+  });
+
+  it('reports mixed when the listed anchors disagree', () => {
+    const anchors = [auto(0), corner(0.5), corner(0.8)];
+    expect(readAnchorCornerReading(anchors, [0, 1])).toEqual({
+      state: 'round',
+      mixed: true,
+      count: 2,
+    });
+    expect(readAnchorCornerReading(anchors, [1, 2])).toEqual({
+      state: 'straight',
+      mixed: false,
+      count: 2,
+    });
+  });
+
+  it('takes the FIRST listed index as the representative state', () => {
+    const anchors = [auto(0), corner(0.5)];
+    expect(readAnchorCornerReading(anchors, [1, 0])).toEqual({
+      state: 'straight',
+      mixed: true,
+      count: 2,
+    });
+  });
+});
 
 describe('61-11 Anchor width reading (Geometry + list)', () => {
   const anchor = (width?: number) => ({

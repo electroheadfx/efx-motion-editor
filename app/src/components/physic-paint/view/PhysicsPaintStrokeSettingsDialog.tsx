@@ -8,6 +8,10 @@ import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  ANCHOR_CORNER_COMMIT_REFUSED_MESSAGE,
+  ANCHOR_CORNER_EMPTY_READING,
+  ANCHOR_CORNER_NO_EDIT_REASON,
+  ANCHOR_CORNER_OPTIONS,
   ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE,
   ANCHOR_WIDTH_EMPTY_READING,
   ANCHOR_WIDTH_NO_EDIT_REASON,
@@ -31,6 +35,7 @@ import {
   listStrokeTipOptions,
   listStrokeToolOptions,
   matchesStrokeTypeFilter,
+  readAnchorCornerReading,
   readAnchorWidthReading,
   readCurveMode,
   readNumericField,
@@ -749,6 +754,16 @@ export function PhysicsPaintStrokeSettingsDialog({
   // same anchors, so only the VECTOR appearances participate. The row MOUNTS IN
   // GEOMETRY, after the transform rows.
   const curveModeReading = readCurveMode(appearances);
+
+  // 261112-i6d: the Corner row reading. It shares the ONE path-edit target and
+  // the anchor selection the Vertex size control already resolves, so the row
+  // can never describe an anchor the open edit cannot write.
+  const cornerReading = anchorWidthTarget === null || selectedVectorAnchors === null
+    ? ANCHOR_CORNER_EMPTY_READING
+    : readAnchorCornerReading(selectedVectorAnchors, vectorAnchorSelection.value);
+  const cornerAvailable = engineModule === 'watercolor'
+    && selectedVectorAnchors !== null
+    && bundle.applyAnchorCorners !== undefined;
 
   const applied = strokeSettingsDragOffset.value;
 
@@ -1551,6 +1566,70 @@ export function PhysicsPaintStrokeSettingsDialog({
                       );
                     })}
                   </div>
+                </div>
+              ) : null}
+              {/* 261112-i6d: the per-vertex corner switch. It writes the SAME
+                  state Alt+click toggles through the SAME commit seam, on the
+                  SAME anchor selection the Vertex size control reads — a
+                  setter, never a toggle, so pressing the held state writes
+                  nothing. Empty selection keeps the row visible and inert with
+                  the reason, exactly like Vertex size. */}
+              {cornerAvailable ? (
+                <div data-testid="stroke-settings-corner-block">
+                  <div style={SEGMENT_LABEL_ROW_STYLE}>
+                    <span style={PAINT_ROW_LABEL_STYLE}>Corner</span>
+                    {cornerReading.mixed ? (
+                      <span
+                        data-testid="stroke-settings-corner-mixed"
+                        style={MIXED_CAPTION_STYLE}
+                      >
+                        Mixed
+                      </span>
+                    ) : null}
+                  </div>
+                  <div
+                    role="group"
+                    aria-label="Corner"
+                    data-testid="stroke-settings-corner"
+                    style={SEGMENT_GROUP_STYLE}
+                  >
+                    {ANCHOR_CORNER_OPTIONS.map((option) => {
+                      const active = !cornerReading.mixed && cornerReading.state === option.state;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          data-testid={`stroke-settings-corner-option-${option.id}`}
+                          aria-pressed={active}
+                          disabled={cornerReading.count === 0}
+                          style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
+                          onClick={() => {
+                            // Pressing the state the selection already holds
+                            // writes nothing — no edit, no undo entry.
+                            if (active) return;
+                            void Promise.resolve(bundle.applyAnchorCorners?.(ids, option.state))
+                              .then((applied) => {
+                                if (applied === false) {
+                                  bundle.publishRefusal?.(ANCHOR_CORNER_COMMIT_REFUSED_MESSAGE);
+                                }
+                              });
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {cornerReading.count === 0 ? (
+                    <span
+                      data-testid="stroke-settings-corner-caption"
+                      style={ANCHOR_WIDTH_CAPTION_STYLE}
+                    >
+                      {anchorWidthTarget === null
+                        ? ANCHOR_CORNER_NO_EDIT_REASON
+                        : 'Select vertices on the canvas to set their corner.'}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
               </div>

@@ -13,6 +13,14 @@ export const VECTOR_PATH_SCRIPT_OFF_MESSAGE =
   'Vector path rejected — Script is off, so the path would not be recorded. Turn Script on and draw it again.';
 
 /**
+ * 261112-i6d: the status line published while a path edit re-bakes the script.
+ * An edit is silent for as long as the whole script takes to replay, which
+ * reads as a dead click; this line is the ONE statement that the click landed
+ * and the sheet is being rebuilt.
+ */
+export const VECTOR_PATH_REBUILDING_MESSAGE = 'Rebuilding path…';
+
+/**
  * A stroke is a vector commit only when it carries anchors. The list is
  * the ONE signal — a missing or empty list is an ordinary dabs stroke.
  */
