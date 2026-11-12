@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="62" failures="10" errors="0" time="0.576">
+    <testsuite name="src/components/physic-paint/engine/VectorPathOverlay.test.ts" timestamp="2026-11-10T14:40:35.752Z" hostname="efx2.home" tests="30" failures="6" errors="0" skipped="0" time="0.014929417">
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws nothing when no vector stroke and no draft exist" time="0.000766083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws nothing for a hand-painted stroke (no anchors)" time="0.00016625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws one spine polyline and exactly one marker per anchor" time="0.001217666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws two handle markers for a bezier anchor and none for an auto anchor" time="0.000434083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; skips strokes painted on another frame" time="0.000082417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; mounts the pointer surface while the pen is active with an empty draft" time="0.000133667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; passes pointer events through unless the pen is active and no path edit is open" time="0.000727041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; places a smooth anchor per plain click" time="0.000618875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; places a corner (bezier with zero-length handles) on Alt+click" time="0.000181291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; refuses a click within the adjacency radius of the last anchor" time="0.000196292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes at the first anchor without appending a closing anchor" time="0.000297584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes on Enter and commits exactly once" time="0.000155708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes on a double-click" time="0.00017375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; cancels on Escape with zero commits" time="0.000183917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; commits nothing for a zero- or one-anchor path and never throws" time="0.000352958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; clears the draft BEFORE the commit so a same-tick second Enter is a no-op" time="0.000158375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; commits the draft anchors, the active brush mode and the sampled points" time="0.00050125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; prevents default and stops propagation so no paint stroke starts underneath" time="0.000078">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; binds the key listener only while the pen is active and removes it on cleanup" time="0.000196625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — one entry per finished path (task 3) &gt; records exactly one entry and one revision bump for a finished path" time="0.000530792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — one entry per finished path (task 3) &gt; records nothing for an empty or one-anchor path — no entry, no serial, no event" time="0.000238666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — one entry per finished path (task 3) &gt; lists a committed vector stroke once, keyed by serial, with the hand-painted row shape" time="0.000541042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; replaces the recorded path at the same timeline index, bumps once, and repeats at zero" time="0.002709208">
+            <failure message="expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:562:63
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; stores exactly ONE history entry for one changed anchor and refuses while in flight" time="0.000258792">
+            <failure message="expected null not to be null" type="AssertionError">
+AssertionError: expected null not to be null
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:588:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; owns the pointer while a path edit is open even with the pen released" time="0.001439875">
+            <failure message="expected { position: &apos;absolute&apos;, …(4) } to match object { pointerEvents: &apos;auto&apos; }
+(4 matching properties omitted from actual)" type="AssertionError">
+AssertionError: expected { position: &apos;absolute&apos;, …(4) } to match object { pointerEvents: &apos;auto&apos; }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  Object {
+-   &quot;pointerEvents&quot;: &quot;auto&quot;,
++   &quot;pointerEvents&quot;: &quot;none&quot;,
+  }
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:607:33
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; drags an anchor and commits ONE onPathEdit carrying the promotion and the moved handles" time="0.000803166">
+            <failure message="overlay root has no pointer handler: expected undefined to be type of &apos;function&apos;" type="AssertionError">
+AssertionError: overlay root has no pointer handler: expected undefined to be type of &apos;function&apos;
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:210:64
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:619:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; commits the promotion on a grab-and-release of an auto anchor" time="0.000328459">
+            <failure message="overlay root has no pointer handler: expected undefined to be type of &apos;function&apos;" type="AssertionError">
+AssertionError: overlay root has no pointer handler: expected undefined to be type of &apos;function&apos;
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:210:64
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:651:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; commits nothing on a grab-and-release of an already-bezier anchor" time="0.000433708">
+            <failure message="overlay root has no pointer handler: expected undefined to be type of &apos;function&apos;" type="AssertionError">
+AssertionError: overlay root has no pointer handler: expected undefined to be type of &apos;function&apos;
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:210:64
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:678:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — authority boundary (T-61-31) &gt; never imports an engine, bake or adapter module and never records" time="0.000203834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — authority boundary (T-61-31) &gt; is mounted beside the stroke overlay and forwards to props.onStrokeEnd" time="0.000171125">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/vectorPathHandles.test.ts" timestamp="2026-11-10T14:40:35.756Z" hostname="efx2.home" tests="32" failures="4" errors="0" skipped="0" time="0.015978292">
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="vector handle constants are the shipped screen-pixel law &gt; publishes the UI-SPEC values verbatim" time="0.000559875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="counter-scaling — a screen-pixel extent shrinks by the zoom factor &gt; converts a screen pad into uv through the displayed width" time="0.000102167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="counter-scaling — a screen-pixel extent shrinks by the zoom factor &gt; keeps the anchor marker screen size constant at zoom 1, 2 and 4" time="0.000098916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="counter-scaling — a screen-pixel extent shrinks by the zoom factor &gt; maps document uv to layer pixels with the y axis flipped" time="0.000301208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="pointToSegmentDistancePx &gt; measures the perpendicular distance inside the segment" time="0.000070959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="pointToSegmentDistancePx &gt; falls back to the endpoint beyond the segment" time="0.000055458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="hit priority — handle before anchor before nothing &gt; returns the handle when a handle and its anchor overlap inside the pad" time="0.000229">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="hit priority — handle before anchor before nothing &gt; returns the anchor when the handles are farther than the pad" time="0.000068208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="hit priority — handle before anchor before nothing &gt; returns null when the pointer is farther than the pad from every target" time="0.000076041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="hit priority — handle before anchor before nothing &gt; never offers a handle for an auto anchor (its handles are derived, not owned)" time="0.000064667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="hit priority — handle before anchor before nothing &gt; scales the hit pad with the zoom, not with the document" time="0.000068875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="adjacency — a duplicate click never appends &gt; refuses a pointer inside ADJACENCY_MIN_PX of the last anchor" time="0.00007575">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="adjacency — a duplicate click never appends &gt; measures the radius in screen pixels at every zoom" time="0.000052291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="adjacency — a duplicate click never appends &gt; never refuses the first click of an empty draft" time="0.000041084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="insert / delete list operations &gt; inserts at the requested index and preserves order" time="0.000089417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="insert / delete list operations &gt; clamps an out-of-range insert index to the end" time="0.000039292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="insert / delete list operations &gt; deletes the listed indices only" time="0.000067625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="insert / delete list operations &gt; never mutates its input" time="0.0000385">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="promoteAnchorForDrag — D-03, taking control owns the handles &gt; promotes an auto anchor and freezes the derived handles" time="0.002833875">
+            <failure message="expected [ …(3) ] not to be [ …(3) ] // Object.is equality" type="AssertionError">
+AssertionError: expected [ …(3) ] not to be [ …(3) ] // Object.is equality
+
+Compared values have no visual difference.
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:212:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="promoteAnchorForDrag — D-03, taking control owns the handles &gt; leaves an already-bezier anchor and its stored handles untouched" time="0.000111792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="moveAnchorBy — the anchor and both stored handles &gt; moves anchor 1 and its handles, leaving the neighbours reference-identical" time="0.000643">
+            <failure message="expected [ …(3) ] not to be [ …(3) ] // Object.is equality" type="AssertionError">
+AssertionError: expected [ …(3) ] not to be [ …(3) ] // Object.is equality
+
+Compared values have no visual difference.
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:243:23
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="moveAnchorBy — the anchor and both stored handles &gt; moves an auto anchor without inventing handle keys" time="0.000203667">
+            <failure message="expected 0.2 to be close to 0.3, received difference is 0.09999999999999998, but expected 5e-13" type="AssertionError">
+AssertionError: expected 0.2 to be close to 0.3, received difference is 0.09999999999999998, but expected 5e-13
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:261:25
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="moveHandleTo — the handle drag &gt; moves the named endpoint and never mutates the input" time="0.000309375">
+            <failure message="expected [ { x: 0.5, y: 0.5, …(3) } ] not to be [ { x: 0.5, y: 0.5, …(3) } ] // Object.is equality" type="AssertionError">
+AssertionError: expected [ { x: 0.5, y: 0.5, …(3) } ] not to be [ { x: 0.5, y: 0.5, …(3) } ] // Object.is equality
+
+Compared values have no visual difference.
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:274:23
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="projectVectorPath &gt; draws nothing for a path with no anchors" time="0.000116917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="projectVectorPath &gt; draws exactly one anchor marker per anchor" time="0.000626583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="projectVectorPath &gt; draws no envelope for a uniform width profile" time="0.0001715">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="projectVectorPath &gt; sweeps an envelope when an anchor stores an explicit width factor" time="0.00747325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="buildDraftPath &gt; returns an empty path for an empty draft" time="0.00009">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="buildDraftPath &gt; returns the single point of a one-anchor draft" time="0.000067417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="buildDraftPath &gt; samples a two-anchor draft from its first to its last anchor" time="0.000121">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="buildVectorStroke — every required field has a stated source &gt; projects a commit plus its record-time source into a complete stroke" time="0.000188458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="buildVectorStroke — every required field has a stated source &gt; never shares the params / overrides bags with the source" time="0.000148667">
+        </testcase>
+    </testsuite>
+</testsuites>

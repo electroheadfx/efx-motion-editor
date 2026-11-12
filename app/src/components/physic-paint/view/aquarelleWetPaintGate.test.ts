@@ -99,9 +99,11 @@ describe('aquarelleHasWetPaint tool fallback', () => {
 describe('wiring contracts (261029-lel)', () => {
   it('the left rail disables only the Water entry and guards its click', () => {
     const rail = readFileSync(resolve(__dirname, './PhysicsPaintToolRail.tsx'), 'utf8');
-    expect(rail).toContain('disabled={disabled || (id === \'water\' && !wetAvailable)}');
+    // 61-13 extended the SAME expression with the wireframe gate: the water
+    // clause still disables Water alone, the latch disables the whole row.
+    expect(rail).toContain('disabled={railDisabled || wireframeActive || (id === \'water\' && !wetAvailable)}');
     expect(rail).toContain('if (id === \'water\' && !aquarelleHasWetPaint.peek()) return;');
-    expect(rail).toContain("title={waterGated ? 'Water (W) — needs standing water'");
+    expect(rail).toContain("waterGated ? 'Water (W) — needs standing water'");
     // Brush / Pen / Eraser must keep the plain frame/session `disabled`.
     const body = rail.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     expect(body).not.toContain('id === \'brush\' && !wetAvailable');

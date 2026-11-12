@@ -696,6 +696,16 @@ button.destructive {
   height: 35px;
 }
 
+/* 61-08 (D-05): the vector pen sits outside the four paint tools, so the rail
+   separates them with the derived 1px rule at the existing 7px gap. */
+.physics-paint-rail-separator {
+  flex: 0 0 auto;
+  width: 21px;
+  height: 1px;
+  margin: 1px 0;
+  background: #5a5e63;
+}
+
 .physics-paint-icon-button img {
   width: 20px;
   height: 20px;
@@ -6399,6 +6409,91 @@ button.destructive {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* 261112-i6d: the path-edit re-bake veil. A path edit replays the WHOLE script
+   and the engine locks its input for the duration, so the canvas is genuinely
+   inert while it runs — this states why, and carries the stroke counter the
+   apply pill would show. It sits above the canvas stack and the apply pill
+   (z 60) but BELOW the floating sheets (z 70+), so the control the user just
+   pressed stays visible. Its lifetime is the re-bake latch itself, so it opens
+   and closes with the work — no timer can run inside the blocked bake. */
+.physics-paint-rebake-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 65;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 22, 25, 0.38);
+  cursor: progress;
+  animation: physics-paint-rebake-veil-in 120ms ease-out both;
+}
+
+.physics-paint-rebake-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(28, 30, 34, 0.92);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* The bake blocks the main thread, so this spin must live on the compositor —
+   `will-change` promotes the element's own layer at creation, which is the
+   only way the wheel keeps turning while the replay runs. */
+.physics-paint-rebake-spinner {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: #7fa1ff;
+  will-change: transform;
+  animation: physics-paint-rebake-spin 700ms linear infinite;
+}
+
+.physics-paint-rebake-label {
+  color: #d5dbe2;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.physics-paint-rebake-track {
+  position: relative;
+  width: 96px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.physics-paint-rebake-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: #7fa1ff;
+  transition: width 120ms linear;
+}
+
+.physics-paint-rebake-count {
+  color: #8f9aa6;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@keyframes physics-paint-rebake-veil-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes physics-paint-rebake-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Mode segmented control — 3 equal segments on a recessed rail. */

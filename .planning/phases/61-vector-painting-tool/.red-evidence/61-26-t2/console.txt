@@ -1,0 +1,132 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts (396 tests | 4 failed) 115ms
+   × 61-26 WR-02 — a failed path-edit re-bake restores for real or says it could not > re-anchors the attempted side before the authority-checked restore 7ms
+     → expected -1 to be greater than -1
+   × 61-26 WR-02 — a failed path-edit re-bake restores for real or says it could not > consumes the restore result instead of discarding it 3ms
+     → expected 'onFailure: () => {\n        // Put th…' to contain 'const restored = restoreAquarelleEdit…'
+   × 61-26 WR-02 — a failed path-edit re-bake restores for real or says it could not > ternaries the fallback copy on the restore result, keeping the apply error ahead of it 0ms
+     → expected 'onFailure: () => {\n        // Put th…' to contain '?? (restored'
+   × 61-26 WR-02 — a failed path-edit re-bake restores for real or says it could not > no longer discards the restore as a standalone statement 0ms
+     → expected 'onFailure: () => {\n        // Put th…' not to match /restoreAquarelleEditSnapshot\(editId…/m
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-26 WR-02 — a failed path-edit re-bake restores for real or says it could not > re-anchors the attempted side before the authority-checked restore
+AssertionError: expected -1 to be greater than -1
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7449:22
+    7447|     const anchorAt = failure.indexOf(REANCHOR);
+    7448|     const restoreAt = failure.indexOf(RESTORE);
+    7449|     expect(anchorAt).toBeGreaterThan(-1);
+       |                      ^
+    7450|     expect(restoreAt).toBeGreaterThan(anchorAt);
+    7451|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-26 WR-02 — a failed path-edit re-bake restores for real or says it could not > consumes the restore result instead of discarding it
+AssertionError: expected 'onFailure: () => {\n        // Put th…' to contain 'const restored = restoreAquarelleEdit…'
+
+- Expected
++ Received
+
+- const restored = restoreAquarelleEditSnapshot(editId, 'undo') !== null;
++ onFailure: () => {
++         // Put the pre-edit script back exactly, BEFORE publishing.
++         restoreAquarelleEditSnapshot(editId, 'undo');
++         const error = rotoScript.error.peek();
++         const message = buildRotoScriptApplyRefusalMessage(error)
++           ?? error?.message
++           ?? 'Could not re-apply the watercolor script — the path edit was restored.';
++         setLastError(message);
++         setApplyMessage(message);
++         setApplyStatus('error');
++         scriptApplyRefusalOwnedRef.current = true;
++       },
++     });
++     return ok ? editId : null;
++
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7455:21
+    7453|   it('consumes the restore result instead of discarding it', () => {
+    7454|     const failure = failureRegion();
+    7455|     expect(failure).toContain(
+       |                     ^
+    7456|       "const restored = restoreAquarelleEditSnapshot(editId, 'undo') !…
+    7457|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-26 WR-02 — a failed path-edit re-bake restores for real or says it could not > ternaries the fallback copy on the restore result, keeping the apply error ahead of it
+AssertionError: expected 'onFailure: () => {\n        // Put th…' to contain '?? (restored'
+
+- Expected
++ Received
+
+- ?? (restored
++ onFailure: () => {
++         // Put the pre-edit script back exactly, BEFORE publishing.
++         restoreAquarelleEditSnapshot(editId, 'undo');
++         const error = rotoScript.error.peek();
++         const message = buildRotoScriptApplyRefusalMessage(error)
++           ?? error?.message
++           ?? 'Could not re-apply the watercolor script — the path edit was restored.';
++         setLastError(message);
++         setApplyMessage(message);
++         setApplyStatus('error');
++         scriptApplyRefusalOwnedRef.current = true;
++       },
++     });
++     return ok ? editId : null;
++
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7462:21
+    7460|   it('ternaries the fallback copy on the restore result, keeping the a…
+    7461|     const failure = failureRegion();
+    7462|     expect(failure).toContain('?? (restored');
+       |                     ^
+    7463|     expect(failure).toContain(RESTORED_LINE);
+    7464|     expect(failure).toContain(NOT_ROLLED_BACK_LINE);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-26 WR-02 — a failed path-edit re-bake restores for real or says it could not > no longer discards the restore as a standalone statement
+AssertionError: expected 'onFailure: () => {\n        // Put th…' not to match /restoreAquarelleEditSnapshot\(editId…/m
+
+- Expected: 
+/restoreAquarelleEditSnapshot\(editId, 'undo'\);[ \t]*$/m
+
++ Received: 
+"onFailure: () => {
+        // Put the pre-edit script back exactly, BEFORE publishing.
+        restoreAquarelleEditSnapshot(editId, 'undo');
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error)
+          ?? error?.message
+          ?? 'Could not re-apply the watercolor script — the path edit was restored.';
+        setLastError(message);
+        setApplyMessage(message);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
+      },
+    });
+    return ok ? editId : null;
+"
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7479:25
+    7477|   it('no longer discards the restore as a standalone statement', () =>…
+    7478|     const failure = failureRegion();
+    7479|     expect(failure).not.toMatch(/restoreAquarelleEditSnapshot\(editId,…
+       |                         ^
+    7480|   });
+    7481| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 392 passed (396)
+   Start at  12:23:58
+   Duration  474ms (transform 132ms, setup 0ms, collect 160ms, tests 115ms, environment 0ms, prepare 29ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-26-t2/junit.xml

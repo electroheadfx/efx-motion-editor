@@ -231,3 +231,33 @@ describe('Water color stroke-end bridges through aquarelleStrokeToPaintStroke', 
     expect(body).not.toContain('stroke.points.map');
   });
 });
+
+// ============================================================
+//  61-07 (D-12/D-14): the record-time render-mode stamp.
+//  A hand-painted stroke records the mode its brush implies and gains
+//  NO key for the watercolour default; it writes no `anchors` key —
+//  the mode is a stroke property, never a path property.
+// ============================================================
+
+describe('record-time stroke literal (61-07)', () => {
+  const layer = readFileSync(resolve(__dirname, './AquarelleCanvasLayer.tsx'), 'utf8');
+
+  /** The recorded AquarelleStroke literal inside onStrokeEnd. */
+  function recordedStrokeLiteral(): string {
+    const start = layer.indexOf('const stroke: AquarelleStroke = {');
+    expect(start).toBeGreaterThan(-1);
+    const end = layer.indexOf('};', start);
+    expect(end).toBeGreaterThan(start);
+    return layer.slice(start, end);
+  }
+
+  it('stamps the SAME brush id the literal records', () => {
+    const literal = recordedStrokeLiteral();
+    expect(literal).toContain('brushId: recordedBrushId,');
+    expect(layer).toContain('const recordedBrushId = snap.brushId || brushIdForSelection()');
+  });
+
+  it('writes no anchors key on the hand-painted path', () => {
+    expect(recordedStrokeLiteral()).not.toContain('anchors');
+  });
+});

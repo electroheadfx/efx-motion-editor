@@ -2,17 +2,31 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
-import { Eye, EyeOff, List, Settings2, SlidersHorizontal, Spline, Trash2, X } from 'lucide-preact';
+import { Eye, EyeOff, SlidersHorizontal, Spline, SplinePointer, Trash2, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
-import { hexToRgba } from '../../../lib/colorUtils';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  ANCHOR_CORNER_COMMIT_REFUSED_MESSAGE,
+  ANCHOR_CORNER_EMPTY_READING,
+  ANCHOR_CORNER_NO_EDIT_REASON,
+  ANCHOR_CORNER_OPTIONS,
+  ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE,
+  ANCHOR_WIDTH_EMPTY_READING,
+  ANCHOR_WIDTH_NO_EDIT_REASON,
+  AQUARELLE_ANCHOR_WIDTH_DEFAULT,
+  AQUARELLE_ANCHOR_WIDTH_MAX,
+  AQUARELLE_ANCHOR_WIDTH_MIN,
+  AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX,
+  AQUARELLE_ANCHOR_WIDTH_STEP,
+  CURVE_MODE_OPTIONS,
   FRESH_STROKE_GEOMETRY_SESSION,
   STROKE_POSITION_RANGE,
   STROKE_ROTATION_RANGE,
   STROKE_SCALE_RANGE,
+  anchorWidthEffectivePx,
+  anchorWidthPatchValue,
   buildAppearancePatch,
   buildPaintSeedVariationPatch,
   filterStrokeListRows,
@@ -21,25 +35,29 @@ import {
   listStrokeTipOptions,
   listStrokeToolOptions,
   matchesStrokeTypeFilter,
-  readColorField,
+  readAnchorCornerReading,
+  readAnchorWidthReading,
+  readCurveMode,
   readNumericField,
   readPaintSeedVariation,
+  resolveAnchorWidthTarget,
+  resolvePathEditGate,
   resolveStrokeListRange,
   resolveStrokeSettingsOpen,
-  resolveStrokeSettingsView,
   resolveStrokeTipFilter,
   resolveStrokeTipName,
   resolveStrokeToolFilter,
-  shouldInvalidateStrokeSettingsView,
+  shouldExitPathEdit,
   shouldMarkSawEmpty,
   sortStrokesTopmostFirst,
   strokeListSummary,
   strokeSettingsFields,
   strokeToolLabel,
+  type AnchorWidthReading,
+  type NumericFieldReading,
   type StrokeGeometryControl,
   type StrokeGeometrySession,
   type StrokeSettingsDialogBundle,
-  type StrokeSettingsView,
 } from './strokeSettingsModel';
 import {
   draftMode,
@@ -50,6 +68,7 @@ import {
   setFrozenCacheVisible,
   setStrokeSizePreview,
   strokeSizePreview,
+  wireframeMode,
 } from './scriptStrokeEdition';
 import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
 import { clampStackPosition } from './stackOrder';
@@ -69,11 +88,10 @@ import {
   setAquarelleStrokeSelection,
   setAquarelleStrokeTipFilter,
   setAquarelleStrokeToolFilter,
-  setAquarelleStrokeTypeFilter,
   toggleAquarelleStrokeSelection,
   type AquarelleStrokeToolFilter,
-  type AquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
+import { enterPathEdit, exitPathEdit, pathEditMutationId, vectorAnchorSelection } from './vectorPathSession';
 
 /**
  * quick 261024-p5q: the Stroke Settings dialog — a selection-gated, movable
@@ -87,10 +105,18 @@ import {
  * not edited here: a read-only thumb shows the selected strokes' color and
  * the one shared picker in the sidebar Color tab commits the change.
  *
- * 261024-vga UAT revision: one pinned tab row (Geometry | Stack | Paint),
- * Geometry by default, all three on one row. The color readout moved into
- * Paint. The tabs hold no stroke data — a ref-held signal holds only the
- * active tab key.
+ * 261024-vga UAT revision: ONE pinned tab row, always up. The tabs hold no
+ * stroke data — a ref-held signal holds only the active tab key. List |
+ * Geometry | Stack | Curve: watercolor defaults to LIST (its filter
+ * dropdowns, summary and rows) and Geometry keeps the seed variation,
+ * Opacity (brush) and transform rows. Stack and Curve are CONTEXT-GATED — a
+ * `reorderStroke` seam, one selected vector stroke — and both fall back to
+ * List while unavailable. Brush keeps its Geometry | Stack sheet.
+ *
+ * quick 261111-vg4: the Paint tab is GONE. Per-stroke size/color/wet editing
+ * lives in the sidebar Paint/Brush tabs and the top bar (quick 261111-ucf) —
+ * this sheet edits GEOMETRY and VECTOR content, never a duplicate paint
+ * surface.
  *
  * Dismissal (exact law): `dismissed` is a signal written ONLY by Escape and
  * the header close button. `sawEmptySinceDismiss` is a plain module flag
@@ -101,15 +127,13 @@ import {
  * does. Escape passes through when a focused input/textarea/contenteditable
  * INSIDE the dialog owns the key.
  *
- * 261101-jmm view (exact law): watercolor is LIST FIRST. The ref-held
- * `settingsViewRef` defaults to 'list' and the stroke list stays visible while
- * strokes are selected; the Geometry/Stack/Paint tabs mount only after the
- * header toggle is clicked, and the same button (now a list icon) returns.
- * An EMPTY selection invalidates a pending settings request through the plain
- * `strokeSettingsViewInvalidated` marker — the `sawEmptySinceDismiss`
- * precedent, written idempotently in the render body — so a close/reopen, a
- * leave and re-enter of Move/Select, or a delete-to-empty always lands the
- * next non-empty selection back on the list. Brush keeps its tabs verbatim.
+ * 261112-lq4 tab law (exact): the list↔settings VIEW GATE is gone — no header
+ * toggle, no view ref, no invalidation marker. `activeSettingsTab` is
+ * a PURE render derivation over `settingsTabAvailable`: a requested tab that is
+ * unavailable falls back to the default (List for watercolor, Geometry for
+ * brush) with NO write-back, so a requested Curve survives an availability dip
+ * and returns when a vector stroke is reselected — the shipped Stack
+ * precedent. The tab key is session state and survives a close/reopen.
  *
  * Geometry: every row is a release-commit, free-entry SliderStepper. X/Y type
  * an absolute target and commit `target - live centre` in integer px; Scale /
@@ -145,14 +169,12 @@ const strokeSettingsDragOffset = signal<DragOffset | null>(null);
 const strokeSettingsResizeHeight = signal<number | null>(null);
 
 /**
- * Resets the module-level dialog SESSION state: the movable/resizable layout
- * plus the view-request invalidation marker (`strokeSettingsViewInvalidated`).
+ * Resets the module-level dialog SESSION state: the movable/resizable layout.
  * There is no production call site — a fresh mount reproduces this state.
  */
 export function resetStrokeSettingsDialogLayout(): void {
   strokeSettingsDragOffset.value = null;
   strokeSettingsResizeHeight.value = null;
-  strokeSettingsViewInvalidated = false;
 }
 
 interface DragStart {
@@ -163,34 +185,14 @@ interface DragStart {
   readonly rect: { left: number; top: number; width: number } | null;
 }
 
-type StrokeSettingsTab = 'geometry' | 'stack' | 'paint';
+type StrokeSettingsTab = 'list' | 'geometry' | 'stack' | 'curve';
 
 const STROKE_SETTINGS_TABS: ReadonlyArray<{ key: StrokeSettingsTab; label: string }> = [
+  { key: 'list', label: 'List' },
   { key: 'geometry', label: 'Geometry' },
   { key: 'stack', label: 'Stack' },
-  { key: 'paint', label: 'Paint' },
+  { key: 'curve', label: 'Curve' },
 ];
-
-/**
- * 261029-eur: the watercolor stroke-type filter row (All | Eraser | Paint).
- * The setter owns the selection pruning and the compare-then-write law, so
- * the row is pure chrome.
- */
-const STROKE_TYPE_FILTERS: ReadonlyArray<{
-  key: 'paint' | 'eraser' | 'all';
-  label: string;
-  filter: AquarelleStrokeTypeFilter;
-}> = [
-  { key: 'paint', label: 'Paint', filter: 'paint' },
-  { key: 'eraser', label: 'Eraser', filter: 'lift' },
-  { key: 'all', label: 'All', filter: 'all' },
-];
-
-const FILTER_ROW_STYLE: CSSProperties = {
-  display: 'flex',
-  gap: '4px',
-  padding: '8px 12px 10px',
-};
 
 export interface PhysicsPaintStrokeSettingsDialogProps {
   /** The view-supplied bundle for the ACTIVE module; absent means no dialog. */
@@ -200,14 +202,14 @@ export interface PhysicsPaintStrokeSettingsDialogProps {
 let sawEmptySinceDismiss = false;
 
 /**
- * 261101-jmm: the settings-view request's staleness marker. A PLAIN
- * (non-signal) module flag, exactly like `sawEmptySinceDismiss`: written
- * idempotently in the render body when the selection is observed EMPTY under
- * a settings request, cleared ONLY by the header toggle's click handler (the
- * one explicit settings entry) and by `resetStrokeSettingsDialogLayout`. It
- * notifies no subscriber, so it can never drive a reactive loop.
+ * 61-11 (T-61-37): the path-edit exit request marker. A PLAIN (non-signal)
+ * module flag of the same kind: the render body only DECIDES that the open
+ * path edit no longer matches the selection, and the shipped lifecycle effect
+ * performs the ONE session write. A signal write here would break
+ * `efx-preact-reactivity` rule 6; a second effect would break the sheet's
+ * fixed hook order.
  */
-let strokeSettingsViewInvalidated = false;
+let pathEditExitRequested = false;
 
 /** Distance from the canvas region's top/right edges. */
 const SURFACE_INSET_PX = 12;
@@ -268,6 +270,27 @@ const MIXED_CAPTION_STYLE: CSSProperties = {
   color: '#ef4444',
 };
 
+/** 61-11 (E4 empty): the vertex-size block's quiet caption under the row. */
+const ANCHOR_WIDTH_CAPTION_STYLE: CSSProperties = {
+  display: 'block',
+  marginTop: '4px',
+  fontSize: '10px',
+  fontWeight: 600,
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+};
+
+/**
+ * 61-25 (UI-02): the `→ {n} px` readout rides the BrushResponsePanel
+ * multiplier grammar — 10px, 600, secondary text, tabular figures and nothing
+ * else. A declared constant keeps the four properties from drifting inline.
+ */
+const ANCHOR_WIDTH_READOUT_STYLE: CSSProperties = {
+  fontSize: '10px',
+  fontWeight: 600,
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+  fontVariantNumeric: 'tabular-nums',
+};
+
 const SEGMENT_GROUP_STYLE: CSSProperties = {
   display: 'flex',
   gap: '4px',
@@ -291,21 +314,6 @@ const SEGMENT_ACTIVE_STYLE: CSSProperties = {
   color: '#ffffff',
 };
 
-/**
- * 261031-euf: the type-filter row is sentence case — the global button rule
- * uppercases every other segmented control, so the filter row gets its own
- * copy instead of changing Stack/Paint.
- */
-const FILTER_SEGMENT_STYLE: CSSProperties = {
-  ...SEGMENT_STYLE,
-  textTransform: 'none',
-};
-
-const FILTER_SEGMENT_ACTIVE_STYLE: CSSProperties = {
-  ...SEGMENT_ACTIVE_STYLE,
-  textTransform: 'none',
-};
-
 const FINE_FILTERS_ROW_STYLE: CSSProperties = {
   display: 'flex',
   gap: '6px',
@@ -313,26 +321,6 @@ const FINE_FILTERS_ROW_STYLE: CSSProperties = {
 };
 
 const LIST_SUMMARY_STYLE: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: '10px',
-  color: 'var(--sidebar-text-secondary, #9aa5b1)',
-  fontVariantNumeric: 'tabular-nums',
-};
-
-const COLOR_BLOCK_STYLE: CSSProperties = {
-  width: '100%',
-  height: '48px',
-  boxSizing: 'border-box',
-  borderRadius: '6px',
-  border: '1px solid rgba(255, 255, 255, 0.22)',
-  boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.22)',
-};
-
-const COLOR_READOUT_ROW_STYLE: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: '8px',
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   fontSize: '10px',
   color: 'var(--sidebar-text-secondary, #9aa5b1)',
@@ -410,16 +398,13 @@ export function PhysicsPaintStrokeSettingsDialog({
   if (!stackSyncRef.current) stackSyncRef.current = signal(0);
   /** Collapses SliderStepper's Enter + blur pair into ONE reorder call. */
   const lastStackEmitRef = useRef<number | null>(null);
-  /** 261024-vga UAT revision: the active section tab (ref-held, Geometry default). */
-  const settingsTabRef = useRef<Signal<StrokeSettingsTab> | null>(null);
-  if (!settingsTabRef.current) settingsTabRef.current = signal<StrokeSettingsTab>('geometry');
   /**
-   * 261101-jmm: which surface the sheet shows. Ref-held like the tab signal and
-   * written ONLY from the header toggle's click handler (compare-then-write) —
-   * the empty-selection fallback is a pure render derivation, never a write.
+   * 261024-vga / 261112-lq4: the active tab (ref-held, List default). Written
+   * ONLY by the tab row's click handler; the availability fallback is a pure
+   * render derivation, never a write.
    */
-  const settingsViewRef = useRef<Signal<StrokeSettingsView> | null>(null);
-  if (!settingsViewRef.current) settingsViewRef.current = signal<StrokeSettingsView>('list');
+  const settingsTabRef = useRef<Signal<StrokeSettingsTab> | null>(null);
+  if (!settingsTabRef.current) settingsTabRef.current = signal<StrokeSettingsTab>('list');
   /**
    * 261101-jmm: the Shift-range anchor, held as the DISPLAYED row index (the
    * StrokeList law). Set by a plain or Cmd/Ctrl click, never by Shift itself.
@@ -427,7 +412,6 @@ export function PhysicsPaintStrokeSettingsDialog({
   const rowAnchorRef = useRef<number>(-1);
   /** 261101-o2m: the previous render's `open` — the dialog-close exit edge. */
   const wasOpenRef = useRef(false);
-
   const selection = scriptSelectedStrokeIds.value;
   const engineModule = bundle?.module ?? 'brush';
   const surfaceActive = bundle !== null && bundle !== undefined
@@ -451,12 +435,34 @@ export function PhysicsPaintStrokeSettingsDialog({
   // document edit, never undoable) read by this strip leaf — never the Studio
   // render body.
   const draftOn = draftMode.value;
+  // 61-13 (D-16): wireframe OWNS the Draft — ON forces it on, OFF settles it.
+  // The switch stays visibly ON but inert, so no second route out can race the
+  // wireframe's single-flight settle.
+  const wireframeOn = wireframeMode.value;
   // 261101-o2m (D-02): the cache eye — a display-only VIEW preference read by
   // this strip leaf and the cached-base leaf. It never gates a commit, a
   // capture, a save or an export.
   const cacheVisible = frozenCacheVisible.value;
   const keepOpenOnEmpty = bundle?.keepOpenOnEmpty ?? engineModule === 'watercolor';
   const stackSyncNonce = stackSyncRef.current.value;
+
+  // 61-11 (E2 / T-61-37): the Edit path gate. Computed BEFORE the early return
+  // so a CLOSED sheet still observes the gate closing — the
+  // `sawEmptySinceDismiss` ordering law. `vectorStrokeCount` is a bundle READ
+  // (the Studio owns the record seam); a single non-vector selection resolves 0
+  // and the entry point explains why it is disabled. Reading the session id
+  // here is what makes `aria-pressed` live.
+  const selectedMutationId = selection.size === 1 ? ([...selection][0] ?? null) : null;
+  const selectedVectorAnchors = selectedMutationId !== null && engineModule === 'watercolor'
+    ? (bundle?.readVectorAnchors?.([selectedMutationId]) ?? null)
+    : null;
+  const pathEditGate = resolvePathEditGate({
+    selectionSize: selection.size,
+    vectorStrokeCount: selectedVectorAnchors !== null ? 1 : 0,
+    selectedMutationId,
+    pathEditMutationId: pathEditMutationId.value,
+  });
+  const pathEditGateEnabled = pathEditGate.enabled;
 
   // Plain (non-signal) render-body flag write — the dismissal edge marker.
   // Inert under keepOpenOnEmpty (shouldMarkSawEmpty returns false there).
@@ -471,32 +477,27 @@ export function PhysicsPaintStrokeSettingsDialog({
     sawEmptySinceDismiss = true;
   }
 
-  // Plain (non-signal) render-body flag write — the settings-request
-  // staleness marker. Inert for brush and for every list-first render (only a
-  // still-pending 'settings' request over an EMPTY selection arms it). Sits
-  // BEFORE the early return so a CLOSED sheet still observes the empty edge:
-  // the close path leaves Move/Select, which clears the selection, so the
-  // request can never survive a close/reopen cycle.
-  const requestedView = settingsViewRef.current.value;
-  if (
-    engineModule === 'watercolor'
-    && shouldInvalidateStrokeSettingsView({
-      requested: requestedView,
-      selectionSize: selection.size,
-    })
-  ) {
-    strokeSettingsViewInvalidated = true;
+  // 61-11 (T-61-37): the path-edit exit guard — a plain marker write, never a
+  // session write from the render body. Sits BEFORE the early return so a
+  // CLOSED sheet still observes the gate closing, and it covers every route
+  // out of the mode: deletion, a re-selection, a filter that empties, and the
+  // rail-toggle close. The shipped lifecycle effect performs the write.
+  const pathEditActive = pathEditMutationId.value !== null;
+  // 61-27 (WR-04): the gate stays ENABLED while any one vector stroke is
+  // selected, so a bare "gate closed" exit let an open edit on stroke A
+  // survive a click on stroke B. This render-body marker is the dependency
+  // that changes when the edit's target and the selection disagree — without
+  // it the exit marker below would never reach the ONE lifecycle effect.
+  const pathEditTargetMismatch = selectedMutationId === null
+    || String(selectedMutationId) !== pathEditMutationId.value;
+  if (shouldExitPathEdit({
+    pathEditActive,
+    gateEnabled: pathEditGateEnabled,
+    selectedMutationId,
+    pathEditMutationId: pathEditMutationId.value,
+  })) {
+    pathEditExitRequested = true;
   }
-  const effectiveRequest: StrokeSettingsView = strokeSettingsViewInvalidated
-    ? 'list'
-    : requestedView;
-  /**
-   * Brush keeps today's sheet verbatim (its tabs are not a user request);
-   * watercolor is LIST FIRST with an explicit settings mode.
-   */
-  const view: StrokeSettingsView = engineModule === 'watercolor'
-    ? resolveStrokeSettingsView(effectiveRequest, selection.size)
-    : 'settings';
 
   const open = bundle !== null
     && bundle !== undefined
@@ -515,6 +516,10 @@ export function PhysicsPaintStrokeSettingsDialog({
    */
   const closeMoveMode = bundle?.closeMoveMode;
   const closeSurface = useCallback(() => {
+    // 61-11 (T-61-37): closing the sheet can never leave an open path edit
+    // pointing at a stroke nobody is looking at. Session state only — the
+    // anchor selection drops with the edit inside the same action.
+    exitPathEdit();
     if (closeMoveMode) {
       closeMoveMode();
       return;
@@ -532,9 +537,23 @@ export function PhysicsPaintStrokeSettingsDialog({
     // 261101-o2m (D-04): the dialog-close recompute exit. X, Escape and the
     // rail-toggle close all land here — the sheet never writes the Draft
     // signal itself, so a dirty Draft is settled, never silently dropped.
+    // 261112-n3f UAT: closing the sheet also restores the committed sheet —
+    // the cache eye is a view preference of the OPEN surface, so a closed
+    // panel must never leave the user painting over an invisible sheet.
     const wasOpen = wasOpenRef.current;
     wasOpenRef.current = open;
-    if (wasOpen && !open) void bundle?.settleDraft?.();
+    if (wasOpen && !open) {
+      setFrozenCacheVisible(true);
+      void bundle?.settleDraft?.();
+    }
+    // 61-11 (T-61-37): consume the render body's exit marker. This effect is
+    // the ONE performer of the session write; a marker that is already clear
+    // writes nothing, and the actions themselves are compare-then-write, so a
+    // repeated close notifies no subscriber.
+    if (pathEditExitRequested) {
+      pathEditExitRequested = false;
+      exitPathEdit();
+    }
     if (!open) {
       // A closed sheet must leave the order — a stale front id would make the
       // front-only Escape gate inert for every sheet that is still open.
@@ -542,7 +561,10 @@ export function PhysicsPaintStrokeSettingsDialog({
       return;
     }
     bringSheetToFront(SHEET_ID_STROKE_SETTINGS);
-  }, [open, bundle]);
+    // 61-27 (WR-04): `pathEditTargetMismatch` is what re-runs this effect when
+    // two SINGLE vector strokes swap — `pathEditGateEnabled` never changes on
+    // that edge, which is exactly why the exit never fired.
+  }, [open, bundle, pathEditGateEnabled, pathEditTargetMismatch]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -573,7 +595,6 @@ export function PhysicsPaintStrokeSettingsDialog({
   // passes the SAME handler as Backspace/Delete). Absent hides both trashes.
   const deleteStrokes = bundle.deleteStrokes;
   const requestedSettingsTab = settingsTabRef.current.value;
-  const stackTabAvailable = Boolean(bundle.reorderStroke);
   const strokes = bundle.listStrokes(bundle.playFrame, bundle.canvasSize);
   // 261031-euf: the Studio lists the WHOLE frame (default 'all'), so the
   // dialog applies the shared type filter itself and shows the rows
@@ -597,18 +618,27 @@ export function PhysicsPaintStrokeSettingsDialog({
   // from the rendered rows (never from the selection's insertion order).
   const displayedIds = listRows.map((stroke) => stroke.mutationId);
   const listSummary = strokeListSummary(bundle.playFrame, strokes);
-  // 261029-eur: the Paint tab hides whenever an ERASER stroke is in play —
-  // either the filter is Eraser, or a lift sits in the selection (a lift has
-  // no paint rows). A requested Paint falls back to Geometry while hidden.
-  const selectionHasLift = strokes.some(
-    (stroke) => selection.has(stroke.mutationId) && stroke.kind === 'lift',
-  );
-  const paintTabAvailable = strokeTypeFilter !== 'lift' && !selectionHasLift;
-  const activeSettingsTab: StrokeSettingsTab = requestedSettingsTab === 'stack' && !stackTabAvailable
-    ? 'geometry'
-    : requestedSettingsTab === 'paint' && !paintTabAvailable
-      ? 'geometry'
-      : requestedSettingsTab;
+  // 261112-lq4: the tab law. List is watercolor-only (brush has no list
+  // surface); Stack needs the bundle's `reorderStroke` seam; Curve needs one
+  // selected VECTOR stroke — the same `selectedVectorAnchors` read the Edit
+  // path gate uses. `activeSettingsTab` is a PURE render derivation with NO
+  // write-back (the shipped Stack precedent): a requested tab that is
+  // unavailable falls back to the default for this render and returns as soon
+  // as it is available again.
+  const stackTabAvailable = Boolean(bundle.reorderStroke);
+  const curveTabAvailable = engineModule === 'watercolor' && selectedVectorAnchors !== null;
+  const settingsTabAvailable = (key: StrokeSettingsTab): boolean => {
+    if (key === 'list') return engineModule === 'watercolor';
+    if (key === 'stack') return stackTabAvailable;
+    if (key === 'curve') return curveTabAvailable;
+    return true;
+  };
+  const defaultSettingsTab: StrokeSettingsTab = engineModule === 'watercolor'
+    ? 'list'
+    : 'geometry';
+  const activeSettingsTab: StrokeSettingsTab = settingsTabAvailable(requestedSettingsTab)
+    ? requestedSettingsTab
+    : defaultSettingsTab;
 
   const ids = [...selection];
   const appearances = bundle.readAppearance(ids, bundle.playFrame);
@@ -617,20 +647,72 @@ export function PhysicsPaintStrokeSettingsDialog({
   /**
    * Brush only: Opacity is a real composited alpha and leads Geometry.
    * Water color has no global opacity — its canonical Pigment (`load`) is
-   * already a Paint row, so Geometry does not mirror it under the name Opacity.
+   * edited from the sidebar Paint tab, so Geometry does not mirror it under
+   * the name Opacity.
    */
   const opacityField = engineModule === 'watercolor'
     ? undefined
     : fields.find((field) => field.key === 'opacity');
   const numericFields = fields.filter((field) => field.kind === 'numeric');
-  const segmentedFields = fields.filter((field) => field.kind === 'segmented');
   const opacityReading = opacityField ? readNumericField(appearances, ids, opacityField) : null;
   // 261031-cf9: the switch is watercolor-only and derived from the salt each
   // appearance carries — never a second boolean.
   const paintSeedVariationActive = readPaintSeedVariation(appearances);
 
-  const colorReading = readColorField(appearances, ids);
-  const colorRgb = hexToRgba(colorReading.color);
+  // 61-11 (VEC-03 / E4): the per-vertex width control. The anchors are the
+  // SAME bundle read the header gate uses, the anchor selection is the
+  // overlay's ONE signal, and the px readout multiplies the stroke's REAL Size
+  // by the anchor factor — never `scriptScale` (T-61-39). Mounted only for a
+  // single vector stroke whose bundle can commit the widths.
+  // 61-19 (G-5): the commit targets the OPEN path edit's stroke, so a null
+  // target reads as EMPTY — the block is inert and its caption states why. The
+  // target branches only on values this render body already reads.
+  const anchorWidthTarget = resolveAnchorWidthTarget({
+    ids,
+    pathEditMutationId: pathEditMutationId.value,
+  });
+  const anchorWidthReading = anchorWidthTarget === null
+    ? ANCHOR_WIDTH_EMPTY_READING
+    : readAnchorWidthReading(
+      selectedVectorAnchors ?? [],
+      vectorAnchorSelection.value,
+    );
+  const anchorWidthAvailable = engineModule === 'watercolor'
+    && selectedVectorAnchors !== null
+    && bundle.applyAnchorWidths !== undefined;
+  // 61-22 (G-11) / 261112-lq4: the ONE mount gate for the SINGLE Anchor width
+  // control, inside the Curve tab. `anchorWidthAvailable` already implies a
+  // SINGLE selected vector stroke — `selectedVectorAnchors` is resolved only
+  // for `selection.size === 1` — so the mount can never address another
+  // stroke's anchors (T-61-68). The Size reading rides the SAME ids as the
+  // block, so the px readout cannot disagree with what the block writes.
+  const anchorWidthSizeField = numericFields.find((field) => field.key === 'size');
+  const anchorWidthSizeReading = anchorWidthSizeField === undefined
+    ? null
+    : readNumericField(appearances, ids, anchorWidthSizeField);
+  // The block is CONTEXT-GATED on a real anchor selection — with no selected
+  // vertex the reading is the empty constant, so the block disappears instead
+  // of mounting inert with a caption.
+  const anchorWidthVisible = anchorWidthAvailable
+    && anchorWidthSizeReading !== null
+    && anchorWidthReading.count > 0;
+
+  // 61-31 (G-20) / 261112-lq4: the Curve row reading. Spline is an evaluation
+  // mode over the same anchors, so only the VECTOR appearances participate. The
+  // row MOUNTS IN the Curve tab, after the one Vertex size mount.
+  const curveModeReading = readCurveMode(appearances);
+
+  // 261112-i6d: the Corner row reading. It shares the ONE path-edit target and
+  // the anchor selection the Vertex size control already resolves, so the row
+  // can never describe an anchor the open edit cannot write.
+  const cornerReading = anchorWidthTarget === null || selectedVectorAnchors === null
+    ? ANCHOR_CORNER_EMPTY_READING
+    : readAnchorCornerReading(selectedVectorAnchors, vectorAnchorSelection.value);
+  // Same context rule as Vertex size: no selected vertex, no block.
+  const cornerAvailable = engineModule === 'watercolor'
+    && selectedVectorAnchors !== null
+    && cornerReading.count > 0
+    && bundle.applyAnchorCorners !== undefined;
 
   const applied = strokeSettingsDragOffset.value;
 
@@ -826,62 +908,6 @@ export function PhysicsPaintStrokeSettingsDialog({
             <Trash2 size={12} aria-hidden="true" />
           </button>
         ) : null}
-        {engineModule === 'watercolor' ? (
-          <button
-            type="button"
-            data-testid="stroke-settings-preview-stroke-size"
-            class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"
-            aria-pressed={previewStrokeSize}
-            aria-label="Preview stroke size"
-            title="Preview stroke size — draw every stroke as the area it covers"
-            // A view preference, never a selection action: the swatch stays
-            // clickable on an empty selection (only the surface gate hides it).
-            // The header is the drag handle (see Close below).
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => setStrokeSizePreview(!strokeSizePreview.peek())}
-          >
-            <Spline size={12} aria-hidden="true" />
-          </button>
-        ) : null}
-        {engineModule === 'watercolor' ? (
-          <button
-            type="button"
-            data-testid="stroke-settings-view-toggle"
-            class="physics-paint-stroke-settings-header-button"
-            aria-pressed={view === 'settings'}
-            aria-label={view === 'settings' ? 'Show stroke list' : 'Show stroke settings'}
-            title={view === 'settings' ? 'Show stroke list' : 'Show stroke settings'}
-            // Nothing to edit yet: the list is the only meaningful surface.
-            disabled={selection.size === 0}
-            // The header is the drag handle (see Close below).
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => {
-              const next: StrokeSettingsView = view === 'settings' ? 'list' : 'settings';
-              // Entering settings is the ONE explicit request, so it is also
-              // the only place the staleness marker clears (event-handler
-              // write — the `sawEmptySinceDismiss = false` precedent).
-              if (next === 'settings') strokeSettingsViewInvalidated = false;
-              const ref = settingsViewRef.current!;
-              if (ref.value !== next) {
-                ref.value = next;
-                return;
-              }
-              // An INVALIDATED request already holds the target value ('list'
-              // shows while the signal still says 'settings'), so a plain
-              // compare-then-write would notify nobody and this click would
-              // look dead. Re-assert through the opposite value: both writes
-              // run inside this handler and signals batch them into ONE render.
-              if (view !== next) {
-                ref.value = next === 'settings' ? 'list' : 'settings';
-                ref.value = next;
-              }
-            }}
-          >
-            {view === 'settings'
-              ? <List size={12} aria-hidden="true" />
-              : <Settings2 size={12} aria-hidden="true" />}
-          </button>
-        ) : null}
         <button
           type="button"
           class="physics-paint-photo-reference-close"
@@ -899,9 +925,11 @@ export function PhysicsPaintStrokeSettingsDialog({
       </div>
 
       {/* 261101-o2m (D-01): the Draft strip sits below the header icon row and
-          ABOVE the list/settings view gate, so it is reachable from both. The
-          switch's OFF click is ROUTED to the bundle's settle — a dirty Draft
-          may only leave through its recompute, never a raw signal write. */}
+          ABOVE the tab body, so it is reachable under every tab. The switch's
+          OFF click is ROUTED to the bundle's settle — a dirty Draft may only
+          leave through its recompute, never a raw signal write. 261112-lq4:
+          Edit path and Preview stroke size moved here from the header row; the
+          strip carries exactly ONE text label (Draft). */}
       {engineModule === 'watercolor' ? (
         <div
           class="physics-paint-stroke-settings-draft-row"
@@ -914,11 +942,17 @@ export function PhysicsPaintStrokeSettingsDialog({
             role="switch"
             aria-checked={draftOn ? 'true' : 'false'}
             aria-label="Draft"
-            title="Draft — suspend the watercolor re-render until you turn it off"
+            title={wireframeOn
+              ? 'Draft — on while wireframe is on. Turn wireframe off to re-render.'
+              : 'Draft — suspend the watercolor re-render until you turn it off'}
             class={`physics-paint-script-switch${draftOn ? ' is-on' : ''}`}
-            // The header is the drag handle: the press must not start one.
+            disabled={wireframeOn}
+            // The strip is not a drag handle, but the press guard is kept so a
+            // press never starts pointer work above it.
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => {
+              // 61-13: the wireframe owns the one route out of Draft.
+              if (wireframeMode.peek()) return;
               // OFF is routed, never written: the settle clears the invariant
               // and then flips the mode (a bundle without one leaves Draft ON).
               if (draftMode.peek()) {
@@ -941,11 +975,56 @@ export function PhysicsPaintStrokeSettingsDialog({
             </span>
           </button>
           <span class="physics-paint-stroke-settings-draft-row-spacer" aria-hidden="true" />
+          <button
+            type="button"
+            data-testid="stroke-settings-spline-pointer"
+            class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"
+            aria-pressed={pathEditGate.pressed}
+            aria-label="Edit path"
+            title={pathEditGate.title}
+            // 61-11 (E2): one vector stroke is the ONLY editable state. The
+            // reason lives in `title` so this fixed 22x22 icon never renders
+            // text, and a multi-selection states its own reason.
+            disabled={!pathEditGate.enabled}
+            // The strip is not a drag handle, but the press guard is kept so a
+            // press never starts pointer work above it.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              // Pressed means the session already edits this stroke: the same
+              // button leaves. Two distinct session actions, never a signal
+              // write from this leaf.
+              if (pathEditGate.pressed) {
+                exitPathEdit();
+                return;
+              }
+              const target = selectedMutationId;
+              if (target === null) return;
+              // Session action only: the Studio's overlay owns the record seam.
+              enterPathEdit(String(target));
+            }}
+          >
+            <SplinePointer size={12} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            data-testid="stroke-settings-preview-stroke-size"
+            class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"
+            aria-pressed={previewStrokeSize}
+            aria-label="Preview stroke size"
+            title="Preview stroke size — draw every stroke as the area it covers"
+            // A view preference, never a selection action: the swatch stays
+            // clickable on an empty selection (only the surface gate hides it).
+            // The strip is not a drag handle, but the press guard is kept so a
+            // press never starts pointer work above it.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => setStrokeSizePreview(!strokeSizePreview.peek())}
+          >
+            <Spline size={12} aria-hidden="true" />
+          </button>
           {/* 261101-o2m (D-02): the cache eye — ALWAYS available (Draft and
               Live, both views, never disabled). Display-only: it hides the
               committed sheet through a CSS modifier, so the decode cache stays
               warm and no capture, save or export ever reads it. */}
-          <span class="physics-paint-stroke-settings-draft-row-label">cache</span>
           <button
             type="button"
             data-testid="stroke-settings-cache-visibility"
@@ -955,7 +1034,8 @@ export function PhysicsPaintStrokeSettingsDialog({
             title={cacheVisible
               ? 'Hide the committed sheet'
               : 'Show the committed sheet'}
-            // The header is the drag handle: the press must not start one.
+            // The strip is not a drag handle, but the press guard is kept so a
+            // press never starts pointer work above it.
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => setFrozenCacheVisible(!frozenCacheVisible.peek())}
           >
@@ -966,112 +1046,97 @@ export function PhysicsPaintStrokeSettingsDialog({
         </div>
       ) : null}
 
-      {engineModule === 'watercolor' && view === 'list' ? (
-        <div
-          role="group"
-          aria-label="Stroke type"
-          data-testid="stroke-settings-filter"
-          style={FILTER_ROW_STYLE}
-        >
-          {STROKE_TYPE_FILTERS.map((option) => {
-            const active = strokeTypeFilter === option.filter;
-            return (
-              <button
-                key={option.key}
-                type="button"
-                data-testid={`stroke-settings-filter-${option.key}`}
-                aria-pressed={active}
-                style={active
-                  ? { ...FILTER_SEGMENT_STYLE, ...FILTER_SEGMENT_ACTIVE_STYLE }
-                  : FILTER_SEGMENT_STYLE}
-                onClick={() => setAquarelleStrokeTypeFilter(option.filter)}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {engineModule === 'watercolor' && view === 'list' ? (
-        <div data-testid="stroke-settings-fine-filters" style={FINE_FILTERS_ROW_STYLE}>
-          <select
-            class="physics-paint-stroke-settings-select"
-            data-testid="stroke-settings-tool-filter"
-            aria-label="Tool filter"
-            value={effectiveTool}
-            onChange={(event) => {
-              const nextTool = event.currentTarget.value as AquarelleStrokeToolFilter;
-              // The tip is judged against the NEW tool's rows, so an orphaned
-              // recorded tip falls back to All in the same gesture.
-              const nextTipIds = listStrokeTipOptions(
-                filterStrokeListRows(typeRows, { tool: nextTool, tip: 'all' }),
-              ).map((option) => option.brushId);
-              setAquarelleStrokeTipFilter(
-                resolveStrokeTipFilter(aquarelleStrokeTipFilter.value, nextTipIds),
-              );
-              setAquarelleStrokeToolFilter(nextTool);
-            }}
-          >
-            <option value="all">{ALL_TOOL_FILTER_LABEL}</option>
-            {toolOptions.map((tool) => (
-              <option key={tool} value={tool}>{strokeToolLabel(tool)}</option>
-            ))}
-          </select>
-          {tipOptions.length > 1 ? (
-            <select
-              class="physics-paint-stroke-settings-select"
-              data-testid="stroke-settings-tip-filter"
-              aria-label="Tip filter"
-              value={effectiveTip}
-              onChange={(event) => setAquarelleStrokeTipFilter(event.currentTarget.value)}
+      {/* 261112-lq4: the tab row is ALWAYS up — no view gate. Each tab hides
+          only when its context is unavailable (`settingsTabAvailable`), and a
+          requested tab that is hidden falls back to the default for this
+          render (pure derivation, no write-back). */}
+      <div
+        class="physics-paint-options-tabs physics-paint-stroke-settings-tabs"
+        role="tablist"
+        aria-label="Stroke settings sections"
+        data-testid="stroke-settings-tabs"
+      >
+        {STROKE_SETTINGS_TABS.map((tab) => {
+          if (!settingsTabAvailable(tab.key)) return null;
+          const active = activeSettingsTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              data-testid={`stroke-settings-tab-${tab.key}`}
+              aria-selected={active}
+              class={`physics-paint-options-tab${active ? ' active' : ''}`}
+              onClick={() => {
+                settingsTabRef.current!.value = tab.key;
+              }}
             >
-              <option value="all">{ALL_TIP_FILTER_LABEL}</option>
-              {tipOptions.map((option) => (
-                <option key={option.brushId} value={option.brushId}>{option.name}</option>
-              ))}
-            </select>
-          ) : null}
-        </div>
-      ) : null}
-
-      {view === 'settings' ? (
-        <div
-          class="physics-paint-options-tabs physics-paint-stroke-settings-tabs"
-          role="tablist"
-          aria-label="Stroke settings sections"
-          data-testid="stroke-settings-tabs"
-        >
-          {STROKE_SETTINGS_TABS.map((tab) => {
-            if (tab.key === 'stack' && !stackTabAvailable) return null;
-            if (tab.key === 'paint' && !paintTabAvailable) return null;
-            const active = activeSettingsTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                data-testid={`stroke-settings-tab-${tab.key}`}
-                aria-selected={active}
-                class={`physics-paint-options-tab${active ? ' active' : ''}`}
-                onClick={() => {
-                  settingsTabRef.current!.value = tab.key;
-                }}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
 
       <SidebarScrollArea class="physics-paint-stroke-settings-scroll" interactive>
         <div style={SCROLL_CONTENT_STYLE}>
-          {view === 'list' ? (
+          {activeSettingsTab === 'list' ? (
             <div
               data-testid="stroke-settings-list"
               class="physics-paint-stroke-settings-list"
             >
+              {/* 261112-lq4: the fine-filter row is the List tab's TOP row —
+                  it lives inside the list container now that the segmented
+                  type row is gone. */}
+              <div data-testid="stroke-settings-fine-filters" style={FINE_FILTERS_ROW_STYLE}>
+                {/* 261112-lq4: this tool select is the sheet's ONE filter entry
+                    point — it replaces the deleted Paint | Eraser | All row. Its
+                    options derive from the TYPE-filtered rows (`toolOptions` =
+                    `listStrokeToolOptions(typeRows)`), so under the default
+                    top-bar state ('paint') 'All tools' reproduces the deleted
+                    Paint row exactly, and the Eraser option appears only when
+                    the top-bar type filter admits lift rows: the dialog DERIVES,
+                    never overrides, the type filter. Guardrail — never import or
+                    call `setAquarelleStrokeTypeFilter` here: that setter prunes
+                    the selection and owns the global filter behind hit-testing,
+                    the overlay, Select-All and the top-bar Edit switch. */}
+                <select
+                  class="physics-paint-stroke-settings-select"
+                  data-testid="stroke-settings-tool-filter"
+                  aria-label="Tool filter"
+                  value={effectiveTool}
+                  onChange={(event) => {
+                    const nextTool = event.currentTarget.value as AquarelleStrokeToolFilter;
+                    // The tip is judged against the NEW tool's rows, so an
+                    // orphaned recorded tip falls back to All in the gesture.
+                    const nextTipIds = listStrokeTipOptions(
+                      filterStrokeListRows(typeRows, { tool: nextTool, tip: 'all' }),
+                    ).map((option) => option.brushId);
+                    setAquarelleStrokeTipFilter(
+                      resolveStrokeTipFilter(aquarelleStrokeTipFilter.value, nextTipIds),
+                    );
+                    setAquarelleStrokeToolFilter(nextTool);
+                  }}
+                >
+                  <option value="all">{ALL_TOOL_FILTER_LABEL}</option>
+                  {toolOptions.map((tool) => (
+                    <option key={tool} value={tool}>{strokeToolLabel(tool)}</option>
+                  ))}
+                </select>
+                {tipOptions.length > 1 ? (
+                  <select
+                    class="physics-paint-stroke-settings-select"
+                    data-testid="stroke-settings-tip-filter"
+                    aria-label="Tip filter"
+                    value={effectiveTip}
+                    onChange={(event) => setAquarelleStrokeTipFilter(event.currentTarget.value)}
+                  >
+                    <option value="all">{ALL_TIP_FILTER_LABEL}</option>
+                    {tipOptions.map((option) => (
+                      <option key={option.brushId} value={option.brushId}>{option.name}</option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
               <span data-testid="stroke-settings-list-summary" style={LIST_SUMMARY_STYLE}>
                 {listSummary}
               </span>
@@ -1190,8 +1255,8 @@ export function PhysicsPaintStrokeSettingsDialog({
                 );
               })}
             </div>
-          ) : (
-            <>
+          ) : null}
+
           {activeSettingsTab === 'geometry' ? (
             liveCenter ? (
               <div style={SECTION_STYLE} data-testid="stroke-settings-geometry">
@@ -1332,6 +1397,141 @@ export function PhysicsPaintStrokeSettingsDialog({
             )
           ) : null}
 
+          {/* 261112-lq4: the Curve tab — the ONE Vertex size mount plus the
+              Curve and Corner rows. Context-gated on one selected VECTOR
+              stroke, so no control here can address another stroke's anchors. */}
+          {activeSettingsTab === 'curve' ? (
+            <div style={SECTION_STYLE} data-testid="stroke-settings-curve">
+              {/* 61-22 (G-11): the sheet's ONE Anchor width mount, for exactly
+                  one selected vector stroke. The conditional mount leaves no
+                  empty node when the gate closes (multi-selection or a stroke
+                  without anchors). */}
+              {anchorWidthVisible && anchorWidthSizeReading !== null ? (
+                <div data-testid="stroke-settings-curve-anchor-width">
+                  <AnchorWidthControl
+                    bundle={bundle}
+                    ids={ids}
+                    reading={anchorWidthSizeReading}
+                    anchorWidthReading={anchorWidthReading}
+                    anchorWidthTarget={anchorWidthTarget}
+                  />
+                </div>
+              ) : null}
+              {/* 61-31 (G-20 / D-01 revised): the curve-evaluation switch.
+                  Spline is a read-time view over the SAME anchors, so the row
+                  mounts only when the selection holds a VECTOR stroke and the
+                  bundle can commit — a hand-painted-only selection hides it
+                  instead of writing an inert key. */}
+              {engineModule === 'watercolor' && curveModeReading.available && bundle.applyCurveMode !== undefined ? (
+                <div data-testid="stroke-settings-curve-mode-block">
+                  <div style={SEGMENT_LABEL_ROW_STYLE}>
+                    <span style={PAINT_ROW_LABEL_STYLE}>Curve</span>
+                    {curveModeReading.mixed ? (
+                      <span
+                        data-testid="stroke-settings-curve-mode-mixed"
+                        style={MIXED_CAPTION_STYLE}
+                      >
+                        Mixed
+                      </span>
+                    ) : null}
+                  </div>
+                  <div
+                    role="group"
+                    aria-label="Curve"
+                    data-testid="stroke-settings-curve-mode"
+                    style={SEGMENT_GROUP_STYLE}
+                  >
+                    {CURVE_MODE_OPTIONS.map((option) => {
+                      const active = !curveModeReading.mixed && curveModeReading.mode === option.mode;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          data-testid={`stroke-settings-curve-mode-option-${option.id}`}
+                          aria-pressed={active}
+                          style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
+                          onClick={() => {
+                            // Pressing the mode the selection already holds
+                            // writes nothing — no edit, no undo entry.
+                            if (active) return;
+                            void bundle.applyCurveMode?.(ids, option.mode);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {/* 261112-i6d: the per-vertex corner switch. It writes the SAME
+                  state Alt+click toggles through the SAME commit seam, on the
+                  SAME anchor selection the Vertex size control reads — a
+                  setter, never a toggle, so pressing the held state writes
+                  nothing. Like Vertex size, the block is CONTEXT-GATED on a
+                  real anchor selection and disappears when no vertex is
+                  selected. */}
+              {cornerAvailable ? (
+                <div data-testid="stroke-settings-corner-block">
+                  <div style={SEGMENT_LABEL_ROW_STYLE}>
+                    <span style={PAINT_ROW_LABEL_STYLE}>Corner</span>
+                    {cornerReading.mixed ? (
+                      <span
+                        data-testid="stroke-settings-corner-mixed"
+                        style={MIXED_CAPTION_STYLE}
+                      >
+                        Mixed
+                      </span>
+                    ) : null}
+                  </div>
+                  <div
+                    role="group"
+                    aria-label="Corner"
+                    data-testid="stroke-settings-corner"
+                    style={SEGMENT_GROUP_STYLE}
+                  >
+                    {ANCHOR_CORNER_OPTIONS.map((option) => {
+                      const active = !cornerReading.mixed && cornerReading.state === option.state;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          data-testid={`stroke-settings-corner-option-${option.id}`}
+                          aria-pressed={active}
+                          disabled={cornerReading.count === 0}
+                          style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
+                          onClick={() => {
+                            // Pressing the state the selection already holds
+                            // writes nothing — no edit, no undo entry.
+                            if (active) return;
+                            void Promise.resolve(bundle.applyAnchorCorners?.(ids, option.state))
+                              .then((applied) => {
+                                if (applied === false) {
+                                  bundle.publishRefusal?.(ANCHOR_CORNER_COMMIT_REFUSED_MESSAGE);
+                                }
+                              });
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {cornerReading.count === 0 ? (
+                    <span
+                      data-testid="stroke-settings-corner-caption"
+                      style={ANCHOR_WIDTH_CAPTION_STYLE}
+                    >
+                      {anchorWidthTarget === null
+                        ? ANCHOR_CORNER_NO_EDIT_REASON
+                        : 'Select vertices on the canvas to set their corner.'}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {activeSettingsTab === 'stack' && bundle.reorderStroke ? (
             <div style={SECTION_STYLE} data-testid="stroke-settings-stack">
               {stackStroke ? (
@@ -1406,99 +1606,6 @@ export function PhysicsPaintStrokeSettingsDialog({
               </div>
             </div>
           ) : null}
-
-          {activeSettingsTab === 'paint' ? (
-            <div style={SECTION_STYLE} data-testid="stroke-settings-paint">
-              <span style={PAINT_ROW_LABEL_STYLE}>Color</span>
-              <div
-                data-testid="stroke-settings-color"
-                style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
-              >
-                <div
-                  data-testid="stroke-settings-color-thumb"
-                  title={colorReading.color}
-                  style={{ ...COLOR_BLOCK_STYLE, backgroundColor: colorReading.color }}
-                />
-                <div style={COLOR_READOUT_ROW_STYLE}>
-                  <span data-testid="stroke-settings-color-hex">{colorReading.color.toUpperCase()}</span>
-                  <span data-testid="stroke-settings-color-rgb">
-                    {`rgb(${colorRgb.r}, ${colorRgb.g}, ${colorRgb.b})`}
-                  </span>
-                  {colorReading.mixed ? (
-                    <span data-testid="stroke-settings-color-mixed" style={MIXED_CAPTION_STYLE}>
-                      Mixed
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              {numericFields.map((field) => {
-              const reading = readNumericField(appearances, ids, field);
-              return (
-                <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
-                  <SliderStepper
-                    label={field.label}
-                    ariaLabel={field.label}
-                    value={reading.value}
-                    min={field.min}
-                    max={field.max}
-                    step={field.step}
-                    mixed={reading.mixed}
-                    commitOnRelease
-                    allowOutOfRangeEntry
-                    onChange={(value) => {
-                      void bundle.applyAppearance(
-                        ids,
-                        buildAppearancePatch(engineModule, field.key, value),
-                      );
-                    }}
-                  />
-                </div>
-              );
-            })}
-            {segmentedFields.map((field) => {
-              const reading = readNumericField(appearances, ids, field);
-              return (
-                <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
-                  <div style={SEGMENT_LABEL_ROW_STYLE}>
-                    <span style={PAINT_ROW_LABEL_STYLE}>{field.label}</span>
-                    {reading.mixed ? (
-                      <span
-                        data-testid={`stroke-settings-${field.key}-mixed`}
-                        style={MIXED_CAPTION_STYLE}
-                      >
-                        Mixed
-                      </span>
-                    ) : null}
-                  </div>
-                  <div role="group" aria-label={field.label} style={SEGMENT_GROUP_STYLE}>
-                    {(field.options ?? []).map((option) => {
-                      const active = !reading.mixed && reading.value === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          data-testid={`stroke-settings-${field.key}-option-${option.value}`}
-                          aria-pressed={active}
-                          style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
-                          onClick={() => {
-                            void bundle.applyAppearance(
-                              ids,
-                              buildAppearancePatch(engineModule, field.key, option.value),
-                            );
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-            </div>
-          ) : null}
-            </>
-          )}
         </div>
       </SidebarScrollArea>
 
@@ -1513,6 +1620,96 @@ export function PhysicsPaintStrokeSettingsDialog({
       >
         <span style={RESIZE_GRIP_STYLE} />
       </div>
+    </div>
+  );
+}
+
+/** 61-22 (G-11): the ONE Vertex size control's inputs. */
+interface AnchorWidthControlProps {
+  readonly bundle: StrokeSettingsDialogBundle;
+  readonly ids: readonly number[];
+  readonly reading: NumericFieldReading;
+  readonly anchorWidthReading: AnchorWidthReading;
+  readonly anchorWidthTarget: number | null;
+}
+
+/**
+ * 61-22 (G-11): the shipped Vertex size block, extracted so the DEFAULT list
+ * view and the Geometry section mount the SAME control. The D-09 law is
+ * untouched: the value is a MULTIPLIER of the stroke's Size, the band stays
+ * 0.2..20.0, and the commit stays `bundle.applyAnchorWidths`.
+ *
+ * quick 261112-i6d: `max` is the package storage ceiling while `sliderMax`
+ * (×10) is the TRACK only — the drag affordance. Out-of-range entry lets
+ * typed commits and ± steps pass the track, and `anchorWidthPatchValue` is
+ * the ONE clamp deciding what reaches the document. A stored factor above ×10
+ * leaves the `below` readout showing its true product (Size x factor px) with
+ * the knob pinned at the track end (SliderStepper clamps the fraction to
+ * [0,1]).
+ *
+ * Declared AFTER the sheet component on purpose: the shipped E4 region pins
+ * resolve the FIRST `stroke-settings-anchor-width` occurrence in the file and
+ * require it to be the component body, never one of the mount wrappers (which
+ * carry their own `stroke-settings-{list,geometry}-anchor-width` testids).
+ */
+function AnchorWidthControl(props: AnchorWidthControlProps) {
+  const { bundle, ids, reading, anchorWidthReading, anchorWidthTarget } = props;
+  const anchorWidthEmpty = anchorWidthReading.count === 0;
+  return (
+    <div data-testid="stroke-settings-anchor-width">
+      <SliderStepper
+        label="Vertex size"
+        ariaLabel="Vertex size"
+        value={anchorWidthEmpty
+          ? AQUARELLE_ANCHOR_WIDTH_DEFAULT
+          : anchorWidthReading.value}
+        min={AQUARELLE_ANCHOR_WIDTH_MIN}
+        max={AQUARELLE_ANCHOR_WIDTH_MAX}
+        sliderMax={AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX}
+        step={AQUARELLE_ANCHOR_WIDTH_STEP}
+        precision={1}
+        mixed={anchorWidthReading.mixed}
+        disabled={anchorWidthEmpty}
+        commitOnRelease
+        allowOutOfRangeEntry
+        // `→ {n} px` from the REAL per-vertex radius: Size x factor.
+        // Empty means there is no vertex to measure — the caption below
+        // says what to do instead. 61-25 (UI-02): the readout is a declared
+        // span, never a bare string.
+        below={anchorWidthEmpty
+          ? undefined
+          : (
+            <span
+              data-testid="stroke-settings-anchor-width-readout"
+              style={ANCHOR_WIDTH_READOUT_STYLE}
+            >
+              {`→ ${anchorWidthEffectivePx(reading.value, anchorWidthReading.value)} px`}
+            </span>
+          )}
+        onChange={(value) => {
+          // 61-27 (IN-03): the commit's boolean was discarded, so a refusal
+          // (wrong target, missing stroke, in-flight lock) looked like a
+          // success — the knob snapped back with no explanation. Consume it
+          // and publish the ONE refusal line through the bundle's optional
+          // port; an absent port keeps the shipped silent fallback.
+          void Promise.resolve(bundle.applyAnchorWidths?.(
+            ids,
+            anchorWidthPatchValue(value),
+          )).then((applied) => {
+            if (applied === false) bundle.publishRefusal?.(ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE);
+          });
+        }}
+      />
+      {anchorWidthEmpty ? (
+        <span
+          data-testid="stroke-settings-anchor-width-caption"
+          style={ANCHOR_WIDTH_CAPTION_STYLE}
+        >
+          {anchorWidthTarget === null
+            ? ANCHOR_WIDTH_NO_EDIT_REASON
+            : 'Select anchors on the canvas to set their size.'}
+        </span>
+      ) : null}
     </div>
   );
 }

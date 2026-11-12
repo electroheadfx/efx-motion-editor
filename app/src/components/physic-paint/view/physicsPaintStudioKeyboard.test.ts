@@ -81,6 +81,8 @@ function actions() {
     resetFgBg: vi.fn(),
     // 261030-cnq: the color picker latch.
     toggleAquarellePicker: vi.fn(),
+    // 61-08 (D-05): the vector pen latch.
+    toggleVectorPen: vi.fn(),
   };
 }
 
@@ -882,6 +884,59 @@ describe('261030-cnq color picker shortcut (I)', () => {
     const { handlers, preventDefault } = dispatch('i', new TestHTMLElement('input') as unknown as EventTarget);
     expect(handlers.toggleAquarellePicker).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe('61-08 (D-05) vector pen shortcut (V)', () => {
+  it('latches the vector pen on a bare v key and consumes it', () => {
+    const { handlers, preventDefault } = dispatch('v', new TestHTMLElement('canvas') as unknown as EventTarget);
+    expect(handlers.toggleVectorPen).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('leaves Cmd+V and Ctrl+V to paste', () => {
+    for (const overrides of [{ metaKey: true }, { ctrlKey: true }]) {
+      const { handlers } = dispatch('v', new TestHTMLElement('canvas') as unknown as EventTarget, overrides);
+      expect(handlers.toggleVectorPen).not.toHaveBeenCalled();
+      expect(handlers.pasteRotoKey).toHaveBeenCalledOnce();
+    }
+  });
+
+  it('never fires with Shift or Alt held', () => {
+    for (const [key, overrides] of [
+      ['V', { shiftKey: true }],
+      ['v', { altKey: true }],
+    ] as const) {
+      const { handlers, preventDefault } = dispatch(
+        key,
+        new TestHTMLElement('canvas') as unknown as EventTarget,
+        overrides,
+      );
+      expect(handlers.toggleVectorPen).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
+    }
+  });
+
+  it('ignores v typed into a text field', () => {
+    const { handlers, preventDefault } = dispatch('v', new TestHTMLElement('input') as unknown as EventTarget);
+    expect(handlers.toggleVectorPen).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('ignores a repeated v keydown', () => {
+    const { handlers, preventDefault } = dispatch(
+      'v',
+      new TestHTMLElement('canvas') as unknown as EventTarget,
+      { repeat: true },
+    );
+    expect(handlers.toggleVectorPen).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('the Studio wires the session toggle into the keyboard action bundle', () => {
+    const src = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
+    expect(src).toContain('import * as vectorPathSession');
+    expect(src).toContain('toggleVectorPen: vectorPathSession.toggleVectorPen,');
   });
 });
 

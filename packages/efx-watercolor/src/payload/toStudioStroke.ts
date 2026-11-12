@@ -40,6 +40,8 @@
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
 import type { AquarelleToolOverrides } from '../brushes/tips'
+import { projectVectorPath } from './vectorPath'
+import type { AquarelleAnchor, AquarelleCurveMode } from './vectorPath'
 
 // The one payload union accepts Dry events alongside strokes (D-16).
 export type { AquarelleDryEvent, AquarellePayloadEvent } from './dryEvent'
@@ -70,6 +72,17 @@ export interface AquarelleStrokePayload {
   diffusionFrames?: number
   timestamp: number
   playFrame?: number
+  /**
+   * 61-03: the vector path, in document uv. ABSENT means a hand-painted
+   * stroke; a non-empty list is the only vector-ness signal (D-01/D-12).
+   */
+  anchors?: readonly AquarelleAnchor[]
+  /**
+   * 61-30 (G-20): explicit curve-evaluation discriminator. ABSENT means
+   * `bezier`, so a stroke written before this phase evaluates exactly as
+   * it did. An evaluation mode, never a third anchor kind.
+   */
+  curveMode?: AquarelleCurveMode
 }
 
 /** Host cap policy (55 D-20 / D-19) — engine-owned, script-visible. */
@@ -120,6 +133,10 @@ export interface AquarelleStroke {
   diffusionFrames?: number
   timestamp: number
   playFrame?: number
+  /** 61-03: the vector path in document uv (absent = hand-painted stroke). */
+  anchors?: readonly AquarelleAnchor[]
+  /** 61-30 (G-20): explicit curve-evaluation mode (absent = Bézier). */
+  curveMode?: AquarelleCurveMode
 }
 
 /**
@@ -164,6 +181,11 @@ export function toStudioStroke(
       diffusionFrames: s.diffusionFrames,
       timestamp: s.timestamp,
       playFrame: s.playFrame,
+      // 61-03: conditional canonical terms — each vector field is written
+      // ONLY when present, so a hand-painted stroke keeps its exact
+      // pre-vector key set and a mode-only stroke gains that key alone.
+      ...(s.anchors !== undefined ? { anchors: projectVectorPath(s.anchors) } : {}),
+      ...(s.curveMode !== undefined ? { curveMode: s.curveMode } : {}),
     },
   }
 }

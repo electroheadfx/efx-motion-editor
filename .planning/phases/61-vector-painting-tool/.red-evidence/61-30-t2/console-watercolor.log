@@ -1,0 +1,225 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor
+
+ ❯ src/payload/vectorPath.test.ts (29 tests | 3 failed) 10ms
+   × curve mode (G-20: explicit evaluation discriminator, absent means Bézier) > declares exactly bezier and spline in this order, defaulting to bezier, and the guard is a strict membership test 3ms
+     → expected false to be true // Object.is equality
+   × curve mode (G-20: explicit evaluation discriminator, absent means Bézier) > resolves an absent mode and bezier to bezier, and passes spline through 1ms
+     → expected 'bezier' to be 'spline' // Object.is equality
+   × curve mode (G-20: explicit evaluation discriminator, absent means Bézier) > recordedCurveModeField writes nothing for the default and one key otherwise 1ms
+     → expected {} to deeply equal { curveMode: 'spline' }
+ ❯ src/payload/toStudioStroke.test.ts (20 tests | 1 failed) 5ms
+   × curve mode engine block (61-30 G-20) > copies a spline mode into the engine block unchanged 2ms
+     → expected undefined to be 'spline' // Object.is equality
+ ❯ src/payload/codec.test.ts (35 tests | 2 failed) 33ms
+   × wire validation of the vector fields (61-03 T-61-08) > round-trips a curveMode and keeps an absent key absent (61-30 G-20) 2ms
+     → expected undefined to be 'spline' // Object.is equality
+   × wire validation of the vector fields (61-03 T-61-08) > parses to null when curveMode is not a member of the closed union (fail closed) 1ms
+     → expected { pts: [ …(4) ], ticks: 3, …(9) } to be null
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/payload/codec.test.ts > wire validation of the vector fields (61-03 T-61-08) > round-trips a curveMode and keeps an absent key absent (61-30 G-20)
+AssertionError: expected undefined to be 'spline' // Object.is equality
+
+- Expected: 
+"spline"
+
++ Received: 
+undefined
+
+ ❯ src/payload/codec.test.ts:599:79
+    597|     const parsed = parse(serialize(spline))
+    598|     expect(parsed).not.toBeNull()
+    599|     expect((parsed as StudioStroke<AquarelleStrokePayload>).engine.cur…
+       |                                                                               ^
+    600| 
+    601|     const absent = makeStrokeEvent()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  src/payload/codec.test.ts > wire validation of the vector fields (61-03 T-61-08) > parses to null when curveMode is not a member of the closed union (fail closed)
+AssertionError: expected { pts: [ …(4) ], ticks: 3, …(9) } to be null
+
+- Expected: 
+null
+
++ Received: 
+Object {
+  "brushId": "wc/round-medium",
+  "color": "#2244aa",
+  "cuisson": 0,
+  "engine": Object {
+    "brushId": "wc/round-medium",
+    "color": "#2244aa",
+    "curveMode": "linear",
+    "diffusionFrames": undefined,
+    "mutationId": 42,
+    "params": Object {
+      "flow": 50,
+      "size": 12,
+      "water": 50,
+    },
+    "playFrame": undefined,
+    "timestamp": 1000,
+    "tool": "brush",
+    "toolOverrides": Object {
+      "aspect": 1,
+      "capacity": 1.1,
+      "grain": 1,
+      "rotation": 1,
+      "scatter": 0.8,
+      "sizeCurve": 1,
+      "tip": 1.2,
+      "wetRound": 0.9,
+    },
+  },
+  "motion": null,
+  "playFrame": null,
+  "pts": Array [
+    Object {
+      "p": 0.5,
+      "tick": 0,
+      "tw": 0,
+      "tx": 0,
+      "ty": 0,
+      "x": 20,
+      "y": 32,
+    },
+    Object {
+      "p": 0.6,
+      "tick": 1,
+      "tw": 0,
+      "tx": 0,
+      "ty": 0,
+      "x": 28,
+      "y": 32,
+    },
+    Object {
+      "p": 0.5,
+      "tick": 2,
+      "tw": 0,
+      "tx": 0,
+      "ty": 0,
+      "x": 36,
+      "y": 32,
+    },
+    Object {
+      "p": 0.4,
+      "tick": 3,
+      "tw": 0,
+      "tx": 0,
+      "ty": 0,
+      "x": 44,
+      "y": 32,
+    },
+  ],
+  "recordedOrder": 1000,
+  "ticks": 3,
+  "toolOverrides": Object {
+    "aspect": 1,
+    "capacity": 1.1,
+    "grain": 1,
+    "rotation": 1,
+    "scatter": 0.8,
+    "sizeCurve": 1,
+    "tip": 1.2,
+    "wetRound": 0.9,
+  },
+  "traceSeed": 2850896287,
+}
+
+ ❯ src/payload/codec.test.ts:613:36
+    611|     } as unknown as StudioStroke<AquarelleStrokePayload>
+    612|     expect(() => parse(wrapStroke(raw))).not.toThrow()
+    613|     expect(parse(wrapStroke(raw))).toBeNull()
+       |                                    ^
+    614|     expect(classifyAquarellePayloadFailure(wrapStroke(raw))).toBe('mal…
+    615|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  src/payload/toStudioStroke.test.ts > curve mode engine block (61-30 G-20) > copies a spline mode into the engine block unchanged
+AssertionError: expected undefined to be 'spline' // Object.is equality
+
+- Expected: 
+"spline"
+
++ Received: 
+undefined
+
+ ❯ src/payload/toStudioStroke.test.ts:233:37
+    231|   it('copies a spline mode into the engine block unchanged', () => {
+    232|     const stroke = toStudioStroke(makeRuntimeStroke({ curveMode: 'spli…
+    233|     expect(stroke.engine.curveMode).toBe('spline')
+       |                                     ^
+    234|     expect('anchors' in stroke.engine).toBe(false)
+    235|     expect('renderMode' in stroke.engine).toBe(false)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  src/payload/vectorPath.test.ts > curve mode (G-20: explicit evaluation discriminator, absent means Bézier) > declares exactly bezier and spline in this order, defaulting to bezier, and the guard is a strict membership test
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/payload/vectorPath.test.ts:122:44
+    120|     expect(AQUARELLE_CURVE_MODES).toEqual(['bezier', 'spline'])
+    121|     expect(DEFAULT_AQUARELLE_CURVE_MODE).toBe('bezier')
+    122|     expect(isAquarelleCurveMode('bezier')).toBe(true)
+       |                                            ^
+    123|     expect(isAquarelleCurveMode('spline')).toBe(true)
+    124|     expect(isAquarelleCurveMode('linear')).toBe(false)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  src/payload/vectorPath.test.ts > curve mode (G-20: explicit evaluation discriminator, absent means Bézier) > resolves an absent mode and bezier to bezier, and passes spline through
+AssertionError: expected 'bezier' to be 'spline' // Object.is equality
+
+Expected: "spline"
+Received: "bezier"
+
+ ❯ src/payload/vectorPath.test.ts:135:49
+    133|     expect(resolveAquarelleCurveMode(undefined)).toBe('bezier')
+    134|     expect(resolveAquarelleCurveMode('bezier')).toBe('bezier')
+    135|     expect(resolveAquarelleCurveMode('spline')).toBe('spline')
+       |                                                 ^
+    136|   })
+    137| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  src/payload/vectorPath.test.ts > curve mode (G-20: explicit evaluation discriminator, absent means Bézier) > recordedCurveModeField writes nothing for the default and one key otherwise
+AssertionError: expected {} to deeply equal { curveMode: 'spline' }
+
+- Expected
++ Received
+
+- Object {
+-   "curveMode": "spline",
+- }
++ Object {}
+
+ ❯ src/payload/vectorPath.test.ts:149:46
+    147|     expect(recordedCurveModeField('bezier')).toEqual({})
+    148|     expect(Object.keys(recordedCurveModeField('bezier'))).toHaveLength…
+    149|     expect(recordedCurveModeField('spline')).toEqual({ curveMode: 'spl…
+       |                                              ^
+    150|   })
+    151| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+ Test Files  3 failed (3)
+      Tests  6 failed | 78 passed (84)
+   Start at  15:00:47
+   Duration  596ms (transform 222ms, setup 0ms, collect 540ms, tests 49ms, environment 0ms, prepare 112ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-30-t2/junit-watercolor.xml
+undefined
+/Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/payload/vectorPath.test.ts src/payload/toStudioStroke.test.ts src/payload/codec.test.ts --reporter=default --reporter=junit --outputFile=/Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-30-t2/junit-watercolor.xml

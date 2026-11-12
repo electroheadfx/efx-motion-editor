@@ -12,18 +12,129 @@
 // ============================================================
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { createAquarelleEngineAdapter } from './adapter/engineAdapter'
 import type { AquarelleStrokePayload } from './payload/toStudioStroke'
 import { toStudioStroke } from './payload/toStudioStroke'
 
+// ---------------------------------------------------------------------------
+// Deterministic engine stand-in for the replay arm (61-07)
+//
+// vitest has no WebGL2, so the real WatercolorEngine constructor throws and
+// the adapter runs engine-less: the mock 2D canvas would then return an
+// all-zero buffer and NO cross-mode difference could ever be observed. The
+// replay arm therefore swaps in a deterministic stand-in whose exported bytes
+// are a pure function of the script it was fed — including the render mode,
+// which the adapter passes at the ONE scriptBegin call. That pins the law
+// this file owns: the mode is part of the deterministic replay INPUT
+// (VEC-06 / D-12). The real-pixel proof (edge transition, per-global
+// independence) lives in probe/vector-spine `--scenario ribbon`.
+// ---------------------------------------------------------------------------
+
+const replayEngine = vi.hoisted(() => {
+  interface FakeCanvas2D {
+    createImageData: (
+      width: number,
+      height: number,
+    ) => { width: number; height: number; data: Uint8ClampedArray }
+    putImageData: (
+      image: { width: number; height: number; data: Uint8ClampedArray },
+      x: number,
+      y: number,
+    ) => void
+  }
+
+  interface FakeCanvas {
+    width: number
+    height: number
+    getContext: (id: string) => FakeCanvas2D | null
+  }
+
+  class FakeWatercolorEngine {
+    paperTexture = 1
+    isAwake = false
+    private readonly surface: FakeCanvas
+    private readonly dabs: Array<{ x: number; y: number; p: number }> = []
+
+    constructor(surface: FakeCanvas) {
+      this.surface = surface
+    }
+
+    setManual(): void {}
+    setClock(): void {}
+    setRandom(): void {}
+    setPaper(): void {}
+    setParams(): void {}
+    setBrush(): void {}
+    setPigment(): void {}
+    setTool(): void {}
+
+    scriptBegin(
+      _tool: string,
+      x: number,
+      y: number,
+      p: number,
+      _step?: string,
+      _maxRadius?: number,
+      _tiltX?: number,
+      _tiltY?: number,
+      _widthScale?: number,
+    ): boolean {
+      this.dabs.push({ x, y, p })
+      return true
+    }
+
+    scriptMove(x: number, y: number, p: number): void {
+      this.dabs.push({ x, y, p })
+    }
+
+    scriptEnd(): void {}
+    tick(): void {}
+    fix(): void {}
+    destroy(): void {}
+
+    resetSheet(): void {
+      this.dabs.length = 0
+    }
+
+    /** Export one deterministic pixel per fed sample. */
+    exportCanvas(): FakeCanvas {
+      const ctx = this.surface.getContext('2d')
+      if (!ctx) return this.surface
+      const image = ctx.createImageData(this.surface.width, this.surface.height)
+      for (const dab of this.dabs) {
+        const px =
+          ((Math.trunc(dab.x) % this.surface.width) + this.surface.width) % this.surface.width
+        const py =
+          ((Math.trunc(dab.y) % this.surface.height) + this.surface.height) % this.surface.height
+        const at = (py * this.surface.width + px) * 4
+        image.data[at] = 0x11
+        image.data[at + 1] = Math.min(255, Math.max(0, Math.round(dab.p * 255)))
+        image.data[at + 2] = this.dabs.length & 0xff
+        image.data[at + 3] = 255
+      }
+      ctx.putImageData(image, 0, 0)
+      return this.surface
+    }
+  }
+
+  return { FakeWatercolorEngine }
+})
+
+vi.mock('./playground/Engine', () => ({
+  WatercolorEngine: replayEngine.FakeWatercolorEngine,
+}))
+
 const PKG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const ENGINE_DIR = join(PKG_DIR, 'src', 'engine')
 const PAYLOAD_DIR = join(PKG_DIR, 'src', 'payload')
+// 61-02: the vector spine lands in src/vector, so the unseeded-RNG scan must
+// read it from the same commit — otherwise a draw there would go unpunished.
+const VECTOR_DIR = join(PKG_DIR, 'src', 'vector')
 // 261030-v1t: the per-frame paint salt lives in the HOST package (the one
 // determinism surface both engines share) — scan its source too.
 const HOST_TRACE_SEED = resolve(PKG_DIR, '..', 'efx-paint-host', 'src', 'util', 'traceSeed.ts')
@@ -110,11 +221,42 @@ function makeStroke(): StudioStroke<AquarelleStrokePayload> {
   })
 }
 
+const PAPER_SEED = 0xc0ffee
+
+/** mulberry32 — the same generator the adapter installs. */
+function seededRandom(seed: number): () => number {
+  let state = (seed | 0) || 1
+  return () => {
+    state = (state + 0x6d2b79f5) | 0
+    let t = Math.imul(state ^ (state >>> 15), 1 | state)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * 61-07: the constructor draws `paperSeed` from Math.random before the
+ * adapter installs its own RNG — pin it around every construction or the
+ * replay digests mean nothing.
+ */
+function withSeededMathRandom<T>(seed: number, fn: () => T): T {
+  const original = Math.random
+  const rng = seededRandom(seed)
+  Math.random = () => rng()
+  try {
+    return fn()
+  } finally {
+    Math.random = original
+  }
+}
+
 function replayBytes(): Uint8ClampedArray {
   const width = 64
   const height = 64
   const { canvas, pixels } = makeMockCanvas(width, height)
-  const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+  const adapter = withSeededMathRandom(PAPER_SEED, () =>
+    createAquarelleEngineAdapter({ width, height, canvas }),
+  )
   adapter.applyStroke(makeStroke())
   for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
   adapter.captureFrame()
@@ -148,18 +290,29 @@ describe('determinism contract', () => {
 // ---------------------------------------------------------------------------
 
 describe('unseeded RNG source scan', () => {
-  it('src/engine and src/payload contain zero Math.random occurrences', () => {
-    const engine = sourceText(ENGINE_DIR)
-    const payload = sourceText(PAYLOAD_DIR)
-    expect(engine.includes('Math.random')).toBe(false)
-    expect(payload.includes('Math.random')).toBe(false)
+  it('scans a non-empty src/vector root — a rename cannot silently empty the scan', () => {
+    expect(statSync(VECTOR_DIR).isDirectory()).toBe(true)
+    const sources = collectSources(VECTOR_DIR)
+    expect(sources.length).toBeGreaterThan(0)
+    expect(sources.some((file) => basename(file) === 'spine.ts')).toBe(true)
   })
 
-  it('src/engine and src/payload contain zero crypto.getRandomValues occurrences', () => {
+  it('src/engine, src/payload and src/vector contain zero Math.random occurrences', () => {
     const engine = sourceText(ENGINE_DIR)
     const payload = sourceText(PAYLOAD_DIR)
+    const vector = sourceText(VECTOR_DIR)
+    expect(engine.includes('Math.random')).toBe(false)
+    expect(payload.includes('Math.random')).toBe(false)
+    expect(vector.includes('Math.random')).toBe(false)
+  })
+
+  it('src/engine, src/payload and src/vector contain zero crypto.getRandomValues occurrences', () => {
+    const engine = sourceText(ENGINE_DIR)
+    const payload = sourceText(PAYLOAD_DIR)
+    const vector = sourceText(VECTOR_DIR)
     expect(engine.includes('crypto.getRandomValues')).toBe(false)
     expect(payload.includes('crypto.getRandomValues')).toBe(false)
+    expect(vector.includes('crypto.getRandomValues')).toBe(false)
   })
 })
 

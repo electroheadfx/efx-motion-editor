@@ -327,3 +327,38 @@ export interface MceBrushPackSnapshot {
   kind: string;
   entries: unknown[];
 }
+
+/**
+ * One anchor of a persisted vector path (VEC-06 / 61-06). Mirrors the AQTL v2
+ * anchor block shipped in 61-05: `x` / `y` are document-uv, `kind` is the
+ * closed `auto` / `bezier` union, and `in` / `out` carry absolute handle
+ * endpoints only for a `bezier` anchor. `width` is the sparse per-anchor width
+ * factor (D-10) — absent reads 1, and a uniform stroke stores no width at all.
+ * `color` is the explicit per-vertex colour (261111-wd6) in canonical
+ * `#rrggbb` — absent inherits the stroke colour, and unlike `width` an
+ * explicit colour is always stored.
+ *
+ * Declaration only: the engine slot stays opaque on the wire, so the host
+ * still never parses these keys (`MceEngineStrokePayload.engine` carries them).
+ */
+export interface MceAquarelleAnchor {
+  x: number;
+  y: number;
+  kind: string;
+  in?: { x: number; y: number };
+  out?: { x: number; y: number };
+  width?: number;
+  color?: string;
+}
+
+/**
+ * The persisted vector-path shape of one stroke (VEC-06 / 61-06): a non-empty
+ * anchor list plus an optional curve-evaluation mode (G-20, absent reads
+ * `bezier`). Mirrors the AQTL v2 field names from 61-05 / 61-30. The
+ * opaqueness law is unchanged — these keys ride inside
+ * `MceEngineStrokePayload.engine`, never as host fields.
+ */
+export interface MceAquarelleVectorPath {
+  anchors: MceAquarelleAnchor[];
+  curveMode?: string;
+}

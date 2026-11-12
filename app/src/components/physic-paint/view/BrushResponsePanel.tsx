@@ -28,6 +28,7 @@ import {
   setAquarelleMultiplier,
 } from './aquarelleRecordState';
 import type { AquarelleToolOverrides } from '@efxlab/efx-watercolor/brushes';
+import { commitAquarelleSelectionMultiplier } from './aquarellePaintControls';
 
 const MULTIPLIER_FIELDS: ReadonlyArray<keyof AquarelleToolOverrides> = Object.freeze([
   'tip',
@@ -46,6 +47,7 @@ function MultiplierSlider(props: {
   multiplier: number;
   effective: number;
   onChange: (value: number) => void;
+  onCommit?: (value: number) => void;
 }) {
   return (
     <div class="physics-paint-option-row">
@@ -53,6 +55,7 @@ function MultiplierSlider(props: {
         label={props.label}
         value={props.multiplier}
         onChange={props.onChange}
+        onCommit={props.onCommit}
         step={0.1}
         min={MULTIPLIER_MIN}
         max={MULTIPLIER_MAX}
@@ -86,6 +89,12 @@ export function BrushResponsePanel() {
     setAquarelleMultiplier(field, value);
   };
 
+  // quick 261111-ucf: a release commits ONE clamped multiply field to the
+  // selected paint strokes; the live setter above stays the continuous path.
+  const onMultiplierCommit = (field: keyof AquarelleToolOverrides) => (value: number) => {
+    void commitAquarelleSelectionMultiplier(field, value);
+  };
+
   return (
     <div class="physics-paint-option-group" data-testid="brush-response-panel">
       {selectedTipId === null ? (
@@ -111,6 +120,7 @@ export function BrushResponsePanel() {
               multiplier={overrides[field]}
               effective={effectiveMultiplierValue(base, overrides[field])}
               onChange={onMultiplierChange(field)}
+              onCommit={onMultiplierCommit(field)}
             />
           );
         })

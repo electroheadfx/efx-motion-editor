@@ -29,6 +29,19 @@ export interface SliderStepperProps {
   label: string;
   value: number;
   onChange: (value: number) => void;
+  /**
+   * quick 261111-tul: the gesture commit boundary. `onChange` stays a
+   * continuous value stream; `onCommit` fires exactly once per gesture at the
+   * release boundaries — track pointerup/pointercancel, typed Enter, typed
+   * blur, ± press end and keyboard activation — and carries the value the
+   * gesture actually reached, never the possibly-stale `value` prop. It fires
+   * even when the committed value equals `value` (Selection commits bind to
+   * the live brush, not to the selection), and never for Escape, a disabled
+   * control, a preset-list end, or a gesture that computed no value. With
+   * `onCommit` absent every existing emission, guard, coalescing bracket and
+   * rendered output stays byte-identical.
+   */
+  onCommit?: (value: number) => void;
   step?: number;
   presets?: readonly number[];
   resolveStep?: (value: number) => number;
@@ -265,6 +278,7 @@ export function SliderStepper({
   label,
   value,
   onChange,
+  onCommit,
   step = 1,
   presets,
   resolveStep,
@@ -305,6 +319,23 @@ export function SliderStepper({
    *  Held in a ref-wrapped signal so it survives re-renders (48-06). */
   const draftRef = useRef(signal<number | null>(null));
   const draft = draftRef.current;
+  // The 261111-tul gesture refs are allocated AFTER `draftRef` on purpose:
+  // they are handler-only state, so keeping the render-read refs at their
+  // pre-quick hook offsets keeps the dialog harness's traversal band stable.
+  /** quick 261111-tul: the Enter/Escape marker. Enter already committed and
+   *  Escape must not commit, so the blur each one triggers consumes the marker
+   *  and stays silent. Cleared per gesture (onFocus resets it, and a blur
+   *  always consumes it), so it can never suppress a later gesture's commit. */
+  const suppressBlurCommit = useRef(false);
+  /** quick 261111-tul: the live track gesture's last computed value. The
+   *  release commits THIS, never the `value` prop — the parent may not have
+   *  re-rendered the last move into the prop yet (T-TUL-01). */
+  const lastTrackValue = useRef<number | null>(null);
+  /** quick 261111-tul: the last value a ± press gesture reached (repeat ticks
+   *  included), committed once at press end. Cleared at press start and read
+   *  before the press-end early return, so the second press-end route
+   *  (pointerup + pointerleave) finds null (T-TUL-02). */
+  const pressValue = useRef<number | null>(null);
 
   const display = mixed ? MIXED_DISPLAY : formatStepperValue(value, step, precision, presets);
   /** quick 261105-sk3: the draft wins while typing so the clamp/formatted
@@ -334,7 +365,11 @@ export function SliderStepper({
     }
   };
 
-  const stepBy = (direction: 1 | -1) => {
+  /** Returns the value this step reached, or null when no step ran (the
+   *  preset-list end already performed its cleanup). The equality guard still
+   *  governs `onChange` only: the returned value feeds the gesture commit even
+   *  when it equals `value` (the equal-value law). */
+  const stepBy = (direction: 1 | -1): number | null => {
     const typed = parseStepperInput(valueRef.current?.value ?? '');
     const base = Number.isFinite(typed) ? typed : value;
     if (presets && presets.length > 0) {
@@ -343,32 +378,47 @@ export function SliderStepper({
         clearRepeat();
         pressing.current = false;
         stopCoalescing();
-        return;
+        return null;
       }
       if (next !== value || mixed) onChange(next);
-      return;
+      return next;
     }
     const effectiveStep = resolveStep ? resolveStep(base) : step;
     const next = allowOutOfRangeEntry
       ? clampToStep(base + direction * effectiveStep, effectiveStep)
       : clampToStep(base + direction * effectiveStep, effectiveStep, min, max);
     if (next !== value || mixed) onChange(next);
+    return next;
   };
 
   const handlePressStart = (direction: 1 | -1) => (event: TargetedPointerEvent<HTMLButtonElement>) => {
+    // Reset FIRST so a disabled / preset-end press can never inherit the
+    // previous gesture's value (T-TUL-03).
+    pressValue.current = null;
     if (disabled || (presets != null && presets.length > 0 && nextPresetFrom(presets, value, direction) === undefined)) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pressing.current = true;
     clearRepeat();
     startCoalescing();
-    stepBy(direction);
+    pressValue.current = stepBy(direction);
     delayTimer.current = setTimeout(() => {
-      repeatTimer.current = setInterval(() => stepBy(direction), NUMERIC_STEPPER_REPEAT_INTERVAL_MS);
+      repeatTimer.current = setInterval(() => {
+        const stepped = stepBy(direction);
+        // A null return means the preset end already ran its cleanup; keep
+        // the last value the hold actually reached.
+        if (stepped !== null) pressValue.current = stepped;
+      }, NUMERIC_STEPPER_REPEAT_INTERVAL_MS);
     }, NUMERIC_STEPPER_REPEAT_DELAY_MS);
   };
 
   const handlePressEnd = () => {
+    // Read and clear BEFORE the early return: one commit per press gesture,
+    // including hold-to-repeat, while the follow-on pointerup/pointerleave
+    // route finds null and adds nothing (T-TUL-02).
+    const committed = pressValue.current;
+    pressValue.current = null;
+    if (onCommit && committed !== null) onCommit(committed);
     if (!pressing.current) return;
     pressing.current = false;
     clearRepeat();
@@ -378,7 +428,11 @@ export function SliderStepper({
   const handleClick = (direction: 1 | -1) => (event: TargetedMouseEvent<HTMLButtonElement>) => {
     if (disabled || event.detail !== 0) return;
     if (presets != null && presets.length > 0 && nextPresetFrom(presets, value, direction) === undefined) return;
-    stepBy(direction);
+    // Keyboard/AT activation has no press lifecycle: its single step commits
+    // immediately. A real click (detail !== 0) returned above and belongs to
+    // the pointer path, so it never double-commits here.
+    const stepped = stepBy(direction);
+    if (onCommit && stepped !== null) onCommit(stepped);
   };
 
   /** Map a pointer x to the track value, snapped to the commit grid. */
@@ -405,6 +459,9 @@ export function SliderStepper({
 
   const emitTrackValue = (next: number | null) => {
     if (next === null) return;
+    // The gesture value is recorded on ONE boundary whether or not the knob
+    // follows a local draft, so release behaves identically with commitOnRelease.
+    if (onCommit) lastTrackValue.current = next;
     if (commitOnRelease) {
       draft.value = next;
       return;
@@ -417,6 +474,7 @@ export function SliderStepper({
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     dragging.current = true;
+    lastTrackValue.current = null;
     startCoalescing();
     emitTrackValue(valueFromPointer(event.currentTarget, event.clientX));
   };
@@ -434,6 +492,13 @@ export function SliderStepper({
       draft.value = null;
       if (next !== value || mixed) onChange(next);
     }
+    // pointercancel routes here too (the track wires it to this handler): a
+    // cancelled drag commits the value it reached — the gesture already
+    // applied it live through onChange, so the commit only mirrors a real
+    // change. A gesture that computed no value leaves the ref null: silence.
+    const committed = lastTrackValue.current;
+    lastTrackValue.current = null;
+    if (onCommit && committed !== null) onCommit(committed);
     stopCoalescing();
   };
 
@@ -449,15 +514,22 @@ export function SliderStepper({
     max: allowOutOfRangeEntry ? undefined : max,
   });
 
-  const commitInput = (element: HTMLInputElement) => {
+  /** Returns the value the typed commit reports (quick 261111-tul). An
+   *  unparseable entry reports the displayed/unchanged `value` — the box
+   *  reverts, so the commit reports what the box now shows. A parseable entry
+   *  reports the committed value even when it equals `value`: the equal-value
+   *  law belongs to `onCommit`, while `onChange` keeps its equality guard. */
+  const commitInput = (element: HTMLInputElement): number => {
     const next = commitStepperInput(element.value, commitOptions());
     if (next !== null) {
       if (next !== value || mixed) onChange(next);
       element.value = formatStepperValue(next, step, precision, presets);
-    } else {
-      element.value = display;
+      liveDraft.current = null;
+      return next;
     }
+    element.value = display;
     liveDraft.current = null;
+    return value;
   };
 
   /** quick 261105-sk3: the live commit. The raw text is stored FIRST so empty
@@ -515,21 +587,33 @@ export function SliderStepper({
           aria-describedby={ariaDescribedBy}
           data-testid="slider-stepper-value"
           onFocus={(event) => {
+            // A marker orphaned by a blur that never fired (e.g. the element
+            // left the document) must not swallow this gesture's commit.
+            suppressBlurCommit.current = false;
             startCoalescing();
             onFocus?.(event);
           }}
           onBlur={(event) => {
-            commitInput(event.currentTarget);
+            const committed = commitInput(event.currentTarget);
+            // Enter/Escape already settled this gesture: the blur they trigger
+            // consumes the marker instead of committing a second time.
+            const suppressed = suppressBlurCommit.current;
+            suppressBlurCommit.current = false;
+            if (onCommit && !suppressed) onCommit(committed);
             stopCoalescing();
             onBlur?.();
           }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
-              commitInput(event.currentTarget);
+              const committed = commitInput(event.currentTarget);
+              suppressBlurCommit.current = true;
+              if (onCommit) onCommit(committed);
               event.currentTarget.blur();
             } else if (event.key === 'Escape') {
               event.currentTarget.value = display;
               liveDraft.current = null;
+              // Escape is a refusal, never a commit — silence its blur too.
+              suppressBlurCommit.current = true;
               event.currentTarget.blur();
             }
           }}

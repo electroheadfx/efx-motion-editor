@@ -1,0 +1,52 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts (392 tests | 2 failed) 116ms
+   × 61-26 WR-01 — Shift+A under the wireframe leaves no orphan selection > refuses up front on the wireframe view, before any read or write 7ms
+     → expected -1 to be greater than -1
+   × 61-26 WR-01 — Shift+A under the wireframe leaves no orphan selection > re-checks the authoritative Select entry before any selection write 1ms
+     → expected 'if (!aquarelleSelectMode.peek()) {\n …' to contain 'if (!aquarelleSelectMode.peek()) retu…'
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-26 WR-01 — Shift+A under the wireframe leaves no orphan selection > refuses up front on the wireframe view, before any read or write
+AssertionError: expected -1 to be greater than -1
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7357:21
+    7355|     const entryAt = handler.indexOf(ENTRY_ATTEMPT);
+    7356|     const writeAt = handler.indexOf(SELECTION_WRITE);
+    7357|     expect(guardAt).toBeGreaterThan(-1);
+       |                     ^
+    7358|     // The guard is the FIRST statement: nothing reads the mode or the
+    7359|     // availability gate before it, so no write can precede it.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-26 WR-01 — Shift+A under the wireframe leaves no orphan selection > re-checks the authoritative Select entry before any selection write
+AssertionError: expected 'if (!aquarelleSelectMode.peek()) {\n …' to contain 'if (!aquarelleSelectMode.peek()) retu…'
+
+- Expected
++ Received
+
+- if (!aquarelleSelectMode.peek()) return;
++ if (!aquarelleSelectMode.peek()) {
++       if (!watercolorMoveAvailable.peek()) return;
++       setAquarelleSelectMode(true);
++     }
++     
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7375:24
+    7373|     );
+    7374|     expect(entryBlock).toContain(ENTRY_ATTEMPT);
+    7375|     expect(entryBlock).toContain(ENTRY_RECHECK);
+       |                        ^
+    7376|     const entryAt = handler.indexOf(ENTRY_ATTEMPT);
+    7377|     const recheckAt = handler.indexOf(ENTRY_RECHECK, entryAt);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 390 passed (392)
+   Start at  12:22:51
+   Duration  477ms (transform 144ms, setup 0ms, collect 169ms, tests 116ms, environment 0ms, prepare 28ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-26-t1/junit.xml

@@ -1,6 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {describe, it, expect} from 'vitest';
+import type {MceAquarelleVectorPath, MceEngineStrokePayload} from '../types/project';
 
 /**
  * TS ↔ Rust .mce field-diff contract (261012-d6q dual-language law).
@@ -141,10 +142,31 @@ function diffMember(name: string, tsKeys: Set<string>, rustKeys: Set<string>): s
   return problems;
 }
 
-describe('TS ↔ Rust .mce field-diff contract', () => {
-  const rust = parseRustStructs(RUST_SRC);
-  const ts = parseTsInterfaces(TS_SOURCES);
+// Both surfaces are parsed once; every describe block below asserts against the
+// same parsed view, so a row added by any phase reads the live source.
+const rust = parseRustStructs(RUST_SRC);
+const ts = parseTsInterfaces(TS_SOURCES);
 
+/**
+ * Assert a named .mce member exists in BOTH languages, carries every listed
+ * wire key on both sides, and has no other one-language key.
+ */
+function expectMemberKeys(name: string, keys: readonly string[]): void {
+  expect(ts.has(name), `TS parser missed ${name}`).toBe(true);
+  expect(rust.has(name), `Rust parser missed ${name}`).toBe(true);
+  const tsKeys = ts.get(name)!;
+  const rustKeys = new Set(rust.get(name)!.values());
+  for (const key of keys) {
+    expect(tsKeys.has(key), `${name}.${key}: TS side is missing the key`).toBe(true);
+    expect(rustKeys.has(key), `${name}.${key}: Rust side is missing the key`).toBe(true);
+  }
+  // And no missing keys on either side for this member (the group must be a
+  // complete two-language declaration, not a partial sketch).
+  const problems = diffMember(name, tsKeys, rustKeys);
+  expect(problems, `${name} field-diff violations:\n${problems.join('\n')}`).toEqual([]);
+}
+
+describe('TS ↔ Rust .mce field-diff contract', () => {
   it('parses both declaration surfaces', () => {
     expect(rust.size).toBeGreaterThan(10);
     expect(ts.size).toBeGreaterThan(10);
@@ -207,24 +229,6 @@ describe('TS ↔ Rust .mce field-diff contract', () => {
 // ---------------------------------------------------------------------------
 
 describe('Phase 56 .mce field set (DATA-04 / D-27)', () => {
-  const rust = parseRustStructs(RUST_SRC);
-  const ts = parseTsInterfaces(TS_SOURCES);
-
-  function expectMemberKeys(name: string, keys: readonly string[]): void {
-    expect(ts.has(name), `TS parser missed ${name}`).toBe(true);
-    expect(rust.has(name), `Rust parser missed ${name}`).toBe(true);
-    const tsKeys = ts.get(name)!;
-    const rustKeys = new Set(rust.get(name)!.values());
-    for (const key of keys) {
-      expect(tsKeys.has(key), `${name}.${key}: TS side is missing the key`).toBe(true);
-      expect(rustKeys.has(key), `${name}.${key}: Rust side is missing the key`).toBe(true);
-    }
-    // And no missing keys on either side for this member (the four groups must
-    // be complete two-language declarations, not partial sketches).
-    const problems = diffMember(name, tsKeys, rustKeys);
-    expect(problems, `${name} field-diff violations:\n${problems.join('\n')}`).toEqual([]);
-  }
-
   it('declares paper display state on the fond (id, strength, scale) in both languages', () => {
     // PAPER-03 / D-22: paper id + strength + scale ride the document fond.
     expectMemberKeys('McePaperDisplayState', ['id', 'strength', 'scale']);
@@ -252,5 +256,153 @@ describe('Phase 56 .mce field set (DATA-04 / D-27)', () => {
       expect(entry.toLowerCase()).not.toContain('brushpack');
       expect(entry.toLowerCase()).not.toContain('brush_pack');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 61 vector field set (VEC-06 / REL-02)
+//
+// The vector stroke rides the already-opaque engine slot, so the risk is not
+// corruption but SILENT NON-DECLARATION: the payload works today and drops out
+// of the dual-language contract the first time the models are regenerated.
+// These two rows put the shape under the same pin as every other .mce member.
+//
+// The key sets mirror the AQTL v2 field names from 61-05 exactly, including
+// the `in` / `out` handle pair and the camelCase `curveMode` wire key.
+// ---------------------------------------------------------------------------
+
+describe('Phase 61 vector field set (VEC-06 / REL-02)', () => {
+  it('declares the vector anchor shape in both languages', () => {
+    // VEC-06 / 261111-wd6: x, y, kind, the optional handle pair, the sparse
+    // width factor and the optional explicit colour.
+    expectMemberKeys('MceAquarelleAnchor', ['x', 'y', 'kind', 'in', 'out', 'width', 'color']);
+  });
+
+  it('declares the vector path shape in both languages', () => {
+    // VEC-06 / G-20: the non-empty anchor list plus the optional
+    // curve-evaluation mode.
+    expectMemberKeys('MceAquarelleVectorPath', ['anchors', 'curveMode']);
+  });
+
+  it('the in-handle wire key is the rename target of a named field, never a raw identifier', () => {
+    // REL-02: the contract parser reads `pub <ident>:`; `pub r#in` would be
+    // invisible to it, so the declaration must stay `in_` + serde rename.
+    expect(RUST_SRC).not.toContain('pub r#in');
+    expect(RUST_SRC).toContain('#[serde(rename = "in")]');
+    expect(rust.get('MceAquarelleAnchor')!.get('in_')).toBe('in');
+  });
+
+  it('did not claim a one-language exception for any vector field', () => {
+    // The settled law: a .mce field on one side only is a defect, not an
+    // allowlisted exception. The vector shape is two-language by design.
+    for (const entry of ALLOWED_ONE_LANGUAGE) {
+      expect(entry.toLowerCase()).not.toContain('aquarelleanchor');
+      expect(entry.toLowerCase()).not.toContain('aquarellevectorpath');
+      expect(entry.toLowerCase()).not.toContain('render');
+      expect(entry.toLowerCase()).not.toContain('anchor');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 61 envelope round trip (REL-02)
+//
+// The vector fields ride the already-opaque `MceEngineStrokePayload.engine`
+// slot, so the envelope risk is not corruption but silent loss: one JSON
+// save/load must return the anchor block and the sparse width factor
+// untouched, byte for byte. The same round trip also proves the
+// slot stayed OPAQUE — an engine key this phase never imagined survives too,
+// so no strict schema was introduced alongside the declarations.
+//
+// This is a pure TypeScript source-and-data test: it reads the Rust file as
+// text and round-trips plain data. It never requires the Rust toolchain.
+// ---------------------------------------------------------------------------
+
+describe('Phase 61 envelope round trip (REL-02)', () => {
+  /** A two-anchor path: one `auto`, one `bezier` with stored handles. */
+  const VECTOR_PATH: MceAquarelleVectorPath = {
+    anchors: [
+      { x: 0.25, y: 0.5, kind: 'auto' },
+      {
+        x: 0.75,
+        y: 0.5,
+        kind: 'bezier',
+        in: { x: 0.625, y: 0.25 },
+        out: { x: 0.875, y: 0.75 },
+        width: 1.8,
+      },
+    ],
+  };
+
+  function roundTrip(payload: MceEngineStrokePayload): {
+    saved: string;
+    reopened: MceEngineStrokePayload;
+  } {
+    const saved = JSON.stringify(payload);
+    return { saved, reopened: JSON.parse(saved) as MceEngineStrokePayload };
+  }
+
+  it('carries a vector engine block through save/load deep-equal and byte-identical', () => {
+    const payload: MceEngineStrokePayload = { engine: { ...VECTOR_PATH } };
+    const { saved, reopened } = roundTrip(payload);
+
+    // Deep equality: both anchors, the stored handle pair and the one sparse
+    // width factor survive the envelope untouched.
+    expect(reopened).toEqual(payload);
+    const engine = reopened.engine as unknown as MceAquarelleVectorPath;
+    expect(engine.anchors).toEqual(VECTOR_PATH.anchors);
+    // Exactly one width key: the uniform anchor stores nothing (D-10).
+    expect(Object.keys(engine.anchors[0]!)).toEqual([
+      'x', 'y', 'kind',
+    ]);
+    // Byte identity: a second serialisation reproduces the saved string.
+    expect(JSON.stringify(reopened)).toBe(saved);
+  });
+
+  it('carries a curve mode through save/load deep-equal and byte-identical (61-30 G-20)', () => {
+    const splinePath: MceAquarelleVectorPath = {
+      ...VECTOR_PATH,
+      curveMode: 'spline',
+    };
+    const payload: MceEngineStrokePayload = { engine: { ...splinePath } };
+    const { saved, reopened } = roundTrip(payload);
+
+    expect(reopened).toEqual(payload);
+    const engine = reopened.engine as unknown as MceAquarelleVectorPath;
+    expect(engine.curveMode).toBe('spline');
+    expect(engine.anchors).toEqual(VECTOR_PATH.anchors);
+    // Byte identity: the key survives a second serialisation.
+    expect(JSON.stringify(reopened)).toBe(saved);
+    // Absent means Bézier: the pre-phase fixture gained no key.
+    expect('curveMode' in VECTOR_PATH).toBe(false);
+  });
+
+  it('keeps the engine slot opaque: an unknown engine key round-trips untouched', () => {
+    const payload: MceEngineStrokePayload = {
+      engine: {
+        ...VECTOR_PATH,
+        // A key no 61-06 declaration names. Introduced here only to prove the
+        // slot accepts it: the declarations are a contract surface, not a
+        // parser, so nothing filters the engine object.
+        futureEngineKey: { nested: [1, 2, 3], label: 'unknown-by-design' },
+      },
+    };
+    const { saved, reopened } = roundTrip(payload);
+
+    expect(reopened).toEqual(payload);
+    expect(JSON.stringify(reopened)).toBe(saved);
+    expect(Object.keys(reopened.engine as Record<string, unknown>)).toContain('futureEngineKey');
+    expect((reopened.engine as Record<string, unknown>)['futureEngineKey']).toEqual({
+      nested: [1, 2, 3],
+      label: 'unknown-by-design',
+    });
+  });
+
+  it('the one-language exception list is unchanged by this plan (literal snapshot)', () => {
+    // Snapshot of the pre-plan set, written out literally: adding an entry is
+    // now a deliberate edit to this test rather than a silent allowlist.
+    const PRE_PLAN_ALLOWED_ONE_LANGUAGE = ['MceSequence.fps'];
+    expect(ALLOWED_ONE_LANGUAGE.size).toBe(PRE_PLAN_ALLOWED_ONE_LANGUAGE.length);
+    expect([...ALLOWED_ONE_LANGUAGE]).toEqual(PRE_PLAN_ALLOWED_ONE_LANGUAGE);
   });
 });

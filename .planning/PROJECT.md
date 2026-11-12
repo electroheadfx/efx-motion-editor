@@ -178,10 +178,17 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Cmd/Ctrl+wheel zooms the Studio timeline's frame density with the frame under the cursor fixed, and the pill offers minus / percent / plus / 100% reset over 0.25×–4× — v2.1.0 Phase 60 (ZOOM-01/02)
 - ✓ Row, lane and cell heights never move with zoom; every frame→pixel consumer (playhead, ruler, hit-testing, drag, scrub, selection, paste, sound stains, rails) reads one pitch authority with no local `× 18` — v2.1.0 Phase 60 (ZOOM-03/05)
 - ✓ The timeline density is a UI preference remembered per paint layer across Studio reopen, never written to the document, schema, project persistence or export — v2.1.0 Phase 60 (ZOOM-04)
+- ✓ A vector pen is a fifth rail entry; it draws a stroke from corner and smooth anchors, commits on Enter and cancels on Escape, bakes onto the live sheet, and refuses honestly under Script Off — v2.1.0 Phase 61 (VEC-01)
+- ✓ The path is fully editable — anchor drag, coupled-handle drag, handle break, insert, delete, multi-select — with the drag captured so a release outside the overlay still commits, and shortcuts standing down while a text field has focus — v2.1.0 Phase 61 (VEC-02)
+- ✓ Stroke width varies per vertex through a sparse anchor width factor (exposed as "Vertex size") interpolated along the spine; absent is 1.0 and uniform stores nothing — v2.1.0 Phase 61 (VEC-03)
+- ✓ Brush id and base colour are stroke-level, and per-vertex colour is supported as a sparse anchor `color?` carried through AQTL v2, the `.mce` (TS + Rust) and the engine; there is no per-vertex brush and no second size channel — v2.1.0 Phase 61 (VEC-04, revised 2026-11-12)
+- ✓ A wireframe toggle shows strokes and paths without render and serves as the drag-time performance mode; while it is ON nothing is captured, reset, re-baked or persisted — v2.1.0 Phase 61 (VEC-05)
+- ✓ Vector strokes persist in the `.mce` in both languages, survive reopen including curve mode, export as previewed, and replay deterministically (same script ⇒ same pixels) — v2.1.0 Phase 61 (VEC-06)
+- ✓ Every vector path operation is exactly one undo entry and undo/redo re-applies it — v2.1.0 Phase 61 (VEC-07)
 
 ### Active
 
-**v2.1.0 scope (defined 2026-11-06 — see `.planning/REQUIREMENTS.md`):** Studio timeline horizontal zoom (Phase 60), vector painting tool (Phase 61), painted-script/stroke curve editing (Phase 62). Phase 59 (rail motion channels + v7 interface) shipped 2026-11-08; Phase 60 (timeline horizontal zoom) shipped 2026-11-09.
+**v2.1.0 scope (defined 2026-11-06 — see `.planning/REQUIREMENTS.md`):** Studio timeline horizontal zoom (Phase 60), vector painting tool (Phase 61), painted-script/stroke curve editing (Phase 62). Phase 59 (rail motion channels + v7 interface) shipped 2026-11-08; Phase 60 (timeline horizontal zoom) shipped 2026-11-09; Phase 61 (vector painting tool) shipped 2026-11-12.
 
 **Carried forward (not scheduled in v2.1.0):**
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
@@ -199,7 +206,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 - **Phase 59 — Rail motion + v7 interface.** Motion keys are independent of drawing keys; three selection scopes (rail / drawing key / motion key); channels opened on demand one at a time — Position (two modes: grouped whole-position, or split X + Y as in Maya/Softimage), Scale, Rotation, Opacity; rail-local time with repeat = hold or fit-to-span; transform applied at the compositor (1 raster per track per frame, content cycles while motion continues, no re-bake); seeded wiggle deterministic at export; v7 chrome (18px lanes, header chevron minus/right/down, lane-header nav cluster, 6×6 Motion keys, rounded selected-rail outline). Gates A–D are answered in the phase plan. **Any rail animates** — Standard, Motion, Static, Reveal, and bare Key Rails — with no cycle value required or changed.
 - **Phase 60 — Studio timeline horizontal zoom.** Frame density only (row, lane and cell heights stay fixed); Cmd/Ctrl+wheel plus a zoom pill (minus / percent / plus / 100% reset); 0.25×–4×, with the density remembered per paint layer as a UI preference — no document/schema/export change. **Shipped 2026-11-09** (UAT 5/5).
-- **Phase 61 — Vector painting tool.** `pen-tool` / `spline-pointer`, per-vertex paint properties, curve-type choice, wireframe preview.
+- **Phase 61 — Vector painting tool.** `pen-tool` / `spline-pointer`, per-vertex paint properties, curve-type choice, wireframe preview. **Shipped 2026-11-12** (31 plans; UAT 21/21, verification 19/19 passed). VEC-04 was revised mid-phase by the user: per-vertex colour is supported and the former "width is the only per-vertex property" law is superseded.
 - **Phase 62 — Painted script/stroke curve editing.**
 
 **Out of scope:** Studio API/MCP → its own v2.2.0 milestone (Phase 63). Seconds/frames equivalence and Studio canvas zoom shipped in v2.0.1 (261105-cgl, 261104-uyv).
@@ -423,6 +430,10 @@ Known technical debt:
 | v2.0.1 + Key/paint after a rail dissolves it only behind a one-shot "Edit this rail?" prompt (Convert to Standard / New rail) | The dissolve discards the rail's script/reveal effect; that loss must be the user's explicit choice, not a silent consequence of adding a key | ✓ Good — UAT approved 2026-11-05 (261105-raf); New rail is a real forceNewSegment lane |
 | v2.0.1 VIS-02 rows ship at 31px, not the spec's 30px | The UAT round showed the rails needed +1px spacing to stop reading as a single mass | ✓ Good — recorded as an accepted supersession in the requirements archive; `rowHeight` token drift is tracked as debt |
 | v2.0.1 stays a PATCH: no `.mce` change, no new module, motion channels deferred to v2.1.0 | The v7 rail surface is what motion channels build on; mixing them into a patch would double the audit surface | ✓ Good — 15/15 requirements, 14/14 links, 7/7 flows, zero gaps |
+| Vector path state is a document property, not session state; wireframe/draft/selection never enter the revision or the export | Keeps replay and export parity honest and makes the cache key a pure function of the stroke payload | ✓ Good — determinism and export-parity pins green |
+| Per-vertex paint variability is two sparse channels: the anchor width factor (exposed as "Vertex size") and an optional anchor `color?` | The user revised VEC-04 mid-phase: colour is genuinely per-vertex, but a second size channel or a per-vertex brush would duplicate existing semantics | ✓ Good — one undo entry per gesture; colourless paths keep byte-identical output |
+| The simple-ribbon engine and the `renderMode` field were removed rather than migrated | Carrying a second render path through the codec, the `.mce` and the engine cost more than it returned; a clean break beat a migration shim | ✓ Good — codec skips the legacy byte; ribbon rows retired from the UI review |
+| Vector strokes replay as a mouse stroke with speed owning the pressure, at a hand's cadence | A flat synthetic pressure read as a dead stroke next to hand-painted work | ✓ Good — UAT row R1 confirmed native-feeling drag at the 10-stroke reference sheet |
 
 ## Evolution
 
@@ -442,4 +453,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-09 after Phase 60 (Studio timeline horizontal zoom) — 6/6 plans, live UAT 5/5, verification passed 20/20 must-haves. Next: Phase 61 Vector painting tool. Previous: v2.0.1 shipped 2026-11-05 (tag `v2.0.1` → `49b5f7e57`, 15/15 requirements, audit `tech_debt` with 0 gaps).*
+*Last updated: 2026-11-12 after Phase 61 (Vector painting tool) — 31/31 plans, live UAT 21/21, verification passed 19/19 must-haves. Next: Phase 62 Painted-stroke curve editing. Previous: Phase 60 shipped 2026-11-09 (6/6 plans, UAT 5/5).*

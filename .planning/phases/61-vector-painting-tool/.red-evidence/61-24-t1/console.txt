@@ -1,0 +1,251 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts (15 tests | 9 failed) 6ms
+   × resolvePreviousRealKeyBase (261022-cfn Task 1) > selects the nearest strictly-earlier record and ignores later records 3ms
+     → expected undefined to be 5 // Object.is equality
+   × resolvePreviousRealKeyBase (261022-cfn Task 1) > prefers cached real-key bytes at the previous frame and relabels only appFrame 0ms
+     → expected undefined to be 5 // Object.is equality
+   × resolvePreviousRealKeyBase (261022-cfn Task 1) > falls back to durable record bytes when no usable cached frame exists 0ms
+     → expected undefined to be 5 // Object.is equality
+   × resolvePreviousRealKeyBase (261022-cfn Task 1) > never clones from a generated frame 0ms
+     → expected undefined to be 5 // Object.is equality
+   × resolvePreviousRealKeyBase (261022-cfn Task 1) > never clones from a cached frame at another appFrame 0ms
+     → expected undefined to be 5 // Object.is equality
+   × resolvePreviousRealKeyBase (261022-cfn Task 1) > never clones from a zero-length cached frame 0ms
+     → expected undefined to be 5 // Object.is equality
+   × resolvePreviousRealKeyBase (261022-cfn Task 1) > freezes cloned payloads 0ms
+     → expected undefined to be 5 // Object.is equality
+   × 61-24 G-15 — the clone names its source frame > names the previous real key frame on both carriers, never the destination 0ms
+     → expected undefined to be 5 // Object.is equality
+   × 61-24 G-15 — the clone names its source frame > keeps blank and unavailable frameless, and the cached-before-durable preference unchanged 0ms
+     → expected undefined to be 5 // Object.is equality
+ ❯ src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts (36 tests | 2 failed) 11ms
+   × 61-24 G-15 — the script projection carries the vector path > projects a vector event with its anchors and render mode 3ms
+     → expected undefined to deeply equal [ { x: 0.1, y: 0.2, …(4) }, …(1) ]
+   × 61-24 G-15 — the script projection carries the vector path > records the copy with its anchors intact under a fresh id without mutating the source 0ms
+     → expected undefined to deeply equal [ { x: 0.1, y: 0.2, …(4) }, …(1) ]
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts > 61-24 G-15 — the script projection carries the vector path > projects a vector event with its anchors and render mode
+AssertionError: expected undefined to deeply equal [ { x: 0.1, y: 0.2, …(4) }, …(1) ]
+
+- Expected: 
+Array [
+  Object {
+    "in": Object {
+      "x": 0.05,
+      "y": 0.15,
+    },
+    "kind": "bezier",
+    "out": Object {
+      "x": 0.15,
+      "y": 0.25,
+    },
+    "width": 1.8,
+    "x": 0.1,
+    "y": 0.2,
+  },
+  Object {
+    "kind": "auto",
+    "x": 0.6,
+    "y": 0.7,
+  },
+]
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts:426:31
+    424|     );
+    425| 
+    426|     expect(projected.anchors).toEqual(VECTOR_PATH);
+       |                               ^
+    427|     expect(projected.renderMode).toBe('simple-ribbon');
+    428|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/11]⎯
+
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts > 61-24 G-15 — the script projection carries the vector path > records the copy with its anchors intact under a fresh id without mutating the source
+AssertionError: expected undefined to deeply equal [ { x: 0.1, y: 0.2, …(4) }, …(1) ]
+
+- Expected: 
+Array [
+  Object {
+    "in": Object {
+      "x": 0.05,
+      "y": 0.15,
+    },
+    "kind": "bezier",
+    "out": Object {
+      "x": 0.15,
+      "y": 0.25,
+    },
+    "width": 1.8,
+    "x": 0.1,
+    "y": 0.2,
+  },
+  Object {
+    "kind": "auto",
+    "x": 0.6,
+    "y": 0.7,
+  },
+]
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts:452:40
+    450|     expect(recorded[0].id).toBe(777);
+    451|     expect(recorded[0].stroke.mutationId).toBe(777);
+    452|     expect(recorded[0].stroke.anchors).toEqual(VECTOR_PATH);
+       |                                        ^
+    453|     expect(recorded[0].stroke.renderMode).toBe('simple-ribbon');
+    454|     expect(recorded[0].stroke).not.toBe(source);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/11]⎯
+
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts > resolvePreviousRealKeyBase (261022-cfn Task 1) > selects the nearest strictly-earlier record and ignores later records
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:74:39
+     72|     if (resolution.kind !== 'clone') throw new Error('expected clone');
+     73|     expect(resolution.payload.bytes).toEqual(testWebpBytes('nearest'));
+     74|     expect(resolution.sourceAppFrame).toBe(5);
+       |                                       ^
+     75|   });
+     76| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/11]⎯
+
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts > resolvePreviousRealKeyBase (261022-cfn Task 1) > prefers cached real-key bytes at the previous frame and relabels only appFrame
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:96:39
+     94|       height: 90,
+     95|     });
+     96|     expect(resolution.sourceAppFrame).toBe(5);
+       |                                       ^
+     97|   });
+     98| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/11]⎯
+
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts > resolvePreviousRealKeyBase (261022-cfn Task 1) > falls back to durable record bytes when no usable cached frame exists
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:115:39
+    113|       height: 48,
+    114|     });
+    115|     expect(resolution.sourceAppFrame).toBe(5);
+       |                                       ^
+    116|   });
+    117| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/11]⎯
+
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts > resolvePreviousRealKeyBase (261022-cfn Task 1) > never clones from a generated frame
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts > resolvePreviousRealKeyBase (261022-cfn Task 1) > never clones from a cached frame at another appFrame
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts > resolvePreviousRealKeyBase (261022-cfn Task 1) > never clones from a zero-length cached frame
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:132:39
+    130|     if (resolution.kind !== 'clone') throw new Error('expected clone');
+    131|     expect(resolution.payload.bytes).toEqual(durableBytes);
+    132|     expect(resolution.sourceAppFrame).toBe(5);
+       |                                       ^
+    133|   });
+    134| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/11]⎯
+
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts > resolvePreviousRealKeyBase (261022-cfn Task 1) > freezes cloned payloads
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:156:39
+    154|     if (resolution.kind !== 'clone') throw new Error('expected clone');
+    155|     expect(Object.isFrozen(resolution.payload)).toBe(true);
+    156|     expect(resolution.sourceAppFrame).toBe(5);
+       |                                       ^
+    157|   });
+    158| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/11]⎯
+
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts > 61-24 G-15 — the clone names its source frame > names the previous real key frame on both carriers, never the destination
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:189:35
+    187|     expect(cached.kind).toBe('clone');
+    188|     if (cached.kind !== 'clone') throw new Error('expected clone');
+    189|     expect(cached.sourceAppFrame).toBe(5);
+       |                                   ^
+    190|     expect(cached.sourceAppFrame).not.toBe(8);
+    191|     expect(cached.payload.appFrame).toBe(8);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/11]⎯
+
+ FAIL  src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts > 61-24 G-15 — the clone names its source frame > keeps blank and unavailable frameless, and the cached-before-durable preference unchanged
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:213:39
+    211|     if (preference.kind !== 'clone') throw new Error('expected clone');
+    212|     expect(preference.payload.bytes).toEqual(cachedBytes);
+    213|     expect(preference.sourceAppFrame).toBe(5);
+       |                                       ^
+    214| 
+    215|     const blank = resolvePreviousRealKeyBase({ records: [] }, 3);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/11]⎯
+
+ Test Files  2 failed (2)
+      Tests  11 failed | 40 passed (51)
+   Start at  12:04:56
+   Duration  319ms (transform 60ms, setup 0ms, collect 157ms, tests 18ms, environment 0ms, prepare 56ms)
+
+(node:6955) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 unhandledRejection listeners added to [process]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+(Use `node --trace-warnings ...` to show where the warning was created)
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-24-t1/junit.xml

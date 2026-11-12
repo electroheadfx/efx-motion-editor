@@ -1,12 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
 import { signal } from '@preact/signals';
+import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import { createPhysicsPaintPaneResizeDrag, PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
 import { SliderStepper } from '../../shared/SliderStepper';
 import type { PhysicsPaintAudioController } from './physicsPaintAudioController';
 import { physicPaintVersion } from '../../../stores/physicPaintStore';
 import { activeModule } from '../../shared/activeModule';
 import type { ScriptMemorySnapshot } from '../performance/scriptMemorySnapshot';
+import { recordAquarelleStroke } from './aquarelleRecordState';
+import {
+  setAquarelleSelectMode,
+  setAquarelleSelectionEditPort,
+} from './aquarelleStrokeSelection';
+import {
+  clearScriptStrokeSelection,
+  setScriptStrokeSelection,
+} from './scriptStrokeEdition';
+import type { ScriptStrokeAppearancePatch } from './strokeSettingsModel';
 
 type AnyVNode = VNode<Record<string, any>>;
 
@@ -1195,3 +1206,56 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     expect(textContent(tree)).not.toContain('Clear every script on the active rail');
   });
 });
+
+// quick 261111-ucf — the Paint-tab size pair commits once at release while
+// onChange keeps the shipped live handler. Id band 10711+.
+describe('quick 261111-ucf Paint-tab size release commit', () => {
+  afterEach(() => {
+    setAquarelleSelectionEditPort(null);
+    setAquarelleSelectMode(false);
+    clearScriptStrokeSelection();
+  });
+
+  it('onCommit forwards one size patch and onChange still calls the live handler', () => {
+    recordAquarelleStroke(10711, stroke10711([point10711(0.5, 0.5)]));
+    const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
+    const promise = Promise.resolve(true);
+    setAquarelleSelectionEditPort({
+      applyAppearance: (ids, patch) => {
+        calls.push({ ids, patch });
+        return promise;
+      },
+    });
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([10711]);
+
+    const props = baseProps();
+    const stepper = findStepper(renderPanel(props), 'paint-tab-brush-size');
+    expect(typeof stepper.props.onCommit, 'the size stepper exposes onCommit').toBe('function');
+
+    (stepper.props.onCommit as (value: number) => void)(44);
+    expect(calls, 'one patch per release').toHaveLength(1);
+    expect(calls[0]!.ids).toEqual([10711]);
+    expect(calls[0]!.patch).toEqual({ params: { size: 44 } });
+
+    // The continuous path is untouched: onChange still drives the Studio.
+    (stepper.props.onChange as (value: number) => void)(50);
+    expect(props.onBrushSizeChange, 'the live handler keeps onChange').toHaveBeenCalledWith(50);
+  });
+});
+
+function point10711(x: number, y: number): AquarellePoint {
+  return { x, y, p: 1, tx: 0, ty: 0, tw: 0 };
+}
+
+function stroke10711(points: readonly AquarellePoint[]): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#103c65',
+    params: { size: 12 },
+    brushId: 'round',
+    points,
+    timestamp: 0,
+    playFrame: 801,
+  };
+}

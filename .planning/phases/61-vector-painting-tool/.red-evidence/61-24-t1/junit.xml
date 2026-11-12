@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="51" failures="11" errors="0" time="0.335">
+    <testsuite name="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" timestamp="2026-11-11T11:04:56.504Z" hostname="efx2.home" tests="36" failures="2" errors="0" skipped="0" time="0.011116458">
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="resolveRotoDuplicateScriptDecision &gt; falls back source-changed when no source resolves" time="0.000808458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="resolveRotoDuplicateScriptDecision &gt; falls back source-changed when the key identity moved" time="0.000097417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="resolveRotoDuplicateScriptDecision &gt; falls back source-changed when the playhead moved" time="0.000081125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="resolveRotoDuplicateScriptDecision &gt; falls back destination-occupied for a real destination cell" time="0.000063417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="resolveRotoDuplicateScriptDecision &gt; falls back destination-occupied for a generated destination cell" time="0.0000655">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="resolveRotoDuplicateScriptDecision &gt; falls back destination-out-of-capacity when source+1 is past capacity" time="0.0000785">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="resolveRotoDuplicateScriptDecision &gt; falls back destination-out-of-capacity when the destination resolves absent" time="0.000060875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="resolveRotoDuplicateScriptDecision &gt; falls back no-script when the source frame records no stroke events" time="0.000050167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="resolveRotoDuplicateScriptDecision &gt; decides the script path for the next frame when the source frame records strokes" time="0.000067042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="waitForRotoDuplicateSourceFrame &gt; resolves ready immediately when the signal already reports the target" time="0.000550042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="waitForRotoDuplicateSourceFrame &gt; resolves ready when the signal later reaches the target" time="0.000187791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="waitForRotoDuplicateSourceFrame &gt; resolves superseded when the signal reports a third frame" time="0.0000725">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="waitForRotoDuplicateSourceFrame &gt; resolves superseded immediately when the signal starts on a third frame" time="0.000056667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="waitForRotoDuplicateSourceFrame &gt; resolves timeout when neither frame arrives inside the bound" time="0.000822625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="waitForRotoDuplicateSourceFrame &gt; stops observing after a timeout — a later frame cannot resolve twice" time="0.000468833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript &gt; captures the timeline, navigates, waits, applies exactly once, then records the copy" time="0.000918334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript &gt; falls back without navigating when the destination is occupied" time="0.000238209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript &gt; falls back without navigating when the source records no stroke events" time="0.00018">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript &gt; falls back when navigation fails and the source never moved" time="0.000136792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript &gt; aborts with the navigation message when navigation fails after the source moved" time="0.000158084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript &gt; aborts without applying when the destination wait is superseded" time="0.000118084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript &gt; aborts without applying when the destination wait times out" time="0.000117958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript &gt; rejects to the caller when a port throws" time="0.000248417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="aquarelleStrokeFromScriptEvent &gt; projects the engine payload and raw points onto the destination frame" time="0.000135292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="aquarelleStrokeFromScriptEvent &gt; never carries the source mutation id" time="0.000052375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="aquarelleStrokeFromScriptEvent &gt; takes diffusionFrames from the positive cuisson" time="0.000062">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="copyAquarelleScriptToFrame &gt; skips Dry, allocates once per stroke in recording order, and records fresh ids" time="0.000183459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="copyAquarelleScriptToFrame &gt; leaves the source events untouched and in order" time="0.000135208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="copyAquarelleScriptToFrame &gt; returns zero without allocating or recording when only Dry events exist" time="0.000089583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="61-24 G-15 — the script projection carries the vector path &gt; projects a vector event with its anchors and render mode" time="0.002550208">
+            <failure message="expected undefined to deeply equal [ { x: 0.1, y: 0.2, …(4) }, …(1) ]" type="AssertionError">
+AssertionError: expected undefined to deeply equal [ { x: 0.1, y: 0.2, …(4) }, …(1) ]
+
+- Expected: 
+Array [
+  Object {
+    &quot;in&quot;: Object {
+      &quot;x&quot;: 0.05,
+      &quot;y&quot;: 0.15,
+    },
+    &quot;kind&quot;: &quot;bezier&quot;,
+    &quot;out&quot;: Object {
+      &quot;x&quot;: 0.15,
+      &quot;y&quot;: 0.25,
+    },
+    &quot;width&quot;: 1.8,
+    &quot;x&quot;: 0.1,
+    &quot;y&quot;: 0.2,
+  },
+  Object {
+    &quot;kind&quot;: &quot;auto&quot;,
+    &quot;x&quot;: 0.6,
+    &quot;y&quot;: 0.7,
+  },
+]
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts:426:31
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="61-24 G-15 — the script projection carries the vector path &gt; adds no vector key to a hand-painted event" time="0.000078209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="61-24 G-15 — the script projection carries the vector path &gt; records the copy with its anchors intact under a fresh id without mutating the source" time="0.000468958">
+            <failure message="expected undefined to deeply equal [ { x: 0.1, y: 0.2, …(4) }, …(1) ]" type="AssertionError">
+AssertionError: expected undefined to deeply equal [ { x: 0.1, y: 0.2, …(4) }, …(1) ]
+
+- Expected: 
+Array [
+  Object {
+    &quot;in&quot;: Object {
+      &quot;x&quot;: 0.05,
+      &quot;y&quot;: 0.15,
+    },
+    &quot;kind&quot;: &quot;bezier&quot;,
+    &quot;out&quot;: Object {
+      &quot;x&quot;: 0.15,
+      &quot;y&quot;: 0.25,
+    },
+    &quot;width&quot;: 1.8,
+    &quot;x&quot;: 0.1,
+    &quot;y&quot;: 0.2,
+  },
+  Object {
+    &quot;kind&quot;: &quot;auto&quot;,
+    &quot;x&quot;: 0.6,
+    &quot;y&quot;: 0.7,
+  },
+]
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts:452:40
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript timeline replay &gt; applies the whole timeline once, then records the copy on the destination frame" time="0.0003695">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript timeline replay &gt; aborts without recording when the apply fails" time="0.000135583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript timeline replay &gt; aborts with the record message when the copy fails after a successful apply" time="0.00019875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.test.ts" name="runRotoDuplicateWithScript timeline replay &gt; falls back no-script on a frame with only Dry events" time="0.000130958">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" timestamp="2026-11-11T11:04:56.507Z" hostname="efx2.home" tests="15" failures="9" errors="0" skipped="0" time="0.006392583">
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; returns blank when no record is strictly earlier than the destination" time="0.000672375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; returns blank when records exist only at or after the destination" time="0.000092583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; selects the nearest strictly-earlier record and ignores later records" time="0.002699292">
+            <failure message="expected undefined to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:74:39
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; prefers cached real-key bytes at the previous frame and relabels only appFrame" time="0.000430834">
+            <failure message="expected undefined to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:96:39
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; falls back to durable record bytes when no usable cached frame exists" time="0.00034625">
+            <failure message="expected undefined to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:115:39
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; never clones from a generated frame" time="0.0002935">
+            <failure message="expected undefined to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:132:39
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; never clones from a cached frame at another appFrame" time="0.00027625">
+            <failure message="expected undefined to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:132:39
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; never clones from a zero-length cached frame" time="0.000234583">
+            <failure message="expected undefined to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:132:39
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; returns unavailable when the previous record bytes are missing on both carriers" time="0.000072791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; returns unavailable when the previous record bytes are empty on both carriers" time="0.000058583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; freezes cloned payloads" time="0.000173458">
+            <failure message="expected undefined to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:156:39
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; toEmptyKeyPayload freezes the payload and relabels only appFrame" time="0.000116917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="resolvePreviousRealKeyBase (261022-cfn Task 1) &gt; exports the shared unavailable message" time="0.000038458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="61-24 G-15 — the clone names its source frame &gt; names the previous real key frame on both carriers, never the destination" time="0.000156708">
+            <failure message="expected undefined to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:189:35
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts" name="61-24 G-15 — the clone names its source frame &gt; keeps blank and unavailable frameless, and the cached-before-durable preference unchanged" time="0.000229208">
+            <failure message="expected undefined to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be 5 // Object.is equality
+
+- Expected: 
+5
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPreviousKeyBase.test.ts:213:39
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

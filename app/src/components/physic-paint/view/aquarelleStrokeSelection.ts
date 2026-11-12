@@ -24,6 +24,9 @@ import {
 } from '@efxlab/efx-watercolor/brushes';
 import {
   isAquarelleDryEvent,
+  resolveAquarelleCurveMode,
+  type AquarelleAnchor,
+  type AquarelleCurveMode,
   type AquarellePayloadEvent,
   type AquarelleStroke,
   type AquarelleStrokePayload,
@@ -45,12 +48,15 @@ import {
   scriptStrokeDrag,
   selectScriptStroke,
   setDraftMode,
+  setFrozenCacheVisible,
   setScriptSelectMode,
   setScriptStrokeDrag,
   setScriptStrokeSelection,
   strokeSizePreview,
   toggleScriptStrokeSelection,
+  wireframeMode,
   type CanvasPoint,
+  type ScriptStrokeBand,
   type ScriptStrokeBounds,
   type ScriptStrokeDrag,
   type ScriptStrokeEditionPort,
@@ -58,6 +64,7 @@ import {
 } from './scriptStrokeEdition';
 import { disarmAquarellePicker } from './aquarelleColorPicker';
 import { exitRailMotionEditing } from './railMotionEditingMode';
+import { exitPathEdit, exitVectorPen } from './vectorPathLatches';
 import {
   buildLiftRibbonCached,
   liftRibbonBoundsPx,
@@ -65,6 +72,7 @@ import {
   trimLiftRibbonCache,
 } from './aquarelleLiftRibbon';
 import { buildStrokeBandCached, trimStrokeBandCache } from './aquarelleStrokeBand';
+import { projectVectorPath } from './vectorPathHandles';
 import {
   aquarelleStrokeSerial,
   aquarelleStrokesRevision,
@@ -85,6 +93,8 @@ import {
   stepAquarelleStrokeInScript,
   transformAquarelleStrokesInScript,
   translateAquarelleStrokesInScript,
+  updateAquarelleCurveModeInScript,
+  updateAquarellePathInScript,
   updateAquarelleStrokesInScript,
   type AquarelleStackStepDirection,
   type AquarelleStrokeRegistrySnapshot,
@@ -328,6 +338,11 @@ export function setAquarelleSelectMode(
   filter: AquarelleStrokeTypeFilter = AQUARELLE_STROKE_FILTER_DEFAULT,
 ): void {
   const was = scriptSelectMode.peek();
+  // 61-17 (G-6 / D-16): the wireframe view is a no-capture view — Select entry
+  // is refused OUTRIGHT while it is on, before any write, so the wireframe
+  // cannot be given a selection surface it would swallow. Leaving Select is
+  // never refused.
+  if (on && wireframeMode.peek()) return;
   // 261030-cnq: entering Move/Edit leaves the color picker (Select owns Alt —
   // the Alt+click stroke-delete law). Exiting does not arm it.
   // 261107 UAT: entering Move/Edit also leaves ANIMATE MODE — the rail-motion
@@ -335,6 +350,13 @@ export function setAquarelleSelectMode(
   if (on) {
     disarmAquarellePicker();
     exitRailMotionEditing();
+    // 61-17 (G-6): Select entry also releases the vector pen and closes any
+    // open path edit — the vector overlay draws ABOVE the Select overlay, so a
+    // latched pen would swallow every selection click. ENTRY EDGE ONLY:
+    // `enterVectorPen` clears Select through this same function, and the pen
+    // it just latched must survive that exit.
+    exitVectorPen();
+    exitPathEdit();
   }
   setAquarelleStrokeTypeFilter(on ? filter : AQUARELLE_STROKE_FILTER_DEFAULT);
   // 261031-euf: the finer list filters never survive a select-mode
@@ -349,6 +371,13 @@ export function setAquarelleSelectMode(
   // silent no-op exactly when a previous exit's settle was refused — Draft
   // stays ON because those pixels are still stale, and the next exit retries.
   if (on && !was) setDraftMode(false);
+  // 261112-n3f UAT: the cache eye is a view preference of THIS surface only.
+  // Leaving the tool (rail toggle, a paint tool, Escape, the sheet's close)
+  // must never strand the committed sheet hidden — the user would paint with
+  // invisible strokes and no explanation. Reset on the genuine on -> off edge;
+  // compare-then-write, and it precedes the delegation for the same
+  // early-return reason as every reset above.
+  if (!on && was) setFrozenCacheVisible(true);
   setScriptSelectMode(on);
   if (on && !was && aquarelleStrokeSettingsDismissed.peek()) {
     aquarelleStrokeSettingsDismissed.value = false;
@@ -557,15 +586,28 @@ export function listSelectableAquarelleStrokes(
 }
 
 /**
- * 261101-mvg: the footprint band the overlay draws for one listed entry while
- * the "Preview stroke size" switch is ON. DISPLAY-ONLY: this path is
- * unreachable from `hitTestAquarelleStroke` (which walks the registry
- * directly), and it never touches bounds, stack positions or the script.
+ * 261101-mvg: the band the overlay draws for one listed entry while the
+ * "Preview stroke size" switch is ON. DISPLAY-ONLY: this path is unreachable
+ * from `hitTestAquarelleStroke` (which walks the registry directly), and it
+ * never touches bounds, stack positions or the script.
  *
- * - OFF returns nothing for BOTH kinds, the Eraser included (default).
- * - ON returns a lift's `ribbonPx` BY IDENTITY (the listing already built it —
- *   never rebuild the 261029-eur law here) and a paint polygon from the ONE
- *   band module.
+ * 261112-n3f — THREE descriptor shapes, one per stroke kind:
+ * - OFF returns nothing for every kind, the Eraser included (default).
+ * - A lift returns `{ polygonPx: entry.ribbonPx }` — the listing already built
+ *   it, so the 261029-eur law is never rebuilt here — and a paint stroke
+ *   returns `{ polygonPx }` from the ONE cached band module. Both keep the
+ *   shipped single-path rendering: no edge policy.
+ * - A VECTOR stroke returns `{ polygonPx: envelope, maskedEdge: true }`: the
+ *   SAME per-vertex envelope `VectorPathOverlay` draws (same stored anchors,
+ *   same evaluation mode, same display-only base width) — never the paint-band
+ *   approximation that ignored the per-anchor width factors. Its closed,
+ *   self-intersecting ring is what the drawing surface masks, so the interior
+ *   crossing lines are gone while the wash survives. D-10 still means a
+ *   uniform profile resolves nothing (there is no envelope to preview).
+ *
+ * Cost: a pure spine evaluation per listed vector stroke per render, only
+ * while the switch is ON. It REPLACES the cached engine-band build for those
+ * strokes — no decode, no cache entry, no new signal, no invalidation surface.
  *
  * The `strokeSizePreview.value` read happens inside the overlay's render, so
  * the subscription is the narrow leaf's (efx-preact-reactivity rule 5).
@@ -573,18 +615,29 @@ export function listSelectableAquarelleStrokes(
 export function resolveAquarelleStrokeBandPx(
   entry: SelectableAquarelleStroke,
   size: EnginePixelSize,
-): CanvasPoint[] | undefined {
+): ScriptStrokeBand | undefined {
   if (!strokeSizePreview.value) return undefined;
-  if (entry.kind === 'lift') return entry.ribbonPx;
+  if (entry.kind === 'lift') {
+    // Lifts never resolve a masked band — the ribbon is its own closed shape.
+    return entry.ribbonPx === undefined ? undefined : { polygonPx: entry.ribbonPx };
+  }
   const stroke = getRecordedAquarelleStroke(entry.mutationId);
   if (!stroke) return undefined;
+  // Vector stroke: the per-vertex envelope, flagged for the masked-edge policy.
+  if (stroke.anchors !== undefined && stroke.anchors.length > 0) {
+    const envelope = projectVectorPath(stroke.anchors, size.width, size.height, {
+      curveMode: resolveAquarelleCurveMode(stroke.curveMode),
+    }).envelope;
+    return envelope.length > 0 ? { polygonPx: envelope, maskedEdge: true } : undefined;
+  }
   const polygonPx = buildStrokeBandCached(
     stroke,
     entry.mutationId,
     size,
     aquarelleStrokesRevision.value,
   ).polygonPx;
-  return polygonPx.length > 0 ? polygonPx : undefined;
+  // Hand-painted: the shipped cached footprint band, vertex-for-vertex.
+  return polygonPx.length > 0 ? { polygonPx } : undefined;
 }
 
 /**
@@ -608,6 +661,88 @@ export const aquarelleScriptStrokeEditionPort: Pick<
 };
 
 // ============================================================
+//  quick 261111-t74 — the selection appearance edit port.
+//
+//  A plain module variable, modelled on `scriptStrokeEdition`'s
+//  ports: the Studio writes it in its render body, there is no
+//  signal and no subscription. The port exists so a brush pick can
+//  commit onto the selection through the ONE appearance handler
+//  it already ships (`beginAquarelleAppearanceEdit`), inheriting
+//  one undo entry, one revision bump and the seed re-roll instead
+//  of opening a second edit path.
+// ============================================================
+
+/** The one member the Studio binds: forward ids + patch to the appearance door. */
+export interface AquarelleSelectionEditPort {
+  applyAppearance(
+    ids: readonly number[],
+    patch: ScriptStrokeAppearancePatch,
+  ): Promise<boolean>;
+}
+
+let aquarelleSelectionEditPort: AquarelleSelectionEditPort | null = null;
+
+export function setAquarelleSelectionEditPort(
+  port: AquarelleSelectionEditPort | null,
+): void {
+  aquarelleSelectionEditPort = port;
+}
+
+/**
+ * PEEK-ONLY: true only while Select mode is on AND the selection is
+ * non-empty. `.peek()` never subscribes, so an event-time caller (the future
+ * brush pick) can ask without making its caller re-render on every selection
+ * change — the render-body rule for this module (efx-preact-reactivity §5).
+ */
+export function aquarelleSelectionEditActive(): boolean {
+  return scriptSelectMode.peek() && scriptSelectedStrokeIds.peek().size > 0;
+}
+
+/**
+ * Options for one appearance commit (quick 261111-ucf).
+ *
+ * `filter` defaults to `'all'`, which preserves the 261111-t74 forwarding
+ * exactly: the whole selection, paint AND lift ids, in selection order. The
+ * paint controls pass `'paint'`, which is what keeps a lift (eraser) stroke
+ * out of every pick and slider-release edit.
+ */
+export interface AquarelleSelectionEditOptions {
+  filter?: AquarelleStrokeTypeFilter;
+}
+
+/**
+ * Commit an appearance patch onto the current selection. Returns `null` when
+ * there is NO ATTEMPT — Select mode off, an empty selection, no registered
+ * port, or (with a filter) no selected stroke left after filtering — so the
+ * caller keeps its own path. A non-null resolution of `false` means the Studio
+ * REFUSED the edit (guards, in-flight, failed re-bake).
+ *
+ * The ids are snapshotted into a fresh array before the port is called: a
+ * selection change during the async commit can never mutate the forwarded
+ * list. A filtered-away selection is a no-attempt too: the port is never
+ * touched, so a lift-only selection cannot open an empty undo entry.
+ */
+export function commitAquarelleSelectionAppearance(
+  patch: ScriptStrokeAppearancePatch,
+  options?: AquarelleSelectionEditOptions,
+): Promise<boolean> | null {
+  if (!aquarelleSelectionEditActive()) return null;
+  const port = aquarelleSelectionEditPort;
+  if (!port) return null;
+  const filter = options?.filter ?? 'all';
+  let ids = [...scriptSelectedStrokeIds.peek()];
+  if (filter !== 'all') {
+    const entries = getRecordedAquarelleStrokeEntries();
+    ids = ids.filter((mutationId) => {
+      const stroke = entries.get(mutationId);
+      return stroke !== undefined && matchesAquarelleStrokeFilter(stroke, filter);
+    });
+    if (ids.length === 0) return null;
+  }
+  return port.applyAppearance(ids, patch);
+}
+
+// ============================================================
 //  Delete edits (261022-pim). A delete is one in-memory script
 //  mutation; the caller owns the async re-bake and must clear
 //  the in-flight flag when it settles. Task 3 attaches
@@ -626,8 +761,18 @@ export function isAquarelleScriptEditInFlight(): boolean {
   return aquarelleScriptEditInFlight;
 }
 
+/**
+ * Bumped on every in-flight transition. The flag itself is a plain boolean
+ * (every holder is an async script edit), so a seam that must ACT when the
+ * sheet becomes free — the deferred vector re-bake — needs this one reactive
+ * edge instead of polling.
+ */
+export const aquarelleScriptEditInFlightRevision = signal(0);
+
 export function setAquarelleScriptEditInFlight(inFlight: boolean): void {
+  if (aquarelleScriptEditInFlight === inFlight) return;
   aquarelleScriptEditInFlight = inFlight;
+  aquarelleScriptEditInFlightRevision.value += 1;
 }
 
 // 261022-tv1: delete-named aliases kept so existing callers/tests compile
@@ -875,6 +1020,59 @@ export function beginAquarelleAppearanceEdit(
   // any other appearance commit on an ON stroke re-rolls it too. OFF strokes
   // skip inside the bump and keep their exact seed.
   bumpAquarellePaintSeedSalts(ids);
+  const after = captureAquarelleSnapshot();
+  return storeAquarelleEdit({ before, after });
+}
+
+/**
+ * 61-31 (G-20 / D-01 revised): set one curve-evaluation mode on one stroke or
+ * the whole selection as a single edit (mode write + its re-sampled points =
+ * ONE `aquarelle-script` ledger command), so a mixed selection flips in one
+ * undo step rather than one per stroke. Same ghost clear, in-flight guard and
+ * snapshot pair as the render-mode wrapper.
+ *
+ * Deliberately does NOT call `bumpAquarellePaintSeedSalts`: a mode flip
+ * re-samples the geometry through a different evaluation, it does not re-roll
+ * the texture — the stroke's stochastic paint must survive the flip, exactly as
+ * it does for a render-mode change.
+ */
+export function beginAquarelleCurveModeEdit(
+  mutationIds: number | readonly number[],
+  mode: AquarelleCurveMode,
+): number | null {
+  // A mode commit must never leave a released ghost behind.
+  clearAquarelleStrokeDrag();
+  if (aquarelleScriptEditInFlight) return null;
+  const ids = normalizeAquarelleMutationIds(mutationIds);
+  if (ids.length === 0) return null;
+  const before = captureAquarelleSnapshot();
+  if (updateAquarelleCurveModeInScript(ids, mode) === 0) return null;
+  const after = captureAquarelleSnapshot();
+  return storeAquarelleEdit({ before, after });
+}
+
+/**
+ * 61-10 (VEC-02 / VEC-07): one completed path-edit gesture as a single edit
+ * (path update + its re-bake = ONE `aquarelle-script` ledger command). A drag,
+ * a handle move, an insert, a delete and a width commit all pass the FULL next
+ * anchor list through this one wrapper, so there is never one history entry
+ * per anchor (T-61-33). Same ghost clear, in-flight guard and snapshot pair as
+ * move/appearance; a zero-change path stores nothing.
+ *
+ * Deliberately does NOT call `bumpAquarellePaintSeedSalts`: a geometry edit
+ * must not re-roll the paint — re-rolling on every anchor nudge would change
+ * the rendered texture under the user's hand. The seed salt is a paint
+ * appearance concern.
+ */
+export function beginAquarellePathEdit(
+  mutationId: number,
+  anchors: readonly AquarelleAnchor[],
+): number | null {
+  clearAquarelleStrokeDrag();
+  if (aquarelleScriptEditInFlight) return null;
+  if (!Number.isFinite(mutationId)) return null;
+  const before = captureAquarelleSnapshot();
+  if (updateAquarellePathInScript(mutationId, anchors) === 0) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }

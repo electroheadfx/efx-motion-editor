@@ -1,0 +1,99 @@
+{
+  "scenario": "vector-spine",
+  "kind": "auto",
+  "widthFactor": 1,
+  "density": 4,
+  "sheet": "1920x1080",
+  "samplesPerStroke": 9,
+  "seamStepPx": {
+    "segmentRuns": {
+      "1": 0.408,
+      "4": 4.141,
+      "16": 0.376
+    },
+    "payloadExtension": {
+      "1": 0,
+      "4": 0,
+      "16": 0.345
+    }
+  },
+  "seamMaxChannelDelta": {
+    "segmentRuns": {
+      "1": 13,
+      "4": 132,
+      "16": 12
+    },
+    "payloadExtension": {
+      "1": 0,
+      "4": 0,
+      "16": 11
+    }
+  },
+  "densitySweep": {
+    "1": {
+      "seamStepPx": 0,
+      "seamMaxChannelDelta": 0,
+      "paintedPixels": 24690
+    },
+    "4": {
+      "seamStepPx": 0,
+      "seamMaxChannelDelta": 0,
+      "paintedPixels": 32708
+    },
+    "16": {
+      "seamStepPx": 0.345,
+      "seamMaxChannelDelta": 11,
+      "paintedPixels": 34129
+    }
+  },
+  "settledDensity": 4,
+  "digestA": "2058d0c6",
+  "digestB": "2058d0c6",
+  "byteLength": 8294400,
+  "byteLengthB": 8294400,
+  "identical": true,
+  "cost": {
+    "1920x1080": {
+      "dabsPerStroke": 310,
+      "msPerStroke": 72.2,
+      "msPerSheet10": 756.5,
+      "msPerSheet50": 3817.7,
+      "msPerSheet200": 15363.8
+    },
+    "2048x1536": {
+      "dabsPerStroke": 270,
+      "msPerStroke": 69.9,
+      "msPerSheet10": 734.3,
+      "msPerSheet50": 3749.6,
+      "msPerSheet200": 15152.8
+    },
+    "3072x2304": {
+      "dabsPerStroke": 270,
+      "msPerStroke": 72.1,
+      "msPerSheet10": 760.9,
+      "msPerSheet50": 3857.3,
+      "msPerSheet200": 15584.3
+    }
+  },
+  "referenceStrokeCount": 10,
+  "widthRatio": {
+    "factor": 1.8,
+    "baseRadiusPx": 12,
+    "scaledRadiusPx": 21,
+    "observed": 1.75,
+    "channel": "scriptFactor(sizeMult)",
+    "maxRadius": {
+      "baseRadiusPx": 10,
+      "scaledRadiusPx": 10,
+      "observed": 1,
+      "channel": "scriptScale-clamped"
+    }
+  },
+  "env": {
+    "renderer": "WebKit WebGL",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+  },
+  "verdict": "VECTOR-SPINE PASS seam=payload-extension density=4 ref=10 width=scriptFactor(1.75)",
+  "totalProbeMs": 47970,
+  "wallClockMs": 50286
+}

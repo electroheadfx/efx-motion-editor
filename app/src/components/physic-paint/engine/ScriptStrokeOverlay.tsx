@@ -29,7 +29,7 @@
 //  (efx-preact-reactivity).
 // ============================================================
 
-import type { JSX, TargetedPointerEvent } from 'preact';
+import type { JSX, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
 import { useRef } from 'preact/hooks';
 import {
   clearScriptStrokeDrag,
@@ -44,9 +44,12 @@ import {
   setScriptStrokeTransform,
   strokeSizePreview,
   toggleScriptStrokeSelection,
+  wireframeMode,
   type CanvasPoint,
   type ScriptStrokeEditionPort,
 } from '../view/scriptStrokeEdition';
+import { getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
+import { buildStrokeBand } from '../view/aquarelleStrokeBand';
 import {
   SCRIPT_TRANSFORM_HANDLE_SIZE_PX,
   SCRIPT_TRANSFORM_ROTATE_RADIUS_PX,
@@ -120,6 +123,13 @@ export function ScriptStrokeOverlay(props: {
   onMoveStrokes: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
   /** 261024-mz5 Task 2: when absent, the transform handles never render. */
   onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
+  /**
+   * 261112-i6d: a double-click on a HIT stroke, same absent-means-no-behaviour
+   * law as `onTransformStrokes` — the DOM prop is literally `undefined` without
+   * it. The adapter decides what the gesture means (only a vector stroke may
+   * open the path edit); this surface only resolves the hit.
+   */
+  onStrokeDoubleClick?: (mutationId: number) => void;
   testId: string;
   badgeTestId: string;
   ghostTestId: string;
@@ -135,19 +145,37 @@ export function ScriptStrokeOverlay(props: {
   // narrow leaf that owns the subscription — the Studio render body never
   // reads it (efx-preact-reactivity rule 5).
   const previewStrokeSize = strokeSizePreview.value;
-  if (!selectMode && !moveArmed && drag === null && transformPreview === null) return null;
+  // 61-13 (D-15/D-16): the wireframe is a second reason this display-only leaf
+  // exists — every hand-painted stroke draws its shipped band and centreline
+  // while the latch is on. Session-only: nothing here bakes or writes.
+  const wireframe = wireframeMode.value;
+  if (!wireframe) {
+    if (!selectMode && !moveArmed && drag === null && transformPreview === null) return null;
+  }
 
   // Narrow subscriptions: the port's listing repaints the outlines when the
   // script changes; the selected SET drives the highlights.
+  const interactive = selectMode || moveArmed || drag !== null || transformPreview !== null;
+  // 61-25 (UI-04 / §6 item 6): the wireframe-only surface is a CONSTRUCTION
+  // view, and the contract draws "existing transform box / serial badge / lift
+  // ribbon — unchanged, on top" of it. The band and centreline join the chrome
+  // rather than replacing it, so strokes keep the identity the contract names.
   const playFrame = props.getPlayFrame();
   const size = { width: props.width, height: props.height };
   const strokes = props.port.listStrokes(playFrame, size);
+  // 61-13: an empty sheet draws nothing — a wireframe-only surface has no
+  // bands and no chrome to show, so it stays unmounted.
+  if (!interactive && strokes.length === 0) return null;
   const selectedIds = scriptSelectedStrokeIds.value;
   const selectionBox: ScriptStrokeSelectionBox | null = scriptStrokeSelectionBox(
     strokes.filter((entry) => selectedIds.has(entry.mutationId)),
   );
 
-  const canvasPointOf = (event: TargetedPointerEvent<HTMLDivElement>): CanvasPoint => {
+  // 261112-i6d: widened from the pointer event — a `TargetedPointerEvent` IS a
+  // `TargetedMouseEvent`, so every shipped call site compiles unchanged while
+  // the double-click (a mouse event, not a pointer event) can share the one
+  // coordinate conversion.
+  const canvasPointOf = (event: TargetedMouseEvent<HTMLDivElement>): CanvasPoint => {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const scaleX = rect.width > 0 ? props.width / rect.width : 1;
     const scaleY = rect.height > 0 ? props.height / rect.height : 1;
@@ -330,21 +358,22 @@ export function ScriptStrokeOverlay(props: {
     clearScriptStrokeTransform();
   };
 
-  return (
-    <div
-      data-testid={props.testId}
-      style={{
-        position: 'absolute',
-        inset: '0',
-        zIndex: 40,
-        pointerEvents: 'auto',
-        cursor: 'default',
-      }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
-    >
+  // 261112-i6d: the ONE double-click dispatch. The vector overlay above is
+  // pointer-null unless the pen or an edit owns it, so THIS z-40 Select surface
+  // is the only place the first double-click on a stroke can be seen. The hit
+  // test is the same shipped `hitTestStroke` the pointer handlers use; a miss
+  // is not a gesture, and the adapter alone decides what a hit means.
+  const handleDoubleClick = (event: TargetedMouseEvent<HTMLDivElement>) => {
+    const onStrokeDoubleClick = props.onStrokeDoubleClick;
+    if (onStrokeDoubleClick === undefined) return;
+    const hit = props.port.hitTestStroke(canvasPointOf(event), playFrame, size);
+    if (hit === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onStrokeDoubleClick(hit);
+  };
+
+  const svg = (
       <svg
         width="100%"
         height="100%"
@@ -369,15 +398,34 @@ export function ScriptStrokeOverlay(props: {
           // still no script mutation and no engine call.
           const transformed = transformPreview !== null
             && transformPreview.ids.includes(entry.mutationId);
+          // 61-13 (D-15): under the wireframe every HAND-PAINTED stroke draws
+          // the SHIPPED `buildStrokeBand` footprint — the same builder the
+          // Preview-stroke-size switch uses, never a parallel computation. A
+          // recorded vector stroke is construction geometry owned by
+          // VectorPathOverlay, so this overlay leaves it to that surface.
+          const wireframeStroke = wireframe ? getRecordedAquarelleStroke(entry.mutationId) : undefined;
+          const vectorOwned = wireframeStroke !== undefined
+            && wireframeStroke.anchors !== undefined
+            && wireframeStroke.anchors.length > 0;
+          if (wireframe && vectorOwned) return null;
+          const wireframeBandPx = wireframe && wireframeStroke !== undefined
+            ? buildStrokeBand(wireframeStroke, size).polygonPx
+            : undefined;
           // 261101-mvg: the switch-gated footprint band. OFF (the default,
           // Eraser included) resolves nothing and falls through to today's
           // thin centerline; ON draws the area the stroke actually covers
-          // (paint) or the unchanged 261029-eur ribbon (Eraser). Every band
-          // vertex goes through the same transform and drag offset as its
-          // centerline — no geometry translation anywhere else.
-          const bandPx = previewStrokeSize && props.port.bandFor !== undefined
-            ? props.port.bandFor(entry, size)
-            : undefined;
+          // (paint), the unchanged 261029-eur ribbon (Eraser), or — 261112-n3f
+          // — the vector per-vertex envelope. Every band vertex goes through
+          // the same transform and drag offset as its centerline — no geometry
+          // translation anywhere else.
+          const band = wireframeBandPx !== undefined && wireframeBandPx.length > 0
+            // A wireframe footprint band is never masked: it is a hand-painted
+            // footprint, whose ring does not self-intersect.
+            ? { polygonPx: wireframeBandPx, maskedEdge: false }
+            : previewStrokeSize && props.port.bandFor !== undefined
+              ? props.port.bandFor(entry, size)
+              : undefined;
+          const bandPx = band?.polygonPx;
           const bandPath = bandPx !== undefined && bandPx.length > 0
             ? `M${bandPx
                 .map((p) => {
@@ -387,6 +435,20 @@ export function ScriptStrokeOverlay(props: {
                   return `${moved.x + offsetX},${moved.y + offsetY}`;
                 })
                 .join(' L')} Z`
+            : null;
+          // 261112-n3f: the ONE edge weight. An SVG stroke straddles the path,
+          // and on a masked band the mask hides the half that falls inside the
+          // filled band, so the authored width is doubled to keep the VISIBLE
+          // edge at the 61-25 band law (3.5 selected / 1.5 unselected).
+          const bandEdgeWidthPx = isSelected ? 3.5 : 1.5;
+          // The descriptor's edge policy: a vector envelope is masked by its
+          // own closed ring, so only its outer silhouette survives and no
+          // interior crossing line is painted (no polygon union, no filter).
+          // A numeric mutation id needs no sanitising, listed ids are unique,
+          // and one overlay mounts per canvas layer — so the id is
+          // document-unique and cannot collide with the Edit-path mask family.
+          const bandMaskId = band?.maskedEdge === true
+            ? `script-stroke-band-mask-${entry.mutationId}`
             : null;
           // The centerline polylines (the OFF outline / no-band fallback) and
           // the bbox stay as-is.
@@ -416,50 +478,111 @@ export function ScriptStrokeOverlay(props: {
               data-testid={dragged ? props.ghostTestId : undefined}
             >
               {bandPath !== null ? (
-                <path
-                  data-testid={entry.kind === 'lift' ? 'stroke-lift-ribbon' : 'stroke-size-band'}
-                  d={bandPath}
-                  fill={bandAccent}
-                  // Unselected stays a quiet reference: a thin edge and a
-                  // faint wash. Selecting it brings the full weight back.
-                  fillOpacity={isSelected ? 0.14 : 0.07}
-                  fillRule="nonzero"
-                  stroke={bandAccent}
-                  strokeWidth={isSelected ? 3.5 : 1.5}
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
-                />
-              ) : isSelected ? (
-                <polyline
-                  points={points}
-                  fill="none"
-                  stroke={SELECTED_STROKE_COLOR}
-                  strokeWidth={2}
-                  vectorEffect="non-scaling-stroke"
-                />
-              ) : (
-                <>
+                bandMaskId !== null ? (
+                  <>
+                    {/* 261112-n3f: the mask is built from the SAME polygon the
+                        fill paints, so only the outer silhouette survives. The
+                        polygon is a closed self-intersecting ring by
+                        construction (the vector envelope); its stroke is what
+                        painted the crossing straight lines inside the band. */}
+                    <defs>
+                      <mask
+                        id={bandMaskId}
+                        maskUnits="userSpaceOnUse"
+                        x={0}
+                        y={0}
+                        width={props.width}
+                        height={props.height}
+                      >
+                        <rect
+                          x={0}
+                          y={0}
+                          width={props.width}
+                          height={props.height}
+                          fill="white"
+                        />
+                        <path d={bandPath} fill="black" fillRule="nonzero" />
+                      </mask>
+                    </defs>
+                    {/* The fill is NEVER masked: a black mask path covers the
+                        band interior, so masking the fill would erase the wash
+                        and leave a hollow contour. */}
+                    <path
+                      data-testid={entry.kind === 'lift' ? 'stroke-lift-ribbon' : 'stroke-size-band'}
+                      d={bandPath}
+                      fill={bandAccent}
+                      // Unselected stays a quiet reference: a thin edge and a
+                      // faint wash. Selecting it brings the full weight back.
+                      fillOpacity={isSelected ? 0.14 : 0.07}
+                      fillRule="nonzero"
+                    />
+                    {/* The edge is the ONLY masked node, at the doubled width,
+                        so the visible edge keeps its 3.5/1.5 weight. */}
+                    <path
+                      data-testid="stroke-size-band-edge"
+                      d={bandPath}
+                      fill="none"
+                      stroke={bandAccent}
+                      strokeWidth={bandEdgeWidthPx * 2}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      mask={`url(#${bandMaskId})`}
+                    />
+                  </>
+                ) : (
+                  <path
+                    data-testid={entry.kind === 'lift' ? 'stroke-lift-ribbon' : 'stroke-size-band'}
+                    d={bandPath}
+                    fill={bandAccent}
+                    // Unselected stays a quiet reference: a thin edge and a
+                    // faint wash. Selecting it brings the full weight back.
+                    fillOpacity={isSelected ? 0.14 : 0.07}
+                    fillRule="nonzero"
+                    stroke={bandAccent}
+                    strokeWidth={bandEdgeWidthPx}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )
+              ) : null}
+              {/* 61-13: under the wireframe the centreline rides WITH the band
+                  (the band is the footprint; the spine is the path). Outside
+                  the wireframe the band alone stands in for the outline. */}
+              {bandPath === null || wireframe ? (
+                isSelected ? (
                   <polyline
                     points={points}
                     fill="none"
-                    stroke={OUTLINE_DARK}
+                    stroke={SELECTED_STROKE_COLOR}
                     strokeWidth={2}
-                    opacity={0.7}
                     vectorEffect="non-scaling-stroke"
                   />
-                  <polyline
-                    points={points}
-                    fill="none"
-                    stroke={OUTLINE_LIGHT}
-                    strokeWidth={1}
-                    opacity={0.9}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </>
-              )}
+                ) : (
+                  <>
+                    <polyline
+                      points={points}
+                      fill="none"
+                      stroke={OUTLINE_DARK}
+                      strokeWidth={2}
+                      opacity={0.7}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    <polyline
+                      points={points}
+                      fill="none"
+                      stroke={OUTLINE_LIGHT}
+                      strokeWidth={1}
+                      opacity={0.9}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </>
+                )
+              ) : null}
               {/* Selected: a solid box in the stroke's own colour. Unselected:
                   the quiet dashed reference frame. A lift has no box — its
-                  ribbon is the shape and the bounds only drive the union box. */}
+                  ribbon is the shape and the bounds only drive the union box.
+                  61-25 (§6 item 6): the construction view keeps the transform
+                  box — chrome is drawn ON TOP of the wireframe, never instead. */}
               {entry.kind === 'lift' ? null : (
                 <rect
                   x={entry.bounds.x + offsetX}
@@ -476,39 +599,42 @@ export function ScriptStrokeOverlay(props: {
               )}
               {/* 261022-ujp: creation-order id · position from the top of the
                   stack. Overlay only — never part of the baked pixels. The chip
-                  keeps the text readable over any wash. */}
-              <rect
-                x={badgeX - 4}
-                y={badgeY - 13}
-                width={badgeWidth}
-                height={18}
-                rx={3}
-                fill="#ffffff"
-                fillOpacity={0.82}
-                stroke={isSelected ? badgeAccent : '#111827'}
-                strokeOpacity={isSelected ? 1 : 0.22}
-                strokeWidth={isSelected ? 1.25 : 1}
-                opacity={isSelected ? 1 : 0.75}
-                vectorEffect="non-scaling-stroke"
-              />
-              <text
-                x={badgeX}
-                y={badgeY}
-                data-testid={props.badgeTestId}
-                data-stroke-serial={entry.serial}
-                data-stroke-stack={entry.stackPosition}
-                fontSize={13}
-                fontWeight={isSelected ? 700 : 600}
-                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                fill={isSelected ? badgeAccent : '#111827'}
-                stroke="#ffffff"
-                strokeWidth={4}
-                strokeLinejoin="round"
-                opacity={isSelected ? 1 : 0.8}
-                style={{ paintOrder: 'stroke', userSelect: 'none' }}
-              >
-                {label}
-              </text>
+                  keeps the text readable over any wash. 61-25 (§6 item 6): the
+                  serial badge stays on top of the construction view. */}
+              <>
+                  <rect
+                    x={badgeX - 4}
+                    y={badgeY - 13}
+                    width={badgeWidth}
+                    height={18}
+                    rx={3}
+                    fill="#ffffff"
+                    fillOpacity={0.82}
+                    stroke={isSelected ? badgeAccent : '#111827'}
+                    strokeOpacity={isSelected ? 1 : 0.22}
+                    strokeWidth={isSelected ? 1.25 : 1}
+                    opacity={isSelected ? 1 : 0.75}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <text
+                    x={badgeX}
+                    y={badgeY}
+                    data-testid={props.badgeTestId}
+                    data-stroke-serial={entry.serial}
+                    data-stroke-stack={entry.stackPosition}
+                    fontSize={13}
+                    fontWeight={isSelected ? 700 : 600}
+                    fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                    fill={isSelected ? badgeAccent : '#111827'}
+                    stroke="#ffffff"
+                    strokeWidth={4}
+                    strokeLinejoin="round"
+                    opacity={isSelected ? 1 : 0.8}
+                    style={{ paintOrder: 'stroke', userSelect: 'none' }}
+                  >
+                    {label}
+                  </text>
+              </>
             </g>
           );
         })}
@@ -570,6 +696,47 @@ export function ScriptStrokeOverlay(props: {
           </g>
         ) : null}
       </svg>
+  );
+
+  // 61-13: a wireframe-only surface is DISPLAY-ONLY — it is mounted above the
+  // canvas, so it must never own a pointer. The select/drag surface keeps the
+  // shipped interactive root verbatim. 261112-i6d: the double-click prop is
+  // bound CONDITIONALLY, so without a callback the interactive root's
+  // `onDblClick` is literally `undefined`; the display-only root never binds it.
+  if (!interactive) {
+    return (
+      <div
+        data-testid={props.testId}
+        style={{
+          position: 'absolute',
+          inset: '0',
+          zIndex: 40,
+          pointerEvents: 'none',
+          cursor: 'default',
+        }}
+      >
+        {svg}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid={props.testId}
+      style={{
+        position: 'absolute',
+        inset: '0',
+        zIndex: 40,
+        pointerEvents: 'auto',
+        cursor: 'default',
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onDblClick={props.onStrokeDoubleClick ? handleDoubleClick : undefined}
+    >
+      {svg}
     </div>
   );
 }

@@ -22,6 +22,10 @@ import {
   setAquarelleParam,
   type AquarelleGlobalKey,
 } from './aquarelleRecordState';
+import {
+  commitAquarelleSelectionParam,
+  commitAquarelleSelectionParams,
+} from './aquarellePaintControls';
 
 /** Module-only global rows (D-05 / I-01 playground order). `size` is NOT here — shared Size owns it. */
 const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string }> = Object.freeze([
@@ -41,6 +45,7 @@ function GlobalSlider(props: {
   label: string;
   value: number;
   onChange: (value: number) => void;
+  onCommit?: (value: number) => void;
 }) {
   return (
     <div class="physics-paint-option-row">
@@ -48,6 +53,7 @@ function GlobalSlider(props: {
         label={props.label}
         value={Math.max(GLOBAL_MIN, Math.min(GLOBAL_MAX, props.value))}
         onChange={props.onChange}
+        onCommit={props.onCommit}
         step={1}
         min={GLOBAL_MIN}
         max={GLOBAL_MAX}
@@ -66,13 +72,25 @@ export function AquarelleGlobalsPanel() {
     setAquarelleParam(key, value);
   };
 
+  // quick 261111-ucf: a slider RELEASE edits the selected paint strokes
+  // once. onChange above stays the continuous live path and never commits.
+  const onGlobalCommit = (key: AquarelleGlobalKey) => (value: number) => {
+    void commitAquarelleSelectionParam(key, value);
+  };
+
   // I-01 Reset: playground DEFAULT_PARAMS (0..1) mapped onto the app 0-100
   // slider band (×100), written once per non-size key through the one seam.
   // Never writes size (top-bar Brush size owns it, Q1a / T-261017-WMW-01).
+  // The same seven values leave as ONE selection patch after the live writes,
+  // so Reset costs at most one undo entry and no selection is a no-op.
   const onReset = () => {
+    const next: Record<string, number> = {};
     for (const row of GLOBAL_ROWS) {
-      setAquarelleParam(row.key, Math.round(DEFAULT_PARAMS[row.key] * 100));
+      const value = Math.round(DEFAULT_PARAMS[row.key] * 100);
+      next[row.key] = value;
+      setAquarelleParam(row.key, value);
     }
+    void commitAquarelleSelectionParams(next);
   };
 
   return (
@@ -83,6 +101,7 @@ export function AquarelleGlobalsPanel() {
           label={row.label}
           value={params[row.key]}
           onChange={onGlobalChange(row.key)}
+          onCommit={onGlobalCommit(row.key)}
         />
       ))}
 

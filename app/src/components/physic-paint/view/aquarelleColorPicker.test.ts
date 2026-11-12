@@ -13,6 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { effect } from '@preact/signals';
 import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
 import { aquarelleSelectMode, setAquarelleSelectMode } from './aquarelleStrokeSelection';
 import {
@@ -32,9 +33,29 @@ import {
   type PickRgba,
 } from './aquarelleColorPicker';
 import { photoPixelAt } from './aquarellePhotoPick';
+import {
+  enterPathEdit,
+  enterVectorPen,
+  exitPathEdit,
+  pathEditMutationId,
+  resetForStudioOpen,
+  setVectorAnchorSelection,
+  vectorAnchorSelection,
+  vectorPenActive,
+} from './vectorPathSession';
 
 const OPAQUE_BLACK: PickRgba = { r: 0, g: 0, b: 0, a: 1 };
 const TRANSPARENT: PickRgba = { r: 0, g: 0, b: 0, a: 0 };
+
+/** Count how many times a read runs — an `effect()` re-runs only on a REAL write. */
+function countRuns(read: () => unknown): { runs: () => number; dispose: () => void } {
+  let runs = 0;
+  const dispose = effect(() => {
+    void read();
+    runs += 1;
+  });
+  return { runs: () => runs, dispose };
+}
 
 beforeEach(() => {
   disarmAquarellePicker();
@@ -218,6 +239,193 @@ describe('disarm laws — a paint tool or Move/Edit leaves the picker', () => {
     setAquarellePickerLatched(true);
     setAquarelleSelectMode(false);
     expect(aquarellePickerLatched.value).toBe(true);
+  });
+});
+
+// 61-17 (G-6): the picker latch releases the vector pen and any open path edit
+// on its ENTRY edge — the vector overlay draws above the sheet and would
+// swallow a latched pick. Disarming is a release path and must touch neither.
+describe('61-17 G-6 the picker latch releases the vector pen', () => {
+  afterEach(() => {
+    resetForStudioOpen();
+    disarmAquarellePicker();
+  });
+
+  it('latching the picker releases the vector pen and arms the picker', () => {
+    enterVectorPen();
+    expect(vectorPenActive.peek()).toBe(true);
+
+    setAquarellePickerLatched(true);
+
+    expect(vectorPenActive.peek()).toBe(false);
+    expect(aquarellePickerLatched.peek()).toBe(true);
+    expect(isAquarellePickerArmed()).toBe(true);
+  });
+
+  it('latching the picker closes an open path edit and clears its anchor selection', () => {
+    enterPathEdit('m17');
+    setVectorAnchorSelection([0, 2]);
+    expect(pathEditMutationId.peek()).toBe('m17');
+
+    setAquarellePickerLatched(true);
+
+    expect(pathEditMutationId.peek()).toBeNull();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+    expect(aquarellePickerLatched.peek()).toBe(true);
+  });
+
+  it('disarmAquarellePicker touches neither the pen nor the path edit', () => {
+    enterVectorPen();
+    disarmAquarellePicker();
+    expect(vectorPenActive.peek()).toBe(true);
+
+    enterPathEdit('m23');
+    setVectorAnchorSelection([1]);
+    disarmAquarellePicker();
+    expect(pathEditMutationId.peek()).toBe('m23');
+    expect(vectorAnchorSelection.peek()).toEqual([1]);
+  });
+
+  it('a repeated latch notifies the picker once and the pen never', () => {
+    const penRuns = countRuns(() => vectorPenActive.value);
+    const pickerRuns = countRuns(() => aquarellePickerLatched.value);
+    try {
+      setAquarellePickerLatched(true);
+      setAquarellePickerLatched(true);
+      // One initial run + exactly one real write; the pen was already off.
+      expect(pickerRuns.runs()).toBe(2);
+      expect(penRuns.runs()).toBe(1);
+    } finally {
+      penRuns.dispose();
+      pickerRuns.dispose();
+    }
+  });
+});
+
+// 61-23 (G-19): an open vector path edit outranks the picker. `enterPathEdit`
+// already disarms it (61-17), but Alt is ALSO the path edit's handle-break
+// modifier, so the Alt keydown re-armed the temporary picker and the Pipette
+// visor reappeared over the canvas. The ONE armed verdict stops at an open edit,
+// so no consumer needs its own guard.
+describe('61-23 G-19 the open path edit outranks the picker', () => {
+  afterEach(() => {
+    exitPathEdit();
+    disarmAquarellePicker();
+  });
+
+  it('routes both the visor gate and the pick seam to false while Alt is held during an edit', () => {
+    pathEditMutationId.value = 'm17';
+    aquarellePickerAltHeld.value = true;
+
+    expect(aquarellePickerActive.value).toBe(false);
+    expect(isAquarellePickerArmed()).toBe(false);
+  });
+
+  it('is not Alt-specific — a latched pick is likewise false during an edit', () => {
+    pathEditMutationId.value = 'm17';
+    aquarellePickerLatched.value = true;
+
+    expect(aquarellePickerActive.value).toBe(false);
+    expect(isAquarellePickerArmed()).toBe(false);
+  });
+
+  it('reads the edit lifetime, never a one-shot latch — the verdict returns true when the edit closes', () => {
+    // Alt held BEFORE the edit opens. The latch is written directly here
+    // because `enterPathEdit` disarms the picker on its own entry edge (61-17);
+    // this case isolates the guard's lifetime semantics from that entry edge.
+    setAquarellePickerAltHeld(true);
+    expect(aquarellePickerActive.value).toBe(true);
+
+    pathEditMutationId.value = 'm17';
+    expect(aquarellePickerActive.value).toBe(false);
+    expect(isAquarellePickerArmed()).toBe(false);
+
+    pathEditMutationId.value = null;
+    expect(aquarellePickerActive.value).toBe(true);
+    expect(isAquarellePickerArmed()).toBe(true);
+  });
+
+  it('an Alt keydown during an edit writes nothing and notifies no subscriber', () => {
+    pathEditMutationId.value = 'm17';
+    const runs = countRuns(() => aquarellePickerAltHeld.value);
+    try {
+      setAquarellePickerAltHeld(true);
+
+      expect(aquarellePickerAltHeld.peek()).toBe(false);
+      // The initial read only — the refused write notifies nothing.
+      expect(runs.runs()).toBe(1);
+    } finally {
+      runs.dispose();
+    }
+  });
+
+  it('never swallows a release — a stale Alt still clears, an already-false release is the compare-then-write no-op', () => {
+    pathEditMutationId.value = 'm17';
+    // A stale writer armed Alt directly while the edit is open: the release
+    // must still land, or the picker would stay armed past the edit.
+    aquarellePickerAltHeld.value = true;
+    setAquarellePickerAltHeld(false);
+    expect(aquarellePickerAltHeld.peek()).toBe(false);
+
+    // Already false: the shipped compare-then-write returns before the guard.
+    const runs = countRuns(() => aquarellePickerAltHeld.value);
+    try {
+      setAquarellePickerAltHeld(false);
+      expect(runs.runs()).toBe(1);
+    } finally {
+      runs.dispose();
+    }
+  });
+
+  it('arms again after the edit closes with one real write', () => {
+    pathEditMutationId.value = 'm17';
+    setAquarellePickerAltHeld(true);
+    expect(aquarellePickerAltHeld.peek()).toBe(false);
+
+    exitPathEdit();
+    const runs = countRuns(() => aquarellePickerAltHeld.value);
+    try {
+      setAquarellePickerAltHeld(true);
+
+      expect(aquarellePickerAltHeld.peek()).toBe(true);
+      expect(aquarellePickerActive.value).toBe(true);
+      expect(isAquarellePickerArmed()).toBe(true);
+      // The initial read plus exactly one real write.
+      expect(runs.runs()).toBe(2);
+    } finally {
+      runs.dispose();
+    }
+  });
+
+  it('re-pins both shipped 61-17 directions around the guard', () => {
+    // Entry edge: enterPathEdit still disarms the picker.
+    setAquarellePickerAltHeld(true);
+    expect(aquarellePickerAltHeld.peek()).toBe(true);
+    enterPathEdit('m17');
+    expect(pathEditMutationId.peek()).toBe('m17');
+    expect(aquarellePickerAltHeld.peek()).toBe(false);
+    expect(isAquarellePickerArmed()).toBe(false);
+
+    // The latch's own entry edge still closes the open edit.
+    setAquarellePickerLatched(true);
+    expect(pathEditMutationId.peek()).toBeNull();
+    expect(isAquarellePickerArmed()).toBe(true);
+  });
+});
+
+// T-61-60: the latch leaf is the picker's ONLY sibling import, so no future
+// edit can recreate the evaluation cycle the one-way edge exists to prevent.
+// 61-23 extends — never weakens — the pin: the second line still names the
+// dependency-free leaf, now carrying `pathEditMutationId` for the G-19 guard.
+describe('the picker module keeps its one-way edge (T-61-60)', () => {
+  const pickerSrc = readFileSync(resolve(__dirname, './aquarelleColorPicker.ts'), 'utf8');
+
+  it('imports only the signals runtime and the dependency-free latch leaf', () => {
+    const importLines = pickerSrc.split('\n').filter((line) => line.startsWith('import '));
+    expect(importLines).toEqual([
+      "import { computed, signal } from '@preact/signals';",
+      "import { exitPathEdit, exitVectorPen, pathEditMutationId } from './vectorPathLatches';",
+    ]);
   });
 });
 

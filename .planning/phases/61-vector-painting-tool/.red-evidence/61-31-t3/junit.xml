@@ -1,0 +1,1637 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="76" failures="4" errors="0" time="1.242">
+    <testsuite name="src/components/physic-paint/engine/VectorPathOverlay.test.ts" timestamp="2026-11-11T14:23:35.258Z" hostname="efx2.home" tests="76" failures="4" errors="0" skipped="0" time="0.605479458">
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws nothing when no vector stroke and no draft exist" time="0.000893292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws nothing for a hand-painted stroke (no anchors)" time="0.000173583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws one spine polyline and exactly one marker per anchor" time="0.001442083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws two handle markers for a bezier anchor and none for an auto anchor" time="0.000456458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws no structure on an idle frame, so the render stays unobstructed" time="0.000586958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; skips strokes painted on another frame" time="0.000084292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; mounts the pointer surface while the pen is active with an empty draft" time="0.000105959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; mounts no pointer surface at all while idle, and one while the pen is active" time="0.000584334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; places a smooth anchor per plain click" time="0.000709792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; places a corner (bezier with zero-length handles) on Alt+click" time="0.000243375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; refuses a click within the adjacency radius of the last anchor" time="0.000182292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes at the first anchor without appending a closing anchor" time="0.000351875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes on Enter and commits exactly once" time="0.000213792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes on a double-click" time="0.000179584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; cancels on Escape with zero commits" time="0.000217042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; commits nothing for a zero- or one-anchor path and never throws" time="0.000360625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; clears the draft BEFORE the commit so a same-tick second Enter is a no-op" time="0.000233209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; commits the draft anchors, the active brush mode and the sampled points" time="0.000631459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; prevents default and stops propagation so no paint stroke starts underneath" time="0.000093792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; binds the key listener while the pen or a path edit is active and removes it on cleanup" time="0.00023475">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-21 IN-01 — the live rubber band &gt; draws one provisional spine to the cursor, and none without a cursor" time="0.002510084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-21 IN-01 — the live rubber band &gt; never places an anchor or commits from a pointer move, and draws the preview before the spine" time="0.000523958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — one entry per finished path (task 3) &gt; records exactly one entry and one revision bump for a finished path" time="0.000557291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — one entry per finished path (task 3) &gt; records nothing for an empty or one-anchor path — no entry, no serial, no event" time="0.000252375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — one entry per finished path (task 3) &gt; lists a committed vector stroke once, keyed by serial, with the hand-painted row shape" time="0.000522959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; replaces the recorded path at the same timeline index, bumps once, and repeats at zero" time="0.001089917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; stores exactly ONE edit snapshot for one changed anchor, restores it in one undo, and refuses while in flight" time="0.000322375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; owns the pointer while a path edit is open even with the pen released" time="0.000197917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; drags an anchor and commits ONE onPathEdit carrying the promotion and the moved handles" time="0.00063625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; commits the promotion on a grab-and-release of an auto anchor" time="0.000375084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; commits nothing on a grab-and-release of an already-bezier anchor" time="0.000361292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; drags one handle, mirrors its coupled partner and commits ONCE" time="0.000390958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; leaves the partner untouched when Alt breaks the coupling" time="0.000318833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; inserts one anchor on a spine click, commits ONCE and selects it" time="0.000358417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; keeps ONE ascending, deduplicated selection and clears it on exit and reset" time="0.000225208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; deletes every selected anchor in ONE commit and clears the selection" time="0.000162041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; handles delete keys only while a path edit owns a non-empty selection" time="0.000141417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; writes a three-anchor width commit as ONE edit snapshot that one undo restores" time="0.000271834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; binds the edit key listener for an open path edit and unbinds it on cleanup" time="0.000183542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; captures the pointer at an anchor press, and the drag still commits on up" time="0.000476875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; captures the pointer at a handle press and commits the handle drag on up" time="0.000323167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; releases the capture AFTER the commit decision, on the drag pointer id" time="0.0003">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; releases the capture on cancel and commits nothing" time="0.000270791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; takes no capture for the insert-on-spine click and still commits once" time="0.000231458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; releases only a pointer the target still holds, and never throws" time="0.000293791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the text-entry key guard (61-16) &gt; stands down on Enter while a dialog text field has focus" time="0.0002445">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the text-entry key guard (61-16) &gt; still commits the draft when focus sits outside a text field" time="0.000164458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the text-entry key guard (61-16) &gt; stands down on Backspace in a textarea and still deletes on the canvas" time="0.000158917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the focusable-control key guard (61-21 WR-05) &gt; stands down on a focused button or role control and still commits/deletes on the canvas" time="0.000283542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — authority boundary (T-61-31) &gt; never imports an engine, bake or adapter module and never records" time="0.000285333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — authority boundary (T-61-31) &gt; is mounted beside the stroke overlay and forwards to props.onStrokeEnd" time="0.000155584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; draws the envelope, spine, anchors and handles of every recorded vector stroke" time="0.000561542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; draws a rung only at an anchor carrying an explicit width" time="0.001243458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; draws anchor shapes per kind — square only for bezier — and no handle for auto" time="0.00041075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; draws the shipped buildStrokeBand footprint and the centreline for a hand-painted stroke" time="0.013873916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; leaves a vector stroke to the construction overlay — no band for it" time="0.000095667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; renders no geometry and throws nothing when the anchors fail normalisation" time="0.000079208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; renders no overlay elements for an empty sheet" time="0.000043083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; reuses the shipped buildStrokeBand — exactly one import and one call" time="0.000164917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-22 G-11 — the selected-anchor ring &gt; draws one ring around the selected anchor and none for an unselected index" time="0.000272916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-22 G-11 — the selected-anchor ring &gt; fails closed on an empty or out-of-range selection" time="0.0003255">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-22 G-11 — the selected-anchor ring &gt; rings only the open edit’s path, never a second recorded vector stroke" time="0.000209125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-22 G-11 — the selected-anchor ring &gt; static: the ring is accent-only and adds no colour literal" time="0.000218417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; draws the editing envelope in the stroke’s own colour at 0.14/0.07, 3.5/1.5, with no stroke opacity" time="0.002605666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; gives the wireframe envelope the same band law and keeps no envelope-fill constant" time="0.000834667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; draws every handle dot solid #f59e0b while only the connector is translucent" time="0.000282875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; keeps the bounds box and serial badge in the wireframe-only view, and leaves the lift ribbon unchanged" time="0.018943292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-28 CR-01 - the edit-lifetime drag law &gt; ends the previous drag when a new press hits nothing, and releases its capture" time="0.000355834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-28 CR-01 - the edit-lifetime drag law &gt; commits nothing from the abandoned drag after the empty press" time="0.000265083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-28 CR-01 - the edit-lifetime drag law &gt; adds one editMutationId-keyed effect that clears the drag, the preview and the capture" time="0.000199292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-28 CR-01 - the edit-lifetime drag law &gt; keeps a live gesture when the drag still belongs to the open edit" time="0.000120333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-28 CR-01 - the edit-lifetime drag law &gt; refuses a non-matching drag before any preview write or commit in both handlers" time="0.000224666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-31 G-20 - the overlay draws and edits through each path curve mode &gt; captures the edit target mode, draws each recorded path through its own mode and drafts through the default" time="0.003874583">
+            <failure message="expected &apos;// ==================================…&apos; to contain &apos;let editTargetCurveMode: AquarelleCur…&apos;" type="AssertionError">
+AssertionError: expected &apos;// ==================================…&apos; to contain &apos;let editTargetCurveMode: AquarelleCur…&apos;
+
+- Expected
++ Received
+
+- let editTargetCurveMode: AquarelleCurveMode = DEFAULT_AQUARELLE_CURVE_MODE;
++ // ============================================================
++ //  VectorPathOverlay — the vector draw surface (61-09, VEC-01 /
++ //  VEC-07).
++ //
++ //  Scoped by the 61-08 session signals: the pen latch
++ //  (`vectorPenActive`) opens the draw surface; an open path edit
++ //  (`pathEditMutationId`) instead owns the surface for anchor
++ //  editing (D-06 — the two states are mutually exclusive). Every
++ //  recorded vector stroke of the edit frame draws its spine, its
++ //  width envelope and one marker per anchor; a draft draws the
++ //  same geometry while it is being placed.
++ //
++ //  AUTHORITY BOUNDARY (T-61-31): the overlay owns GESTURE ONLY.
++ //  It never bakes, never records and never imports an engine or
++ //  adapter module. A finished path leaves as ONE
++ //  `VectorPathCommit`; AquarelleCanvasLayer assembles the stroke
++ //  and forwards it to the ONE existing stroke-end seam, so a
++ //  vector stroke costs exactly one revision bump — the same cost
++ //  as a hand-painted one. A completed path EDIT likewise leaves
++ //  as ONE `onPathEdit(mutationId, anchors)` call; the Studio owns
++ //  the history entry and the refusal (61-10).
++ //
++ //  GEOMETRY: every curve, handle and width factor comes from the
++ //  61-02 spine module through `vectorPathHandles`; every chrome
++ //  size is a SCREEN-pixel constant counter-scaled by the effective
++ //  zoom (the shipped `scriptStrokeTransform` law).
++ //
++ //  Preact reactivity: module signals, `.peek()` in handlers, no
++ //  render-body signal writes, effect only for the key listener
++ //  (`efx-preact-reactivity`).
++ // ============================================================
++
++ import { signal } from &apos;@preact/signals&apos;;
++ import type { JSX, TargetedPointerEvent } from &apos;preact&apos;;
++ import { useEffect, useRef } from &apos;preact/hooks&apos;;
++ import {
++   clampAnchorWidth,
++   normaliseVectorAnchors,
++   resolveAnchorHandles,
++   resolveRenderModeForBrushId,
++   sampleVectorPath,
++   type AquarelleStroke,
++   type ResolvedAnchorHandles,
++   type Vec2,
++   type VectorAnchor,
++ } from &apos;@efxlab/efx-watercolor/payload&apos;;
++ import {
++   aquarelleBrushForActiveTool,
++   aquarelleStrokesRevision,
++   isAquarelleStrokeDeleted,
++ } from &apos;../view/aquarelleRecordState&apos;;
++ import { physicsPaintCanvasZoom } from &apos;../view/physicsPaintCanvasZoom&apos;;
++ import { wireframeMode } from &apos;../view/scriptStrokeEdition&apos;;
++ import { isKeyboardOwnedTarget } from &apos;../view/shortcutTextTarget&apos;;
++ import type { CanvasPoint } from &apos;../view/scriptStrokeEdition&apos;;
++ import {
++   ANCHOR_BODY_PX,
++   ANCHOR_CORE_RADIUS_PX,
++   ANCHOR_HIT_PAD_PX,
++   DRAG_THRESHOLD_PX,
++   FIRST_ANCHOR_HIT_PX,
++   HANDLE_BODY_PX,
++   VECTOR_ENVELOPE_BASE_UV,
++   buildDraftPath,
++   deleteAnchorsAt,
++   hitTestVectorPath,
++   insertAnchorOnSegment,
++   isAdjacentToLast,
++   moveAnchorBy,
++   moveHandleTo,
++   pointToSegmentDistancePx,
++   projectVectorPath,
++   promoteAnchorForDrag,
++   screenToUv,
++   selectAnchor,
++   uvToScreen,
++   type VectorPathCommit,
++   type VectorPathProjection,
++ } from &apos;../view/vectorPathHandles&apos;;
++ import {
++   appendVectorDraftAnchor,
++   clearVectorAnchorSelection,
++   clearVectorDraft,
++   moveVectorDraftCursor,
++   pathEditMutationId,
++   setVectorAnchorSelection,
++   vectorAnchorSelection,
++   vectorDrawDraft,
++   vectorPenActive,
++   type VectorDrawDraft,
++   type VectorDraftAnchor,
++ } from &apos;../view/vectorPathSession&apos;;
++
++ // --- The overlay&apos;s one palette -------------------------------------------
++
++ /** Selected-path accent — the same `#38bdf8` the shipped select overlay uses. */
++ const SELECTED_SPINE_COLOR = &apos;#38bdf8&apos;;
++ const OUTLINE_DARK = &apos;#111111&apos;;
++ const OUTLINE_LIGHT = &apos;#ffffff&apos;;
++ /** User-owned control (a bezier anchor and its handles) — the 26102x accent. */
++ const OWNED_CONTROL_COLOR = &apos;#f59e0b&apos;;
++ /** The handle CONNECTOR&apos;s opacity — the dot itself stays solid (§6 item 5). */
++ const HANDLE_OPACITY = 0.6;
++ const SPINE_STROKE_PX = 1.5;
++
++ /** Immediately above the stroke overlay (40), below the brush cursor (50). */
++ const VECTOR_PATH_Z_INDEX = 41;
++
++ /** What the overlay hands the layer when a path is finished. */
++ export interface VectorPathGestureHandlers {
++   readonly onCommitPath: (commit: VectorPathCommit) =&gt; void;
++   readonly onCancelPath: () =&gt; void;
++ }
++
++ export interface VectorPathOverlayProps {
++   width: number;
++   height: number;
++   getPlayFrame: () =&gt; number;
++   getRecordedStrokes: () =&gt; ReadonlyMap&lt;number, AquarelleStroke&gt;;
++   onCommitPath: (commit: VectorPathCommit) =&gt; void;
++   onCancelPath: () =&gt; void;
++   /**
++    * 61-10: one completed path-edit gesture. The overlay hands the numeric
++    * mutationId and the FULL next anchor list; history and the refusal live in
++    * the Studio (the overlay never imports a record or selection module).
++    */
++   onPathEdit: (mutationId: number, anchors: readonly VectorAnchor[]) =&gt; void;
++ }
++
++ /**
++  * The live anchor-drag preview. Gesture-local display state written ONLY by
++  * the pointer handlers and cleared BEFORE the commit runs (the T-61-30
++  * clear-before-commit law), so a same-tick repeat gesture finds nothing. This
++  * leaf&apos;s render body is the only subscriber.
++  */
++ export const vectorPathEditDrag = signal&lt;{
++   readonly mutationId: number;
++   readonly anchors: readonly VectorAnchor[];
++ } | null&gt;(null);
++
++ /** One in-flight anchor drag (path edit): where it started and its latest list. */
++ interface AnchorDragState {
++   readonly kind: &apos;anchor&apos;;
++   readonly mutationId: number;
++   readonly index: number;
++   readonly startUv: Vec2;
++   readonly anchorsAtStart: readonly VectorAnchor[];
++   readonly wasPromoted: boolean;
++   /** 61-16: the pointer this drag captured, released when the drag ends. */
++   readonly pointerId: number;
++   moved: boolean;
++   latest: readonly VectorAnchor[];
++ }
++
++ /** One in-flight handle drag: the endpoint follows the pointer absolutely. */
++ interface HandleDragState {
++   readonly kind: &apos;handle&apos;;
++   readonly mutationId: number;
++   readonly index: number;
++   readonly side: &apos;in&apos; | &apos;out&apos;;
++   readonly anchorsAtStart: readonly VectorAnchor[];
++   /** 61-16: the pointer this drag captured, released when the drag ends. */
++   readonly pointerId: number;
++   moved: boolean;
++   latest: readonly VectorAnchor[];
++ }
++
++ type PathEditDragState = AnchorDragState | HandleDragState;
++
++ /**
++  * The optional pointer-capture capability a drag target carries. Nothing here
++  * assumes the methods exist: a detached or non-element target has none, and a
++  * capture call must never throw into a gesture (T-61-57).
++  */
++ interface PointerCaptureTarget {
++   setPointerCapture?(pointerId: number): void;
++   releasePointerCapture?(pointerId: number): void;
++   hasPointerCapture?(pointerId: number): boolean;
++ }
++
++ /**
++  * Capture the pointer for the lifetime of a drag. Without it a pointermove or
++  * pointerup that lands outside the overlay is delivered elsewhere and the edit
++  * is stranded mid-gesture (CR-01). A detached target cannot capture; the drag
++  * keeps working in place.
++  */
++ function capturePointer(
++   target: PointerCaptureTarget | null | undefined,
++   pointerId: number,
++ ): void {
++   if (target === null || target === undefined) return;
++   if (typeof target.setPointerCapture !== &apos;function&apos;) return;
++   try {
++     target.setPointerCapture(pointerId);
++   } catch {
++     // A target that cannot capture still receives in-overlay events.
++   }
++ }
++
++ /**
++  * Release a capture only when the target still holds it. Releasing a pointer
++  * the element no longer holds is an error in the pointer-events spec, so the
++  * `hasPointerCapture` answer is honoured when the target can give one; a
++  * missing method or a throwing target is swallowed — the release is cleanup,
++  * never part of the edit.
++  */
++ export function releasePointerCapture(
++   target: PointerCaptureTarget | null | undefined,
++   pointerId: number,
++ ): void {
++   if (target === null || target === undefined) return;
++   if (typeof target.releasePointerCapture !== &apos;function&apos;) return;
++   try {
++     if (target.hasPointerCapture?.(pointerId) === false) return;
++     target.releasePointerCapture(pointerId);
++   } catch {
++     // The pointer is already gone; there is nothing left to release.
++   }
++ }
++
++ /** One path the overlay draws: its anchors, resolved handles and projection. */
++ interface DrawnVectorPath {
++   readonly key: string;
++   readonly anchors: readonly VectorAnchor[];
++   readonly handles: readonly ResolvedAnchorHandles[];
++   readonly projection: VectorPathProjection;
++   /** 61-13: the recorded stroke&apos;s own colour; null for the pen draft. */
++   readonly color: string | null;
++   /** 61-13: the live target (open path edit / pen draft) wears louder chrome. */
++   readonly selected: boolean;
++ }
++
++ function finiteScale(scale: number): number {
++   return Number.isFinite(scale) &amp;&amp; scale &gt; 0 ? scale : 1;
++ }
++
++ // --- Finish / cancel ------------------------------------------------------
++
++ /**
++  * Finish the draft. The draft is cleared BEFORE `onCommitPath` runs, so a
++  * same-tick second Enter / double-click finds no draft and commits nothing
++  * (T-61-30). A zero- or one-anchor draft is dropped without a commit — a
++  * path needs two anchors to exist.
++  */
++ export function finishVectorPath(handlers: VectorPathGestureHandlers): void {
++   const draft = vectorDrawDraft.peek();
++   if (draft === null) return;
++   const anchors = draft.anchors;
++   clearVectorDraft();
++   if (anchors.length &lt; 2) return;
++   const { anchors: normalised, points } = buildDraftPath(anchors);
++   if (normalised.length &lt; 2 || points.length === 0) return;
++   handlers.onCommitPath({
++     anchors: normalised,
++     // The SAME brush-id law the record path stamps: the commit can never
++     // disagree with the brush the layer&apos;s snapshot stores (61-07 D-14).
++     renderMode: resolveRenderModeForBrushId(aquarelleBrushForActiveTool().brushId),
++     points,
++   });
++ }
++
++ /** Drop the draft and tell the layer — zero commits. */
++ export function cancelVectorPath(handlers: VectorPathGestureHandlers): void {
++   clearVectorDraft();
++   handlers.onCancelPath();
++ }
++
++ /**
++  * The overlay&apos;s key law: Enter finishes, Escape cancels. A missing draft
++  * swallows nothing, so the Studio keeps its own shortcuts when no vector
++  * path is in progress.
++  */
++ export function handleVectorPathKey(
++   event: {
++     readonly key?: string;
++     preventDefault?: () =&gt; void;
++     stopPropagation?: () =&gt; void;
++   },
++   handlers: VectorPathGestureHandlers,
++ ): void {
++   const key = event.key;
++   if (key !== &apos;Enter&apos; &amp;&amp; key !== &apos;Escape&apos;) return;
++   if (vectorDrawDraft.peek() === null) return;
++   event.preventDefault?.();
++   event.stopPropagation?.();
++   if (key === &apos;Enter&apos;) finishVectorPath(handlers);
++   else cancelVectorPath(handlers);
++ }
++
++ /** What the Delete/Backspace edit key needs from its host (61-10). */
++ export interface VectorPathEditKeyHandlers {
++   readonly getRecordedStrokes: () =&gt; ReadonlyMap&lt;number, AquarelleStroke&gt;;
++   readonly onPathEdit: (mutationId: number, anchors: readonly VectorAnchor[]) =&gt; void;
++ }
++
++ /**
++  * The open path edit&apos;s Delete/Backspace law: remove every selected anchor
++  * through `deleteAnchorsAt` and leave the whole next list in ONE
++  * `onPathEdit`. The selection is cleared BEFORE the commit (the T-61-30
++  * clear-before-commit law), so a same-tick repeat finds nothing. Every other
++  * key is left to the Studio — the overlay swallows only what it owns.
++  */
++ export function handleVectorPathEditKey(
++   event: { readonly key?: string; preventDefault?: () =&gt; void; stopPropagation?: () =&gt; void },
++   handlers: VectorPathEditKeyHandlers,
++ ): void {
++   const key = event.key;
++   if (key !== &apos;Delete&apos; &amp;&amp; key !== &apos;Backspace&apos;) return;
++   const editMutationId = pathEditMutationId.peek();
++   if (editMutationId === null) return;
++   const selection = vectorAnchorSelection.peek();
++   if (selection.length === 0) return;
++   let targetMutationId: number | null = null;
++   let targetAnchors: readonly VectorAnchor[] | null = null;
++   for (const [mutationId, stroke] of handlers.getRecordedStrokes()) {
++     if (String(mutationId) !== editMutationId) continue;
++     if (isAquarelleStrokeDeleted(mutationId)) continue;
++     if (stroke.anchors === undefined || stroke.anchors.length === 0) continue;
++     targetMutationId = mutationId;
++     targetAnchors = stroke.anchors;
++     break;
++   }
++   if (targetMutationId === null || targetAnchors === null) return;
++   const next = deleteAnchorsAt(targetAnchors, selection);
++   if (next.length === targetAnchors.length) return;
++   event.preventDefault?.();
++   event.stopPropagation?.();
++   clearVectorAnchorSelection();
++   handlers.onPathEdit(targetMutationId, next);
++ }
++
++ /**
++  * The window listener&apos;s dispatcher (61-16 / G-4). The listener is bound in the
++  * CAPTURE phase on `window`, so it sees keystrokes aimed at a focused dialog
++  * field before that field does. A text-entry target stands both key handlers
++  * down — nothing is consumed and nothing is prevented, so Enter submits the
++  * dialog and Delete edits the text. Every other target gets the two pure,
++  * target-agnostic handlers exactly as before.
++  */
++ export function handleVectorPathWindowKey(
++   event: {
++     readonly key?: string;
++     readonly target?: unknown;
++     preventDefault?: () =&gt; void;
++     stopPropagation?: () =&gt; void;
++   },
++   draftHandlers: VectorPathGestureHandlers,
++   editHandlers: VectorPathEditKeyHandlers,
++ ): void {
++   if (isKeyboardOwnedTarget(event.target)) return;
++   handleVectorPathKey(event, draftHandlers);
++   handleVectorPathEditKey(event, editHandlers);
++ }
++
++ // --- Drawing --------------------------------------------------------------
++
++ function drawnPathOf(
++   key: string,
++   anchors: readonly VectorAnchor[],
++   width: number,
++   height: number,
++   options: {
++     readonly alwaysEnvelope?: boolean;
++     readonly color?: string | null;
++     readonly selected?: boolean;
++   } = {},
++ ): DrawnVectorPath | null {
++   const normalised = normaliseVectorAnchors(anchors);
++   if (normalised.length === 0) return null;
++   return {
++     key,
++     anchors: normalised,
++     handles: resolveAnchorHandles(normalised),
++     projection: projectVectorPath(normalised, width, height, {
++       alwaysEnvelope: options.alwaysEnvelope === true,
++     }),
++     color: options.color ?? null,
++     selected: options.selected === true,
++   };
++ }
++
++ /**
++  * 61-21 (IN-01): the provisional rubber-band polyline, in layer pixels. It
++  * appends a transient `auto` station at the draft cursor, samples the ONE spine
++  * module and screen-projects the samples — never through `renderPath`, so the
++  * preview adds no marker, no handle and no envelope, and never touches
++  * `DrawnVectorPath`. Construction chrome: it stays visible in wireframe too.
++  */
++ function draftPreviewPointsOf(
++   draft: VectorDrawDraft | null,
++   width: number,
++   height: number,
++ ): string | null {
++   if (draft === null || draft.cursor === null || draft.anchors.length === 0) return null;
++   const cursor = draft.cursor;
++   const { points } = sampleVectorPath([
++     ...draft.anchors,
++     { x: cursor.x, y: cursor.y, kind: &apos;auto&apos; },
++   ]);
++   if (points.length === 0) return null;
++   return points
++     .map((point) =&gt; {
++       const at = uvToScreen(point, width, height);
++       return `${at.x},${at.y}`;
++     })
++     .join(&apos; &apos;);
++ }
++
++ /**
++  * One path&apos;s SVG group, in the UI-SPEC order: envelope → spine → rungs →
++  * anchors → handles. Marker extents are screen-pixel constants divided by the
++  * effective zoom, so the chrome keeps its screen size at every zoom.
++  *
++  * The editing chrome is unchanged (61-09/61-10). `wireframe` (61-13) swaps it
++  * for the construction view: the spine becomes a two-pass dark/light line (or
++  * the accent for the live target), rungs appear ONLY at anchors carrying an
++  * explicit width factor, and every marker wears the dark hairline instead of
++  * the light one. Both branches draw the envelope per the colour table&apos;s band
++  * law (61-25 UI-03): the stroke&apos;s own colour at 0.14/0.07 fill, 3.5/1.5 edge,
++  * no extra stroke opacity.
++  */
++ function renderPath(
++   drawn: DrawnVectorPath,
++   scale: number,
++   width: number,
++   height: number,
++   wireframe: boolean,
++   selectedAnchors: readonly number[],
++ ): JSX.Element {
++   const { anchors, handles, projection, color, selected } = drawn;
++   const spinePoints = projection.spine.map((point) =&gt; `${point.x},${point.y}`).join(&apos; &apos;);
++   const envelope = projection.envelope.length &lt; 3
++     ? null
++     : `M${projection.envelope.map((point) =&gt; `${point.x},${point.y}`).join(&apos; L&apos;)} Z`;
++   const anchorSizePx = ANCHOR_BODY_PX / scale;
++   const coreRadiusPx = ANCHOR_CORE_RADIUS_PX / scale;
++   const handleRadiusPx = HANDLE_BODY_PX / 2 / scale;
++   // 61-25 (UI-03): BOTH envelope branches follow the colour table&apos;s band law —
++   // the stroke&apos;s own colour (the pen draft has none, so it falls back to the
++   // vector accent), fill 0.14 selected / 0.07 unselected, edge 3.5 / 1.5, and
++   // no extra stroke opacity.
++   const envelopeColor = color ?? SELECTED_SPINE_COLOR;
++   const markerStroke = wireframe ? OUTLINE_DARK : OUTLINE_LIGHT;
++
++   return (
++     &lt;g key={drawn.key}&gt;
++       {envelope === null ? null : (
++         &lt;path
++           data-testid=&quot;vector-path-envelope&quot;
++           d={envelope}
++           fill={envelopeColor}
++           fillOpacity={selected ? 0.14 : 0.07}
++           stroke={envelopeColor}
++           strokeWidth={selected ? 3.5 : 1.5}
++           vectorEffect=&quot;non-scaling-stroke&quot;
++         /&gt;
++       )}
++       {wireframe ? (
++         selected ? (
++           &lt;polyline
++             data-testid=&quot;vector-path-spine&quot;
++             points={spinePoints}
++             fill=&quot;none&quot;
++             stroke={SELECTED_SPINE_COLOR}
++             strokeWidth={2}
++             strokeLinecap=&quot;round&quot;
++             strokeLinejoin=&quot;round&quot;
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         ) : (
++           &lt;&gt;
++             &lt;polyline
++               points={spinePoints}
++               fill=&quot;none&quot;
++               stroke={OUTLINE_DARK}
++               strokeWidth={2}
++               opacity={0.7}
++               strokeLinecap=&quot;round&quot;
++               strokeLinejoin=&quot;round&quot;
++               vectorEffect=&quot;non-scaling-stroke&quot;
++             /&gt;
++             &lt;polyline
++               data-testid=&quot;vector-path-spine&quot;
++               points={spinePoints}
++               fill=&quot;none&quot;
++               stroke={OUTLINE_LIGHT}
++               strokeWidth={1}
++               opacity={0.9}
++               strokeLinecap=&quot;round&quot;
++               strokeLinejoin=&quot;round&quot;
++               vectorEffect=&quot;non-scaling-stroke&quot;
++             /&gt;
++           &lt;/&gt;
++         )
++       ) : (
++         &lt;&gt;
++           &lt;polyline
++             points={spinePoints}
++             fill=&quot;none&quot;
++             stroke={OUTLINE_DARK}
++             strokeWidth={3}
++             strokeLinecap=&quot;round&quot;
++             strokeLinejoin=&quot;round&quot;
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++           &lt;polyline
++             data-testid=&quot;vector-path-spine&quot;
++             points={spinePoints}
++             fill=&quot;none&quot;
++             stroke={SELECTED_SPINE_COLOR}
++             strokeWidth={SPINE_STROKE_PX}
++             strokeLinecap=&quot;round&quot;
++             strokeLinejoin=&quot;round&quot;
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         &lt;/&gt;
++       )}
++       {wireframe
++         ? projection.anchors.map((point, index) =&gt; {
++           const anchor = anchors[index];
++           // D-10/D-15: a rung exists ONLY where the anchor carries an
++           // explicit width factor — the sparse representation made visible.
++           if (anchor === undefined || anchor.width === undefined) return null;
++           const before = projection.anchors[Math.max(0, index - 1)] ?? point;
++           const after = projection.anchors[Math.min(projection.anchors.length - 1, index + 1)] ?? point;
++           let tx = after.x - before.x;
++           let ty = after.y - before.y;
++           const length = Math.hypot(tx, ty);
++           if (!(length &gt; 0)) {
++             tx = 1;
++             ty = 0;
++           } else {
++             tx /= length;
++             ty /= length;
++           }
++           // The rung spans the envelope&apos;s local cross-section: the same base
++           // half-width the envelope sweep uses, at this anchor&apos;s factor.
++           const half = VECTOR_ENVELOPE_BASE_UV * height * clampAnchorWidth(anchor.width);
++           const offsetX = -ty * half;
++           const offsetY = tx * half;
++           return (
++             &lt;g key={`rung-${index}`} data-testid=&quot;vector-path-rung&quot;&gt;
++               &lt;line
++                 x1={point.x - offsetX}
++                 y1={point.y - offsetY}
++                 x2={point.x + offsetX}
++                 y2={point.y + offsetY}
++                 stroke={OUTLINE_DARK}
++                 strokeWidth={1.5}
++                 opacity={0.55}
++                 vectorEffect=&quot;non-scaling-stroke&quot;
++               /&gt;
++               &lt;line
++                 x1={point.x - offsetX}
++                 y1={point.y - offsetY}
++                 x2={point.x + offsetX}
++                 y2={point.y + offsetY}
++                 stroke={OUTLINE_LIGHT}
++                 strokeWidth={1}
++                 opacity={0.9}
++                 vectorEffect=&quot;non-scaling-stroke&quot;
++               /&gt;
++             &lt;/g&gt;
++           );
++         })
++         : null}
++       {projection.anchors.map((point, index) =&gt; {
++         const anchor = anchors[index];
++         if (anchor === undefined) return null;
++         return anchor.kind === &apos;bezier&apos; ? (
++           &lt;rect
++             key={`anchor-${index}`}
++             data-testid=&quot;vector-path-anchor&quot;
++             x={point.x - anchorSizePx / 2}
++             y={point.y - anchorSizePx / 2}
++             width={anchorSizePx}
++             height={anchorSizePx}
++             fill={OWNED_CONTROL_COLOR}
++             stroke={markerStroke}
++             strokeWidth={1}
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         ) : (
++           &lt;circle
++             key={`anchor-${index}`}
++             data-testid=&quot;vector-path-anchor&quot;
++             cx={point.x}
++             cy={point.y}
++             r={coreRadiusPx}
++             fill={SELECTED_SPINE_COLOR}
++             stroke={markerStroke}
++             strokeWidth={1}
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         );
++       })}
++       {/* 61-22 (G-11): the missing feedback for `vectorAnchorSelection` — one
++           accent ring per selected index, drawn over the anchor marker. The
++           index space is `drawnPathOf`&apos;s normalised anchor list, the same list
++           the selection was resolved from; a missing point fails closed. */}
++       {selectedAnchors.map((index) =&gt; {
++         const anchor = anchors[index];
++         const point = projection.anchors[index];
++         if (anchor === undefined || point === undefined) return null;
++         return anchor.kind === &apos;bezier&apos; ? (
++           &lt;rect
++             key={`anchor-selection-${index}`}
++             data-testid=&quot;vector-path-anchor-selection&quot;
++             x={point.x - (anchorSizePx + 6) / 2}
++             y={point.y - (anchorSizePx + 6) / 2}
++             width={anchorSizePx + 6}
++             height={anchorSizePx + 6}
++             fill=&quot;none&quot;
++             stroke={SELECTED_SPINE_COLOR}
++             strokeWidth={1.5}
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         ) : (
++           &lt;circle
++             key={`anchor-selection-${index}`}
++             data-testid=&quot;vector-path-anchor-selection&quot;
++             cx={point.x}
++             cy={point.y}
++             r={coreRadiusPx + 3}
++             fill=&quot;none&quot;
++             stroke={SELECTED_SPINE_COLOR}
++             strokeWidth={1.5}
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         );
++       })}
++       {anchors.map((anchor, index) =&gt; {
++         if (anchor.kind !== &apos;bezier&apos;) return null;
++         const resolved = handles[index];
++         const anchorPoint = projection.anchors[index];
++         if (resolved === undefined || anchorPoint === undefined) return null;
++         return (
++           &lt;g key={`handles-${index}`}&gt;
++             {([&apos;in&apos;, &apos;out&apos;] as const).map((side) =&gt; {
++               const at = resolved[side];
++               if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return null;
++               const point = uvToScreen(at, width, height);
++               return (
++                 &lt;g key={side}&gt;
++                   &lt;line
++                     x1={anchorPoint.x}
++                     y1={anchorPoint.y}
++                     x2={point.x}
++                     y2={point.y}
++                     stroke={OWNED_CONTROL_COLOR}
++                     strokeOpacity={HANDLE_OPACITY}
++                     strokeWidth={1}
++                     vectorEffect=&quot;non-scaling-stroke&quot;
++                   /&gt;
++                   {/* 61-25 (UI-03 / §6 item 5): the dot is SOLID — only the
++                       connector above carries the 0.6 opacity. */}
++                   &lt;circle
++                     data-testid=&quot;vector-path-handle&quot;
++                     cx={point.x}
++                     cy={point.y}
++                     r={handleRadiusPx}
++                     fill={OWNED_CONTROL_COLOR}
++                     vectorEffect=&quot;non-scaling-stroke&quot;
++                   /&gt;
++                 &lt;/g&gt;
++               );
++             })}
++           &lt;/g&gt;
++         );
++       })}
++     &lt;/g&gt;
++   );
++ }
++
++ // --- The component --------------------------------------------------------
++
++ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | null {
++   // Handlers ride a ref so the window listener always calls the latest pair.
++   const handlersRef = useRef&lt;VectorPathGestureHandlers&gt;({
++     onCommitPath: props.onCommitPath,
++     onCancelPath: props.onCancelPath,
++   });
++   handlersRef.current = {
++     onCommitPath: props.onCommitPath,
++     onCancelPath: props.onCancelPath,
++   };
++   // The edit key&apos;s host seam rides its own ref, like the draft handlers above.
++   const editKeyHandlersRef = useRef&lt;VectorPathEditKeyHandlers&gt;({
++     getRecordedStrokes: props.getRecordedStrokes,
++     onPathEdit: props.onPathEdit,
++   });
++   editKeyHandlersRef.current = {
++     getRecordedStrokes: props.getRecordedStrokes,
++     onPathEdit: props.onPathEdit,
++   };
++   // The in-flight anchor / handle drag (path edit). A ref so the pointer
++   // handlers never re-render the surface mid-gesture; the visual preview
++   // travels on a signal.
++   const dragRef = useRef&lt;PathEditDragState | null&gt;(null);
++   // 61-28 (CR-01): the overlay&apos;s own element. The edit-lifetime effect below
++   // reaches the captured pointer through this ref — the pointer handlers that
++   // would otherwise release it are unbound the moment the edit closes.
++   const surfaceRef = useRef&lt;HTMLDivElement | null&gt;(null);
++
++   // Narrow reads: this leaf is the only subscriber to the session latches.
++   const penActive = vectorPenActive.value;
++   const editMutationId = pathEditMutationId.value;
++   // The recorded registry is a non-reactive getter — this revision read is
++   // what repaints the paths after a record / delete / key remap.
++   void aquarelleStrokesRevision.value;
++   // Counter-scaling law: screen-pixel chrome divides by the effective zoom.
++   const scale = finiteScale(physicsPaintCanvasZoom.effectiveScale.value);
++   const draft = vectorDrawDraft.value;
++   const editDrag = vectorPathEditDrag.value;
++   // 61-13 (D-16): the session-only wireframe latch. This leaf is the narrow
++   // subscriber; the Studio never reads it in its own render body.
++   const wireframe = wireframeMode.value;
++   // 61-22 (G-11): the anchor selection is written by the path-edit pointer
++   // handlers (through `.peek()`); this render-body read is the ONE subscriber
++   // that turns it into visible chrome. Pure read: no write, no effect.
++   const anchorSelection = vectorAnchorSelection.value;
++
++   // Path edit (61-10): resolve the stroke the session names. The id is a
++   // session string and the registry is keyed by number, so the match is
++   // explicit and fails closed when it cannot be read.
++   const recordedStrokes = props.getRecordedStrokes();
++   let editTargetMutationId: number | null = null;
++   let editTargetAnchors: readonly VectorAnchor[] | null = null;
++   if (editMutationId !== null) {
++     for (const [mutationId, candidate] of recordedStrokes) {
++       if (String(mutationId) !== editMutationId) continue;
++       if (isAquarelleStrokeDeleted(mutationId)) continue;
++       const candidateAnchors = candidate.anchors;
++       if (candidateAnchors === undefined || candidateAnchors.length === 0) continue;
++       editTargetMutationId = mutationId;
++       editTargetAnchors = candidateAnchors;
++       break;
++     }
++   }
++
++   useEffect(() =&gt; {
++     // The draft keys live while the pen is latched; the edit keys live while
++     // a path edit is open. Both are primitives, so the listener rebinds only
++     // when one of the two states flips (efx-preact-reactivity).
++     if (!penActive &amp;&amp; editMutationId === null) return;
++     const onKeyDown = (event: KeyboardEvent) =&gt; {
++       // Capture phase on `window` sees keystrokes meant for a dialog field, so
++       // the dispatcher yields to a text-entry target before either handler
++       // runs (61-16 / G-4).
++       handleVectorPathWindowKey(event, handlersRef.current, editKeyHandlersRef.current);
++     };
++     window.addEventListener(&apos;keydown&apos;, onKeyDown, true);
++     return () =&gt; {
++       window.removeEventListener(&apos;keydown&apos;, onKeyDown, true);
++     };
++   }, [penActive, editMutationId]);
++
++   useEffect(() =&gt; {
++     // 61-28 (CR-01) — the edit-lifetime law: a drag belongs to the edit that
++     // opened it. Two cases end it here — the edit CLOSED (the latch went null),
++     // and the edit RETARGETED to another stroke. Both are cancelled, never
++     // flushed: an abandoned gesture must not write anchors into any stroke, so
++     // this effect commits nothing. It releases the pointer the gesture
++     // captured, which no pointer handler can do once the edit is closed.
++     const drag = dragRef.current;
++     if (drag === null) return;
++     // The drag still belongs to the open edit: this render is unrelated, and a
++     // live gesture is never cleared by it.
++     if (editMutationId !== null &amp;&amp; String(drag.mutationId) === editMutationId) return;
++     dragRef.current = null;
++     // Compare-then-write (efx-preact-reactivity): an already-clear preview is
++     // not written again.
++     if (vectorPathEditDrag.peek() !== null) vectorPathEditDrag.value = null;
++     releasePointerCapture(surfaceRef.current, drag.pointerId);
++   }, [editMutationId]);
++
++   const playFrame = props.getPlayFrame();
++   // 61-UAT: spines, anchors, handles and rungs are CONSTRUCTION chrome, never
++   // part of the render. Drawing them whenever a frame holds vector strokes put
++   // every path&apos;s skeleton on top of the painted result, so there was no view of
++   // the final frame at all. They are shown only in the three states that are
++   // about construction: drawing a path, editing one, or the wireframe view.
++   const showStructure = penActive || editTargetMutationId !== null || wireframe;
++   const recorded: DrawnVectorPath[] = [];
++   for (const [mutationId, stroke] of (showStructure ? recordedStrokes : [])) {
++     if (isAquarelleStrokeDeleted(mutationId)) continue;
++     if ((stroke.playFrame ?? 0) !== playFrame) continue;
++     // The vector-ness law: no anchors = a hand-painted stroke, nothing drawn.
++     // The live drag preview replaces the edited stroke&apos;s own anchors.
++     const anchors = editDrag !== null &amp;&amp; editDrag.mutationId === mutationId
++       ? editDrag.anchors
++       : stroke.anchors;
++     if (anchors === undefined || anchors.length === 0) continue;
++     const drawn = drawnPathOf(`stroke-${mutationId}`, anchors, props.width, props.height, {
++       // The wireframe always shows the swept envelope, uniform profile or not.
++       alwaysEnvelope: wireframe,
++       color: typeof stroke.color === &apos;string&apos; &amp;&amp; stroke.color.length &gt; 0 ? stroke.color : null,
++       // The open path edit is the live target and wears the louder chrome.
++       selected: editMutationId !== null &amp;&amp; String(mutationId) === editMutationId,
++     });
++     if (drawn === null) continue;
++     recorded.push(drawn);
++   }
++   const draftPath = draft === null || draft.anchors.length === 0
++     ? null
++     : drawnPathOf(&apos;draft&apos;, draft.anchors, props.width, props.height, {
++       alwaysEnvelope: wireframe,
++       selected: penActive,
++     });
++   // 61-21 (IN-01): the live rubber band to the cursor — display-only.
++   const draftPreviewPoints = draftPreviewPointsOf(draft, props.width, props.height);
++
++   if (recorded.length === 0 &amp;&amp; draftPath === null &amp;&amp; !penActive &amp;&amp; editTargetMutationId === null) {
++     return null;
++   }
++
++   // Draw and path edit are mutually exclusive (D-06): the pen owns the surface
++   // while it is latched with no path edit open; an open path edit owns it
++   // otherwise, even with the pen released.
++   const drawInteractive = penActive &amp;&amp; editMutationId === null;
++   const editInteractive = editTargetMutationId !== null &amp;&amp; editTargetAnchors !== null;
++   const interactive = drawInteractive || editInteractive;
++
++   const canvasPointOf = (event: TargetedPointerEvent&lt;HTMLDivElement&gt;): CanvasPoint | null =&gt; {
++     const target = event.currentTarget as HTMLElement | null;
++     const rect = target === null ? undefined : target.getBoundingClientRect();
++     if (rect === undefined || !(rect.width &gt; 0) || !(rect.height &gt; 0)) return null;
++     // Same client-rect → viewBox law the shipped stroke overlay uses.
++     const x = (event.clientX - rect.left) * (props.width / rect.width);
++     const y = (event.clientY - rect.top) * (props.height / rect.height);
++     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
++     return { x, y };
++   };
++
++   const pointerUvOf = (event: TargetedPointerEvent&lt;HTMLDivElement&gt;): Vec2 | null =&gt; {
++     const point = canvasPointOf(event);
++     if (point === null) return null;
++     const uv = screenToUv(point, props.width, props.height);
++     // T-61-28: a non-finite pointer sample never reaches the draft.
++     return Number.isFinite(uv.x) &amp;&amp; Number.isFinite(uv.y) ? uv : null;
++   };
++
++   const pointDistancePx = (a: CanvasPoint, b: CanvasPoint): number =&gt; Math.hypot(a.x - b.x, a.y - b.y);
++
++   /**
++    * 61-21 (IN-01): the draw state&apos;s pointer move writes the preview station
++    * through the ONE session writer. It never places an anchor, records a
++    * stroke or starts a bake — a move is not a gesture (D-06). No
++    * `preventDefault`/`stopPropagation`: nothing about a move is claimed.
++    */
++   const handleDraftPointerMove = (event: TargetedPointerEvent&lt;HTMLDivElement&gt;) =&gt; {
++     const pointerUv = pointerUvOf(event);
++     if (pointerUv === null) return;
++     moveVectorDraftCursor(pointerUv);
++   };
++
++   const handlePointerDown = (event: TargetedPointerEvent&lt;HTMLDivElement&gt;) =&gt; {
++     if (event.button !== 0) return;
++     // The overlay owns the gesture: no pointer reaches the engine canvas.
++     event.preventDefault();
++     event.stopPropagation();
++     const pointerUv = pointerUvOf(event);
++     if (pointerUv === null) return;
++     const current = vectorDrawDraft.peek();
++     if (current !== null &amp;&amp; current.anchors.length &gt;= 2) {
++       // A click on the FIRST anchor finishes the path THERE — no closing
++       // anchor is appended, so the committed path has no duplicate station.
++       const first = current.anchors[0];
++       if (first !== undefined) {
++         const firstPoint = uvToScreen(first, props.width, props.height);
++         const pointer = uvToScreen(pointerUv, props.width, props.height);
++         if (pointDistancePx(pointer, firstPoint) * scale &lt; FIRST_ANCHOR_HIT_PX) {
++           finishVectorPath(handlersRef.current);
++           return;
++         }
++       }
++     }
++     // T-61-29: a duplicate click is REFUSED, never appended.
++     if (current !== null &amp;&amp; isAdjacentToLast(current.anchors, pointerUv, props.width, props.height, scale)) {
++       return;
++     }
++     const anchor: VectorDraftAnchor = event.altKey
++       ? {
++         x: pointerUv.x,
++         y: pointerUv.y,
++         kind: &apos;bezier&apos;,
++         in: { x: pointerUv.x, y: pointerUv.y },
++         out: { x: pointerUv.x, y: pointerUv.y },
++       }
++       : { x: pointerUv.x, y: pointerUv.y, kind: &apos;auto&apos; };
++     appendVectorDraftAnchor(anchor);
++   };
++
++   const handleDoubleClick = (event: { preventDefault: () =&gt; void; stopPropagation: () =&gt; void }) =&gt; {
++     event.preventDefault();
++     event.stopPropagation();
++     finishVectorPath(handlersRef.current);
++   };
++
++   // --- Path edit (61-10): the anchor / handle drag ------------------------
++
++   /**
++    * The chord segment under the pointer, in screen pixels. The spine&apos;s true
++    * curve is the evaluator&apos;s; hit-testing the CHORD is the documented
++    * approximation this overlay has always used (`pointToSegmentDistancePx`),
++    * and the inserted anchor is still projected onto the evaluated curve.
++    */
++   const spineSegmentAt = (
++     anchors: readonly VectorAnchor[],
++     pointerUv: Vec2,
++   ): number | null =&gt; {
++     const pointer = uvToScreen(pointerUv, props.width, props.height);
++     let best: number | null = null;
++     let bestDistance = Number.POSITIVE_INFINITY;
++     for (let index = 0; index &lt; anchors.length - 1; index += 1) {
++       const start = anchors[index];
++       const end = anchors[index + 1];
++       if (start === undefined || end === undefined) continue;
++       const distance = pointToSegmentDistancePx(
++         pointer,
++         uvToScreen(start, props.width, props.height),
++         uvToScreen(end, props.width, props.height),
++       ) * scale;
++       if (distance &gt; ANCHOR_HIT_PAD_PX || distance &gt;= bestDistance) continue;
++       bestDistance = distance;
++       best = index;
++     }
++     return best;
++   };
++
++   const startEditDrag = (event: TargetedPointerEvent&lt;HTMLDivElement&gt;) =&gt; {
++     if (event.button !== 0) return;
++     // 61-28 (CR-01) — the start-of-gesture law: a press ALWAYS ends the gesture
++     // before it, even a press that hits nothing. An abandoned drag otherwise
++     // survives inside the mounted leaf and rides a later release into a commit;
++     // the pointer it captured is released here with it. Compare-then-write, so
++     // a press with no open drag writes nothing.
++     const previousDrag = dragRef.current;
++     if (previousDrag !== null) {
++       dragRef.current = null;
++       if (vectorPathEditDrag.peek() !== null) vectorPathEditDrag.value = null;
++       releasePointerCapture(event.currentTarget, previousDrag.pointerId);
++     }
++     if (editTargetMutationId === null || editTargetAnchors === null) return;
++     event.preventDefault();
++     event.stopPropagation();
++     const pointerUv = pointerUvOf(event);
++     if (pointerUv === null) return;
++     const handles = resolveAnchorHandles(editTargetAnchors);
++     const target = hitTestVectorPath(
++       editTargetAnchors,
++       handles,
++       pointerUv,
++       props.width,
++       props.height,
++       scale,
++     );
++
++     if (target !== null &amp;&amp; target.kind !== &apos;anchor&apos;) {
++       // Handle drag: the endpoint follows the pointer; the partner mirrors
++       // about the anchor unless Alt breaks the coupling for this drag.
++       const anchor = editTargetAnchors[target.index];
++       if (anchor === undefined || anchor.kind !== &apos;bezier&apos;) return;
++       dragRef.current = {
++         kind: &apos;handle&apos;,
++         mutationId: editTargetMutationId,
++         index: target.index,
++         side: target.kind === &apos;handle-in&apos; ? &apos;in&apos; : &apos;out&apos;,
++         anchorsAtStart: editTargetAnchors,
++         pointerId: event.pointerId,
++         moved: false,
++         latest: editTargetAnchors,
++       };
++       // The drag owns the pointer from the press: a move or release that lands
++       // outside the overlay still reaches this element (CR-01).
++       capturePointer(event.currentTarget, event.pointerId);
++       vectorPathEditDrag.value = { mutationId: editTargetMutationId, anchors: editTargetAnchors };
++       return;
++     }
++
++     if (target !== null) {
++       // Anchor grab: the press writes the ONE selection (additive on
++       // Shift / Cmd / Ctrl), then D-03 promotes BEFORE any movement so a
++       // grab-and-release still commits the promoted shape.
++       const current = editTargetAnchors[target.index];
++       if (current === undefined) return;
++       const additive = event.shiftKey || event.metaKey || event.ctrlKey;
++       setVectorAnchorSelection(
++         selectAnchor(vectorAnchorSelection.peek(), target.index, additive),
++       );
++       const promoted = promoteAnchorForDrag(editTargetAnchors, target.index);
++       dragRef.current = {
++         kind: &apos;anchor&apos;,
++         mutationId: editTargetMutationId,
++         index: target.index,
++         startUv: pointerUv,
++         anchorsAtStart: promoted,
++         wasPromoted: current.kind !== &apos;bezier&apos;,
++         pointerId: event.pointerId,
++         moved: false,
++         latest: promoted,
++       };
++       // The drag owns the pointer from the press: a move or release that lands
++       // outside the overlay still reaches this element (CR-01).
++       capturePointer(event.currentTarget, event.pointerId);
++       vectorPathEditDrag.value = { mutationId: editTargetMutationId, anchors: promoted };
++       return;
++     }
++
++     // A click on the spine inserts ONE anchor, committed immediately — a
++     // click is a completed gesture, so no drag state is opened and no pointer
++     // capture is taken (there is no later move or release to route). The
++     // inserted anchor becomes the selection.
++     const segment = spineSegmentAt(editTargetAnchors, pointerUv);
++     if (segment === null) return;
++     const next = insertAnchorOnSegment(editTargetAnchors, segment, pointerUv);
++     if (next.length === editTargetAnchors.length) return;
++     setVectorAnchorSelection([segment + 1]);
++     props.onPathEdit(editTargetMutationId, next);
++   };
++
++   const continueEditDrag = (event: TargetedPointerEvent&lt;HTMLDivElement&gt;) =&gt; {
++     const drag = dragRef.current;
++     if (drag === null) return;
++     // 61-28 (CR-01): a drag whose stroke is no longer the open edit&apos;s target
++     // can neither preview nor commit. The cleanup effect owns the clearing;
++     // this guard makes a same-tick stray event harmless.
++     if (editTargetMutationId === null || drag.mutationId !== editTargetMutationId) return;
++     const pointerUv = pointerUvOf(event);
++     if (pointerUv === null) return;
++
++     if (drag.kind === &apos;handle&apos;) {
++       // Absolute: the endpoint IS the pointer, so a dropped move cannot drift
++       // it. Alt is read per move — the coupling breaks while it is held.
++       const next = moveHandleTo(drag.anchorsAtStart, drag.index, drag.side, pointerUv, event.altKey);
++       const startPoint = drag.anchorsAtStart[drag.index]?.[drag.side];
++       const movedPoint = next[drag.index]?.[drag.side];
++       const distancePx = startPoint !== undefined &amp;&amp; movedPoint !== undefined
++         ? Math.hypot(
++           (movedPoint.x - startPoint.x) * props.width,
++           (movedPoint.y - startPoint.y) * props.height,
++         ) * scale
++         : 0;
++       drag.latest = next;
++       if (distancePx &gt; DRAG_THRESHOLD_PX) drag.moved = true;
++       vectorPathEditDrag.value = { mutationId: drag.mutationId, anchors: next };
++       return;
++     }
++
++     // Absolute delta from the gesture start — never accumulated per move, so a
++     // dropped pointer event cannot drift the anchor.
++     const dx = pointerUv.x - drag.startUv.x;
++     const dy = pointerUv.y - drag.startUv.y;
++     const distancePx = Math.hypot(dx * props.width, dy * props.height) * scale;
++     const next = moveAnchorBy(drag.anchorsAtStart, drag.index, dx, dy);
++     drag.latest = next;
++     if (distancePx &gt; DRAG_THRESHOLD_PX) drag.moved = true;
++     vectorPathEditDrag.value = { mutationId: drag.mutationId, anchors: next };
++   };
++
++   const finishEditDrag = (event?: TargetedPointerEvent&lt;HTMLDivElement&gt;) =&gt; {
++     const drag = dragRef.current;
++     if (drag === null) return;
++     // 61-28 (CR-01): the same target law as continueEditDrag — a non-matching
++     // drag is refused before any clear, any commit and any release. A release
++     // never flushes an abandoned gesture.
++     if (editTargetMutationId === null || drag.mutationId !== editTargetMutationId) return;
++     dragRef.current = null;
++     // Clear BEFORE the commit so a same-tick repeat gesture finds nothing
++     // (the T-61-30 clear-before-commit law).
++     vectorPathEditDrag.value = null;
++     if (drag.moved) {
++       props.onPathEdit(drag.mutationId, drag.latest);
++     } else if (drag.kind === &apos;anchor&apos; &amp;&amp; drag.wasPromoted) {
++       // A grab-and-release still commits the promotion (D-03); an already-bezier
++       // anchor that did not move is a no-op and commits nothing. A handle that
++       // did not move is a no-op too — there is no promotion to preserve.
++       props.onPathEdit(drag.mutationId, drag.anchorsAtStart);
++     }
++     // Release AFTER the commit decision, so the release can never swallow the
++     // edit (T-61-57). A pointer the element already lost is not released.
++     releasePointerCapture(event?.currentTarget, drag.pointerId);
++   };
++
++   const cancelEditDrag = (event?: TargetedPointerEvent&lt;HTMLDivElement&gt;) =&gt; {
++     const drag = dragRef.current;
++     dragRef.current = null;
++     vectorPathEditDrag.value = null;
++     if (drag !== null) releasePointerCapture(event?.currentTarget, drag.pointerId);
++   };
++
++   return (
++     &lt;div
++       data-testid=&quot;vector-path-overlay&quot;
++       // 61-28 (CR-01): the element the edit-lifetime effect releases from.
++       ref={surfaceRef}
++       style={{
++         position: &apos;absolute&apos;,
++         inset: &apos;0&apos;,
++         zIndex: VECTOR_PATH_Z_INDEX,
++         // Pass-through unless the pen or an open path edit owns the surface —
++         // the two states are mutually exclusive (D-06).
++         pointerEvents: interactive ? &apos;auto&apos; : &apos;none&apos;,
++         cursor: drawInteractive ? &apos;crosshair&apos; : &apos;default&apos;,
++       }}
++       onPointerDown={interactive ? (editInteractive ? startEditDrag : handlePointerDown) : undefined}
++       // 61-21 (IN-01): the move handler exists ONLY in the draw state; the
++       // edit drag keeps its own binding untouched.
++       onPointerMove={
++         editInteractive ? continueEditDrag : drawInteractive ? handleDraftPointerMove : undefined
++       }
++       onPointerUp={editInteractive ? finishEditDrag : undefined}
++       onPointerCancel={editInteractive ? cancelEditDrag : undefined}
++       // Preact&apos;s DOM event prop is `onDblClick`; it binds the real `dblclick`.
++       onDblClick={drawInteractive ? handleDoubleClick : undefined}
++     &gt;
++       &lt;svg
++         width=&quot;100%&quot;
++         height=&quot;100%&quot;
++         viewBox={`0 0 ${props.width} ${props.height}`}
++         preserveAspectRatio=&quot;none&quot;
++         style={{
++           position: &apos;absolute&apos;,
++           inset: &apos;0&apos;,
++           display: &apos;block&apos;,
++           pointerEvents: &apos;none&apos;,
++         }}
++       &gt;
++         {recorded.map((drawn) =&gt; renderPath(
++           drawn,
++           scale,
++           props.width,
++           props.height,
++           wireframe,
++           drawn.selected ? anchorSelection : [],
++         ))}
++         {/* 61-21 (IN-01): the provisional spine, drawn BEFORE the committed
++             draft path so the placed segments stay legible. */}
++         {draftPreviewPoints === null ? null : (
++           &lt;polyline
++             data-testid=&quot;vector-path-draft-preview&quot;
++             points={draftPreviewPoints}
++             fill=&quot;none&quot;
++             stroke={SELECTED_SPINE_COLOR}
++             strokeWidth={1}
++             strokeDasharray=&quot;4 3&quot;
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         )}
++         {draftPath === null ? null : renderPath(
++           draftPath,
++           scale,
++           props.width,
++           props.height,
++           wireframe,
++           draftPath.selected ? anchorSelection : [],
++         )}
++       &lt;/svg&gt;
++     &lt;/div&gt;
++   );
++ }
++
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:2048:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-31 G-20 - the overlay draws and edits through each path curve mode &gt; threads the mode through drawnPathOf and all four edit-helper call sites" time="0.002144208">
+            <failure message="expected &apos;function drawnPathOf(\n  key: string,…&apos; to contain &apos;const curveMode = options.curveMode ?…&apos;" type="AssertionError">
+AssertionError: expected &apos;function drawnPathOf(\n  key: string,…&apos; to contain &apos;const curveMode = options.curveMode ?…&apos;
+
+- Expected
++ Received
+
+- const curveMode = options.curveMode ?? DEFAULT_AQUARELLE_CURVE_MODE;
++ function drawnPathOf(
++   key: string,
++   anchors: readonly VectorAnchor[],
++   width: number,
++   height: number,
++   options: {
++     readonly alwaysEnvelope?: boolean;
++     readonly color?: string | null;
++     readonly selected?: boolean;
++   } = {},
++ ): DrawnVectorPath | null {
++   const normalised = normaliseVectorAnchors(anchors);
++   if (normalised.length === 0) return null;
++   return {
++     key,
++     anchors: normalised,
++     handles: resolveAnchorHandles(normalised),
++     projection: projectVectorPath(normalised, width, height, {
++       alwaysEnvelope: options.alwaysEnvelope === true,
++     }),
++     color: options.color ?? null,
++     selected: options.selected === true,
++   };
++ }
++
++
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:2089:27
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-31 G-20 - the overlay draws and edits through each path curve mode &gt; under Spline draws no handle dot and only circle anchors, leaving the Bezier chrome untouched" time="0.003783209">
+            <failure message="expected &apos;function renderPath(\n  drawn: DrawnV…&apos; to contain &apos;const { anchors, handles, projection,…&apos;" type="AssertionError">
+AssertionError: expected &apos;function renderPath(\n  drawn: DrawnV…&apos; to contain &apos;const { anchors, handles, projection,…&apos;
+
+- Expected
++ Received
+
+- const { anchors, handles, projection, color, selected, curveMode } = drawn;
++ function renderPath(
++   drawn: DrawnVectorPath,
++   scale: number,
++   width: number,
++   height: number,
++   wireframe: boolean,
++   selectedAnchors: readonly number[],
++ ): JSX.Element {
++   const { anchors, handles, projection, color, selected } = drawn;
++   const spinePoints = projection.spine.map((point) =&gt; `${point.x},${point.y}`).join(&apos; &apos;);
++   const envelope = projection.envelope.length &lt; 3
++     ? null
++     : `M${projection.envelope.map((point) =&gt; `${point.x},${point.y}`).join(&apos; L&apos;)} Z`;
++   const anchorSizePx = ANCHOR_BODY_PX / scale;
++   const coreRadiusPx = ANCHOR_CORE_RADIUS_PX / scale;
++   const handleRadiusPx = HANDLE_BODY_PX / 2 / scale;
++   // 61-25 (UI-03): BOTH envelope branches follow the colour table&apos;s band law —
++   // the stroke&apos;s own colour (the pen draft has none, so it falls back to the
++   // vector accent), fill 0.14 selected / 0.07 unselected, edge 3.5 / 1.5, and
++   // no extra stroke opacity.
++   const envelopeColor = color ?? SELECTED_SPINE_COLOR;
++   const markerStroke = wireframe ? OUTLINE_DARK : OUTLINE_LIGHT;
++
++   return (
++     &lt;g key={drawn.key}&gt;
++       {envelope === null ? null : (
++         &lt;path
++           data-testid=&quot;vector-path-envelope&quot;
++           d={envelope}
++           fill={envelopeColor}
++           fillOpacity={selected ? 0.14 : 0.07}
++           stroke={envelopeColor}
++           strokeWidth={selected ? 3.5 : 1.5}
++           vectorEffect=&quot;non-scaling-stroke&quot;
++         /&gt;
++       )}
++       {wireframe ? (
++         selected ? (
++           &lt;polyline
++             data-testid=&quot;vector-path-spine&quot;
++             points={spinePoints}
++             fill=&quot;none&quot;
++             stroke={SELECTED_SPINE_COLOR}
++             strokeWidth={2}
++             strokeLinecap=&quot;round&quot;
++             strokeLinejoin=&quot;round&quot;
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         ) : (
++           &lt;&gt;
++             &lt;polyline
++               points={spinePoints}
++               fill=&quot;none&quot;
++               stroke={OUTLINE_DARK}
++               strokeWidth={2}
++               opacity={0.7}
++               strokeLinecap=&quot;round&quot;
++               strokeLinejoin=&quot;round&quot;
++               vectorEffect=&quot;non-scaling-stroke&quot;
++             /&gt;
++             &lt;polyline
++               data-testid=&quot;vector-path-spine&quot;
++               points={spinePoints}
++               fill=&quot;none&quot;
++               stroke={OUTLINE_LIGHT}
++               strokeWidth={1}
++               opacity={0.9}
++               strokeLinecap=&quot;round&quot;
++               strokeLinejoin=&quot;round&quot;
++               vectorEffect=&quot;non-scaling-stroke&quot;
++             /&gt;
++           &lt;/&gt;
++         )
++       ) : (
++         &lt;&gt;
++           &lt;polyline
++             points={spinePoints}
++             fill=&quot;none&quot;
++             stroke={OUTLINE_DARK}
++             strokeWidth={3}
++             strokeLinecap=&quot;round&quot;
++             strokeLinejoin=&quot;round&quot;
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++           &lt;polyline
++             data-testid=&quot;vector-path-spine&quot;
++             points={spinePoints}
++             fill=&quot;none&quot;
++             stroke={SELECTED_SPINE_COLOR}
++             strokeWidth={SPINE_STROKE_PX}
++             strokeLinecap=&quot;round&quot;
++             strokeLinejoin=&quot;round&quot;
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         &lt;/&gt;
++       )}
++       {wireframe
++         ? projection.anchors.map((point, index) =&gt; {
++           const anchor = anchors[index];
++           // D-10/D-15: a rung exists ONLY where the anchor carries an
++           // explicit width factor — the sparse representation made visible.
++           if (anchor === undefined || anchor.width === undefined) return null;
++           const before = projection.anchors[Math.max(0, index - 1)] ?? point;
++           const after = projection.anchors[Math.min(projection.anchors.length - 1, index + 1)] ?? point;
++           let tx = after.x - before.x;
++           let ty = after.y - before.y;
++           const length = Math.hypot(tx, ty);
++           if (!(length &gt; 0)) {
++             tx = 1;
++             ty = 0;
++           } else {
++             tx /= length;
++             ty /= length;
++           }
++           // The rung spans the envelope&apos;s local cross-section: the same base
++           // half-width the envelope sweep uses, at this anchor&apos;s factor.
++           const half = VECTOR_ENVELOPE_BASE_UV * height * clampAnchorWidth(anchor.width);
++           const offsetX = -ty * half;
++           const offsetY = tx * half;
++           return (
++             &lt;g key={`rung-${index}`} data-testid=&quot;vector-path-rung&quot;&gt;
++               &lt;line
++                 x1={point.x - offsetX}
++                 y1={point.y - offsetY}
++                 x2={point.x + offsetX}
++                 y2={point.y + offsetY}
++                 stroke={OUTLINE_DARK}
++                 strokeWidth={1.5}
++                 opacity={0.55}
++                 vectorEffect=&quot;non-scaling-stroke&quot;
++               /&gt;
++               &lt;line
++                 x1={point.x - offsetX}
++                 y1={point.y - offsetY}
++                 x2={point.x + offsetX}
++                 y2={point.y + offsetY}
++                 stroke={OUTLINE_LIGHT}
++                 strokeWidth={1}
++                 opacity={0.9}
++                 vectorEffect=&quot;non-scaling-stroke&quot;
++               /&gt;
++             &lt;/g&gt;
++           );
++         })
++         : null}
++       {projection.anchors.map((point, index) =&gt; {
++         const anchor = anchors[index];
++         if (anchor === undefined) return null;
++         return anchor.kind === &apos;bezier&apos; ? (
++           &lt;rect
++             key={`anchor-${index}`}
++             data-testid=&quot;vector-path-anchor&quot;
++             x={point.x - anchorSizePx / 2}
++             y={point.y - anchorSizePx / 2}
++             width={anchorSizePx}
++             height={anchorSizePx}
++             fill={OWNED_CONTROL_COLOR}
++             stroke={markerStroke}
++             strokeWidth={1}
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         ) : (
++           &lt;circle
++             key={`anchor-${index}`}
++             data-testid=&quot;vector-path-anchor&quot;
++             cx={point.x}
++             cy={point.y}
++             r={coreRadiusPx}
++             fill={SELECTED_SPINE_COLOR}
++             stroke={markerStroke}
++             strokeWidth={1}
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         );
++       })}
++       {/* 61-22 (G-11): the missing feedback for `vectorAnchorSelection` — one
++           accent ring per selected index, drawn over the anchor marker. The
++           index space is `drawnPathOf`&apos;s normalised anchor list, the same list
++           the selection was resolved from; a missing point fails closed. */}
++       {selectedAnchors.map((index) =&gt; {
++         const anchor = anchors[index];
++         const point = projection.anchors[index];
++         if (anchor === undefined || point === undefined) return null;
++         return anchor.kind === &apos;bezier&apos; ? (
++           &lt;rect
++             key={`anchor-selection-${index}`}
++             data-testid=&quot;vector-path-anchor-selection&quot;
++             x={point.x - (anchorSizePx + 6) / 2}
++             y={point.y - (anchorSizePx + 6) / 2}
++             width={anchorSizePx + 6}
++             height={anchorSizePx + 6}
++             fill=&quot;none&quot;
++             stroke={SELECTED_SPINE_COLOR}
++             strokeWidth={1.5}
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         ) : (
++           &lt;circle
++             key={`anchor-selection-${index}`}
++             data-testid=&quot;vector-path-anchor-selection&quot;
++             cx={point.x}
++             cy={point.y}
++             r={coreRadiusPx + 3}
++             fill=&quot;none&quot;
++             stroke={SELECTED_SPINE_COLOR}
++             strokeWidth={1.5}
++             vectorEffect=&quot;non-scaling-stroke&quot;
++           /&gt;
++         );
++       })}
++       {anchors.map((anchor, index) =&gt; {
++         if (anchor.kind !== &apos;bezier&apos;) return null;
++         const resolved = handles[index];
++         const anchorPoint = projection.anchors[index];
++         if (resolved === undefined || anchorPoint === undefined) return null;
++         return (
++           &lt;g key={`handles-${index}`}&gt;
++             {([&apos;in&apos;, &apos;out&apos;] as const).map((side) =&gt; {
++               const at = resolved[side];
++               if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return null;
++               const point = uvToScreen(at, width, height);
++               return (
++                 &lt;g key={side}&gt;
++                   &lt;line
++                     x1={anchorPoint.x}
++                     y1={anchorPoint.y}
++                     x2={point.x}
++                     y2={point.y}
++                     stroke={OWNED_CONTROL_COLOR}
++                     strokeOpacity={HANDLE_OPACITY}
++                     strokeWidth={1}
++                     vectorEffect=&quot;non-scaling-stroke&quot;
++                   /&gt;
++                   {/* 61-25 (UI-03 / §6 item 5): the dot is SOLID — only the
++                       connector above carries the 0.6 opacity. */}
++                   &lt;circle
++                     data-testid=&quot;vector-path-handle&quot;
++                     cx={point.x}
++                     cy={point.y}
++                     r={handleRadiusPx}
++                     fill={OWNED_CONTROL_COLOR}
++                     vectorEffect=&quot;non-scaling-stroke&quot;
++                   /&gt;
++                 &lt;/g&gt;
++               );
++             })}
++           &lt;/g&gt;
++         );
++       })}
++     &lt;/g&gt;
++   );
++ }
++
++
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:2128:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-31 G-20 - the overlay draws and edits through each path curve mode &gt; renders a spline stroke through the spline evaluation while the same stroke without a mode renders Bezier" time="0.532902791">
+            <failure message="expected &apos;200,640 201.4983223326578,634.4556287…&apos; to be &apos;200,640 201.99335548172758,640 203.98…&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;200,640 201.4983223326578,634.4556287…&apos; to be &apos;200,640 201.99335548172758,640 203.98…&apos; // Object.is equality
+
+Expected: &quot;200,640 201.99335548172758,640 203.98671096345515,640 205.98006644518273,640 207.97342192691033,640 209.9667774086379,640 211.96013289036546,640 213.95348837209303,640 215.94684385382064,640 217.94019933554821,640 219.93355481727576,640 221.92691029900334,640 223.92026578073092,640 225.9136212624585,640 227.90697674418607,640 229.90033222591367,640 231.89368770764122,640 233.8870431893688,640 235.88039867109643,640 237.873754152824,640 239.86710963455155,640 241.8604651162791,640 243.85382059800668,640 245.8471760797343,640 247.84053156146186,640 249.8338870431894,640 251.82724252491695,640 253.82059800664453,640 255.81395348837216,640 257.8073089700997,640 259.8006644518273,640 261.7940199335548,640 263.7873754152823,640 265.78073089700996,640 267.7740863787376,640 269.7674418604651,640 271.76079734219275,640 273.7541528239203,640 275.7475083056479,640 277.7408637873755,640 279.73421926910305,640 281.7275747508306,640 283.7209302325582,640 285.71428571428584,640 287.70764119601336,640 289.7009966777409,640 291.6943521594685,640 293.687707641196,640 295.6810631229237,640 297.6744186046512,640 299.66777408637887,640 301.66112956810633,640 303.6544850498339,640 305.64784053156154,640 307.6411960132891,640 309.63455149501675,640 311.62790697674427,640 313.62126245847173,640 315.6146179401994,640 317.60797342192694,640 319.6013289036546,640 321.5946843853822,640 323.58803986710967,640 325.5813953488372,640 327.5747508305649,640 329.56810631229246,640 331.56146179402,640 333.55481727574755,640 335.54817275747513,640 337.54152823920265,640 339.53488372093034,640 341.52823920265786,640 343.5215946843854,640 345.514950166113,640 347.5083056478406,640 349.5016611295682,640 351.4950166112957,640 353.4883720930233,640 355.4817275747509,640 357.47508305647835,640 359.46843853820604,640 361.4617940199336,640 363.4551495016612,640 365.44850498338883,640 367.44186046511624,640 369.435215946844,640 371.42857142857144,640 373.4219269102991,640 375.41528239202665,640 377.4086378737542,640 379.40199335548186,640 381.3953488372094,640 383.3887043189369,640 385.3820598006645,640 387.375415282392,640 389.3687707641198,640 391.3621262458472,640 393.35548172757484,640 395.3488372093024,640 397.3421926910299,640 399.3355481727576,640 401.3289036544851,640 403.3222591362127,640 405.31561461794024,640 407.3089700996678,640 409.30232558139545,640 411.29568106312297,640 413.2890365448506,640 415.2823920265781,640 417.27574750830564,640 419.26910299003333,640 421.26245847176085,640 423.2558139534885,640 425.249169435216,640 427.24252491694347,640 429.2358803986712,640 431.2292358803987,640 433.22259136212625,640 435.2159468438539,640 437.20930232558135,640 439.2026578073091,640 441.19601328903656,640 443.1893687707642,640 445.1827242524917,640 447.17607973421923,640 449.1694352159469,640 451.1627906976745,640 453.156146179402,640 455.14950166112965,640 457.1428571428571,640 459.13621262458486,640 461.12956810631226,640 463.12292358803995,640 465.1162790697675,640 467.109634551495,640 469.10299003322274,640 471.09634551495014,640 473.0897009966778,640 475.0830564784054,640 477.07641196013293,640 479.06976744186056,640 481.0631229235881,640 483.05647840531566,640 485.04983388704323,640 487.0431893687708,640 489.0365448504984,640 491.0299003322259,640 493.02325581395354,640 495.0166112956812,640 497.0099667774087,640 499.0033222591363,640 500.99667774086384,640 502.99003322259136,640 504.983388704319,640 506.97674418604663,640 508.9700996677742,640 510.9634551495017,640 512.9568106312292,640 514.9501661129568,640 516.9435215946845,640 518.9368770764121,640 520.9302325581396,640 522.9235880398671,640 524.9169435215947,640 526.9102990033223,640 528.90365448505,640 530.8970099667774,640 532.890365448505,640 534.8837209302326,640 536.8770764119603,640 538.8704318936877,640 540.8637873754153,640 542.8571428571429,640 544.8504983388705,640 546.843853820598,640 548.8372093023257,640 550.8305647840532,640 552.8239202657808,640 554.8172757475083,640 556.810631229236,640 558.8039867109635,640 560.7973421926911,640 562.7906976744185,640 564.7840531561462,640 566.7774086378738,640 568.7707641196014,640 570.7641196013291,640 572.7574750830564,640 574.7508305647841,640 576.7441860465118,640 578.7375415282391,640 580.730897009967,640 582.7242524916944,640 584.717607973422,640 586.7109634551496,640 588.7043189368773,640 590.6976744186047,640 592.6910299003323,640 594.6843853820599,640 596.6777408637876,640 598.6710963455149,640 600.6644518272426,640 602.6578073089702,640 604.6511627906978,640 606.6445182724253,640 608.6378737541529,640 610.6312292358804,640 612.624584717608,640 614.6179401993356,640 616.6112956810632,640 618.6046511627908,640 620.5980066445184,640 622.5913621262459,640 624.5847176079735,640 626.5780730897011,640 628.5714285714286,640 630.5647840531561,640 632.5581395348837,640 634.5514950166114,640 636.5448504983389,640 638.5382059800667,640 640.5315614617941,640 642.5249169435217,640 644.5182724252492,640 646.5116279069767,640 648.5049833887044,640 650.498338870432,640 652.4916943521595,640 654.485049833887,640 656.4784053156147,640 658.4717607973423,640 660.4651162790698,640 662.4584717607976,640 664.4518272425249,640 666.4451827242526,640 668.4385382059801,640 670.4318936877079,640 672.4252491694353,640 674.4186046511629,640 676.4119601328905,640 678.405315614618,640 680.3986710963457,640 682.3920265780732,640 684.3853820598007,640 686.3787375415283,640 688.372093023256,640 690.3654485049835,640 692.358803986711,640 694.3521594684386,640 696.3455149501661,640 698.3388704318937,640 700.3322259136213,640 702.3255813953489,640 704.3189368770765,640 706.3122923588041,640 708.3056478405316,640 710.2990033222592,640 712.2923588039868,640 714.2857142857143,640 716.2790697674419,640 718.2724252491695,640 720.265780730897,640 722.2591362126246,640 724.2524916943522,640 726.2458471760798,640 728.2392026578074,640 730.232558139535,640 732.2259136212625,640 734.2192691029901,640 736.2126245847176,640 738.2059800664452,640 740.1993355481728,640 742.1926910299004,640 744.1860465116279,640 746.1794019933554,640 748.1727574750831,640 750.1661129568107,640 752.1594684385383,640 754.1528239202659,640 756.1461794019933,640 758.139534883721,640 760.1328903654485,640 762.1262458471762,640 764.1196013289037,640 766.1129568106313,640 768.1063122923588,640 770.0996677740864,640 772.0930232558139,640 774.0863787375415,640 776.0797342192691,640 778.0730897009967,640 780.0664451827242,640 782.0598006644518,640 784.0531561461794,640 786.046511627907,640 788.0398671096345,640 790.0332225913622,640 792.0265780730898,640 794.0199335548173,640 796.0132890365448,640 798.0066445182725,640 800,640&quot;
+Received: &quot;200,640 201.4983223326578,634.4556287304185 203.00323410656657,628.9850592028478 204.51470231951635,623.5879217925362 206.0326939692972,618.2638468747328 207.55717605369918,613.0124648246862 209.08811557051231,607.833406017645 210.62547951752674,602.7263008288578 212.1692348925326,597.6907796335735 213.7193486933197,592.7264728070406 215.27578791767826,587.8330107245081 216.83851956339836,583.0100237612245 218.40751062827005,578.2571422924384 219.98272811008334,573.5739966933986 221.56413900662835,568.9602173393538 223.15171031569514,564.4154346055526 224.74540903507366,559.9392788672438 226.34520216255416,555.5313804996763 227.9510566959266,551.1913698780983 229.562939632981,546.9188773777588 231.18081797150748,542.7135333739064 232.80465870929604,538.5749682417901 234.43442884413682,534.5028123566581 236.07009537381992,530.4966960937593 237.71162529613525,526.5562498283426 239.358985608873,522.6811039356566 241.0121433098232,518.8708887909498 242.67106539677582,515.125234769471 244.33571886752114,511.44377224646877 246.00607071984905,507.8261315971922 247.68208795154953,504.2719431968896 249.36373756041283,500.7808374208098 251.05098654422892,497.3524446442015 252.74380190078793,493.98639524231334 254.44215062787995,490.6823195903941 256.14599972329484,487.4398480636925 257.85531618482275,484.25861103745706 259.57006701025387,481.1382388869367 261.2902191973783,478.0783619873798 263.0157397439857,475.0786107140355 264.74659564786657,472.138615442152 266.4827539068108,469.2580065469784 268.22418151860836,466.43641440376314 269.9708454810496,463.67346938775506 271.72271279192427,460.9688018742029 273.47975044902256,458.3220422383551 275.24192545013454,455.7328208554605 277.00920479305023,453.2007681007679 278.78155547555986,450.72551434952584 280.5589444954532,448.3066899769831 282.3413388505206,445.94392535838836 284.12870553855186,443.63685086899045 285.92101155733724,441.3850968840377 287.7182239046668,439.18829377877904 289.5203095783304,437.04607192846333 291.3272355761183,434.95806170833885 293.13896889582054,432.9238934936546 294.95547653522704,430.9431976596594 296.7767254921281,429.01560458160145 298.6026827643135,427.14074463472986 300.4333153495735,425.31824819429323 302.2685902456982,423.5477456355402 304.10847445047744,421.82886733371953 305.95293496170143,420.1612436640799 307.80193877716033,418.54450500187 309.65545289464404,416.97828172233835 311.5134443119427,415.46220420073394 313.3758800268462,413.99590281230536 315.24272703714485,412.57900793230124 317.1139523406285,411.21114993597024 318.9895229350875,409.8919591985611 320.8694058183116,408.6210660953226 322.753567988091,407.3981010015034 324.6419764422158,406.2226942923521 326.534598178476,405.09447634311755 328.43140019466176,404.0130775290482 330.3323494885629,402.97812822539305 332.2374130579698,401.9892588074006 334.14655790067224,401.04609965031955 336.05975101446035,400.14828112939875 337.9769593971245,399.2954336198865 339.8981500464543,398.48718749703204 341.82328996024006,397.72317313608363 343.7523461362718,397.00302091229025 345.68528557233947,396.32636120090064 347.6220752662335,395.692824377163 349.5626822157434,395.10204081632656 351.50707341865973,394.5536408936396 353.45521587277227,394.0472549843512 355.40707657587114,393.5825134637099 357.3626225257465,393.15904670696426 359.3218207201882,392.7764850893632 361.28463815698643,392.4344589861553 363.25104183393137,392.1325987725892 365.2209987488128,391.8705348239137 367.1944758994212,391.64789751537717 369.17144028354613,391.4643172222289 371.1518588989781,391.3194243197171 373.1356987435069,391.21284918309084 375.12292681492255,391.14422218759853 377.11351011101544,391.11317370848866 379.10741562957526,391.11933412101047 381.10461036839234,391.1623338004124 383.1050613252565,391.241803121943 385.10873549795804,391.35737246085125 387.115599884287,391.50867219238546 389.1256214820332,391.6953326917948 391.13876728898697,391.9169843343276 393.15500430293815,392.1732574952327 395.1742995216769,392.46378254975883 397.19661994299355,392.78818987315447 399.2219325646776,393.1461098406687 401.2502043845197,393.53717282754974 403.2814024003094,393.96100920904667 405.31549360983706,394.41724936040805 407.35244501089284,394.90552365688234 409.3922236012664,395.42546247371877 411.43479637874816,395.97669618616555 413.4801303411282,396.5588551694716 415.5281924861961,397.17156979888574 417.57894981174263,397.8144704496562 419.63236931555724,398.4871874970321 421.6884179954304,399.18935131626193 423.7470628491519,399.9205922825946 425.80827087451195,400.68054077127846 427.8720090693007,401.4688271575625 429.9382444313079,402.2850818166955 432.0069439583239,403.1289351239257 434.07807464813874,404.0000174545021 436.1516034985422,404.89795918367355 438.22749750732487,405.82239068668827 440.30572367227614,406.7729423387956 442.3862489911867,407.7492445152435 444.4690404618461,408.75092759128125 446.55406508204464,409.7776219421574 448.64128984957273,410.82895794312026 450.73068176221966,411.90456596941925 452.82220781777613,413.00407639630237 454.91583501403204,414.1271195990187 457.0115303487773,415.2733259528169 459.10926081980216,416.44232583294547 461.2089934248964,417.63374961465337 463.3106951618504,418.84722767318897 465.41433302845405,420.0823903838014 467.5198740224975,421.33886812173904 469.62728514177076,422.6162912622504 471.73653338406376,423.9142901805849 473.8475857471669,425.2324952519904 475.96040922887005,426.57053685171604 478.0749708269632,427.9280453550104 480.1912375392365,429.3046511371221 482.30917636347993,430.6999845733003 484.4287542974837,432.11367603879313 486.5499383390376,433.54535590884956 488.6726954859322,434.9946545587181 490.796992735957,436.46120236364754 492.92279708690216,437.94462969888673 495.05007553655815,439.4445669396842 497.17879508271477,440.96064446128855 499.308922723162,442.49249263894865 501.44042545569,444.0397418479133 503.5732702780887,445.6020224634308 505.7074241881484,447.1789648607503 507.84285418365903,448.77019941512015 509.97952726241056,450.37535650178916 512.1174104221933,451.99406649600604 514.2564706607969,453.62595977301964 516.3966749760119,455.27066670807824 518.5379903656282,456.9278176764309 520.6803838274358,458.5970430533264 522.8238223592247,460.277973214013 524.968272958785,461.9702385337396 527.1137026239068,463.67346938775506 529.2600783523801,465.38729615130796 531.4073671419951,467.11134919964684 533.5555359905418,468.8452589080207 535.7045518958101,470.58865565167787 537.8543818555903,472.3411698058674 540.0049928676724,474.10243174583775 542.1563519298464,475.87207184683774 544.3084260399024,477.649720484116 546.4611821956305,479.4350080329213 548.6145873948207,481.2275648685021 550.768608635263,483.0270213661074 552.9232129147475,484.8330079009857 555.0783672310644,486.6451548483858 557.2340385820037,488.46309258355643 559.3901939653551,490.2864514817461 561.5468003789094,492.1148619182036 563.7038248204562,493.9479542681776 565.8612342877854,495.78535890691705 568.0189957786874,497.6267062096702 570.1770762909521,499.471626551686 572.3354428223695,501.31975030821314 574.4940623707299,503.1707078545002 576.6529019338233,505.0241295657961 578.8119285094396,506.87964581734946 580.9711090953688,508.7368869844087 583.1304106894013,510.59548344222287 585.2898002893268,512.4550655660405 587.4492448929354,514.3152637311103 589.6087114980177,516.175708312681 591.7681671023631,518.0360296860011 593.9275787037619,519.8958582263197 596.0869133000044,521.7548243088851 598.2461378888802,523.6125583089463 600.4052194681797,525.4686906017516 602.5641250356928,527.3228515625501 604.7228215892097,529.1746715665903 606.8812761265203,531.023780989121 609.0394556454149,532.8698102053906 611.1973271436833,534.7123895906483 613.3548576191157,536.5511495201423 615.5120140695021,538.3857203691216 617.6687634926328,540.2157325128348 619.8250728862974,542.0408163265306 621.9809092482863,543.8606021854577 624.1362395763895,545.6747204648647 626.2910308683971,547.4828015400004 628.4452501220991,549.2844757861135 630.5988643352856,551.0793735784528 632.7518405057465,552.8671252922667 634.904145631272,554.6473613028039 637.0557467096522,556.4197119853136 639.2066107386771,558.1838077150439 641.356704716137,559.9392788672438 643.5059956398214,561.6857558171621 645.6544505075208,563.4228689400471 647.8020363170252,565.1502486111478 649.9487200661247,566.8675252057128 652.0944687526094,568.5743290989909 654.239249374269,570.2702906662306 656.3830289288939,571.9550402826808 658.5257744142741,573.62820832359 660.6674528281998,575.289425164207 662.8080311684605,576.9383211797806 664.947476432847,578.5745267455592 667.0857556191488,580.197672236792 669.2228357251564,581.807388028727 671.3586837486596,583.4033044966134 673.4932666874483,584.9850520156998 675.6265515393129,586.5522609612349 677.7585053020434,588.1045617084671 679.8890949734298,589.6415846326455 682.018287551262,591.1629601090187 684.1460500333305,592.6683185128353 686.2723494174248,594.1572902193441 688.3971527013355,595.6295056037936 690.5204268828522,597.0845950414325 692.6421389597652,598.5221889075099 694.7622559298646,599.941917577274 696.8807447909404,601.3434114259737 698.9975725407827,602.7263008288578 701.1127061771814,604.0902161611749 703.2261126979266,605.4347877981735 705.3377591008086,606.7596461151027 707.4476123836173,608.0644214872109 709.5556395441427,609.3487442897467 711.6618075801749,610.6122448979592 713.7660834895041,611.8545536870968 715.8684342699202,613.0753010324081 717.9688269192133,614.2741173091421 720.0672284351734,615.4506328925473 722.1636058155908,616.6044781578723 724.2579260582553,617.7352834803661 726.3501561609571,618.8426792352772 728.4402631214862,619.9262957978543 730.5282139376328,620.9857635433461 732.6139756071866,622.0207128470013 734.697515127938,623.0307740840685 736.7787994976771,624.0155776297967 738.8577957141938,624.9747538594343 740.9344707752781,625.9079331482301 743.0087916787201,626.8147458714327 745.0807254223099,627.6948224042909 747.1502390038379,628.5477931220533 749.2172994210936,629.3732883999689 751.2818736718674,630.170938613286 753.3439287539492,630.9403741372535 755.4034316651291,631.6812253471201 757.4603494031973,632.3931226181342 759.5146489659437,633.075696325545 761.5662973511584,633.7285768446008 763.6152615566315,634.3513945505504 765.6615085801529,634.9437798186425 767.7050054195129,635.505363024126 769.7457190725014,636.0357745422492 771.7836165369088,636.5346447482611 773.8186648105246,637.0016040174104 775.8508308911393,637.4362827249455 777.8800817765426,637.8383112461155 779.9063844645251,638.2073199561686 781.9297059528762,638.542939230354 783.9500132393866,638.84479944392 785.9672733218459,639.1125309721156 787.9814531980444,639.3457641901894 789.992519865772,639.54412947339 792.0004403228189,639.7072571969661 794.0051815669751,639.8347777361665 796.0067105960305,639.9263214662398 798.0049944077756,639.9815187624347 800,640&quot;
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:2188:54
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

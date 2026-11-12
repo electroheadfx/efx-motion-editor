@@ -13,6 +13,10 @@
 //    · truncation: 4.7 -> 4; 0 is a valid salt
 //    · payload codec round-trip preserves the salt and the same seed
 //    · the engine-params projection stays inert to the key
+//
+//  61-03 adds the vector-path pins: `anchors` and `curveMode` are
+//  copied into the opaque engine block ONLY when present, so a plain
+//  stroke keeps its exact pre-vector key set (D-14 independence).
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
@@ -20,6 +24,8 @@ import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import { payloadCodec } from './codec'
 import { isAquarelleDryEvent } from './dryEvent'
 import { toEngineParams } from '../playground/params'
+import { ANCHOR_WIDTH_DEFAULT, isUniformWidthProfile } from '../vector/spine'
+import type { AquarelleAnchor } from './vectorPath'
 import {
   PAINT_SEED_SALT_PARAM,
   paintSeedSaltOf,
@@ -148,5 +154,133 @@ describe('paint seed salt persistence', () => {
     expect(toEngineParams({ size: 12, [PAINT_SEED_SALT_PARAM]: 3 })).toEqual(
       toEngineParams({ size: 12 }),
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 4. Vector path engine block (61-03 D-14)
+//
+//  The anchor list rides the opaque engine slot, which is the ONE
+//  persistence carrier. It is copied ONLY when present, so a plain
+//  hand-painted stroke keeps today's exact key set.
+// ---------------------------------------------------------------------------
+
+/** Key set of the engine block BEFORE this plan — pinned literally. */
+const PRE_VECTOR_ENGINE_KEYS = [
+  'tool',
+  'color',
+  'params',
+  'brushId',
+  'toolOverrides',
+  'mutationId',
+  'diffusionFrames',
+  'timestamp',
+  'playFrame',
+] as const
+
+const VECTOR_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 20, y: 32, kind: 'auto' },
+  { x: 44, y: 32, kind: 'bezier', in: { x: 40, y: 30 }, out: { x: 48, y: 34 } },
+]
+
+describe('vector path engine block (61-03 D-14)', () => {
+  it('copies anchors into the engine block unchanged', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ anchors: VECTOR_ANCHORS }))
+    expect(stroke.engine.anchors).toEqual(VECTOR_ANCHORS)
+  })
+
+  it('adds no key at all when the field is absent (byte-identical shape)', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke())
+    expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS])
+    expect('anchors' in stroke.engine).toBe(false)
+  })
+
+  it('round-trips a bezier anchor whose handles have zero length exactly', () => {
+    const cornerAnchors: readonly AquarelleAnchor[] = [
+      { x: 10, y: 10, kind: 'bezier', in: { x: 10, y: 10 }, out: { x: 10, y: 10 } },
+      { x: 20, y: 20, kind: 'bezier', in: { x: 20, y: 20 }, out: { x: 20, y: 20 } },
+    ]
+    const stroke = toStudioStroke(makeRuntimeStroke({ anchors: cornerAnchors }))
+    expect(stroke.engine.anchors).toEqual(cornerAnchors)
+    expect(stroke.engine.anchors?.[0]?.in).toEqual({ x: 10, y: 10 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 4b. Curve mode engine block (61-30 G-20)
+//
+//  `curveMode` rides the opaque engine slot, is copied ONLY when present,
+//  and lands AFTER the anchor member so a stroke that carries neither keeps
+//  today's key order.
+// ---------------------------------------------------------------------------
+
+describe('curve mode engine block (61-30 G-20)', () => {
+  it('copies a spline mode into the engine block unchanged', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ curveMode: 'spline' }))
+    expect(stroke.engine.curveMode).toBe('spline')
+    expect('anchors' in stroke.engine).toBe(false)
+    expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS, 'curveMode'])
+  })
+
+  it('invents no curveMode key when the field is absent (byte-identical shape)', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke())
+    expect('curveMode' in stroke.engine).toBe(false)
+    expect(Object.keys(stroke.engine)).toEqual([...PRE_VECTOR_ENGINE_KEYS])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 5. Sparse width projection through the engine block and the wire (D-10)
+// ---------------------------------------------------------------------------
+
+const THREE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0, y: 0, kind: 'auto' },
+  { x: 10, y: 0, kind: 'auto' },
+  { x: 20, y: 0, kind: 'auto' },
+]
+
+describe('sparse vector width projection (61-03 D-10)', () => {
+  it('writes no width key for a fully uniform stroke', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ anchors: THREE_ANCHORS }))
+    const anchors = stroke.engine.anchors ?? []
+    expect(anchors).toHaveLength(3)
+    expect(anchors.some((anchor) => 'width' in anchor)).toBe(false)
+    expect(isUniformWidthProfile(anchors)).toBe(true)
+  })
+
+  it('drops an explicit default factor through the engine block (uniform stores nothing)', () => {
+    const anchors = [
+      THREE_ANCHORS[0]!,
+      { ...THREE_ANCHORS[1]!, width: ANCHOR_WIDTH_DEFAULT },
+      THREE_ANCHORS[2]!,
+    ]
+    const stroke = toStudioStroke(makeRuntimeStroke({ anchors }))
+    expect(stroke.engine.anchors).toHaveLength(3)
+    expect(stroke.engine.anchors?.some((anchor) => 'width' in anchor)).toBe(false)
+  })
+
+  it('keeps exactly one width key when one of three anchors reads 1.8', () => {
+    const sparse = [THREE_ANCHORS[0]!, THREE_ANCHORS[1]!, { ...THREE_ANCHORS[2]!, width: 1.8 }]
+    const stroke = toStudioStroke(makeRuntimeStroke({ anchors: sparse }))
+    const anchors = stroke.engine.anchors ?? []
+    expect(anchors.filter((anchor) => 'width' in anchor)).toHaveLength(1)
+    expect(anchors[2]!.width).toBe(1.8)
+    expect('width' in anchors[0]!).toBe(false)
+    expect('width' in anchors[1]!).toBe(false)
+  })
+
+  it('preserves 1.8 and 0.3 with no clamp to 1 through the engine block and the wire codec', () => {
+    for (const factor of [1.8, 0.3]) {
+      const anchors = [THREE_ANCHORS[0]!, { ...THREE_ANCHORS[1]!, width: factor }, THREE_ANCHORS[2]!]
+      const stroke = toStudioStroke(makeRuntimeStroke({ anchors }))
+      expect(stroke.engine.anchors?.[1]?.width).toBe(factor)
+
+      const decoded = payloadCodec.parse(payloadCodec.serialize(stroke))
+      expect(decoded).not.toBeNull()
+      if (decoded === null || isAquarelleDryEvent(decoded)) {
+        throw new Error('expected the decoded event to be a stroke')
+      }
+      expect(decoded.engine.anchors?.[1]?.width).toBe(factor)
+    }
   })
 })

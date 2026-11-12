@@ -269,7 +269,9 @@ describe('Dry action button (D-15)', () => {
   it('rail Dry carries the UI-SPEC tooltip and the aquarelle-dry testid', () => {
     const railSource = readFileSync(resolve(__dirname, 'PhysicsPaintToolRail.tsx'), 'utf8');
     expect(railSource.indexOf('data-testid="aquarelle-dry"'), 'rail must host the Dry entry point').toBeGreaterThan(-1);
-    expect(railSource.indexOf(`title="${DRY_TOOLTIP}"`), 'rail Dry keeps the UI-SPEC copy').toBeGreaterThan(-1);
+    // 61-13: the UI-SPEC copy is the LIVE title; the wireframe latch swaps in
+    // its own reason while the construction view is up.
+    expect(railSource.indexOf(`'${DRY_TOOLTIP}'`), 'rail Dry keeps the UI-SPEC copy').toBeGreaterThan(-1);
   });
 
   it('is not inside AquarelleToolRow nor the module section (rail-only slot)', () => {

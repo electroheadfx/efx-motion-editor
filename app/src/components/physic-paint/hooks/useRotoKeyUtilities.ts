@@ -56,9 +56,23 @@ export interface RotoKeyUtilitiesInput {
    * `aborted` means the sequence already published its own error.
    */
   duplicateWithScript?: (input: { sourceKeyId: string; sourceAppFrame: number }) => Promise<RotoDuplicateWithScriptOutcome>;
+  /**
+   * 61-24 (G-15): record the PREVIOUS real key's watercolor script onto the key
+   * +Key just created. Record-only — the cloned bytes already equal
+   * base∘script, so the script is recorded, never applied or baked. Absent
+   * means today's +Key (paint only). Resolves the copy's success; a failure
+   * keeps the key and publishes the copy failure alone.
+   */
+  copyScriptToNewKey?: (input: { readonly sourceAppFrame: number; readonly destinationAppFrame: number }) => Promise<boolean>;
 }
 
 export type RotoDuplicateWithScriptOutcome = 'handled' | 'fallback' | 'aborted';
+
+/**
+ * 61-24 (G-15): the +Key copy failure is its own surface — the key WAS
+ * created, so the shipped "Could not add an empty Roto key." would be a lie.
+ */
+export const ROTO_ADD_KEY_SCRIPT_COPY_FAILED = 'The key was added, but its watercolor script could not be copied.';
 
 export interface RotoKeyUtilities {
   session: RotoSession;
@@ -409,7 +423,9 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
   // silently creating a blank key. Routes through the physical paste-to-empty
   // machinery so rail/segment derivation and the paste-key kind are preserved.
   const addKey = useCallback(async () => {
-    if (blocked) return;
+    // The ref mirrors `blocked` for the async tail: a second click while the
+    // key/copy sequence is still running must be refused synchronously.
+    if (blocked || keyActionInFlightRef.current) return;
     const actionState = session.actionAvailability.value;
     if (actionState.currentIsRealKey) {
       input.setApplyMessage('The current frame already has a real Roto key.');
@@ -428,18 +444,44 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     const payload = resolution.kind === 'clone'
       ? resolution.payload
       : toEmptyKeyPayload(await input.buildBlankRotoFrame(input.currentFrame), input.currentFrame);
+    keyActionInFlightRef.current = true;
     setKeyActionInFlight(true);
+    // 61-24 (G-15): the copy failure is published as itself — never as an add
+    // failure, and never by rolling the key back.
+    const publishCopyFailed = (): void => {
+      input.setApplyStatus('error');
+      input.setApplyMessage(ROTO_ADD_KEY_SCRIPT_COPY_FAILED);
+      input.setLastError(ROTO_ADD_KEY_SCRIPT_COPY_FAILED);
+    };
     // Quick 261019-mj2 UAT (D-07): a cloned key continues the previous real
     // key's rail; only the no-previous-key blank case opens a new segment.
     void input.physicalKeyUtilities.addEmptyKey(input.currentFrame, payload, {
       joinPreviousRail: resolution.kind === 'clone',
       allowRepeatRailInsert: true,
+    }).then(async (added) => {
+      // 61-24 (G-15): RECORD-ONLY. The cloned bytes already equal base∘script
+      // (`ensureAquarelleDurableBase` inverts them on the next durable edit),
+      // so re-applying the script would double-paint — the timeline is copied,
+      // never applied or baked. The copy belongs to the SUCCESS continuation so
+      // its rejection can never reach the shipped add-failure surface.
+      if (!added) return;
+      if (resolution.kind !== 'clone' || !input.copyScriptToNewKey) return;
+      try {
+        const copied = await input.copyScriptToNewKey({
+          sourceAppFrame: resolution.sourceAppFrame,
+          destinationAppFrame: input.currentFrame,
+        });
+        if (!copied) publishCopyFailed();
+      } catch {
+        publishCopyFailed();
+      }
     }).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       input.setApplyStatus('error');
       input.setApplyMessage('Could not add an empty Roto key.');
       input.setLastError(detail);
     }).finally(() => {
+      keyActionInFlightRef.current = false;
       setKeyActionInFlight(false);
     });
   }, [blocked, input, session]);

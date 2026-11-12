@@ -1,0 +1,980 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="381" failures="8" errors="0" time="0.48">
+    <testsuite name="src/components/physic-paint/PhysicsPaintStudio.test.ts" timestamp="2026-11-10T21:30:31.542Z" hostname="efx2.home" tests="375" failures="2" errors="0" skipped="0" time="0.119614708">
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; wires focused Roto script, Play Script, and cached playback controllers" time="0.0008305">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; installs the parent Roto authority listener in the app entry point" time="0.000113167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; installs the image-library request listener in the app entry point (49-04 picker)" time="0.0000995">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; keeps Save, Load/Paintbrush, Run Script, and cached Roto playback distinct" time="0.00011225">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; contains no obsolete separate Play workflow transport, persistence, launch, conversion, or CSS surface" time="0.008007375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; retains authoritative replacement, new Play Script, and cached Roto playback names" time="0.000219625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; extends Studio cached playback through the composite content extent (48-06 UAT-D)" time="0.000204292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; refreshes the current canvas immediately after accepted generated Group publications" time="0.000094292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; routes rail, keyboard, and sidebar Loop Clip edits through one Studio-local controller callback" time="0.000844166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; routes every paint-path document and record read through the live active track (47-01 multi-track)" time="0.000631">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; resets the track-scoped edit buffers on an in-place active-track switch (48-06 UAT-A)" time="0.000177375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; syncs the child document to the main window so track CRUD survives the project save (47-01 persistence)" time="0.001121792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Play Script integration contract &gt; the per-row frame-blending toggle ships to the parent through the physical coordinator (quick-260913-52r D)" time="0.000281458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38) &gt; derives accepted Groups from the canonical store and existing physicPaintVersion channel" time="0.001703334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38) &gt; routes Group Paint activation and completion by Group identity" time="0.00050725">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38) &gt; stamps records-only ownership rebuilds with the complete canonical revision" time="0.000117625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38) &gt; keeps deferred Group and Action editing surfaces absent from the accepted Studio UI" time="0.002544209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Group and Action cross-selection (43.2-15) &gt; derives deduplicated placement-ordered linked Groups from accepted Action identity" time="0.0001045">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Group and Action cross-selection (43.2-15) &gt; reveals only an available source Action when a stable Group is selected" time="0.000121292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Group and Action cross-selection (43.2-15) &gt; activates an Action without seeking or creating orange operation selection" time="0.000118334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Group and Action cross-selection (43.2-15) &gt; passes passive Action linkage to the Group Rail without changing selected Group scope" time="0.000326">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Group and Action cross-selection (43.2-15) &gt; projects one cursor-relative current Group without mutating the cursor" time="0.000225209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Group and Action cross-selection (43.2-15) &gt; navigates explicitly by placement without wrapping and seeks only after selecting the target Group" time="0.000146917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Group and Action cross-selection (43.2-15) &gt; wires zero, one, and many navigation through stable Actions inspector props" time="0.000300708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto rail and physical spacing selection wiring &gt; owns session-only physical and rail selection Signals without effect mirroring" time="0.000714792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto rail and physical spacing selection wiring &gt; makes rail and physical-key selection mutually exclusive in synchronous handlers" time="0.0003345">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto rail and physical spacing selection wiring &gt; publishes canonical null-key authority before activating Group selection" time="0.000127">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto rail and physical spacing selection wiring &gt; replaces the primary selection before publishing the complete Select All set" time="0.00010875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto rail and physical spacing selection wiring &gt; builds physical history snapshots from live launch, store, selection, and cursor authority" time="0.000173209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto rail and physical spacing selection wiring &gt; settles accepted move, Undo, and Redo through the shared Group-aware selection reducer" time="0.000175333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto rail and physical spacing selection wiring &gt; resets all spacing selection on launch replacement and session reset, while accepted spacing keeps identities" time="0.000306875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto rail and physical spacing selection wiring &gt; routes proxy gestures and clears active key selection when an empty frame is selected" time="0.000556625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto rail and physical spacing selection wiring &gt; clears the pre-paste single-rail/key selection when the pasted set becomes the active rail-set selection (UAT-4 Defect 2)" time="0.000249875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Key Rail selection authority (43.4-06) &gt; owns exact Key Rail identity as session-only Signal state" time="0.000369375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Key Rail selection authority (43.4-06) &gt; makes Key Rail, Group Rail, and physical selection mutually exclusive synchronously" time="0.000428208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Key Rail selection authority (43.4-06) &gt; clears Key Rail selection on launch replacement and Select All" time="0.0000575">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Key Rail selection authority (43.4-06) &gt; fails closed when accepted Key Rail identity no longer exactly matches canonical derivation" time="0.000336416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Key Rail selection authority (43.4-06) &gt; clears Key Rail selection when any physical key is selected (43.4 defect 3)" time="0.000074667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Key Rail selection authority (43.4-06) &gt; feeds classifier and strip paint from the reconciled selection with classified Rail deletion copy (261031-vbo)" time="0.000420292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Key Rail selection authority (43.4-06) &gt; pins the shared rail focus treatment on both :focus and :focus-visible — no selection box (43.4 defect 6/8, 47 close-out UAT round 10)" time="0.000201708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; owns the session-only rail-set Signal and clears it on launch replacement" time="0.000054542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; derives one canonical cross-type ordering authority for gestures and reconcile" time="0.0000925">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; reconciles the set against fresh ordering on every render and clears invalid sets (Pitfall 2)" time="0.000088042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; routes Loop Rail modifier gestures through the set reducer and collapses on plain (D-04)" time="0.000122459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; routes Key Rail modifier gestures through the set reducer and collapses on plain (D-04)" time="0.000118833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; seeds the set from the plain-selected single-rail signals on the first modifier gesture (43.6-08 M1)" time="0.000144083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; seeds the set from the live cross-type single-rail signal with key-rail-first ordering (43.6-10 WR-01)" time="0.000156292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; collapses the set as its own Escape layer before key-selection collapse (D-04)" time="0.000168458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; supplies no solo playback window or content-start port (261022-iff)" time="0.0005405">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; supplies the rail-selection playback RANGE at Play press (261022-jq0)" time="0.0001805">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; clears the set on Select All and spacing selection (D-04 key selection)" time="0.000106667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint multi-rail selection SET wiring (43.6-01) &gt; retires the white anchor tick from every Paint rail (v2.0.1 UAT)" time="0.00026175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-iff one global Solo: no per-track document solo route &gt; retires the document solo setter and the row-bundle solo intent" time="0.000599084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-mne session Solo persists through frame navigation and selection changes &gt; never disarms Solo from the mutation-lock effect" time="0.000071875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-mne session Solo persists through frame navigation and selection changes &gt; never disarms Solo from clearRotoLoopSelection" time="0.000084833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-mne session Solo persists through frame navigation and selection changes &gt; never disarms Solo from Select All or the rail and frame-cell handlers" time="0.00026025">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-mne session Solo persists through frame navigation and selection changes &gt; keeps exactly the launch-replacement and unmount Solo disarm call sites" time="0.0003005">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint selection-scoped Group deletion (43.2-17) &gt; wires direct Group lifecycle deletion and removes the routine scope-choice modal" time="0.000778292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint selection-scoped Group deletion (43.2-17) &gt; renders only the focused sole-occurrence Delete Frame warning" time="0.000575334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint selection-scoped Group deletion (43.2-17) &gt; keeps the sole-occurrence warning keyboard-safe and restores focus after Cancel, rejection, or acceptance" time="0.000658416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint selection-scoped Group deletion (43.2-17) &gt; submits the exact direct lifecycle command and waits for parent acceptance without moving cursor authority" time="0.00024325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto keyboard shortcut wiring &gt; shares the exact key utility references with keyboard and visible-button paths" time="0.000587125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Roto keyboard shortcut wiring &gt; advertises the Copy, Paste, Backspace, and Delete shortcuts" time="0.000047666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Studio loop placeholder contract (D-28, flattened-sourced) &gt; sources the playback availability memo structurally so Studio playback and the program monitor never diverge from the main editor (G-52-8)" time="0.000407083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Studio loop placeholder contract (D-28, flattened-sourced) &gt; keeps the availability memo deps and return shape so the playback transport consumer contract is unchanged" time="0.000058625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Studio loop placeholder contract (D-28, flattened-sourced) &gt; never offers a placeholder frame as key content — key identity derives from the projection cell only" time="0.000168083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; uses dedicated compat wrappers while keeping TopBar and Play Script dialog plain" time="0.000125333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; quick 261105-raf: wires the one-shot rail-conversion prompt beside the Play Script dialog" time="0.000691583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; keeps TopBar and dialog props identity-stable on frame-only Studio renders" time="0.000275375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; propagates the primitive open transition through the exact memoized dialog props contract" time="0.00053275">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; preserves focus and keyboard behavior beneath the memoized dialog boundary" time="0.000085958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; gates the complete physical mutation surface from the reactive lease registry" time="0.000255958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; keeps navigation-only mutation locking out of static Studio region identities" time="0.000127708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; moves the complete right-panel rail, shell, toggle, and inner panel into one memoized region" time="0.000181458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; gives the right-panel region stable frame-independent layout inputs and one counter owner" time="0.000176667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; keeps navigation-only status out of the right-panel identity boundary" time="0.000557917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; derives frame-sensitive Load and Apply availability inside the Scripts subscriber" time="0.00018975">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint navigation render localization &gt; keeps Undo and Redo count-free while preserving narrow availability-driven disabling" time="0.000153167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Canvas navigation render localization &gt; assembles stable CanvasStack and CanvasMount props with named callback boundaries" time="0.00074">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Canvas navigation render localization &gt; routes navigation-fresh engine and mutation behavior through stable implementation refs" time="0.000414833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Canvas navigation render localization &gt; keeps CanvasMount plain and mounts its dedicated wrapper from memoized CanvasStack" time="0.000098375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Workflow navigation render localization &gt; assembles Workflow with named stable callbacks instead of inline action closures" time="0.000934958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Workflow navigation render localization &gt; writes the document-level interpolation mode to EVERY track and preserves each track&apos;s enabled flag (260911-s1j)" time="0.000337416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Workflow navigation render localization &gt; keeps ordinary Workflow frame navigation outside physical edit, document replacement, and history authority" time="0.000393792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Workflow navigation render localization &gt; wires the seek path: skips the playback stop when playing and seeks after navigation (D-02)" time="0.000123041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Workflow navigation render localization &gt; wires the audible scrub path: scrubActiveRef gates seek vs scrub and scrubEnd on release (D-02 amendment)" time="0.000376083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Workflow navigation render localization &gt; gates mid-drag seeks to the playhead feed + audio snippet only (G-52-9 drag-gate)" time="0.000242875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="localized render instrumentation &gt; assigns each non-Workflow render counter to its app-owned implementation body" time="0.000311334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="localized render instrumentation &gt; locks CanvasStack observer setup and cleanup counters to the existing effect" time="0.000073625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="localized render instrumentation &gt; locks CanvasMount request, observer, and the ONE engine port seam" time="0.000100334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="localized render instrumentation &gt; keeps the canvas lifecycle hook to the mount flag and the unmount cleanup counter" time="0.000062084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="localized render instrumentation &gt; retains Plan 09 wrappers while adding the Plan 11 CanvasStack memo and three Studio identity resolves" time="0.000259458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-12) &gt; resolves the monitor fond from the document fallback via the store instruction (no inline derivation remains)" time="0.000314125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-12) &gt; shows the checkerboard only in the no-fond case and keeps the fond layer as today" time="0.000476542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-12) &gt; uses the two-gray repeating-conic-gradient treatment clipped to canvas bounds" time="0.000162709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint monitor fond + transparency checkerboard (49-03, D-11/D-12) &gt; keeps the checkerboard out of the flattened raster, preview, and export (T-49-03-03)" time="0.000133708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint background swatch write-through (49-04 UAT fix) &gt; writes the document fallback on swatch click so the monitor fond resolves the paper/solid/transparent record" time="0.000320083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint scoped background asset picker (49-04, S2) &gt; wires the signal-driven picker controller to the image-library bridge consumer and imageStore import path" time="0.000984375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint scoped background asset picker (49-04, S2) &gt; mounts the picker as an overlay inside the canvas region — the engine canvas never unmounts (D-01 lock)" time="0.000083584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint scoped background asset picker (49-04, S2) &gt; emits the confirmed selection natural-sorted by original filename (D-02, one ordering authority)" time="0.000108">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint scoped background asset picker (49-04, S2) &gt; keeps the picker decoupled from sequenceStore and audioStore (Pitfall 4)" time="0.000112209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint scoped background asset picker (49-04, S2) &gt; grants exactly the dialog:allow-open capability with no fs:* permission (Pitfall 3)" time="0.000040333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Bg-row Import control + Confirm placement flow (49-05, S1/D-03/D-04) &gt; mounts the Import icon button on the locked Bg header with the 24px hit target and aria-label (S1)" time="0.000179292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Bg-row Import control + Confirm placement flow (49-05, S1/D-03/D-04) &gt; threads onImportBackground from the strip through the header column to the Bg header" time="0.000168875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Bg-row Import control + Confirm placement flow (49-05, S1/D-03/D-04) &gt; Confirm calls addBackgroundClip exactly once with the placement frame, natural-sorted refs, and finite-1 repeat (BKG-02/D-03)" time="0.000969667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Bg-row Import control + Confirm placement flow (49-05, S1/D-03/D-04) &gt; rejects a playhead strictly inside an existing clip with the exact locked copy and keeps the picker open (BKG-03/D-04)" time="0.000530625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Bg-row Import control + Confirm placement flow (49-05, S1/D-03/D-04) &gt; closes the picker on success and leaves Cancel with zero store interaction" time="0.000251375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-03) &gt; reuses the BackgroundAssetPickerView region swap for the reference picker (D-01)" time="0.000068375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-03) &gt; threads the photo/reference intents from the workflow block to the dialog and the reference picker" time="0.000478875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-03) &gt; assembles the referencePicker view-model block with reference copy and a replace-on-confirm handler" time="0.000650459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-03) &gt; Confirm calls setPhotoReferenceSource exactly once and announces the replacement capsule note (D-03)" time="0.000509666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-03) &gt; Confirm records the source-set descriptor as one unified-ledger undo entry (50-03 D-03, G-52-5)" time="0.0002065">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-03) &gt; hydrates the confirmed reference source bytes through the library path (REF-04)" time="0.000285958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-03) &gt; Cancel returns to the Studio untouched — zero store interaction" time="0.000336333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Photo row reference picker swap (50-03, S2/D-01/D-02/D-03) &gt; keeps the picker title configurable with the Bg copy as the default" time="0.000042125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Background Clip section (49-06, S5 right-panel properties) &gt; builds the backgroundClipSection prop with the selection signal and identity-stable ports" time="0.000584167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Background Clip section (49-06, S5 right-panel properties) &gt; re-resolves the right-panel memo on the selection signal so a rail click flips the section" time="0.000125375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Background Clip section (49-06, S5 right-panel properties) &gt; renders the Background Clip section mutually exclusively with the Track section" time="0.000147916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Background Clip section (49-06, S5 right-panel properties) &gt; keeps the section copy and accessibility contract verbatim from the UI-SPEC table" time="0.000162667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Bg rail timeline delete (49-06 UAT) &gt; routes Delete/Backspace through one shared dialog-free handler that records a unified-ledger undo step" time="0.000595916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint Bg rail timeline delete (49-06 UAT) &gt; paints the Bg row header selected in the left sidebar when a Bg rail is selected (no normal track selected)" time="0.000160875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint missing Background source placeholder fill (49-06 UAT) &gt; renders a solid color for a missing Background clip instead of transparent, while track sources stay transparent" time="0.000069375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference ghost mount + missing-source capsule (50-04, S3/D-04/D-06/D-14) &gt; mounts the reference ghost in the monitor-paint layer seat above the composite (S3)" time="0.000372667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference ghost mount + missing-source capsule (50-04, S3/D-04/D-06/D-14) &gt; surfaces the missing reference source through the status capsule with the red warning triangle (D-04)" time="0.000196875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference ghost mount + missing-source capsule (50-04, S3/D-04/D-06/D-14) &gt; keeps the ghost monitor-paint only — no reference input reaches the compositor or export (D-06)" time="0.000095667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference ghost mount + missing-source capsule (50-04, S3/D-04/D-06/D-14) &gt; hides the ghost during playback by not drawing (D-14)" time="0.000158875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference transform handles (50-05, S4/D-13/D-06) &gt; writes the transform to the display property setter, never layerStore/keyframeStore (D-13)" time="0.000050625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference transform handles (50-05, S4/D-13/D-06) &gt; mounts the transform handles overlay above the ghost layer (S4)" time="0.000360083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference transform handles (50-05, S4/D-13/D-06) &gt; is locked by default — no handles, no canvas grab (D-13)" time="0.000050333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference transform handles (50-05, S4/D-13/D-06) &gt; passes painting through the overlay WRAPPER — it is pointer-events none even with no reference (50-UAT round 2 regression)" time="0.000340417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference transform handles (50-05, S4/D-13/D-06) &gt; keeps the transform monitor-paint only — never the compositor or cache keys (D-13, D-06)" time="0.000089166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference transform handles (50-05, S4/D-13/D-06) &gt; computes the bounds in working space from the accepted display transform (D-13)" time="0.000041584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint reference transform handles (50-05, S4/D-13/D-06) &gt; renders a VISIBLE and interactive rotation handle above the top edge (D-13 spec)" time="0.000067583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint photo reference dialog mount + Escape re-lock (50-UAT/50-05, S5/D-13/D-06) &gt; mounts the Photo Reference dialog opened from the strip camera icon (S5/50-UAT)" time="0.000250291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint photo reference dialog mount + Escape re-lock (50-UAT/50-05, S5/D-13/D-06) &gt; wires the section ports to the store setters (display preferences)" time="0.000186834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint photo reference dialog mount + Escape re-lock (50-UAT/50-05, S5/D-13/D-06) &gt; wires Escape to re-lock the transform from anywhere in reference-transform mode (D-13)" time="0.000183625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint photo reference dialog mount + Escape re-lock (50-UAT/50-05, S5/D-13/D-06) &gt; keeps the mode switch flag-only — no compositor change (D-06)" time="0.000055667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint photo reference end-to-end integration contract (50-06, REF-05) &gt; wires the full flow: import → Photo row band → ghost → mode → opacity → transform → Escape re-lock → save/reopen" time="0.000551542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint photo reference end-to-end integration contract (50-06, REF-05) &gt; re-opens a persisted reference — the launch path hydrates the reference source bytes like the background (50-UAT round-2)" time="0.000039834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint photo reference end-to-end integration contract (50-06, REF-05) &gt; keeps the reference out of flattened output in every mode — no reference input reaches the compositor, cache, preview, or export (D-06)" time="0.000498666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint photo reference dialog structural lock (WR-03) &gt; keeps the retired timeline + Rail dropdown entry point retired while the Tools picker returns (261022-cfn superseded by 261022-o2a)" time="0.000284042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Physics Paint photo reference dialog structural lock (WR-03) &gt; feeds the photo reference dialog from a memo whose input list carries no reveal term" time="0.000207834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="52.2-15 one flushed drain for both Studio flush paths (D-16) &gt; creates exactly one pipeline instance and routes both flush paths through it" time="0.00026475">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="52.2-15 one flushed drain for both Studio flush paths (D-16) &gt; keeps the close sequence: ledger drain, aquarelle capture + live-pixel flush, playback settings, documentSync push" time="0.000209375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="52.2-15 one flushed drain for both Studio flush paths (D-16) &gt; keeps the requested-flush sequence: idle-gated ledger drain, aquarelle capture + live-pixel flush, documentSync push" time="0.000093">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="52.2-15 one flushed drain for both Studio flush paths (D-16) &gt; forces the aquarelle capture before the save/close drain and waits for promotion-deferred captures" time="0.000202083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="52.2-15 one flushed drain for both Studio flush paths (D-16) &gt; rejects a blank aquarelle sheet before it can overwrite painted cache pixels" time="0.000157667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="52.2-15 one flushed drain for both Studio flush paths (D-16) &gt; keeps a non-flushed outcome visible to the facade and the unmount teardown intact" time="0.0001915">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="52.2-15 one flushed drain for both Studio flush paths (D-16) &gt; drains the capture queue through the pipeline port before the caller steps" time="0.00007625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Studio-origin document state reaches the save realm (quick-260921-e21) &gt; PIN 1 (reference selection): the close flush consumes the pending change only after a push with a confirmed mode" time="0.000091125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Studio-origin document state reaches the save realm (quick-260921-e21) &gt; PIN 2 (background keyframes): neither scheduler flush consumes the pending change before the push mode is confirmed" time="0.000076458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Studio-origin document state reaches the save realm (quick-260921-e21) &gt; PIN 3 ((+) track with its content): a failed push is retryable, never latched away" time="0.000049">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-260922-al1 explicit Action-apply refusal on the status capsule &gt; routes BOTH apply entry points through the refusal helper and the capsule" time="0.000103917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-260922-al1 explicit Action-apply refusal on the status capsule &gt; clears the refusal line on a successful apply, and never marks a success as an error" time="0.000311917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-260922-al1 explicit Action-apply refusal on the status capsule &gt; keeps both callbacks identity-stable with the setter set they use declared" time="0.000120625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-260922-al1 explicit Action-apply refusal on the status capsule &gt; does NOT change handleScriptRowActivate — it loads, it never applies" time="0.00006025">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-260922-al1 explicit Action-apply refusal on the status capsule &gt; adds no second refusal route: the mapper is imported once and called only at the apply/refusal sites" time="0.000128792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-260922-al1 explicit Action-apply refusal on the status capsule &gt; surfaces through the EXISTING capsule bundle — no toast, no dialog, no new status surface" time="0.000074792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-260922-qad Studio open viewport positioning wiring &gt; passes the launch startFrame into the strip as timelineOpenFrame" time="0.000112666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="260922-rd4 background transform via the shared photo-reference handles path &gt; pins (1) the Studio passes target: background to the background handles envelope" time="0.000343792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="260922-rd4 background transform via the shared photo-reference handles path &gt; pins (2) PhysicsPaintStudioView mounts a target=&quot;background&quot; handles instance" time="0.000043042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="260922-rd4 background transform via the shared photo-reference handles path &gt; pins (3) ONE handles component carries target: photo-reference | background | rail-motion and dispatches setBackgroundTransform (reuse)" time="0.000053916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="260922-rd4 background transform via the shared photo-reference handles path &gt; pins (4) the Background Clip section wires setTransformLocked" time="0.000393666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261008-ig1 Task 2 — Studio multi-clip selection, open target, and reveal contract &gt; owns the selection, modal open target, import mode, and reveal signals" time="0.000222042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261008-ig1 Task 2 — Studio multi-clip selection, open target, and reveal contract &gt; header launcher auto-selects the first clip (empty state at zero); dblclick targets the clip" time="0.001333667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261008-ig1 Task 2 — Studio multi-clip selection, open target, and reveal contract &gt; exposes the selected sound to the dispatcher and the Audio-tab ports to the panel (261008-ryq)" time="0.000362458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261008-ig1 Task 2 — Studio multi-clip selection, open target, and reveal contract &gt; routes band settles by the patch clipId through the per-clip store door (no slot shim)" time="0.00044025">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261008-ig1 Task 2 — Studio multi-clip selection, open target, and reveal contract &gt; feeds the strip the audios list and reveals on a fresh nonce" time="0.000435708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261008-ig1 Task 2 — Studio multi-clip selection, open target, and reveal contract &gt; ensures peaks once per distinct sourceId (Set in-flight guard)" time="0.000178375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx single-engine top-bar writers &gt; handleOpacityChange writes setAquarelleParam(&apos;load&apos;) unconditionally" time="0.000181333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx single-engine top-bar writers &gt; Brush size router is the same unconditional aquarelle writer" time="0.000161583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; shares ONE promotion helper between script targets and pointerdown" time="0.000633459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; v2.0.1: the paint promotion keeps its ONE addEmptyKey route with join semantics" time="0.000175958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; never intercepts the pointer gesture (no preventDefault / stopPropagation / setPointerCapture)" time="0.000679291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; passes the pointer event from the capture listener into the Studio intent" time="0.000107958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; blocks a paint press on a generated in-between at the canvas-stack capture seam" time="0.000168792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; gates promotion on the effective paint-producing tool and a non-transform target" time="0.000159417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; clears a generated display synchronously before dispatch and registers a same-frame sheet reset" time="0.000426541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; awaits the created key before the aquarelle capture path writes pixels" time="0.000234333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; keeps the watercolor cached base visible while painting on an already painted key" time="0.000072667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; keeps the aquarelle merge base at sheet start so re-captures cannot compound density" time="0.000239375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; anchors strokes painted before a promoted key existed (UAT round 7)" time="0.000127541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; pins every anchor, capture and promotion seam to the session track (UAT round 8)" time="0.000441166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; forces a promotion-deferred capture through the flush gate the navigation flush already passed" time="0.000130459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; releases the accepted settlement lease even when the post-acceptance aftermath throws" time="0.000126041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; suppresses the accepted-key cache reload for a self-promotion and pins the blank base" time="0.0001065">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; skips the blank-key reconcile so the first auto-key stroke is never wiped" time="0.00009725">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; exempts only the canvas input lock while a self-promotion is in flight" time="0.000404291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; discards the stroke and replays an accepted-but-unvalidated key on failure" time="0.000127875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 3 direct-paint auto-key self-promotion &gt; never renders the removed Create key fallback in auto-paint" time="0.000468958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 4 composite auto-key undo reservation &gt; arms the no-argument reservation immediately before the promotion start" time="0.000698667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261019-mj2 Task 4 composite auto-key undo reservation &gt; cancels the reservation when the promotion fails so no held acceptance survives" time="0.000086458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; mounts the stroke overlay inside the layer above the canvas; the ring sits in the stack above it" time="0.000124875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; applies selection in the pointer handler and reads Alt for delete" time="0.000097917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; draws the size band for paint and the red ribbon for a lift only while the preview switch is on" time="0.000181833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; renders the select/Move toggle in the watercolor rail bound to the select signal" time="0.000146375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; greys Select and makes the A toggle inert when there is no live script" time="0.001010958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; applies the empty-script Move law to activation and exits a stale Move" time="0.001283084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; keeps the new signals out of the Studio and layer render bodies" time="0.00083575">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; retires the one-shot Select lifts action from the Studio" time="0.000755084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; feeds the Edit switch gate through the top-bar memo by identity" time="0.000347709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; keeps the Stroke Settings bundle unfiltered and open on an empty selection" time="0.00018775">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim watercolor stroke select surface &gt; wires the delete callback through the canvas mount props and memo deps" time="0.000139917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; records the edit as one aquarelle-script command only after the re-bake succeeds" time="0.00014325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; the replay port restores the snapshot, resets the sheet, and awaits the shared apply" time="0.000396375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; makes undo/redo inert while cached playback is running (UAT row 5)" time="0.000224">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; re-anchors a FAILED REDO the same way and keeps the dead-id drop undo-only (IN-04)" time="0.000133333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; refuses a recorded stroke from another frame before it can consume history (CR-02)" time="0.000137209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; builds the stroke undo edit as the in-flight owner (UAT row 1)" time="0.0001145">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; re-seats a stacked redo before replaying it (UAT)" time="0.000137583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; stamps the script epoch and keeps the replay order" time="0.000080292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; wires the Delete/Backspace action and the A Move/Edit toggle (watercolor only)" time="0.00087625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; gates the C shortcut behind a confirm dialog while Trash stays one-click" time="0.000893292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-pim aquarelle delete undo wiring &gt; declares the aquarelle ledger entry and replay port in the history hook" time="0.000083583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-tv1 watercolor stroke move wiring &gt; exists and owns the release path in order (begin -&gt; reset -&gt; await apply -&gt; record on success -&gt; rollback)" time="0.0000815">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-tv1 watercolor stroke move wiring &gt; converts the pointer delta through the one bridge and never captures the engine" time="0.00007">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-tv1 watercolor stroke move wiring &gt; gates on the same tokens as the delete handler" time="0.000047292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-tv1 watercolor stroke move wiring &gt; wires the move callback through the canvas mount props and memo deps" time="0.00019">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-tv1 watercolor stroke move wiring &gt; keeps the gesture surface in the ONE shared overlay leaf and the ghost signal out of the Studio" time="0.00029">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-tv1 watercolor stroke move wiring &gt; clears a stale ghost when select mode disarms or a script edit begins" time="0.0001935">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-tv1 watercolor stroke move wiring &gt; keeps the 261022-pim delete pins intact" time="0.000185541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-ujp stroke stack step &gt; retires the &lt; and &gt; shortcut while keeping Space on playback" time="0.000056875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-ujp stroke stack step &gt; no longer wires a Studio stack-step shortcut action" time="0.000734709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-ujp stroke stack step &gt; orders the watercolor handler: begin -&gt; reset -&gt; await apply -&gt; record on success -&gt; rollback" time="0.000200833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-ujp stroke stack step &gt; swaps payload entries by index and never touches Dry, ticks, or the registry order" time="0.000086458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261022-ujp stroke stack step &gt; keeps the 261022-pim delete and 261022-tv1 move pins intact" time="0.00013975">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-g4p brush Move script-edition surface (retired by 261027-klx) &gt; registers the watercolor stroke-edition port and no Brush port" time="0.000918709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-g4p brush Move script-edition surface (retired by 261027-klx) &gt; wires the paper-display engine actions through the app-owned preview base" time="0.000387458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-g4p brush Move script-edition surface (retired by 261027-klx) &gt; leaves no Brush Move surface in the Studio or the canvas mount" time="0.000265542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 Studio multi-select surface &gt; registers batch delete/move port ops" time="0.000455291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 Studio multi-select surface &gt; keeps the edition signals out of the Studio render body" time="0.000551666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 Studio multi-select surface &gt; the shared overlay owns the modifier selection law and the batch hand-off" time="0.00010175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 Studio transform handles surface &gt; renders the union box and the nine handles only behind an adapter callback" time="0.000068417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 Studio transform handles surface &gt; hit-tests the handle BEFORE the stroke and previews without mutating" time="0.000095375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 Studio transform handles surface &gt; points at a hittable stroke on hover and keeps handle cursors first (261025-d3r revision)" time="0.000042458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 Studio transform handles surface &gt; wires the shared transform seam" time="0.000029083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 Studio transform handles surface &gt; keeps the transform signals out of the Studio render body" time="0.000268791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx watercolor navigation surface &gt; clears and reloads through the app-owned preview base only" time="0.000093375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx watercolor navigation surface &gt; drops the script store on an explicit user clear (full reset)" time="0.000062166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx watercolor navigation surface &gt; resets the sheet on a track switch before binding the incoming track" time="0.000172042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-l35 studio script snapshot seams &gt; restores the script BEFORE the launch context is applied" time="0.000042666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-l35 studio script snapshot seams &gt; supplies a restoring callback keyed on the durable project identity" time="0.0003365">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-l35 studio script snapshot seams &gt; seeds the ledger clock from the restore, never an engine-ready re-apply" time="0.000137583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-l35 studio script snapshot seams &gt; bounds the close-path save and keeps a dirty script pending" time="0.000122375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-l35 studio script snapshot seams &gt; drops the binding on Studio disposal" time="0.000040625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-l35 studio script snapshot seams &gt; carries the durable projectId on the launch project context" time="0.000068666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-l35 watercolor-only Studio script snapshot &gt; feeds the watercolor revision fingerprint and no brush frame source" time="0.000214917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-l35 save discipline in the Studio &gt; subscribes to the watercolor store revision with a first-run skip" time="0.00005425">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-l35 save discipline in the Studio &gt; saves the outgoing key, resets the store, then binds and restores" time="0.000140875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-o3n live package authority in the Studio &gt; holds the authority in a plain ref and reads it live from the controller deps" time="0.000082208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-o3n live package authority in the Studio &gt; sets the authority from the INCOMING settled context before the identity guard and the restore" time="0.000102791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-o3n live package authority in the Studio &gt; refreshes the authority from every settled project-context republish (save-as rebind)" time="0.000109875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-ors rail-delete snapshot cascade in the Studio &gt; registers the store hook once and unregisters it on teardown" time="0.000059375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-ors rail-delete snapshot cascade in the Studio &gt; reads the live identity, authority and capsule ports through refs" time="0.00007425">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261023-ors rail-delete snapshot cascade in the Studio &gt; clears the identity ref and the controller binding before the factory dispatches" time="0.000056083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-m20 accepted-replace key-identity remaps &gt; calls the watercolor remap after each accepted replace and never on failure" time="0.000321334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 watercolor transform surface &gt; threads the transform callback from the adapter through the mount to the Studio" time="0.000250875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 watercolor transform surface &gt; commits a watercolor transform through the move guard chain and the shared Apply pipeline" time="0.000251542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-mz5 watercolor transform surface &gt; mentions the corner scale, edge resize and the top rotate handle in both tooltips" time="0.000023958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-vga watercolor exact stack placement wiring &gt; exists and owns the place path in order (begin -&gt; reset -&gt; await apply -&gt; record on success -&gt; rollback)" time="0.00006225">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-vga watercolor exact stack placement wiring &gt; gates on the same peek-only tokens as the step handler" time="0.000049916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-vga watercolor exact stack placement wiring &gt; never captures the engine, the clipboard or a second apply path" time="0.000038833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261024-vga watercolor exact stack placement wiring &gt; wires the watercolor bundle callback and the memo dependency" time="0.000188166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl explicit-selection module ownership &gt; declares ONE stable applyFrameModuleState callback with the owner rule" time="0.000138334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl explicit-selection module ownership &gt; gates the navigation funnel between the outgoing flush and the pixel snapshot" time="0.000102708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl explicit-selection module ownership &gt; publishes the owner on BOTH launch-restore exits, after the restore" time="0.000115334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl explicit-selection module ownership &gt; republishes on a cross-track switch before the mutation-clock early return" time="0.0000875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl explicit-selection module ownership &gt; leaves no Brush completion refresh in the ledger subscriber" time="0.000112917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl explicit-selection module ownership &gt; republishes on the aquarelle stroke-end, delete and history seams" time="0.000251917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl explicit-selection module ownership &gt; republishes on clearActiveSource, clearCanvas and every Memory purge seam" time="0.000297833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl explicit-selection module ownership &gt; has no brush script callback and clears the lock on unmount" time="0.000183333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl Raster handler (D-04) &gt; exists with the stable strip callback wired into the workflow props" time="0.000247667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl Raster handler (D-04) &gt; refuses in the documented guard order" time="0.000114583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl Raster handler (D-04) &gt; runs capture, verification, ledger clear and reload strictly before the purge" time="0.000161916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl Raster handler (D-04) &gt; fails closed with the nothing-changed copy for both pre-purge failures" time="0.000064417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl Raster handler (D-04) &gt; never writes activeModule — the module survives the conversion" time="0.000039792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl Raster handler (D-04) &gt; re-resolves the clicked rail, the projection and every guard at call time" time="0.000283625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl Raster handler (D-04) &gt; runs one bounded sequential pass with a per-iteration guard re-check" time="0.000075083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl Raster handler (D-04) &gt; writes the snapshot once per run and publishes one summary" time="0.000268416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick-261025-awl Raster handler (D-04) &gt; threads the rail bundle into the workflow strip props" time="0.000158958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261025-d3r canvas-region deselect &gt; clears the Move/Select selection on a plain background click outside the canvas" time="0.000055">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split two-axis script Apply &gt; axis 1: maps the projection source through the group lifecycle classifier in prepareTarget" time="0.000197542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split two-axis script Apply &gt; axis 2: composites the re-bake over the authority-resolved base and fails closed" time="0.000313917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split two-axis script Apply &gt; pins the refreshed probe build marker and the script-bake-composite event" time="0.000134167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; offers the force-re-render only on a frame that owns a paint script" time="0.000174458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; re-binds the watercolor Select gate to the LIVE timeline graph after every rebuild" time="0.000389209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; keeps a cache-only key ownerless and Select fail-closed on ONE key-bound predicate" time="0.000340584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; pins the ordinary-key durable base and the durable-base-unknown refusal" time="0.0010585">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; 261028-k03c pins the legacy scripted base recovery (fail-closed, single punch)" time="0.000497334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; 261028-k03e adopts the known-empty base and never leaks a refused lift erase" time="0.000476792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; 261027-k6j resets the Script switch per launch, never on a track switch" time="0.000280708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; pins the group-frame lifecycle target and the EXACT-offset source-key base" time="0.000234916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; keeps every debug probe DEV-gated and self-identifying" time="0.000152584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; 261029-bks threads the bake diagnostics into script-bake and lift-erase" time="0.000322042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261026 watercolor-loop-render-split final regression pins &gt; 261031-qps delegates the durable-base decision to the authority" time="0.000118167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; accepts a Water color stroke through the ledger with no raster/finalization dependency" time="0.000138625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; allocates duplicate-script copies through the same ledger, never an engine" time="0.000085584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; pins KNOWN-EMPTY only on the replace branch of the rail script recorder" time="0.000151375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; pins the authority-backed stack merge port: run sheets over the current picture, base pins staged, refusal before commit (261031-vbo)" time="0.00037275">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; leaves the durable-base map and the snapshot dirty state untouched on every stack-merge refusal (WR-01, 261031-vbo)" time="0.0002205">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; pins the Keep-OFF stack composite: the current payload plus the run sheet, never a bake, purge or base pin (UAT 261031-vbo)" time="0.000163166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; pins the render-only reveal stack tail: span render, per-slice render, refusal before commit (261031-qps)" time="0.00026675">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; pins the Reveal RUN port: one whole-span render through the document reference, no union or writes (261101-1pc)" time="0.000216166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; resolves a key-script rail key to the KNOWN-EMPTY base instead of the baked source payload" time="0.000167083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; delivers exactly one completion per allocation and routes it through the ONE memoized port" time="0.000480709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; seeds the ledger clock from the launch restore and the track-switch restore only" time="0.000273875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="261027-klx Wave 3 — the app-owned ledger owns stroke acceptance &gt; saves and restores engine state through the narrow AquarelleEnginePort" time="0.000445542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261028-k03d — key-payload recovery and non-blanking failures &gt; prefers the authoritative key payload over the display cache when recovering" time="0.000170584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261028-k03d — key-payload recovery and non-blanking failures &gt; refreshes the display from the key payload on a failed recovery" time="0.000173333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261028-k03d — key-payload recovery and non-blanking failures &gt; recovers the durable base before every script edit" time="0.000662542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — Draft mode session seam &gt; arms the frame durable base before Draft turns on — single-flight, frame-bound, never a recompute" time="0.000250875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — Draft mode session seam &gt; settles the Draft script once: joins concurrent exits, clears dirty then Draft only after the apply" time="0.000271291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — Draft mode session seam &gt; commits the move under Draft with no reset and no re-apply, keeping the Live path intact" time="0.000193542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — every edit commits under Draft, the cache eye &gt; records and marks dirty on the Draft branch, keeping every Live reset/apply path" time="0.000729583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — every edit commits under Draft, the cache eye &gt; keeps the durable-base ensure at its Live index (delete after the begin, appearance/transform before it)" time="0.00051625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — every edit commits under Draft, the cache eye &gt; gates only the resetSheet/rebake ports and the post-replay capture" time="0.000196167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — every edit commits under Draft, the cache eye &gt; hides the frozen sheet through a display-only class on the mounted canvas" time="0.000325042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — every edit commits under Draft, the cache eye &gt; leaves the overlay law untouched — still selection-only" time="0.000054916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed &gt; settles before the frame-leave capture and aborts the navigation on a refusal" time="0.000152667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed &gt; routes BOTH play entry points through ONE settle-then-toggle wrapper" time="0.000510792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed &gt; makes the save/export flush throw on a refused recompute, before any capture" time="0.000166375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed &gt; refuses the Studio window close while dirty — never a recompute" time="0.00014175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed &gt; publishes the Draft-or-dirty state with a 5s heartbeat from one lifecycle effect" time="0.000132333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed &gt; gates both autosave sites and resumes on the release publish" time="0.000110584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed &gt; installs the main-realm listener in the bootstrap" time="0.00005425">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed &gt; cancels save and export in the main realm while the Draft gate is still active" time="0.000117625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed &gt; defers every script-snapshot write at the two controller chokepoints" time="0.000103708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed &gt; keeps the transport a validated, self-clearing gate" time="0.000081042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — review fixes: guarded track switch, delete close retry, fresh Draft reads &gt; CR-01: routes ALL six track-switch entry points through the one Draft-aware seam" time="0.00087575">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — review fixes: guarded track switch, delete close retry, fresh Draft reads &gt; CR-01: never runs the commit tail (capture/save/reset) over dirty Draft pixels" time="0.000151333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — review fixes: guarded track switch, delete close retry, fresh Draft reads &gt; WR-02: marks dirty with the commit and retries the auto-closed sheet after the flag clears" time="0.000182791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261101-o2m — review fixes: guarded track switch, delete close retry, fresh Draft reads &gt; WR-03: re-reads the Draft mode AFTER the durable-base await in every async edit" time="0.000435375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Paper grain edits record one unified-ledger undo entry (PAPER-03) &gt; records the grain pair and leaves the paper-id choice out of the ledger" time="0.0001715">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="Paper grain edits record one unified-ledger undo entry (PAPER-03) &gt; merges the paper setter and fallback write-through into ONE ledger descriptor" time="0.000180417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="58-05 Key Rail inspector Studio wiring (RAIL-01) &gt; projects the inspector exactly once, inside a useMemo with the four stable inputs" time="0.0003045">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="58-05 Key Rail inspector Studio wiring (RAIL-01) &gt; resolves the rail-set anchor through ONE shared const so a 2+ set still projects (D-03)" time="0.000469667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="58-05 Key Rail inspector Studio wiring (RAIL-01) &gt; selects before opening and returns a Promise on the missing-segment refusal" time="0.000050709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="58-05 Key Rail inspector Studio wiring (RAIL-01) &gt; clears BOTH selection layers on Close so the takeover is dismissible (D-01/D-03)" time="0.00005">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="58-05 Key Rail inspector Studio wiring (RAIL-01) &gt; threads the presentation and both handlers into the right-panel scripts props" time="0.000288541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261109-pwt — pending destination capture settles after the destination is displayed &gt; arms the destination before the synchronous destination load" time="0.000120166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261109-pwt — pending destination capture settles after the destination is displayed &gt; flushes the armed identity once, then reloads only on a byte change" time="0.000162417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261109-uj0 — capture laws stay intact around the localized gate &gt; keeps the eager snapshot before the measurement and the measurement before the gate" time="0.000128959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261109-uj0 — capture laws stay intact around the localized gate &gt; leaves exactly one early return between the measurement and the sequence assignment" time="0.000120125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261109-uj0 — capture laws stay intact around the localized gate &gt; still gates the Save-thumbnail port through the shared predicate" time="0.000054708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261109-uj0 — capture laws stay intact around the localized gate &gt; emits exactly one production-visible warn in the guard block" time="0.000123209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="quick 261109-uj0 — capture laws stay intact around the localized gate &gt; keeps the promotion, flush and destination-settle laws verbatim" time="0.000208875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-10 vector path edit wiring in the Studio &gt; declares the fixed rejection copy verbatim, with no interpolation" time="0.000055792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-10 vector path edit wiring in the Studio &gt; refuses a missing or unreadable path through the capsule and stores nothing" time="0.000176041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-10 vector path edit wiring in the Studio &gt; forwards the handler into the mount memo and its props object" time="0.000188458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-10 vector path edit wiring in the Studio &gt; threads the mount prop into the layer seam through one ref" time="0.000052167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-15 vector draw bake seam in the Studio &gt; refuses a Script-Off vector draw before the ledger allocates, without resetting the sheet" time="0.011123375">
+            <failure message="expected &apos;const handleAquarelleStrokeEnd = useC…&apos; to contain &apos;if (isVectorAquarelleStroke(stroke) &amp;…&apos;" type="AssertionError">
+AssertionError: expected &apos;const handleAquarelleStrokeEnd = useC…&apos; to contain &apos;if (isVectorAquarelleStroke(stroke) &amp;…&apos;
+
+- Expected
++ Received
+
+- if (isVectorAquarelleStroke(stroke) &amp;&amp; !aquarelleScriptRecordingEnabled.peek()) {
++ const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) =&gt; {
++     // 3.6 (261027-klx): the app-owned ledger allocates the id and emits the
++     // completion SYNCHRONOUSLY — no engine, no rasterization and no pending
++     // finalization stands between acceptance and completion.
++     // 261027-k6j — Script Off is pixels-only: the pre-script durable base is
++     // only meaningful for a script that is about to start, so it is not
++     // pinned. ONE peeked read per stroke drives both this pin and the script
++     // write below, so the two decisions can never disagree.
++     // 261026 ordinary-key durable base: pin the key&apos;s PRE-SCRIPT cache BEFORE
++     // the first event lands — this is the only moment the display still holds
++     // the scriptless paint the later multiply composite must preserve. The
++     // recorder is a no-op when an entry exists or the frame is not an ordinary
++     // key (group frames derive their base from the source key).
++     //
++     // 261028-k03 D2: the preflight runs BEFORE the pin and the record so a
++     // refused lift leaves no event and no half-written base. The record stays
++     // SYNCHRONOUS so a re-bake sees the lift in order.
++     // 261028-k03h: this gesture&apos;s ENGINE dabs — taken ONCE, before any refusal
++     // path, so a refused lift can never leak its dab stream into a later one.
++     const liftGestureDabs = stroke.tool === &apos;lift&apos;
++       ? aquarelleLiftGestureDabsRef.current.splice(0)
++       : [];
++     if (stroke.tool === &apos;lift&apos;) {
++       // 261028-k03b: the gesture is over; the painted preview stays until the
++       // commit/re-bake replaces it. The per-stroke plan cache must not leak.
++       aquarelleLiftPreviewPlanRef.current = null;
++       endAquarelleLiftPreview();
++     }
++     const liftPlan = stroke.tool === &apos;lift&apos;
++       ? planAquarelleLiftErase(launchContextRef.current?.startFrame ?? 0)
++       : null;
++     if (liftPlan?.kind === &apos;refuse&apos;) {
++       // 261028-k03e: the engine already erased the LIVE SHEET during the
++       // gesture. A refusal must undo that local erase, or the next settle /
++       // frame-leave capture commits it as the frame&apos;s pixels while the script
++       // still holds the paint — the exact drift that made every later base
++       // recovery fail and blanked the frame.
++       aquarelleResetSheetRef.current?.();
++       revertAquarelleLiftPreview();
++       setApplyMessage(liftPlan.message);
++       setApplyStatus(&apos;error&apos;);
++       setLastError(liftPlan.message);
++       return;
++     }
++     const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();
++     // 261028-k03f: a Lift on a frame whose script cannot PAINT it is a RASTER
++     // operation. Recording it would make the NEXT lift script-authoritative,
++     // and a lift-only bake publishes a blank sheet over the raster pixels (UAT:
++     // the paint cache was wiped one second after the erase). A raster lift
++     // pins nothing and records nothing — the punch IS its content.
++     const liftIsScriptOwned = liftPlan?.kind === &apos;erase&apos; &amp;&amp; liftPlan.scripted;
++     const recordsScript = scriptRecordingOn &amp;&amp; (stroke.tool !== &apos;lift&apos; || liftIsScriptOwned);
++     // 261028-k03c D4: a recoverBase lift must NOT pin — for a pre-scripted
++     // frame that pin can only refuse with `script-already-present` (the UAT
++     // evidence); the recovery arm seeds the map with the validated base.
++     if (recordsScript &amp;&amp; !(liftPlan?.kind === &apos;erase&apos; &amp;&amp; liftPlan.recoverBase)) {
++       recordAquarelleOrdinaryDurableBaseRef.current(launchContextRef.current?.startFrame ?? 0);
++     }
++     // 261028-k03 D2: the pin can refuse (payload/record unavailable) and leave
++     // the base UNKNOWN. Never record a lift whose durable base cannot be
++     // punched — refuse before the record, so nothing half-written survives.
++     // 261028-k03c D4: a recoverBase plan bypasses ONLY this guard; its base is
++     // recovered, validated and punched by the transaction itself.
++     if (liftPlan?.kind === &apos;erase&apos; &amp;&amp; !liftPlan.recoverBase &amp;&amp; liftPlan.willPinBase
++       &amp;&amp; !aquarelleDurableBaseByKeyRef.current.has(liftPlan.keyId)) {
++       // 261028-k03e: same leak as the plan refusal — undo the engine&apos;s local
++       // erase so it can never be captured as the key&apos;s pixels.
++       aquarelleResetSheetRef.current?.();
++       revertAquarelleLiftPreview();
++       setApplyMessage(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
++       setApplyStatus(&apos;error&apos;);
++       setLastError(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
++       return;
++     }
++     const paintStroke = aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight });
++     try {
++       const mutationId = paintMutationLedger.allocateStrokeMutation({ primary: paintStroke });
++       aquarelleStrokeMutationIdsRef.current.set(stroke, mutationId);
++       // 261027: stamp the OWNING KEY with the stroke. A frame number is not
++       // identity — a deleted key&apos;s strokes must never seed the key that
++       // later occupies the same frame. 261027 UAT round 7: resolve against
++       // the LIVE ACTIVE track (the paint target), never the possibly-lagging
++       // snapshot binding — a null anchor is unrecoverable on restore.
++       const anchorLaunch = launchContextRef.current;
++       const anchorFrame = anchorLaunch?.startFrame ?? 0;
++       // 261027 UAT round 8: the stroke belongs to the track whose SESSION it
++       // was painted into. The live document id can already point elsewhere (a
++       // desynced track switch) — anchoring to it stamped one track&apos;s strokes
++       // with the other track&apos;s key, which the restore then had to drop.
++       const sessionTrackId = aquarelleSessionTrackIdRef.current ?? studioActiveTrackId();
++       if (anchorLaunch &amp;&amp; sessionTrackId !== studioActiveTrackId()) {
++         recordAquarelleRenderSplitEvent(&apos;session-track-mismatch&apos;, {
++           stage: &apos;stroke-end&apos;,
++           documentTrackId: studioActiveTrackId(),
++           sessionTrackId,
++           appFrame: anchorFrame,
++         });
++       }
++       const capturedKeyId = anchorLaunch &amp;&amp; sessionTrackId.length &gt; 0
++         ? physicPaintStore.getRotoRealKeyRecordByAppFrame(
++             anchorLaunch.layerId,
++             sessionTrackId,
++             anchorFrame,
++           )?.keyId ?? null
++         : null;
++       recordAquarelleStrokeWhenEnabled(recordsScript, mutationId, { ...stroke, mutationId }, capturedKeyId);
++       // The sheet now holds paint that no queue can see until it is captured;
++       // the close/save flush gate reads this flag.
++       aquarelleSheetHasPaintRef.current = true;
++       // quick-261025-awl (D-02/D-03): the first recorded stroke makes Water
++       // color the frame&apos;s owner — republish so the Brush slot locks.
++       applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);
++       // 261028-k03 D2: the record above is synchronous and ordered; the punch
++       // is async and owns only the pixel side. It never re-records.
++       if (liftPlan?.kind === &apos;erase&apos;) void runAquarelleLiftErase(liftPlan, stroke, liftGestureDabs);
++     } catch {
++       // A malformed recorded stroke must not kill the live surface — drop it.
++     }
++   }, [applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);
++   
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:6488:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-15 vector draw bake seam in the Studio &gt; tails the stroke end with exactly one vector bake, after the record and the lift erase" time="0.000864792">
+            <failure message="expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:6519:44
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-11 Anchor width bundle wiring in the Studio &gt; supplies readVectorAnchors from the record seam, refusing not-quite-one vector stroke" time="0.000234125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-11 Anchor width bundle wiring in the Studio &gt; commits every selected anchor in exactly ONE path edit" time="0.000210042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-11 Anchor width bundle wiring in the Studio &gt; composes the pure width commit from the shared handle module" time="0.000030833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; turns Draft on BEFORE the latch flips, notifying each signal once" time="0.000275792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; repeated ON writes nothing — zero further notifications" time="0.000081292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; OFF clears ONLY the latch — Draft and the dirty invariant belong to the settle" time="0.00005175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; joins two OFF clicks into ONE settle, clearing the latch before it runs" time="0.0003935">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; declares the latch beside Draft, compare-then-write, forcing Draft first" time="0.00015825">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; imports the whole latch surface from the ONE edition module" time="0.000077125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; wires one identity-stable handler that routes OFF through the ONE Draft settle" time="0.000133584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; gates the paint row, the picker and Dry behind the latch read" time="0.001242375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; reports the latch to the main realm through the ONE Draft publisher" time="0.00012275">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; forwards the handler through the identity memo" time="0.000144625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe latch — session-only, Draft-generalising &gt; is session-only: no persisted path can ever read the latch" time="0.000392042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe gates — reasons, Draft ownership, idempotency &gt; states every gated control reason in the rail source" time="0.000084542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe gates — reasons, Draft ownership, idempotency &gt; renders the Draft switch ON and disabled while the latch owns the settle" time="0.000123583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe gates — reasons, Draft ownership, idempotency &gt; keeps the vector pen outside the paint-row gate (it stays available)" time="0.000040584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe gates — reasons, Draft ownership, idempotency &gt; keeps the latch enabled on an empty sheet — the toggle has no data gate" time="0.000052417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-13 wireframe gates — reasons, Draft ownership, idempotency &gt; treats two ON calls as ONE state change — the overlay subscriber runs once" time="0.000083042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-12 Render mode bundle wiring in the Studio &gt; hydrates renderMode from the recorded stroke, keeping an absent field absent" time="0.00018075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-12 Render mode bundle wiring in the Studio &gt; commits the whole selection through exactly one render-mode edit" time="0.000414625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-12 Render mode bundle wiring in the Studio &gt; reuses the appearance handler law: guards, Draft branch, ONE re-bake, restore on failure" time="0.00017175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/PhysicsPaintStudio.test.ts" name="61-12 Render mode bundle wiring in the Studio &gt; declares the render-mode type import and forwards the handler into the memo deps" time="0.000108">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" timestamp="2026-11-10T21:30:31.561Z" hostname="efx2.home" tests="6" failures="6" errors="0" skipped="0" time="0.007683458">
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 the vector commit route &gt; treats only a non-empty anchor list as a vector stroke, and ships fixed Script-Off copy" time="0.003257834">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts:33:65
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 the vector commit route &gt; rebakes only when neither the Draft nor the wireframe latch is on" time="0.000788958">
+            <failure message="expected &apos;rebake&apos; to be &apos;defer-pixels&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;rebake&apos; to be &apos;defer-pixels&apos; // Object.is equality
+
+Expected: &quot;defer-pixels&quot;
+Received: &quot;rebake&quot;
+
+ ❯ src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts:43:73
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 runAquarelleScriptRebake &gt; resets, applies, then succeeds once — holding the gate for the whole apply" time="0.000892917">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 runAquarelleScriptRebake &gt; reports exactly one failure and never a success when the apply resolves false" time="0.001423167">
+            <failure message="expected [ &apos;reset&apos; ] to deeply equal [ &apos;reset&apos;, &apos;apply&apos;, &apos;failure&apos; ]" type="AssertionError">
+AssertionError: expected [ &apos;reset&apos; ] to deeply equal [ &apos;reset&apos;, &apos;apply&apos;, &apos;failure&apos; ]
+
+- Expected
++ Received
+
+  Array [
+    &quot;reset&quot;,
+-   &quot;apply&quot;,
+-   &quot;failure&quot;,
+  ]
+
+ ❯ src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts:124:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 runAquarelleScriptRebake &gt; converts a rejected apply into one failure result and clears the gate" time="0.000296792">
+            <failure message="expected &quot;spy&quot; to be called 1 times, but got 0 times" type="AssertionError">
+AssertionError: expected &quot;spy&quot; to be called 1 times, but got 0 times
+ ❯ src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts:136:29
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 runAquarelleScriptRebake &gt; calls nothing at all while a rebake is already in flight" time="0.000572667">
+            <failure message="expected &quot;spy&quot; to not be called at all, but actually been called 1 times
+
+Received: 
+
+  1st spy call:
+
+    Array []
+
+
+Number of calls: 1
+" type="AssertionError">
+AssertionError: expected &quot;spy&quot; to not be called at all, but actually been called 1 times
+
+Received: 
+
+  1st spy call:
+
+    Array []
+
+
+Number of calls: 1
+
+ ❯ src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts:147:34
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

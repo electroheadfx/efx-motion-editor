@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="29" failures="3" errors="0" time="1.556">
+    <testsuite name="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" timestamp="2026-11-11T21:16:58.084Z" hostname="efx2.home" tests="13" failures="2" errors="0" skipped="0" time="0.007092125">
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker categories (D-07) &gt; renders category groups with &quot;{Category} — {n}&quot; headers" time="0.001266667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker categories (D-07) &gt; renders one row per tip with its name" time="0.000229125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker search and filter (AQUA-03) &gt; empty search shows the UI-SPEC empty copy" time="0.000130792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker search and filter (AQUA-03) &gt; category filter yields zero shows the same empty copy" time="0.0001065">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker import failure (UI-SPEC error row) &gt; shows the named inline line under the toolbar" time="0.000180125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker import failure (UI-SPEC error row) &gt; hides the line when there is no failure" time="0.000166125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker footer and toolbar (D-07) &gt; footer format is &quot;{selectedBrushName} — {totalCount} brushes&quot;" time="0.000247292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker footer and toolbar (D-07) &gt; toolbar Import tooltip is &quot;Import brush tip (PNG/JPG)&quot;" time="0.00019425">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker footer and toolbar (D-07) &gt; toolbar Add tooltip is &quot;Add brush&quot;" time="0.000112208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker footer and toolbar (D-07) &gt; search field placeholder is &quot;Search brushes&quot;" time="0.000192833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="BrushesDocker partial (AQUA-03) &gt; missing brush id renders &quot;Missing brush — {id}&quot;" time="0.000121291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="quick 261111-ucf docker row picks commit through the seam &gt; a row pick keeps the armed selection and commits the picked id + live bag" time="0.002994416">
+            <failure message="exactly one port call: expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: exactly one port call: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/BrushesDocker.test.tsx:275:44
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/BrushesDocker.test.tsx.test.ts" name="quick 261111-ucf docker row picks commit through the seam &gt; source pin: the row and the import-success site are the two pick calls" time="0.000563959">
+            <failure message="row + import success: expected +0 to be 2 // Object.is equality" type="AssertionError">
+AssertionError: row + import success: expected +0 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 0
+
+ ❯ src/components/physic-paint/view/BrushesDocker.test.tsx:284:84
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" timestamp="2026-11-11T21:16:58.086Z" hostname="efx2.home" tests="16" failures="1" errors="0" skipped="0" time="1.005019875">
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9) &gt; renders exactly one card per preset in BRUSH_PRESETS catalog order" time="0.105959917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9) &gt; exposes the library root testid on a 2-column grid" time="0.08663725">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9) &gt; each card is a compact oracle cell: name + 150x44 thumb + title tooltip, no description" time="0.080618917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9) &gt; thumbs paint the oracle French Ultramarine on a white canvas" time="0.000591666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9) &gt; every card border is #777777; the selected card is orange (261027-gh9f)" time="0.000486542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9) &gt; has no category filter, search field, or import affordance" time="0.079315959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9) &gt; picking a card selects the preset and forces the Brush tool" time="0.233954792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9) &gt; leaves Edit select mode on every brush pick (WR-03)" time="0.156612958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9) &gt; marks the selected card from aquarelleSelectedTipId" time="0.077834958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary stroke-thumb cache (52.1 D-19) &gt; paints each preset thumb at most once across two mounts" time="0.0783695">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary stroke-thumb cache (52.1 D-19) &gt; resolves the new chalk catalog id to one painted thumb" time="0.00611">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="WatercolorBrushLibrary stroke-thumb cache (52.1 D-19) &gt; repeated getStrokeThumb calls return the same cached canvas (no repaint)" time="0.006621708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="blitStrokeThumb is DPR-aware (261029-uoz) &gt; at dpr 2 the blit copies the whole cached bitmap" time="0.003527375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="blitStrokeThumb is DPR-aware (261029-uoz) &gt; at dpr 1 (no window) the blit is unchanged" time="0.003454125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="blitStrokeThumb is DPR-aware (261029-uoz) &gt; the component ref path lands the full bitmap" time="0.0033205">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/WatercolorBrushLibrary.test.ts" name="quick 261111-ucf library card picks edit the armed selection &gt; keeps Select mode and the selection, then commits the picked id + live bag" time="0.080900333">
+            <failure message="armed selection survives the pick: expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: armed selection survives the pick: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/WatercolorBrushLibrary.test.ts:642:76
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

@@ -15,7 +15,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { Maximize2 } from 'lucide-preact';
-import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import {
   aquarelleBrushMenuAnchor,
@@ -23,15 +22,16 @@ import {
   aquarelleBrushMenuTarget,
   aquarelleLiftTipId,
   aquarelleSelectedTipId,
-  selectAquarelleTip,
   setAquarelleBrushMenuOpen,
   setAquarelleBrushModalOpen,
   setAquarelleLiftTipId,
 } from './aquarelleRecordState';
+import { pickAquarelleBrush } from './aquarellePaintControls';
 // 261029-hy2 CR-01: the catalog's open path must raise its sheet — the seat
 // sits UNDER the Settings sheet, so click-to-front alone can never reach it.
 import { SHEET_ID_BRUSHES, bringSheetToFront } from './floatingSheetStack';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
+import { brushMenuPresets } from './brushMenuPresets';
 
 export function PhysicsPaintBrushMenu() {
   const open = aquarelleBrushMenuOpen.value;
@@ -115,13 +115,14 @@ export function PhysicsPaintBrushMenu() {
     >
       {menuTarget === 'lift' ? (
         // 261029-hy2 menu-branch:lift
-        // The Eraser popover: the same 15 painted shapes, NO "Open modal" (the
+        // The Eraser popover: the shipped painted shapes, NO "Open modal" (the
         // catalog's cards route through the BRUSH pick path, which would flip
         // the tool back to Brush) and no separator. A pick writes the lift tip
         // through setAquarelleLiftTipId — never the brush seam.
+        // An eraser picks a tip shape from the same shipped preset list.
         <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
           <div ref={listRef} class="physics-paint-brush-menu-list">
-            {BRUSH_PRESETS.map((preset) => {
+            {brushMenuPresets('lift').map((preset) => {
               const selected = preset.id === liftTipId;
               return (
                 <button
@@ -168,7 +169,8 @@ export function PhysicsPaintBrushMenu() {
           <div class="physics-paint-brush-menu-separator" aria-hidden="true" />
           <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
             <div ref={listRef} class="physics-paint-brush-menu-list">
-              {BRUSH_PRESETS.map((preset) => {
+              {/* The brush branch lists every shipped preset. */}
+              {brushMenuPresets('brush').map((preset) => {
                 const selected = preset.id === selectedId;
                 return (
                   <button
@@ -180,7 +182,7 @@ export function PhysicsPaintBrushMenu() {
                     data-testid={`watercolor-brush-menu-item-${preset.id}`}
                     title={preset.hint}
                     onClick={() => {
-                      selectAquarelleTip(preset.id);
+                      void pickAquarelleBrush(preset.id);
                       setAquarelleBrushMenuOpen(false);
                     }}
                   >

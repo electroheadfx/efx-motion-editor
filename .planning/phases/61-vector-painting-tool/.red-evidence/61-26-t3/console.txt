@@ -1,0 +1,495 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts (400 tests | 4 failed) 125ms
+   × 61-26 WR-03 — a vector stroke committed during an in-flight bake marks the sheet stale > consumes the bake result through a continuation instead of discarding it 12ms
+     → expected 'const handleAquarelleStrokeEnd = useC…' to contain 'void bakeAquarelleVectorCommit().then…'
+   × 61-26 WR-03 — a vector stroke committed during an in-flight bake marks the sheet stale > arms the stale-sheet invariant when the bake reports false 3ms
+     → expected 'const handleAquarelleStrokeEnd = useC…' to contain 'if (!baked) setDraftPixelsDirty(true);'
+   × 61-26 WR-03 — a vector stroke committed during an in-flight bake marks the sheet stale > no longer fires the bake as a discarded statement 2ms
+     → expected 'const handleAquarelleStrokeEnd = useC…' not to contain 'void bakeAquarelleVectorCommit();'
+   × 61-26 WR-03 — a vector stroke committed during an in-flight bake marks the sheet stale > still records the stroke before it bakes 1ms
+     → expected -1 to be greater than 6753
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-26 WR-03 — a vector stroke committed during an in-flight bake marks the sheet stale > consumes the bake result through a continuation instead of discarding it
+AssertionError: expected 'const handleAquarelleStrokeEnd = useC…' to contain 'void bakeAquarelleVectorCommit().then…'
+
+- Expected
++ Received
+
+- void bakeAquarelleVectorCommit().then((baked) => {
++ const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
++     // 3.6 (261027-klx): the app-owned ledger allocates the id and emits the
++     // completion SYNCHRONOUSLY — no engine, no rasterization and no pending
++     // finalization stands between acceptance and completion.
++     // 261027-k6j — Script Off is pixels-only: the pre-script durable base is
++     // only meaningful for a script that is about to start, so it is not
++     // pinned. ONE peeked read per stroke drives both this pin and the script
++     // write below, so the two decisions can never disagree.
++     // 261026 ordinary-key durable base: pin the key's PRE-SCRIPT cache BEFORE
++     // the first event lands — this is the only moment the display still holds
++     // the scriptless paint the later multiply composite must preserve. The
++     // recorder is a no-op when an entry exists or the frame is not an ordinary
++     // key (group frames derive their base from the source key).
++     //
++     // 261028-k03 D2: the preflight runs BEFORE the pin and the record so a
++     // refused lift leaves no event and no half-written base. The record stays
++     // SYNCHRONOUS so a re-bake sees the lift in order.
++     // 261028-k03h: this gesture's ENGINE dabs — taken ONCE, before any refusal
++     // path, so a refused lift can never leak its dab stream into a later one.
++     const liftGestureDabs = stroke.tool === 'lift'
++       ? aquarelleLiftGestureDabsRef.current.splice(0)
++       : [];
++     if (stroke.tool === 'lift') {
++       // 261028-k03b: the gesture is over; the painted preview stays until the
++       // commit/re-bake replaces it. The per-stroke plan cache must not leak.
++       aquarelleLiftPreviewPlanRef.current = null;
++       endAquarelleLiftPreview();
++     }
++     const liftPlan = stroke.tool === 'lift'
++       ? planAquarelleLiftErase(launchContextRef.current?.startFrame ?? 0)
++       : null;
++     if (liftPlan?.kind === 'refuse') {
++       // 261028-k03e: the engine already erased the LIVE SHEET during the
++       // gesture. A refusal must undo that local erase, or the next settle /
++       // frame-leave capture commits it as the frame's pixels while the script
++       // still holds the paint — the exact drift that made every later base
++       // recovery fail and blanked the frame.
++       aquarelleResetSheetRef.current?.();
++       revertAquarelleLiftPreview();
++       setApplyMessage(liftPlan.message);
++       setApplyStatus('error');
++       setLastError(liftPlan.message);
++       return;
++     }
++     // 61-15 (G-1/G-2): a vector stroke paints no engine dabs — with Script
++     // Off the path would become neither pixels nor script, so it would
++     // silently vanish (the recorder's silent drop). Refuse it with fixed
++     // copy BEFORE the ledger allocates. No sheet reset: the commit painted
++     // nothing, and a reset here would erase the live frame.
++     if (isVectorAquarelleStroke(stroke) && !aquarelleScriptRecordingEnabled.peek()) {
++       setApplyMessage(VECTOR_PATH_SCRIPT_OFF_MESSAGE);
++       setApplyStatus('error');
++       setLastError(VECTOR_PATH_SCRIPT_OFF_MESSAGE);
++       return;
++     }
++     const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();
++     // 261028-k03f: a Lift on a frame whose script cannot PAINT it is a RASTER
++     // operation. Recording it would make the NEXT lift script-authoritative,
++     // and a lift-only bake publishes a blank sheet over the raster pixels (UAT:
++     // the paint cache was wiped one second after the erase). A raster lift
++     // pins nothing and records nothing — the punch IS its content.
++     const liftIsScriptOwned = liftPlan?.kind === 'erase' && liftPlan.scripted;
++     const recordsScript = scriptRecordingOn && (stroke.tool !== 'lift' || liftIsScriptOwned);
++     // 261028-k03c D4: a recoverBase lift must NOT pin — for a pre-scripted
++     // frame that pin can only refuse with `script-already-present` (the UAT
++     // evidence); the recovery arm seeds the map with the validated base.
++     if (recordsScript && !(liftPlan?.kind === 'erase' && liftPlan.recoverBase)) {
++       recordAquarelleOrdinaryDurableBaseRef.current(launchContextRef.current?.startFrame ?? 0);
++     }
++     // 261028-k03 D2: the pin can refuse (payload/record unavailable) and leave
++     // the base UNKNOWN. Never record a lift whose durable base cannot be
++     // punched — refuse before the record, so nothing half-written survives.
++     // 261028-k03c D4: a recoverBase plan bypasses ONLY this guard; its base is
++     // recovered, validated and punched by the transaction itself.
++     if (liftPlan?.kind === 'erase' && !liftPlan.recoverBase && liftPlan.willPinBase
++       && !aquarelleDurableBaseByKeyRef.current.has(liftPlan.keyId)) {
++       // 261028-k03e: same leak as the plan refusal — undo the engine's local
++       // erase so it can never be captured as the key's pixels.
++       aquarelleResetSheetRef.current?.();
++       revertAquarelleLiftPreview();
++       setApplyMessage(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
++       setApplyStatus('error');
++       setLastError(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
++       return;
++     }
++     const paintStroke = aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight });
++     try {
++       const mutationId = paintMutationLedger.allocateStrokeMutation({ primary: paintStroke });
++       aquarelleStrokeMutationIdsRef.current.set(stroke, mutationId);
++       // 261027: stamp the OWNING KEY with the stroke. A frame number is not
++       // identity — a deleted key's strokes must never seed the key that
++       // later occupies the same frame. 261027 UAT round 7: resolve against
++       // the LIVE ACTIVE track (the paint target), never the possibly-lagging
++       // snapshot binding — a null anchor is unrecoverable on restore.
++       const anchorLaunch = launchContextRef.current;
++       const anchorFrame = anchorLaunch?.startFrame ?? 0;
++       // 261027 UAT round 8: the stroke belongs to the track whose SESSION it
++       // was painted into. The live document id can already point elsewhere (a
++       // desynced track switch) — anchoring to it stamped one track's strokes
++       // with the other track's key, which the restore then had to drop.
++       const sessionTrackId = aquarelleSessionTrackIdRef.current ?? studioActiveTrackId();
++       if (anchorLaunch && sessionTrackId !== studioActiveTrackId()) {
++         recordAquarelleRenderSplitEvent('session-track-mismatch', {
++           stage: 'stroke-end',
++           documentTrackId: studioActiveTrackId(),
++           sessionTrackId,
++           appFrame: anchorFrame,
++         });
++       }
++       const capturedKeyId = anchorLaunch && sessionTrackId.length > 0
++         ? physicPaintStore.getRotoRealKeyRecordByAppFrame(
++             anchorLaunch.layerId,
++             sessionTrackId,
++             anchorFrame,
++           )?.keyId ?? null
++         : null;
++       recordAquarelleStrokeWhenEnabled(recordsScript, mutationId, { ...stroke, mutationId }, capturedKeyId);
++       // The sheet now holds paint that no queue can see until it is captured;
++       // the close/save flush gate reads this flag.
++       aquarelleSheetHasPaintRef.current = true;
++       // quick-261025-awl (D-02/D-03): the first recorded stroke makes Water
++       // color the frame's owner — republish so the Brush slot locks.
++       applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);
++       // 261028-k03 D2: the record above is synchronous and ordered; the punch
++       // is async and owns only the pixel side. It never re-records.
++       if (liftPlan?.kind === 'erase') void runAquarelleLiftErase(liftPlan, stroke, liftGestureDabs);
++       // 61-15 (G-1/G-2): the vector commit's pixels exist only in this
++       // re-bake (the commit painted no engine dabs). Tailed after the record
++       // so the timeline already contains this exact stroke; a failed record
++       // throws into the catch and never bakes.
++       if (isVectorAquarelleStroke(stroke)) void bakeAquarelleVectorCommit();
++     } catch {
++       // A malformed recorded stroke must not kill the live surface — drop it.
++     }
++   }, [bakeAquarelleVectorCommit, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);
++   
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7516:21
+    7514|   it('consumes the bake result through a continuation instead of disca…
+    7515|     const handler = strokeEndRegion();
+    7516|     expect(handler).toContain(CONTINUATION);
+       |                     ^
+    7517|     // Guarded by the vector predicate: an ordinary dabs stroke never …
+    7518|     const guardAt = handler.indexOf(VECTOR_TAIL_GUARD);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-26 WR-03 — a vector stroke committed during an in-flight bake marks the sheet stale > arms the stale-sheet invariant when the bake reports false
+AssertionError: expected 'const handleAquarelleStrokeEnd = useC…' to contain 'if (!baked) setDraftPixelsDirty(true);'
+
+- Expected
++ Received
+
+- if (!baked) setDraftPixelsDirty(true);
++ const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
++     // 3.6 (261027-klx): the app-owned ledger allocates the id and emits the
++     // completion SYNCHRONOUSLY — no engine, no rasterization and no pending
++     // finalization stands between acceptance and completion.
++     // 261027-k6j — Script Off is pixels-only: the pre-script durable base is
++     // only meaningful for a script that is about to start, so it is not
++     // pinned. ONE peeked read per stroke drives both this pin and the script
++     // write below, so the two decisions can never disagree.
++     // 261026 ordinary-key durable base: pin the key's PRE-SCRIPT cache BEFORE
++     // the first event lands — this is the only moment the display still holds
++     // the scriptless paint the later multiply composite must preserve. The
++     // recorder is a no-op when an entry exists or the frame is not an ordinary
++     // key (group frames derive their base from the source key).
++     //
++     // 261028-k03 D2: the preflight runs BEFORE the pin and the record so a
++     // refused lift leaves no event and no half-written base. The record stays
++     // SYNCHRONOUS so a re-bake sees the lift in order.
++     // 261028-k03h: this gesture's ENGINE dabs — taken ONCE, before any refusal
++     // path, so a refused lift can never leak its dab stream into a later one.
++     const liftGestureDabs = stroke.tool === 'lift'
++       ? aquarelleLiftGestureDabsRef.current.splice(0)
++       : [];
++     if (stroke.tool === 'lift') {
++       // 261028-k03b: the gesture is over; the painted preview stays until the
++       // commit/re-bake replaces it. The per-stroke plan cache must not leak.
++       aquarelleLiftPreviewPlanRef.current = null;
++       endAquarelleLiftPreview();
++     }
++     const liftPlan = stroke.tool === 'lift'
++       ? planAquarelleLiftErase(launchContextRef.current?.startFrame ?? 0)
++       : null;
++     if (liftPlan?.kind === 'refuse') {
++       // 261028-k03e: the engine already erased the LIVE SHEET during the
++       // gesture. A refusal must undo that local erase, or the next settle /
++       // frame-leave capture commits it as the frame's pixels while the script
++       // still holds the paint — the exact drift that made every later base
++       // recovery fail and blanked the frame.
++       aquarelleResetSheetRef.current?.();
++       revertAquarelleLiftPreview();
++       setApplyMessage(liftPlan.message);
++       setApplyStatus('error');
++       setLastError(liftPlan.message);
++       return;
++     }
++     // 61-15 (G-1/G-2): a vector stroke paints no engine dabs — with Script
++     // Off the path would become neither pixels nor script, so it would
++     // silently vanish (the recorder's silent drop). Refuse it with fixed
++     // copy BEFORE the ledger allocates. No sheet reset: the commit painted
++     // nothing, and a reset here would erase the live frame.
++     if (isVectorAquarelleStroke(stroke) && !aquarelleScriptRecordingEnabled.peek()) {
++       setApplyMessage(VECTOR_PATH_SCRIPT_OFF_MESSAGE);
++       setApplyStatus('error');
++       setLastError(VECTOR_PATH_SCRIPT_OFF_MESSAGE);
++       return;
++     }
++     const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();
++     // 261028-k03f: a Lift on a frame whose script cannot PAINT it is a RASTER
++     // operation. Recording it would make the NEXT lift script-authoritative,
++     // and a lift-only bake publishes a blank sheet over the raster pixels (UAT:
++     // the paint cache was wiped one second after the erase). A raster lift
++     // pins nothing and records nothing — the punch IS its content.
++     const liftIsScriptOwned = liftPlan?.kind === 'erase' && liftPlan.scripted;
++     const recordsScript = scriptRecordingOn && (stroke.tool !== 'lift' || liftIsScriptOwned);
++     // 261028-k03c D4: a recoverBase lift must NOT pin — for a pre-scripted
++     // frame that pin can only refuse with `script-already-present` (the UAT
++     // evidence); the recovery arm seeds the map with the validated base.
++     if (recordsScript && !(liftPlan?.kind === 'erase' && liftPlan.recoverBase)) {
++       recordAquarelleOrdinaryDurableBaseRef.current(launchContextRef.current?.startFrame ?? 0);
++     }
++     // 261028-k03 D2: the pin can refuse (payload/record unavailable) and leave
++     // the base UNKNOWN. Never record a lift whose durable base cannot be
++     // punched — refuse before the record, so nothing half-written survives.
++     // 261028-k03c D4: a recoverBase plan bypasses ONLY this guard; its base is
++     // recovered, validated and punched by the transaction itself.
++     if (liftPlan?.kind === 'erase' && !liftPlan.recoverBase && liftPlan.willPinBase
++       && !aquarelleDurableBaseByKeyRef.current.has(liftPlan.keyId)) {
++       // 261028-k03e: same leak as the plan refusal — undo the engine's local
++       // erase so it can never be captured as the key's pixels.
++       aquarelleResetSheetRef.current?.();
++       revertAquarelleLiftPreview();
++       setApplyMessage(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
++       setApplyStatus('error');
++       setLastError(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
++       return;
++     }
++     const paintStroke = aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight });
++     try {
++       const mutationId = paintMutationLedger.allocateStrokeMutation({ primary: paintStroke });
++       aquarelleStrokeMutationIdsRef.current.set(stroke, mutationId);
++       // 261027: stamp the OWNING KEY with the stroke. A frame number is not
++       // identity — a deleted key's strokes must never seed the key that
++       // later occupies the same frame. 261027 UAT round 7: resolve against
++       // the LIVE ACTIVE track (the paint target), never the possibly-lagging
++       // snapshot binding — a null anchor is unrecoverable on restore.
++       const anchorLaunch = launchContextRef.current;
++       const anchorFrame = anchorLaunch?.startFrame ?? 0;
++       // 261027 UAT round 8: the stroke belongs to the track whose SESSION it
++       // was painted into. The live document id can already point elsewhere (a
++       // desynced track switch) — anchoring to it stamped one track's strokes
++       // with the other track's key, which the restore then had to drop.
++       const sessionTrackId = aquarelleSessionTrackIdRef.current ?? studioActiveTrackId();
++       if (anchorLaunch && sessionTrackId !== studioActiveTrackId()) {
++         recordAquarelleRenderSplitEvent('session-track-mismatch', {
++           stage: 'stroke-end',
++           documentTrackId: studioActiveTrackId(),
++           sessionTrackId,
++           appFrame: anchorFrame,
++         });
++       }
++       const capturedKeyId = anchorLaunch && sessionTrackId.length > 0
++         ? physicPaintStore.getRotoRealKeyRecordByAppFrame(
++             anchorLaunch.layerId,
++             sessionTrackId,
++             anchorFrame,
++           )?.keyId ?? null
++         : null;
++       recordAquarelleStrokeWhenEnabled(recordsScript, mutationId, { ...stroke, mutationId }, capturedKeyId);
++       // The sheet now holds paint that no queue can see until it is captured;
++       // the close/save flush gate reads this flag.
++       aquarelleSheetHasPaintRef.current = true;
++       // quick-261025-awl (D-02/D-03): the first recorded stroke makes Water
++       // color the frame's owner — republish so the Brush slot locks.
++       applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);
++       // 261028-k03 D2: the record above is synchronous and ordered; the punch
++       // is async and owns only the pixel side. It never re-records.
++       if (liftPlan?.kind === 'erase') void runAquarelleLiftErase(liftPlan, stroke, liftGestureDabs);
++       // 61-15 (G-1/G-2): the vector commit's pixels exist only in this
++       // re-bake (the commit painted no engine dabs). Tailed after the record
++       // so the timeline already contains this exact stroke; a failed record
++       // throws into the catch and never bakes.
++       if (isVectorAquarelleStroke(stroke)) void bakeAquarelleVectorCommit();
++     } catch {
++       // A malformed recorded stroke must not kill the live surface — drop it.
++     }
++   }, [bakeAquarelleVectorCommit, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);
++   
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7526:21
+    7524|   it('arms the stale-sheet invariant when the bake reports false', () …
+    7525|     const handler = strokeEndRegion();
+    7526|     expect(handler).toContain(STALE_ARM);
+       |                     ^
+    7527|     // The continuation publishes NOTHING: the gesture DID commit, so …
+    7528|     // capsule here would steal the apply-refusal ownership.
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-26 WR-03 — a vector stroke committed during an in-flight bake marks the sheet stale > no longer fires the bake as a discarded statement
+AssertionError: expected 'const handleAquarelleStrokeEnd = useC…' not to contain 'void bakeAquarelleVectorCommit();'
+
+- Expected
++ Received
+
+- void bakeAquarelleVectorCommit();
++ const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
++     // 3.6 (261027-klx): the app-owned ledger allocates the id and emits the
++     // completion SYNCHRONOUSLY — no engine, no rasterization and no pending
++     // finalization stands between acceptance and completion.
++     // 261027-k6j — Script Off is pixels-only: the pre-script durable base is
++     // only meaningful for a script that is about to start, so it is not
++     // pinned. ONE peeked read per stroke drives both this pin and the script
++     // write below, so the two decisions can never disagree.
++     // 261026 ordinary-key durable base: pin the key's PRE-SCRIPT cache BEFORE
++     // the first event lands — this is the only moment the display still holds
++     // the scriptless paint the later multiply composite must preserve. The
++     // recorder is a no-op when an entry exists or the frame is not an ordinary
++     // key (group frames derive their base from the source key).
++     //
++     // 261028-k03 D2: the preflight runs BEFORE the pin and the record so a
++     // refused lift leaves no event and no half-written base. The record stays
++     // SYNCHRONOUS so a re-bake sees the lift in order.
++     // 261028-k03h: this gesture's ENGINE dabs — taken ONCE, before any refusal
++     // path, so a refused lift can never leak its dab stream into a later one.
++     const liftGestureDabs = stroke.tool === 'lift'
++       ? aquarelleLiftGestureDabsRef.current.splice(0)
++       : [];
++     if (stroke.tool === 'lift') {
++       // 261028-k03b: the gesture is over; the painted preview stays until the
++       // commit/re-bake replaces it. The per-stroke plan cache must not leak.
++       aquarelleLiftPreviewPlanRef.current = null;
++       endAquarelleLiftPreview();
++     }
++     const liftPlan = stroke.tool === 'lift'
++       ? planAquarelleLiftErase(launchContextRef.current?.startFrame ?? 0)
++       : null;
++     if (liftPlan?.kind === 'refuse') {
++       // 261028-k03e: the engine already erased the LIVE SHEET during the
++       // gesture. A refusal must undo that local erase, or the next settle /
++       // frame-leave capture commits it as the frame's pixels while the script
++       // still holds the paint — the exact drift that made every later base
++       // recovery fail and blanked the frame.
++       aquarelleResetSheetRef.current?.();
++       revertAquarelleLiftPreview();
++       setApplyMessage(liftPlan.message);
++       setApplyStatus('error');
++       setLastError(liftPlan.message);
++       return;
++     }
++     // 61-15 (G-1/G-2): a vector stroke paints no engine dabs — with Script
++     // Off the path would become neither pixels nor script, so it would
++     // silently vanish (the recorder's silent drop). Refuse it with fixed
++     // copy BEFORE the ledger allocates. No sheet reset: the commit painted
++     // nothing, and a reset here would erase the live frame.
++     if (isVectorAquarelleStroke(stroke) && !aquarelleScriptRecordingEnabled.peek()) {
++       setApplyMessage(VECTOR_PATH_SCRIPT_OFF_MESSAGE);
++       setApplyStatus('error');
++       setLastError(VECTOR_PATH_SCRIPT_OFF_MESSAGE);
++       return;
++     }
++     const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();
++     // 261028-k03f: a Lift on a frame whose script cannot PAINT it is a RASTER
++     // operation. Recording it would make the NEXT lift script-authoritative,
++     // and a lift-only bake publishes a blank sheet over the raster pixels (UAT:
++     // the paint cache was wiped one second after the erase). A raster lift
++     // pins nothing and records nothing — the punch IS its content.
++     const liftIsScriptOwned = liftPlan?.kind === 'erase' && liftPlan.scripted;
++     const recordsScript = scriptRecordingOn && (stroke.tool !== 'lift' || liftIsScriptOwned);
++     // 261028-k03c D4: a recoverBase lift must NOT pin — for a pre-scripted
++     // frame that pin can only refuse with `script-already-present` (the UAT
++     // evidence); the recovery arm seeds the map with the validated base.
++     if (recordsScript && !(liftPlan?.kind === 'erase' && liftPlan.recoverBase)) {
++       recordAquarelleOrdinaryDurableBaseRef.current(launchContextRef.current?.startFrame ?? 0);
++     }
++     // 261028-k03 D2: the pin can refuse (payload/record unavailable) and leave
++     // the base UNKNOWN. Never record a lift whose durable base cannot be
++     // punched — refuse before the record, so nothing half-written survives.
++     // 261028-k03c D4: a recoverBase plan bypasses ONLY this guard; its base is
++     // recovered, validated and punched by the transaction itself.
++     if (liftPlan?.kind === 'erase' && !liftPlan.recoverBase && liftPlan.willPinBase
++       && !aquarelleDurableBaseByKeyRef.current.has(liftPlan.keyId)) {
++       // 261028-k03e: same leak as the plan refusal — undo the engine's local
++       // erase so it can never be captured as the key's pixels.
++       aquarelleResetSheetRef.current?.();
++       revertAquarelleLiftPreview();
++       setApplyMessage(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
++       setApplyStatus('error');
++       setLastError(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
++       return;
++     }
++     const paintStroke = aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight });
++     try {
++       const mutationId = paintMutationLedger.allocateStrokeMutation({ primary: paintStroke });
++       aquarelleStrokeMutationIdsRef.current.set(stroke, mutationId);
++       // 261027: stamp the OWNING KEY with the stroke. A frame number is not
++       // identity — a deleted key's strokes must never seed the key that
++       // later occupies the same frame. 261027 UAT round 7: resolve against
++       // the LIVE ACTIVE track (the paint target), never the possibly-lagging
++       // snapshot binding — a null anchor is unrecoverable on restore.
++       const anchorLaunch = launchContextRef.current;
++       const anchorFrame = anchorLaunch?.startFrame ?? 0;
++       // 261027 UAT round 8: the stroke belongs to the track whose SESSION it
++       // was painted into. The live document id can already point elsewhere (a
++       // desynced track switch) — anchoring to it stamped one track's strokes
++       // with the other track's key, which the restore then had to drop.
++       const sessionTrackId = aquarelleSessionTrackIdRef.current ?? studioActiveTrackId();
++       if (anchorLaunch && sessionTrackId !== studioActiveTrackId()) {
++         recordAquarelleRenderSplitEvent('session-track-mismatch', {
++           stage: 'stroke-end',
++           documentTrackId: studioActiveTrackId(),
++           sessionTrackId,
++           appFrame: anchorFrame,
++         });
++       }
++       const capturedKeyId = anchorLaunch && sessionTrackId.length > 0
++         ? physicPaintStore.getRotoRealKeyRecordByAppFrame(
++             anchorLaunch.layerId,
++             sessionTrackId,
++             anchorFrame,
++           )?.keyId ?? null
++         : null;
++       recordAquarelleStrokeWhenEnabled(recordsScript, mutationId, { ...stroke, mutationId }, capturedKeyId);
++       // The sheet now holds paint that no queue can see until it is captured;
++       // the close/save flush gate reads this flag.
++       aquarelleSheetHasPaintRef.current = true;
++       // quick-261025-awl (D-02/D-03): the first recorded stroke makes Water
++       // color the frame's owner — republish so the Brush slot locks.
++       applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);
++       // 261028-k03 D2: the record above is synchronous and ordered; the punch
++       // is async and owns only the pixel side. It never re-records.
++       if (liftPlan?.kind === 'erase') void runAquarelleLiftErase(liftPlan, stroke, liftGestureDabs);
++       // 61-15 (G-1/G-2): the vector commit's pixels exist only in this
++       // re-bake (the commit painted no engine dabs). Tailed after the record
++       // so the timeline already contains this exact stroke; a failed record
++       // throws into the catch and never bakes.
++       if (isVectorAquarelleStroke(stroke)) void bakeAquarelleVectorCommit();
++     } catch {
++       // A malformed recorded stroke must not kill the live surface — drop it.
++     }
++   }, [bakeAquarelleVectorCommit, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);
++   
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7537:25
+    7535|   it('no longer fires the bake as a discarded statement', () => {
+    7536|     const handler = strokeEndRegion();
+    7537|     expect(handler).not.toContain(DISCARDED_BAKE);
+       |                         ^
+    7538|   });
+    7539| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-26 WR-03 — a vector stroke committed during an in-flight bake marks the sheet stale > still records the stroke before it bakes
+AssertionError: expected -1 to be greater than 6753
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7546:20
+    7544|     const catchAt = handler.indexOf('    } catch {');
+    7545|     expect(recordAt).toBeGreaterThan(-1);
+    7546|     expect(bakeAt).toBeGreaterThan(recordAt);
+       |                    ^
+    7547|     expect(bakeAt).toBeLessThan(catchAt);
+    7548|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 396 passed (400)
+   Start at  12:24:41
+   Duration  479ms (transform 134ms, setup 0ms, collect 161ms, tests 125ms, environment 0ms, prepare 28ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-26-t3/junit.xml

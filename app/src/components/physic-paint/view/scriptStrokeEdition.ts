@@ -151,13 +151,105 @@ export function setDraftPixelsDirty(on: boolean): void {
  * Entering Draft is a compare-then-write. LEAVING it is refused while
  * `draftPixelsDirty` is set: the settle is the only path that clears dirty and
  * then flips this switch, so no caller — the strip, an exit, the D-07 open
- * reset — can reach Draft OFF over stale pixels. A refused leave is a silent
- * no-op (nothing is written, nobody is notified).
+ * reset — can reach Draft OFF over stale pixels.
+ *
+ * 61-18 (D-16, T-61-61): leaving is ALSO refused while the `wireframeMode`
+ * latch is on. Wireframe GENERALISES Draft — never a second engine-suppression
+ * path — and it only holds while Draft holds: the capture gate opens on Draft
+ * OFF, so a leave behind the construction view would let the sheet be
+ * captured, reset and re-baked. The OFF transition clears the latch FIRST and
+ * then settles Draft, which is why the intended exit still completes.
+ *
+ * A refused leave is a silent no-op (nothing is written, nobody is notified).
  */
 export function setDraftMode(on: boolean): void {
-  if (!on && draftPixelsDirty.value) return;
+  if (!on && (draftPixelsDirty.value || wireframeMode.peek())) return;
   if (draftMode.value === on) return;
   draftMode.value = on;
+}
+
+/**
+ * 61-13 (D-16): the **wireframe** VIEW latch. ON draws every recorded vector
+ * stroke's spine and width envelope (plus a width rung at every stored width
+ * factor) while the watercolor bake is suspended. It is a GENERALISATION of
+ * Draft, never a second engine-suppression path: ON forces Draft through the
+ * one `setDraftMode` setter, and OFF clears only this latch and hands the
+ * re-bake to the Studio's ONE `settleDraftScript`.
+ *
+ * Session/UI state only — never written to the document, never part of the
+ * undo stack, never persisted, never part of a cache key or an export (D-16).
+ * Read by the rail leaf, the two overlays and the Studio event handlers
+ * (`.peek()` only); NEVER the Studio render body (rule 5).
+ */
+export const wireframeMode = signal(false);
+
+/**
+ * 61-18: the ONE fixed settle refusal while the wireframe view is up. The
+ * settle is the only route that can clear `draftPixelsDirty` and leave Draft,
+ * and it must never reset or re-bake the sheet behind the construction view —
+ * so it refuses with this line instead of a silent no-op. Never interpolated
+ * (UI-SPEC copy contract).
+ */
+export const WIREFRAME_SETTLE_REFUSED_MESSAGE = 'Draft recompute refused — wireframe is on. Turn wireframe off to re-render.';
+
+/**
+ * 61-27 (IN-02): the ONE fixed busy-settle refusal — the combined physical /
+ * applying / mutation-locked / script-edit-in-flight gate refused the settle
+ * while another edit is running. Same contract as the wireframe line: one
+ * bounded terminal state, resolve false, never reject, never interpolated
+ * (UI-SPEC copy contract). Without it a track switch aborted in silence.
+ */
+export const DRAFT_SETTLE_BUSY_MESSAGE = 'Another edit is settling — try again.';
+
+/**
+ * ON: arm Draft FIRST, then flip the latch — a subscriber that sees the latch
+ * on must already observe Draft on, and the OFF settle needs Draft to exist.
+ * OFF: clear this latch ONLY; the Studio's settle owns the Draft exit (clear
+ * dirty, flip Draft, re-render). Compare-then-write: a repeated call notifies
+ * nobody and writes nothing (rule 3).
+ */
+export function setWireframeMode(on: boolean): void {
+  if (wireframeMode.value === on) return;
+  if (on) setDraftMode(true);
+  wireframeMode.value = on;
+}
+
+/**
+ * 61-13 (E6 backstop): true from the moment an OFF transition starts its
+ * re-bake until that settle lands. Read by the rail leaf to disable every rail
+ * control during the window; never the Studio render body.
+ */
+export const wireframeSettleInFlight = signal(false);
+
+/** Compare-then-write — 1000 identical calls notify zero times (rule 3). */
+export function setWireframeSettleInFlight(on: boolean): void {
+  if (wireframeSettleInFlight.value === on) return;
+  wireframeSettleInFlight.value = on;
+}
+
+let wireframeSettlePromise: Promise<boolean> | null = null;
+
+/**
+ * The single-flight OFF transition. Two clicks racing each other join the SAME
+ * settle promise; the latch clears FIRST so the overlay stops drawing before
+ * the re-bake begins (E7 loading), and the window closes when the run settles
+ * so a later click can start a fresh transition. The settle is the Studio's
+ * ONE `settleDraftScript` — this module never re-implements it.
+ */
+export function runWireframeOffTransition(settle: () => Promise<boolean>): Promise<boolean> {
+  if (wireframeSettlePromise !== null) return wireframeSettlePromise;
+  if (wireframeMode.peek()) setWireframeMode(false);
+  setWireframeSettleInFlight(true);
+  const run = (async () => {
+    try {
+      return await settle();
+    } finally {
+      setWireframeSettleInFlight(false);
+      wireframeSettlePromise = null;
+    }
+  })();
+  wireframeSettlePromise = run;
+  return run;
 }
 
 /**
@@ -435,6 +527,21 @@ export function decimateScriptPoints(points: readonly CanvasPoint[]): CanvasPoin
 }
 
 /**
+ * 261112-n3f: the display-only band descriptor a port returns for one listed
+ * entry. `maskedEdge: true` declares a polygon whose outline is its own
+ * closed, self-intersecting ring (the vector per-vertex envelope), so the
+ * drawing surface renders it as an unmasked fill PLUS a masked edge — the
+ * wash survives and no interior crossing line is painted. An absent flag
+ * (paint footprint, lift ribbon) keeps the shipped single path with unchanged
+ * rendered props.
+ */
+export interface ScriptStrokeBand {
+  /** Display-only geometry — never mutated, never a hit-test or bounds input. */
+  readonly polygonPx: readonly CanvasPoint[];
+  readonly maskedEdge?: boolean;
+}
+
+/**
  * The per-module edition contract. Watercolor wires the list/hit functions
  * from its selection module; the brush wires the engine-backed port. The
  * Studio injects the delete/move/step callbacks.
@@ -449,8 +556,12 @@ export interface ScriptStrokeEditionPort {
    * "Preview stroke size" switch is on. Absent means the module has no band
    * geometry and the overlay keeps its centerline. NEVER a hit-test, bounds,
    * stack or script input.
+   *
+   * 261112-n3f: the band travels as a descriptor so the drawing surface can
+   * honour an edge policy (`maskedEdge`) without knowing which module
+   * produced the polygon.
    */
-  bandFor?(entry: SelectableScriptStroke, size: ScriptStrokeSize): CanvasPoint[] | undefined;
+  bandFor?(entry: SelectableScriptStroke, size: ScriptStrokeSize): ScriptStrokeBand | undefined;
   /** 261024-mz5: the WHOLE selection in one batch edit. */
   deleteStrokes(ids: readonly number[]): void;
   moveStrokes(ids: readonly number[], dxPx: number, dyPx: number): void;

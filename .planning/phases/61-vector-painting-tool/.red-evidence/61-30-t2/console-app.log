@@ -1,0 +1,99 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/lib/mceFieldContract.test.ts (17 tests | 1 failed) 7ms
+   × Phase 61 vector field set (VEC-06 / REL-02) > declares the vector path shape in both languages 3ms
+     → MceAquarelleVectorPath.curveMode: TS side is missing the key: expected false to be true // Object.is equality
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts (32 tests | 3 failed) 23ms
+   × AQTL v2 curve mode (61-30 G-20) > round-trips curveMode 'spline' and leaves an absent mode absent 2ms
+     → expected undefined to be 'spline' // Object.is equality
+   × AQTL v2 curve mode (61-30 G-20) > costs exactly one byte for a curve mode and nothing when absent 1ms
+     → expected 94 to be 95 // Object.is equality
+   × AQTL v2 curve mode (61-30 G-20) > refuses an unmapped curve-mode code (fail closed, never defaults) 1ms
+     → expected 'invalid-count' to be 'invalid-value' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/mceFieldContract.test.ts > Phase 61 vector field set (VEC-06 / REL-02) > declares the vector path shape in both languages
+AssertionError: MceAquarelleVectorPath.curveMode: TS side is missing the key: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ expectMemberKeys src/lib/mceFieldContract.test.ts:160:75
+    158|   const rustKeys = new Set(rust.get(name)!.values());
+    159|   for (const key of keys) {
+    160|     expect(tsKeys.has(key), `${name}.${key}: TS side is missing the ke…
+       |                                                                           ^
+    161|     expect(rustKeys.has(key), `${name}.${key}: Rust side is missing th…
+    162|   }
+ ❯ src/lib/mceFieldContract.test.ts:283:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 curve mode (61-30 G-20) > round-trips curveMode 'spline' and leaves an absent mode absent
+AssertionError: expected undefined to be 'spline' // Object.is equality
+
+- Expected: 
+"spline"
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:612:48
+    610|     const withMode = handPaintedWithCurveMode('spline');
+    611|     const [decoded] = decodeScriptTimelineBinary(encodeScriptTimelineB…
+    612|     expect(asStroke(decoded).engine.curveMode).toBe('spline');
+       |                                                ^
+    613|     expect(decoded).toEqual(withMode);
+    614| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 curve mode (61-30 G-20) > costs exactly one byte for a curve mode and nothing when absent
+AssertionError: expected 94 to be 95 // Object.is equality
+
+- Expected
++ Received
+
+- 95
++ 94
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:622:31
+    620|     const absent = encodeScriptTimelineBinary([minimalStroke()]);
+    621|     const spline = encodeScriptTimelineBinary([handPaintedWithCurveMod…
+    622|     expect(spline.byteLength).toBe(absent.byteLength + 1);
+       |                               ^
+    623|   });
+    624| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 curve mode (61-30 G-20) > refuses an unmapped curve-mode code (fail closed, never defaults)
+AssertionError: expected 'invalid-count' to be 'invalid-value' // Object.is equality
+
+Expected: "invalid-value"
+Received: "invalid-count"
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:631:67
+    629|       7,
+    630|     );
+    631|     expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe…
+       |                                                                   ^
+    632|   });
+    633| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 45 passed (49)
+   Start at  15:00:48
+   Duration  345ms (transform 65ms, setup 0ms, collect 162ms, tests 30ms, environment 0ms, prepare 51ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-30-t2/junit-app.xml
+undefined
+/Users/lmarques/Dev/efx-motion-editor/app:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/components/physic-paint/performance/scriptTimelineCodec.test.ts src/lib/mceFieldContract.test.ts --reporter=default --reporter=junit --outputFile=/Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-30-t2/junit-app.xml

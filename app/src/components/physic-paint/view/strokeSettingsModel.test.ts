@@ -23,18 +23,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effect } from '@preact/signals';
 import type { VNode } from 'preact';
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
-import { PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
+import { ANCHOR_WIDTH_MAX, PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  ANCHOR_CORNER_EMPTY_READING,
+  ANCHOR_CORNER_OPTIONS,
+  ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE,
+  AQUARELLE_ANCHOR_WIDTH_DEFAULT,
+  AQUARELLE_ANCHOR_WIDTH_MAX,
+  AQUARELLE_ANCHOR_WIDTH_MIN,
+  AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX,
+  AQUARELLE_ANCHOR_WIDTH_STEP,
   BRUSH_SETTINGS_FIELDS,
+  PATH_EDIT_LABEL,
+  PATH_EDIT_MULTI_DISABLED_REASON,
+  PATH_EDIT_SINGLE_DISABLED_REASON,
+  resolveAnchorWidthTarget,
+  resolvePathEditGate,
+  shouldExitPathEdit,
   FRESH_STROKE_GEOMETRY_SESSION,
   STROKE_POSITION_RANGE,
   STROKE_ROTATION_RANGE,
   STROKE_SCALE_RANGE,
   WATERCOLOR_SETTINGS_FIELDS,
+  anchorWidthEffectivePx,
+  anchorWidthPatchValue,
   buildAppearancePatch,
-  buildColorPatch,
   buildPaintSeedVariationPatch,
   filterStrokeListRows,
   geometryMoveDelta,
@@ -42,16 +57,16 @@ import {
   listStrokeTipOptions,
   listStrokeToolOptions,
   matchesStrokeTypeFilter,
-  readColorField,
+  readAnchorCornerReading,
+  readAnchorWidthReading,
+  readCurveMode,
   readNumericField,
   readPaintSeedVariation,
   resolveStrokeListRange,
   resolveStrokeSettingsOpen,
-  resolveStrokeSettingsView,
   resolveStrokeTipFilter,
   resolveStrokeTipName,
   resolveStrokeToolFilter,
-  shouldInvalidateStrokeSettingsView,
   shouldMarkSawEmpty,
   sortStrokesTopmostFirst,
   strokeListSummary,
@@ -82,13 +97,18 @@ import {
   aquarelleStrokeSettingsDismissed,
   aquarelleStrokeTipFilter,
   aquarelleStrokeToolFilter,
-  aquarelleStrokeTypeFilter,
   resetAquarelleStrokeFineFilters,
   setAquarelleSelectMode,
   setAquarelleStrokeTipFilter,
   setAquarelleStrokeToolFilter,
   setAquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
+import {
+  clearVectorAnchorSelection,
+  enterPathEdit,
+  exitPathEdit,
+  setVectorAnchorSelection,
+} from './vectorPathSession';
 import { resetFloatingSheetStack } from './floatingSheetStack';
 import type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
@@ -250,30 +270,22 @@ function renderDialog(bundle: StrokeSettingsDialogBundle | null | undefined): un
 }
 
 /**
- * 261101-jmm: enter the watercolor sheet's SETTINGS view, IDEMPOTENTLY. Once
- * the tab row is up this does nothing — the toggle writes the opposite of the
- * resolved view, so a second call in the same test would flip back to list.
- * Brush bundles resolve to the settings view already, so they are untouched.
+ * 261112-lq4: the tab row is ALWAYS up — there is no view gate left to enter.
+ * The watercolor default is List (the first render lands there), so this is a
+ * plain pass-through kept for the call sites that read as "the sheet body".
  */
 function renderSettings(
   bundle: StrokeSettingsDialogBundle | null | undefined,
 ): unknown {
-  let tree = renderDialog(bundle);
-  if (findByTestId(tree, 'stroke-settings-tabs') !== undefined) return tree;
-  const toggle = findByTestId(tree, 'stroke-settings-view-toggle');
-  // An empty selection natively disables the toggle: there is no way in.
-  if (!toggle || toggle.props.disabled) return tree;
-  (toggle.props.onClick as () => void)();
-  tree = renderDialog(bundle);
-  return tree;
+  return renderDialog(bundle);
 }
 
 /** Activate one of the pinned tabs, then re-render from the live signal. */
 function renderDialogTab(
   bundle: StrokeSettingsDialogBundle | null | undefined,
-  tab: 'geometry' | 'stack' | 'paint',
+  tab: 'list' | 'geometry' | 'stack' | 'curve',
 ): unknown {
-  const tree = renderSettings(bundle);
+  const tree = renderDialog(bundle);
   const button = findByTestId(tree, `stroke-settings-tab-${tab}`);
   expect(button, `tab ${tab}`).toBeDefined();
   (button!.props.onClick as () => void)();
@@ -507,32 +519,6 @@ describe('261024-p5q field reads: absolute, mixed, first-selected representative
     // Brush has no canonical fallback bag — the field minimum is the guard.
     expect(readNumericField(brushRows, [7, 9], size)).toEqual({ value: 1, mixed: true });
   });
-
-  it('reads the representative colour from the first-selected id and flags any difference', () => {
-    const rows = [
-      appearance(9, { size: 12 }, '#000000'),
-      appearance(7, { size: 12 }, '#ff0000'),
-      appearance(11, { size: 12 }, '#00ff00'),
-    ];
-    expect(readColorField(rows, [7, 9, 11])).toEqual({ color: '#ff0000', mixed: true });
-    expect(readColorField(rows.slice(0, 1), [9])).toEqual({ color: '#000000', mixed: false });
-  });
-
-  it('maps a null colour to the overlay neutral and still reports mixed repeats', () => {
-    const rows = [
-      appearance(7, { size: 12 }, null),
-      appearance(9, { size: 12 }, '#103c65'),
-    ];
-    expect(readColorField(rows, [7, 9])).toEqual({ color: '#111827', mixed: true });
-
-    // A later stroke carrying the representative colour does not cancel mixed.
-    const repeats = [
-      appearance(7, { size: 12 }, '#ff0000'),
-      appearance(9, { size: 12 }, '#00ff00'),
-      appearance(11, { size: 12 }, '#ff0000'),
-    ];
-    expect(readColorField(repeats, [7, 9, 11])).toEqual({ color: '#ff0000', mixed: true });
-  });
 });
 
 describe('261024-p5q patch builders: canonical units only', () => {
@@ -545,10 +531,6 @@ describe('261024-p5q patch builders: canonical units only', () => {
 
   it('maps the smoothing segment to antiAlias 0..3', () => {
     expect(buildAppearancePatch('brush', 'smoothing', 2)).toEqual({ params: { antiAlias: 2 } });
-  });
-
-  it('builds a colour-only patch', () => {
-    expect(buildColorPatch('#abcdef')).toEqual({ color: '#abcdef' });
   });
 });
 
@@ -744,76 +726,69 @@ describe('261024-p5q dialog shell', () => {
     expect((reopened!.props.style as Record<string, unknown>).transform).toBe('translate(30px, 20px)');
   });
 
-  it('the Size row is a release-commit SliderStepper that commits one bundle patch for the whole selection', () => {
-    const { bundle, calls } = createBundle();
+  it('the Geometry Opacity row is a release-commit SliderStepper that commits one bundle patch for the whole selection', () => {
+    const { bundle, calls } = createBundle({
+      listStrokes: () => [
+        selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 }),
+        selectableStroke(9, { x: 0, y: 0, width: 100, height: 100 }),
+      ],
+    });
     setScriptStrokeSelection([7, 9]);
-    const tree = renderDialogTab(bundle, 'paint');
+    const tree = renderDialogTab(bundle, 'geometry');
 
-    const slider = findComponent(tree, (props) => props.ariaLabel === 'Size');
+    const slider = findComponent(tree, (props) => props.ariaLabel === 'Opacity');
     expect(slider).toBeDefined();
     expect(slider!.props.commitOnRelease).toBe(true);
-    expect(slider!.props.value).toBe(12);
-    expect(slider!.props.min).toBe(1);
-    expect(slider!.props.max).toBe(800);
+    expect(slider!.props.value).toBe(100);
+    expect(slider!.props.min).toBe(10);
+    expect(slider!.props.max).toBe(100);
     expect(slider!.props.allowOutOfRangeEntry).toBe(true);
 
-    (slider!.props.onChange as (value: number) => void)(42);
-    expect(calls).toEqual([{ ids: [7, 9], patch: { params: { size: 42 } } }]);
+    (slider!.props.onChange as (value: number) => void)(55);
+    expect(calls).toEqual([{ ids: [7, 9], patch: { params: { opacity: 55 } } }]);
   });
 
-  it('structural pins: test ids, signal reads, no useState, no color tab yet', () => {
+  it('structural pins: test ids, signal reads, no useState, no appearance-field rows', () => {
     expect(dialogSource).toContain('data-testid="stroke-settings-dialog"');
     expect(dialogSource).toContain('data-testid="stroke-settings-header"');
     expect(dialogSource).toContain('data-testid="stroke-settings-close"');
-    expect(dialogSource).toContain('stroke-settings-${field.key}');
+    // quick 261111-vg4: the Paint field rows are gone, so the template test id
+    // that generated them must not linger in the source.
+    expect(dialogSource).not.toContain('stroke-settings-${field.key}');
     expect(dialogSource).toContain('scriptSelectedStrokeIds.value');
     expect(dialogSource).not.toContain('useState');
   });
 });
 
 // ============================================================
-//  261024-p5q Task 2 — the full Paint field set, mixed chrome and
-//  the shared color control. The picker is imported UNMODIFIED:
-//  live changes feed a dialog draft only, and one boundary handler
-//  writes every selected stroke exactly once.
+//  261024-p5q Task 2 (quick 261111-vg4 revised) — the dialog's
+//  surviving per-stroke appearance row: brush Geometry Opacity.
+//  Quick 261111-ucf moved every other paint edit onto the sidebar
+//  Paint/Brush tabs and the top bar, so the Paint tab is gone.
 // ============================================================
 
-describe('261024-p5q dialog fields and shared color', () => {
-  it('renders every brush Paint field as a release-commit SliderStepper', () => {
+describe('261024-p5q dialog geometry fields', () => {
+  it('renders the brush Geometry Opacity row and commits it for the whole selection', () => {
     const { bundle, calls } = createBundle({
       listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
     });
     setScriptStrokeSelection([7]);
-    const tree = renderDialogTab(bundle, 'paint');
+    const tree = renderDialogTab(bundle, 'geometry');
 
-    for (const field of BRUSH_SETTINGS_FIELDS) {
-      if (field.kind !== 'numeric') continue;
-      const slider = findComponent(tree, (props) => props.ariaLabel === field.label);
-      expect(slider, field.key).toBeDefined();
-      expect(slider!.props.commitOnRelease).toBe(true);
-      expect(slider!.props.min).toBe(field.min);
-      expect(slider!.props.max).toBe(field.max);
-      expect(slider!.props.step).toBe(field.step);
-      expect(slider!.props.mixed).toBe(false);
-      expect(findByTestId(tree, `stroke-settings-${field.key}`), field.key).toBeDefined();
-    }
+    const opacity = findComponent(tree, (props) => props.ariaLabel === 'Opacity');
+    expect(opacity).toBeDefined();
+    expect(opacity!.props.commitOnRelease).toBe(true);
+    expect(opacity!.props.mixed).toBe(false);
+    expect(findByTestId(tree, 'stroke-settings-geometry-opacity')).toBeDefined();
 
-    // Opacity ALSO leads Geometry, while the Paint row stays (the dialog
-    // mirrors the top bar, which surfaces both).
-    expect(
-      findByTestId(renderDialogTab(bundle, 'geometry'), 'stroke-settings-geometry-opacity'),
-    ).toBeDefined();
-    expect(findByTestId(tree, 'stroke-settings-opacity')).toBeDefined();
-
-    // An untouched row never writes; one row's onChange writes only that key.
+    // An untouched row never writes; one commit writes only that key.
     expect(calls).toEqual([]);
-    const opacity = findComponent(tree, (props) => props.ariaLabel === 'Opacity')!;
-    (opacity.props.onChange as (value: number) => void)(55);
+    (opacity!.props.onChange as (value: number) => void)(55);
     expect(calls).toEqual([{ ids: [7], patch: { params: { opacity: 55 } } }]);
   });
 
-  it('renders the full water color field set in canonical units', () => {
-    const { bundle, calls } = createBundle({
+  it('renders no Opacity row for water color: Pigment lives in the sidebar', () => {
+    const { bundle } = createBundle({
       module: 'watercolor',
       brushMoveActive: false,
       listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
@@ -830,100 +805,9 @@ describe('261024-p5q dialog fields and shared color', () => {
     });
     setScriptSelectMode(true);
     setScriptStrokeSelection([7]);
-    const tree = renderDialogTab(bundle, 'paint');
-
-    for (const field of WATERCOLOR_SETTINGS_FIELDS) {
-      const slider = findComponent(tree, (props) => props.ariaLabel === field.label);
-      expect(slider, field.key).toBeDefined();
-      expect(slider!.props.mixed).toBe(false);
-      expect(slider!.props.value).toBe(
-        field.key === 'size' ? 20 : field.key === 'load' ? 60 : 50,
-      );
-    }
-
-    // Water color has no global opacity: Pigment (`load`) is a Paint row and
-    // Geometry must not mirror it under the name Opacity.
     const geometryTree = renderDialogTab(bundle, 'geometry');
     expect(findComponent(geometryTree, (props) => props.ariaLabel === 'Opacity')).toBeUndefined();
     expect(findByTestId(geometryTree, 'stroke-settings-geometry-opacity')).toBeUndefined();
-
-    const pigment = findComponent(tree, (props) => props.ariaLabel === 'Pigment')!;
-    (pigment.props.onChange as (value: number) => void)(70);
-    expect(calls).toEqual([{ ids: [7], patch: { params: { load: 70 } } }]);
-  });
-
-  it('shows Mixed on differing numeric rows and on the smoothing group', () => {
-    const { bundle, calls } = createBundle({
-      readAppearance: (ids) => ids.map((id) => appearance(id, {
-        size: id === 7 ? 40 : 20,
-        opacity: 100,
-        edgeDetail: 50,
-        pickup: 0,
-        antiAlias: id === 7 ? 0 : 2,
-      }, id === 7 ? '#ff0000' : '#00ff00')),
-    });
-    setScriptStrokeSelection([7, 9]);
-    const tree = renderDialogTab(bundle, 'paint');
-
-    const size = findComponent(tree, (props) => props.ariaLabel === 'Size')!;
-    expect(size.props.mixed).toBe(true);
-    // The representative is the FIRST-SELECTED stroke, not registry order.
-    expect(size.props.value).toBe(40);
-
-    expect(findByTestId(tree, 'stroke-settings-smoothing-mixed')).toBeDefined();
-    expect(
-      findByTestId(tree, 'stroke-settings-smoothing-option-1')!.props['aria-pressed'],
-    ).toBe(false);
-    (findByTestId(tree, 'stroke-settings-smoothing-option-3')!.props.onClick as () => void)();
-    expect(calls).toEqual([{ ids: [7, 9], patch: { params: { antiAlias: 3 } } }]);
-  });
-
-  it('marks the agreed smoothing segment active and hides the Mixed caption', () => {
-    const { bundle } = createBundle({
-      readAppearance: (ids) => ids.map((id) => appearance(id, {
-        size: 12,
-        opacity: 100,
-        edgeDetail: 50,
-        pickup: 0,
-        antiAlias: 2,
-      })),
-    });
-    setScriptStrokeSelection([7, 9]);
-    const tree = renderDialogTab(bundle, 'paint');
-    expect(findByTestId(tree, 'stroke-settings-smoothing-mixed')).toBeUndefined();
-    expect(
-      findByTestId(tree, 'stroke-settings-smoothing-option-2')!.props['aria-pressed'],
-    ).toBe(true);
-  });
-
-  it('shows the selected strokes colour as a read-only thumb with a red Mixed badge', () => {
-    const { bundle } = createBundle({
-      readAppearance: (ids) => ids.map((id) => appearance(
-        id,
-        { size: 12 },
-        id === 7 ? '#ff0000' : '#00ff00',
-      )),
-    });
-    setScriptStrokeSelection([7, 9]);
-    const tree = renderDialogTab(bundle, 'paint');
-
-    const thumb = findByTestId(tree, 'stroke-settings-color-thumb')!;
-    expect(thumb).toBeDefined();
-    expect((thumb.props.style as Record<string, unknown>).backgroundColor).toBe('#ff0000');
-    const mixed = findByTestId(tree, 'stroke-settings-color-mixed')!;
-    expect(mixed).toBeDefined();
-    expect((mixed.props.style as Record<string, unknown>).color).toBe('#ef4444');
-    expect(dialogSource).not.toContain("import { RightPanelColorTab }");
-  });
-
-  it('hides the Mixed badge when every selected stroke agrees', () => {
-    const { bundle } = createBundle({
-      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 }, '#ff0000')),
-    });
-    setScriptStrokeSelection([7, 9]);
-    const tree = renderDialogTab(bundle, 'paint');
-    expect(findByTestId(tree, 'stroke-settings-color-thumb')).toBeDefined();
-    expect(findByTestId(tree, 'stroke-settings-color-mixed')).toBeUndefined();
   });
 
   it('uses the Document sound header chrome and the app scrollbar', () => {
@@ -934,11 +818,16 @@ describe('261024-p5q dialog fields and shared color', () => {
     expect(dialogSource).toContain('data-testid="stroke-settings-header"');
   });
 
-  it('puts Geometry, Stack and Paint on ONE pinned tab row, Geometry by default', () => {
+  it('puts List | Geometry | Stack on ONE pinned tab row, List by default', () => {
     const { bundle } = createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      keepOpenOnEmpty: true,
       listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 })),
       reorderStroke: () => true,
     });
+    setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
     const tree = renderDialog(bundle);
 
@@ -946,44 +835,131 @@ describe('261024-p5q dialog fields and shared color', () => {
     expect(tabRow).toBeDefined();
     // The sidebar tab chrome, reused verbatim on one row.
     expect(tabRow.props.class).toContain('physics-paint-options-tabs');
-    for (const tab of ['geometry', 'stack', 'paint']) {
+    for (const tab of ['list', 'geometry', 'stack']) {
       expect(findByTestId(tree, `stroke-settings-tab-${tab}`), tab).toBeDefined();
     }
+    // quick 261111-vg4 / 261112-lq4: no Paint tab, and no Curve without a
+    // vector stroke.
+    expect(findByTestId(tree, 'stroke-settings-tab-paint')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-curve')).toBeUndefined();
 
-    // Geometry is the default: only its content is mounted.
-    expect(findByTestId(tree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(true);
-    expect(findByTestId(tree, 'stroke-settings-tab-geometry')!.props.class).toContain('active');
-    expect(findByTestId(tree, 'stroke-settings-tab-paint')!.props['aria-selected']).toBe(false);
-    expect(findByTestId(tree, 'stroke-settings-geometry')).toBeDefined();
+    // 261112-lq4: LIST is the watercolor default — only its content mounts.
+    expect(findByTestId(tree, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(true);
+    expect(findByTestId(tree, 'stroke-settings-tab-list')!.props.class).toContain('active');
+    expect(findByTestId(tree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(false);
+    expect(findByTestId(tree, 'stroke-settings-tab-stack')!.props['aria-selected']).toBe(false);
+    expect(findByTestId(tree, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-geometry')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-stack')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-curve')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-paint')).toBeUndefined();
   });
 
-  it('switches content per tab and keeps the color readout inside Paint', () => {
+  it('switches content per tab and mounts no Paint content anywhere', () => {
     const { bundle } = createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      keepOpenOnEmpty: true,
       listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 })),
+      readVectorAnchors: () => [],
+      applyCurveMode: () => true,
       reorderStroke: () => true,
     });
+    setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
+
+    const listTree = renderDialogTab(bundle, 'list');
+    expect(findByTestId(listTree, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(listTree, 'stroke-settings-geometry')).toBeUndefined();
+    expect(findByTestId(listTree, 'stroke-settings-stack')).toBeUndefined();
+    expect(findByTestId(listTree, 'stroke-settings-curve')).toBeUndefined();
 
     const stackTree = renderDialogTab(bundle, 'stack');
     expect(findByTestId(stackTree, 'stroke-settings-stack')).toBeDefined();
+    expect(findByTestId(stackTree, 'stroke-settings-list')).toBeUndefined();
     expect(findByTestId(stackTree, 'stroke-settings-geometry')).toBeUndefined();
     expect(findByTestId(stackTree, 'stroke-settings-paint')).toBeUndefined();
-
-    const paintTree = renderDialogTab(bundle, 'paint');
-    expect(findByTestId(paintTree, 'stroke-settings-paint')).toBeDefined();
-    expect(findByTestId(paintTree, 'stroke-settings-color')).toBeDefined();
-    expect(findByTestId(paintTree, 'stroke-settings-stack')).toBeUndefined();
-    expect(findByTestId(paintTree, 'stroke-settings-geometry')).toBeUndefined();
 
     const geometryTree = renderDialogTab(bundle, 'geometry');
     expect(findByTestId(geometryTree, 'stroke-settings-geometry')).toBeDefined();
     expect(findByTestId(geometryTree, 'stroke-settings-paint')).toBeUndefined();
     expect(findByTestId(geometryTree, 'stroke-settings-stack')).toBeUndefined();
+    expect(findByTestId(geometryTree, 'stroke-settings-list')).toBeUndefined();
+
+    const curveTree = renderDialogTab(bundle, 'curve');
+    expect(findByTestId(curveTree, 'stroke-settings-curve')).toBeDefined();
+    expect(findByTestId(curveTree, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(curveTree, 'stroke-settings-geometry')).toBeUndefined();
+    expect(findByTestId(curveTree, 'stroke-settings-stack')).toBeUndefined();
+
+    // No tab — nor the default list view — carries a Paint surface.
+    for (const tree of [listTree, stackTree, geometryTree, curveTree, renderDialog(bundle)]) {
+      expect(findByTestId(tree, 'stroke-settings-paint')).toBeUndefined();
+      expect(findByTestId(tree, 'stroke-settings-color')).toBeUndefined();
+      expect(findByTestId(tree, 'stroke-settings-size')).toBeUndefined();
+      expect(findByTestId(tree, 'stroke-settings-smoothing')).toBeUndefined();
+    }
   });
 
-  it('omits the Stack tab when the bundle has no reorderStroke', () => {
+  it('adds the Curve tab only for one selected vector stroke and mounts its controls', () => {
+    const vectorAppearance = (id: number): ScriptStrokeAppearance => ({
+      mutationId: id,
+      params: { size: 12 },
+      color: null,
+      vector: true,
+    });
+    const curveCapable = (overrides: Partial<StrokeSettingsDialogBundle> = {}) => createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      keepOpenOnEmpty: true,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map(vectorAppearance),
+      readVectorAnchors: () => [],
+      applyCurveMode: () => true,
+      applyAnchorCorners: () => true,
+      reorderStroke: () => true,
+      ...overrides,
+    }).bundle;
+
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    const bundle = curveCapable();
+
+    // Curve is in the row and mounts ONLY its own section.
+    const curveTree = renderDialogTab(bundle, 'curve');
+    expect(findByTestId(curveTree, 'stroke-settings-curve')).toBeDefined();
+    expect(findByTestId(curveTree, 'stroke-settings-curve-mode-block')).toBeDefined();
+    // The vertex-context rows need a selected vertex — absent here.
+    expect(findByTestId(curveTree, 'stroke-settings-curve-anchor-width')).toBeUndefined();
+    expect(findByTestId(curveTree, 'stroke-settings-corner-block')).toBeUndefined();
+    expect(findByTestId(curveTree, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(curveTree, 'stroke-settings-geometry')).toBeUndefined();
+    expect(findByTestId(curveTree, 'stroke-settings-stack')).toBeUndefined();
+
+    // A multi-selection drops the tab: the requested Curve falls back to List.
+    setScriptStrokeSelection([7, 9]);
+    const multiTree = renderDialog(bundle);
+    expect(findByTestId(multiTree, 'stroke-settings-tab-curve')).toBeUndefined();
+    expect(findByTestId(multiTree, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(true);
+    expect(findByTestId(multiTree, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(multiTree, 'stroke-settings-curve')).toBeUndefined();
+
+    // Back to the single vector stroke: the requested Curve RETURNS — the
+    // availability fallback is a pure derivation and never wrote the key back.
+    setScriptStrokeSelection([7]);
+    const returned = renderDialog(bundle);
+    expect(findByTestId(returned, 'stroke-settings-tab-curve')!.props['aria-selected']).toBe(true);
+    expect(findByTestId(returned, 'stroke-settings-curve')).toBeDefined();
+
+    // A null vector read hides the tab too (no anchors to address).
+    const nullRead = curveCapable({ readVectorAnchors: () => null });
+    const nullTree = renderDialog(nullRead);
+    expect(findByTestId(nullTree, 'stroke-settings-tab-curve')).toBeUndefined();
+    expect(findByTestId(nullTree, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(true);
+  });
+
+  it('omits the Stack tab without a reorder seam and falls back to List', () => {
     const { bundle } = createBundle({
       listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
     });
@@ -991,21 +967,36 @@ describe('261024-p5q dialog fields and shared color', () => {
     const tree = renderDialog(bundle);
     expect(findByTestId(tree, 'stroke-settings-tab-geometry')).toBeDefined();
     expect(findByTestId(tree, 'stroke-settings-tab-stack')).toBeUndefined();
-    expect(findByTestId(tree, 'stroke-settings-tab-paint')).toBeDefined();
-  });
+    expect(findByTestId(tree, 'stroke-settings-tab-paint')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-curve')).toBeUndefined();
 
-  it('gives the color block the full row and shows hex + rgb beneath it', () => {
-    const { bundle } = createBundle({
-      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 }, '#a1b2c3')),
-    });
+    // Watercolor WITH a reorder seam: Stack is requested and selected.
+    const reorderable = createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      keepOpenOnEmpty: true,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 })),
+      reorderStroke: () => true,
+    }).bundle;
+    setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
-    const tree = renderDialogTab(bundle, 'paint');
+    const stackTree = renderDialogTab(reorderable, 'stack');
+    expect(findByTestId(stackTree, 'stroke-settings-stack')).toBeDefined();
 
-    const thumb = findByTestId(tree, 'stroke-settings-color-thumb')!;
-    expect(thumb.props.style.backgroundColor).toBe('#a1b2c3');
-    expect(thumb.props.style.width).toBe('100%');
-    expect(findByTestId(tree, 'stroke-settings-color-hex')!.props.children).toBe('#A1B2C3');
-    expect(findByTestId(tree, 'stroke-settings-color-rgb')!.props.children).toBe('rgb(161, 178, 195)');
+    // The same sheet without the seam hides Stack and lands back on List.
+    const noSeam = createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      keepOpenOnEmpty: true,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 })),
+    }).bundle;
+    const fallback = renderDialog(noSeam);
+    expect(findByTestId(fallback, 'stroke-settings-tab-stack')).toBeUndefined();
+    expect(findByTestId(fallback, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(true);
+    expect(findByTestId(fallback, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(fallback, 'stroke-settings-stack')).toBeUndefined();
   });
 
   it('offers a bottom resize grip for the sheet height', () => {
@@ -1032,16 +1023,18 @@ describe('261024-p5q dialog fields and shared color', () => {
   it('lets every dialog slider accept typed values beyond the track range', () => {
     const sliders = dialogSource.match(/<SliderStepper\b/g) ?? [];
     const freeEntry = dialogSource.match(/allowOutOfRangeEntry/g) ?? [];
-    expect(sliders.length).toBeGreaterThan(0);
-    // quick 261024-vga: `Stack position` is deliberately range-clamped (the
-    // adapters clamp anyway), so every PRE-EXISTING slider still bypasses the
-    // track range (8/8 before the Stack section, 8/9 after).
+    // quick 261111-vg4: Geometry Opacity + X/Y/Scale/Scale X/Scale Y/Rotation
+    // + the Anchor width control + Stack position.
+    expect(sliders).toHaveLength(9);
+    expect(freeEntry).toHaveLength(8);
+    // `Stack position` is deliberately range-clamped (the adapters clamp
+    // anyway), so every other slider bypasses the track range.
     expect(freeEntry).toHaveLength(sliders.length - 1);
   });
 
-  it('structural pins: no picker, no Studio writes, no useState', () => {
-    expect(dialogSource).toContain('data-testid="stroke-settings-color"');
-    expect(dialogSource).toContain('data-testid="stroke-settings-color-thumb"');
+  it('structural pins: no paint surface, no picker, no Studio writes, no useState', () => {
+    expect(dialogSource).not.toContain('data-testid="stroke-settings-color"');
+    expect(dialogSource).not.toContain('data-testid="stroke-settings-color-thumb"');
     expect(dialogSource).not.toContain('RightPanelColorTab');
     expect(dialogSource).not.toContain('useState');
     expect(dialogSource).not.toContain('physicsPaintStudio.css');
@@ -1567,7 +1560,7 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
 
 // ============================================================
 //  quick 261029-eur Task 3 — keep-open-on-empty, the dialog's
-//  All | Eraser | Paint filter row, the Paint-tab fallback and
+//  All | Eraser | Paint filter row, the fixed two-tab set and
 //  the module-level explicit-close law.
 // ============================================================
 
@@ -1623,7 +1616,7 @@ describe('261029-eur keep-open-on-empty open law', () => {
   });
 });
 
-describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => {
+describe('261029-eur dialog filter row, fixed tab set and open-on-empty', () => {
   function watercolorBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
     return createBundle({
       module: 'watercolor',
@@ -1643,71 +1636,41 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
     });
   }
 
-  it('renders the Paint | Eraser | All row for water color only, defaulting to Paint', () => {
-    const { bundle } = watercolorBundle();
-    setAquarelleSelectMode(true);
-    setScriptStrokeSelection([7]);
-    const tree = renderDialog(bundle);
-
-    const row = findByTestId(tree, 'stroke-settings-filter')!;
-    expect(row).toBeDefined();
-    expect(row.props.role).toBe('group');
-    const buttons = ['paint', 'eraser', 'all'].map(
-      (key) => findByTestId(tree, `stroke-settings-filter-${key}`)!,
-    );
-    expect(buttons.map((button) => button.props.children)).toEqual(['Paint', 'Eraser', 'All']);
-    expect(buttons.map((button) => button.props['aria-pressed'])).toEqual([true, false, false]);
-
-    // Brush keeps its sheet without the filter chrome.
-    const brush = createBundle();
-    setScriptStrokeSelection([7]);
-    expect(findByTestId(renderDialog(brush.bundle), 'stroke-settings-filter')).toBeUndefined();
-  });
-
-  it('hides the Paint tab in Eraser mode and falls a paint request back to Geometry', () => {
-    const { bundle } = watercolorBundle();
+  it('keeps the same tabs under every filter and a selected lift stroke', () => {
+    const { bundle } = watercolorBundle({ reorderStroke: () => true });
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
 
-    // Request Paint while it is available.
-    const paintTree = renderDialogTab(bundle, 'paint');
-    expect(findByTestId(paintTree, 'stroke-settings-paint')).toBeDefined();
+    // quick 261112-lq4: the watercolor tab set is FIXED at List | Geometry |
+    // Stack. Paint, Eraser, All and a selected lift stroke all render it and
+    // Paint never appears. The watercolor default stays LIST.
+    for (const filter of ['paint', 'lift', 'all'] as const) {
+      setAquarelleStrokeTypeFilter(filter);
+      const tree = renderSettings(bundle);
+      expect(findByTestId(tree, 'stroke-settings-tab-list'), filter).toBeDefined();
+      expect(findByTestId(tree, 'stroke-settings-tab-geometry'), filter).toBeDefined();
+      expect(findByTestId(tree, 'stroke-settings-tab-stack'), filter).toBeDefined();
+      expect(findByTestId(tree, 'stroke-settings-tab-paint'), filter).toBeUndefined();
+      expect(
+        findByTestId(tree, 'stroke-settings-tab-list')!.props['aria-selected'],
+        filter,
+      ).toBe(true);
+      expect(findByTestId(tree, 'stroke-settings-paint'), filter).toBeUndefined();
+    }
 
-    // Eraser-only: the tab leaves the row and the requested tab resolves back
-    // to Geometry (the Paint content must not linger).
-    setAquarelleStrokeTypeFilter('lift');
-    const eraserTree = renderSettings(bundle);
-    expect(findByTestId(eraserTree, 'stroke-settings-tab-paint')).toBeUndefined();
-    expect(findByTestId(eraserTree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(true);
-    expect(findByTestId(eraserTree, 'stroke-settings-geometry')).toBeDefined();
-    expect(findByTestId(eraserTree, 'stroke-settings-paint')).toBeUndefined();
-
-    // All and Paint bring it back.
-    setAquarelleStrokeTypeFilter('all');
-    const allTree = renderSettings(bundle);
-    expect(findByTestId(allTree, 'stroke-settings-tab-paint')).toBeDefined();
-    expect(findByTestId(allTree, 'stroke-settings-paint')).toBeDefined();
-    setAquarelleStrokeTypeFilter('paint');
-    expect(findByTestId(renderSettings(bundle), 'stroke-settings-tab-paint')).toBeDefined();
-  });
-
-  it('hides the Paint tab whenever an eraser stroke is selected, even on All', () => {
-    // A paint stroke keeps Paint available on the All filter.
-    setAquarelleSelectMode(true);
-    setAquarelleStrokeTypeFilter('all');
-    setScriptStrokeSelection([7]);
-    expect(
-      findByTestId(renderSettings(watercolorBundle().bundle), 'stroke-settings-tab-paint'),
-    ).toBeDefined();
-
-    // The same sheet with a LIFT stroke selected drops the tab.
+    // A selected LIFT stroke changes nothing either.
     const lift = watercolorBundle({
       listStrokes: () => [selectableStroke(8, { x: 0, y: 0, width: 100, height: 100 }, 'lift')],
+      reorderStroke: () => true,
     });
+    setAquarelleStrokeTypeFilter('all');
     setScriptStrokeSelection([8]);
     const liftTree = renderSettings(lift.bundle);
+    expect(findByTestId(liftTree, 'stroke-settings-tab-list')).toBeDefined();
+    expect(findByTestId(liftTree, 'stroke-settings-tab-geometry')).toBeDefined();
+    expect(findByTestId(liftTree, 'stroke-settings-tab-stack')).toBeDefined();
     expect(findByTestId(liftTree, 'stroke-settings-tab-paint')).toBeUndefined();
-    expect(findByTestId(liftTree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(true);
+    expect(findByTestId(liftTree, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(true);
   });
 
   it('the close button swallows the header press so its click still fires', () => {
@@ -1727,12 +1690,17 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
     const tree = renderDialog(bundle);
 
     expect(findByTestId(tree, 'stroke-settings-dialog')).toBeDefined();
-    expect(findByTestId(tree, 'stroke-settings-filter')).toBeDefined();
-    // 261031-euf: the dead caption is replaced by the stroke list, and the
-    // tab row leaves with it (there is nothing to edit yet).
+    // 261112-lq4: the segmented type row is gone — the tool dropdown is the
+    // sheet's one filter entry point.
+    expect(findByTestId(tree, 'stroke-settings-fine-filters')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-filter')).toBeUndefined();
+    // 261031-euf: the dead caption is replaced by the stroke list. 261112-lq4:
+    // the tab row is ALWAYS up and the List tab shows the list body.
     expect(findByTestId(tree, 'stroke-settings-empty')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-list')).toBeDefined();
-    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(true);
+    expect(strokeRows(tree).length).toBeGreaterThan(0);
     expect(findByTestId(tree, 'stroke-settings-close')).toBeDefined();
     expect(findByTestId(tree, 'stroke-settings-geometry')).toBeUndefined();
 
@@ -1740,24 +1708,6 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
     setScriptSelectMode(false);
     const brush = createBundle();
     expect(renderDialog(brush.bundle)).toBeNull();
-  });
-
-  it('the filter buttons write the shared filter signal', () => {
-    const { bundle } = watercolorBundle();
-    setAquarelleSelectMode(true);
-    setScriptStrokeSelection([7]);
-
-    (findByTestId(renderDialog(bundle), 'stroke-settings-filter-paint')!.props.onClick as () => void)();
-    expect(aquarelleStrokeTypeFilter.value).toBe('paint');
-    expect(
-      findByTestId(renderDialog(bundle), 'stroke-settings-filter-paint')!.props['aria-pressed'],
-    ).toBe(true);
-
-    (findByTestId(renderDialog(bundle), 'stroke-settings-filter-eraser')!.props.onClick as () => void)();
-    expect(aquarelleStrokeTypeFilter.value).toBe('lift');
-
-    (findByTestId(renderDialog(bundle), 'stroke-settings-filter-all')!.props.onClick as () => void)();
-    expect(aquarelleStrokeTypeFilter.value).toBe('all');
   });
 
   it('an explicit close writes the module flag and wins until select mode re-enters', () => {
@@ -2284,13 +2234,14 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     });
   }
 
-  it('lists the frame strokes topmost-first with no tab row and no old caption', () => {
+  it('lists the frame strokes topmost-first under the List tab', () => {
     const { bundle } = watercolorListBundle();
     setAquarelleSelectMode(true);
     const tree = renderDialog(bundle);
 
     expect(findByTestId(tree, 'stroke-settings-dialog')).toBeDefined();
-    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(true);
     expect(findByTestId(tree, 'stroke-settings-empty')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-list')).toBeDefined();
 
@@ -2335,7 +2286,7 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     expect(findByTestId(row7, 'stroke-settings-stroke-custom')).toBeUndefined();
   });
 
-  it('clicking a row selects exactly that stroke and KEEPS the list', () => {
+  it('clicking a row selects exactly that stroke and keeps the List tab', () => {
     const { bundle } = watercolorListBundle();
     setAquarelleSelectMode(true);
     const tree = renderDialog(bundle);
@@ -2349,36 +2300,36 @@ describe('261031-euf empty-selection stroke list dialog', () => {
 
     const next = renderDialog(bundle);
     expect(findByTestId(next, 'stroke-settings-list')).toBeDefined();
-    expect(findByTestId(next, 'stroke-settings-tabs')).toBeUndefined();
+    expect(findByTestId(next, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(true);
     expect(strokeRows(next).map((row) => row.props['data-testid'])).toContain(
       'stroke-settings-stroke-9',
     );
 
-    // The header icon is the ONE explicit settings entry.
-    (findByTestId(next, 'stroke-settings-view-toggle')!.props.onClick as () => void)();
-    const settings = renderDialog(bundle);
-    expect(findByTestId(settings, 'stroke-settings-tabs')).toBeDefined();
-    expect(findByTestId(settings, 'stroke-settings-list')).toBeUndefined();
-    expect(findByTestId(settings, 'stroke-settings-geometry')).toBeDefined();
+    // The Geometry tab is the one click away from the list body.
+    (findByTestId(next, 'stroke-settings-tab-geometry')!.props.onClick as () => void)();
+    const geometry = renderDialog(bundle);
+    expect(findByTestId(geometry, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(geometry, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(geometry, 'stroke-settings-geometry')).toBeDefined();
   });
 
-  it('a non-empty selection renders the list rows and the toggle reveals the tabs', () => {
+  it('a non-empty selection renders the list rows and the Geometry tab swaps the body', () => {
     const { bundle } = watercolorListBundle();
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
     const tree = renderDialog(bundle);
 
     expect(findByTestId(tree, 'stroke-settings-list')).toBeDefined();
-    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(true);
     expect(strokeRows(tree).map((row) => row.props['data-testid'])).toContain(
       'stroke-settings-stroke-7',
     );
 
-    const settings = renderSettings(bundle);
-    expect(findByTestId(settings, 'stroke-settings-tabs')).toBeDefined();
-    expect(findByTestId(settings, 'stroke-settings-list')).toBeUndefined();
-    expect(findByTestId(settings, 'stroke-settings-geometry')).toBeDefined();
-    expect(strokeRows(settings)).toEqual([]);
+    const geometry = renderDialogTab(bundle, 'geometry');
+    expect(findByTestId(geometry, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(geometry, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(geometry, 'stroke-settings-geometry')).toBeDefined();
+    expect(strokeRows(geometry)).toEqual([]);
   });
 
   it('the brush sheet renders no list, no rows and no type chrome', () => {
@@ -2393,7 +2344,7 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     expect(strokeRows(tree)).toEqual([]);
   });
 
-  it('the Paint/Eraser/All filter narrows the rows and lift rows read Eraser', () => {
+  it('the top-bar type filter narrows the rows and lift rows read Eraser', () => {
     const { bundle } = watercolorListBundle();
     setAquarelleSelectMode(true);
 
@@ -2410,6 +2361,45 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     expect(findByTestId(liftRows[0]!, 'stroke-settings-stroke-type')!.props.children).toBe('Eraser');
     // The preset id (not a tip) falls back to the raw string.
     expect(findByTestId(liftRows[0]!, 'stroke-settings-stroke-tip')!.props.children).toBe('round');
+  });
+
+  it('the tool dropdown is the one filter entry point the deleted row left behind', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+
+    // The dialog mounts no segmented type row at all.
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-filter')).toBeUndefined();
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-filter-all')).toBeUndefined();
+
+    /** The options the single tool select offers on the current filter. */
+    function toolSelectOptions() {
+      const select = findByTestId(renderDialog(bundle), 'stroke-settings-tool-filter')!;
+      const options = childrenOf(select)
+        .filter((node) => (node as AnyVNode).type === 'option') as AnyVNode[];
+      return {
+        values: options.map((option) => option.props.value),
+        labels: options.map((option) => option.props.children),
+      };
+    }
+
+    // 261112-lq4: under the top-bar lift filter the sheet offers 'All tools'
+    // + Eraser only — 'All tools' reproduces the deleted Eraser row.
+    setAquarelleStrokeTypeFilter('lift');
+    expect(toolSelectOptions()).toEqual({
+      values: ['all', 'lift'],
+      labels: [ALL_TOOL_FILTER_LABEL, 'Eraser'],
+    });
+
+    // Under the default 'paint' filter it offers 'All tools' + Brush, which
+    // reproduces the deleted Paint row exactly, and the lift row is gone.
+    setAquarelleStrokeTypeFilter('paint');
+    expect(toolSelectOptions()).toEqual({
+      values: ['all', 'brush'],
+      labels: [ALL_TOOL_FILTER_LABEL, 'Brush'],
+    });
+    expect(
+      findByTestId(renderDialog(bundle), 'stroke-settings-stroke-8'),
+    ).toBeUndefined();
   });
 
   it('renders the finer filters on an empty selection: present tools only, resolved tip names', () => {
@@ -2635,31 +2625,30 @@ describe('261031-euf empty-selection stroke list dialog', () => {
       (props) => props.class === 'physics-paint-stroke-settings-scroll',
     );
     expect(scroll).toBeDefined();
-    expect(findByTestId(scroll, 'stroke-settings-list')).toBeDefined();
+    const listBody = findByTestId(scroll, 'stroke-settings-list');
+    expect(listBody).toBeDefined();
 
-    for (const key of ['paint', 'eraser', 'all']) {
-      const button = findByTestId(tree, `stroke-settings-filter-${key}`)!;
-      expect(
-        (button.props.style as Record<string, unknown>).textTransform,
-        `filter ${key}`,
-      ).toBe('none');
-    }
+    // 261112-lq4: the fine filters live INSIDE the List tab body — both
+    // selects (and the summary) ride the same scroll area as the rows.
+    expect(findByTestId(listBody, 'stroke-settings-fine-filters')).toBeDefined();
+    expect(findByTestId(listBody, 'stroke-settings-tool-filter')).toBeDefined();
+    expect(findByTestId(listBody, 'stroke-settings-list-summary')).toBeDefined();
+
     const rows = strokeRows(tree);
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       expect((row.props.style as Record<string, unknown>).textTransform).toBe('none');
     }
 
-    // 261101-jmm: the finer filters belong to the LIST — they stay while a
-    // stroke is selected and leave only when the SETTINGS view is entered.
+    // They stay while a stroke is selected and leave with the List tab.
     setScriptStrokeSelection([7]);
     const editing = renderDialog(bundle);
     expect(findByTestId(editing, 'stroke-settings-fine-filters')).toBeDefined();
     expect(findByTestId(editing, 'stroke-settings-tool-filter')).toBeDefined();
 
-    const settings = renderSettings(bundle);
-    expect(findByTestId(settings, 'stroke-settings-fine-filters')).toBeUndefined();
-    expect(findByTestId(settings, 'stroke-settings-tool-filter')).toBeUndefined();
+    const geometry = renderDialogTab(bundle, 'geometry');
+    expect(findByTestId(geometry, 'stroke-settings-fine-filters')).toBeUndefined();
+    expect(findByTestId(geometry, 'stroke-settings-tool-filter')).toBeUndefined();
   });
 
   it('the brush sheet renders none of the finer-filter chrome', () => {
@@ -2683,17 +2672,16 @@ describe('261031-euf empty-selection stroke list dialog', () => {
 });
 
 // ============================================================
-//  quick 261101-jmm — LIST FIRST. 261031-euf made the list an
-//  empty-selection-only surface, so selecting a row hid the list
-//  and swapped to the tabs. The list is the DEFAULT surface and
-//  stays put; the parameter tabs are an explicit request made
-//  from the header icon. An empty selection invalidates that
-//  request (close/reopen, leave + re-enter Move/Select, or a
-//  delete that empties the selection), so every later non-empty
-//  selection lands back on the list.
+//  quick 261112-lq4 — the FOUR-TAB sheet. The 261101-jmm list
+//  ↔ settings view gate is retired: List is a tab in the ONE
+//  pinned row (List | Geometry | Stack | Curve), watercolor
+//  defaults to it, and an unavailable tab is never rendered.
+//  The requested tab is pure render derivation — an availability
+//  dip falls back without writing, so the request returns when
+//  the tab does.
 // ============================================================
 
-describe('261101-jmm list-first stroke settings sheet', () => {
+describe('261112-lq4 four-tab stroke settings sheet', () => {
   const FRAME_STROKES: readonly SelectableScriptStroke[] = Object.freeze([
     selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 }),
     selectableStroke(9, { x: 20, y: 20, width: 60, height: 60 }),
@@ -2710,176 +2698,76 @@ describe('261101-jmm list-first stroke settings sheet', () => {
     });
   }
 
-  function viewToggle(tree: unknown): AnyVNode {
-    const toggle = findByTestId(tree, 'stroke-settings-view-toggle');
-    expect(toggle, 'view toggle').toBeDefined();
-    return toggle!;
-  }
-
-  it('resolves the view: a settings request over an empty selection falls back to the list', () => {
-    expect(resolveStrokeSettingsView('settings', 0)).toBe('list');
-    expect(resolveStrokeSettingsView('settings', 1)).toBe('settings');
-    expect(resolveStrokeSettingsView('settings', 3)).toBe('settings');
-    for (const size of [0, 1, 3]) {
-      expect(resolveStrokeSettingsView('list', size), `list/${size}`).toBe('list');
-    }
-  });
-
-  it('invalidates ONLY a settings request observed over an empty selection', () => {
-    expect(
-      shouldInvalidateStrokeSettingsView({ requested: 'settings', selectionSize: 0 }),
-    ).toBe(true);
-    expect(
-      shouldInvalidateStrokeSettingsView({ requested: 'list', selectionSize: 0 }),
-    ).toBe(false);
-    expect(
-      shouldInvalidateStrokeSettingsView({ requested: 'settings', selectionSize: 1 }),
-    ).toBe(false);
-    expect(
-      shouldInvalidateStrokeSettingsView({ requested: 'settings', selectionSize: 3 }),
-    ).toBe(false);
-  });
-
-  it('natively disables the view toggle on an empty selection', () => {
-    setAquarelleSelectMode(true);
-    const emptyToggle = viewToggle(renderDialog(sheetBundle().bundle));
-    expect(emptyToggle.props.disabled).toBe(true);
-
-    setScriptStrokeSelection([9]);
-    const selectedToggle = viewToggle(renderDialog(sheetBundle().bundle));
-    expect(selectedToggle.props.disabled).toBe(false);
-  });
-
-  it('keeps the list while a stroke is selected and round-trips through the toggle', () => {
+  it('defaults to the List tab', () => {
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([9]);
     const { bundle } = sheetBundle();
-    const listTree = renderDialog(bundle);
+    const tree = renderDialog(bundle);
 
-    expect(findByTestId(listTree, 'stroke-settings-list')).toBeDefined();
-    expect(findByTestId(listTree, 'stroke-settings-tabs')).toBeUndefined();
-    expect(strokeRows(listTree).map((row) => row.props['data-testid'])).toContain(
-      'stroke-settings-stroke-9',
+    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(true);
+    expect(findByTestId(tree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(
+      false,
     );
-
-    const toSettings = viewToggle(listTree);
-    expect(toSettings.props['aria-pressed']).toBe(false);
-    expect(toSettings.props['aria-label']).toBe('Show stroke settings');
-    (toSettings.props.onClick as () => void)();
-
-    const settingsTree = renderDialog(bundle);
-    expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
-    expect(findByTestId(settingsTree, 'stroke-settings-geometry')).toBeDefined();
-    expect(findByTestId(settingsTree, 'stroke-settings-list')).toBeUndefined();
-
-    const toList = viewToggle(settingsTree);
-    expect(toList.props['aria-pressed']).toBe(true);
-    expect(toList.props['aria-label']).toBe('Show stroke list');
-    (toList.props.onClick as () => void)();
-
-    const returned = renderDialog(bundle);
-    expect(findByTestId(returned, 'stroke-settings-list')).toBeDefined();
-    expect(findByTestId(returned, 'stroke-settings-tabs')).toBeUndefined();
-    expect(strokeRows(returned).map((row) => row.props['data-testid'])).toContain(
+    expect(findByTestId(tree, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-geometry')).toBeUndefined();
+    expect(strokeRows(tree).map((row) => row.props['data-testid'])).toContain(
       'stroke-settings-stroke-9',
     );
   });
 
-  it('never restores a settings request after the selection was observed empty', () => {
+  it('keeps the clicked tab across a non-empty selection change', () => {
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([9]);
     const { bundle } = sheetBundle();
+    const geometryTree = renderDialogTab(bundle, 'geometry');
+    expect(findByTestId(geometryTree, 'stroke-settings-tab-geometry')!.props['aria-selected'])
+      .toBe(true);
 
-    expect(findByTestId(renderSettings(bundle), 'stroke-settings-tabs')).toBeDefined();
-
-    // Close/reopen, a leave and re-enter of Move/Select, or a delete-to-empty:
-    // the selection empties while the sheet stays mounted.
-    setScriptStrokeSelection([]);
-    const emptied = renderDialog(bundle);
-    expect(findByTestId(emptied, 'stroke-settings-list')).toBeDefined();
-    expect(findByTestId(emptied, 'stroke-settings-tabs')).toBeUndefined();
-
-    // The next non-empty selection STAYS on the list — no icon click happened.
-    setScriptStrokeSelection([9]);
-    const reentered = renderDialog(bundle);
-    expect(findByTestId(reentered, 'stroke-settings-list')).toBeDefined();
-    expect(findByTestId(reentered, 'stroke-settings-tabs')).toBeUndefined();
-
-    // Only a FRESH click of the header icon returns to the tabs.
-    (viewToggle(reentered).props.onClick as () => void)();
-    expect(findByTestId(renderDialog(bundle), 'stroke-settings-tabs')).toBeDefined();
-
-    // The invalidation is not one-shot: a second empty -> non-empty cycle
-    // behaves identically.
-    setScriptStrokeSelection([]);
-    renderDialog(bundle);
-    setScriptStrokeSelection([9]);
-    const again = renderDialog(bundle);
-    expect(findByTestId(again, 'stroke-settings-list')).toBeDefined();
-    expect(findByTestId(again, 'stroke-settings-tabs')).toBeUndefined();
-    (viewToggle(again).props.onClick as () => void)();
-    expect(findByTestId(renderDialog(bundle), 'stroke-settings-tabs')).toBeDefined();
-  });
-
-  it('re-asserts an invalidated request so the header toggle never dead-clicks', () => {
-    // The harness re-renders by hand, so a compare-then-write that performs no
-    // write is invisible here — `renderDialog(bundle)` re-reads the signal even
-    // when it notified nobody. In the real app nothing re-renders without a
-    // notification: an INVALIDATED request still holds 'settings' while the
-    // list shows, so clicking the icon would be a no-op. Pin the source-level
-    // remedy — write through the OPPOSITE value, then the target.
-    expect(dialogSource).toContain("ref.value = next === 'settings' ? 'list' : 'settings';");
-    expect(dialogSource).toContain('if (view !== next) {');
-  });
-
-  it('keeps the settings view across a non-empty selection change', () => {
-    setAquarelleSelectMode(true);
-    setScriptStrokeSelection([9]);
-    const { bundle } = sheetBundle();
-    expect(findByTestId(renderSettings(bundle), 'stroke-settings-tabs')).toBeDefined();
-
-    // Add a row while already in settings: never invalidates the request.
+    // Add a row while already on Geometry: the requested tab stands.
     setScriptStrokeSelection([9, 7]);
     const widened = renderDialog(bundle);
-    expect(findByTestId(widened, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(widened, 'stroke-settings-geometry')).toBeDefined();
     expect(findByTestId(widened, 'stroke-settings-list')).toBeUndefined();
 
-    // Remove a row: still settings.
+    // Remove a row: still Geometry.
     setScriptStrokeSelection([7]);
     const narrowed = renderDialog(bundle);
-    expect(findByTestId(narrowed, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(narrowed, 'stroke-settings-geometry')).toBeDefined();
     expect(findByTestId(narrowed, 'stroke-settings-list')).toBeUndefined();
   });
 
-  it('renders the type filter, fine filters and summary in the LIST view only', () => {
+  it('renders the filter dropdowns and summary in the List tab only', () => {
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([9]);
     const { bundle } = sheetBundle();
 
     const listTree = renderDialog(bundle);
-    expect(findByTestId(listTree, 'stroke-settings-filter')).toBeDefined();
     expect(findByTestId(listTree, 'stroke-settings-fine-filters')).toBeDefined();
     expect(findByTestId(listTree, 'stroke-settings-list-summary')).toBeDefined();
 
-    const settingsTree = renderSettings(bundle);
-    expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
-    expect(findByTestId(settingsTree, 'stroke-settings-filter')).toBeUndefined();
-    expect(findByTestId(settingsTree, 'stroke-settings-fine-filters')).toBeUndefined();
-    expect(findByTestId(settingsTree, 'stroke-settings-list-summary')).toBeUndefined();
+    const geometryTree = renderDialogTab(bundle, 'geometry');
+    expect(findByTestId(geometryTree, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(geometryTree, 'stroke-settings-fine-filters')).toBeUndefined();
+    expect(findByTestId(geometryTree, 'stroke-settings-list-summary')).toBeUndefined();
   });
 
-  it('leaves the brush sheet unchanged: no toggle, no list, its tabs as today', () => {
+  it('the brush sheet has no List tab and no Curve tab, Geometry selected', () => {
     const { bundle } = createBundle({
       listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
     });
     setScriptStrokeSelection([7]);
     const tree = renderDialog(bundle);
 
-    expect(findByTestId(tree, 'stroke-settings-view-toggle')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-list')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-curve')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(
+      true,
+    );
     expect(findByTestId(tree, 'stroke-settings-list')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-delete-selection')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-filter')).toBeUndefined();
-    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeDefined();
     expect(findByTestId(tree, 'stroke-settings-geometry')).toBeDefined();
   });
 
@@ -3023,7 +2911,7 @@ describe('261101-jmm list-first stroke settings sheet', () => {
     expect(deleteStrokes).toHaveBeenCalledWith([9, 7]);
   });
 
-  it('a delete that empties the selection renders the list, and the request stays invalidated', () => {
+  it('a delete that empties the selection keeps the requested tab', () => {
     const deleteStrokes = vi.fn(() => {
       setScriptStrokeSelection([]);
     });
@@ -3031,22 +2919,36 @@ describe('261101-jmm list-first stroke settings sheet', () => {
     setScriptStrokeSelection([9, 7]);
     const { bundle } = sheetBundle({ deleteStrokes });
 
-    // Really in the settings view: the tabs are up.
-    expect(findByTestId(renderSettings(bundle), 'stroke-settings-tabs')).toBeDefined();
+    // Really on Geometry: the tab is selected and its body is up.
+    const geometryTree = renderDialogTab(bundle, 'geometry');
+    expect(findByTestId(geometryTree, 'stroke-settings-tab-geometry')!.props['aria-selected'])
+      .toBe(true);
 
     (findByTestId(renderDialog(bundle), 'stroke-settings-delete-selection')!.props.onClick as () => void)();
     expect(deleteStrokes).toHaveBeenCalledWith([9, 7]);
 
+    // 261112-lq4: there is no invalidation marker left. The empty selection
+    // keeps the request — Geometry stays the selected tab (its body is empty
+    // because there is no stroke to address) and the List body stays absent.
     const emptied = renderDialog(bundle);
-    expect(findByTestId(emptied, 'stroke-settings-list')).toBeDefined();
-    expect(findByTestId(emptied, 'stroke-settings-tabs')).toBeUndefined();
+    expect(findByTestId(emptied, 'stroke-settings-tab-geometry')!.props['aria-selected'])
+      .toBe(true);
+    expect(findByTestId(emptied, 'stroke-settings-geometry')).toBeUndefined();
+    expect(findByTestId(emptied, 'stroke-settings-list')).toBeUndefined();
 
-    // The delete-to-empty ALSO invalidated the pending request: the next
-    // non-empty selection lands on the list with no icon click.
+    // Switching to List shows the frame rows again, no click lost.
+    const listAfter = renderDialogTab(bundle, 'list');
+    expect(strokeRows(listAfter).length).toBeGreaterThan(0);
+
+    // The next non-empty selection lands on the last clicked tab.
     setScriptStrokeSelection([9]);
     const reselected = renderDialog(bundle);
-    expect(findByTestId(reselected, 'stroke-settings-list')).toBeDefined();
-    expect(findByTestId(reselected, 'stroke-settings-tabs')).toBeUndefined();
+    expect(findByTestId(reselected, 'stroke-settings-tab-list')!.props['aria-selected']).toBe(
+      true,
+    );
+    expect(strokeRows(reselected).map((row) => row.props['data-testid'])).toContain(
+      'stroke-settings-stroke-9',
+    );
   });
 });
 
@@ -3080,12 +2982,12 @@ describe('261101-mvg "Preview stroke size" switch', () => {
     return button!;
   }
 
-  it('defaults OFF and toggles the session signal from the header in BOTH views', () => {
+  it('defaults OFF and toggles the session signal from the Draft strip under every tab', () => {
     const { bundle } = previewBundle();
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
 
-    // LIST view: the control is in the header, pressed-state OFF.
+    // LIST tab: the control is in the Draft strip, pressed-state OFF.
     const listTree = renderDialog(bundle);
     expect(strokeSizePreview.value).toBe(false);
     expect(switchOf(listTree).props['aria-pressed']).toBe(false);
@@ -3099,8 +3001,8 @@ describe('261101-mvg "Preview stroke size" switch', () => {
     (switchOf(onTree).props.onClick as () => void)();
     expect(strokeSizePreview.value).toBe(false);
 
-    // SETTINGS view: still present (the header is above the view gate).
-    const settingsTree = renderSettings(bundle);
+    // GEOMETRY tab: still present (the strip sits above the tab body).
+    const settingsTree = renderDialogTab(bundle, 'geometry');
     expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
     const settingsSwitch = switchOf(settingsTree);
     expect(settingsSwitch.props['aria-pressed']).toBe(false);
@@ -3108,7 +3010,7 @@ describe('261101-mvg "Preview stroke size" switch', () => {
     expect(strokeSizePreview.value).toBe(true);
   });
 
-  it('is not gated by the selection size and carries the header chrome', () => {
+  it('is not gated by the selection size and carries the shipped chrome', () => {
     const { bundle } = previewBundle();
     setAquarelleSelectMode(true);
     // Empty selection: the watercolor sheet stays open, and the switch is
@@ -3121,7 +3023,8 @@ describe('261101-mvg "Preview stroke size" switch', () => {
     const className = String(button.props.class);
     expect(className).toContain('physics-paint-stroke-settings-header-button');
     expect(className).toContain('physics-paint-stroke-settings-preview-toggle');
-    // The header is the sheet's drag handle: the press must not start a drag.
+    // The strip keeps the shipped press guard so a press never starts pointer
+    // work above it.
     let stopped = false;
     (button.props.onPointerDown as (event: { stopPropagation: () => void }) => void)({
       stopPropagation: () => { stopped = true; },
@@ -3141,10 +3044,10 @@ describe('261101-mvg "Preview stroke size" switch', () => {
   });
 });
 
-// 261101-o2m: the Draft strip — a dedicated row BELOW the header and ABOVE the
-// list/settings view gate, so it is reachable from both views. Draft ON
-// suspends only the watercolor re-render; the switch's OFF click is ROUTED to
-// the bundle's settle (the sheet never writes the signal false itself).
+// 261101-o2m: the Draft strip — a dedicated row BELOW the header icon row and
+// ABOVE the tab body, so it is reachable under every tab. Draft ON suspends
+// only the watercolor re-render; the switch's OFF click is ROUTED to the
+// bundle's settle (the sheet never writes the signal false itself).
 describe('261101-o2m Draft strip', () => {
   function draftBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
     return createBundle({
@@ -3177,7 +3080,7 @@ describe('261101-o2m Draft strip', () => {
     await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
   }
 
-  it('renders below the header and above the view gate in BOTH views', () => {
+  it('renders below the header and above the tab body under every tab', () => {
     const { bundle } = draftBundle();
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
@@ -3189,18 +3092,60 @@ describe('261101-o2m Draft strip', () => {
     );
     const headerIndex = indexOf('stroke-settings-header');
     const stripIndex = indexOf('stroke-settings-draft-row');
-    const filterIndex = indexOf('stroke-settings-filter');
+    // 261112-lq4: the segmented type row is gone — the fine-filter row (the
+    // one filter entry point) still renders below the strip.
+    const filterIndex = indexOf('stroke-settings-fine-filters');
     expect(headerIndex).toBeGreaterThanOrEqual(0);
     expect(stripIndex).toBeGreaterThan(headerIndex);
     expect(filterIndex).toBeGreaterThan(stripIndex);
 
-    const settingsTree = renderSettings(bundle);
+    const settingsTree = renderDialogTab(bundle, 'geometry');
     expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
     expect(findByTestId(settingsTree, 'stroke-settings-draft-row')).toBeDefined();
     expect(findByTestId(settingsTree, 'stroke-settings-draft-switch')).toBeDefined();
   });
 
-  it('is a role=switch control labelled Draft, OFF by default, and stops the header drag', () => {
+  it('carries Edit path then Preview stroke size before the cache eye, with ONE text label', () => {
+    const { bundle } = draftBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    const ordered = withTraversalRefs(() => childrenOf(tree)) as AnyVNode[];
+    const indexOf = (testId: string) => ordered.findIndex(
+      (node) => node.props?.['data-testid'] === testId,
+    );
+    const headerIndex = indexOf('stroke-settings-header');
+    const stripIndex = indexOf('stroke-settings-draft-row');
+    expect(headerIndex).toBeGreaterThanOrEqual(0);
+    expect(stripIndex).toBeGreaterThan(headerIndex);
+
+    // 261112-lq4: the two moved watercolor controls sit INSIDE the strip,
+    // between the spacer and the cache eye, in this exact order.
+    const strip = findByTestId(tree, 'stroke-settings-draft-row')!;
+    const inside = withTraversalRefs(() => childrenOf(strip)) as AnyVNode[];
+    const stripIndexOf = (testId: string) => inside.findIndex(
+      (node) => node.props?.['data-testid'] === testId,
+    );
+    const splineAt = stripIndexOf('stroke-settings-spline-pointer');
+    const previewAt = stripIndexOf('stroke-settings-preview-stroke-size');
+    const cacheAt = stripIndexOf('stroke-settings-cache-visibility');
+    expect(splineAt).toBeGreaterThan(-1);
+    expect(previewAt).toBeGreaterThan(splineAt);
+    expect(cacheAt).toBeGreaterThan(previewAt);
+
+    // Exactly ONE text label — the Draft caption. The 'cache' caption that
+    // used to sit beside the eye is gone.
+    const labels = inside.filter((node) => {
+      const cls = (node.props as Record<string, unknown> | undefined)?.class;
+      return typeof cls === 'string'
+        && cls.split(/\s+/).includes('physics-paint-stroke-settings-draft-row-label');
+    });
+    expect(labels.length).toBe(1);
+    expect(labels[0]!.props.children).toBe('Draft');
+  });
+
+  it('is a role=switch control labelled Draft, OFF by default, and stops the press', () => {
     const { bundle } = draftBundle();
     setAquarelleSelectMode(true);
     const button = switchOf(renderDialog(bundle));
@@ -3210,7 +3155,8 @@ describe('261101-o2m Draft strip', () => {
     expect(button.props['aria-label']).toBe('Draft');
     expect(String(button.props.title)).toContain('Draft');
     expect(String(button.props.class)).toContain('physics-paint-script-switch');
-    // The row sits under the header drag handle: the press must not start one.
+    // The strip is not a drag handle, but the press guard is kept so a press
+    // never starts pointer work above it.
     let stopped = false;
     (button.props.onPointerDown as (event: { stopPropagation: () => void }) => void)({
       stopPropagation: () => { stopped = true; },
@@ -3380,8 +3326,8 @@ describe('261101-o2m cache eye', () => {
     (eyeOf(hiddenTree).props.onClick as () => void)();
     expect(frozenCacheVisible.value).toBe(true);
 
-    // SETTINGS view: same strip, still present and enabled.
-    const settingsTree = renderSettings(bundle);
+    // GEOMETRY tab: same strip, still present and enabled.
+    const settingsTree = renderDialogTab(bundle, 'geometry');
     expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
     expect(eyeOf(settingsTree).props.disabled).toBeUndefined();
     (eyeOf(settingsTree).props.onClick as () => void)();
@@ -3428,5 +3374,585 @@ describe('261101-o2m cache eye', () => {
       .toBeUndefined();
     expect(findByTestId(renderSettings(brush.bundle), 'stroke-settings-cache-visibility'))
       .toBeUndefined();
+  });
+});
+
+// 61-11 (VEC-02 / D-06): the `Edit path` entrance law. The gate is one pure
+// resolution over the selection and the session: ONE selected vector stroke is
+// the only enabled case, and the reason it is disabled lives in the copy the
+// `title` carries.
+describe('61-11 path-edit gate (Edit path header button)', () => {
+  it('enables for exactly one selected vector stroke and titles itself Edit path', () => {
+    expect(resolvePathEditGate({
+      selectionSize: 1,
+      vectorStrokeCount: 1,
+      selectedMutationId: 7,
+      pathEditMutationId: null,
+    })).toEqual({ enabled: true, title: PATH_EDIT_LABEL, pressed: false });
+    expect(PATH_EDIT_LABEL).toBe('Edit path');
+  });
+
+  it('refuses a single selection that is not a vector stroke', () => {
+    const gate = resolvePathEditGate({
+      selectionSize: 1,
+      vectorStrokeCount: 0,
+      selectedMutationId: 7,
+      pathEditMutationId: null,
+    });
+    expect(gate.enabled).toBe(false);
+    expect(gate.title).toBe('Edit path — select one vector stroke');
+    expect(gate.title).toBe(PATH_EDIT_SINGLE_DISABLED_REASON);
+  });
+
+  it('refuses a multi-selection with the single-stroke reason', () => {
+    const gate = resolvePathEditGate({
+      selectionSize: 2,
+      vectorStrokeCount: 2,
+      selectedMutationId: null,
+      pathEditMutationId: null,
+    });
+    expect(gate.enabled).toBe(false);
+    expect(gate.title).toBe('Edit path — select a single vector stroke');
+    expect(gate.title).toBe(PATH_EDIT_MULTI_DISABLED_REASON);
+  });
+
+  it('refuses an empty selection with the single-stroke reason', () => {
+    const gate = resolvePathEditGate({
+      selectionSize: 0,
+      vectorStrokeCount: 0,
+      selectedMutationId: null,
+      pathEditMutationId: null,
+    });
+    expect(gate.enabled).toBe(false);
+    expect(gate.title).toBe('Edit path — select one vector stroke');
+    expect(gate.pressed).toBe(false);
+  });
+
+  it('reports pressed only while the session edits the SELECTED stroke', () => {
+    const args = {
+      selectionSize: 1,
+      vectorStrokeCount: 1,
+      selectedMutationId: 7,
+    } as const;
+    expect(resolvePathEditGate({ ...args, pathEditMutationId: '7' }).pressed).toBe(true);
+    expect(resolvePathEditGate({ ...args, pathEditMutationId: '8' }).pressed).toBe(false);
+    expect(resolvePathEditGate({ ...args, pathEditMutationId: null }).pressed).toBe(false);
+    // No selected id can never read pressed.
+    expect(resolvePathEditGate({
+      selectionSize: 0,
+      vectorStrokeCount: 0,
+      selectedMutationId: null,
+      pathEditMutationId: '7',
+    }).pressed).toBe(false);
+  });
+
+  it('requests an exit only when an edit is open under a closed gate', () => {
+    expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: false, selectedMutationId: null, pathEditMutationId: null })).toBe(true);
+    expect(shouldExitPathEdit({ pathEditActive: true, gateEnabled: true, selectedMutationId: 7, pathEditMutationId: '7' })).toBe(false);
+    expect(shouldExitPathEdit({ pathEditActive: false, gateEnabled: false, selectedMutationId: null, pathEditMutationId: null })).toBe(false);
+  });
+
+  // 61-27 (WR-04): the exit predicate is TARGET-AWARE. The gate stays enabled
+  // for ANY one-vector-stroke selection, so "gate closed" alone let an open
+  // edit on stroke A survive a click on stroke B — the sheet showed B while
+  // every canvas drag still wrote A's anchors.
+  it('exits when the selection names a different stroke than the open edit', () => {
+    expect(shouldExitPathEdit({
+      pathEditActive: true,
+      gateEnabled: true,
+      selectedMutationId: 8,
+      pathEditMutationId: '7',
+    })).toBe(true);
+    // An emptied selection is the same disagreement: the edit names a stroke
+    // the sheet no longer selects.
+    expect(shouldExitPathEdit({
+      pathEditActive: true,
+      gateEnabled: true,
+      selectedMutationId: null,
+      pathEditMutationId: '7',
+    })).toBe(true);
+  });
+
+  it('keeps an open edit on a selection that still names its stroke', () => {
+    expect(shouldExitPathEdit({
+      pathEditActive: true,
+      gateEnabled: true,
+      selectedMutationId: 7,
+      pathEditMutationId: '7',
+    })).toBe(false);
+  });
+});
+
+// 61-19 (G-5): the width commit's ONE target decision. The anchor indices come
+// from the OVERLAY's selection, which belongs to the open path edit — so the
+// stroke written must be the stroke that edit names, never merely the dialog's
+// current selection. Every disagreement fails closed.
+describe('61-19 anchor-width target (the width commit writes one named path)', () => {
+  it('targets nothing for an empty selection', () => {
+    expect(resolveAnchorWidthTarget({ ids: [], pathEditMutationId: '7' })).toBeNull();
+  });
+
+  it('targets nothing when no path edit is open', () => {
+    expect(resolveAnchorWidthTarget({ ids: [7], pathEditMutationId: null })).toBeNull();
+  });
+
+  it('targets nothing when the open edit names a different stroke', () => {
+    expect(resolveAnchorWidthTarget({ ids: [7], pathEditMutationId: '8' })).toBeNull();
+  });
+
+  it('targets the selected stroke when the open edit names it', () => {
+    expect(resolveAnchorWidthTarget({ ids: [7], pathEditMutationId: '7' })).toBe(7);
+  });
+
+  it('targets nothing for a multi-selection', () => {
+    expect(resolveAnchorWidthTarget({ ids: [7, 8], pathEditMutationId: '7' })).toBeNull();
+  });
+
+  it('targets nothing for a non-integer id or an empty session id', () => {
+    expect(resolveAnchorWidthTarget({ ids: [7.5], pathEditMutationId: '7.5' })).toBeNull();
+    expect(resolveAnchorWidthTarget({ ids: [7], pathEditMutationId: '' })).toBeNull();
+  });
+});
+
+// 61-27 (IN-03): the refused Anchor width commit's ONE reason and the bundle's
+// ONE refusal channel. The commit's boolean used to be discarded, so a refusal
+// (wrong target, missing stroke, in-flight lock) looked exactly like a success.
+describe('61-27 IN-03 — the refused Anchor width commit copy', () => {
+  it('ships the refusal as one fixed, non-interpolated string plus one optional port', () => {
+    expect(ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE).toBe(
+      'Vertex size not applied — the path edit is no longer open on this stroke.',
+    );
+    const source = readFileSync(
+      fileURLToPath(new URL('./strokeSettingsModel.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(source).toContain(
+      "export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Vertex size not applied — the path edit is no longer open on this stroke.';",
+    );
+    // One declaration, one fixed single-quoted string — no interpolation.
+    expect(source.split('export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE =').length - 1).toBe(1);
+    expect(source).not.toContain('export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = `');
+    // The sheet's ONE refusal channel: optional, so an absent Studio port keeps
+    // the shipped silent behaviour.
+    expect(source).toContain('readonly publishRefusal?: (message: string) => void;');
+  });
+});
+
+// ── Task 2: the Anchor width reading (E4) ───────────────────────────
+//
+//  The factor is a PER-ANCHOR multiplier of the stroke's brush Size
+//  (D-09), so the reading has to say three things at once: the
+//  representative value, whether the selected anchors disagree, and how
+//  many of them the path actually carries. The effective-px readout is
+//  Size x factor — never the clamped `scriptScale` (T-61-39).
+
+// ============================================================
+//  261112-i6d — the Corner row. One state per vertex, shared with the
+//  Alt+click gesture: `straight` is the placed corner both modes honour,
+//  `round` is everything the spine is allowed to smooth.
+// ============================================================
+
+describe('261112-i6d Corner reading', () => {
+  const auto = (x: number) => ({ x, y: 0, kind: 'auto' as const });
+  const corner = (x: number) => ({
+    x,
+    y: 0,
+    kind: 'bezier' as const,
+    in: { x, y: 0 },
+    out: { x, y: 0 },
+  });
+
+  it('pins the two options in declaration order', () => {
+    expect(ANCHOR_CORNER_OPTIONS.map((option) => option.id)).toEqual(['round', 'straight']);
+    expect(ANCHOR_CORNER_OPTIONS.map((option) => option.label)).toEqual(['Round', 'Straight']);
+  });
+
+  it('reads an empty participation as the empty constant', () => {
+    expect(readAnchorCornerReading([], [])).toEqual(ANCHOR_CORNER_EMPTY_READING);
+    // Indices the path does not carry are dropped, never counted.
+    expect(readAnchorCornerReading([auto(0)], [0, 3])).toEqual({
+      state: 'round',
+      mixed: false,
+      count: 1,
+    });
+  });
+
+  it('reports mixed when the listed anchors disagree', () => {
+    const anchors = [auto(0), corner(0.5), corner(0.8)];
+    expect(readAnchorCornerReading(anchors, [0, 1])).toEqual({
+      state: 'round',
+      mixed: true,
+      count: 2,
+    });
+    expect(readAnchorCornerReading(anchors, [1, 2])).toEqual({
+      state: 'straight',
+      mixed: false,
+      count: 2,
+    });
+  });
+
+  it('takes the FIRST listed index as the representative state', () => {
+    const anchors = [auto(0), corner(0.5)];
+    expect(readAnchorCornerReading(anchors, [1, 0])).toEqual({
+      state: 'straight',
+      mixed: true,
+      count: 2,
+    });
+  });
+});
+
+describe('61-11 Anchor width reading', () => {
+  const anchor = (width?: number) => ({
+    x: 0,
+    y: 0,
+    kind: 'auto' as const,
+    ...(width === undefined ? {} : { width }),
+  });
+
+  it('pins the band constants and reads an empty anchor selection at 1.0', () => {
+    expect(AQUARELLE_ANCHOR_WIDTH_MIN).toBe(0.2);
+    // quick 261112-i6d: the app ceiling is an ALIAS of the package authority —
+    // never a second literal, so the app clamp and the reopen guard can never
+    // disagree about what is storable.
+    expect(AQUARELLE_ANCHOR_WIDTH_MAX).toBe(ANCHOR_WIDTH_MAX);
+    // ×10 is the TRACK ceiling only — the drag affordance, never a clamp.
+    expect(AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX).toBe(10);
+    expect(AQUARELLE_ANCHOR_WIDTH_STEP).toBe(0.1);
+    expect(AQUARELLE_ANCHOR_WIDTH_DEFAULT).toBe(1);
+    expect(readAnchorWidthReading([], [])).toEqual({ value: 1, mixed: false, count: 0 });
+    // Indices the path does not carry are dropped, never counted.
+    expect(readAnchorWidthReading([anchor(1.8)], [0, 3])).toEqual({
+      value: 1.8,
+      mixed: false,
+      count: 1,
+    });
+  });
+
+  it('reads an absent width as 1.0 and reports mixed across differing factors', () => {
+    const anchors = [anchor(1.8), anchor(), anchor(1.8)];
+    expect(readAnchorWidthReading(anchors, [0, 1])).toEqual({
+      value: 1.8,
+      mixed: true,
+      count: 2,
+    });
+    // Non-mixed stays absolute even when the representative is a stored factor.
+    expect(readAnchorWidthReading(anchors, [2])).toEqual({
+      value: 1.8,
+      mixed: false,
+      count: 1,
+    });
+  });
+
+  it('takes the FIRST selected index as the representative value', () => {
+    const anchors = [anchor(), anchor(1.8)];
+    expect(readAnchorWidthReading(anchors, [1, 0])).toEqual({
+      value: 1.8,
+      mixed: true,
+      count: 2,
+    });
+  });
+
+  it('computes the effective px from Size x the anchor factor, never a scale', () => {
+    expect(anchorWidthEffectivePx(20, 1.8)).toBe(36);
+    expect(anchorWidthEffectivePx(20, 1)).toBe(20);
+    // The readout is the ONE composition both Anchor width mounts render.
+    expect(`→ ${anchorWidthEffectivePx(20, 1.8)} px`).toBe('→ 36 px');
+    // One decimal: a fractional radius never prints a float tail.
+    expect(anchorWidthEffectivePx(20, 0.555)).toBe(11.1);
+  });
+
+  it('clamps a typed factor into the band and keeps 1.0 as the sparse default', () => {
+    // quick 261112-i6d: 2.5 is INSIDE the raised band now — the ONE clamp in
+    // `anchorWidthPatchValue` decides what reaches the document.
+    expect(anchorWidthPatchValue(2.5)).toBe(2.5);
+    expect(anchorWidthPatchValue(0.1)).toBe(0.2);
+    expect(anchorWidthPatchValue(1.8)).toBe(1.8);
+    // Above the storage ceiling it lands exactly on the package constant.
+    expect(anchorWidthPatchValue(AQUARELLE_ANCHOR_WIDTH_MAX + 1)).toBe(AQUARELLE_ANCHOR_WIDTH_MAX);
+    // Exactly 1 means "drop the key" at the commit, so the value must survive.
+    expect(anchorWidthPatchValue(1)).toBe(1);
+    // A non-finite entry resolves to the default instead of reaching a document.
+    expect(anchorWidthPatchValue(Number.NaN)).toBe(1);
+  });
+});
+
+// ── Task 3: the remaining E4 rows (error / partial / long-text) ──────
+//
+//  E4 error: the clamp is the WHOLE error story — `allowOutOfRangeEntry`
+//  lets the box keep the typed text, and the commit value is the clamped
+//  number. Nothing here can throw, and there is no error object to render.
+//  E4 partial: the mixed state is reportable while every selected anchor
+//  keeps its OWN factor — the per-anchor commit is 61-10's
+//  `buildAnchorWidthCommit`, pinned in vectorPathHandles.test.ts.
+//  E4 long-text: the label is the constant the dialog carries; the readout
+//  stays numeric at the top of the band.
+
+describe('61-11 E4 error, partial and long-text rows', () => {
+  const anchor = (width?: number) => ({
+    x: 0,
+    y: 0,
+    kind: 'auto' as const,
+    ...(width === undefined ? {} : { width }),
+  });
+
+  it('E4 error: clamps BOTH ends and reports no error surface', () => {
+    expect(anchorWidthPatchValue(-1)).toBe(0.2);
+    expect(anchorWidthPatchValue(0.2)).toBe(0.2);
+    expect(anchorWidthPatchValue(2)).toBe(2);
+    expect(anchorWidthPatchValue(2.0001)).toBe(2.0001);
+    expect(anchorWidthPatchValue(99)).toBe(AQUARELLE_ANCHOR_WIDTH_MAX);
+    // quick 261112-i6d: the ceiling itself is accepted, and an above-TRACK
+    // factor still reports its TRUE product px (the knob pins at the end).
+    expect(anchorWidthPatchValue(20)).toBe(20);
+    expect(anchorWidthEffectivePx(40, 20)).toBe(800);
+    // Total: the value is always a finite number inside the band.
+    for (const input of [-Infinity, Infinity, Number.NaN, 1e9, -1e9]) {
+      const value = anchorWidthPatchValue(input);
+      expect(typeof value).toBe('number');
+      expect(Number.isFinite(value)).toBe(true);
+    }
+  });
+
+  it('E4 partial: mixed stays reportable and each anchor keeps its own factor', () => {
+    const anchors = [anchor(1.8), anchor(0.5), anchor()];
+    expect(readAnchorWidthReading(anchors, [0, 1, 2])).toEqual({
+      value: 1.8,
+      mixed: true,
+      count: 3,
+    });
+    // Per-index reads still state each anchor's own factor: nothing is
+    // flattened to the representative value.
+    expect(readAnchorWidthReading(anchors, [0]).value).toBe(1.8);
+    expect(readAnchorWidthReading(anchors, [1]).value).toBe(0.5);
+    expect(readAnchorWidthReading(anchors, [2]).value).toBe(1);
+    // A single selection is never mixed, whatever the factor.
+    expect(readAnchorWidthReading(anchors, [1]).mixed).toBe(false);
+  });
+
+  it('E4 long-text: the readout stays numeric at the top of the band', () => {
+    expect(`→ ${anchorWidthEffectivePx(800, 2)} px`).toBe('→ 1600 px');
+    expect(`→ ${anchorWidthEffectivePx(1, 0.2)} px`).toBe('→ 0.2 px');
+    // The step is the one-decimal grid the value box displays.
+    expect(AQUARELLE_ANCHOR_WIDTH_STEP).toBe(0.1);
+  });
+});
+
+// 61-22 (G-11): the Anchor width control's ONE mount. 261112-lq4 moved it out
+// of Geometry and the list into the Curve tab — the same Size reading for the
+// same ids, committing through the same `bundle.applyAnchorWidths` seam.
+describe('61-22 G-11 — the Anchor width mount (Curve)', () => {
+  const sizeAppearance = (id: number): ScriptStrokeAppearance => ({
+    mutationId: id,
+    params: { size: 12 },
+    color: null,
+    vector: true,
+  });
+
+  const ANCHORS = [
+    { x: 0, y: 0, kind: 'auto' as const },
+    { x: 40, y: 0, kind: 'auto' as const },
+  ];
+
+  function anchorBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map(sizeAppearance),
+      readVectorAnchors: () => ANCHORS,
+      applyAnchorWidths: () => true,
+      applyAnchorCorners: () => true,
+      applyCurveMode: () => true,
+      reorderStroke: () => true,
+      ...overrides,
+    }).bundle;
+  }
+
+  // The vertex-context blocks need a real anchor selection — an open path
+  // edit plus at least one listed anchor.
+  function openAnchorContext(): void {
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    enterPathEdit('7');
+    setVectorAnchorSelection([1]);
+  }
+
+  afterEach(() => {
+    exitPathEdit();
+    clearVectorAnchorSelection();
+  });
+
+  it('mounts the wrapper and the shared stepper in the Curve tab only', () => {
+    const bundle = anchorBundle();
+    openAnchorContext();
+
+    const curveTree = renderDialogTab(bundle, 'curve');
+    expect(findByTestId(curveTree, 'stroke-settings-curve')).toBeDefined();
+    expect(findByTestId(curveTree, 'stroke-settings-curve-anchor-width')).toBeDefined();
+    expect(
+      findComponent(curveTree, (props) => props.ariaLabel === 'Vertex size'),
+    ).toBeDefined();
+
+    // No other tab carries the wrapper — the mount is unique to Curve.
+    for (const tab of ['list', 'geometry', 'stack'] as const) {
+      expect(
+        findByTestId(renderDialogTab(bundle, tab), 'stroke-settings-curve-anchor-width'),
+        tab,
+      ).toBeUndefined();
+    }
+  });
+
+  it('renders no wrapper without the vector read: no Curve tab at all', () => {
+    const bundle = createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map(sizeAppearance),
+      applyAnchorWidths: () => true,
+    }).bundle;
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-tab-curve')).toBeUndefined();
+    expect(
+      findByTestId(renderDialogTab(bundle, 'geometry'), 'stroke-settings-curve-anchor-width'),
+    ).toBeUndefined();
+  });
+
+  it('renders no wrapper when the vector read resolves null', () => {
+    const bundle = anchorBundle({ readVectorAnchors: () => null });
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-tab-curve')).toBeUndefined();
+    expect(
+      findByTestId(renderDialogTab(bundle, 'geometry'), 'stroke-settings-curve-anchor-width'),
+    ).toBeUndefined();
+  });
+
+  it('hides the vertex-context blocks when no vertex is selected', () => {
+    const bundle = anchorBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    exitPathEdit();
+    clearVectorAnchorSelection();
+    const curveTree = renderDialogTab(bundle, 'curve');
+
+    // The Curve row is stroke-level and stays; the two vertex rows disappear.
+    expect(findByTestId(curveTree, 'stroke-settings-curve-mode-block')).toBeDefined();
+    expect(findByTestId(curveTree, 'stroke-settings-curve-anchor-width')).toBeUndefined();
+    expect(findByTestId(curveTree, 'stroke-settings-corner-block')).toBeUndefined();
+  });
+
+  it('mounts Vertex size and Corner once a vertex is selected', () => {
+    const bundle = anchorBundle();
+    openAnchorContext();
+    const curveTree = renderDialogTab(bundle, 'curve');
+
+    const stepper = findComponent(curveTree, (props) => props.ariaLabel === 'Vertex size')!;
+    expect(stepper).toBeDefined();
+    expect(stepper.props.disabled).toBe(false);
+    expect(stepper.props.value).toBe(AQUARELLE_ANCHOR_WIDTH_DEFAULT);
+    expect(findByTestId(curveTree, 'stroke-settings-corner-block')).toBeDefined();
+  });
+});
+
+// 61-12 (VEC-04 / E3): the `Render` row's reading law. The mode is a string
+// discriminator on the stroke, never a numeric appearance param — the reading
+// is pure over the appearance objects, and an absent field means watercolour
+// (D-12) rather than an unknown state.
+describe('61-31 curve mode reading (Curve)', () => {
+  function appearanceOf(
+    mutationId: number,
+    options: { readonly curveMode?: 'bezier' | 'spline'; readonly vector?: boolean } = {},
+  ): ScriptStrokeAppearance {
+    return {
+      mutationId,
+      params: {},
+      color: null,
+      ...(options.curveMode === undefined ? {} : { curveMode: options.curveMode }),
+      ...(options.vector === undefined ? {} : { vector: options.vector }),
+    };
+  }
+
+  it('reads unavailable with no mode for an empty selection', () => {
+    expect(readCurveMode([])).toEqual({ mode: null, mixed: false, available: false });
+  });
+
+  it('never makes the row available for a hand-painted-only selection', () => {
+    expect(readCurveMode([appearanceOf(1), appearanceOf(2, { vector: false })]))
+      .toEqual({ mode: null, mixed: false, available: false });
+  });
+
+  it('reads bezier for a vector stroke with no stored mode', () => {
+    expect(readCurveMode([appearanceOf(1, { vector: true })]))
+      .toEqual({ mode: 'bezier', mixed: false, available: true });
+  });
+
+  it('reads spline when every vector stroke agrees and ignores hand-painted strokes', () => {
+    expect(readCurveMode([
+      appearanceOf(1, { vector: true, curveMode: 'spline' }),
+      appearanceOf(2, { vector: true, curveMode: 'spline' }),
+    ])).toEqual({ mode: 'spline', mixed: false, available: true });
+    // A hand-painted stroke is not a curve participant, so it cannot create a
+    // disagreement beside a spline vector stroke.
+    expect(readCurveMode([
+      appearanceOf(1, { vector: true, curveMode: 'spline' }),
+      appearanceOf(2),
+    ])).toEqual({ mode: 'spline', mixed: false, available: true });
+  });
+
+  it('reads mixed with no representative when vector strokes disagree', () => {
+    expect(readCurveMode([
+      appearanceOf(1, { vector: true, curveMode: 'spline' }),
+      appearanceOf(2, { vector: true }),
+    ])).toEqual({ mode: null, mixed: true, available: true });
+  });
+
+  function curveBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearanceOf(id, { vector: true })),
+      // 261112-lq4: the Curve tab itself is gated on the vector-anchor read.
+      readVectorAnchors: () => [],
+      reorderStroke: () => true,
+      applyCurveMode: () => true,
+      ...overrides,
+    }).bundle;
+  }
+
+  it('renders the Curve row inside the Curve tab and nowhere else', () => {
+    const bundle = curveBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    const curveTree = renderDialogTab(bundle, 'curve');
+    expect(findByTestId(curveTree, 'stroke-settings-curve')).toBeDefined();
+    expect(findByTestId(curveTree, 'stroke-settings-curve-mode-block')).toBeDefined();
+    for (const tab of ['list', 'geometry', 'stack'] as const) {
+      expect(
+        findByTestId(renderDialogTab(bundle, tab), 'stroke-settings-curve-mode-block'),
+        tab,
+      ).toBeUndefined();
+    }
+  });
+
+  it('gates the Curve row on the commit seam', () => {
+    const bundle = createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearanceOf(id, { vector: true })),
+      // The Curve tab is available; only the commit seam is missing.
+      readVectorAnchors: () => [],
+      reorderStroke: () => true,
+    }).bundle;
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    const curveTree = renderDialogTab(bundle, 'curve');
+    expect(findByTestId(curveTree, 'stroke-settings-curve')).toBeDefined();
+    expect(findByTestId(curveTree, 'stroke-settings-curve-mode-block')).toBeUndefined();
   });
 });

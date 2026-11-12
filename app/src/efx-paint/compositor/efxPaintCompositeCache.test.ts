@@ -12,7 +12,20 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { AquarelleAnchor, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import {
+  aquarelleStrokesRevision,
+  recordAquarelleStroke,
+  resetAquarelleRecordState,
+} from '../../components/physic-paint/view/aquarelleRecordState';
+import { beginAquarellePathEdit } from '../../components/physic-paint/view/aquarelleStrokeSelection';
+import {
+  draftMode,
+  setDraftMode,
+  setWireframeMode,
+  wireframeMode,
+} from '../../components/physic-paint/view/scriptStrokeEdition';
 import { createEfxPaintDocument } from '../document/efxPaintDocument';
 import type { EfxPaintDocument, FrameLoopClip, InternalPaintTrack } from '../document/efxPaintDocument';
 import {
@@ -627,5 +640,88 @@ describe('deriveEfxPaintFlattenedCacheKey — motion term (59-08 / REL-03)', () 
       trackMotionRevisions: new Map([['track-a', 'motion-1']]),
     });
     expect(key2).toBe(key1);
+  });
+});
+
+describe('61-14 close-out — a path edit rotates the key, a view flag never does (VEC-06 / VEC-07)', () => {
+  const FRAME = 12;
+  const FRAME_ANCHORS: readonly AquarelleAnchor[] = [
+    { x: 0, y: 0, kind: 'auto', width: Math.fround(1.8) },
+    { x: 1, y: 1, kind: 'auto' },
+  ];
+  const MOVED_ANCHORS: readonly AquarelleAnchor[] = [
+    { x: 0.3, y: 0, kind: 'auto', width: Math.fround(1.8) },
+    { x: 1, y: 1, kind: 'auto' },
+  ];
+
+  function frameStroke(mutationId: number): AquarelleStroke {
+    return {
+      tool: 'brush',
+      color: '#103c65',
+      params: { size: 12, water: 30 },
+      brushId: 'simple-ribbon',
+      points: [
+        { x: 0, y: 0, p: -1, tx: 0, ty: 0, tw: 0 },
+        { x: 1, y: 1, p: 1, tx: 0, ty: 0, tw: 0 },
+      ],
+      mutationId,
+      timestamp: mutationId,
+      playFrame: FRAME,
+      anchors: FRAME_ANCHORS,
+    };
+  }
+
+  // ONE document: createEfxPaintDocument mints fresh ids per call, so
+  // rebuilding it per derivation would rotate the key for the wrong reason.
+  const document = makeDocument([makeTrack('track-a')]);
+
+  /** The same derivation the store feeds: the record revision IS the content term. */
+  function flatten(revision: string): string {
+    return deriveEfxPaintFlattenedCacheKey({
+      document,
+      trackContentRevisions: contentRevisions([['track-a', revision]]),
+      backgroundClipRevisions: [],
+      frame: FRAME,
+    });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    setWireframeMode(false);
+    setDraftMode(false);
+  });
+
+  it('a path edit bumps the stroke revision and rotates the flattened key', () => {
+    recordAquarelleStroke(301, frameStroke(301));
+    const revisionBefore = `${aquarelleStrokesRevision.value}`;
+    const keyBefore = flatten(revisionBefore);
+
+    const editId = beginAquarellePathEdit(301, MOVED_ANCHORS);
+    expect(editId).not.toBeNull();
+
+    const revisionAfter = `${aquarelleStrokesRevision.value}`;
+    expect(revisionAfter).not.toBe(revisionBefore);
+    expect(flatten(revisionAfter)).not.toBe(keyBefore);
+  });
+
+  it('toggling wireframe — and the draft latch it arms — leaves the flattened key byte-identical', () => {
+    recordAquarelleStroke(303, frameStroke(303));
+    const revision = `${aquarelleStrokesRevision.value}`;
+    const keyOff = flatten(revision);
+
+    setWireframeMode(true);
+    // Prove the toggle really happened before asserting the key did not move.
+    expect(wireframeMode.value).toBe(true);
+    expect(draftMode.value).toBe(true);
+    expect(flatten(`${aquarelleStrokesRevision.value}`)).toBe(keyOff);
+
+    setWireframeMode(false);
+    setDraftMode(false);
+    expect(wireframeMode.value).toBe(false);
+    expect(draftMode.value).toBe(false);
+    expect(flatten(`${aquarelleStrokesRevision.value}`)).toBe(keyOff);
+
+    // The view flags never touch the revision that feeds the content term.
+    expect(`${aquarelleStrokesRevision.value}`).toBe(revision);
   });
 });

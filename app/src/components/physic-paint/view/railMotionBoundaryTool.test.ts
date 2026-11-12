@@ -39,7 +39,10 @@ describe('Motion boundaries tool (261107 UAT)', () => {
 
   it('keeps the rail exclusive — animate mode never lights a second tool', () => {
     // The paint row renders deselected while Motion boundaries is active.
-    expect(rail).toContain('!selectActive && !pickerActive && !motionBoundaryActive && active === id');
+    // 61-08 (D-05): the vector pen joins the one-active-surface law.
+    expect(rail).toContain(
+      '!selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === id',
+    );
     // Entering animate mode retires Select and the picker on BOTH entry paths:
     // the rail tool (Studio handler) and the property click (strip).
     const studio = readFileSync(fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url)), 'utf8');

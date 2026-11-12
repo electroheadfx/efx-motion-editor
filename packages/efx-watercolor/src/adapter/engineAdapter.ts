@@ -26,10 +26,17 @@ import { mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type {
   EngineAdapter,
   EngineId,
+  StudioPoint,
   StudioStroke,
 } from '@efxlab/efx-paint-host'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
 import { toStudioStroke } from '../payload/toStudioStroke'
+import {
+  isUniformColorProfile,
+  isUniformWidthProfile,
+  sampleVectorColors,
+  sampleVectorWidths,
+} from '../vector/spine'
 import {
   isAquarelleDryEvent,
   type AquarelleDryEvent,
@@ -39,7 +46,7 @@ import { payloadCodec } from '../payload/codec'
 import { WatercolorEngine, type Tool } from '../playground/Engine'
 import { toEngineParams } from '../playground/params'
 import { buildBrushForStroke } from '../playground/brushBridge'
-import { pigmentFromHex } from '../playground/spectral'
+import { pigmentFromHex, type Pigment } from '../playground/spectral'
 import { DEFAULT_PAPER, PAPERS, type PaperPreset } from '../playground/papers'
 import type { AquarelleBakePaper } from '../bake/aquarelleBake'
 
@@ -111,6 +118,64 @@ const AQUARELLE_TOOL_SET = new Set<Tool>(['brush', 'water', 'pen', 'lift'])
 
 function asTool(raw: string): Tool {
   return AQUARELLE_TOOL_SET.has(raw as Tool) ? (raw as Tool) : 'brush'
+}
+
+/**
+ * 61-04: the derived per-sample width factors for one stroke, or null when
+ * the stroke carries no anchors or a uniform width profile. Null means the
+ * feed path passes the literal 1 and deposits byte-identically to before.
+ *
+ * This is the ONE bridge from the sparse anchor profile (61-02) to the
+ * engine's per-sample channel. It runs once per active stroke — never per
+ * tick (T-61-12) — and is a pure function of the payload and the point grid:
+ * no clock read, no RNG, no engine-state write. The array is derived at
+ * replay time and is never persisted (the document keeps anchors and their
+ * sparse factors only).
+ */
+export function resolveStrokeWidthFactors(
+  payload: AquarelleStrokePayload,
+  pts: readonly StudioPoint[],
+): Float32Array | null {
+  const anchors = payload.anchors
+  if (anchors === undefined || anchors.length === 0) return null
+  if (isUniformWidthProfile(anchors)) return null
+  return Float32Array.from(sampleVectorWidths(anchors, pts))
+}
+
+/**
+ * 261111-wd6: the ONE resolution of a stroke's base colour — the stroke-level
+ * colour wins over the engine payload, exactly the order `configure()` has
+ * always read. Null means the stroke names no colour at all.
+ */
+export function resolveStrokeBaseColor(
+  stroke: StudioStroke<AquarelleStrokePayload>,
+): string | null {
+  const hex = stroke.color ?? stroke.engine.color
+  return typeof hex === 'string' && hex.length > 0 ? hex : null
+}
+
+/**
+ * 261111-wd6: the derived per-sample pigments for one stroke, or null when the
+ * stroke carries no anchors, no explicit vertex colour, or no base colour to
+ * inherit. Null means the feed passes no pigment and deposits byte-identically
+ * to before.
+ *
+ * This is the ONE bridge from the per-vertex colour law (the package spine) to
+ * the engine's per-sample pigment channel. Like the width bridge it runs once
+ * per active stroke — never per tick (T-61-12) — and is a pure function of the
+ * stroke payload and the point grid: no clock read, no RNG, no engine-state
+ * write. The array is derived at replay time and is never persisted.
+ */
+export function resolveStrokeColors(
+  stroke: StudioStroke<AquarelleStrokePayload>,
+  pts: readonly StudioPoint[],
+): Pigment[] | null {
+  const anchors = stroke.engine.anchors
+  if (anchors === undefined || anchors.length === 0) return null
+  if (isUniformColorProfile(anchors)) return null
+  const base = resolveStrokeBaseColor(stroke)
+  if (base === null) return null
+  return sampleVectorColors(anchors, pts, base).map((hex) => pigmentFromHex(hex))
 }
 
 export function createAquarelleEngineAdapter(
@@ -200,6 +265,10 @@ export function createAquarelleEngineAdapter(
     stroke: StudioStroke<AquarelleStrokePayload>
     index: number
     started: boolean
+    /** 61-04: one factor per point, derived once at activation; null = feed 1. */
+    widths: Float32Array | null
+    /** 261111-wd6: one pigment per point, derived once; null = feed none. */
+    colors: Pigment[] | null
   } | null = null
 
   /**
@@ -210,7 +279,13 @@ export function createAquarelleEngineAdapter(
    */
   const feedStates = new Map<
     StudioStroke<AquarelleStrokePayload>,
-    { index: number; started: boolean; ended: boolean }
+    {
+      index: number
+      started: boolean
+      ended: boolean
+      widths: Float32Array | null
+      colors: Pigment[] | null
+    }
   >()
 
   const configure = (stroke: StudioStroke<AquarelleStrokePayload>): void => {
@@ -218,8 +293,10 @@ export function createAquarelleEngineAdapter(
     const payload = stroke.engine
     engine.setParams(toEngineParams(payload.params))
     engine.setBrush(buildBrushForStroke(payload.brushId ?? stroke.brushId, payload.toolOverrides ?? stroke.toolOverrides))
-    const hex = stroke.color ?? payload.color
-    if (typeof hex === 'string' && hex.length > 0) engine.setPigment(pigmentFromHex(hex))
+    // 261111-wd6: ONE base-colour resolution, shared with the per-sample
+    // bridge — configure() and the sampler can never disagree on the base.
+    const hex = resolveStrokeBaseColor(stroke)
+    if (hex !== null) engine.setPigment(pigmentFromHex(hex))
     engine.setTool(asTool(payload.tool))
     // traceSeed is the D-20 per-stroke determinism key. With a paint-seed
     // frame set, the key is mixed with that frame (pure host mix) so the same
@@ -251,16 +328,35 @@ export function createAquarelleEngineAdapter(
     // pts[].tick is the sample index on the host grid (toStudioStroke law).
     while (active.index < pts.length && pts[active.index]!.tick <= timelineTick) {
       const p = pts[active.index]!
+      // 61-04: the factor is indexed by the sample's OWN position — derived
+      // once at activation, never rebuilt inside the tick loop (T-61-12).
+      // 261111-wd6 mirrors this for the pigment; both read BEFORE the cursor
+      // advances, so a sample only ever deposits its own values.
+      const widthFactor = active.widths === null ? 1 : active.widths[active.index] ?? 1
+      const samplePigment =
+        active.colors === null ? undefined : active.colors[active.index]
       active.index += 1
       advanceClock(1000 * HOST_DT)
       if (!active.started) {
         active.started = true
         // p.p keeps the mouse sentinel (-1) — the engine derives pressure from
         // speed exactly like the live pointer path. Tilt rides through too so
-        // asymmetric tips keep their recorded azimuth.
-        engine.scriptBegin(asTool(active.stroke.engine.tool), p.x, p.y, p.p, 'Stroke', undefined, p.tx, p.ty)
+        // asymmetric tips keep their recorded azimuth. The width factor is the
+        // vector profile's per-sample channel, never a maxRadius clamp (C-03).
+        engine.scriptBegin(
+          asTool(active.stroke.engine.tool),
+          p.x,
+          p.y,
+          p.p,
+          'Stroke',
+          undefined,
+          p.tx,
+          p.ty,
+          widthFactor,
+          samplePigment,
+        )
       } else {
-        engine.scriptMove(p.x, p.y, p.p, virtualNow, p.tx, p.ty)
+        engine.scriptMove(p.x, p.y, p.p, virtualNow, p.tx, p.ty, widthFactor, samplePigment)
       }
       // Live==bake law (56-12): one sample then engine.tick advances the
       // fluid. Skipping the tick deposits the whole stroke in one instant so
@@ -352,7 +448,13 @@ export function createAquarelleEngineAdapter(
       strokes.push(parsed)
       if (!engine) return
       configure(parsed)
-      active = { stroke: parsed, index: 0, started: false }
+      active = {
+        stroke: parsed,
+        index: 0,
+        started: false,
+        widths: resolveStrokeWidthFactors(parsed.engine, parsed.pts),
+        colors: resolveStrokeColors(parsed, parsed.pts),
+      }
       // Bake contract: applyStroke deposits the whole stroke. Feed every
       // recorded sample on the tick grid, then flush the stamp path once.
       feedDueSample(Number.MAX_SAFE_INTEGER)
@@ -364,7 +466,13 @@ export function createAquarelleEngineAdapter(
       if (disposed || !engine) return
       for (const stroke of strokes) {
         configure(stroke)
-        active = { stroke, index: 0, started: false }
+        active = {
+          stroke,
+          index: 0,
+          started: false,
+          widths: resolveStrokeWidthFactors(stroke.engine, stroke.pts),
+          colors: resolveStrokeColors(stroke, stroke.pts),
+        }
         feedDueSample(Number.MAX_SAFE_INTEGER)
         advanceClock(1000 * HOST_DT)
         engine.tick(HOST_DT)
@@ -384,7 +492,15 @@ export function createAquarelleEngineAdapter(
         const { stroke, pointCount } = entry
         let state = feedStates.get(stroke)
         if (!state) {
-          state = { index: 0, started: false, ended: false }
+          // 61-04: derived once per stroke and kept on the feed state, so a
+          // progressive replay never rebuilds the factor array per frame.
+          state = {
+            index: 0,
+            started: false,
+            ended: false,
+            widths: resolveStrokeWidthFactors(stroke.engine, stroke.pts),
+            colors: resolveStrokeColors(stroke, stroke.pts),
+          }
           feedStates.set(stroke, state)
           strokes.push(stroke)
         }
@@ -394,7 +510,13 @@ export function createAquarelleEngineAdapter(
         // open one to close (the sequential schedule guarantees it will).
         if (active && active.stroke !== stroke) continue
         if (!state.started) configure(stroke)
-        const cursor = { stroke, index: state.index, started: state.started }
+        const cursor = {
+          stroke,
+          index: state.index,
+          started: state.started,
+          widths: state.widths,
+          colors: state.colors,
+        }
         active = cursor
         // pts[].tick === the sample index (toStudioStroke law), so feeding the
         // first `pointCount` samples means timelineTick = pointCount - 1.

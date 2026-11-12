@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="9" failures="4" errors="0" time="0.539">
+    <testsuite name="src/components/physic-paint/view/aquarelleRecordState.path.test.ts" timestamp="2026-11-11T12:04:44.697Z" hostname="efx2.home" tests="9" failures="4" errors="0" skipped="0" time="0.008084167">
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.path.test.ts" name="61-10 aquarelle whole-stroke moves carry the vector path &gt; translate moves anchors, handles and points by the same delta and the entry agrees" time="0.002134625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.path.test.ts" name="61-10 aquarelle whole-stroke moves carry the vector path &gt; transform maps anchors and handles through the point map and keeps the widths" time="0.000488084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.path.test.ts" name="61-10 aquarelle whole-stroke moves carry the vector path &gt; a hand-painted stroke gains no anchors key and keeps its whole entry shape" time="0.00019825">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.path.test.ts" name="61-10 aquarelle whole-stroke moves carry the vector path &gt; refuses a malformed or empty path whole, leaving the stroke and entry untouched" time="0.000219625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.path.test.ts" name="61-10 aquarelle whole-stroke moves carry the vector path &gt; replaces both strokes of a mixed batch at their own indexes with ONE bump" time="0.000205375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.path.test.ts" name="61-29 G-17 — the path write carries the replay geometry &gt; re-samples the recorded points from the new anchors so every replay paints the new curve" time="0.002068375">
+            <failure message="expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13" type="AssertionError">
+AssertionError: expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts:363:32
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.path.test.ts" name="61-29 G-17 — the path write carries the replay geometry &gt; keeps the payload entry’s pts and engine.anchors on the same path" time="0.000449958">
+            <failure message="expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13" type="AssertionError">
+AssertionError: expected 0.5 to be close to 0.6, received difference is 0.09999999999999998, but expected 5e-13
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts:384:29
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.path.test.ts" name="61-29 G-17 — the path write carries the replay geometry &gt; re-derives the point count from the anchor geometry on every path write" time="0.001591292">
+            <failure message="expected [ …(2) ] to have a length of 451 but got 2" type="AssertionError">
+AssertionError: expected [ …(2) ] to have a length of 451 but got 2
+
+- Expected
++ Received
+
+- 451
++ 2
+
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts:411:52
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.path.test.ts" name="61-29 G-17 — the path write carries the replay geometry &gt; stamps every re-derived sample with the buildVectorStroke point shape" time="0.000269834">
+            <failure message="expected 0.25 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected 0.25 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0.25
+
+ ❯ src/components/physic-paint/view/aquarelleRecordState.path.test.ts:424:24
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

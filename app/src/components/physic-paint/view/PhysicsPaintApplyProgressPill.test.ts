@@ -51,8 +51,15 @@ describe('apply progress pill placement', () => {
   it('renders for any active apply and owns its applyProgress subscription', () => {
     const pill = getPillComponentBlock(studioViewSource());
     expect(pill).toContain("rotoScript?.applyProgress.value ?? null");
-    expect(pill).toContain('if (!applyProgress) return null');
+    expect(pill).toContain('if (!applyProgress || rebaking) return null;');
     expect(pill).toContain('role="progressbar"');
+  });
+
+  it('stands down while a path-edit re-bake shows the canvas veil', () => {
+    // 261112-i6d: the veil carries the same counter, so a path edit shows ONE
+    // progress surface. Script applies (no veil) keep their pill unchanged.
+    const pill = getPillComponentBlock(studioViewSource());
+    expect(pill).toContain('const rebaking = pathEditRebakeActive.value;');
   });
 
   it('anchors to the canvas region bottom edge, not outside a clipping parent', () => {

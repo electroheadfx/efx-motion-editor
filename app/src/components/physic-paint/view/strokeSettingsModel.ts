@@ -14,8 +14,16 @@
 // ============================================================
 
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
-import { findTip } from '@efxlab/efx-watercolor/brushes';
-import { paintSeedSaltOf } from '@efxlab/efx-watercolor/payload';
+import { findTip, type AquarelleToolOverrides } from '@efxlab/efx-watercolor/brushes';
+import {
+  ANCHOR_WIDTH_MAX,
+  paintSeedSaltOf,
+  readAnchorCornerState,
+  resolveAquarelleCurveMode,
+  type AnchorCornerState,
+  type AquarelleAnchor,
+  type AquarelleCurveMode,
+} from '@efxlab/efx-watercolor/payload';
 import type {
   SelectableScriptStroke,
   ScriptStrokeSize,
@@ -105,6 +113,63 @@ export interface ScriptStrokeAppearance {
   readonly mutationId: number;
   readonly params: Readonly<Record<string, number>>;
   readonly color: string | null;
+  /**
+   * 61-31 (G-20): the stroke's curve-evaluation discriminator. Absent means
+   * Bézier.
+   */
+  readonly curveMode?: AquarelleCurveMode;
+  /**
+   * 61-31 (G-20): whether the stroke carries a vector path. Hydrated from the
+   * presence of anchors; a hand-painted stroke must never make the `Curve`
+   * row available, so `vector` absent/false excludes it from the reading.
+   */
+  readonly vector?: boolean;
+}
+
+/** 61-31 (G-20): the `Curve` row's reading over the VECTOR appearances only. */
+export interface CurveModeReading {
+  /** The agreed mode, or null when the vector strokes disagree. */
+  readonly mode: AquarelleCurveMode | null;
+  readonly mixed: boolean;
+  /** True only when at least one vector stroke is in the selection. */
+  readonly available: boolean;
+}
+
+/** One `Curve` row option — the model owns both the id and the copy. */
+export interface CurveModeOption {
+  readonly id: 'bezier' | 'spline';
+  readonly mode: AquarelleCurveMode;
+  readonly label: string;
+}
+
+/**
+ * 61-31 (G-20 / D-01 revised): the two options, in UI-SPEC order. `id` is the
+ * test-id suffix (`-option-bezier` / `-option-spline`); the global button rule
+ * uppercases `label` in the sheet. Constants only — no user text can reach it.
+ */
+export const CURVE_MODE_OPTIONS: readonly CurveModeOption[] = Object.freeze([
+  Object.freeze({ id: 'bezier' as const, mode: 'bezier' as const, label: 'Bézier' }),
+  Object.freeze({ id: 'spline' as const, mode: 'spline' as const, label: 'Spline' }),
+]);
+
+/**
+ * 61-31 (G-20 / D-01 revised): the selection's curve-evaluation mode. Spline is
+ * an EVALUATION MODE over the same anchor list, never a third anchor kind, so
+ * only the VECTOR appearances take part: a hand-painted stroke has no path to
+ * evaluate, and giving it a mode would write inert data — it can neither make
+ * the row available nor contribute a disagreement. Absent counts as the
+ * default, so an explicit `bezier` and a stroke written before this phase read
+ * the SAME; any disagreement between vector strokes is mixed with no
+ * representative.
+ */
+export function readCurveMode(appearances: readonly ScriptStrokeAppearance[]): CurveModeReading {
+  const modes = appearances
+    .filter((appearance) => appearance.vector === true)
+    .map((appearance) => resolveAquarelleCurveMode(appearance.curveMode));
+  if (modes.length === 0) return { mode: null, mixed: false, available: false };
+  const first = modes[0]!;
+  if (modes.some((mode) => mode !== first)) return { mode: null, mixed: true, available: true };
+  return { mode: first, mixed: false, available: true };
 }
 
 /** One canonical-unit batch write (params merged, color replaced). */
@@ -113,20 +178,28 @@ export interface ScriptStrokeAppearancePatch {
   readonly color?: string;
   /** 261031-cf9: the Paint seed variation flag (see the appearance door). */
   readonly paintSeedVariation?: boolean;
+  /**
+   * quick 261111-t74: the recorded brush/tip id the stroke paints with. The
+   * record-state door is the validator — only an id `findTip` resolves or a
+   * `BRUSH_PRESETS` id is accepted, and nothing is coerced or defaulted. This
+   * is appearance data, never geometry: points, anchors and the authored path
+   * survive a brush change untouched.
+   */
+  readonly brushId?: string;
+  /**
+   * quick 261111-t74: a PARTIAL bag of the eight per-brush multipliers. The
+   * record-state door merges it onto the stroke's own bag — absent fields keep
+   * the stroke's value and an absent stored bag counts as neutral — so the
+   * engine always receives the complete eight-field bag. An unknown multiplier
+   * name (or a non-finite value) is refused, never stored.
+   */
+  readonly toolOverrides?: Partial<AquarelleToolOverrides>;
 }
 
 export interface NumericFieldReading {
   readonly value: number;
   readonly mixed: boolean;
 }
-
-export interface ColorFieldReading {
-  readonly color: string;
-  readonly mixed: boolean;
-}
-
-/** The overlay's neutral for a stroke recorded without an explicit color. */
-export const NEUTRAL_STROKE_COLOR = '#111827';
 
 function storedKey(field: StrokeSettingsField): string {
   return field.paramKey ?? field.key;
@@ -174,18 +247,21 @@ export function readNumericField(
 }
 
 /**
- * Representative color from the FIRST-SELECTED id; mixed when any visible
- * color differs (a later repeat of the representative does not cancel it).
+ * 61-12 (D-13): one wet-global reading for the Advanced disclosure. The
+ * stored param key IS the field key (no `paramKey` alias among the seven),
+ * and an absent key reads 0 — the ribbon preset genuinely writes zeros at
+ * pick time, so zero is a real stored value, never a display fallback.
+ * Mixed compares the raw values across the selection.
  */
-export function readColorField(
+export function readSimpleRibbonGlobal(
   appearances: readonly ScriptStrokeAppearance[],
-  orderedIds: readonly number[],
-): ColorFieldReading {
-  const byId = appearanceMap(appearances);
-  const colors = orderedIds.map((id) => byId.get(id)?.color ?? NEUTRAL_STROKE_COLOR);
-  if (colors.length === 0) return { color: NEUTRAL_STROKE_COLOR, mixed: false };
-  const first = colors[0]!;
-  return { color: first, mixed: colors.some((color) => color !== first) };
+  key: string,
+): NumericFieldReading {
+  const values = appearances.map((appearance) =>
+    readFiniteParam(appearance.params, key, 0));
+  if (values.length === 0) return { value: 0, mixed: false };
+  const first = values[0]!;
+  return { value: first, mixed: values.some((value) => value !== first) };
 }
 
 /** Canonical-unit params patch for one committed row. */
@@ -197,11 +273,6 @@ export function buildAppearancePatch(
   const field = strokeSettingsFields(module).find((candidate) => candidate.key === fieldKey);
   const key = field ? storedKey(field) : fieldKey;
   return { params: { [key]: value } };
-}
-
-/** Color-only patch for one color commit. */
-export function buildColorPatch(color: string): ScriptStrokeAppearancePatch {
-  return { color };
 }
 
 /**
@@ -421,48 +492,6 @@ export function shouldMarkSawEmpty(args: SawEmptyArgs): boolean {
     && args.keepOpenOnEmpty !== true;
 }
 
-// ============================================================
-//  261101-jmm: the sheet's view law — LIST FIRST. The stroke list
-//  is the default surface and stays visible while strokes are
-//  selected; the Geometry/Stack/Paint tabs are an explicit request
-//  the user makes from the header icon. A settings request never
-//  survives the selection being observed EMPTY (a close/reopen, a
-//  leave and re-enter of Move/Select, or a delete that empties the
-//  selection): the invalidation marker re-arms the list.
-// ============================================================
-
-export type StrokeSettingsView = 'list' | 'settings';
-
-/**
- * The view a render shows. A settings request over an EMPTY selection falls
- * back to the list (never an empty settings panel); every other request is
- * honoured as asked. Pure render-time derivation — never a signal write.
- */
-export function resolveStrokeSettingsView(
-  requested: StrokeSettingsView,
-  selectionSize: number,
-): StrokeSettingsView {
-  return requested === 'settings' && selectionSize > 0 ? 'settings' : 'list';
-}
-
-export interface StrokeSettingsViewInvalidationArgs {
-  readonly requested: StrokeSettingsView;
-  readonly selectionSize: number;
-}
-
-/**
- * The staleness gate for the settings REQUEST: a settings request survives a
- * non-empty -> non-empty selection change but never survives the selection
- * being observed empty. Gates a plain (non-signal) module marker written
- * idempotently in the render body — the `shouldMarkSawEmpty` precedent — so
- * the gate notifies no subscriber and cannot start a reactive loop.
- */
-export function shouldInvalidateStrokeSettingsView(
-  args: StrokeSettingsViewInvalidationArgs,
-): boolean {
-  return args.requested === 'settings' && args.selectionSize === 0;
-}
-
 /**
  * The inclusive DISPLAYED range between the shift anchor and the clicked row.
  * Both indices address `orderedIds` (the rendered order), so the result keeps
@@ -548,6 +577,44 @@ export interface StrokeSettingsDialogBundle {
    * `durable-base-unknown`. Absent means the sheet may enter Draft directly.
    */
   readonly armDraft?: () => Promise<boolean>;
+  /**
+   * 61-11 (VEC-02): the selected stroke's vector anchors when the single
+   * selection IS a vector stroke, otherwise null. The dialog never reads the
+   * record seam — the Studio resolves the payload, so the gate, the Anchor
+   * width reading and the effective-px readout share ONE source of truth.
+   * Absent means this module has no vector paths (the gate stays disabled).
+   */
+  readonly readVectorAnchors?: (ids: readonly number[]) => readonly AquarelleAnchor[] | null;
+  /**
+   * 61-11 (VEC-03 / T-61-38): write one factor on EVERY selected anchor of the
+   * single selected vector stroke as ONE path edit, so a multi-anchor change is
+   * one undo entry rather than one per anchor. Returns true only when the edit
+   * was accepted. Absent hides the Anchor width block.
+   */
+  readonly applyAnchorWidths?: (ids: readonly number[], value: number) => boolean | Promise<boolean>;
+  /**
+   * 61-27 (IN-03): the sheet's ONE refusal channel for a commit the module
+   * declined. Optional, so an absent Studio port keeps the shipped silent
+   * fallback; the dialog itself stays engine-free and never writes a signal.
+   */
+  readonly publishRefusal?: (message: string) => void;
+  /**
+   * 61-31 (G-20): write one curve-evaluation mode on every VECTOR stroke of the
+   * selection as ONE history entry. An evaluation mode over the same anchors:
+   * the write re-samples the replay points and never rewrites a stored kind or
+   * handle. Absent hides the Curve row.
+   */
+  readonly applyCurveMode?: (ids: readonly number[], mode: AquarelleCurveMode) => boolean | Promise<boolean>;
+  /**
+   * 261112-i6d: write one corner state on the SELECTED anchors of the open
+   * path edit as ONE history entry — the same commit seam and the same bare
+   * roll call Alt+click uses, so the row and the gesture can never disagree.
+   * Absent hides the Corner row.
+   */
+  readonly applyAnchorCorners?: (
+    ids: readonly number[],
+    state: AnchorCornerState,
+  ) => boolean | Promise<boolean>;
 }
 
 // ============================================================
@@ -696,4 +763,274 @@ export function geometryTransform(
       ...(control === 'scaleX' ? { scaleXPct: nextPct } : { scaleYPct: nextPct }),
     },
   };
+}
+
+// ── The Edit path entrance (E2) ─────────────────────────────────────
+//
+//  One vector stroke selected is the ONLY state that can enter path edit.
+//  The disabled reasons are model constants so the button can never
+//  inline its own copy, and `pressed` compares the session's mutation id
+//  (a string) with the selected stroke's id (a number) — the two live in
+//  different types on purpose: the session id is opaque to the dialog.
+
+export const PATH_EDIT_LABEL = 'Edit path';
+
+/** 0 or 1 non-vector stroke selected. */
+export const PATH_EDIT_SINGLE_DISABLED_REASON = 'Edit path — select one vector stroke';
+
+/** More than one stroke selected: paths are edited one stroke at a time. */
+export const PATH_EDIT_MULTI_DISABLED_REASON = 'Edit path — select a single vector stroke';
+
+export interface PathEditGateArgs {
+  readonly selectionSize: number;
+  readonly vectorStrokeCount: number;
+  readonly selectedMutationId: number | null;
+  readonly pathEditMutationId: string | null;
+}
+
+export interface PathEditGate {
+  readonly enabled: boolean;
+  readonly title: string;
+  readonly pressed: boolean;
+}
+
+/**
+ * Resolve the header button's whole state in one place. `title` is the
+ * constant label while enabled and the constant disabled reason otherwise,
+ * so the sheet never renders a stale hover hint.
+ */
+export function resolvePathEditGate(args: PathEditGateArgs): PathEditGate {
+  const enabled = args.selectionSize === 1 && args.vectorStrokeCount === 1;
+  return {
+    enabled,
+    title: enabled
+      ? PATH_EDIT_LABEL
+      : args.selectionSize > 1
+        ? PATH_EDIT_MULTI_DISABLED_REASON
+        : PATH_EDIT_SINGLE_DISABLED_REASON,
+    pressed:
+      args.selectedMutationId !== null &&
+      args.pathEditMutationId === String(args.selectedMutationId),
+  };
+}
+
+/** 61-19 (G-5): the width commit's target inputs. */
+export interface AnchorWidthTargetArgs {
+  readonly ids: readonly number[];
+  readonly pathEditMutationId: string | null;
+}
+
+/**
+ * 61-19 (G-5): the ONE stroke the width commit may write. The dialog's
+ * selection decides `ids`, but the anchor indices belong to the OPEN path
+ * edit — so the write is legal only when exactly one stroke is selected AND
+ * that stroke IS the open edit. A mismatch, a missing edit, an empty session
+ * id or a non-integer id all fail closed to null, and the commit refuses.
+ */
+export function resolveAnchorWidthTarget(args: AnchorWidthTargetArgs): number | null {
+  if (args.ids.length !== 1) return null;
+  const id = args.ids[0]!;
+  if (!Number.isInteger(id)) return null;
+  const sessionId = args.pathEditMutationId;
+  if (typeof sessionId !== 'string' || sessionId === '') return null;
+  return sessionId === String(id) ? id : null;
+}
+
+export interface PathEditExitArgs {
+  readonly pathEditActive: boolean;
+  readonly gateEnabled: boolean;
+  /**
+   * 61-27 (WR-04): the selection's stroke id and the open edit's session id.
+   * The gate only answers "may the Edit path button be pressed", so it stays
+   * ENABLED for any one-vector-stroke selection — leaving the mode therefore
+   * needs its own target comparison.
+   */
+  readonly selectedMutationId: number | null;
+  readonly pathEditMutationId: string | null;
+}
+
+/**
+ * Leaving the mode is mandatory whenever the gate closes OR the selection no
+ * longer names the edited stroke: a path edit that points at anything else
+ * would strand the overlay on a stroke the sheet is not showing. The dialog
+ * keeps its render body signal-free — this predicate only DECIDES, the
+ * effect performs.
+ */
+export function shouldExitPathEdit(args: PathEditExitArgs): boolean {
+  if (!args.pathEditActive) return false;
+  if (!args.gateEnabled) return true;
+  // The session id is a string, the selection id a number — compare the same
+  // string forms `resolvePathEditGate.pressed` uses.
+  return args.pathEditMutationId !== String(args.selectedMutationId);
+}
+
+// ── The Anchor width control (E4 / VEC-03) ──────────────────────────
+//
+//  D-09: an anchor's width is a MULTIPLIER of the stroke's brush Size, never a
+//  pixel radius. The band is deliberately wider than the multiplier band —
+//  `MULTIPLIER_MIN` stays the shipped 0.5, untouched — because a vector path
+//  can pinch to 0.2 and swell to 20.0.
+//
+//  quick 261112-i6d: there is ONE commit/storage ceiling and it is the
+//  payload's `ANCHOR_WIDTH_MAX` — the constant the package clamp, the engine's
+//  scripted width channel and the reopen guard all read. `SLIDER_MAX` below is
+//  the ×10 DRAG affordance only (the track the knob spans); it is never a
+//  clamp, so a free-typed value above it still reaches the document through
+//  `anchorWidthPatchValue`.
+
+export const AQUARELLE_ANCHOR_WIDTH_MIN = 0.2;
+/** The ONE commit/storage ceiling — an ALIAS of the package authority, never a
+ *  second literal, so the app and the payload guard can never disagree. */
+export const AQUARELLE_ANCHOR_WIDTH_MAX = ANCHOR_WIDTH_MAX;
+/** The slider TRACK ceiling (×10 drag affordance). Display/drag only — never a
+ *  clamp; typed entry above it passes to `anchorWidthPatchValue`. */
+export const AQUARELLE_ANCHOR_WIDTH_SLIDER_MAX = 10;
+export const AQUARELLE_ANCHOR_WIDTH_STEP = 0.1;
+export const AQUARELLE_ANCHOR_WIDTH_DEFAULT = 1;
+
+export interface AnchorWidthReading {
+  readonly value: number;
+  readonly mixed: boolean;
+  readonly count: number;
+}
+
+/**
+ * 61-19 (G-5): the reading when nothing is measurable — no listed anchor, or
+ * no open path edit to write to. One constant keeps the "present but empty"
+ * state, and the control's disabled reason, stated exactly once.
+ */
+export const ANCHOR_WIDTH_EMPTY_READING: AnchorWidthReading = {
+  value: AQUARELLE_ANCHOR_WIDTH_DEFAULT,
+  mixed: false,
+  count: 0,
+};
+
+/** 61-19 (G-5): why the Vertex size control is inert when no path edit is open. */
+export const ANCHOR_WIDTH_NO_EDIT_REASON =
+  'Open Edit path on this stroke to set vertex sizes.';
+
+/**
+ * 61-27 (IN-03): the ONE reason a refused Vertex size commit publishes. The
+ * commit's boolean used to be discarded, so a refusal (wrong target, missing
+ * stroke, in-flight lock) looked exactly like a success — the knob snapped back
+ * with no explanation. Fixed and non-interpolated: the same line for every
+ * refusal path.
+ */
+export const ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE = 'Vertex size not applied — the path edit is no longer open on this stroke.';
+
+/**
+ * 261111-wd6: the ONE reason a refused per-vertex colour commit publishes.
+ * The anchor branch used to discard the commit promise, so a refusal (locked
+ * surface, in-flight edit, declined begin, failed rebake) looked exactly like
+ * a success — the picker moved and no vertex changed. Same shape as the
+ * Vertex size line: fixed, non-interpolated, one line for every refusal path.
+ */
+export const ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE = 'Vertex colour not applied — the path edit could not be committed on this stroke.';
+
+// ── The Corner row (261112-i6d) ─────────────────────────────────────
+//
+//  One corner state per vertex, round or straight, shared with the Alt+click
+//  gesture (`toggleAnchorCorner`). The row is a SETTER, never a toggle: it
+//  reads the selection and writes the state the user pressed, so pressing the
+//  state the selection already holds writes nothing.
+
+/** 261112-i6d: the Corner row's two buttons, in declaration order. */
+export const ANCHOR_CORNER_OPTIONS: readonly AnchorCornerOption[] = Object.freeze([
+  Object.freeze({ id: 'round' as const, state: 'round' as const, label: 'Round' }),
+  Object.freeze({ id: 'straight' as const, state: 'straight' as const, label: 'Straight' }),
+]);
+
+export interface AnchorCornerOption {
+  readonly id: AnchorCornerState;
+  readonly state: AnchorCornerState;
+  readonly label: string;
+}
+
+/** 261112-i6d: why the Corner row is inert when no path edit is open. */
+export const ANCHOR_CORNER_NO_EDIT_REASON =
+  'Open Edit path on this stroke to set vertex corners.';
+
+/** 261112-i6d: the ONE reason a refused corner commit publishes. */
+export const ANCHOR_CORNER_COMMIT_REFUSED_MESSAGE = 'Vertex corner not applied — the path edit is no longer open on this stroke.';
+
+/** 261112-i6d: the reading when no listed anchor exists to describe. */
+export const ANCHOR_CORNER_EMPTY_READING: AnchorCornerReading = {
+  state: null,
+  mixed: false,
+  count: 0,
+};
+
+export interface AnchorCornerReading {
+  /** The FIRST listed anchor's state — the first-selected precedent. */
+  readonly state: AnchorCornerState | null;
+  readonly mixed: boolean;
+  readonly count: number;
+}
+
+/**
+ * 261112-i6d: the Corner row's reading. Mirrors `readAnchorWidthReading`:
+ * only the listed indices the path actually carries participate, and an empty
+ * participation reads the empty constant so the row can state why it is inert.
+ */
+export function readAnchorCornerReading(
+  anchors: readonly AquarelleAnchor[],
+  indices: readonly number[],
+): AnchorCornerReading {
+  const states: AnchorCornerState[] = [];
+  for (const index of indices) {
+    const anchor = Number.isInteger(index) && index >= 0 ? anchors[index] : undefined;
+    if (!anchor) continue;
+    states.push(readAnchorCornerState(anchor));
+  }
+  if (states.length === 0) return ANCHOR_CORNER_EMPTY_READING;
+  const first = states[0]!;
+  return { state: first, mixed: states.some((state) => state !== first), count: states.length };
+}
+
+/**
+ * The Paint row's reading. `value` is the FIRST selected anchor's factor (the
+ * first-selected precedent every numeric field follows), `mixed` when any
+ * listed anchor disagrees, and `count` how many of the listed indices the path
+ * actually carries. An absent `width` is 1.0 — the sparse law 61-05 records.
+ */
+export function readAnchorWidthReading(
+  anchors: readonly AquarelleAnchor[],
+  indices: readonly number[],
+): AnchorWidthReading {
+  const factors: number[] = [];
+  for (const index of indices) {
+    const anchor = Number.isInteger(index) && index >= 0 ? anchors[index] : undefined;
+    if (!anchor) continue;
+    factors.push(
+      typeof anchor.width === 'number' && Number.isFinite(anchor.width)
+        ? anchor.width
+        : AQUARELLE_ANCHOR_WIDTH_DEFAULT,
+    );
+  }
+  if (factors.length === 0) {
+    return ANCHOR_WIDTH_EMPTY_READING;
+  }
+  const first = factors[0]!;
+  return { value: first, mixed: factors.some((factor) => factor !== first), count: factors.length };
+}
+
+/**
+ * Size x the anchor factor, rounded to ONE decimal — the honest per-vertex
+ * radius in px. Never reads `scriptScale` (T-61-39): a 1.8x vertex on a 20px
+ * brush reads `→ 36 px`, whatever the transform says.
+ */
+export function anchorWidthEffectivePx(sizePx: number, factor: number): number {
+  const safeSize = Number.isFinite(sizePx) ? sizePx : 0;
+  const safeFactor = Number.isFinite(factor) ? factor : AQUARELLE_ANCHOR_WIDTH_DEFAULT;
+  return Math.round(safeSize * safeFactor * 10) / 10;
+}
+
+/**
+ * The committed factor: clamped into the band. Exactly 1 survives as 1 so the
+ * commit DELETES the sparse `width` key instead of storing the default, and a
+ * non-finite entry can never reach a document field.
+ */
+export function anchorWidthPatchValue(value: number): number {
+  if (!Number.isFinite(value)) return AQUARELLE_ANCHOR_WIDTH_DEFAULT;
+  return Math.min(AQUARELLE_ANCHOR_WIDTH_MAX, Math.max(AQUARELLE_ANCHOR_WIDTH_MIN, value));
 }

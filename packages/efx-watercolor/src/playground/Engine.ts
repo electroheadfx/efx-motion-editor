@@ -3,7 +3,10 @@ import { GL, type DoubleTarget, type Format, type Program, type Rect, type Targe
 import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
 import * as S from './shaders';
-import { pigmentFromHex, type Pigment } from './spectral';
+import { COEFFS, pigmentFromHex, type Pigment } from './spectral';
+// 61-04: the published width-factor range lives in the pure spine module —
+// one authority for the bound, shared by the profile law and this channel.
+import { ANCHOR_WIDTH_MAX, ANCHOR_WIDTH_MIN } from '../vector/spine';
 import { WET_THRESHOLD, isSheetWet } from './wetState';
 
 export type Tool = 'brush' | 'water' | 'pen' | 'lift';
@@ -88,7 +91,14 @@ export interface DocumentSnapshot {
 const MODE = { screen: 0, paper: 1, transparent: 2, white: 3, pigment: 4 } as const;
 const MAX_REF_SIDE = 4096;
 
-interface Sample { x: number; y: number; p: number; t: number; tx: number; ty: number }
+// 61-04: `w` is the per-sample width factor (VEC-03). It rides the queued
+// sample — never a mutable engine field — so a sample can only ever be
+// stamped at its own width, even when the queue drains late. 1 = today's
+// footprint, so a stroke with no width profile is byte-identical.
+// 261111-wd6: `pig` is the per-sample pigment (per-vertex colour). Absent
+// means the stroke's base pigment stays authoritative — today's exact
+// deposit — and it rides the same queued-sample law as `w`.
+interface Sample { x: number; y: number; p: number; t: number; tx: number; ty: number; w: number; pig?: Pigment }
 
 interface Stroke {
   pointerId: number;
@@ -108,6 +118,21 @@ interface Stroke {
   dx: number; dy: number;     // smoothed direction (aspect-corrected, unit-ish)
   angle: number;              // tip angle of the last dab (radians, doc frame)
   azimuth: number | null;     // pen tilt direction, when the pen is tilted enough to tell
+  // 61-04: the width factor of the sample being deposited and the one before
+  // it. Dabs interpolate between the pair, so a taper has no step at the
+  // sample boundary; both are 1 for a stroke without a width profile.
+  widthFrom: number;
+  widthTo: number;
+  // 261111-wd6: the per-sample pigment pair, mirroring the width pair. Dabs
+  // interpolate between them so a per-vertex colour has no step at the
+  // sample boundary. Both null = the stroke paints with `this.pigment`.
+  pigFrom: Pigment | null;
+  pigTo: Pigment | null;
+}
+
+/** 61-04 / T-61-11: bound a scripted width factor and default a bad one. */
+function scriptWidthFactor(value: number): number {
+  return Number.isFinite(value) ? clamp(value, ANCHOR_WIDTH_MIN, ANCHOR_WIDTH_MAX) : 1;
 }
 
 const DEG = Math.PI / 180;
@@ -190,6 +215,16 @@ export class WatercolorEngine {
   interactive = true;
   /** Footprint scale of the scripted stroke in progress (see scriptBegin). */
   private scriptScale = 1;
+  // 261111-wd6: the pigment `configure()` installed for the active scripted
+  // stroke. Per-sample colours are swapped in around each stamp and this is
+  // restored afterwards, so a sampled colour can never leak into the next
+  // stroke, a bucket fill, or the live path.
+  private strokeBasePigment: Pigment | null = null;
+  /** Reused interpolation target — a per-sample pigment allocates nothing. */
+  private readonly scratchPigment: { coeffs: Float32Array; white: number } = {
+    coeffs: new Float32Array(COEFFS),
+    white: 0,
+  };
   private nav = false;
   /** Deterministic bake seam: seeded RNG (A2). Defaults to Math.random for live. */
   private rng: () => number = Math.random;
@@ -437,6 +472,7 @@ export class WatercolorEngine {
     const ow = this.dw, oh = this.dh;
     if (w === ow && h === oh) return;
     this.stroke = null;
+    this.restoreStrokePigment();
     this.dropFill();
     this.queue = [];
     this.autoFix = false;   // a newer step makes the settle-cap fix permanent
@@ -579,6 +615,7 @@ export class WatercolorEngine {
     const [w, h] = clampDocSize(s.whole.w, s.whole.h, this.maxSide);
     if (w !== s.whole.w || h !== s.whole.h) throw new Error(`This sheet (${s.whole.w} × ${s.whole.h}) is too large for this GPU.`);
     this.stroke = null;
+    this.restoreStrokePigment();
     this.dropFill();
     this.queue = [];
     if (this.ref) { this.gl.deleteTexture(this.ref.tex); this.ref = null; }
@@ -837,25 +874,40 @@ export class WatercolorEngine {
    * replayed mouse strokes land at minimum pressure (pale, thin, under-wet).
    * `tiltX`/`tiltY` carry the recorded pen tilt so asymmetric tips keep their
    * azimuth on replay.
+   *
+   * `widthScale` (61-04) is the per-sample width factor of the vector profile
+   * — a footprint multiplier carried on the sample, bounded to the published
+   * 0.2..20 range. It is NOT `maxRadius` and is never routed through
+   * `scriptScale`: that clamp stays the footprint cap it always was (C-03).
+   *
+   * `pigment` (261111-wd6) is the per-vertex colour of this sample. Absent
+   * keeps the pigment `configure()` installed — today's exact deposit. When
+   * present it rides the queued sample and is swapped in only around that
+   * sample's stamps, then the base pigment is restored (no leak).
    */
-  scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = 'Stroke', maxRadius?: number, tiltX = 0, tiltY = 0): boolean {
+  scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = 'Stroke', maxRadius?: number, tiltX = 0, tiltY = 0, widthScale = 1, pigment?: Pigment): boolean {
     if (this.stroke) return false;
     if (step !== false) this.beginStep('script', step);
     this.scriptScale = maxRadius ? Math.min(1, maxRadius / this.radius(tool, 1, 0)) : 1;
+    // The base pigment is whatever configure() installed. It is captured
+    // BEFORE any per-sample swap so it can be restored on every exit path.
+    this.strokeBasePigment = this.pigment;
     this.stroke = {
       pointerId: SCRIPT_POINTER, pointerType: 'pen', tool, started: false, ending: false,
       x: 0, y: 0, cx: 0, cy: 0, pr: 0, t: this.clock(), speed: 0, simPressure: 0.45, carry: 0, travelled: 0, moved: false,
       dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
+      widthFrom: 1, widthTo: 1,
+      pigFrom: null, pigTo: null,
     };
-    this.queue.push({ x, y, p: scriptPressure(pressure), t: this.clock(), tx: tiltX, ty: tiltY });
+    this.queue.push({ x, y, p: scriptPressure(pressure), t: this.clock(), tx: tiltX, ty: tiltY, w: scriptWidthFactor(widthScale), pig: pigment });
     this.schedule();
     return true;
   }
 
   /** Feed the scripted stroke a sample; `t` is a performance.now() timestamp. False once the stroke is gone (undo, clear). */
-  scriptMove(x: number, y: number, pressure: number, t: number, tiltX = 0, tiltY = 0): boolean {
+  scriptMove(x: number, y: number, pressure: number, t: number, tiltX = 0, tiltY = 0, widthScale = 1, pigment?: Pigment): boolean {
     if (!this.scripting) return false;
-    this.queue.push({ x, y, p: scriptPressure(pressure), t, tx: tiltX, ty: tiltY });
+    this.queue.push({ x, y, p: scriptPressure(pressure), t, tx: tiltX, ty: tiltY, w: scriptWidthFactor(widthScale), pig: pigment });
     this.schedule();
     return true;
   }
@@ -867,6 +919,18 @@ export class WatercolorEngine {
   }
 
   setPigment(p: Pigment) { this.pigment = p; }
+
+  /**
+   * 261111-wd6: put the stroke's base pigment back when a scripted stroke
+   * leaves the paper by any path (end, undo, clear, resize, restore, abort).
+   * No-op once restored or for a live stroke.
+   */
+  private restoreStrokePigment(): void {
+    if (this.strokeBasePigment !== null) {
+      this.pigment = this.strokeBasePigment;
+      this.strokeBasePigment = null;
+    }
+  }
 
   /** Deterministic bake: install a seeded RNG (A2). */
   setRandom(fn: () => number) { this.rng = fn; }
@@ -1270,6 +1334,7 @@ export class WatercolorEngine {
   /** Wipe the paint as one undo step. The sheet (and its grain) stays. */
   clear() {
     this.stroke = null;
+    this.restoreStrokePigment();
     this.queue = [];
     if (!this.everPainted && !this.fill) return;   // already blank
     this.beginStep('clear', 'Clear');
@@ -1295,6 +1360,7 @@ export class WatercolorEngine {
    */
   resetSheet() {
     this.stroke = null;
+    this.restoreStrokePigment();
     this.queue = [];
     this.dropFill();
     for (const t of this.docTargets()) if (t !== this.paper) this.g.clearTarget(t);
@@ -1307,6 +1373,7 @@ export class WatercolorEngine {
     const s = this.stroke;
     if (!s) return;
     this.stroke = null;
+    this.restoreStrokePigment();
     this.queue = [];
     if (s.pointerId !== SCRIPT_POINTER) this.callbacks.onStrokeTool?.(null);
     if (this.history.canUndo) { this.travel('undo'); this.history.discardRedo(); this.notifyHistory(); }
@@ -1332,6 +1399,7 @@ export class WatercolorEngine {
   private travel(dir: 'undo' | 'redo', notify = true) {
     this.autoFix = false;   // the last step is no longer the settle-cap fix
     this.stroke = null;
+    this.restoreStrokePigment();
     this.dropFill();
     this.queue = [];
     this.fixTimer = 0;
@@ -1464,6 +1532,8 @@ export class WatercolorEngine {
         pointerId: e.pointerId, pointerType: e.pointerType, tool, started: false, ending: false,
         x: 0, y: 0, cx: 0, cy: 0, pr: 0, t: e.timeStamp, speed: 0, simPressure: 0.45, carry: 0, travelled: 0, moved: false,
         dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
+        widthFrom: 1, widthTo: 1,
+        pigFrom: null, pigTo: null,
       };
       if (tool !== this.tool) this.callbacks.onStrokeTool?.(tool);
       this.beginStep('stroke', STROKE_LABEL[tool]);
@@ -1525,7 +1595,9 @@ export class WatercolorEngine {
     } else if (e.pointerType === 'mouse' && now - this.force.t < 3000) {
       p = this.force.value;
     }
-    const sample = { x, y, p, t: e.timeStamp, tx, ty };
+    // 61-04: pointer strokes carry the neutral factor — the width profile is a
+    // recorded-vector channel, and a live hand stroke never has one.
+    const sample = { x, y, p, t: e.timeStamp, tx, ty, w: 1 };
     this.queue.push(sample);
     this.callbacks.onStrokeSample?.(sample);
   }
@@ -1558,25 +1630,95 @@ export class WatercolorEngine {
 
   /* -------------------------------------------------------------- strokes */
 
-  private sizeMult() { return Math.pow(3, (this.params.size - 0.5) * 2) * (this.scripting ? this.scriptScale : 1); }
+  /**
+   * Footprint multiplier. `widthFactor` (61-04) is the vector profile's
+   * per-vertex factor, interpolated along the segment — it multiplies the
+   * footprint on top of the scripted-stroke clamp, so it can exceed 1.0
+   * where `scriptScale` alone could not (C-03). It is never assigned to
+   * `scriptScale`. A factor of 1 (every existing call) is exact.
+   */
+  private sizeMult(widthFactor = 1) { return Math.pow(3, (this.params.size - 0.5) * 2) * (this.scripting ? this.scriptScale : 1) * widthFactor; }
+
+  /**
+   * 61-04: the width factor at `fraction` of the segment being deposited,
+   * linearly interpolated from the consumed sample's pair (widthFrom →
+   * widthTo) and held at the ends. Always finite; never extrapolated.
+   */
+  private widthFactorAt(s: Stroke, fraction: number): number {
+    const u = clamp(fraction, 0, 1);
+    return s.widthFrom + (s.widthTo - s.widthFrom) * u;
+  }
+
+  /**
+   * 261111-wd6: the pigment at `fraction` of the segment being deposited,
+   * linearly interpolated from the consumed sample's pair (pigFrom → pigTo)
+   * and held at the ends. Null means no per-sample colour: the dab keeps
+   * `this.pigment` (the stroke's base pigment). The interpolation targets ONE
+   * scratch pigment — this runs per dab, so it never allocates.
+   */
+  private pigmentAt(s: Stroke, fraction: number): Pigment | null {
+    const from = s.pigFrom;
+    const to = s.pigTo;
+    if (from === null || to === null) return null;
+    if (from === to) return to;
+    const u = clamp(fraction, 0, 1);
+    const coeffs = this.scratchPigment.coeffs;
+    for (let k = 0; k < COEFFS; k++) {
+      coeffs[k] = from.coeffs[k]! + (to.coeffs[k]! - from.coeffs[k]!) * u;
+    }
+    this.scratchPigment.white = from.white + (to.white - from.white) * u;
+    return this.scratchPigment;
+  }
+
+  /**
+   * 261111-wd6: stamp one dab with the segment's per-sample pigment, then put
+   * the base pigment back. The swap is synchronous around the stamp, so a
+   * sampled colour never outlives its dab — the next stroke, a bucket fill or
+   * the live path always sees the pigment `configure()` installed.
+   */
+  private stampScripted(
+    s: Stroke,
+    x: number,
+    y: number,
+    pr: number,
+    vx: number,
+    vy: number,
+    moving: number,
+    dt: number,
+    widthFactor: number,
+    colorFraction: number,
+  ): void {
+    const pigment = this.pigmentAt(s, colorFraction);
+    if (pigment === null) {
+      this.stamp(s, x, y, pr, vx, vy, moving, dt, widthFactor);
+      return;
+    }
+    const previous = this.pigment;
+    this.pigment = pigment;
+    try {
+      this.stamp(s, x, y, pr, vx, vy, moving, dt, widthFactor);
+    } finally {
+      this.pigment = previous;
+    }
+  }
 
   /** Footprint radius in document heights. */
-  private radius(tool: Tool, pr: number, speed: number) {
-    const m = this.sizeMult();
+  private radius(tool: Tool, pr: number, speed: number, widthFactor = 1) {
+    const m = this.sizeMult(widthFactor);
     switch (tool) {
       case 'pen': return (0.0016 + 0.0042 * pr) * clamp(1.12 - speed * 0.3, 0.55, 1.12) * m;
-      case 'brush': return this.brushRadius(pr, speed);
-      case 'water': return this.brushRadius(pr, speed) * 1.3 * (1 + Math.min(speed, 2.5) * 0.12);
+      case 'brush': return this.brushRadius(pr, speed, widthFactor);
+      case 'water': return this.brushRadius(pr, speed, widthFactor) * 1.3 * (1 + Math.min(speed, 2.5) * 0.12);
       case 'lift': return (0.012 + 0.03 * pr) * m;
     }
   }
 
   /** Half the long axis of the current brush's footprint, in document heights. */
-  private brushRadius(pr: number, speed: number) {
+  private brushRadius(pr: number, speed: number, widthFactor = 1) {
     const b = this.brush;
     const t = Math.pow(clamp(pr, 0, 1), b.pressureSize);
     // preset sizes describe the full footprint; 0.8 keeps a hard-pressed stroke on a desktop screen sane
-    return (b.size[0] + (b.size[1] - b.size[0]) * t) * clamp(1 - speed * b.speedThin, 0.4, 1) * this.sizeMult() * 0.8;
+    return (b.size[0] + (b.size[1] - b.size[0]) * t) * clamp(1 - speed * b.speedThin, 0.4, 1) * this.sizeMult(widthFactor) * 0.8;
   }
 
   /** Tip angle for the next dab, in the document frame. */
@@ -1606,9 +1748,23 @@ export class WatercolorEngine {
         s.started = true;
         s.x = s.cx = q.x; s.y = s.cy = q.y; s.t = q.t;
         s.pr = this.pressureOf(s, q.p);
-        this.stamp(s, q.x, q.y, s.pr, 0, 0, 1);
+        // 61-04: a stroke starts at its own sample's width — there is no
+        // preceding segment to ramp from. 261111-wd6 mirrors the pair for
+        // the pigment, so the first dab carries its own vertex colour.
+        s.widthFrom = s.widthTo = q.w;
+        s.pigFrom = s.pigTo = q.pig ?? null;
+        this.stampScripted(s, q.x, q.y, s.pr, 0, 0, 1, 0, q.w, 1);
         continue;
       }
+      // 61-04: the consumed sample names the width its segment ramps TO; the
+      // previous sample's width is where it starts. The pair lives on the
+      // stroke only while its segment deposits — the authoritative factor
+      // always rode the queued sample. 261111-wd6 mirrors the pair for the
+      // per-sample pigment.
+      s.widthFrom = s.widthTo;
+      s.widthTo = q.w;
+      s.pigFrom = s.pigTo;
+      s.pigTo = q.pig ?? null;
       const sdt = Math.max(q.t - s.t, 1) / 1000;
       s.t = q.t;
       // light smoothing; mice get a little more than styluses
@@ -1635,9 +1791,10 @@ export class WatercolorEngine {
     // the curve trails half a sample behind; catch up once the pointer rests or lifts
     if (s.started && (!s.moved || s.ending) && (s.x !== s.cx || s.y !== s.cy)) this.trace(s, s.cx, s.cy, s.cx, s.cy, s.pr, 0, 0);
     // resting in place: pigment keeps soaking in, water keeps pooling
-    if (!s.moved && s.started && !s.ending) this.stamp(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt);
+    if (!s.moved && s.started && !s.ending) this.stampScripted(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1), 1);
     if (s.ending) {
       this.stroke = null;
+      this.restoreStrokePigment();
       if (s.pointerId !== SCRIPT_POINTER) {
         this.callbacks.onStrokeTool?.(null);
         this.callbacks.onStrokeEnd?.(s.tool);
@@ -1655,7 +1812,10 @@ export class WatercolorEngine {
     const x0 = s.x, y0 = s.y, pr0 = s.pr;
     const approx = Math.hypot((qx - x0) * aspect, qy - y0) + Math.hypot((ex - qx) * aspect, ey - qy);
     if (approx < 1e-7) return;
-    const fine = this.radius(s.tool, Math.max(pr0, pr), s.speed) * this.spacingFrac(s.tool);
+    // 61-04: the width factor ramps from the previous sample's factor to this
+    // one's across the segment; spacing derives from the radius it scales, so
+    // a wider stroke keeps the same wash density instead of streaking.
+    const fine = this.radius(s.tool, Math.max(pr0, pr), s.speed, this.widthFactorAt(s, 1)) * this.spacingFrac(s.tool);
     const n = clamp(Math.ceil(approx / Math.max(fine, 1e-5)), 1, 48);
     let px = x0, py = y0;
     for (let i = 1; i <= n; i++) {
@@ -1665,21 +1825,23 @@ export class WatercolorEngine {
       const dx = (cx - px) * aspect, dy = cy - py;
       const len = Math.hypot(dx, dy);
       const p = pr0 + (pr - pr0) * u;
+      const widthAt = this.widthFactorAt(s, u);
       if (len > 1e-5) {
         // direction smoothing scaled by distance, so a jittery stylus doesn't spin a flat brush
-        const kd = 1 - Math.exp(-len / (this.radius(s.tool, p, s.speed) * 1.5 + 1e-4));
+        const kd = 1 - Math.exp(-len / (this.radius(s.tool, p, s.speed, widthAt) * 1.5 + 1e-4));
         s.dx += (dx / len - s.dx) * kd; s.dy += (dy / len - s.dy) * kd;
         const m = Math.hypot(s.dx, s.dy) || 1;
         s.dx /= m; s.dy /= m;
         this.lastDir = [s.dx, s.dy];
       }
-      const spacing = this.radius(s.tool, p, s.speed) * this.spacingFrac(s.tool);
+      const spacing = this.radius(s.tool, p, s.speed, widthAt) * this.spacingFrac(s.tool);
       let pos = 0;
       while (len - pos >= spacing - s.carry) {
         pos += spacing - s.carry;
         s.carry = 0;
         const t = pos / len;
-        this.stamp(s, px + (cx - px) * t, py + (cy - py) * t, p, vx, vy, 1);
+        const fraction = (i - 1 + t) / n;
+        this.stampScripted(s, px + (cx - px) * t, py + (cy - py) * t, p, vx, vy, 1, 0, this.widthFactorAt(s, fraction), fraction);
       }
       s.carry += len - pos;
       s.travelled += len;
@@ -1696,9 +1858,9 @@ export class WatercolorEngine {
   }
 
   /** One dab of the current tool. `moving` = 0 with `dt` set means a dwell. */
-  private stamp(s: Stroke, x: number, y: number, pr: number, vx: number, vy: number, moving: number, dt = 0) {
+  private stamp(s: Stroke, x: number, y: number, pr: number, vx: number, vy: number, moving: number, dt = 0, widthFactor = 1) {
     const P = this.params;
-    const r = this.radius(s.tool, pr, s.speed);
+    const r = this.radius(s.tool, pr, s.speed, widthFactor);
     const dwell = moving ? 1 : dt * 8;
     switch (s.tool) {
       case 'brush': {

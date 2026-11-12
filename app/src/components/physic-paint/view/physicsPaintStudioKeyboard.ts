@@ -65,6 +65,9 @@ export interface PhysicsPaintStudioKeyboardActions {
   resetFgBg?: () => void;
   /** Bare I: latch/unlatch the color picker (261030-cnq). */
   toggleAquarellePicker?: () => void;
+  /** 61-08 (D-05): bare V latches/unlatches the vector pen — a host tool, no
+   *  dry-sheet gate. Cmd/Ctrl+V stays paste (the chord branch owns it). */
+  toggleVectorPen?: () => void;
   deleteRotoKey?: () => void;
   /** 49-06 UAT: delete the selected Background clip (timeline Delete/Backspace). */
   deleteBackgroundClip?: () => void;
@@ -375,6 +378,14 @@ export function dispatchPhysicsPaintStudioKeyDown(
       if (key === 'i' && actions.toggleAquarellePicker) {
         event.preventDefault();
         actions.toggleAquarellePicker();
+        return;
+      }
+      // 61-08 (D-05): bare V latches the vector pen. No `canSelectWater` probe
+      // — the pen is a host tool with no dry-sheet dependency, and the chord
+      // branch above already owns Cmd/Ctrl+V as paste.
+      if (key === 'v' && actions.toggleVectorPen) {
+        event.preventDefault();
+        actions.toggleVectorPen();
         return;
       }
       if (key === 'a' && actions.toggleAquarelleSelect) {

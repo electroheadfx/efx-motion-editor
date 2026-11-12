@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="15" failures="10" errors="0" time="0.589">
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintBrushMenu.test.ts" timestamp="2026-11-11T21:13:39.930Z" hostname="efx2.home" tests="5" failures="1" errors="0" skipped="0" time="0.003673583">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintBrushMenu.test.ts" name="brushMenuPresets &gt; both lists are the complete shipped preset list, in order" time="0.000727625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintBrushMenu.test.ts" name="PhysicsPaintBrushMenu wiring (61-07) &gt; the lift branch lists tip shapes and the brush branch lists every preset" time="0.000276583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintBrushMenu.test.ts" name="PhysicsPaintBrushMenu wiring (61-07) &gt; never maps the raw preset list directly" time="0.000067291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintBrushMenu.test.ts" name="PhysicsPaintBrushMenu wiring (61-07) &gt; both rows render the shipped name and hint grammar" time="0.00011975">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintBrushMenu.test.ts" name="quick 261111-ucf brush pick wiring &gt; routes the brush branch through the paint-control seam and never the lift branch" time="0.00201675">
+            <failure message="brush branch picks through the seam: expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: brush branch picks through the seam: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintBrushMenu.test.ts:75:90
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/aquarellePaintControls.test.ts" timestamp="2026-11-11T21:13:39.931Z" hostname="efx2.home" tests="10" failures="9" errors="0" skipped="0" time="0.007003417">
+        <testcase classname="src/components/physic-paint/view/aquarellePaintControls.test.ts" name="pickAquarelleBrush — live pick first, selection commit second &gt; commits the picked id and the POST-pick bag to the selected paint strokes" time="0.002916042">
+            <failure message="expected null to be Promise{…} // Object.is equality" type="AssertionError">
+AssertionError: expected null to be Promise{…} // Object.is equality
+
+- Expected: 
+Promise {}
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/view/aquarellePaintControls.test.ts:109:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarellePaintControls.test.ts" name="pickAquarelleBrush — live pick first, selection commit second &gt; captures the bag as a snapshot — a later bag write cannot rewrite the patch" time="0.000370208">
+            <failure message="Cannot read properties of undefined (reading &apos;patch&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;patch&apos;)
+ ❯ src/components/physic-paint/view/aquarellePaintControls.test.ts:132:36
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarellePaintControls.test.ts" name="pickAquarelleBrush — live pick first, selection commit second &gt; returns the port promise, and null after the live tip update when no port exists" time="0.000285958">
+            <failure message="expected null to be Promise{…} // Object.is equality" type="AssertionError">
+AssertionError: expected null to be Promise{…} // Object.is equality
+
+- Expected: 
+Promise {}
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/view/aquarellePaintControls.test.ts:147:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarellePaintControls.test.ts" name="pickAquarelleBrush — live pick first, selection commit second &gt; forwards only the paint ids of a mixed selection" time="0.001352083">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/aquarellePaintControls.test.ts:164:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarellePaintControls.test.ts" name="pickAquarelleBrush — live pick first, selection commit second &gt; a lift-only selection is a no-attempt no-op while the live brush still changes" time="0.000358709">
+            <failure message="expected null to be &apos;round&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected null to be &apos;round&apos; // Object.is equality
+
+- Expected: 
+&quot;round&quot;
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/view/aquarellePaintControls.test.ts:177:42
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarellePaintControls.test.ts" name="pickAquarelleBrush — live pick first, selection commit second &gt; is a no-attempt no-op with Select mode off, and with an empty selection" time="0.000215459">
+            <failure message="expected null to be &apos;chalk&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected null to be &apos;chalk&apos; // Object.is equality
+
+- Expected: 
+&quot;chalk&quot;
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/view/aquarellePaintControls.test.ts:188:42
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarellePaintControls.test.ts" name="commitAquarelleSelectionParam(s) — event-time params patches &gt; commits one params patch and leaves the live bag to the caller" time="0.00020425">
+            <failure message="expected null not to be null" type="AssertionError">
+AssertionError: expected null not to be null
+ ❯ src/components/physic-paint/view/aquarellePaintControls.test.ts:208:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarellePaintControls.test.ts" name="commitAquarelleSelectionParam(s) — event-time params patches &gt; sends the Reset batch as ONE call, and an empty batch is no attempt" time="0.000299083">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/aquarellePaintControls.test.ts:237:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarellePaintControls.test.ts" name="commitAquarelleSelectionMultiplier — one clamped field per release &gt; clamps into the band and leaves the live bag untouched" time="0.000244708">
+            <failure message="expected [] to have a length of 2 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 2 but got +0
+
+- Expected
++ Received
+
+- 2
++ 0
+
+ ❯ src/components/physic-paint/view/aquarellePaintControls.test.ts:253:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarellePaintControls.test.ts" name="the direct appearance door keeps the t74 contract &gt; defaults to the whole selection — paint AND lift ids, in selection order" time="0.000242958">
+        </testcase>
+    </testsuite>
+</testsuites>

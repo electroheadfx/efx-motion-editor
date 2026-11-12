@@ -133,10 +133,10 @@ describe('261027-gh9g top-bar brush dropdown', () => {
   });
 
   // 261029-hy2: the same popover serves the Eraser tool. Its branch lists the
-  // 15 painted shapes, has NO "Open modal" entry (the catalog's cards pick
+  // painted tip shapes, has NO "Open modal" entry (the catalog's cards pick
   // brushes through selectAquarelleTip, which would flip the tool to Brush),
   // and a pick writes ONLY the lift tip.
-  it('lift mode lists the 15 shapes with no Open modal action', () => {
+  it('lift mode lists the tip shapes with no Open modal action', () => {
     aquarelleActiveTool.value = 'lift';
     setAquarelleBrushMenuOpen(true, undefined, 'lift');
     const tree = PhysicsPaintBrushMenu() as TestVNode;

@@ -15,29 +15,60 @@
 //  The module imports NOTHING from the Studio, `aquarelleRecordState`
 //  or `aquarelleStrokeSelection`: those import this module, never the
 //  reverse (one-way edge keeps the disarm choke points acyclic).
+//  61-17 (G-6): the ONE permitted sibling import is the dependency-free
+//  `vectorPathLatches` leaf, so latching the picker can release the
+//  vector pen and an open path edit without importing the session.
+//  61-23 (G-19): the reverse direction too — while a path edit is OPEN the
+//  ONE armed verdict is false, so no consumer renders or samples a picker.
+//  Alt wears two hats: outside an edit it is the temporary pick, inside an
+//  edit it is the handle-break modifier read from the pointer event
+//  (`event.altKey` in `continueEditDrag`), never from session state. The
+//  61-17 entry-edge law is unchanged: latching the picker still releases the
+//  pen and closes the edit.
 // ============================================================
 
 import { computed, signal } from '@preact/signals';
+import { exitPathEdit, exitVectorPen, pathEditMutationId } from './vectorPathLatches';
 
 /** Session-only UI state — never persisted. */
 export const aquarellePickerLatched = signal(false);
 /** True only while the Alt key is held (the temporary picker). */
 export const aquarellePickerAltHeld = signal(false);
 
-/** The one armed verdict: a latched rail pick or a held Alt. */
+/**
+ * The one armed verdict: a latched rail pick or a held Alt, and NOT while a
+ * vector path edit owns the canvas (61-23 / G-19).
+ */
 export const aquarellePickerActive = computed(
-  () => aquarellePickerLatched.value || aquarellePickerAltHeld.value,
+  () =>
+    (aquarellePickerLatched.value || aquarellePickerAltHeld.value) &&
+    pathEditMutationId.value === null,
 );
 
 /** Compare-then-write (efx-preact-reactivity rule 3). */
 export function setAquarellePickerLatched(next: boolean): void {
   if (aquarellePickerLatched.peek() === next) return;
+  // 61-17 (G-6): arming the picker releases the vector pen and closes any
+  // open path edit — the vector overlay draws above the sheet and would
+  // swallow a latched pick. ENTRY EDGE ONLY: `disarmAquarellePicker` is a
+  // release path and must never disturb the pen or the edit.
+  if (next) {
+    exitVectorPen();
+    exitPathEdit();
+  }
   aquarellePickerLatched.value = next;
 }
 
 /** Compare-then-write (efx-preact-reactivity rule 3). */
 export function setAquarellePickerAltHeld(next: boolean): void {
   if (aquarellePickerAltHeld.peek() === next) return;
+  // 61-23 (G-19): Alt is context-ambiguous. Inside an open path edit it means
+  // "break the handle" — the overlay reads `event.altKey` straight off the
+  // pointer — never "temporary pick". A keydown that armed the session signal
+  // here would resurface the picker the instant the edit closes, a picker the
+  // user never armed after it. Only the ARMING write is refused; a release
+  // (`next === false`) always lands so the hold can never stick.
+  if (next && pathEditMutationId.peek() !== null) return;
   aquarellePickerAltHeld.value = next;
 }
 
@@ -54,9 +85,17 @@ export function disarmAquarellePicker(): void {
 /**
  * The stable dispatch-time probe event handlers call. Always `.peek()` —
  * never a value read in a render body.
+ *
+ * A DIRECT predicate over the three signals (not a computed `.peek()`): a
+ * computed that nobody read stays dirty after a source write, and this probe
+ * must be fresh at dispatch time (T-61-71). 61-23 (G-19): an open path edit
+ * is never armed, so the pick seam agrees with the visor's one computed.
  */
 export function isAquarellePickerArmed(): boolean {
-  return aquarellePickerActive.peek();
+  return (
+    (aquarellePickerLatched.peek() || aquarellePickerAltHeld.peek()) &&
+    pathEditMutationId.peek() === null
+  );
 }
 
 /**

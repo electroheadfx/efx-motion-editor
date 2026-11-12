@@ -2,39 +2,39 @@
 gsd_state_version: "1.0"
 milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
-current_phase: 61
-current_phase_name: Vector Painting Tool
+current_phase: 62
+current_phase_name: Painted-Stroke Curve Editing
 status: planning
-stopped_at: Phase 60 complete, ready to plan Phase 61
-last_updated: "2026-11-10T05:17:27.265Z"
-last_activity: 2026-11-09
-last_activity_desc: Phase 60 complete, transitioned to Phase 61
-state_head: 114ff79a20467016fa79066a675083a725870c79
+stopped_at: Quick 261112-n3f UAT approved (incl. the cache-eye exit fix 39007da12); Phase 62 ready to plan
+last_updated: "2026-11-12T16:28:37.041Z"
+last_activity: 2026-11-12
+last_activity_desc: Quick 261112-n3f + cache-eye exit fix (39007da12) UAT approved; Phase 62 ready to plan
+state_head: 8f5ae4c82c3c944421339f1fe79800019d795790
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 31
-  completed_plans: 31
-  percent: 50
+  completed_phases: 3
+  total_plans: 62
+  completed_plans: 62
+  percent: 75
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-09 after Phase 60)
+See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 61 — Vector Painting Tool
+**Current focus:** Phase 62 — Painted-Stroke Curve Editing
 
 ## Current Position
 
-Phase: 61 — Vector Painting Tool
+Phase: 62 — Painted-Stroke Curve Editing
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-09 — Quick task 261109-uj0 follow-up 9e0bd2597 packaged UAT PASSED: yellow/orange fresh paint is kept by the color-aware capture gate
+Last activity: 2026-11-12 - Quick task 261112-n3f CLOSED (UAT approved): stroke-size preview unified behind the one "Preview stroke size" switch (vertex-aware, OFF by default) and the vector envelope's interior self-intersection lines removed via a masked edge on both the Edit-path and Select/Move surfaces. The follow-up UAT issue is also approved: the "Hide the committed sheet" eye and Draft are surface-local view preferences, now restored/reset when the sheet closes or the tool is left (39007da12)
 
-Progress: [█████░░░░░] 50%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [█████░░░░░] 50%
 | 62. Painted-Stroke Curve Editing | TBD | - | - |
 | 59 | 25 | - | - |
 | 60 | 6 | - | - |
+| 61 | 31 | - | - |
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -89,6 +90,37 @@ Progress: [█████░░░░░] 50%
 | Phase 60 P04 | 12min | 3 tasks | 12 files |
 | Phase 60 P05 | 9min | 3 tasks | 6 files |
 | Phase 60 P06 | 3 | 3 tasks | 1 files |
+| Phase 61 P01 | 19min | 3 tasks | 4 files |
+| Phase 61 P02 | 3min | 3 tasks | 3 files |
+| Phase 61 P08 | 9min | 3 tasks | 11 files |
+| Phase 61 P03 | 6min | 3 tasks | 7 files |
+| Phase 61 P04 | 14 | 3 tasks | 6 files |
+| Phase 61 P05 | 7min | 3 tasks | 4 files |
+| Phase 61 P06 | 3min | 2 tasks | 3 files |
+| Phase 61 P07 | 23 | 3 tasks | 28 files |
+| Phase 61 P09 | 10min | 3 tasks | 6 files |
+| Phase 61 P10 | 16min | 3 tasks | 12 files |
+| Phase 61 P13 | 15 | 3 tasks | 13 files |
+| Phase 61 P11 | 13 | 3 tasks | 6 files |
+| Phase 61 P12 | 17min | 3 tasks | 10 files |
+| Phase 61 P14 | 7min | 3 tasks | 2 files |
+| Phase 61 P15 | 6min | 2 tasks | 5 files |
+| Phase 61 P16 | 7min | 2 tasks | 4 files |
+| Phase 61 P17 | 5min | 2 tasks | 8 files |
+| Phase 61 P18 | 6min | 2 tasks | 6 files |
+| Phase 61 P19 | 9min | 2 tasks | 6 files |
+| Phase 61 P20 | 5 | 2 tasks | 2 files |
+| Phase 61 P21 | 6 | 2 tasks | 6 files |
+| Phase 61 P23 | 3 min | 2 tasks | 2 files |
+| Phase 61 P24 | 8 min | 2 tasks | 8 files |
+| Phase 61 P22 | 4min | 2 tasks | 4 files |
+| Phase 61 P26 | 7 min | 3 tasks | 2 files |
+| Phase 61 P25 | 9 min | 3 tasks | 7 files |
+| Phase 61 P27 | 7 min | 3 tasks | 8 files |
+| Phase 61 P28 | 3 min | 2 tasks | 2 files |
+| Phase 61 P29 | 7 min | 3 tasks | 3 files |
+| Phase 61 P30 | 10 | 2 tasks | 15 files |
+| Phase 61 P31 | 11min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -207,6 +239,119 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 60]: Store block resets scale in beforeEach and unregisters the port before and after every test
 - [Phase 60]: Selection/paste compare frame indices; their pixel surface is the rail/ghost geometry already pinned by 60-02 task 3, recorded in the header instead of a fabricated row
 - [Phase 60]: 13-row edge-probe table is literal data with exact-length, exact-id and non-empty-owner assertions, both unclassified rows owned
+- [Phase 61]: Seam strategy is payload-extension with replay density 4x: measured seam step 0px at 4x vs 4.141px for segment runs, settling at the 0.5px improvement law.
+- [Phase 61]: Reference stroke count is 10 at 1920x1080: 50 strokes cost 4035.6ms against the 33ms responsiveness budget.
+- [Phase 61]: Width channel is scriptFactor on sizeMult, measured 1.75x (12px->21px radius) against the 1.7x gate; the scriptBegin scriptScale clamp measures 1.0x and is C-03 evidence only.
+- [Phase 61]: Vector auto handles are (n·P ∓ Δ)/n with n = 6 interior and n = 3 at the endpoints — one rounding per handle pins the golden rationals (4/6, 8/6) and keeps hydrate re-derivation bit-identical
+- [Phase 61]: anchorWidthAt reads an absent factor as the default 1 at that anchor's own station, so interpolation, the hold-at-ends law and D-10's sparse storage are one definition
+- [Phase 61]: The determinism contract scans src/vector with a zero-file guard naming spine.ts; spine.ts imports nothing, so REL-01 and the engine-1 direction pins are untouched
+- [Phase 61]: The vector pen is a host tool: vectorPathSession signals live outside AquarelleTool, paint tool presses clear the pen at the two input seams (rail onClick, Studio handleSelectAquarelleTool) to avoid an aquarelleRecordState -> vectorPathSession -> aquarelleStrokeSelection import cycle.
+- [Phase 61]: WatercolorRail is exported for the plain .test.ts vnode walk because vitest collects only src/**/*.test.ts; the pen also joins the one-active-surface law (!penActive) in the paint row.
+- [Phase 61]: 61-03: the vector path rides the existing opaque engine block (anchors + renderMode), so the host generic contract is untouched and the host still never reads P.
+- [Phase 61]: 61-03: conditional spreads in toStudioStroke keep the nine pre-vector engine keys literally identical and add exactly one key for a mode-only stroke (D-14 independence).
+- [Phase 61]: 61-03: anchorsEqual treats a difference of exactly 1e-9 as unequal (|a-b| < 1e-9 means equal); vectorPathsEqual resolves an absent mode to watercolour.
+- [Phase 61]: 61-03: projectVectorPath drops a width key equal to ANCHOR_WIDTH_DEFAULT and never clamps a non-default factor (1.8 and 0.3 pass through), order-preserving and non-mutating (D-10).
+- [Phase 61]: 61-03: codec validation lives in isStrokeShape and canonicalisation in cloneStrokeForWire; AQUARELLE_SCHEMA_VERSION stays 1 because the two fields are optional additions whose absence is the documented state.
+- [Phase 61]: The per-sample width factor rides the queued sample (Sample.w + Stroke.widthFrom/widthTo); the plan's artifacts-table row 'private scriptWidth' is deliberately not implemented because a mutable engine field would stamp late samples with a later neighbour's width (T-61-13 pin asserts the identifier never appears).
+- [Phase 61]: sizeMult(widthFactor) multiplies the existing footprint beside the unchanged 'this.scripting ? this.scriptScale : 1' term; the scriptScale clamp assignment stays character-for-character and appears exactly once (Engine.ts:866).
+- [Phase 61]: resolveStrokeWidthFactors derives one Float32Array per active stroke at activation (applyStroke/renderAllStrokes/renderPartialStrokes) and feeds it by active.index; null means the feed passes the literal 1 and the uniform path deposits byte-identically.
+- [Phase 61]: The width probe paints at canonical size 32 (engine scale 1.0): at 12px the widest-row radius is paper-grain-limited (observed 1.6-1.75) and cannot discriminate the 1.7 gate; 32px measures 35px->60px = 1.714 deterministically, while the committed phase-evidence digests stay 2058d0c6.
+- [Phase 61]: AQTL v2 costs a hand-painted stroke one u8 vector-flags byte (version keeps its u16 width); the plan's '+2' prose double-counted the version bump, the layout table fixes 1
+- [Phase 61]: Anchor scalars are f32: fixtures use Math.fround(1.8) with exact deep equality plus a 1e-6 tolerance check; absent optional keys are never materialised on decode
+- [Phase 61]: Restore seeds anchors/renderMode only when the payload carried them; a malformed anchor list omits the path for its event instead of aborting the restore
+- [Phase 61]: 61-06: the vector anchor/path shapes are declared in both languages, and the field contract test is the definition of done — not a follow-up review step
+- [Phase 61]: 61-06: the Rust in-handle is in_ + #[serde(rename = "in")] because the contract parser reads pub <ident>: and a raw identifier would be silently invisible
+- [Phase 61]: 61-06: ALLOWED_ONE_LANGUAGE is snapshotted literally in the test, so allowlisting a new field is a deliberate edit rather than silent growth
+- [Phase 61]: 61-06: Rust anchor scalars are f32 to mirror the AQTL v2 wire, while the neighbouring declaration-only structs stay f64
+- [Phase 61]: 61-07: the render mode is explicit stroke data (Stroke.renderMode; scriptBegin argument wins, interactive seeds from the brush) and is never inferred from a parameter value.
+- [Phase 61]: 61-07: the ribbon branch sits inside the existing stamp path with the seven wet globals as independent weights; the preset keeps neutral brush-side multipliers so a raised global still reaches the deposit (D-13).
+- [Phase 61]: 61-07: the record-time stamp writes renderMode only when non-default, so a plain hand-painted stroke keeps its pre-phase key set; the eraser popover filters render-mode presets through one pure helper.
+- [Phase 61]: 61-09: The width envelope draws only for a non-uniform profile (D-10), with VECTOR_ENVELOPE_BASE_UV = 0.02 x sheet height as display-only base half-width; baked thickness stays the brush radius.
+- [Phase 61]: 61-09: renderMode resolves from resolveRenderModeForBrushId(aquarelleBrushForActiveTool().brushId) at finish time so the commit can never disagree with the recorded brush.
+- [Phase 61]: 61-09: Stroke assembly is the pure buildVectorStroke(commit, source); AquarelleCanvasLayer supplies live values and forwards once to the existing onStrokeEnd seam (one revision bump).
+- [Phase 61]: 61-09: Recorded vector paths stay visible with root pointerEvents none while the pen is released; the window key listener binds only while the pen is active.
+- [Phase 61]: 61-09: Preact onDblClick (real dblclick) finishes the path; a real double-click's second pointerdown is absorbed by the adjacency refusal, so no duplicate anchor is appended.
+- [Phase 61]: 61-10: Alt is read per pointermove so the handle-coupling break applies mid-drag; each move recomputes from anchorsAtStart.
+- [Phase 61]: 61-10: A spine click is a completed insert gesture at pointerdown (insert, select, ONE onPathEdit), not a drag state.
+- [Phase 61]: 61-10: mapAnchorList returns undefined for an absent list and maps only stored handles, so hand-painted strokes gain no anchors key and auto anchors no invented handles.
+- [Phase 61]: 61-10: Translate/transform rebuild the payload entry's engine.anchors from the same mapped list, so the payload never carries a stale path (T-61-34).
+- [Phase 61]: 61-10: The Studio path-edit handler publishes the fixed rejection line only for a missing/unreadable path; a readable-path null (in-flight or unchanged) publishes nothing.
+- [Phase 61]: 61-10: Geometry edits never re-roll the paint seed — beginAquarellePathEdit omits bumpAquarellePaintSeedSalts.
+- [Phase 61]: Wireframe generalises Draft: ON forces Draft on before the latch flips; OFF clears only the latch and joins the ONE settleDraftScript promise, single-flight (61-13).
+- [Phase 61]: Wireframe construction geometry is read-only: VectorPathOverlay draws envelope/spine/rungs/anchors/handles, ScriptStrokeOverlay draws hand-painted bands via buildStrokeBand and skips recorded vector strokes (61-13).
+- [Phase 61]: Gated controls state their reason in title; the Draft switch stays ON and inert because the latch owns the only exit; E7 overflow remains a flagged assumption at the Wave 0 count (61-13).
+- [Phase 61]: The path-edit gate reads vector-ness through ONE bundle member (readVectorAnchors): the dialog never touches the record store, and the same read feeds the gate, the width reading and the px readout.
+- [Phase 61]: A closed gate or a close both request exitPathEdit through the shipped lifecycle effect; the render body only sets a plain module marker, so no signal is written during render and the sheet keeps exactly two effects.
+- [Phase 61]: The Anchor width factor is a per-anchor multiplier, not an appearance param: the block mounts as the Size row's sibling and never enters WATERCOLOR_SETTINGS_FIELDS or readNumericField/buildAppearancePatch.
+- [Phase 61]: Render mode is a stroke property: the batch mutator reads no anchors, so a malformed anchor list never refuses a mode change and no write creates, drops, copies or normalises an anchor list (D-12/D-14).
+- [Phase 61]: An unknown render mode refuses the whole batch through strict isAquarelleRenderMode membership instead of coercing to the watercolor default; an absent mode still counts as already-watercolor so no pre-phase stroke gains a key.
+- [Phase 61]: The ribbon preset pick runs its wet-globals law BEFORE selectAquarelleTip's identity early-return: snapshot the seven values only when the memory is empty, zero them in ONE aquarelleParams write, and restore plus clear on any later non-ribbon pick.
+- [Phase 61]: The Advanced wet-globals disclosure is a ref-held local dialog signal written only from its click handler (no third useEffect) and mounts only for a simple-ribbon selection, so watercolor mode keeps today's Paint tab.
+- [Phase 61]: 61-14 test-only close-out: task.is-behavior-adding=false, so the behavioural TDD gate does not apply and no feat commit was fabricated.
+- [Phase 61]: 61-14 reopen parity runs through restoreAquarelleRecordTimeline, and the cache case reuses ONE document because createEfxPaintDocument mints fresh ids per call.
+- [Phase 61]: The vector re-bake sequence clears its in-flight latch before the terminal callbacks, so a failed path edit can restore its pre-edit snapshot without being refused by its own latch.
+- [Phase 61]: commitAquarelleVectorPathEdit reads draftMode/wireframeMode only after ensureAquarelleDurableBaseRef resolves and only via .peek(); Draft or wireframe defers the engine re-render and marks the pixels dirty.
+- [Phase 61]: A Script-Off vector draw is refused before the ledger allocates and without a sheet reset; an accepted draw tails exactly one bakeAquarelleVectorCommit() after the record and the lift erase.
+- [Phase 61]: The pointer capture releases AFTER the commit decision, never in a finally: a capture release must not be able to swallow an edit
+- [Phase 61]: isTextEntryTarget is a new DOM-free leaf rather than a refactor of the Studio's isPhysicsPaintShortcutTarget, so the overlay stays callable from a node-environment test
+- [Phase 61]: The two false history-entry titles are renamed, not deleted: the assertions keep proving one edit snapshot per gesture and one undo
+- [Phase 61]: 61-17: the pen, path-edit and anchor-selection latches moved to the dependency-free vectorPathLatches leaf and are re-exported by vectorPathSession (signal identity pinned), so the Select and picker choke points import the leaf without an evaluation cycle.
+- [Phase 61]: 61-17: Select and picker entry release the vector pen and close any path edit (entry edge only, never the exit edge); Select entry is refused outright while the wireframe view is on (D-16).
+- [Phase 61]: Wireframe refusal mirrors the dirty-pixel refusal in the one setDraftMode guard; the ON edge is untouched
+- [Phase 61]: The settle guard publishes only the message and error status, never setLastError nor an owned refusal: a refusal is not a failed apply
+- [Phase 61]: WIREFRAME_SETTLE_REFUSED_MESSAGE is owned by the edition leaf and imported at the end of the Studio block to keep the shipped 61-13 exact import pin byte-unchanged
+- [Phase 61]: 61-19: resolveAnchorWidthTarget fails closed on a selection/edit mismatch, an absent edit, an empty session id or a non-integer id, so the width commit refuses with no write, re-bake or ledger entry
+- [Phase 61]: 61-19: the dialog shadows its reading to ANCHOR_WIDTH_EMPTY_READING on a null target instead of adding a second availability boolean, keeping disabled and caption one branch
+- [Phase 61]: 61-19: one caption span serves both inert reasons, branching only the child so the testid-before-style ordering and the shipped no-style pin stay true
+- [Phase 61]: 61-19: the Studio's width commit routes through the shared commitAquarelleVectorPathEdit, keeping exactly one beginAquarellePathEdit in the file
+- [Phase 61]: 61-20: Both ledger record sites live inside commitAquarelleVectorPathEdit (the one writer) — the defer branch records before setDraftPixelsDirty(true), the re-bake onSuccess tail records before setLastError(null) — so delegating vector routes can never double-count; a draw records nothing
+- [Phase 61]: 61-20: The commit depends on the stable rotoMoveHistory.recordAquarelleScriptEdit useCallback, never the per-render wrapper (efx-preact-reactivity §4); the failure route restores the snapshot and records nothing
+- [Phase 61]: The draw cursor writer is the session's one preview write: compare-then-write, anchors carried by reference, returns whether anything changed — a pointer move can never place or commit an anchor (D-06)
+- [Phase 61]: The provisional rubber band reuses sampleVectorPath with the draft anchors plus an auto cursor anchor and renders before the committed spine; the test expects the sampler's own output, never a hand-drawn chord
+- [Phase 61]: The capture-phase yield is renamed isKeyboardOwnedTarget over ONE duck-typed ten-token selector; the five shipped text-entry pins were retargeted with unchanged expectations and plain div/canvas targets keep today's keys
+- [Phase 61]: The picker guard lives in the ONE computed verdict, not in each consumer — the visor, rail chip and brush-ring gate need no change
+- [Phase 61]: isAquarellePickerArmed reads the three signals directly instead of a computed peek, so the dispatch-time probe is never stale (T-61-71)
+- [Phase 61]: An Alt arming write is refused during an open path edit; a release always lands so no hold leaks past the edit
+- [Phase 61]: The vector terms ride conditional spreads exactly like toStudioStroke, so a hand-painted event keeps its pre-vector key set and an absent vector field stays absent (no anchors: undefined)
+- [Phase 61]: +Key copies the script RECORD-ONLY inside the addEmptyKey success continuation: the cloned bytes already equal base-script, so applying would double-paint, and a copy rejection can never reach the shipped add-failure message
+- [Phase 61]: One recordAquarelleScriptCopyForFrames seam serves both Duplicate and +Key; the Studio pin asserts exactly one copyAquarelleScriptToFrame call site
+- [Phase 61]: G-11: the Anchor width block is extracted into ONE AnchorWidthControl declared after the sheet component; the list view and the Paint tab mount the same stepper, clamp and commit seam
+- [Phase 61]: G-11: the list-view mount gate is anchorWidthAvailable && a Size reading of the same ids (anchorWidthListVisible); a multi-selection or anchorless stroke mounts nothing
+- [Phase 61]: G-11: the selected-anchor ring is a pure render output of a sixth renderPath parameter fed drawn.selected ? selection : []; only the open edit path wears rings and the palette gains no colour
+- [Phase 61]: Shift+A refuses up front on wireframeMode before any read or write, then re-checks aquarelleSelectMode after the entry attempt — the entry choke point stays authoritative rather than being duplicated
+- [Phase 61]: The WR-02 failure tail re-anchors the attempted side before the revision-authoritative restore, so the routine bumped-revision failure rolls back for real while a foreign mutation still fails closed
+- [Phase 61]: The path-edit failure capsule ternaries on the consumed restore result (restoreAquarelleEditSnapshot !== null), keeping the apply error ahead of it — a refused rollback can no longer claim a restore
+- [Phase 61]: The WR-03 draw site consumes the bake boolean through .then((baked) => { if (!baked) setDraftPixelsDirty(true); }): a refused in-flight bake arms the ONE stale-sheet invariant and publishes no capsule
+- [Phase 61]: Four shipped Studio pins were repointed, never deleted, at the mandated consuming forms (three restore markers + the stroke-end TAIL), preserving every ordering assertion and strengthening the TAIL with the vector-guard and stale-arm pins
+- [Phase 61]: The pen tooltip is the Copywriting Contract string verbatim in a module-scope VECTOR_PEN_TOOLTIP constant — the phase's only draw-law teaching surface cannot drift inline again
+- [Phase 61]: Under wireframe the Picker is disarmed, not disabled: the wireframe term left disabled={railDisabled}, the shipped title stays, and every depositing control keeps its deactivation reason
+- [Phase 61]: Both envelope branches share one band law (color ?? SELECTED_SPINE_COLOR at 0.14/0.07 fill, 3.5/1.5 edge, no strokeOpacity); ENVELOPE_FILL_OPACITY was deleted and handle dots are solid with only the connector translucent
+- [Phase 61]: The wireframe-only chrome suppression was deleted outright — bounds box and serial badge render for every non-lift entry, the wireframeOnly binding is gone, and comments cite §6 item 6
+- [Phase 61]: The width readout is a declared span with exactly the four BrushResponsePanel properties; both explanation strings are 600 and the italic red Mixed stays the only 400
+- [Phase 61]: 61-27: shouldExitPathEdit compares pathEditMutationId !== String(selectedMutationId) — the same string forms resolvePathEditGate.pressed uses — rather than coercing either id
+- [Phase 61]: 61-27: the lifecycle effect dependency is the render-body pathEditTargetMismatch boolean, so the effect stays marker-driven and no signal write enters a render body
+- [Phase 61]: 61-27: resolvePathEditGate was left target-blind — target awareness on the gate would permanently disable the Edit path button when no edit is open
+- [Phase 61]: 61-27: the settle and Anchor width refusals publish through setApplyMessage/setApplyStatus('error')/setLastError but never claim scriptApplyRefusalOwnedRef, so no surface swallows another's message
+- [Phase 61]: 61-27: publishRefusal is optional on StrokeSettingsDialogBundle, keeping the shipped silent fallback and the dialog engine-free
+- [Phase 61]: 61-27: three shipped pins were repointed, never deleted — the 61-13 Studio import marker and two dialog commit-call literals — preserving every behavioral assertion
+- [Phase 61]: The edit-lifetime effect keys on the primitive editMutationId and compares String(drag.mutationId) === editMutationId, covering edit close and retarget with one law; the live-drag early return precedes every clearing step
+- [Phase 61]: A start-of-gesture reset runs before the target check in startEditDrag, so a press that hits nothing still ends the previous gesture and the CR-01 phantom-commit path is closed
+- [Phase 61]: Target guards in continueEditDrag/finishEditDrag perform no cleanup — the effect owns it — and sit before every preview write and onPathEdit, leaving the T-61-30 clear-before-commit order untouched
+- [Phase 61]: G-17 root cause confirmed at the path write: updateAquarellePathInScript carried the stale points through the spread while toStudioStroke projects points into the replay's pts; the write now re-derives the spine from the projected anchors after the idempotency return
+- [Phase 61]: Re-derived vector points carry buildVectorStroke's exact six-field stamp (p 1, tx 0, ty 0, tw 0); the overlay points assertion was retargeted to the sampled law, never deleted
+- [Phase 61]: 61-30 (G-20): spline is an EVALUATION MODE over the same anchor list, never a third anchor kind and never a rewrite of authored data; an absent curveMode reads bezier so every pre-existing document stays byte-identical, and switching back drops the key
+- [Phase 61]: 61-30 scope (user decision at the plan checkpoint): per-stroke curveMode mirroring the shipped per-stroke renderMode in every layer; the document-level variant was rejected and the one-way persistence consequence accepted for projects that use the switch
+- [Phase 61]: 61-31: per-stroke curveMode behind an explicit Paint-tab row (never document-level); availability reads vector === true so hand-painted-only selections show no row and mixed selections convert only vector strokes
+- [Phase 61]: 61-31: the Studio hydrates curveMode/vector in a SECOND .map() pass so the shipped 61-12 render-mode source pins stay byte-identical
+- [Phase 61]: 61-31: the draft always draws DEFAULT_AQUARELLE_CURVE_MODE and the recorded loop draws each stroke's own mode — a spline path never inherits the edit target's mode
+- [Phase 61]: 61-31: under Spline wasPromoted is false (promotion returns the list untouched) so a grab-and-release commits nothing; chrome shape follows ownership per 61-UI-SPEC §340-341, including the 61-22 selection ring
+- [Phase 61]: Quick 261111-ucf: every brush pick and paint-control release now commits onto the selected paint strokes through one aquarellePaintControls seam (filter 'paint'); the patch carries the POST-pick bag, Reset is one seven-key batch, and lift strokes are never addressed
+- [Phase 61]: Quick 261111-wd6: per-vertex colour is a sparse anchor `color?` — absent means the stroke colour, and a colour equal to the stroke colour is stored only when the user set it; RGB is lerped between neighbouring anchors so the wash never steps at a sample boundary
+- [Phase 61]: Quick 261111-wd6: per-vertex SIZE stays the shipped anchor width factor relabelled "Vertex size" — no second size channel was introduced, and VEC-04's former "width is the only per-vertex property" law is superseded by explicit user direction
+- [Phase 61]: Quick 261111-vg4: Stroke Settings is Geometry | Stack only; the Curve row and the Vertex size control both mount in Geometry while the list view keeps its own Vertex size mount
+- [Phase 61]: The simple-ribbon engine and the `renderMode` field were deleted rather than migrated (payload, engine branch, shaders, preset, adapter, probe, AQTL byte, Rust model); the decoder still skips the legacy byte so older scripts load
+- [Phase 61]: Vector strokes replay as a mouse stroke with speed owning the pressure at a hand's cadence — a flat synthetic pressure read as a dead stroke beside hand-painted work
+- [Phase 261112-lq4-ui-stroke-vector-modal-redesign]: Quick 261112-lq4: Stroke settings is one always-visible List | Geometry | Stack | Curve tab row; List is the watercolor default, Stack stays gated on reorderStroke, Curve on one selected vector stroke, and the active tab is a pure derivation with no write-back (a requested Curve returns after a dip); the list/settings view gate, its ref, marker and model helpers are deleted; the single Vertex size mount, Curve row and Corner row live in Curve; Edit path and Preview stroke size moved to the Draft strip
 
 ### Pending Todos
 
@@ -218,7 +363,8 @@ None yet.
 - [post-Phase 60] Code review of the interleaved quick/debug commits raised WR-05 (cursor seat re-applies the rail transform to already-transformed coordinates — ring renders `s²` when rail scale ≠ 1) and WR-06 (roto settle can force-reload the base mid-playback). Not phase-60 scope; unverified by UAT.
 - `.mce` paint-field enforcement does not exist yet — `mceFieldContract.test.ts` covers `Mce*` interfaces only while the paint document rides as `HashMap<String, Value>`; motion persistence needs a dedicated load → save byte-identical round-trip pin.
 - Four persistence carriers must move as one change or motion silently fails: `serializeRuntimeIntoDocument`, `encodeValidatedEfxPaintTrackContent`, `buildEfxPaintDocumentSyncFingerprint`, and the layer change token (this defect class already cost PKG-06 and BKG-09).
-- Phase 61 is spike-gated: per-vertex watercolour feasibility (segment runs vs payload extension) before the data model is locked.
+- [Phase 61] Three code-review findings remain open after the 2026-11-12 re-review (all recorded in `61-REVIEW-DISPOSITION.md`, 8/8 open): CR-01 an unchanged per-vertex colour commit publishes a false "not applied" banner because a no-op returns the same `null` as a refusal; WR-01 the paint-control seam discards its `Promise<boolean>` so a refused patch leaves the live control diverged with no message; WR-02 the new orphan-focus window key route has no floating-dialog guard, so Studio shortcuts reach the canvas through Stroke Settings. The verifier judged none a must-have blocker, but CR-01 is user-visible.
+- [Phase 61] Quick 261111-wd6 revised VEC-04 mid-phase; the Phase 61 verification records three accepted overrides (61-03 colour prohibition, 61-10 per-vertex-paint-properties prohibition, and truth 11's simple-ribbon render-mode clause). Anyone re-reading older plans should treat those clauses as superseded rather than violated.
 - v2.0.1 debt carried in PROJECT.md Context: VIS-02/04 token drift, mixed rail-set header accent, the one-shot prompt's pending window, and the unconfirmed 261105-p9i live native UAT rows.
 
 ## Deferred Items
@@ -289,6 +435,16 @@ Items acknowledged and carried forward from previous milestone close:
 | 18 | Onion tab sliders use the shared SliderStepper (native ranges overflowed the right sidebar) | 2026-11-08 | e066b97b9 | — |
 | 261109-pwt | Phase 60 cached-key paint: first return to a key that already had cached paint now shows paint added since the last cache commit (settle the pending destination capture once the destination is displayed; faint wet washes no longer dropped by the capture ink gate; UAT approved 2026-11-09) | 2026-11-09 | 8b1508db8 | [261109-pwt-phase-60-issue-with-paint-on-cached-key-](./quick/261109-pwt-phase-60-issue-with-paint-on-cached-key-/) |
 | 261109-uj0 | Phase 60 cached-key paint, compiled-build regression: localized capture gate FAILED packaged UAT (near-blank snapshots overwrote fresh paint, including keyboard-arrow navigation); acceptance reverted to the global-only 0.3 mean in 0c0520917, with the localized 12x12 measurement and a non-DEV console.warn kept as rejection diagnostics; quick CLOSED as rollback+diagnostic (22:21 rebuild verified, keyboard repro gone). Follow-up 9e0bd2597 makes the gate color-aware (paper-relative per-channel pigment path, floor 0.5) because luminance rejected yellow/orange washes while red/blue passed; packaged UAT PASSED 2026-11-09 (user-confirmed) | 2026-11-09 | 9e0bd2597 | [261109-uj0-phase-60-issue-the-faint-wet-wash-captur](./quick/261109-uj0-phase-60-issue-the-faint-wet-wash-captur/) |
+| 261111-t74 | Selection edit port + brush patch — selected strokes accept a brush id and per-brush multipliers as one undoable edit (automated-ready; no UI consumer yet) | 2026-11-11 | be4118871 | [261111-t74-selection-edit-port-brush-patch](./quick/261111-t74-selection-edit-port-brush-patch/) |
+| 261111-tul | SliderStepper commit boundary: optional onCommit fires once per gesture at the release boundaries (track pointerup/cancel, typed Enter/blur, ± press end, keyboard activation) with the gesture's own value, Enter+blur deduped, equal-value commits allowed, absent prop byte-identical (automated-ready; no consumer wired) | 2026-11-11 | 1ce179f3c | [261111-tul-sliderstepper-commit-boundary-milestone-](./quick/261111-tul-sliderstepper-commit-boundary-milestone-/) |
+| 261111-ucf | Brush picks and paint-control releases edit the SELECTED paint strokes through one aquarellePaintControls seam (pickAquarelleBrush, param/params/multiplier commits with filter 'paint'); all four pick surfaces and every slider release wired, Globals Reset is ONE seven-key batch, lift strokes never addressed, live brush/slider behaviour unchanged (UAT approved 2026-11-11) | 2026-11-11 | 73d704c1d | [261111-ucf-brush-picks-and-paint-controls-edit-the-](./quick/261111-ucf-brush-picks-and-paint-controls-edit-the-/) |
+| 261111-vg4 | Remove the Stroke Settings Paint tab — dialog is Geometry \| Stack only; Curve row and Anchor width mount moved into Geometry; per-stroke paint editing lives in the sidebar/top bar (UAT approved 2026-11-11) | 2026-11-11 | 828b58f48 | [261111-vg4-remove-the-stroke-settings-paint-tab](./quick/261111-vg4-remove-the-stroke-settings-paint-tab/) |
+| 261111-wd6 | Per-vertex colour on vector anchors (sparse, explicit); per-vertex size stays the Anchor width factor, relabelled Vertex size; engine per-sample pigment + AQTL bit 3 (UAT approved 2026-11-12) | 2026-11-12 | 0dbd47e96 | [261111-wd6-per-vertex-color-and-size](./quick/261111-wd6-per-vertex-color-and-size/) |
+| 261112-hfk | Fix CR-01 (Phase 61 review): an unchanged per-vertex colour commit publishes a false refused banner; a no-op now returns before the path-edit commit and publishes nothing, genuine refusals still publish (pure predicate + wiring pins) (UAT approved 2026-11-12) | 2026-11-12 | 749d79dec | [261112-hfk-fix-cr-01-from-planning-phases-61-vector](./quick/261112-hfk-fix-cr-01-from-planning-phases-61-vector/) |
+| 261112-i6d | Vector edit enhancements: double-click a vector stroke enters the path edit; Alt+click a vertex toggles it to a straight corner and back in vector and spline modes; Geometry Round/Straight Corner row over the selected anchors; Vertex size track to x10 with free entry to x20; orange glow/halo selected-vertex chrome; path-edit re-bake canvas veil (blocking, composited wheel, stroke counter) as the ONE indicator — the apply pill stands down (UAT approved 2026-11-12) | 2026-11-12 | 34728c5e4 | [261112-i6d-vector-enhancement-double-click-stroke-t](./quick/261112-i6d-vector-enhancement-double-click-stroke-t/) |
+| 261112-lq4 | Stroke settings sheet redesign: four tabs (List default \| Geometry \| Stack \| Curve), Paint \| Eraser \| All row merged into the tool dropdown, Edit path and Preview stroke size moved into the Draft strip, cache caption removed, Vertex size / Curve / Corner moved to the Curve tab (UAT approved 2026-11-12) | 2026-11-12 | 82f9ae5cd | [261112-lq4-ui-stroke-vector-modal-redesign](./quick/261112-lq4-ui-stroke-vector-modal-redesign/) |
+| 29 | Hide Vertex size and Corner blocks in the Curve tab unless a vertex is selected (UAT approved 2026-11-12) | 2026-11-12 | 72a69dc94 | — |
+| 261112-n3f | Unify the stroke-size preview into one toggle (vertex-aware, off by default) and remove the vector envelope self-intersection lines (UAT approved, including follow-up 39007da12 restoring the committed sheet on leaving the surface) | 2026-11-12 | 8f5ae4c82 | [261112-n3f-unify-the-stroke-size-preview-into-one-t](./quick/261112-n3f-unify-the-stroke-size-preview-into-one-t/) |
 
 ## Roadmap Evolution
 
@@ -299,11 +455,12 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-10T05:20:00.000Z
-Stopped at: Phase 59 re-verified (21/21, fresh digest) and closed; Phase 60 complete; ready to plan Phase 61
+Last session: 2026-11-12T15:05:00.815Z
+Stopped at: Quick 261112-lq4 closed (UAT approved); Phase 62 ready to plan
 Resume file: None
 
 ## Operator Next Steps
 
-- Phase 60 is complete (6/6 plans, live UAT 5/5, verification 20/20 must-haves, security threats_open 0). Next: `/gsd-discuss-phase 61`, then `/gsd-plan-phase 61` — Vector painting tool.
-- Open review findings for Phase 60 (non-blocking): WR-02 (6px gutter omitted from three pointer→frame projections — pre-existing) and IN-01..04 (info). ROADMAP SC2/SC5 wording still cites the superseded "Fit / session-only" contract; REQUIREMENTS.md is authoritative until the milestone close.
+- Phase 61 is complete (31/31 plans, live UAT 21/21, verification 19/19 passed, security threats_open 0, regression gate 427 files / 8,942 tests green). Next: `/gsd-discuss-phase 62`, then `/gsd-plan-phase 62` — painted-stroke curve editing.
+- Open code-review findings for Phase 61 (non-blocking, recorded in 61-REVIEW-DISPOSITION.md, 8/8 open): CR-01 an unchanged per-vertex colour commit publishes a false "not applied" banner; WR-01 paint-control refusals are swallowed so the live slider diverges from the selected strokes; WR-02 the orphan-focus window key route has no floating-dialog guard. Candidate for a follow-up quick.
+- VEC-04 was revised mid-phase by the user: per-vertex colour is supported (sparse anchor `color?`), per-vertex size remains the anchor width factor exposed as "Vertex size", and the former "width is the only per-vertex property" law is superseded. Phase 61's recorded overrides (61-03 colour prohibition, 61-10 per-vertex-paint-properties prohibition, truth 11's simple-ribbon render-mode clause) are accepted by Laurent Marques on 2026-11-12.

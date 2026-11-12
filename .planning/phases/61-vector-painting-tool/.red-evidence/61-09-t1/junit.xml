@@ -1,0 +1,1480 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="48" failures="37" errors="0" time="0.556">
+    <testsuite name="src/components/physic-paint/engine/VectorPathOverlay.test.ts" timestamp="2026-11-10T14:20:55.947Z" hostname="efx2.home" tests="21" failures="17" errors="0" skipped="0" time="0.009515667">
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws nothing when no vector stroke and no draft exist" time="0.0005145">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws nothing for a hand-painted stroke (no anchors)" time="0.000151125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws one spine polyline and exactly one marker per anchor" time="0.002556875">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:212:56
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws two handle markers for a bezier anchor and none for an auto anchor" time="0.00030875">
+            <failure message="expected [] to have a length of 2 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 2 but got +0
+
+- Expected
++ Received
+
+- 2
++ 0
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:231:57
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; skips strokes painted on another frame" time="0.000081417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; mounts the pointer surface while the pen is active with an empty draft" time="0.000211583">
+            <failure message="expected null not to be null" type="AssertionError">
+AssertionError: expected null not to be null
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:244:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; passes pointer events through unless the pen is active and no path edit is open" time="0.000153958">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:250:18
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; places a smooth anchor per plain click" time="0.000385292">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:264:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; places a corner (bezier with zero-length handles) on Alt+click" time="0.00014775">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:271:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; refuses a click within the adjacency radius of the last anchor" time="0.000155209">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:281:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes at the first anchor without appending a closing anchor" time="0.000155834">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:290:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes on Enter and commits exactly once" time="0.000169959">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:302:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes on a double-click" time="0.000131833">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:312:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; cancels on Escape with zero commits" time="0.000156292">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:324:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; commits nothing for a zero- or one-anchor path and never throws" time="0.000421541">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:339:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; clears the draft BEFORE the commit so a same-tick second Enter is a no-op" time="0.000149875">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:351:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; commits the draft anchors, the active brush mode and the sampled points" time="0.000132667">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:363:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; prevents default and stops propagation so no paint stroke starts underneath" time="0.000111875">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:180:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:379:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; binds the key listener only while the pen is active and removes it on cleanup" time="0.001728708">
+            <failure message="expected &apos;// 61-09 scratch stub — replaced by t…&apos; to contain &apos;window.addEventListener(\&apos;keydown\&apos;&apos;" type="AssertionError">
+AssertionError: expected &apos;// 61-09 scratch stub — replaced by t…&apos; to contain &apos;window.addEventListener(\&apos;keydown\&apos;&apos;
+
+- Expected
++ Received
+
+- window.addEventListener(&apos;keydown&apos;
++ // 61-09 scratch stub — replaced by the implementation at GREEN.
++ // Exists only so the RED run fails on assertions, never on a missing module.
++ import type { JSX } from &apos;preact&apos;;
++ import type { VectorPathCommit } from &apos;../view/vectorPathHandles&apos;;
++
++ export interface VectorPathGestureHandlers {
++   readonly onCommitPath: (commit: VectorPathCommit) =&gt; void;
++   readonly onCancelPath: () =&gt; void;
++ }
++
++ export function finishVectorPath(_handlers: VectorPathGestureHandlers): void {}
++
++ export function cancelVectorPath(_handlers: VectorPathGestureHandlers): void {}
++
++ export function handleVectorPathKey(
++   _event: { readonly key?: string },
++   _handlers: VectorPathGestureHandlers,
++ ): void {}
++
++ export function VectorPathOverlay(_props: {
++   width: number;
++   height: number;
++   getPlayFrame: () =&gt; number;
++   getRecordedStrokes: () =&gt; ReadonlyMap&lt;number, { anchors?: readonly unknown[] }&gt;;
++   onCommitPath: (commit: VectorPathCommit) =&gt; void;
++   onCancelPath: () =&gt; void;
++ }): JSX.Element | null {
++   return null;
++ }
++
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:386:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — authority boundary (T-61-31) &gt; never imports an engine, bake or adapter module and never records" time="0.000149958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — authority boundary (T-61-31) &gt; is mounted beside the stroke overlay and forwards to props.onStrokeEnd" time="0.001017167">
+            <failure message="expected &apos;// ==================================…&apos; to contain &apos;&lt;VectorPathOverlay&apos;" type="AssertionError">
+AssertionError: expected &apos;// ==================================…&apos; to contain &apos;&lt;VectorPathOverlay&apos;
+
+- Expected
++ Received
+
+- &lt;VectorPathOverlay
++ // ============================================================
++ //  AquarelleCanvasLayer — the Water color live surface on the
++ //  shared Studio canvas (56-11 / 56-12).
++ //
++ //  The simulation and display are the MIT Watercolor Playground
++ //  engine (vendored in @efxlab/efx-watercolor/playground). It owns
++ //  pointer input, the fluid/liquid physics, brush tips and the
++ //  paper composite — this component mounts it, keeps the tool +
++ //  param signals in sync, and records the stroke at stroke end.
++ //
++ //  RECORD (56-12): points are document uv (y up) on the 60 Hz
++ //  tick grid; params are the CANONICAL AQUA-04 globals (never the
++ //  mapped 0..1 bag). Live and bake both map through
++ //  toEngineParams() so they cannot drift (A1/A2).
++ //
++ //  PHYSIC PAINT STUDIO modal only. Never the inline EFX Paint
++ //  editor, never p5.brush.
++ // ============================================================
++
++ import type { CSSProperties, JSX } from &apos;preact&apos;;
++ import { signal } from &apos;@preact/signals&apos;;
++ import { useCallback, useRef } from &apos;preact/hooks&apos;;
++ import {
++   aquarelleVisibleSettleTicks,
++   buildBrushForStroke,
++   DEFAULT_PAPER,
++   PAPERS,
++   pigmentFromHex,
++   recordedRenderModeField,
++   toEngineParams,
++   WatercolorEngine,
++   type PaperPreset,
++   type Tool,
++ } from &apos;@efxlab/efx-watercolor&apos;;
++ import type { AquarellePoint, AquarelleStroke, AquarelleTool } from &apos;@efxlab/efx-watercolor&apos;;
++ import {
++   aquarelleActiveTipId,
++   aquarelleActiveTool,
++   aquarelleBrushForActiveTool,
++   aquarelleParams,
++   aquarelleSelectedTipId,
++   onAquarelleDry,
++   snapshotAquarelleRecord,
++ } from &apos;../view/aquarelleRecordState&apos;;
++ import { aquarelleSelectMode } from &apos;../view/aquarelleStrokeSelection&apos;;
++ import { aquarellePickerActive } from &apos;../view/aquarelleColorPicker&apos;;
++ import { clearAquarelleWetPaint, setAquarelleHasWetPaint } from &apos;../view/aquarelleWetPaintGate&apos;;
++ import type { ScriptStrokeTransform } from &apos;../view/scriptStrokeEdition&apos;;
++ import { AquarelleStrokeOverlay } from &apos;./AquarelleStrokeOverlay&apos;;
++ import { createAquarelleEnginePort, type AquarelleEnginePort } from &apos;./aquarelleEnginePort&apos;;
++ import {
++   aquarelleFootprintFor,
++   cursorPreviewPressure,
++   footprintCssSize,
++ } from &apos;./aquarelleFootprint&apos;;
++ // debug-watercolor-loop-render-split (DEV ONLY): names the trigger that did or
++ // did not reach the Studio capture handler. Installs nothing in production.
++ import { recordAquarelleRenderSplitEvent } from &apos;../performance/aquarelleRenderSplitCapture&apos;;
++
++ /** Host tick grid (toStudioStroke law: pts[].tick = sample index). */
++ const HOST_TICK_HZ = 60;
++ const HOST_TICK_MS = 1000 / HOST_TICK_HZ;
++
++ /** Engine.ts FIX_DURATION (1.2s) — Dry bakes the wet pigment over this window. */
++ const FIX_SETTLE_MS = 1200;
++
++ // ============================================================
++ //  Footprint cursor (261028-k03c D6). Same dual-ring family as
++ //  engine-1&apos;s drawBrushCursor — dark under-stroke + white
++ //  over-stroke, crosshair fallback under 8 CSS px — but the ring
++ //  now shows the ENGINE&apos;s footprint law (aquarelleFootprint.ts):
++ //  the true radius for the active tool, the tip&apos;s aspect, and the
++ //  rotation the engine would use (including the live pen-tilt
++ //  azimuth for fixed-rotation tips). DOM refs + module variables
++ //  only — no state, no effect (efx-preact-reactivity).
++ // ============================================================
++
++ const CURSOR_CROSSHAIR_SIZE = 23;
++ /** 261030-cnq: exported for the picker visor, which renders ABOVE the tracks
++  *  group (outside its stacking context) at the same shell-relative point. */
++ export const cursorX = signal(-1);
++ export const cursorY = signal(-1);
++ export const cursorVisible = signal(false);
++ /**
++  * 261028-k03c WR-01: the footprint inputs below (tilt, pressure, buttons,
++  * pointer type, movement angle, layer height) are module variables, and an
++  * EQUAL cursorX/cursorY write does not notify — a stationary pen whose
++  * pressure or tilt changes would leave the ring stale. This version is bumped
++  * compare-then-write only when one of those inputs actually changes; the
++  * cursor component reads it so the ring re-renders without a pointer move.
++  */
++ const cursorStateVersion = signal(0);
++ /** Displayed layer height in CSS px (Engine.updateCursor&apos;s view.h / dpr). */
++ let cursorLayerHeight = 0;
++ /** Previous pointer sample — the follow-rotation movement direction. */
++ let lastPointerX: number | null = null;
++ let lastPointerY: number | null = null;
++ let lastPointerMoveAngle = 0;
++ let lastPointerTiltX = 0;
++ let lastPointerTiltY = 0;
++ let lastPointerType = &apos;mouse&apos;;
++ let lastPointerButtons = 0;
++ let lastPointerPressure = 0;
++
++ /**
++  * Opaque-sheet law (2026-10-26): MODE.transparent is OPAQUE white where the
++  * sheet holds no pigment. Under source-over (the new track law) a blank live
++  * sheet would cover the cached base it sits over and read as bare paper. The
++  * canvas renders transparent until the engine holds paint — opacity, not
++  * visibility, so the canvas keeps owning the pointer (first stroke).
++  * Written only on change by the rAF poll (efx-preact-reactivity).
++  */
++ const aquarelleLivePaint = signal(false);
++
++ /**
++  * 261030-cnq: the ring is MOUNTED by the canvas stack (a sibling of the
++  * reference overlay), not by this layer — inside the isolated tracks group its
++  * z-index is trapped below the photo overlay, so at high overlay opacity the
++  * pointer disappeared behind the photo. The signals stay module-private here;
++  * the export is only the component.
++  */
++ export function AquarelleBrushCursor(): JSX.Element | null {
++   // Select mode hides the paint-size ring — the stroke overlay owns the
++   // pointer. Narrow leaf read.
++   if (aquarelleSelectMode.value) return null;
++   // 261030-cnq: the color picker replaces the ring with the Pipette visor.
++   if (aquarellePickerActive.value) return null;
++   const x = cursorX.value;
++   const y = cursorY.value;
++   const visible = cursorVisible.value;
++   // WR-01: subscribe to stationary footprint-input changes (tilt/pressure/
++   // pointer type/layer height), which no x/y write would notify.
++   void cursorStateVersion.value;
++   if (!visible || x &lt; 0) return null;
++
++   const params = aquarelleParams.value;
++   const tool = aquarelleActiveTool.value;
++   // 261028-k03c D6: the ring IS the engine&apos;s footprint — the same radius law,
++   // the same tip/aspect, the same rotation (including the live pen-tilt
++   // azimuth for a fixed-rotation tip), scaled by the displayed layer height.
++   const selection = aquarelleBrushForActiveTool();
++   const footprint = aquarelleFootprintFor({
++     tool,
++     tipId: aquarelleActiveTipId(),
++     toolOverrides: selection.toolOverrides,
++     size: params.size,
++     pressure: cursorPreviewPressure(lastPointerType, lastPointerButtons, lastPointerPressure),
++     moveAngle: lastPointerMoveAngle,
++     tiltX: lastPointerTiltX,
++     tiltY: lastPointerTiltY,
++   });
++   const { width, height } = footprintCssSize(footprint, cursorLayerHeight);
++   const longAxis = Math.max(width, height);
++
++   if (!(longAxis &gt;= 8)) {
++     // Crosshair fallback — a ring this small would be a dot.
++     return (
++       &lt;div
++         class=&quot;aquarelle-brush-cursor&quot;
++         aria-hidden=&quot;true&quot;
++         style={{
++           position: &apos;absolute&apos;,
++           left: `${x - CURSOR_CROSSHAIR_SIZE / 2}px`,
++           top: `${y - CURSOR_CROSSHAIR_SIZE / 2}px`,
++           width: `${CURSOR_CROSSHAIR_SIZE}px`,
++           height: `${CURSOR_CROSSHAIR_SIZE}px`,
++           pointerEvents: &apos;none&apos;,
++           zIndex: 50,
++         }}
++       &gt;
++         &lt;svg width={CURSOR_CROSSHAIR_SIZE} height={CURSOR_CROSSHAIR_SIZE} viewBox={`0 0 ${CURSOR_CROSSHAIR_SIZE} ${CURSOR_CROSSHAIR_SIZE}`} style={{ overflow: &apos;visible&apos;, display: &apos;block&apos; }}&gt;
++           &lt;g stroke=&quot;#111111&quot; strokeWidth={3} vectorEffect=&quot;non-scaling-stroke&quot;&gt;
++             &lt;line x1={0} y1={11.5} x2={10} y2={11.5} /&gt;
++             &lt;line x1={13} y1={11.5} x2={23} y2={11.5} /&gt;
++             &lt;line x1={11.5} y1={0} x2={11.5} y2={10} /&gt;
++             &lt;line x1={11.5} y1={13} x2={11.5} y2={23} /&gt;
++           &lt;/g&gt;
++           &lt;g stroke=&quot;#ffffff&quot; strokeWidth={1} vectorEffect=&quot;non-scaling-stroke&quot;&gt;
++             &lt;line x1={0} y1={11.5} x2={10} y2={11.5} /&gt;
++             &lt;line x1={13} y1={11.5} x2={23} y2={11.5} /&gt;
++             &lt;line x1={11.5} y1={0} x2={11.5} y2={10} /&gt;
++             &lt;line x1={11.5} y1={13} x2={11.5} y2={23} /&gt;
++           &lt;/g&gt;
++         &lt;/svg&gt;
++       &lt;/div&gt;
++     );
++   }
++
++   const inset = 1.5;
++   const innerW = Math.max(0, width - inset * 2);
++   const innerH = Math.max(0, height - inset * 2);
++   // The shared footprint law already carries the engine&apos;s rounded flag
++   // (aspect &lt; ROUNDED_ASPECT) — never re-derive the threshold here.
++   const rounded = footprint.rounded;
++   return (
++     &lt;div
++       class=&quot;aquarelle-brush-cursor&quot;
++       aria-hidden=&quot;true&quot;
++       style={{
++         position: &apos;absolute&apos;,
++         left: `${x - width / 2}px`,
++         top: `${y - height / 2}px`,
++         width: `${width}px`,
++         height: `${height}px`,
++         pointerEvents: &apos;none&apos;,
++         zIndex: 50,
++         // Document space is y up, the screen y down: mirror Engine.updateCursor.
++         transform: `rotate(${-footprint.angle}rad)`,
++       }}
++     &gt;
++       &lt;svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: &apos;visible&apos;, display: &apos;block&apos; }}&gt;
++         {rounded ? (
++           &lt;&gt;
++             &lt;rect x={inset} y={inset} width={innerW} height={innerH} rx={height * 0.4} fill=&quot;none&quot; stroke=&quot;#111111&quot; strokeWidth={3} vectorEffect=&quot;non-scaling-stroke&quot; /&gt;
++             &lt;rect x={inset} y={inset} width={innerW} height={innerH} rx={height * 0.4} fill=&quot;none&quot; stroke=&quot;#ffffff&quot; strokeWidth={1} vectorEffect=&quot;non-scaling-stroke&quot; /&gt;
++           &lt;/&gt;
++         ) : (
++           &lt;&gt;
++             &lt;ellipse cx={width / 2} cy={height / 2} rx={innerW / 2} ry={innerH / 2} fill=&quot;none&quot; stroke=&quot;#111111&quot; strokeWidth={3} vectorEffect=&quot;non-scaling-stroke&quot; /&gt;
++             &lt;ellipse cx={width / 2} cy={height / 2} rx={innerW / 2} ry={innerH / 2} fill=&quot;none&quot; stroke=&quot;#ffffff&quot; strokeWidth={1} vectorEffect=&quot;non-scaling-stroke&quot; /&gt;
++           &lt;/&gt;
++         )}
++       &lt;/svg&gt;
++     &lt;/div&gt;
++   );
++ }
++
++ type RawSample = { x: number; y: number; p: number; tx: number; ty: number; t: number };
++
++ /**
++  * Resample a pointer path onto the 60 Hz tick grid so recorded
++  * sample spacing matches the bake&apos;s stepTick spacing (A1).
++  */
++ function resampleToTickGrid(samples: readonly RawSample[]): AquarellePoint[] {
++   if (samples.length === 0) return [];
++   if (samples.length === 1) {
++     const s = samples[0]!;
++     return [{ x: s.x, y: s.y, p: s.p, tx: s.tx, ty: s.ty, tw: 0 }];
++   }
++   const start = samples[0]!.t;
++   const end = samples[samples.length - 1]!.t;
++   const totalTicks = Math.max(1, Math.round((end - start) / HOST_TICK_MS));
++   const out: AquarellePoint[] = [];
++   let cursor = 0;
++   for (let i = 0; i &lt;= totalTicks; i += 1) {
++     const target = start + i * HOST_TICK_MS;
++     while (cursor &lt; samples.length - 2 &amp;&amp; samples[cursor + 1]!.t &lt; target) cursor += 1;
++     const a = samples[cursor]!;
++     const b = samples[Math.min(cursor + 1, samples.length - 1)]!;
++     const span = b.t - a.t;
++     const u = span &gt; 0 ? Math.max(0, Math.min(1, (target - a.t) / span)) : 0;
++     out.push({
++       x: a.x + (b.x - a.x) * u,
++       y: a.y + (b.y - a.y) * u,
++       p: a.p + (b.p - a.p) * u,
++       tx: a.tx + (b.tx - a.tx) * u,
++       ty: a.ty + (b.ty - a.ty) * u,
++       tw: 0,
++     });
++   }
++   return out;
++ }
++
++ function brushIdForSelection(): string {
++   return aquarelleSelectedTipId.value ?? &apos;wc/round-medium&apos;;
++ }
++
++ /**
++  * F3 (R2.3): the Studio paper id drives the aquarelle engine&apos;s DEPOSIT grain
++  * (granulation / dry-brush tooth). The display paper stays the Studio fond
++  * (paperPass) — never the vendor&apos;s own paper composite.
++  * Exported in 261017-fz3 so the bake path (bakeAquarelleScript) can reuse the
++  * same map — one source for studio-id → PaperPreset.
++  */
++ export const STUDIO_PAPER_TO_PRESET: Readonly&lt;Record&lt;string, string&gt;&gt; = Object.freeze({
++   &apos;paper/cold-press&apos;: &apos;cold&apos;,
++   &apos;paper/hot-press&apos;: &apos;hot&apos;,
++   &apos;paper/rough&apos;: &apos;rough&apos;,
++   &apos;paper/khadi&apos;: &apos;khadi&apos;,
++   &apos;paper/washi&apos;: &apos;washi&apos;,
++   &apos;paper/laid&apos;: &apos;laid&apos;,
++   &apos;paper/canvas&apos;: &apos;canvas&apos;,
++   &apos;paper/toned-sand&apos;: &apos;toned&apos;,
++   &apos;paper/kraft&apos;: &apos;kraft&apos;,
++   &apos;paper/student&apos;: &apos;cellulose&apos;,
++ });
++
++ export function paperPresetForStudioId(studioId: string): PaperPreset {
++   // Q5a: paper/real-1..3 have no procedural preset — fall back to cold.
++   const presetId = STUDIO_PAPER_TO_PRESET[studioId] ?? &apos;cold&apos;;
++   return PAPERS.find((p) =&gt; p.id === presetId) ?? DEFAULT_PAPER;
++ }
++
++ function toolForSelection(): AquarelleTool {
++   return aquarelleActiveTool.value;
++ }
++
++ function applyLiveConfig(engine: WatercolorEngine): void {
++   engine.setParams(toEngineParams(aquarelleParams.value));
++   engine.setTool(aquarelleActiveTool.value as Tool);
++   // 261028-k03c: the live brush is the SAME selection law the record uses
++   // (`aquarelleBrushForActiveTool`), so a Lift stroke&apos;s live erase, its
++   // recorded brushId and the bake can never disagree. `brushIdForSelection`
++   // stays as the historical stroke-end fallback only.
++   const selection = aquarelleBrushForActiveTool();
++   engine.setBrush(buildBrushForStroke(selection.brushId, selection.toolOverrides));
++ }
++
++ export function AquarelleCanvasLayer(props: {
++   width: number;
++   height: number;
++   color: string;
++   /**
++    * FRAME SCOPE: live getter for the Studio edit frame this sheet previews.
++    * A getter (not a value prop) keeps the canvas-mount memo stable across
++    * frame navigation while the rAF poll still sees the live frame.
++    */
++   getPlayFrame: () =&gt; number;
++   /** F3: Studio paper id → the engine&apos;s deposit-grain preset (R2.3). */
++   getPaperId: () =&gt; string;
++   /**
++    * F3 parity (261027 UAT round 9): the Studio paper&apos;s grain strength is the
++    * engine&apos;s deposit-grain strength. The bake already applies it; leaving the
++    * live sheet on the engine default made the live wash and its re-bake run on
++    * different tooth and lose density after Move/Apply.
++    */
++   getPaperGrainStrength?: () =&gt; number;
++   disabled?: boolean;
++   onStrokeEnd?: (stroke: AquarelleStroke) =&gt; void;
++   /**
++    * 261028-k03 D3/D2: every Lift refusal (Script OFF with a script, group
++    * frame, unknown pre-script base, no displayable paint) is decided by the
++    * Studio&apos;s preflight and applied HERE, in the capture phase — before
++    * `cancelAutoFix` and before the engine&apos;s own canvas pointerdown. The
++    * stroke-end check would already have erased the live sheet and recorded
++    * the event. `getLiftBlocked` returns the refusal copy, or null to proceed.
++    */
++   getLiftBlocked?: () =&gt; string | null;
++   onLiftBlocked?: (message: string) =&gt; void;
++   /**
++    * 261028-k03b: every Lift dab the ENGINE applied, in document uv (y up) with
++    * the footprint radius in document heights and the effective erase amount.
++    * The Studio previews the same dab on the cached base so a lift on a cooked
++    * frame erases while the user draws. Only lift strokes emit.
++    * 261028-k03c: `angle` (radians, y up — the engine&apos;s uAxis) rides along so
++    * the preview reproduces the erased tip shape; this layer forwards it
++    * unchanged and never re-derives it.
++    */
++   onLiftDab?: (x: number, y: number, r: number, amount: number, angle: number) =&gt; void;
++   /**
++    * PLAY FIDELITY (play-vs-paint): the sheet went to sleep and the last
++    * recorded stroke diffused for `ticks` host-grid ticks since it ended.
++    * The record path stamps that measured window as the stroke&apos;s cuisson so
++    * a replay cooks it exactly as long as the live paint did.
++    */
++   onStrokeSettled?: (stroke: AquarelleStroke, ticks: number) =&gt; void;
++   /**
++    * CACHE WRITE seam (56-12): invoked when the composited sheet must land in
++    * the WebP cache — at stroke end and once Dry has settled. The snapshot
++    * factory is resolved later by captureLivePixels (52.1 deferred-copy law).
++    */
++   onCaptureFrame?: (playFrame: number, snapshot: () =&gt; HTMLCanvasElement | null, captureTrackId?: string) =&gt; void;
++   /**
++    * NAV FLUSH (paint-cache-empty-frame-on-key): registers a synchronous
++    * flush-capture the Studio navigation calls BEFORE flushLivePixels. The rAF
++    * poll&apos;s frame-leave capture runs one rAF AFTER scheduleRotoStartFramePropagation,
++    * which is AFTER the navigation flush has drained — the late capture then sits
++    * in CAPTURE_PRODUCE_QUIET_MS and the return-to-key read shows the pre-capture
++    * cache (the intermittent empty frame). Mirrors onNativePenInputReady.
++    */
++   onFlushCaptureReady?: (flushCapture: ((captureTrackId?: string) =&gt; void) | null) =&gt; void;
++   /**
++    * SAVE-PATH seam (261026-nvq): registers the current edit frame&apos;s composited
++    * sheet factory — the SAME `snapshot` closure the cache capture resolves,
++    * never a second readback. The sheet is MODE.transparent OPAQUE
++    * transmittance (white = no pigment), so a consumer must multiply it over
++    * its background. Null on cleanup; mirrors onFlushCaptureReady.
++    */
++   onSnapshotReady?: (snapshot: (() =&gt; HTMLCanvasElement | null) | null) =&gt; void;
++   /**
++    * CACHE MERGE BASE (aquarelle-cache-lost-on-return): a new sheet session
++    * begins when the edit frame changes and the engine is cleared. The next
++    * session&apos;s first capture must re-read the cache as its multiply base — a
++    * base pinned before the previous session&apos;s commit would drop that paint
++    * when the new session&apos;s sheet is merged over it.
++    */
++   onSheetSessionEnd?: () =&gt; void;
++   /**
++    * Quick 261019-mj2 Task 3: registers a same-frame sheet reset. The Studio&apos;s
++    * generated-cell self-promotion calls it synchronously before dispatching
++    * the blank key, so the old generated display never leaks into the stroke.
++    * Mirrors the frame-change branch minus the lastPlayFrame update.
++    */
++   onResetSheetReady?: (resetSheet: () =&gt; void) =&gt; void;
++   /**
++    * 261022-pim / 261024-mz5: Alt+click on an outlined stroke (or the whole
++    * selected set). The Studio deletes them from the recorded script and
++    * re-bakes through the shared Apply path.
++    */
++   onDeleteStrokes?: (mutationIds: readonly number[]) =&gt; void;
++   /**
++    * 261022-tv1 / 261024-mz5: a committed drag release. The Studio translates
++    * every recorded stroke of the selection + its timeline entry and re-bakes
++    * through the shared Apply path.
++    */
++   onMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) =&gt; void;
++   /**
++    * 261024-mz5: a committed corner-scale / rotate release. The Studio
++    * transforms every recorded stroke of the selection + its timeline entry in
++    * UV space and re-bakes through the shared Apply path.
++    */
++   onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) =&gt; void;
++   /**
++    * ENGINE PORT (261027-klx Wave 3, Option A): the ONE narrow typed surface
++    * Roto + the Studio may hold over the watercolor engine. Published once per
++    * engine instance after construction; nulled on cleanup. Consumers must keep
++    * this exact object — the Roto clipboard keys accepted-target lookups by
++    * port identity, so a second port over the same engine reads null.
++    */
++   onEnginePortReady?: (port: AquarelleEnginePort | null) =&gt; void;
++ }) {
++   const engineRef = useRef&lt;WatercolorEngine | null&gt;(null);
++   const cleanupRef = useRef&lt;(() =&gt; void) | null&gt;(null);
++   const disabledRef = useRef(props.disabled ?? false);
++   const colorRef = useRef(props.color ?? &apos;#103c65&apos;);
++   const widthRef = useRef(props.width);
++   const heightRef = useRef(props.height);
++   const getPlayFrameRef = useRef(props.getPlayFrame);
++   const getPaperIdRef = useRef(props.getPaperId);
++   const getPaperGrainStrengthRef = useRef(props.getPaperGrainStrength);
++   const onStrokeEndRef = useRef(props.onStrokeEnd);
++   const getLiftBlockedRef = useRef(props.getLiftBlocked);
++   const onLiftBlockedRef = useRef(props.onLiftBlocked);
++   const onLiftDabRef = useRef(props.onLiftDab);
++   const onStrokeSettledRef = useRef(props.onStrokeSettled);
++   const onCaptureFrameRef = useRef(props.onCaptureFrame);
++   const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
++   const onSnapshotReadyRef = useRef(props.onSnapshotReady);
++   const onSheetSessionEndRef = useRef(props.onSheetSessionEnd);
++   const onResetSheetReadyRef = useRef(props.onResetSheetReady);
++   const onDeleteStrokesRef = useRef(props.onDeleteStrokes);
++   const onMoveStrokesRef = useRef(props.onMoveStrokes);
++   const onTransformStrokesRef = useRef(props.onTransformStrokes);
++   const onEnginePortReadyRef = useRef(props.onEnginePortReady);
++   disabledRef.current = props.disabled ?? false;
++   colorRef.current = props.color ?? &apos;#103c65&apos;;
++   widthRef.current = props.width;
++   heightRef.current = props.height;
++   getPlayFrameRef.current = props.getPlayFrame;
++   getPaperIdRef.current = props.getPaperId;
++   getPaperGrainStrengthRef.current = props.getPaperGrainStrength;
++   onStrokeEndRef.current = props.onStrokeEnd;
++   getLiftBlockedRef.current = props.getLiftBlocked;
++   onLiftBlockedRef.current = props.onLiftBlocked;
++   onLiftDabRef.current = props.onLiftDab;
++   onStrokeSettledRef.current = props.onStrokeSettled;
++   onCaptureFrameRef.current = props.onCaptureFrame;
++   onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
++   onSnapshotReadyRef.current = props.onSnapshotReady;
++   onSheetSessionEndRef.current = props.onSheetSessionEnd;
++   onResetSheetReadyRef.current = props.onResetSheetReady;
++   onDeleteStrokesRef.current = props.onDeleteStrokes;
++   onMoveStrokesRef.current = props.onMoveStrokes;
++   onTransformStrokesRef.current = props.onTransformStrokes;
++   onEnginePortReadyRef.current = props.onEnginePortReady;
++
++   // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
++   // leak the previous frame&apos;s paint (the user saw the same paint on every
++   // Studio frame). The cache owns the other frames. Detected in the rAF signal
++   // poll below — never a useEffect (efx-preact-reactivity).
++   const lastPlayFrameRef = useRef(props.getPlayFrame());
++
++   // Engine mount/unmount rides a Preact callback ref (efx-preact-reactivity:
++   // no useEffect). A key change on width/height remounts the canvas element,
++   // which re-runs this ref with null then the new node.
++   const attachEngine = useCallback((canvas: HTMLCanvasElement | null) =&gt; {
++     cleanupRef.current?.();
++     cleanupRef.current = null;
++     engineRef.current = null;
++     // ENGINE PORT: no live engine until the constructor below succeeds, so a
++     // consumer must not be able to reach the previous (or a half-built) one.
++     onEnginePortReadyRef.current?.(null);
++     if (!canvas) return;
++
++     // PLAY FIDELITY: the last recorded stroke awaiting its measured settle
++     // window (stamped when the sheet sleeps or the frame changes).
++     let pendingSettle: { stroke: AquarelleStroke; endedAt: number } | null = null;
++     const stampPendingSettle = () =&gt; {
++       const pending = pendingSettle;
++       if (!pending) return;
++       pendingSettle = null;
++       const ticks = Math.round((performance.now() - pending.endedAt) / HOST_TICK_MS);
++       onStrokeSettledRef.current?.(pending.stroke, ticks);
++     };
++
++     // 261019c VISIBLE SETTLE CAP (user decision): the wash force-dries at the
++     // same short window the bake uses, so the live sheet, its cache capture,
++     // and the Play end key keep the denser look instead of cooking to the
++     // engine&apos;s washed-out full awake state.
++     let painting = false;
++     let lastWetAt = 0;
++     let settleCapArmed = false;
++
++     let engine: WatercolorEngine;
++     try {
++       engine = new WatercolorEngine(
++         canvas,
++         null,
++         {
++           onStrokeSample(sample) {
++             painting = true;
++             lastWetAt = performance.now();
++             settleCapArmed = false;
++             const sink = (engine as unknown as { __samples?: RawSample[] }).__samples;
++             if (sink) sink.push(sample);
++           },
++           // 261028-k03b: the exact dab the engine erased with — the cached
++           // base preview punches the same numbers, so what the user sees
++           // during the stroke is what the live pass applied.
++           onLiftDab(x, y, r, amount, angle) {
++             onLiftDabRef.current?.(x, y, r, amount, angle);
++           },
++           onStrokeEnd(tool) {
++             painting = false;
++             lastWetAt = performance.now();
++             settleCapArmed = false;
++             const carrier = engine as unknown as { __samples?: RawSample[] };
++             const raw = carrier.__samples ?? [];
++             carrier.__samples = [];
++             const points = resampleToTickGrid(raw);
++             if (points.length === 0) return;
++             const snap = snapshotAquarelleRecord();
++             // 61-07 (D-14): the record-time mode resolves from the SAME brush
++             // id this literal stores, so the stamp and the brushId can never
++             // disagree about what the live stroke deposited.
++             const recordedBrushId = snap.brushId || brushIdForSelection();
++             const stroke: AquarelleStroke = {
++               // 261028-k03: the ENGINE resolves the live tool for THIS stroke
++               // (stylus eraser end, pen barrel, finger-water) and hands it to
++               // onStrokeEnd. Record that, not the selection, or a re-bake
++               // replays a brush where the user erased. Never carry it across
++               // strokes: the engine emits only on a change.
++               tool: (tool ?? toolForSelection()) as AquarelleTool,
++               color: colorRef.current,
++               // CANONICAL AQUA-04 globals — never the mapped bag.
++               params: { ...snap.params },
++               brushId: recordedBrushId,
++               // 61-07 (D-12): the mode is written ONLY when the brush implies a
++               // non-default one — a plain hand-painted stroke gains no key
++               // (same pre-phase key set and byte cost). The mode is a stroke
++               // property, never a path property (D-14).
++               ...recordedRenderModeField(recordedBrushId),
++               points,
++               toolOverrides: { ...snap.toolOverrides },
++               // Visible settle window (D-19, cap 600) — the SAME cap the live
++               // sheet force-dries at and the bake replays.
++               diffusionFrames: aquarelleVisibleSettleTicks(snap.params[&apos;dry&apos;] ?? 50),
++               timestamp: Date.now(),
++               // FRAME SCOPE: the stroke is anchored to the edit frame this sheet
++               // previews. toStudioStroke maps this to StudioStroke.playFrame.
++               playFrame: getPlayFrameRef.current(),
++             };
++             onStrokeEndRef.current?.(stroke);
++             // PLAY FIDELITY: remember the stroke until the sheet sleeps; the
++             // measured awake window becomes its recorded cuisson (below).
++             pendingSettle = { stroke, endedAt: performance.now() };
++             // CACHE WRITE (settle) owns the commit — a stroke-end capture would
++             // land the WET (washed) sheet. The rAF poll watches engine.isAwake
++             // and captures the concentrated dry look.
++           },
++         },
++         [widthRef.current, heightRef.current],
++       );
++     } catch {
++       // No WebGL2 / float targets — leave the canvas blank rather than crash the Studio.
++       return;
++     }
++     (engine as unknown as { __samples?: RawSample[] }).__samples = [];
++     engineRef.current = engine;
++     // ENGINE PORT (261027-klx): ONE port per engine instance. Roto and the
++     // Studio must both hold this object — the accepted-target WeakMap is keyed
++     // by port identity, so a second port reads every lookup as null.
++     onEnginePortReadyRef.current?.(createAquarelleEnginePort(() =&gt; engineRef.current));
++
++     // 261027-gh9e NATIVE PRESSURE BRIDGE: on macOS a tablet often reaches the
++     // webview as pointerType &apos;mouse&apos; with no pressure. The Rust side reads the
++     // device and emits `tablet:pressure` (the same event the engine-1 brush
++     // consumes); forward it so Water color responds to the pen.
++     let penBridgeDisposed = false;
++     let disposePenBridge: (() =&gt; void) | undefined;
++     void (async () =&gt; {
++       try {
++         const eventApi = await import(&apos;@tauri-apps/api/event&apos;);
++         if (typeof eventApi.listen !== &apos;function&apos;) return;
++         const unlisten = await eventApi.listen&lt;{ pressure: number; tilt_x: number; tilt_y: number }&gt;(
++           &apos;tablet:pressure&apos;,
++           (event) =&gt; {
++             engine.updateNativePenInput({
++               pressure: event.payload.pressure,
++               tiltX: event.payload.tilt_x,
++               tiltY: event.payload.tilt_y,
++             });
++           },
++         );
++         if (penBridgeDisposed) unlisten();
++         else disposePenBridge = unlisten;
++       } catch {
++         // Browser/dev without the native bridge: pointer pressure still works.
++       }
++     })();
++
++     // COMPOSITOR LAYER: exact-fit pointer mapping (no fit margin) + pigment
++     // display on transparent (the document fond is the compositor&apos;s — v1.0).
++     engine.setCompositorLayer(true);
++
++     applyLiveConfig(engine);
++     engine.setPigment(pigmentFromHex(colorRef.current));
++     // F3: deposit grain follows the Studio paper (R2.3) — never the vendor
++     // default. 261027 UAT round 9: the STRENGTH is half of that law; the bake
++     // applies it, so the live sheet must too or a re-bake changes the wash.
++     let lastPaperId = &apos;&apos;;
++     let lastPaperStrength = -1;
++     const applyPaper = () =&gt; {
++       const paperId = getPaperIdRef.current();
++       const strength = getPaperGrainStrengthRef.current?.();
++       const nextStrength =
++         typeof strength === &apos;number&apos; &amp;&amp; Number.isFinite(strength)
++           ? Math.max(0, Math.min(1, strength))
++           : -1;
++       if (paperId === lastPaperId &amp;&amp; nextStrength === lastPaperStrength) return;
++       lastPaperId = paperId;
++       lastPaperStrength = nextStrength;
++       engine.setPaper(paperPresetForStudioId(paperId));
++       if (nextStrength &gt;= 0) engine.paperTexture = nextStrength;
++     };
++     applyPaper();
++
++     // REFIT (261027 UAT round 4, Bug 3): the engine captures dpr + canvasSize
++     // + view at construction (`fitCanvas`) and maps EVERY pointer through
++     // them (`toUv`). The canvas CSS box can change later without remounting
++     // this element — a Studio window/panel resize, or a DPR change when the
++     // window moves across displays — and the stale capture then paints ~200
++     // px away from the pen until Studio reopens. Observe both drifts and call
++     // the engine&apos;s public resize(), which re-captures the live box.
++     let lastBoxWidth = 0;
++     let lastBoxHeight = 0;
++     let lastDpr = 0;
++     const refitIfDrifted = () =&gt; {
++       const rect = canvas.getBoundingClientRect();
++       const dpr = Math.min(window.devicePixelRatio || 1, 2);
++       if (rect.width === lastBoxWidth &amp;&amp; rect.height === lastBoxHeight &amp;&amp; dpr === lastDpr) return;
++       lastBoxWidth = rect.width;
++       lastBoxHeight = rect.height;
++       lastDpr = dpr;
++       engine.resize();
++     };
++     const resizeObserver = new ResizeObserver(refitIfDrifted);
++     resizeObserver.observe(canvas);
++     let dprQuery: MediaQueryList | null = null;
++     const onDprChange = () =&gt; {
++       dprQuery?.removeEventListener(&apos;change&apos;, onDprChange);
++       dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
++       dprQuery.addEventListener(&apos;change&apos;, onDprChange);
++       refitIfDrifted();
++     };
++     onDprChange();
++
++     // CACHE WRITE: the composited sheet (transparent background — A5 export
++     // law). Resolved later by captureLivePixels (52.1 deferred-copy law).
++     const snapshot = () =&gt; {
++       try {
++         return engine.exportCanvas(&apos;transparent&apos;);
++       } catch {
++         return null;
++       }
++     };
++
++     // NAV FLUSH: synchronous pre-leave capture the Studio navigation calls
++     // before flushLivePixels. The rAF poll&apos;s frame-change capture runs one rAF
++     // after scheduleRotoStartFramePropagation — i.e. AFTER the navigation flush
++     // has already drained — so without this the capture is queued too late and
++     // sits in CAPTURE_PRODUCE_QUIET_MS (the empty-frame-on-return race).
++     // A track switch flushes AFTER the document&apos;s active track moved: the
++     // caller passes the OUTGOING track so its sheet commits to its own key.
++     const flushCapture = (captureTrackId?: string) =&gt; {
++       const hasPaint = engine.hasPaint;
++       recordAquarelleRenderSplitEvent(&apos;layer-capture&apos;, {
++         trigger: &apos;flush&apos;,
++         playFrame: lastPlayFrameRef.current,
++         hasPaint,
++         invoked: hasPaint,
++       });
++       if (!hasPaint) return;
++       onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot, captureTrackId);
++     };
++     onFlushCaptureReadyRef.current?.(flushCapture);
++
++     // SAVE PATH (261026-nvq): register the SAME composited-sheet factory the
++     // cache capture resolves. A separate `exportCanvas` read would be a second
++     // readback and could diverge; the engine is configured above, so this is
++     // the first moment the export reflects the live mode + paper.
++     onSnapshotReadyRef.current?.(snapshot);
++
++     // D-15: user-initiated Dry is one event with two ends. The record end
++     // (aquarelleRecordState) already appended it to the payload timeline;
++     // this is the LIVE end — force-dry the wet sheet so the paint stops
++     // moving right where the user pressed Dry. No second channel.
++     const offDry = onAquarelleDry(() =&gt; {
++       settleCapArmed = true;
++       engine.fix();
++     });
++
++     // BLEND REOPEN: the settle cap&apos;s fix bakes the mobile pigment into the paper,
++     // and fixed pigment cannot be moved by a later water stroke — wet-on-wet
++     // blending died after a pause. A new stroke reopens the cap fix (the engine
++     // restores the pre-fix wet state) so the sheet is blendable again. Capture
++     // on window so this runs BEFORE the engine&apos;s own canvas pointerdown.
++     const reopenSettleOnPaint = (event: PointerEvent) =&gt; {
++       if (event.target !== canvas || event.button === 1) return;
++       // 261028-k03 D3/D2: every Lift refusal (Script OFF with a script, group
++       // frame, unknown pre-script base, no displayable paint) must happen at
++       // POINTERDOWN — the only place that keeps the gesture out of the engine.
++       // A stroke-end check would already have erased the live sheet and left a
++       // recorded event behind. A stylus eraser end (`buttons &amp; 32`) is a lift
++       // gesture even when the selected tool is brush; the engine resolves it.
++       const liftGesture = toolForSelection() === &apos;lift&apos;
++         || (event.pointerType === &apos;pen&apos; &amp;&amp; (event.buttons &amp; 32) === 32);
++       const refusal = liftGesture ? getLiftBlockedRef.current?.() ?? null : null;
++       if (refusal !== null) {
++         event.preventDefault();
++         event.stopPropagation();
++         onLiftBlockedRef.current?.(refusal);
++         return;
++       }
++       engine.cancelAutoFix();
++     };
++     window.addEventListener(&apos;pointerdown&apos;, reopenSettleOnPaint, true);
++
++     // CACHE WRITE (Dry settle): fix() bakes the wet pigment over FIX_DURATION.
++     // A second sink keeps the Dry wiring above untouched — this one only
++     // schedules the cache commit of the settled sheet. Stamped with the Dry-time
++     // frame so a navigation during settle never commits the next frame&apos;s sheet.
++     const pendingSettleTimers = new Set&lt;number&gt;();
++     const offDryCapture = onAquarelleDry(() =&gt; {
++       const dryPlayFrame = getPlayFrameRef.current();
++       const timer = window.setTimeout(() =&gt; {
++         pendingSettleTimers.delete(timer);
++         const frameChanged = getPlayFrameRef.current() !== dryPlayFrame;
++         const hasPaint = engine.hasPaint;
++         recordAquarelleRenderSplitEvent(&apos;layer-capture&apos;, {
++           trigger: &apos;dry&apos;,
++           playFrame: dryPlayFrame,
++           hasPaint,
++           frameChanged,
++           invoked: !frameChanged &amp;&amp; hasPaint,
++         });
++         if (frameChanged) return;
++         if (!hasPaint) return;
++         onCaptureFrameRef.current?.(dryPlayFrame, snapshot);
++       }, FIX_SETTLE_MS);
++       pendingSettleTimers.add(timer);
++     });
++
++     // Tool / params / tip / color are Preact signals — poll on rAF while mounted.
++     // FRAME SCOPE rides the same poll: a playFrame change wipes the sheet so the
++     // preview never leaks the previous edit frame&apos;s paint.
++     let raf = 0;
++     let wasAwake = engine.isAwake;
++     // Quick 261019-mj2 Task 3: same-frame reset registration for the Studio&apos;s
++     // generated-cell self-promotion. Same work as the frame-change branch
++     // below EXCEPT the lastPlayFrame update (this is the same frame).
++     const resetSheet = () =&gt; {
++       stampPendingSettle();
++       onSheetSessionEndRef.current?.();
++       engine.clear();
++       painting = false;
++       lastWetAt = 0;
++       settleCapArmed = false;
++       wasAwake = false;
++     };
++     onResetSheetReadyRef.current?.(resetSheet);
++     const tick = () =&gt; {
++       const playFrame = getPlayFrameRef.current();
++       if (lastPlayFrameRef.current !== playFrame) {
++         // CACHE WRITE: leaving a frame lands whatever the sheet holds before
++         // the wipe — never a blank sheet over existing cache.
++         const leavingHasPaint = engine.hasPaint;
++         recordAquarelleRenderSplitEvent(&apos;layer-capture&apos;, {
++           trigger: &apos;frame-leave&apos;,
++           playFrame: lastPlayFrameRef.current,
++           nextPlayFrame: playFrame,
++           hasPaint: leavingHasPaint,
++           invoked: leavingHasPaint,
++         });
++         if (leavingHasPaint) {
++           onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
++         }
++         // PLAY FIDELITY: the sheet is about to be wiped — stamp the measured
++         // settle window for a stroke whose cooking never reached sleep.
++         stampPendingSettle();
++         // aquarelle-cache-lost-on-return: the sheet session ends here. The
++         // next session&apos;s first capture must re-read the CACHE as its multiply
++         // base — the base pinned for the old session predates its commit and
++         // would drop that paint when the new sheet merges over it.
++         onSheetSessionEndRef.current?.();
++         lastPlayFrameRef.current = playFrame;
++         engine.clear();
++         // The new frame starts clean — a settle capture here would write the
++         // empty sheet over that frame&apos;s cache.
++         painting = false;
++         lastWetAt = 0;
++         settleCapArmed = false;
++         wasAwake = false;
++       }
++       // VISIBLE SETTLE CAP: no wet input for the cap window → force-dry. The
++       // fix bakes over 1.2 s and sleeps, so the settle capture lands the
++       // denser wash the bake&apos;s capped end frame holds. The cap fix is marked
++       // AUTO: the next stroke reopens it (see reopenSettleOnPaint) so it can
++       // still blend; an explicit Dry stays permanent.
++       if (!painting &amp;&amp; !settleCapArmed &amp;&amp; lastWetAt &gt; 0 &amp;&amp; engine.isAwake) {
++         const capMs = aquarelleVisibleSettleTicks(aquarelleParams.value.dry) * HOST_TICK_MS;
++         if (performance.now() - lastWetAt &gt;= capMs) {
++           settleCapArmed = true;
++           engine.fix(true);
++         }
++       }
++       // CACHE WRITE (settle): the dry (concentrated) look, not the wet stroke.
++       const awake = engine.isAwake;
++       if (wasAwake &amp;&amp; !awake &amp;&amp; engine.hasPaint) {
++         recordAquarelleRenderSplitEvent(&apos;layer-capture&apos;, {
++           trigger: &apos;settle&apos;,
++           playFrame,
++           hasPaint: true,
++           invoked: true,
++         });
++         onCaptureFrameRef.current?.(playFrame, snapshot);
++       } else if (wasAwake &amp;&amp; !awake) {
++         recordAquarelleRenderSplitEvent(&apos;layer-capture&apos;, {
++           trigger: &apos;settle&apos;,
++           playFrame,
++           hasPaint: false,
++           invoked: false,
++         });
++       }
++       // PLAY FIDELITY: the sheet slept — the stroke&apos;s real diffusion window
++       // is now known; record it as its cuisson for the replay.
++       if (wasAwake &amp;&amp; !awake) stampPendingSettle();
++       wasAwake = awake;
++       if (!disabledRef.current) {
++         applyLiveConfig(engine);
++         engine.setPigment(pigmentFromHex(colorRef.current));
++         applyPaper();
++       }
++       // EMPTY SHEET GATE: hide the opaque white sheet until it holds paint.
++       // Read AFTER the frame-change clear above so a new sheet starts hidden
++       // in the same tick (opacity keeps the canvas interactive).
++       const painted = engine.hasPaint;
++       if (aquarelleLivePaint.value !== painted) aquarelleLivePaint.value = painted;
++       // WATER GATE (261029-lel): publish the standing-water truth from the ONE
++       // place that holds the live engine. The `!painting` guard is the &quot;never
++       // flip mid-stroke&quot; law — a stroke in flight is never sampled, and the
++       // stroke end publishes on the very next frame (the tick always re-schedules).
++       if (!painting) setAquarelleHasWetPaint(engine.hasStandingWater);
++       raf = requestAnimationFrame(tick);
++     };
++     raf = requestAnimationFrame(tick);
++
++     cleanupRef.current = () =&gt; {
++       // Unregister the flush seam: the engine is about to die, and a stale
++       // closure accessing it would fail the save/close flush.
++       onFlushCaptureReadyRef.current?.(null);
++       penBridgeDisposed = true;
++       disposePenBridge?.();
++       // SAVE PATH (261026-nvq): drop the snapshot seam too — a later Save must
++       // never call a closure holding the destroyed engine.
++       onSnapshotReadyRef.current?.(null);
++       window.removeEventListener(&apos;pointerdown&apos;, reopenSettleOnPaint, true);
++       resizeObserver.disconnect();
++       dprQuery?.removeEventListener(&apos;change&apos;, onDprChange);
++       offDry();
++       offDryCapture();
++       for (const timer of pendingSettleTimers) window.clearTimeout(timer);
++       pendingSettleTimers.clear();
++       cancelAnimationFrame(raf);
++       // ENGINE PORT: drop the typed surface BEFORE the engine dies so no
++       // consumer can call into a destroyed instance.
++       onEnginePortReadyRef.current?.(null);
++       engine.destroy();
++       engineRef.current = null;
++       // The next mount starts on a blank sheet — never inherit painted state.
++       aquarelleLivePaint.value = false;
++       clearAquarelleWetPaint();
++     };
++   }, []);
++
++   const style: CSSProperties = {
++     position: &apos;absolute&apos;,
++     inset: &apos;0&apos;,
++     width: &apos;100%&apos;,
++     height: &apos;100%&apos;,
++     pointerEvents: props.disabled ? &apos;none&apos; : &apos;auto&apos;,
++     touchAction: &apos;none&apos;,
++     // EMPTY SHEET GATE: nothing painted yet → let the cached base / lower
++     // tracks show through (an opaque white transmittance sheet would cover
++     // them under source-over). Opacity keeps the canvas as the pointer target.
++     opacity: aquarelleLivePaint.value ? 1 : 0,
++   };
++
++   return (
++     &lt;div
++       class=&quot;aquarelle-live-layer&quot;
++       style={{ position: &apos;absolute&apos;, inset: &apos;0&apos; }}
++       onPointerEnter={(event) =&gt; {
++         // 261028-k03c D6: the footprint is scaled by the DISPLAYED rect height.
++         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
++         if (rect.height &gt; 0 &amp;&amp; cursorLayerHeight !== rect.height) {
++           cursorLayerHeight = rect.height;
++           cursorStateVersion.value += 1;
++         }
++         // 261030-cnq: seed the pointer from the ENTER event too, so the ring /
++         // picker visor appears on the first frame over the sheet instead of
++         // waiting for the first pointermove.
++         cursorX.value = event.clientX - rect.left;
++         cursorY.value = event.clientY - rect.top;
++         if (!cursorVisible.value) cursorVisible.value = true;
++       }}
++       onPointerMove={(event) =&gt; {
++         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
++         // WR-01: compare-then-write — the version bumps ONLY when a footprint
++         // input actually changed (a stationary pen tilt/pressure sample).
++         let footprintInputsChanged = false;
++         if (rect.height &gt; 0 &amp;&amp; cursorLayerHeight !== rect.height) {
++           cursorLayerHeight = rect.height;
++           footprintInputsChanged = true;
++         }
++         const x = event.clientX - rect.left;
++         const y = event.clientY - rect.top;
++         // Follow-rotation needs a direction: track it from consecutive samples
++         // in the DOCUMENT frame (y up), like Engine&apos;s stroke.dx/dy.
++         if (lastPointerX !== null &amp;&amp; lastPointerY !== null) {
++           const dx = x - lastPointerX;
++           const dy = y - lastPointerY;
++           if (Math.hypot(dx, dy) &gt;= 0.5) {
++             const moveAngle = Math.atan2(-dy, dx);
++             if (moveAngle !== lastPointerMoveAngle) {
++               lastPointerMoveAngle = moveAngle;
++               footprintInputsChanged = true;
++             }
++           }
++         }
++         lastPointerX = x;
++         lastPointerY = y;
++         if (event.tiltX !== lastPointerTiltX) {
++           lastPointerTiltX = event.tiltX;
++           footprintInputsChanged = true;
++         }
++         if (event.tiltY !== lastPointerTiltY) {
++           lastPointerTiltY = event.tiltY;
++           footprintInputsChanged = true;
++         }
++         if (event.pointerType !== lastPointerType) {
++           lastPointerType = event.pointerType;
++           footprintInputsChanged = true;
++         }
++         if (event.buttons !== lastPointerButtons) {
++           lastPointerButtons = event.buttons;
++           footprintInputsChanged = true;
++         }
++         if (event.pressure !== lastPointerPressure) {
++           lastPointerPressure = event.pressure;
++           footprintInputsChanged = true;
++         }
++         cursorX.value = x;
++         cursorY.value = y;
++         if (!cursorVisible.value) cursorVisible.value = true;
++         if (footprintInputsChanged) cursorStateVersion.value += 1;
++       }}
++       onPointerLeave={() =&gt; {
++         cursorVisible.value = false;
++         lastPointerX = null;
++         lastPointerY = null;
++       }}
++     &gt;
++       &lt;canvas
++         key={`${props.width}x${props.height}`}
++         ref={attachEngine}
++         class=&quot;aquarelle-live-canvas&quot;
++         width={props.width}
++         height={props.height}
++         style={style}
++         aria-label=&quot;Water color canvas&quot;
++       /&gt;
++       {/* 261022-pim: select surface ABOVE the vendor canvas (it owns the
++           pointer while active, so nothing paints) and BELOW the cursor. */}
++       &lt;AquarelleStrokeOverlay
++         width={props.width}
++         height={props.height}
++         getPlayFrame={() =&gt; getPlayFrameRef.current()}
++         onDeleteStrokes={(mutationIds) =&gt; onDeleteStrokesRef.current?.(mutationIds)}
++         onMoveStrokes={(mutationIds, dxPx, dyPx) =&gt; onMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}
++         onTransformStrokes={(mutationIds, transform) =&gt; onTransformStrokesRef.current?.(mutationIds, transform)}
++       /&gt;
++       {/* 261030-cnq: the brush ring is mounted by the canvas stack — above the
++           reference overlay, which used to cover it inside this group. */}
++     &lt;/div&gt;
++   );
++ }
++
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:405:19
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/vectorPathHandles.test.ts" timestamp="2026-11-10T14:20:55.952Z" hostname="efx2.home" tests="27" failures="20" errors="0" skipped="0" time="0.009347042">
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="vector handle constants are the shipped screen-pixel law &gt; publishes the UI-SPEC values verbatim" time="0.002587458">
+            <failure message="expected +0 to be 9 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 9 // Object.is equality
+
+- Expected
++ Received
+
+- 9
++ 0
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:58:28
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="counter-scaling — a screen-pixel extent shrinks by the zoom factor &gt; converts a screen pad into uv through the displayed width" time="0.000286541">
+            <failure message="expected +0 to be close to 0.004, received difference is 0.004, but expected 5e-13" type="AssertionError">
+AssertionError: expected +0 to be close to 0.004, received difference is 0.004, but expected 5e-13
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:71:55
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="counter-scaling — a screen-pixel extent shrinks by the zoom factor &gt; keeps the anchor marker screen size constant at zoom 1, 2 and 4" time="0.000148167">
+            <failure message="expected +0 to be close to 0.009, received difference is 0.009, but expected 5e-13" type="AssertionError">
+AssertionError: expected +0 to be close to 0.009, received difference is 0.009, but expected 5e-13
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:76:25
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="counter-scaling — a screen-pixel extent shrinks by the zoom factor &gt; maps document uv to layer pixels with the y axis flipped" time="0.000884708">
+            <failure message="expected { x: +0, y: +0 } to deeply equal { x: 200, y: 150 }" type="AssertionError">
+AssertionError: expected { x: +0, y: +0 } to deeply equal { x: 200, y: 150 }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;x&quot;: 200,
+-   &quot;y&quot;: 150,
++   &quot;x&quot;: 0,
++   &quot;y&quot;: 0,
+  }
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:85:56
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="pointToSegmentDistancePx &gt; measures the perpendicular distance inside the segment" time="0.000242792">
+            <failure message="expected +0 to be 3 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 3 // Object.is equality
+
+- Expected
++ Received
+
+- 3
++ 0
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:96:87
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="pointToSegmentDistancePx &gt; falls back to the endpoint beyond the segment" time="0.000134">
+            <failure message="expected +0 to be close to 5, received difference is 5, but expected 5e-13" type="AssertionError">
+AssertionError: expected +0 to be close to 5, received difference is 5, but expected 5e-13
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:102:7
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="hit priority — handle before anchor before nothing &gt; returns the handle when a handle and its anchor overlap inside the pad" time="0.000359458">
+            <failure message="expected null to deeply equal { kind: &apos;handle-in&apos;, index: +0 }" type="AssertionError">
+AssertionError: expected null to deeply equal { kind: &apos;handle-in&apos;, index: +0 }
+
+- Expected: 
+Object {
+  &quot;index&quot;: 0,
+  &quot;kind&quot;: &quot;handle-in&quot;,
+}
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:110:87
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="hit priority — handle before anchor before nothing &gt; returns the anchor when the handles are farther than the pad" time="0.000234">
+            <failure message="expected null to deeply equal { kind: &apos;anchor&apos;, index: +0 }" type="AssertionError">
+AssertionError: expected null to deeply equal { kind: &apos;anchor&apos;, index: +0 }
+
+- Expected: 
+Object {
+  &quot;index&quot;: 0,
+  &quot;kind&quot;: &quot;anchor&quot;,
+}
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:123:84
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="hit priority — handle before anchor before nothing &gt; returns null when the pointer is farther than the pad from every target" time="0.000127917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="hit priority — handle before anchor before nothing &gt; never offers a handle for an auto anchor (its handles are derived, not owned)" time="0.000066292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="hit priority — handle before anchor before nothing &gt; scales the hit pad with the zoom, not with the document" time="0.000185959">
+            <failure message="expected null to deeply equal { kind: &apos;anchor&apos;, index: +0 }" type="AssertionError">
+AssertionError: expected null to deeply equal { kind: &apos;anchor&apos;, index: +0 }
+
+- Expected: 
+Object {
+  &quot;index&quot;: 0,
+  &quot;kind&quot;: &quot;anchor&quot;,
+}
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:146:85
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="adjacency — a duplicate click never appends &gt; refuses a pointer inside ADJACENCY_MIN_PX of the last anchor" time="0.000190917">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:158:76
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="adjacency — a duplicate click never appends &gt; measures the radius in screen pixels at every zoom" time="0.000203292">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:165:77
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="adjacency — a duplicate click never appends &gt; never refuses the first click of an empty draft" time="0.000054417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="insert / delete list operations &gt; inserts at the requested index and preserves order" time="0.000470917">
+            <failure message="expected [ Array(2) ] to deeply equal [ Array(3) ]" type="AssertionError">
+AssertionError: expected [ Array(2) ] to deeply equal [ Array(3) ]
+
+- Expected
++ Received
+
+  Array [
+    Object {
+      &quot;kind&quot;: &quot;auto&quot;,
+      &quot;x&quot;: 0,
+      &quot;y&quot;: 0,
+    },
+    Object {
+      &quot;kind&quot;: &quot;auto&quot;,
+-     &quot;x&quot;: 2,
+-     &quot;y&quot;: 0,
+-   },
+-   Object {
+-     &quot;kind&quot;: &quot;auto&quot;,
+      &quot;x&quot;: 1,
+      &quot;y&quot;: 0,
+    },
+  ]
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:181:42
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="insert / delete list operations &gt; clamps an out-of-range insert index to the end" time="0.000289">
+            <failure message="expected [ Array(2) ] to deeply equal [ Array(3) ]" type="AssertionError">
+AssertionError: expected [ Array(2) ] to deeply equal [ Array(3) ]
+
+- Expected
++ Received
+
+  Array [
+    Object {
+      &quot;kind&quot;: &quot;auto&quot;,
+      &quot;x&quot;: 0,
+      &quot;y&quot;: 0,
+    },
+    Object {
+      &quot;kind&quot;: &quot;auto&quot;,
+      &quot;x&quot;: 1,
+      &quot;y&quot;: 0,
+    },
+-   Object {
+-     &quot;kind&quot;: &quot;auto&quot;,
+-     &quot;x&quot;: 2,
+-     &quot;y&quot;: 0,
+-   },
+  ]
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:187:43
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="insert / delete list operations &gt; deletes the listed indices only" time="0.000278625">
+            <failure message="expected [ Array(3) ] to deeply equal [ { x: 1, y: +0, kind: &apos;auto&apos; } ]" type="AssertionError">
+AssertionError: expected [ Array(3) ] to deeply equal [ { x: 1, y: +0, kind: &apos;auto&apos; } ]
+
+- Expected
++ Received
+
+  Array [
+    Object {
+      &quot;kind&quot;: &quot;auto&quot;,
++     &quot;x&quot;: 0,
++     &quot;y&quot;: 0,
++   },
++   Object {
++     &quot;kind&quot;: &quot;auto&quot;,
+      &quot;x&quot;: 1,
++     &quot;y&quot;: 0,
++   },
++   Object {
++     &quot;kind&quot;: &quot;auto&quot;,
++     &quot;x&quot;: 2,
+      &quot;y&quot;: 0,
+    },
+  ]
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:191:48
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="insert / delete list operations &gt; never mutates its input" time="0.000057083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="projectVectorPath &gt; draws nothing for a path with no anchors" time="0.000075542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="projectVectorPath &gt; draws exactly one anchor marker per anchor" time="0.000770833">
+            <failure message="expected [] to have a length of 3 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 3 but got +0
+
+- Expected
++ Received
+
+- 3
++ 0
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:215:32
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="projectVectorPath &gt; draws no envelope for a uniform width profile" time="0.00005875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="projectVectorPath &gt; sweeps an envelope when an anchor stores an explicit width factor" time="0.000134625">
+            <failure message="expected 0 to be greater than 4" type="AssertionError">
+AssertionError: expected 0 to be greater than 4
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:233:40
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="buildDraftPath &gt; returns an empty path for an empty draft" time="0.000053166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="buildDraftPath &gt; returns the single point of a one-anchor draft" time="0.000308458">
+            <failure message="expected [] to deeply equal [ { x: 0.4, y: 0.4 } ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ { x: 0.4, y: 0.4 } ]
+
+- Expected
++ Received
+
+- Array [
+-   Object {
+-     &quot;x&quot;: 0.4,
+-     &quot;y&quot;: 0.4,
+-   },
+- ]
++ Array []
+
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:249:27
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="buildDraftPath &gt; samples a two-anchor draft from its first to its last anchor" time="0.000139084">
+            <failure message="expected 0 to be greater than 2" type="AssertionError">
+AssertionError: expected 0 to be greater than 2
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:255:31
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="buildVectorStroke — every required field has a stated source &gt; projects a commit plus its record-time source into a complete stroke" time="0.000195958">
+            <failure message="Cannot read properties of null (reading &apos;anchors&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;anchors&apos;)
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:284:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathHandles.test.ts" name="buildVectorStroke — every required field has a stated source &gt; never shares the params / overrides bags with the source" time="0.000116334">
+            <failure message="Cannot read properties of null (reading &apos;params&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;params&apos;)
+ ❯ src/components/physic-paint/view/vectorPathHandles.test.ts:316:19
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

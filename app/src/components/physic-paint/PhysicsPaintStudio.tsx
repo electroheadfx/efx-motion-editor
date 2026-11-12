@@ -110,6 +110,8 @@ import { useAquarelleColorPicker } from './hooks/useAquarelleColorPicker';
 import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
+import * as vectorPathSession from './view/vectorPathSession';
+import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
@@ -276,13 +278,16 @@ import {
   aquarelleSelectMode,
   aquarelleStrokesOnFrame,
   beginAquarelleAppearanceEdit,
+  beginAquarelleCurveModeEdit,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
   beginAquarellePaintSeedRerollEdit,
+  beginAquarellePathEdit,
   beginAquarellePlaceEdit,
   beginAquarelleReorderEdit,
   beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
+  aquarelleScriptEditInFlightRevision,
   cycleAquarelleStrokeTypeFilter,
   isAquarelleDeleteInFlight,
   isAquarelleScriptEditInFlight,
@@ -295,27 +300,44 @@ import {
   restoreAquarelleSnapshotRaw,
   setAquarelleDeleteInFlight,
   setAquarelleScriptEditInFlight,
+  setAquarelleSelectionEditPort,
   setAquarelleSelectMode,
   setAquarelleStrokeSelection,
   toggleAquarelleSelectMode,
 } from './view/aquarelleStrokeSelection';
 import {
+  DRAFT_SETTLE_BUSY_MESSAGE,
   deleteSelectedScriptStroke,
   draftMode,
   draftPixelsDirty,
+  runWireframeOffTransition,
   scriptSelectedStrokeIds,
   setDraftMode,
   setDraftPixelsDirty,
   setScriptStrokeEditionPorts,
+  setWireframeMode,
   type ScriptStrokeTransform,
+  wireframeMode,
+  wireframeSettleInFlight,
+  WIREFRAME_SETTLE_REFUSED_MESSAGE,
 } from './view/scriptStrokeEdition';
-import type {
-  ScriptStrokeAppearancePatch,
-  StrokeSettingsDialogBundle,
+import {
+  VECTOR_PATH_SCRIPT_OFF_MESSAGE,
+  isVectorAquarelleStroke,
+  resolveVectorCommitRoute,
+  runAquarelleScriptRebake,
+} from './view/aquarelleVectorPathCommit';
+import {
+  ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE,
+  resolveAnchorWidthTarget,
+  type ScriptStrokeAppearancePatch,
+  type StrokeSettingsDialogBundle,
 } from './view/strokeSettingsModel';
 import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
-import { isAquarelleDryEvent, toStudioStroke, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import { anchorsEqual } from '@efxlab/efx-watercolor/payload';
+import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import {
   beginAquarelleLiftPreview,
@@ -351,6 +373,9 @@ const AQUARELLE_LIFT_FAILURE_MESSAGE = 'The erase did not commit — the picture
 // Without it every Draft commit would diverge from pixels whose base was never
 // decided, and the settle's apply would fail closed (`durable-base-unknown`).
 const DRAFT_ARM_REFUSAL_MESSAGE = 'Could not prepare this frame for Draft — the watercolor base could not be recovered.';
+// 61-10 (VEC-02, T-61-34): the fixed path-edit refusal line (UI-SPEC E10).
+// Copy is never interpolated with user text, and the stroke is left unchanged.
+const VECTOR_PATH_REJECTION_MESSAGE = "Vector path rejected — this stroke's path could not be read. The stroke was left unchanged.";
 /**
  * 261028-k03 D2 preflight. `normal` = the live-sheet path owns this stroke (no
  * committed paint to punch, or Script is off with no script to protect);
@@ -787,6 +812,12 @@ export function PhysicsPaintStudio() {
   // pointing at the latest one. The brush path calls its adapter directly.
   const aquarelleAppearanceCommitRef = useRef<
     ((ids: readonly number[], patch: ScriptStrokeAppearancePatch) => Promise<boolean>) | null
+  >(null);
+  // 261111-wd6: the Color tab's per-vertex branch writes through the ONE
+  // path-edit commit, which is declared later in the body (TDZ) — the same
+  // render-body ref convention as `aquarelleAppearanceCommitRef`.
+  const aquarellePathEditCommitRef = useRef<
+    ((mutationId: number, anchors: readonly AquarelleAnchor[]) => Promise<number | null>) | null
   >(null);
   // 261031-cf9: the Rebake handler is declared above the history hook it must
   // record through (TDZ), so the ledger recorder travels by ref (the same
@@ -2591,6 +2622,14 @@ export function PhysicsPaintStudio() {
   // Every read is `.peek()` — the Studio render body never subscribes a
   // selection signal.
   const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'pen' | 'lift') => {
+    // 61-13 (D-16): the paint row is disarmed while wireframe is on — the rail
+    // renders it deselected + disabled with the reason, and this gate refuses
+    // a programmatic press (a keyboard shortcut or a stale rail render).
+    if (wireframeMode.peek()) return;
+    // 61-08 (D-06): a paint-tool press (rail or B/W/E/P) clears the vector pen
+    // and ends path edit — the input surfaces are mutually exclusive.
+    vectorPathSession.exitVectorPen();
+    vectorPathSession.exitPathEdit();
     setAquarelleSelectMode(false);
     setAquarelleTool(tool);
   }, []);
@@ -2660,6 +2699,9 @@ export function PhysicsPaintStudio() {
   // 261030-cnq: the `I` shortcut and the rail Picker button drive the SAME
   // latch; both leave Move/Edit first (Select owns Alt).
   const handleToggleAquarellePicker = useCallback(() => {
+    // 61-13 (D-16): picking a sheet mid-wireframe would sample the suspended
+    // bake — the picker is disarmed until wireframe turns off.
+    if (wireframeMode.peek()) return;
     setAquarelleSelectMode(false);
     // 261107 UAT: sampling the canvas leaves animate mode — the rail-motion
     // boundary would otherwise swallow the pick.
@@ -2684,9 +2726,19 @@ export function PhysicsPaintStudio() {
   // Shift+A: enter Move/Edit when needed, then select every stroke the live
   // filter lists — or clear the selection when that whole list already is.
   const handleToggleSelectAllAquarelleStrokes = useCallback(() => {
+    // 61-17 (G-6 / D-16): the wireframe view is a no-capture view — the Select
+    // entry choke point refuses entry outright while it is on. 61-26 (WR-01):
+    // the shortcut refuses here too, before ANY write. A selection written
+    // behind a refused entry would have no outline, no hit-test and no rail
+    // surface, and would surface the next time Select is entered.
+    if (wireframeMode.peek()) return;
     if (!aquarelleSelectMode.peek()) {
       if (!watercolorMoveAvailable.peek()) return;
       setAquarelleSelectMode(true);
+      // The entry choke point stays authoritative: it can still refuse (the
+      // same wireframe gate, a scriptless key). The write below must never
+      // depend on the attempt having succeeded.
+      if (!aquarelleSelectMode.peek()) return;
     }
     const playFrame = launchContextRef.current?.startFrame ?? 0;
     const ids = listAquarelleStrokeSelectionIds(playFrame);
@@ -3801,6 +3853,41 @@ export function PhysicsPaintStudio() {
     physicPaintVersion.value++;
   }, []);
 
+  // 61-24 (G-15): the ONE script-copy seam. Duplicate records the source key's
+  // recorded timeline onto the promoted blank key; +Key records the previous
+  // real key's timeline onto the key it just created. Both are RECORD-ONLY —
+  // the bytes already equal base∘script (`ensureAquarelleDurableBase` inverts
+  // them on the next durable edit), so the timeline is recorded, never applied,
+  // and a second implementation must never exist.
+  const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {
+    const launch = launchContextRef.current;
+    if (!launch) return false;
+    // Fresh ids through the SAME allocation the live stroke-end path
+    // uses (allocateStrokeMutation + recordAquarelleStroke): the
+    // duplicate is what Move / Delete / stack-step edit, never the
+    // source. The ledger emits each completion synchronously.
+    const recorded = copyAquarelleScriptToFrame({
+      events: getAquarelleEventsForFrame(sourceFrame),
+      destinationFrame,
+      allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({
+        primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),
+      }),
+      // 261027: the copy belongs to the DESTINATION key, never to
+      // the frame number it happens to occupy.
+      record: (mutationId, stroke) => {
+        recordAquarelleStroke(
+          mutationId,
+          stroke,
+          resolveStudioScriptKeyIdForFrame(
+            studioScriptSnapshotIdentityRef.current,
+            destinationFrame,
+          ),
+        );
+      },
+    });
+    return recorded > 0;
+  };
+
   const rotoNavigation = useRotoNavigationCoordinator<RenderedFramePayload>({
     workflowMode,
     beforeNavigation: rotoScript.prepareNavigation,
@@ -3842,6 +3929,10 @@ export function PhysicsPaintStudio() {
       setApplyMessage,
       setApplyStatus,
       setLastError,
+      // 61-24 (G-15): +Key records the previous real key's script (vector path
+      // included) onto the key it just created — the same record-only seam
+      // Duplicate uses, so a cloned key is re-editable instead of paint-only.
+      copyScriptToNewKey: ({ sourceAppFrame, destinationAppFrame }) => recordAquarelleScriptCopyForFrames(sourceAppFrame, destinationAppFrame),
       // Quick 261023-bxm: Duplicate settles the SOURCE key's displayed paint
       // before cloning when the record carries no inline bytes. The display
       // authority is the same cached-first lookup the canvas renders from
@@ -3921,34 +4012,7 @@ export function PhysicsPaintStudio() {
               targetFrame: frame,
             }),
             applyAquarelleEvents: (events) => rotoScript.applyAquarelleTimeline(events),
-            recordAquarelleScriptCopy: async (sourceFrame, destinationFrame) => {
-              const launch = launchContextRef.current;
-              if (!launch) return false;
-              // Fresh ids through the SAME allocation the live stroke-end path
-              // uses (allocateStrokeMutation + recordAquarelleStroke): the
-              // duplicate is what Move / Delete / stack-step edit, never the
-              // source. The ledger emits each completion synchronously.
-              const recorded = copyAquarelleScriptToFrame({
-                events: getAquarelleEventsForFrame(sourceFrame),
-                destinationFrame,
-                allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({
-                  primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),
-                }),
-                // 261027: the copy belongs to the DESTINATION key, never to
-                // the frame number it happens to occupy.
-                record: (mutationId, stroke) => {
-                  recordAquarelleStroke(
-                    mutationId,
-                    stroke,
-                    resolveStudioScriptKeyIdForFrame(
-                      studioScriptSnapshotIdentityRef.current,
-                      destinationFrame,
-                    ),
-                  );
-                },
-              });
-              return recorded > 0;
-            },
+            recordAquarelleScriptCopy: recordAquarelleScriptCopyForFrames,
           },
         );
         if (outcome.outcome === 'aborted') {
@@ -5354,17 +5418,37 @@ export function PhysicsPaintStudio() {
   }, [setApplyMessage, setApplyStatus, setLastError]);
   const draftSettlePromiseRef = useRef<Promise<boolean> | null>(null);
   const settleDraftScript = useCallback((): Promise<boolean> => {
+    // 61-18 (D-16, T-61-62): while the wireframe view is on, the sheet must
+    // never be reset or re-baked behind it. Refuse FIRST — ahead of the clean
+    // no-op — so no exit can answer "clean" or capture the construction view.
+    // A bounded terminal state: one fixed reason, resolve false, never reject.
+    if (wireframeMode.peek()) {
+      setApplyMessage(WIREFRAME_SETTLE_REFUSED_MESSAGE);
+      setApplyStatus('error');
+      return Promise.resolve(false);
+    }
     // D-04: with Draft OFF and clean pixels every exit is a pure no-op — no
     // await, no microtask, so the Live laws keep their exact tick.
     if (!draftMode.peek() && !draftPixelsDirty.peek()) return Promise.resolve(true);
     // Single-flight: two exits racing each other join ONE recompute.
     if (draftSettlePromiseRef.current) return draftSettlePromiseRef.current;
+    // 61-27 (IN-02): a settle the gates refuse is still a REFUSAL — it
+    // publishes one bounded line through the shared capsule before resolving
+    // false, so every caller's fail-closed abort (the track switch included)
+    // is visible. This refusal owns no sheet state, so it never claims
+    // `scriptApplyRefusalOwnedRef` — that flag would swallow another surface's
+    // message.
     if (
       isPhysicalMutationLocked()
       || rotoScript.applying.peek()
       || rotoScript.mutationLocked.peek()
       || isAquarelleScriptEditInFlight()
-    ) return Promise.resolve(false);
+    ) {
+      setApplyMessage(DRAFT_SETTLE_BUSY_MESSAGE);
+      setApplyStatus('error');
+      setLastError(DRAFT_SETTLE_BUSY_MESSAGE);
+      return Promise.resolve(false);
+    }
     const run = (async () => {
       const playFrame = launchContextRef.current?.startFrame ?? 0;
       setAquarelleScriptEditInFlight(true);
@@ -5407,6 +5491,20 @@ export function PhysicsPaintStudio() {
     draftSettlePromiseRef.current = run;
     return run;
   }, [applyFrameModuleState, isPhysicalMutationLocked, rotoPersistence, rotoScript, setApplyMessage, setApplyStatus, setLastError]);
+  // 61-13 (D-16): the wireframe latch. ON rides the Draft mode (setWireframeMode
+  // forces it) and leaves the painting surfaces: the Studio gates the paint
+  // row, the picker and Dry on `wireframeMode.peek()`. OFF clears the latch
+  // FIRST — the overlay stops drawing before the bake — and hands the re-bake
+  // to the ONE Draft settle, single-flight, so two clicks join one recompute.
+  const handleToggleWireframe = useCallback(() => {
+    if (wireframeSettleInFlight.peek() || wireframeMode.peek()) {
+      void runWireframeOffTransition(() => settleDraftScript());
+      return;
+    }
+    setWireframeMode(true);
+    disarmAquarellePicker();
+    setAquarelleSelectMode(false);
+  }, [settleDraftScript]);
   /**
    * 261101-o2m (CR-01): the ONE guarded active-track switch.
    *
@@ -5440,7 +5538,8 @@ export function PhysicsPaintStudio() {
     void settleDraftScript()
       .then((settled) => {
         // Fail closed: a refused recompute keeps the session on the outgoing
-        // track; the settle has already surfaced its refusal message.
+        // track. Every false exit from the settle has published its reason
+        // (61-27 IN-02), so this aborted switch is never silent.
         if (!settled) return;
         commitSwitch();
       })
@@ -6692,11 +6791,14 @@ export function PhysicsPaintStudio() {
       },
       selectAquarelleTool: handleSelectAquarelleTool,
       toggleAquarellePicker: handleToggleAquarellePicker,
+      // 61-08 (D-05): bare V toggles the vector pen — the same module action
+      // the rail button calls, so the two surfaces can never disagree.
+      toggleVectorPen: vectorPathSession.toggleVectorPen,
       toggleAquarelleSelect: handleToggleAquarelleSelect,
       toggleSelectAllAquarelleStrokes: handleToggleSelectAllAquarelleStrokes,
       cycleAquarelleSelectFilter: handleCycleAquarelleSelectFilter,
       dryAquarelleSheet: () => {
-        if (staticControlsLocked) return;
+        if (staticControlsLocked || wireframeMode.peek()) return;
         emitAquarelleDry(aquarelleRecordClock());
       },
       clearAquarelleFrame: () => {
@@ -7135,7 +7237,7 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([historyAvailability, staticControlsLocked, undo, redo, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, rebakeScriptAvailable, handleRebakeScript, handleToggleMotionBoundaries], () => ({
+  const toolRail = toolRailPropsMemo.resolve([historyAvailability, staticControlsLocked, undo, redo, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, rebakeScriptAvailable, handleRebakeScript, handleToggleMotionBoundaries, handleToggleWireframe], () => ({
     historyAvailability,
     selectAvailable: watercolorMoveAvailable,
     rebakeAvailable: rebakeScriptAvailable,
@@ -7146,6 +7248,7 @@ export function PhysicsPaintStudio() {
     onRebakeScript: () => { void handleRebakeScript(); },
     onActiveColorChanged: handleActiveColorChanged,
     onToggleMotionBoundaries: handleToggleMotionBoundaries,
+    onToggleWireframe: handleToggleWireframe,
   }));
   // 38-11: the right panel props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
@@ -7362,6 +7465,43 @@ export function PhysicsPaintStudio() {
     const ids = [...scriptSelectedStrokeIds.peek()];
     if (ids.length === 0) return;
     if (!aquarelleSelectMode.peek()) return;
+    // 261111-wd6: with anchors selected on the OPEN path edit, the Color tab
+    // writes the explicit per-vertex colour through the ONE path-edit commit
+    // — one undo entry and one re-bake, never one per anchor. No anchor
+    // selection (or no open edit, or a refused colour) keeps the shipped
+    // stroke-level commit below unchanged.
+    const anchorSelection = vectorPathSession.vectorAnchorSelection.peek();
+    if (anchorSelection.length > 0) {
+      const target = resolveAnchorWidthTarget({
+        ids,
+        pathEditMutationId: vectorPathSession.pathEditMutationId.peek(),
+      });
+      const commit = aquarellePathEditCommitRef.current;
+      if (target !== null && commit !== null) {
+        const stroke = getRecordedAquarelleStroke(target);
+        const anchors = stroke ? normaliseAquarelleAnchors(stroke.anchors) : undefined;
+        if (anchors !== undefined) {
+          const next = buildAnchorColorCommit(anchors, anchorSelection, color);
+          if (next !== null) {
+            // 261112-hfk (CR-01): an unchanged gesture yields the same null
+            // edit id as a refusal (in flight/unchanged, per the commit's own
+            // docstring), so a no-op must return before the commit and publish
+            // nothing; a genuine refusal still publishes through the untouched
+            // block below.
+            if (anchorColorCommitIsNoOp(anchors, next)) return;
+            // 261111-wd6 (WR-01): a refused commit must publish, never look
+            // like a success — the Vertex size commit already does (61-27).
+            void commit(target, next).then((editId) => {
+              if (editId !== null) return;
+              setApplyMessage(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE);
+              setApplyStatus('error');
+              setLastError(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE);
+            });
+            return;
+          }
+        }
+      }
+    }
     void aquarelleAppearanceCommitRef.current?.(ids, { color });
   }, []);
   const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, selectedKeyRailInspector, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleOpenRotoKeyRailCycleEdit, handleCloseRotoKeyRail, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
@@ -8580,6 +8720,80 @@ export function PhysicsPaintStudio() {
       finish();
     }
   }, []);
+  // 61-15 (G-1/G-2): a vector stroke paints no engine dabs — its only pixels
+  // are this re-bake. ONE in-flight latch; Draft/wireframe defer the engine
+  // re-render exactly like a stroke Move. A failure owns the capsule and the
+  // refusal flag, so no other surface clears a message this seam published.
+  const bakeAquarelleVectorCommit = useCallback(async (): Promise<boolean> => {
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    if (resolveVectorCommitRoute({ draft: draftMode.peek(), wireframe: wireframeMode.peek() }) === 'defer-pixels') {
+      // The committed script IS the edit; the sheet keeps its last rendered
+      // pixels until the ONE Draft/wireframe settle.
+      setDraftPixelsDirty(true);
+      return true;
+    }
+    return runAquarelleScriptRebake({
+      isInFlight: isAquarelleScriptEditInFlight,
+      beginInFlight: () => setAquarelleScriptEditInFlight(true),
+      endInFlight: () => setAquarelleScriptEditInFlight(false),
+      resetSheet: () => aquarelleResetSheetRef.current?.(),
+      applyTimeline: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)),
+      onSuccess: () => {
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+      },
+      onFailure: () => {
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error)
+          ?? error?.message
+          // A draw restored nothing: the record landed, only the sheet did
+          // not refresh, so the move's "stroke was restored" copy would lie.
+          ?? 'Could not re-apply the watercolor script — the vector path was recorded but the sheet did not refresh.';
+        setLastError(message);
+        setApplyMessage(message);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
+      },
+    });
+  }, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);
+  // 61 UAT ("the second vector is empty"): a vector commit's ONLY pixels are
+  // that re-bake, and `runAquarelleScriptRebake` refuses while another script
+  // edit owns the sheet. Dropping the refusal leaves the stroke in the script
+  // and nowhere on the sheet — and with Draft off nothing else ever re-applies
+  // it. A refused commit is therefore QUEUED, never lost: the drain effect
+  // re-runs the exact bake the moment the sheet is free.
+  const vectorCommitBakePendingRef = useRef(false);
+  const vectorCommitBakeBlocked = useCallback(
+    () => isAquarelleScriptEditInFlight()
+      || rotoScript.applying.peek()
+      || rotoScript.mutationLocked.peek(),
+    [rotoScript],
+  );
+  const drainVectorCommitBake = useCallback(() => {
+    if (!vectorCommitBakePendingRef.current) return;
+    if (vectorCommitBakeBlocked()) return;
+    vectorCommitBakePendingRef.current = false;
+    void bakeAquarelleVectorCommit().then((baked) => {
+      // A false here is a GENUINE apply failure (the refusal case was filtered
+      // by the blocked check above), so it must not re-arm: retrying a failing
+      // apply on every latch edge would loop. The capsule was already
+      // published; the stale-sheet invariant covers the later settle.
+      if (!baked) setDraftPixelsDirty(true);
+    });
+  }, [bakeAquarelleVectorCommit, vectorCommitBakeBlocked]);
+  useEffect(() => {
+    // ONE reactive edge per latch transition: the revision covers the shared
+    // in-flight boolean, the two signals cover the script controller. No
+    // polling and no timer — a drain that finds the sheet still busy simply
+    // waits for the next edge.
+    const dispose = effect(() => {
+      void aquarelleScriptEditInFlightRevision.value;
+      void rotoScript.applying.value;
+      void rotoScript.mutationLocked.value;
+      drainVectorCommitBake();
+    });
+    return dispose;
+  }, [drainVectorCommitBake, rotoScript]);
   const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
     // 3.6 (261027-klx): the app-owned ledger allocates the id and emits the
     // completion SYNCHRONOUSLY — no engine, no rasterization and no pending
@@ -8622,6 +8836,17 @@ export function PhysicsPaintStudio() {
       setApplyMessage(liftPlan.message);
       setApplyStatus('error');
       setLastError(liftPlan.message);
+      return;
+    }
+    // 61-15 (G-1/G-2): a vector stroke paints no engine dabs — with Script
+    // Off the path would become neither pixels nor script, so it would
+    // silently vanish (the recorder's silent drop). Refuse it with fixed
+    // copy BEFORE the ledger allocates. No sheet reset: the commit painted
+    // nothing, and a reset here would erase the live frame.
+    if (isVectorAquarelleStroke(stroke) && !aquarelleScriptRecordingEnabled.peek()) {
+      setApplyMessage(VECTOR_PATH_SCRIPT_OFF_MESSAGE);
+      setApplyStatus('error');
+      setLastError(VECTOR_PATH_SCRIPT_OFF_MESSAGE);
       return;
     }
     const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();
@@ -8695,10 +8920,32 @@ export function PhysicsPaintStudio() {
       // 261028-k03 D2: the record above is synchronous and ordered; the punch
       // is async and owns only the pixel side. It never re-records.
       if (liftPlan?.kind === 'erase') void runAquarelleLiftErase(liftPlan, stroke, liftGestureDabs);
+      // 61-15 (G-1/G-2): the vector commit's pixels exist only in this
+      // re-bake (the commit painted no engine dabs). Tailed after the record
+      // so the timeline already contains this exact stroke; a failed record
+      // throws into the catch and never bakes.
+      // 61-26 (WR-03): the bake's boolean is the only proof those pixels
+      // exist. A false here means an in-flight re-bake refused without a
+      // terminal callback — the stroke is in the script and nowhere on the
+      // sheet. Arm the stale-sheet invariant; the ONE Draft/wireframe settle
+      // is the only route that re-applies the whole frame. Never publish: the
+      // gesture DID commit, and the apply-refusal ownership is not ours.
+      if (isVectorAquarelleStroke(stroke)) {
+        if (vectorCommitBakeBlocked()) {
+          // The sheet is owned by another script edit: QUEUE the pixels. The
+          // drain effect re-runs the exact bake on the next latch edge.
+          vectorCommitBakePendingRef.current = true;
+          setDraftPixelsDirty(true);
+        } else {
+          void bakeAquarelleVectorCommit().then((baked) => {
+            if (!baked) setDraftPixelsDirty(true);
+          });
+        }
+      }
     } catch {
       // A malformed recorded stroke must not kill the live surface — drop it.
     }
-  }, [applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);
+  }, [bakeAquarelleVectorCommit, vectorCommitBakeBlocked, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);
   const handleAquarelleStrokeSettled = useCallback((stroke: AquarelleStroke, ticks: number) => {
     const mutationId = aquarelleStrokeMutationIdsRef.current.get(stroke);
     if (mutationId !== undefined) setAquarelleStrokeDiffusionFrames(mutationId, ticks);
@@ -9013,6 +9260,86 @@ export function PhysicsPaintStudio() {
   // 261024-p5q UAT: the early sidebar color-commit handler resolves this ref
   // at event time; assignment is a plain render-body ref write (port precedent).
   aquarelleAppearanceCommitRef.current = handleAquarelleAppearanceStrokes;
+  // quick 261111-t74: the ONE selection appearance edit port. A plain
+  // render-body write of a module variable (the ref above and
+  // setScriptStrokeEditionPorts precedent — no signal, no subscription). It
+  // forwards to the SAME appearance handler, so a selection brush change
+  // inherits ONE undo entry, the shared re-bake and the shipped paint-seed
+  // re-roll instead of opening a second edit path.
+  setAquarelleSelectionEditPort({
+    applyAppearance: (ids, patch) => handleAquarelleAppearanceStrokes(ids, patch),
+  });
+
+  // 61-31 (G-20): the Paint tab's `Curve` row. Same shape as the render-mode
+  // handler — one batch + its re-bake = ONE `aquarelle-script` ledger entry —
+  // but the commit seam is the curve-mode wrapper, which replaces the
+  // evaluation mode and re-samples the points in the SAME write; the authored
+  // anchors and their handles are never rewritten. Guards are peek-only: the
+  // handler must not subscribe the Studio body.
+  const handleAquarelleCurveModeStrokes = useCallback(async (
+    ids: readonly number[],
+    mode: AquarelleCurveMode,
+  ): Promise<boolean> => {
+    if (isPhysicalMutationLocked()) return false;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;
+    if (isAquarelleScriptEditInFlight()) return false;
+    // Stale ids never leak across frames: keep only live strokes of the
+    // current edit frame before the batch edit.
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
+    if (frameIds.length === 0) return false;
+    // 261028-k03d: recover a legacy key's missing durable base before the edit.
+    await ensureAquarelleDurableBaseRef.current(playFrame);
+    // 261101-o2m (WR-03): read the Draft state AFTER the await.
+    const draft = draftMode.peek();
+    // One curve-mode batch = one edit with before/after script snapshots.
+    const editId = beginAquarelleCurveModeEdit(frameIds, mode);
+    if (editId === null) return false;
+    if (draft) {
+      rotoMoveHistory.recordAquarelleScriptEdit(editId);
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return true;
+    }
+    setAquarelleScriptEditInFlight(true);
+    try {
+      // The recorded timeline IS the script (same replay source as delete).
+      aquarelleResetSheetRef.current?.();
+      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+      if (ok) {
+        rotoMoveHistory.recordAquarelleScriptEdit(editId);
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+        return true;
+      }
+      // Failed re-bake: put the pre-edit curve mode back exactly.
+      restoreAquarelleEditSnapshot(editId, 'undo');
+      const error = rotoScript.error.peek();
+      const message = buildRotoScriptApplyRefusalMessage(error)
+        ?? error?.message
+        ?? 'Could not re-apply the watercolor script — the curve mode was restored.';
+      setLastError(message);
+      setApplyMessage(message);
+      setApplyStatus('error');
+      scriptApplyRefusalOwnedRef.current = true;
+      return false;
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    rotoTimelineModel,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+  ]);
 
   // 261024-mz5 Task 3: corner-scale / top-rotate of the whole watercolor
   // selection. The overlay wrote only the live preview during the gesture; this
@@ -9924,6 +10251,125 @@ export function PhysicsPaintStudio() {
     setApplyStatus('error');
     setLastError(message);
   }, []);
+  // 61-15 (G-1/G-2): the ONE writer AND the ONE bake for a user path edit.
+  // Guard order and the post-await Draft read mirror `handleAquarelleMoveStrokes`
+  // (261101-o2m WR-03): the base recovery can settle Draft OFF, so a stale
+  // `true` would skip the re-render over fresh pixels. Guards are `.peek()`/
+  // ref reads only — the handler must not subscribe the Studio body. The edit
+  // is recorded before the bake, and a failed bake restores the pre-edit
+  // snapshot so nothing half-written survives.
+  const commitAquarelleVectorPathEdit = useCallback(async (mutationId: number, anchors: readonly AquarelleAnchor[]): Promise<number | null> => {
+    if (isPhysicalMutationLocked()) return null;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return null;
+    if (isAquarelleScriptEditInFlight()) return null;
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    await ensureAquarelleDurableBaseRef.current(playFrame);
+    // WR-03: read Draft only AFTER the await; `.peek()` never subscribes.
+    const draft = draftMode.peek();
+    const wireframe = wireframeMode.peek();
+    const editId = beginAquarellePathEdit(mutationId, anchors);
+    if (editId === null) return null;
+    // Defer route: the script commit above IS the edit — the engine re-render
+    // is deferred to the ONE Draft/wireframe settle. No in-flight flag (the
+    // edit is synchronous), no reset, no apply. 61-20 (G-8/VEC-07): record
+    // BEFORE the dirty flag — the deferred re-render changes only when pixels
+    // appear, never whether the gesture is undoable. This is the seam's SECOND
+    // and last record site (the other is the re-bake onSuccess tail).
+    if (draft || wireframe) {
+      rotoMoveHistory.recordAquarelleScriptEdit(editId);
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return editId;
+    }
+    // 261112-i6d: the canvas veil is this gesture's ONE indicator — it carries
+    // the stroke counter the apply pill would show, and the pill stands down
+    // while it is up. The `applying` status stays because it is the busy gate
+    // every key action reads; it publishes no copy of its own.
+    setApplyStatus('applying');
+    const ok = await runAquarelleScriptRebake({
+      isInFlight: isAquarelleScriptEditInFlight,
+      // The veil is bracketed by the rebake's OWN latch, never around the
+      // call: a refused (already in flight) rebake opens and closes nothing,
+      // so the canvas never flashes a blocker for work it did not start.
+      beginInFlight: () => {
+        setAquarelleScriptEditInFlight(true);
+        vectorPathSession.setPathEditRebakeActive(true);
+      },
+      endInFlight: () => {
+        setAquarelleScriptEditInFlight(false);
+        vectorPathSession.setPathEditRebakeActive(false);
+      },
+      resetSheet: () => aquarelleResetSheetRef.current?.(),
+      applyTimeline: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)),
+      onSuccess: () => {
+        // 61-20 (G-8/VEC-07): the apply has resolved true, so the sheet holds
+        // this exact path. Record ONE `aquarelle-script` entry — the ledger
+        // tail that makes the gesture undoable. Never on the failure route.
+        rotoMoveHistory.recordAquarelleScriptEdit(editId);
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+        // 261112-i6d: the veil closes on the latch, not here — the status just
+        // returns to rest. Never `success`: that state filters later messages.
+        setApplyStatus('idle');
+      },
+      onFailure: () => {
+        // Put the pre-edit script back exactly, BEFORE publishing.
+        // 61-26 (WR-02): the restore is revision-authoritative, so any bump
+        // since the edit began makes it fail closed and leaves the script
+        // half-applied behind a "restored" capsule. Re-anchor the ATTEMPTED
+        // side first — it is content-checked, so the normal failure (this
+        // edit's own side still live) re-seats the revision and the restore
+        // succeeds, while a foreign mutation still fails closed and the
+        // honest could-not-roll-back copy below fires.
+        reanchorAquarelleEditFromLiveContent(editId, 'undo');
+        const restored = restoreAquarelleEditSnapshot(editId, 'undo') !== null;
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error)
+          ?? error?.message
+          ?? (restored
+            ? 'Could not re-apply the watercolor script — the path edit was restored.'
+            : 'Could not re-apply the watercolor script — the path edit could not be rolled back.');
+        setLastError(message);
+        setApplyMessage(message);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
+      },
+    });
+    return ok ? editId : null;
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+  ]);
+  // 261111-wd6: the Color tab's anchor branch reaches this commit by ref
+  // (the handler that uses it is declared earlier in the body).
+  aquarellePathEditCommitRef.current = commitAquarelleVectorPathEdit;
+
+  // 61-10 (VEC-02 / T-61-34): the ONE path-edit seam. The overlay hands the
+  // full next anchor list; this handler is the only writer. A missing stroke or
+  // an unreadable path is refused WHOLE — nothing is written and the existing
+  // status capsule publishes the fixed line. A null edit id for a READABLE path
+  // is an in-flight or unchanged gesture, which must publish nothing.
+  const handleAquarelleVectorPathEdit = useCallback(
+    async (mutationId: number, anchors: readonly AquarelleAnchor[]): Promise<number | null> => {
+      const stroke = getRecordedAquarelleStroke(mutationId);
+      if (!stroke || normaliseAquarelleAnchors(stroke.anchors) === undefined) {
+        setApplyMessage(VECTOR_PATH_REJECTION_MESSAGE);
+        setApplyStatus('error');
+        setLastError(VECTOR_PATH_REJECTION_MESSAGE);
+        return null;
+      }
+      return commitAquarelleVectorPathEdit(mutationId, anchors);
+    },
+    [commitAquarelleVectorPathEdit],
+  );
 
   // 261027-klx: the mount's prop surface is the watercolor surface alone —
   // `PhysicsPaintCanvasMount` renders `AquarelleCanvasLayer` (+ the cached base
@@ -9931,7 +10377,7 @@ export function PhysicsPaintStudio() {
   // completion/performance/input telemetry, beforeEngineDestroy, stroke
   // metadata, the brush script overlay) are gone; `onEnginePortReady` is the
   // Wave 3 D8 narrow port the frame-editing controller consumes.
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -9968,6 +10414,7 @@ export function PhysicsPaintStudio() {
       onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,
       onAquarelleMoveStrokes: handleAquarelleMoveStrokes,
       onAquarelleTransformStrokes: handleAquarelleTransformStrokes,
+      onAquarelleVectorPathEdit: handleAquarelleVectorPathEdit,
       onEnginePortReady: handleAquarelleEnginePortReady,
     };
   });
@@ -10688,7 +11135,7 @@ export function PhysicsPaintStudio() {
       }
     };
     const dispose = effect(() => {
-      const active = draftMode.value || draftPixelsDirty.value;
+      const active = draftMode.value || draftPixelsDirty.value || wireframeMode.value;
       stopHeartbeat();
       void publishStudioDraftMode(active);
       if (!active) return;
@@ -10933,6 +11380,12 @@ export function PhysicsPaintStudio() {
     });
     missingAudioSourcePaths.value = missing;
   };
+  // 61-08 (D-05 / D-06): session-only tool state resets per Studio open — the
+  // window is a fresh document per open, and a view remount inside one document
+  // also gets a clean tool surface. No render-body write, no document deps.
+  useEffect(() => {
+    vectorPathSession.resetForStudioOpen();
+  }, []);
   useEffect(() => {
     void refreshAudioAssets();
     void refreshMissingAudioPaths();
@@ -11206,6 +11659,7 @@ export function PhysicsPaintStudio() {
       canvasWidth,
       canvasHeight,
       handleAquarelleAppearanceStrokes,
+      handleAquarelleCurveModeStrokes,
       handleAquarelleMoveStrokes,
       handleAquarelleTransformStrokes,
       handleAquarellePlaceStroke,
@@ -11214,6 +11668,9 @@ export function PhysicsPaintStudio() {
       // the ONE recompute. Stable useCallbacks, so the memo identity holds.
       settleDraftScript,
       armDraftBase,
+      // 61-19 (G-8): the Anchor width write now routes through the shared
+      // path-edit commit, so that stable useCallback joins the bundle's deps.
+      commitAquarelleVectorPathEdit,
     ],
     () => {
       const playFrame = launchContextRef.current?.startFrame ?? 0;
@@ -11225,11 +11682,99 @@ export function PhysicsPaintStudio() {
         playFrame,
         canvasSize,
         listStrokes: (frame, size) => listSelectableAquarelleStrokes(frame, size),
-        readAppearance: (ids, frame) => readAquarelleStrokeAppearance(ids, frame),
+        // 61-31 (G-20): the curve reading needs the recorded stroke's mode and
+        // whether it carries a path at all. Both obey the sparse-field contract:
+        // an absent key stays absent.
+        readAppearance: (ids, frame) => readAquarelleStrokeAppearance(ids, frame).map((appearance) => {
+          const stroke = getRecordedAquarelleStroke(appearance.mutationId);
+          if (stroke === undefined) return appearance;
+          return {
+            ...appearance,
+            ...(stroke.curveMode === undefined ? {} : { curveMode: stroke.curveMode }),
+            vector: stroke.anchors !== undefined,
+          };
+        }),
         applyAppearance: (ids, patch: ScriptStrokeAppearancePatch) =>
           handleAquarelleAppearanceStrokes(ids, patch),
+        // 61-31 (G-20): the Curve row's ONE commit seam. The vector strokes of
+        // the selection are written by one `beginAquarelleCurveModeEdit`, so
+        // the batch is one undo entry and the seed salts are untouched.
+        applyCurveMode: (ids, mode) => handleAquarelleCurveModeStrokes(ids, mode),
         moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
         transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
+        // 61-11 (VEC-02 / VEC-03): the vector gate and the Anchor width
+        // reading's ONE read seam. The dialog never touches the record store —
+        // a single non-vector selection (or a malformed path) resolves null,
+        // which is exactly what disables the entrance.
+        readVectorAnchors: (ids) => {
+          if (ids.length !== 1) return null;
+          const stroke = getRecordedAquarelleStroke(ids[0]!);
+          if (!stroke) return null;
+          return normaliseAquarelleAnchors(stroke.anchors) ?? null;
+        },
+        // 61-11 (VEC-03 / T-61-38) + 61-19 (G-5): the Anchor width commit. The
+        // target comes from the OPEN path edit — never `ids[0]` — because the
+        // anchor indices belong to that edit; a mismatch or absent edit refuses.
+        // The write routes through the shared path-edit commit so a multi-anchor
+        // change is ONE undo entry and ONE re-bake — never one per anchor.
+        applyAnchorWidths: (ids, value) => {
+          const target = resolveAnchorWidthTarget({
+            ids,
+            pathEditMutationId: vectorPathSession.pathEditMutationId.peek(),
+          });
+          if (target === null) return false;
+          const stroke = getRecordedAquarelleStroke(target);
+          if (!stroke) return false;
+          const anchors = normaliseAquarelleAnchors(stroke.anchors);
+          if (!anchors) return false;
+          const next = buildAnchorWidthCommit(
+            anchors,
+            vectorPathSession.vectorAnchorSelection.peek(),
+            value,
+          );
+          // quick 261112-i6d: the width sibling of the shipped colour CR-01
+          // no-op law (261112-hfk). An unchanged list exits the commit with the
+          // same null edit id as a refusal, so typing a value above the ceiling
+          // while the stored factor already sits on it would publish the false
+          // "Vertex size not applied" banner. Return BEFORE the commit; the
+          // genuine-refusal publication below stays byte-identical.
+          if (anchorsEqual(anchors, next)) return true;
+          return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);
+        },
+        // 261112-i6d: the Corner row's commit. It shares the Vertex size
+        // control's target and anchor selection, and writes through the SAME
+        // path-edit commit, so the row and the Alt+click gesture can never
+        // disagree about the shape or mint two undo entries for one change.
+        applyAnchorCorners: (ids, state) => {
+          const target = resolveAnchorWidthTarget({
+            ids,
+            pathEditMutationId: vectorPathSession.pathEditMutationId.peek(),
+          });
+          if (target === null) return false;
+          const stroke = getRecordedAquarelleStroke(target);
+          if (!stroke) return false;
+          const anchors = normaliseAquarelleAnchors(stroke.anchors);
+          if (!anchors) return false;
+          const next = buildAnchorCornerCommit(
+            anchors,
+            vectorPathSession.vectorAnchorSelection.peek(),
+            state,
+          );
+          // Same no-op law as the width and colour commits: an unchanged list
+          // returns the input reference and must not publish a refusal.
+          if (next === anchors) return true;
+          return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);
+        },
+        // 61-27 (IN-03): the sheet's ONE refusal channel. A commit the open
+        // path edit's target check declined publishes its reason through the
+        // shared capsule, so the knob snap-back is explained. It claims NO
+        // ownership — that flag belongs to the script-apply surface, and
+        // claiming it here would swallow that surface's own message.
+        publishRefusal: (message) => {
+          setApplyMessage(message);
+          setApplyStatus('error');
+          setLastError(message);
+        },
         reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
         // 261101-jmm: the sheet's row/global trash uses the SAME handler as
         // Backspace/Delete — one undoable edit, one re-bake, the frame guards

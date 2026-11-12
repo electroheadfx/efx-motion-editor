@@ -1,5 +1,5 @@
 // ============================================================
-//  WatercolorBrushLibrary — the 15-card playground brush grid
+//  WatercolorBrushLibrary — the playground brush grid
 //  (261017-xa0 I-03; chalk added by 261027-gh9).
 //
 //  Exactly the BRUSH_PRESETS catalog (chalk … stipple), nothing
@@ -32,11 +32,12 @@ import {
   BRUSH_PRESETS,
   type BrushPreset,
 } from '@efxlab/efx-watercolor';
+import { aquarelleSelectedTipId } from './aquarelleRecordState';
 import {
-  aquarelleSelectedTipId,
-  selectAquarelleTip,
-} from './aquarelleRecordState';
-import { setAquarelleSelectMode } from './aquarelleStrokeSelection';
+  aquarelleSelectionEditActive,
+  setAquarelleSelectMode,
+} from './aquarelleStrokeSelection';
+import { pickAquarelleBrush } from './aquarellePaintControls';
 import {
   STROKE_THUMB_HEIGHT,
   STROKE_THUMB_WIDTH,
@@ -79,9 +80,11 @@ function BrushCard(props: { preset: BrushPreset; selected: boolean }) {
       aria-pressed={props.selected}
       title={preset.hint}
       onClick={() => {
-        // 261029-eur WR-03: leave Edit mode before the pick flips the tool.
-        setAquarelleSelectMode(false);
-        selectAquarelleTip(preset.id);
+        // 261029-eur WR-03, two-part law: leave Edit mode before the pick
+        // flips the tool UNLESS a non-empty selection is armed — leaving
+        // Select mode clears the selection the pick is about to edit.
+        if (!aquarelleSelectionEditActive()) setAquarelleSelectMode(false);
+        void pickAquarelleBrush(preset.id);
       }}
     >
       <WatercolorBrushThumb

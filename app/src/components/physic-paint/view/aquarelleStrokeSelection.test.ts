@@ -8,7 +8,7 @@
 //  No DOM, no Preact components.
 // ============================================================
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host';
 import {
@@ -19,12 +19,19 @@ import {
   PAINT_SEED_SALT_PARAM,
   isAquarelleDryEvent,
   paintSeedSaltOf,
+  sampleVectorPath,
+  type AquarelleAnchor,
   type AquarellePayloadEvent,
   type AquarellePoint,
   type AquarelleStroke,
 } from '@efxlab/efx-watercolor/payload';
 import { buildBrushForStroke, toEngineParams } from '@efxlab/efx-watercolor';
 import { liftEngineSize, liftRadiusDoc } from '../roto/aquarelleLiftErase';
+import {
+  projectVectorPath,
+  resampleVectorPaintPoints,
+  vectorSpinePressures,
+} from './vectorPathHandles';
 import {
   aquarelleStrokesRevision,
   bumpAquarellePaintSeedSalts,
@@ -44,9 +51,11 @@ import {
 } from './aquarelleRecordState';
 import {
   AQUARELLE_STROKE_FILTER_DEFAULT,
+  type AquarelleSelectionEditPort,
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
   aquarelleSelectedStrokeMutationIds,
+  aquarelleSelectionEditActive,
   aquarelleStrokeBoundsPx,
   aquarelleStrokePointsPx,
   aquarelleStrokeSettingsDismissed,
@@ -55,6 +64,7 @@ import {
   aquarelleStrokesOnFrame,
   aquarelleStrokeTypeFilter,
   beginAquarelleAppearanceEdit,
+  beginAquarelleCurveModeEdit,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
   beginAquarellePaintSeedRerollEdit,
@@ -62,6 +72,7 @@ import {
   beginAquarelleReorderEdit,
   beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
+  commitAquarelleSelectionAppearance,
   cycleAquarelleStrokeTypeFilter,
   hitTestAquarelleStroke,
   listAquarelleStrokeSelectionIds,
@@ -77,6 +88,7 @@ import {
   selectAquarelleStroke,
   type SelectableAquarelleStroke,
   setAquarelleScriptEditInFlight,
+  setAquarelleSelectionEditPort,
   setAquarelleSelectMode,
   setAquarelleStrokeTipFilter,
   setAquarelleStrokeToolFilter,
@@ -88,15 +100,28 @@ import {
   distanceToSegmentPx,
   draftMode,
   draftPixelsDirty,
+  frozenCacheVisible,
   scriptSelectedStrokeIds,
   setDraftMode,
   setDraftPixelsDirty,
+  setFrozenCacheVisible,
   setScriptStrokeSelection,
   setStrokeSizePreview,
+  setWireframeMode,
   strokeSizePreview,
   type CanvasPoint,
 } from './scriptStrokeEdition';
 import { paintRadiusDocFor } from './aquarelleStrokeBand';
+import type { ScriptStrokeAppearancePatch } from './strokeSettingsModel';
+import {
+  enterPathEdit,
+  enterVectorPen,
+  pathEditMutationId,
+  resetForStudioOpen,
+  setVectorAnchorSelection,
+  vectorAnchorSelection,
+  vectorPenActive,
+} from './vectorPathSession';
 
 const SHEET = { width: 400, height: 200 };
 
@@ -106,6 +131,8 @@ const SHEET = { width: 400, height: 200 };
 beforeEach(() => {
   resetAquarelleStrokeFineFilters();
   setStrokeSizePreview(false);
+  // 261112-n3f UAT: the committed-sheet eye is a session signal too.
+  setFrozenCacheVisible(true);
   // 261101-o2m: clear the invariant before the mode (the leave guard refuses
   // the mode reset while the pixels are dirty).
   setDraftPixelsDirty(false);
@@ -436,6 +463,122 @@ describe('261101-o2m Draft reset on the select-mode edge', () => {
     } finally {
       dispose();
     }
+  });
+});
+
+// 261112-n3f UAT: the "Hide the committed sheet" eye belongs to the editing
+// surface only. Leaving the tool by ANY route (rail toggle, a paint tool,
+// Escape, the sheet's own close) must never strand the committed sheet hidden
+// — the user would then paint with invisible strokes and no explanation.
+describe('261112-n3f the cache eye resets on the Select exit edge', () => {
+  afterEach(() => {
+    setAquarelleSelectMode(false);
+    setFrozenCacheVisible(true);
+  });
+
+  it('restores the committed sheet on a genuine on -> off exit', () => {
+    setAquarelleSelectMode(true);
+    setFrozenCacheVisible(false);
+    expect(frozenCacheVisible.peek()).toBe(false);
+
+    setAquarelleSelectMode(false);
+
+    expect(frozenCacheVisible.peek()).toBe(true);
+  });
+
+  it('does not broadcast the reset when the sheet was already visible', () => {
+    setAquarelleSelectMode(true);
+    let runs = 0;
+    const dispose = effect(() => {
+      void frozenCacheVisible.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      setAquarelleSelectMode(false);
+      expect(frozenCacheVisible.peek()).toBe(true);
+      expect(runs).toBe(before);
+    } finally {
+      dispose();
+    }
+  });
+});
+
+// 61-17 (G-6 / D-16): the Select choke point releases the vector pen and any
+// open path edit on the ENTRY edge only — `enterVectorPen` clears Select
+// through this same setter, so an exit-edge release would cancel the pen it
+// just latched. Wireframe is a no-capture view: Select entry is refused
+// outright while it is on, and leaving Select is never refused.
+describe('61-17 G-6 Select entry releases the vector pen', () => {
+  afterEach(() => {
+    resetForStudioOpen();
+    setAquarelleSelectMode(false);
+    setWireframeMode(false);
+    setDraftPixelsDirty(false);
+    setDraftMode(false);
+  });
+
+  it('releases the vector pen on Select entry and keeps Select on', () => {
+    setAquarelleSelectMode(false);
+    enterVectorPen();
+    expect(vectorPenActive.peek()).toBe(true);
+
+    setAquarelleSelectMode(true);
+
+    expect(vectorPenActive.peek()).toBe(false);
+    expect(aquarelleSelectMode.peek()).toBe(true);
+  });
+
+  it('closes an open path edit and clears its anchor selection on Select entry', () => {
+    setAquarelleSelectMode(false);
+    enterPathEdit('m17');
+    setVectorAnchorSelection([0, 2]);
+    expect(pathEditMutationId.peek()).toBe('m17');
+
+    setAquarelleSelectMode(true);
+
+    expect(pathEditMutationId.peek()).toBeNull();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+    expect(aquarelleSelectMode.peek()).toBe(true);
+  });
+
+  it('never releases the pen on the Select exit edge', () => {
+    setAquarelleSelectMode(false);
+    enterVectorPen();
+    // `enterVectorPen` itself calls setAquarelleSelectMode(false) — the pen it
+    // just latched must survive that exit path.
+    expect(vectorPenActive.peek()).toBe(true);
+
+    setAquarelleSelectMode(false);
+
+    expect(vectorPenActive.peek()).toBe(true);
+  });
+
+  it('refuses Select entry while the wireframe view is on', () => {
+    setAquarelleSelectMode(false);
+    setWireframeMode(true);
+    enterVectorPen();
+
+    setAquarelleSelectMode(true);
+    expect(aquarelleSelectMode.peek()).toBe(false);
+    expect(vectorPenActive.peek()).toBe(true);
+
+    // A path edit and its selection are equally untouched by the refusal.
+    enterPathEdit('m19');
+    setVectorAnchorSelection([1]);
+    setAquarelleSelectMode(true);
+    expect(aquarelleSelectMode.peek()).toBe(false);
+    expect(pathEditMutationId.peek()).toBe('m19');
+    expect(vectorAnchorSelection.peek()).toEqual([1]);
+  });
+
+  it('still turns Select off while the wireframe view is on', () => {
+    setAquarelleSelectMode(true);
+    setWireframeMode(true);
+
+    setAquarelleSelectMode(false);
+
+    expect(aquarelleSelectMode.peek()).toBe(false);
   });
 });
 
@@ -983,11 +1126,75 @@ describe('261101-mvg preview stroke size band', () => {
     return entry!;
   }
 
+  /**
+   * 261112-n3f: a VECTOR stroke — anchors present with ONE explicit width
+   * factor, so a per-vertex envelope exists and the paint-band branch must
+   * never be taken for it.
+   */
+  function recordVector(): AquarelleStroke {
+    const vector: AquarelleStroke = {
+      ...stroke({
+        points: [point(0.15, 0.5), point(0.5, 0.5), point(0.85, 0.5)],
+        playFrame: FRAME,
+        size: 40,
+      }),
+      anchors: [
+        { x: 0.15, y: 0.5, kind: 'auto' },
+        { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 },
+        { x: 0.85, y: 0.5, kind: 'auto' },
+      ],
+    };
+    recordAquarelleStroke(10063, vector);
+    return vector;
+  }
+
   it('resolves no band for either kind while the switch is off', () => {
     recordBoth();
+    recordVector();
     expect(strokeSizePreview.value).toBe(false);
     expect(resolveAquarelleStrokeBandPx(entryOf(10061), SHEET)).toBeUndefined();
     expect(resolveAquarelleStrokeBandPx(entryOf(10062), SHEET)).toBeUndefined();
+    expect(resolveAquarelleStrokeBandPx(entryOf(10063), SHEET)).toBeUndefined();
+  });
+
+  it('resolves a vector stroke to its per-vertex envelope flagged for the masked edge', () => {
+    const vector = recordVector();
+    setStrokeSizePreview(true);
+
+    const band = resolveAquarelleStrokeBandPx(entryOf(10063), SHEET);
+    expect(band).toBeDefined();
+    // 261112-n3f: the ONE vector-only edge policy — the closed, self-
+    // intersecting ring, so the surface draws an unmasked fill plus a masked
+    // edge.
+    expect(band!.maskedEdge).toBe(true);
+    expect(band!.polygonPx.length).toBeGreaterThan(2);
+    // The SAME envelope `VectorPathOverlay` draws: same stored anchors, same
+    // evaluation mode (the stroke records none, so Bézier), same base width.
+    expect(band!.polygonPx).toEqual(
+      projectVectorPath(vector.anchors!, SHEET.width, SHEET.height, {
+        curveMode: 'bezier',
+      }).envelope,
+    );
+  });
+
+  it('resolves no band for a uniform-profile vector stroke', () => {
+    const uniform: AquarelleStroke = {
+      ...stroke({
+        points: [point(0.15, 0.5), point(0.5, 0.5), point(0.85, 0.5)],
+        playFrame: FRAME,
+        size: 40,
+      }),
+      anchors: [
+        { x: 0.15, y: 0.5, kind: 'auto' },
+        { x: 0.5, y: 0.5, kind: 'auto' },
+        { x: 0.85, y: 0.5, kind: 'auto' },
+      ],
+    };
+    recordAquarelleStroke(10064, uniform);
+    setStrokeSizePreview(true);
+    // D-10: a uniform profile stores no factor, so no envelope exists and
+    // there is nothing to preview.
+    expect(resolveAquarelleStrokeBandPx(entryOf(10064), SHEET)).toBeUndefined();
   });
 
   it('resolves the paint footprint band and the unchanged lift ribbon while on', () => {
@@ -997,7 +1204,10 @@ describe('261101-mvg preview stroke size band', () => {
     const paintEntry = entryOf(10061);
     const paintBand = resolveAquarelleStrokeBandPx(paintEntry, SHEET);
     expect(paintBand).toBeDefined();
-    expect(paintBand!.length).toBeGreaterThan(2);
+    expect(paintBand!.polygonPx.length).toBeGreaterThan(2);
+    // 261112-n3f: a hand-painted band carries NO edge policy — it keeps the
+    // shipped single-path rendering, unchanged rendered props included.
+    expect(Object.prototype.hasOwnProperty.call(paintBand, 'maskedEdge')).toBe(false);
 
     // Every drawn vertex stays inside the bake footprint: the radius law the
     // band shares with Engine/aquarelleFootprint, at this stroke's pressure.
@@ -1011,7 +1221,7 @@ describe('261101-mvg preview stroke size band', () => {
       ) * SHEET.height;
     expect(radiusPx).toBeGreaterThan(MIN_STROKE_PAD_PX);
     const centerline = aquarelleStrokePointsPx(paint, SHEET);
-    for (const vertex of paintBand!) {
+    for (const vertex of paintBand!.polygonPx) {
       expect(distanceToPolyline(vertex, centerline)).toBeLessThanOrEqual(
         radiusPx + 1e-6,
       );
@@ -1020,17 +1230,23 @@ describe('261101-mvg preview stroke size band', () => {
     // A lift keeps the 261029-eur ribbon by identity — no second geometry.
     const liftEntry = entryOf(10062);
     expect(liftEntry.ribbonPx).toBeDefined();
-    expect(resolveAquarelleStrokeBandPx(liftEntry, SHEET)).toBe(liftEntry.ribbonPx);
+    const liftBand = resolveAquarelleStrokeBandPx(liftEntry, SHEET);
+    expect(liftBand).toEqual({ polygonPx: liftEntry.ribbonPx });
+    expect(liftBand!.polygonPx).toBe(liftEntry.ribbonPx);
+    expect(Object.prototype.hasOwnProperty.call(liftBand, 'maskedEdge')).toBe(false);
   });
 
   it('leaves the listed entries byte-identical across the toggle', () => {
     recordBoth();
+    recordVector();
     const before = listSelectableAquarelleStrokes(FRAME, SHEET);
     setStrokeSizePreview(true);
     const after = listSelectableAquarelleStrokes(FRAME, SHEET);
     expect(after).toEqual(before);
 
-    for (const mutationId of [10061, 10062]) {
+    // 10063 is the vector row: the switch resolves its envelope, yet never
+    // changes a single listed byte.
+    for (const mutationId of [10061, 10062, 10063]) {
       const beforeEntry = before.find((candidate) => candidate.mutationId === mutationId)!;
       const afterEntry = after.find((candidate) => candidate.mutationId === mutationId)!;
       expect(afterEntry.bounds).toEqual(beforeEntry.bounds);
@@ -1698,5 +1914,500 @@ describe('261031-euf stroke list fine-filter state', () => {
       clearScriptStrokeSelection();
       setAquarelleSelectMode(false);
     }
+  });
+});
+
+// ============================================================
+//  61-31 (G-20) — the curve-mode batch edit. The mode is an
+//  EVALUATION MODE over the authored anchors: flipping it
+//  re-samples the points from the new evaluation but never
+//  re-rolls the stochastic texture (no seed-salt bump), and the
+//  whole selection is ONE history entry.
+// ============================================================
+
+/** An authored path with one off-curve bezier anchor, so spline differs from bezier. */
+const CURVE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.2, y: 0.5, kind: 'auto' },
+  { x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.4, y: 0.9 }, out: { x: 0.6, y: 0.1 } },
+  { x: 0.8, y: 0.5, kind: 'auto' },
+];
+
+/** The sampled spine of one evaluation mode, stamped with the vector commit shape. */
+function sampledModePoints(
+  anchors: readonly AquarelleAnchor[],
+  mode: 'bezier' | 'spline',
+): readonly AquarellePoint[] {
+  const source = mode === 'spline'
+    ? anchors.map((anchor) => ({
+        x: anchor.x,
+        y: anchor.y,
+        kind: 'auto' as const,
+        ...(anchor.width === undefined ? {} : { width: anchor.width }),
+      }))
+    : anchors;
+  const sampled = resampleVectorPaintPoints(sampleVectorPath(source).points);
+  const pressures = vectorSpinePressures(sampled);
+  return sampled.map((p, index) => ({
+    ...point(p.x, p.y),
+    p: pressures[index]!,
+  }));
+}
+
+/** A recorded vector stroke; the salt proves a mode flip cannot re-roll the seed. */
+function curveStroke(mutationId: number): AquarelleStroke {
+  return {
+    ...stroke({ points: sampledModePoints(CURVE_ANCHORS, 'bezier'), playFrame: 901 }),
+    mutationId,
+    anchors: CURVE_ANCHORS,
+    params: { size: 12, [PAINT_SEED_SALT_PARAM]: 7 },
+  };
+}
+
+describe('61-31 curve-mode batch edit (G-20)', () => {
+  it('records two strokes in ONE edit, and one undo restores both', () => {
+    const control = 63101;
+    const first = 63103;
+    const second = 63105;
+    recordAquarelleStroke(control, curveStroke(control));
+    recordAquarelleStroke(first, curveStroke(first));
+    recordAquarelleStroke(second, curveStroke(second));
+    const firstStroke = getRecordedAquarelleStroke(first)!;
+    const secondStroke = getRecordedAquarelleStroke(second)!;
+    const firstEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), first);
+    const secondEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), second);
+
+    // A one-stroke control edit gives the ledger's current id.
+    const controlEditId = beginAquarelleCurveModeEdit([control], 'spline');
+    expect(controlEditId).not.toBeNull();
+
+    const batchEditId = beginAquarelleCurveModeEdit([first, second], 'spline');
+    expect(batchEditId).not.toBeNull();
+    // The id counter advanced by EXACTLY one for the two-stroke batch.
+    expect(batchEditId).toBe(controlEditId! + 1);
+    expect(getRecordedAquarelleStroke(first)!.curveMode).toBe('spline');
+    expect(getRecordedAquarelleStroke(second)!.curveMode).toBe('spline');
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), first).engine.curveMode)
+      .toBe('spline');
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), second).engine.curveMode)
+      .toBe('spline');
+
+    // ONE undo restores both strokes and both payload entries.
+    expect(restoreAquarelleEditSnapshot(batchEditId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(first)).toBe(firstStroke);
+    expect(getRecordedAquarelleStroke(second)).toBe(secondStroke);
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), first)).toBe(firstEntry);
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), second)).toBe(secondEntry);
+    expect('curveMode' in getRecordedAquarelleStroke(first)!).toBe(false);
+  });
+
+  it('a repeat press stores nothing; switching back drops the key and restores the authored points', () => {
+    const id = 63111;
+    const other = 63113;
+    recordAquarelleStroke(id, curveStroke(id));
+    recordAquarelleStroke(other, curveStroke(other));
+    const before = getRecordedAquarelleStroke(id)!;
+
+    const firstEditId = beginAquarelleCurveModeEdit([id], 'spline');
+    expect(firstEditId).not.toBeNull();
+    // Spline re-samples the points from the derived evaluation.
+    expect(getRecordedAquarelleStroke(id)!.points)
+      .toEqual(sampledModePoints(CURVE_ANCHORS, 'spline'));
+    expect(getRecordedAquarelleStroke(id)!.points).not.toEqual(before.points);
+
+    // Pressing the mode the stroke already holds returns null and writes nothing.
+    const unchanged = getRecordedAquarelleStroke(id)!;
+    const unchangedEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), id);
+    expect(beginAquarelleCurveModeEdit([id], 'spline')).toBeNull();
+    expect(getRecordedAquarelleStroke(id)).toBe(unchanged);
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), id)).toBe(unchangedEntry);
+    // No history entry was consumed: the next accepted flip is EXACTLY one id later.
+    const nextEditId = beginAquarelleCurveModeEdit([other], 'spline');
+    expect(nextEditId).toBe(firstEditId! + 1);
+
+    // Switching back to bezier drops the key and restores the authored points.
+    const backEditId = beginAquarelleCurveModeEdit([id], 'bezier');
+    expect(backEditId).not.toBeNull();
+    const restored = getRecordedAquarelleStroke(id)!;
+    expect('curveMode' in restored).toBe(false);
+    expect(restored.anchors).toEqual(CURVE_ANCHORS);
+    expect(restored.points).toEqual(sampledModePoints(CURVE_ANCHORS, 'bezier'));
+    expect(restored.points).toEqual(before.points);
+    expect('curveMode' in strokeEntryAt(getRecordedAquarellePayloadTimeline(), id).engine)
+      .toBe(false);
+  });
+
+  it('never re-rolls the paint: the flip leaves traceSeed and the salt untouched', () => {
+    const id = 63121;
+    recordAquarelleStroke(id, curveStroke(id));
+    const beforeStroke = getRecordedAquarelleStroke(id)!;
+    const beforeSeed = entrySeed(id);
+    // The 7 salt is folded into the seed, so a re-roll would change this value.
+    expect(beforeSeed).toBe(expectedSaltedSeed(id, 7));
+
+    const editId = beginAquarelleCurveModeEdit([id], 'spline');
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(id)!.curveMode).toBe('spline');
+    expect(entrySeed(id)).toBe(beforeSeed);
+    // The params object (and its salt key) is the same reference — never re-seeded.
+    expect(getRecordedAquarelleStroke(id)!.params).toBe(beforeStroke.params);
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(id)!.params)).toBe(7);
+  });
+});
+
+// ============================================================
+//  quick 261111-t74 — a selection brush patch is one script
+//  edit.
+//
+//  `brushId` and `toolOverrides` join the appearance patch so a
+//  brush pick can commit onto the selection through the SAME
+//  one-edit / one-undo door (`beginAquarelleAppearanceEdit`), and
+//  a peek-only selection edit port forwards the selected ids to
+//  the Studio's shipped appearance handler. No UI consumer is
+//  wired in this quick — this is data plumbing.
+// ============================================================
+
+describe('quick 261111-t74 — a selection brush patch is one script edit', () => {
+  afterEach(() => {
+    // The port is a plain module variable: a leaked fake would forward the
+    // NEXT case's commit. Clear it before the mode reset.
+    setAquarelleSelectionEditPort(null);
+    setAquarelleSelectMode(false);
+    clearScriptStrokeSelection();
+  });
+
+  it('a brush-only patch writes the id on the stroke and both entry slots, one bump', () => {
+    recordAquarelleStroke(10301, stroke({
+      points: [point(0.1, 0.4), point(0.3, 0.6)],
+      playFrame: 731,
+      size: 12,
+      timestamp: 10,
+      diffusionFrames: 42,
+      brushId: 'round',
+    }));
+    const before = getRecordedAquarelleStroke(10301)!;
+    const eventsBefore = [...getRecordedAquarellePayloadTimeline()];
+    const indexBefore = entryIndexOf(eventsBefore, 10301);
+    const entryBefore = strokeEntryAt(eventsBefore, 10301);
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(updateAquarelleStrokesInScript([10301], { brushId: 'chalk' })).toBe(1);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    const after = getRecordedAquarelleStroke(10301)!;
+    expect(after).not.toBe(before);
+    expect(after.brushId).toBe('chalk');
+    // Appearance data only: points, params, colour and the measured cuisson
+    // survive the write untouched.
+    expect(after.params).toEqual(before.params);
+    expect(after.color).toBe(before.color);
+    expect(after.points).toBe(before.points);
+    expect(after.diffusionFrames).toBe(42);
+    expect(after.timestamp).toBe(10);
+
+    const eventsAfter = getRecordedAquarellePayloadTimeline();
+    expect(eventsAfter).toHaveLength(eventsBefore.length);
+    // The regenerated entry lands on the SAME index (replay order preserved).
+    expect(entryIndexOf(eventsAfter, 10301)).toBe(indexBefore);
+    const entryAfter = strokeEntryAt(eventsAfter, 10301);
+    expect(entryAfter).not.toBe(entryBefore);
+    expect(entryAfter.brushId).toBe('chalk');
+    expect(entryAfter.engine.brushId).toBe('chalk');
+    expect(entryAfter.pts).toEqual(entryBefore.pts);
+    expect(entryAfter.ticks).toBe(entryBefore.ticks);
+    expect(entryAfter.cuisson).toBe(entryBefore.cuisson);
+    expect(entryAfter.recordedOrder).toBe(entryBefore.recordedOrder);
+  });
+
+  it('accepts a namespaced tip id through the findTip branch', () => {
+    recordAquarelleStroke(10306, stroke({
+      points: [point(0.2, 0.5)],
+      playFrame: 732,
+      brushId: 'round',
+    }));
+    expect(updateAquarelleStrokesInScript([10306], { brushId: 'wc/round-small' })).toBe(1);
+    expect(getRecordedAquarelleStroke(10306)!.brushId).toBe('wc/round-small');
+    const entry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), 10306);
+    expect(entry.brushId).toBe('wc/round-small');
+    expect(entry.engine.brushId).toBe('wc/round-small');
+  });
+
+  it('an unresolvable brush id refuses the WHOLE batch before any write', () => {
+    recordAquarelleStroke(10302, stroke({ points: [point(0.3, 0.5)], playFrame: 733 }));
+    const before = getRecordedAquarelleStroke(10302)!;
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    // A valid params field never rescues an invalid brush id.
+    expect(
+      updateAquarelleStrokesInScript([10302], { params: { load: 70 }, brushId: 'not-a-brush' }),
+    ).toBe(0);
+    expect(updateAquarelleStrokesInScript([10302], { brushId: '' })).toBe(0);
+    expect(
+      updateAquarelleStrokesInScript([10302], { brushId: 42 as unknown as string }),
+    ).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(10302)).toBe(before);
+    expect(getRecordedAquarelleStroke(10302)!.params).toEqual({ size: 12 });
+    expect(getRecordedAquarelleStroke(10302)!.brushId).toBe('round');
+  });
+
+  it('a brush id the stroke already carries is a no-op — zero, no bump', () => {
+    recordAquarelleStroke(10307, stroke({
+      points: [point(0.4, 0.5)],
+      playFrame: 734,
+      brushId: 'round',
+    }));
+    const before = getRecordedAquarelleStroke(10307)!;
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(updateAquarelleStrokesInScript([10307], { brushId: 'round' })).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(10307)).toBe(before);
+  });
+
+  it('a two-stroke brush change is ONE edit whose undo restores both by reference', () => {
+    recordAquarelleStroke(10304, stroke({ points: [point(0.1, 0.5)], playFrame: 735 }));
+    recordAquarelleStroke(10305, stroke({ points: [point(0.2, 0.5)], playFrame: 735 }));
+    const firstBefore = getRecordedAquarelleStroke(10304)!;
+    const secondBefore = getRecordedAquarelleStroke(10305)!;
+
+    const editId = beginAquarelleAppearanceEdit([10304, 10305], { brushId: 'chalk' });
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(10304)).not.toBe(firstBefore);
+    expect(getRecordedAquarelleStroke(10304)!.brushId).toBe('chalk');
+    expect(getRecordedAquarelleStroke(10305)!.brushId).toBe('chalk');
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(10304)).toBe(firstBefore);
+    expect(getRecordedAquarelleStroke(10305)).toBe(secondBefore);
+  });
+
+  it('the active probe needs Select mode on AND a non-empty selection', () => {
+    recordAquarelleStroke(10308, stroke({ points: [point(0.5, 0.5)], playFrame: 736 }));
+    setAquarelleSelectMode(false);
+    setScriptStrokeSelection([10308]);
+    expect(aquarelleSelectionEditActive()).toBe(false);
+
+    setAquarelleSelectMode(true);
+    clearScriptStrokeSelection();
+    expect(aquarelleSelectionEditActive()).toBe(false);
+
+    setScriptStrokeSelection([10308]);
+    expect(aquarelleSelectionEditActive()).toBe(true);
+  });
+
+  it('the active probe is peek-only — a selection change never re-runs the effect', () => {
+    recordAquarelleStroke(10309, stroke({ points: [point(0.6, 0.5)], playFrame: 737 }));
+    setAquarelleSelectMode(true);
+    let runs = 0;
+    const dispose = effect(() => {
+      aquarelleSelectionEditActive();
+      runs += 1;
+    });
+    try {
+      expect(runs).toBe(1);
+      setScriptStrokeSelection([10309]);
+      expect(runs).toBe(1);
+    } finally {
+      dispose();
+    }
+  });
+
+  it('returns a no-attempt null when inactive or when no port is registered', () => {
+    recordAquarelleStroke(10303, stroke({ points: [point(0.7, 0.5)], playFrame: 738 }));
+    setAquarelleSelectionEditPort({
+      applyAppearance: () => Promise.resolve(true),
+    });
+
+    // Select mode off, non-empty selection.
+    setAquarelleSelectMode(false);
+    setScriptStrokeSelection([10303]);
+    expect(commitAquarelleSelectionAppearance({ brushId: 'chalk' })).toBeNull();
+
+    // Select mode on, empty selection.
+    setAquarelleSelectMode(true);
+    clearScriptStrokeSelection();
+    expect(commitAquarelleSelectionAppearance({ brushId: 'chalk' })).toBeNull();
+
+    // Live selection, no registered port.
+    setScriptStrokeSelection([10303]);
+    setAquarelleSelectionEditPort(null);
+    expect(commitAquarelleSelectionAppearance({ brushId: 'chalk' })).toBeNull();
+  });
+
+  it('forwards a snapshotted id list and the same patch to the registered port', () => {
+    recordAquarelleStroke(10341, stroke({ points: [point(0.1, 0.5)], playFrame: 739 }));
+    recordAquarelleStroke(10342, stroke({ points: [point(0.2, 0.5)], playFrame: 739 }));
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([10341, 10342]);
+
+    const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
+    const result = Promise.resolve(true);
+    const port: AquarelleSelectionEditPort = {
+      applyAppearance: (ids, patch) => {
+        calls.push({ ids, patch });
+        return result;
+      },
+    };
+    setAquarelleSelectionEditPort(port);
+
+    const patch: ScriptStrokeAppearancePatch = { brushId: 'chalk' };
+    expect(commitAquarelleSelectionAppearance(patch)).toBe(result);
+    // Clearing the selection AFTER the call cannot change the forwarded ids.
+    clearScriptStrokeSelection();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.ids).toEqual([10341, 10342]);
+    expect(calls[0]!.patch).toBe(patch);
+  });
+
+  it('a partial bag on an absent basis materialises all eight multipliers', () => {
+    recordAquarelleStroke(10310, stroke({ points: [point(0.1, 0.5)], playFrame: 740 }));
+    const before = getRecordedAquarelleStroke(10310)!;
+    expect('toolOverrides' in before).toBe(false);
+
+    expect(updateAquarelleStrokesInScript([10310], { toolOverrides: { aspect: 2 } })).toBe(1);
+
+    const bag = getRecordedAquarelleStroke(10310)!.toolOverrides;
+    expect(bag).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, aspect: 2 });
+    expect(Object.keys(bag!).sort()).toEqual(Object.keys(NEUTRAL_TOOL_OVERRIDES).sort());
+    const entry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), 10310);
+    expect(entry.toolOverrides).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, aspect: 2 });
+    expect(entry.engine.toolOverrides).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, aspect: 2 });
+  });
+
+  it('the merge preserves fields the patch does not name', () => {
+    recordAquarelleStroke(10311, stroke({
+      points: [point(0.2, 0.5)],
+      playFrame: 741,
+      toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES, grain: 1.5 },
+    }));
+
+    expect(updateAquarelleStrokesInScript([10311], { toolOverrides: { aspect: 2 } })).toBe(1);
+
+    const bag = getRecordedAquarelleStroke(10311)!.toolOverrides!;
+    expect(bag.grain).toBe(1.5);
+    expect(bag.aspect).toBe(2);
+    expect(bag).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, grain: 1.5, aspect: 2 });
+  });
+
+  it('a non-finite multiplier refuses the WHOLE batch before any write', () => {
+    recordAquarelleStroke(10312, stroke({ points: [point(0.3, 0.5)], playFrame: 742 }));
+    const before = getRecordedAquarelleStroke(10312)!;
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(
+      updateAquarelleStrokesInScript([10312], {
+        params: { load: 70 },
+        toolOverrides: { aspect: Number.NaN },
+      }),
+    ).toBe(0);
+    expect(
+      updateAquarelleStrokesInScript([10312], {
+        toolOverrides: { aspect: Number.POSITIVE_INFINITY },
+      }),
+    ).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(10312)).toBe(before);
+    expect(getRecordedAquarelleStroke(10312)!.params).toEqual({ size: 12 });
+  });
+
+  it('an unknown multiplier name is refused rather than stored', () => {
+    recordAquarelleStroke(10313, stroke({ points: [point(0.4, 0.5)], playFrame: 743 }));
+    const before = getRecordedAquarelleStroke(10313)!;
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(
+      updateAquarelleStrokesInScript([10313], {
+        // `roughness` is a real BrushPreset field but not one of the eight.
+        toolOverrides: { roughness: 1 } as unknown as Partial<AquarelleToolOverrides>,
+      }),
+    ).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(10313)).toBe(before);
+    expect('toolOverrides' in getRecordedAquarelleStroke(10313)!).toBe(false);
+  });
+
+  it('a neutral or empty multiplier patch is a no-op and materialises no bag', () => {
+    recordAquarelleStroke(10314, stroke({ points: [point(0.5, 0.5)], playFrame: 744 }));
+    const before = getRecordedAquarelleStroke(10314)!;
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(updateAquarelleStrokesInScript([10314], { toolOverrides: { aspect: 1 } })).toBe(0);
+    expect(updateAquarelleStrokesInScript([10314], { toolOverrides: {} })).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(10314)).toBe(before);
+    expect('toolOverrides' in getRecordedAquarelleStroke(10314)!).toBe(false);
+  });
+
+  it('one call writes brush, multipliers and params with exactly one bump', () => {
+    recordAquarelleStroke(10315, stroke({
+      points: [point(0.6, 0.5)],
+      playFrame: 745,
+      brushId: 'round',
+    }));
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(
+      updateAquarelleStrokesInScript([10315], {
+        brushId: 'chalk',
+        toolOverrides: { aspect: 1.4 },
+        params: { load: 70 },
+      }),
+    ).toBe(1);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    const after = getRecordedAquarelleStroke(10315)!;
+    expect(after.brushId).toBe('chalk');
+    expect(after.params.load).toBe(70);
+    expect(after.toolOverrides).toEqual({ ...NEUTRAL_TOOL_OVERRIDES, aspect: 1.4 });
+  });
+
+  it('a brush + multiplier edit restores the pre-edit bag by reference on undo', () => {
+    recordAquarelleStroke(10317, stroke({
+      points: [point(0.7, 0.5)],
+      playFrame: 746,
+      toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES, grain: 1.5 },
+    }));
+    const before = getRecordedAquarelleStroke(10317)!;
+
+    const editId = beginAquarelleAppearanceEdit([10317], {
+      brushId: 'chalk',
+      toolOverrides: { aspect: 1.4 },
+    });
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(10317)).not.toBe(before);
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(10317)).toBe(before);
+    expect(getRecordedAquarelleStroke(10317)!.toolOverrides).toBe(before.toolOverrides);
+  });
+
+  it('a brush change re-rolls the paint seed inside the SAME edit, and undo restores it', () => {
+    // The salt is seeded on the RECORDED stroke (the local `stroke()` helper
+    // writes `params: { size }` alone); `paintSeedVariation` is a patch field
+    // only, so the shipped appearance door's re-roll must see this salt.
+    recordAquarelleStroke(10320, saltedStroke({
+      points: [point(0.1, 0.5)],
+      playFrame: 820,
+      salt: 0,
+    }));
+    const before = getRecordedAquarelleStroke(10320)!;
+    expect(paintSeedSaltOf(before.params)).toBe(0);
+
+    const editId = beginAquarelleAppearanceEdit([10320], { brushId: 'chalk' });
+    expect(editId).not.toBeNull();
+    const after = getRecordedAquarelleStroke(10320)!;
+    expect(after.brushId).toBe('chalk');
+    // The brush change rides the appearance door's seed re-roll (0 -> 1).
+    expect(paintSeedSaltOf(after.params)).toBe(1);
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(10320)).toBe(before);
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(10320)!.params)).toBe(0);
   });
 });

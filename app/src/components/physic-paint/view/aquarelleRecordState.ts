@@ -12,20 +12,31 @@
 
 import { signal } from '@preact/signals';
 import {
+  DEFAULT_AQUARELLE_CURVE_MODE,
   DIFFUSION_CAP,
   PAINT_SEED_SALT_PARAM,
+  anchorsEqual,
   createDryEvent,
+  evaluateAquarellePath,
+  isAquarelleCurveMode,
   isAquarelleDryEvent,
+  normaliseAquarelleAnchors,
   paintSeedSaltOf,
+  projectVectorPath,
+  resolveAquarelleCurveMode,
   toStudioStroke,
+  type AquarelleAnchor,
+  type AquarelleCurveMode,
   type AquarelleDryEvent,
   type AquarellePayloadEvent,
+  type AquarellePoint,
   type AquarelleStroke,
   type AquarelleStrokePayload,
   type AquarelleTool,
 } from '@efxlab/efx-watercolor/payload';
 import {
   NEUTRAL_TOOL_OVERRIDES,
+  TOOL_OVERRIDE_FIELDS,
   findTip,
   toolOverridesFromTip,
   type AquarelleToolOverrides,
@@ -38,6 +49,11 @@ import {
 import { disarmAquarellePicker } from './aquarelleColorPicker';
 import { exitRailMotionEditing } from './railMotionEditingMode';
 import { reorderForStackPosition, targetIndexForStackPosition } from './stackOrder';
+import {
+  VECTOR_STROKE_BASE_PRESSURE,
+  resampleVectorPaintPoints,
+  vectorSpinePressures,
+} from './vectorPathHandles';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
 export interface AquarelleGlobalParams {
@@ -599,11 +615,43 @@ export function restoreAquarelleStrokeRegistry(
 }
 
 /**
+ * 61-10 (VEC-02 / T-61-34): the ONE anchor map a whole-stroke move shares with
+ * its points. An absent list stays absent (a hand-painted stroke gains no
+ * `anchors` key), `kind`, `width` and the explicit `color` (261111-wd6) are
+ * carried verbatim — all three are paint properties, never geometry — and only
+ * the handles the anchor STORED are mapped, so an auto anchor gains no
+ * invented `in`/`out` key.
+ */
+function mapAnchorList(
+  anchors: readonly AquarelleAnchor[] | undefined,
+  mapPoint: (x: number, y: number) => { x: number; y: number },
+): readonly AquarelleAnchor[] | undefined {
+  if (anchors === undefined) return undefined;
+  return anchors.map((anchor) => {
+    const mapped = mapPoint(anchor.x, anchor.y);
+    return {
+      x: mapped.x,
+      y: mapped.y,
+      kind: anchor.kind,
+      ...(anchor.in !== undefined ? { in: mapPoint(anchor.in.x, anchor.in.y) } : {}),
+      ...(anchor.out !== undefined ? { out: mapPoint(anchor.out.x, anchor.out.y) } : {}),
+      ...(anchor.width !== undefined ? { width: anchor.width } : {}),
+      ...(anchor.color !== undefined ? { color: anchor.color } : {}),
+    };
+  });
+}
+
+/**
  * 261022-tv1 / 261024-mz5: translate one recorded stroke OR the whole
  * selection (and its payload-timeline entry) by a document-UV delta.
  * Everything else — ticks, recordedOrder, cuisson, traceSeed, playFrame,
  * params, the record clock — is untouched. Returns the number of changed
  * strokes; unknown/deleted ids are ignored and an empty batch bumps nothing.
+ *
+ * 61-10: the stroke's vector anchors (and every stored handle endpoint) move
+ * through the SAME delta as the points, and the entry's opaque
+ * `engine.anchors` is rebuilt from the same mapped list — a stale copy would
+ * make the payload disagree with the stroke (T-61-34).
  *
  * Objects are REPLACED, never mutated in place: an aquarelle script snapshot
  * keeps the live event references (that is what lets a measured cuisson patch
@@ -639,6 +687,7 @@ export function translateAquarelleStrokesInScript(
   if (targets.length === 0) return 0;
 
   for (const { mutationId, stroke, entry, index } of targets) {
+    const nextAnchors = mapAnchorList(stroke.anchors, (x, y) => ({ x: x + dxUv, y: y + dyUv }));
     const movedStroke: AquarelleStroke = {
       ...stroke,
       points: stroke.points.map((strokePoint) => ({
@@ -649,6 +698,7 @@ export function translateAquarelleStrokesInScript(
         ty: strokePoint.ty,
         tw: strokePoint.tw,
       })),
+      ...(nextAnchors === undefined ? {} : { anchors: nextAnchors }),
     };
     const movedEntry: ReturnType<typeof toStudioStroke> = {
       ...entry,
@@ -657,6 +707,7 @@ export function translateAquarelleStrokesInScript(
         x: strokePoint.x + dxUv,
         y: strokePoint.y + dyUv,
       })),
+      ...(nextAnchors === undefined ? {} : { engine: { ...entry.engine, anchors: nextAnchors } }),
     };
 
     recordedStrokes.set(mutationId, movedStroke);
@@ -688,6 +739,20 @@ export interface AquarelleStrokeAppearancePatch {
    * `AQUARELLE_GLOBAL_KEYS` (the slider set) does not contain it.
    */
   readonly paintSeedVariation?: boolean;
+  /**
+   * quick 261111-t74: the recorded brush/tip id. Validated against `findTip`
+   * or a `BRUSH_PRESETS` id BEFORE any target is resolved — an unknown, empty
+   * or non-string id refuses the WHOLE batch. A preset is not a tip, so the
+   * two resolution branches stay explicit.
+   */
+  readonly brushId?: string;
+  /**
+   * quick 261111-t74: a PARTIAL bag of the eight multipliers. Merged onto a
+   * COMPLETE base (neutral + the stroke's stored bag) before the write, so a
+   * hole can never reach `toStudioStroke` or the engine; an unknown key or a
+   * non-finite value refuses the WHOLE batch before any target is resolved.
+   */
+  readonly toolOverrides?: Partial<AquarelleToolOverrides>;
 }
 
 /**
@@ -719,6 +784,8 @@ export function updateAquarelleStrokesInScript(
   const paramEntries = params ? Object.entries(params) : [];
   const hasColor = patch.color !== undefined;
   const hasFlag = patch.paintSeedVariation !== undefined;
+  const hasBrush = patch.brushId !== undefined;
+  const hasOverrides = patch.toolOverrides !== undefined;
   // Validate the WHOLE patch first: one unknown key or non-finite value
   // refuses the batch before anything is drained or touched.
   for (const [key, value] of paramEntries) {
@@ -727,7 +794,38 @@ export function updateAquarelleStrokesInScript(
   }
   if (hasColor && (typeof patch.color !== 'string' || patch.color.length === 0)) return 0;
   if (hasFlag && typeof patch.paintSeedVariation !== 'boolean') return 0;
-  if (paramEntries.length === 0 && !hasColor && !hasFlag) return 0;
+  // quick 261111-t74: the brush id is resolved up front through the shipped
+  // findTip-then-preset idiom (a preset is NOT a tip). Nothing is coerced or
+  // defaulted — an id neither lookup resolves refuses the WHOLE batch, so an
+  // unknown brush can never silently repaint the stroke.
+  let nextBrushId: string | null = null;
+  if (hasBrush) {
+    const value = patch.brushId;
+    if (typeof value !== 'string' || value.length === 0) return 0;
+    const tip = findTip(value);
+    if (tip) {
+      nextBrushId = tip.id;
+    } else {
+      const preset = BRUSH_PRESETS.find((entry) => entry.id === value);
+      if (!preset) return 0;
+      nextBrushId = preset.id;
+    }
+  }
+  // quick 261111-t74: the multiplier bag is validated entry by entry — a
+  // ninth key or a non-finite value refuses the WHOLE batch, exactly like the
+  // params guard. Nothing is clamped or normalised beyond the finite check.
+  let overrideEntries: ReadonlyArray<readonly [keyof AquarelleToolOverrides, number]> = [];
+  if (hasOverrides) {
+    const bag = patch.toolOverrides;
+    if (typeof bag !== 'object' || bag === null || Array.isArray(bag)) return 0;
+    const entries = Object.entries(bag);
+    for (const [key, value] of entries) {
+      if (!TOOL_OVERRIDE_FIELDS.includes(key as keyof AquarelleToolOverrides)) return 0;
+      if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+    }
+    overrideEntries = entries as Array<[keyof AquarelleToolOverrides, number]>;
+  }
+  if (paramEntries.length === 0 && !hasColor && !hasFlag && !hasBrush && !hasOverrides) return 0;
   const seedVariation = patch.paintSeedVariation;
 
   const targets: Array<{
@@ -736,6 +834,8 @@ export function updateAquarelleStrokesInScript(
     index: number;
     nextParams: Record<string, number>;
     nextColor: string | null;
+    nextBrushId: string;
+    nextOverrides: AquarelleToolOverrides | null;
   }> = [];
   const seen = new Set<number>();
   for (const mutationId of mutationIds) {
@@ -755,6 +855,29 @@ export function updateAquarelleStrokesInScript(
     }
     const nextColor: string | null = hasColor ? (patch.color as string) : stroke.color;
     if (hasColor && nextColor !== stroke.color) changed = true;
+    const targetBrushId = nextBrushId ?? stroke.brushId;
+    if (hasBrush && targetBrushId !== stroke.brushId) changed = true;
+    let nextOverrides: AquarelleToolOverrides | null = null;
+    if (hasOverrides) {
+      // Materialise the COMPLETE eight-multiplier bag: the stroke's stored bag
+      // (absent = neutral) is the base and the patch's entries replace it. A
+      // fresh object per target — the stored bag, the neutral constant and the
+      // patch are never mutated, and no hole can reach the engine.
+      const base: AquarelleToolOverrides = {
+        ...NEUTRAL_TOOL_OVERRIDES,
+        ...stroke.toolOverrides,
+      };
+      const merged: AquarelleToolOverrides = { ...base };
+      for (const [key, value] of overrideEntries) merged[key] = value;
+      nextOverrides = merged;
+      // A neutral patch is a no-op and never materialises a bag.
+      for (const key of TOOL_OVERRIDE_FIELDS) {
+        if (base[key] !== merged[key]) {
+          changed = true;
+          break;
+        }
+      }
+    }
     if (seedVariation === true && paintSeedSaltOf(nextParams) === null) {
       nextParams[PAINT_SEED_SALT_PARAM] = 0;
       changed = true;
@@ -763,12 +886,39 @@ export function updateAquarelleStrokesInScript(
       changed = true;
     }
     if (!changed) continue;
-    targets.push({ mutationId, stroke, index, nextParams, nextColor });
+    targets.push({
+      mutationId,
+      stroke,
+      index,
+      nextParams,
+      nextColor,
+      nextBrushId: targetBrushId,
+      nextOverrides,
+    });
   }
   if (targets.length === 0) return 0;
 
-  for (const { mutationId, stroke, index, nextParams, nextColor } of targets) {
-    const nextStroke: AquarelleStroke = { ...stroke, params: nextParams, color: nextColor };
+  for (const {
+    mutationId,
+    stroke,
+    index,
+    nextParams,
+    nextColor,
+    nextBrushId: targetBrushId,
+    nextOverrides,
+  } of targets) {
+    // `brushId` is required on the stroke record, so the resolved value is
+    // always the validated patch id or the stroke's own — never undefined.
+    // `toStudioStroke` re-projects it into BOTH entry slots.
+    const nextStroke: AquarelleStroke = {
+      ...stroke,
+      params: nextParams,
+      color: nextColor,
+      brushId: targetBrushId,
+      // Only a patch that carried multipliers writes a bag: every other path
+      // preserves the stroke's exact key set through the spread above.
+      ...(nextOverrides === null ? {} : { toolOverrides: nextOverrides }),
+    };
     // Regenerate through the ONE projection so the engine payload carries the
     // new canonical params/colour; pts/cuisson/recordedOrder re-derive from
     // the preserved points and diffusionFrames.
@@ -780,6 +930,158 @@ export function updateAquarelleStrokesInScript(
   }
   bumpAquarelleStrokesRevision();
   return targets.length;
+}
+
+/**
+ * 61-30 (G-20 / T-61-89): switch the curve-evaluation mode on every target
+ * stroke and re-sample its points from the new evaluation in the SAME write.
+ *
+ * Mirrors `updateAquarelleStrokesInScript`'s batch law: validate the mode
+ * against the closed union BEFORE resolving any target (an unknown mode
+ * refuses the whole batch, never a silent Bézier fall back), de-duplicate the
+ * ids, then resolve every target — skipping missing, deleted, out-of-timeline,
+ * already-matching and ANCHORLESS strokes (a hand-painted stroke has no path
+ * to evaluate, so the mode would be inert data).
+ *
+ * The stored path is never rewritten: only the mode and the derived points
+ * change. Switching back to the default DROPS the key rather than storing
+ * `bezier`, so an untouched document keeps its exact bytes (REL-02). One
+ * revision bump and one history entry cover the whole selection.
+ */
+export function updateAquarelleCurveModeInScript(
+  mutationIds: readonly number[],
+  mode: AquarelleCurveMode,
+): number {
+  if (!isAquarelleCurveMode(mode)) return 0;
+
+  const targets: Array<{
+    mutationId: number;
+    stroke: AquarelleStroke;
+    index: number;
+    nextPoints: readonly AquarellePoint[];
+  }> = [];
+  const seen = new Set<number>();
+  for (const mutationId of mutationIds) {
+    if (!Number.isFinite(mutationId)) continue;
+    if (seen.has(mutationId)) continue;
+    seen.add(mutationId);
+    const stroke = recordedStrokes.get(mutationId);
+    const entry = recordedStrokeEntries.get(mutationId);
+    if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) continue;
+    const index = payloadTimeline.indexOf(entry);
+    if (index < 0) continue;
+    // An absent mode IS Bézier, so an already-matching stroke is a no-op.
+    if (resolveAquarelleCurveMode(stroke.curveMode) === mode) continue;
+    // Anchorless = hand-painted: there is no path to evaluate, so nothing to write.
+    const anchors = normaliseAquarelleAnchors(stroke.anchors);
+    if (anchors === undefined) continue;
+    const nextAnchors = projectVectorPath(anchors);
+    const { points: sampledSpine } = evaluateAquarellePath(nextAnchors, mode);
+    // The paint sampler — the same step `buildVectorStroke` uses, so a mode
+    // switch replays with the stroke's own wet lifetime.
+    const paintSpine = resampleVectorPaintPoints(sampledSpine);
+    const pressures = vectorSpinePressures(paintSpine);
+    targets.push({
+      mutationId,
+      stroke,
+      index,
+      // The re-derived points carry `buildVectorStroke`'s exact shape.
+      nextPoints: paintSpine.map((point, sampleIndex) => ({
+        x: point.x,
+        y: point.y,
+        p: pressures[sampleIndex] ?? VECTOR_STROKE_BASE_PRESSURE,
+        tx: 0,
+        ty: 0,
+        tw: 0,
+      })),
+    });
+  }
+  if (targets.length === 0) return 0;
+
+  for (const { mutationId, stroke, index, nextPoints } of targets) {
+    const nextStroke: AquarelleStroke = { ...stroke, points: nextPoints };
+    // The default mode is expressed by the ABSENT key: switching back must
+    // drop the previous mode, never store `curveMode: 'bezier'`.
+    delete nextStroke.curveMode;
+    if (mode !== DEFAULT_AQUARELLE_CURVE_MODE) nextStroke.curveMode = mode;
+    const nextEntry = toStudioStroke(nextStroke);
+    recordedStrokes.set(mutationId, nextStroke);
+    recordedStrokeEntries.set(mutationId, nextEntry);
+    // SAME index — replay order is preserved (replace only, never splice).
+    payloadTimeline[index] = nextEntry;
+  }
+  bumpAquarelleStrokesRevision();
+  return targets.length;
+}
+
+/**
+ * 61-10 (VEC-02 / VEC-07): replace the path of one recorded stroke and its
+ * payload-timeline entry.
+ *
+ * The translate/update law applies unchanged: validate the id and resolve the
+ * target BEFORE mutating, normalise the incoming list (`normaliseAquarelleAnchors`
+ * refuses a malformed list — T-61-32), REPLACE the stroke and regenerate its
+ * entry through the ONE projection, and write it at the SAME timeline index.
+ *
+ * 61-29 (G-17): the anchor write RE-DERIVES the sampled spine from the anchors
+ * it just stored. `toStudioStroke` projects `points` into the payload's `pts` —
+ * the geometry every replay deposits — so carrying the old `points` through the
+ * spread left the entry's two halves disagreeing and made a forced replay
+ * (Shift+R) reproduce the PRE-edit curve. The re-derived points carry
+ * `buildVectorStroke`'s exact shape (p 1, no tilt), so a replayed edit is
+ * indistinguishable from a freshly drawn stroke. Params, diffusionFrames,
+ * timestamp and playFrame still survive the path write.
+ *
+ * 61-30 (G-20): the re-sample goes through the stroke's CURVE MODE — a spline
+ * stroke stays spline across an anchor edit, and its points are the spline
+ * evaluation of the new path (the mode key rides the spread unchanged).
+ *
+ * Idempotent: an unchanged anchor list stores nothing, bumps nothing and
+ * returns 0. The persisted form drops a width factor equal to 1 (D-10), so a
+ * drag can never leave width residue behind.
+ */
+export function updateAquarellePathInScript(
+  mutationId: number,
+  anchors: readonly AquarelleAnchor[],
+): number {
+  if (!Number.isFinite(mutationId)) return 0;
+  const stroke = recordedStrokes.get(mutationId);
+  const entry = recordedStrokeEntries.get(mutationId);
+  if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) return 0;
+  const index = payloadTimeline.indexOf(entry);
+  if (index < 0) return 0;
+  const normalised = normaliseAquarelleAnchors(anchors);
+  if (normalised === undefined) return 0;
+  const nextAnchors = projectVectorPath(normalised);
+  if (anchorsEqual(stroke.anchors ?? [], nextAnchors)) return 0;
+  // 61-29 (G-17): re-derive the replay spine from the anchors just stored.
+  // `toStudioStroke` projects these points into the payload's `pts`, and they
+  // are stamped with the exact six-field shape `buildVectorStroke` writes.
+  // 61-30 (G-20): the evaluation honours the stroke's stored curve mode.
+  const { points: sampledSpine } = evaluateAquarellePath(
+    nextAnchors,
+    resolveAquarelleCurveMode(stroke.curveMode),
+  );
+  const paintSpine = resampleVectorPaintPoints(sampledSpine);
+  const pressures = vectorSpinePressures(paintSpine);
+  const nextPoints = paintSpine.map((point, sampleIndex) => ({
+    x: point.x,
+    y: point.y,
+    p: pressures[sampleIndex] ?? VECTOR_STROKE_BASE_PRESSURE,
+    tx: 0,
+    ty: 0,
+    tw: 0,
+  }));
+  const nextStroke: AquarelleStroke = { ...stroke, points: nextPoints, anchors: nextAnchors };
+  // Regenerate through the ONE projection so the payload's opaque engine block
+  // carries the same anchors the stroke holds (T-61-34).
+  const nextEntry = toStudioStroke(nextStroke);
+  recordedStrokes.set(mutationId, nextStroke);
+  recordedStrokeEntries.set(mutationId, nextEntry);
+  // SAME index — replay order is preserved (replace only, never splice).
+  payloadTimeline[index] = nextEntry;
+  bumpAquarelleStrokesRevision();
+  return 1;
 }
 
 /**
@@ -951,6 +1253,9 @@ export function transformAquarelleStrokesInScript(
   };
 
   for (const { mutationId, stroke, entry, index } of targets) {
+    // 61-10: anchors and handles go through the SAME map as the points; the
+    // width factor is scale-invariant and `kind` never changes.
+    const nextAnchors = mapAnchorList(stroke.anchors, mapPoint);
     const transformedStroke: AquarelleStroke = {
       ...stroke,
       points: stroke.points.map((strokePoint) => {
@@ -965,6 +1270,7 @@ export function transformAquarelleStrokesInScript(
           tw: strokePoint.tw,
         };
       }),
+      ...(nextAnchors === undefined ? {} : { anchors: nextAnchors }),
     };
     const transformedEntry: ReturnType<typeof toStudioStroke> = {
       ...entry,
@@ -972,6 +1278,7 @@ export function transformAquarelleStrokesInScript(
         const mapped = mapPoint(strokePoint.x, strokePoint.y);
         return { ...strokePoint, x: mapped.x, y: mapped.y };
       }),
+      ...(nextAnchors === undefined ? {} : { engine: { ...entry.engine, anchors: nextAnchors } }),
     };
 
     recordedStrokes.set(mutationId, transformedStroke);
@@ -1354,6 +1661,19 @@ export function restoreAquarelleRecordTimeline(
       continue;
     }
     const engine = event.engine as AquarelleStrokePayload;
+    // 61-05: seed the vector path beside `playFrame`, so a reopened vector
+    // stroke stays editable as a path. The key is written ONLY when the
+    // payload carried it — a hand-painted stroke keeps its exact pre-vector
+    // shape. A present-but-malformed anchor list is omitted here on purpose:
+    // the refusal surfaces at path edit and export, never by dropping the
+    // event or aborting the restore.
+    const anchors =
+      engine.anchors !== undefined ? normaliseAquarelleAnchors(engine.anchors) : undefined;
+    // 61-30 (G-20): the curve mode rides the same conditional-spread law — a
+    // stroke saved as spline must reopen as spline, or every later replay and
+    // edit would silently fall back to Bézier.
+    const curveMode =
+      engine.curveMode !== undefined ? resolveAquarelleCurveMode(engine.curveMode) : undefined;
     const stroke: AquarelleStroke = {
       tool: engine.tool,
       color: engine.color,
@@ -1372,6 +1692,8 @@ export function restoreAquarelleRecordTimeline(
       diffusionFrames: engine.diffusionFrames,
       timestamp: engine.timestamp,
       playFrame: engine.playFrame,
+      ...(anchors !== undefined ? { anchors } : {}),
+      ...(curveMode !== undefined ? { curveMode } : {}),
     };
     const entry = toStudioStroke(stroke);
     payloadTimeline.push(entry);

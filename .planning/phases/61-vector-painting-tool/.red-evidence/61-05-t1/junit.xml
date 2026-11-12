@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="26" failures="8" errors="0" time="0.358">
+    <testsuite name="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" timestamp="2026-11-10T13:25:23.695Z" hostname="efx2.home" tests="26" failures="8" errors="0" skipped="0" time="0.022813375">
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="JSON baseline codec &gt; round-trips the fixture exactly" time="0.001665125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="JSON baseline codec &gt; encodes an empty timeline as &quot;[]&quot; (2 bytes)" time="0.00015125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="JSON baseline codec &gt; rejects malformed JSON with a typed error" time="0.000245542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="JSON baseline codec &gt; rejects structurally invalid parsed events" time="0.000103792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; pins the magic/version constants" time="0.002299917">
+            <failure message="expected 1 to be 2 // Object.is equality" type="AssertionError">
+AssertionError: expected 1 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:363:44
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; round-trips every metadata field exactly and points within tolerance" time="0.007965875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; preserves playFrame 0 versus null" time="0.001166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; decodes an empty timeline from the 24-byte header" time="0.000092458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; is byte-deterministic and reports real encoded sizes" time="0.004348375">
+            <failure message="expected 3737 to be 3742 // Object.is equality" type="AssertionError">
+AssertionError: expected 3737 to be 3742 // Object.is equality
+
+- Expected
++ Received
+
+- 3742
++ 3737
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:437:31
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; clamps out-of-range point fields on decode (documented lossy policy)" time="0.000186583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL packed binary codec &gt; keeps the live no-pressure sentinel -1 across the wire (261027 UAT round 10)" time="0.000097625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; round-trips a two-anchor vector stroke deep-equal, order preserved" time="0.001496042">
+            <failure message="expected { …(11) } to deeply equal { …(11) }" type="AssertionError">
+AssertionError: expected { …(11) } to deeply equal { …(11) }
+
+- Expected
++ Received
+
+  Object {
+    &quot;brushId&quot;: &quot;b&quot;,
+    &quot;color&quot;: null,
+    &quot;cuisson&quot;: 0,
+    &quot;engine&quot;: Object {
+-     &quot;anchors&quot;: Array [
+-       Object {
+-         &quot;kind&quot;: &quot;auto&quot;,
+-         &quot;width&quot;: 1.7999999523162842,
+-         &quot;x&quot;: 0.25,
+-         &quot;y&quot;: 0.5,
+-       },
+-       Object {
+-         &quot;in&quot;: Object {
+-           &quot;x&quot;: 0.5,
+-           &quot;y&quot;: 0.5,
+-         },
+-         &quot;kind&quot;: &quot;bezier&quot;,
+-         &quot;out&quot;: Object {
+-           &quot;x&quot;: 1,
+-           &quot;y&quot;: 0,
+-         },
+-         &quot;x&quot;: 0.75,
+-         &quot;y&quot;: 0.125,
+-       },
+-     ],
+      &quot;brushId&quot;: &quot;b&quot;,
+      &quot;color&quot;: null,
+      &quot;diffusionFrames&quot;: undefined,
+      &quot;mutationId&quot;: undefined,
+      &quot;params&quot;: Object {},
+      &quot;playFrame&quot;: undefined,
+      &quot;timestamp&quot;: 1,
+      &quot;tool&quot;: &quot;brush&quot;,
+      &quot;toolOverrides&quot;: undefined,
+    },
+    &quot;motion&quot;: null,
+    &quot;playFrame&quot;: null,
+    &quot;pts&quot;: Array [
+      Object {
+        &quot;p&quot;: -1,
+        &quot;tick&quot;: 0,
+        &quot;tw&quot;: 0,
+        &quot;tx&quot;: 0,
+        &quot;ty&quot;: 0,
+        &quot;x&quot;: 1,
+        &quot;y&quot;: 0,
+      },
+    ],
+    &quot;recordedOrder&quot;: 1,
+    &quot;ticks&quot;: 1,
+    &quot;toolOverrides&quot;: Object {},
+    &quot;traceSeed&quot;: 7,
+  }
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:489:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; round-trips renderMode &apos;simple-ribbon&apos; and leaves an absent mode absent" time="0.000241208">
+            <failure message="expected undefined to be &apos;simple-ribbon&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be &apos;simple-ribbon&apos; // Object.is equality
+
+- Expected: 
+&quot;simple-ribbon&quot;
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:510:49
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; costs a hand-painted stroke one vector-flags byte, and a mode one more (D-14)" time="0.000172833">
+            <failure message="expected 93 to be 94 // Object.is equality" type="AssertionError">
+AssertionError: expected 93 to be 94 // Object.is equality
+
+- Expected
++ Received
+
+- 94
++ 93
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:530:66
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; decodes the same bytes twice to deep-equal objects (idempotence)" time="0.000135209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; fails closed when the stream is cut inside the anchor block" time="0.000642417">
+            <failure message="expected &apos;no-throw&apos; to be &apos;truncated&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;no-throw&apos; to be &apos;truncated&apos; // Object.is equality
+
+Expected: &quot;truncated&quot;
+Received: &quot;no-throw&quot;
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:561:65
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL v2 vector payload (61-05) &gt; rejects a hostile anchor count before reading any anchor" time="0.000082125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; pins the minimal one-stroke layout used by the corrupt-byte helpers" time="0.00014675">
+            <failure message="expected 93 to be 94 // Object.is equality" type="AssertionError">
+AssertionError: expected 93 to be 94 // Object.is equality
+
+- Expected
++ Received
+
+- 94
++ 93
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:583:38
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; validates the header before allocating" time="0.000263417">
+            <failure message="expected &apos;no-throw&apos; to be &apos;unsupported-version&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;no-throw&apos; to be &apos;unsupported-version&apos; // Object.is equality
+
+Expected: &quot;unsupported-version&quot;
+Received: &quot;no-throw&quot;
+
+ ❯ src/components/physic-paint/performance/scriptTimelineCodec.test.ts:598:72
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; rejects trailing bytes" time="0.000056209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; fails closed on truncated strings" time="0.000070292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; rejects a point count that cannot fit before reading points" time="0.000060916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; rejects a totalPointCount that disagrees with the event bodies" time="0.000064458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; rejects unknown tags and non-finite metadata" time="0.000120584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; refuses unsupported motion, unknown tools, and bad override entries on encode" time="0.000145625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/performance/scriptTimelineCodec.test.ts" name="AQTL fail-closed validation &gt; refuses non-finite numeric state and oversized strings on encode" time="0.000169375">
+        </testcase>
+    </testsuite>
+</testsuites>

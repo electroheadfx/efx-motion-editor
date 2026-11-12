@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { SliderStepper } from './SliderStepper';
+import { NUMERIC_STEPPER_REPEAT_DELAY_MS, NUMERIC_STEPPER_REPEAT_INTERVAL_MS } from './NumericStepper';
 
 type AnyVNode = VNode<Record<string, any>>;
 
@@ -640,5 +641,361 @@ describe('slider-stepper — commitOnInput live commit (261105-sk3)', () => {
 
     const third = renderStepper({ value: 24, min: 1, max: 24, commitOnInput: true, onChange });
     expect(valueOf(third).props.value).toBe('24');
+  });
+});
+
+/**
+ * quick 261111-tul — the gesture commit boundary.
+ *
+ * `onChange` is a continuous value stream; `onCommit` fires exactly once per
+ * gesture at its release boundary (typed blur/Enter, track pointerup/cancel,
+ * ± press end, keyboard activation) and carries the value the gesture reached
+ * — never the possibly-stale `value` prop. It fires even when that value
+ * equals `value`, and stays silent for Escape, disabled controls, preset ends
+ * and gestures that computed no value.
+ */
+describe('slider-stepper — onCommit gesture boundary (261111-tul)', () => {
+  function valueOf(tree: AnyVNode): AnyVNode {
+    const value = byClass(tree, 'slider-stepper-value');
+    expect(value, 'value readout').toBeDefined();
+    return value!;
+  }
+
+  function trackOf(tree: AnyVNode): AnyVNode {
+    const track = byClass(tree, 'slider-stepper-track');
+    expect(track).toBeDefined();
+    return track!;
+  }
+
+  /** A 100px-wide track starting at x=0 — `clientX` maps straight to a fraction. */
+  function trackTarget(width = 100) {
+    return {
+      setPointerCapture: () => {},
+      getBoundingClientRect: () => ({ left: 0, top: 0, width, height: 22, right: width, bottom: 22 }),
+    };
+  }
+
+  function plusOf(tree: AnyVNode): AnyVNode {
+    const plus = findAll(tree, (vnode) => vnode.props?.['data-testid'] === 'slider-stepper-plus')[0];
+    expect(plus, 'plus cell').toBeDefined();
+    return plus!;
+  }
+
+  /** Pointer press on a stepper cell — the − / + path (NumericStepper D-24). */
+  function pointerDown(target: AnyVNode, pointerId = 7): void {
+    (target.props as any).onPointerDown({
+      preventDefault: vi.fn(),
+      pointerId,
+      currentTarget: { setPointerCapture: vi.fn() },
+    });
+  }
+
+  function pointerUp(target: AnyVNode): void {
+    (target.props as any).onPointerUp();
+  }
+
+  it('a typed blur commits exactly once with the parsed value', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+
+    const element = { value: '21' };
+    valueOf(tree).props.onBlur({ currentTarget: element });
+
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(21);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(21);
+    expect(element.value).toBe('21');
+  });
+
+  it('Enter commits once and its blur adds nothing; a second gesture commits again', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const value = valueOf(tree);
+
+    const element = { value: '21', blur: vi.fn() };
+    value.props.onKeyDown({ key: 'Enter', currentTarget: element });
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(21);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(21);
+    expect(element.blur).toHaveBeenCalled();
+
+    // The blur Enter triggers still runs the shipped double parse — only the
+    // commit is deduped.
+    value.props.onBlur({ currentTarget: element });
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith(21);
+
+    // The suppression is consumed per gesture, never sticky.
+    value.props.onKeyDown({ key: 'Enter', currentTarget: element });
+    value.props.onBlur({ currentTarget: element });
+    expect(onCommit).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenCalledTimes(4);
+  });
+
+  it('Escape commits nothing — not even the blur it triggers', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const value = valueOf(tree);
+
+    const element = { value: '99', blur: vi.fn() };
+    value.props.onKeyDown({ key: 'Escape', currentTarget: element });
+    expect(element.value).toBe('13');
+
+    value.props.onBlur({ currentTarget: element });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('an unparseable entry commits the displayed value', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+
+    const element = { value: 'abc' };
+    valueOf(tree).props.onBlur({ currentTarget: element });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(13);
+    expect(element.value).toBe('13');
+  });
+
+  it('a typed value equal to the prop commits while onChange keeps its equality guard', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+
+    valueOf(tree).props.onBlur({ currentTarget: { value: '13' } });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(13);
+  });
+
+  it('a track drag emits onChange continuously and commits once at release with the gesture value', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const track = trackOf(tree);
+
+    track.props.onPointerDown({ clientX: 20, preventDefault: () => {}, currentTarget: trackTarget() });
+    track.props.onPointerMove({ clientX: 40, currentTarget: trackTarget() });
+    expect(onChange).toHaveBeenNthCalledWith(1, 20);
+    expect(onChange).toHaveBeenNthCalledWith(2, 40);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    // The commit carries 40 — neither the stale prop (13) nor the first move (20).
+    track.props.onPointerUp();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(40);
+  });
+
+  it('commitOnRelease keeps its draft and commits the same value at release', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({
+      value: 0.5,
+      min: 0,
+      max: 1,
+      step: 0.01,
+      commitOnRelease: true,
+      onChange,
+      onCommit,
+    });
+    const track = trackOf(tree);
+
+    track.props.onPointerDown({ clientX: 80, preventDefault: () => {}, currentTarget: trackTarget() });
+    track.props.onPointerMove({ clientX: 60, currentTarget: trackTarget() });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+
+    track.props.onPointerUp();
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit.mock.calls[0][0]).toBe(onChange.mock.calls[0][0]);
+  });
+
+  it('a cancelled drag commits the value it reached; a late release adds nothing', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const track = trackOf(tree);
+
+    track.props.onPointerDown({ clientX: 30, preventDefault: () => {}, currentTarget: trackTarget() });
+    expect(onChange).toHaveBeenCalledWith(30);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    track.props.onPointerCancel();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(30);
+
+    track.props.onPointerUp();
+    expect(onCommit).toHaveBeenCalledOnce();
+  });
+
+  it('an equal-value release commits; a gesture that computed no value does not', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 40, min: 0, max: 100, step: 1, onChange, onCommit });
+    const track = trackOf(tree);
+
+    track.props.onPointerDown({ clientX: 40, preventDefault: () => {}, currentTarget: trackTarget() });
+    expect(onChange).not.toHaveBeenCalled();
+    track.props.onPointerUp();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(40);
+
+    const emptyChange = vi.fn();
+    const emptyCommit = vi.fn();
+    const emptyTree = renderStepper({
+      value: 40,
+      min: 0,
+      max: 100,
+      step: 1,
+      onChange: emptyChange,
+      onCommit: emptyCommit,
+    });
+    const emptyTrack = trackOf(emptyTree);
+    // A zero-width track maps no value at all.
+    emptyTrack.props.onPointerDown({ clientX: 40, preventDefault: () => {}, currentTarget: trackTarget(0) });
+    emptyTrack.props.onPointerUp();
+    expect(emptyCommit).not.toHaveBeenCalled();
+  });
+
+  it('one ± press commits once at release; the follow-on leave adds nothing', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const plus = plusOf(tree);
+
+    pointerDown(plus);
+    expect(onChange).toHaveBeenCalledWith(14);
+    expect(onCommit).not.toHaveBeenCalled();
+
+    pointerUp(plus);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(14);
+
+    // pointerleave shares the same press-end handler — the ref was consumed.
+    plus.props.onPointerLeave();
+    expect(onCommit).toHaveBeenCalledOnce();
+  });
+
+  it('keyboard activation commits after its step; a real click does not double', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+
+    plusOf(tree).props.onClick({ detail: 0 });
+    expect(onChange).toHaveBeenCalledWith(14);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(14);
+
+    // A real mouse click belongs to the pointer path — this handler ignores it.
+    const clickChange = vi.fn();
+    const clickCommit = vi.fn();
+    const clickTree = renderStepper({
+      value: 13,
+      min: 0,
+      max: 100,
+      step: 1,
+      onChange: clickChange,
+      onCommit: clickCommit,
+    });
+    plusOf(clickTree).props.onClick({ detail: 1 });
+    expect(clickChange).not.toHaveBeenCalled();
+    expect(clickCommit).not.toHaveBeenCalled();
+  });
+
+  it('hold-to-repeat commits once at release, not on the repeat ticks', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    vi.useFakeTimers();
+    try {
+      const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+      const plus = plusOf(tree);
+
+      pointerDown(plus);
+      vi.advanceTimersByTime(NUMERIC_STEPPER_REPEAT_DELAY_MS + NUMERIC_STEPPER_REPEAT_INTERVAL_MS * 3);
+      expect(onChange.mock.calls.length).toBeGreaterThan(1);
+      expect(onCommit).not.toHaveBeenCalled();
+
+      pointerUp(plus);
+      expect(onCommit).toHaveBeenCalledOnce();
+      expect(onCommit).toHaveBeenCalledWith(14);
+
+      const settledChanges = onChange.mock.calls.length;
+      vi.advanceTimersByTime(NUMERIC_STEPPER_REPEAT_INTERVAL_MS * 10);
+      expect(onChange.mock.calls.length).toBe(settledChanges);
+      expect(onCommit).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('disabled controls and preset-list ends never commit', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, disabled: true, onChange, onCommit });
+    const plus = plusOf(tree);
+    pointerDown(plus);
+    pointerUp(plus);
+    plus.props.onClick({ detail: 0 });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+
+    const presetChange = vi.fn();
+    const presetCommit = vi.fn();
+    const presetTree = renderStepper({
+      value: 24,
+      presets: [12, 24],
+      onChange: presetChange,
+      onCommit: presetCommit,
+    });
+    const presetPlus = plusOf(presetTree);
+    expect(presetPlus.props.disabled).toBe(true);
+    pointerDown(presetPlus);
+    pointerUp(presetPlus);
+    presetPlus.props.onClick({ detail: 0 });
+    expect(presetChange).not.toHaveBeenCalled();
+    expect(presetCommit).not.toHaveBeenCalled();
+  });
+
+  it('a cancelled press commits the value it reached', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 13, min: 0, max: 100, step: 1, onChange, onCommit });
+    const plus = plusOf(tree);
+
+    pointerDown(plus);
+    plus.props.onPointerCancel();
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(14);
+
+    pointerUp(plus);
+    expect(onCommit).toHaveBeenCalledOnce();
+  });
+
+  it('a step that lands on the current value still commits', () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const tree = renderStepper({ value: 80, min: 1, max: 80, step: 1, onChange, onCommit });
+    const plus = plusOf(tree);
+
+    pointerDown(plus);
+    // Clamped to 80, so the onChange equality guard holds...
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+
+    // ...but the gesture still reached 80 and commits it at release.
+    pointerUp(plus);
+    expect(onCommit).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledWith(80);
   });
 });

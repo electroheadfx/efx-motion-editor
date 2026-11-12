@@ -18,10 +18,8 @@ import {
   type AquarelleTip,
   type AquarelleTipCategory,
 } from '@efxlab/efx-watercolor/brushes';
-import {
-  aquarelleSelectedTipId,
-  selectAquarelleTip,
-} from './aquarelleRecordState';
+import { aquarelleSelectedTipId } from './aquarelleRecordState';
+import { pickAquarelleBrush } from './aquarellePaintControls';
 
 const CATEGORY_ORDER: readonly AquarelleTipCategory[] = Object.freeze([
   'round',
@@ -85,7 +83,7 @@ function TipRow(props: { tip: AquarelleTip }) {
       type="button"
       data-testid={`brush-row-${props.tip.id}`}
       title={props.tip.name}
-      onClick={() => selectAquarelleTip(props.tip.id)}
+      onClick={() => void pickAquarelleBrush(props.tip.id)}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -212,7 +210,7 @@ export function BrushesDocker(props: BrushesDockerProps = {}) {
       const result = await importTip(bytes, file.name);
       if (result.ok) {
         customTips.value = [...customTips.value, result.tip];
-        selectAquarelleTip(result.tip.id);
+        void pickAquarelleBrush(result.tip.id);
       } else {
         importFailure.value = true;
       }

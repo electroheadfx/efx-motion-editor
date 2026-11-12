@@ -71,6 +71,7 @@ describe('resolvePreviousRealKeyBase (261022-cfn Task 1)', () => {
     expect(resolution.kind).toBe('clone');
     if (resolution.kind !== 'clone') throw new Error('expected clone');
     expect(resolution.payload.bytes).toEqual(testWebpBytes('nearest'));
+    expect(resolution.sourceAppFrame).toBe(5);
   });
 
   it('prefers cached real-key bytes at the previous frame and relabels only appFrame', () => {
@@ -92,6 +93,7 @@ describe('resolvePreviousRealKeyBase (261022-cfn Task 1)', () => {
       width: 120,
       height: 90,
     });
+    expect(resolution.sourceAppFrame).toBe(5);
   });
 
   it('falls back to durable record bytes when no usable cached frame exists', () => {
@@ -110,6 +112,7 @@ describe('resolvePreviousRealKeyBase (261022-cfn Task 1)', () => {
       width: 64,
       height: 48,
     });
+    expect(resolution.sourceAppFrame).toBe(5);
   });
 
   it.each([
@@ -126,6 +129,7 @@ describe('resolvePreviousRealKeyBase (261022-cfn Task 1)', () => {
     expect(resolution.kind).toBe('clone');
     if (resolution.kind !== 'clone') throw new Error('expected clone');
     expect(resolution.payload.bytes).toEqual(durableBytes);
+    expect(resolution.sourceAppFrame).toBe(5);
   });
 
   it.each([
@@ -149,6 +153,7 @@ describe('resolvePreviousRealKeyBase (261022-cfn Task 1)', () => {
     expect(resolution.kind).toBe('clone');
     if (resolution.kind !== 'clone') throw new Error('expected clone');
     expect(Object.isFrozen(resolution.payload)).toBe(true);
+    expect(resolution.sourceAppFrame).toBe(5);
   });
 
   it('toEmptyKeyPayload freezes the payload and relabels only appFrame', () => {
@@ -166,5 +171,56 @@ describe('resolvePreviousRealKeyBase (261022-cfn Task 1)', () => {
 
   it('exports the shared unavailable message', () => {
     expect(PREVIOUS_KEY_BYTES_UNAVAILABLE_ERROR).toBe('previous key bytes unavailable');
+  });
+});
+
+// 61-24 (G-15): a clone names the frame its script copy must read, so +Key can
+// carry the previous key's vector path without a second scan of the records.
+// The field is provenance for the copy — never part of the payload, which
+// keeps labeling the DESTINATION.
+describe('61-24 G-15 — the clone names its source frame', () => {
+  it('names the previous real key frame on both carriers, never the destination', () => {
+    const cached = resolvePreviousRealKeyBase({
+      records: [realKeyRecord('key-2', 2), realKeyRecord('key-5', 5)],
+      cachedRotoFrames: [realKeyFrame(5)],
+    }, 8);
+    expect(cached.kind).toBe('clone');
+    if (cached.kind !== 'clone') throw new Error('expected clone');
+    expect(cached.sourceAppFrame).toBe(5);
+    expect(cached.sourceAppFrame).not.toBe(8);
+    expect(cached.payload.appFrame).toBe(8);
+
+    const durable = resolvePreviousRealKeyBase({
+      records: [realKeyRecord('key-2', 2), realKeyRecord('key-7', 7)],
+      cachedRotoFrames: [],
+    }, 8);
+    expect(durable.kind).toBe('clone');
+    if (durable.kind !== 'clone') throw new Error('expected clone');
+    expect(durable.sourceAppFrame).toBe(7);
+    expect(durable.sourceAppFrame).not.toBe(8);
+    expect(durable.payload.appFrame).toBe(8);
+  });
+
+  it('keeps blank and unavailable frameless, and the cached-before-durable preference unchanged', () => {
+    const cachedBytes = testWebpBytes('cached-preferred-61-24');
+    const preference = resolvePreviousRealKeyBase({
+      records: [realKeyRecord('key-5', 5, { bytes: testWebpBytes('durable-5-61-24') })],
+      cachedRotoFrames: [realKeyFrame(5, { bytes: cachedBytes })],
+    }, 8);
+    expect(preference.kind).toBe('clone');
+    if (preference.kind !== 'clone') throw new Error('expected clone');
+    expect(preference.payload.bytes).toEqual(cachedBytes);
+    expect(preference.sourceAppFrame).toBe(5);
+
+    const blank = resolvePreviousRealKeyBase({ records: [] }, 3);
+    expect(blank).toEqual({ kind: 'blank' });
+    expect('sourceAppFrame' in blank).toBe(false);
+
+    const unavailable = resolvePreviousRealKeyBase({
+      records: [realKeyRecord('key-5', 5, { bytes: new Uint8Array(0) })],
+      cachedRotoFrames: [],
+    }, 8);
+    expect(unavailable).toEqual({ kind: 'unavailable' });
+    expect('sourceAppFrame' in unavailable).toBe(false);
   });
 });

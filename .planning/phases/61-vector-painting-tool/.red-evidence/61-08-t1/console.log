@@ -1,0 +1,248 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts (12 tests | 7 failed) 6ms
+   × vectorPathSession — the vector pen and path-edit session > starts clean and clears every sibling surface on entry 3ms
+     → expected false to be true // Object.is equality
+   × vectorPathSession — the vector pen and path-edit session > toggles the pen on and back off 0ms
+     → expected false to be true // Object.is equality
+   × vectorPathSession — the vector pen and path-edit session > enters path edit and clears select, the picker and the pen 0ms
+     → expected null to be 'm7' // Object.is equality
+   × vectorPathSession — the vector pen and path-edit session > writes each signal once for identical calls (idempotent setters) 0ms
+     → expected 1 to be 2 // Object.is equality
+   × vectorPathSession — the vector pen and path-edit session > builds the draw draft from a first anchor and appends at the cursor 1ms
+     → Target cannot be null or undefined.
+   × vectorPathSession — the vector pen and path-edit session > begins a draft when the first anchor is appended to an empty session 0ms
+     → Target cannot be null or undefined.
+   × vectorPathSession — the vector pen and path-edit session > keeps the draft across a tool toggle and clears it only explicitly 0ms
+     → Target cannot be null or undefined.
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts (7 tests | 7 failed) 6ms
+   × WatercolorRail — the fifth entry (D-05 / C-01) > renders exactly one vector-pen entry after the four paint buttons 4ms
+     → expected [] to have a length of 1 but got +0
+   × WatercolorRail — the fifth entry (D-05 / C-01) > draws the separator immediately before the pen, aria-hidden 0ms
+     → Cannot read properties of undefined (reading 'type')
+   × WatercolorRail — the fifth entry (D-05 / C-01) > carries the approved label, title and button grammar 0ms
+     → Cannot read properties of undefined (reading 'props')
+   × WatercolorRail — the fifth entry (D-05 / C-01) > reports aria-pressed from the session and latches on click 0ms
+     → Cannot read properties of undefined (reading 'props')
+   × WatercolorRail — the fifth entry (D-05 / C-01) > is a host tool: latching it never changes the paint tool 0ms
+     → Cannot read properties of undefined (reading 'props')
+   × WatercolorRail — the fifth entry (D-05 / C-01) > is disabled with the rail 0ms
+     → Cannot read properties of undefined (reading 'props')
+   × the rail separator rule (physicsPaintStudio.css) > is the derived 1px #5a5e63 rule, 21px wide 1ms
+     → the separator rule exists: expected -1 to be greater than -1
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 14 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintToolRail.test.ts > WatercolorRail — the fifth entry (D-05 / C-01) > renders exactly one vector-pen entry after the four paint buttons
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:153:21
+    151|       (node) => node.props?.['data-testid'] === 'aquarelle-vector-pen-…
+    152|     );
+    153|     expect(matches).toHaveLength(1);
+       |                     ^
+    154| 
+    155|     const paintTitles = ordered.slice(0, 4).map((node) => String(node.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/14]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintToolRail.test.ts > WatercolorRail — the fifth entry (D-05 / C-01) > draws the separator immediately before the pen, aria-hidden
+TypeError: Cannot read properties of undefined (reading 'type')
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:171:22
+    169|     const penIndex = ordered.indexOf(penButton(nav));
+    170|     const separator = ordered[penIndex - 1]!;
+    171|     expect(separator.type).toBe('div');
+       |                      ^
+    172|     expect(separator.props?.class).toBe('physics-paint-rail-separator'…
+    173|     expect(separator.props?.['aria-hidden']).toBe('true');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/14]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintToolRail.test.ts > WatercolorRail — the fifth entry (D-05 / C-01) > carries the approved label, title and button grammar
+TypeError: Cannot read properties of undefined (reading 'props')
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:179:16
+    177|     const nav = renderRail();
+    178|     const pen = penButton(nav);
+    179|     expect(pen.props?.['aria-label']).toBe('Vector pen');
+       |                ^
+    180|     expect(pen.props?.title).toBe('Vector pen — draw a vector path (V)…
+    181|     expect(pen.props?.class).toBe('physics-paint-icon-button');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/14]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintToolRail.test.ts > WatercolorRail — the fifth entry (D-05 / C-01) > reports aria-pressed from the session and latches on click
+TypeError: Cannot read properties of undefined (reading 'props')
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:186:34
+    184| 
+    185|   it('reports aria-pressed from the session and latches on click', () …
+    186|     expect(penButton(renderRail()).props?.['aria-pressed']).toBe(false…
+       |                                  ^
+    187| 
+    188|     click(penButton(renderRail()));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/14]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintToolRail.test.ts > WatercolorRail — the fifth entry (D-05 / C-01) > is a host tool: latching it never changes the paint tool
+TypeError: Cannot read properties of undefined (reading 'props')
+ ❯ click src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:136:24
+    134| 
+    135| function click(node: TestVNode): void {
+    136|   const onClick = node.props?.onClick as (() => void) | undefined;
+       |                        ^
+    137|   expect(onClick, 'button has no onClick').toBeTypeOf('function');
+    138|   onClick!();
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:201:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/14]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintToolRail.test.ts > WatercolorRail — the fifth entry (D-05 / C-01) > is disabled with the rail
+TypeError: Cannot read properties of undefined (reading 'props')
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:219:25
+    217|       }),
+    218|     ) as TestVNode;
+    219|     expect(penButton(nav).props?.disabled).toBe(true);
+       |                         ^
+    220|   });
+    221| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/14]⎯
+
+ FAIL  src/components/physic-paint/view/PhysicsPaintToolRail.test.ts > the rail separator rule (physicsPaintStudio.css) > is the derived 1px #5a5e63 rule, 21px wide
+AssertionError: the separator rule exists: expected -1 to be greater than -1
+ ❯ src/components/physic-paint/view/PhysicsPaintToolRail.test.ts:227:52
+    225|     const css = readFileSync(resolve(__dirname, '../physicsPaintStudio…
+    226|     const ruleStart = css.indexOf('.physics-paint-rail-separator');
+    227|     expect(ruleStart, 'the separator rule exists').toBeGreaterThan(-1);
+       |                                                    ^
+    228|     const rule = css.slice(ruleStart, css.indexOf('}', ruleStart));
+    229|     expect(rule).toContain('width: 21px');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/14]⎯
+
+ FAIL  src/components/physic-paint/view/vectorPathSession.test.ts > vectorPathSession — the vector pen and path-edit session > starts clean and clears every sibling surface on entry
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:65:35
+     63|     enterVectorPen();
+     64| 
+     65|     expect(vectorPenActive.value).toBe(true);
+       |                                   ^
+     66|     expect(pathEditMutationId.value).toBeNull();
+     67|     expect(aquarelleSelectMode.value).toBe(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/14]⎯
+
+ FAIL  src/components/physic-paint/view/vectorPathSession.test.ts > vectorPathSession — the vector pen and path-edit session > toggles the pen on and back off
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:88:35
+     86|   it('toggles the pen on and back off', () => {
+     87|     toggleVectorPen();
+     88|     expect(vectorPenActive.value).toBe(true);
+       |                                   ^
+     89|     toggleVectorPen();
+     90|     expect(vectorPenActive.value).toBe(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/14]⎯
+
+ FAIL  src/components/physic-paint/view/vectorPathSession.test.ts > vectorPathSession — the vector pen and path-edit session > enters path edit and clears select, the picker and the pen
+AssertionError: expected null to be 'm7' // Object.is equality
+
+- Expected: 
+"m7"
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:101:38
+     99|     enterPathEdit('m7');
+    100| 
+    101|     expect(pathEditMutationId.value).toBe('m7');
+       |                                      ^
+    102|     expect(vectorPenActive.value).toBe(false);
+    103|     expect(aquarelleSelectMode.value).toBe(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/14]⎯
+
+ FAIL  src/components/physic-paint/view/vectorPathSession.test.ts > vectorPathSession — the vector pen and path-edit session > writes each signal once for identical calls (idempotent setters)
+AssertionError: expected 1 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:126:28
+    124|     enterPathEdit('m7');
+    125|     // 1 initial run + exactly one real write each.
+    126|     expect(penRuns.runs()).toBe(2);
+       |                            ^
+    127|     expect(editRuns.runs()).toBe(2);
+    128|     penRuns.dispose();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/14]⎯
+
+ FAIL  src/components/physic-paint/view/vectorPathSession.test.ts > vectorPathSession — the vector pen and path-edit session > builds the draw draft from a first anchor and appends at the cursor
+AssertionError: Target cannot be null or undefined.
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:134:45
+    132|   it('builds the draw draft from a first anchor and appends at the cur…
+    133|     beginVectorDraft({ x: 0.1, y: 0.2, kind: 'auto' });
+    134|     expect(vectorDrawDraft.peek()?.anchors).toHaveLength(1);
+       |                                             ^
+    135|     expect(vectorDrawDraft.peek()?.cursor).toEqual({ x: 0.1, y: 0.2 });
+    136| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/14]⎯
+
+ FAIL  src/components/physic-paint/view/vectorPathSession.test.ts > vectorPathSession — the vector pen and path-edit session > begins a draft when the first anchor is appended to an empty session
+AssertionError: Target cannot be null or undefined.
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:145:45
+    143|   it('begins a draft when the first anchor is appended to an empty ses…
+    144|     appendVectorDraftAnchor({ x: 0.5, y: 0.5, kind: 'auto' });
+    145|     expect(vectorDrawDraft.peek()?.anchors).toHaveLength(1);
+       |                                             ^
+    146|   });
+    147| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/14]⎯
+
+ FAIL  src/components/physic-paint/view/vectorPathSession.test.ts > vectorPathSession — the vector pen and path-edit session > keeps the draft across a tool toggle and clears it only explicitly
+AssertionError: Target cannot be null or undefined.
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:154:45
+    152|     enterVectorPen();
+    153|     // Draft SURVIVES a tool toggle — clearing is Escape / finish / re…
+    154|     expect(vectorDrawDraft.peek()?.anchors).toHaveLength(1);
+       |                                             ^
+    155|     clearVectorDraft();
+    156|     expect(vectorDrawDraft.peek()).toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/14]⎯
+
+ Test Files  2 failed (2)
+      Tests  14 failed | 5 passed (19)
+   Start at  13:45:08
+   Duration  563ms (transform 257ms, setup 0ms, collect 716ms, tests 12ms, environment 0ms, prepare 66ms)
+
+(node:34306) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 unhandledRejection listeners added to [process]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+(Use `node --trace-warnings ...` to show where the warning was created)
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-08-t1/junit.xml

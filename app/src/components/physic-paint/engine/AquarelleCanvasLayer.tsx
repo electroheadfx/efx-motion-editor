@@ -31,13 +31,19 @@ import {
   type PaperPreset,
   type Tool,
 } from '@efxlab/efx-watercolor';
-import type { AquarellePoint, AquarelleStroke, AquarelleTool } from '@efxlab/efx-watercolor';
+import type {
+  AquarellePoint,
+  AquarelleStroke,
+  AquarelleTool,
+  VectorAnchor,
+} from '@efxlab/efx-watercolor';
 import {
   aquarelleActiveTipId,
   aquarelleActiveTool,
   aquarelleBrushForActiveTool,
   aquarelleParams,
   aquarelleSelectedTipId,
+  getRecordedAquarelleStrokeEntries,
   onAquarelleDry,
   snapshotAquarelleRecord,
 } from '../view/aquarelleRecordState';
@@ -45,7 +51,10 @@ import { aquarelleSelectMode } from '../view/aquarelleStrokeSelection';
 import { aquarellePickerActive } from '../view/aquarelleColorPicker';
 import { clearAquarelleWetPaint, setAquarelleHasWetPaint } from '../view/aquarelleWetPaintGate';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
+import { buildVectorStroke, type VectorPathCommit } from '../view/vectorPathHandles';
+import { clearVectorDraft } from '../view/vectorPathSession';
 import { AquarelleStrokeOverlay } from './AquarelleStrokeOverlay';
+import { VectorPathOverlay } from './VectorPathOverlay';
 import { createAquarelleEnginePort, type AquarelleEnginePort } from './aquarelleEnginePort';
 import {
   aquarelleFootprintFor,
@@ -410,6 +419,12 @@ export function AquarelleCanvasLayer(props: {
    */
   onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
   /**
+   * 61-10 (VEC-02): one completed path-edit gesture. The overlay asks for the
+   * edit; the Studio owns the history entry and the refusal. The layer only
+   * forwards the numeric id and the FULL next anchor list.
+   */
+  onEditVectorPath?: (mutationId: number, anchors: readonly VectorAnchor[]) => void;
+  /**
    * ENGINE PORT (261027-klx Wave 3, Option A): the ONE narrow typed surface
    * Roto + the Studio may hold over the watercolor engine. Published once per
    * engine instance after construction; nulled on cleanup. Consumers must keep
@@ -440,6 +455,7 @@ export function AquarelleCanvasLayer(props: {
   const onDeleteStrokesRef = useRef(props.onDeleteStrokes);
   const onMoveStrokesRef = useRef(props.onMoveStrokes);
   const onTransformStrokesRef = useRef(props.onTransformStrokes);
+  const onEditVectorPathRef = useRef(props.onEditVectorPath);
   const onEnginePortReadyRef = useRef(props.onEnginePortReady);
   disabledRef.current = props.disabled ?? false;
   colorRef.current = props.color ?? '#103c65';
@@ -461,6 +477,7 @@ export function AquarelleCanvasLayer(props: {
   onDeleteStrokesRef.current = props.onDeleteStrokes;
   onMoveStrokesRef.current = props.onMoveStrokes;
   onTransformStrokesRef.current = props.onTransformStrokes;
+  onEditVectorPathRef.current = props.onEditVectorPath;
   onEnginePortReadyRef.current = props.onEnginePortReady;
 
   // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
@@ -468,6 +485,27 @@ export function AquarelleCanvasLayer(props: {
   // Studio frame). The cache owns the other frames. Detected in the rAF signal
   // poll below — never a useEffect (efx-preact-reactivity).
   const lastPlayFrameRef = useRef(props.getPlayFrame());
+
+  // 61-09 (VEC-01 / VEC-07): the vector-half's commit seam. The overlay hands
+  // ONE finished path; this assembles the complete stroke from the SAME
+  // snapshot / selection expressions the hand-painted `onStrokeEnd` literal
+  // below uses, then forwards it to the SAME `onStrokeEnd` seam — so a vector
+  // stroke costs exactly one revision bump and gains no bake authority.
+  const handleVectorCommit = useCallback((commit: VectorPathCommit) => {
+    const snap = snapshotAquarelleRecord();
+    const stroke = buildVectorStroke(commit, {
+      color: colorRef.current,
+      params: { ...snap.params },
+      brushId: snap.brushId || brushIdForSelection(),
+      toolOverrides: { ...snap.toolOverrides },
+      tool: toolForSelection(),
+      diffusionFrames: aquarelleVisibleSettleTicks(snap.params['dry'] ?? 50),
+      timestamp: Date.now(),
+      // FRAME SCOPE: anchored to the edit frame this sheet previews.
+      playFrame: getPlayFrameRef.current(),
+    });
+    onStrokeEndRef.current?.(stroke);
+  }, []);
 
   // Engine mount/unmount rides a Preact callback ref (efx-preact-reactivity:
   // no useEffect). A key change on width/height remounts the canvas element,
@@ -529,6 +567,10 @@ export function AquarelleCanvasLayer(props: {
             const points = resampleToTickGrid(raw);
             if (points.length === 0) return;
             const snap = snapshotAquarelleRecord();
+            // 61-07 (D-14): the record-time mode resolves from the SAME brush
+            // id this literal stores, so the stamp and the brushId can never
+            // disagree about what the live stroke deposited.
+            const recordedBrushId = snap.brushId || brushIdForSelection();
             const stroke: AquarelleStroke = {
               // 261028-k03: the ENGINE resolves the live tool for THIS stroke
               // (stylus eraser end, pen barrel, finger-water) and hands it to
@@ -539,7 +581,7 @@ export function AquarelleCanvasLayer(props: {
               color: colorRef.current,
               // CANONICAL AQUA-04 globals — never the mapped bag.
               params: { ...snap.params },
-              brushId: snap.brushId || brushIdForSelection(),
+              brushId: recordedBrushId,
               points,
               toolOverrides: { ...snap.toolOverrides },
               // Visible settle window (D-19, cap 600) — the SAME cap the live
@@ -989,6 +1031,18 @@ export function AquarelleCanvasLayer(props: {
         onDeleteStrokes={(mutationIds) => onDeleteStrokesRef.current?.(mutationIds)}
         onMoveStrokes={(mutationIds, dxPx, dyPx) => onMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}
         onTransformStrokes={(mutationIds, transform) => onTransformStrokesRef.current?.(mutationIds, transform)}
+      />
+      {/* 61-09 (VEC-01 / VEC-07): the vector draw surface, directly above the
+          stroke overlay. It owns gesture only — the commit lands on the ONE
+          stroke-end seam (handleVectorCommit), never on a record/bake call. */}
+      <VectorPathOverlay
+        width={props.width}
+        height={props.height}
+        getPlayFrame={() => getPlayFrameRef.current()}
+        getRecordedStrokes={getRecordedAquarelleStrokeEntries}
+        onCommitPath={handleVectorCommit}
+        onCancelPath={clearVectorDraft}
+        onPathEdit={(mutationId, anchors) => onEditVectorPathRef.current?.(mutationId, anchors)}
       />
       {/* 261030-cnq: the brush ring is mounted by the canvas stack — above the
           reference overlay, which used to cover it inside this group. */}

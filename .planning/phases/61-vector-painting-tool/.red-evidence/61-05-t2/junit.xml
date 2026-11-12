@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="4" failures="2" errors="0" time="0.42">
+    <testsuite name="src/components/physic-paint/view/aquarelleRecordState.test.ts" timestamp="2026-11-10T13:29:17.728Z" hostname="efx2.home" tests="4" failures="2" errors="0" skipped="0" time="0.004420209">
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.test.ts" name="61-05 reopen-lossless vector restore &gt; seeds the anchor path, the sparse width factor and the render mode" time="0.002937458">
+            <failure message="expected undefined to deeply equal [ { x: 0.25, y: 0.5, …(2) }, …(1) ]" type="AssertionError">
+AssertionError: expected undefined to deeply equal [ { x: 0.25, y: 0.5, …(2) }, …(1) ]
+
+- Expected: 
+Array [
+  Object {
+    &quot;kind&quot;: &quot;auto&quot;,
+    &quot;width&quot;: 1.7999999523162842,
+    &quot;x&quot;: 0.25,
+    &quot;y&quot;: 0.5,
+  },
+  Object {
+    &quot;in&quot;: Object {
+      &quot;x&quot;: 0.5,
+      &quot;y&quot;: 0.5,
+    },
+    &quot;kind&quot;: &quot;bezier&quot;,
+    &quot;out&quot;: Object {
+      &quot;x&quot;: 1,
+      &quot;y&quot;: 0,
+    },
+    &quot;x&quot;: 0.75,
+    &quot;y&quot;: 0.125,
+  },
+]
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/view/aquarelleRecordState.test.ts:107:29
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.test.ts" name="61-05 reopen-lossless vector restore &gt; restores no render-mode key when the payload carried none" time="0.000422833">
+            <failure message="expected undefined to deeply equal [ { x: 0.25, y: 0.5, …(2) }, …(1) ]" type="AssertionError">
+AssertionError: expected undefined to deeply equal [ { x: 0.25, y: 0.5, …(2) }, …(1) ]
+
+- Expected: 
+Array [
+  Object {
+    &quot;kind&quot;: &quot;auto&quot;,
+    &quot;width&quot;: 1.7999999523162842,
+    &quot;x&quot;: 0.25,
+    &quot;y&quot;: 0.5,
+  },
+  Object {
+    &quot;in&quot;: Object {
+      &quot;x&quot;: 0.5,
+      &quot;y&quot;: 0.5,
+    },
+    &quot;kind&quot;: &quot;bezier&quot;,
+    &quot;out&quot;: Object {
+      &quot;x&quot;: 1,
+      &quot;y&quot;: 0,
+    },
+    &quot;x&quot;: 0.75,
+    &quot;y&quot;: 0.125,
+  },
+]
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/view/aquarelleRecordState.test.ts:124:28
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.test.ts" name="61-05 reopen-lossless vector restore &gt; keeps the hand-painted event serial, clock, key anchor and timeline unchanged" time="0.000513334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.test.ts" name="61-05 reopen-lossless vector restore &gt; degrades only its own event when the anchor list is malformed" time="0.000162583">
+        </testcase>
+    </testsuite>
+</testsuites>

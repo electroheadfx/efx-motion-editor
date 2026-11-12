@@ -1,0 +1,154 @@
+
+ RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts (388 tests | 2 failed) 125ms
+   × 61-24 G-15 — +Key and Duplicate share one script-copy body > declares one recordAquarelleScriptCopyForFrames body carrying the shipped ledger allocation 8ms
+     → missing start marker: const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {: expected -1 to be greater than -1
+   × 61-24 G-15 — +Key and Duplicate share one script-copy body > binds Duplicate and +Key to that one body 3ms
+     → expected 'duplicateWithScript: async ({ sourceK…' to contain 'recordAquarelleScriptCopy: recordAqua…'
+ ❯ src/components/physic-paint/hooks/useRotoKeyUtilities.test.ts (34 tests | 2 failed) 53ms
+   × 61-24 G-15 — +Key records the previous key script onto the new key > copies exactly once with the previous and destination frames, after the key exists 3ms
+     → expected "spy" to be called 1 times, but got 0 times
+   × 61-24 G-15 — +Key records the previous key script onto the new key > a copy failure publishes only the copy failure and holds the latch until it settles 2ms
+     → expected "spy" to be called 1 times, but got 0 times
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-24 G-15 — +Key and Duplicate share one script-copy body > declares one recordAquarelleScriptCopyForFrames body carrying the shipped ledger allocation
+AssertionError: missing start marker: const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {: expected -1 to be greater than -1
+ ❯ regionOf src/components/physic-paint/PhysicsPaintStudio.test.ts:7282:59
+    7280|   function regionOf(source: string, startMarker: string, endMarker: st…
+    7281|     const start = source.indexOf(startMarker);
+    7282|     expect(start, `missing start marker: ${startMarker}`).toBeGreaterT…
+       |                                                           ^
+    7283|     const end = source.indexOf(endMarker, start);
+    7284|     expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(st…
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7289:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > 61-24 G-15 — +Key and Duplicate share one script-copy body > binds Duplicate and +Key to that one body
+AssertionError: expected 'duplicateWithScript: async ({ sourceK…' to contain 'recordAquarelleScriptCopy: recordAqua…'
+
+- Expected
++ Received
+
+- recordAquarelleScriptCopy: recordAquarelleScriptCopyForFrames,
++ duplicateWithScript: async ({ sourceKeyId, sourceAppFrame }) => {
++         const outcome = await runRotoDuplicateWithScript(
++           { sourceKeyId, sourceAppFrame },
++           {
++             getSource: () => {
++               const source = rotoScript.source.peek();
++               return source.selectionKind === 'real-key' && source.keyId !== null
++                 ? { keyId: source.keyId, appFrame: source.appFrame }
++                 : null;
++             },
++             getDestination: (destinationFrame) => {
++               const launch = launchContextRef.current;
++               if (!launch) return 'out-of-capacity';
++               const kind = physicPaintStore
++                 .getRotoPhysicalProjection(launch.layerId, studioActiveTrackId())
++                 ?.cells[destinationFrame]?.kind;
++               return kind === 'real' || kind === 'generated' || kind === 'empty'
++                 ? kind
++                 : 'out-of-capacity';
++             },
++             getCapacity: () => {
++               const launch = launchContextRef.current;
++               return launch ? physicPaintStore.getRotoPhysicalCapacity(launch.layerId, studioActiveTrackId()) : 0;
++             },
++             getAquarelleStrokeEventCount: (appFrame) => {
++               let count = 0;
++               for (const event of getAquarelleEventsForFrame(appFrame)) {
++                 if (!isAquarelleDryEvent(event)) count += 1;
++               }
++               return count;
++             },
++             getAquarelleEvents: (appFrame) => getAquarelleEventsForFrame(appFrame),
++             navigateTo: (frame) => requestDuplicateNavigationRef.current(frame),
++             waitForSourceFrame: (frame) => waitForRotoDuplicateSourceFrame(rotoScript.source, {
++               originFrame: sourceAppFrame,
++               targetFrame: frame,
++             }),
++             applyAquarelleEvents: (events) => rotoScript.applyAquarelleTimeline(events),
++             recordAquarelleScriptCopy: async (sourceFrame, destinationFrame) => {
++               const launch = launchContextRef.current;
++               if (!launch) return false;
++               // Fresh ids through the SAME allocation the live stroke-end path
++               // uses (allocateStrokeMutation + recordAquarelleStroke): the
++               // duplicate is what Move / Delete / stack-step edit, never the
++               // source. The ledger emits each completion synchronously.
++               const recorded = copyAquarelleScriptToFrame({
++                 events: getAquarelleEventsForFrame(sourceFrame),
++                 destinationFrame,
++                 allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({
++                   primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),
++                 }),
++                 // 261027: the copy belongs to the DESTINATION key, never to
++                 // the frame number it happens to occupy.
++                 record: (mutationId, stroke) => {
++                   recordAquarelleStroke(
++                     mutationId,
++                     stroke,
++                     resolveStudioScriptKeyIdForFrame(
++                       studioScriptSnapshotIdentityRef.current,
++                       destinationFrame,
++                     ),
++                   );
++                 },
++               });
++               return recorded > 0;
++             },
++           },
++         );
++         if (outcome.outcome === 'aborted') {
++           setApplyStatus('error');
++           setApplyMessage(outcome.message);
++           setLastError(outcome.message);
++         }
++         return outcome.outcome;
++       },
++     },
++     
+
+ ❯ src/components/physic-paint/PhysicsPaintStudio.test.ts:7310:27
+    7308|       'playback: {',
+    7309|     );
+    7310|     expect(duplicatePort).toContain('recordAquarelleScriptCopy: record…
+       |                           ^
+    7311|     expect(duplicatePort).not.toContain('recordAquarelleScriptCopy: as…
+    7312| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/components/physic-paint/hooks/useRotoKeyUtilities.test.ts > 61-24 G-15 — +Key records the previous key script onto the new key > copies exactly once with the previous and destination frames, after the key exists
+AssertionError: expected "spy" to be called 1 times, but got 0 times
+ ❯ src/components/physic-paint/hooks/useRotoKeyUtilities.test.ts:811:32
+    809| 
+    810|     expect(harness.addEmptyKey).toHaveBeenCalledTimes(1);
+    811|     expect(copyScriptToNewKey).toHaveBeenCalledTimes(1);
+       |                                ^
+    812|     expect(copyScriptToNewKey).toHaveBeenCalledWith({ sourceAppFrame: …
+    813|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/components/physic-paint/hooks/useRotoKeyUtilities.test.ts > 61-24 G-15 — +Key records the previous key script onto the new key > a copy failure publishes only the copy failure and holds the latch until it settles
+AssertionError: expected "spy" to be called 1 times, but got 0 times
+ ❯ src/components/physic-paint/hooks/useRotoKeyUtilities.test.ts:885:32
+    883| 
+    884|     expect(harness.addEmptyKey).toHaveBeenCalledTimes(1);
+    885|     expect(copyScriptToNewKey).toHaveBeenCalledTimes(1);
+       |                                ^
+    886| 
+    887|     // The copy is still pending: a second click in the same tick is r…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 418 passed (422)
+   Start at  12:08:59
+   Duration  561ms (transform 274ms, setup 0ms, collect 476ms, tests 178ms, environment 0ms, prepare 52ms)
+
+JUNIT report written to /Users/lmarques/Dev/efx-motion-editor/.planning/phases/61-vector-painting-tool/.red-evidence/61-24-t2/junit.xml

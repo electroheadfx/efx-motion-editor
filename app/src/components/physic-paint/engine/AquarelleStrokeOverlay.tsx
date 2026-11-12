@@ -11,12 +11,38 @@
 // ============================================================
 
 import type { JSX } from 'preact';
+import { normaliseAquarelleAnchors } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
 } from '../view/aquarelleStrokeSelection';
+import { getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
+import { isVectorAquarelleStroke } from '../view/aquarelleVectorPathCommit';
 import { ScriptStrokeOverlay } from './ScriptStrokeOverlay';
-import type { ScriptStrokeEditionPort, ScriptStrokeTransform } from '../view/scriptStrokeEdition';
+import {
+  setScriptStrokeSelection,
+  type ScriptStrokeEditionPort,
+  type ScriptStrokeTransform,
+} from '../view/scriptStrokeEdition';
+import { enterPathEdit } from '../view/vectorPathSession';
+
+/**
+ * 261112-i6d: the double-click entry — a VECTOR-ONLY gate in front of the ONE
+ * session action the sheet's Edit path icon calls. It fails closed twice: an
+ * unknown / hand-painted stroke, and anchors that fail the package
+ * normalisation (a path an edit could never commit). The selection is
+ * normalised down to the double-clicked stroke so `resolvePathEditGate` stays
+ * enabled and `shouldExitPathEdit` cannot fire; Select mode is deliberately
+ * untouched (path edit lives INSIDE it), and the paint tool is never read.
+ */
+export function requestAquarellePathEdit(mutationId: number): boolean {
+  const stroke = getRecordedAquarelleStroke(mutationId);
+  if (stroke === undefined || !isVectorAquarelleStroke(stroke)) return false;
+  if (normaliseAquarelleAnchors(stroke.anchors) === undefined) return false;
+  setScriptStrokeSelection([mutationId]);
+  enterPathEdit(String(mutationId));
+  return true;
+}
 
 export function AquarelleStrokeOverlay(props: {
   width: number;
@@ -48,6 +74,7 @@ export function AquarelleStrokeOverlay(props: {
       onDeleteStrokes={props.onDeleteStrokes}
       onMoveStrokes={props.onMoveStrokes}
       onTransformStrokes={props.onTransformStrokes}
+      onStrokeDoubleClick={requestAquarellePathEdit}
       testId="aquarelle-stroke-overlay"
       badgeTestId="aquarelle-stroke-badge"
       ghostTestId="aquarelle-drag-ghost"

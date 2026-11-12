@@ -1,7 +1,7 @@
 import type { ComponentChildren, ComponentProps, CSSProperties, TargetedPointerEvent } from 'preact';
 import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { ReadonlySignal, Signal } from '@preact/signals';
+import { type ReadonlySignal, type Signal } from '@preact/signals';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { MemoizedPhysicsPaintCanvasMount } from '../engine/MemoizedPhysicsPaintCanvasMount';
@@ -37,6 +37,7 @@ import { AquarelleBrushCursor } from '../engine/AquarelleCanvasLayer';
 import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 import { MemoizedPhysicsPaintStrokeSettingsDialog } from './PhysicsPaintStrokeSettingsDialog';
 import type { StrokeSettingsDialogBundle } from './strokeSettingsModel';
+import { pathEditRebakeActive } from './vectorPathSession';
 import type { RotoRailConversionDialogBundle } from '../hooks/useRotoTimelineActions';
 import { clearScriptStrokeSelection, scriptSelectedStrokeIds } from './scriptStrokeEdition';
 import { shouldClearSelectionOnCanvasRegionPointerDown } from './scriptSelectionDeselect';
@@ -577,6 +578,11 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
               pattern). It previously rendered inside the workflow strip, whose
               overflow-y:hidden clipped it away: the pill never appeared. */}
           <PhysicsPaintApplyProgressPill rotoScript={workflow.rotoScript} />
+          {/* 261112-i6d: the path-edit re-bake veil — the canvas is genuinely
+              input-locked during the replay, so the wait is stated rather than
+              left to look like a dead click. It carries the stroke counter the
+              apply pill would show; the pill stands down while it is up. */}
+          <PathEditRebakeVeil rotoScript={workflow.rotoScript} />
           {/* 261104-uyv: the floating zoom pill — a region sibling AFTER the
               clipping viewport and the apply pill, so it is never clipped and
               keeps its seat astride the canvas area. Same picker step-aside as
@@ -659,7 +665,10 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
  */
 function PhysicsPaintApplyProgressPill({ rotoScript }: { rotoScript: PhysicsPaintWorkflowRotoScriptState | null | undefined }) {
   const applyProgress = rotoScript?.applyProgress.value ?? null;
-  if (!applyProgress) return null;
+  // 261112-i6d: a path-edit re-bake raises the canvas veil, which carries the
+  // same counter — one indicator per operation, never two.
+  const rebaking = pathEditRebakeActive.value;
+  if (!applyProgress || rebaking) return null;
   return (
     <div
       class="physics-paint-apply-progress"
@@ -676,6 +685,58 @@ function PhysicsPaintApplyProgressPill({ rotoScript }: { rotoScript: PhysicsPain
         />
       </span>
       <span class="physics-paint-apply-progress-label">Applying {applyProgress.completed}/{applyProgress.total}</span>
+    </div>
+  );
+}
+
+/**
+ * 261112-i6d: the canvas veil for a path-edit re-bake. A path edit replays the
+ * WHOLE script and the engine locks its input for the duration, so the canvas
+ * is genuinely inert while it runs — the wait was real but invisible, and a
+ * second click read as a dead control. The veil states it, and carries the
+ * stroke counter the apply pill would have shown.
+ *
+ * It IS the latch: visible exactly while `pathEditRebakeActive` is true, with
+ * no local timer and no effect gate. Nothing time-based can be trusted here —
+ * the bake blocks the main thread, so a delayed show could never fire and a
+ * held exit would ride a timer the blocked webview cannot run. The commit
+ * owns both boundaries instead: `runAquarelleScriptRebake` yields one painted
+ * frame after the latch opens (so the veil is on screen before the replay
+ * starts) and again after it closes (so the removal reaches the screen before
+ * the caller's tail, never waiting for the next input event to wake the
+ * webview).
+ */
+function PathEditRebakeVeil({ rotoScript }: { rotoScript: PhysicsPaintWorkflowRotoScriptState | null | undefined }) {
+  if (!pathEditRebakeActive.value) return null;
+  const progress = rotoScript?.applyProgress.value ?? null;
+  const percent = progress === null
+    ? 0
+    : Math.round((progress.completed / Math.max(1, progress.total)) * 100);
+  return (
+    <div
+      class="physics-paint-rebake-veil"
+      data-testid="physics-paint-rebake-veil"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div class="physics-paint-rebake-card">
+        <span class="physics-paint-rebake-spinner" aria-hidden="true" />
+        <span class="physics-paint-rebake-label">Rendering…</span>
+        {progress === null ? null : (
+          <>
+            <span class="physics-paint-rebake-track" aria-hidden="true">
+              <span
+                class="physics-paint-rebake-fill"
+                style={{ width: `${percent}%` }}
+              />
+            </span>
+            <span class="physics-paint-rebake-count" aria-hidden="true">
+              {progress.completed}/{progress.total}
+            </span>
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,0 +1,2843 @@
+// ============================================================
+//  61-09 Task 1/2/3 — the vector path overlay.
+//
+//  Laws pinned here:
+//    - the overlay draws one spine polyline plus one marker per
+//      anchor, and NOTHING for a hand-painted or off-frame stroke;
+//    - the draw gesture: plain click = smooth anchor, Shift+click =
+//      corner, adjacency refusal, first-anchor finish, Enter and
+//      double-click finish, Escape cancels with zero commits;
+//    - the draft is cleared BEFORE the commit runs, so a second
+//      Enter in the same tick is a no-op (T-61-30);
+//    - the commit is one VectorPathCommit: anchors, renderMode of
+//      the active brush, sampled points;
+//    - the overlay owns gesture only — no bake, no record call, no
+//      engine import (T-61-31).
+//
+//  Render tests materialize the vnode tree (no DOM environment),
+//  following the shipped AquarelleToolRow harness.
+// ============================================================
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { effect } from '@preact/signals';
+import {
+  evaluateAquarellePath,
+  normaliseVectorAnchors,
+  resolveAnchorHandles,
+  sampleVectorPath,
+  type AquarelleStroke,
+  type VectorAnchor,
+} from '@efxlab/efx-watercolor/payload';
+import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
+import {
+  aquarelleSelectedTipId,
+  aquarelleStrokesRevision,
+  captureAquarelleStrokeRegistry,
+  getAquarelleEventsForFrame,
+  getRecordedAquarellePayloadTimeline,
+  getRecordedAquarelleStroke,
+  getRecordedAquarelleStrokeEntries,
+  recordAquarelleStroke,
+  recordAquarelleStrokeWhenEnabled,
+  resetAquarelleRecordState,
+  updateAquarellePathInScript,
+} from '../view/aquarelleRecordState';
+import {
+  beginAquarellePathEdit,
+  listSelectableAquarelleStrokes,
+  resolveAquarelleStrokeBandPx,
+  restoreAquarelleEditSnapshot,
+  setAquarelleScriptEditInFlight,
+} from '../view/aquarelleStrokeSelection';
+import {
+  clearVectorAnchorSelection,
+  clearVectorDraft,
+  enterPathEdit,
+  exitPathEdit,
+  pathEditMutationId,
+  resetForStudioOpen,
+  setVectorAnchorSelection,
+  toggleVectorAnchorSelection,
+  vectorAnchorSelection,
+  vectorDrawDraft,
+  vectorPenActive,
+  type VectorDraftAnchor,
+} from '../view/vectorPathSession';
+import {
+  DEFAULT_VECTOR_PATH_CURVE_MODE,
+  buildAnchorWidthCommit,
+  buildDraftPath,
+  buildVectorStroke,
+  resampleVectorPaintPoints,
+  uvToScreen,
+  vectorSpinePressures,
+  type VectorPathCommit,
+} from '../view/vectorPathHandles';
+import {
+  VectorPathOverlay,
+  handleVectorPathEditKey,
+  handleVectorPathKey,
+  handleVectorPathWindowKey,
+  vectorPathEditDrag,
+  type VectorPathGestureHandlers,
+} from './VectorPathOverlay';
+import { ScriptStrokeOverlay } from './ScriptStrokeOverlay';
+import { requestAquarellePathEdit } from './AquarelleStrokeOverlay';
+import { buildStrokeBand } from '../view/aquarelleStrokeBand';
+import {
+  clearScriptStrokeTransform,
+  scriptSelectedStrokeIds,
+  setScriptStrokeSelection,
+  setScriptStrokeTransform,
+  setStrokeSizePreview,
+  strokeSizePreview,
+  wireframeMode,
+} from '../view/scriptStrokeEdition';
+
+vi.mock('preact/hooks', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('preact/hooks')>();
+  return {
+    ...actual,
+    useRef: (initial: unknown) => ({ current: initial }),
+    useEffect: () => {},
+    useState: (initial: unknown) => [
+      typeof initial === 'function' ? (initial as () => unknown)() : initial,
+      () => {},
+    ],
+    useCallback: (fn: unknown) => fn,
+    useMemo: (fn: () => unknown) => fn(),
+  };
+});
+
+interface TestVNode {
+  type: unknown;
+  props: Record<string, unknown> & { children?: unknown };
+}
+
+function childrenOf(node: TestVNode): unknown[] {
+  const children = node.props?.children;
+  if (children === null || children === undefined || typeof children === 'boolean') return [];
+  return Array.isArray(children) ? children : [children];
+}
+
+function materialize(node: unknown): unknown {
+  if (node === null || node === undefined || typeof node === 'boolean') return node;
+  if (Array.isArray(node)) return node.map(materialize);
+  if (typeof node !== 'object') return node;
+  const vnode = node as TestVNode;
+  if (typeof vnode.type === 'function') {
+    try {
+      return materialize((vnode.type as (props: Record<string, unknown>) => unknown)(vnode.props));
+    } catch {
+      return vnode;
+    }
+  }
+  return {
+    ...vnode,
+    props: {
+      ...vnode.props,
+      children: childrenOf(vnode).map(materialize),
+    },
+  } as TestVNode;
+}
+
+function* walk(node: unknown): Generator<TestVNode> {
+  if (node === null || node === undefined || typeof node === 'boolean') return;
+  if (Array.isArray(node)) {
+    for (const child of node) yield* walk(child);
+    return;
+  }
+  if (typeof node !== 'object') return;
+  const vnode = node as TestVNode;
+  yield vnode;
+  for (const child of childrenOf(vnode)) yield* walk(child);
+}
+
+function nodesWithTestId(tree: unknown, testId: string): TestVNode[] {
+  return [...walk(tree)].filter((node) => node.props?.['data-testid'] === testId);
+}
+
+const FRAME = 7;
+const WIDTH = 1000;
+const HEIGHT = 800;
+
+function auto(x: number, y: number): VectorDraftAnchor {
+  return { x, y, kind: 'auto' };
+}
+
+function bezier(x: number, y: number): VectorDraftAnchor {
+  return { x, y, kind: 'bezier', in: { x, y }, out: { x, y } };
+}
+
+function vectorStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#103c65',
+    params: { size: 40, dry: 30 },
+    brushId: 'wc/round-medium',
+    points: [
+      { x: 0.2, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0 },
+      { x: 0.8, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0 },
+    ],
+    toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES },
+    timestamp: 1000,
+    playFrame: FRAME,
+    anchors: [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)],
+    ...overrides,
+  };
+}
+
+type TestGestureHandlers = Partial<VectorPathGestureHandlers> & {
+  onPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => void;
+};
+
+function propsWith(
+  entries: readonly (readonly [number, AquarelleStroke])[] = [],
+  handlers: TestGestureHandlers = {},
+) {
+  return {
+    width: WIDTH,
+    height: HEIGHT,
+    getPlayFrame: () => FRAME,
+    getRecordedStrokes: () => new Map(entries),
+    onCommitPath: handlers.onCommitPath ?? (() => {}),
+    onCancelPath: handlers.onCancelPath ?? (() => {}),
+    onPathEdit: handlers.onPathEdit ?? (() => {}),
+  };
+}
+
+function render(tree: unknown): TestVNode | null {
+  const materialized = materialize(tree);
+  if (materialized === null || materialized === undefined) return null;
+  const nodes = [...walk(materialized)];
+  return nodes[0] ?? null;
+}
+
+function pointerEvent(
+  x: number,
+  y: number,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    button: 0,
+    altKey: false,
+    shiftKey: false,
+    pointerId: 1,
+    clientX: x,
+    clientY: y,
+    // 61-16: the drag target also exposes the pointer-capture trio, so the
+    // capture/release assertions observe the calls the overlay makes.
+    currentTarget: {
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: WIDTH, height: HEIGHT }),
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+      hasPointerCapture: vi.fn((): boolean => true),
+    },
+    preventDefault: vi.fn(),
+    stopPropagation: vi.fn(),
+    ...overrides,
+  };
+}
+
+/** The capture trio the 61-16 drag assertions observe on `currentTarget`. */
+interface CaptureStub {
+  readonly setPointerCapture: ReturnType<typeof vi.fn>;
+  readonly releasePointerCapture: ReturnType<typeof vi.fn>;
+  readonly hasPointerCapture: ReturnType<typeof vi.fn>;
+}
+
+function captureOf(event: Record<string, unknown>): CaptureStub {
+  return event['currentTarget'] as CaptureStub;
+}
+
+/** Layer px → document uv for the 1000×800 stub rect. */
+function clickAt(uvX: number, uvY: number, overrides: Record<string, unknown> = {}) {
+  return pointerEvent(uvX * WIDTH, (1 - uvY) * HEIGHT, overrides);
+}
+
+function press(root: TestVNode, event: Record<string, unknown>): void {
+  const onPointerDown = root.props['onPointerDown'] as ((e: unknown) => void) | undefined;
+  expect(onPointerDown, 'overlay root has no pointer handler').toBeTypeOf('function');
+  onPointerDown!(event);
+}
+
+function draftAnchors(): readonly VectorDraftAnchor[] {
+  return vectorDrawDraft.peek()?.anchors ?? [];
+}
+
+beforeEach(() => {
+  resetForStudioOpen();
+  aquarelleSelectedTipId.value = 'wc/round-medium';
+  // 261112-n3f: the preview switch and the pen latch are session state — no
+  // case may inherit either from the one before it.
+  setStrokeSizePreview(false);
+  vectorPenActive.value = false;
+});
+
+afterEach(() => {
+  resetForStudioOpen();
+  aquarelleSelectedTipId.value = 'wc/round-medium';
+  clearVectorDraft();
+  wireframeMode.value = false;
+  setStrokeSizePreview(false);
+  vectorPenActive.value = false;
+});
+
+describe('VectorPathOverlay — rendered geometry (task 1)', () => {
+  it('draws nothing when no vector stroke and no draft exist', () => {
+    expect(VectorPathOverlay(propsWith())).toBeNull();
+  });
+
+  it('draws nothing for a hand-painted stroke (no anchors)', () => {
+    expect(VectorPathOverlay(propsWith([[11, vectorStroke({ anchors: undefined })]]))).toBeNull();
+    expect(VectorPathOverlay(propsWith([[11, vectorStroke({ anchors: [] })]]))).toBeNull();
+  });
+
+  it('draws one spine polyline and exactly one marker per anchor', () => {
+    // 61-UAT: the structure is construction chrome — it renders only while the
+    // pen is drawing, a path edit is open, or the wireframe view is on.
+    vectorPenActive.value = true;
+    const tree = render(VectorPathOverlay(propsWith([[11, vectorStroke()]])));
+    expect(nodesWithTestId(tree, 'vector-path-spine')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'vector-path-anchor')).toHaveLength(3);
+    expect(nodesWithTestId(tree, 'vector-path-handle')).toHaveLength(0);
+    expect(nodesWithTestId(tree, 'vector-path-envelope')).toHaveLength(0);
+  });
+
+  it('draws two handle markers for a bezier anchor and none for an auto anchor', () => {
+    vectorPenActive.value = true;
+    const tree = render(
+      VectorPathOverlay(
+        propsWith([
+          [
+            11,
+            vectorStroke({
+              anchors: [auto(0.2, 0.5), { x: 0.6, y: 0.5, kind: 'bezier', in: { x: 0.6, y: 0.6 }, out: { x: 0.6, y: 0.4 } }],
+            }),
+          ],
+        ]),
+      ),
+    );
+    expect(nodesWithTestId(tree, 'vector-path-anchor')).toHaveLength(2);
+    expect(nodesWithTestId(tree, 'vector-path-handle')).toHaveLength(2);
+  });
+
+  it('draws no structure on an idle frame, so the render stays unobstructed', () => {
+    // 61-UAT: every vector path's spine sat on top of the painted result with no
+    // way to see the final frame. The chrome belongs to the construction states.
+    expect(VectorPathOverlay(propsWith([[11, vectorStroke()]]))).toBeNull();
+    wireframeMode.value = true;
+    expect(VectorPathOverlay(propsWith([[11, vectorStroke()]]))).not.toBeNull();
+  });
+
+  it('skips strokes painted on another frame', () => {
+    expect(
+      VectorPathOverlay(propsWith([[12, vectorStroke({ playFrame: FRAME + 1 })]])),
+    ).toBeNull();
+  });
+
+  it('mounts the pointer surface while the pen is active with an empty draft', () => {
+    vectorPenActive.value = true;
+    const root = render(VectorPathOverlay(propsWith()));
+    expect(root).not.toBeNull();
+    expect(root!.props['onPointerDown']).toBeTypeOf('function');
+  });
+
+  it('mounts no pointer surface at all while idle, and one while the pen is active', () => {
+    // 61-UAT: an idle frame mounts nothing, so the final render is untouched by
+    // both the chrome and the pointer surface.
+    expect(VectorPathOverlay(propsWith([[11, vectorStroke()]]))).toBeNull();
+    vectorPenActive.value = true;
+    const active = render(VectorPathOverlay(propsWith([[11, vectorStroke()]])));
+    expect(active!.props['style']).toMatchObject({ pointerEvents: 'auto' });
+  });
+});
+
+describe('VectorPathOverlay — draw gesture (task 2)', () => {
+  beforeEach(() => {
+    vectorPenActive.value = true;
+  });
+
+  it('places a smooth anchor per plain click', () => {
+    const root = render(VectorPathOverlay(propsWith()))!;
+    press(root, clickAt(0.5, 0.5));
+    press(root, clickAt(0.7, 0.4));
+    expect(draftAnchors()).toEqual([auto(0.5, 0.5), auto(0.7, 0.4)]);
+  });
+
+  it('places a corner (bezier with zero-length handles) on Shift+click', () => {
+    const root = render(VectorPathOverlay(propsWith()))!;
+    press(root, clickAt(0.5, 0.5));
+    press(root, clickAt(0.7, 0.4, { shiftKey: true }));
+    expect(draftAnchors()).toEqual([auto(0.5, 0.5), bezier(0.7, 0.4)]);
+  });
+
+  it('leaves Alt+click placing a plain smooth anchor', () => {
+    const root = render(VectorPathOverlay(propsWith()))!;
+    press(root, clickAt(0.5, 0.5));
+    press(root, clickAt(0.7, 0.4, { altKey: true }));
+    expect(draftAnchors()).toEqual([auto(0.5, 0.5), auto(0.7, 0.4)]);
+  });
+
+  it('refuses a click within the adjacency radius of the last anchor', () => {
+    const root = render(VectorPathOverlay(propsWith()))!;
+    press(root, clickAt(0.5, 0.5));
+    // 5 screen px to the right on a 1000px sheet — inside ADJACENCY_MIN_PX.
+    press(root, clickAt(0.505, 0.5));
+    expect(draftAnchors()).toHaveLength(1);
+  });
+
+  it('finishes at the first anchor without appending a closing anchor', () => {
+    const onCommitPath = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.2, 0.5));
+    press(root, clickAt(0.6, 0.5));
+    press(root, clickAt(0.202, 0.5));
+    expect(onCommitPath).toHaveBeenCalledTimes(1);
+    const commit = onCommitPath.mock.calls[0]![0] as { anchors: readonly VectorDraftAnchor[] };
+    expect(commit.anchors).toHaveLength(2);
+    expect(vectorDrawDraft.peek()).toBeNull();
+  });
+
+  it('finishes on Enter and commits exactly once', () => {
+    const onCommitPath = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.2, 0.5));
+    press(root, clickAt(0.6, 0.5));
+    handleVectorPathKey({ key: 'Enter' }, { onCommitPath, onCancelPath: () => {} });
+    expect(onCommitPath).toHaveBeenCalledTimes(1);
+    expect(vectorDrawDraft.peek()).toBeNull();
+  });
+
+  it('finishes on a double-click', () => {
+    const onCommitPath = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.2, 0.5));
+    press(root, clickAt(0.6, 0.5));
+    // Preact's DOM event prop is `onDblClick` (it binds the real `dblclick`).
+    const onDoubleClick = root.props['onDblClick'] as ((e: unknown) => void) | undefined;
+    expect(onDoubleClick, 'overlay root has no double-click handler').toBeTypeOf('function');
+    onDoubleClick!({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
+    expect(onCommitPath).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels on Escape with zero commits', () => {
+    const onCommitPath = vi.fn();
+    const onCancelPath = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath, onCancelPath })))!;
+    press(root, clickAt(0.2, 0.5));
+    press(root, clickAt(0.6, 0.5));
+    handleVectorPathKey({ key: 'Escape' }, { onCommitPath, onCancelPath });
+    expect(onCommitPath).not.toHaveBeenCalled();
+    expect(onCancelPath).toHaveBeenCalledTimes(1);
+    expect(vectorDrawDraft.peek()).toBeNull();
+  });
+
+  it('commits nothing for a zero- or one-anchor path and never throws', () => {
+    const onCommitPath = vi.fn();
+    expect(() =>
+      handleVectorPathKey({ key: 'Enter' }, { onCommitPath, onCancelPath: () => {} }),
+    ).not.toThrow();
+    expect(onCommitPath).not.toHaveBeenCalled();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    handleVectorPathKey({ key: 'Enter' }, { onCommitPath, onCancelPath: () => {} });
+    expect(onCommitPath).not.toHaveBeenCalled();
+    expect(vectorDrawDraft.peek()).toBeNull();
+  });
+
+  it('clears the draft BEFORE the commit so a same-tick second Enter is a no-op', () => {
+    const onCommitPath = vi.fn((commit: unknown) => {
+      expect(vectorDrawDraft.peek(), 'draft was still live inside the commit').toBeNull();
+      expect(commit).toBeTruthy();
+    });
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+    const handlers = { onCommitPath, onCancelPath: () => {} };
+    handleVectorPathKey({ key: 'Enter' }, handlers);
+    handleVectorPathKey({ key: 'Enter' }, handlers);
+    expect(onCommitPath).toHaveBeenCalledTimes(1);
+  });
+
+  it('commits the draft anchors, the active brush mode and the sampled points', () => {
+    const onCommitPath = vi.fn();
+    aquarelleSelectedTipId.value = 'simple-ribbon';
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+    handleVectorPathKey({ key: 'Enter' }, { onCommitPath, onCancelPath: () => {} });
+    const commit = onCommitPath.mock.calls[0]![0] as {
+      anchors: readonly VectorDraftAnchor[];
+      curveMode: string;
+      points: readonly { x: number; y: number }[];
+    };
+    expect(commit.anchors).toEqual([auto(0.3, 0.5), auto(0.7, 0.5)]);
+    // G-20: a new path defaults to spline, and its points are the spline view.
+    expect(commit.curveMode).toBe('spline');
+    expect(commit.curveMode).toBe(DEFAULT_VECTOR_PATH_CURVE_MODE);
+    expect(commit.points).toEqual(
+      buildDraftPath([auto(0.3, 0.5), auto(0.7, 0.5)], DEFAULT_VECTOR_PATH_CURVE_MODE).points,
+    );
+  });
+
+  it('prevents default and stops propagation so no paint stroke starts underneath', () => {
+    const root = render(VectorPathOverlay(propsWith()))!;
+    const event = clickAt(0.5, 0.5);
+    press(root, event);
+    expect((event['preventDefault'] as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+    expect((event['stopPropagation'] as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+  });
+
+  it('binds the key listener while the pen or a path edit is active and removes it on cleanup', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    expect(source).toContain("window.addEventListener('keydown'");
+    expect(source).toContain("window.removeEventListener('keydown'");
+    // 61-10: the same listener carries the open path edit's Delete/Backspace.
+    expect(source).toContain('if (!penActive && editMutationId === null) return');
+  });
+});
+
+// 61-21 (IN-01): the draw state shows the curve the NEXT click will produce.
+// A pointer move writes the draft's `cursor` station through the one session
+// writer and the overlay draws a provisional dashed spine from the last placed
+// anchor to it. Nothing is placed, recorded or committed by a move (D-06).
+describe('61-21 IN-01 — the live rubber band', () => {
+  const DRAFT_ANCHORS = [auto(0.2, 0.5), auto(0.6, 0.5)] as const;
+  const CURSOR = { x: 0.8, y: 0.4 };
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    vectorPenActive.value = true;
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  it('draws one provisional spine to the cursor, and none without a cursor', () => {
+    vectorDrawDraft.value = { anchors: [...DRAFT_ANCHORS], cursor: CURSOR };
+    const tree = render(VectorPathOverlay(propsWith()));
+    const previews = nodesWithTestId(tree, 'vector-path-draft-preview');
+    expect(previews).toHaveLength(1);
+
+    // The points are the ONE spine module's samples of anchors + cursor,
+    // screen-projected — never a hand-drawn chord.
+    const expected = sampleVectorPath([...DRAFT_ANCHORS, { ...CURSOR, kind: 'auto' }]).points
+      .map((point) => {
+        const at = uvToScreen(point, WIDTH, HEIGHT);
+        return `${at.x},${at.y}`;
+      })
+      .join(' ');
+    expect(previews[0]!.props['points']).toBe(expected);
+    expect(previews[0]!.props['fill']).toBe('none');
+    expect(previews[0]!.props['strokeDasharray']).toBe('4 3');
+
+    // No cursor station = no rubber band.
+    vectorDrawDraft.value = { anchors: [...DRAFT_ANCHORS], cursor: null };
+    expect(
+      nodesWithTestId(render(VectorPathOverlay(propsWith())), 'vector-path-draft-preview'),
+    ).toHaveLength(0);
+  });
+
+  it('never places an anchor or commits from a pointer move, and draws the preview before the spine', () => {
+    const onCommitPath = vi.fn();
+    vectorDrawDraft.value = { anchors: [...DRAFT_ANCHORS], cursor: null };
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
+    expect(onPointerMove, 'the draw state has no pointer-move handler').toBeTypeOf('function');
+
+    onPointerMove!(clickAt(CURSOR.x, CURSOR.y));
+
+    expect(vectorDrawDraft.peek()?.cursor).toEqual(CURSOR);
+    expect(vectorDrawDraft.peek()?.anchors).toHaveLength(2);
+    expect(onCommitPath).not.toHaveBeenCalled();
+
+    // Re-render at the new station: ONE provisional line, still two anchors,
+    // and no marker or handle for the cursor.
+    const tree = render(VectorPathOverlay(propsWith([], { onCommitPath })));
+    const nodes = [...walk(tree)];
+    const previews = nodesWithTestId(tree, 'vector-path-draft-preview');
+    expect(previews).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'vector-path-anchor')).toHaveLength(2);
+    expect(nodesWithTestId(tree, 'vector-path-handle')).toHaveLength(0);
+
+    // Drawn BEFORE the committed draft spine, so the placed path stays legible.
+    const previewIndex = nodes.findIndex(
+      (node) => node.props?.['data-testid'] === 'vector-path-draft-preview',
+    );
+    const spineIndex = nodes.findIndex(
+      (node) => node.props?.['data-testid'] === 'vector-path-spine',
+    );
+    expect(previewIndex).toBeGreaterThanOrEqual(0);
+    expect(spineIndex).toBeGreaterThan(previewIndex);
+    expect(onCommitPath).not.toHaveBeenCalled();
+  });
+});
+
+describe('VectorPathOverlay — one entry per finished path (task 3)', () => {
+  const SIZE = { width: WIDTH, height: HEIGHT };
+  const HAND_PAINTED_ID = 92001;
+  const VECTOR_ID = 92002;
+
+  /**
+   * The Studio's stroke-end handler, reduced to the ONE record seam it drives
+   * (the plan's scope: the overlay commits, the Studio records).
+   */
+  function recordCommitAs(mutationId: number) {
+    return (commit: VectorPathCommit) => {
+      const stroke = buildVectorStroke(commit, {
+        color: '#103c65',
+        params: { size: 40, dry: 30 },
+        brushId: 'wc/round-medium',
+        toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES },
+        tool: 'brush',
+        diffusionFrames: 120,
+        timestamp: 4242,
+        playFrame: FRAME,
+      });
+      recordAquarelleStrokeWhenEnabled(true, mutationId, stroke, 'frame-key');
+    };
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    vectorPenActive.value = true;
+  });
+
+  it('records exactly one entry and one revision bump for a finished path', () => {
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const onCommitPath = vi.fn(recordCommitAs(VECTOR_ID));
+    const handlers = { onCommitPath, onCancelPath: () => {} };
+    expect(getRecordedAquarelleStrokeEntries().size).toBe(0);
+
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+    handleVectorPathKey({ key: 'Enter' }, handlers);
+
+    expect(onCommitPath).toHaveBeenCalledTimes(1);
+    expect(getRecordedAquarelleStrokeEntries().size).toBe(1);
+    expect(getAquarelleEventsForFrame(FRAME)).toHaveLength(1);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    // A repeat finish on the cleared draft adds nothing — not a second entry,
+    // not a second timeline event, not a second revision bump (T-61-30).
+    handleVectorPathKey({ key: 'Enter' }, handlers);
+    expect(onCommitPath).toHaveBeenCalledTimes(1);
+    expect(getRecordedAquarelleStrokeEntries().size).toBe(1);
+    expect(getAquarelleEventsForFrame(FRAME)).toHaveLength(1);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+  });
+
+  it('records nothing for an empty or one-anchor path — no entry, no serial, no event', () => {
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const onCommitPath = vi.fn(recordCommitAs(VECTOR_ID));
+    const handlers = { onCommitPath, onCancelPath: () => {} };
+
+    // Empty draft.
+    handleVectorPathKey({ key: 'Enter' }, handlers);
+    // One-anchor draft.
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    handleVectorPathKey({ key: 'Enter' }, handlers);
+
+    expect(onCommitPath).not.toHaveBeenCalled();
+    expect(getRecordedAquarelleStrokeEntries().size).toBe(0);
+    expect(getAquarelleEventsForFrame(FRAME)).toHaveLength(0);
+    // No serial: nothing is listed and nothing was allocated.
+    expect(listSelectableAquarelleStrokes(FRAME, SIZE, 'all')).toEqual([]);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+  });
+
+  it('lists a committed vector stroke once, keyed by serial, with the hand-painted row shape', () => {
+    recordAquarelleStroke(
+      HAND_PAINTED_ID,
+      vectorStroke({ mutationId: HAND_PAINTED_ID, anchors: undefined }),
+      'frame-key',
+    );
+    const onCommitPath = vi.fn(recordCommitAs(VECTOR_ID));
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+    handleVectorPathKey({ key: 'Enter' }, { onCommitPath, onCancelPath: () => {} });
+
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    const vectorRows = rows.filter((row) => row.mutationId === VECTOR_ID);
+    const paintRows = rows.filter((row) => row.mutationId === HAND_PAINTED_ID);
+    expect(vectorRows).toHaveLength(1);
+    expect(paintRows).toHaveLength(1);
+    const vectorRow = vectorRows[0]!;
+    const paintRow = paintRows[0]!;
+
+    // One ordinary paint row: no badge, no icon, no vector-only field.
+    expect(Object.keys(vectorRow).sort()).toEqual(Object.keys(paintRow).sort());
+    expect(vectorRow.kind).toBe('paint');
+    expect(vectorRow.kind).toBe(paintRow.kind);
+    expect(vectorRow.color).toBe(paintRow.color);
+    expect(vectorRow.tool).toBe(paintRow.tool);
+    expect(vectorRow.brushId).toBe(paintRow.brushId);
+    expect(vectorRow.customResponse).toBe(paintRow.customResponse);
+
+    // Keyed by serial: one row per serial, and the vector row owns its own.
+    const serials = rows.map((row) => row.serial);
+    expect(new Set(serials).size).toBe(rows.length);
+    expect(rows.filter((row) => row.serial === vectorRow.serial)).toHaveLength(1);
+
+    // Shared stack grammar: the vector stroke was recorded last, so it is top.
+    expect(rows.map((row) => row.stackTotal)).toEqual([2, 2]);
+    expect(vectorRow.stackPosition).toBe(1);
+    expect(paintRow.stackPosition).toBe(2);
+  });
+});
+
+describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
+  const EDIT_ID = 93001;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  it('replaces the recorded path at the same timeline index, bumps once, and repeats at zero', () => {
+    const registryEntry = () =>
+      captureAquarelleStrokeRegistry().pairs.find((pair) => pair[0] === EDIT_ID)![2];
+    const entryBefore = registryEntry();
+    const indexBefore = getRecordedAquarellePayloadTimeline().indexOf(entryBefore);
+    expect(indexBefore).toBeGreaterThanOrEqual(0);
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const nextAnchors: readonly VectorAnchor[] = [auto(0.2, 0.55), auto(0.5, 0.55), auto(0.8, 0.55)];
+
+    expect(updateAquarellePathInScript(EDIT_ID, nextAnchors)).toBe(1);
+
+    const strokeAfter = getRecordedAquarelleStroke(EDIT_ID)!;
+    expect(strokeAfter.anchors).toEqual(nextAnchors);
+    // The POINTS MUST MOVE: they are the replay's geometry (`toStudioStroke`
+    // maps points into `pts`), so they are the spine sampled from the new
+    // anchors in the commit's six-field shape — never the pre-edit spine.
+    const sampled = resampleVectorPaintPoints(sampleVectorPath(nextAnchors).points);
+    const pressures = vectorSpinePressures(sampled);
+    const expectedPoints = sampled.map((point, index) => ({
+      x: point.x,
+      y: point.y,
+      p: pressures[index]!,
+      tx: 0,
+      ty: 0,
+      tw: 0,
+    }));
+    expect(strokeAfter.points).toEqual(expectedPoints);
+    expect(strokeAfter.points).not.toEqual(editedStroke().points);
+    // Every other field survives the path write.
+    expect(strokeAfter.params).toEqual(editedStroke().params);
+    const entryAfter = registryEntry();
+    expect(entryAfter).not.toBe(entryBefore);
+    // SAME index — the replay order never moves.
+    expect(getRecordedAquarellePayloadTimeline().indexOf(entryAfter)).toBe(indexBefore);
+    // The payload's opaque engine block carries the SAME anchors (T-61-34).
+    expect((entryAfter.engine as { anchors?: readonly VectorAnchor[] }).anchors).toEqual(nextAnchors);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    // Idempotency: the same call twice stores nothing and bumps nothing.
+    expect(updateAquarellePathInScript(EDIT_ID, nextAnchors)).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+  });
+
+  it('stores exactly ONE edit snapshot for one changed anchor, restores it in one undo, and refuses while in flight', () => {
+    const originalAnchors = editedStroke().anchors;
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const nextAnchors: readonly VectorAnchor[] = [auto(0.25, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
+
+    const editId = beginAquarellePathEdit(EDIT_ID, nextAnchors);
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(EDIT_ID)!.anchors).toEqual(nextAnchors);
+
+    // ONE edit snapshot for the whole gesture: a single undo restores the
+    // pre-drag path. (The ledger entry itself is the Studio's business and is
+    // pinned by 61-15's stack-length test, not here.)
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(EDIT_ID)!.anchors).toEqual(originalAnchors);
+
+    // A second path commit while one is in flight is refused and bumps nothing.
+    setAquarelleScriptEditInFlight(true);
+    expect(
+      beginAquarellePathEdit(EDIT_ID, [auto(0.3, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)]),
+    ).toBeNull();
+    setAquarelleScriptEditInFlight(false);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 2);
+  });
+
+  it('owns the pointer while a path edit is open even with the pen released', () => {
+    enterPathEdit(String(EDIT_ID));
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]])))!;
+    expect(root.props['style']).toMatchObject({ pointerEvents: 'auto' });
+    expect(root.props['onPointerDown']).toBeTypeOf('function');
+  });
+
+  it('drags an anchor and commits ONE onPathEdit carrying the promotion and the moved handles', () => {
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    const originalAnchors = stroke.anchors as readonly VectorAnchor[];
+    const derived = resolveAnchorHandles(originalAnchors);
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
+    expect(onPointerMove, 'overlay root has no pointer-move handler').toBeTypeOf('function');
+    onPointerMove!(clickAt(0.26, 0.55));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.26, 0.55));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(anchors).toHaveLength(3);
+    const dragged = anchors[0]!;
+    expect(dragged.kind).toBe('bezier');
+    expect(dragged.x).toBeCloseTo(0.26, 9);
+    expect(dragged.y).toBeCloseTo(0.55, 9);
+    expect(dragged.in!.x).toBeCloseTo(derived[0]!.in.x + 0.06, 9);
+    expect(dragged.in!.y).toBeCloseTo(derived[0]!.in.y + 0.05, 9);
+    expect(dragged.out!.x).toBeCloseTo(derived[0]!.out.x + 0.06, 9);
+    expect(dragged.out!.y).toBeCloseTo(derived[0]!.out.y + 0.05, 9);
+    // The neighbours are untouched.
+    expect(anchors[1]).toEqual(originalAnchors[1]);
+    expect(anchors[2]).toEqual(originalAnchors[2]);
+  });
+
+  it('commits the promotion on a grab-and-release of an auto anchor', () => {
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    const derived = resolveAnchorHandles(stroke.anchors as readonly VectorAnchor[]);
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.2, 0.5));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors[0]!.kind).toBe('bezier');
+    expect(anchors[0]!.in).toEqual(derived[0]!.in);
+    expect(anchors[0]!.out).toEqual(derived[0]!.out);
+    expect(anchors[0]!.x).toBeCloseTo(0.2, 12);
+    expect(anchors[0]!.y).toBeCloseTo(0.5, 12);
+  });
+
+  it('commits nothing on a grab-and-release of an already-bezier anchor', () => {
+    resetAquarelleRecordState();
+    const anchors: readonly VectorAnchor[] = [
+      { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.15, y: 0.5 }, out: { x: 0.25, y: 0.5 } },
+      auto(0.5, 0.5),
+      auto(0.8, 0.5),
+    ];
+    const stroke = editedStroke({ anchors });
+    recordAquarelleStroke(EDIT_ID, stroke, 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.2, 0.5));
+
+    expect(onPathEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe('VectorPathOverlay — handle drag, insert, delete, width (task 2)', () => {
+  const EDIT_ID = 94001;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  const HANDLE_ANCHORS: readonly VectorAnchor[] = [
+    { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.15, y: 0.5 }, out: { x: 0.25, y: 0.5 } },
+    auto(0.5, 0.5),
+    auto(0.8, 0.5),
+  ];
+
+  function renderHandleStroke(onPathEdit: (id: number, anchors: readonly VectorAnchor[]) => void) {
+    const stroke = editedStroke({ anchors: HANDLE_ANCHORS });
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+    return { stroke, root };
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  it('drags one handle, mirrors its coupled partner and commits ONCE', () => {
+    enterPathEdit(String(EDIT_ID));
+    const onPathEdit = vi.fn();
+    const { root } = renderHandleStroke(onPathEdit);
+
+    // Grab the OUT handle of anchor 0 (50px from the anchor, inside the handle pad).
+    press(root, clickAt(0.25, 0.5));
+    const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
+    expect(onPointerMove, 'overlay root has no pointer-move handler').toBeTypeOf('function');
+    onPointerMove!(clickAt(0.3, 0.5));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.3, 0.5));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(anchors[0]!.kind).toBe('bezier');
+    expect(anchors[0]!.out!.x).toBeCloseTo(0.3, 9);
+    expect(anchors[0]!.out!.y).toBeCloseTo(0.5, 9);
+    // Coupled: the partner is the point reflection about the anchor (0.2, 0.5).
+    expect(anchors[0]!.in!.x).toBeCloseTo(0.1, 9);
+    expect(anchors[0]!.in!.y).toBeCloseTo(0.5, 9);
+    // The neighbours are untouched.
+    expect(anchors[1]).toEqual(HANDLE_ANCHORS[1]);
+    expect(anchors[2]).toEqual(HANDLE_ANCHORS[2]);
+  });
+
+  it('leaves the partner untouched when Alt breaks the coupling', () => {
+    enterPathEdit(String(EDIT_ID));
+    const onPathEdit = vi.fn();
+    const { root } = renderHandleStroke(onPathEdit);
+
+    press(root, clickAt(0.25, 0.5));
+    const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
+    onPointerMove!(clickAt(0.3, 0.5, { altKey: true }));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.3, 0.5, { altKey: true }));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors[0]!.out!.x).toBeCloseTo(0.3, 9);
+    expect(anchors[0]!.in).toEqual({ x: 0.15, y: 0.5 });
+    // Byte-identical: the broken partner is carried, not rebuilt.
+    expect(anchors[0]!.in).toBe(HANDLE_ANCHORS[0]!.in);
+    expect(anchors[0]!.kind).toBe('bezier');
+  });
+
+  it('inserts one anchor on a spine click, commits ONCE and selects it', () => {
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    const originalAnchors = stroke.anchors as readonly VectorAnchor[];
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    // 150px from both anchors, on the chord — no anchor or handle can win.
+    press(root, clickAt(0.35, 0.5));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(anchors).toHaveLength(4);
+    expect(anchors[0]).toEqual(originalAnchors[0]);
+    expect(anchors[1]!.kind).toBe('auto');
+    expect(anchors[1]!.x).toBeCloseTo(0.35, 2);
+    expect(anchors[2]).toEqual(originalAnchors[1]);
+    expect(anchors[3]).toEqual(originalAnchors[2]);
+    // The inserted anchor is the new selection (the ONE session signal).
+    expect(vectorAnchorSelection.peek()).toEqual([1]);
+  });
+
+  it('keeps ONE ascending, deduplicated selection and clears it on exit and reset', () => {
+    resetForStudioOpen();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+    setVectorAnchorSelection([2, 0, 2]);
+    expect(vectorAnchorSelection.peek()).toEqual([0, 2]);
+    toggleVectorAnchorSelection(1);
+    expect(vectorAnchorSelection.peek()).toEqual([0, 1, 2]);
+    toggleVectorAnchorSelection(1);
+    expect(vectorAnchorSelection.peek()).toEqual([0, 2]);
+    // Idempotent: a repeated identical write notifies nothing.
+    let runs = 0;
+    const dispose = effect(() => {
+      void vectorAnchorSelection.value;
+      runs += 1;
+    });
+    setVectorAnchorSelection([2, 0]);
+    expect(runs).toBe(1);
+    dispose();
+
+    enterPathEdit('7');
+    setVectorAnchorSelection([1]);
+    exitPathEdit();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+    setVectorAnchorSelection([1]);
+    resetForStudioOpen();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+    clearVectorAnchorSelection();
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+  });
+
+  it('ends an in-flight drag BEFORE the Delete write lands (61 CR-01 residual)', () => {
+    // A drag commits `anchorsAtStart` on release, so a Delete that arrives
+    // mid-gesture is undone by the pointerup unless the gesture dies first.
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    setVectorAnchorSelection([0]);
+    const order: string[] = [];
+    handleVectorPathEditKey(
+      { key: 'Delete', preventDefault: vi.fn(), stopPropagation: vi.fn() },
+      {
+        getRecordedStrokes: () => new Map([[EDIT_ID, stroke]]),
+        onPathEdit: () => order.push('edit'),
+        cancelActiveDrag: () => order.push('cancel'),
+      },
+    );
+    expect(order).toEqual(['cancel', 'edit']);
+  });
+
+  it('deletes every selected anchor in ONE commit and clears the selection', () => {
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    const originalAnchors = stroke.anchors as readonly VectorAnchor[];
+    setVectorAnchorSelection([0, 2]);
+    const onPathEdit = vi.fn();
+    const event = { key: 'Delete', preventDefault: vi.fn(), stopPropagation: vi.fn() };
+    handleVectorPathEditKey(event, {
+      getRecordedStrokes: () => new Map([[EDIT_ID, stroke]]),
+      onPathEdit,
+    });
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(anchors).toEqual([originalAnchors[1]]);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(vectorAnchorSelection.peek()).toEqual([]);
+  });
+
+  it('handles delete keys only while a path edit owns a non-empty selection', () => {
+    const onPathEdit = vi.fn();
+    const handlers = {
+      getRecordedStrokes: () => new Map([[EDIT_ID, editedStroke()]]),
+      onPathEdit,
+    };
+
+    // No path edit open.
+    setVectorAnchorSelection([0]);
+    handleVectorPathEditKey({ key: 'Delete' }, handlers);
+    expect(onPathEdit).not.toHaveBeenCalled();
+
+    // Edit open, empty selection.
+    enterPathEdit(String(EDIT_ID));
+    clearVectorAnchorSelection();
+    handleVectorPathEditKey({ key: 'Delete' }, handlers);
+    expect(onPathEdit).not.toHaveBeenCalled();
+
+    // Not a delete key.
+    setVectorAnchorSelection([0]);
+    handleVectorPathEditKey({ key: 'a' }, handlers);
+    expect(onPathEdit).not.toHaveBeenCalled();
+
+    // Backspace deletes too.
+    handleVectorPathEditKey({ key: 'Backspace' }, handlers);
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors).toHaveLength(2);
+  });
+
+  it('writes a three-anchor width commit as ONE edit snapshot that one undo restores', () => {
+    const originalAnchors = editedStroke().anchors as readonly VectorAnchor[];
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const next = buildAnchorWidthCommit(originalAnchors, [0, 1, 2], 1.8);
+    const editId = beginAquarellePathEdit(EDIT_ID, next);
+    expect(editId).not.toBeNull();
+
+    const after = getRecordedAquarelleStroke(EDIT_ID)!;
+    expect(after.anchors!.map((anchor) => anchor.width)).toEqual([1.8, 1.8, 1.8]);
+    // ONE bump for the whole multi-anchor write — a per-anchor loop would be +3.
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    // One undo restores all three factors at once.
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(EDIT_ID)!.anchors).toEqual(originalAnchors);
+  });
+
+  it('binds the edit key listener for an open path edit and unbinds it on cleanup', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    // 61-16: `window` binds ONE guarded dispatcher, not the two pure handlers
+    // (the capture-phase listener must see the event target first).
+    expect(source).toContain(
+      'handleVectorPathWindowKey(event, handlersRef.current, editKeyHandlersRef.current)',
+    );
+    expect(source).toContain('window.addEventListener(\'keydown\', onKeyDown, true)');
+    expect(source).toContain('[penActive, editMutationId]');
+    expect(source).toContain("window.removeEventListener('keydown'");
+  });
+});
+
+// 61-16 (G-3 / CR-01): a path-edit drag owns the pointer for its WHOLE
+// lifetime. The press captures on the overlay root, so a move or a release
+// outside the overlay still reaches the drag; the release happens on BOTH
+// exits — after the commit decision on finish, and on cancel without a commit.
+// The insert-on-spine click is a completed gesture at pointerdown and opens no
+// drag state, so it must take no capture. A release is never attempted against
+// a pointer the element no longer holds.
+describe('VectorPathOverlay — the pointer-capture law (61-16)', () => {
+  const EDIT_ID = 96001;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  const HANDLE_ANCHORS: readonly VectorAnchor[] = [
+    { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.15, y: 0.5 }, out: { x: 0.25, y: 0.5 } },
+    auto(0.5, 0.5),
+    auto(0.8, 0.5),
+  ];
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  it('captures the pointer at an anchor press, and the drag still commits on up', () => {
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+
+    const down = clickAt(0.2, 0.5);
+    press(root, down);
+    const capture = captureOf(down);
+    expect(capture.setPointerCapture).toHaveBeenCalledTimes(1);
+    expect(capture.setPointerCapture).toHaveBeenCalledWith(1);
+
+    const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
+    expect(onPointerMove, 'overlay root has no pointer-move handler').toBeTypeOf('function');
+    onPointerMove!(clickAt(0.26, 0.55));
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.26, 0.55));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors[0]!.x).toBeCloseTo(0.26, 9);
+    expect(anchors[0]!.y).toBeCloseTo(0.55, 9);
+  });
+
+  it('captures the pointer at a handle press and commits the handle drag on up', () => {
+    resetAquarelleRecordState();
+    const stroke = editedStroke({ anchors: HANDLE_ANCHORS });
+    recordAquarelleStroke(EDIT_ID, stroke, 'frame-key');
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    // The OUT handle of anchor 0 sits at (0.25, 0.5).
+    const down = clickAt(0.25, 0.5);
+    press(root, down);
+    const capture = captureOf(down);
+    expect(capture.setPointerCapture).toHaveBeenCalledTimes(1);
+    expect(capture.setPointerCapture).toHaveBeenCalledWith(1);
+
+    (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.3, 0.5));
+    (root.props['onPointerUp'] as (e: unknown) => void)(clickAt(0.3, 0.5));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors[0]!.out!.x).toBeCloseTo(0.3, 9);
+  });
+
+  it('releases the capture AFTER the commit decision, on the drag pointer id', () => {
+    const order: string[] = [];
+    const onPathEdit = vi.fn(() => {
+      order.push('commit');
+    });
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.26, 0.55));
+
+    const up = clickAt(0.26, 0.55);
+    const release = captureOf(up).releasePointerCapture;
+    release.mockImplementation(() => {
+      order.push('release');
+    });
+    (root.props['onPointerUp'] as (e: unknown) => void)(up);
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledWith(1);
+    expect(order).toEqual(['commit', 'release']);
+  });
+
+  it('releases the capture on cancel and commits nothing', () => {
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    const cancel = clickAt(0.4, 0.4);
+    (root.props['onPointerCancel'] as (e: unknown) => void)(cancel);
+
+    expect(onPathEdit).not.toHaveBeenCalled();
+    const release = captureOf(cancel).releasePointerCapture;
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledWith(1);
+    // The gesture is over: a later move finds no drag state.
+    (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.5, 0.5));
+    expect(onPathEdit).not.toHaveBeenCalled();
+  });
+
+  it('takes no capture for the insert-on-spine click and still commits once', () => {
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+
+    // 150px from both anchors, on the chord — the insert branch, not a drag.
+    const down = clickAt(0.35, 0.5);
+    press(root, down);
+    const capture = captureOf(down);
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    expect((onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]])[1]).toHaveLength(4);
+    expect(capture.setPointerCapture).not.toHaveBeenCalled();
+    expect(capture.releasePointerCapture).not.toHaveBeenCalled();
+  });
+
+  it('releases only a pointer the target still holds, and never throws', () => {
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+
+    press(root, clickAt(0.2, 0.5));
+    (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.26, 0.55));
+
+    const up = clickAt(0.26, 0.55);
+    const capture = captureOf(up);
+    capture.hasPointerCapture.mockReturnValue(false);
+    expect(() => (root.props['onPointerUp'] as (e: unknown) => void)(up)).not.toThrow();
+
+    // A lost pointer is not released — there is nothing to release.
+    expect(capture.releasePointerCapture).not.toHaveBeenCalled();
+    // The commit is unaffected by the lost capture.
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+});
+
+// 61-16 (G-4 / CR-02): the window keydown listener is a CAPTURE-phase listener
+// on `window`, so it sees every keystroke in the Studio — including the ones the
+// user aims at a focused input. The dispatcher yields to any text-entry target
+// before either pure key handler runs: Enter submits the dialog, Backspace edits
+// the text, and no `preventDefault` is called. Everywhere else the vector keys
+// act exactly as before.
+describe('VectorPathOverlay — the text-entry key guard (61-16)', () => {
+  const EDIT_ID = 96002;
+
+  function editedStroke(): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    // The two draft cases press on the overlay, which mounts only while the
+    // pen owns the surface.
+    vectorPenActive.value = true;
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  it('stands down on Enter while a dialog text field has focus', () => {
+    const onCommitPath = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    // Two presses build a committable draft, so only the target guard can
+    // refuse the Enter below.
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+    expect(draftAnchors()).toHaveLength(2);
+
+    const event = {
+      key: 'Enter',
+      target: { tagName: 'INPUT' },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(
+      event,
+      { onCommitPath, onCancelPath: () => {} },
+      { getRecordedStrokes: () => new Map(), onPathEdit: () => {} },
+    );
+
+    expect(onCommitPath).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(event.stopPropagation).not.toHaveBeenCalled();
+    // The draft is untouched: leaving the input and pressing Enter still commits.
+    expect(draftAnchors()).toHaveLength(2);
+  });
+
+  it('still commits the draft when focus sits outside a text field', () => {
+    const onCommitPath = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+
+    const event = {
+      key: 'Enter',
+      target: { tagName: 'DIV' },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(
+      event,
+      { onCommitPath, onCancelPath: () => {} },
+      { getRecordedStrokes: () => new Map(), onPathEdit: () => {} },
+    );
+
+    expect(onCommitPath).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it('stands down on Backspace in a textarea and still deletes on the canvas', () => {
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([0]);
+    const onPathEdit = vi.fn();
+    const editHandlers = {
+      getRecordedStrokes: () => new Map([[EDIT_ID, editedStroke()]]),
+      onPathEdit,
+    };
+    const draftHandlers = { onCommitPath: () => {}, onCancelPath: () => {} };
+
+    const inText = {
+      key: 'Backspace',
+      target: { tagName: 'TEXTAREA' },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(inText, draftHandlers, editHandlers);
+    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(inText.preventDefault).not.toHaveBeenCalled();
+    expect(vectorAnchorSelection.peek()).toEqual([0]);
+
+    const onCanvas = {
+      key: 'Backspace',
+      target: { tagName: 'DIV' },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(onCanvas, draftHandlers, editHandlers);
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(anchors).toHaveLength(2);
+  });
+});
+
+// 61-21 (WR-05): the same capture-phase listener must also stand down for a
+// focused CONTROL that owns its own keystrokes even though it is not a text
+// field — Enter activates the button, Delete reaches the role control — while a
+// plain canvas target keeps today's commit/delete handling.
+describe('VectorPathOverlay — the focusable-control key guard (61-21 WR-05)', () => {
+  const EDIT_ID = 96003;
+
+  function editedStroke(): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    vectorPenActive.value = true;
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  it('stands down on a focused button or role control and still commits/deletes on the canvas', () => {
+    const onCommitPath = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([], { onCommitPath })))!;
+    press(root, clickAt(0.3, 0.5));
+    press(root, clickAt(0.7, 0.5));
+
+    // Enter aimed at a focused <button>: the button activates, the draft stays.
+    const onButton = {
+      key: 'Enter',
+      target: {
+        tagName: 'BUTTON',
+        closest: (selector: string) => (selector.includes('button') ? {} : null),
+      },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(
+      onButton,
+      { onCommitPath, onCancelPath: () => {} },
+      { getRecordedStrokes: () => new Map(), onPathEdit: () => {} },
+    );
+    expect(onCommitPath).not.toHaveBeenCalled();
+    expect(onButton.preventDefault).not.toHaveBeenCalled();
+    expect(onButton.stopPropagation).not.toHaveBeenCalled();
+    expect(draftAnchors()).toHaveLength(2);
+
+    // Delete aimed at a focused role=menuitem: the control handles it, no
+    // anchor is deleted.
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([0]);
+    const onPathEdit = vi.fn();
+    const editHandlers = {
+      getRecordedStrokes: () => new Map([[EDIT_ID, editedStroke()]]),
+      onPathEdit,
+    };
+    const draftHandlers = { onCommitPath: () => {}, onCancelPath: () => {} };
+
+    const onMenuItem = {
+      key: 'Delete',
+      target: {
+        tagName: 'DIV',
+        closest: (selector: string) => (selector.includes('[role="menuitem"]') ? {} : null),
+      },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(onMenuItem, draftHandlers, editHandlers);
+    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(onMenuItem.preventDefault).not.toHaveBeenCalled();
+    expect(vectorAnchorSelection.peek()).toEqual([0]);
+
+    // The canvas still owns the same key.
+    const onCanvas = {
+      key: 'Delete',
+      target: { tagName: 'CANVAS', closest: () => null },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    handleVectorPathWindowKey(onCanvas, draftHandlers, editHandlers);
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    expect(onCanvas.preventDefault).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('VectorPathOverlay — authority boundary (T-61-31)', () => {
+  it('never imports an engine, bake or adapter module and never records', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    expect(source).not.toContain('captureFrame');
+    expect(source).not.toContain('scriptBegin');
+    expect(source).not.toContain('applyStroke');
+    expect(source).not.toContain('recordAquarelleStroke');
+    expect(source).not.toContain('aquarelleEnginePort');
+    expect(source).not.toContain('aquarelleFootprint');
+    // 61-10: the overlay asks for an edit; the Studio owns history.
+    expect(source).not.toContain('updateAquarellePathInScript');
+    expect(source).not.toContain('beginAquarellePathEdit');
+  });
+
+  it('is mounted beside the stroke overlay and forwards to props.onStrokeEnd', () => {
+    const layer = readFileSync(resolve(__dirname, './AquarelleCanvasLayer.tsx'), 'utf8');
+    expect(layer).toContain('<VectorPathOverlay');
+    expect(layer).toContain('buildVectorStroke(');
+    expect(layer).toContain('onStrokeEndRef.current?.(');
+    expect(layer).not.toContain('recordAquarelleStroke');
+  });
+});
+
+// 61-13 Task 2: the wireframe drawing law. Under the session latch every
+// recorded vector stroke on the play frame draws its CONSTRUCTION geometry
+// (envelope, spine, rungs at explicit widths, anchors, bezier handles), while
+// every hand-painted stroke draws the SHIPPED buildStrokeBand footprint — the
+// vector overlay owns construction, the stroke overlay owns the band. Nothing
+// here is persisted or exported: the latch is display-only (D-16).
+describe('VectorPathOverlay — the wireframe drawing law (61-13)', () => {
+  const SIZE = { width: WIDTH, height: HEIGHT };
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    wireframeMode.value = false;
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  function mixedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({
+      anchors: [
+        auto(0.2, 0.5),
+        { x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.62 }, out: { x: 0.5, y: 0.38 } },
+        auto(0.8, 0.5),
+      ],
+      ...overrides,
+    });
+  }
+
+  function portOver(rows: ReturnType<typeof listSelectableAquarelleStrokes>) {
+    return {
+      isActive: () => false,
+      listStrokes: () => rows,
+      hitTestStroke: () => null,
+      deleteStrokes: () => {},
+      moveStrokes: () => {},
+      transformStrokes: () => {},
+      stepStroke: () => {},
+    };
+  }
+
+  function overlayProps(port: ReturnType<typeof portOver>) {
+    return {
+      width: WIDTH,
+      height: HEIGHT,
+      getPlayFrame: () => FRAME,
+      port,
+      selectMode: false,
+      moveArmed: false,
+      onDeleteStrokes: () => {},
+      onMoveStrokes: () => {},
+      testId: 'stroke-overlay-wireframe',
+      badgeTestId: 'stroke-badge-wireframe',
+      ghostTestId: 'stroke-ghost-wireframe',
+    };
+  }
+
+  it('draws the envelope, spine, anchors and handles of every recorded vector stroke', () => {
+    wireframeMode.value = true;
+    const tree = render(VectorPathOverlay(propsWith([[11, mixedStroke()]])));
+    expect(nodesWithTestId(tree, 'vector-path-envelope')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'vector-path-spine')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'vector-path-anchor')).toHaveLength(3);
+    expect(nodesWithTestId(tree, 'vector-path-handle')).toHaveLength(2);
+    expect(nodesWithTestId(tree, 'vector-path-rung')).toHaveLength(0);
+  });
+
+  it('draws a rung only at an anchor carrying an explicit width', () => {
+    wireframeMode.value = true;
+    const widthless = render(VectorPathOverlay(propsWith([[11, mixedStroke()]])));
+    expect(nodesWithTestId(widthless, 'vector-path-rung')).toHaveLength(0);
+
+    const weighted = render(
+      VectorPathOverlay(
+        propsWith([
+          [
+            12,
+            vectorStroke({
+              anchors: [auto(0.2, 0.5), { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 }, auto(0.8, 0.5)],
+            }),
+          ],
+        ]),
+      ),
+    );
+    expect(nodesWithTestId(weighted, 'vector-path-rung')).toHaveLength(1);
+  });
+
+  it('draws anchor shapes per kind — square only for bezier — and no handle for auto', () => {
+    wireframeMode.value = true;
+    const tree = render(VectorPathOverlay(propsWith([[11, mixedStroke()]])));
+    const anchors = nodesWithTestId(tree, 'vector-path-anchor');
+    expect(anchors.filter((node) => node.type === 'rect')).toHaveLength(1);
+    expect(anchors.filter((node) => node.type === 'circle')).toHaveLength(2);
+    // Both marker kinds wear the dark hairline under wireframe.
+    for (const node of anchors) expect(node.props?.stroke).toBe('#111111');
+    // One bezier anchor → exactly its two handles.
+    expect(nodesWithTestId(tree, 'vector-path-handle')).toHaveLength(2);
+  });
+
+  it('draws the shipped buildStrokeBand footprint and the centreline for a hand-painted stroke', () => {
+    const stroke = vectorStroke({ mutationId: 95001, anchors: undefined });
+    recordAquarelleStroke(95001, stroke, 'frame-key');
+    wireframeMode.value = true;
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    expect(rows).toHaveLength(1);
+
+    const tree = render(ScriptStrokeOverlay(overlayProps(portOver(rows))));
+    const bands = nodesWithTestId(tree, 'stroke-size-band');
+    expect(bands).toHaveLength(1);
+    // The band is the shipped builder's OWN polygon — never hand-written values.
+    const expected = buildStrokeBand(stroke, SIZE).polygonPx;
+    const expectedPath = `M${expected.map((point) => `${point.x},${point.y}`).join(' L')} Z`;
+    expect(bands[0]!.props.d).toBe(expectedPath);
+    // The centreline rides WITH the band under wireframe (the default branch
+    // still draws it): the two-pass outline, dark under light.
+    expect([...walk(tree)].filter((node) => node.type === 'polyline')).toHaveLength(2);
+    // Display-only: the surface is mounted but never owns a pointer.
+    expect(tree!.props['style']).toMatchObject({ pointerEvents: 'none' });
+    expect(tree!.props['onPointerDown']).toBeUndefined();
+  });
+
+  it('leaves a vector stroke to the construction overlay — no band for it', () => {
+    recordAquarelleStroke(95002, vectorStroke({ mutationId: 95002 }), 'frame-key');
+    wireframeMode.value = true;
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    const tree = render(ScriptStrokeOverlay(overlayProps(portOver(rows))));
+    expect(nodesWithTestId(tree, 'stroke-size-band')).toHaveLength(0);
+  });
+
+  it('renders no geometry and throws nothing when the anchors fail normalisation', () => {
+    wireframeMode.value = true;
+    const malformed = vectorStroke({
+      anchors: [
+        { x: Number.NaN, y: 0.5, kind: 'auto' },
+        { x: Number.POSITIVE_INFINITY, y: 0.5, kind: 'auto' },
+      ] as VectorAnchor[],
+    });
+    let tree: unknown = null;
+    expect(() => {
+      tree = VectorPathOverlay(propsWith([[11, malformed]]));
+    }).not.toThrow();
+    expect(tree).toBeNull();
+  });
+
+  it('renders no overlay elements for an empty sheet', () => {
+    wireframeMode.value = true;
+    expect(VectorPathOverlay(propsWith())).toBeNull();
+    expect(ScriptStrokeOverlay(overlayProps(portOver([])))).toBeNull();
+  });
+
+  it('reuses the shipped buildStrokeBand — exactly one import and one call', () => {
+    const source = readFileSync(resolve(__dirname, './ScriptStrokeOverlay.tsx'), 'utf8');
+    expect(source).toContain("import { buildStrokeBand } from '../view/aquarelleStrokeBand';");
+    expect((source.match(/buildStrokeBand\(/g) ?? []).length).toBe(1);
+    expect(source).not.toContain('buildLiftRibbon(');
+  });
+});
+
+// 61-22 (G-11): a selected anchor of the OPEN path edit must be visibly
+// distinct — `renderPath` never read `vectorAnchorSelection`, so a selected
+// anchor rendered exactly like an unselected one. The ring is additive, uses
+// the shipped accent only, and is drawn for the open edit's path alone.
+describe('61-22 G-11 — the selected-anchor ring', () => {
+  const EDIT_ID = 96001;
+  const OTHER_ID = 96002;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  it('draws one ring around the selected anchor and none for an unselected index', () => {
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([1]);
+    const tree = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]])));
+    const rings = nodesWithTestId(tree, 'vector-path-anchor-selection');
+    expect(rings).toHaveLength(1);
+    // Anchor 1 is an `auto` anchor at uv (0.5, 0.5) → a circle at its projected
+    // point; index 0 (uv 0.2, 0.5) wears no ring.
+    const at = uvToScreen({ x: 0.5, y: 0.5 }, WIDTH, HEIGHT);
+    expect(rings[0]!.type).toBe('circle');
+    expect(rings[0]!.props['cx']).toBeCloseTo(at.x, 9);
+    expect(rings[0]!.props['cy']).toBeCloseTo(at.y, 9);
+    expect(rings[0]!.props['fill']).toBe('none');
+    expect(rings[0]!.props['vectorEffect']).toBe('non-scaling-stroke');
+  });
+
+  it('fails closed on an empty or out-of-range selection', () => {
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([]);
+    expect(
+      nodesWithTestId(
+        render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]]))),
+        'vector-path-anchor-selection',
+      ),
+    ).toHaveLength(0);
+
+    setVectorAnchorSelection([9]);
+    let tree: unknown = null;
+    expect(() => {
+      tree = VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]]));
+    }).not.toThrow();
+    expect(nodesWithTestId(render(tree), 'vector-path-anchor-selection')).toHaveLength(0);
+
+    // Positive control in the same law: a valid index still draws exactly one,
+    // so the zero above is a real boundary decision, not a missing control.
+    setVectorAnchorSelection([0]);
+    expect(
+      nodesWithTestId(
+        render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]]))),
+        'vector-path-anchor-selection',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('rings only the open edit’s path, never a second recorded vector stroke', () => {
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([1]);
+    const other = vectorStroke({
+      mutationId: OTHER_ID,
+      anchors: [auto(0.1, 0.7), auto(0.4, 0.7), auto(0.7, 0.7)],
+    });
+    const tree = render(
+      VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()], [OTHER_ID, other]])),
+    );
+    const rings = nodesWithTestId(tree, 'vector-path-anchor-selection');
+    // Exactly one ring: the other path receives an EMPTY selection.
+    expect(rings).toHaveLength(1);
+    const at = uvToScreen({ x: 0.5, y: 0.5 }, WIDTH, HEIGHT);
+    expect(rings[0]!.props['cx']).toBeCloseTo(at.x, 9);
+    expect(rings[0]!.props['cy']).toBeCloseTo(at.y, 9);
+  });
+
+  // 261112-i6d: the one accent repointed from the sky-blue link colour to the
+  // orange vertex colour — carried by the dark halo, which is the whole reason
+  // the ring stays legible over orange paint.
+  it('static: the ring is orange over a dark halo and adds no stray literal', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    const at = source.indexOf('data-testid="vector-path-anchor-selection"');
+    expect(at).toBeGreaterThan(-1);
+    const block = source.slice(Math.max(0, at - 600), at + 600);
+    expect(block).toContain('stroke={SELECTED_ANCHOR_COLOR}');
+    expect(block).toContain('fill="none"');
+    expect(block).toContain('strokeWidth={1.5}');
+    expect(block).toContain('stroke={OUTLINE_DARK}');
+    // The palette is the shipped five literals — the chrome introduces none else.
+    const hexes = [...source.matchAll(/'#[0-9a-fA-F]{3,6}'/g)].map((match) => match[0]);
+    expect(new Set(hexes)).toEqual(
+      new Set(["'#38bdf8'", "'#111111'", "'#ffffff'", "'#f59e0b'", "'#f97316'"]),
+    );
+  });
+
+  it('layers a soft glow and a dark halo under every selected ring', () => {
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([0, 1]);
+    const tree = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]])));
+
+    const rings = nodesWithTestId(tree, 'vector-path-anchor-selection');
+    const glows = nodesWithTestId(tree, 'vector-path-anchor-selection-glow');
+    const halos = nodesWithTestId(tree, 'vector-path-anchor-selection-halo');
+    expect(rings).toHaveLength(2);
+    expect(glows).toHaveLength(2);
+    expect(halos).toHaveLength(2);
+
+    // The chrome contract: glow 8/0.35, dark halo 4/0.85, crisp orange ring 1.5,
+    // all screen-constant.
+    for (const glow of glows) {
+      expect(glow.props['stroke']).toBe('#f97316');
+      expect(glow.props['strokeWidth']).toBe(8);
+      expect(glow.props['opacity']).toBe(0.35);
+      expect(glow.props['fill']).toBe('none');
+      expect(glow.props['vectorEffect']).toBe('non-scaling-stroke');
+    }
+    for (const halo of halos) {
+      expect(halo.props['stroke']).toBe('#111111');
+      expect(halo.props['strokeWidth']).toBe(4);
+      expect(halo.props['opacity']).toBe(0.85);
+      expect(halo.props['fill']).toBe('none');
+      expect(halo.props['vectorEffect']).toBe('non-scaling-stroke');
+    }
+    for (const ring of rings) {
+      expect(ring.props['stroke']).toBe('#f97316');
+      expect(ring.props['strokeWidth']).toBe(1.5);
+      expect(ring.props['fill']).toBe('none');
+      expect(ring.props['vectorEffect']).toBe('non-scaling-stroke');
+    }
+  });
+});
+
+// 61-25 (UI-03 / UI-04): gap closure over the 61-UI-REVIEW warnings. Both
+// envelope branches obey the colour table's band law (stroke colour @0.14
+// selected / @0.07 unselected, edge 3.5/1.5, no extra stroke opacity), handle
+// dots are solid `#f59e0b` with only the connector translucent, and the
+// wireframe-only construction view keeps the transform box and serial badge
+// the contract draws on top (§6 item 6).
+describe('61-25 UI-03/UI-04 — the band, marker and chrome law', () => {
+  const SIZE = { width: WIDTH, height: HEIGHT };
+  const EDIT_ID = 97001;
+  const OTHER_ID = 97002;
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    wireframeMode.value = false;
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  /** A non-uniform profile — the editing chrome draws an envelope only then. */
+  function weightedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({
+      anchors: [
+        auto(0.2, 0.5),
+        { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 },
+        auto(0.8, 0.5),
+      ],
+      ...overrides,
+    });
+  }
+
+  function portOver(rows: ReturnType<typeof listSelectableAquarelleStrokes>) {
+    return {
+      isActive: () => false,
+      listStrokes: () => rows,
+      hitTestStroke: () => null,
+      // 261112-n3f: this describe wires the REAL resolver, so the Select-band
+      // pins below exercise the shipped descriptor end-to-end. The preview is
+      // OFF by default, so the shipped tests here are unaffected.
+      bandFor: resolveAquarelleStrokeBandPx,
+      deleteStrokes: () => {},
+      moveStrokes: () => {},
+      transformStrokes: () => {},
+      stepStroke: () => {},
+    };
+  }
+
+  function overlayProps(port: ReturnType<typeof portOver>) {
+    return {
+      width: WIDTH,
+      height: HEIGHT,
+      getPlayFrame: () => FRAME,
+      port,
+      selectMode: false,
+      moveArmed: false,
+      onDeleteStrokes: () => {},
+      onMoveStrokes: () => {},
+      testId: 'stroke-overlay-wireframe',
+      badgeTestId: 'stroke-badge-wireframe',
+      ghostTestId: 'stroke-ghost-wireframe',
+    };
+  }
+
+  function onlyEnvelope(tree: unknown): TestVNode {
+    const envelopes = nodesWithTestId(tree, 'vector-path-envelope');
+    expect(envelopes, 'exactly one envelope').toHaveLength(1);
+    return envelopes[0]!;
+  }
+
+  function onlyEnvelopeEdge(tree: unknown): TestVNode {
+    const edges = nodesWithTestId(tree, 'vector-path-envelope-edge');
+    expect(edges, 'exactly one envelope edge').toHaveLength(1);
+    return edges[0]!;
+  }
+
+  it('draws no envelope for a path edit while the preview switch is off', () => {
+    // 261112-n3f: opening a path edit no longer turns the width preview on.
+    enterPathEdit(String(EDIT_ID));
+    const tree = render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]])));
+    expect(strokeSizePreview.value).toBe(false);
+    expect(nodesWithTestId(tree, 'vector-path-envelope')).toHaveLength(0);
+    expect(nodesWithTestId(tree, 'vector-path-envelope-edge')).toHaveLength(0);
+    // The construction chrome is not the preview: the spine and anchors stay.
+    expect(nodesWithTestId(tree, 'vector-path-spine')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'vector-path-anchor')).toHaveLength(3);
+  });
+
+  it('draws the per-vertex envelope only while the preview switch is on', () => {
+    enterPathEdit(String(EDIT_ID));
+    setStrokeSizePreview(true);
+    const on = render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]])));
+    expect(nodesWithTestId(on, 'vector-path-envelope')).toHaveLength(1);
+    expect(nodesWithTestId(on, 'vector-path-envelope-edge')).toHaveLength(1);
+
+    // Toggling OFF inside the same edit removes both — the switch owns the
+    // preview, and the edit itself stays open.
+    setStrokeSizePreview(false);
+    const off = render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]])));
+    expect(nodesWithTestId(off, 'vector-path-envelope')).toHaveLength(0);
+    expect(nodesWithTestId(off, 'vector-path-envelope-edge')).toHaveLength(0);
+    expect(pathEditMutationId.value).toBe(String(EDIT_ID));
+  });
+
+  it('keeps the wireframe envelope for a uniform profile whatever the switch says', () => {
+    // Construction view: unconditional, uniform profile included, switch OFF.
+    wireframeMode.value = true;
+    const inWireframe = render(VectorPathOverlay(propsWith([[OTHER_ID, vectorStroke()]])));
+    expect(strokeSizePreview.value).toBe(false);
+    expect(nodesWithTestId(inWireframe, 'vector-path-envelope')).toHaveLength(1);
+    expect(nodesWithTestId(inWireframe, 'vector-path-envelope-edge')).toHaveLength(1);
+
+    // D-10: the editing chrome still refuses a uniform profile. Latch the PEN
+    // with no wireframe and the switch ON so the overlay really renders its
+    // structure — a hidden surface would pass this half vacuously.
+    wireframeMode.value = false;
+    vectorPenActive.value = true;
+    setStrokeSizePreview(true);
+    const editing = render(VectorPathOverlay(propsWith([[OTHER_ID, vectorStroke()]])));
+    expect(nodesWithTestId(editing, 'vector-path-spine')).toHaveLength(1);
+    expect(nodesWithTestId(editing, 'vector-path-anchor')).toHaveLength(3);
+    expect(nodesWithTestId(editing, 'vector-path-envelope')).toHaveLength(0);
+    expect(nodesWithTestId(editing, 'vector-path-envelope-edge')).toHaveLength(0);
+  });
+
+  it('masks the edge with the filled polygon while the fill stays unmasked', () => {
+    setStrokeSizePreview(true);
+    enterPathEdit(String(EDIT_ID));
+    const tree = render(
+      VectorPathOverlay(
+        propsWith([
+          [EDIT_ID, weightedStroke()],
+          [OTHER_ID, weightedStroke({ color: '#7a2e12' })],
+        ]),
+      ),
+    );
+    const fills = nodesWithTestId(tree, 'vector-path-envelope');
+    const edges = nodesWithTestId(tree, 'vector-path-envelope-edge');
+    const masks = [...walk(tree)].filter((node) => node.type === 'mask');
+    expect(fills).toHaveLength(2);
+    expect(edges).toHaveLength(2);
+    expect(masks).toHaveLength(2);
+
+    for (let index = 0; index < fills.length; index += 1) {
+      const fill = fills[index]!;
+      const edge = edges[index]!;
+      // The wash survives: the fill is never masked and carries no stroke.
+      expect(Object.prototype.hasOwnProperty.call(fill.props, 'mask')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(fill.props, 'stroke')).toBe(false);
+      expect(edge.props['d']).toBe(fill.props['d']);
+      // The edge's mask reference resolves to a mask built from the SAME ring.
+      const url = edge.props['mask'];
+      expect(typeof url).toBe('string');
+      const id = String(url).replace(/^url\(#/, '').replace(/\)$/, '');
+      const mask = masks.find((node) => node.props['id'] === id);
+      expect(mask, `mask ${id}`).toBeDefined();
+      expect(mask!.props['maskUnits']).toBe('userSpaceOnUse');
+      const children = childrenOf(mask!) as TestVNode[];
+      expect(children).toHaveLength(2);
+      const cover = children[0]!;
+      expect(cover.type).toBe('rect');
+      expect(cover.props['fill']).toBe('white');
+      expect(cover.props['width']).toBe(WIDTH);
+      expect(cover.props['height']).toBe(HEIGHT);
+      const cut = children[1]!;
+      expect(cut.type).toBe('path');
+      expect(cut.props['fill']).toBe('black');
+      expect(cut.props['d']).toBe(fill.props['d']);
+    }
+    // Two simultaneously drawn paths never share a mask id.
+    const ids = masks.map((mask) => mask.props['id']);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it('draws the editing envelope in the stroke’s own colour at 0.14/0.07, with a split fill and a masked 2x edge', () => {
+    // 261112-n3f: the switch is the ONE gate — every render here turns it on.
+    setStrokeSizePreview(true);
+    // Selected: the open path edit is the louder chrome.
+    enterPathEdit(String(EDIT_ID));
+    const selectedTree = render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]])));
+    const selected = onlyEnvelope(selectedTree);
+    expect(selected.props['fill']).toBe('#103c65');
+    expect(selected.props['fillOpacity']).toBe(0.14);
+    // The fill is UNMASKED and carries no stroke — the wash survives.
+    expect(Object.prototype.hasOwnProperty.call(selected.props, 'mask')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(selected.props, 'stroke')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(selected.props, 'strokeWidth')).toBe(false);
+    const selectedEdge = onlyEnvelopeEdge(selectedTree);
+    expect(selectedEdge.props['stroke']).toBe('#103c65');
+    // Doubled authored width: the mask hides the half inside the band, so the
+    // VISIBLE edge stays at the 61-25 law's 3.5 selected.
+    expect(selectedEdge.props['strokeWidth']).toBe(7);
+    expect(Object.prototype.hasOwnProperty.call(selectedEdge.props, 'strokeOpacity')).toBe(false);
+    expect(selectedEdge.props['vectorEffect']).toBe('non-scaling-stroke');
+    expect(String(selectedEdge.props['mask'])).toMatch(/^url\(#.+\)$/);
+
+    // Unselected: the pen's construction view, no edit — the quiet band.
+    exitPathEdit();
+    vectorPenActive.value = true;
+    const unselectedTree = render(
+      VectorPathOverlay(propsWith([[OTHER_ID, weightedStroke({ color: '#7a2e12' })]]))
+    );
+    const unselected = onlyEnvelope(unselectedTree);
+    expect(unselected.props['fill']).toBe('#7a2e12');
+    expect(unselected.props['fillOpacity']).toBe(0.07);
+    expect(Object.prototype.hasOwnProperty.call(unselected.props, 'mask')).toBe(false);
+    const unselectedEdge = onlyEnvelopeEdge(unselectedTree);
+    expect(unselectedEdge.props['stroke']).toBe('#7a2e12');
+    // The visible 1.5 law, doubled for the mask trim.
+    expect(unselectedEdge.props['strokeWidth']).toBe(3);
+    expect(Object.prototype.hasOwnProperty.call(unselectedEdge.props, 'strokeOpacity')).toBe(false);
+  });
+
+  it('gives the wireframe envelope the same band law and keeps no envelope-fill constant', () => {
+    wireframeMode.value = true;
+    const unselectedTree = render(
+      VectorPathOverlay(propsWith([[OTHER_ID, weightedStroke({ color: '#7a2e12' })]]))
+    );
+    const unselected = onlyEnvelope(unselectedTree);
+    expect(unselected.props['fill']).toBe('#7a2e12');
+    expect(unselected.props['fillOpacity']).toBe(0.07);
+    const unselectedEdge = onlyEnvelopeEdge(unselectedTree);
+    expect(unselectedEdge.props['stroke']).toBe('#7a2e12');
+    expect(unselectedEdge.props['strokeWidth']).toBe(3);
+    expect(Object.prototype.hasOwnProperty.call(unselectedEdge.props, 'strokeOpacity')).toBe(false);
+
+    enterPathEdit(String(EDIT_ID));
+    const selectedTree = render(VectorPathOverlay(propsWith([[EDIT_ID, weightedStroke()]])));
+    const selected = onlyEnvelope(selectedTree);
+    expect(selected.props['fill']).toBe('#103c65');
+    expect(selected.props['fillOpacity']).toBe(0.14);
+    const selectedEdge = onlyEnvelopeEdge(selectedTree);
+    expect(selectedEdge.props['strokeWidth']).toBe(7);
+    expect(Object.prototype.hasOwnProperty.call(selectedEdge.props, 'strokeOpacity')).toBe(false);
+
+    // The stray constant is gone, and no envelope keeps the old 0.5 edge.
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    expect(source).not.toContain('ENVELOPE_FILL_OPACITY');
+    expect(source).not.toContain('strokeOpacity={0.5}');
+    // 261112-n3f: the interior crossings are removed by a mask, never a filter.
+    expect(source).not.toContain('<filter');
+  });
+
+  it('draws every handle dot solid #f59e0b while only the connector is translucent', () => {
+    vectorPenActive.value = true;
+    const stroke = vectorStroke({
+      anchors: [
+        auto(0.2, 0.5),
+        { x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.62 }, out: { x: 0.5, y: 0.38 } },
+        auto(0.8, 0.5),
+      ],
+    });
+    const tree = render(VectorPathOverlay(propsWith([[OTHER_ID, stroke]])));
+    const handles = nodesWithTestId(tree, 'vector-path-handle');
+    expect(handles).toHaveLength(2);
+    for (const handle of handles) {
+      expect(handle.type).toBe('circle');
+      expect(handle.props['fill']).toBe('#f59e0b');
+      expect(Object.prototype.hasOwnProperty.call(handle.props, 'fillOpacity')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(handle.props, 'stroke')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(handle.props, 'strokeWidth')).toBe(false);
+    }
+    const connectors = [...walk(tree)].filter(
+      (node) => node.type === 'line' && node.props?.stroke === '#f59e0b',
+    );
+    expect(connectors).toHaveLength(2);
+    for (const connector of connectors) {
+      expect(connector.props['strokeOpacity']).toBe(0.6);
+      expect(connector.props['strokeWidth']).toBe(1);
+    }
+  });
+
+  it('keeps the bounds box and serial badge in the wireframe-only view, and leaves the lift ribbon unchanged', () => {
+    const paint = vectorStroke({ mutationId: 97011, anchors: undefined });
+    const lift = vectorStroke({ mutationId: 97012, tool: 'lift', anchors: undefined });
+    recordAquarelleStroke(97011, paint, 'frame-key');
+    recordAquarelleStroke(97012, lift, 'frame-key');
+    wireframeMode.value = true;
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    expect(rows).toHaveLength(2);
+
+    const tree = render(ScriptStrokeOverlay(overlayProps(portOver(rows))));
+    // The unselected bounds box is the one dashed reference frame; a lift
+    // still keeps no box (its ribbon is the shape).
+    const bounds = [...walk(tree)].filter(
+      (node) => node.type === 'rect' && node.props?.strokeDasharray === '4 3',
+    );
+    expect(bounds).toHaveLength(1);
+    expect(bounds[0]!.props['fill']).toBe('none');
+    expect(bounds[0]!.props['stroke']).toBe('#111111');
+    expect(bounds[0]!.props['opacity']).toBe(0.45);
+    // §6 item 6: the serial identity stays on top of the construction view.
+    expect(nodesWithTestId(tree, 'stroke-badge-wireframe')).toHaveLength(2);
+    // The lift ribbon is untouched — still drawn, still the only shape it has.
+    expect(nodesWithTestId(tree, 'stroke-lift-ribbon')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'stroke-size-band')).toHaveLength(1);
+
+    // No dead construction-view gate survives in the source.
+    const source = readFileSync(resolve(__dirname, './ScriptStrokeOverlay.tsx'), 'utf8');
+    expect(source).not.toContain('wireframeOnly');
+  });
+
+  // --- 261112-n3f: the Select/Move band end-to-end -------------------------
+
+  const VECTOR_ID = 97101;
+  const PAINT_ID = 97102;
+  const LIFT_ID = 97103;
+
+  /** The row `<g>` of one listed stroke — the band nodes live inside it. */
+  function rowOf(tree: unknown, mutationId: number): TestVNode {
+    const rows = [...walk(tree)].filter((node) => node.props?.['data-stroke-id'] === mutationId);
+    expect(rows, `stroke row ${mutationId}`).toHaveLength(1);
+    return rows[0]!;
+  }
+
+  function masksOf(tree: unknown): TestVNode[] {
+    return [...walk(tree)].filter((node) => node.type === 'mask');
+  }
+
+  /** One vector stroke (per-vertex profile), one hand-painted, one lift. */
+  function recordMixedRows() {
+    recordAquarelleStroke(
+      VECTOR_ID,
+      weightedStroke({ mutationId: VECTOR_ID }),
+      'frame-key',
+    );
+    recordAquarelleStroke(
+      PAINT_ID,
+      vectorStroke({ mutationId: PAINT_ID, anchors: undefined }),
+      'frame-key',
+    );
+    recordAquarelleStroke(
+      LIFT_ID,
+      vectorStroke({ mutationId: LIFT_ID, tool: 'lift', anchors: undefined }),
+      'frame-key',
+    );
+    return listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+  }
+
+  /**
+   * The describe's helper hardcodes `selectMode: false`, and the overlay
+   * returns null without select mode, move mode, a drag or a transform
+   * preview — so every Select-band render turns the surface on.
+   */
+  function selectOverlay(rows: ReturnType<typeof listSelectableAquarelleStrokes>) {
+    return render(
+      ScriptStrokeOverlay({ ...overlayProps(portOver(rows)), selectMode: true }),
+    );
+  }
+
+  it('draws a Select-mode vector band as an unmasked fill plus one masked edge', () => {
+    const rows = recordMixedRows();
+    expect(rows).toHaveLength(3);
+    setStrokeSizePreview(true);
+    const tree = selectOverlay(rows);
+    const vectorRow = rowOf(tree, VECTOR_ID);
+
+    // The wash survives: the fill keeps the shipped testid, wash and fill rule
+    // and carries NO stroke and NO mask.
+    const fill = nodesWithTestId(vectorRow, 'stroke-size-band');
+    expect(fill).toHaveLength(1);
+    expect(fill[0]!.props['fillOpacity']).toBe(0.07);
+    expect(fill[0]!.props['fillRule']).toBe('nonzero');
+    expect(Object.prototype.hasOwnProperty.call(fill[0]!.props, 'mask')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(fill[0]!.props, 'stroke')).toBe(false);
+
+    // The edge is the ONLY masked node of the whole surface, at the doubled
+    // width so the VISIBLE edge stays at the 3.5/1.5 law.
+    const edges = nodesWithTestId(vectorRow, 'stroke-size-band-edge');
+    expect(edges).toHaveLength(1);
+    const edge = edges[0]!;
+    expect(edge.props['fill']).toBe('none');
+    expect(edge.props['stroke']).toBe('#103c65');
+    expect(edge.props['strokeWidth']).toBe(3);
+    expect(edge.props['vectorEffect']).toBe('non-scaling-stroke');
+    const masked = [...walk(tree)].filter((node) => node.props?.['mask'] !== undefined);
+    expect(masked).toHaveLength(1);
+    expect(masked[0]).toBe(edge);
+
+    // Exactly ONE mask: its id is the edge's reference, it covers the layer
+    // box in white and cuts the band's own ring in black.
+    const masks = masksOf(tree);
+    expect(masks).toHaveLength(1);
+    const id = String(edge.props['mask']).replace(/^url\(#/, '').replace(/\)$/, '');
+    expect(masks[0]!.props['id']).toBe(id);
+    const children = childrenOf(masks[0]!) as TestVNode[];
+    expect(children).toHaveLength(2);
+    expect(children[0]!.props['fill']).toBe('white');
+    expect(children[0]!.props['width']).toBe(WIDTH);
+    expect(children[0]!.props['height']).toBe(HEIGHT);
+    expect(children[1]!.props['fill']).toBe('black');
+    expect(children[1]!.props['fillRule']).toBe('nonzero');
+    expect(children[1]!.props['d']).toBe(fill[0]!.props['d']);
+
+    // The paint band and the lift ribbon keep the shipped SINGLE path: their
+    // own testid, no mask, the visible 1.5 weight, no edge node of their own.
+    const paintRow = rowOf(tree, PAINT_ID);
+    const paintBands = nodesWithTestId(paintRow, 'stroke-size-band');
+    expect(paintBands).toHaveLength(1);
+    expect(paintBands[0]!.props['strokeWidth']).toBe(1.5);
+    expect(Object.prototype.hasOwnProperty.call(paintBands[0]!.props, 'mask')).toBe(false);
+    expect(nodesWithTestId(paintRow, 'stroke-size-band-edge')).toHaveLength(0);
+
+    const liftRow = rowOf(tree, LIFT_ID);
+    const ribbons = nodesWithTestId(liftRow, 'stroke-lift-ribbon');
+    expect(ribbons).toHaveLength(1);
+    expect(ribbons[0]!.props['strokeWidth']).toBe(1.5);
+    expect(Object.prototype.hasOwnProperty.call(ribbons[0]!.props, 'mask')).toBe(false);
+    expect(nodesWithTestId(liftRow, 'stroke-size-band-edge')).toHaveLength(0);
+
+    // Selecting raises the fill wash and the VISIBLE edge to 0.14 / 3.5.
+    setScriptStrokeSelection([VECTOR_ID]);
+    const selectedRow = rowOf(selectOverlay(rows), VECTOR_ID);
+    expect(nodesWithTestId(selectedRow, 'stroke-size-band')[0]!.props['fillOpacity']).toBe(0.14);
+    expect(nodesWithTestId(selectedRow, 'stroke-size-band-edge')[0]!.props['strokeWidth']).toBe(7);
+    setScriptStrokeSelection([]);
+  });
+
+  it('emits no mask for a listing of hand-painted and lift rows only', () => {
+    recordAquarelleStroke(
+      PAINT_ID,
+      vectorStroke({ mutationId: PAINT_ID, anchors: undefined }),
+      'frame-key',
+    );
+    recordAquarelleStroke(
+      LIFT_ID,
+      vectorStroke({ mutationId: LIFT_ID, tool: 'lift', anchors: undefined }),
+      'frame-key',
+    );
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    expect(rows).toHaveLength(2);
+    setStrokeSizePreview(true);
+    const tree = selectOverlay(rows);
+    expect(nodesWithTestId(tree, 'stroke-size-band')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'stroke-lift-ribbon')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'stroke-size-band-edge')).toHaveLength(0);
+    expect(masksOf(tree)).toHaveLength(0);
+    expect([...walk(tree)].filter((node) => node.type === 'defs')).toHaveLength(0);
+  });
+
+  it('moves the fill, the edge and the mask path together under a transform preview', () => {
+    const rows = recordMixedRows();
+    setStrokeSizePreview(true);
+    const beforeFill = nodesWithTestId(rowOf(selectOverlay(rows), VECTOR_ID), 'stroke-size-band')[0]!;
+
+    setScriptStrokeTransform({
+      ids: [VECTOR_ID],
+      kind: 'scale',
+      centerX: 100,
+      centerY: 100,
+      anchorX: 100,
+      anchorY: 100,
+      angleRad: 0,
+      scaleX: 2,
+      scaleY: 2,
+    });
+    const afterRow = rowOf(selectOverlay(rows), VECTOR_ID);
+    const afterFill = nodesWithTestId(afterRow, 'stroke-size-band')[0]!;
+    const afterEdge = nodesWithTestId(afterRow, 'stroke-size-band-edge')[0]!;
+    const maskPath = (childrenOf(masksOf(afterRow)[0]!) as TestVNode[])[1]!;
+
+    // Every band vertex moved, and the three painted strings are ONE moved d.
+    expect(afterFill.props['d']).not.toBe(beforeFill.props['d']);
+    expect(afterEdge.props['d']).toBe(afterFill.props['d']);
+    expect(maskPath.props['d']).toBe(afterFill.props['d']);
+    clearScriptStrokeTransform();
+  });
+});
+
+// 61-28 (CR-01): an anchor or handle drag is owned by the edit that opened it.
+// A press ALWAYS ends the gesture before it — even a press that hits nothing —
+// so an abandoned drag can never ride a later release into a commit, and the
+// pointer it captured is released with it.
+describe('61-28 CR-01 - the edit-lifetime drag law', () => {
+  const EDIT_ID = 98001;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    recordAquarelleStroke(EDIT_ID, editedStroke(), 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+  });
+
+  /** ONE overlay element, shared by every event of a gesture sequence. */
+  function overlaySurface() {
+    return {
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: WIDTH, height: HEIGHT }),
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+      hasPointerCapture: vi.fn((): boolean => true),
+    };
+  }
+
+  it('ends the previous drag when a new press hits nothing, and releases its capture', () => {
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]])))!;
+    const surface = overlaySurface();
+
+    press(root, clickAt(0.2, 0.5, { currentTarget: surface, pointerId: 1 }));
+    expect(surface.setPointerCapture).toHaveBeenCalledTimes(1);
+    expect(surface.setPointerCapture).toHaveBeenCalledWith(1);
+
+    // A second pointer landing on empty canvas: no anchor, no handle, no spine.
+    press(root, clickAt(0.5, 0.9, { currentTarget: surface, pointerId: 2 }));
+
+    // The abandoned gesture no longer owns the element and no longer previews.
+    expect(surface.releasePointerCapture).toHaveBeenCalledTimes(1);
+    expect(surface.releasePointerCapture).toHaveBeenCalledWith(1);
+    expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+
+  it('commits nothing from the abandoned drag after the empty press', () => {
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
+    const surface = overlaySurface();
+
+    press(root, clickAt(0.2, 0.5, { currentTarget: surface, pointerId: 1 }));
+    (root.props['onPointerMove'] as (e: unknown) => void)(
+      clickAt(0.26, 0.55, { currentTarget: surface, pointerId: 1 }),
+    );
+    expect(onPathEdit).not.toHaveBeenCalled();
+
+    // The second press hits nothing — it still ends the first gesture.
+    press(root, clickAt(0.5, 0.9, { currentTarget: surface, pointerId: 2 }));
+    // The release that follows finds no drag: nothing is committed.
+    (root.props['onPointerUp'] as (e: unknown) => void)(
+      clickAt(0.5, 0.9, { currentTarget: surface, pointerId: 2 }),
+    );
+
+    expect(onPathEdit).not.toHaveBeenCalled();
+  });
+
+  // The harness materializes the vnode tree and calls the component directly,
+  // so a mounted re-render with a surviving dragRef is not expressible: the
+  // edit-lifetime effect and the two target guards are pinned by source text.
+  // The start-of-gesture reset above is pinned behaviourally, through the real
+  // pointer handlers.
+
+  it('adds one editMutationId-keyed effect that clears the drag, the preview and the capture', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+
+    // The overlay owns its element, so the effect can release a capture whose
+    // pointer handlers are no longer bound.
+    expect(source).toContain('const surfaceRef = useRef<HTMLDivElement | null>(null);');
+    expect(source).toContain('ref={surfaceRef}');
+
+    // Exactly ONE new effect, keyed on the primitive editMutationId. The
+    // shipped key-listener effect keys on [penActive, editMutationId] and is
+    // not this one.
+    expect(source.split('}, [editMutationId]);').length - 1).toBe(1);
+    const depAt = source.indexOf('}, [editMutationId]);');
+    expect(depAt).toBeGreaterThan(-1);
+    const effectBlock = source.slice(source.lastIndexOf('useEffect(() => {', depAt), depAt);
+
+    expect(effectBlock).toContain('const drag = dragRef.current;');
+    expect(effectBlock).toContain('if (drag === null) return;');
+    expect(effectBlock).toContain('dragRef.current = null;');
+    // Compare-then-write: an already-clear preview is not written again.
+    expect(effectBlock).toContain(
+      'if (vectorPathEditDrag.peek() !== null) vectorPathEditDrag.value = null;',
+    );
+    expect(effectBlock).toContain('releasePointerCapture(surfaceRef.current, drag.pointerId);');
+    // An abandoned gesture is CANCELLED, never flushed — the effect commits
+    // nothing by itself.
+    expect(effectBlock).not.toContain('onPathEdit');
+  });
+
+  it('keeps a live gesture when the drag still belongs to the open edit', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    const depAt = source.indexOf('}, [editMutationId]);');
+    expect(depAt).toBeGreaterThan(-1);
+    const effectBlock = source.slice(source.lastIndexOf('useEffect(() => {', depAt), depAt);
+
+    // A render that still names the drag's stroke returns untouched, and every
+    // clearing step sits AFTER that early return.
+    const keepAt = effectBlock.indexOf(
+      'if (editMutationId !== null && String(drag.mutationId) === editMutationId) return;',
+    );
+    expect(keepAt).toBeGreaterThan(-1);
+    expect(effectBlock.indexOf('dragRef.current = null;')).toBeGreaterThan(keepAt);
+    expect(effectBlock.indexOf('vectorPathEditDrag.value = null;')).toBeGreaterThan(keepAt);
+    expect(effectBlock.indexOf('releasePointerCapture(surfaceRef.current, drag.pointerId);'))
+      .toBeGreaterThan(keepAt);
+  });
+
+  it('refuses a non-matching drag before any preview write or commit in both handlers', () => {
+    const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+    const guard =
+      'if (editTargetMutationId === null || drag.mutationId !== editTargetMutationId) return;';
+    // The SAME guard, in both drag continuations.
+    expect(source.split(guard).length - 1).toBe(2);
+
+    const continueAt = source.indexOf('const continueEditDrag =');
+    const finishAt = source.indexOf('const finishEditDrag =');
+    const cancelAt = source.indexOf('const cancelEditDrag =');
+    expect(continueAt).toBeGreaterThan(-1);
+    expect(finishAt).toBeGreaterThan(continueAt);
+    expect(cancelAt).toBeGreaterThan(finishAt);
+    const continueBody = source.slice(continueAt, finishAt);
+    const finishBody = source.slice(finishAt, cancelAt);
+
+    // No preview write may precede the guard.
+    expect(continueBody).toContain(guard);
+    expect(continueBody.indexOf(guard)).toBeLessThan(
+      continueBody.indexOf('vectorPathEditDrag.value = {'),
+    );
+    // No clear, no commit and no release may precede the guard either.
+    expect(finishBody).toContain(guard);
+    expect(finishBody.indexOf(guard)).toBeLessThan(
+      finishBody.indexOf('vectorPathEditDrag.value = null;'),
+    );
+    expect(finishBody.indexOf(guard)).toBeLessThan(finishBody.indexOf('props.onPathEdit('));
+    // The shipped clear-before-commit law is untouched (T-61-30).
+    expect(finishBody.indexOf('vectorPathEditDrag.value = null;')).toBeLessThan(
+      finishBody.indexOf('props.onPathEdit('),
+    );
+  });
+});
+
+// ============================================================
+//  61-31 (G-20) — the overlay tells the truth about the mode it
+//  draws and edits. Every drawn path resolves its OWN stroke's
+//  mode (never the edit target's); the open edit's helpers always
+//  receive the target's mode, so a spline gesture can never write
+//  an authored kind or handle (T-61-92).
+// ============================================================
+describe('61-31 G-20 - the overlay draws and edits through each path curve mode', () => {
+  function overlaySource(): string {
+    return readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  it('captures the edit target mode, draws each recorded path through its own mode and drafts through the draw default', () => {
+    const source = overlaySource();
+
+    // The SAME resolution loop that captures the target's anchors captures its
+    // mode through the shipped resolver — never a second loop, never a guess.
+    expect(source).toContain(
+      'let editTargetCurveMode: AquarelleCurveMode = DEFAULT_AQUARELLE_CURVE_MODE;',
+    );
+    const resolutionAt = source.indexOf('if (String(mutationId) !== editMutationId) continue;');
+    expect(resolutionAt).toBeGreaterThan(-1);
+    const resolutionBlock = source.slice(
+      resolutionAt,
+      source.indexOf('useEffect(() => {', resolutionAt),
+    );
+    expect(resolutionBlock).toContain(
+      'editTargetCurveMode = resolveAquarelleCurveMode(candidate.curveMode);',
+    );
+
+    // The recorded loop: each stroke's OWN mode, never the edit target's — a
+    // spline path reads as a spline while another stroke is being edited.
+    const recordedAt = source.indexOf(
+      'for (const [mutationId, stroke] of (showStructure ? recordedStrokes : [])) {',
+    );
+    expect(recordedAt).toBeGreaterThan(-1);
+    const recordedBlock = source.slice(recordedAt, source.indexOf('recorded.push(drawn);', recordedAt));
+    expect(recordedBlock).toContain('curveMode: resolveAquarelleCurveMode(stroke.curveMode),');
+    expect(recordedBlock).not.toContain('editTargetCurveMode');
+
+    // The draft: the DRAW default, because a new path is recorded spline.
+    const draftAt = source.indexOf("drawnPathOf('draft'");
+    expect(draftAt).toBeGreaterThan(-1);
+    const draftBlock = source.slice(draftAt, source.indexOf('});', draftAt));
+    expect(draftBlock).toContain('curveMode: DEFAULT_VECTOR_PATH_CURVE_MODE,');
+    expect(draftBlock).not.toContain('editTargetCurveMode');
+  });
+
+  it('threads the mode through drawnPathOf and all four edit-helper call sites', () => {
+    const source = overlaySource();
+
+    // One path's chrome and geometry always agree: the mode view feeds the
+    // handle resolve AND the projection.
+    const drawnPathAt = source.indexOf('function drawnPathOf(');
+    expect(drawnPathAt).toBeGreaterThan(-1);
+    const drawnPathEnd = source.indexOf('/**', drawnPathAt);
+    expect(drawnPathEnd).toBeGreaterThan(drawnPathAt);
+    const drawnPathBody = source.slice(drawnPathAt, drawnPathEnd);
+    expect(drawnPathBody).toContain(
+      'const curveMode = options.curveMode ?? DEFAULT_AQUARELLE_CURVE_MODE;',
+    );
+    expect(drawnPathBody).toContain(
+      'handles: resolveAnchorHandles(resolveCurveAnchors(normalised, curveMode)),',
+    );
+    expect(drawnPathBody).toContain('curveMode,');
+
+    // Every edit helper of the start-drag resolution receives the open
+    // target's mode (T-61-92): handle resolve, hit test, promotion and insert.
+    const dragAt = source.indexOf('const startEditDrag =');
+    expect(dragAt).toBeGreaterThan(-1);
+    const dragEnd = source.indexOf('const continueEditDrag =', dragAt);
+    expect(dragEnd).toBeGreaterThan(dragAt);
+    const dragBody = source.slice(dragAt, dragEnd);
+    expect(dragBody).toContain(
+      'const handles = resolveAnchorHandles(resolveCurveAnchors(editTargetAnchors, editTargetCurveMode));',
+    );
+    expect(dragBody).toContain('hitTestVectorPath(');
+    expect(dragBody).toContain('promoteAnchorForDrag(editTargetAnchors, target.index, editTargetCurveMode)');
+    expect(dragBody).toContain(
+      'insertAnchorOnSegment(editTargetAnchors, segment, pointerUv, editTargetCurveMode)',
+    );
+    // No edit helper may run without it, and a spline grab releases without a
+    // promotion to preserve.
+    expect(dragBody.split('editTargetCurveMode').length - 1).toBeGreaterThanOrEqual(5);
+    expect(dragBody).toContain("wasPromoted: editTargetCurveMode !== 'spline' && current.kind !== 'bezier'");
+  });
+
+  it('under Spline draws no handle dot and only circle anchors, leaving the Bezier chrome untouched', () => {
+    const source = overlaySource();
+    const renderAt = source.indexOf('function renderPath(');
+    expect(renderAt).toBeGreaterThan(-1);
+    const renderEnd = source.indexOf('// --- The component', renderAt);
+    expect(renderEnd).toBeGreaterThan(renderAt);
+    const renderBody = source.slice(renderAt, renderEnd);
+
+    // The drawn mode decides the chrome, citing the UI-SPEC's ownership law
+    // (§340-341): amber marks a control the user OWNS.
+    expect(renderBody).toContain(
+      'const { anchors, handles, projection, color, selected, curveMode } = drawn;',
+    );
+    expect(renderBody).toContain("const spline = curveMode === 'spline';");
+    expect(renderBody).toContain('61-UI-SPEC §340-341');
+    expect(renderBody).toContain(
+      "const ownsHandles = (anchor: VectorAnchor): boolean => !spline && anchor.kind === 'bezier';",
+    );
+    // Under Spline EVERY anchor takes the auto-smooth circle branch, and the
+    // entire handle block returns nothing — no dot, no square.
+    expect(renderBody).toContain('{spline ? null : anchors.map((anchor, index) => {');
+    expect(renderBody).toContain('return ownsHandles(anchor) ? (');
+    // The shipped Bezier palette literals survive byte for byte.
+    expect(renderBody).toContain('fill={OWNED_CONTROL_COLOR}');
+    expect(renderBody).toContain('fill={SELECTED_SPINE_COLOR}');
+
+    // Behavioural half: the same bezier-carrying anchor list draws as circles
+    // with zero dots under Spline, and as the shipped square + two dots under
+    // Bezier (the positive control).
+    const handAnchors: readonly VectorAnchor[] = [
+      auto(0.2, 0.5),
+      { x: 0.6, y: 0.5, kind: 'bezier', in: { x: 0.6, y: 0.6 }, out: { x: 0.6, y: 0.4 } },
+    ];
+    vectorPenActive.value = true;
+    const splineTree = render(
+      VectorPathOverlay(propsWith([[11, vectorStroke({ anchors: handAnchors, curveMode: 'spline' })]])),
+    );
+    const splineAnchors = nodesWithTestId(splineTree, 'vector-path-anchor');
+    expect(splineAnchors).toHaveLength(2);
+    expect(splineAnchors.every((node) => node.type === 'circle')).toBe(true);
+    expect(nodesWithTestId(splineTree, 'vector-path-handle')).toHaveLength(0);
+
+    const bezierTree = render(VectorPathOverlay(propsWith([[11, vectorStroke({ anchors: handAnchors })]])));
+    const bezierAnchors = nodesWithTestId(bezierTree, 'vector-path-anchor');
+    expect(bezierAnchors.map((node) => node.type)).toEqual(['circle', 'rect']);
+    expect(nodesWithTestId(bezierTree, 'vector-path-handle')).toHaveLength(2);
+  });
+
+  it('renders a spline stroke through the spline evaluation while the same stroke without a mode renders Bezier', () => {
+    // The middle handle bends the authored Bezier away from the derived-auto
+    // spline, so a wrong mode is visible in the drawn spine itself.
+    const curveAnchors: readonly VectorAnchor[] = [
+      { x: 0.2, y: 0.2, kind: 'bezier', in: { x: 0.1, y: 0.2 }, out: { x: 0.35, y: 0.9 } },
+      auto(0.8, 0.2),
+    ];
+    const normalised = normaliseVectorAnchors(curveAnchors);
+    const spineOf = (mode: 'bezier' | 'spline'): string =>
+      evaluateAquarellePath(normalised, mode)
+        .points.map((point) => {
+          const at = uvToScreen(point, WIDTH, HEIGHT);
+          return `${at.x},${at.y}`;
+        })
+        .join(' ');
+
+    vectorPenActive.value = true;
+    const splineTree = render(
+      VectorPathOverlay(propsWith([[11, vectorStroke({ anchors: curveAnchors, curveMode: 'spline' })]])),
+    );
+    const splineSpines = nodesWithTestId(splineTree, 'vector-path-spine');
+    expect(splineSpines).toHaveLength(1);
+    expect(String(splineSpines[0]!.props['points'])).toBe(spineOf('spline'));
+
+    const bezierTree = render(
+      VectorPathOverlay(propsWith([[11, vectorStroke({ anchors: curveAnchors })]])),
+    );
+    const bezierSpines = nodesWithTestId(bezierTree, 'vector-path-spine');
+    expect(bezierSpines).toHaveLength(1);
+    expect(String(bezierSpines[0]!.props['points'])).toBe(spineOf('bezier'));
+    // The two evaluations genuinely differ, so the assertions above have teeth.
+    expect(spineOf('spline')).not.toBe(spineOf('bezier'));
+  });
+});
+
+// 261112-i6d: double-clicking a VECTOR stroke on the Select surface enters the
+// path edit through the ONE session action the Edit path icon calls. The
+// overlay resolves the hit; the watercolor adapter gates vector-ness and
+// readability and writes the selection before that one entry.
+describe('261112-i6d — double-click a vector stroke to enter the path edit', () => {
+  const EDIT_ID = 95001;
+  const SIZE = { width: WIDTH, height: HEIGHT };
+
+  function portOver(
+    rows: ReturnType<typeof listSelectableAquarelleStrokes>,
+    hitId: number | null = null,
+  ) {
+    return {
+      isActive: () => false,
+      listStrokes: () => rows,
+      hitTestStroke: () => hitId,
+      deleteStrokes: () => {},
+      moveStrokes: () => {},
+      transformStrokes: () => {},
+      stepStroke: () => {},
+    };
+  }
+
+  function overlayProps(
+    port: ReturnType<typeof portOver>,
+    onStrokeDoubleClick?: (mutationId: number) => void,
+    selectMode = true,
+  ) {
+    return {
+      width: WIDTH,
+      height: HEIGHT,
+      getPlayFrame: () => FRAME,
+      port,
+      selectMode,
+      moveArmed: false,
+      onDeleteStrokes: () => {},
+      onMoveStrokes: () => {},
+      ...(onStrokeDoubleClick === undefined ? {} : { onStrokeDoubleClick }),
+      testId: 'stroke-overlay-select',
+      badgeTestId: 'stroke-badge-select',
+      ghostTestId: 'stroke-ghost-select',
+    };
+  }
+
+  function dblClickOf(root: TestVNode): (event: unknown) => void {
+    const onDblClick = root.props['onDblClick'] as ((event: unknown) => void) | undefined;
+    expect(onDblClick, 'root has no double-click handler').toBeTypeOf('function');
+    return onDblClick!;
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    // `resetForStudioOpen` owns the vector latches, not the shared script
+    // selection — clear it here so each pin starts from an empty set.
+    setScriptStrokeSelection([]);
+    recordAquarelleStroke(EDIT_ID, vectorStroke({ mutationId: EDIT_ID }), 'frame-key');
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    setScriptStrokeSelection([]);
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  it('dispatches one hit double-click with the stroke id and owns the event', () => {
+    const onStrokeDoubleClick = vi.fn();
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    const root = render(
+      ScriptStrokeOverlay(overlayProps(portOver(rows, EDIT_ID), onStrokeDoubleClick)),
+    )!;
+    const event = pointerEvent(10, 20);
+    dblClickOf(root)(event);
+
+    expect(onStrokeDoubleClick).toHaveBeenCalledTimes(1);
+    expect(onStrokeDoubleClick).toHaveBeenCalledWith(EDIT_ID);
+    expect(event['preventDefault']).toHaveBeenCalledTimes(1);
+    expect(event['stopPropagation']).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls nothing when the port reports no stroke under the pointer', () => {
+    const onStrokeDoubleClick = vi.fn();
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    const root = render(
+      ScriptStrokeOverlay(overlayProps(portOver(rows, null), onStrokeDoubleClick)),
+    )!;
+    dblClickOf(root)(pointerEvent(10, 20));
+    expect(onStrokeDoubleClick).not.toHaveBeenCalled();
+  });
+
+  it('binds no double-click prop without the callback and never on the display-only root', () => {
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+
+    const interactive = render(ScriptStrokeOverlay(overlayProps(portOver(rows, EDIT_ID))))!;
+    expect(interactive.props['style']).toMatchObject({ pointerEvents: 'auto' });
+    expect(interactive.props['onDblClick']).toBeUndefined();
+
+    // The wireframe-only surface is display-only even when the callback exists.
+    wireframeMode.value = true;
+    const displayOnly = render(
+      ScriptStrokeOverlay(overlayProps(portOver(rows, EDIT_ID), vi.fn(), false)),
+    )!;
+    expect(displayOnly.props['style']).toMatchObject({ pointerEvents: 'none' });
+    expect(displayOnly.props['onDblClick']).toBeUndefined();
+  });
+
+  it('opens the icon’s session action on a readable vector stroke and normalises the selection', () => {
+    // A pre-existing multi-selection is normalised down to the double-clicked
+    // stroke, so the path-edit gate stays enabled and no exit can fire.
+    setScriptStrokeSelection([EDIT_ID, 95002]);
+
+    expect(requestAquarellePathEdit(EDIT_ID)).toBe(true);
+    expect(pathEditMutationId.value).toBe(String(EDIT_ID));
+    expect([...scriptSelectedStrokeIds.value]).toEqual([EDIT_ID]);
+  });
+
+  it('fails closed on a hand-painted stroke, an unknown id and unreadable anchors', () => {
+    recordAquarelleStroke(95003, vectorStroke({ mutationId: 95003, anchors: undefined }), 'frame-key');
+    expect(requestAquarellePathEdit(95003)).toBe(false);
+    expect(pathEditMutationId.value).toBeNull();
+    expect([...scriptSelectedStrokeIds.value]).toEqual([]);
+
+    expect(requestAquarellePathEdit(999)).toBe(false);
+    expect(pathEditMutationId.value).toBeNull();
+
+    recordAquarelleStroke(
+      95004,
+      vectorStroke({
+        mutationId: 95004,
+        anchors: [{ x: Number.NaN, y: 0.5, kind: 'auto' }] as VectorAnchor[],
+      }),
+      'frame-key',
+    );
+    expect(requestAquarellePathEdit(95004)).toBe(false);
+    expect(pathEditMutationId.value).toBeNull();
+    expect([...scriptSelectedStrokeIds.value]).toEqual([]);
+  });
+});
+
+// 261112-i6d: Alt+click on a vertex writes the ONE straight-corner shape in
+// BOTH curve modes — exactly one onPathEdit, the selection follows the vertex,
+// no drag state and no pointer capture. Alt on a HANDLE dot keeps the shipped
+// handle drag (whose per-move Alt breaks the coupling), so the new branch must
+// sit below the handle branch.
+describe('261112-i6d — Alt+click a vertex toggles its corner', () => {
+  const EDIT_ID = 98001;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  const HANDLE_ANCHORS: readonly VectorAnchor[] = [
+    { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.15, y: 0.5 }, out: { x: 0.25, y: 0.5 } },
+    auto(0.5, 0.5),
+    auto(0.8, 0.5),
+  ];
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  function renderEdit(
+    stroke: AquarelleStroke,
+    onPathEdit: (id: number, anchors: readonly VectorAnchor[]) => void,
+  ): TestVNode {
+    recordAquarelleStroke(EDIT_ID, stroke, 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+    return render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+  }
+
+  it('writes the corner shape under Spline without a drag or a pointer capture', () => {
+    // The mode is explicit: an ABSENT curveMode reads Bézier (the storage
+    // default), so a truthful Spline pin must say so.
+    const stroke = editedStroke({ curveMode: 'spline' });
+    const originalAnchors = stroke.anchors as readonly VectorAnchor[];
+    const onPathEdit = vi.fn();
+    const root = renderEdit(stroke, onPathEdit);
+    // Under Spline no stored handle is a user-owned control — no dot is drawn.
+    expect(nodesWithTestId(root, 'vector-path-handle')).toHaveLength(0);
+
+    const event = clickAt(0.5, 0.5, { altKey: true });
+    press(root, event);
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, next] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(next[1]!.kind).toBe('bezier');
+    expect(next[1]!.in).toEqual({ x: 0.5, y: 0.5 });
+    expect(next[1]!.out).toEqual({ x: 0.5, y: 0.5 });
+    expect(next[0]).toEqual(originalAnchors[0]);
+    expect(next[2]).toEqual(originalAnchors[2]);
+    // The selection follows the pressed vertex; the click is a complete gesture.
+    expect(vectorAnchorSelection.peek()).toEqual([1]);
+    expect(captureOf(event).setPointerCapture).not.toHaveBeenCalled();
+    expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+
+  it('collapses a bezier anchor’s stored handles onto the anchor under Bézier', () => {
+    const stroke = editedStroke({ anchors: HANDLE_ANCHORS, curveMode: 'bezier' });
+    const onPathEdit = vi.fn();
+    const root = renderEdit(stroke, onPathEdit);
+    const event = clickAt(0.2, 0.5, { altKey: true });
+    press(root, event);
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, next] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(next[0]!.kind).toBe('bezier');
+    expect(next[0]!.in).toEqual({ x: 0.2, y: 0.5 });
+    expect(next[0]!.out).toEqual({ x: 0.2, y: 0.5 });
+    expect(next[1]).toEqual(HANDLE_ANCHORS[1]);
+    expect(next[2]).toEqual(HANDLE_ANCHORS[2]);
+    expect(captureOf(event).setPointerCapture).not.toHaveBeenCalled();
+    expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+
+  it('toggles an already-corner vertex back to the round shape and still selects it', () => {
+    const cornerAnchors: readonly VectorAnchor[] = [
+      auto(0.2, 0.5),
+      { x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 0.5, y: 0.5 } },
+      auto(0.8, 0.5),
+    ];
+    const stroke = editedStroke({ anchors: cornerAnchors, curveMode: 'spline' });
+    const onPathEdit = vi.fn();
+    const root = renderEdit(stroke, onPathEdit);
+    press(root, clickAt(0.5, 0.5, { altKey: true }));
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, next] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(next[1]).toEqual({ x: 0.5, y: 0.5, kind: 'auto' });
+    expect(next[0]).toEqual(cornerAnchors[0]);
+    expect(next[2]).toEqual(cornerAnchors[2]);
+    expect(vectorAnchorSelection.peek()).toEqual([1]);
+    expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+
+  it('leaves Alt on a handle dot as the shipped handle drag, committing nothing without movement', () => {
+    const stroke = editedStroke({ anchors: HANDLE_ANCHORS, curveMode: 'bezier' });
+    const onPathEdit = vi.fn();
+    const root = renderEdit(stroke, onPathEdit);
+    const event = clickAt(0.25, 0.5, { altKey: true });
+    press(root, event);
+
+    // Handle hits outrank anchor hits: the shipped drag starts, no corner write.
+    expect(captureOf(event).setPointerCapture).toHaveBeenCalledTimes(1);
+    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(vectorPathEditDrag.peek()).not.toBeNull();
+
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.25, 0.5, { altKey: true }));
+    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+});

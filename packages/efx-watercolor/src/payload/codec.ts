@@ -10,6 +10,11 @@
 //  schemaVersion refuses (P5 / DATA-01). parse(serialize(x))
 //  deep-equals x. Ticks are integer host-grid values (DATA-03).
 //  No unseeded RNG (D-20). No second events array (D-16).
+//
+//  schemaVersion stays 1 because `anchors` and `curveMode` are optional
+//  additions whose ABSENCE is the documented state, not a legacy path. A
+//  legacy `renderMode` key, if an older payload still carries one, is an
+//  ignored extra field: no mode is read or written anywhere.
 // ============================================================
 
 import type { StudioStroke, StudioPoint } from '@efxlab/efx-paint-host/animation'
@@ -24,6 +29,7 @@ import {
   DIFFUSION_CAP,
   type AquarelleStrokePayload,
 } from './toStudioStroke'
+import { isAquarelleCurveMode, normaliseAquarelleAnchors } from './vectorPath'
 
 /** Script payload schema version (P5 / DATA-01 — unknown refuses). */
 export const AQUARELLE_SCHEMA_VERSION = 1
@@ -111,6 +117,13 @@ function isStrokeShape(value: unknown): value is StudioStroke<AquarelleStrokePay
   if (typeof engine['brushId'] !== 'string') return false
   if (!isRecord(engine['params'])) return false
   if (!isFiniteNumber(engine['timestamp'])) return false
+  // 61-03 / 61-30 (T-61-08): the two optional vector fields are VALIDATED,
+  // never passed through blind. Absent is valid and means "not a vector
+  // stroke" / "Bézier"; a malformed list or an unknown mode refuses the event.
+  const anchors = engine['anchors']
+  if (anchors !== undefined && normaliseAquarelleAnchors(anchors) === undefined) return false
+  const curveMode = engine['curveMode']
+  if (curveMode !== undefined && !isAquarelleCurveMode(curveMode)) return false
   return true
 }
 
@@ -125,6 +138,13 @@ function cloneStrokeForWire(
 ): StudioStroke<AquarelleStrokePayload> {
   const cuisson = Math.min(DIFFUSION_CAP, Math.max(0, Math.trunc(stroke.cuisson)))
   const diffusionFrames = clampDiffusion(stroke.engine.diffusionFrames)
+  // 61-03: pass a validated anchor list through the fail-closed validator so
+  // the parsed event carries a canonical, frozen copy — never an alias to
+  // the untrusted wire object. Absent stays absent (no key is invented).
+  const anchors =
+    stroke.engine.anchors === undefined
+      ? undefined
+      : normaliseAquarelleAnchors(stroke.engine.anchors)
   return {
     pts: stroke.pts.map((p) => ({ ...p })),
     ticks: stroke.ticks,
@@ -143,6 +163,7 @@ function cloneStrokeForWire(
         ? { ...stroke.engine.toolOverrides }
         : undefined,
       diffusionFrames,
+      ...(anchors !== undefined ? { anchors } : {}),
     },
   }
 }

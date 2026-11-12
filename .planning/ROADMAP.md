@@ -88,7 +88,7 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
 
 - [x] **Phase 59: Rail Motion Channels & v7 Interface** - Any rail animates through independent Motion keys applied at the compositor, with the v7 channel lanes (completed 2026-11-08)
 - [x] **Phase 60: Studio Timeline Horizontal Zoom** - Frame density zooms 0.25×-4× from one pitch authority with all vertical geometry fixed (completed 2026-11-09)
-- [ ] **Phase 61: Vector Painting Tool** - Pen-drawn vector strokes with per-vertex width, per-stroke style, wireframe preview, persistence, and export
+- [x] **Phase 61: Vector Painting Tool** - Pen-drawn vector strokes with per-vertex width, per-stroke style, wireframe preview, persistence, and export (completed 2026-11-12)
 - [ ] **Phase 62: Painted-Stroke Curve Editing** - A selected painted stroke reshapes as a curve and re-bakes from its pre-script base across every loop occurrence
 
 ---
@@ -235,7 +235,64 @@ Plans:
   4. A vector stroke persists in `.mce` (declared in both TS and Rust), survives reopen, and exports exactly as previewed while keeping hide/solo, ordering, opacity, and background behavior.
   5. Deterministic replay: the same vector stroke produces the same raster across runs, undo/redo, and reopen, and undo/redo covers each vector operation.
 
-**Plans**: TBD
+**Plans:** 31/31 plans complete (14 executed + 6 gap-closure executed + 11 new gap-closure pending)
+
+Plans:
+**Wave 1**
+- [x] 61-01-PLAN.md — Wave 0 spike: seam strategy, sampling density, stroke-count cost and the 1.8x width channel, as a probe verdict
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 61-02-PLAN.md — Vector spine math: derived Bezier handles, arc-length sampling, sparse width profile, determinism scan entry
+- [x] 61-08-PLAN.md — Vector pen entry: the rail's fifth tool row, the V shortcut and the session store
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 61-03-PLAN.md — Payload model: anchor and render-mode types in the opaque engine slot, projection and codec validation
+- [x] 61-04-PLAN.md — Engine width channel: per-sample width scale through scriptBegin/scriptMove and the adapter, measured at 1.8x
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [x] 61-05-PLAN.md — AQTL v2: vector flags, anchor block and render-mode byte in SNAP v5, fail-closed v1 refusal, lossless restore
+- [x] 61-06-PLAN.md — Declaration pair: matching TS and Rust members pinned by the field contract test, no new one-language exception
+- [x] 61-07-PLAN.md — Simple ribbon: crisp render mode in the engine, the brush preset and its crisp thumb, mode-aware script begin
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [x] 61-09-PLAN.md — Draw path: spine and anchor overlay, click/Alt/Enter/Escape gesture, one recorded stroke per path
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [x] 61-10-PLAN.md — Edit path: anchor and handle drag, promotion, coupling, insert/delete, multi-select width, anchors travel with the stroke
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [x] 61-11-PLAN.md — Sheet controls: the Edit path header button and the Anchor width stepper with an honest effective readout
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [x] 61-12-PLAN.md — Render row and Advanced wet globals: two-segment mode control plus the simple-ribbon disclosure, one batch edit
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [x] 61-13-PLAN.md — Wireframe: session-only latch generalising Draft, every stroke's construction geometry, no bake while on
+
+**Wave 10** *(blocked on Wave 9 completion)*
+- [x] 61-14-PLAN.md — Close-out proofs: save/reopen bake-input parity, both render modes, undo/redo byte identity, cache-key behaviour
+
+**Gap closure** *(from 61-VERIFICATION.md; waves are relative to this set — 61-15, 61-16 and 61-17 own disjoint files, 61-18, 61-19 and 61-20 follow on the Studio)*
+- [x] 61-15-PLAN.md — Bake seam: the draw commit and the path-edit commit re-bake the live sheet, and a Script-Off draw is refused (G-1, G-2) — wave 1; the ledger entry it enables is 61-20
+- [x] 61-16-PLAN.md — Gesture surface: pointer capture on the path-edit drag, the vector keys yield to a focused text field, and the two false history titles are corrected (G-3, G-4, G-8 test truth) — wave 1
+- [x] 61-17-PLAN.md — Input-surface law: entering Select or the picker releases the pen and the open path edit, through a dependency-free latch leaf (G-6) — wave 1
+- [x] 61-18-PLAN.md — Wireframe capture law: Draft cannot leave and the Draft settle refuses while wireframe is on, and Select states why it is inert (G-7) — wave 2, after 61-15
+- [x] 61-19-PLAN.md — Anchor width target: the width commit writes the path the open edit names or refuses, with an inert reason in the dialog (G-5, G-8) — wave 3, after 61-15
+- [x] 61-20-PLAN.md — Vector path-edit ledger: one undo entry per completed edit on both success routes, none on failure, and no second writer (G-8) — wave 4, after 61-15
+
+**Gap closure round 2** *(from 61-VERIFICATION.md and 61-UAT.md; waves are relative to this set, and the one-way spline decision sits at 61-30's first task)*
+- [x] 61-21-PLAN.md — Vector pen: a live rubber-band spine follows the pointer, and the vector key listener yields to every focused control (IN-01, WR-05) — wave 1
+- [x] 61-22-PLAN.md — Anchor width discovers from the sheet's default list view, and a selected anchor is visibly distinct (G-11) — wave 2, after 61-21
+- [x] 61-23-PLAN.md — The colour picker cannot exist during a vector path edit, and Alt inside the edit is only the handle break (G-19) — wave 1
+- [x] 61-24-PLAN.md — +Key records the previous key's vector script, anchors and render mode beside its raster bytes (G-15) — wave 1
+- [x] 61-25-PLAN.md — Vector pen copy contract, the Anchor width readout grammar, the overlay band/marker/chrome law and the wireframe-only badges (UI-01..UI-05) — wave 3, after 61-21 and 61-22
+- [x] 61-26-PLAN.md — Shift+A under wireframe, an honest failed-restore capsule, and a committed in-flight bake marks the sheet stale (WR-01, WR-02, WR-03) — wave 2, after 61-24
+- [x] 61-27-PLAN.md — Selecting another stroke closes the open path edit, and the two silent refusals publish (WR-04, IN-02, IN-03) — wave 4, after 61-22, 61-25 and 61-26
+- [x] 61-28-PLAN.md — An interrupted path-edit drag can neither preview nor commit across an edit boundary (CR-01) — wave 4, after 61-25
+- [x] 61-29-PLAN.md — A committed path edit reaches the payload's sampled points, with the written diagnosis preceding the fix (G-17) — wave 5, after 61-21 and 61-28 (the overlay suite is edited one plan at a time: 61-22 and 61-25 sit in between)
+- [x] 61-30-PLAN.md — Spline curve mode: the persisted field, the single evaluator and the mode-aware re-sample, behind a one-way decision checkpoint (G-20) — wave 6, after 61-29
+- [x] 61-31-PLAN.md — Spline curve mode: the Curve switch, its one-edit commit seam and the mode-aware canvas chrome (G-20) — wave 7, after 61-27, 61-28, 61-29 and 61-30
+
 
 **Spike before the data model is locked**: per-vertex watercolour feasibility (segment runs vs payload extension), the sampling law, seam quality, stroke-count cost, and the determinism pin. The renderer, not the pen tool, is the scope risk.
 
@@ -273,7 +330,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 59. Rail Motion Channels & v7 Interface | 25/25 | Complete    | 2026-11-08 |
 | 60. Studio Timeline Horizontal Zoom | 6/6 | Complete    | 2026-11-09 |
-| 61. Vector Painting Tool | 0/TBD | Not started | - |
+| 61. Vector Painting Tool | 31/31 | Complete    | 2026-11-12 |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
 
 **Execution Order:** 59 → 60 → 61 → 62 (global numbering continues; Phase 57 is retired and never reused)

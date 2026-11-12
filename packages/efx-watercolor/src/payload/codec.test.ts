@@ -43,6 +43,8 @@ import {
   type AquarelleStrokePayload,
 } from './toStudioStroke'
 import { createAquarelleEngineAdapter } from '../adapter/engineAdapter'
+import { ANCHOR_WIDTH_MAX } from '../vector/spine'
+import type { AquarelleAnchor } from './vectorPath'
 
 const PAYLOAD_DIR = resolve(dirname(fileURLToPath(import.meta.url)))
 
@@ -516,5 +518,109 @@ describe('cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25)
     expect(refusal.detail).toBe('efx-physic-paint:efx-watercolor')
     const reverse = buildEngineMismatchRefusal('efx-watercolor', 'efx-physic-paint')
     expect(reverse.detail).toBe('efx-watercolor:efx-physic-paint')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 9. Vector path wire validation (61-03 T-61-08)
+//
+//  The optional engine fields are VALIDATED, not passed through blind: a
+//  malformed anchor list or an unknown curve mode makes the whole event
+//  unreadable (null), never a repaired event. An event with neither field
+//  round-trips exactly as it did before this plan. A legacy `renderMode`
+//  key is inert data: it is neither validated nor interpreted.
+// ---------------------------------------------------------------------------
+
+const WIRE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 20, y: 32, kind: 'auto' },
+  { x: 44, y: 32, kind: 'bezier', in: { x: 40, y: 30 }, out: { x: 48, y: 34 }, width: 1.8 },
+  { x: 60, y: 32, kind: 'auto' },
+]
+
+function wrapStroke(stroke: StudioStroke<AquarelleStrokePayload>): unknown {
+  return { schemaVersion: AQUARELLE_SCHEMA_VERSION, event: stroke }
+}
+
+describe('wire validation of the vector fields (61-03 T-61-08)', () => {
+  it('round-trips a vector event deep-equal including its single 1.8 width factor', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    const parsed = parse(serialize(stroke))
+    expect(parsed).not.toBeNull()
+    const round = parsed as StudioStroke<AquarelleStrokePayload>
+    expect(round.engine.anchors).toEqual(WIRE_ANCHORS)
+    expect(round.engine.anchors?.filter((anchor) => 'width' in anchor)).toHaveLength(1)
+    expect(round.engine.anchors?.[1]?.width).toBe(1.8)
+    expect(round.toolOverrides).toEqual(stroke.toolOverrides)
+    expect(round.engine.brushId).toBe('wc/round-medium')
+  })
+
+  it('parses to null when an anchor list is malformed', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    const malformed: AquarelleAnchor[][] = [
+      [{ x: NaN, y: 0, kind: 'auto' }],
+      [{ x: 0, y: 0, kind: 'spline' as unknown as 'auto' }],
+      [{ x: 0, y: 0, kind: 'bezier', in: { x: Infinity, y: 0 }, out: { x: 1, y: 1 } }],
+      [{ x: 0, y: 0, kind: 'auto', width: ANCHOR_WIDTH_MAX + 1 }],
+      [],
+    ]
+    for (const anchors of malformed) {
+      const raw = { ...stroke, engine: { ...stroke.engine, anchors } }
+      expect(() => parse(wrapStroke(raw as StudioStroke<AquarelleStrokePayload>))).not.toThrow()
+      expect(parse(wrapStroke(raw as StudioStroke<AquarelleStrokePayload>))).toBeNull()
+    }
+  })
+
+  it('accepts a legacy renderMode key as inert data', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    const raw = {
+      ...stroke,
+      engine: { ...stroke.engine, renderMode: 'simple-ribbon' },
+    } as unknown as StudioStroke<AquarelleStrokePayload>
+    expect(parse(wrapStroke(raw))).not.toBeNull()
+  })
+
+  it('re-serialises a parsed vector event deep-equal (faithful pass-through)', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    const parsed = parse(serialize(stroke))
+    expect(parsed).not.toBeNull()
+    expect(serialize(parsed!)).toEqual(serialize(stroke))
+  })
+
+  it('still round-trips an event with no vector field exactly as today', () => {
+    const stroke = makeStrokeEvent()
+    expect(parse(serialize(stroke))).toEqual(stroke)
+    expect('anchors' in stroke.engine).toBe(false)
+  })
+
+  it('round-trips a curveMode and keeps an absent key absent (61-30 G-20)', () => {
+    const spline = makeStrokeEvent({ curveMode: 'spline' })
+    const parsed = parse(serialize(spline))
+    expect(parsed).not.toBeNull()
+    expect((parsed as StudioStroke<AquarelleStrokePayload>).engine.curveMode).toBe('spline')
+
+    const absent = makeStrokeEvent()
+    const absentParsed = parse(serialize(absent)) as StudioStroke<AquarelleStrokePayload>
+    expect('curveMode' in absentParsed.engine).toBe(false)
+  })
+
+  it('parses to null when curveMode is not a member of the closed union (fail closed)', () => {
+    const stroke = makeStrokeEvent()
+    const raw = {
+      ...stroke,
+      engine: { ...stroke.engine, curveMode: 'linear' },
+    } as unknown as StudioStroke<AquarelleStrokePayload>
+    expect(() => parse(wrapStroke(raw))).not.toThrow()
+    expect(parse(wrapStroke(raw))).toBeNull()
+    expect(classifyAquarellePayloadFailure(wrapStroke(raw))).toBe('malformed-engine-payload')
+  })
+
+  it('classifyAquarellePayloadFailure still names a malformed engine block', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    expect(classifyAquarellePayloadFailure(serialize(stroke))).toBeNull()
+    const malformed = {
+      ...stroke,
+      engine: { ...stroke.engine, anchors: [{ x: 0, y: 0, kind: 'auto', width: ANCHOR_WIDTH_MAX + 1 }] },
+    } as unknown as StudioStroke<AquarelleStrokePayload>
+    expect(classifyAquarellePayloadFailure(wrapStroke(malformed))).toBe('malformed-engine-payload')
   })
 })

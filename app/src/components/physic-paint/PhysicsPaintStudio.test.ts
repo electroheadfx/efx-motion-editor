@@ -1,6 +1,17 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { effect } from '@preact/signals';
+import {
+  draftMode,
+  draftPixelsDirty,
+  runWireframeOffTransition,
+  setDraftPixelsDirty,
+  setWireframeMode,
+  setWireframeSettleInFlight,
+  wireframeMode,
+  wireframeSettleInFlight,
+} from './view/scriptStrokeEdition';
 
 // 261027-klx: the G2 census gate forbids the contiguous retired Brush-script
 // tokens in app/src. These negative pins still scan for the real identifiers at
@@ -46,6 +57,9 @@ const livePixelTransactions = readFileSync(fileURLToPath(new URL('./roto/rotoLiv
 // 261023-g4p: ONE shared gesture implementation + ONE shared edition module.
 const scriptStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/ScriptStrokeOverlay.tsx', import.meta.url)), 'utf8');
 const scriptStrokeEdition = readFileSync(fileURLToPath(new URL('./view/scriptStrokeEdition.ts', import.meta.url)), 'utf8');
+// 61-13: the Draft switch is the one control the wireframe must DISABLE and
+// leave visibly ON (the latch owns the settle).
+const strokeSettingsDialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintStrokeSettingsDialog.tsx', import.meta.url)), 'utf8');
 // 261101-o2m (D-02): the frozen-sheet leaf the cache eye hides.
 const cachedBase = readFileSync(fileURLToPath(new URL('./engine/AquarelleCachedBaseLayer.tsx', import.meta.url)), 'utf8');
 // 261101-o2m (D-05): the main-realm Draft gate, its Studio publisher and the
@@ -2517,8 +2531,14 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // handleAquarellePlaceStroke — same mapper, same capsule.
     // 261101-o2m: a tenth site — the Draft settle's recompute refusal — same
     // mapper, same capsule.
+    // 61-15: a twelfth site — the vector draw re-bake failure in
+    // bakeAquarelleVectorCommit — same mapper, same capsule.
+    // 61-15: a thirteenth site — the path-edit re-bake failure in
+    // commitAquarelleVectorPathEdit — same mapper, same capsule.
+    // 61-31: a fourteenth site — the curve-mode re-bake failure in
+    // handleAquarelleCurveModeStrokes — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(11); // one import + ten call sites
+    expect(mentions).toBe(14); // one import + thirteen call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
@@ -3122,7 +3142,9 @@ describe('261022-pim watercolor stroke select surface', () => {
     // Unselected bands stay quiet (thin edge, faint wash); selecting one
     // restores the full weight.
     expect(scriptStrokeOverlay).toContain('fillOpacity={isSelected ? 0.14 : 0.07}');
-    expect(scriptStrokeOverlay).toContain('strokeWidth={isSelected ? 3.5 : 1.5}');
+    // 261112-n3f: the visible weight is hoisted to ONE constant — a masked band
+    // authors it doubled so the mask trim keeps the same 3.5/1.5 silhouette.
+    expect(scriptStrokeOverlay).toContain('const bandEdgeWidthPx = isSelected ? 3.5 : 1.5;');
     expect(scriptStrokeOverlay).toContain("const SELECTED_STROKE_COLOR = '#38bdf8';");
     expect(scriptStrokeOverlay).toContain("const OUTLINE_DARK = '#111111';");
     expect(scriptStrokeOverlay).toContain("const OUTLINE_LIGHT = '#ffffff';");
@@ -3134,10 +3156,15 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(scriptStrokeOverlay).toContain('props.port.bandFor');
     expect(scriptStrokeOverlay).toContain('stroke-size-band');
     expect(scriptStrokeOverlay).toContain('stroke-lift-ribbon');
+    // 261112-n3f: the descriptor's edge policy is honoured by a per-row mask —
+    // an unmasked fill node plus one masked edge node, never a filter.
+    expect(scriptStrokeOverlay).toContain('maskedEdge');
+    expect(scriptStrokeOverlay).toContain('script-stroke-band-mask-');
+    expect(scriptStrokeOverlay).toContain('stroke-size-band-edge');
     // The band region must map EVERY polygon vertex through the same transform
     // and drag offset as the centerline. A branch-exists-only pin cannot catch
     // a preview that stops following the band (UAT row 6).
-    const bandStart = scriptStrokeOverlay.indexOf('const bandPx');
+    const bandStart = scriptStrokeOverlay.indexOf('const band =');
     const badgeStart = scriptStrokeOverlay.indexOf('const badgeAccent');
     expect(bandStart).toBeGreaterThan(-1);
     expect(badgeStart).toBeGreaterThan(bandStart);
@@ -3160,8 +3187,21 @@ describe('261022-pim watercolor stroke select surface', () => {
     // Select/Move owns the active state: the paint tool is deselected. The
     // 261030-cnq picker joins it — an armed picker deselects the paint tool too.
     // 261107: Motion boundaries (animate mode) joins them — one active surface.
-    expect(watercolorRail).toContain('const isActive = !selectActive && !pickerActive && !motionBoundaryActive && active === id;');
-    expect(watercolorRail).toContain('disabled={disabled || !selectAvailable.value}');
+    // 61-08 (D-05): the vector pen joins the same one-active-surface law.
+    // 61-13 (D-16): the wireframe latch joins them too — while the
+    // construction view is up, no paint tool renders "on".
+    expect(watercolorRail).toContain('const isActive =');
+    const isActiveRegion = watercolorRail.slice(
+      watercolorRail.indexOf('const isActive ='),
+      watercolorRail.indexOf('const waterGated'),
+    );
+    for (const clause of ['!selectActive', '!pickerActive', '!motionBoundaryActive', '!penActive', '!wireframeActive']) {
+      expect(isActiveRegion, `isActive must keep the ${clause} clause`).toContain(clause);
+    }
+    expect(isActiveRegion).toContain('active === id');
+    // 61-18: the wireframe latch joins the Select disable expression — the
+    // construction view never offers a selection surface over it.
+    expect(watercolorRail).toContain('disabled={railDisabled || wireframeActive || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
     expect(watercolorRail).toContain('Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
@@ -3288,7 +3328,7 @@ describe('261022-pim watercolor stroke select surface', () => {
       'onDeleteStrokes={(mutationIds) => onAquarelleDeleteStrokesRef.current?.(mutationIds)}',
     );
     expect(studio).toContain('onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,');
-    expect(studio).toContain('getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes]');
+    expect(studio).toContain('getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit]');
   });
 });
 
@@ -3577,7 +3617,7 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
     expect(canvasMount).toContain('onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
     expect(canvasMount).toContain('onMoveStrokes={(mutationIds, dxPx, dyPx) => onAquarelleMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}');
     expect(studio).toContain('onAquarelleMoveStrokes: handleAquarelleMoveStrokes,');
-    expect(studio).toContain('handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes]');
+    expect(studio).toContain('handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit]');
     expect(aquarelleCanvasLayer).toContain('onMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
     expect(aquarelleCanvasLayer).toContain('onMoveStrokes={(mutationIds, dxPx, dyPx) => onMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}');
     expect(aquarelleStrokeOverlay).toContain('onMoveStrokes: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
@@ -5261,10 +5301,13 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
   });
 
   it('allocates duplicate-script copies through the same ledger, never an engine', () => {
+    // 61-24 (G-15): the body moved out of the inline duplicate port into the
+    // one shared `recordAquarelleScriptCopyForFrames` seam — the pin follows
+    // the same body, with the same markers and the same negative assertion.
     const recordCopy = slice(
       studio,
-      'recordAquarelleScriptCopy: async (sourceFrame, destinationFrame) => {',
-      'return recorded > 0;',
+      'const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {',
+      'const rotoNavigation = useRotoNavigationCoordinator',
     );
     expect(recordCopy).toContain('allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({');
     expect(recordCopy).not.toContain('enqueueRecordedStroke');
@@ -5580,8 +5623,10 @@ describe('quick 261028-k03d — key-payload recovery and non-blanking failures',
     // 261029-lsr: the manual force-re-render (rail / Shift+R) recovers too.
     // 261101-o2m: the Draft entry arm and the Draft settle's belt join them —
     // both are no-ops once the arm has resolved the frame's durable base.
-    expect(calls, 'delete + move + appearance + transform + apply + rebake target + draft arm + draft settle').toBe(8);
-    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleTransformStrokes']) {
+    // 61-15: the shared vector path edit commit joins them.
+    // 61-31: the curve-mode batch joins them.
+    expect(calls, 'delete + move + appearance + curve mode + transform + apply + rebake target + draft arm + draft settle + path edit').toBe(10);
+    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleCurveModeStrokes', 'handleAquarelleTransformStrokes', 'commitAquarelleVectorPathEdit']) {
       const start = studio.indexOf(`const ${handler} = useCallback`);
       expect(start, `${handler} exists`).toBeGreaterThan(-1);
       const call = studio.indexOf('await ensureAquarelleDurableBaseRef.current(', start);
@@ -5920,7 +5965,9 @@ describe('quick 261101-o2m — the five exits act on the recompute, the persiste
 
   it('publishes the Draft-or-dirty state with a 5s heartbeat from one lifecycle effect', () => {
     expect(studio).toContain("import { PHYSIC_PAINT_DRAFT_HEARTBEAT_MS, publishStudioDraftMode } from '../../lib/physicPaintDraftMode';");
-    const effectStart = studio.indexOf('const active = draftMode.value || draftPixelsDirty.value;');
+    const effectStart = studio.indexOf(
+      'const active = draftMode.value || draftPixelsDirty.value || wireframeMode.value;',
+    );
     expect(effectStart, 'the publisher follows the PIXELS, never the switch alone').toBeGreaterThan(-1);
     expect(studio.indexOf('void publishStudioDraftMode(active);', effectStart)).toBeGreaterThan(effectStart);
     expect(studio.indexOf('}, PHYSIC_PAINT_DRAFT_HEARTBEAT_MS);', effectStart)).toBeGreaterThan(effectStart);
@@ -6371,5 +6418,1472 @@ describe('quick 261109-uj0 — capture laws stay intact around the localized gat
     expect(studio).toContain("pending.source !== 'auto-key-paint'");
     expect(studio).toContain('aquarelleCapturesInFlightRef.current.add(run)');
     expect(studio).toContain("// quick-261109-pwt: settle the destination frame's pending cache capture once it is displayed.");
+  });
+});
+
+// 61-10 Task 3: the ONE path-edit seam reaches the Studio. The refusal copy is
+// a fixed module constant (E10 long-text — never interpolated), an unreadable
+// path publishes it with status `error` and writes nothing, and a READABLE path
+// returning a null edit id (in-flight / unchanged gesture) publishes nothing.
+describe('61-10 vector path edit wiring in the Studio', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const HANDLER_START = 'const handleAquarelleVectorPathEdit = useCallback(';
+  const HANDLER_END = 'const canvasMount = canvasMountPropsMemo.resolve(';
+
+  it('declares the fixed rejection copy verbatim, with no interpolation', () => {
+    expect(studio).toContain(
+      "const VECTOR_PATH_REJECTION_MESSAGE = \"Vector path rejected — this stroke's path could not be read. The stroke was left unchanged.\";",
+    );
+    // Fixed copy — a user value can never enter the capsule line.
+    const start = studio.indexOf('const VECTOR_PATH_REJECTION_MESSAGE');
+    const declaration = studio.slice(start, studio.indexOf('\n', start));
+    expect(declaration).not.toContain('${');
+    expect(declaration).not.toContain('`');
+  });
+
+  it('refuses a missing or unreadable path through the capsule and stores nothing', () => {
+    const handler = regionOf(studio, HANDLER_START, HANDLER_END);
+    expect(handler).toContain('getRecordedAquarelleStroke(mutationId)');
+    const guardAt = handler.indexOf('normaliseAquarelleAnchors(stroke.anchors) === undefined');
+    const publishAt = handler.indexOf('setApplyMessage(VECTOR_PATH_REJECTION_MESSAGE)');
+    const commitAt = handler.indexOf('return commitAquarelleVectorPathEdit(mutationId, anchors);');
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(publishAt).toBeGreaterThan(guardAt);
+    expect(commitAt).toBeGreaterThan(publishAt);
+    expect(handler).toContain("setApplyStatus('error')");
+    expect(handler).toContain('setLastError(VECTOR_PATH_REJECTION_MESSAGE)');
+    // EXACTLY one publication site — the readable-path null (in-flight or
+    // unchanged gesture) falls through without touching the capsule.
+    expect(handler.split('setApplyMessage(').length - 1).toBe(1);
+    expect(handler.split("setApplyStatus('error')").length - 1).toBe(1);
+    // Identity-stable delegator: its ONE dependency is the shared commit.
+    expect(handler).toContain('    [commitAquarelleVectorPathEdit],');
+  });
+
+  it('forwards the handler into the mount memo and its props object', () => {
+    expect(studio).toContain("import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';");
+    expect(studio).toContain('  beginAquarellePathEdit,');
+    expect(studio).toContain('handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {');
+    expect(studio).toContain('onAquarelleVectorPathEdit: handleAquarelleVectorPathEdit,');
+  });
+
+  it('threads the mount prop into the layer seam through one ref', () => {
+    expect(canvasMount).toContain("import type { AquarelleStroke, VectorAnchor } from '@efxlab/efx-watercolor';");
+    expect(canvasMount).toContain('onAquarelleVectorPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => Promise<number | null>;');
+    expect(canvasMount).toContain('const onAquarelleVectorPathEditRef = useRef(props.onAquarelleVectorPathEdit);');
+    expect(canvasMount).toContain('onAquarelleVectorPathEditRef.current = props.onAquarelleVectorPathEdit;');
+    expect(canvasMount).toContain('onEditVectorPath={(mutationId, anchors) => onAquarelleVectorPathEditRef.current?.(mutationId, anchors)}');
+  });
+
+  it('commits a readable edit through one async seam: guards, post-await Draft read, restore on failure', () => {
+    const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
+    const start = studio.indexOf(COMMIT_START);
+    const end = studio.indexOf(HANDLER_START, start + COMMIT_START.length);
+    expect(start, `missing start marker: ${COMMIT_START}`).toBeGreaterThan(-1);
+    // Declared BEFORE the read-and-refuse handler, so the 61-10 region slice
+    // keeps its exactly-one publication pin.
+    expect(end).toBeGreaterThan(start);
+    const commit = studio.slice(start, end);
+    expect(commit).toContain('async (mutationId: number, anchors: readonly AquarelleAnchor[]): Promise<number | null> => {');
+    // Guards mirror the move seam: locked / applying / in-flight fail closed.
+    expect(commit).toContain('if (isPhysicalMutationLocked()) return null;');
+    expect(commit).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return null;');
+    expect(commit).toContain('if (isAquarelleScriptEditInFlight()) return null;');
+    // The base recovery is AWAITED before the Draft read (the WR-03 precedent):
+    // a stale `true` would skip the re-render over fresh pixels.
+    const baseAt = commit.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);');
+    const draftAt = commit.indexOf('const draft = draftMode.peek();');
+    expect(baseAt).toBeGreaterThan(-1);
+    expect(draftAt).toBeGreaterThan(baseAt);
+    // ONE write wrapper for the whole gesture; a null id (in-flight or
+    // unchanged) exits before any bake.
+    expect(commit.split('beginAquarellePathEdit(').length - 1).toBe(1);
+    expect(commit).toContain('const editId = beginAquarellePathEdit(mutationId, anchors);');
+    expect(commit).toContain('if (editId === null) return null;');
+    // Defer route: mark the pixels dirty, publish nothing, reset/apply nothing.
+    const deferAt = commit.indexOf('if (draft || wireframe) {');
+    const rebakeAt = commit.indexOf('runAquarelleScriptRebake({');
+    expect(deferAt).toBeGreaterThan(-1);
+    expect(rebakeAt).toBeGreaterThan(deferAt);
+    const defer = commit.slice(deferAt, rebakeAt);
+    expect(defer).toContain('setDraftPixelsDirty(true);');
+    expect(defer).toContain('setLastError(null);');
+    expect(defer).toContain('clearOwnedScriptApplyRefusal();');
+    expect(defer).toContain('return editId;');
+    expect(defer).not.toContain('aquarelleResetSheetRef');
+    expect(defer).not.toContain('applyAquarelleTimeline');
+    // Rebake route: ONE reset + ONE apply, the edit id on success...
+    expect(commit).toContain('aquarelleResetSheetRef.current?.()');
+    expect(commit).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
+    // ...and on failure the pre-edit script is restored BEFORE the capsule
+    // publishes, then the gesture reports null so no ledger entry is taken.
+    // 61-26 (WR-02): the restore result is consumed, so the marker is the
+    // consuming tail rather than the discarded statement it replaced.
+    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo') !== null;");
+    const publishAt = commit.indexOf('setApplyMessage(message);');
+    expect(restoreAt).toBeGreaterThan(-1);
+    expect(publishAt).toBeGreaterThan(restoreAt);
+    expect(commit).toContain('scriptApplyRefusalOwnedRef.current = true;');
+    expect(commit).toContain('return ok ? editId : null;');
+  });
+});
+
+// 61-15 Task 1: a drawn vector path must reach the live sheet at commit
+// (G-1/G-2). A Script-Off draw is refused with ONE fixed message instead of
+// silently vanishing, and the accepted draw tails the stroke-end with a
+// single vector re-bake that defers pixels in Draft or wireframe.
+describe('61-15 vector draw bake seam in the Studio', () => {
+  const HANDLER_START = 'const handleAquarelleStrokeEnd = useCallback(';
+  const HANDLER_END = 'const handleAquarelleStrokeSettled = useCallback(';
+
+  function strokeEndRegion(): string {
+    const start = studio.indexOf(HANDLER_START);
+    expect(start, `missing start marker: ${HANDLER_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(HANDLER_END, start + HANDLER_START.length);
+    expect(end, `missing end marker: ${HANDLER_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('refuses a Script-Off vector draw before the ledger allocates, without resetting the sheet', () => {
+    const handler = strokeEndRegion();
+    const REFUSAL = 'if (isVectorAquarelleStroke(stroke) && !aquarelleScriptRecordingEnabled.peek()) {';
+    expect(handler).toContain(REFUSAL);
+    const liftRefuseAt = handler.indexOf("if (liftPlan?.kind === 'refuse') {");
+    const refusalAt = handler.indexOf(REFUSAL);
+    const scriptReadAt = handler.indexOf('const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();');
+    const allocateAt = handler.indexOf('paintMutationLedger.allocateStrokeMutation(');
+    expect(liftRefuseAt).toBeGreaterThan(-1);
+    expect(scriptReadAt).toBeGreaterThan(-1);
+    expect(allocateAt).toBeGreaterThan(-1);
+    // AFTER the lift refusal (a lift is not a vector path) and BEFORE both the
+    // script read and the ledger allocation — a refused draw writes NOTHING.
+    expect(refusalAt).toBeGreaterThan(liftRefuseAt);
+    expect(scriptReadAt).toBeGreaterThan(refusalAt);
+    expect(allocateAt).toBeGreaterThan(refusalAt);
+    // The refusal block itself publishes the fixed copy and returns. A vector
+    // commit paints no engine dabs, so it must NOT reset the sheet.
+    const refusalBlock = handler.slice(refusalAt, handler.indexOf('\n    }', refusalAt));
+    expect(refusalBlock).toContain('setApplyMessage(VECTOR_PATH_SCRIPT_OFF_MESSAGE);');
+    expect(refusalBlock).toContain("setApplyStatus('error');");
+    expect(refusalBlock).toContain('setLastError(VECTOR_PATH_SCRIPT_OFF_MESSAGE);');
+    expect(refusalBlock).toContain('return;');
+    expect(refusalBlock).not.toContain('aquarelleResetSheetRef');
+    expect(refusalBlock).not.toContain('allocateStrokeMutation');
+    // The fixed module constants, owned by the leaf seam.
+    expect(studio).toContain(
+      "import {\n  VECTOR_PATH_SCRIPT_OFF_MESSAGE,\n  isVectorAquarelleStroke,\n  resolveVectorCommitRoute,\n  runAquarelleScriptRebake,\n} from './view/aquarelleVectorPathCommit';",
+    );
+  });
+
+  it('tails the stroke end with exactly one vector bake, after the record and the lift erase', () => {
+    const handler = strokeEndRegion();
+    // 61-26 (WR-03): the tail is a continuation that consumes the bake's
+    // boolean, not the fire-and-forget call it replaced.
+    const TAIL = 'void bakeAquarelleVectorCommit().then((baked) => {';
+    expect(handler.split(TAIL).length - 1).toBe(1);
+    const tryAt = handler.indexOf('    try {');
+    const recordAt = handler.indexOf('recordAquarelleStrokeWhenEnabled(');
+    const eraseAt = handler.indexOf('void runAquarelleLiftErase(');
+    const tailAt = handler.indexOf(TAIL);
+    expect(tryAt).toBeGreaterThan(-1);
+    expect(recordAt).toBeGreaterThan(tryAt);
+    expect(eraseAt).toBeGreaterThan(recordAt);
+    // The bake is the stroke-end tail: the record is already ordered, so the
+    // re-bake's timeline contains this exact stroke.
+    expect(tailAt).toBeGreaterThan(eraseAt);
+    // A refused record (the catch) never bakes.
+    expect(tailAt).toBeLessThan(handler.indexOf('    } catch {'));
+    // 61-26 (WR-03): still guarded by the vector predicate, and the
+    // continuation arms the stale-sheet retry on a false result.
+    const vectorGuardAt = handler.indexOf('if (isVectorAquarelleStroke(stroke)) {');
+    expect(vectorGuardAt).toBeGreaterThan(-1);
+    expect(vectorGuardAt).toBeLessThan(tailAt);
+    expect(handler).toContain('if (!baked) setDraftPixelsDirty(true);');
+    // 61 UAT: a commit that lands while another script edit owns the sheet is
+    // QUEUED, never dropped — its only pixels are this re-bake.
+    expect(handler).toContain('if (vectorCommitBakeBlocked()) {');
+    expect(handler).toContain('vectorCommitBakePendingRef.current = true;');
+    expect(studio).toContain(
+      '  }, [bakeAquarelleVectorCommit, vectorCommitBakeBlocked, applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight, paintMutationLedger]);',
+    );
+    // The drain runs on a latch edge (one evaluation per transition), never
+    // on a timer or a polling loop.
+    expect(studio).toContain('void aquarelleScriptEditInFlightRevision.value;');
+    expect(studio).toContain('const drainVectorCommitBake = useCallback(');
+    // The callback bakes the live sheet through reset + apply, and defers
+    // pixels in Draft or wireframe.
+    const bakeStart = studio.indexOf('const bakeAquarelleVectorCommit = useCallback(');
+    const handlerStart = studio.indexOf(HANDLER_START);
+    expect(bakeStart).toBeGreaterThan(-1);
+    // Declared BEFORE the stroke-end handler so `void bakeAquarelleVectorCommit()`
+    // is not a temporal-dead-zone read.
+    expect(handlerStart).toBeGreaterThan(bakeStart);
+    const bake = studio.slice(bakeStart, handlerStart);
+    expect(bake).toContain('resolveVectorCommitRoute({ draft: draftMode.peek(), wireframe: wireframeMode.peek() })');
+    expect(bake).toContain("=== 'defer-pixels'");
+    expect(bake).toContain('setDraftPixelsDirty(true);');
+    expect(bake).toContain('return true;');
+    expect(bake).toContain('runAquarelleScriptRebake({');
+    expect(bake).toContain('aquarelleResetSheetRef.current?.()');
+    expect(bake).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
+    // The defer slice returns BEFORE the rebake seam: no reset, no apply.
+    const defer = bake.slice(bake.indexOf("=== 'defer-pixels'"), bake.indexOf('runAquarelleScriptRebake({'));
+    expect(defer).toContain('setDraftPixelsDirty(true);');
+    expect(defer).toContain('return true;');
+    expect(defer).not.toContain('aquarelleResetSheetRef');
+    expect(defer).not.toContain('applyAquarelleTimeline');
+    // The failure path owns the capsule and the refusal flag, like a move.
+    expect(bake).toContain('setApplyMessage(message);');
+    expect(bake).toContain("setApplyStatus('error');");
+    expect(bake).toContain('scriptApplyRefusalOwnedRef.current = true;');
+  });
+});
+
+// 61-18 (D-16, T-61-62): while the wireframe view is up, the ONE Draft settle
+// must refuse BEFORE its clean no-op return — no route may reset or re-bake the
+// sheet behind the construction view — and the save/export flush must keep
+// treating a refusal as a cancelled save instead of capturing the view.
+describe('61-18 the wireframe settle refusal in the Studio', () => {
+  const SETTLE_START = 'const settleDraftScript = useCallback(';
+  const SETTLE_END = '// 61-13 (D-16): the wireframe latch.';
+
+  function settleRegion(): string {
+    const start = studio.indexOf(SETTLE_START);
+    expect(start, `missing start marker: ${SETTLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(SETTLE_END, start + SETTLE_START.length);
+    expect(end, `missing end marker: ${SETTLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('refuses the settle while wireframe is on, ahead of the clean no-op return', () => {
+    const settle = settleRegion();
+    const GUARD = 'if (wireframeMode.peek()) {';
+    const NOOP = 'if (!draftMode.peek() && !draftPixelsDirty.peek()) return Promise.resolve(true);';
+    const SINGLE_FLIGHT = 'if (draftSettlePromiseRef.current) return draftSettlePromiseRef.current;';
+    const guardAt = settle.indexOf(GUARD);
+    expect(guardAt).toBeGreaterThan(-1);
+    const noopAt = settle.indexOf(NOOP);
+    const singleFlightAt = settle.indexOf(SINGLE_FLIGHT);
+    expect(noopAt).toBeGreaterThan(-1);
+    expect(singleFlightAt).toBeGreaterThan(-1);
+    // The refusal is the FIRST statement: the clean no-op and the single-flight
+    // join must never answer for a settle behind the wireframe view.
+    expect(guardAt).toBeLessThan(noopAt);
+    expect(guardAt).toBeLessThan(singleFlightAt);
+    const guardBlock = settle.slice(guardAt, settle.indexOf('\n    }', guardAt));
+    expect(guardBlock).toContain('setApplyMessage(WIREFRAME_SETTLE_REFUSED_MESSAGE);');
+    expect(guardBlock).toContain("setApplyStatus('error');");
+    expect(guardBlock).toContain('return Promise.resolve(false);');
+    // A refusal, not a failed apply: neither the console line nor the owned
+    // refusal flag belongs to this branch.
+    expect(guardBlock).not.toContain('setLastError');
+    expect(guardBlock).not.toContain('scriptApplyRefusalOwnedRef');
+    // ONE copy of the copy: declared by the leaf and imported through the
+    // session seam, never redeclared in the Studio.
+    expect(studio).toContain('  WIREFRAME_SETTLE_REFUSED_MESSAGE,');
+    expect(studio).not.toContain('const WIREFRAME_SETTLE_REFUSED_MESSAGE');
+    // The guard reads the latch with `.peek()` inside the handler — never a
+    // render-body subscription (rule 5).
+    expect(studio).toContain('if (wireframeMode.peek()) {');
+  });
+
+  it('keeps the save/export flush cancelling on a refused settle, before any capture', () => {
+    const start = studio.indexOf('flushStudioStateRef.current = async () => {');
+    expect(start, 'missing the flush pipeline').toBeGreaterThan(-1);
+    const end = studio.indexOf('useEffect(() => {\n    let unlisten', start);
+    expect(end, 'missing the flush pipeline end').toBeGreaterThan(start);
+    const flush = studio.slice(start, end);
+    expect(flush).toContain('await runStudioFlush([');
+    const SETTLE_STEP = 'if (await settleDraftScript()) return;';
+    const THROW_STEP = "throw new Error('Draft recompute refused — save/export cancelled.');";
+    const settleAt = flush.indexOf(SETTLE_STEP);
+    const throwAt = flush.indexOf(THROW_STEP);
+    const captureAt = flush.indexOf('flushAquarellePixels()');
+    const pushAt = flush.indexOf('pushLiveProjection(');
+    expect(settleAt, 'the flush still consults the ONE settle').toBeGreaterThan(-1);
+    expect(throwAt, 'a refused settle still cancels the save/export').toBeGreaterThan(settleAt);
+    // The throwing step aborts the drain before the capture and the document
+    // push: a wireframe refusal never serializes the construction view.
+    expect(captureAt).toBeGreaterThan(throwAt);
+    expect(pushAt).toBeGreaterThan(throwAt);
+  });
+});
+
+// 61-27 (IN-02): a settle refused because another mutation holds the gates must
+// publish its reason. The wireframe branch already does; this branch used to
+// resolve false silently, which made `switchActiveTrack`'s fail-closed abort
+// invisible.
+describe('61-27 IN-02 — a settle refused by a running mutation says so', () => {
+  const SETTLE_START = 'const settleDraftScript = useCallback(';
+  const SETTLE_END = '// 61-13 (D-16): the wireframe latch.';
+
+  function settleRegion(): string {
+    const start = studio.indexOf(SETTLE_START);
+    expect(start, `missing start marker: ${SETTLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(SETTLE_END, start + SETTLE_START.length);
+    expect(end, `missing end marker: ${SETTLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('publishes the busy refusal through the capsule before resolving false', () => {
+    const settle = settleRegion();
+    const BUSY_ANCHOR = 'isAquarelleScriptEditInFlight()';
+    const busyAt = settle.indexOf(BUSY_ANCHOR);
+    expect(busyAt, 'the combined busy gate is gone').toBeGreaterThan(-1);
+    // The wireframe reason keeps precedence: it runs FIRST, ahead of the busy gate.
+    const wireframeAt = settle.indexOf('if (wireframeMode.peek()) {');
+    expect(wireframeAt).toBeGreaterThan(-1);
+    expect(wireframeAt).toBeLessThan(busyAt);
+    const busyBlock = settle.slice(busyAt, settle.indexOf('\n    }', busyAt));
+    expect(busyBlock).toContain('setApplyMessage(DRAFT_SETTLE_BUSY_MESSAGE);');
+    expect(busyBlock).toContain("setApplyStatus('error');");
+    expect(busyBlock).toContain('setLastError(DRAFT_SETTLE_BUSY_MESSAGE);');
+    // A bounded terminal state: resolve false, never reject.
+    expect(busyBlock).toContain('return Promise.resolve(false);');
+    expect(busyBlock).not.toContain('throw');
+    // This refusal owns no sheet state — it must not swallow another surface's
+    // message or claim an apply failure it did not cause.
+    expect(busyBlock).not.toContain('scriptApplyRefusalOwnedRef');
+    // ONE copy of the copy: imported through the session seam, never redeclared.
+    expect(studio).toContain('  DRAFT_SETTLE_BUSY_MESSAGE,');
+    expect(studio).not.toContain('const DRAFT_SETTLE_BUSY_MESSAGE');
+  });
+
+  it('keeps the track switch failing closed on the now-visible refusal', () => {
+    const start = studio.indexOf('const switchActiveTrack = useCallback(');
+    expect(start, 'missing the guarded track switch').toBeGreaterThan(-1);
+    const end = studio.indexOf('/**\n   * 261101-o2m (D-04, play exit)', start);
+    expect(end).toBeGreaterThan(start);
+    const region = studio.slice(start, end);
+    expect(region).toContain('if (!settled) return;');
+    // The comment states the now-true law: every false exit publishes a reason.
+    expect(region).toContain('Every false exit from the settle has published its reason');
+    expect(region).not.toContain('already surfaced its refusal message');
+  });
+});
+
+// 61-27 (IN-03): the dialog's ONE refusal channel. The sheet is engine-free, so
+// a refused Anchor width commit leaves through the bundle port — the Studio
+// supplies it with the shared capsule's three writers, and claims no ownership.
+describe('61-27 IN-03 — the dialog bundle supplies publishRefusal', () => {
+  const BUNDLE_START = 'const bundle: StrokeSettingsDialogBundle = {';
+  const BUNDLE_END = 'return bundle;';
+
+  function bundleRegion(): string {
+    const start = studio.indexOf(BUNDLE_START);
+    expect(start, `missing start marker: ${BUNDLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(BUNDLE_END, start + BUNDLE_START.length);
+    expect(end, `missing end marker: ${BUNDLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('writes the message, the error status and the last error through the shared capsule', () => {
+    const bundle = bundleRegion();
+    const publishAt = bundle.indexOf('publishRefusal: (message) => {');
+    expect(publishAt, 'missing the refusal port').toBeGreaterThan(-1);
+    const publishBlock = bundle.slice(publishAt, bundle.indexOf('\n        },', publishAt));
+    expect(publishBlock).toContain('setApplyMessage(message);');
+    expect(publishBlock).toContain("setApplyStatus('error');");
+    expect(publishBlock).toContain('setLastError(message);');
+  });
+
+  it('leaves the refusal unowned and the width commit contract untouched', () => {
+    const bundle = bundleRegion();
+    const publishAt = bundle.indexOf('publishRefusal: (message) => {');
+    expect(publishAt, 'missing the refusal port').toBeGreaterThan(-1);
+    const publishBlock = bundle.slice(publishAt, bundle.indexOf('\n        },', publishAt));
+    // The width refusal owns no sheet state — it must not claim the owned flag.
+    expect(publishBlock).not.toContain('scriptApplyRefusalOwnedRef');
+    // `applyAnchorWidths` keeps its boolean contract: still one commit result.
+    expect(bundle).toContain(
+      'return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);',
+    );
+  });
+});
+
+// 61-11 Task 2: the Anchor width bundle members. The dialog never touches the
+// record store — `readVectorAnchors` is the ONE read seam (the gate and the
+// Paint row share it), and `applyAnchorWidths` builds the WHOLE next list and
+// commits it through ONE path edit, so a three-anchor change is one undo entry
+// (T-61-38) and never one entry per anchor.
+describe('61-11 Anchor width bundle wiring in the Studio', () => {
+  const BUNDLE_START = 'const bundle: StrokeSettingsDialogBundle = {';
+  const BUNDLE_END = 'return bundle;';
+
+  function bundleRegion(): string {
+    const start = studio.indexOf(BUNDLE_START);
+    expect(start, `missing start marker: ${BUNDLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(BUNDLE_END, start + BUNDLE_START.length);
+    expect(end, `missing end marker: ${BUNDLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('supplies readVectorAnchors from the record seam, refusing not-quite-one vector stroke', () => {
+    const bundle = bundleRegion();
+    expect(bundle).toContain('readVectorAnchors: (ids) => {');
+    expect(bundle).toContain('if (ids.length !== 1) return null;');
+    expect(bundle).toContain('if (!stroke) return null;');
+    expect(bundle).toContain('return normaliseAquarelleAnchors(stroke.anchors) ?? null;');
+  });
+
+  it('commits every selected anchor in exactly ONE path edit', () => {
+    const bundle = bundleRegion();
+    expect(bundle).toContain('applyAnchorWidths: (ids, value) => {');
+    // The list is built BEFORE the edit and over the LIVE anchor selection.
+    expect(bundle).toContain('const next = buildAnchorWidthCommit(');
+    expect(bundle).toContain('vectorPathSession.vectorAnchorSelection.peek(),');
+    // 61-19 (G-5) REPLACES the 61-11 `ids[0]` pin: the write is resolved
+    // through the shared path-edit commit, never a second edit wrapper. The
+    // bundle owns no begin call of its own.
+    expect(bundle).toContain('commitAquarelleVectorPathEdit(target, next)');
+    expect(bundle.split('beginAquarellePathEdit(').length - 1).toBe(0);
+  });
+
+  it('resolves the write target from the open path edit, never from ids[0]', () => {
+    const bundle = bundleRegion();
+    // The ONE target decision: the open edit's session id must name the single
+    // selected stroke, or the commit is refused (G-5 / T-61-63).
+    expect(bundle).toContain('const target = resolveAnchorWidthTarget({');
+    expect(bundle).toContain('pathEditMutationId: vectorPathSession.pathEditMutationId.peek(),');
+    expect(bundle).toContain('if (target === null) return false;');
+    // The recorded stroke read follows the TARGET, not the dialog selection.
+    expect(bundle).toContain('const stroke = getRecordedAquarelleStroke(target);');
+    // ONE shared writer for the whole gesture; a null edit id resolves false.
+    // 261112-i6d adds the Corner member, which reaches the SAME shared commit
+    // (two members, one writer) — never a second edit wrapper.
+    expect(bundle).toContain('return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);');
+    expect(bundle.split('commitAquarelleVectorPathEdit(').length - 1).toBe(2);
+    // The Studio's ONE begin lives in the shared commit — exactly one in the
+    // whole file, and it belongs to that commit, not to this bundle.
+    const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
+    const commitStart = studio.indexOf(COMMIT_START);
+    const commitEnd = studio.indexOf('const handleAquarelleVectorPathEdit = useCallback(', commitStart);
+    expect(commitStart).toBeGreaterThan(-1);
+    expect(commitEnd).toBeGreaterThan(commitStart);
+    const commit = studio.slice(commitStart, commitEnd);
+    expect(commit.split('beginAquarellePathEdit(').length - 1).toBe(1);
+    expect(studio.split('beginAquarellePathEdit(').length - 1).toBe(1);
+  });
+
+  it('composes the pure width commit from the shared handle module', () => {
+    expect(studio).toContain(
+      "import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';",
+    );
+  });
+
+  // quick 261112-i6d: the width sibling of the shipped colour CR-01 no-op law.
+  // An unchanged list exits the commit with the same null edit id as a refusal
+  // (the commit's anchorsEqual early return), so the no-op must be decided
+  // BEFORE the commit — otherwise a clamped repeat publishes the false
+  // "Vertex size not applied" banner.
+  it('skips an unchanged width before committing (261112-i6d width no-op)', () => {
+    const bundle = bundleRegion();
+    const widthAt = bundle.indexOf('applyAnchorWidths: (ids, value) => {');
+    expect(widthAt, 'missing the width member').toBeGreaterThan(-1);
+    const region = bundle.slice(widthAt, bundle.indexOf('reorderStroke:', widthAt));
+    const buildAt = region.indexOf('const next = buildAnchorWidthCommit(');
+    const guardAt = region.indexOf('anchorsEqual(anchors, next)');
+    const commitAt = region.indexOf('commitAquarelleVectorPathEdit(');
+    expect(buildAt, 'missing the build marker').toBeGreaterThan(-1);
+    expect(guardAt, 'missing the no-op guard').toBeGreaterThan(-1);
+    expect(commitAt, 'missing the commit marker').toBeGreaterThan(-1);
+    expect(guardAt).toBeGreaterThan(buildAt);
+    expect(guardAt).toBeLessThan(commitAt);
+    // ONE guard, never a second.
+    expect(region.split('anchorsEqual(anchors, next)').length - 1).toBe(1);
+    // The genuine-refusal contract is untouched: the same commit tail still
+    // resolves false for a refused or in-flight edit.
+    expect(region).toContain(
+      'return commitAquarelleVectorPathEdit(target, next).then((editId) => editId !== null);',
+    );
+    // The verbatim payload import pinned above stays byte-identical; the
+    // guard's predicate rides its OWN same-module line beside it.
+    expect(studio).toContain("import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';");
+    expect(studio.split("import { anchorsEqual } from '@efxlab/efx-watercolor/payload';").length - 1)
+      .toBe(1);
+  });
+});
+
+// 261112-i6d: the Corner row writes the round/straight state on the LIVE
+// anchor selection through the SAME path-edit commit the Alt+click gesture
+// uses — one undo entry, one re-bake, one shape law. An unchanged list
+// short-circuits before the commit exactly like the width no-op.
+describe('261112-i6d Corner bundle wiring and rebuild status in the Studio', () => {
+  const BUNDLE_START = 'const bundle: StrokeSettingsDialogBundle = {';
+  const BUNDLE_END = 'return bundle;';
+
+  function bundleRegion(): string {
+    const start = studio.indexOf(BUNDLE_START);
+    expect(start, `missing start marker: ${BUNDLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(BUNDLE_END, start + BUNDLE_START.length);
+    expect(end, `missing end marker: ${BUNDLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('supplies applyAnchorCorners through the ONE target and commit seam', () => {
+    const bundle = bundleRegion();
+    expect(bundle).toContain('applyAnchorCorners: (ids, state) => {');
+    // The SAME target decision the Vertex size member uses.
+    expect(bundle).toContain('const target = resolveAnchorWidthTarget({');
+    // The pure builder and the live anchor selection.
+    expect(bundle).toContain('const next = buildAnchorCornerCommit(');
+    expect(bundle).toContain('vectorPathSession.vectorAnchorSelection.peek(),');
+    // An unchanged list is a success, never a refusal.
+    expect(bundle).toContain('if (next === anchors) return true;');
+  });
+
+  it('marks the rebake busy without a second status line, and rests on success', () => {
+    const commitStart = studio.indexOf('const commitAquarelleVectorPathEdit = useCallback(');
+    expect(commitStart, 'missing the commit').toBeGreaterThan(-1);
+    const commitEnd = studio.indexOf('const handleAquarelleVectorPathEdit = useCallback(', commitStart);
+    const commit = studio.slice(commitStart, commitEnd);
+    const busyAt = commit.indexOf("setApplyStatus('applying');");
+    const rebakeAt = commit.indexOf('runAquarelleScriptRebake({');
+    const successAt = commit.indexOf('onSuccess: () => {');
+    expect(busyAt, 'missing the busy status').toBeGreaterThan(-1);
+    // Set BEFORE the await: key actions stay gated for the whole replay.
+    expect(busyAt).toBeLessThan(rebakeAt);
+    expect(successAt).toBeGreaterThan(rebakeAt);
+    // 261112-i6d: the canvas veil is the ONE story — the strip publishes no
+    // copy of the wait, so success has no line of its own to clear.
+    expect(commit).not.toContain('setApplyMessage(VECTOR_PATH_REBUILDING_MESSAGE);');
+    const success = commit.slice(successAt, commit.indexOf('onFailure:', successAt));
+    expect(success).toContain("setApplyStatus('idle');");
+    expect(success).not.toContain('setApplyMessage(null);');
+  });
+});
+
+// 261111-wd6: the Color tab writes an explicit per-vertex colour to the LIVE
+// anchor selection through the ONE path-edit commit — one undo entry and one
+// re-bake per gesture, never one per anchor. An empty anchor selection keeps
+// the shipped stroke-level colour commit byte-for-byte.
+describe('261111-wd6 — the Color tab per-vertex branch', () => {
+  const HANDLER_START = 'const handleRightPanelColorCommit = useCallback(';
+
+  function colorHandlerRegion(): string {
+    const start = studio.indexOf(HANDLER_START);
+    expect(start, `missing start marker: ${HANDLER_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf('const rightPanel = rightPanelPropsMemo.resolve(', start);
+    expect(end, 'missing the right-panel memo boundary').toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('routes a live anchor selection through the shared path-edit commit', () => {
+    const region = colorHandlerRegion();
+    expect(region).toContain('vectorPathSession.vectorAnchorSelection.peek()');
+    expect(region).toContain('buildAnchorColorCommit(');
+    expect(region).toContain('const commit = aquarellePathEditCommitRef.current');
+    expect(region).toContain('commit(target, next)');
+    // The anchor branch returns before the shipped whole-stroke commit.
+    expect(region.indexOf('commit(target, next)'))
+      .toBeLessThan(region.indexOf('aquarelleAppearanceCommitRef.current?.(ids, { color })'));
+    // The whole-stroke fallback is unchanged.
+    expect(region).toContain('aquarelleAppearanceCommitRef.current?.(ids, { color })');
+  });
+
+  // WR-01: a refused commit used to be discarded by `void …?.()`, so the picker
+  // moved and no vertex changed with no explanation. The Vertex size path
+  // already publishes (61-27); the colour branch must too.
+  it('publishes a refused anchor-colour commit instead of swallowing it', () => {
+    const region = colorHandlerRegion();
+    expect(region).toContain('if (editId !== null) return;');
+    expect(region).toContain('setApplyMessage(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE)');
+    expect(region).toContain("setApplyStatus('error')");
+    expect(region).toContain('setLastError(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE)');
+  });
+
+  it('wires the ONE path-edit commit through the render-body ref', () => {
+    expect(studio.split('aquarellePathEditCommitRef.current = commitAquarelleVectorPathEdit;').length - 1)
+      .toBe(1);
+    // The anchor branch owns no begin of its own; the file-wide count stays 1.
+    expect(studio.split('beginAquarellePathEdit(').length - 1).toBe(1);
+  });
+
+  // CR-01: an unchanged gesture produces the same null edit id as a refusal
+  // (the commit's anchorsEqual early return), so the no-op must be decided
+  // BEFORE the commit — otherwise releasing an unmoved colour box publishes
+  // the false "Vertex colour not applied" banner.
+  it('skips an unchanged colour before committing (261112-hfk CR-01)', () => {
+    const region = colorHandlerRegion();
+    const buildAt = region.indexOf('buildAnchorColorCommit(');
+    const guardAt = region.indexOf('anchorColorCommitIsNoOp(anchors, next)');
+    const commitAt = region.indexOf('commit(target, next)');
+    expect(buildAt, 'missing the build marker').toBeGreaterThan(-1);
+    expect(guardAt, 'missing the no-op guard').toBeGreaterThan(-1);
+    expect(commitAt, 'missing the commit marker').toBeGreaterThan(-1);
+    expect(guardAt).toBeGreaterThan(buildAt);
+    expect(guardAt).toBeLessThan(commitAt);
+    // ONE guard, never a second.
+    expect(region.split('anchorColorCommitIsNoOp(anchors, next)').length - 1).toBe(1);
+    // The genuine-refusal publication is untouched.
+    expect(region).toContain('if (editId !== null) return;');
+    expect(region).toContain('setApplyMessage(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE)');
+    expect(region).toContain("setApplyStatus('error')");
+    expect(region).toContain('setLastError(ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE)');
+  });
+});
+
+// 61-13 Task 1: the wireframe latch (D-16). Wireframe is a session-only VIEW
+// latch that GENERALISES Draft: ON forces Draft on BEFORE the latch flips (the
+// settle needs Draft to exist), OFF clears only the latch and hands the re-bake
+// to the ONE existing Draft settle — single-flight, never a second
+// engine-suppression path. No persisted or exported surface may read it.
+describe('61-13 wireframe latch — session-only, Draft-generalising', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  function resetWireframeSignals(): void {
+    setWireframeSettleInFlight(false);
+    wireframeMode.value = false;
+    draftPixelsDirty.value = false;
+    draftMode.value = false;
+  }
+
+  beforeEach(resetWireframeSignals);
+  afterEach(resetWireframeSignals);
+
+  it('turns Draft on BEFORE the latch flips, notifying each signal once', () => {
+    const events: string[] = [];
+    const stopDraft = effect(() => {
+      if (draftMode.value) events.push('draft');
+    });
+    const stopWire = effect(() => {
+      if (wireframeMode.value) events.push('wireframe');
+    });
+    setWireframeMode(true);
+    stopDraft();
+    stopWire();
+
+    expect(wireframeMode.value).toBe(true);
+    expect(draftMode.value).toBe(true);
+    // Ordering law: the Draft effect (armed by setDraftMode) runs first.
+    expect(events).toEqual(['draft', 'wireframe']);
+  });
+
+  it('repeated ON writes nothing — zero further notifications', () => {
+    setWireframeMode(true);
+    expect(wireframeMode.value).toBe(true);
+
+    const events: string[] = [];
+    const stopDraft = effect(() => {
+      void draftMode.value;
+      events.push('draft');
+    });
+    const stopWire = effect(() => {
+      void wireframeMode.value;
+      events.push('wireframe');
+    });
+    events.length = 0;
+
+    setWireframeMode(true);
+    setWireframeMode(true);
+    stopDraft();
+    stopWire();
+
+    expect(events).toEqual([]);
+  });
+
+  it('OFF clears ONLY the latch — Draft and the dirty invariant belong to the settle', () => {
+    setWireframeMode(true);
+    setDraftPixelsDirty(true);
+
+    setWireframeMode(false);
+
+    expect(wireframeMode.value).toBe(false);
+    expect(draftMode.value).toBe(true);
+    expect(draftPixelsDirty.value).toBe(true);
+  });
+
+  it('joins two OFF clicks into ONE settle, clearing the latch before it runs', async () => {
+    setWireframeMode(true);
+    setDraftPixelsDirty(true);
+    let settleCalls = 0;
+    let releaseSettle!: (value: boolean) => void;
+    const latchAtCall: boolean[] = [];
+    const settle = () => {
+      settleCalls += 1;
+      latchAtCall.push(wireframeMode.value);
+      return new Promise<boolean>((resolve) => {
+        releaseSettle = resolve;
+      });
+    };
+
+    const first = runWireframeOffTransition(settle);
+    const second = runWireframeOffTransition(settle);
+
+    expect(second).toBe(first);
+    expect(settleCalls).toBe(1);
+    // E7 loading: the latch is already off when the re-bake starts, so the
+    // overlay stops drawing immediately instead of during the bake.
+    expect(latchAtCall).toEqual([false]);
+    expect(wireframeSettleInFlight.value).toBe(true);
+
+    releaseSettle(true);
+    await expect(first).resolves.toBe(true);
+    expect(wireframeSettleInFlight.value).toBe(false);
+
+    // The window closes with the run: a later OFF starts a fresh transition.
+    await expect(runWireframeOffTransition(async () => true)).resolves.toBe(true);
+    expect(wireframeSettleInFlight.value).toBe(false);
+  });
+
+  it('declares the latch beside Draft, compare-then-write, forcing Draft first', () => {
+    const setter = regionOf(
+      scriptStrokeEdition,
+      'export function setWireframeMode(',
+      'export const wireframeSettleInFlight',
+    );
+    const guardAt = setter.indexOf('if (wireframeMode.value === on) return;');
+    const forceDraftAt = setter.indexOf('setDraftMode(true);');
+    const latchAt = setter.indexOf('wireframeMode.value = on;');
+    expect(guardAt, 'the latch is compare-then-write').toBeGreaterThan(-1);
+    expect(forceDraftAt, 'ON arms Draft').toBeGreaterThan(guardAt);
+    expect(latchAt, 'the latch flips only after Draft is on').toBeGreaterThan(forceDraftAt);
+    // OFF never calls the Draft setter — the settle is the only way out.
+    expect(setter).not.toContain('setDraftMode(false)');
+
+    const inFlight = regionOf(
+      scriptStrokeEdition,
+      'export function setWireframeSettleInFlight(',
+      'export function runWireframeOffTransition',
+    );
+    expect(inFlight).toContain('if (wireframeSettleInFlight.value === on) return;');
+
+    const runner = regionOf(
+      scriptStrokeEdition,
+      'export function runWireframeOffTransition(',
+      'export const frozenCacheVisible',
+    );
+    expect(runner).toContain('if (wireframeSettlePromise !== null) return wireframeSettlePromise;');
+    expect(runner).toContain('if (wireframeMode.peek()) setWireframeMode(false);');
+    expect(runner).toContain('setWireframeSettleInFlight(true);');
+    expect(runner).toContain('wireframeSettlePromise = null;');
+  });
+
+  it('imports the whole latch surface from the ONE edition module', () => {
+    // 61-27 (IN-02): the import block gained `DRAFT_SETTLE_BUSY_MESSAGE` as its
+    // first member, so this shipped start marker was repointed at the new head
+    // of the SAME import — every symbol assertion below is unchanged.
+    const editionImport = regionOf(
+      studio,
+      'import {\n  DRAFT_SETTLE_BUSY_MESSAGE,\n  deleteSelectedScriptStroke,',
+      "} from './view/scriptStrokeEdition';",
+    );
+    for (const symbol of [
+      'wireframeMode',
+      'setWireframeMode',
+      'wireframeSettleInFlight',
+      'runWireframeOffTransition',
+    ]) {
+      expect(editionImport, `the Studio imports ${symbol}`).toContain(symbol);
+    }
+  });
+
+  it('wires one identity-stable handler that routes OFF through the ONE Draft settle', () => {
+    const handler = regionOf(
+      studio,
+      'const handleToggleWireframe = useCallback(',
+      'const switchActiveTrack = useCallback(',
+    );
+    expect(handler).toContain('if (wireframeSettleInFlight.peek() || wireframeMode.peek()) {');
+    expect(handler).toContain('void runWireframeOffTransition(() => settleDraftScript());');
+    expect(handler).toContain('setWireframeMode(true);');
+    expect(handler).toContain('disarmAquarellePicker();');
+    expect(handler).toContain('setAquarelleSelectMode(false);');
+    expect(handler).toContain('[settleDraftScript]');
+    // No second engine-suppression path: the handler delegates the re-bake.
+    expect(handler).not.toContain('aquarelleResetSheetRef');
+    expect(handler).not.toContain('applyAquarelleTimeline');
+  });
+
+  it('gates the paint row, the picker and Dry behind the latch read', () => {
+    const selectGate = regionOf(
+      studio,
+      'const handleSelectAquarelleTool = useCallback',
+      'const handleAquarelleColorPick = useCallback',
+    );
+    const selectCheckAt = selectGate.indexOf('if (wireframeMode.peek()) return;');
+    const exitVectorAt = selectGate.indexOf('vectorPathSession.exitVectorPen();');
+    expect(selectCheckAt, 'the paint gate runs first').toBeGreaterThan(-1);
+    expect(selectCheckAt).toBeLessThan(exitVectorAt);
+
+    const pickerGate = regionOf(
+      studio,
+      'const handleToggleAquarellePicker = useCallback',
+      'const handleToggleAquarelleSelect = useCallback',
+    );
+    const pickerCheckAt = pickerGate.indexOf('if (wireframeMode.peek()) return;');
+    const pickerSelectAt = pickerGate.indexOf('setAquarelleSelectMode(false);');
+    expect(pickerCheckAt, 'the picker gate runs first').toBeGreaterThan(-1);
+    expect(pickerCheckAt).toBeLessThan(pickerSelectAt);
+
+    const dry = regionOf(studio, 'dryAquarelleSheet: () => {', 'clearAquarelleFrame: () => {');
+    expect(dry).toContain('if (staticControlsLocked || wireframeMode.peek()) return;');
+  });
+
+  it('reports the latch to the main realm through the ONE Draft publisher', () => {
+    expect(studio).toContain(
+      'const active = draftMode.value || draftPixelsDirty.value || wireframeMode.value;',
+    );
+  });
+
+  it('forwards the handler through the identity memo', () => {
+    expect(studio).toContain('handleToggleMotionBoundaries, handleToggleWireframe], () => ({');
+    expect(studio).toContain('onToggleWireframe: handleToggleWireframe,');
+  });
+
+  it('is session-only: no persisted path can ever read the latch', () => {
+    const persisted = [
+      ['the script snapshot controller', snapshotController],
+      ['the script replay', aquarelleScriptReplay],
+      ['the live-pixel transactions', livePixelTransactions],
+      ['the export engine', exportEngine],
+      ['auto-save', autoSave],
+      ['the project store', projectStoreSource],
+      ['the physic-paint types', types],
+      ['the project types', projectTypes],
+    ] as const;
+    for (const [label, source] of persisted) {
+      expect(source, `${label} must not read the wireframe latch`).not.toContain('wireframeMode');
+    }
+    const toStudioStroke = readFileSync(
+      fileURLToPath(
+        new URL('../../../../packages/efx-watercolor/src/payload/toStudioStroke.ts', import.meta.url),
+      ),
+      'utf8',
+    );
+    expect(toStudioStroke).not.toContain('wireframeMode');
+    expect(types).not.toContain('wireframe');
+  });
+});
+
+// 61-13 Task 3: the gates and their edges. A gated control states WHY it is
+// inert rather than starting an implicit exit; the Draft switch stays visibly
+// ON and inert because the latch owns the ONE route out; the cache eye keeps
+// its unconditional availability. E7 overflow (flagged assumption): the
+// wireframe overlay draws every stroke with no cap — the Wave 0 probe's
+// measured reference count (10 strokes at 1920x1080, 61-01 result.json) is the
+// threshold, and a viewport limit is the stated fallback ONLY if a real sheet
+// exceeds it. The row stays open until that count is exceeded.
+describe('61-13 wireframe gates — reasons, Draft ownership, idempotency', () => {
+  function resetWireframeGateSignals(): void {
+    setWireframeSettleInFlight(false);
+    wireframeMode.value = false;
+    draftPixelsDirty.value = false;
+    draftMode.value = false;
+  }
+
+  beforeEach(resetWireframeGateSignals);
+  afterEach(resetWireframeGateSignals);
+
+  it('states every gated control reason in the rail source', () => {
+    // The four paint literals are composed as `${label} (${shortcut}) — ...`
+    // and asserted verbatim by the RENDERED rail pins (PhysicsPaintToolRail.
+    // test.ts); Dry carries a direct literal.
+    expect(toolRail).toContain('— turn wireframe off to paint');
+    expect(toolRail).toContain("'Dry (F) — turn wireframe off to paint'");
+    // 61-25 (UI-05 / §5): the contract DISARMS the picker under wireframe; it
+    // never removes the function. The button stays pressable with its shipped
+    // title, so re-adding a wireframe gate here would re-break the contract.
+    expect(toolRail).not.toContain('turn wireframe off to pick');
+    expect(toolRail).toContain('title="Picker (I) — click the canvas to sample the color under the cursor');
+    expect(toolRail).toContain('disabled={railDisabled || wireframeActive || (id === \'water\' && !wetAvailable)}');
+    expect(toolRail).toContain('wireframeReason');
+  });
+
+  it('renders the Draft switch ON and disabled while the latch owns the settle', () => {
+    expect(strokeSettingsDialog).toContain('const wireframeOn = wireframeMode.value;');
+    expect(strokeSettingsDialog).toContain('disabled={wireframeOn}');
+    expect(strokeSettingsDialog).toContain(
+      "'Draft — on while wireframe is on. Turn wireframe off to re-render.'",
+    );
+    const switchStart = strokeSettingsDialog.indexOf('data-testid="stroke-settings-draft-switch"');
+    const cacheStart = strokeSettingsDialog.indexOf('data-testid="stroke-settings-cache-visibility"');
+    expect(switchStart).toBeGreaterThan(-1);
+    expect(cacheStart).toBeGreaterThan(switchStart);
+    // Programmatic clicks are refused too — the wireframe is the only exit.
+    expect(strokeSettingsDialog.slice(switchStart, cacheStart)).toContain(
+      'if (wireframeMode.peek()) return;',
+    );
+    // D-02: the cache eye stays available — no disable reaches it.
+    const cacheRegion = strokeSettingsDialog.slice(
+      cacheStart,
+      strokeSettingsDialog.indexOf('</button>', cacheStart),
+    );
+    expect(cacheRegion).not.toContain('disabled');
+  });
+
+  it('keeps the vector pen outside the paint-row gate (it stays available)', () => {
+    const penStart = toolRail.indexOf('data-testid="aquarelle-vector-pen-toggle"');
+    expect(penStart).toBeGreaterThan(-1);
+    const penRegion = toolRail.slice(penStart, toolRail.indexOf('</button>', penStart));
+    expect(penRegion).toContain('disabled={railDisabled}');
+    expect(penRegion).not.toContain('wireframeActive');
+  });
+
+  it('keeps the latch enabled on an empty sheet — the toggle has no data gate', () => {
+    // The behavioral halves: the rail keeps the toggle enabled and the overlays
+    // return null for an empty sheet (PhysicsPaintToolRail.test.ts /
+    // VectorPathOverlay.test.ts). This pin proves the rail never grows a
+    // stroke-count condition around the control.
+    const toggleStart = toolRail.indexOf('data-testid="aquarelle-wireframe-toggle"');
+    expect(toggleStart).toBeGreaterThan(-1);
+    const toggleRegion = toolRail.slice(toggleStart, toolRail.indexOf('</button>', toggleStart));
+    expect(toggleRegion).toContain('disabled={railDisabled}');
+    expect(toggleRegion).not.toContain('strokes');
+  });
+
+  it('treats two ON calls as ONE state change — the overlay subscriber runs once', () => {
+    let passes = 0;
+    const stop = effect(() => {
+      void wireframeMode.value;
+      passes += 1;
+    });
+    expect(passes).toBe(1);
+
+    setWireframeMode(true);
+    setWireframeMode(true);
+    stop();
+
+    // Initial run + exactly one notified transition. VectorPathOverlay reads
+    // this signal only, so one notification is one overlay pass.
+    expect(passes).toBe(2);
+  });
+});
+
+// ============================================================
+//  61-31 (G-20) — the Curve row's two Studio seams: the appearance
+//  hydration attaches the recorded stroke's `curveMode` and its
+//  vector-ness, and `applyCurveMode` routes the WHOLE selection
+//  through exactly ONE `beginAquarelleCurveModeEdit` — one undo
+//  entry, never one per stroke.
+// ============================================================
+
+describe('61-31 Curve mode bundle wiring in the Studio', () => {
+  const BUNDLE_START = 'const bundle: StrokeSettingsDialogBundle = {';
+  const BUNDLE_END = 'return bundle;';
+  const HANDLER_START = 'const handleAquarelleCurveModeStrokes = useCallback(async (';
+  const HANDLER_END = 'const handleAquarelleTransformStrokes = useCallback(async (';
+
+  function bundleRegion(): string {
+    const start = studio.indexOf(BUNDLE_START);
+    expect(start, `missing start marker: ${BUNDLE_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(BUNDLE_END, start + BUNDLE_START.length);
+    expect(end, `missing end marker: ${BUNDLE_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  function curveHandlerRegion(): string {
+    const start = studio.indexOf(HANDLER_START);
+    expect(start, `missing start marker: ${HANDLER_START}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(HANDLER_END, start + HANDLER_START.length);
+    expect(end, `missing end marker: ${HANDLER_END}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('hydrates curveMode and the vector flag, and exposes applyCurveMode', () => {
+    const bundle = bundleRegion();
+    // Same sparse-field contract as renderMode: an absent key stays absent.
+    expect(bundle).toContain('...(stroke.curveMode === undefined ? {} : { curveMode: stroke.curveMode }),');
+    // Vector-ness is the presence of an anchor list — never a second store.
+    expect(bundle).toContain('vector: stroke.anchors !== undefined,');
+    // The commit seam routes the whole selection through the new handler.
+    expect(bundle).toContain(
+      'applyCurveMode: (ids, mode) => handleAquarelleCurveModeStrokes(ids, mode),',
+    );
+    // The type import is declared and the handler joins the memo's deps.
+    expect(studio).toContain("import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';");
+    const memoStart = studio.indexOf('const strokeSettingsDialog = strokeSettingsDialogPropsMemo.resolve(');
+    expect(memoStart).toBeGreaterThan(-1);
+    const memoDepEnd = studio.indexOf('() => {', memoStart);
+    expect(memoDepEnd).toBeGreaterThan(memoStart);
+    expect(studio.slice(memoStart, memoDepEnd)).toContain('handleAquarelleCurveModeStrokes,');
+  });
+
+  it('shares the render-mode handler law: guards, Draft branch, ONE wrapper call per batch', () => {
+    const handler = curveHandlerRegion();
+    expect(handler).toContain('if (isPhysicalMutationLocked()) return false;');
+    expect(handler).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;');
+    expect(handler).toContain("if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;");
+    expect(handler).toContain('if (isAquarelleScriptEditInFlight()) return false;');
+    expect(handler).toContain('const frameIds = aquarelleStrokesOnFrame(ids, playFrame);');
+    expect(handler).toContain('await ensureAquarelleDurableBaseRef.current(playFrame);');
+    // Draft: record + mark dirty, never reset or re-apply.
+    const draftAt = handler.indexOf('if (draft) {');
+    const resetAt = handler.indexOf('aquarelleResetSheetRef.current?.()');
+    expect(draftAt).toBeGreaterThan(-1);
+    expect(resetAt).toBeGreaterThan(draftAt);
+    expect(handler.slice(draftAt, resetAt)).toContain('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
+    expect(handler.slice(draftAt, resetAt)).toContain('setDraftPixelsDirty(true);');
+    // Live: reset, re-apply, record on success, restore on failure.
+    expect(handler).toContain('await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
+    expect(handler).toContain("restoreAquarelleEditSnapshot(editId, 'undo');");
+    expect(handler).toContain('setAquarelleScriptEditInFlight(false);');
+    // ONE commit site for the whole file and ONE call per accepted batch.
+    expect(studio.split('beginAquarelleCurveModeEdit(').length - 1).toBe(1);
+    expect(handler).toContain('const editId = beginAquarelleCurveModeEdit(frameIds, mode);');
+  });
+});
+
+// ============================================================
+//  61-20 Task 1 — the ledger half of G-8 (VEC-07).
+//
+//  `beginAquarellePathEdit` stores the edit in the edits map and returns an id;
+//  until now nothing passed that id to `recordAquarelleScriptEdit`, so undo/redo
+//  (which walk only 'aquarelle-script' and 'paint' entries) could never reach a
+//  path edit. The ONE writer 61-15 built records it on the re-bake SUCCESS tail
+//  — after the apply resolves, never before the bake and never on failure — and
+//  depends on the stable recorder callback, never the per-render wrapper.
+// ============================================================
+
+describe('61-20 G-8: a vector path edit is exactly one undo entry', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
+  const COMMIT_END = 'const handleAquarelleVectorPathEdit = useCallback(';
+  const RECORD = 'rotoMoveHistory.recordAquarelleScriptEdit(editId);';
+
+  function commitRegion(): string {
+    return regionOf(studio, COMMIT_START, COMMIT_END);
+  }
+
+  it('records exactly once on the re-bake success tail, between onSuccess and onFailure', () => {
+    const commit = commitRegion();
+    const success = regionOf(commit, 'onSuccess:', 'onFailure:');
+    // One gesture is one ledger entry: a second site would double-count it.
+    expect(success.split(RECORD).length - 1).toBe(1);
+  });
+
+  it('records after the bake resolved and before any failure restore', () => {
+    const commit = commitRegion();
+    const success = regionOf(commit, 'onSuccess:', 'onFailure:');
+    const successAt = commit.indexOf('onSuccess:');
+    // The re-bake route's record, not whichever site the source lists first:
+    // the defer route owns the other (and only other) site after 61-20 Task 2.
+    const recordAt = success.indexOf(RECORD);
+    const rebakeAt = commit.indexOf('runAquarelleScriptRebake({');
+    // 61-26 (WR-02): the restore result is consumed, so the marker is the
+    // consuming tail rather than the discarded statement it replaced.
+    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo') !== null;");
+    const beginAt = commit.indexOf('beginAquarellePathEdit(');
+    expect(recordAt).toBeGreaterThan(-1);
+    expect(successAt).toBeGreaterThan(-1);
+    expect(rebakeAt).toBeGreaterThan(-1);
+    expect(restoreAt).toBeGreaterThan(-1);
+    // A record taken before the apply resolves could claim an edit the sheet
+    // rejected; the restore must never be followed by one either.
+    expect(successAt + recordAt).toBeGreaterThan(rebakeAt);
+    expect(successAt + recordAt).toBeLessThan(restoreAt);
+    // Nothing is recorded before the edit is even begun.
+    expect(beginAt).toBeGreaterThan(-1);
+    expect(commit.slice(0, beginAt)).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
+  });
+
+  it('depends on the stable recorder callback, never the per-render wrapper', () => {
+    const commit = commitRegion();
+    const depsAt = commit.indexOf('  }, [');
+    expect(depsAt).toBeGreaterThan(-1);
+    const deps = commit.slice(depsAt);
+    // The hook returns a fresh wrapper each render; its recorder is the stable
+    // useCallback. Depending on the wrapper would capture a stale stack.
+    expect(deps).toContain('\n    rotoMoveHistory.recordAquarelleScriptEdit,\n');
+    expect(deps).not.toContain('\n    rotoMoveHistory,\n');
+  });
+
+  // Task 2 — the defer route records once, failure records nothing, and every
+  // delegating vector route stays record-free. The defer branch is sliced by
+  // its own structural marker (`if (draft || wireframe) {`): the commit does
+  // not contain a `'defer-pixels'` literal — that route string belongs to
+  // `bakeAquarelleVectorCommit`'s `resolveVectorCommitRoute` call.
+  it('records exactly once on the defer route, before the dirty flag', () => {
+    const commit = commitRegion();
+    const defer = regionOf(commit, 'if (draft || wireframe) {', 'runAquarelleScriptRebake({');
+    expect(defer.split(RECORD).length - 1).toBe(1);
+    const recordAt = defer.indexOf(RECORD);
+    const dirtyAt = defer.indexOf('setDraftPixelsDirty(true);');
+    expect(recordAt).toBeGreaterThan(-1);
+    expect(dirtyAt).toBeGreaterThan(-1);
+    // The script commit IS the edit; the dirty flag only schedules pixels.
+    expect(recordAt).toBeLessThan(dirtyAt);
+  });
+
+  it('totals exactly two record sites, both before the failure restore', () => {
+    const commit = commitRegion();
+    // One per success route — the defer route and the re-bake onSuccess tail.
+    expect(commit.split(RECORD).length - 1).toBe(2);
+    // 61-26 (WR-02): the restore result is consumed, so the marker is the
+    // consuming tail rather than the discarded statement it replaced.
+    const restoreAt = commit.indexOf("restoreAquarelleEditSnapshot(editId, 'undo') !== null;");
+    expect(restoreAt).toBeGreaterThan(-1);
+    const sites: number[] = [];
+    for (let at = commit.indexOf('rotoMoveHistory.recordAquarelleScriptEdit('); at !== -1; at = commit.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(', at + 1)) {
+      sites.push(at);
+    }
+    expect(sites).toHaveLength(2);
+    for (const site of sites) expect(site).toBeLessThan(restoreAt);
+  });
+
+  it('records nothing on the failure route', () => {
+    const commit = commitRegion();
+    // The callback body only: the dependency array that follows the rebake
+    // call legitimately names the recorder, and a source pin that ran past
+    // it would be asserting the dependency, not the failure route.
+    const failure = regionOf(commit, 'onFailure:', '  }, [');
+    expect(failure).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
+  });
+
+  it('keeps every delegating vector route record-free', () => {
+    const widthBundle = regionOf(studio, 'applyAnchorWidths:', 'reorderStroke:');
+    expect(widthBundle).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
+    const handler = regionOf(studio, COMMIT_END, 'const canvasMount = canvasMountPropsMemo.resolve(');
+    expect(handler).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
+    const drawBake = regionOf(studio, 'const bakeAquarelleVectorCommit = useCallback(', 'const handleAquarelleStrokeEnd = useCallback(');
+    expect(drawBake).not.toContain('rotoMoveHistory.recordAquarelleScriptEdit');
+  });
+});
+
+// 61-24 (G-15): +Key records the previous real key's script onto the new key.
+// Duplicate already owned that record seam; the two callers must share ONE
+// implementation — a second copy path would let the two drift.
+describe('61-24 G-15 — +Key and Duplicate share one script-copy body', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('declares one recordAquarelleScriptCopyForFrames body carrying the shipped ledger allocation', () => {
+    const shared = regionOf(
+      studio,
+      'const recordAquarelleScriptCopyForFrames = async (sourceFrame: number, destinationFrame: number): Promise<boolean> => {',
+      'const rotoNavigation = useRotoNavigationCoordinator',
+    );
+    // The body is the duplicate's shipped one, verbatim.
+    expect(shared).toContain('copyAquarelleScriptToFrame({');
+    expect(shared).toContain('allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({');
+    expect(shared).toContain('resolveStudioScriptKeyIdForFrame(');
+    expect(shared).toContain('return recorded > 0;');
+    expect(shared).not.toContain('enqueueRecordedStroke');
+    // ONE copy implementation in the whole Studio.
+    expect(studio.split('copyAquarelleScriptToFrame(').length - 1).toBe(1);
+  });
+
+  it('binds Duplicate and +Key to that one body', () => {
+    const duplicatePort = regionOf(
+      studio,
+      'duplicateWithScript: async ({ sourceKeyId, sourceAppFrame }) => {',
+      'playback: {',
+    );
+    expect(duplicatePort).toContain('recordAquarelleScriptCopy: recordAquarelleScriptCopyForFrames,');
+    expect(duplicatePort).not.toContain('recordAquarelleScriptCopy: async (');
+
+    const keyUtilitiesLiteral = regionOf(studio, 'keyUtilities: {', 'duplicateWithScript: async (');
+    expect(keyUtilitiesLiteral).toContain(
+      'copyScriptToNewKey: ({ sourceAppFrame, destinationAppFrame }) => recordAquarelleScriptCopyForFrames(sourceAppFrame, destinationAppFrame),',
+    );
+    // +Key is record-only: the shared body is never wrapped in an apply/bake.
+    expect(keyUtilitiesLiteral).not.toContain('applyAquarelleTimeline');
+    expect(keyUtilitiesLiteral).not.toContain('bakeAquarelle');
+  });
+});
+
+// 61-26 (WR-01): Shift+A must never write a stroke selection behind a refused
+// Select entry. `setAquarelleSelectMode(true)` returns early under the
+// wireframe view (61-17), so the handler's write cannot depend on the attempt
+// having succeeded: a selection written there would exist with no outline, no
+// hit-test and no rail surface, and would surface the next time Select opens.
+describe('61-26 WR-01 — Shift+A under the wireframe leaves no orphan selection', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const SELECT_ALL_START = 'const handleToggleSelectAllAquarelleStrokes = useCallback(() => {';
+  const SELECT_ALL_END = '// The Water color half of the same law:';
+  const ENTRY_ATTEMPT = 'setAquarelleSelectMode(true);';
+  const ENTRY_RECHECK = 'if (!aquarelleSelectMode.peek()) return;';
+  const SELECTION_WRITE = 'setAquarelleStrokeSelection(';
+
+  function selectAllRegion(): string {
+    return regionOf(studio, SELECT_ALL_START, SELECT_ALL_END);
+  }
+
+  it('refuses up front on the wireframe view, before any read or write', () => {
+    const handler = selectAllRegion();
+    const GUARD = 'if (wireframeMode.peek()) return;';
+    const guardAt = handler.indexOf(GUARD);
+    const availabilityAt = handler.indexOf('watercolorMoveAvailable.peek()');
+    const entryAt = handler.indexOf(ENTRY_ATTEMPT);
+    const writeAt = handler.indexOf(SELECTION_WRITE);
+    expect(guardAt).toBeGreaterThan(-1);
+    // The guard is the FIRST statement: nothing reads the mode or the
+    // availability gate before it, so no write can precede it.
+    expect(handler.slice(0, guardAt)).not.toContain('setAquarelleSelectMode');
+    expect(handler.slice(0, guardAt)).not.toContain(SELECTION_WRITE);
+    expect(availabilityAt).toBeGreaterThan(guardAt);
+    expect(entryAt).toBeGreaterThan(guardAt);
+    expect(writeAt).toBeGreaterThan(guardAt);
+  });
+
+  it('re-checks the authoritative Select entry before any selection write', () => {
+    const handler = selectAllRegion();
+    const entryBlock = regionOf(
+      handler,
+      'if (!aquarelleSelectMode.peek()) {',
+      'const playFrame = launchContextRef.current?.startFrame ?? 0;',
+    );
+    expect(entryBlock).toContain(ENTRY_ATTEMPT);
+    expect(entryBlock).toContain(ENTRY_RECHECK);
+    const entryAt = handler.indexOf(ENTRY_ATTEMPT);
+    const recheckAt = handler.indexOf(ENTRY_RECHECK, entryAt);
+    const writeAt = handler.indexOf(SELECTION_WRITE);
+    expect(entryAt).toBeGreaterThan(-1);
+    expect(recheckAt).toBeGreaterThan(entryAt);
+    expect(writeAt).toBeGreaterThan(recheckAt);
+  });
+
+  it('leaves the accepted path byte-identical', () => {
+    const handler = selectAllRegion();
+    expect(handler).toContain('const playFrame = launchContextRef.current?.startFrame ?? 0;');
+    expect(handler).toContain('const ids = listAquarelleStrokeSelectionIds(playFrame);');
+    expect(handler).toContain('const selected = scriptSelectedStrokeIds.peek();');
+    expect(handler).toContain('const allSelected = ids.length > 0 && ids.every((id) => selected.has(id));');
+    expect(handler).toContain('setAquarelleStrokeSelection(allSelected ? [] : ids);');
+    // ONE entry attempt, ONE selection write, and the empty dependency list
+    // that keeps the handler out of the Studio body's subscriptions.
+    expect(handler.split(ENTRY_ATTEMPT).length - 1).toBe(1);
+    expect(handler.split(SELECTION_WRITE).length - 1).toBe(1);
+    expect(handler).toContain('  }, []);');
+  });
+
+  it('keeps the Shift+A dispatch routed to the shipped action slot', () => {
+    const keyboard = readFileSync(
+      fileURLToPath(new URL('./view/physicsPaintStudioKeyboard.ts', import.meta.url)),
+      'utf8',
+    );
+    const shiftA = regionOf(
+      keyboard,
+      "key === 'a' && actions.toggleSelectAllAquarelleStrokes",
+      "if (event.key === '?'",
+    );
+    expect(shiftA).toContain('event.preventDefault();');
+    expect(shiftA).toContain('actions.toggleSelectAllAquarelleStrokes();');
+    // Shift+A owns no other action — the select-mode toggle stays on the rail.
+    expect(shiftA).not.toContain('toggleAquarelleSelectMode');
+    expect(studio.split('toggleSelectAllAquarelleStrokes:').length - 1).toBe(1);
+  });
+});
+
+// 61-26 (WR-02): a failed path-edit re-bake must publish what the script is
+// ACTUALLY in. The restore is revision-authoritative, so a foreign bump makes
+// it fail closed without touching the script — publishing "restored" there
+// would describe a rollback that never ran. The re-anchor is content-checked:
+// the normal failure (this edit's own attempted side still live) re-seats the
+// revision so the restore succeeds, and a real foreign mutation still fails
+// closed with the honest copy.
+describe('61-26 WR-02 — a failed path-edit re-bake restores for real or says it could not', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
+  const COMMIT_END = 'const handleAquarelleVectorPathEdit = useCallback(';
+  const REANCHOR = "reanchorAquarelleEditFromLiveContent(editId, 'undo')";
+  const RESTORE = "restoreAquarelleEditSnapshot(editId, 'undo')";
+  const RESTORED_LINE = "? 'Could not re-apply the watercolor script — the path edit was restored.'";
+  const NOT_ROLLED_BACK_LINE =
+    ": 'Could not re-apply the watercolor script — the path edit could not be rolled back.'";
+
+  function failureRegion(): string {
+    const commit = regionOf(studio, COMMIT_START, COMMIT_END);
+    return regionOf(commit, 'onFailure:', '  }, [');
+  }
+
+  it('re-anchors the attempted side before the authority-checked restore', () => {
+    const failure = failureRegion();
+    const anchorAt = failure.indexOf(REANCHOR);
+    const restoreAt = failure.indexOf(RESTORE);
+    expect(anchorAt).toBeGreaterThan(-1);
+    expect(restoreAt).toBeGreaterThan(anchorAt);
+  });
+
+  it('consumes the restore result instead of discarding it', () => {
+    const failure = failureRegion();
+    expect(failure).toContain(
+      "const restored = restoreAquarelleEditSnapshot(editId, 'undo') !== null;",
+    );
+  });
+
+  it('ternaries the fallback copy on the restore result, keeping the apply error ahead of it', () => {
+    const failure = failureRegion();
+    expect(failure).toContain('?? (restored');
+    expect(failure).toContain(RESTORED_LINE);
+    expect(failure).toContain(NOT_ROLLED_BACK_LINE);
+    const mapperAt = failure.indexOf('buildRotoScriptApplyRefusalMessage(error)');
+    const messageAt = failure.indexOf('error?.message');
+    const ternaryAt = failure.indexOf('(restored');
+    expect(mapperAt).toBeGreaterThan(-1);
+    expect(messageAt).toBeGreaterThan(mapperAt);
+    expect(ternaryAt).toBeGreaterThan(messageAt);
+    // Neither line is reachable as an unconditional `??` fallback on its own.
+    expect(failure).not.toContain(
+      "?? 'Could not re-apply the watercolor script — the path edit was restored.'",
+    );
+  });
+
+  it('no longer discards the restore as a standalone statement', () => {
+    const failure = failureRegion();
+    expect(failure).not.toMatch(/restoreAquarelleEditSnapshot\(editId, 'undo'\);[ \t]*$/m);
+  });
+});
+
+// 61-26 (WR-03): a vector stroke paints no engine dabs, so its only pixels are
+// the re-bake. `runAquarelleScriptRebake`'s in-flight branch calls no terminal
+// callback, so a draw that lands during another edit's bake returns false with
+// the stroke in the script and nowhere on the sheet. The continuation arms the
+// ONE stale-sheet invariant, which the next Draft/wireframe settle clears.
+describe('61-26 WR-03 — a vector stroke committed during an in-flight bake marks the sheet stale', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const HANDLER_START = 'const handleAquarelleStrokeEnd = useCallback(';
+  const HANDLER_END = 'const handleAquarelleStrokeSettled = useCallback(';
+  const DISCARDED_BAKE = 'void bakeAquarelleVectorCommit();';
+  const CONTINUATION = 'void bakeAquarelleVectorCommit().then((baked) => {';
+  const STALE_ARM = 'if (!baked) setDraftPixelsDirty(true);';
+  const VECTOR_TAIL_GUARD = 'if (isVectorAquarelleStroke(stroke)) {';
+
+  function strokeEndRegion(): string {
+    return regionOf(studio, HANDLER_START, HANDLER_END);
+  }
+
+  it('consumes the bake result through a continuation instead of discarding it', () => {
+    const handler = strokeEndRegion();
+    expect(handler).toContain(CONTINUATION);
+    // Guarded by the vector predicate: an ordinary dabs stroke never bakes.
+    const guardAt = handler.indexOf(VECTOR_TAIL_GUARD);
+    const continueAt = handler.indexOf(CONTINUATION);
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(continueAt).toBeGreaterThan(guardAt);
+  });
+
+  it('arms the stale-sheet invariant when the bake reports false', () => {
+    const handler = strokeEndRegion();
+    expect(handler).toContain(STALE_ARM);
+    // The continuation publishes NOTHING: the gesture DID commit, so an error
+    // capsule here would steal the apply-refusal ownership.
+    const tail = regionOf(handler, VECTOR_TAIL_GUARD, '    } catch {');
+    expect(tail).not.toContain('setApplyMessage');
+    expect(tail).not.toContain('setApplyStatus');
+    expect(tail).not.toContain('setLastError');
+  });
+
+  it('no longer fires the bake as a discarded statement', () => {
+    const handler = strokeEndRegion();
+    expect(handler).not.toContain(DISCARDED_BAKE);
+  });
+
+  it('still records the stroke before it bakes', () => {
+    const handler = strokeEndRegion();
+    const recordAt = handler.indexOf('recordAquarelleStrokeWhenEnabled(');
+    const bakeAt = handler.indexOf('bakeAquarelleVectorCommit().then(');
+    const catchAt = handler.indexOf('    } catch {');
+    expect(recordAt).toBeGreaterThan(-1);
+    expect(bakeAt).toBeGreaterThan(recordAt);
+    expect(bakeAt).toBeLessThan(catchAt);
+  });
+});
+
+// ============================================================
+//  quick 261111-t74 — the selection brush patch stays one edit.
+//
+//  The selection edit port is the ONLY new registration: it
+//  forwards to the shipped appearance handler, so a brush patch
+//  inherits one undo entry, one revision bump and one seed
+//  re-roll. The record-state write keeps exactly one bump and one
+//  same-index replacement led by a fresh stroke object, and the
+//  merged multiplier bag is fully materialised.
+// ============================================================
+
+describe('quick 261111-t74 — the selection brush patch stays one edit', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const REGISTRATION = 'setAquarelleSelectionEditPort({';
+  const APPEARANCE_REF = 'aquarelleAppearanceCommitRef.current = handleAquarelleAppearanceStrokes;';
+  const WRITE_START = 'export function updateAquarelleStrokesInScript(';
+  const WRITE_END = 'export function updateAquarelleCurveModeInScript(';
+
+  function writeRegion(): string {
+    return regionOf(aquarelleRecordStateSource, WRITE_START, WRITE_END);
+  }
+
+  it('registers exactly one selection edit port, after the appearance ref', () => {
+    expect(studio.split(REGISTRATION).length - 1).toBe(1);
+    const registrationAt = studio.indexOf(REGISTRATION);
+    const refAt = studio.indexOf(APPEARANCE_REF);
+    expect(refAt).toBeGreaterThan(-1);
+    expect(registrationAt).toBeGreaterThan(refAt);
+  });
+
+  it('the registration only forwards ids and patch to the appearance handler', () => {
+    const registration = regionOf(studio, REGISTRATION, '});');
+    expect(registration.split('applyAppearance:').length - 1).toBe(1);
+    expect(registration).toContain('handleAquarelleAppearanceStrokes(ids, patch)');
+  });
+
+  it('the record-state write performs exactly one bump and one replacement', () => {
+    const write = writeRegion();
+    expect(write.split('bumpAquarelleStrokesRevision()').length - 1).toBe(1);
+    expect(write.split('payloadTimeline[index] =').length - 1).toBe(1);
+  });
+
+  it('the replacement is a fresh object carrying a materialised multiplier bag', () => {
+    const write = writeRegion();
+    // The complete-bag base is the ONE neutral reference in this write.
+    expect(write.split('NEUTRAL_TOOL_OVERRIDES').length - 1).toBe(1);
+    // The merged bag is written through the conditional spread, once.
+    expect(write.split('toolOverrides: nextOverrides').length - 1).toBe(1);
+    // The stroke is REPLACED (spread into a new object), never mutated in
+    // place — the before/after snapshots keep their references.
+    expect(write).toContain('const nextStroke: AquarelleStroke = {');
+    expect(write).toContain('...stroke,');
   });
 });

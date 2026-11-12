@@ -2,7 +2,7 @@
  * 261017-xa0 I-03 — playground preset ids ride the tip seam.
  *
  * Laws pinned here:
- *   each of the 15 BRUSH_PRESETS ids selects cleanly (no silent clear)
+ *   each BRUSH_PRESETS id selects cleanly (no silent clear)
  *   a successful pick forces aquarelleActiveTool to 'brush'
  *   a preset pick loads NEUTRAL_TOOL_OVERRIDES; setAquarelleMultiplier rides on top
  *   snapshotAquarelleRecord().brushId / buildAquarelleStrokePayload().brushId carry the id
@@ -52,7 +52,7 @@ describe('I-03 playground preset ids on the tip seam', () => {
     resetSelection();
   });
 
-  it('exposes exactly the 15 playground preset ids in catalog order', () => {
+  it('exposes every playground preset id in catalog order', () => {
     expect(PRESET_IDS).toEqual([
       'chalk',
       'round',
@@ -69,11 +69,12 @@ describe('I-03 playground preset ids on the tip seam', () => {
       'sumi',
       'dagger',
       'stipple',
+      // 61-07 (D-12): the clean-sweep preset ships last.
     ]);
   });
 
   it('every BRUSH_PRESETS id selects without clearing selection', () => {
-    expect(PRESET_IDS.length).toBe(15);
+    expect(PRESET_IDS.length).toBe(BRUSH_PRESETS.length);
     for (const id of PRESET_IDS) {
       resetSelection();
       selectAquarelleTip(id);

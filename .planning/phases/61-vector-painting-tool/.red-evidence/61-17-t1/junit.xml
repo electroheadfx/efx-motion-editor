@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="95" failures="7" errors="0" time="0.632">
+    <testsuite name="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" timestamp="2026-11-10T21:47:38.656Z" hostname="efx2.home" tests="76" failures="3" errors="0" skipped="0" time="0.120663209">
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; maps UV points to canvas pixels through the one bridge" time="0.000788333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; hits a stroke within its brush radius and misses outside it" time="0.000423041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; newest wins when two strokes overlap" time="0.000105333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; deleted strokes are not selectable" time="0.000224792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; strokes of another playFrame are not selectable" time="0.000131834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; bbox is inflated by half the brush size on each side" time="0.000133208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; decimates long polylines to at most 96 points" time="0.00025175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; badges carry a stable creation id and the position from the top" time="0.000283875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; aquarelleStrokesOnFrame keeps only recorded, non-deleted strokes of the frame" time="0.000158">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; listAquarelleStrokeSelectionIds scopes to frame, tombstones and filter" time="0.000196916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; the selected set is the shared signal by identity" time="0.000108458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; a batch delete removes the deleted ids from the selection and keeps survivors" time="0.000299208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; a multi-id transform edit restores both strokes on undo and keeps the selection" time="0.000427834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261022-pim aquarelle stroke select mode &gt; setAquarelleSelectMode is compare-then-write" time="0.000253541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261101-o2m Draft reset on the select-mode edge &gt; resets Draft on a genuine off -&gt; on entry when the pixels are clean" time="0.000060708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261101-o2m Draft reset on the select-mode edge &gt; leaves an already-open sheet&apos;s Draft untouched on a re-entry" time="0.000058625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261101-o2m Draft reset on the select-mode edge &gt; refuses the reset while the pixels are dirty (the recorded D-07 exception)" time="0.000071">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="61-17 G-6 Select entry releases the vector pen &gt; releases the vector pen on Select entry and keeps Select on" time="0.003223709">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/physic-paint/view/aquarelleStrokeSelection.test.ts:475:36
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="61-17 G-6 Select entry releases the vector pen &gt; closes an open path edit and clears its anchor selection on Select entry" time="0.000359291">
+            <failure message="expected &apos;m17&apos; to be null" type="AssertionError">
+AssertionError: expected &apos;m17&apos; to be null
+
+- Expected: 
+null
+
++ Received: 
+&quot;m17&quot;
+
+ ❯ src/components/physic-paint/view/aquarelleStrokeSelection.test.ts:487:39
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="61-17 G-6 Select entry releases the vector pen &gt; never releases the pen on the Select exit edge" time="0.000058542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="61-17 G-6 Select entry releases the vector pen &gt; refuses Select entry while the wireframe view is on" time="0.000218667">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/physic-paint/view/aquarelleStrokeSelection.test.ts:510:40
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="61-17 G-6 Select entry releases the vector pen &gt; still turns Select off while the wireframe view is on" time="0.000050625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261024-p5q watercolor appearance edits &gt; replaces strokes and timeline entries at the same indexes with one revision bump" time="0.000635">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261024-p5q watercolor appearance edits &gt; a colour patch writes the stroke and both entry colour slots" time="0.000106625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261024-p5q watercolor appearance edits &gt; unknown, deleted and unchanged targets are refused without a bump" time="0.000164208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261024-p5q watercolor appearance edits &gt; one appearance edit is one undo step that restores the pre-edit objects by reference" time="0.000295625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261024-p5q watercolor appearance edits &gt; a zero-change or empty appearance edit stores no edit" time="0.00009625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261024-p5q watercolor appearance edits &gt; readAquarelleStrokeAppearance keeps caller order and drops other-frame/deleted ids" time="0.000127041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261024-p5q watercolor appearance edits &gt; readAquarelleStrokeAppearance re-reads on a stroke revision bump" time="0.000069625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; labels every listing entry with its kind" time="0.014850166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; matchesAquarelleStrokeFilter is the one predicate (paint = not a lift)" time="0.00009075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; setAquarelleSelectMode(true, &quot;lift&quot;) enters lift filtering and an exit returns to Paint" time="0.006771167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; cycleAquarelleStrokeTypeFilter walks Paint → Eraser → All → Paint" time="0.000086041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; a plain entry (rail Select / A toggle) starts on the Paint filter" time="0.000108708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; the filtered hit-test ignores the other kind under the same pointer" time="0.007201292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; a re-entry while already ON with no filter resets to Paint and keeps select mode" time="0.000097333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; a filter change prunes the selection both ways and keeps unjudgeable ids" time="0.00013725">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; the filter setter is idempotent — 1000 identical writes notify zero times" time="0.000206792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; the edition port lists and hits through the LIVE filter" time="0.009548834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur stroke-type filter + Edit choke point &gt; clears the Stroke Settings dismissal flag only on an off -&gt; on select-mode edge" time="0.00009475">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur lift ribbon listing (LIFT-RIBBON) &gt; fills a polygon ribbon, the maximum-support hit radius and polygon bounds on a lift" time="0.013362292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur lift ribbon listing (LIFT-RIBBON) &gt; leaves paint entries on the legacy bounds with no ribbon fields" time="0.000119958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-eur lift ribbon listing (LIFT-RIBBON) &gt; hit-tests a lift through the band maximum support, not the declared half-size" time="0.006323416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261101-mvg preview stroke size band &gt; resolves no band for either kind while the switch is off" time="0.00679125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261101-mvg preview stroke size band &gt; resolves the paint footprint band and the unchanged lift ribbon while on" time="0.01474675">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261101-mvg preview stroke size band &gt; leaves the listed entries byte-identical across the toggle" time="0.006396167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261101-mvg preview stroke size band &gt; hit-tests the same stroke in both states" time="0.012240834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261101-mvg preview stroke size band &gt; never bumps the stroke revision — a view preference is not a document edit" time="0.000081291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-lsr script-authoritative stroke undo edit &gt; builds WITH-after / WITHOUT-before at one revision and installs WITHOUT on undo" time="0.000435292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-lsr script-authoritative stroke undo edit &gt; redo reinstalls the same stroke objects and one edit id serves the whole cycle" time="0.000235958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-lsr script-authoritative stroke undo edit &gt; refuses unknown, non-finite, deleted, de-anchored and in-flight ids without mutating" time="0.000118584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-lsr script-authoritative stroke undo edit &gt; builds the replay-owned edit while the shared in-flight gate is held (UAT row 1)" time="0.000116125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-lsr script-authoritative stroke undo edit &gt; keeps global Dry events on the synthetic before side" time="0.000395375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-lsr script-authoritative stroke undo edit &gt; re-anchors only the attempted side after a failed re-bake rollback" time="0.000273208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-lsr script-authoritative stroke undo edit &gt; re-seats a stacked sibling edit only when the live content is identical" time="0.000220792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261029-lsr script-authoritative stroke undo edit &gt; refuses the content re-seat when a foreign script edit changed the live script" time="0.0001325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 the paint seed variation flag on the script write &gt; the flag alone writes salt 0 and re-projects the entry at the same index" time="0.000287708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 the paint seed variation flag on the script write &gt; skips targets already ON and deletes the key on OFF" time="0.000118875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 the paint seed variation flag on the script write &gt; refuses a params patch carrying the salt directly and a non-boolean flag" time="0.000057916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 bumpAquarellePaintSeedSalts &gt; the OFF path is free — no salt, no revision bump, no count" time="0.000061167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 bumpAquarellePaintSeedSalts &gt; increments only salted strokes, once per batch, at the same timeline index" time="0.0001595">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 bumpAquarellePaintSeedSalts &gt; bumpAquarellePaintSeedSaltsForFrame scopes to the frame and skips tombstones" time="0.0001085">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 every commit door re-rolls the ON strokes inside its edit &gt; move" time="0.000299875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 every commit door re-rolls the ON strokes inside its edit &gt; appearance (params commit re-rolls only an ON stroke)" time="0.000117583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 every commit door re-rolls the ON strokes inside its edit &gt; appearance (the switch itself turns an OFF stroke ON inside one edit)" time="0.000115166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 every commit door re-rolls the ON strokes inside its edit &gt; transform" time="0.000136958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 every commit door re-rolls the ON strokes inside its edit &gt; stack step re-rolls the stepped stroke only" time="0.000156542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 every commit door re-rolls the ON strokes inside its edit &gt; stack place re-rolls the placed stroke only" time="0.0002655">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 beginAquarellePaintSeedRerollEdit &gt; re-rolls only the ON strokes of the edited frame inside one undoable edit" time="0.000192541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-cf9 beginAquarellePaintSeedRerollEdit &gt; refuses an OFF-only frame, and the in-flight gate unless owned" time="0.000097959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-euf selectable listing metadata &gt; carries the recorded tool, brushId and custom-response flag on both branches" time="0.006402375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-euf stroke list fine-filter state &gt; defaults both fine filters to All" time="0.00007125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-euf stroke list fine-filter state &gt; both setters are compare-then-write — 1000 identical writes notify zero times" time="0.000234708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-euf stroke list fine-filter state &gt; every select-mode call resets both, including a re-entry while ON and an exit" time="0.000072042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-euf stroke list fine-filter state &gt; an actual type-filter change resets both; an idempotent write keeps them" time="0.00005425">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleStrokeSelection.test.ts" name="261031-euf stroke list fine-filter state &gt; the fine filters never touch the type filter, the selection or the edition port" time="0.000122542">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/vectorPathLatches.test.ts" timestamp="2026-11-10T21:47:38.661Z" hostname="efx2.home" tests="3" failures="3" errors="0" skipped="0" time="0.002633375">
+        <testcase classname="src/components/physic-paint/view/vectorPathLatches.test.ts" name="vectorPathLatches — one copy of each latch (61-17) &gt; the session module re-exports the SAME signal objects, not copies" time="0.001588459">
+            <failure message="Cannot read properties of undefined (reading &apos;name&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;name&apos;)
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathLatches.test.ts" name="vectorPathLatches — one copy of each latch (61-17) &gt; exitVectorPen and exitPathEdit are compare-then-write: 1000 calls notify once" time="0.000534042">
+            <failure message="Cannot set properties of undefined (setting &apos;value&apos;)" type="TypeError">
+TypeError: Cannot set properties of undefined (setting &apos;value&apos;)
+ ❯ src/components/physic-paint/view/vectorPathLatches.test.ts:45:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathLatches.test.ts" name="vectorPathLatches — one copy of each latch (61-17) &gt; exitPathEdit drops the anchor selection with the edit" time="0.000126542">
+            <failure message="Cannot set properties of undefined (setting &apos;value&apos;)" type="TypeError">
+TypeError: Cannot set properties of undefined (setting &apos;value&apos;)
+ ❯ src/components/physic-paint/view/vectorPathLatches.test.ts:70:24
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/vectorPathSession.test.ts" timestamp="2026-11-10T21:47:38.662Z" hostname="efx2.home" tests="16" failures="1" errors="0" skipped="0" time="0.007273625">
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; starts clean and clears every sibling surface on entry" time="0.000925292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; exits the vector pen without touching the paint tool or arming a sibling" time="0.000153958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; toggles the pen on and back off" time="0.000081709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; enters path edit and clears select, the picker and the pen" time="0.000113709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; clears path edit without re-arming anything" time="0.000101375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; writes each signal once for identical calls (idempotent setters)" time="0.000182792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; builds the draw draft from a first anchor and appends at the cursor" time="0.000713375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; begins a draft when the first anchor is appended to an empty session" time="0.000089458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; keeps the draft across a tool toggle and clears it only explicitly" time="0.00011">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; keeps an existing draft when the vector pen is entered again" time="0.000090416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="vectorPathSession — the vector pen and path-edit session &gt; returns every signal to its initial value on reset, idempotently" time="0.000103916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="the session module is session-only (T-61-53) &gt; imports only the signals runtime and the three sibling session surfaces" time="0.002486917">
+            <failure message="expected [ …(3) ] to deeply equal [ …(4) ]" type="AssertionError">
+AssertionError: expected [ …(3) ] to deeply equal [ …(4) ]
+
+- Expected
++ Received
+
+  Array [
+-   &quot;import { signal } from &apos;@preact/signals&apos;;&quot;,
++   &quot;import { signal, type Signal } from &apos;@preact/signals&apos;;&quot;,
+    &quot;import { disarmAquarellePicker } from &apos;./aquarelleColorPicker&apos;;&quot;,
+    &quot;import { setAquarelleSelectMode } from &apos;./aquarelleStrokeSelection&apos;;&quot;,
+-   &quot;import { clearVectorAnchorSelection, exitPathEdit, exitVectorPen, pathEditMutationId, vectorPenActive, writeIfChanged } from &apos;./vectorPathLatches&apos;;&quot;,
+  ]
+
+ ❯ src/components/physic-paint/view/vectorPathSession.test.ts:199:25
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="the session module is session-only (T-61-53) &gt; mentions no persistence symbol" time="0.000186458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="the session module is session-only (T-61-53) &gt; resets through exactly one Studio mount effect" time="0.001046209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="the four paint tools stay closed &gt; WATERCOLOR_RAIL_TOOLS still has exactly four entries" time="0.00015175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/vectorPathSession.test.ts" name="the four paint tools stay closed &gt; AquarelleTool still has exactly four members" time="0.000152542">
+        </testcase>
+    </testsuite>
+</testsuites>

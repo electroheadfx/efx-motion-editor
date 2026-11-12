@@ -4,14 +4,18 @@
 //
 //  Two formats over the SAME in-memory timeline:
 //    - JSON baseline: exact JSON.stringify / JSON.parse round-trip.
-//    - AQTL v1 packed binary: versioned header, packed stroke
-//      metadata, quantized point records (documented tolerances).
+//    - AQTL v2 packed binary (61-05): versioned header, packed stroke
+//      metadata, quantized point records (documented tolerances), and
+//      the vector path inside the engine block — anchor block plus the
+//      optional render-mode byte.
 //  Every corrupt-input case must fail closed with a typed
-//  ScriptTimelineCodecError — never a raw RangeError.
+//  ScriptTimelineCodecError — never a raw RangeError. Version 1 is
+//  REFUSED outright (no upgrade path, per the project's clean-break law).
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
 import type {
+  AquarelleAnchor,
   AquarellePayloadEvent,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
@@ -198,8 +202,10 @@ const FIXTURE: AquarellePayloadEvent[] = [
 const TOTAL_POINTS = 3 + 17 + 64 + 100 + 1;
 
 // Pinned after the first measured run — never guessed.
+// 61-05: the watercolor binary grew by one vector-flags byte per stroke
+// (5 strokes in FIXTURE): the measured v1 length was 3737.
 const JSON_BYTE_LENGTH = 18068;
-const BINARY_BYTE_LENGTH = 3737;
+const BINARY_BYTE_LENGTH = 3742;
 const MEASURED_RATIO = 4.83;
 
 const asStroke = (event: AquarellePayloadEvent): StudioStroke<AquarelleStrokePayload> =>
@@ -220,20 +226,73 @@ function expectedCode(run: () => unknown): ScriptTimelineCodecErrorCode | 'no-th
 
 // ---------------------------------------------------------------------------
 // Minimal one-stroke buffer: a documented fixed layout so corrupt-byte tests
-// can address exact fields. Header 24 bytes, then:
+// can address exact fields. Header 24 bytes, then (AQTL v2):
 //   24 kind | 25 mutation presence | 26 play presence | 27 ticks | 31 cuisson
 //   35 traceSeed | 39 recordedOrder(f64) | 47 brushId len | 49 brushId
 //   50 color presence | 51 overrides mask | 52 engine tool
 //   53 engine color presence | 54 engine brushId len | 56 engine brushId
 //   57 params count | 61 engine overrides mask | 62 engine mutation presence
 //   63 engine diffusion presence | 64 timestamp(f64) | 72 engine play presence
-//   73 pointCount | 77 point record (16 bytes each)
+//   73 vectorFlags | 74 pointCount | 78 point record (16 bytes each)
 // ---------------------------------------------------------------------------
 
 const MINIMAL_RECORDED_ORDER_OFFSET = 39;
 const MINIMAL_BRUSH_ID_LENGTH_OFFSET = 47;
 const MINIMAL_TOOL_OFFSET = 52;
-const MINIMAL_POINT_COUNT_OFFSET = 73;
+const MINIMAL_POINT_COUNT_OFFSET = 74;
+// 61-30: when a curve mode is present it is written AFTER the render-mode byte
+// (which is itself absent here), so the code byte sits directly after the
+// vectorFlags byte at 73 and pointCount shifts one byte later.
+const MINIMAL_CURVE_MODE_OFFSET = 74;
+
+// ---------------------------------------------------------------------------
+// Vector-stroke layout (61-05): same prefix, then the anchor block.
+//   73 vectorFlags (bit 0 anchors, bit 1 render mode) | 74 anchorCount(u16)
+//   per anchor: x(f32) y(f32) kind(u8) handleFlags(u8)
+//               [in.xy(f32 pair)] [out.xy(f32 pair)] widthPresent(u8) [width(f32)]
+//   118 pointCount | 122 point record (16 bytes each)
+// Anchor scalars are f32 on the wire, so every value below is exactly
+// representable in binary32 — including the 1.8 factor, stored through
+// Math.fround so the whole-stroke deep equality is exact rather than a
+// tolerance check. The sparse profile keeps exactly ONE width key.
+// ---------------------------------------------------------------------------
+
+const VECTOR_WIDTH_1_8 = Math.fround(1.8);
+const VECTOR_ANCHOR_COUNT_OFFSET = 74;
+
+const VECTOR_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.25, y: 0.5, kind: 'auto', width: VECTOR_WIDTH_1_8 },
+  { x: 0.75, y: 0.125, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 1, y: 0 } },
+];
+
+/** The minimal one-stroke timeline carrying the two-anchor vector path. */
+function vectorStroke(): StudioStroke<AquarelleStrokePayload> {
+  const base = minimalStroke();
+  return { ...base, engine: { ...base.engine, anchors: VECTOR_ANCHORS } };
+}
+
+/** A hand-painted stroke that carries an explicit curve-evaluation mode. */
+function handPaintedWithCurveMode(
+  mode: 'bezier' | 'spline',
+): StudioStroke<AquarelleStrokePayload> {
+  const base = minimalStroke();
+  return { ...base, engine: { ...base.engine, curveMode: mode } };
+}
+
+/** The same path with NO width keys: every anchor uses the default factor. */
+function uniformVectorStroke(): StudioStroke<AquarelleStrokePayload> {
+  const base = minimalStroke();
+  return {
+    ...base,
+    engine: {
+      ...base.engine,
+      anchors: [
+        { x: 0.25, y: 0.5, kind: 'auto' },
+        { x: 0.75, y: 0.125, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 1, y: 0 } },
+      ],
+    },
+  };
+}
 
 function minimalStroke(): StudioStroke<AquarelleStrokePayload> {
   return {
@@ -310,7 +369,8 @@ describe('JSON baseline codec', () => {
 describe('AQTL packed binary codec', () => {
   it('pins the magic/version constants', () => {
     expect(SCRIPT_TIMELINE_BINARY_MAGIC).toBe('AQTL');
-    expect(SCRIPT_TIMELINE_BINARY_VERSION).toBe(1);
+    // 61-05: AQTL v2 is the one accepted version; v1 is refused below.
+    expect(SCRIPT_TIMELINE_BINARY_VERSION).toBe(2);
     expect(POINT_UV_STEP).toBeCloseTo(1 / 65535, 12);
     expect(POINT_DEGREE_STEP).toBeCloseTo(0.02, 12);
   });
@@ -426,12 +486,301 @@ describe('AQTL packed binary codec', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 61-05 — the vector fields in AQTL v2
+// ---------------------------------------------------------------------------
+
+describe('AQTL v2 vector payload (61-05)', () => {
+  it('round-trips a two-anchor vector stroke deep-equal, order preserved', () => {
+    const original = vectorStroke();
+    const [decoded] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([original]));
+
+    // Whole-stroke deep equality, not a field spot-check: metadata, points and
+    // the engine block all survive, anchors included.
+    expect(decoded).toEqual(original);
+
+    const anchors = asStroke(decoded).engine.anchors!;
+    expect(anchors.map((anchor) => anchor.kind)).toEqual(['auto', 'bezier']);
+
+    // Sparse width: exactly the one authored factor, at the first anchor.
+    const widths = anchors.filter((anchor) => anchor.width !== undefined);
+    expect(widths).toHaveLength(1);
+    expect(anchors[0]!.width).toBe(VECTOR_WIDTH_1_8);
+    expect(Math.abs(anchors[0]!.width! - 1.8)).toBeLessThan(1e-6);
+
+    // Both anchor kinds survive with their exact shape: an auto anchor stores
+    // no handle keys, a bezier anchor round-trips its stored pair.
+    expect(Object.keys(anchors[0]!).sort()).toEqual(['kind', 'width', 'x', 'y']);
+    expect(anchors[1]!.in).toEqual({ x: 0.5, y: 0.5 });
+    expect(anchors[1]!.out).toEqual({ x: 1, y: 0 });
+  });
+
+  it('skips the legacy optional byte and decodes the same stroke', () => {
+    // Files written while the removed render mode existed carry flag bit 1 and
+    // one byte after the anchors. The decoder must read and ignore it.
+    const plain = encodeScriptTimelineBinary([vectorStroke()]);
+    const LEGACY_FLAG_OFFSET = VECTOR_ANCHOR_COUNT_OFFSET - 1;
+    const POINT_COUNT_OFFSET = VECTOR_ANCHOR_COUNT_OFFSET + 43;
+    const legacy = new Uint8Array(plain.byteLength + 1);
+    legacy.set(plain.subarray(0, POINT_COUNT_OFFSET), 0);
+    legacy[POINT_COUNT_OFFSET] = 0; // legacy mode byte
+    legacy.set(plain.subarray(POINT_COUNT_OFFSET), POINT_COUNT_OFFSET + 1);
+    const view = new DataView(legacy.buffer);
+    view.setUint8(LEGACY_FLAG_OFFSET, view.getUint8(LEGACY_FLAG_OFFSET) | 0x02);
+    view.setUint32(16, legacy.byteLength - 24, true);
+
+    const [decoded] = decodeScriptTimelineBinary(legacy);
+    expect(decoded).toEqual(decodeScriptTimelineBinary(plain)[0]);
+  });
+
+  it('costs a hand-painted stroke one vector-flags byte', () => {
+    // The version field keeps its u16 width, so bumping it costs nothing: the
+    // ONLY structural addition for a hand-painted stroke is the single u8
+    // vector-flags byte.
+    const V1_MINIMAL_BYTE_LENGTH = 93;
+    const handPainted = minimalStroke();
+    expect(encodeScriptTimelineBinary([handPainted]).byteLength).toBe(
+      V1_MINIMAL_BYTE_LENGTH + 1,
+    );
+  });
+
+  it('decodes the same bytes twice to deep-equal objects (idempotence)', () => {
+    const bytes = encodeScriptTimelineBinary([vectorStroke()]);
+    const first = decodeScriptTimelineBinary(bytes);
+    const second = decodeScriptTimelineBinary(bytes);
+    expect(second).toEqual(first);
+    expect(decodeScriptTimelineBinary(bytes.slice())).toEqual(first);
+  });
+
+  it('fails closed when the stream is cut inside the anchor block', () => {
+    const bytes = encodeScriptTimelineBinary([vectorStroke()]);
+    // Cut inside the second anchor's handle block. The header is patched to the
+    // new body length, so this is a genuine anchor-block truncation and not a
+    // header length mismatch.
+    const cut = bytes.slice(0, 100);
+    new DataView(cut.buffer, cut.byteOffset, cut.byteLength).setUint32(
+      16,
+      cut.byteLength - 24,
+      true,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(cut))).toBe('truncated');
+  });
+
+  it('rejects a hostile anchor count before reading any anchor', () => {
+    const bytes = encodeScriptTimelineBinary([vectorStroke()]);
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint16(
+      VECTOR_ANCHOR_COUNT_OFFSET,
+      0xffff,
+      true,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-count');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 61-30 — curve mode in AQTL v2 (G-20)
+//
+//  A new flag bit and a code byte written LAST in the vector block. A body
+//  written without a mode keeps today's exact bytes: no flag bit, no byte.
+// ---------------------------------------------------------------------------
+
+describe('AQTL v2 curve mode (61-30 G-20)', () => {
+  it("round-trips curveMode 'spline' and leaves an absent mode absent", () => {
+    const withMode = handPaintedWithCurveMode('spline');
+    const [decoded] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([withMode]));
+    expect(asStroke(decoded).engine.curveMode).toBe('spline');
+    expect(decoded).toEqual(withMode);
+
+    const [without] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([minimalStroke()]));
+    expect('curveMode' in asStroke(without).engine).toBe(false);
+  });
+
+  it('costs exactly one byte for a curve mode and nothing when absent', () => {
+    const absent = encodeScriptTimelineBinary([minimalStroke()]);
+    const spline = encodeScriptTimelineBinary([handPaintedWithCurveMode('spline')]);
+    expect(spline.byteLength).toBe(absent.byteLength + 1);
+  });
+
+  it('refuses an unmapped curve-mode code (fail closed, never defaults)', () => {
+    const bytes = encodeScriptTimelineBinary([handPaintedWithCurveMode('spline')]);
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(
+      MINIMAL_CURVE_MODE_OFFSET,
+      7,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261111-wd6 — the per-vertex colour block in AQTL v2.
+//
+//  A new vector flag bit (1 << 3) and, per anchor, a presence byte plus the
+//  verbatim colour string written LAST inside that anchor (after the width).
+//  A path with no anchor colour never sets the bit and never writes a block
+//  byte, so every pre-existing byte stays put. The reader validates the
+//  presence marker and the u16 length before reading, exactly like every
+//  other string on this wire.
+// ---------------------------------------------------------------------------
+
+describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
+  // Same prefix as every one-stroke fixture: the vector-flags byte sits just
+  // before the anchor count.
+  const VECTOR_FLAG_OFFSET = 73;
+  const VECTOR_FLAG_ANCHOR_COLOR = 1 << 3;
+
+  /** Two `auto` anchors, no widths, no handles; the first may carry a colour. */
+  function coloredVectorStroke(color?: string): StudioStroke<AquarelleStrokePayload> {
+    const base = minimalStroke();
+    return {
+      ...base,
+      engine: {
+        ...base.engine,
+        anchors: [
+          { x: 0.25, y: 0.5, kind: 'auto', ...(color === undefined ? {} : { color }) },
+          { x: 0.75, y: 0.125, kind: 'auto' },
+        ],
+      },
+    };
+  }
+
+  it('leaves an anchor-colourless path byte-identical (bit 3 clear)', () => {
+    const plain = encodeScriptTimelineBinary([minimalStroke()]);
+    expect(plain.byteLength).toBe(94);
+    expect(plain[VECTOR_FLAG_OFFSET]).toBe(0);
+
+    const colourless = encodeScriptTimelineBinary([coloredVectorStroke()]);
+    expect(colourless[VECTOR_FLAG_OFFSET] & VECTOR_FLAG_ANCHOR_COLOR).toBe(0);
+    // No block at all: the colourless path is byte-identical to pre-change.
+    expect(colourless.byteLength).toBe(118);
+  });
+
+  it('costs one presence byte per anchor plus 1 + 2 + UTF-8 bytes for a colour', () => {
+    const colourless = encodeScriptTimelineBinary([coloredVectorStroke()]);
+    const coloured = encodeScriptTimelineBinary([coloredVectorStroke('#ff0000')]);
+    // Coloured anchor: presence + u16 length + 7 UTF-8 bytes for `#ff0000`.
+    // The colourless anchor inside the same path: its presence byte alone.
+    expect(coloured.byteLength).toBe(colourless.byteLength + 1 + 2 + 7 + 1);
+
+    const short = encodeScriptTimelineBinary([coloredVectorStroke('#0f0')]);
+    expect(short.byteLength).toBe(colourless.byteLength + 1 + 2 + 4 + 1);
+
+    expect(coloured[VECTOR_FLAG_OFFSET] & VECTOR_FLAG_ANCHOR_COLOR).not.toBe(0);
+  });
+
+  it('round-trips the colour verbatim and materialises no key on a colourless anchor', () => {
+    const stroke = coloredVectorStroke('#ff0000');
+    const [decoded] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([stroke]));
+    expect(decoded).toEqual(stroke);
+    const anchors = asStroke(decoded).engine.anchors!;
+    expect(anchors[0]!.color).toBe('#ff0000');
+    expect('color' in anchors[1]!).toBe(false);
+
+    // The wire is verbatim: this layer never canonicalises a colour.
+    const upper = coloredVectorStroke('#FF0000');
+    const [upperDecoded] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([upper]));
+    expect(asStroke(upperDecoded).engine.anchors![0]!.color).toBe('#FF0000');
+  });
+
+  it('is byte-identical when a decoded coloured stroke is re-encoded', () => {
+    const first = encodeScriptTimelineBinary([coloredVectorStroke('#103c65')]);
+    const decoded = decodeScriptTimelineBinary(first);
+    expect(encodeScriptTimelineBinary(decoded)).toEqual(first);
+  });
+
+  it('fails closed when the stream is cut inside the colour string', () => {
+    // One anchor only, so the anchor-count lower bound cannot fire first and
+    // the cut really lands inside the UTF-8 string.
+    const base = minimalStroke();
+    const single: StudioStroke<AquarelleStrokePayload> = {
+      ...base,
+      engine: {
+        ...base.engine,
+        anchors: [{ x: 0.25, y: 0.5, kind: 'auto', color: '#ff0000' }],
+      },
+    };
+    const bytes = encodeScriptTimelineBinary([single]);
+    // From the anchor start (76): x/y/kind/handleFlags/widthPresence (11
+    // bytes), then colour presence (87), u16 length (88), UTF-8 (90..96).
+    // Cutting at 94 leaves 4 of the 7 string bytes.
+    const cut = bytes.slice(0, 94);
+    new DataView(cut.buffer, cut.byteOffset, cut.byteLength).setUint32(
+      16,
+      cut.byteLength - 24,
+      true,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(cut))).toBe('truncated');
+  });
+
+  it('refuses a colour presence marker that is not 0 or 1', () => {
+    const bytes = encodeScriptTimelineBinary([coloredVectorStroke('#ff0000')]);
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(87, 2);
+    expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
+  });
+
+  it('refuses a non-string anchor colour at encode (fail closed)', () => {
+    const stroke = coloredVectorStroke();
+    (asStroke(stroke).engine.anchors![0] as unknown as { color?: unknown }).color = 42;
+    expect(expectedCode(() => encodeScriptTimelineBinary([stroke]))).toBe('invalid-value');
+  });
+
+  it('still refuses an unknown vector flag bit', () => {
+    const bytes = encodeScriptTimelineBinary([coloredVectorStroke()]);
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(
+      VECTOR_FLAG_OFFSET,
+      VECTOR_FLAG_ANCHOR_COLOR | 0x10,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 61-05 task 3 — the codec-level determinism the reopen path relies on.
+// ---------------------------------------------------------------------------
+
+describe('AQTL v2 encode/decode fixed point (61-05)', () => {
+  it('is byte-identical when a decoded vector stroke is re-encoded', () => {
+    const stroke = vectorStroke();
+    const first = encodeScriptTimelineBinary([stroke]);
+    const decoded = decodeScriptTimelineBinary(first);
+
+    const second = encodeScriptTimelineBinary(decoded);
+    expect(second).toEqual(first);
+    expect(decodeScriptTimelineBinary(second)).toEqual(decoded);
+  });
+
+  it('leaves no width residue on a uniform path', () => {
+    const first = encodeScriptTimelineBinary([uniformVectorStroke()]);
+    const decoded = decodeScriptTimelineBinary(first);
+
+    // The decoder must not materialise a default `width` key the encoder
+    // would then have to write — that residue would grow every reopen.
+    const anchors = asStroke(decoded[0]!).engine.anchors!;
+    expect(anchors.every((anchor) => !('width' in anchor))).toBe(true);
+
+    const second = encodeScriptTimelineBinary(decoded);
+    expect(second.byteLength).toBe(first.byteLength);
+    expect(second).toEqual(first);
+  });
+
+  it('is byte-stable across three passes and decodes idempotently', () => {
+    const first = encodeScriptTimelineBinary([vectorStroke()]);
+    let bytes = first;
+    for (let pass = 0; pass < 3; pass += 1) {
+      bytes = encodeScriptTimelineBinary(decodeScriptTimelineBinary(bytes));
+      expect(bytes).toEqual(first);
+    }
+    expect(decodeScriptTimelineBinary(first)).toEqual(decodeScriptTimelineBinary(first));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Fail-closed decode / encode
 // ---------------------------------------------------------------------------
 
 describe('AQTL fail-closed validation', () => {
   it('pins the minimal one-stroke layout used by the corrupt-byte helpers', () => {
-    expect(MINIMAL_BYTES.byteLength).toBe(93);
+    // v1 measured 93 bytes; v2 adds the one vector-flags byte (the version
+    // field keeps its u16 width, so its bump costs nothing).
+    expect(MINIMAL_BYTES.byteLength).toBe(94);
     expect(decodeScriptTimelineBinary(MINIMAL_BYTES)).toEqual(MINIMAL_EVENTS);
   });
 
@@ -441,8 +790,10 @@ describe('AQTL fail-closed validation', () => {
     });
     expect(expectedCode(() => decodeScriptTimelineBinary(badMagic))).toBe('magic-mismatch');
 
+    // 61-05: version 1 is refused outright — there is no upgrade path and no
+    // v1 reader left behind (project law: no backward compatibility).
     const badVersion = corruptMinimal((_bytes, view) => {
-      view.setUint16(4, 2, true);
+      view.setUint16(4, 1, true);
     });
     expect(expectedCode(() => decodeScriptTimelineBinary(badVersion))).toBe('unsupported-version');
 

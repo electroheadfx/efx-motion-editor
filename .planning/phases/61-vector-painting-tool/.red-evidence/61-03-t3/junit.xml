@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="33" failures="3" errors="0" time="0.429">
+    <testsuite name="src/payload/codec.test.ts" timestamp="2026-11-10T12:59:39.655Z" hostname="efx2.home" tests="33" failures="3" errors="0" skipped="0" time="0.030244625">
+        <testcase classname="src/payload/codec.test.ts" name="toStudioStroke tick quantisation and cap &gt; diffusionFrames=1000 clamps cuisson to DIFFUSION_CAP 600" time="0.000626625">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="toStudioStroke tick quantisation and cap &gt; diffusionFrames=0 or undefined yields cuisson === 0" time="0.000117708">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="toStudioStroke tick quantisation and cap &gt; pts ticks are integers (sample index), never floats or raw ms" time="0.000199875">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="toStudioStroke tick quantisation and cap &gt; diffusionFrames &gt; 600 clamps to 600 at serialize (engine bag + cuisson)" time="0.000266083">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="serialize → parse round-trip &gt; round-trips a stroke including toolOverrides and engine fields" time="0.000463916">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="serialize → parse round-trip &gt; round-trips a Dry event" time="0.000097542">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="serialize → parse round-trip &gt; preserves stroke order and Dry-event order exactly (no sort, no dedupe)" time="0.000262042">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry event is a distinguished payload union member (D-16) &gt; Dry event { kind: &apos;dry&apos;, tick } has no pts and no brush fields" time="0.000110584">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry event is a distinguished payload union member (D-16) &gt; Dry is a member of the same payload union as strokes (not a separate events array)" time="0.000375041">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry event is a distinguished payload union member (D-16) &gt; payload source has zero &quot;events:&quot; second-array markers (D-16)" time="0.000381667">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry ordering (tick, recordedOrder) &gt; mixed [stroke(tick=3), dry(tick=5), stroke(tick=5)] replays stroke, dry, stroke" time="0.000089">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry ordering (tick, recordedOrder) &gt; equal ticks keep recordedOrder (total order, no unstable swap)" time="0.000054291">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="Dry ordering (tick, recordedOrder) &gt; a Dry at tick T applies after strokes with tick &lt; T and before strokes with tick &gt; T" time="0.000053042">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="parse is total and fail-closed &gt; parse(malformed) returns null and never throws" time="0.000616541">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="parse is total and fail-closed &gt; parse(unknown schemaVersion) returns null (no dual-format reader)" time="0.000065416">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="parse is total and fail-closed &gt; parse accepts the exact AQUARELLE_SCHEMA_VERSION" time="0.000053792">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="record → serialize → parse → replay determinism (AQUA-06) &gt; same script survives the codec and replays byte-identical pixels" time="0.020337">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="payloadCodec seam &gt; exposes serialize/parse matching the EngineAdapter contract" time="0.00008025">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="payloadCodec seam &gt; serialize is total over the union (stroke and Dry) without throwing" time="0.000129916">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; unreadable aquarelle wire (unknown schemaVersion) fails parse and classifies as malformed-engine-payload" time="0.000209542">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; malformed aquarelle wire (bad shape) fails parse and never throws" time="0.000148292">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; a foreign-engine script at the envelope classifies as engine-mismatch, not malformed" time="0.00011875">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; an unknown engine id classifies as unknown-engine-id (named &quot;unknown paint module&quot; line)" time="0.000060833">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; a legacy pre-envelope kind classifies as unreadable-legacy-script (clean break, no reader)" time="0.000036167">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; PIN: a refused parse writes nothing — parse is total, pure, and side-effect free" time="0.000625917">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; classifyAquarellePayloadFailure maps parse-null to malformed-engine-payload and parse-ok to null" time="0.000090625">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25) &gt; buildEngineMismatchRefusal carries the package-id pair in detail for the named line" time="0.000054542">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; round-trips a vector event deep-equal including its single 1.8 width factor" time="0.000238083">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; parses to null when an anchor list is malformed" time="0.002608167">
+            <failure message="expected { pts: [ …(4) ], ticks: 3, …(9) } to be null" type="AssertionError">
+AssertionError: expected { pts: [ …(4) ], ticks: 3, …(9) } to be null
+
+- Expected: 
+null
+
++ Received: 
+Object {
+  &quot;brushId&quot;: &quot;wc/round-medium&quot;,
+  &quot;color&quot;: &quot;#2244aa&quot;,
+  &quot;cuisson&quot;: 0,
+  &quot;engine&quot;: Object {
+    &quot;anchors&quot;: Array [
+      Object {
+        &quot;kind&quot;: &quot;auto&quot;,
+        &quot;x&quot;: NaN,
+        &quot;y&quot;: 0,
+      },
+    ],
+    &quot;brushId&quot;: &quot;wc/round-medium&quot;,
+    &quot;color&quot;: &quot;#2244aa&quot;,
+    &quot;diffusionFrames&quot;: undefined,
+    &quot;mutationId&quot;: 42,
+    &quot;params&quot;: Object {
+      &quot;flow&quot;: 50,
+      &quot;size&quot;: 12,
+      &quot;water&quot;: 50,
+    },
+    &quot;playFrame&quot;: undefined,
+    &quot;timestamp&quot;: 1000,
+    &quot;tool&quot;: &quot;brush&quot;,
+    &quot;toolOverrides&quot;: Object {
+      &quot;aspect&quot;: 1,
+      &quot;capacity&quot;: 1.1,
+      &quot;grain&quot;: 1,
+      &quot;rotation&quot;: 1,
+      &quot;scatter&quot;: 0.8,
+      &quot;sizeCurve&quot;: 1,
+      &quot;tip&quot;: 1.2,
+      &quot;wetRound&quot;: 0.9,
+    },
+  },
+  &quot;motion&quot;: null,
+  &quot;playFrame&quot;: null,
+  &quot;pts&quot;: Array [
+    Object {
+      &quot;p&quot;: 0.5,
+      &quot;tick&quot;: 0,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 20,
+      &quot;y&quot;: 32,
+    },
+    Object {
+      &quot;p&quot;: 0.6,
+      &quot;tick&quot;: 1,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 28,
+      &quot;y&quot;: 32,
+    },
+    Object {
+      &quot;p&quot;: 0.5,
+      &quot;tick&quot;: 2,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 36,
+      &quot;y&quot;: 32,
+    },
+    Object {
+      &quot;p&quot;: 0.4,
+      &quot;tick&quot;: 3,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 44,
+      &quot;y&quot;: 32,
+    },
+  ],
+  &quot;recordedOrder&quot;: 1000,
+  &quot;ticks&quot;: 3,
+  &quot;toolOverrides&quot;: Object {
+    &quot;aspect&quot;: 1,
+    &quot;capacity&quot;: 1.1,
+    &quot;grain&quot;: 1,
+    &quot;rotation&quot;: 1,
+    &quot;scatter&quot;: 0.8,
+    &quot;sizeCurve&quot;: 1,
+    &quot;tip&quot;: 1.2,
+    &quot;wetRound&quot;: 0.9,
+  },
+  &quot;traceSeed&quot;: 2850896287,
+}
+
+ ❯ src/payload/codec.test.ts:568:78
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; parses to null when renderMode is not a member of the closed union" time="0.0004805">
+            <failure message="expected { pts: [ …(4) ], ticks: 3, …(9) } to be null" type="AssertionError">
+AssertionError: expected { pts: [ …(4) ], ticks: 3, …(9) } to be null
+
+- Expected: 
+null
+
++ Received: 
+Object {
+  &quot;brushId&quot;: &quot;wc/round-medium&quot;,
+  &quot;color&quot;: &quot;#2244aa&quot;,
+  &quot;cuisson&quot;: 0,
+  &quot;engine&quot;: Object {
+    &quot;brushId&quot;: &quot;wc/round-medium&quot;,
+    &quot;color&quot;: &quot;#2244aa&quot;,
+    &quot;diffusionFrames&quot;: undefined,
+    &quot;mutationId&quot;: 42,
+    &quot;params&quot;: Object {
+      &quot;flow&quot;: 50,
+      &quot;size&quot;: 12,
+      &quot;water&quot;: 50,
+    },
+    &quot;playFrame&quot;: undefined,
+    &quot;renderMode&quot;: &quot;oil&quot;,
+    &quot;timestamp&quot;: 1000,
+    &quot;tool&quot;: &quot;brush&quot;,
+    &quot;toolOverrides&quot;: Object {
+      &quot;aspect&quot;: 1,
+      &quot;capacity&quot;: 1.1,
+      &quot;grain&quot;: 1,
+      &quot;rotation&quot;: 1,
+      &quot;scatter&quot;: 0.8,
+      &quot;sizeCurve&quot;: 1,
+      &quot;tip&quot;: 1.2,
+      &quot;wetRound&quot;: 0.9,
+    },
+  },
+  &quot;motion&quot;: null,
+  &quot;playFrame&quot;: null,
+  &quot;pts&quot;: Array [
+    Object {
+      &quot;p&quot;: 0.5,
+      &quot;tick&quot;: 0,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 20,
+      &quot;y&quot;: 32,
+    },
+    Object {
+      &quot;p&quot;: 0.6,
+      &quot;tick&quot;: 1,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 28,
+      &quot;y&quot;: 32,
+    },
+    Object {
+      &quot;p&quot;: 0.5,
+      &quot;tick&quot;: 2,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 36,
+      &quot;y&quot;: 32,
+    },
+    Object {
+      &quot;p&quot;: 0.4,
+      &quot;tick&quot;: 3,
+      &quot;tw&quot;: 0,
+      &quot;tx&quot;: 0,
+      &quot;ty&quot;: 0,
+      &quot;x&quot;: 44,
+      &quot;y&quot;: 32,
+    },
+  ],
+  &quot;recordedOrder&quot;: 1000,
+  &quot;ticks&quot;: 3,
+  &quot;toolOverrides&quot;: Object {
+    &quot;aspect&quot;: 1,
+    &quot;capacity&quot;: 1.1,
+    &quot;grain&quot;: 1,
+    &quot;rotation&quot;: 1,
+    &quot;scatter&quot;: 0.8,
+    &quot;sizeCurve&quot;: 1,
+    &quot;tip&quot;: 1.2,
+    &quot;wetRound&quot;: 0.9,
+  },
+  &quot;traceSeed&quot;: 2850896287,
+}
+
+ ❯ src/payload/codec.test.ts:578:36
+            </failure>
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; re-serialises a parsed vector event deep-equal (faithful pass-through)" time="0.000110958">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; still round-trips an event with neither vector field exactly as today" time="0.0000875">
+        </testcase>
+        <testcase classname="src/payload/codec.test.ts" name="wire validation of the vector fields (61-03 T-61-08) &gt; classifyAquarellePayloadFailure still names a malformed engine block" time="0.000266292">
+            <failure message="expected null to be &apos;malformed-engine-payload&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected null to be &apos;malformed-engine-payload&apos; // Object.is equality
+
+- Expected: 
+&quot;malformed-engine-payload&quot;
+
++ Received: 
+null
+
+ ❯ src/payload/codec.test.ts:602:68
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

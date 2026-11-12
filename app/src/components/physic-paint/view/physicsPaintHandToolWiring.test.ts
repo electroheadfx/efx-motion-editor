@@ -31,7 +31,10 @@ describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
     // The Hand lives in the floating zoom pill; the rail keeps its paint tools
     // and host tools only.
     expect(rail).toContain(
-      "import { Droplet, Eraser, Paintbrush, Pen, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';",
+      // 61-08 (D-05): PenTool joins the icon set for the vector pen host tool;
+      // 61-13 (D-16): VectorSquare joins it for the wireframe latch. Still no
+      // Hand icon.
+      "import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, VectorSquare, Wind } from 'lucide-preact';",
     );
     expect(rail).toContain("import { memo } from 'preact/compat';");
     // Only the hand session used hooks — both imports leave with it.
@@ -49,8 +52,11 @@ describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
   });
 
   it('keeps the rail exclusivity law minus the Hand', () => {
+    // 61-08 (D-05): the vector pen joins the one-active-surface law.
+    // 61-13 (D-16): the wireframe latch joins it too.
+    expect(rail).toContain('const isActive =');
     expect(rail).toContain(
-      'const isActive = !selectActive && !pickerActive && !motionBoundaryActive && active === id;',
+      '!selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === id && !wireframeActive;',
     );
     // Everything else in the rail still renders.
     for (const testId of [

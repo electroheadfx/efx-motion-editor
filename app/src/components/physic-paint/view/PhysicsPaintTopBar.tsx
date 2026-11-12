@@ -22,6 +22,7 @@ import {
   aquarelleStrokeTypeFilter,
   setAquarelleSelectMode,
 } from './aquarelleStrokeSelection';
+import { commitAquarelleSelectionParam } from './aquarellePaintControls';
 
 /**
  * 261017-vcn I-04 remainder: the top bar keeps status pill + brush trigger +
@@ -204,10 +205,14 @@ function TopBarSlider(props: {
   min: number;
   max: number;
   onChange: (value: number) => void;
+  onCommit?: (value: number) => void;
   disabled?: boolean;
   class?: string;
 }) {
   const updateValue = (value: unknown) => props.onChange(clampTopBarValue(value, props.min, props.max));
+  // quick 261111-ucf: the release boundary clamps through the same law as the
+  // continuous path; an absent prop stays absent (no empty commit callback).
+  const updateCommit = props.onCommit === undefined ? undefined : (value: unknown) => props.onCommit!(clampTopBarValue(value, props.min, props.max));
   const cls = `physics-paint-topbar-control physics-paint-topbar-slider${props.class ? ` ${props.class}` : ''}`;
   return (
     <div class={cls}>
@@ -216,6 +221,7 @@ function TopBarSlider(props: {
         label={props.label}
         value={props.value}
         onChange={(value) => updateValue(value)}
+        onCommit={updateCommit}
         step={1}
         min={props.min}
         max={props.max}
@@ -337,7 +343,18 @@ export function PhysicsPaintTopBar({
           </div>
         ) : (
           <>
-            <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
+            <TopBarSlider
+              id="physics-brush-size"
+              label="Brush size"
+              min={1}
+              max={80}
+              value={liveBrushSize}
+              onChange={onBrushSizeChange}
+              onCommit={(value) => {
+                void commitAquarelleSelectionParam('size', value);
+              }}
+              disabled={disabled}
+            />
             <TopBarSlider
               id="physics-aquarelle-pigment"
               label="Pigment"
@@ -345,6 +362,9 @@ export function PhysicsPaintTopBar({
               max={100}
               value={liveOpacity}
               onChange={onOpacityChange}
+              onCommit={(value) => {
+                void commitAquarelleSelectionParam('load', value);
+              }}
               disabled={disabled}
             />
             <TopBarSlider
@@ -354,6 +374,9 @@ export function PhysicsPaintTopBar({
               max={100}
               value={aquarelleParams.value.water}
               onChange={(value) => setAquarelleParam('water', value)}
+              onCommit={(value) => {
+                void commitAquarelleSelectionParam('water', value);
+              }}
               disabled={disabled}
               class="physics-paint-topbar-optional-water"
             />
@@ -364,6 +387,9 @@ export function PhysicsPaintTopBar({
               max={100}
               value={aquarelleParams.value.edge}
               onChange={(value) => setAquarelleParam('edge', value)}
+              onCommit={(value) => {
+                void commitAquarelleSelectionParam('edge', value);
+              }}
               disabled={disabled}
               class="physics-paint-topbar-optional-edges"
             />
@@ -374,6 +400,9 @@ export function PhysicsPaintTopBar({
               max={100}
               value={aquarelleParams.value.granulation}
               onChange={(value) => setAquarelleParam('granulation', value)}
+              onCommit={(value) => {
+                void commitAquarelleSelectionParam('granulation', value);
+              }}
               disabled={disabled}
               class="physics-paint-topbar-optional-grain"
             />

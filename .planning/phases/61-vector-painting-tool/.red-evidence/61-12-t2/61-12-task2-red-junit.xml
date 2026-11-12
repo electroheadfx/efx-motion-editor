@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="5" failures="2" errors="0" time="0.558">
+    <testsuite name="src/components/physic-paint/view/aquarelleRecordState.renderMode.test.ts" timestamp="2026-11-10T16:00:23.535Z" hostname="efx2.home" tests="5" failures="2" errors="0" skipped="0" time="0.005169">
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.renderMode.test.ts" name="61-12 aquarelle render-mode batch write &gt; writes two vector strokes and one hand-painted stroke as one batch of three" time="0.001295459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.renderMode.test.ts" name="61-12 aquarelle render-mode batch write &gt; never creates, drops, copies or rewrites an anchor list (D-12/D-14)" time="0.000233083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.renderMode.test.ts" name="61-12 aquarelle render-mode batch write &gt; bumps once, refuses a repeat and de-duplicates a repeated id" time="0.002386041">
+            <failure message="expected 2 to be +0 // Object.is equality" type="AssertionError">
+AssertionError: expected 2 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 2
+
+ ❯ src/components/physic-paint/view/aquarelleRecordState.renderMode.test.ts:175:81
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.renderMode.test.ts" name="61-12 aquarelle render-mode batch write &gt; stores exactly ONE history entry for the whole batch" time="0.000486083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleRecordState.renderMode.test.ts" name="61-12 aquarelle render-mode batch write &gt; writes a malformed-anchor stroke and skips missing or out-of-timeline ids" time="0.000345458">
+            <failure message="expected 2 to be +0 // Object.is equality" type="AssertionError">
+AssertionError: expected 2 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 2
+
+ ❯ src/components/physic-paint/view/aquarelleRecordState.renderMode.test.ts:255:7
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

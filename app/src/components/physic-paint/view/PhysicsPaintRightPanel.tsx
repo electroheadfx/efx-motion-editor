@@ -10,6 +10,7 @@ import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPain
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { aquarelleParams } from './aquarelleRecordState';
+import { commitAquarelleSelectionParam } from './aquarellePaintControls';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { RightPanelColorTab } from './RightPanelColorTab';
 import { RightPanelBrushTab } from './RightPanelBrushTab';
@@ -460,6 +461,9 @@ export function PhysicsPaintRightPanel({
                 max={80}
                 ariaLabel="Brush size"
                 onChange={onBrushSizeChange}
+                onCommit={(value) => {
+                  void commitAquarelleSelectionParam('size', value);
+                }}
               />
             </div>
             {/* 56-02 (D-05) / 261017-w4x I-05 (Q3): MODULE-ONLY block — Water
