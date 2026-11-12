@@ -136,12 +136,12 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 
   it('hides the last optional watercolor knobs via container queries (I-11 follow-up)', () => {
     const styles = css();
-    // quick-261112: the action trio's 140px leads the cluster — every
-    // threshold shifts by it (740→880, 590→730; narrow 607→745).
-    expect(styles, 'Grain hides first at wide viewports').toContain('@container (max-width: 879px)');
-    expect(styles, 'Edges hides last').toContain('@container (max-width: 729px)');
+    // quick-261112: the action trio's 155px leads the cluster — every
+    // threshold shifts by it (740→895, 590→745; narrow 607→760).
+    expect(styles, 'Grain hides first at wide viewports').toContain('@container (max-width: 894px)');
+    expect(styles, 'Edges hides last').toContain('@container (max-width: 744px)');
     expect(styles, 'narrow-viewport thresholds follow the 115px control width').toContain(
-      '@container (max-width: 744px)',
+      '@container (max-width: 759px)',
     );
     // Pigment is the primary control in Water color, never an optional knob.
     expect(styles).not.toContain('.physics-paint-topbar-optional-pigment');
@@ -158,8 +158,8 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 
   it('hides Water at the deepest threshold, inside the existing media blocks (261029-hy2 CR-02)', () => {
     const styles = css();
-    const wideStart = styles.indexOf('@media (min-width: 1181px) {\n  @container (max-width: 879px)');
-    const narrowStart = styles.indexOf('@media (max-width: 1180px) {\n  @container (max-width: 744px)');
+    const wideStart = styles.indexOf('@media (min-width: 1181px) {\n  @container (max-width: 894px)');
+    const narrowStart = styles.indexOf('@media (max-width: 1180px) {\n  @container (max-width: 759px)');
     const chainEnd = styles.indexOf('.physics-paint-segmented-row {');
     expect(wideStart, 'the wide hide-chain block exists').toBeGreaterThan(-1);
     expect(narrowStart, 'the narrow hide-chain block exists').toBeGreaterThan(wideStart);
@@ -167,14 +167,14 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
     const wide = styles.slice(wideStart, narrowStart);
     const narrow = styles.slice(narrowStart, chainEnd);
     // 3 visible controls = 3 × 140 + 2 × 10 = 440 / 3 × 115 + 2 × 8 = 361,
-    // plus the action trio's 140 / 138 → 580 / 499.
-    expect(wide).toContain('@container (max-width: 579px)');
-    expect(narrow).toContain('@container (max-width: 498px)');
+    // plus the action trio's 155 / 153 → 595 / 514.
+    expect(wide).toContain('@container (max-width: 594px)');
+    expect(narrow).toContain('@container (max-width: 513px)');
     const waterSelector = '.physics-paint-topbar-primary .physics-paint-topbar-optional-water';
     expect(wide, 'the Water tier lives in the wide block').toContain(waterSelector);
     expect(narrow, 'the Water tier lives in the narrow block').toContain(waterSelector);
     // No new base @media above the first one: the tier follows the Edges tier.
-    expect(wide.indexOf(waterSelector)).toBeGreaterThan(wide.indexOf('@container (max-width: 729px)'));
+    expect(wide.indexOf(waterSelector)).toBeGreaterThan(wide.indexOf('@container (max-width: 744px)'));
     expect(narrow.indexOf(waterSelector)).toBeGreaterThan(narrow.indexOf('@container (max-width: 483px)'));
     // Out-ranks .physics-paint-topbar-control's display:flex (source order).
     const controlAt = styles.indexOf('.physics-paint-topbar-control {');
@@ -792,7 +792,21 @@ describe('261027-k6j Script switch', () => {
       styles,
       '.physics-paint-topbar-brush-pill .physics-paint-script-switch-label {',
     );
-    expect(caption).toContain('font-weight: 400');
+    expect(caption).toContain('font-weight: 600');
+    expect(caption).toContain('line-height: 1');
+    expect(caption).toContain('font-size: 10px');
+    expect(caption).toContain('margin-top: 2px');
+    const pillTrack = getCssRuleBlock(
+      styles,
+      '.physics-paint-topbar-brush-pill .physics-paint-script-switch-track {',
+    );
+    expect(pillTrack, 'the toggle matches the label width').toContain('width: 100%');
+    expect(pillTrack, 'the toggle is 18px tall').toContain('height: 18px');
+    const pillKnobOn = getCssRuleBlock(
+      styles,
+      '.physics-paint-topbar-brush-pill .physics-paint-script-switch.is-on .physics-paint-script-switch-knob {',
+    );
+    expect(pillKnobOn).toContain('left: calc(100% - 17px)');
   });
 });
 
@@ -1025,8 +1039,8 @@ describe('quick-261112 top-bar action cluster', () => {
     const actions = getCssRuleBlock(styles, '.physics-paint-topbar-actions {');
     expect(actions, 'auto margins split the free space the settings leave').toContain('margin-inline: auto');
     const buttons = getCssRuleBlock(styles, '.physics-paint-topbar-actions .physics-paint-icon-button {');
-    expect(buttons, 'buttons match the brush dropdown height').toContain('height: 38px');
-    expect(buttons).toContain('width: 38px');
+    expect(buttons).toContain('height: 43px');
+    expect(buttons).toContain('width: 43px');
     // The primary cluster stays the flexible query container — the trio lives
     // INSIDE it, so its width still tracks the bar and the knobs keep hiding.
     const primary = getCssRuleBlock(styles, '.physics-paint-topbar-primary {');

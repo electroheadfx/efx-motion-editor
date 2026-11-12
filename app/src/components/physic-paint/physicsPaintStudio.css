@@ -530,8 +530,8 @@ button.destructive {
 }
 
 .physics-paint-topbar-actions .physics-paint-icon-button {
-  width: 38px;
-  height: 38px;
+  width: 43px;
+  height: 43px;
 }
 
 /* 261028-k03b / 261029-eur: the Eraser tool's primary cluster — eraser icon +
@@ -555,34 +555,34 @@ button.destructive {
    Pigment control (and Brush size) always stay. Thresholds follow the control
    widths (140px + 10px gap at wide viewports, 115px + 8px below 1180px):
    5 controls = 5 × 140 + 4 × 10 = 740 and 5 × 115 + 4 × 8 = 607;
-   4 = 590 / 484; 3 = 440 / 361. quick-261112: the action trio (3 × 38px +
-   2 × 8px = 130px) plus its cluster gap now leads the same cluster, so every
-   threshold shifts by 140px (wide) / 138px (narrow) — 880/730/580 and
-   745/622/499. The right-pinned cluster overflows off the unscrollable START
+   4 = 590 / 484; 3 = 440 / 361. quick-261112: the action trio (3 × 43px +
+   2 × 8px = 145px) plus its cluster gap now leads the same cluster, so every
+   threshold shifts by 155px (wide) / 153px (narrow) — 895/745/595 and
+   760/637/514. The right-pinned cluster overflows off the unscrollable START
    edge, so the Water tier is what keeps the leading Brush size control
-   reachable below ~920px.
+   reachable below ~935px.
    These rules MUST follow .physics-paint-topbar-control's display:flex — the
    descendant selector keeps them winning at equal source order. */
 @media (min-width: 1181px) {
-  @container (max-width: 879px) {
+  @container (max-width: 894px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
   }
-  @container (max-width: 729px) {
+  @container (max-width: 744px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
   }
-  @container (max-width: 579px) {
+  @container (max-width: 594px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-water { display: none; }
   }
 }
 
 @media (max-width: 1180px) {
-  @container (max-width: 744px) {
+  @container (max-width: 759px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
   }
-  @container (max-width: 621px) {
+  @container (max-width: 636px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
   }
-  @container (max-width: 498px) {
+  @container (max-width: 513px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-water { display: none; }
   }
 }
@@ -921,11 +921,31 @@ button.destructive {
   padding: 0 2px;
 }
 
-/* quick-261112: the paint-mode label is a caption under the toggle — regular
-   weight, not the 600 used by the dialog switches. */
+/* quick-261112: the paint-mode label is a compact caption under the toggle,
+   and the toggle matches its width (the label is the widest child). */
 .physics-paint-topbar-brush-pill .physics-paint-script-switch-label {
-  font-weight: 400;
+  font-weight: 600;
   line-height: 1;
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.physics-paint-topbar-brush-pill .physics-paint-script-switch-track {
+  width: 100%;
+  height: 18px;
+}
+
+.physics-paint-topbar-brush-pill .physics-paint-script-switch-knob {
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  transition: left 120ms ease;
+}
+
+.physics-paint-topbar-brush-pill .physics-paint-script-switch.is-on .physics-paint-script-switch-knob {
+  left: calc(100% - 17px);
+  transform: none;
 }
 
 /* The dropdown is viewport-fixed: the top bar is an overflow-x scroller, so an
