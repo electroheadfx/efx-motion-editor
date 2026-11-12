@@ -136,10 +136,12 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 
   it('hides the last optional watercolor knobs via container queries (I-11 follow-up)', () => {
     const styles = css();
-    expect(styles, 'Grain hides first at wide viewports').toContain('@container (max-width: 739px)');
-    expect(styles, 'Edges hides last').toContain('@container (max-width: 589px)');
+    // quick-261112: the action trio's 140px leads the cluster — every
+    // threshold shifts by it (740→880, 590→730; narrow 607→745).
+    expect(styles, 'Grain hides first at wide viewports').toContain('@container (max-width: 879px)');
+    expect(styles, 'Edges hides last').toContain('@container (max-width: 729px)');
     expect(styles, 'narrow-viewport thresholds follow the 115px control width').toContain(
-      '@container (max-width: 606px)',
+      '@container (max-width: 744px)',
     );
     // Pigment is the primary control in Water color, never an optional knob.
     expect(styles).not.toContain('.physics-paint-topbar-optional-pigment');
@@ -156,22 +158,23 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 
   it('hides Water at the deepest threshold, inside the existing media blocks (261029-hy2 CR-02)', () => {
     const styles = css();
-    const wideStart = styles.indexOf('@media (min-width: 1181px) {\n  @container (max-width: 739px)');
-    const narrowStart = styles.indexOf('@media (max-width: 1180px) {\n  @container (max-width: 606px)');
+    const wideStart = styles.indexOf('@media (min-width: 1181px) {\n  @container (max-width: 879px)');
+    const narrowStart = styles.indexOf('@media (max-width: 1180px) {\n  @container (max-width: 744px)');
     const chainEnd = styles.indexOf('.physics-paint-segmented-row {');
     expect(wideStart, 'the wide hide-chain block exists').toBeGreaterThan(-1);
     expect(narrowStart, 'the narrow hide-chain block exists').toBeGreaterThan(wideStart);
     expect(chainEnd, 'the hide chain is followed by the next base rule').toBeGreaterThan(narrowStart);
     const wide = styles.slice(wideStart, narrowStart);
     const narrow = styles.slice(narrowStart, chainEnd);
-    // 3 visible controls = 3 × 140 + 2 × 10 = 440 / 3 × 115 + 2 × 8 = 361.
-    expect(wide).toContain('@container (max-width: 439px)');
-    expect(narrow).toContain('@container (max-width: 360px)');
+    // 3 visible controls = 3 × 140 + 2 × 10 = 440 / 3 × 115 + 2 × 8 = 361,
+    // plus the action trio's 140 / 138 → 580 / 499.
+    expect(wide).toContain('@container (max-width: 579px)');
+    expect(narrow).toContain('@container (max-width: 498px)');
     const waterSelector = '.physics-paint-topbar-primary .physics-paint-topbar-optional-water';
     expect(wide, 'the Water tier lives in the wide block').toContain(waterSelector);
     expect(narrow, 'the Water tier lives in the narrow block').toContain(waterSelector);
     // No new base @media above the first one: the tier follows the Edges tier.
-    expect(wide.indexOf(waterSelector)).toBeGreaterThan(wide.indexOf('@container (max-width: 589px)'));
+    expect(wide.indexOf(waterSelector)).toBeGreaterThan(wide.indexOf('@container (max-width: 729px)'));
     expect(narrow.indexOf(waterSelector)).toBeGreaterThan(narrow.indexOf('@container (max-width: 483px)'));
     // Out-ranks .physics-paint-topbar-control's display:flex (source order).
     const controlAt = styles.indexOf('.physics-paint-topbar-control {');
@@ -1014,8 +1017,11 @@ describe('quick-261112 top-bar action cluster', () => {
     const buttons = getCssRuleBlock(styles, '.physics-paint-topbar-actions .physics-paint-icon-button {');
     expect(buttons, 'buttons match the brush dropdown height').toContain('height: 38px');
     expect(buttons).toContain('width: 38px');
-    const settings = getCssRuleBlock(styles, '.physics-paint-topbar-settings {');
-    expect(settings, 'settings shrink with the bar, never grow').toContain('flex: 0 1 auto');
+    // The primary cluster stays the flexible query container — the trio lives
+    // INSIDE it, so its width still tracks the bar and the knobs keep hiding.
+    const primary = getCssRuleBlock(styles, '.physics-paint-topbar-primary {');
+    expect(primary).toContain('flex: 1 1 auto');
+    expect(primary).toContain('container-type: inline-size');
   });
 
   it('keeps Undo/Redo count-free and fires the routed action', () => {

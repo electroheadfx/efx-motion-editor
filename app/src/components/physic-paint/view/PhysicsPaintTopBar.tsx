@@ -413,8 +413,7 @@ export function PhysicsPaintTopBar({
           <TopBarDryButton disabled={disabled} />
         </div>
         {toolOwnsSettings ? (
-          <div class="physics-paint-topbar-settings">
-        {activeTool === 'lift' ? (
+        activeTool === 'lift' ? (
           <div class="physics-paint-topbar-lift" data-testid="physics-lift-controls">
             {/* 261028-k03d: the Eraser cluster keeps the shared Size (the erase
                 radius runs through the same sizeMult) + Strength + Edit.
@@ -506,8 +505,7 @@ export function PhysicsPaintTopBar({
               class="physics-paint-topbar-optional-grain"
             />
           </>
-        )}
-          </div>
+        )
         ) : null}
       </div>
 

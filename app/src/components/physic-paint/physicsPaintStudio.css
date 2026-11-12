@@ -534,20 +534,6 @@ button.destructive {
   height: 38px;
 }
 
-/* quick-261112: the tool settings keep their own query container, so the
-   action trio never eats into the optional-knob hide thresholds. They shrink
-   with the bar (never grow) — the free space is what centers the trio. */
-.physics-paint-topbar-settings {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: flex-end;
-  flex: 0 1 auto;
-  gap: 8px 10px;
-  min-width: 0;
-  container-type: inline-size;
-}
-
 /* 261028-k03b / 261029-eur: the Eraser tool's primary cluster — eraser icon +
    Strength slider + the Edit switch. The icon shares the slider's row. */
 .physics-paint-topbar-lift {
@@ -569,31 +555,34 @@ button.destructive {
    Pigment control (and Brush size) always stay. Thresholds follow the control
    widths (140px + 10px gap at wide viewports, 115px + 8px below 1180px):
    5 controls = 5 × 140 + 4 × 10 = 740 and 5 × 115 + 4 × 8 = 607;
-   4 = 590 / 484; 3 = 440 / 361. The right-pinned cluster overflows off the
-   unscrollable START edge, so the Water tier is what keeps the leading Brush
-   size control reachable below ~780px.
+   4 = 590 / 484; 3 = 440 / 361. quick-261112: the action trio (3 × 38px +
+   2 × 8px = 130px) plus its cluster gap now leads the same cluster, so every
+   threshold shifts by 140px (wide) / 138px (narrow) — 880/730/580 and
+   745/622/499. The right-pinned cluster overflows off the unscrollable START
+   edge, so the Water tier is what keeps the leading Brush size control
+   reachable below ~920px.
    These rules MUST follow .physics-paint-topbar-control's display:flex — the
    descendant selector keeps them winning at equal source order. */
 @media (min-width: 1181px) {
-  @container (max-width: 739px) {
+  @container (max-width: 879px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
   }
-  @container (max-width: 589px) {
+  @container (max-width: 729px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
   }
-  @container (max-width: 439px) {
+  @container (max-width: 579px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-water { display: none; }
   }
 }
 
 @media (max-width: 1180px) {
-  @container (max-width: 606px) {
+  @container (max-width: 744px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
   }
-  @container (max-width: 483px) {
+  @container (max-width: 621px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
   }
-  @container (max-width: 360px) {
+  @container (max-width: 498px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-water { display: none; }
   }
 }
@@ -8960,8 +8949,7 @@ input[type="range"].physics-paint-photo-reference-slider-input {
     gap: 8px;
   }
 
-  .physics-paint-topbar-primary,
-  .physics-paint-topbar-settings {
+  .physics-paint-topbar-primary {
     gap: 6px 8px;
   }
 
