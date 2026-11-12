@@ -753,17 +753,32 @@ button.destructive {
 }
 
 /* 261027-gh9g: the top-bar brush picker — the retired module switcher's slot.
-   A larger painted thumb + the brush name; it opens the brush dropdown. */
+   A larger painted thumb + the brush name; it opens the brush dropdown.
+   quick-261112: the pill is now a WRAPPER that also hosts the Paint
+   script/raster switch; the trigger is its inner (borderless) button. */
+.physics-paint-topbar-brush-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  margin-left: 15px;
+  padding-right: 6px;
+  border: 1px solid #696d72;
+  border-radius: 8px;
+  background: #505255;
+  box-sizing: border-box;
+}
+
 .physics-paint-brush-trigger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
+  height: 100%;
   padding: 3px 9px 3px 5px;
-  margin-left: 15px;
-  border: 1px solid #696d72;
-  border-radius: 8px;
-  background: #505255;
+  margin-left: 0;
+  border: none;
+  border-radius: 8px 0 0 8px;
+  background: transparent;
   color: #f4f7fa;
   cursor: pointer;
   box-sizing: border-box;
@@ -771,12 +786,10 @@ button.destructive {
 
 .physics-paint-brush-trigger:hover,
 .physics-paint-brush-trigger.open {
-  border-color: #7a7f86;
   background: #5a5d61;
 }
 
 .physics-paint-brush-trigger.open {
-  border-color: #6f90ff;
   background: #365ed6;
 }
 
@@ -889,10 +902,10 @@ button.destructive {
   white-space: nowrap;
 }
 
-/* quick-261112: the top-bar mode switches stack the label above the toggle
+/* quick-261112: the top-bar mode switches stack the label UNDER the toggle
    (Paint script / Paint raster, Edit) and center it over the toggle. */
 .physics-paint-topbar .physics-paint-script-switch {
-  flex-direction: column-reverse;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
@@ -900,10 +913,19 @@ button.destructive {
   padding: 1px 2px;
 }
 
-/* The switch now opens the bar — the brush trigger's 15px separator does the
-   spacing, so the switch drops its own left inset. */
-.physics-paint-topbar-left > .physics-paint-script-switch {
+/* quick-261112: inside the pill the switch shares its 38px box — no vertical
+   padding and a 1px gap keep the two-row caption inside. */
+.physics-paint-topbar-brush-pill .physics-paint-script-switch {
   margin-left: 0;
+  gap: 1px;
+  padding: 0 2px;
+}
+
+/* quick-261112: the paint-mode label is a caption under the toggle — regular
+   weight, not the 600 used by the dialog switches. */
+.physics-paint-topbar-brush-pill .physics-paint-script-switch-label {
+  font-weight: 400;
+  line-height: 1;
 }
 
 /* The dropdown is viewport-fixed: the top bar is an overflow-x scroller, so an

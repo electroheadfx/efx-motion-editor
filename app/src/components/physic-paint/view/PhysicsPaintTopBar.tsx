@@ -352,13 +352,11 @@ export function PhysicsPaintTopBar({
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
-      {/* Left slot: Paint script/raster switch + tool pill (261018-k1o /
-          261027-gh9g). quick-261112: the switch takes the retired "Engine
-          ready" pill's seat; a failed engine swaps it back for a status pill. */}
+      {/* Left slot: tool pill + Paint script/raster switch (261018-k1o /
+          261027-gh9g). quick-261112: the switch rides INSIDE the brush pill;
+          a failed engine shows a status pill instead and removes the switch. */}
       <div class="physics-paint-topbar-left">
-        {ready ? (
-          <ScriptRecordingSwitch />
-        ) : (
+        {ready ? null : (
           <div class="physics-paint-topbar-status" aria-live="polite">
             <span class={`physics-paint-status-pill ${statusTone}`}>Engine fail</span>
           </div>
@@ -368,24 +366,27 @@ export function PhysicsPaintTopBar({
             tools: the Eraser tool shows its own icon + shape, every other
             tool (Brush, Water, Pen) shows the active brush. Clicking it opens
             that tool's dropdown. */}
-        {activeTool === 'lift' ? (
-          <TopBarBrushTrigger
-            tool="lift"
-            presetId={liftTipId}
-            open={brushMenuOpen}
-            onToggle={toggleBrushMenu('lift')}
-            disabled={disabled}
-            testId="physics-lift-shape"
-          />
-        ) : (
-          <TopBarBrushTrigger
-            tool="brush"
-            presetId={selectedTipId}
-            open={brushMenuOpen}
-            onToggle={toggleBrushMenu('brush')}
-            disabled={disabled}
-          />
-        )}
+        <div class="physics-paint-topbar-brush-pill">
+          {activeTool === 'lift' ? (
+            <TopBarBrushTrigger
+              tool="lift"
+              presetId={liftTipId}
+              open={brushMenuOpen}
+              onToggle={toggleBrushMenu('lift')}
+              disabled={disabled}
+              testId="physics-lift-shape"
+            />
+          ) : (
+            <TopBarBrushTrigger
+              tool="brush"
+              presetId={selectedTipId}
+              open={brushMenuOpen}
+              onToggle={toggleBrushMenu('brush')}
+              disabled={disabled}
+            />
+          )}
+          {ready ? <ScriptRecordingSwitch /> : null}
+        </div>
       </div>
 
       {/* Settings cluster: pinned to the right edge at every width.
