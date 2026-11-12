@@ -8,13 +8,16 @@ import { Eraser, Paintbrush } from 'lucide-preact';
 import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   LiftEditSwitch,
+  PhysicsPaintHistoryActionButton,
   PhysicsPaintTopBar,
   ScriptRecordingSwitch,
   TopBarBrushTrigger,
+  TopBarWaterToolButton,
   type PhysicsPaintTopBarProps,
 } from './PhysicsPaintTopBar';
 import { activeModule } from '../../shared/activeModule';
 import {
+  aquarelleActiveTool,
   aquarelleBrushMenuAnchor,
   aquarelleBrushMenuOpen,
   aquarelleBrushMenuTarget,
@@ -23,6 +26,7 @@ import {
   setAquarelleScriptRecordingEnabled,
   setAquarelleTool,
 } from './aquarelleRecordState';
+import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
 import {
   aquarelleSelectMode,
   aquarelleStrokeSettingsDismissed,
@@ -71,6 +75,9 @@ function baseTopBarProps(): PhysicsPaintTopBarProps {
     onBrushSizeChange: vi.fn(),
     onOpacityChange: vi.fn(),
     moveAvailable: signal(true),
+    historyAvailability: signal({ undo: 1, redo: 1 }),
+    onUndo: vi.fn(),
+    onRedo: vi.fn(),
   };
 }
 
@@ -383,16 +390,29 @@ describe('261029-hy2 tool pill + settings-cluster gating', () => {
     for (const mount of mounts) expect(mount).toContain('disabled={disabled}');
   });
 
-  it('renders the brush pill but no settings cluster for Water and Pen', () => {
+  it('renders the brush pill but no tool settings for Water and Pen', () => {
     for (const tool of ['water', 'pen'] as const) {
       setAquarelleTool(tool);
       try {
         const tree = renderTopBar(baseTopBarProps());
         const nodes = childrenOf(tree) as AnyVNode[];
+        // quick-261112: the cluster shell always renders — it carries the
+        // Undo/Redo/Water action trio. Only the tool SETTINGS leave the DOM.
+        const primary = nodes.find((node) => node.props?.class === 'physics-paint-topbar-primary');
+        expect(primary, `${tool} keeps the action cluster`).toBeDefined();
+        const primaryDesc = childrenOf(primary) as AnyVNode[];
         expect(
-          nodes.some((node) => node.props?.class === 'physics-paint-topbar-primary'),
+          primaryDesc.some((node) => typeof node.props?.label === 'string'),
           `${tool} removes the whole settings cluster from the DOM`,
         ).toBe(false);
+        expect(
+          primaryDesc.some((node) => node.props?.['data-testid'] === 'physics-lift-controls'),
+          `${tool} has no Eraser settings`,
+        ).toBe(false);
+        expect(
+          primaryDesc.some((node) => String(node.props?.class ?? '') === 'physics-paint-topbar-actions'),
+          `${tool} still reaches Undo/Redo/Water`,
+        ).toBe(true);
         const pill = findPill(tree);
         expect(pill, `${tool} keeps the brush pill`).toBeDefined();
         expect(pill!.props?.tool).toBe('brush');
@@ -703,12 +723,16 @@ describe('261027-k6j Script switch', () => {
       const label = childrenOf(tree).find(
         (n) => (n as AnyVNode).props?.class === 'physics-paint-script-switch-label',
       ) as AnyVNode | undefined;
-      expect(label?.props?.children).toBe('Script');
+      expect(label?.props?.children).toBe('Script mode');
 
       setAquarelleScriptRecordingEnabled(false);
       const offTree = renderSwitch();
       expect(offTree.props?.['aria-checked']).toBe('false');
       expect(String(offTree.props?.class)).not.toContain('is-on');
+      const offLabel = childrenOf(offTree).find(
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-switch-label',
+      ) as AnyVNode | undefined;
+      expect(offLabel?.props?.children).toBe('Pixel mode');
 
       // Clicking flips through the setter, reading the signal at click time.
       (offTree.props?.onClick as () => void)();
@@ -945,6 +969,73 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
     expect(body.split('onCommit={updateCommit}').length - 1, 'one TopBarSlider passthrough').toBe(1);
     const imports = body.match(/from '\.\/aquarellePaintControls'/g) ?? [];
     expect(imports, 'one paint-controls import').toHaveLength(1);
+  });
+});
+
+// quick-261112: Undo | Redo | Water lead the settings cluster — the trio moved
+// up from the left rail and renders for every tool.
+describe('quick-261112 top-bar action cluster', () => {
+  it('seats Undo, Redo and the Water tool at the head of the settings cluster', () => {
+    const tree = renderTopBar(baseTopBarProps());
+    const nodes = childrenOf(tree) as AnyVNode[];
+    const primary = nodes.find((n) => n.props?.['class'] === 'physics-paint-topbar-primary');
+    expect(primary, 'the settings cluster renders for every tool').toBeDefined();
+    const actions = [...childrenOf(primary)].find(
+      (n) => String((n as AnyVNode).props?.['class'] ?? '') === 'physics-paint-topbar-actions',
+    ) as AnyVNode | undefined;
+    expect(actions, 'the action cluster leads the settings').toBeDefined();
+    const actionChildren = (actions!.props?.children as AnyVNode[]) ?? [];
+    expect(actionChildren[0]?.type).toBe(PhysicsPaintHistoryActionButton);
+    expect(actionChildren[0]?.props?.item?.id).toBe('undo');
+    expect(actionChildren[1]?.type).toBe(PhysicsPaintHistoryActionButton);
+    expect(actionChildren[1]?.props?.item?.id).toBe('redo');
+    expect(actionChildren[2]?.type).toBe(TopBarWaterToolButton);
+  });
+
+  it('keeps Undo/Redo count-free and fires the routed action', () => {
+    const onAction = vi.fn();
+    const item = { id: 'undo' as const, label: 'Undo', icon: 'undo.svg' };
+    const empty = PhysicsPaintHistoryActionButton({
+      item,
+      historyAvailability: signal({ undo: 0, redo: 0 }),
+      disabled: false,
+      onAction,
+    }) as AnyVNode;
+    expect(empty.props?.disabled).toBe(true);
+    const ready = PhysicsPaintHistoryActionButton({
+      item,
+      historyAvailability: signal({ undo: 2, redo: 0 }),
+      disabled: false,
+      onAction,
+    }) as AnyVNode;
+    expect(ready.props?.disabled).toBe(false);
+    expect(ready.props?.['aria-label']).toBe('Undo');
+    (ready.props?.onClick as () => void)();
+    expect(onAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('the Water tool keeps the rail gate: dry sheet disables, wet sheet selects it', () => {
+    const previousWet = aquarelleHasWetPaint.value;
+    const previousTool = aquarelleActiveTool.value;
+    try {
+      aquarelleHasWetPaint.value = false;
+      setAquarelleTool('brush');
+      const dry = TopBarWaterToolButton({ disabled: false }) as AnyVNode;
+      expect(dry.props?.disabled).toBe(true);
+      expect(dry.props?.title).toBe('Water (W) — needs standing water');
+
+      aquarelleHasWetPaint.value = true;
+      const wet = TopBarWaterToolButton({ disabled: false }) as AnyVNode;
+      expect(wet.props?.disabled).toBe(false);
+      expect(wet.props?.['aria-label']).toBe('Water');
+      expect(wet.props?.['aria-pressed']).toBe(false);
+      (wet.props?.onClick as () => void)();
+      expect(aquarelleActiveTool.value).toBe('water');
+      expect(TopBarWaterToolButton({ disabled: false }).props?.['aria-pressed']).toBe(true);
+    } finally {
+      aquarelleHasWetPaint.value = previousWet;
+      setAquarelleTool(previousTool);
+    }
   });
 });
 

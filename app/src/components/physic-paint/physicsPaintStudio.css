@@ -518,6 +518,28 @@ button.destructive {
   min-width: 140px;
 }
 
+/* quick-261112: Undo | Redo | Water lead the right settings cluster and render
+   for every tool, so they sit outside the tool-settings condition. */
+.physics-paint-topbar-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+/* quick-261112: the tool settings keep their own query container, so the
+   leading action trio never eats into the optional-knob hide thresholds. */
+.physics-paint-topbar-settings {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  gap: 8px 10px;
+  min-width: 0;
+  container-type: inline-size;
+}
+
 /* 261028-k03b / 261029-eur: the Eraser tool's primary cluster — eraser icon +
    Strength slider + the Edit switch. The icon shares the slider's row. */
 .physics-paint-topbar-lift {
@@ -1215,6 +1237,13 @@ button.destructive {
 
 .physics-paint-scripts-list-scroll-area {
   width: 100%;
+}
+
+/* quick-261112: every right-sidebar tab shares the blue scrollbar thumb
+   (SidebarScrollArea paints its thumb from this variable). */
+.physics-paint-right-pane-scroll-area,
+.physics-paint-scripts-list-scroll-area {
+  --sidebar-scrollbar-thumb: rgb(78, 143, 230);
 }
 
 .physics-paint-right-pane-content {
@@ -8906,7 +8935,8 @@ input[type="range"].physics-paint-photo-reference-slider-input {
     gap: 8px;
   }
 
-  .physics-paint-topbar-primary {
+  .physics-paint-topbar-primary,
+  .physics-paint-topbar-settings {
     gap: 6px 8px;
   }
 

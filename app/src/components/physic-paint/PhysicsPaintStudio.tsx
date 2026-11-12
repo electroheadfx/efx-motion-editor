@@ -1575,7 +1575,10 @@ export function PhysicsPaintStudio() {
       bridgeMode === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : bridgeMode,
     ),
     executePhysicalEdit: (executeInput) => groupFramePaintExecuteRef.current(executeInput),
-    setApplyMessage,
+    // quick-261112: the coordinator's only messages are the reference-loader
+    // cache notices ("Cache loaded at frame X…") — informational, so they also
+    // clear a stale error tone instead of inheriting it.
+    setApplyMessage: (message) => { setApplyMessage(message); setApplyStatus('idle'); },
     // 261029-lsr (D-03): the capture gate's epoch is the live script revision —
     // a `peek` read inside a callback (no subscription, no render-body read).
     getScriptEpoch: () => aquarelleStrokesRevision.peek(),
@@ -7156,7 +7159,7 @@ export function PhysicsPaintStudio() {
   const handleOpacityChange = useCallback((value: number) => {
     setAquarelleParam('load', value);
   }, []);
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange, watercolorMoveAvailable], () => ({
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange, watercolorMoveAvailable, historyAvailability, undo, redo], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
     ready: readyToApply,
@@ -7172,6 +7175,11 @@ export function PhysicsPaintStudio() {
     // 261029-eur: the Eraser Edit switch's enable gate (current edit frame).
     // Signal object passed by IDENTITY — the top-bar leaf reads `.value`.
     moveAvailable: watercolorMoveAvailable,
+    // quick-261112: Undo/Redo left the rail for the top-bar action cluster.
+    // Same handlers, same narrow availability subscriber.
+    historyAvailability,
+    onUndo: undo,
+    onRedo: redo,
   }));
   // 261107 UAT: the left-rail Motion boundaries tool. Turning it ON deploys
   // the selected rail's motion block and re-selects the last animated
@@ -7237,13 +7245,10 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([historyAvailability, staticControlsLocked, undo, redo, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, rebakeScriptAvailable, handleRebakeScript, handleToggleMotionBoundaries, handleToggleWireframe], () => ({
-    historyAvailability,
+  const toolRail = toolRailPropsMemo.resolve([staticControlsLocked, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, rebakeScriptAvailable, handleRebakeScript, handleToggleMotionBoundaries, handleToggleWireframe], () => ({
     selectAvailable: watercolorMoveAvailable,
     rebakeAvailable: rebakeScriptAvailable,
     disabled: staticControlsLocked,
-    onUndo: undo,
-    onRedo: redo,
     onClearFrame: clearActiveSource,
     onRebakeScript: () => { void handleRebakeScript(); },
     onActiveColorChanged: handleActiveColorChanged,

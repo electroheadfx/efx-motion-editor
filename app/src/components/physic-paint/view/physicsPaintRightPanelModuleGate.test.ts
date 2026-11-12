@@ -45,6 +45,10 @@ const toolRailSource = readFileSync(
   resolve(root, 'src/components/physic-paint/view/PhysicsPaintToolRail.tsx'),
   'utf8',
 );
+const topBarSource = readFileSync(
+  resolve(root, 'src/components/physic-paint/view/PhysicsPaintTopBar.tsx'),
+  'utf8',
+);
 const moduleSectionSource = readFileSync(
   resolve(root, 'src/components/physic-paint/view/WatercolorModuleSection.tsx'),
   'utf8',
@@ -178,16 +182,20 @@ describe('single-engine right panel (261027-klx)', () => {
     expect(impl, 'no second (brush-tools) return path').not.toContain('physics-paint-tool-rail');
   });
 
-  it('WatercolorRail shows Undo / Redo / Trash on the existing history path (261018-cy1)', () => {
+  it('the top bar leads with Undo / Redo / Water while the rail keeps Trash (quick-261112)', () => {
     const body = stripComments(toolRailSource);
-    expect(body, 'Undo/Redo reuse PhysicsPaintHistoryActionButton').toMatch(
-      /<PhysicsPaintHistoryActionButton\b/,
-    );
+    expect(body, 'Undo/Redo left the rail').not.toMatch(/<PhysicsPaintHistoryActionButton\b/);
     expect(body, 'Trash routes to onClearFrame').toContain('onClearFrame');
-    expect(body, 'rail mounts history actions').toContain('onUndo');
-    expect(body, 'rail mounts history actions').toContain('onRedo');
     // No second history store — the existing props are the only path.
     expect(body, 'no new history store').not.toMatch(/createPhysicsPaintHistory\b/);
+
+    const topBar = stripComments(topBarSource);
+    expect(topBar, 'Undo/Redo reuse PhysicsPaintHistoryActionButton').toMatch(
+      /<PhysicsPaintHistoryActionButton\b/,
+    );
+    expect(topBar, 'the bar mounts history actions').toContain('onUndo');
+    expect(topBar, 'the bar mounts history actions').toContain('onRedo');
+    expect(topBar, 'the Water tool moved into the action cluster').toContain('<TopBarWaterToolButton');
   });
 
   it('Paper tab branch mounts the paper surface with no activeModule gate', () => {

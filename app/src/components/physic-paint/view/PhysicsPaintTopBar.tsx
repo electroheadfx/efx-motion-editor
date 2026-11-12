@@ -1,10 +1,12 @@
 import type { TargetedMouseEvent } from 'preact';
 import type { ReadonlySignal } from '@preact/signals';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
-import { ChevronDown, Eraser, Paintbrush } from 'lucide-preact';
+import { ChevronDown, Droplet, Eraser, Paintbrush } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
+import type { PaintHistoryAvailability } from '../types/paintCore';
 import {
   aquarelleActiveTool,
   aquarelleBrushMenuOpen,
@@ -15,7 +17,13 @@ import {
   setAquarelleBrushMenuOpen,
   setAquarelleParam,
   setAquarelleScriptRecordingEnabled,
+  setAquarelleTool,
 } from './aquarelleRecordState';
+import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
+import { aquarellePickerActive } from './aquarelleColorPicker';
+import { railMotionSelectedChannel } from './railMotionEditingMode';
+import { exitPathEdit, exitVectorPen, vectorPenActive } from './vectorPathSession';
+import { wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
 import {
   aquarelleSelectMode,
@@ -73,6 +81,14 @@ export interface PhysicsPaintTopBarProps {
    * without it; the leaf subscribes, never the Studio body.
    */
   moveAvailable: ReadonlySignal<boolean>;
+  /**
+   * quick-261112: Undo/Redo moved up from the left rail — they lead the
+   * settings cluster. The availability signal is read in a narrow child
+   * subscriber (38-11 idiom), never in this bar's render body.
+   */
+  historyAvailability: ReadonlySignal<PaintHistoryAvailability>;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 /**
@@ -149,7 +165,7 @@ export function ScriptRecordingSwitch() {
       <span class="physics-paint-script-switch-track" aria-hidden="true">
         <span class="physics-paint-script-switch-knob" />
       </span>
-      <span class="physics-paint-script-switch-label">Script</span>
+      <span class="physics-paint-script-switch-label">{enabled ? 'Script mode' : 'Pixel mode'}</span>
     </button>
   );
 }
@@ -232,12 +248,92 @@ function TopBarSlider(props: {
   );
 }
 
+/**
+ * quick-261112: the Water tool moved from the left rail to the head of the
+ * top-bar settings cluster. Availability, active-surface law and click wiring
+ * are the rail's shipped ones — only the seat changed. Signal reads live in
+ * this leaf so the memoized bar is untouched by tool/selection changes.
+ */
+export function TopBarWaterToolButton({ disabled }: { disabled: boolean }) {
+  const active = aquarelleActiveTool.value;
+  const selectActive = aquarelleSelectMode.value;
+  const pickerActive = aquarellePickerActive.value;
+  const motionBoundaryActive = railMotionSelectedChannel.value !== null;
+  const penActive = vectorPenActive.value;
+  const wireframeActive = wireframeMode.value;
+  const railDisabled = disabled || wireframeSettleInFlight.value;
+  // Water only acts on live standing water — grey it while the sheet is dry.
+  const wetAvailable = aquarelleHasWetPaint.value;
+  const waterActive = !selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === 'water' && !wireframeActive;
+  return (
+    <button
+      type="button"
+      class={`physics-paint-icon-button${waterActive ? ' active' : ''}`}
+      data-testid="aquarelle-water-tool"
+      disabled={railDisabled || wireframeActive || !wetAvailable}
+      title={wireframeActive
+        ? 'Water (W) — turn wireframe off to paint'
+        : wetAvailable ? 'Water (W)' : 'Water (W) — needs standing water'}
+      aria-label="Water"
+      aria-pressed={waterActive}
+      onClick={() => {
+        // Defense in depth: a programmatic click must not select Water while
+        // the sheet is dry (261029-lel).
+        if (!aquarelleHasWetPaint.peek()) return;
+        exitVectorPen();
+        exitPathEdit();
+        setAquarelleSelectMode(false);
+        setAquarelleTool('water');
+      }}
+    >
+      <Droplet size={18} />
+    </button>
+  );
+}
+
+const TOP_BAR_HISTORY_ITEMS = Object.freeze([
+  { id: 'undo' as const, label: 'Undo', icon: undoIcon },
+  { id: 'redo' as const, label: 'Redo', icon: undoIcon },
+]);
+
+export function PhysicsPaintHistoryActionButton({
+  item,
+  historyAvailability,
+  disabled,
+  onAction,
+}: {
+  item: (typeof TOP_BAR_HISTORY_ITEMS)[number];
+  historyAvailability: ReadonlySignal<PaintHistoryAvailability>;
+  disabled: boolean;
+  onAction: () => void;
+}) {
+  // 260815-bmg: count-free — the disable rides the availability counts, never
+  // a rendered badge. Narrow read so history ticks skip the bar shell.
+  const availability = historyAvailability?.value;
+  const count = item.id === 'undo' ? availability?.undo ?? 0 : availability?.redo ?? 0;
+  return (
+    <button
+      type="button"
+      class="physics-paint-icon-button"
+      disabled={disabled || count === 0}
+      title={item.label}
+      aria-label={item.label}
+      onClick={onAction}
+    >
+      <img src={item.icon} alt="" aria-hidden="true" style={item.id === 'redo' ? { transform: 'scaleX(-1)' } : undefined} />
+    </button>
+  );
+}
+
 export function PhysicsPaintTopBar({
   ready,
   disabled = false,
   onBrushSizeChange,
   onOpacityChange,
   moveAvailable,
+  historyAvailability,
+  onUndo,
+  onRedo,
 }: PhysicsPaintTopBarProps) {
   recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
@@ -308,13 +404,32 @@ export function PhysicsPaintTopBar({
         <ScriptRecordingSwitch />
       </div>
 
-      {/* Settings cluster: pinned to the right edge at every width. Renders
-          ONLY for Brush and Eraser — Water and Pen have no settings to show.
-          The last optional knobs hide via container queries.
-          261028-k03b / 261029-eur: the Eraser tool swaps the whole cluster for
-          its own controls — Size + Eraser strength (eraser icon) + Edit. */}
-      {toolOwnsSettings ? (
-        <div class="physics-paint-topbar-primary">
+      {/* Settings cluster: pinned to the right edge at every width.
+          quick-261112: Undo/Redo and the Water tool LEAD the cluster and render
+          for every tool — Water and Pen have no settings of their own, but the
+          action trio must stay reachable. The tool settings themselves render
+          only for Brush and Eraser; the last optional knobs hide via container
+          queries.
+          261028-k03b / 261029-eur: the Eraser tool swaps the settings for its
+          own controls — Size + Eraser strength (eraser icon) + Edit. */}
+      <div class="physics-paint-topbar-primary">
+        <div class="physics-paint-topbar-actions" data-testid="physics-topbar-actions">
+          <PhysicsPaintHistoryActionButton
+            item={TOP_BAR_HISTORY_ITEMS[0]}
+            historyAvailability={historyAvailability}
+            disabled={disabled}
+            onAction={onUndo}
+          />
+          <PhysicsPaintHistoryActionButton
+            item={TOP_BAR_HISTORY_ITEMS[1]}
+            historyAvailability={historyAvailability}
+            disabled={disabled}
+            onAction={onRedo}
+          />
+          <TopBarWaterToolButton disabled={disabled} />
+        </div>
+        {toolOwnsSettings ? (
+          <div class="physics-paint-topbar-settings">
         {activeTool === 'lift' ? (
           <div class="physics-paint-topbar-lift" data-testid="physics-lift-controls">
             {/* 261028-k03d: the Eraser cluster keeps the shared Size (the erase
@@ -408,8 +523,9 @@ export function PhysicsPaintTopBar({
             />
           </>
         )}
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </div>
 
     </header>
   );

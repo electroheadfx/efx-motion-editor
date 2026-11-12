@@ -1216,12 +1216,13 @@ describe('Physics Paint navigation render localization', () => {
   });
 
   it('keeps Undo and Redo count-free while preserving narrow availability-driven disabling', () => {
-    const childStart = toolRail.indexOf('function PhysicsPaintHistoryActionButton');
-    const railStart = toolRail.indexOf('function PhysicsPaintToolRailImpl');
-    const railEnd = toolRail.indexOf('export const PhysicsPaintToolRail', railStart);
-    const historyActionButton = toolRail.slice(childStart, railStart);
+    // quick-261112: the history buttons moved from the rail to the top bar's
+    // action cluster — the count-free law and the narrow subscriber ride along.
+    const childStart = topBar.indexOf('function PhysicsPaintHistoryActionButton');
+    const barStart = topBar.indexOf('export function PhysicsPaintTopBar(');
+    const historyActionButton = topBar.slice(childStart, barStart);
     expect(childStart).toBeGreaterThanOrEqual(0);
-    expect(childStart).toBeLessThan(railStart);
+    expect(childStart).toBeLessThan(barStart);
     expect(historyActionButton).toContain('historyAvailability?.value');
     expect(historyActionButton).toContain("const count = item.id === 'undo' ? availability?.undo ?? 0 : availability?.redo ?? 0;");
     expect(historyActionButton).toContain('disabled={disabled || count === 0}');
@@ -1229,7 +1230,7 @@ describe('Physics Paint navigation render localization', () => {
     expect(historyActionButton).toContain('aria-label={item.label}');
     expect(historyActionButton).not.toContain('physics-paint-history-badge');
     expect(historyActionButton).not.toContain('available)');
-    expect(toolRail.slice(railStart, railEnd)).not.toContain('historyAvailability?.value');
+    expect(topBar.slice(barStart), 'the bar shell never reads availability').not.toContain('historyAvailability?.value');
     expect(css).not.toContain('.physics-paint-history-badge');
   });
 });
@@ -3193,7 +3194,7 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('const isActive =');
     const isActiveRegion = watercolorRail.slice(
       watercolorRail.indexOf('const isActive ='),
-      watercolorRail.indexOf('const waterGated'),
+      watercolorRail.indexOf('const wireframeReason'),
     );
     for (const clause of ['!selectActive', '!pickerActive', '!motionBoundaryActive', '!penActive', '!wireframeActive']) {
       expect(isActiveRegion, `isActive must keep the ${clause} clause`).toContain(clause);
@@ -7299,7 +7300,10 @@ describe('61-13 wireframe gates — reasons, Draft ownership, idempotency', () =
     // title, so re-adding a wireframe gate here would re-break the contract.
     expect(toolRail).not.toContain('turn wireframe off to pick');
     expect(toolRail).toContain('title="Picker (I) — click the canvas to sample the color under the cursor');
-    expect(toolRail).toContain('disabled={railDisabled || wireframeActive || (id === \'water\' && !wetAvailable)}');
+    // quick-261112: the Water tool left the rail — its dry-sheet gate rides
+    // the top-bar button, the rail's paint row keeps only the wireframe gate.
+    expect(toolRail).toContain('disabled={railDisabled || wireframeActive}');
+    expect(topBar).toContain('disabled={railDisabled || wireframeActive || !wetAvailable}');
     expect(toolRail).toContain('wireframeReason');
   });
 

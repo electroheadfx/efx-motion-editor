@@ -293,11 +293,13 @@ describe('the four paint tools stay closed', () => {
     new URL('../../../../../packages/efx-watercolor/src/payload/toStudioStroke.ts', import.meta.url),
   );
 
-  it('WATERCOLOR_RAIL_TOOLS still has exactly four entries', () => {
+  it('WATERCOLOR_RAIL_TOOLS still has exactly three entries', () => {
+    // quick-261112: the Water tool moved to the top-bar action cluster; the
+    // AquarelleTool union below still carries all four members.
     const rail = readFileSync(railPath, 'utf8');
     const block = rail.slice(rail.indexOf('const WATERCOLOR_RAIL_TOOLS'), rail.indexOf('function WatercolorRail'));
     expect(block.length).toBeGreaterThan(0);
-    expect(block.match(/\{ id: '/g) ?? []).toHaveLength(4);
+    expect(block.match(/\{ id: '/g) ?? []).toHaveLength(3);
   });
 
   it('AquarelleTool still has exactly four members', () => {

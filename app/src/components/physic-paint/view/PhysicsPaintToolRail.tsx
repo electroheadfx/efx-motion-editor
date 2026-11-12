@@ -1,15 +1,12 @@
 import { memo } from 'preact/compat';
-import type { PaintHistoryAvailability } from '../types/paintCore';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, VectorSquare, Wind } from 'lucide-preact';
+import { Eraser, Paintbrush, Pen, PenTool, Pipette, RefreshCcwDot, Scan, VectorSquare, Wind } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
-import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
 import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
-import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
 import {
   aquarelleSelectMode,
   setAquarelleSelectMode,
@@ -21,7 +18,7 @@ import { exitPathEdit, exitVectorPen, toggleVectorPen, vectorPenActive } from '.
 import { wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
-export type PhysicsPaintRailAction = 'undo' | 'redo' | 'clear-frame' | 'rebake-script';
+export type PhysicsPaintRailAction = 'clear-frame' | 'rebake-script';
 
 export interface PhysicsPaintToolRailItem {
   id: PhysicsPaintRailAction;
@@ -34,14 +31,13 @@ export interface PhysicsPaintToolRailItem {
 }
 
 /**
- * 261027-klx: engine-1 removal leaves the shared history/clear actions. The
- * Brush tool set (Paint / Paint with physics / Erase / Move) and its engine-1
- * dispatch are gone — Water color is the only paint surface and its tool row
- * (Brush | Water | Pen | Lift) lives in `WatercolorRail` below.
+ * 261027-klx: engine-1 removal leaves the shared clear actions. The Brush tool
+ * set (Paint / Paint with physics / Erase / Move) and its engine-1 dispatch are
+ * gone — Water color is the only paint surface and its tool row (Brush | Pen |
+ * Lift) lives in `WatercolorRail` below.
+ * quick-261112: Undo/Redo moved to the top-bar action cluster.
  */
 export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
-  { id: 'undo', label: 'Undo', icon: undoIcon, kind: 'action' },
-  { id: 'redo', label: 'Redo', icon: undoIcon, kind: 'action' },
   { id: 'clear-frame', label: 'Clear current Roto frame', icon: clearCanvasIcon, kind: 'action' },
   {
     id: 'rebake-script',
@@ -59,7 +55,10 @@ export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
 const VECTOR_PEN_TOOLTIP =
   'Vector pen (V) — click to place a smooth anchor · hold Alt for a corner · Enter or double-click to finish · click the first anchor to finish there';
 
-/** UI checklist rows 8/9: Water color rail = Brush | Water | Pen | Lift | Dry. */
+/**
+ * UI checklist rows 8/9: Water color rail = Brush | Pen | Lift | Dry.
+ * quick-261112: the Water tool moved to the top-bar action cluster.
+ */
 const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   id: AquarelleTool;
   label: string;
@@ -67,18 +66,14 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   Icon: (props: { size?: number }) => ComponentChildren;
 }> = Object.freeze([
   { id: 'brush', label: 'Brush', shortcut: 'B', Icon: Paintbrush },
-  { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplet },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
 
 export function WatercolorRail({
   disabled,
-  historyAvailability,
   selectAvailable,
   rebakeAvailable,
-  onUndo,
-  onRedo,
   onClearFrame,
   onRebakeScript,
   onActiveColorChanged,
@@ -86,13 +81,10 @@ export function WatercolorRail({
   onToggleWireframe,
 }: {
   disabled: boolean;
-  historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
   /** Frame-scoped: the current key must own a Water color script. */
   selectAvailable: ReadonlySignal<boolean>;
   /** 261029-lsr: the force-re-render escape hatch — paint script on this frame. */
   rebakeAvailable: ReadonlySignal<boolean>;
-  onUndo: () => void;
-  onRedo: () => void;
   onClearFrame: () => void;
   onRebakeScript: () => void;
   onActiveColorChanged?: (color: string) => void;
@@ -102,9 +94,6 @@ export function WatercolorRail({
   onToggleWireframe: () => void;
 }) {
   const active = aquarelleActiveTool.value;
-  // 261029-lel: Water only acts on live standing water — grey it while the
-  // sheet is dry (a body read here is the sanctioned leaf subscription).
-  const wetAvailable = aquarelleHasWetPaint.value;
   // Select/Move is the ONLY active tool while select mode is on; the previous
   // paint tool is shown deselected.
   const selectActive = aquarelleSelectMode.value;
@@ -126,8 +115,6 @@ export function WatercolorRail({
   // window (E6 loading; the Studio's settle owns the actual suppression).
   const wireframeActive = wireframeMode.value;
   const railDisabled = disabled || wireframeSettleInFlight.value;
-  const undoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'undo')!;
-  const redoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'redo')!;
   const clearItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'clear-frame')!;
   const rebakeItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'rebake-script')!;
   return (
@@ -138,7 +125,6 @@ export function WatercolorRail({
         // 61-13 (D-16): the wireframe latch also deselects it — nothing may
         // bake while the construction view is up, so no paint tool is "on".
         const isActive = !selectActive && !pickerActive && !motionBoundaryActive && !penActive && active === id && !wireframeActive;
-        const waterGated = id === 'water' && !wetAvailable;
         // 61-13: the paint row's disable reason. The latch never silently
         // switches tools — it states why the press is inert.
         const wireframeReason = shortcut === undefined
@@ -149,16 +135,13 @@ export function WatercolorRail({
             key={id}
             type="button"
             class={`physics-paint-icon-button${isActive ? ' active' : ''}`}
-            disabled={railDisabled || wireframeActive || (id === 'water' && !wetAvailable)}
+            disabled={railDisabled || wireframeActive}
             title={wireframeActive
               ? wireframeReason
-              : waterGated ? 'Water (W) — needs standing water' : shortcut ? `${label} (${shortcut})` : label}
+              : shortcut ? `${label} (${shortcut})` : label}
             aria-label={label}
             aria-pressed={isActive}
             onClick={() => {
-              // Defense in depth: a programmatic click must not select Water
-              // while the sheet is dry (261029-lel).
-              if (id === 'water' && !aquarelleHasWetPaint.peek()) return;
               // 61-08 (D-06): a paint tool press leaves the vector pen and ends
               // path edit — the four input surfaces are mutually exclusive.
               exitVectorPen();
@@ -276,20 +259,8 @@ export function WatercolorRail({
       >
         <Wind size={18} />
       </button>
-      {/* Global history actions (261018-cy1): same disable semantics as before;
-          Trash is the existing clear-frame action. */}
-      <PhysicsPaintHistoryActionButton
-        item={undoItem}
-        historyAvailability={historyAvailability}
-        disabled={railDisabled}
-        onAction={onUndo}
-      />
-      <PhysicsPaintHistoryActionButton
-        item={redoItem}
-        historyAvailability={historyAvailability}
-        disabled={railDisabled}
-        onAction={onRedo}
-      />
+      {/* 261018-cy1 / quick-261112: Undo/Redo moved to the top-bar action
+          cluster; Trash stays the rail's clear-frame action. */}
       <button
         type="button"
         class="physics-paint-icon-button"
@@ -321,14 +292,11 @@ export function WatercolorRail({
 }
 
 export interface PhysicsPaintToolRailProps {
-  historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
   /** quick-261026-odd — gates Water color Select; the current key must own a script. */
   selectAvailable: ReadonlySignal<boolean>;
   /** 261029-lsr: force-re-render enablement — the frame must own a paint script. */
   rebakeAvailable: ReadonlySignal<boolean>;
   disabled?: boolean;
-  onUndo: () => void;
-  onRedo: () => void;
   onClearFrame: () => void;
   /** 261029-lsr: reset the sheet and replay the frame's script (escape hatch). */
   onRebakeScript: () => void;
@@ -340,45 +308,15 @@ export interface PhysicsPaintToolRailProps {
   onToggleWireframe: () => void;
 }
 
-function PhysicsPaintHistoryActionButton({
-  item,
-  historyAvailability,
-  disabled,
-  onAction,
-}: {
-  item: PhysicsPaintToolRailItem;
-  historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
-  disabled: boolean;
-  onAction: () => void;
-}) {
-  const availability = historyAvailability?.value;
-  const count = item.id === 'undo' ? availability?.undo ?? 0 : availability?.redo ?? 0;
-  return (
-    <button
-      type="button"
-      class="physics-paint-icon-button"
-      disabled={disabled || count === 0}
-      title={item.label}
-      aria-label={item.label}
-      onClick={onAction}
-    >
-      <img src={item.icon} alt="" aria-hidden="true" style={item.id === 'redo' ? { transform: 'scaleX(-1)' } : undefined} />
-    </button>
-  );
-}
-
 // 38-11: the rail is wrapped in preact/compat memo — a startFrame-only Studio
 // render feeds referentially stable props (38-11 identity memo in the Studio),
 // the default shallow compare returns equal, and Preact skips this subtree.
-// Undo/Redo read historyAvailability in narrow child subscribers so history
-// updates bypass the memo without rendering the rail shell or unrelated tools.
+// quick-261112: Undo/Redo left for the top-bar action cluster — the rail keeps
+// only the history-free clear/re-bake actions.
 function PhysicsPaintToolRailImpl({
-  historyAvailability,
   selectAvailable,
   rebakeAvailable,
   disabled = false,
-  onUndo,
-  onRedo,
   onClearFrame,
   onRebakeScript,
   onActiveColorChanged,
@@ -387,15 +325,12 @@ function PhysicsPaintToolRailImpl({
 }: PhysicsPaintToolRailProps) {
   recordPhysicsPaintPerformanceCounter('render.toolRailImpl');
   // 261027-klx: Water color is the only module — the rail is the aquarelle
-  // tool row, Dry, Move/Select and the shared history/clear actions.
+  // tool row, Dry, Move/Select and the shared clear actions.
   return (
     <WatercolorRail
       disabled={disabled}
-      historyAvailability={historyAvailability}
       selectAvailable={selectAvailable}
       rebakeAvailable={rebakeAvailable}
-      onUndo={onUndo}
-      onRedo={onRedo}
       onClearFrame={onClearFrame}
       onRebakeScript={onRebakeScript}
       onActiveColorChanged={onActiveColorChanged}
