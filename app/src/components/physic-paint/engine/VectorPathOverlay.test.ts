@@ -54,6 +54,7 @@ import {
   clearVectorDraft,
   enterPathEdit,
   exitPathEdit,
+  pathEditMutationId,
   resetForStudioOpen,
   setVectorAnchorSelection,
   toggleVectorAnchorSelection,
@@ -81,8 +82,9 @@ import {
   type VectorPathGestureHandlers,
 } from './VectorPathOverlay';
 import { ScriptStrokeOverlay } from './ScriptStrokeOverlay';
+import { requestAquarellePathEdit } from './AquarelleStrokeOverlay';
 import { buildStrokeBand } from '../view/aquarelleStrokeBand';
-import { wireframeMode } from '../view/scriptStrokeEdition';
+import { scriptSelectedStrokeIds, setScriptStrokeSelection, wireframeMode } from '../view/scriptStrokeEdition';
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -2227,5 +2229,145 @@ describe('61-31 G-20 - the overlay draws and edits through each path curve mode'
     expect(String(bezierSpines[0]!.props['points'])).toBe(spineOf('bezier'));
     // The two evaluations genuinely differ, so the assertions above have teeth.
     expect(spineOf('spline')).not.toBe(spineOf('bezier'));
+  });
+});
+
+// 261112-i6d: double-clicking a VECTOR stroke on the Select surface enters the
+// path edit through the ONE session action the Edit path icon calls. The
+// overlay resolves the hit; the watercolor adapter gates vector-ness and
+// readability and writes the selection before that one entry.
+describe('261112-i6d — double-click a vector stroke to enter the path edit', () => {
+  const EDIT_ID = 95001;
+  const SIZE = { width: WIDTH, height: HEIGHT };
+
+  function portOver(
+    rows: ReturnType<typeof listSelectableAquarelleStrokes>,
+    hitId: number | null = null,
+  ) {
+    return {
+      isActive: () => false,
+      listStrokes: () => rows,
+      hitTestStroke: () => hitId,
+      deleteStrokes: () => {},
+      moveStrokes: () => {},
+      transformStrokes: () => {},
+      stepStroke: () => {},
+    };
+  }
+
+  function overlayProps(
+    port: ReturnType<typeof portOver>,
+    onStrokeDoubleClick?: (mutationId: number) => void,
+    selectMode = true,
+  ) {
+    return {
+      width: WIDTH,
+      height: HEIGHT,
+      getPlayFrame: () => FRAME,
+      port,
+      selectMode,
+      moveArmed: false,
+      onDeleteStrokes: () => {},
+      onMoveStrokes: () => {},
+      ...(onStrokeDoubleClick === undefined ? {} : { onStrokeDoubleClick }),
+      testId: 'stroke-overlay-select',
+      badgeTestId: 'stroke-badge-select',
+      ghostTestId: 'stroke-ghost-select',
+    };
+  }
+
+  function dblClickOf(root: TestVNode): (event: unknown) => void {
+    const onDblClick = root.props['onDblClick'] as ((event: unknown) => void) | undefined;
+    expect(onDblClick, 'root has no double-click handler').toBeTypeOf('function');
+    return onDblClick!;
+  }
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+    // `resetForStudioOpen` owns the vector latches, not the shared script
+    // selection — clear it here so each pin starts from an empty set.
+    setScriptStrokeSelection([]);
+    recordAquarelleStroke(EDIT_ID, vectorStroke({ mutationId: EDIT_ID }), 'frame-key');
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    setScriptStrokeSelection([]);
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  it('dispatches one hit double-click with the stroke id and owns the event', () => {
+    const onStrokeDoubleClick = vi.fn();
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    const root = render(
+      ScriptStrokeOverlay(overlayProps(portOver(rows, EDIT_ID), onStrokeDoubleClick)),
+    )!;
+    const event = pointerEvent(10, 20);
+    dblClickOf(root)(event);
+
+    expect(onStrokeDoubleClick).toHaveBeenCalledTimes(1);
+    expect(onStrokeDoubleClick).toHaveBeenCalledWith(EDIT_ID);
+    expect(event['preventDefault']).toHaveBeenCalledTimes(1);
+    expect(event['stopPropagation']).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls nothing when the port reports no stroke under the pointer', () => {
+    const onStrokeDoubleClick = vi.fn();
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    const root = render(
+      ScriptStrokeOverlay(overlayProps(portOver(rows, null), onStrokeDoubleClick)),
+    )!;
+    dblClickOf(root)(pointerEvent(10, 20));
+    expect(onStrokeDoubleClick).not.toHaveBeenCalled();
+  });
+
+  it('binds no double-click prop without the callback and never on the display-only root', () => {
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+
+    const interactive = render(ScriptStrokeOverlay(overlayProps(portOver(rows, EDIT_ID))))!;
+    expect(interactive.props['style']).toMatchObject({ pointerEvents: 'auto' });
+    expect(interactive.props['onDblClick']).toBeUndefined();
+
+    // The wireframe-only surface is display-only even when the callback exists.
+    wireframeMode.value = true;
+    const displayOnly = render(
+      ScriptStrokeOverlay(overlayProps(portOver(rows, EDIT_ID), vi.fn(), false)),
+    )!;
+    expect(displayOnly.props['style']).toMatchObject({ pointerEvents: 'none' });
+    expect(displayOnly.props['onDblClick']).toBeUndefined();
+  });
+
+  it('opens the icon’s session action on a readable vector stroke and normalises the selection', () => {
+    // A pre-existing multi-selection is normalised down to the double-clicked
+    // stroke, so the path-edit gate stays enabled and no exit can fire.
+    setScriptStrokeSelection([EDIT_ID, 95002]);
+
+    expect(requestAquarellePathEdit(EDIT_ID)).toBe(true);
+    expect(pathEditMutationId.value).toBe(String(EDIT_ID));
+    expect([...scriptSelectedStrokeIds.value]).toEqual([EDIT_ID]);
+  });
+
+  it('fails closed on a hand-painted stroke, an unknown id and unreadable anchors', () => {
+    recordAquarelleStroke(95003, vectorStroke({ mutationId: 95003, anchors: undefined }), 'frame-key');
+    expect(requestAquarellePathEdit(95003)).toBe(false);
+    expect(pathEditMutationId.value).toBeNull();
+    expect([...scriptSelectedStrokeIds.value]).toEqual([]);
+
+    expect(requestAquarellePathEdit(999)).toBe(false);
+    expect(pathEditMutationId.value).toBeNull();
+
+    recordAquarelleStroke(
+      95004,
+      vectorStroke({
+        mutationId: 95004,
+        anchors: [{ x: Number.NaN, y: 0.5, kind: 'auto' }] as VectorAnchor[],
+      }),
+      'frame-key',
+    );
+    expect(requestAquarellePathEdit(95004)).toBe(false);
+    expect(pathEditMutationId.value).toBeNull();
+    expect([...scriptSelectedStrokeIds.value]).toEqual([]);
   });
 });

@@ -29,7 +29,7 @@
 //  (efx-preact-reactivity).
 // ============================================================
 
-import type { JSX, TargetedPointerEvent } from 'preact';
+import type { JSX, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
 import { useRef } from 'preact/hooks';
 import {
   clearScriptStrokeDrag,
@@ -123,6 +123,13 @@ export function ScriptStrokeOverlay(props: {
   onMoveStrokes: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
   /** 261024-mz5 Task 2: when absent, the transform handles never render. */
   onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
+  /**
+   * 261112-i6d: a double-click on a HIT stroke, same absent-means-no-behaviour
+   * law as `onTransformStrokes` — the DOM prop is literally `undefined` without
+   * it. The adapter decides what the gesture means (only a vector stroke may
+   * open the path edit); this surface only resolves the hit.
+   */
+  onStrokeDoubleClick?: (mutationId: number) => void;
   testId: string;
   badgeTestId: string;
   ghostTestId: string;
@@ -164,7 +171,11 @@ export function ScriptStrokeOverlay(props: {
     strokes.filter((entry) => selectedIds.has(entry.mutationId)),
   );
 
-  const canvasPointOf = (event: TargetedPointerEvent<HTMLDivElement>): CanvasPoint => {
+  // 261112-i6d: widened from the pointer event — a `TargetedPointerEvent` IS a
+  // `TargetedMouseEvent`, so every shipped call site compiles unchanged while
+  // the double-click (a mouse event, not a pointer event) can share the one
+  // coordinate conversion.
+  const canvasPointOf = (event: TargetedMouseEvent<HTMLDivElement>): CanvasPoint => {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     const scaleX = rect.width > 0 ? props.width / rect.width : 1;
     const scaleY = rect.height > 0 ? props.height / rect.height : 1;
@@ -345,6 +356,21 @@ export function ScriptStrokeOverlay(props: {
     gestureRef.current = null;
     clearScriptStrokeDrag();
     clearScriptStrokeTransform();
+  };
+
+  // 261112-i6d: the ONE double-click dispatch. The vector overlay above is
+  // pointer-null unless the pen or an edit owns it, so THIS z-40 Select surface
+  // is the only place the first double-click on a stroke can be seen. The hit
+  // test is the same shipped `hitTestStroke` the pointer handlers use; a miss
+  // is not a gesture, and the adapter alone decides what a hit means.
+  const handleDoubleClick = (event: TargetedMouseEvent<HTMLDivElement>) => {
+    const onStrokeDoubleClick = props.onStrokeDoubleClick;
+    if (onStrokeDoubleClick === undefined) return;
+    const hit = props.port.hitTestStroke(canvasPointOf(event), playFrame, size);
+    if (hit === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onStrokeDoubleClick(hit);
   };
 
   const svg = (
@@ -603,7 +629,9 @@ export function ScriptStrokeOverlay(props: {
 
   // 61-13: a wireframe-only surface is DISPLAY-ONLY — it is mounted above the
   // canvas, so it must never own a pointer. The select/drag surface keeps the
-  // shipped interactive root verbatim.
+  // shipped interactive root verbatim. 261112-i6d: the double-click prop is
+  // bound CONDITIONALLY, so without a callback the interactive root's
+  // `onDblClick` is literally `undefined`; the display-only root never binds it.
   if (!interactive) {
     return (
       <div
@@ -635,6 +663,7 @@ export function ScriptStrokeOverlay(props: {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      onDblClick={props.onStrokeDoubleClick ? handleDoubleClick : undefined}
     >
       {svg}
     </div>
