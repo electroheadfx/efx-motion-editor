@@ -16,10 +16,12 @@
 // ============================================================
 import { describe, expect, it } from 'vitest';
 import {
+  ANCHOR_WIDTH_MAX,
   type ResolvedAnchorHandles,
   type Vec2,
   type VectorAnchor,
   resolveAnchorHandles,
+  resolveCurveAnchors,
   sampleVectorPath,
 } from '@efxlab/efx-watercolor/payload';
 import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
@@ -34,6 +36,7 @@ import {
   HANDLE_BODY_PX,
   VECTOR_PAINT_SAMPLE_STEP_UV,
   anchorColorCommitIsNoOp,
+  breakAnchorTangent,
   buildAnchorColorCommit,
   buildAnchorWidthCommit,
   buildDraftPath,
@@ -324,6 +327,79 @@ describe('moveHandleTo — coupling and the break modifier (61-10 task 2)', () =
   });
 });
 
+// 261112-i6d: Alt+click on a vertex — ONE straight-corner write that BOTH
+// curve modes honour (Spline preserves it verbatim through `resolveCurveAnchors`,
+// Bézier collapses the stored handles onto the anchor). Returning the input
+// reference is the no-op signal the caller tests by identity.
+describe('breakAnchorTangent — the one straight-corner write (261112-i6d)', () => {
+  it('turns an auto anchor into a bezier corner with both handles on the point', () => {
+    const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
+    const next = breakAnchorTangent(anchors, 1);
+
+    expect(next).not.toBe(anchors);
+    expect(next).toHaveLength(3);
+    const corner = next[1]!;
+    expect(corner.kind).toBe('bezier');
+    expect(corner.x).toBe(0.5);
+    expect(corner.y).toBe(0.5);
+    expect(corner.in).toEqual({ x: 0.5, y: 0.5 });
+    expect(corner.out).toEqual({ x: 0.5, y: 0.5 });
+  });
+
+  it('collapses the stored handles of a bezier anchor onto the anchor', () => {
+    const anchors = [
+      auto(0.2, 0.5),
+      bezier(0.5, 0.5, { x: 0.35, y: 0.2 }, { x: 0.7, y: 0.8 }),
+      auto(0.8, 0.5),
+    ];
+    const next = breakAnchorTangent(anchors, 1);
+
+    expect(next[1]!.kind).toBe('bezier');
+    expect(next[1]!.in).toEqual({ x: 0.5, y: 0.5 });
+    expect(next[1]!.out).toEqual({ x: 0.5, y: 0.5 });
+    // The authored anchor itself is untouched.
+    expect(anchors[1]!.in).toEqual({ x: 0.35, y: 0.2 });
+  });
+
+  it('preserves width and per-vertex colour, carrying the neighbours by reference', () => {
+    const shaped: VectorAnchor = { ...auto(0.5, 0.5), width: 1.8, color: '#ff0000' };
+    const anchors = [auto(0.2, 0.5), shaped, auto(0.8, 0.5)];
+    const next = breakAnchorTangent(anchors, 1);
+
+    expect(next[1]!.width).toBe(1.8);
+    expect(next[1]!.color).toBe('#ff0000');
+    expect(next[0]).toBe(anchors[0]);
+    expect(next[2]).toBe(anchors[2]);
+    // The input anchor and the input list are never mutated.
+    expect(anchors[1]).toBe(shaped);
+    expect(shaped.kind).toBe('auto');
+  });
+
+  it('returns the input reference for an already-corner anchor and invalid indices', () => {
+    const corner: VectorAnchor = {
+      x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 0.5, y: 0.5 },
+    };
+    const anchors = [auto(0.2, 0.5), corner];
+    expect(breakAnchorTangent(anchors, 1)).toBe(anchors);
+    expect(breakAnchorTangent(anchors, -1)).toBe(anchors);
+    expect(breakAnchorTangent(anchors, 1.5)).toBe(anchors);
+    expect(breakAnchorTangent(anchors, 99)).toBe(anchors);
+  });
+
+  it('survives Spline evaluation: the corner keeps its bezier identity and handles', () => {
+    const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
+    const spline = resolveCurveAnchors(breakAnchorTangent(anchors, 1), 'spline');
+
+    // The corner is the ONE anchor the spline does not smooth away.
+    expect(spline[1]!.kind).toBe('bezier');
+    expect(spline[1]!.in).toEqual({ x: 0.5, y: 0.5 });
+    expect(spline[1]!.out).toEqual({ x: 0.5, y: 0.5 });
+    // Positive control: its neighbours ARE smoothed by the same evaluation.
+    expect(spline[0]!.kind).toBe('auto');
+    expect(spline[2]!.kind).toBe('auto');
+  });
+});
+
 describe('insertAnchorOnSegment — a click on the spine (61-10 task 2)', () => {
   const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
 
@@ -408,7 +484,9 @@ describe('buildAnchorWidthCommit — one sparse width write (61-10 task 2)', () 
   });
 
   it('clamps through clampAnchorWidth', () => {
-    expect(buildAnchorWidthCommit(anchors, [0], 99)[0]!.width).toBe(2);
+    // Ceiling-relative: 99 clamps to the shipped maximum at either value, so
+    // this pin cannot go red when the sibling width plan raises the constant.
+    expect(buildAnchorWidthCommit(anchors, [0], 99)[0]!.width).toBe(ANCHOR_WIDTH_MAX);
     expect(buildAnchorWidthCommit(anchors, [0], 0)[0]!.width).toBe(0.2);
     // A non-finite value clamps to the default, which is stored as absent.
     expect('width' in buildAnchorWidthCommit(anchors, [0], Number.NaN)[0]!).toBe(false);

@@ -116,8 +116,12 @@ export function recordedCurveModeField(
  * shape the draw gesture places (Shift+click) and the shape a spline must not
  * smooth away. Any stored handle length means the anchor is a curve control,
  * which spline owns again.
+ *
+ * 261112-i6d: exported as the ONE corner predicate, so the Alt+click tangent
+ * break writes exactly the shape this evaluation preserves instead of a
+ * second copy of the equality.
  */
-function isCornerAnchor(anchor: VectorAnchor): boolean {
+export function isCornerAnchor(anchor: VectorAnchor): boolean {
   if (anchor.kind !== 'bezier') return false;
   const { in: handleIn, out: handleOut } = anchor;
   if (!isFinitePoint(handleIn) || !isFinitePoint(handleOut)) return false;

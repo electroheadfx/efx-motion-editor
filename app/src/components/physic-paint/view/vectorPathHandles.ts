@@ -30,6 +30,7 @@ import {
   DEFAULT_AQUARELLE_CURVE_MODE,
   clampAnchorWidth,
   evaluateAquarellePath,
+  isCornerAnchor,
   isUniformWidthProfile,
   normaliseAnchorColor,
   normaliseVectorAnchors,
@@ -467,6 +468,36 @@ export function moveHandleTo(
       : { ...anchor, in: mirrored, out: moved });
   const next = [...anchors];
   next[index] = movedAnchor;
+  return next;
+}
+
+/**
+ * 261112-i6d — Alt+click on a vertex: write the ONE straight-corner shape,
+ * a `bezier` anchor with both handles exactly on the point. This is a tangent
+ * break, never a second anchor model: under Spline `resolveCurveAnchors` keeps
+ * a corner verbatim while smoothing every other anchor, so the SAME write
+ * yields a sharp angle in BOTH curve modes; under Bézier the stored handles
+ * collapse onto the anchor. Spreading the anchor preserves `width` and
+ * `color`, and every other anchor stays reference-identical.
+ *
+ * A no-op (invalid index, absent anchor, already a corner) returns the INPUT
+ * reference — the caller's identity check is the whole commit decision. This
+ * never touches the per-drag Alt decoupling inside `moveHandleTo`.
+ */
+export function breakAnchorTangent(
+  anchors: readonly VectorAnchor[],
+  index: number,
+): readonly VectorAnchor[] {
+  if (!Number.isInteger(index) || index < 0 || index >= anchors.length) return anchors;
+  const anchor = anchors[index];
+  if (anchor === undefined || isCornerAnchor(anchor)) return anchors;
+  const next = [...anchors];
+  next[index] = {
+    ...anchor,
+    kind: 'bezier',
+    in: { x: anchor.x, y: anchor.y },
+    out: { x: anchor.x, y: anchor.y },
+  };
   return next;
 }
 

@@ -61,6 +61,7 @@ import {
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
   VECTOR_ENVELOPE_BASE_UV,
+  breakAnchorTangent,
   buildDraftPath,
   deleteAnchorsAt,
   hitTestVectorPath,
@@ -99,6 +100,12 @@ const OUTLINE_DARK = '#111111';
 const OUTLINE_LIGHT = '#ffffff';
 /** User-owned control (a bezier anchor and its handles) — the 26102x accent. */
 const OWNED_CONTROL_COLOR = '#f59e0b';
+/**
+ * 261112-i6d: the selected VERTEX accent — orange, the one colour that reads
+ * over orange paint because it is carried by a dark halo and a soft glow
+ * (three layered strokes, never an SVG filter).
+ */
+const SELECTED_ANCHOR_COLOR = '#f97316';
 /** The handle CONNECTOR's opacity — the dot itself stays solid (§6 item 5). */
 const HANDLE_OPACITY = 0.6;
 const SPINE_STROKE_PX = 1.5;
@@ -630,33 +637,85 @@ function renderPath(
         const anchor = anchors[index];
         const point = projection.anchors[index];
         if (anchor === undefined || point === undefined) return null;
-        // 61-31 (G-20): the ring mirrors the marker's shape, so under Spline it
+        // 61-31 (G-20): the chrome mirrors the marker's shape, so under Spline it
         // is a circle around the circle — never a square implying ownership.
+        // 261112-i6d: THREE layered strokes per selected index — a soft glow
+        // over a dark contrast halo over the crisp orange ring — so the vertex
+        // reads over orange paint while every stroke stays screen-constant
+        // (`vectorEffect`). No SVG filter: the layers cost nothing at 60fps.
         return ownsHandles(anchor) ? (
-          <rect
-            key={`anchor-selection-${index}`}
-            data-testid="vector-path-anchor-selection"
-            x={point.x - (anchorSizePx + 6) / 2}
-            y={point.y - (anchorSizePx + 6) / 2}
-            width={anchorSizePx + 6}
-            height={anchorSizePx + 6}
-            fill="none"
-            stroke={SELECTED_SPINE_COLOR}
-            strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
-          />
+          <g key={`anchor-selection-${index}`}>
+            <rect
+              data-testid="vector-path-anchor-selection-glow"
+              x={point.x - (anchorSizePx + 6) / 2}
+              y={point.y - (anchorSizePx + 6) / 2}
+              width={anchorSizePx + 6}
+              height={anchorSizePx + 6}
+              fill="none"
+              stroke={SELECTED_ANCHOR_COLOR}
+              strokeWidth={8}
+              opacity={0.35}
+              vectorEffect="non-scaling-stroke"
+            />
+            <rect
+              data-testid="vector-path-anchor-selection-halo"
+              x={point.x - (anchorSizePx + 6) / 2}
+              y={point.y - (anchorSizePx + 6) / 2}
+              width={anchorSizePx + 6}
+              height={anchorSizePx + 6}
+              fill="none"
+              stroke={OUTLINE_DARK}
+              strokeWidth={4}
+              opacity={0.85}
+              vectorEffect="non-scaling-stroke"
+            />
+            <rect
+              data-testid="vector-path-anchor-selection"
+              x={point.x - (anchorSizePx + 6) / 2}
+              y={point.y - (anchorSizePx + 6) / 2}
+              width={anchorSizePx + 6}
+              height={anchorSizePx + 6}
+              fill="none"
+              stroke={SELECTED_ANCHOR_COLOR}
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
         ) : (
-          <circle
-            key={`anchor-selection-${index}`}
-            data-testid="vector-path-anchor-selection"
-            cx={point.x}
-            cy={point.y}
-            r={coreRadiusPx + 3}
-            fill="none"
-            stroke={SELECTED_SPINE_COLOR}
-            strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
-          />
+          <g key={`anchor-selection-${index}`}>
+            <circle
+              data-testid="vector-path-anchor-selection-glow"
+              cx={point.x}
+              cy={point.y}
+              r={coreRadiusPx + 3}
+              fill="none"
+              stroke={SELECTED_ANCHOR_COLOR}
+              strokeWidth={8}
+              opacity={0.35}
+              vectorEffect="non-scaling-stroke"
+            />
+            <circle
+              data-testid="vector-path-anchor-selection-halo"
+              cx={point.x}
+              cy={point.y}
+              r={coreRadiusPx + 3}
+              fill="none"
+              stroke={OUTLINE_DARK}
+              strokeWidth={4}
+              opacity={0.85}
+              vectorEffect="non-scaling-stroke"
+            />
+            <circle
+              data-testid="vector-path-anchor-selection"
+              cx={point.x}
+              cy={point.y}
+              r={coreRadiusPx + 3}
+              fill="none"
+              stroke={SELECTED_ANCHOR_COLOR}
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
         );
       })}
       {/* 61-31 (G-20): under Spline the entire handle block returns nothing —
@@ -1035,6 +1094,21 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       setVectorAnchorSelection(
         selectAnchor(vectorAnchorSelection.peek(), target.index, additive),
       );
+      // 261112-i6d: Alt+click breaks the tangent into the ONE corner shape —
+      // in BOTH curve modes (under Spline `resolveCurveAnchors` preserves it).
+      // The branch sits AFTER the selection write (a click always selects that
+      // vertex, even when the write is a no-op) and BEFORE `promoteAnchorForDrag`,
+      // so no drag state exists and no pointer is captured: a click is a
+      // completed gesture, exactly like the spine-insert branch below. The
+      // handle branch above keeps its priority, so Alt on a handle dot still
+      // starts the shipped handle drag whose PER-MOVE Alt breaks the coupling.
+      // Alt is structurally safe here: the colour picker cannot arm during an
+      // open path edit and the Studio's pick handler is inert in Select mode.
+      if (event.altKey) {
+        const next = breakAnchorTangent(editTargetAnchors, target.index);
+        if (next !== editTargetAnchors) props.onPathEdit(editTargetMutationId, next);
+        return;
+      }
       const promoted = promoteAnchorForDrag(editTargetAnchors, target.index, editTargetCurveMode);
       dragRef.current = {
         kind: 'anchor',

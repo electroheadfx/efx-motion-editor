@@ -1696,19 +1696,59 @@ describe('61-22 G-11 — the selected-anchor ring', () => {
     expect(rings[0]!.props['cy']).toBeCloseTo(at.y, 9);
   });
 
-  it('static: the ring is accent-only and adds no colour literal', () => {
+  // 261112-i6d: the one accent repointed from the sky-blue link colour to the
+  // orange vertex colour — carried by the dark halo, which is the whole reason
+  // the ring stays legible over orange paint.
+  it('static: the ring is orange over a dark halo and adds no stray literal', () => {
     const source = readFileSync(resolve(__dirname, './VectorPathOverlay.tsx'), 'utf8');
     const at = source.indexOf('data-testid="vector-path-anchor-selection"');
     expect(at).toBeGreaterThan(-1);
     const block = source.slice(Math.max(0, at - 600), at + 600);
-    expect(block).toContain('stroke={SELECTED_SPINE_COLOR}');
+    expect(block).toContain('stroke={SELECTED_ANCHOR_COLOR}');
     expect(block).toContain('fill="none"');
     expect(block).toContain('strokeWidth={1.5}');
-    // The palette is the shipped four literals — the ring introduces none.
+    expect(block).toContain('stroke={OUTLINE_DARK}');
+    // The palette is the shipped five literals — the chrome introduces none else.
     const hexes = [...source.matchAll(/'#[0-9a-fA-F]{3,6}'/g)].map((match) => match[0]);
     expect(new Set(hexes)).toEqual(
-      new Set(["'#38bdf8'", "'#111111'", "'#ffffff'", "'#f59e0b'"]),
+      new Set(["'#38bdf8'", "'#111111'", "'#ffffff'", "'#f59e0b'", "'#f97316'"]),
     );
+  });
+
+  it('layers a soft glow and a dark halo under every selected ring', () => {
+    enterPathEdit(String(EDIT_ID));
+    setVectorAnchorSelection([0, 1]);
+    const tree = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]])));
+
+    const rings = nodesWithTestId(tree, 'vector-path-anchor-selection');
+    const glows = nodesWithTestId(tree, 'vector-path-anchor-selection-glow');
+    const halos = nodesWithTestId(tree, 'vector-path-anchor-selection-halo');
+    expect(rings).toHaveLength(2);
+    expect(glows).toHaveLength(2);
+    expect(halos).toHaveLength(2);
+
+    // The chrome contract: glow 8/0.35, dark halo 4/0.85, crisp orange ring 1.5,
+    // all screen-constant.
+    for (const glow of glows) {
+      expect(glow.props['stroke']).toBe('#f97316');
+      expect(glow.props['strokeWidth']).toBe(8);
+      expect(glow.props['opacity']).toBe(0.35);
+      expect(glow.props['fill']).toBe('none');
+      expect(glow.props['vectorEffect']).toBe('non-scaling-stroke');
+    }
+    for (const halo of halos) {
+      expect(halo.props['stroke']).toBe('#111111');
+      expect(halo.props['strokeWidth']).toBe(4);
+      expect(halo.props['opacity']).toBe(0.85);
+      expect(halo.props['fill']).toBe('none');
+      expect(halo.props['vectorEffect']).toBe('non-scaling-stroke');
+    }
+    for (const ring of rings) {
+      expect(ring.props['stroke']).toBe('#f97316');
+      expect(ring.props['strokeWidth']).toBe(1.5);
+      expect(ring.props['fill']).toBe('none');
+      expect(ring.props['vectorEffect']).toBe('non-scaling-stroke');
+    }
   });
 });
 
@@ -2369,5 +2409,124 @@ describe('261112-i6d — double-click a vector stroke to enter the path edit', (
     expect(requestAquarellePathEdit(95004)).toBe(false);
     expect(pathEditMutationId.value).toBeNull();
     expect([...scriptSelectedStrokeIds.value]).toEqual([]);
+  });
+});
+
+// 261112-i6d: Alt+click on a vertex writes the ONE straight-corner shape in
+// BOTH curve modes — exactly one onPathEdit, the selection follows the vertex,
+// no drag state and no pointer capture. Alt on a HANDLE dot keeps the shipped
+// handle drag (whose per-move Alt breaks the coupling), so the new branch must
+// sit below the handle branch.
+describe('261112-i6d — Alt+click a vertex breaks the tangent', () => {
+  const EDIT_ID = 98001;
+
+  function editedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+    return vectorStroke({ mutationId: EDIT_ID, ...overrides });
+  }
+
+  const HANDLE_ANCHORS: readonly VectorAnchor[] = [
+    { x: 0.2, y: 0.5, kind: 'bezier', in: { x: 0.15, y: 0.5 }, out: { x: 0.25, y: 0.5 } },
+    auto(0.5, 0.5),
+    auto(0.8, 0.5),
+  ];
+
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  afterEach(() => {
+    exitPathEdit();
+    resetAquarelleRecordState();
+    resetForStudioOpen();
+  });
+
+  function renderEdit(
+    stroke: AquarelleStroke,
+    onPathEdit: (id: number, anchors: readonly VectorAnchor[]) => void,
+  ): TestVNode {
+    recordAquarelleStroke(EDIT_ID, stroke, 'frame-key');
+    enterPathEdit(String(EDIT_ID));
+    return render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+  }
+
+  it('writes the corner shape under Spline without a drag or a pointer capture', () => {
+    // The mode is explicit: an ABSENT curveMode reads Bézier (the storage
+    // default), so a truthful Spline pin must say so.
+    const stroke = editedStroke({ curveMode: 'spline' });
+    const originalAnchors = stroke.anchors as readonly VectorAnchor[];
+    const onPathEdit = vi.fn();
+    const root = renderEdit(stroke, onPathEdit);
+    // Under Spline no stored handle is a user-owned control — no dot is drawn.
+    expect(nodesWithTestId(root, 'vector-path-handle')).toHaveLength(0);
+
+    const event = clickAt(0.5, 0.5, { altKey: true });
+    press(root, event);
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [mutationId, next] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(mutationId).toBe(EDIT_ID);
+    expect(next[1]!.kind).toBe('bezier');
+    expect(next[1]!.in).toEqual({ x: 0.5, y: 0.5 });
+    expect(next[1]!.out).toEqual({ x: 0.5, y: 0.5 });
+    expect(next[0]).toEqual(originalAnchors[0]);
+    expect(next[2]).toEqual(originalAnchors[2]);
+    // The selection follows the pressed vertex; the click is a complete gesture.
+    expect(vectorAnchorSelection.peek()).toEqual([1]);
+    expect(captureOf(event).setPointerCapture).not.toHaveBeenCalled();
+    expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+
+  it('collapses a bezier anchor’s stored handles onto the anchor under Bézier', () => {
+    const stroke = editedStroke({ anchors: HANDLE_ANCHORS, curveMode: 'bezier' });
+    const onPathEdit = vi.fn();
+    const root = renderEdit(stroke, onPathEdit);
+    const event = clickAt(0.2, 0.5, { altKey: true });
+    press(root, event);
+
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, next] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(next[0]!.kind).toBe('bezier');
+    expect(next[0]!.in).toEqual({ x: 0.2, y: 0.5 });
+    expect(next[0]!.out).toEqual({ x: 0.2, y: 0.5 });
+    expect(next[1]).toEqual(HANDLE_ANCHORS[1]);
+    expect(next[2]).toEqual(HANDLE_ANCHORS[2]);
+    expect(captureOf(event).setPointerCapture).not.toHaveBeenCalled();
+    expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+
+  it('commits nothing on an already-corner vertex but still selects it', () => {
+    const cornerAnchors: readonly VectorAnchor[] = [
+      auto(0.2, 0.5),
+      { x: 0.5, y: 0.5, kind: 'bezier', in: { x: 0.5, y: 0.5 }, out: { x: 0.5, y: 0.5 } },
+      auto(0.8, 0.5),
+    ];
+    const stroke = editedStroke({ anchors: cornerAnchors, curveMode: 'spline' });
+    const onPathEdit = vi.fn();
+    const root = renderEdit(stroke, onPathEdit);
+    press(root, clickAt(0.5, 0.5, { altKey: true }));
+
+    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(vectorAnchorSelection.peek()).toEqual([1]);
+    expect(vectorPathEditDrag.peek()).toBeNull();
+  });
+
+  it('leaves Alt on a handle dot as the shipped handle drag, committing nothing without movement', () => {
+    const stroke = editedStroke({ anchors: HANDLE_ANCHORS, curveMode: 'bezier' });
+    const onPathEdit = vi.fn();
+    const root = renderEdit(stroke, onPathEdit);
+    const event = clickAt(0.25, 0.5, { altKey: true });
+    press(root, event);
+
+    // Handle hits outrank anchor hits: the shipped drag starts, no corner write.
+    expect(captureOf(event).setPointerCapture).toHaveBeenCalledTimes(1);
+    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(vectorPathEditDrag.peek()).not.toBeNull();
+
+    const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
+    expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
+    onPointerUp!(clickAt(0.25, 0.5, { altKey: true }));
+    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(vectorPathEditDrag.peek()).toBeNull();
   });
 });
