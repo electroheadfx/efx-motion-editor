@@ -527,6 +527,21 @@ export function decimateScriptPoints(points: readonly CanvasPoint[]): CanvasPoin
 }
 
 /**
+ * 261112-n3f: the display-only band descriptor a port returns for one listed
+ * entry. `maskedEdge: true` declares a polygon whose outline is its own
+ * closed, self-intersecting ring (the vector per-vertex envelope), so the
+ * drawing surface renders it as an unmasked fill PLUS a masked edge — the
+ * wash survives and no interior crossing line is painted. An absent flag
+ * (paint footprint, lift ribbon) keeps the shipped single path with unchanged
+ * rendered props.
+ */
+export interface ScriptStrokeBand {
+  /** Display-only geometry — never mutated, never a hit-test or bounds input. */
+  readonly polygonPx: readonly CanvasPoint[];
+  readonly maskedEdge?: boolean;
+}
+
+/**
  * The per-module edition contract. Watercolor wires the list/hit functions
  * from its selection module; the brush wires the engine-backed port. The
  * Studio injects the delete/move/step callbacks.
@@ -541,8 +556,12 @@ export interface ScriptStrokeEditionPort {
    * "Preview stroke size" switch is on. Absent means the module has no band
    * geometry and the overlay keeps its centerline. NEVER a hit-test, bounds,
    * stack or script input.
+   *
+   * 261112-n3f: the band travels as a descriptor so the drawing surface can
+   * honour an edge policy (`maskedEdge`) without knowing which module
+   * produced the polygon.
    */
-  bandFor?(entry: SelectableScriptStroke, size: ScriptStrokeSize): CanvasPoint[] | undefined;
+  bandFor?(entry: SelectableScriptStroke, size: ScriptStrokeSize): ScriptStrokeBand | undefined;
   /** 261024-mz5: the WHOLE selection in one batch edit. */
   deleteStrokes(ids: readonly number[]): void;
   moveStrokes(ids: readonly number[], dxPx: number, dyPx: number): void;

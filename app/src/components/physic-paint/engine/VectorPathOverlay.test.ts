@@ -46,6 +46,7 @@ import {
 import {
   beginAquarellePathEdit,
   listSelectableAquarelleStrokes,
+  resolveAquarelleStrokeBandPx,
   restoreAquarelleEditSnapshot,
   setAquarelleScriptEditInFlight,
 } from '../view/aquarelleStrokeSelection';
@@ -85,8 +86,10 @@ import { ScriptStrokeOverlay } from './ScriptStrokeOverlay';
 import { requestAquarellePathEdit } from './AquarelleStrokeOverlay';
 import { buildStrokeBand } from '../view/aquarelleStrokeBand';
 import {
+  clearScriptStrokeTransform,
   scriptSelectedStrokeIds,
   setScriptStrokeSelection,
+  setScriptStrokeTransform,
   setStrokeSizePreview,
   strokeSizePreview,
   wireframeMode,
@@ -1804,6 +1807,10 @@ describe('61-25 UI-03/UI-04 — the band, marker and chrome law', () => {
       isActive: () => false,
       listStrokes: () => rows,
       hitTestStroke: () => null,
+      // 261112-n3f: this describe wires the REAL resolver, so the Select-band
+      // pins below exercise the shipped descriptor end-to-end. The preview is
+      // OFF by default, so the shipped tests here are unaffected.
+      bandFor: resolveAquarelleStrokeBandPx,
       deleteStrokes: () => {},
       moveStrokes: () => {},
       transformStrokes: () => {},
@@ -2063,6 +2070,172 @@ describe('61-25 UI-03/UI-04 — the band, marker and chrome law', () => {
     // No dead construction-view gate survives in the source.
     const source = readFileSync(resolve(__dirname, './ScriptStrokeOverlay.tsx'), 'utf8');
     expect(source).not.toContain('wireframeOnly');
+  });
+
+  // --- 261112-n3f: the Select/Move band end-to-end -------------------------
+
+  const VECTOR_ID = 97101;
+  const PAINT_ID = 97102;
+  const LIFT_ID = 97103;
+
+  /** The row `<g>` of one listed stroke — the band nodes live inside it. */
+  function rowOf(tree: unknown, mutationId: number): TestVNode {
+    const rows = [...walk(tree)].filter((node) => node.props?.['data-stroke-id'] === mutationId);
+    expect(rows, `stroke row ${mutationId}`).toHaveLength(1);
+    return rows[0]!;
+  }
+
+  function masksOf(tree: unknown): TestVNode[] {
+    return [...walk(tree)].filter((node) => node.type === 'mask');
+  }
+
+  /** One vector stroke (per-vertex profile), one hand-painted, one lift. */
+  function recordMixedRows() {
+    recordAquarelleStroke(
+      VECTOR_ID,
+      weightedStroke({ mutationId: VECTOR_ID }),
+      'frame-key',
+    );
+    recordAquarelleStroke(
+      PAINT_ID,
+      vectorStroke({ mutationId: PAINT_ID, anchors: undefined }),
+      'frame-key',
+    );
+    recordAquarelleStroke(
+      LIFT_ID,
+      vectorStroke({ mutationId: LIFT_ID, tool: 'lift', anchors: undefined }),
+      'frame-key',
+    );
+    return listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+  }
+
+  /**
+   * The describe's helper hardcodes `selectMode: false`, and the overlay
+   * returns null without select mode, move mode, a drag or a transform
+   * preview — so every Select-band render turns the surface on.
+   */
+  function selectOverlay(rows: ReturnType<typeof listSelectableAquarelleStrokes>) {
+    return render(
+      ScriptStrokeOverlay({ ...overlayProps(portOver(rows)), selectMode: true }),
+    );
+  }
+
+  it('draws a Select-mode vector band as an unmasked fill plus one masked edge', () => {
+    const rows = recordMixedRows();
+    expect(rows).toHaveLength(3);
+    setStrokeSizePreview(true);
+    const tree = selectOverlay(rows);
+    const vectorRow = rowOf(tree, VECTOR_ID);
+
+    // The wash survives: the fill keeps the shipped testid, wash and fill rule
+    // and carries NO stroke and NO mask.
+    const fill = nodesWithTestId(vectorRow, 'stroke-size-band');
+    expect(fill).toHaveLength(1);
+    expect(fill[0]!.props['fillOpacity']).toBe(0.07);
+    expect(fill[0]!.props['fillRule']).toBe('nonzero');
+    expect(Object.prototype.hasOwnProperty.call(fill[0]!.props, 'mask')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(fill[0]!.props, 'stroke')).toBe(false);
+
+    // The edge is the ONLY masked node of the whole surface, at the doubled
+    // width so the VISIBLE edge stays at the 3.5/1.5 law.
+    const edges = nodesWithTestId(vectorRow, 'stroke-size-band-edge');
+    expect(edges).toHaveLength(1);
+    const edge = edges[0]!;
+    expect(edge.props['fill']).toBe('none');
+    expect(edge.props['stroke']).toBe('#103c65');
+    expect(edge.props['strokeWidth']).toBe(3);
+    expect(edge.props['vectorEffect']).toBe('non-scaling-stroke');
+    const masked = [...walk(tree)].filter((node) => node.props?.['mask'] !== undefined);
+    expect(masked).toHaveLength(1);
+    expect(masked[0]).toBe(edge);
+
+    // Exactly ONE mask: its id is the edge's reference, it covers the layer
+    // box in white and cuts the band's own ring in black.
+    const masks = masksOf(tree);
+    expect(masks).toHaveLength(1);
+    const id = String(edge.props['mask']).replace(/^url\(#/, '').replace(/\)$/, '');
+    expect(masks[0]!.props['id']).toBe(id);
+    const children = childrenOf(masks[0]!) as TestVNode[];
+    expect(children).toHaveLength(2);
+    expect(children[0]!.props['fill']).toBe('white');
+    expect(children[0]!.props['width']).toBe(WIDTH);
+    expect(children[0]!.props['height']).toBe(HEIGHT);
+    expect(children[1]!.props['fill']).toBe('black');
+    expect(children[1]!.props['fillRule']).toBe('nonzero');
+    expect(children[1]!.props['d']).toBe(fill[0]!.props['d']);
+
+    // The paint band and the lift ribbon keep the shipped SINGLE path: their
+    // own testid, no mask, the visible 1.5 weight, no edge node of their own.
+    const paintRow = rowOf(tree, PAINT_ID);
+    const paintBands = nodesWithTestId(paintRow, 'stroke-size-band');
+    expect(paintBands).toHaveLength(1);
+    expect(paintBands[0]!.props['strokeWidth']).toBe(1.5);
+    expect(Object.prototype.hasOwnProperty.call(paintBands[0]!.props, 'mask')).toBe(false);
+    expect(nodesWithTestId(paintRow, 'stroke-size-band-edge')).toHaveLength(0);
+
+    const liftRow = rowOf(tree, LIFT_ID);
+    const ribbons = nodesWithTestId(liftRow, 'stroke-lift-ribbon');
+    expect(ribbons).toHaveLength(1);
+    expect(ribbons[0]!.props['strokeWidth']).toBe(1.5);
+    expect(Object.prototype.hasOwnProperty.call(ribbons[0]!.props, 'mask')).toBe(false);
+    expect(nodesWithTestId(liftRow, 'stroke-size-band-edge')).toHaveLength(0);
+
+    // Selecting raises the fill wash and the VISIBLE edge to 0.14 / 3.5.
+    setScriptStrokeSelection([VECTOR_ID]);
+    const selectedRow = rowOf(selectOverlay(rows), VECTOR_ID);
+    expect(nodesWithTestId(selectedRow, 'stroke-size-band')[0]!.props['fillOpacity']).toBe(0.14);
+    expect(nodesWithTestId(selectedRow, 'stroke-size-band-edge')[0]!.props['strokeWidth']).toBe(7);
+    setScriptStrokeSelection([]);
+  });
+
+  it('emits no mask for a listing of hand-painted and lift rows only', () => {
+    recordAquarelleStroke(
+      PAINT_ID,
+      vectorStroke({ mutationId: PAINT_ID, anchors: undefined }),
+      'frame-key',
+    );
+    recordAquarelleStroke(
+      LIFT_ID,
+      vectorStroke({ mutationId: LIFT_ID, tool: 'lift', anchors: undefined }),
+      'frame-key',
+    );
+    const rows = listSelectableAquarelleStrokes(FRAME, SIZE, 'all');
+    expect(rows).toHaveLength(2);
+    setStrokeSizePreview(true);
+    const tree = selectOverlay(rows);
+    expect(nodesWithTestId(tree, 'stroke-size-band')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'stroke-lift-ribbon')).toHaveLength(1);
+    expect(nodesWithTestId(tree, 'stroke-size-band-edge')).toHaveLength(0);
+    expect(masksOf(tree)).toHaveLength(0);
+    expect([...walk(tree)].filter((node) => node.type === 'defs')).toHaveLength(0);
+  });
+
+  it('moves the fill, the edge and the mask path together under a transform preview', () => {
+    const rows = recordMixedRows();
+    setStrokeSizePreview(true);
+    const beforeFill = nodesWithTestId(rowOf(selectOverlay(rows), VECTOR_ID), 'stroke-size-band')[0]!;
+
+    setScriptStrokeTransform({
+      ids: [VECTOR_ID],
+      kind: 'scale',
+      centerX: 100,
+      centerY: 100,
+      anchorX: 100,
+      anchorY: 100,
+      angleRad: 0,
+      scaleX: 2,
+      scaleY: 2,
+    });
+    const afterRow = rowOf(selectOverlay(rows), VECTOR_ID);
+    const afterFill = nodesWithTestId(afterRow, 'stroke-size-band')[0]!;
+    const afterEdge = nodesWithTestId(afterRow, 'stroke-size-band-edge')[0]!;
+    const maskPath = (childrenOf(masksOf(afterRow)[0]!) as TestVNode[])[1]!;
+
+    // Every band vertex moved, and the three painted strings are ONE moved d.
+    expect(afterFill.props['d']).not.toBe(beforeFill.props['d']);
+    expect(afterEdge.props['d']).toBe(afterFill.props['d']);
+    expect(maskPath.props['d']).toBe(afterFill.props['d']);
+    clearScriptStrokeTransform();
   });
 });
 

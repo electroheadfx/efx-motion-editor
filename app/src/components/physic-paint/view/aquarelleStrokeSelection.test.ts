@@ -27,7 +27,11 @@ import {
 } from '@efxlab/efx-watercolor/payload';
 import { buildBrushForStroke, toEngineParams } from '@efxlab/efx-watercolor';
 import { liftEngineSize, liftRadiusDoc } from '../roto/aquarelleLiftErase';
-import { resampleVectorPaintPoints, vectorSpinePressures } from './vectorPathHandles';
+import {
+  projectVectorPath,
+  resampleVectorPaintPoints,
+  vectorSpinePressures,
+} from './vectorPathHandles';
 import {
   aquarelleStrokesRevision,
   bumpAquarellePaintSeedSalts,
@@ -1080,11 +1084,75 @@ describe('261101-mvg preview stroke size band', () => {
     return entry!;
   }
 
+  /**
+   * 261112-n3f: a VECTOR stroke — anchors present with ONE explicit width
+   * factor, so a per-vertex envelope exists and the paint-band branch must
+   * never be taken for it.
+   */
+  function recordVector(): AquarelleStroke {
+    const vector: AquarelleStroke = {
+      ...stroke({
+        points: [point(0.15, 0.5), point(0.5, 0.5), point(0.85, 0.5)],
+        playFrame: FRAME,
+        size: 40,
+      }),
+      anchors: [
+        { x: 0.15, y: 0.5, kind: 'auto' },
+        { x: 0.5, y: 0.5, kind: 'auto', width: 1.8 },
+        { x: 0.85, y: 0.5, kind: 'auto' },
+      ],
+    };
+    recordAquarelleStroke(10063, vector);
+    return vector;
+  }
+
   it('resolves no band for either kind while the switch is off', () => {
     recordBoth();
+    recordVector();
     expect(strokeSizePreview.value).toBe(false);
     expect(resolveAquarelleStrokeBandPx(entryOf(10061), SHEET)).toBeUndefined();
     expect(resolveAquarelleStrokeBandPx(entryOf(10062), SHEET)).toBeUndefined();
+    expect(resolveAquarelleStrokeBandPx(entryOf(10063), SHEET)).toBeUndefined();
+  });
+
+  it('resolves a vector stroke to its per-vertex envelope flagged for the masked edge', () => {
+    const vector = recordVector();
+    setStrokeSizePreview(true);
+
+    const band = resolveAquarelleStrokeBandPx(entryOf(10063), SHEET);
+    expect(band).toBeDefined();
+    // 261112-n3f: the ONE vector-only edge policy — the closed, self-
+    // intersecting ring, so the surface draws an unmasked fill plus a masked
+    // edge.
+    expect(band!.maskedEdge).toBe(true);
+    expect(band!.polygonPx.length).toBeGreaterThan(2);
+    // The SAME envelope `VectorPathOverlay` draws: same stored anchors, same
+    // evaluation mode (the stroke records none, so Bézier), same base width.
+    expect(band!.polygonPx).toEqual(
+      projectVectorPath(vector.anchors!, SHEET.width, SHEET.height, {
+        curveMode: 'bezier',
+      }).envelope,
+    );
+  });
+
+  it('resolves no band for a uniform-profile vector stroke', () => {
+    const uniform: AquarelleStroke = {
+      ...stroke({
+        points: [point(0.15, 0.5), point(0.5, 0.5), point(0.85, 0.5)],
+        playFrame: FRAME,
+        size: 40,
+      }),
+      anchors: [
+        { x: 0.15, y: 0.5, kind: 'auto' },
+        { x: 0.5, y: 0.5, kind: 'auto' },
+        { x: 0.85, y: 0.5, kind: 'auto' },
+      ],
+    };
+    recordAquarelleStroke(10064, uniform);
+    setStrokeSizePreview(true);
+    // D-10: a uniform profile stores no factor, so no envelope exists and
+    // there is nothing to preview.
+    expect(resolveAquarelleStrokeBandPx(entryOf(10064), SHEET)).toBeUndefined();
   });
 
   it('resolves the paint footprint band and the unchanged lift ribbon while on', () => {
@@ -1094,7 +1162,10 @@ describe('261101-mvg preview stroke size band', () => {
     const paintEntry = entryOf(10061);
     const paintBand = resolveAquarelleStrokeBandPx(paintEntry, SHEET);
     expect(paintBand).toBeDefined();
-    expect(paintBand!.length).toBeGreaterThan(2);
+    expect(paintBand!.polygonPx.length).toBeGreaterThan(2);
+    // 261112-n3f: a hand-painted band carries NO edge policy — it keeps the
+    // shipped single-path rendering, unchanged rendered props included.
+    expect(Object.prototype.hasOwnProperty.call(paintBand, 'maskedEdge')).toBe(false);
 
     // Every drawn vertex stays inside the bake footprint: the radius law the
     // band shares with Engine/aquarelleFootprint, at this stroke's pressure.
@@ -1108,7 +1179,7 @@ describe('261101-mvg preview stroke size band', () => {
       ) * SHEET.height;
     expect(radiusPx).toBeGreaterThan(MIN_STROKE_PAD_PX);
     const centerline = aquarelleStrokePointsPx(paint, SHEET);
-    for (const vertex of paintBand!) {
+    for (const vertex of paintBand!.polygonPx) {
       expect(distanceToPolyline(vertex, centerline)).toBeLessThanOrEqual(
         radiusPx + 1e-6,
       );
@@ -1117,17 +1188,23 @@ describe('261101-mvg preview stroke size band', () => {
     // A lift keeps the 261029-eur ribbon by identity — no second geometry.
     const liftEntry = entryOf(10062);
     expect(liftEntry.ribbonPx).toBeDefined();
-    expect(resolveAquarelleStrokeBandPx(liftEntry, SHEET)).toBe(liftEntry.ribbonPx);
+    const liftBand = resolveAquarelleStrokeBandPx(liftEntry, SHEET);
+    expect(liftBand).toEqual({ polygonPx: liftEntry.ribbonPx });
+    expect(liftBand!.polygonPx).toBe(liftEntry.ribbonPx);
+    expect(Object.prototype.hasOwnProperty.call(liftBand, 'maskedEdge')).toBe(false);
   });
 
   it('leaves the listed entries byte-identical across the toggle', () => {
     recordBoth();
+    recordVector();
     const before = listSelectableAquarelleStrokes(FRAME, SHEET);
     setStrokeSizePreview(true);
     const after = listSelectableAquarelleStrokes(FRAME, SHEET);
     expect(after).toEqual(before);
 
-    for (const mutationId of [10061, 10062]) {
+    // 10063 is the vector row: the switch resolves its envelope, yet never
+    // changes a single listed byte.
+    for (const mutationId of [10061, 10062, 10063]) {
       const beforeEntry = before.find((candidate) => candidate.mutationId === mutationId)!;
       const afterEntry = after.find((candidate) => candidate.mutationId === mutationId)!;
       expect(afterEntry.bounds).toEqual(beforeEntry.bounds);

@@ -3142,7 +3142,9 @@ describe('261022-pim watercolor stroke select surface', () => {
     // Unselected bands stay quiet (thin edge, faint wash); selecting one
     // restores the full weight.
     expect(scriptStrokeOverlay).toContain('fillOpacity={isSelected ? 0.14 : 0.07}');
-    expect(scriptStrokeOverlay).toContain('strokeWidth={isSelected ? 3.5 : 1.5}');
+    // 261112-n3f: the visible weight is hoisted to ONE constant — a masked band
+    // authors it doubled so the mask trim keeps the same 3.5/1.5 silhouette.
+    expect(scriptStrokeOverlay).toContain('const bandEdgeWidthPx = isSelected ? 3.5 : 1.5;');
     expect(scriptStrokeOverlay).toContain("const SELECTED_STROKE_COLOR = '#38bdf8';");
     expect(scriptStrokeOverlay).toContain("const OUTLINE_DARK = '#111111';");
     expect(scriptStrokeOverlay).toContain("const OUTLINE_LIGHT = '#ffffff';");
@@ -3154,10 +3156,15 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(scriptStrokeOverlay).toContain('props.port.bandFor');
     expect(scriptStrokeOverlay).toContain('stroke-size-band');
     expect(scriptStrokeOverlay).toContain('stroke-lift-ribbon');
+    // 261112-n3f: the descriptor's edge policy is honoured by a per-row mask —
+    // an unmasked fill node plus one masked edge node, never a filter.
+    expect(scriptStrokeOverlay).toContain('maskedEdge');
+    expect(scriptStrokeOverlay).toContain('script-stroke-band-mask-');
+    expect(scriptStrokeOverlay).toContain('stroke-size-band-edge');
     // The band region must map EVERY polygon vertex through the same transform
     // and drag offset as the centerline. A branch-exists-only pin cannot catch
     // a preview that stops following the band (UAT row 6).
-    const bandStart = scriptStrokeOverlay.indexOf('const bandPx');
+    const bandStart = scriptStrokeOverlay.indexOf('const band =');
     const badgeStart = scriptStrokeOverlay.indexOf('const badgeAccent');
     expect(bandStart).toBeGreaterThan(-1);
     expect(badgeStart).toBeGreaterThan(bandStart);

@@ -24,6 +24,7 @@ import {
 } from '@efxlab/efx-watercolor/brushes';
 import {
   isAquarelleDryEvent,
+  resolveAquarelleCurveMode,
   type AquarelleAnchor,
   type AquarelleCurveMode,
   type AquarellePayloadEvent,
@@ -54,6 +55,7 @@ import {
   toggleScriptStrokeSelection,
   wireframeMode,
   type CanvasPoint,
+  type ScriptStrokeBand,
   type ScriptStrokeBounds,
   type ScriptStrokeDrag,
   type ScriptStrokeEditionPort,
@@ -69,6 +71,7 @@ import {
   trimLiftRibbonCache,
 } from './aquarelleLiftRibbon';
 import { buildStrokeBandCached, trimStrokeBandCache } from './aquarelleStrokeBand';
+import { projectVectorPath } from './vectorPathHandles';
 import {
   aquarelleStrokeSerial,
   aquarelleStrokesRevision,
@@ -575,15 +578,28 @@ export function listSelectableAquarelleStrokes(
 }
 
 /**
- * 261101-mvg: the footprint band the overlay draws for one listed entry while
- * the "Preview stroke size" switch is ON. DISPLAY-ONLY: this path is
- * unreachable from `hitTestAquarelleStroke` (which walks the registry
- * directly), and it never touches bounds, stack positions or the script.
+ * 261101-mvg: the band the overlay draws for one listed entry while the
+ * "Preview stroke size" switch is ON. DISPLAY-ONLY: this path is unreachable
+ * from `hitTestAquarelleStroke` (which walks the registry directly), and it
+ * never touches bounds, stack positions or the script.
  *
- * - OFF returns nothing for BOTH kinds, the Eraser included (default).
- * - ON returns a lift's `ribbonPx` BY IDENTITY (the listing already built it —
- *   never rebuild the 261029-eur law here) and a paint polygon from the ONE
- *   band module.
+ * 261112-n3f — THREE descriptor shapes, one per stroke kind:
+ * - OFF returns nothing for every kind, the Eraser included (default).
+ * - A lift returns `{ polygonPx: entry.ribbonPx }` — the listing already built
+ *   it, so the 261029-eur law is never rebuilt here — and a paint stroke
+ *   returns `{ polygonPx }` from the ONE cached band module. Both keep the
+ *   shipped single-path rendering: no edge policy.
+ * - A VECTOR stroke returns `{ polygonPx: envelope, maskedEdge: true }`: the
+ *   SAME per-vertex envelope `VectorPathOverlay` draws (same stored anchors,
+ *   same evaluation mode, same display-only base width) — never the paint-band
+ *   approximation that ignored the per-anchor width factors. Its closed,
+ *   self-intersecting ring is what the drawing surface masks, so the interior
+ *   crossing lines are gone while the wash survives. D-10 still means a
+ *   uniform profile resolves nothing (there is no envelope to preview).
+ *
+ * Cost: a pure spine evaluation per listed vector stroke per render, only
+ * while the switch is ON. It REPLACES the cached engine-band build for those
+ * strokes — no decode, no cache entry, no new signal, no invalidation surface.
  *
  * The `strokeSizePreview.value` read happens inside the overlay's render, so
  * the subscription is the narrow leaf's (efx-preact-reactivity rule 5).
@@ -591,18 +607,29 @@ export function listSelectableAquarelleStrokes(
 export function resolveAquarelleStrokeBandPx(
   entry: SelectableAquarelleStroke,
   size: EnginePixelSize,
-): CanvasPoint[] | undefined {
+): ScriptStrokeBand | undefined {
   if (!strokeSizePreview.value) return undefined;
-  if (entry.kind === 'lift') return entry.ribbonPx;
+  if (entry.kind === 'lift') {
+    // Lifts never resolve a masked band — the ribbon is its own closed shape.
+    return entry.ribbonPx === undefined ? undefined : { polygonPx: entry.ribbonPx };
+  }
   const stroke = getRecordedAquarelleStroke(entry.mutationId);
   if (!stroke) return undefined;
+  // Vector stroke: the per-vertex envelope, flagged for the masked-edge policy.
+  if (stroke.anchors !== undefined && stroke.anchors.length > 0) {
+    const envelope = projectVectorPath(stroke.anchors, size.width, size.height, {
+      curveMode: resolveAquarelleCurveMode(stroke.curveMode),
+    }).envelope;
+    return envelope.length > 0 ? { polygonPx: envelope, maskedEdge: true } : undefined;
+  }
   const polygonPx = buildStrokeBandCached(
     stroke,
     entry.mutationId,
     size,
     aquarelleStrokesRevision.value,
   ).polygonPx;
-  return polygonPx.length > 0 ? polygonPx : undefined;
+  // Hand-painted: the shipped cached footprint band, vertex-for-vertex.
+  return polygonPx.length > 0 ? { polygonPx } : undefined;
 }
 
 /**

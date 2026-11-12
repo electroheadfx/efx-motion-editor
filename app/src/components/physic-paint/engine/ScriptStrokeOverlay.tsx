@@ -414,14 +414,18 @@ export function ScriptStrokeOverlay(props: {
           // 261101-mvg: the switch-gated footprint band. OFF (the default,
           // Eraser included) resolves nothing and falls through to today's
           // thin centerline; ON draws the area the stroke actually covers
-          // (paint) or the unchanged 261029-eur ribbon (Eraser). Every band
-          // vertex goes through the same transform and drag offset as its
-          // centerline — no geometry translation anywhere else.
-          const bandPx = wireframeBandPx !== undefined && wireframeBandPx.length > 0
-            ? wireframeBandPx
+          // (paint), the unchanged 261029-eur ribbon (Eraser), or — 261112-n3f
+          // — the vector per-vertex envelope. Every band vertex goes through
+          // the same transform and drag offset as its centerline — no geometry
+          // translation anywhere else.
+          const band = wireframeBandPx !== undefined && wireframeBandPx.length > 0
+            // A wireframe footprint band is never masked: it is a hand-painted
+            // footprint, whose ring does not self-intersect.
+            ? { polygonPx: wireframeBandPx, maskedEdge: false }
             : previewStrokeSize && props.port.bandFor !== undefined
               ? props.port.bandFor(entry, size)
               : undefined;
+          const bandPx = band?.polygonPx;
           const bandPath = bandPx !== undefined && bandPx.length > 0
             ? `M${bandPx
                 .map((p) => {
@@ -431,6 +435,20 @@ export function ScriptStrokeOverlay(props: {
                   return `${moved.x + offsetX},${moved.y + offsetY}`;
                 })
                 .join(' L')} Z`
+            : null;
+          // 261112-n3f: the ONE edge weight. An SVG stroke straddles the path,
+          // and on a masked band the mask hides the half that falls inside the
+          // filled band, so the authored width is doubled to keep the VISIBLE
+          // edge at the 61-25 band law (3.5 selected / 1.5 unselected).
+          const bandEdgeWidthPx = isSelected ? 3.5 : 1.5;
+          // The descriptor's edge policy: a vector envelope is masked by its
+          // own closed ring, so only its outer silhouette survives and no
+          // interior crossing line is painted (no polygon union, no filter).
+          // A numeric mutation id needs no sanitising, listed ids are unique,
+          // and one overlay mounts per canvas layer — so the id is
+          // document-unique and cannot collide with the Edit-path mask family.
+          const bandMaskId = band?.maskedEdge === true
+            ? `script-stroke-band-mask-${entry.mutationId}`
             : null;
           // The centerline polylines (the OFF outline / no-band fallback) and
           // the bbox stay as-is.
@@ -460,19 +478,72 @@ export function ScriptStrokeOverlay(props: {
               data-testid={dragged ? props.ghostTestId : undefined}
             >
               {bandPath !== null ? (
-                <path
-                  data-testid={entry.kind === 'lift' ? 'stroke-lift-ribbon' : 'stroke-size-band'}
-                  d={bandPath}
-                  fill={bandAccent}
-                  // Unselected stays a quiet reference: a thin edge and a
-                  // faint wash. Selecting it brings the full weight back.
-                  fillOpacity={isSelected ? 0.14 : 0.07}
-                  fillRule="nonzero"
-                  stroke={bandAccent}
-                  strokeWidth={isSelected ? 3.5 : 1.5}
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
-                />
+                bandMaskId !== null ? (
+                  <>
+                    {/* 261112-n3f: the mask is built from the SAME polygon the
+                        fill paints, so only the outer silhouette survives. The
+                        polygon is a closed self-intersecting ring by
+                        construction (the vector envelope); its stroke is what
+                        painted the crossing straight lines inside the band. */}
+                    <defs>
+                      <mask
+                        id={bandMaskId}
+                        maskUnits="userSpaceOnUse"
+                        x={0}
+                        y={0}
+                        width={props.width}
+                        height={props.height}
+                      >
+                        <rect
+                          x={0}
+                          y={0}
+                          width={props.width}
+                          height={props.height}
+                          fill="white"
+                        />
+                        <path d={bandPath} fill="black" fillRule="nonzero" />
+                      </mask>
+                    </defs>
+                    {/* The fill is NEVER masked: a black mask path covers the
+                        band interior, so masking the fill would erase the wash
+                        and leave a hollow contour. */}
+                    <path
+                      data-testid={entry.kind === 'lift' ? 'stroke-lift-ribbon' : 'stroke-size-band'}
+                      d={bandPath}
+                      fill={bandAccent}
+                      // Unselected stays a quiet reference: a thin edge and a
+                      // faint wash. Selecting it brings the full weight back.
+                      fillOpacity={isSelected ? 0.14 : 0.07}
+                      fillRule="nonzero"
+                    />
+                    {/* The edge is the ONLY masked node, at the doubled width,
+                        so the visible edge keeps its 3.5/1.5 weight. */}
+                    <path
+                      data-testid="stroke-size-band-edge"
+                      d={bandPath}
+                      fill="none"
+                      stroke={bandAccent}
+                      strokeWidth={bandEdgeWidthPx * 2}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      mask={`url(#${bandMaskId})`}
+                    />
+                  </>
+                ) : (
+                  <path
+                    data-testid={entry.kind === 'lift' ? 'stroke-lift-ribbon' : 'stroke-size-band'}
+                    d={bandPath}
+                    fill={bandAccent}
+                    // Unselected stays a quiet reference: a thin edge and a
+                    // faint wash. Selecting it brings the full weight back.
+                    fillOpacity={isSelected ? 0.14 : 0.07}
+                    fillRule="nonzero"
+                    stroke={bandAccent}
+                    strokeWidth={bandEdgeWidthPx}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )
               ) : null}
               {/* 61-13: under the wireframe the centreline rides WITH the band
                   (the band is the footprint; the spine is the path). Outside
