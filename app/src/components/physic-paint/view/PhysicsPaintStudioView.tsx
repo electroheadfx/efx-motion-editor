@@ -685,9 +685,13 @@ function PhysicsPaintApplyProgressPill({ rotoScript }: { rotoScript: PhysicsPain
   );
 }
 
-/** A fast re-bake must not flash the veil; a slow one must not strobe on exit. */
-const PATH_EDIT_VEIL_DELAY_MS = 150;
-const PATH_EDIT_VEIL_MIN_MS = 350;
+/**
+ * A re-bake shorter than this never keeps the veil on screen: it is dismissed
+ * on the spot, so a quick edit costs one painted frame, not a flash.
+ */
+const PATH_EDIT_VEIL_FLASH_GUARD_MS = 120;
+/** Once a re-bake is genuinely slow, the veil holds this long so the exit never strobes. */
+const PATH_EDIT_VEIL_MIN_MS = 300;
 
 /**
  * 261112-i6d: the canvas veil for a path-edit re-bake. A path edit replays the
@@ -695,29 +699,37 @@ const PATH_EDIT_VEIL_MIN_MS = 350;
  * is genuinely inert while it runs — the wait was real but invisible, and a
  * second click read as a dead control. The veil states it.
  *
- * Timing lives here, not in the commit: the signal is the honest in-flight
- * edge (opened by the rebake's own latch), and the delay/minimum are pure
- * presentation. `shown` is a component-local signal so the animation never
- * re-renders the Studio.
+ * It shows IMMEDIATELY, with no appearance delay, and that is deliberate: the
+ * bake only yields to the host between fed strokes (never for a short single-
+ * stroke script), so a timer-based delay could never fire mid-replay — it
+ * would be cancelled when the work ended and the veil would never be seen. The
+ * commit paints for us instead: `yieldForPaint` in `runAquarelleScriptRebake`
+ * flushes this signal into the DOM and lets that frame reach the screen before
+ * the bake starts. `FLASH_GUARD_MS` then removes the veil outright for work
+ * that finished inside it, so only genuinely slow bakes ever linger.
+ *
+ * `shown` is a component-local signal so the timing never re-renders the
+ * Studio.
  */
 function PathEditRebakeVeil() {
   const active = pathEditRebakeActive.value;
   const shown = useRef(signal(false)).current;
-  const shownAtRef = useRef(0);
+  const startedAtRef = useRef(0);
 
   useEffect(() => {
+    const now = performance.now();
     if (active) {
-      const timer = window.setTimeout(() => {
-        shownAtRef.current = performance.now();
-        shown.value = true;
-      }, PATH_EDIT_VEIL_DELAY_MS);
-      return () => window.clearTimeout(timer);
+      startedAtRef.current = now;
+      shown.value = true;
+      return undefined;
     }
     if (!shown.peek()) return undefined;
-    const remaining = Math.max(
-      0,
-      PATH_EDIT_VEIL_MIN_MS - (performance.now() - shownAtRef.current),
-    );
+    const elapsed = now - startedAtRef.current;
+    if (elapsed < PATH_EDIT_VEIL_FLASH_GUARD_MS) {
+      shown.value = false;
+      return undefined;
+    }
+    const remaining = Math.max(0, PATH_EDIT_VEIL_MIN_MS - elapsed);
     const timer = window.setTimeout(() => { shown.value = false; }, remaining);
     return () => window.clearTimeout(timer);
   }, [active, shown]);

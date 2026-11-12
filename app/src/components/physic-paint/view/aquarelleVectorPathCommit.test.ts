@@ -138,6 +138,24 @@ describe('61-15 runAquarelleScriptRebake', () => {
     expect(gate.value).toBe(false);
   });
 
+  // 261112-i6d: the host is yielded ONE turn after the latch opens and before
+  // any work. A re-bake only yields between FED strokes (and not at all for a
+  // single-stroke script), so without this turn a blocker bound to the latch
+  // could never paint — the canvas just went dead and jumped to the result.
+  it('hands the host one turn between the latch and the work', async () => {
+    const { sequence, mocks } = makeSequence();
+    const pending = runAquarelleScriptRebake(sequence);
+
+    // The latch is synchronous; the work is NOT — it waits for the host turn.
+    expect(mocks.beginInFlight).toHaveBeenCalledTimes(1);
+    expect(mocks.resetSheet).not.toHaveBeenCalled();
+    expect(mocks.applyTimeline).not.toHaveBeenCalled();
+
+    await expect(pending).resolves.toBe(true);
+    expect(mocks.resetSheet).toHaveBeenCalledTimes(1);
+    expect(mocks.applyTimeline).toHaveBeenCalledTimes(1);
+  });
+
   it('calls nothing at all while a rebake is already in flight', async () => {
     const { sequence, gate, mocks } = makeSequence();
     gate.value = true;

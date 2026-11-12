@@ -63,19 +63,41 @@ describe('261112-i6d path-edit re-bake veil', () => {
     expect(veil).toContain('if (!shown.value) return null;');
   });
 
-  it('delays the appearance and holds it for a minimum', () => {
+  it('shows at once, then dismisses instantly for fast work and holds for slow work', () => {
     const source = studioViewSource();
-    expect(source).toContain('const PATH_EDIT_VEIL_DELAY_MS = 150;');
-    expect(source).toContain('const PATH_EDIT_VEIL_MIN_MS = 350;');
+    expect(source).toContain('const PATH_EDIT_VEIL_FLASH_GUARD_MS = 120;');
+    expect(source).toContain('const PATH_EDIT_VEIL_MIN_MS = 300;');
     const veil = getVeilComponentBlock(source);
-    const delayAt = veil.indexOf('PATH_EDIT_VEIL_DELAY_MS');
-    const minAt = veil.indexOf('PATH_EDIT_VEIL_MIN_MS');
-    expect(delayAt).toBeGreaterThan(-1);
-    expect(minAt).toBeGreaterThan(-1);
-    // Remaining time is floored at 0 so a slow bake never schedules a negative
-    // delay, and every timer is cleared.
-    expect(veil).toContain('Math.max(');
+    // NO appearance timer: the bake only yields between fed strokes, so a
+    // delayed show could never fire mid-replay. The commit's host turn is the
+    // paint window instead.
+    expect(veil).not.toContain('PATH_EDIT_VEIL_DELAY_MS');
+    expect(veil).toContain('shown.value = true;');
+    // Under the flash guard the veil leaves on the spot — no lingering flash.
+    expect(veil).toContain('if (elapsed < PATH_EDIT_VEIL_FLASH_GUARD_MS) {');
+    expect(veil).toContain('shown.value = false;');
+    // Above it, the exit is held and floored at 0, and the timer is cleared.
+    expect(veil).toContain('Math.max(0, PATH_EDIT_VEIL_MIN_MS - elapsed)');
     expect(veil).toContain('window.clearTimeout(timer)');
+  });
+
+  it('relies on the commit handing the host a turn before the bake blocks', () => {
+    const seam = readFileSync(
+      resolve(here, 'aquarelleVectorPathCommit.ts'),
+      'utf8',
+    );
+    const rebake = regionOf(seam, 'export async function runAquarelleScriptRebake', '\n}');
+    const yieldAt = rebake.indexOf('await yieldForPaint();');
+    const resetAt = rebake.indexOf('sequence.resetSheet();');
+    expect(yieldAt).toBeGreaterThan(-1);
+    expect(resetAt).toBeGreaterThan(yieldAt);
+    // One host turn flushes the signal write into the DOM, then a bounded
+    // two-frame wait lets that frame paint.
+    expect(seam).toContain('new MessageChannel()');
+    expect(seam).toContain('requestAnimationFrame(() => requestAnimationFrame(finish))');
+    // BOUNDED: a hidden window (where rAF never fires) costs a timer, not a hang.
+    expect(seam).toContain('const PAINT_YIELD_TIMEOUT_MS = 64;');
+    expect(seam).toContain('setTimeout(finish, PAINT_YIELD_TIMEOUT_MS)');
   });
 
   it('announces itself once, politely, and never as an error', () => {
