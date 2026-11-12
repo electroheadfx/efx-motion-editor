@@ -710,9 +710,30 @@ describe('quick 261111-vg4 — the two-tab sheet', () => {
     expect(dialogSource).not.toContain('data-testid="stroke-settings-color"');
     expect(dialogSource).not.toContain('segmentedFields');
     expect(dialogSource).not.toContain('hexToRgba');
-    // The LIST type filter (All | Eraser | Paint) is a different surface and
-    // stays — only the TAB was removed.
-    expect(dialogSource).toContain("{ key: 'paint', label: 'Paint', filter: 'paint' },");
+  });
+
+  it('deletes the segmented type row — the tool dropdown is the one entry point', () => {
+    // quick 261112-lq4: the LIST type filter row (Paint | Eraser | All) and
+    // its chrome are gone; the `stroke-settings-tool-filter` select derives
+    // its options from the type-filtered rows instead.
+    expect(dialogSource).not.toContain('STROKE_TYPE_FILTERS');
+    expect(dialogSource).not.toContain('FILTER_ROW_STYLE');
+    expect(dialogSource).not.toContain('FILTER_SEGMENT_STYLE');
+    expect(dialogSource).not.toContain('FILTER_SEGMENT_ACTIVE_STYLE');
+    expect(dialogSource).not.toContain('data-testid="stroke-settings-filter"');
+    expect(dialogSource).not.toContain('stroke-settings-filter-paint');
+    // The top-bar setter (which prunes the selection) is never imported or
+    // called here — the dialog only READS the shared type filter.
+    const selectionImport = regionOf(
+      dialogSource,
+      'import {\n  aquarelleStrokeSettingsDismissed,',
+      "} from './aquarelleStrokeSelection';",
+    );
+    expect(selectionImport).not.toContain('setAquarelleStrokeTypeFilter');
+    expect(dialogSource).not.toContain('setAquarelleStrokeTypeFilter(');
+    expect(dialogSource).toContain('aquarelleStrokeTypeFilter.value');
+    // Exactly ONE filter entry point survives.
+    expect(countOf(dialogSource, 'data-testid="stroke-settings-tool-filter"')).toBe(1);
   });
 
   it('keeps the surviving Geometry survivors and the fixed stack fallback', () => {

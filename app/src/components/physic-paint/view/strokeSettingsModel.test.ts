@@ -99,7 +99,6 @@ import {
   aquarelleStrokeSettingsDismissed,
   aquarelleStrokeTipFilter,
   aquarelleStrokeToolFilter,
-  aquarelleStrokeTypeFilter,
   resetAquarelleStrokeFineFilters,
   setAquarelleSelectMode,
   setAquarelleStrokeTipFilter,
@@ -1524,27 +1523,6 @@ describe('261029-eur dialog filter row, fixed tab set and open-on-empty', () => 
     });
   }
 
-  it('renders the Paint | Eraser | All row for water color only, defaulting to Paint', () => {
-    const { bundle } = watercolorBundle();
-    setAquarelleSelectMode(true);
-    setScriptStrokeSelection([7]);
-    const tree = renderDialog(bundle);
-
-    const row = findByTestId(tree, 'stroke-settings-filter')!;
-    expect(row).toBeDefined();
-    expect(row.props.role).toBe('group');
-    const buttons = ['paint', 'eraser', 'all'].map(
-      (key) => findByTestId(tree, `stroke-settings-filter-${key}`)!,
-    );
-    expect(buttons.map((button) => button.props.children)).toEqual(['Paint', 'Eraser', 'All']);
-    expect(buttons.map((button) => button.props['aria-pressed'])).toEqual([true, false, false]);
-
-    // Brush keeps its sheet without the filter chrome.
-    const brush = createBundle();
-    setScriptStrokeSelection([7]);
-    expect(findByTestId(renderDialog(brush.bundle), 'stroke-settings-filter')).toBeUndefined();
-  });
-
   it('keeps the same two tabs under every filter and a selected lift stroke', () => {
     const { bundle } = watercolorBundle({ reorderStroke: () => true });
     setAquarelleSelectMode(true);
@@ -1596,7 +1574,10 @@ describe('261029-eur dialog filter row, fixed tab set and open-on-empty', () => 
     const tree = renderDialog(bundle);
 
     expect(findByTestId(tree, 'stroke-settings-dialog')).toBeDefined();
-    expect(findByTestId(tree, 'stroke-settings-filter')).toBeDefined();
+    // 261112-lq4: the segmented type row is gone — the tool dropdown is the
+    // sheet's one filter entry point.
+    expect(findByTestId(tree, 'stroke-settings-fine-filters')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-filter')).toBeUndefined();
     // 261031-euf: the dead caption is replaced by the stroke list, and the
     // tab row leaves with it (there is nothing to edit yet).
     expect(findByTestId(tree, 'stroke-settings-empty')).toBeUndefined();
@@ -1609,24 +1590,6 @@ describe('261029-eur dialog filter row, fixed tab set and open-on-empty', () => 
     setScriptSelectMode(false);
     const brush = createBundle();
     expect(renderDialog(brush.bundle)).toBeNull();
-  });
-
-  it('the filter buttons write the shared filter signal', () => {
-    const { bundle } = watercolorBundle();
-    setAquarelleSelectMode(true);
-    setScriptStrokeSelection([7]);
-
-    (findByTestId(renderDialog(bundle), 'stroke-settings-filter-paint')!.props.onClick as () => void)();
-    expect(aquarelleStrokeTypeFilter.value).toBe('paint');
-    expect(
-      findByTestId(renderDialog(bundle), 'stroke-settings-filter-paint')!.props['aria-pressed'],
-    ).toBe(true);
-
-    (findByTestId(renderDialog(bundle), 'stroke-settings-filter-eraser')!.props.onClick as () => void)();
-    expect(aquarelleStrokeTypeFilter.value).toBe('lift');
-
-    (findByTestId(renderDialog(bundle), 'stroke-settings-filter-all')!.props.onClick as () => void)();
-    expect(aquarelleStrokeTypeFilter.value).toBe('all');
   });
 
   it('an explicit close writes the module flag and wins until select mode re-enters', () => {
@@ -2262,7 +2225,7 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     expect(strokeRows(tree)).toEqual([]);
   });
 
-  it('the Paint/Eraser/All filter narrows the rows and lift rows read Eraser', () => {
+  it('the top-bar type filter narrows the rows and lift rows read Eraser', () => {
     const { bundle } = watercolorListBundle();
     setAquarelleSelectMode(true);
 
@@ -2279,6 +2242,45 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     expect(findByTestId(liftRows[0]!, 'stroke-settings-stroke-type')!.props.children).toBe('Eraser');
     // The preset id (not a tip) falls back to the raw string.
     expect(findByTestId(liftRows[0]!, 'stroke-settings-stroke-tip')!.props.children).toBe('round');
+  });
+
+  it('the tool dropdown is the one filter entry point the deleted row left behind', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+
+    // The dialog mounts no segmented type row at all.
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-filter')).toBeUndefined();
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-filter-all')).toBeUndefined();
+
+    /** The options the single tool select offers on the current filter. */
+    function toolSelectOptions() {
+      const select = findByTestId(renderDialog(bundle), 'stroke-settings-tool-filter')!;
+      const options = childrenOf(select)
+        .filter((node) => (node as AnyVNode).type === 'option') as AnyVNode[];
+      return {
+        values: options.map((option) => option.props.value),
+        labels: options.map((option) => option.props.children),
+      };
+    }
+
+    // 261112-lq4: under the top-bar lift filter the sheet offers 'All tools'
+    // + Eraser only — 'All tools' reproduces the deleted Eraser row.
+    setAquarelleStrokeTypeFilter('lift');
+    expect(toolSelectOptions()).toEqual({
+      values: ['all', 'lift'],
+      labels: [ALL_TOOL_FILTER_LABEL, 'Eraser'],
+    });
+
+    // Under the default 'paint' filter it offers 'All tools' + Brush, which
+    // reproduces the deleted Paint row exactly, and the lift row is gone.
+    setAquarelleStrokeTypeFilter('paint');
+    expect(toolSelectOptions()).toEqual({
+      values: ['all', 'brush'],
+      labels: [ALL_TOOL_FILTER_LABEL, 'Brush'],
+    });
+    expect(
+      findByTestId(renderDialog(bundle), 'stroke-settings-stroke-8'),
+    ).toBeUndefined();
   });
 
   it('renders the finer filters on an empty selection: present tools only, resolved tip names', () => {
@@ -2506,13 +2508,6 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     expect(scroll).toBeDefined();
     expect(findByTestId(scroll, 'stroke-settings-list')).toBeDefined();
 
-    for (const key of ['paint', 'eraser', 'all']) {
-      const button = findByTestId(tree, `stroke-settings-filter-${key}`)!;
-      expect(
-        (button.props.style as Record<string, unknown>).textTransform,
-        `filter ${key}`,
-      ).toBe('none');
-    }
     const rows = strokeRows(tree);
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
@@ -2720,19 +2715,17 @@ describe('261101-jmm list-first stroke settings sheet', () => {
     expect(findByTestId(narrowed, 'stroke-settings-list')).toBeUndefined();
   });
 
-  it('renders the type filter, fine filters and summary in the LIST view only', () => {
+  it('renders the filter dropdowns and summary in the LIST view only', () => {
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([9]);
     const { bundle } = sheetBundle();
 
     const listTree = renderDialog(bundle);
-    expect(findByTestId(listTree, 'stroke-settings-filter')).toBeDefined();
     expect(findByTestId(listTree, 'stroke-settings-fine-filters')).toBeDefined();
     expect(findByTestId(listTree, 'stroke-settings-list-summary')).toBeDefined();
 
     const settingsTree = renderSettings(bundle);
     expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
-    expect(findByTestId(settingsTree, 'stroke-settings-filter')).toBeUndefined();
     expect(findByTestId(settingsTree, 'stroke-settings-fine-filters')).toBeUndefined();
     expect(findByTestId(settingsTree, 'stroke-settings-list-summary')).toBeUndefined();
   });
@@ -3058,7 +3051,9 @@ describe('261101-o2m Draft strip', () => {
     );
     const headerIndex = indexOf('stroke-settings-header');
     const stripIndex = indexOf('stroke-settings-draft-row');
-    const filterIndex = indexOf('stroke-settings-filter');
+    // 261112-lq4: the segmented type row is gone — the fine-filter row (the
+    // one filter entry point) still renders below the strip.
+    const filterIndex = indexOf('stroke-settings-fine-filters');
     expect(headerIndex).toBeGreaterThanOrEqual(0);
     expect(stripIndex).toBeGreaterThan(headerIndex);
     expect(filterIndex).toBeGreaterThan(stripIndex);

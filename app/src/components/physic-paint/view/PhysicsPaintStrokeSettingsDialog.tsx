@@ -91,10 +91,8 @@ import {
   setAquarelleStrokeSelection,
   setAquarelleStrokeTipFilter,
   setAquarelleStrokeToolFilter,
-  setAquarelleStrokeTypeFilter,
   toggleAquarelleStrokeSelection,
   type AquarelleStrokeToolFilter,
-  type AquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
 import { enterPathEdit, exitPathEdit, pathEditMutationId, vectorAnchorSelection } from './vectorPathSession';
 
@@ -195,27 +193,6 @@ const STROKE_SETTINGS_TABS: ReadonlyArray<{ key: StrokeSettingsTab; label: strin
   { key: 'geometry', label: 'Geometry' },
   { key: 'stack', label: 'Stack' },
 ];
-
-/**
- * 261029-eur: the watercolor stroke-type filter row (All | Eraser | Paint).
- * The setter owns the selection pruning and the compare-then-write law, so
- * the row is pure chrome.
- */
-const STROKE_TYPE_FILTERS: ReadonlyArray<{
-  key: 'paint' | 'eraser' | 'all';
-  label: string;
-  filter: AquarelleStrokeTypeFilter;
-}> = [
-  { key: 'paint', label: 'Paint', filter: 'paint' },
-  { key: 'eraser', label: 'Eraser', filter: 'lift' },
-  { key: 'all', label: 'All', filter: 'all' },
-];
-
-const FILTER_ROW_STYLE: CSSProperties = {
-  display: 'flex',
-  gap: '4px',
-  padding: '8px 12px 10px',
-};
 
 export interface PhysicsPaintStrokeSettingsDialogProps {
   /** The view-supplied bundle for the ACTIVE module; absent means no dialog. */
@@ -345,21 +322,6 @@ const SEGMENT_ACTIVE_STYLE: CSSProperties = {
   background: 'var(--color-accent, #2f67e8)',
   borderColor: 'var(--color-accent, #2f67e8)',
   color: '#ffffff',
-};
-
-/**
- * 261031-euf: the type-filter row is sentence case — the global button rule
- * uppercases every other segmented control, so the filter row gets its own
- * copy instead of changing Stack.
- */
-const FILTER_SEGMENT_STYLE: CSSProperties = {
-  ...SEGMENT_STYLE,
-  textTransform: 'none',
-};
-
-const FILTER_SEGMENT_ACTIVE_STYLE: CSSProperties = {
-  ...SEGMENT_ACTIVE_STYLE,
-  textTransform: 'none',
 };
 
 const FINE_FILTERS_ROW_STYLE: CSSProperties = {
@@ -1136,34 +1098,18 @@ export function PhysicsPaintStrokeSettingsDialog({
       ) : null}
 
       {engineModule === 'watercolor' && view === 'list' ? (
-        <div
-          role="group"
-          aria-label="Stroke type"
-          data-testid="stroke-settings-filter"
-          style={FILTER_ROW_STYLE}
-        >
-          {STROKE_TYPE_FILTERS.map((option) => {
-            const active = strokeTypeFilter === option.filter;
-            return (
-              <button
-                key={option.key}
-                type="button"
-                data-testid={`stroke-settings-filter-${option.key}`}
-                aria-pressed={active}
-                style={active
-                  ? { ...FILTER_SEGMENT_STYLE, ...FILTER_SEGMENT_ACTIVE_STYLE }
-                  : FILTER_SEGMENT_STYLE}
-                onClick={() => setAquarelleStrokeTypeFilter(option.filter)}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {engineModule === 'watercolor' && view === 'list' ? (
         <div data-testid="stroke-settings-fine-filters" style={FINE_FILTERS_ROW_STYLE}>
+          {/* 261112-lq4: this tool select is the sheet's ONE filter entry
+              point — it replaces the deleted Paint | Eraser | All row. Its
+              options derive from the TYPE-filtered rows (`toolOptions` =
+              `listStrokeToolOptions(typeRows)`), so under the default top-bar
+              state ('paint') 'All tools' reproduces the deleted Paint row
+              exactly, and the Eraser option appears only when the top-bar type
+              filter admits lift rows: the dialog DERIVES, never overrides, the
+              type filter. Guardrail — never import or call
+              `setAquarelleStrokeTypeFilter` here: that setter prunes the
+              selection and owns the global filter behind hit-testing, the
+              overlay, Select-All and the top-bar Edit switch. */}
           <select
             class="physics-paint-stroke-settings-select"
             data-testid="stroke-settings-tool-filter"
