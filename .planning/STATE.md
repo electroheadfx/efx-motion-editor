@@ -5,11 +5,11 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: planning
-stopped_at: Phase 61 complete, ready to plan Phase 62
-last_updated: "2026-11-12T12:59:35.729Z"
+stopped_at: Completed quick 261112-lq4-01-PLAN.md (automated-ready; 4 native UAT rows pending)
+last_updated: "2026-11-12T15:05:02.856Z"
 last_activity: 2026-11-12
 last_activity_desc: Phase 61 complete, transitioned to Phase 62
-state_head: bc42217f84a2dbd9598799ed5c965a0e69939e74
+state_head: 153c82c052cd31c6400bc0073a08ad5d3c2b830d
 progress:
   total_phases: 4
   completed_phases: 3
@@ -351,6 +351,7 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: Quick 261111-vg4: Stroke Settings is Geometry | Stack only; the Curve row and the Vertex size control both mount in Geometry while the list view keeps its own Vertex size mount
 - [Phase 61]: The simple-ribbon engine and the `renderMode` field were deleted rather than migrated (payload, engine branch, shaders, preset, adapter, probe, AQTL byte, Rust model); the decoder still skips the legacy byte so older scripts load
 - [Phase 61]: Vector strokes replay as a mouse stroke with speed owning the pressure at a hand's cadence — a flat synthetic pressure read as a dead stroke beside hand-painted work
+- [Phase 261112-lq4-ui-stroke-vector-modal-redesign]: Quick 261112-lq4: Stroke settings is one always-visible List | Geometry | Stack | Curve tab row; List is the watercolor default, Stack stays gated on reorderStroke, Curve on one selected vector stroke, and the active tab is a pure derivation with no write-back (a requested Curve returns after a dip); the list/settings view gate, its ref, marker and model helpers are deleted; the single Vertex size mount, Curve row and Corner row live in Curve; Edit path and Preview stroke size moved to the Draft strip
 
 ### Pending Todos
 
@@ -451,8 +452,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-12T11:30:00.000Z
-Stopped at: Phase 61 complete, ready to plan Phase 62
+Last session: 2026-11-12T15:05:00.815Z
+Stopped at: Completed quick 261112-lq4-01-PLAN.md (automated-ready; 4 native UAT rows pending)
 Resume file: None
 
 ## Operator Next Steps
