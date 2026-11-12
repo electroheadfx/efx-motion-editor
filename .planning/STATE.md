@@ -6,10 +6,10 @@ current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: planning
 stopped_at: Quick 261112-lq4 closed (UAT approved); Phase 62 ready to plan
-last_updated: "2026-11-12T15:06:17.903Z"
+last_updated: "2026-11-12T15:26:23.647Z"
 last_activity: 2026-11-12
 last_activity_desc: Quick 261112-lq4 UAT approved (four-tab stroke settings sheet)
-state_head: 82f9ae5cde07c2e408e1c6155aa680709dd6c3fc
+state_head: 72a69dc94a3779f34640ed07d03d32da480928a9
 progress:
   total_phases: 4
   completed_phases: 3
@@ -443,6 +443,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261112-hfk | Fix CR-01 (Phase 61 review): an unchanged per-vertex colour commit publishes a false refused banner; a no-op now returns before the path-edit commit and publishes nothing, genuine refusals still publish (pure predicate + wiring pins) (UAT approved 2026-11-12) | 2026-11-12 | 749d79dec | [261112-hfk-fix-cr-01-from-planning-phases-61-vector](./quick/261112-hfk-fix-cr-01-from-planning-phases-61-vector/) |
 | 261112-i6d | Vector edit enhancements: double-click a vector stroke enters the path edit; Alt+click a vertex toggles it to a straight corner and back in vector and spline modes; Geometry Round/Straight Corner row over the selected anchors; Vertex size track to x10 with free entry to x20; orange glow/halo selected-vertex chrome; path-edit re-bake canvas veil (blocking, composited wheel, stroke counter) as the ONE indicator — the apply pill stands down (UAT approved 2026-11-12) | 2026-11-12 | 34728c5e4 | [261112-i6d-vector-enhancement-double-click-stroke-t](./quick/261112-i6d-vector-enhancement-double-click-stroke-t/) |
 | 261112-lq4 | Stroke settings sheet redesign: four tabs (List default \| Geometry \| Stack \| Curve), Paint \| Eraser \| All row merged into the tool dropdown, Edit path and Preview stroke size moved into the Draft strip, cache caption removed, Vertex size / Curve / Corner moved to the Curve tab (UAT approved 2026-11-12) | 2026-11-12 | 82f9ae5cd | [261112-lq4-ui-stroke-vector-modal-redesign](./quick/261112-lq4-ui-stroke-vector-modal-redesign/) |
+| 29 | Hide Vertex size and Corner blocks in the Curve tab unless a vertex is selected | 2026-11-12 | 72a69dc94 | — |
 
 ## Roadmap Evolution
 
