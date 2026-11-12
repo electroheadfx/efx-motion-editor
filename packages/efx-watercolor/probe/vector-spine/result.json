@@ -55,24 +55,24 @@
   "cost": {
     "1920x1080": {
       "dabsPerStroke": 310,
-      "msPerStroke": 75.1,
-      "msPerSheet10": 793.4,
-      "msPerSheet50": 4035.6,
-      "msPerSheet200": 15710.6
+      "msPerStroke": 72.2,
+      "msPerSheet10": 756.5,
+      "msPerSheet50": 3817.7,
+      "msPerSheet200": 15363.8
     },
     "2048x1536": {
       "dabsPerStroke": 270,
-      "msPerStroke": 67.7,
-      "msPerSheet10": 732.2,
-      "msPerSheet50": 3783.5,
-      "msPerSheet200": 16028.7
+      "msPerStroke": 69.9,
+      "msPerSheet10": 734.3,
+      "msPerSheet50": 3749.6,
+      "msPerSheet200": 15152.8
     },
     "3072x2304": {
       "dabsPerStroke": 270,
-      "msPerStroke": 77.3,
-      "msPerSheet10": 823.7,
-      "msPerSheet50": 4200.4,
-      "msPerSheet200": 16978.9
+      "msPerStroke": 72.1,
+      "msPerSheet10": 760.9,
+      "msPerSheet50": 3857.3,
+      "msPerSheet200": 15584.3
     }
   },
   "referenceStrokeCount": 10,
@@ -94,6 +94,6 @@
     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
   },
   "verdict": "VECTOR-SPINE PASS seam=payload-extension density=4 ref=10 width=scriptFactor(1.75)",
-  "totalProbeMs": 50644,
-  "wallClockMs": 52285
+  "totalProbeMs": 47970,
+  "wallClockMs": 50286
 }
