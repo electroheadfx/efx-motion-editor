@@ -2942,12 +2942,12 @@ describe('261101-mvg "Preview stroke size" switch', () => {
     return button!;
   }
 
-  it('defaults OFF and toggles the session signal from the header in BOTH views', () => {
+  it('defaults OFF and toggles the session signal from the Draft strip under every tab', () => {
     const { bundle } = previewBundle();
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
 
-    // LIST view: the control is in the header, pressed-state OFF.
+    // LIST tab: the control is in the Draft strip, pressed-state OFF.
     const listTree = renderDialog(bundle);
     expect(strokeSizePreview.value).toBe(false);
     expect(switchOf(listTree).props['aria-pressed']).toBe(false);
@@ -2961,7 +2961,7 @@ describe('261101-mvg "Preview stroke size" switch', () => {
     (switchOf(onTree).props.onClick as () => void)();
     expect(strokeSizePreview.value).toBe(false);
 
-    // SETTINGS view: still present (the header is above the view gate).
+    // GEOMETRY tab: still present (the strip sits above the tab body).
     const settingsTree = renderSettings(bundle);
     expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
     const settingsSwitch = switchOf(settingsTree);
@@ -2970,7 +2970,7 @@ describe('261101-mvg "Preview stroke size" switch', () => {
     expect(strokeSizePreview.value).toBe(true);
   });
 
-  it('is not gated by the selection size and carries the header chrome', () => {
+  it('is not gated by the selection size and carries the shipped chrome', () => {
     const { bundle } = previewBundle();
     setAquarelleSelectMode(true);
     // Empty selection: the watercolor sheet stays open, and the switch is
@@ -2983,7 +2983,8 @@ describe('261101-mvg "Preview stroke size" switch', () => {
     const className = String(button.props.class);
     expect(className).toContain('physics-paint-stroke-settings-header-button');
     expect(className).toContain('physics-paint-stroke-settings-preview-toggle');
-    // The header is the sheet's drag handle: the press must not start a drag.
+    // The strip keeps the shipped press guard so a press never starts pointer
+    // work above it.
     let stopped = false;
     (button.props.onPointerDown as (event: { stopPropagation: () => void }) => void)({
       stopPropagation: () => { stopped = true; },
@@ -3003,10 +3004,10 @@ describe('261101-mvg "Preview stroke size" switch', () => {
   });
 });
 
-// 261101-o2m: the Draft strip — a dedicated row BELOW the header and ABOVE the
-// list/settings view gate, so it is reachable from both views. Draft ON
-// suspends only the watercolor re-render; the switch's OFF click is ROUTED to
-// the bundle's settle (the sheet never writes the signal false itself).
+// 261101-o2m: the Draft strip — a dedicated row BELOW the header icon row and
+// ABOVE the tab body, so it is reachable under every tab. Draft ON suspends
+// only the watercolor re-render; the switch's OFF click is ROUTED to the
+// bundle's settle (the sheet never writes the signal false itself).
 describe('261101-o2m Draft strip', () => {
   function draftBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
     return createBundle({
@@ -3039,7 +3040,7 @@ describe('261101-o2m Draft strip', () => {
     await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
   }
 
-  it('renders below the header and above the view gate in BOTH views', () => {
+  it('renders below the header and above the tab body under every tab', () => {
     const { bundle } = draftBundle();
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
@@ -3064,7 +3065,47 @@ describe('261101-o2m Draft strip', () => {
     expect(findByTestId(settingsTree, 'stroke-settings-draft-switch')).toBeDefined();
   });
 
-  it('is a role=switch control labelled Draft, OFF by default, and stops the header drag', () => {
+  it('carries Edit path then Preview stroke size before the cache eye, with ONE text label', () => {
+    const { bundle } = draftBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    const ordered = withTraversalRefs(() => childrenOf(tree)) as AnyVNode[];
+    const indexOf = (testId: string) => ordered.findIndex(
+      (node) => node.props?.['data-testid'] === testId,
+    );
+    const headerIndex = indexOf('stroke-settings-header');
+    const stripIndex = indexOf('stroke-settings-draft-row');
+    expect(headerIndex).toBeGreaterThanOrEqual(0);
+    expect(stripIndex).toBeGreaterThan(headerIndex);
+
+    // 261112-lq4: the two moved watercolor controls sit INSIDE the strip,
+    // between the spacer and the cache eye, in this exact order.
+    const strip = findByTestId(tree, 'stroke-settings-draft-row')!;
+    const inside = withTraversalRefs(() => childrenOf(strip)) as AnyVNode[];
+    const stripIndexOf = (testId: string) => inside.findIndex(
+      (node) => node.props?.['data-testid'] === testId,
+    );
+    const splineAt = stripIndexOf('stroke-settings-spline-pointer');
+    const previewAt = stripIndexOf('stroke-settings-preview-stroke-size');
+    const cacheAt = stripIndexOf('stroke-settings-cache-visibility');
+    expect(splineAt).toBeGreaterThan(-1);
+    expect(previewAt).toBeGreaterThan(splineAt);
+    expect(cacheAt).toBeGreaterThan(previewAt);
+
+    // Exactly ONE text label — the Draft caption. The 'cache' caption that
+    // used to sit beside the eye is gone.
+    const labels = inside.filter((node) => {
+      const cls = (node.props as Record<string, unknown> | undefined)?.class;
+      return typeof cls === 'string'
+        && cls.split(/\s+/).includes('physics-paint-stroke-settings-draft-row-label');
+    });
+    expect(labels.length).toBe(1);
+    expect(labels[0]!.props.children).toBe('Draft');
+  });
+
+  it('is a role=switch control labelled Draft, OFF by default, and stops the press', () => {
     const { bundle } = draftBundle();
     setAquarelleSelectMode(true);
     const button = switchOf(renderDialog(bundle));
@@ -3074,7 +3115,8 @@ describe('261101-o2m Draft strip', () => {
     expect(button.props['aria-label']).toBe('Draft');
     expect(String(button.props.title)).toContain('Draft');
     expect(String(button.props.class)).toContain('physics-paint-script-switch');
-    // The row sits under the header drag handle: the press must not start one.
+    // The strip is not a drag handle, but the press guard is kept so a press
+    // never starts pointer work above it.
     let stopped = false;
     (button.props.onPointerDown as (event: { stopPropagation: () => void }) => void)({
       stopPropagation: () => { stopped = true; },

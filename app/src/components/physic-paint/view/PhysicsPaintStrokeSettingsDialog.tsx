@@ -924,54 +924,6 @@ export function PhysicsPaintStrokeSettingsDialog({
         {engineModule === 'watercolor' ? (
           <button
             type="button"
-            data-testid="stroke-settings-preview-stroke-size"
-            class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"
-            aria-pressed={previewStrokeSize}
-            aria-label="Preview stroke size"
-            title="Preview stroke size — draw every stroke as the area it covers"
-            // A view preference, never a selection action: the swatch stays
-            // clickable on an empty selection (only the surface gate hides it).
-            // The header is the drag handle (see Close below).
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => setStrokeSizePreview(!strokeSizePreview.peek())}
-          >
-            <Spline size={12} aria-hidden="true" />
-          </button>
-        ) : null}
-        {engineModule === 'watercolor' ? (
-          <button
-            type="button"
-            data-testid="stroke-settings-spline-pointer"
-            class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"
-            aria-pressed={pathEditGate.pressed}
-            aria-label="Edit path"
-            title={pathEditGate.title}
-            // 61-11 (E2): one vector stroke is the ONLY editable state. The
-            // reason lives in `title` so this fixed 22x22 icon never renders
-            // text, and a multi-selection states its own reason.
-            disabled={!pathEditGate.enabled}
-            // The header is the drag handle (see Close below).
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => {
-              // Pressed means the session already edits this stroke: the same
-              // button leaves. Two distinct session actions, never a signal
-              // write from this leaf.
-              if (pathEditGate.pressed) {
-                exitPathEdit();
-                return;
-              }
-              const target = selectedMutationId;
-              if (target === null) return;
-              // Session action only: the Studio's overlay owns the record seam.
-              enterPathEdit(String(target));
-            }}
-          >
-            <SplinePointer size={12} aria-hidden="true" />
-          </button>
-        ) : null}
-        {engineModule === 'watercolor' ? (
-          <button
-            type="button"
             data-testid="stroke-settings-view-toggle"
             class="physics-paint-stroke-settings-header-button"
             aria-pressed={view === 'settings'}
@@ -1045,7 +997,8 @@ export function PhysicsPaintStrokeSettingsDialog({
               : 'Draft — suspend the watercolor re-render until you turn it off'}
             class={`physics-paint-script-switch${draftOn ? ' is-on' : ''}`}
             disabled={wireframeOn}
-            // The header is the drag handle: the press must not start one.
+            // The strip is not a drag handle, but the press guard is kept so a
+            // press never starts pointer work above it.
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => {
               // 61-13: the wireframe owns the one route out of Draft.
@@ -1072,11 +1025,56 @@ export function PhysicsPaintStrokeSettingsDialog({
             </span>
           </button>
           <span class="physics-paint-stroke-settings-draft-row-spacer" aria-hidden="true" />
+          <button
+            type="button"
+            data-testid="stroke-settings-spline-pointer"
+            class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"
+            aria-pressed={pathEditGate.pressed}
+            aria-label="Edit path"
+            title={pathEditGate.title}
+            // 61-11 (E2): one vector stroke is the ONLY editable state. The
+            // reason lives in `title` so this fixed 22x22 icon never renders
+            // text, and a multi-selection states its own reason.
+            disabled={!pathEditGate.enabled}
+            // The strip is not a drag handle, but the press guard is kept so a
+            // press never starts pointer work above it.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              // Pressed means the session already edits this stroke: the same
+              // button leaves. Two distinct session actions, never a signal
+              // write from this leaf.
+              if (pathEditGate.pressed) {
+                exitPathEdit();
+                return;
+              }
+              const target = selectedMutationId;
+              if (target === null) return;
+              // Session action only: the Studio's overlay owns the record seam.
+              enterPathEdit(String(target));
+            }}
+          >
+            <SplinePointer size={12} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            data-testid="stroke-settings-preview-stroke-size"
+            class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"
+            aria-pressed={previewStrokeSize}
+            aria-label="Preview stroke size"
+            title="Preview stroke size — draw every stroke as the area it covers"
+            // A view preference, never a selection action: the swatch stays
+            // clickable on an empty selection (only the surface gate hides it).
+            // The strip is not a drag handle, but the press guard is kept so a
+            // press never starts pointer work above it.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => setStrokeSizePreview(!strokeSizePreview.peek())}
+          >
+            <Spline size={12} aria-hidden="true" />
+          </button>
           {/* 261101-o2m (D-02): the cache eye — ALWAYS available (Draft and
               Live, both views, never disabled). Display-only: it hides the
               committed sheet through a CSS modifier, so the decode cache stays
               warm and no capture, save or export ever reads it. */}
-          <span class="physics-paint-stroke-settings-draft-row-label">cache</span>
           <button
             type="button"
             data-testid="stroke-settings-cache-visibility"
@@ -1086,7 +1084,8 @@ export function PhysicsPaintStrokeSettingsDialog({
             title={cacheVisible
               ? 'Hide the committed sheet'
               : 'Show the committed sheet'}
-            // The header is the drag handle: the press must not start one.
+            // The strip is not a drag handle, but the press guard is kept so a
+            // press never starts pointer work above it.
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => setFrozenCacheVisible(!frozenCacheVisible.peek())}
           >

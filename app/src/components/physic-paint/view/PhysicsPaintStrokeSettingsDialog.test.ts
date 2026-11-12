@@ -6,12 +6,12 @@
 //  points, its copy and its bindings are pinned by scanning the source
 //  (`src/**/*.test.ts` only — the vitest config collects no `.test.tsx`).
 //
-//  Task 1 pins the `Edit path` header button: exactly one mount, sitting
-//  between the preview-stroke-size and view-toggle neighbours, carrying the
-//  shipped 22x22 header chrome, the two disabled reasons, the aria-pressed
-//  binding and the stop-propagation line that keeps it clickable inside the
-//  drag handle. Task 2 pins the Anchor width block; task 3 closes the E2/E4
-//  rows (disabled reasons, empty caption, mixed, clamp, fixed geometry).
+//  Task 1 pins the `Edit path` button: exactly one mount, sitting inside the
+//  Draft strip before the preview-stroke-size control, carrying the shipped
+//  22x22 chrome, the two disabled reasons, the aria-pressed binding and the
+//  stop-propagation line that keeps its click from starting pointer work above
+//  it. Task 2 pins the Anchor width block; task 3 closes the E2/E4 rows
+//  (disabled reasons, empty caption, mixed, clamp, fixed geometry).
 // ============================================================
 
 import { readFileSync } from 'node:fs';
@@ -57,27 +57,34 @@ function countOf(source: string, needle: string): number {
 }
 
 const SPLINE_TESTID = 'data-testid="stroke-settings-spline-pointer"';
-// The button's own region runs from its test id to the next header button, so
+// The button's own region runs from its test id to the next strip control, so
 // every attribute, handler and the icon are inside one slice.
 const SPLINE_START = SPLINE_TESTID;
-const SPLINE_END = 'data-testid="stroke-settings-view-toggle"';
+const SPLINE_END = 'data-testid="stroke-settings-preview-stroke-size"';
 
 // ── Task 1: the Edit path entrance ──────────────────────────────────
 
-describe('61-11 Edit path header button (E2)', () => {
-  it('mounts exactly one spline-pointer button in the header row', () => {
+describe('61-11 Edit path Draft-strip button (E2)', () => {
+  it('mounts exactly one spline-pointer button in the Draft strip', () => {
     expect(countOf(dialogSource, SPLINE_TESTID)).toBe(1);
     expect(countOf(dialogSource, 'data-testid="stroke-settings-preview-stroke-size"')).toBe(1);
-    expect(countOf(dialogSource, 'data-testid="stroke-settings-view-toggle"')).toBe(1);
   });
 
-  it('sits between the preview-stroke-size and view-toggle neighbours', () => {
-    const previewAt = dialogSource.indexOf('data-testid="stroke-settings-preview-stroke-size"');
+  it('sits inside the Draft strip, before Preview stroke size', () => {
+    const headerAt = dialogSource.indexOf('data-testid="stroke-settings-header"');
+    const stripAt = dialogSource.indexOf('data-testid="stroke-settings-draft-row"');
     const splineAt = dialogSource.indexOf(SPLINE_TESTID);
-    const toggleAt = dialogSource.indexOf('data-testid="stroke-settings-view-toggle"');
-    expect(previewAt).toBeGreaterThan(-1);
-    expect(splineAt).toBeGreaterThan(previewAt);
-    expect(toggleAt).toBeGreaterThan(splineAt);
+    const previewAt = dialogSource.indexOf('data-testid="stroke-settings-preview-stroke-size"');
+    const cacheAt = dialogSource.indexOf('data-testid="stroke-settings-cache-visibility"');
+    expect(headerAt).toBeGreaterThan(-1);
+    expect(stripAt).toBeGreaterThan(headerAt);
+    expect(splineAt).toBeGreaterThan(stripAt);
+    expect(previewAt).toBeGreaterThan(splineAt);
+    expect(cacheAt).toBeGreaterThan(previewAt);
+    // 261112-lq4: both moved controls left the header row.
+    const header = dialogSource.slice(headerAt, stripAt);
+    expect(header).not.toContain(SPLINE_TESTID);
+    expect(header).not.toContain('data-testid="stroke-settings-preview-stroke-size"');
   });
 
   it('carries the shipped 22x22 header chrome and no laid-out text', () => {
@@ -99,7 +106,7 @@ describe('61-11 Edit path header button (E2)', () => {
     expect(button).toContain('disabled={!pathEditGate.enabled}');
   });
 
-  it('stops the press so the drag-handle header never swallows the click', () => {
+  it('stops the press so pointer work above never swallows the click', () => {
     const button = regionOf(dialogSource, SPLINE_START, SPLINE_END);
     expect(button).toContain('onPointerDown={(event) => event.stopPropagation()}');
   });
