@@ -5,7 +5,7 @@ titles: json
 findings:
   - id: CR-01
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "Unchanged per-vertex colour commit publishes a false \"refused\" banner"
   - id: WR-01
     severity: warning
@@ -35,7 +35,7 @@ findings:
     severity: info
     disposition: open
     title: "`recordedCurveModeField` has no production caller (necessity) — three seams inline the same rule"
-open: 8
+open: 7
 total: 8
 recorded: 2026-11-12T11:15:42.909Z
 ---
@@ -44,7 +44,7 @@ recorded: 2026-11-12T11:15:42.909Z
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
+| CR-01 | critical | fixed | quick 261112-hfk (c71e3e80f, 749d79dec) — UAT approved 2026-11-12 |
 | WR-01 | warning | open | - |
 | WR-02 | warning | open | - |
 | IN-01 | info | open | - |
