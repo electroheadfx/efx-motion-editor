@@ -12,7 +12,13 @@ commits:
   - 4d2bfc7f0
   - 71a98a033
   - bc42217f8
-verification: human_needed
+  - 81a28767c
+  - d0af8039b
+  - 2f2231f52
+  - 9d60b5a17
+  - ae975a687
+  - 34728c5e4
+verification: passed
 ---
 
 # Quick Task 261112-i6d — Vector edit enhancements
@@ -63,9 +69,29 @@ on the crisp ring, so existing exact-count pins stay green.
 - App: `physic-paint` subtree 253 files / 6,447 tests passed
 - Typecheck: `pnpm --prefix app run typecheck` green
 - Plan checker: 2 blockers + 2 warnings found and resolved; final pass 0/0 with one advisory
-- Verifier: `human_needed` — 9/11 must-haves verified automatically, 6 live UAT rows below
+- Verifier: 9/11 must-haves verified automatically at first pass (`human_needed`); the two
+  human-gated truths passed live UAT on 2026-11-12
+- Final `physic-paint` subtree after the follow-ups: 254 files / 6,474 tests passed
 
-## Live UAT rows (human, not claimed)
+## Post-verification follow-ups (UAT-driven)
+
+Three UAT rounds added behaviour on top of the verified plans:
+
+- **Alt+click is a TOGGLE** (`toggleAnchorCorner`): a straight corner goes back to the
+  derived-smooth round shape. One law for both curve modes; the corner shape lives in the
+  payload package (`readAnchorCornerState` / `withAnchorCornerState`).
+- **Geometry Corner row** (Round / Straight) in Stroke settings: a SETTER over the selected
+  anchors, through the same path-edit commit.
+- **Canvas veil for the re-bake**: a path edit replays the WHOLE script, so the engine's
+  input lock was real but invisible. The veil is blocking, canvas-scoped (z 65, between the
+  apply pill at 60 and the floating sheets at 70+), and is the re-bake latch itself — no
+  timer, no effect. `runAquarelleScriptRebake` paints one host frame on entry and one on
+  exit, and the spinner is compositor-promoted so it turns while the bake blocks the main
+  thread. It carries the stroke counter; the apply pill stands down during a path edit, so
+  one operation never shows two progress surfaces. The strip's "Rebuilding path…" line was
+  removed as a third copy of the same story.
+
+## Live UAT rows — PASSED (user-confirmed 2026-11-12)
 
 1. Double-click a vector stroke opens the path edit exactly as the Edit-path icon does; hand-painted strokes stay inert
 2. Alt+click in Spline mode makes a straight corner; undo is one step

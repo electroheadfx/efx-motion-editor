@@ -1,8 +1,8 @@
 ---
 phase: 261112-i6d-vector-enhancement-double-click-stroke-t
 verified: 2026-11-12T12:57:40Z
-status: human_needed
-score: 9/11 must-haves verified
+status: passed
+score: 9/11 must-haves verified (the two human-gated truths confirmed by live UAT 2026-11-12)
 covered_files: [
   ".planning/quick/261112-i6d-vector-enhancement-double-click-stroke-t/261112-i6d-01-SUMMARY.md",
   ".planning/quick/261112-i6d-vector-enhancement-double-click-stroke-t/261112-i6d-02-PLAN.md",
@@ -66,8 +66,10 @@ human_verification:
 **Task Goal:** vector enhancement — (1) double-click a vector stroke to enter path-edit mode like the Edit-path icon; (2) Alt+click a vertex in the path edit to split the bezier tangent (break angle), in BOTH vector and spline (default) modes with a straight corner; (3) vertex size slider/stepper up to x10 with free entry above it (e.g. 20+); (4) selected-vertex highlight legible over orange paint (orange high contrast + glow/shadow).
 
 **Verified:** 2026-11-12T12:57:40Z
-**Status:** human_needed
+**Status:** passed — all code-level must-haves verified, and the live-UAT rows below were confirmed by the user on 2026-11-12
 **Re-verification:** No — initial verification (no prior VERIFICATION.md in the task directory)
+
+> **UAT RESULT: PASSED** — user-confirmed 2026-11-12, after the post-verification follow-ups landed: Alt+click became a corner TOGGLE (`toggleAnchorCorner`), the Geometry Corner row shipped, and the path-edit re-bake gained the canvas veil (one indicator: spinner + stroke counter; the apply pill stands down). The UAT rows below were walked through on the shipped build.
 
 All six declared commits exist on `gsd/phase-61-vector-painting-tool` (`8cdf97ecd`, `fcc01068e`, `a52d6221d`, `4d2bfc7f0`, `71a98a033`, `bc42217f8`), and the combined diff (21 files) names exactly the `files_modified` sets of the three plans — no out-of-scope implementation file.
 
