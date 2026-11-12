@@ -356,7 +356,17 @@ export function PhysicsPaintTopBar({
           261027-gh9g). quick-261112: the switch rides INSIDE the brush pill;
           a failed engine shows a status pill instead and removes the switch. */}
       <div class="physics-paint-topbar-left">
-        {ready ? null : (
+        {/* quick-261112: the EFX mark takes the retired Engine-ready seat; an
+            engine failure swaps it for the fail pill. */}
+        {ready ? (
+          <img
+            class="physics-paint-topbar-logo"
+            src="/img/efx-logo.png"
+            alt="EFX Motion"
+            width={30}
+            height={30}
+          />
+        ) : (
           <div class="physics-paint-topbar-status" aria-live="polite">
             <span class={`physics-paint-status-pill ${statusTone}`}>Engine fail</span>
           </div>

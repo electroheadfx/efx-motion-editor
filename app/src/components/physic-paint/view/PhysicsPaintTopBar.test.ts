@@ -716,10 +716,21 @@ describe('261027-k6j Script switch', () => {
     }
   });
 
-  it('a failed engine replaces the switch with the Engine fail pill', () => {
+  it('a ready engine shows the EFX mark in the old status seat', () => {
+    const nodes = childrenOf(renderTopBar(baseTopBarProps())) as AnyVNode[];
+    const logo = nodes.find((n) => String(n.props?.['class'] ?? '') === 'physics-paint-topbar-logo');
+    expect(logo, 'the EFX mark seats in the left slot').toBeDefined();
+    expect(logo!.type).toBe('img');
+    expect(logo!.props?.src).toBe('/img/efx-logo.png');
+    expect(logo!.props?.alt).toBe('EFX Motion');
+    expect(nodes.some((n) => String(n.props?.['class'] ?? '').includes('physics-paint-status-pill'))).toBe(false);
+  });
+
+  it('a failed engine replaces the EFX mark + switch with the Engine fail pill', () => {
     const tree = renderTopBar({ ...baseTopBarProps(), ready: false });
     const nodes = childrenOf(tree) as AnyVNode[];
     expect(nodes.some((n) => n.type === ScriptRecordingSwitch), 'no switch without an engine').toBe(false);
+    expect(nodes.some((n) => String(n.props?.['class'] ?? '') === 'physics-paint-topbar-logo'), 'no mark on failure').toBe(false);
     const pill = nodes.find((n) => String(n.props?.['class'] ?? '').includes('physics-paint-status-pill'));
     expect(pill, 'the failure pill renders').toBeDefined();
     expect(pill!.props?.children).toBe('Engine fail');

@@ -469,6 +469,15 @@ button.destructive {
   min-width: 0;
 }
 
+/* quick-261112: the EFX mark in the old Engine-ready seat. */
+.physics-paint-topbar-logo {
+  display: block;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
 .physics-paint-topbar-primary {
   display: flex;
   flex-wrap: nowrap;
