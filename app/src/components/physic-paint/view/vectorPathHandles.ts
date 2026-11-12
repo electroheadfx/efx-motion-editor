@@ -617,6 +617,27 @@ export function buildAnchorColorCommit(
   );
 }
 
+/**
+ * Whether a colour commit would change nothing (261112-hfk CR-01).
+ *
+ * `next` MUST be the list `buildAnchorColorCommit` produced from these very
+ * `anchors`: same length, same order, every non-targeted anchor reference-
+ * identical — so only the listed indices can differ, and comparing the
+ * explicit colours is the whole decision. An uncoloured anchor that gains a
+ * colour is a REAL change, including one equal to its stroke's colour
+ * (explicit wins over inherit — never skipped as a no-op).
+ *
+ * The commit chain returns the same null edit id for "in flight/unchanged" as
+ * for "refused" (the anchorsEqual early return), so a caller that sees a null
+ * edit id after a true verdict must treat it as in flight, never refused.
+ */
+export function anchorColorCommitIsNoOp(
+  anchors: readonly VectorAnchor[],
+  next: readonly VectorAnchor[],
+): boolean {
+  return next.every((anchor, index) => anchor.color === anchors[index]?.color);
+}
+
 // --- The commit's stroke half --------------------------------------------
 
 /**

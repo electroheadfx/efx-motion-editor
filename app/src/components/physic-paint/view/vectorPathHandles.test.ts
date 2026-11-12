@@ -33,6 +33,7 @@ import {
   FIRST_ANCHOR_HIT_PX,
   HANDLE_BODY_PX,
   VECTOR_PAINT_SAMPLE_STEP_UV,
+  anchorColorCommitIsNoOp,
   buildAnchorColorCommit,
   buildAnchorWidthCommit,
   buildDraftPath,
@@ -482,6 +483,63 @@ describe('buildAnchorColorCommit — one explicit per-vertex colour (261111-wd6)
     const next = buildAnchorColorCommit(shaped, [1, 7], '#ff0000')!;
     expect(next[1]!.color).toBe('#ff0000');
     expect(next).toHaveLength(3);
+  });
+});
+
+// 261112-hfk CR-01: the commit chain returns the same null edit id for
+// "in flight / unchanged" as for "refused" (updateAquarellePathInScript's
+// anchorsEqual early return), so the Studio must decide the no-op BEFORE the
+// commit or an unchanged gesture publishes the false refusal banner. The
+// predicate reads the exact list the builder produced: only listed indices can
+// differ, because every non-targeted anchor stays reference-identical.
+describe('anchorColorCommitIsNoOp — the unchanged colour gesture (261112-hfk CR-01)', () => {
+  const shaped = [
+    { ...auto(0.2, 0.5), width: 1.8 },
+    bezier(0.5, 0.5, { x: 0.4, y: 0.4 }, { x: 0.6, y: 0.6 }),
+    auto(0.8, 0.5),
+  ];
+
+  it('is a no-op when the same colour is re-emitted on the same list', () => {
+    const colored = buildAnchorColorCommit(shaped, [0, 2], '#ff0000')!;
+    const again = buildAnchorColorCommit(colored, [0, 2], '#ff0000')!;
+    expect(anchorColorCommitIsNoOp(colored, again)).toBe(true);
+  });
+
+  it('is a no-op for a canonical re-pick (the normaliser lands the stored value)', () => {
+    const colored = buildAnchorColorCommit(shaped, [0, 2], '#ff0000')!;
+    const again = buildAnchorColorCommit(colored, [0, 2], '#FF0000')!;
+    expect(again[0]!.color).toBe('#ff0000');
+    expect(anchorColorCommitIsNoOp(colored, again)).toBe(true);
+  });
+
+  it('treats an uncoloured anchor gaining a colour as a REAL change', () => {
+    const next = buildAnchorColorCommit(shaped, [0], '#ff0000')!;
+    // `shaped[0].color` is undefined — explicit wins over inherit, so even a
+    // colour equal to the stroke colour is a change, never a no-op.
+    expect(anchorColorCommitIsNoOp(shaped, next)).toBe(false);
+  });
+
+  it('treats one differing listed anchor as a change', () => {
+    const colored = buildAnchorColorCommit(shaped, [0], '#ff0000')!;
+    const next = buildAnchorColorCommit(colored, [0, 2], '#ff0000')!;
+    expect(next[2]!.color).toBe('#ff0000');
+    expect(anchorColorCommitIsNoOp(colored, next)).toBe(false);
+  });
+
+  it('is a change for a different pick on an already-coloured list', () => {
+    const colored = buildAnchorColorCommit(shaped, [0, 2], '#ff0000')!;
+    const next = buildAnchorColorCommit(colored, [0, 2], '#00ff00')!;
+    expect(anchorColorCommitIsNoOp(colored, next)).toBe(false);
+  });
+
+  it('ignores a differing colour outside the listed indices', () => {
+    const red = buildAnchorColorCommit(shaped, [0, 1, 2], '#ff0000')!;
+    const mixed = buildAnchorColorCommit(red, [1], '#00ff00')!; // 0 red, 1 green, 2 red
+    const next = buildAnchorColorCommit(mixed, [0], '#ff0000')!;
+    // Index 1 carries a colour that differs from the commit's, but it is
+    // outside the selection and the build leaves it reference-identical.
+    expect(next[1]).toBe(mixed[1]);
+    expect(anchorColorCommitIsNoOp(mixed, next)).toBe(true);
   });
 });
 
