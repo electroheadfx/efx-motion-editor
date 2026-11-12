@@ -236,7 +236,7 @@ describe('normaliseAquarelleAnchors', () => {
 
   it('refuses the whole list for a width outside the published range', () => {
     expect(
-      normaliseAquarelleAnchors([{ x: 20, y: 32, kind: 'auto', width: 3 }]),
+      normaliseAquarelleAnchors([{ x: 20, y: 32, kind: 'auto', width: ANCHOR_WIDTH_MAX + 1 }]),
     ).toBeUndefined()
     expect(
       normaliseAquarelleAnchors([{ x: 20, y: 32, kind: 'auto', width: 0.1 }]),

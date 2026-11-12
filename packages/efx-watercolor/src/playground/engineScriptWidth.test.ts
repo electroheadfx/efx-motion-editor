@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { ANCHOR_WIDTH_MAX } from '../vector/spine'
 import { WatercolorEngine } from './Engine'
 
 const ENGINE_SOURCE = readFileSync(
@@ -131,8 +132,10 @@ describe('the queued sample carries its own width (61-04)', () => {
     expect(beginWith(1.8).queue[0]!.w).toBe(1.8)
   })
 
-  it('clamps the factor into the published 0.2..2.0 range and defaults a non-finite one to 1', () => {
-    expect(beginWith(9).queue[0]!.w).toBe(2)
+  it('clamps the factor into the published 0.2..20 range and defaults a non-finite one to 1', () => {
+    expect(beginWith(ANCHOR_WIDTH_MAX + 1).queue[0]!.w).toBe(ANCHOR_WIDTH_MAX)
+    expect(beginWith(ANCHOR_WIDTH_MAX).queue[0]!.w).toBe(ANCHOR_WIDTH_MAX)
+    expect(beginWith(10).queue[0]!.w).toBe(10)
     expect(beginWith(0.05).queue[0]!.w).toBe(0.2)
     expect(beginWith(Number.NaN).queue[0]!.w).toBe(1)
     expect(beginWith(Number.POSITIVE_INFINITY).queue[0]!.w).toBe(1)

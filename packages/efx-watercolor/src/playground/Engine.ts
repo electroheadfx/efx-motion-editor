@@ -877,7 +877,7 @@ export class WatercolorEngine {
    *
    * `widthScale` (61-04) is the per-sample width factor of the vector profile
    * — a footprint multiplier carried on the sample, bounded to the published
-   * 0.2..2.0 range. It is NOT `maxRadius` and is never routed through
+   * 0.2..20 range. It is NOT `maxRadius` and is never routed through
    * `scriptScale`: that clamp stays the footprint cap it always was (C-03).
    *
    * `pigment` (261111-wd6) is the per-vertex colour of this sample. Absent

@@ -588,7 +588,7 @@ describe('resolveStrokeWidthFactors (61-04)', () => {
   })
 
   it('holds out-of-range factors at the nearest published end, always finite', () => {
-    const maxAuthored = 9
+    const maxAuthored = ANCHOR_WIDTH_MAX + 7
     const { payload, pts } = projected([
       { x: 0.3, y: 0.5, kind: 'auto', width: maxAuthored },
       { x: 0.5, y: 0.5, kind: 'auto', width: 0.05 },

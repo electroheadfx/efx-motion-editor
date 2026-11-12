@@ -43,6 +43,7 @@ import {
   type AquarelleStrokePayload,
 } from './toStudioStroke'
 import { createAquarelleEngineAdapter } from '../adapter/engineAdapter'
+import { ANCHOR_WIDTH_MAX } from '../vector/spine'
 import type { AquarelleAnchor } from './vectorPath'
 
 const PAYLOAD_DIR = resolve(dirname(fileURLToPath(import.meta.url)))
@@ -559,7 +560,7 @@ describe('wire validation of the vector fields (61-03 T-61-08)', () => {
       [{ x: NaN, y: 0, kind: 'auto' }],
       [{ x: 0, y: 0, kind: 'spline' as unknown as 'auto' }],
       [{ x: 0, y: 0, kind: 'bezier', in: { x: Infinity, y: 0 }, out: { x: 1, y: 1 } }],
-      [{ x: 0, y: 0, kind: 'auto', width: 3 }],
+      [{ x: 0, y: 0, kind: 'auto', width: ANCHOR_WIDTH_MAX + 1 }],
       [],
     ]
     for (const anchors of malformed) {
@@ -618,7 +619,7 @@ describe('wire validation of the vector fields (61-03 T-61-08)', () => {
     expect(classifyAquarellePayloadFailure(serialize(stroke))).toBeNull()
     const malformed = {
       ...stroke,
-      engine: { ...stroke.engine, anchors: [{ x: 0, y: 0, kind: 'auto', width: 3 }] },
+      engine: { ...stroke.engine, anchors: [{ x: 0, y: 0, kind: 'auto', width: ANCHOR_WIDTH_MAX + 1 }] },
     } as unknown as StudioStroke<AquarelleStrokePayload>
     expect(classifyAquarellePayloadFailure(wrapStroke(malformed))).toBe('malformed-engine-payload')
   })
