@@ -13,14 +13,6 @@ export const VECTOR_PATH_SCRIPT_OFF_MESSAGE =
   'Vector path rejected — Script is off, so the path would not be recorded. Turn Script on and draw it again.';
 
 /**
- * 261112-i6d: the status line published while a path edit re-bakes the script.
- * An edit is silent for as long as the whole script takes to replay, which
- * reads as a dead click; this line is the ONE statement that the click landed
- * and the sheet is being rebuilt.
- */
-export const VECTOR_PATH_REBUILDING_MESSAGE = 'Rebuilding path…';
-
-/**
  * A stroke is a vector commit only when it carries anchors. The list is
  * the ONE signal — a missing or empty list is an ordinary dabs stroke.
  */
@@ -105,12 +97,14 @@ async function yieldForPaint(): Promise<void> {
  * terminal callback: `onSuccess` on true, `onFailure` on false or a rejected
  * apply. The latch is cleared in `finally`, before the callback runs.
  *
- * 261112-i6d: the host is yielded ONE turn after `beginInFlight`, before any
- * work. A re-bake only yields between fed strokes (and not at all for a
- * single-stroke script), so without this the busy state opened above could
- * never paint — the canvas looked dead for the whole replay and then jumped to
- * the result. One macrotask costs nothing next to the bake and makes every
- * blocker bound to this latch visible.
+ * 261112-i6d: the host is yielded ONE painted frame on BOTH sides of the
+ * latch. A re-bake only yields between fed strokes (and not at all for a
+ * single-stroke script), so without the entry yield the busy state opened
+ * below could never paint — the canvas looked dead for the whole replay and
+ * then jumped to the result. The exit yield is the mirror: closing the latch
+ * only removes the blocker from the DOM, and a webview that has just been
+ * blocked must still be handed the turns that commit that removal, or the last
+ * painted frame keeps the blocker on screen until the next input event.
  */
 export async function runAquarelleScriptRebake(sequence: AquarelleScriptRebakeSequence): Promise<boolean> {
   if (sequence.isInFlight()) return false;
@@ -125,6 +119,7 @@ export async function runAquarelleScriptRebake(sequence: AquarelleScriptRebakeSe
   } finally {
     sequence.endInFlight();
   }
+  await yieldForPaint();
   if (ok) sequence.onSuccess?.();
   else sequence.onFailure?.();
   return ok;

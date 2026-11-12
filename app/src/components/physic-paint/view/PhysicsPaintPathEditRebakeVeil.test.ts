@@ -16,10 +16,15 @@ import { describe, expect, it } from 'vitest';
  *    pill but BELOW the floating sheets, so the control the user just pressed
  *    stays readable.
  * 2. It BLOCKS (no `pointer-events: none`) — the state it explains is a lock.
- * 3. It is delayed and held: a fast bake must not flash, a slow one must not
- *    strobe on exit.
- * 4. Its signal is opened by the re-bake's OWN latch, never around the call, so
- *    a refused (already in flight) rebake opens nothing.
+ * 3. It IS the latch: visible exactly while `pathEditRebakeActive` is true. No
+ *    local timer and no effect gate, because the bake blocks the main thread and
+ *    a timer cannot run inside it — that is what left the wheel frozen and the
+ *    veil on screen until the next pointer move.
+ * 4. The commit paints both boundaries: one host frame after the latch opens
+ *    (before the replay) and one after it closes (so the removal reaches the
+ *    screen before the caller's tail).
+ * 5. A path edit has ONE indicator: the veil carries the counter the apply pill
+ *    would show, and the pill stands down while it is up.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -46,51 +51,59 @@ function getVeilComponentBlock(code: string): string {
   return code.slice(start);
 }
 
+function getPillComponentBlock(code: string): string {
+  return regionOf(code, 'function PhysicsPaintApplyProgressPill', 'function PathEditRebakeVeil');
+}
+
 describe('261112-i6d path-edit re-bake veil', () => {
-  it('renders inside the canvas region, after the apply pill', () => {
+  it('renders inside the canvas region, after the apply pill, with the counter source', () => {
     const region = getCanvasRegionBlock(studioViewSource());
     const pillAt = region.indexOf('<PhysicsPaintApplyProgressPill');
-    const veilAt = region.indexOf('<PathEditRebakeVeil />');
+    const veilAt = region.indexOf('<PathEditRebakeVeil');
     expect(pillAt).toBeGreaterThan(-1);
     expect(veilAt).toBeGreaterThan(pillAt);
+    expect(region).toContain('<PathEditRebakeVeil rotoScript={workflow.rotoScript} />');
   });
 
-  it('is driven by the path-edit signal and refuses to mount before it is shown', () => {
+  it('is the latch itself — no local timer, no effect gate', () => {
     const veil = getVeilComponentBlock(studioViewSource());
-    expect(veil).toContain('const active = pathEditRebakeActive.value;');
-    // A component-local signal: the animation never re-renders the Studio.
-    expect(veil).toContain('useRef(signal(false)).current');
-    expect(veil).toContain('if (!shown.value) return null;');
+    expect(veil).toContain('if (!pathEditRebakeActive.value) return null;');
+    // A blocked webview cannot run a timer, so the veil must not own one: both
+    // of its edges belong to the commit's latch.
+    expect(veil).not.toContain('useEffect(');
+    expect(veil).not.toContain('useRef(');
+    expect(veil).not.toContain('setTimeout');
+    expect(veil).not.toContain('PATH_EDIT_VEIL_');
+    // The stroke counter is the pill's own signal, never a second feed.
+    expect(veil).toContain('const progress = rotoScript?.applyProgress.value ?? null;');
   });
 
-  it('shows at once, then dismisses instantly for fast work and holds for slow work', () => {
-    const source = studioViewSource();
-    expect(source).toContain('const PATH_EDIT_VEIL_FLASH_GUARD_MS = 120;');
-    expect(source).toContain('const PATH_EDIT_VEIL_MIN_MS = 300;');
-    const veil = getVeilComponentBlock(source);
-    // NO appearance timer: the bake only yields between fed strokes, so a
-    // delayed show could never fire mid-replay. The commit's host turn is the
-    // paint window instead.
-    expect(veil).not.toContain('PATH_EDIT_VEIL_DELAY_MS');
-    expect(veil).toContain('shown.value = true;');
-    // Under the flash guard the veil leaves on the spot — no lingering flash.
-    expect(veil).toContain('if (elapsed < PATH_EDIT_VEIL_FLASH_GUARD_MS) {');
-    expect(veil).toContain('shown.value = false;');
-    // Above it, the exit is held and floored at 0, and the timer is cleared.
-    expect(veil).toContain('Math.max(0, PATH_EDIT_VEIL_MIN_MS - elapsed)');
-    expect(veil).toContain('window.clearTimeout(timer)');
+  it('stands the apply pill down while the veil is up — one indicator per path edit', () => {
+    const pill = getPillComponentBlock(studioViewSource());
+    expect(pill).toContain('const rebaking = pathEditRebakeActive.value;');
+    expect(pill).toContain('if (!applyProgress || rebaking) return null;');
+    // The pill still owns its own applyProgress subscription for Script applies.
+    expect(pill).toContain('const applyProgress = rotoScript?.applyProgress.value ?? null;');
   });
 
-  it('relies on the commit handing the host a turn before the bake blocks', () => {
+  it('paints one host frame on BOTH sides of the latch', () => {
     const seam = readFileSync(
       resolve(here, 'aquarelleVectorPathCommit.ts'),
       'utf8',
     );
     const rebake = regionOf(seam, 'export async function runAquarelleScriptRebake', '\n}');
-    const yieldAt = rebake.indexOf('await yieldForPaint();');
+    const entryAt = rebake.indexOf('await yieldForPaint();');
+    const exitAt = rebake.indexOf('await yieldForPaint();', entryAt + 1);
     const resetAt = rebake.indexOf('sequence.resetSheet();');
-    expect(yieldAt).toBeGreaterThan(-1);
-    expect(resetAt).toBeGreaterThan(yieldAt);
+    const endAt = rebake.indexOf('sequence.endInFlight();');
+    const successAt = rebake.indexOf('sequence.onSuccess?.();');
+    expect(entryAt).toBeGreaterThan(-1);
+    // Entry: the veil must be on screen before the replay blocks.
+    expect(entryAt).toBeLessThan(resetAt);
+    // Exit: the removal must get frames before the caller's tail runs.
+    expect(exitAt).toBeGreaterThan(endAt);
+    expect(exitAt).toBeLessThan(successAt);
+    expect(rebake.split('await yieldForPaint();').length - 1).toBe(2);
     // One host turn flushes the signal write into the DOM, then a bounded
     // two-frame wait lets that frame paint.
     expect(seam).toContain('new MessageChannel()');
@@ -107,6 +120,9 @@ describe('261112-i6d path-edit re-bake veil', () => {
     expect(veil).toContain('aria-busy="true"');
     expect(veil).not.toContain('role="alert"');
     expect(veil).toContain('Rendering…');
+    // The per-stroke counter updates every fed stroke — visual only, never a
+    // live-region announcement per stroke.
+    expect(veil).toContain('class="physics-paint-rebake-count" aria-hidden="true"');
   });
 
   it('blocks the canvas and sits above the pill but below the floating sheets', () => {
@@ -118,6 +134,9 @@ describe('261112-i6d path-edit re-bake veil', () => {
     // The pill is 60 and the floating sheets are 70+; the veil must sit between.
     expect(rule).not.toContain('pointer-events: none');
     expect(regionOf(css, '.physics-paint-apply-progress {', '}')).toContain('z-index: 60');
+    // The bake blocks the main thread — the wheel only keeps turning if its
+    // layer is promoted before the animation starts.
+    expect(regionOf(css, '.physics-paint-rebake-spinner {', '}')).toContain('will-change: transform');
   });
 
   it('opens and closes on the re-bake latch, never around the call', () => {
@@ -138,6 +157,22 @@ describe('261112-i6d path-edit re-bake veil', () => {
     // Exactly one open and one close in the whole commit.
     expect(commit.split('setPathEditRebakeActive(true)').length - 1).toBe(1);
     expect(commit.split('setPathEditRebakeActive(false)').length - 1).toBe(1);
+  });
+
+  it('publishes no second copy of the wait in the workflow strip', () => {
+    // 261112-i6d: the veil is the one story. A strip line saying the same
+    // thing reads as a second, unrelated operation.
+    const source = studioSource();
+    expect(source).not.toContain('VECTOR_PATH_REBUILDING_MESSAGE');
+    // The busy status stays: it is the gate every key action reads.
+    const commit = regionOf(
+      source,
+      'const commitAquarelleVectorPathEdit = useCallback(',
+      'const handleAquarelleVectorPathEdit = useCallback(',
+    );
+    expect(commit).toContain("setApplyStatus('applying');");
+    const success = regionOf(commit, 'onSuccess: () => {', 'onFailure: () => {');
+    expect(success).toContain("setApplyStatus('idle');");
   });
 
   it('keeps the shared script-edit latch free of the veil (Script applies have their own pill)', () => {

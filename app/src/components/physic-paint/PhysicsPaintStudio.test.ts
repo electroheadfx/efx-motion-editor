@@ -6569,10 +6569,9 @@ describe('61-15 vector draw bake seam in the Studio', () => {
     expect(refusalBlock).toContain('return;');
     expect(refusalBlock).not.toContain('aquarelleResetSheetRef');
     expect(refusalBlock).not.toContain('allocateStrokeMutation');
-    // The fixed module constants, owned by the leaf seam. 261112-i6d adds the
-    // rebuild status line beside the Script-Off refusal.
+    // The fixed module constants, owned by the leaf seam.
     expect(studio).toContain(
-      "import {\n  VECTOR_PATH_REBUILDING_MESSAGE,\n  VECTOR_PATH_SCRIPT_OFF_MESSAGE,\n  isVectorAquarelleStroke,\n  resolveVectorCommitRoute,\n  runAquarelleScriptRebake,\n} from './view/aquarelleVectorPathCommit';",
+      "import {\n  VECTOR_PATH_SCRIPT_OFF_MESSAGE,\n  isVectorAquarelleStroke,\n  resolveVectorCommitRoute,\n  runAquarelleScriptRebake,\n} from './view/aquarelleVectorPathCommit';",
     );
   });
 
@@ -6933,23 +6932,24 @@ describe('261112-i6d Corner bundle wiring and rebuild status in the Studio', () 
     expect(bundle).toContain('if (next === anchors) return true;');
   });
 
-  it('publishes the rebuild line before the rebake and clears it on success', () => {
+  it('marks the rebake busy without a second status line, and rests on success', () => {
     const commitStart = studio.indexOf('const commitAquarelleVectorPathEdit = useCallback(');
     expect(commitStart, 'missing the commit').toBeGreaterThan(-1);
     const commitEnd = studio.indexOf('const handleAquarelleVectorPathEdit = useCallback(', commitStart);
     const commit = studio.slice(commitStart, commitEnd);
-    const publishAt = commit.indexOf('setApplyMessage(VECTOR_PATH_REBUILDING_MESSAGE);');
+    const busyAt = commit.indexOf("setApplyStatus('applying');");
     const rebakeAt = commit.indexOf('runAquarelleScriptRebake({');
     const successAt = commit.indexOf('onSuccess: () => {');
-    expect(publishAt, 'missing the rebuild publish').toBeGreaterThan(-1);
-    // Published BEFORE the await, so the silent replay always has a status.
-    expect(publishAt).toBeLessThan(rebakeAt);
+    expect(busyAt, 'missing the busy status').toBeGreaterThan(-1);
+    // Set BEFORE the await: key actions stay gated for the whole replay.
+    expect(busyAt).toBeLessThan(rebakeAt);
     expect(successAt).toBeGreaterThan(rebakeAt);
-    // Success clears BOTH fields — the capsule rests, and no `success` state
-    // lingers to swallow a later message.
+    // 261112-i6d: the canvas veil is the ONE story — the strip publishes no
+    // copy of the wait, so success has no line of its own to clear.
+    expect(commit).not.toContain('setApplyMessage(VECTOR_PATH_REBUILDING_MESSAGE);');
     const success = commit.slice(successAt, commit.indexOf('onFailure:', successAt));
     expect(success).toContain("setApplyStatus('idle');");
-    expect(success).toContain('setApplyMessage(null);');
+    expect(success).not.toContain('setApplyMessage(null);');
   });
 });
 

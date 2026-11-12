@@ -322,7 +322,6 @@ import {
   WIREFRAME_SETTLE_REFUSED_MESSAGE,
 } from './view/scriptStrokeEdition';
 import {
-  VECTOR_PATH_REBUILDING_MESSAGE,
   VECTOR_PATH_SCRIPT_OFF_MESSAGE,
   isVectorAquarelleStroke,
   resolveVectorCommitRoute,
@@ -10283,11 +10282,10 @@ export function PhysicsPaintStudio() {
       clearOwnedScriptApplyRefusal();
       return editId;
     }
-    // 261112-i6d: a path edit re-bakes the WHOLE script, so the gesture is
-    // silent for as long as the replay takes — a dead click unless the strip
-    // says otherwise. Publish before the await; `onSuccess` hides it and
-    // `onFailure` replaces it with the rollback copy, so no path ends here.
-    setApplyMessage(VECTOR_PATH_REBUILDING_MESSAGE);
+    // 261112-i6d: the canvas veil is this gesture's ONE indicator — it carries
+    // the stroke counter the apply pill would show, and the pill stands down
+    // while it is up. The `applying` status stays because it is the busy gate
+    // every key action reads; it publishes no copy of its own.
     setApplyStatus('applying');
     const ok = await runAquarelleScriptRebake({
       isInFlight: isAquarelleScriptEditInFlight,
@@ -10311,10 +10309,8 @@ export function PhysicsPaintStudio() {
         rotoMoveHistory.recordAquarelleScriptEdit(editId);
         setLastError(null);
         clearOwnedScriptApplyRefusal();
-        // 261112-i6d: the rebuild line is done. Clearing BOTH fields returns
-        // the capsule to rest without leaving the `success` state behind — a
-        // later message written without a status move would be filtered out.
-        setApplyMessage(null);
+        // 261112-i6d: the veil closes on the latch, not here — the status just
+        // returns to rest. Never `success`: that state filters later messages.
         setApplyStatus('idle');
       },
       onFailure: () => {
