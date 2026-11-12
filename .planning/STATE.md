@@ -6,10 +6,10 @@ current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: planning
 stopped_at: Quick 261112-n3f UAT approved (incl. the cache-eye exit fix 39007da12); Phase 62 ready to plan
-last_updated: "2026-11-12T16:28:37.041Z"
+last_updated: "2026-11-12T18:38:18.827Z"
 last_activity: 2026-11-12
 last_activity_desc: Quick 261112-n3f + cache-eye exit fix (39007da12) UAT approved; Phase 62 ready to plan
-state_head: 8f5ae4c82c3c944421339f1fe79800019d795790
+state_head: be50196c17422d93efcd583752ae3ed0c974d087
 progress:
   total_phases: 4
   completed_phases: 3
@@ -445,6 +445,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261112-lq4 | Stroke settings sheet redesign: four tabs (List default \| Geometry \| Stack \| Curve), Paint \| Eraser \| All row merged into the tool dropdown, Edit path and Preview stroke size moved into the Draft strip, cache caption removed, Vertex size / Curve / Corner moved to the Curve tab (UAT approved 2026-11-12) | 2026-11-12 | 82f9ae5cd | [261112-lq4-ui-stroke-vector-modal-redesign](./quick/261112-lq4-ui-stroke-vector-modal-redesign/) |
 | 29 | Hide Vertex size and Corner blocks in the Curve tab unless a vertex is selected (UAT approved 2026-11-12) | 2026-11-12 | 72a69dc94 | — |
 | 261112-n3f | Unify the stroke-size preview into one toggle (vertex-aware, off by default) and remove the vector envelope self-intersection lines (UAT approved, including follow-up 39007da12 restoring the committed sheet on leaving the surface) | 2026-11-12 | 8f5ae4c82 | [261112-n3f-unify-the-stroke-size-preview-into-one-t](./quick/261112-n3f-unify-the-stroke-size-preview-into-one-t/) |
+| 31 | Studio UI polish: Water tool + Undo/Redo moved to the top-bar action cluster, cache-load notice published as info (no stale red tone), right-sidebar tab scrollbars use the blue thumb, Script switch labels Script mode / Pixel mode | 2026-11-12 | be50196c1 | — |
 
 ## Roadmap Evolution
 
