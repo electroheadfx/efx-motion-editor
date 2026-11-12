@@ -156,7 +156,7 @@ Each task was committed atomically:
 2. **Task 2: Move Edit path and Preview stroke size into the Draft strip** - `fcb003207` (feat)
 3. **Task 3: Four tabs and the view machinery deleted** - `153c82c05` (feat)
 
-**Plan metadata:** none yet (this SUMMARY commit is the orchestrator's docs commit)
+**Plan metadata:** `8f51e2eab` (docs: complete quick task)
 
 _Measured from the plan ledger `gsd-plan-head-before-261112-lq4-01` (= `d7a0e64f`): `git rev-list --count d7a0e64f..HEAD` = 3._
 
