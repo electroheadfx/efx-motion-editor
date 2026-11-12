@@ -278,18 +278,18 @@ const MID_18 = widened(
 )
 
 describe('clampAnchorWidth', () => {
-  it('guards the published 0.2..2.0 range and defaults non-finite input', () => {
+  it('guards the published 0.2..20 range and defaults non-finite input', () => {
     expect(clampAnchorWidth(0.1)).toBe(ANCHOR_WIDTH_MIN)
     expect(clampAnchorWidth(0.1)).toBe(0.2)
-    expect(clampAnchorWidth(3)).toBe(ANCHOR_WIDTH_MAX)
-    expect(clampAnchorWidth(3)).toBe(2)
+    expect(clampAnchorWidth(ANCHOR_WIDTH_MAX + 1)).toBe(ANCHOR_WIDTH_MAX)
+    expect(clampAnchorWidth(ANCHOR_WIDTH_MAX + 1)).toBe(ANCHOR_WIDTH_MAX)
     expect(clampAnchorWidth(1.8)).toBe(1.8)
     expect(clampAnchorWidth(Number.NaN)).toBe(ANCHOR_WIDTH_DEFAULT)
     expect(clampAnchorWidth(Number.NaN)).toBe(1)
   })
 
   it('never lowers a factor that is already inside the range', () => {
-    for (const factor of [0.2, 0.5, 1, 1.4, 1.8, 2]) {
+    for (const factor of [0.2, 0.5, 1, 1.4, 1.8, 2, 10, 20]) {
       expect(clampAnchorWidth(factor)).toBe(factor)
     }
   })

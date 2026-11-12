@@ -26,7 +26,7 @@
 //       stroke's red" are different intents. Absent means inherit.
 //       The factor is a multiplier of the brush size (D-09), never a
 //       pixel radius, and nothing here clamps it below its published
-//       0.2..2.0 range.
+//       0.2..20 range.
 //
 //  PURITY: no imports, no Preact, no signals, no DOM, no engine, no
 //  unseeded RNG, and no pixel / zoom / viewport term. Coordinates
@@ -86,8 +86,14 @@ export const AUTO_SMOOTH_ALPHA = 0.5
 /** Published lower bound of a vertex width multiplier. */
 export const ANCHOR_WIDTH_MIN = 0.2
 
-/** Published upper bound of a vertex width multiplier. */
-export const ANCHOR_WIDTH_MAX = 2
+/**
+ * Published upper bound of a vertex width multiplier — ×20. This is the ONE
+ * storage / evaluation ceiling: `clampAnchorWidth`, the per-anchor factor read,
+ * `sampleVectorWidths`, the engine's scripted width channel and the payload
+ * reopen guard all inherit it, so no second ceiling may be introduced. The UI's
+ * ×10 slider track is an app constant layered on top, not a second ceiling.
+ */
+export const ANCHOR_WIDTH_MAX = 20
 
 /** The width of an anchor that was never edited (D-10: absent reads 1). */
 export const ANCHOR_WIDTH_DEFAULT = 1
@@ -246,7 +252,7 @@ export function pathLength(anchors: readonly VectorAnchor[]): number {
 }
 
 /**
- * Guard the published 0.2..2.0 range (D-09). This clamp exists ONLY to bound
+ * Guard the published 0.2..20 range (D-09). This clamp exists ONLY to bound
  * the range; it must never lower a factor that is already inside it — C-03
  * forbids the upper bound at 1.0 that `Engine.ts:844` applies to `scriptScale`,
  * which is why the ceiling here is ANCHOR_WIDTH_MAX and never 1. A non-finite
