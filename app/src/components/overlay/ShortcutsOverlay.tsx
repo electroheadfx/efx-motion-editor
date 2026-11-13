@@ -1,121 +1,27 @@
 import {useEffect, useState} from 'preact/hooks';
+import {paintStore} from '../../stores/paintStore';
 import {uiStore} from '../../stores/uiStore';
-
-/** Shortcut entry: key symbol(s) and description */
-interface ShortcutEntry {
-  keys: string;
-  description: string;
-}
-
-interface ShortcutGroup {
-  title: string;
-  entries: ShortcutEntry[];
-}
-
-const SHORTCUT_GROUPS: ShortcutGroup[] = [
-  {
-    title: 'Playback',
-    entries: [
-      {keys: '\u2423 Space', description: 'Play / Pause'},
-      {keys: '\u2190 \u2192', description: 'Step frame'},
-      {keys: 'J', description: 'Set reverse / increase speed'},
-      {keys: 'K', description: 'Reset speed to 1x forward'},
-      {keys: 'L', description: 'Set forward / increase speed'},
-      {keys: '\u21E7\u2423', description: 'Full-speed playback (no UI feedback)'},
-    ],
-  },
-  {
-    title: 'File',
-    entries: [
-      {keys: '\u2318S', description: 'Save project'},
-      {keys: '\u2318N', description: 'New project'},
-      {keys: '\u2318O', description: 'Open project'},
-    ],
-  },
-  {
-    title: 'Editing',
-    entries: [
-      {keys: '\u2318Z', description: 'Undo'},
-      {keys: '\u21E7\u2318Z', description: 'Redo'},
-      {keys: '\u232B', description: 'Delete selected'},
-    ],
-  },
-  {
-    title: 'Navigation',
-    entries: [
-      {keys: 'Home / \u21E7\u2318\u2190', description: 'Go to start of timeline'},
-      {keys: 'End / \u21E7\u2318\u2192', description: 'Go to end of timeline'},
-      {keys: 'PgUp / \u2318\u2190 / \u2191', description: 'Jump to previous sequence'},
-      {keys: 'PgDn / \u2318\u2192 / \u2193', description: 'Jump to next sequence'},
-      {keys: '\u21E7\u2318T', description: 'Cycle theme'},
-      {keys: '?', description: 'Toggle this help'},
-    ],
-  },
-  {
-    title: 'Canvas',
-    entries: [
-      {keys: '= / +', description: 'Zoom in (when mouse over canvas)'},
-      {keys: '\u2212', description: 'Zoom out (when mouse over canvas)'},
-      {keys: '\u23180', description: 'Fit to window'},
-      {keys: 'F', description: 'Toggle fit lock'},
-      {keys: '\u2318Scroll', description: 'Zoom at cursor'},
-      {keys: '\u2190\u2191\u2193\u2192', description: 'Nudge layer 1px'},
-      {keys: '\u21E7\u2190\u2191\u2193\u2192', description: 'Nudge layer 10px'},
-      {keys: '\u21E7\u2318F', description: 'Toggle fullscreen canvas'},
-      {keys: 'Esc', description: 'Deselect layer'},
-      {keys: '\u2325Click', description: 'Cycle overlapping layers'},
-    ],
-  },
-  {
-    title: 'Timeline',
-    entries: [
-      {keys: '= / +', description: 'Zoom in (when mouse over timeline)'},
-      {keys: '\u2212', description: 'Zoom out (when mouse over timeline)'},
-      {keys: '\u2303Scroll', description: 'Zoom at cursor'},
-      {keys: '\u2318Scroll', description: 'Vertical scroll'},
-      {keys: 'Scroll', description: 'Natural scroll (trackpad)'},
-      {keys: '\u21E7Scroll', description: 'Vertical scroll'},
-      {keys: 'S', description: 'Toggle solo mode (base content only)'},
-    ],
-  },
-  {
-    title: 'Blur',
-    entries: [
-      { keys: '\u21E7B', description: 'Toggle bypass all blur' },
-    ],
-  },
-  {
-    title: 'Keyframes',
-    entries: [
-      { keys: 'I', description: 'Add keyframe at current frame' },
-    ],
-  },
-  {
-    title: 'Paint Mode',
-    entries: [
-      { keys: 'P', description: 'Toggle paint edit mode' },
-      { keys: 'F', description: 'Toggle flat/FX preview' },
-      { keys: 'O', description: 'Toggle sequence overlay' },
-      { keys: '\u2318/Ctrl+A', description: 'Select all strokes' },
-      { keys: 'Delete', description: 'Delete selected strokes' },
-      { keys: 'Click', description: 'Select stroke (select tool)' },
-      { keys: '\u2318/Ctrl+Click', description: 'Multi-select strokes' },
-      { keys: 'Drag', description: 'Move selected strokes' },
-      { keys: 'Corner handle', description: 'Resize selected strokes' },
-      { keys: 'Rotate handle', description: 'Rotate selected strokes' },
-    ],
-  },
-];
-
-/** Total number of tabs: Sections index (0) + group tabs */
-const TAB_COUNT = 1 + SHORTCUT_GROUPS.length;
-
-/** Tab labels: index 0 = Sections, indices 1-7 = group titles */
-const TAB_LABELS = ['Sections', ...SHORTCUT_GROUPS.map((g) => g.title)];
+import {
+  SHORTCUT_GROUPS,
+  SHORTCUT_TAB_COUNT,
+  SHORTCUT_TAB_LABELS,
+  SHORTCUTS_CONTEXT_COPY,
+  resolveShortcutsContext,
+  resolveShortcutsInitialTab,
+} from './shortcutsHelp';
 
 export function ShortcutsOverlay() {
-  const [activeTab, setActiveTab] = useState(0);
+  // Detected once per open: the overlay only mounts while the store flag is true,
+  // so one .peek() read in an initializer is exactly the "frozen for this open" law.
+  const [context] = useState(() =>
+    resolveShortcutsContext({
+      paintMode: paintStore.paintMode.peek(),
+      mouseRegion: uiStore.mouseRegion.peek(),
+    }),
+  );
+  const [activeTab, setActiveTab] = useState(() => resolveShortcutsInitialTab(context));
   const [focusedRow, setFocusedRow] = useState(0);
+  const contextCopy = SHORTCUTS_CONTEXT_COPY[context];
 
   // Reset focusedRow when returning to Sections tab
   useEffect(() => {
@@ -158,13 +64,13 @@ export function ShortcutsOverlay() {
       if (e.key === 'ArrowRight' || e.key === 'Tab') {
         e.preventDefault();
         e.stopPropagation();
-        setActiveTab((prev) => (prev + 1) % TAB_COUNT);
+        setActiveTab((prev) => (prev + 1) % SHORTCUT_TAB_COUNT);
         return;
       }
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
         e.stopPropagation();
-        setActiveTab((prev) => (prev - 1 + TAB_COUNT) % TAB_COUNT);
+        setActiveTab((prev) => (prev - 1 + SHORTCUT_TAB_COUNT) % SHORTCUT_TAB_COUNT);
         return;
       }
       // Number keys 1-8: direct jump to group tab
@@ -202,9 +108,14 @@ export function ShortcutsOverlay() {
       >
         {/* Header */}
         <div class="flex items-center justify-between mb-5">
-          <h2 class="text-base font-semibold text-(--color-text-heading)">
-            Keyboard Shortcuts
-          </h2>
+          <div class="flex flex-col">
+            <h2 class="text-base font-semibold text-(--color-text-heading)">
+              Keyboard Shortcuts
+            </h2>
+            <p class="text-xs text-(--color-text-muted)">
+              Detected: {contextCopy.label} — {contextCopy.detail}
+            </p>
+          </div>
           <button
             class="flex items-center justify-center w-7 h-7 rounded hover:bg-(--color-border-subtle) transition-colors cursor-pointer"
             onClick={() => uiStore.closeShortcutsOverlay()}
@@ -216,7 +127,7 @@ export function ShortcutsOverlay() {
 
         {/* Tab bar */}
         <div class="flex flex-wrap border-b border-(--color-border-subtle)">
-          {TAB_LABELS.map((label, index) => {
+          {SHORTCUT_TAB_LABELS.map((label, index) => {
             const isActive = activeTab === index;
             return (
               <button
