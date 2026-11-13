@@ -13,8 +13,9 @@ import { getContainedCanvasDisplaySize } from '../engine/physicsPaintCanvasSizin
  * FIT stays the opening view and follows container resizes. It is not the
  * floor: the zoom-out floor is the ladder bottom (10%), so a sheet fitted at
  * 36% can still be viewed smaller. 1:1 maps one engine working pixel to one
- * CSS pixel and is pannable because a 1080x1920 sheet overflows a typical
- * Studio window.
+ * CSS pixel. The pan is free and unbounded at every scale: the sheet can be
+ * pushed fully off the viewport, and Fit / the Studio-open reset are the
+ * recovery paths back to the centred sheet.
  */
 
 /** The same preset ladder as the main editor's canvasStore. */
@@ -46,8 +47,6 @@ export interface ZoomDisplaySize {
 }
 
 export interface CursorAnchoredPanInput {
-  containerWidth: number;
-  containerHeight: number;
   displayWidth: number;
   displayHeight: number;
   panX: number;
@@ -61,6 +60,11 @@ export interface CursorAnchoredPanInput {
 
 function finiteOrZero(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+/** A pan coordinate: exact when finite, zero otherwise; -0 normalizes to +0. */
+function sanitizePan(value: number): number {
+  return Number.isFinite(value) ? (value === 0 ? 0 : value) : 0;
 }
 
 /** Fit delegates to the sizing authority so Fit is byte-identical to today. */
@@ -139,41 +143,14 @@ export function resolveZoomPercent(scale: number): number {
   return Math.round(scale * 100);
 }
 
-/** Non-negative half-overflow per axis: the pan budget that keeps the sheet reachable. */
-export function resolveMaxPan(displayWidth: number, displayHeight: number, containerWidth: number, containerHeight: number): ZoomPanOffset {
-  const displayW = finiteOrZero(displayWidth);
-  const displayH = finiteOrZero(displayHeight);
-  const containerW = finiteOrZero(containerWidth);
-  const containerH = finiteOrZero(containerHeight);
-  return {
-    x: Math.max(0, (displayW - containerW) / 2),
-    y: Math.max(0, (displayH - containerH) / 2),
-  };
-}
-
-export function clampPanToBounds(
-  x: number,
-  y: number,
-  displayWidth: number,
-  displayHeight: number,
-  containerWidth: number,
-  containerHeight: number,
-): ZoomPanOffset {
-  const max = resolveMaxPan(displayWidth, displayHeight, containerWidth, containerHeight);
-  const clampedX = Math.max(-max.x, Math.min(max.x, Number.isFinite(x) ? x : 0));
-  const clampedY = Math.max(-max.y, Math.min(max.y, Number.isFinite(y) ? y : 0));
-  // Normalize -0 to +0: a clamped zero pan must compare equal on both axes.
-  return { x: clampedX === 0 ? 0 : clampedX, y: clampedY === 0 ? 0 : clampedY };
-}
-
 /**
  * The ONE anchored-pan law, shared by the cursor wheel/pinch path and the
  * center-anchored button steps (a zero cursor).
  *
  * The sheet is centered in the container, so the local point under a cursor is
  * `(cursor + display/2 - pan) / display`. Holding that fraction fixed through
- * the size change solves the anchored pan. The result is clamped to the pan
- * budget, so anchoring degrades gracefully at the edges.
+ * the size change solves the anchored pan. The result is exact and unbounded
+ * (a non-finite value sanitizes to zero), so the pan is free at every edge.
  */
 export function resolveCursorAnchoredPan(input: CursorAnchoredPanInput): ZoomPanOffset {
   const displayW = finiteOrZero(input.displayWidth);
@@ -186,7 +163,7 @@ export function resolveCursorAnchoredPan(input: CursorAnchoredPanInput): ZoomPan
   const fractionY = displayH > 0 ? (cursorY + displayH / 2 - input.panY) / displayH : 0.5;
   const anchoredX = cursorX + nextW / 2 - fractionX * nextW;
   const anchoredY = cursorY + nextH / 2 - fractionY * nextH;
-  return clampPanToBounds(anchoredX, anchoredY, nextW, nextH, input.containerWidth, input.containerHeight);
+  return { x: sanitizePan(anchoredX), y: sanitizePan(anchoredY) };
 }
 
 // --- Signals -------------------------------------------------------------
@@ -236,19 +213,6 @@ function setSignal<T>(target: Signal<T>, value: T): boolean {
   return true;
 }
 
-function reClampPan(): void {
-  const clamped = clampPanToBounds(
-    panX.peek(),
-    panY.peek(),
-    displayWidth.peek(),
-    displayHeight.peek(),
-    containerWidth.peek(),
-    containerHeight.peek(),
-  );
-  setSignal(panX, clamped.x);
-  setSignal(panY, clamped.y);
-}
-
 /**
  * The shared anchored zoom write: every zoom input (wheel, pinch, preset
  * buttons) ends here, so one math path owns the mode/scale/pan triple.
@@ -262,8 +226,6 @@ function applyAnchoredZoom(cursorX: number, cursorY: number, targetScale: number
   const currentDisplay = resolveDisplaySize(workWidth.peek(), workHeight.peek(), effectiveScale.peek());
   const nextDisplay = resolveDisplaySize(workWidth.peek(), workHeight.peek(), scale);
   const anchored = resolveCursorAnchoredPan({
-    containerWidth: containerWidth.peek(),
-    containerHeight: containerHeight.peek(),
     displayWidth: currentDisplay.width,
     displayHeight: currentDisplay.height,
     panX: panX.peek(),
@@ -290,8 +252,10 @@ function stepPreset(direction: 1 | -1): void {
 
 /**
  * Module-level store read by narrow leaves (the mount's sizing seam, the pan
- * layer, the pill). Every mutator clamps scale into [minScale, maxScale] and
- * pan into the half-overflow, and every write is compare-then-write.
+ * layer, the pill). Every mutator clamps scale into [minScale, maxScale]. The
+ * pan is free and unbounded: a drag can push the sheet fully off the viewport,
+ * and Fit / the Studio-open reset are the way back. Every write is
+ * compare-then-write.
  */
 export const physicsPaintCanvasZoom = {
   containerWidth,
@@ -316,9 +280,8 @@ export const physicsPaintCanvasZoom = {
   isActualSize,
 
   setContainerSize(width: number, height: number): void {
-    const widthChanged = setSignal(containerWidth, finiteOrZero(width));
-    const heightChanged = setSignal(containerHeight, finiteOrZero(height));
-    if (widthChanged || heightChanged) reClampPan();
+    setSignal(containerWidth, finiteOrZero(width));
+    setSignal(containerHeight, finiteOrZero(height));
   },
 
   setWorkSize(width: number, height: number): void {
@@ -326,7 +289,6 @@ export const physicsPaintCanvasZoom = {
     const heightChanged = setSignal(workHeight, finiteOrZero(height));
     if (!widthChanged && !heightChanged) return;
     setSignal(absoluteScale, clampZoomScale(absoluteScale.peek(), minScale.peek(), maxScale.peek()));
-    reClampPan();
   },
 
   fitToWindow(): void {
@@ -335,11 +297,10 @@ export const physicsPaintCanvasZoom = {
     setSignal(panY, 0);
   },
 
-  /** 1:1 is always inside the range: the budget never excludes it. */
+  /** 1:1 is always inside the range: the budget never excludes it. The pan is kept. */
   actualSize(): void {
     setSignal(zoomMode, 'absolute');
     setSignal(absoluteScale, clampZoomScale(1, minScale.peek(), maxScale.peek()));
-    reClampPan();
   },
 
   zoomIn(): void {
@@ -355,17 +316,10 @@ export const physicsPaintCanvasZoom = {
     applyAnchoredZoom(Number.isFinite(cursorX) ? cursorX : 0, Number.isFinite(cursorY) ? cursorY : 0, scale);
   },
 
+  /** Free pan: unbounded on both axes; non-finite values sanitize to zero. */
   setPan(x: number, y: number): void {
-    const clamped = clampPanToBounds(
-      x,
-      y,
-      displayWidth.peek(),
-      displayHeight.peek(),
-      containerWidth.peek(),
-      containerHeight.peek(),
-    );
-    setSignal(panX, clamped.x);
-    setSignal(panY, clamped.y);
+    setSignal(panX, sanitizePan(x));
+    setSignal(panY, sanitizePan(y));
   },
 
   /**

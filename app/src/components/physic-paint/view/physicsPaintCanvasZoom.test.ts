@@ -227,8 +227,6 @@ describe('physicsPaintCanvasZoom — cursor-anchored zoom', () => {
   it('resolves the anchored pan from the current display box (pure helper)', () => {
     expect(
       resolveCursorAnchoredPan({
-        containerWidth: 1000,
-        containerHeight: 800,
         displayWidth: 1200,
         displayHeight: 900,
         panX: 0,
@@ -244,8 +242,6 @@ describe('physicsPaintCanvasZoom — cursor-anchored zoom', () => {
   it('returns the exact anchored pan and is a no-op before measurement', () => {
     expect(
       resolveCursorAnchoredPan({
-        containerWidth: 1000,
-        containerHeight: 800,
         displayWidth: 400,
         displayHeight: 600,
         panX: 0,
