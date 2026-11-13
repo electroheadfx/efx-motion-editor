@@ -361,12 +361,17 @@
 .canvas-zoom-pill {
   position: absolute;
   left: 16px;
-  bottom: 16px;
+  top: 16px;
   z-index: 10;
   display: inline-flex;
   align-items: center;
   gap: 2px;
   padding: 4px;
+  /* Invisible until the pointer is on the canvas: the controls must never
+     sit on top of the artwork while the user is drawing or reviewing it. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   background:
@@ -438,6 +443,15 @@
   height: 16px;
   margin: 0 4px;
   background: rgba(255, 255, 255, 0.12);
+}
+
+/* Reveal while the pointer is on the canvas (the pill lives inside that
+   surface, so moving from the sheet onto the pill keeps it up) and while the
+   keyboard is inside it, so tabbing never lands on an invisible control. */
+.canvas-zoom-pill-host:hover > .canvas-zoom-pill,
+.canvas-zoom-pill:focus-within {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Hide native scrollbar for SidebarScrollArea — works in Safari/WKWebView + Chrome */

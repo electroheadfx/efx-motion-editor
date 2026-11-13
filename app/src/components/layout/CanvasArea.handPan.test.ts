@@ -13,6 +13,11 @@ import { describe, expect, it } from 'vitest';
  */
 
 const area = readFileSync(fileURLToPath(new URL('./CanvasArea.tsx', import.meta.url)), 'utf8');
+const css = readFileSync(fileURLToPath(new URL('../../index.css', import.meta.url)), 'utf8');
+const studioCss = readFileSync(
+  fileURLToPath(new URL('../physic-paint/physicsPaintStudio.css', import.meta.url)),
+  'utf8',
+);
 
 function slice(start: string, end: string): string {
   const from = area.indexOf(start);
@@ -73,15 +78,18 @@ describe('CanvasArea — floating glass pill', () => {
   it('replaces the top controls bar with the floating pill', () => {
     // The old bar (a full-width flex row above the canvas) is gone.
     expect(area).not.toContain('flex items-center justify-center gap-3 w-full pt-4 pb-2 px-5 shrink-0');
-    expect(area).toContain('<div class="canvas-zoom-pill" role="group" aria-label="Canvas controls">');
-    // The canvas container is the pill's positioning context.
+    expect(area).toContain('class="canvas-zoom-pill"');
+    expect(area).toContain('role="group"');
+    expect(area).toContain('aria-label="Canvas controls"');
+    // The canvas container is both the pill's positioning context and its
+    // hover-reveal host.
     expect(area).toContain(
-      'class="relative flex items-center justify-center flex-1 min-h-0 p-4 pt-0 overflow-hidden"',
+      'class="canvas-zoom-pill-host relative flex items-center justify-center flex-1 min-h-0 p-4 pt-0 overflow-hidden"',
     );
   });
 
   it('carries the same control set as the Studio pill plus the editor extras', () => {
-    const pill = slice('<div class="canvas-zoom-pill"', '<div class="absolute right-4 bottom-4 pointer-events-none">');
+    const pill = slice('class="canvas-zoom-pill"', '<div class="absolute right-4 bottom-4 pointer-events-none">');
     for (const control of [
       'canvasStore.zoomOut()',
       'canvasStore.zoomPercent.value',
@@ -103,5 +111,40 @@ describe('CanvasArea — floating glass pill', () => {
   it('floats the full-speed badge instead of keeping a controls row alive', () => {
     // The badge lives at the canvas bottom-right so no bar is needed.
     expect(area).toContain('<div class="absolute right-4 bottom-4 pointer-events-none">\n            <FullSpeedBadge />');
+  });
+});
+
+describe('canvas pill — hover reveal', () => {
+  it('hides the editor pill until the pointer is on the canvas, at the top-left', () => {
+    const start = css.indexOf('.canvas-zoom-pill {');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const block = css.slice(start, css.indexOf('}', start));
+    expect(block).toContain('top: 16px;');
+    expect(block).not.toContain('bottom:');
+    expect(block).toContain('opacity: 0;');
+    expect(block).toContain('pointer-events: none;');
+    // The canvas surface is the reveal host, so reaching for the pill keeps
+    // it up; keyboard focus reveals it too.
+    expect(css).toContain('.canvas-zoom-pill-host:hover > .canvas-zoom-pill,');
+    expect(css).toContain('.canvas-zoom-pill:focus-within {');
+    expect(area).toContain('canvas-zoom-pill-host');
+    // A live Hand press keeps it up while the drag leaves the surface.
+    expect(area).toContain("? { opacity: 1, pointerEvents: 'auto' }");
+    expect(area).toContain('isHandPanning.value = true;');
+    expect(area).toContain('isHandPanning.value = false;');
+  });
+
+  it('hides the Studio pill until the pointer is on the canvas region', () => {
+    const start = studioCss.indexOf('.physics-paint-canvas-zoom-bar {');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const block = studioCss.slice(start, studioCss.indexOf('}', start));
+    expect(block).toContain('opacity: 0;');
+    expect(block).toContain('pointer-events: none;');
+    // Bottom-left stays the Studio's seat.
+    expect(block).toContain('bottom: 16px;');
+    expect(studioCss).toContain('.physics-paint-canvas-region:hover .physics-paint-canvas-zoom-bar,');
+    expect(studioCss).toContain('.physics-paint-canvas-zoom-bar:focus-within,');
+    // A live Hand press keeps it up while the drag leaves the region.
+    expect(studioCss).toContain(".physics-paint-canvas-zoom-bar[data-armed='true'] {");
   });
 });

@@ -108,7 +108,14 @@ export function PhysicsPaintCanvasZoomBar() {
   };
 
   return (
-    <div class="physics-paint-canvas-zoom-bar" role="group" aria-label="Canvas zoom">
+    // data-armed keeps the otherwise hover-revealed pill up for the whole of
+    // a live Hand press, even when the drag carries the pointer off the canvas.
+    <div
+      class="physics-paint-canvas-zoom-bar"
+      role="group"
+      aria-label="Canvas zoom"
+      data-armed={handArmed ? 'true' : undefined}
+    >
       <button
         type="button"
         class="physics-paint-canvas-zoom-button"

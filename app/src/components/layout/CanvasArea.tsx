@@ -84,6 +84,9 @@ export function CanvasArea() {
   const isSpaceHeld = useRef(false);
   const spaceDragOccurred = useRef(false);
   const handSessionRef = useRef<HandPanSession | null>(null);
+  // The pill hides unless the pointer is on the canvas; a live Hand press
+  // keeps it up even when the drag carries the pointer outside the surface.
+  const isHandPanning = useSignal(false);
 
   // Drag state for panning (start coordinates, not reactive)
   const dragRef = useRef({
@@ -167,6 +170,7 @@ export function CanvasArea() {
     if (!session) return;
     if (pointerId !== undefined && session.pointerId !== pointerId) return;
     handSessionRef.current = null;
+    isHandPanning.value = false;
     session.target.removeEventListener('pointermove', session.onMove);
     session.target.removeEventListener('pointerup', session.onEnd);
     session.target.removeEventListener('pointercancel', session.onEnd);
@@ -216,6 +220,7 @@ export function CanvasArea() {
       },
     };
     handSessionRef.current = session;
+    isHandPanning.value = true;
     target.style.cursor = 'grabbing';
     target.addEventListener('pointermove', session.onMove, { passive: false });
     target.addEventListener('pointerup', session.onEnd);
@@ -426,7 +431,7 @@ export function CanvasArea() {
         {/* Preview Frame with zoom/pan */}
         <div
           ref={containerRef}
-          class="relative flex items-center justify-center flex-1 min-h-0 p-4 pt-0 overflow-hidden"
+          class="canvas-zoom-pill-host relative flex items-center justify-center flex-1 min-h-0 p-4 pt-0 overflow-hidden"
           onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -436,7 +441,16 @@ export function CanvasArea() {
           {/* Floating canvas controls — the Studio pill's glass chrome at the
               canvas bottom-left. It stays up in paint mode so zoom and pan are
               reachable while painting; the paint toolbar keeps the top. */}
-          <div class="canvas-zoom-pill" role="group" aria-label="Canvas controls">
+          <div
+            class="canvas-zoom-pill"
+            role="group"
+            aria-label="Canvas controls"
+            style={
+              isHandPanning.value
+                ? { opacity: 1, pointerEvents: 'auto' }
+                : undefined
+            }
+          >
             <button
               class="canvas-zoom-pill-text"
               aria-pressed={isPaintModeActive}

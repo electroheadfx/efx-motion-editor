@@ -1121,6 +1121,12 @@ button.destructive {
   align-items: center;
   gap: 2px;
   padding: 4px;
+  /* Invisible until the pointer is on the canvas — the pill must never sit on
+     the sheet while the user is drawing. The reveal host is the whole canvas
+     region (the pill is its child), so reaching for the pill keeps it up. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   /* Liquid glass — identical to the editor canvas pill (.canvas-zoom-pill in
@@ -1149,6 +1155,13 @@ button.destructive {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
+}
+
+.physics-paint-canvas-region:hover .physics-paint-canvas-zoom-bar,
+.physics-paint-canvas-zoom-bar:focus-within,
+.physics-paint-canvas-zoom-bar[data-armed='true'] {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .physics-paint-canvas-zoom-button {
