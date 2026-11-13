@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 Phase: 62 — Painted-Stroke Curve Editing
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-13 - Quick task 261113-o26 automated-ready (verification: human_needed): the canvas pan clamps are gone on both the Studio sheet and the main editor canvas, so the Hand / Space-drag / middle-drag can push the canvas past any edge at Fit or 1:1; Fit and the Studio-open reset remain the recovery paths. Eight native UAT rows await live confirmation.
+Last activity: 2026-11-13 - Quick task 261113-o26 CLOSED (UAT approved): canvas pan is unbounded on both the Studio sheet and the main editor canvas at every zoom, and both surfaces carry the same hover-revealed liquid-glass zoom pill at the canvas bottom-right (the editor's top bar is gone; Hand, FIT and 1:1 now live in the pill). Fit and the Studio-open reset remain the recovery paths.
 
 Progress: [████████░░] 75%
 
@@ -447,7 +447,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261112-n3f | Unify the stroke-size preview into one toggle (vertex-aware, off by default) and remove the vector envelope self-intersection lines (UAT approved, including follow-up 39007da12 restoring the committed sheet on leaving the surface) | 2026-11-12 | 8f5ae4c82 | [261112-n3f-unify-the-stroke-size-preview-into-one-t](./quick/261112-n3f-unify-the-stroke-size-preview-into-one-t/) |
 | 31 | Studio UI polish: EFX mark in the old Engine-ready seat (Engine fail pill on failure), Re-render + Undo + Redo + Flash-dry in the top-bar action cluster (43px, centered inside the flexible settings cluster between the brush dropdown and the right settings; Water stays in the rail), "Script mode" checkbox inside the brush pill (checked by default, label at right, 2px gap), cache-load notice published as info, right-sidebar tab scrollbars use the blue thumb, orange active-track left bar (UAT approved 2026-11-12) | 2026-11-12 | aa03d4139 | — |
 | 261113-fkm | Vector paint: a whole-stroke colour apply replaces explicit per-vertex colours in the same edit (one undo), so the global colour survives path-edit re-entry; Size keeps per-vertex width factors (UAT approved 2026-11-13) | 2026-11-13 | 8adfa44ce | [261113-fkm-vector-paint-global-colour-apply-replace](./quick/261113-fkm-vector-paint-global-colour-apply-replace/) |
-| 261113-o26 | Free canvas pan: the Studio Hand and the main editor Space/middle-drag can push the canvas off any edge at Fit or 1:1 (pan clamps removed on both surfaces); Fit restores | 2026-11-13 | 2ef1a30a1 | [261113-o26-allow-to-move-canvas-out-with-hand-same-](./quick/261113-o26-allow-to-move-canvas-out-with-hand-same-/) |
+| 261113-o26 | Free canvas pan on both surfaces (Studio Hand / Shift+Space, main editor Space- and middle-drag push past any edge at Fit or 1:1; Fit restores) + a hover-revealed liquid-glass zoom pill seated bottom-right on both canvases, with Hand, FIT and 1:1 in the editor row (UAT approved 2026-11-13) | 2026-11-13 | b655ba3bb | [261113-o26-allow-to-move-canvas-out-with-hand-same-](./quick/261113-o26-allow-to-move-canvas-out-with-hand-same-/) |
 
 ## Roadmap Evolution
 
