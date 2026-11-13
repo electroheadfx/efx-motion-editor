@@ -70,6 +70,7 @@ entities.json
 .claude/skills/repomix-reference-efx-motion-editor/
 
 # Beads / Dolt files (added by bd init)
+.beads/
 .dolt/
 *.db
 .beads-credential-key
