@@ -8,6 +8,7 @@ import {
   SHORTCUTS_CONTEXT_COPY,
   resolveShortcutsContext,
   resolveShortcutsInitialTab,
+  resolveShortcutsTabNumber,
 } from './shortcutsHelp';
 
 export function ShortcutsOverlay() {
@@ -73,13 +74,16 @@ export function ShortcutsOverlay() {
         setActiveTab((prev) => (prev - 1 + SHORTCUT_TAB_COUNT) % SHORTCUT_TAB_COUNT);
         return;
       }
-      // Number keys 1-8: direct jump to group tab
+      // Number keys 1-N jump to their group tab (N = the group count)
       const num = parseInt(e.key, 10);
-      if (num >= 1 && num <= 8) {
-        e.preventDefault();
-        e.stopPropagation();
-        setActiveTab(num);
-        return;
+      if (!Number.isNaN(num)) {
+        const tab = resolveShortcutsTabNumber(num);
+        if (tab !== null) {
+          e.preventDefault();
+          e.stopPropagation();
+          setActiveTab(tab);
+          return;
+        }
       }
       // Block all other keys from reaching app while overlay is open
       e.stopPropagation();

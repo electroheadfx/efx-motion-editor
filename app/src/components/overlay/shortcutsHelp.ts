@@ -70,9 +70,9 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: '\u2212', description: 'Zoom out (when mouse over timeline)'},
       {keys: '\u2303Scroll', description: 'Zoom at cursor'},
       {keys: '\u2318Scroll', description: 'Vertical scroll'},
-      {keys: 'Scroll', description: 'Natural scroll (trackpad)'},
+      {keys: 'Scroll', description: 'Natural two-axis scroll (trackpad); mouse wheel scrolls horizontally'},
       {keys: '\u21E7Scroll', description: 'Vertical scroll'},
-      {keys: 'S', description: 'Toggle solo mode (base content only)'},
+      {keys: 'Alt+S', description: 'Toggle solo mode (base content only)'},
     ],
   },
   {
@@ -91,9 +91,11 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: 'Paint Mode',
     entries: [
       { keys: 'P', description: 'Toggle paint edit mode' },
+      { keys: 'S', description: 'Select tool' },
       { keys: 'F', description: 'Toggle flat/FX preview' },
-      { keys: 'O', description: 'Toggle sequence overlay' },
-      { keys: '\u2318/Ctrl+A', description: 'Select all strokes' },
+      { keys: 'X', description: 'Swap foreground / background' },
+      { keys: 'Esc', description: 'Leave paint mode' },
+      { keys: '\u2318/Ctrl+A', description: 'Select all strokes (select tool)' },
       { keys: 'Delete', description: 'Delete selected strokes' },
       { keys: 'Click', description: 'Select stroke (select tool)' },
       { keys: '\u2318/Ctrl+Click', description: 'Multi-select strokes' },
@@ -152,6 +154,8 @@ export const SHORTCUTS_CONTEXT_COPY: Record<ShortcutsContextId, {label: string; 
 };
 
 /** Number keys 1 through the group count jump to their group tab; anything else does not. */
-export function resolveShortcutsTabNumber(_num: number): number | null {
-  return null;
+export function resolveShortcutsTabNumber(num: number): number | null {
+  if (!Number.isInteger(num)) return null;
+  if (num < 1 || num > SHORTCUT_GROUPS.length) return null;
+  return num;
 }
