@@ -68,3 +68,10 @@ entities.json
 
 # Generated repomix reference skill (regenerate on demand)
 .claude/skills/repomix-reference-efx-motion-editor/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*

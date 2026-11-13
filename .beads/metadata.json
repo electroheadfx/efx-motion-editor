@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "efx_motion_editor",
+  "project_id": "168c08af-e2d4-49fd-873c-b75ec6fac36b"
+}
