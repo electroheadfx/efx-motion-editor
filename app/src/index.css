@@ -356,12 +356,12 @@
 
 /* Floating canvas controls pill — the liquid-glass chrome the Physic Paint
    Studio's zoom pill carries, now shared by the editor canvas. Layout is
-   absolute at the canvas bottom-left; the pill floats over the sheet in both
+   absolute at the canvas bottom-right; the pill floats over the sheet in both
    surfaces so Zoom / Hand / Fit / 1:1 stay reachable while painting. */
 .canvas-zoom-pill {
   position: absolute;
-  left: 16px;
-  top: 16px;
+  right: 16px;
+  bottom: 16px;
   z-index: 10;
   display: inline-flex;
   align-items: center;

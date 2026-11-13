@@ -89,7 +89,7 @@ describe('CanvasArea — floating glass pill', () => {
   });
 
   it('carries the same control set as the Studio pill plus the editor extras', () => {
-    const pill = slice('class="canvas-zoom-pill"', '<div class="absolute right-4 bottom-4 pointer-events-none">');
+    const pill = slice('class="canvas-zoom-pill"', '<div class="absolute left-4 bottom-4 pointer-events-none">');
     for (const control of [
       'canvasStore.zoomOut()',
       'canvasStore.zoomPercent.value',
@@ -110,17 +110,18 @@ describe('CanvasArea — floating glass pill', () => {
 
   it('floats the full-speed badge instead of keeping a controls row alive', () => {
     // The badge lives at the canvas bottom-right so no bar is needed.
-    expect(area).toContain('<div class="absolute right-4 bottom-4 pointer-events-none">\n            <FullSpeedBadge />');
+    expect(area).toContain('<div class="absolute left-4 bottom-4 pointer-events-none">\n            <FullSpeedBadge />');
   });
 });
 
 describe('canvas pill — hover reveal', () => {
-  it('hides the editor pill until the pointer is on the canvas, at the top-left', () => {
+  it('hides the editor pill until the pointer is on the canvas, at the bottom-right', () => {
     const start = css.indexOf('.canvas-zoom-pill {');
     expect(start).toBeGreaterThanOrEqual(0);
     const block = css.slice(start, css.indexOf('}', start));
-    expect(block).toContain('top: 16px;');
-    expect(block).not.toContain('bottom:');
+    expect(block).toContain('right: 16px;');
+    expect(block).toContain('bottom: 16px;');
+    expect(block).not.toContain('left:');
     expect(block).toContain('opacity: 0;');
     expect(block).toContain('pointer-events: none;');
     // The canvas surface is the reveal host, so reaching for the pill keeps

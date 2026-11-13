@@ -439,7 +439,7 @@ export function CanvasArea() {
           style={{cursor: cursorStyle}}
         >
           {/* Floating canvas controls — the Studio pill's glass chrome at the
-              canvas bottom-left. It stays up in paint mode so zoom and pan are
+              canvas bottom-right. It stays up in paint mode so zoom and pan are
               reachable while painting; the paint toolbar keeps the top. */}
           <div
             class="canvas-zoom-pill"
@@ -514,7 +514,7 @@ export function CanvasArea() {
               <Maximize size={14} />
             </button>
           </div>
-          <div class="absolute right-4 bottom-4 pointer-events-none">
+          <div class="absolute left-4 bottom-4 pointer-events-none">
             <FullSpeedBadge />
           </div>
           <div
