@@ -145,9 +145,9 @@ Rules:
 Collect phase artifacts for the review prompt:
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
 $ARGUMENTS
-GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
+GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
 GSD_ARGS=${GSD_ARGS%$'\n'}
 PHASE_ARG=$(echo "$GSD_ARGS" | sed -nE 's/.*--phase[[:space:]]+([A-Za-z0-9._-]+).*/\1/p')
 GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)

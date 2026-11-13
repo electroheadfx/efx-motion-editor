@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.20.1
+// gsd-hook-version: 1.21.0
 // gsd-cursor-pre-tool.js — Cursor preToolUse hook (ADR-1239 / #2089)
 //
 // Cursor invokes this script before each tool call executes.

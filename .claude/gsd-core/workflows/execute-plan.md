@@ -45,9 +45,9 @@ Load execution context (paths only to minimize orchestrator context):
 @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/gsd-run-resolver.md
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
 $ARGUMENTS
-GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
+GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
 GSD_ARGS=${GSD_ARGS%$'\n'}
 GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
 INIT=$(gsd_run query init.execute-phase ${GSD_WS:+--ws=${GSD_WS##* }} "${PHASE}")

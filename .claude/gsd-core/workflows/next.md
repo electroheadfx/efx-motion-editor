@@ -271,9 +271,9 @@ If STATE.md shows paused_at:
 Parse the arguments passed to this workflow to detect the plan strategy and build convergence pass-through args:
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
 $ARGUMENTS
-GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
+GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
 GSD_ARGS=${GSD_ARGS%$'\n'}
 PLAN_STRATEGY="local"
 if echo "$GSD_ARGS" | grep -qE '(^|[[:space:]])\-\-(converge|cross-ai)([[:space:]]|$)'; then

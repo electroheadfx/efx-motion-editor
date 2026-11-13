@@ -70,9 +70,9 @@ Read and follow `gsd-core/references/compact-content-gate.md` now — it states 
 Load all context in one call (paths only to minimize orchestrator context):
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
 $ARGUMENTS
-GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
+GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
 GSD_ARGS=${GSD_ARGS%$'\n'}
 _GSD_SHIM_NAME="gsd-tools.cjs"; _GSD_RUNTIME_ROOT="${RUNTIME_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"; GSD_TOOLS="${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}"; _gsd_at() { for _p; do if [ -f "$_p" ]; then GSD_TOOLS="$_p"; return 0; fi; done; return 1; }; _gsd_id_ok() { case "$("$1" runtime-identity --raw 2>/dev/null || true)" in '{"packageName":"@opengsd/gsd-core"'*'}') return 0;; *) return 1;; esac; }; _gsd_homes() { set -- "${CLAUDE_CONFIG_DIR:-/Users/lmarques/Dev/efx-motion-editor/.claude}" "${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/antigravity}" "$HOME/.gemini/antigravity-ide" "$HOME/.gemini/antigravity-cli" "${AUGMENT_CONFIG_DIR:-$HOME/.augment}" "${CLINE_CONFIG_DIR:-$HOME/.cline}" "${CODEBUDDY_CONFIG_DIR:-$HOME/.codebuddy}" "${CODEX_HOME:-$HOME/.codex}" "${COPILOT_CONFIG_DIR:-${COPILOT_HOME:-$HOME/.copilot}}" "${CURSOR_CONFIG_DIR:-$HOME/.cursor}" "${HERMES_HOME:-$HOME/.hermes}" "${KILO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/kilo}" "${KIMI_CONFIG_DIR:-$HOME/.config/agents}" "$HOME/.agents" "${KIMI_CODE_HOME:-$HOME/.kimi-code}" "${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}" "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}" "${QWEN_CONFIG_DIR:-$HOME/.qwen}" "${TRAE_CONFIG_DIR:-$HOME/.trae}" "${WINDSURF_CONFIG_DIR:-$HOME/.codeium/windsurf}" "${ZCODE_CONFIG_DIR:-$HOME/.zcode}" "${GROK_AGENTS_HOME:-$HOME/.agents}"; for _h; do _gsd_at "$_h/gsd-core/bin/${_GSD_SHIM_NAME}" && return 0; done; return 1; }; if _gsd_at "${_GSD_RUNTIME_ROOT}/gsd-core/bin/${_GSD_SHIM_NAME}" "${_GSD_RUNTIME_ROOT}/.claude/gsd-core/bin/${_GSD_SHIM_NAME}" "${_GSD_RUNTIME_ROOT}/.codex/gsd-core/bin/${_GSD_SHIM_NAME}"; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif _gsd_homes; then gsd_run() { node "$GSD_TOOLS" "$@"; }; elif unset -f gsd_run; _G="$(command -v gsd_run)"; [ -n "$_G" ] && _gsd_id_ok "$_G"; then GSD_TOOLS="$_G"; gsd_run() { "$GSD_TOOLS" "$@"; }; else echo "ERROR: gsd-tools.cjs not found at $GSD_TOOLS and no identity-proving gsd_run is on PATH. Run: npx -y @opengsd/gsd-core@latest --claude --local" >&2; exit 1; fi; GSD_IDENTITY_STATUS=unverified; _gsd_id_ok gsd_run && GSD_IDENTITY_STATUS=ok; export GSD_IDENTITY_STATUS; [ "$GSD_IDENTITY_STATUS" = ok ] || echo "WARNING: \"$GSD_TOOLS\" did not prove it is @opengsd/gsd-core - it is either a different package or an @opengsd/gsd-core older than the runtime-identity verb. See docs/how-to/diagnose-a-foreign-gsd-tools.md" >&2; if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -n "${GSD_TOOLS:-}" ]; then printf "export PATH='%s':\"\$PATH\"\n" "${GSD_TOOLS%/*}" >> "$CLAUDE_ENV_FILE" 2>/dev/null || true; fi
 GRAN_PARAM=""; if [[ "$GSD_ARGS" =~ (^|[[:space:]])--granularity[[:space:]]+([^[:space:]-][^[:space:]]*) ]]; then GRAN_PARAM="--granularity ${BASH_REMATCH[2]}"; fi
@@ -99,7 +99,7 @@ CONTEXT_WINDOW=$(gsd_run query config-get context_window --raw 2>/dev/null || ec
 MVP_MODE_CFG=$(gsd_run query config-get workflow.mvp_mode --raw 2>/dev/null || echo "false")
 ```
 
-When the tdd capability's `workflow.tdd_mode` is active (resolved via the plan:pre render-hooks), the planner agent is instructed to apply `type: tdd` to eligible tasks using heuristics from `gsd-core/references/tdd.md`. The TDD guidance is injected via the tdd capability's contribution hook at §5.6; no inline config-get is needed.
+When the tdd capability's `workflow.tdd_mode` is active (resolved via the plan:pre render-hooks), the planner agent is instructed to apply `type: tdd` to eligible tasks using heuristics from `gsd-core/references/tdd.md`. The TDD guidance is injected via the tdd capability's contribution hook at §8; no inline config-get is needed.
 
 When `CONTEXT_WINDOW >= 500000`, the planner prompt includes the 3 most recent prior-phase CONTEXT.md/SUMMARY.md files plus any phases in the current phase's `Depends on:` field (explicit deps load regardless of recency).
 
@@ -131,9 +131,9 @@ In research-only mode, two modifiers control behavior when `RESEARCH.md` already
 - **`--view`** — view-only: print existing `RESEARCH.md` to stdout, do **not** spawn the researcher. Sets `VIEW_ONLY=true`. Cheapest mode for the correction-without-replanning loop. If `RESEARCH.md` does not exist, error with a hint to drop `--view`.
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
 $ARGUMENTS
-GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
+GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
 GSD_ARGS=${GSD_ARGS%$'\n'}
 RESEARCH_ONLY=false
 VIEW_ONLY=false
@@ -153,9 +153,9 @@ Set `TEXT_MODE=true` if `--text` is present in $ARGUMENTS OR `text_mode` from in
 **MVP_MODE resolution.** Resolve `MVP_MODE` once via the centralized `phase.mvp-mode` query verb. Precedence (first hit wins): CLI flag → ROADMAP.md `**Mode:** mvp` → `workflow.mvp_mode` config → false. The verb is the single source of truth — do not re-implement the chain.
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
 $ARGUMENTS
-GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
+GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
 GSD_ARGS=${GSD_ARGS%$'\n'}
 MVP_FLAG_ARG=""
 if [[ "$GSD_ARGS" =~ (^|[[:space:]])--mvp([[:space:]]|$) ]]; then MVP_FLAG_ARG="--cli-flag"; fi
@@ -207,9 +207,9 @@ Set `phase_dir="${expected_phase_dir}"` after creation.
 
 Set `CHUNKED_MODE` from flag or config:
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
 $ARGUMENTS
-GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
+GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
 GSD_ARGS=${GSD_ARGS%$'\n'}
 CHUNKED_CFG=$(gsd_run query config-get workflow.plan_chunked --raw 2>/dev/null || echo "false")
 CHUNKED_MODE=false
@@ -349,9 +349,9 @@ If `section_manifest` is `null` or `"research-only-modifiers"` is in its `includ
 
 ### 5.1. Standard Research Decision
 
-**Skip if** `RESEARCH_ONLY=true` (the research-only mode in 5.0 already determined the path: spawn or exit). Without this guard, an LLM following the workflow could fall through into "use existing, skip to step 6" → planner spawn, violating the research-only contract. **CR #3045 finding: this gate makes the early-exit unreachable from any non-research-only branch.**
+**Skip if** `RESEARCH_ONLY=true` (the research-only mode in 5.0 already determined the path: spawn or exit). Without this guard, an LLM following the workflow could fall through into "use existing, continue to step 5.5" → planner spawn, violating the research-only contract. **CR #3045 finding: this gate makes the early-exit unreachable from any non-research-only branch.**
 
-**If `has_research` is true (from init) AND no `--research` flag:** Use existing, skip to step 6.
+**If `has_research` is true (from init) AND no `--research` flag:** Use existing, continue to step 5.5.
 
 **If RESEARCH.md missing OR `--research` flag:**
 
@@ -383,7 +383,7 @@ AskUserQuestion([
 ])
 ```
 
-If user selects "Skip research": skip to step 6.
+If user selects "Skip research": continue to step 5.5.
 
 **If `--auto` and `research_enabled` is false:** Skip research silently (preserves automated behavior).
 
@@ -429,7 +429,7 @@ Agent(
 
 ### Handle Researcher Return
 
-- **`## RESEARCH COMPLETE`:** Display confirmation, continue to step 6
+- **`## RESEARCH COMPLETE`:** Display confirmation, continue to step 5.5
 - **`## RESEARCH BLOCKED`:** Display blocker, offer: 1) Provide context, 2) Skip research, 3) Abort
 
 If `section_manifest` is `null` or `"research-only-early-exit"` is in its `included` list: read and execute `gsd-core/workflows/plan-phase/steps/research-only-early-exit.md`. Otherwise skip — do not read the file.
@@ -438,14 +438,14 @@ If `section_manifest` is `null` or `"research-only-early-exit"` is in its `inclu
 
 Skip if `nyquist_validation_enabled` is false OR `research_enabled` is false.
 
-If `research_enabled` is false and `nyquist_validation_enabled` is true: warn "Nyquist validation enabled but research disabled — VALIDATION.md cannot be created without RESEARCH.md. Plans will lack validation requirements (Dimension 8)." Continue to step 6.
+If `research_enabled` is false and `nyquist_validation_enabled` is true: warn "Nyquist validation enabled but research disabled — VALIDATION.md cannot be created without RESEARCH.md. Plans will lack validation requirements (Dimension 8)." Continue to step 5.55.
 
 **But Nyquist is not applicable for this run** when all of the following are true:
 - `research_enabled` is false
 - `has_research` is false
 - no `--research` flag was provided
 
-In that case: **skip validation-strategy creation entirely**. Do **not** expect `RESEARCH.md` or `VALIDATION.md` for this run, and continue to Step 6.
+In that case: **skip validation-strategy creation entirely**. Do **not** expect `RESEARCH.md` or `VALIDATION.md` for this run, and continue to step 5.55.
 
 ```bash
 grep -l "## Validation Architecture" "${PHASE_DIR}"/*-RESEARCH.md 2>/dev/null || true
@@ -496,7 +496,7 @@ Continue to step 5.6. Security config is passed to the planner in step 8.
 
 ## 5.6. Plan:Pre Capability Dispatch and UI Design Contract Gate
 
-> Capability-driven dispatch. Resolves active `plan:pre` hooks via the capability registry; each hook's `when` condition is evaluated by the registry — no inline config-get needed. This section handles skill-based planning preflights such as `ai-integration`, agent-backed hooks through `ref.agent`, and the UI gate whose deterministic check comes from `check.query`.
+> Capability-driven dispatch. Resolves active `plan:pre` hooks via the capability registry; each hook's `when` condition is evaluated by the registry — no inline config-get needed. This section runs the generic step/gate dispatch, the `ai-integration` preflight, and the UI gate whose deterministic check comes from `check.query`.
 >
 > **Config semantics (cutover fix):** `workflow.ui_phase` gates UI-SPEC *generation* (step); `workflow.ui_safety_gate` gates the *planning block* (gate). Both-on = identical to OLD §5.6. Intended change: `{ui_phase:true, ui_safety_gate:false}` now auto-generates in pipelines but does NOT block manual planning (each key controls exactly what its description says).
 
@@ -507,12 +507,9 @@ HOOKS_JSON="$PLAN_PRE_HOOKS_JSON"
 
 Read the `activeHooks` array directly from `PLAN_PRE_HOOKS_JSON` / `HOOKS_JSON` (in-context — do NOT invoke a shell pipeline).
 
-**Branch 1 — all plan:pre hooks inactive (`activeHooks` is empty or absent):** Skip to step 6.
+**Branch 1 — all plan:pre hooks inactive (`activeHooks` is empty or absent):** Skip to step 6; `PLAN_PRE_PRODUCTS` stays empty.
 
-**Generic step hook dispatch contract:** For each active entry where `kind == "step"`:
-- If `ref.skill` is set, dispatch with `Skill(skill="gsd-${ref.skill}", args="${PHASE} --auto ${GSD_WS}")` when pipeline mode allows auto-chaining. Prepend `gsd-` to `ref.skill` — `ui-phase` → `gsd-ui-phase`.
-- If `ref.agent` is set, dispatch with `Agent(prompt=filled_hook_fragment, subagent_type=ref.agent, model="{researcher_model}")`. Use the hook's `fragment.inline` as the prompt body and fill phase fields before spawning.
-- The `research` hook is handled by §5.1's research decision. The `pattern-mapper` hook is handled by §7.8 after `RESEARCH_PATH` is known. Future plan:pre agent hooks use the same `ref.agent` fragment contract.
+**Generic dispatch (#5982):** dispatch every active `kind == "step"` hook (`ref.skill`, `ref.agent`, `ref.command`) and evaluate every active `kind == "gate"` hook (`check.query`, `check.predicate`) per @gsd-core/references/loop-hook-dispatch.md, in manual and auto-chain mode: read and execute `gsd-core/workflows/plan-phase/steps/plan-pre-dispatch.md` — except the capabilities its table assigns to a dedicated section (research, drift, ui, ai-integration, pattern-mapper, intel). A blocking gate that blocks exits the workflow.
 
 **AI integration capability:** If the active `ai-integration` step hook is present, `AI_SPEC_PATH` is empty, and the phase goal contains AI keywords (`agent`, `llm`, `rag`, `chatbot`, `embedding`, `langchain`, `llamaindex`, `crewai`, `langgraph`, `openai`, `anthropic`, `vector`, `llm eval`), then:
 - In pipeline / `--auto` mode, invoke the hook's `ref.skill` via `Skill(skill="gsd-${ref.skill}", args="${PHASE} --auto ${GSD_WS}")`.
@@ -526,7 +523,7 @@ GATE=$(gsd_run check ui-plan-gate "${PHASE}" --raw) && GATE_EXIT=0 || GATE_EXIT=
 
 A non-zero `GATE_EXIT` is a command failure, including `69` (`UNAVAILABLE`: the gate could not read its evidence, so its `frontend: false` is not an answer): surface it and stop; never fall through to Branch 2. Otherwise read `frontend`, `hasUiSpec`, and `block` from `GATE`.
 
-**Branch 2 — no frontend indicators (`frontend` is `false`):** Skip silently to step 6.
+**Branch 2 — no frontend indicators (`frontend` is `false`):** Skip silently to step 5.65.
 
 **Branch 3 — UI-SPEC already exists (`hasUiSpec` is `true`):**
 
@@ -535,9 +532,9 @@ UI_SPEC_FILE=$(ls "${PHASE_DIR}"/*-UI-SPEC.md 2>/dev/null | head -1)
 UI_SPEC_PATH="${UI_SPEC_FILE}"
 ```
 
-Display: `Using UI design contract: ${UI_SPEC_PATH}`. Continue to step 6.
+Display: `Using UI design contract: ${UI_SPEC_PATH}`. Continue to step 5.65.
 
-**Branch 4 — `--skip-ui` in `$ARGUMENTS`:** Skip silently to step 6.
+**Branch 4 — `--skip-ui` in `$ARGUMENTS`:** Skip silently to step 5.65.
 
 **Branches 5 & 6 — frontend detected, UI-SPEC missing, no `--skip-ui`.**
 
@@ -548,7 +545,7 @@ AUTO_CHAIN=$(gsd_run query check auto-mode --pick auto_chain_active 2>/dev/null)
 AUTO_CHAIN="${AUTO_CHAIN:-false}"
 ```
 
-**Branch 5 — `AUTO_CHAIN` is `true` (pipeline / `--auto`):** Fire each active UI **step** hook — runs independently of whether a gate is active (covers `{ui_phase:true,ui_safety_gate:false}`). For each entry in `activeHooks` (in array order) where `kind == "step"` and `ref.skill` is set:
+**Branch 5 — `AUTO_CHAIN` is `true` (pipeline / `--auto`):** Fire each active UI **step** hook — runs independently of whether a gate is active (covers `{ui_phase:true,ui_safety_gate:false}`). For each entry in `activeHooks` (in array order) where `kind == "step"`, `capId == "ui"` and `ref.skill` is set:
 
 ```
 Skill(skill="gsd-${ref.skill}", args="${PHASE} --auto ${GSD_WS}")
@@ -561,9 +558,9 @@ UI_SPEC_FILE=$(ls "${PHASE_DIR}"/*-UI-SPEC.md 2>/dev/null | head -1)
 UI_SPEC_PATH="${UI_SPEC_FILE}"
 ```
 
-Continue to step 6.
+Continue to step 5.65.
 
-**Branch 6 — `AUTO_CHAIN` is `false` (manual): generic gate handling.** For each entry in `activeHooks` where `kind == "gate"` and `blocking` is `true`: if `block:true` (from `GATE`), output the block below and **EXIT the plan-phase workflow**. If no active blocking gate (e.g. `workflow.ui_safety_gate` is off), continue to step 6 — no block.
+**Branch 6 — `AUTO_CHAIN` is `false` (manual): UI gate handling.** For each entry in `activeHooks` where `kind == "gate"`, `capId == "ui"` and `blocking` is `true`: if `block:true` (from `GATE`), output the block below and **EXIT the plan-phase workflow**. If no active blocking gate (e.g. `workflow.ui_safety_gate` is off), continue to step 5.65 — no block.
 
 Output this markdown directly (not as a code block):
 
@@ -627,6 +624,7 @@ SKETCH_FINDINGS_PATH=$(ls ./.claude/skills/sketch-findings-*/SKILL.md 2>/dev/nul
 # on non-AI phases; gating it there silently starves the planner of the SPEC (#550 review).
 # init resolves the plain phase SPEC (never the -AI-SPEC.md / -UI-SPEC.md variants) through the one shared predicate.
 PHASE_DIR_FOR_SPEC=$(_gsd_field "$INIT" phase_dir)
+PHASE_DIR_FOR_SPEC="${PHASE_DIR_FOR_SPEC:-$(_gsd_field "$INIT" expected_phase_dir)}"  # §2 may create it after INIT (#5960)
 SPEC_PATH=$(_gsd_field "$INIT" spec_path)
 SPEC_FILE="${SPEC_PATH}"
 # Resolve the phase UI-SPEC separately (the glob above excludes -UI-SPEC.md); it carries the
@@ -770,6 +768,7 @@ Planner prompt:
 - {SPIKE_FINDINGS_PATH} (Spike Findings — validated patterns, constraints, landmines from experiments, if exists)
 - {SKETCH_FINDINGS_PATH} (Sketch Findings — validated design decisions, CSS patterns, visual direction, if exists)
 - {API_SURFACE_PATH} (API Surface — HINT ONLY, when intel capability is active; see <intel_surface_hint> below)
+- {PLAN_PRE_PRODUCTS} (plan:pre capability outputs from this run, e.g. MemPalace's MEMORY-RECALL.md — prior decisions, patterns, surprises; if any)
 ${CONTEXT_WINDOW >= 500000 ? `
 **Cross-phase context (1M model enrichment):**
 - CONTEXT.md files from the 3 most recent completed phases (locked decisions — maintain consistency)
@@ -1449,9 +1448,9 @@ Proactive, non-blocking coverage report gated on `workflow.post_planning_gaps`
 `<decisions>` and cross-references each REQ-ID / D-ID against `${PHASE_DIR}/*-PLAN.md`.
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
 $ARGUMENTS
-GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
+GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
 GSD_ARGS=${GSD_ARGS%$'\n'}
 PLAN_POST_HOOKS_JSON=$(gsd_run loop render-hooks plan:post --raw)
 GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
