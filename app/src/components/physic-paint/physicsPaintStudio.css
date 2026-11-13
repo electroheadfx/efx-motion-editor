@@ -1109,12 +1109,12 @@ button.destructive {
   flex: 0 0 auto;
 }
 
-/* The floating zoom pill — bottom-left of the canvas region, matching the
+/* The floating zoom pill — bottom-right of the canvas region, matching the
    apply-pill glass family. Above the sheet (auto), below the gallery picker
    (20) and the floating dialogs (70/72). */
 .physics-paint-canvas-zoom-bar {
   position: absolute;
-  left: 16px;
+  right: 16px;
   bottom: 16px;
   z-index: 10;
   display: inline-flex;

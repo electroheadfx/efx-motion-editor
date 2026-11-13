@@ -141,8 +141,10 @@ describe('canvas pill — hover reveal', () => {
     const block = studioCss.slice(start, studioCss.indexOf('}', start));
     expect(block).toContain('opacity: 0;');
     expect(block).toContain('pointer-events: none;');
-    // Bottom-left stays the Studio's seat.
+    // Bottom-right matches the editor's seat.
+    expect(block).toContain('right: 16px;');
     expect(block).toContain('bottom: 16px;');
+    expect(block).not.toContain('left:');
     expect(studioCss).toContain('.physics-paint-canvas-region:hover .physics-paint-canvas-zoom-bar,');
     expect(studioCss).toContain('.physics-paint-canvas-zoom-bar:focus-within,');
     // A live Hand press keeps it up while the drag leaves the region.

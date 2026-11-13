@@ -70,7 +70,7 @@ describe('Studio canvas zoom wiring (261104-uyv)', () => {
     // The pill's seat and stacking: above the sheet, below the picker (20).
     const barRule = ruleBody(css, '.physics-paint-canvas-zoom-bar');
     expect(barRule).toContain('z-index: 10');
-    expect(barRule).toContain('left: 16px');
+    expect(barRule).toContain('right: 16px');
     expect(barRule).toContain('bottom: 16px');
   });
 
