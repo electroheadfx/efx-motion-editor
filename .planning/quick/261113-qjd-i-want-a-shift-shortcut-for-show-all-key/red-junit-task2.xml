@@ -1,0 +1,345 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="25" failures="8" errors="0" time="0.215">
+    <testsuite name="src/components/overlay/shortcutsHelp.test.ts" timestamp="2026-11-13T18:28:43.727Z" hostname="efx2.home" tests="16" failures="6" errors="0" skipped="0" time="0.00823625">
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="resolveShortcutsContext &gt; prefers paint edit mode over every hover region" time="0.00050225">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="resolveShortcutsContext &gt; falls through timeline then canvas then sections when paint mode is off" time="0.000093833">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="resolveShortcutsInitialTab &gt; lands on the matching group tab and on the Sections index for sections" time="0.00010325">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="resolveShortcutsInitialTab &gt; returns an integer tab inside the tab range for every context" time="0.000171834">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="tab shape &gt; labels the Sections index first, then every group title in catalog order" time="0.000285084">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="context copy &gt; labels and details all four contexts" time="0.000119709">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="context copy &gt; gives each surface its own label, distinct from the sections label" time="0.000342667">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="module purity &gt; contains no import statements (D-04)" time="0.000116708">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="Paint Mode catalog accuracy &gt; documents exactly the real paint bindings, in order" time="0.003714334">
+            <failure message="expected [ &apos;P&apos;, &apos;F&apos;, &apos;O&apos;, &apos;⌘/Ctrl+A&apos;, …(6) ] to deeply equal [ &apos;P&apos;, &apos;S&apos;, &apos;F&apos;, &apos;X&apos;, &apos;Esc&apos;, …(7) ]" type="AssertionError">
+AssertionError: expected [ &apos;P&apos;, &apos;F&apos;, &apos;O&apos;, &apos;⌘/Ctrl+A&apos;, …(6) ] to deeply equal [ &apos;P&apos;, &apos;S&apos;, &apos;F&apos;, &apos;X&apos;, &apos;Esc&apos;, …(7) ]
+
+- Expected
++ Received
+
+  Array [
+    &quot;P&quot;,
+-   &quot;S&quot;,
+    &quot;F&quot;,
+-   &quot;X&quot;,
+-   &quot;Esc&quot;,
++   &quot;O&quot;,
+    &quot;⌘/Ctrl+A&quot;,
+    &quot;Delete&quot;,
+    &quot;Click&quot;,
+    &quot;⌘/Ctrl+Click&quot;,
+    &quot;Drag&quot;,
+    &quot;Corner handle&quot;,
+    &quot;Rotate handle&quot;,
+  ]
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:110:75
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="Paint Mode catalog accuracy &gt; drops the unbound single-letter row and every sequence-overlay claim" time="0.00040425">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:141:84
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="Timeline catalog accuracy &gt; names Alt+S for solo and nothing else" time="0.000541">
+            <failure message="expected { keys: &apos;S&apos;, …(1) } to deeply equal { keys: &apos;Alt+S&apos;, …(1) }" type="AssertionError">
+AssertionError: expected { keys: &apos;S&apos;, …(1) } to deeply equal { keys: &apos;Alt+S&apos;, …(1) }
+
+- Expected
++ Received
+
+  Object {
+    &quot;description&quot;: &quot;Toggle solo mode (base content only)&quot;,
+-   &quot;keys&quot;: &quot;Alt+S&quot;,
++   &quot;keys&quot;: &quot;S&quot;,
+  }
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:150:95
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="Timeline catalog accuracy &gt; does not claim a bare S solo binding" time="0.000187667">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:157:82
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="Timeline catalog accuracy &gt; states the device-specific plain scroll behaviour" time="0.000717708">
+            <failure message="expected &apos;Natural scroll (trackpad)&apos; to be &apos;Natural two-axis scroll (trackpad); m…&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;Natural scroll (trackpad)&apos; to be &apos;Natural two-axis scroll (trackpad); m…&apos; // Object.is equality
+
+Expected: &quot;Natural two-axis scroll (trackpad); mouse wheel scrolls horizontally&quot;
+Received: &quot;Natural scroll (trackpad)&quot;
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:161:100
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="Canvas catalog &gt; keeps the ten verified rows unchanged" time="0.00007375">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="resolveShortcutsTabNumber &gt; maps 1 through the group count to their group tab" time="0.000172">
+            <failure message="expected null to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected null to be 1 // Object.is equality
+
+- Expected: 
+1
+
++ Received: 
+null
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:186:42
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="resolveShortcutsTabNumber &gt; rejects out-of-range, fractional and NaN values" time="0.000070417">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/overlay/shortcutsOverlayContextWiring.test.ts" timestamp="2026-11-13T18:28:43.732Z" hostname="efx2.home" tests="9" failures="2" errors="0" skipped="0" time="0.005274708">
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="catalog wiring &gt; imports the catalog and context law from the pure module" time="0.000661792">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="catalog wiring &gt; declares no local catalog, entry type or tab constants" time="0.000304417">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="context seeding &gt; reads each store signal exactly once with .peek() at mount" time="0.000113417">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="context seeding &gt; resolves the context once and seeds the active tab from it" time="0.000055208">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="context seeding &gt; renders the always-visible detected-context label" time="0.000084125">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="number-key routing &gt; routes every number key through resolveShortcutsTabNumber exactly once" time="0.002895875">
+            <failure message="expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/overlay/shortcutsOverlayContextWiring.test.ts:69:67
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="number-key routing &gt; carries no hardcoded group-count upper bound in the number-key branch" time="0.000403333">
+            <failure message="expected &apos;import {useEffect, useState} from \&apos;p…&apos; not to match /num\s*[&lt;&gt;]=?\s*\d/" type="AssertionError">
+AssertionError: expected &apos;import {useEffect, useState} from \&apos;p…&apos; not to match /num\s*[&lt;&gt;]=?\s*\d/
+
+- Expected: 
+/num\s*[&lt;&gt;]=?\s*\d/
+
++ Received: 
+&quot;import {useEffect, useState} from &apos;preact/hooks&apos;;
+import {paintStore} from &apos;../../stores/paintStore&apos;;
+import {uiStore} from &apos;../../stores/uiStore&apos;;
+import {
+  SHORTCUT_GROUPS,
+  SHORTCUT_TAB_COUNT,
+  SHORTCUT_TAB_LABELS,
+  SHORTCUTS_CONTEXT_COPY,
+  resolveShortcutsContext,
+  resolveShortcutsInitialTab,
+} from &apos;./shortcutsHelp&apos;;
+
+export function ShortcutsOverlay() {
+  // Detected once per open: the overlay only mounts while the store flag is true,
+  // so one .peek() read in an initializer is exactly the \&quot;frozen for this open\&quot; law.
+  const [context] = useState(() =&gt;
+    resolveShortcutsContext({
+      paintMode: paintStore.paintMode.peek(),
+      mouseRegion: uiStore.mouseRegion.peek(),
+    }),
+  );
+  const [activeTab, setActiveTab] = useState(() =&gt; resolveShortcutsInitialTab(context));
+  const [focusedRow, setFocusedRow] = useState(0);
+  const contextCopy = SHORTCUTS_CONTEXT_COPY[context];
+
+  // Reset focusedRow when returning to Sections tab
+  useEffect(() =&gt; {
+    if (activeTab === 0) setFocusedRow(0);
+  }, [activeTab]);
+
+  // Keyboard navigation — capture phase + stopPropagation to block app shortcuts
+  useEffect(() =&gt; {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === &apos;Escape&apos;) {
+        e.preventDefault();
+        e.stopPropagation();
+        uiStore.closeShortcutsOverlay();
+        return;
+      }
+      if (e.key === &apos;ArrowDown&apos;) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeTab === 0) {
+          setFocusedRow((prev) =&gt; (prev + 1) % SHORTCUT_GROUPS.length);
+        }
+        return;
+      }
+      if (e.key === &apos;ArrowUp&apos;) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeTab === 0) {
+          setFocusedRow((prev) =&gt; (prev - 1 + SHORTCUT_GROUPS.length) % SHORTCUT_GROUPS.length);
+        }
+        return;
+      }
+      if (e.key === &apos;Enter&apos;) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeTab === 0) {
+          setActiveTab(focusedRow + 1);
+        }
+        return;
+      }
+      if (e.key === &apos;ArrowRight&apos; || e.key === &apos;Tab&apos;) {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveTab((prev) =&gt; (prev + 1) % SHORTCUT_TAB_COUNT);
+        return;
+      }
+      if (e.key === &apos;ArrowLeft&apos;) {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveTab((prev) =&gt; (prev - 1 + SHORTCUT_TAB_COUNT) % SHORTCUT_TAB_COUNT);
+        return;
+      }
+      // Number keys 1-8: direct jump to group tab
+      const num = parseInt(e.key, 10);
+      if (num &gt;= 1 &amp;&amp; num &lt;= 8) {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveTab(num);
+        return;
+      }
+      // Block all other keys from reaching app while overlay is open
+      e.stopPropagation();
+    }
+    window.addEventListener(&apos;keydown&apos;, handleKeyDown, true);
+    return () =&gt; window.removeEventListener(&apos;keydown&apos;, handleKeyDown, true);
+  }, [activeTab, focusedRow]);
+
+  return (
+    &lt;div
+      class=\&quot;fixed inset-0 z-50 flex items-center justify-center\&quot;
+      onClick={(e) =&gt; {
+        // Close on backdrop click (not on modal content click)
+        if (e.target === e.currentTarget) {
+          uiStore.closeShortcutsOverlay();
+        }
+      }}
+    &gt;
+      {/* Backdrop */}
+      &lt;div class=\&quot;absolute inset-0 bg-black/60\&quot; /&gt;
+
+      {/* Modal */}
+      &lt;div
+        class=\&quot;relative bg-(--color-bg-toolbar) border border-(--color-border-subtle) rounded-lg shadow-xl max-w-[600px] w-full mx-4 p-6\&quot;
+        onClick={(e) =&gt; e.stopPropagation()}
+      &gt;
+        {/* Header */}
+        &lt;div class=\&quot;flex items-center justify-between mb-5\&quot;&gt;
+          &lt;div class=\&quot;flex flex-col\&quot;&gt;
+            &lt;h2 class=\&quot;text-base font-semibold text-(--color-text-heading)\&quot;&gt;
+              Keyboard Shortcuts
+            &lt;/h2&gt;
+            &lt;p class=\&quot;text-xs text-(--color-text-muted)\&quot;&gt;
+              Detected: {contextCopy.label} — {contextCopy.detail}
+            &lt;/p&gt;
+          &lt;/div&gt;
+          &lt;button
+            class=\&quot;flex items-center justify-center w-7 h-7 rounded hover:bg-(--color-border-subtle) transition-colors cursor-pointer\&quot;
+            onClick={() =&gt; uiStore.closeShortcutsOverlay()}
+            title=\&quot;Close\&quot;
+          &gt;
+            &lt;span class=\&quot;text-sm text-(--color-text-muted)\&quot;&gt;{&apos;\\u2715&apos;}&lt;/span&gt;
+          &lt;/button&gt;
+        &lt;/div&gt;
+
+        {/* Tab bar */}
+        &lt;div class=\&quot;flex flex-wrap border-b border-(--color-border-subtle)\&quot;&gt;
+          {SHORTCUT_TAB_LABELS.map((label, index) =&gt; {
+            const isActive = activeTab === index;
+            return (
+              &lt;button
+                key={label}
+                class={`px-3 py-2 text-xs transition-colors cursor-pointer ${
+                  isActive
+                    ? &apos;text-(--color-text-heading) border-b-2 border-(--color-accent)&apos;
+                    : &apos;text-(--color-text-muted) hover:text-(--color-text-secondary)&apos;
+                }`}
+                onClick={() =&gt; setActiveTab(index)}
+              &gt;
+                {label}
+              &lt;/button&gt;
+            );
+          })}
+        &lt;/div&gt;
+
+        {/* Content area */}
+        &lt;div class=\&quot;pt-4 overflow-y-auto\&quot; style={{ minHeight: &apos;320px&apos; }}&gt;
+          {activeTab === 0 ? (
+            // Sections index tab: clickable group list with entry counts
+            &lt;div class=\&quot;flex flex-col gap-1\&quot;&gt;
+              {SHORTCUT_GROUPS.map((group, i) =&gt; (
+                &lt;button
+                  key={group.title}
+                  class={`flex items-center justify-between px-3 py-2 rounded text-sm transition-colors cursor-pointer ${
+                    focusedRow === i
+                      ? &apos;bg-(--color-bg-hover-item) text-(--color-text-heading)&apos;
+                      : &apos;text-(--color-text-button) hover:bg-(--color-bg-hover-item) hover:text-(--color-text-heading)&apos;
+                  }`}
+                  onClick={() =&gt; setActiveTab(i + 1)}
+                &gt;
+                  &lt;span&gt;{group.title}&lt;/span&gt;
+                  &lt;span class=\&quot;text-xs text-(--color-text-muted)\&quot;&gt;
+                    {group.entries.length} {group.entries.length === 1 ? &apos;shortcut&apos; : &apos;shortcuts&apos;}
+                  &lt;/span&gt;
+                &lt;/button&gt;
+              ))}
+            &lt;/div&gt;
+          ) : (
+            // Group tab: show entries for SHORTCUT_GROUPS[activeTab - 1]
+            &lt;div class=\&quot;flex flex-col gap-2\&quot;&gt;
+              {SHORTCUT_GROUPS[activeTab - 1].entries.map((entry) =&gt; (
+                &lt;div key={entry.keys} class=\&quot;flex items-center justify-between gap-3 py-1\&quot;&gt;
+                  &lt;span class=\&quot;text-sm text-(--color-text-button)\&quot;&gt;{entry.description}&lt;/span&gt;
+                  &lt;kbd class=\&quot;flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded bg-(--color-bg-hover-item) border border-(--color-border-kbd) text-xs font-mono text-(--color-text-link)\&quot;&gt;
+                    {entry.keys}
+                  &lt;/kbd&gt;
+                &lt;/div&gt;
+              ))}
+            &lt;/div&gt;
+          )}
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}
+&quot;
+
+ ❯ src/components/overlay/shortcutsOverlayContextWiring.test.ts:73:32
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="single-source catalog &gt; keeps the Paint Mode group title in the help module only" time="0.000067334">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="opening binding &gt; keeps Shift+? as the only overlay opener" time="0.000071542">
+        </testcase>
+    </testsuite>
+</testsuites>

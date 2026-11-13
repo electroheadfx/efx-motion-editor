@@ -5,11 +5,11 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: planning
-stopped_at: Quick 261112-n3f UAT approved (incl. the cache-eye exit fix 39007da12); Phase 62 ready to plan
-last_updated: "2026-11-13T16:38:33.234Z"
+stopped_at: Quick 261113-qjd automated-ready (Needs Review — 8 native UAT rows pending); Phase 62 ready to plan
+last_updated: "2026-11-13T18:35:48.562Z"
 last_activity: 2026-11-13
-last_activity_desc: Quick 261112-n3f + cache-eye exit fix (39007da12) UAT approved; Phase 62 ready to plan
-state_head: 2ef1a30a14fc5673096e5f5b7710324eb4ed83f3
+last_activity_desc: Quick 261113-qjd automated-ready (context-aware Shift+? help; 8 native UAT rows pending); Phase 62 ready to plan
+state_head: ee85ee1ef0a2236a2be8596e4342bbf0d6bd36fd
 progress:
   total_phases: 4
   completed_phases: 3
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 Phase: 62 — Painted-Stroke Curve Editing
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-13 - Quick task 261113-o26 CLOSED (UAT approved): canvas pan is unbounded on both the Studio sheet and the main editor canvas at every zoom, and both surfaces carry the same hover-revealed liquid-glass zoom pill at the canvas bottom-right (the editor's top bar is gone; Hand, FIT and 1:1 now live in the pill). Fit and the Studio-open reset remain the recovery paths.
+Last activity: 2026-11-13 - Quick task 261113-qjd automated-ready (Needs Review — 8 native UAT rows pending): Shift+? now opens the shortcuts overlay on the matching context (Paint Mode while editing strokes, Timeline or Canvas by hover, Sections otherwise) with an always-visible "Detected:" label; number keys reach all 9 groups and the documented keys match the real bindings.
 
 Progress: [████████░░] 75%
 
@@ -448,6 +448,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 31 | Studio UI polish: EFX mark in the old Engine-ready seat (Engine fail pill on failure), Re-render + Undo + Redo + Flash-dry in the top-bar action cluster (43px, centered inside the flexible settings cluster between the brush dropdown and the right settings; Water stays in the rail), "Script mode" checkbox inside the brush pill (checked by default, label at right, 2px gap), cache-load notice published as info, right-sidebar tab scrollbars use the blue thumb, orange active-track left bar (UAT approved 2026-11-12) | 2026-11-12 | aa03d4139 | — |
 | 261113-fkm | Vector paint: a whole-stroke colour apply replaces explicit per-vertex colours in the same edit (one undo), so the global colour survives path-edit re-entry; Size keeps per-vertex width factors (UAT approved 2026-11-13) | 2026-11-13 | 8adfa44ce | [261113-fkm-vector-paint-global-colour-apply-replace](./quick/261113-fkm-vector-paint-global-colour-apply-replace/) |
 | 261113-o26 | Free canvas pan on both surfaces (Studio Hand / Shift+Space, main editor Space- and middle-drag push past any edge at Fit or 1:1; Fit restores) + a hover-revealed liquid-glass zoom pill seated bottom-right on both canvases, with Hand, FIT and 1:1 in the editor row (UAT approved 2026-11-13) | 2026-11-13 | b655ba3bb | [261113-o26-allow-to-move-canvas-out-with-hand-same-](./quick/261113-o26-allow-to-move-canvas-out-with-hand-same-/) |
+| 261113-qjd | Context-aware Shift+? help: the overlay opens on the Paint Mode tab in stroke editing, Timeline/Canvas on hover, Sections elsewhere, with a Detected label; all 9 groups reachable via number keys 1-9; documented keys verified against real bindings (Needs Review: 8 native UAT rows pending) | 2026-11-13 | ee85ee1ef | [261113-qjd-i-want-a-shift-shortcut-for-show-all-key](./quick/261113-qjd-i-want-a-shift-shortcut-for-show-all-key/) |
 
 ## Roadmap Evolution
 

@@ -1,0 +1,981 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="14" failures="11" errors="0" time="0.23">
+    <testsuite name="src/components/overlay/shortcutsHelp.test.ts" timestamp="2026-11-13T18:26:01.673Z" hostname="efx2.home" tests="8" failures="6" errors="0" skipped="0" time="0.007192959">
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="resolveShortcutsContext &gt; prefers paint edit mode over every hover region" time="0.003463708">
+            <failure message="expected &apos;sections&apos; to be &apos;paint&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;sections&apos; to be &apos;paint&apos; // Object.is equality
+
+Expected: &quot;paint&quot;
+Received: &quot;sections&quot;
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:26:81
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="resolveShortcutsContext &gt; falls through timeline then canvas then sections when paint mode is off" time="0.000385542">
+            <failure message="expected &apos;sections&apos; to be &apos;timeline&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;sections&apos; to be &apos;timeline&apos; // Object.is equality
+
+Expected: &quot;timeline&quot;
+Received: &quot;sections&quot;
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:32:82
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="resolveShortcutsInitialTab &gt; lands on the matching group tab and on the Sections index for sections" time="0.000601625">
+            <failure message="expected +0 to be -1 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be -1 // Object.is equality
+
+- Expected
++ Received
+
+- -1
++ 0
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:40:49
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="resolveShortcutsInitialTab &gt; returns an integer tab inside the tab range for every context" time="0.000271042">
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="tab shape &gt; labels the Sections index first, then every group title in catalog order" time="0.001419417">
+            <failure message="expected [ &apos;Sections&apos; ] to deeply equal [ Array(10) ]" type="AssertionError">
+AssertionError: expected [ &apos;Sections&apos; ] to deeply equal [ Array(10) ]
+
+- Expected
++ Received
+
+  Array [
+    &quot;Sections&quot;,
+-   &quot;Playback&quot;,
+-   &quot;File&quot;,
+-   &quot;Editing&quot;,
+-   &quot;Navigation&quot;,
+-   &quot;Canvas&quot;,
+-   &quot;Timeline&quot;,
+-   &quot;Blur&quot;,
+-   &quot;Keyframes&quot;,
+-   &quot;Paint Mode&quot;,
+  ]
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:58:33
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="context copy &gt; labels and details all four contexts" time="0.000184542">
+            <failure message="expected 0 to be greater than 0" type="AssertionError">
+AssertionError: expected 0 to be greater than 0
+ ❯ src/components/overlay/shortcutsHelp.test.ts:78:55
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="context copy &gt; gives each surface its own label, distinct from the sections label" time="0.000198125">
+            <failure message="expected 1 to be 3 // Object.is equality" type="AssertionError">
+AssertionError: expected 1 to be 3 // Object.is equality
+
+- Expected
++ Received
+
+- 3
++ 1
+
+ ❯ src/components/overlay/shortcutsHelp.test.ts:89:41
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsHelp.test.ts" name="module purity &gt; contains no import statements (D-04)" time="0.000134458">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/overlay/shortcutsOverlayContextWiring.test.ts" timestamp="2026-11-13T18:26:01.677Z" hostname="efx2.home" tests="6" failures="5" errors="0" skipped="0" time="0.009949416">
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="catalog wiring &gt; imports the catalog and context law from the pure module" time="0.005055041">
+            <failure message="expected &apos;import {useEffect, useState} from \&apos;p…&apos; to contain &apos;from \&apos;./shortcutsHelp\&apos;&apos;" type="AssertionError">
+AssertionError: expected &apos;import {useEffect, useState} from \&apos;p…&apos; to contain &apos;from \&apos;./shortcutsHelp\&apos;&apos;
+
+- Expected
++ Received
+
+- from &apos;./shortcutsHelp&apos;
++ import {useEffect, useState} from &apos;preact/hooks&apos;;
++ import {uiStore} from &apos;../../stores/uiStore&apos;;
++
++ /** Shortcut entry: key symbol(s) and description */
++ interface ShortcutEntry {
++   keys: string;
++   description: string;
++ }
++
++ interface ShortcutGroup {
++   title: string;
++   entries: ShortcutEntry[];
++ }
++
++ const SHORTCUT_GROUPS: ShortcutGroup[] = [
++   {
++     title: &apos;Playback&apos;,
++     entries: [
++       {keys: &apos;\u2423 Space&apos;, description: &apos;Play / Pause&apos;},
++       {keys: &apos;\u2190 \u2192&apos;, description: &apos;Step frame&apos;},
++       {keys: &apos;J&apos;, description: &apos;Set reverse / increase speed&apos;},
++       {keys: &apos;K&apos;, description: &apos;Reset speed to 1x forward&apos;},
++       {keys: &apos;L&apos;, description: &apos;Set forward / increase speed&apos;},
++       {keys: &apos;\u21E7\u2423&apos;, description: &apos;Full-speed playback (no UI feedback)&apos;},
++     ],
++   },
++   {
++     title: &apos;File&apos;,
++     entries: [
++       {keys: &apos;\u2318S&apos;, description: &apos;Save project&apos;},
++       {keys: &apos;\u2318N&apos;, description: &apos;New project&apos;},
++       {keys: &apos;\u2318O&apos;, description: &apos;Open project&apos;},
++     ],
++   },
++   {
++     title: &apos;Editing&apos;,
++     entries: [
++       {keys: &apos;\u2318Z&apos;, description: &apos;Undo&apos;},
++       {keys: &apos;\u21E7\u2318Z&apos;, description: &apos;Redo&apos;},
++       {keys: &apos;\u232B&apos;, description: &apos;Delete selected&apos;},
++     ],
++   },
++   {
++     title: &apos;Navigation&apos;,
++     entries: [
++       {keys: &apos;Home / \u21E7\u2318\u2190&apos;, description: &apos;Go to start of timeline&apos;},
++       {keys: &apos;End / \u21E7\u2318\u2192&apos;, description: &apos;Go to end of timeline&apos;},
++       {keys: &apos;PgUp / \u2318\u2190 / \u2191&apos;, description: &apos;Jump to previous sequence&apos;},
++       {keys: &apos;PgDn / \u2318\u2192 / \u2193&apos;, description: &apos;Jump to next sequence&apos;},
++       {keys: &apos;\u21E7\u2318T&apos;, description: &apos;Cycle theme&apos;},
++       {keys: &apos;?&apos;, description: &apos;Toggle this help&apos;},
++     ],
++   },
++   {
++     title: &apos;Canvas&apos;,
++     entries: [
++       {keys: &apos;= / +&apos;, description: &apos;Zoom in (when mouse over canvas)&apos;},
++       {keys: &apos;\u2212&apos;, description: &apos;Zoom out (when mouse over canvas)&apos;},
++       {keys: &apos;\u23180&apos;, description: &apos;Fit to window&apos;},
++       {keys: &apos;F&apos;, description: &apos;Toggle fit lock&apos;},
++       {keys: &apos;\u2318Scroll&apos;, description: &apos;Zoom at cursor&apos;},
++       {keys: &apos;\u2190\u2191\u2193\u2192&apos;, description: &apos;Nudge layer 1px&apos;},
++       {keys: &apos;\u21E7\u2190\u2191\u2193\u2192&apos;, description: &apos;Nudge layer 10px&apos;},
++       {keys: &apos;\u21E7\u2318F&apos;, description: &apos;Toggle fullscreen canvas&apos;},
++       {keys: &apos;Esc&apos;, description: &apos;Deselect layer&apos;},
++       {keys: &apos;\u2325Click&apos;, description: &apos;Cycle overlapping layers&apos;},
++     ],
++   },
++   {
++     title: &apos;Timeline&apos;,
++     entries: [
++       {keys: &apos;= / +&apos;, description: &apos;Zoom in (when mouse over timeline)&apos;},
++       {keys: &apos;\u2212&apos;, description: &apos;Zoom out (when mouse over timeline)&apos;},
++       {keys: &apos;\u2303Scroll&apos;, description: &apos;Zoom at cursor&apos;},
++       {keys: &apos;\u2318Scroll&apos;, description: &apos;Vertical scroll&apos;},
++       {keys: &apos;Scroll&apos;, description: &apos;Natural scroll (trackpad)&apos;},
++       {keys: &apos;\u21E7Scroll&apos;, description: &apos;Vertical scroll&apos;},
++       {keys: &apos;S&apos;, description: &apos;Toggle solo mode (base content only)&apos;},
++     ],
++   },
++   {
++     title: &apos;Blur&apos;,
++     entries: [
++       { keys: &apos;\u21E7B&apos;, description: &apos;Toggle bypass all blur&apos; },
++     ],
++   },
++   {
++     title: &apos;Keyframes&apos;,
++     entries: [
++       { keys: &apos;I&apos;, description: &apos;Add keyframe at current frame&apos; },
++     ],
++   },
++   {
++     title: &apos;Paint Mode&apos;,
++     entries: [
++       { keys: &apos;P&apos;, description: &apos;Toggle paint edit mode&apos; },
++       { keys: &apos;F&apos;, description: &apos;Toggle flat/FX preview&apos; },
++       { keys: &apos;O&apos;, description: &apos;Toggle sequence overlay&apos; },
++       { keys: &apos;\u2318/Ctrl+A&apos;, description: &apos;Select all strokes&apos; },
++       { keys: &apos;Delete&apos;, description: &apos;Delete selected strokes&apos; },
++       { keys: &apos;Click&apos;, description: &apos;Select stroke (select tool)&apos; },
++       { keys: &apos;\u2318/Ctrl+Click&apos;, description: &apos;Multi-select strokes&apos; },
++       { keys: &apos;Drag&apos;, description: &apos;Move selected strokes&apos; },
++       { keys: &apos;Corner handle&apos;, description: &apos;Resize selected strokes&apos; },
++       { keys: &apos;Rotate handle&apos;, description: &apos;Rotate selected strokes&apos; },
++     ],
++   },
++ ];
++
++ /** Total number of tabs: Sections index (0) + group tabs */
++ const TAB_COUNT = 1 + SHORTCUT_GROUPS.length;
++
++ /** Tab labels: index 0 = Sections, indices 1-7 = group titles */
++ const TAB_LABELS = [&apos;Sections&apos;, ...SHORTCUT_GROUPS.map((g) =&gt; g.title)];
++
++ export function ShortcutsOverlay() {
++   const [activeTab, setActiveTab] = useState(0);
++   const [focusedRow, setFocusedRow] = useState(0);
++
++   // Reset focusedRow when returning to Sections tab
++   useEffect(() =&gt; {
++     if (activeTab === 0) setFocusedRow(0);
++   }, [activeTab]);
++
++   // Keyboard navigation — capture phase + stopPropagation to block app shortcuts
++   useEffect(() =&gt; {
++     function handleKeyDown(e: KeyboardEvent) {
++       if (e.key === &apos;Escape&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         uiStore.closeShortcutsOverlay();
++         return;
++       }
++       if (e.key === &apos;ArrowDown&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         if (activeTab === 0) {
++           setFocusedRow((prev) =&gt; (prev + 1) % SHORTCUT_GROUPS.length);
++         }
++         return;
++       }
++       if (e.key === &apos;ArrowUp&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         if (activeTab === 0) {
++           setFocusedRow((prev) =&gt; (prev - 1 + SHORTCUT_GROUPS.length) % SHORTCUT_GROUPS.length);
++         }
++         return;
++       }
++       if (e.key === &apos;Enter&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         if (activeTab === 0) {
++           setActiveTab(focusedRow + 1);
++         }
++         return;
++       }
++       if (e.key === &apos;ArrowRight&apos; || e.key === &apos;Tab&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         setActiveTab((prev) =&gt; (prev + 1) % TAB_COUNT);
++         return;
++       }
++       if (e.key === &apos;ArrowLeft&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         setActiveTab((prev) =&gt; (prev - 1 + TAB_COUNT) % TAB_COUNT);
++         return;
++       }
++       // Number keys 1-8: direct jump to group tab
++       const num = parseInt(e.key, 10);
++       if (num &gt;= 1 &amp;&amp; num &lt;= 8) {
++         e.preventDefault();
++         e.stopPropagation();
++         setActiveTab(num);
++         return;
++       }
++       // Block all other keys from reaching app while overlay is open
++       e.stopPropagation();
++     }
++     window.addEventListener(&apos;keydown&apos;, handleKeyDown, true);
++     return () =&gt; window.removeEventListener(&apos;keydown&apos;, handleKeyDown, true);
++   }, [activeTab, focusedRow]);
++
++   return (
++     &lt;div
++       class=&quot;fixed inset-0 z-50 flex items-center justify-center&quot;
++       onClick={(e) =&gt; {
++         // Close on backdrop click (not on modal content click)
++         if (e.target === e.currentTarget) {
++           uiStore.closeShortcutsOverlay();
++         }
++       }}
++     &gt;
++       {/* Backdrop */}
++       &lt;div class=&quot;absolute inset-0 bg-black/60&quot; /&gt;
++
++       {/* Modal */}
++       &lt;div
++         class=&quot;relative bg-(--color-bg-toolbar) border border-(--color-border-subtle) rounded-lg shadow-xl max-w-[600px] w-full mx-4 p-6&quot;
++         onClick={(e) =&gt; e.stopPropagation()}
++       &gt;
++         {/* Header */}
++         &lt;div class=&quot;flex items-center justify-between mb-5&quot;&gt;
++           &lt;h2 class=&quot;text-base font-semibold text-(--color-text-heading)&quot;&gt;
++             Keyboard Shortcuts
++           &lt;/h2&gt;
++           &lt;button
++             class=&quot;flex items-center justify-center w-7 h-7 rounded hover:bg-(--color-border-subtle) transition-colors cursor-pointer&quot;
++             onClick={() =&gt; uiStore.closeShortcutsOverlay()}
++             title=&quot;Close&quot;
++           &gt;
++             &lt;span class=&quot;text-sm text-(--color-text-muted)&quot;&gt;{&apos;\u2715&apos;}&lt;/span&gt;
++           &lt;/button&gt;
++         &lt;/div&gt;
++
++         {/* Tab bar */}
++         &lt;div class=&quot;flex flex-wrap border-b border-(--color-border-subtle)&quot;&gt;
++           {TAB_LABELS.map((label, index) =&gt; {
++             const isActive = activeTab === index;
++             return (
++               &lt;button
++                 key={label}
++                 class={`px-3 py-2 text-xs transition-colors cursor-pointer ${
++                   isActive
++                     ? &apos;text-(--color-text-heading) border-b-2 border-(--color-accent)&apos;
++                     : &apos;text-(--color-text-muted) hover:text-(--color-text-secondary)&apos;
++                 }`}
++                 onClick={() =&gt; setActiveTab(index)}
++               &gt;
++                 {label}
++               &lt;/button&gt;
++             );
++           })}
++         &lt;/div&gt;
++
++         {/* Content area */}
++         &lt;div class=&quot;pt-4 overflow-y-auto&quot; style={{ minHeight: &apos;320px&apos; }}&gt;
++           {activeTab === 0 ? (
++             // Sections index tab: clickable group list with entry counts
++             &lt;div class=&quot;flex flex-col gap-1&quot;&gt;
++               {SHORTCUT_GROUPS.map((group, i) =&gt; (
++                 &lt;button
++                   key={group.title}
++                   class={`flex items-center justify-between px-3 py-2 rounded text-sm transition-colors cursor-pointer ${
++                     focusedRow === i
++                       ? &apos;bg-(--color-bg-hover-item) text-(--color-text-heading)&apos;
++                       : &apos;text-(--color-text-button) hover:bg-(--color-bg-hover-item) hover:text-(--color-text-heading)&apos;
++                   }`}
++                   onClick={() =&gt; setActiveTab(i + 1)}
++                 &gt;
++                   &lt;span&gt;{group.title}&lt;/span&gt;
++                   &lt;span class=&quot;text-xs text-(--color-text-muted)&quot;&gt;
++                     {group.entries.length} {group.entries.length === 1 ? &apos;shortcut&apos; : &apos;shortcuts&apos;}
++                   &lt;/span&gt;
++                 &lt;/button&gt;
++               ))}
++             &lt;/div&gt;
++           ) : (
++             // Group tab: show entries for SHORTCUT_GROUPS[activeTab - 1]
++             &lt;div class=&quot;flex flex-col gap-2&quot;&gt;
++               {SHORTCUT_GROUPS[activeTab - 1].entries.map((entry) =&gt; (
++                 &lt;div key={entry.keys} class=&quot;flex items-center justify-between gap-3 py-1&quot;&gt;
++                   &lt;span class=&quot;text-sm text-(--color-text-button)&quot;&gt;{entry.description}&lt;/span&gt;
++                   &lt;kbd class=&quot;flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded bg-(--color-bg-hover-item) border border-(--color-border-kbd) text-xs font-mono text-(--color-text-link)&quot;&gt;
++                     {entry.keys}
++                   &lt;/kbd&gt;
++                 &lt;/div&gt;
++               ))}
++             &lt;/div&gt;
++           )}
++         &lt;/div&gt;
++       &lt;/div&gt;
++     &lt;/div&gt;
++   );
++ }
++
+
+ ❯ src/components/overlay/shortcutsOverlayContextWiring.test.ts:24:28
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="catalog wiring &gt; declares no local catalog, entry type or tab constants" time="0.002042416">
+            <failure message="expected &apos;import {useEffect, useState} from \&apos;p…&apos; not to contain &apos;ShortcutGroup[]&apos;" type="AssertionError">
+AssertionError: expected &apos;import {useEffect, useState} from \&apos;p…&apos; not to contain &apos;ShortcutGroup[]&apos;
+
+- Expected
++ Received
+
+- ShortcutGroup[]
++ import {useEffect, useState} from &apos;preact/hooks&apos;;
++ import {uiStore} from &apos;../../stores/uiStore&apos;;
++
++ /** Shortcut entry: key symbol(s) and description */
++ interface ShortcutEntry {
++   keys: string;
++   description: string;
++ }
++
++ interface ShortcutGroup {
++   title: string;
++   entries: ShortcutEntry[];
++ }
++
++ const SHORTCUT_GROUPS: ShortcutGroup[] = [
++   {
++     title: &apos;Playback&apos;,
++     entries: [
++       {keys: &apos;\u2423 Space&apos;, description: &apos;Play / Pause&apos;},
++       {keys: &apos;\u2190 \u2192&apos;, description: &apos;Step frame&apos;},
++       {keys: &apos;J&apos;, description: &apos;Set reverse / increase speed&apos;},
++       {keys: &apos;K&apos;, description: &apos;Reset speed to 1x forward&apos;},
++       {keys: &apos;L&apos;, description: &apos;Set forward / increase speed&apos;},
++       {keys: &apos;\u21E7\u2423&apos;, description: &apos;Full-speed playback (no UI feedback)&apos;},
++     ],
++   },
++   {
++     title: &apos;File&apos;,
++     entries: [
++       {keys: &apos;\u2318S&apos;, description: &apos;Save project&apos;},
++       {keys: &apos;\u2318N&apos;, description: &apos;New project&apos;},
++       {keys: &apos;\u2318O&apos;, description: &apos;Open project&apos;},
++     ],
++   },
++   {
++     title: &apos;Editing&apos;,
++     entries: [
++       {keys: &apos;\u2318Z&apos;, description: &apos;Undo&apos;},
++       {keys: &apos;\u21E7\u2318Z&apos;, description: &apos;Redo&apos;},
++       {keys: &apos;\u232B&apos;, description: &apos;Delete selected&apos;},
++     ],
++   },
++   {
++     title: &apos;Navigation&apos;,
++     entries: [
++       {keys: &apos;Home / \u21E7\u2318\u2190&apos;, description: &apos;Go to start of timeline&apos;},
++       {keys: &apos;End / \u21E7\u2318\u2192&apos;, description: &apos;Go to end of timeline&apos;},
++       {keys: &apos;PgUp / \u2318\u2190 / \u2191&apos;, description: &apos;Jump to previous sequence&apos;},
++       {keys: &apos;PgDn / \u2318\u2192 / \u2193&apos;, description: &apos;Jump to next sequence&apos;},
++       {keys: &apos;\u21E7\u2318T&apos;, description: &apos;Cycle theme&apos;},
++       {keys: &apos;?&apos;, description: &apos;Toggle this help&apos;},
++     ],
++   },
++   {
++     title: &apos;Canvas&apos;,
++     entries: [
++       {keys: &apos;= / +&apos;, description: &apos;Zoom in (when mouse over canvas)&apos;},
++       {keys: &apos;\u2212&apos;, description: &apos;Zoom out (when mouse over canvas)&apos;},
++       {keys: &apos;\u23180&apos;, description: &apos;Fit to window&apos;},
++       {keys: &apos;F&apos;, description: &apos;Toggle fit lock&apos;},
++       {keys: &apos;\u2318Scroll&apos;, description: &apos;Zoom at cursor&apos;},
++       {keys: &apos;\u2190\u2191\u2193\u2192&apos;, description: &apos;Nudge layer 1px&apos;},
++       {keys: &apos;\u21E7\u2190\u2191\u2193\u2192&apos;, description: &apos;Nudge layer 10px&apos;},
++       {keys: &apos;\u21E7\u2318F&apos;, description: &apos;Toggle fullscreen canvas&apos;},
++       {keys: &apos;Esc&apos;, description: &apos;Deselect layer&apos;},
++       {keys: &apos;\u2325Click&apos;, description: &apos;Cycle overlapping layers&apos;},
++     ],
++   },
++   {
++     title: &apos;Timeline&apos;,
++     entries: [
++       {keys: &apos;= / +&apos;, description: &apos;Zoom in (when mouse over timeline)&apos;},
++       {keys: &apos;\u2212&apos;, description: &apos;Zoom out (when mouse over timeline)&apos;},
++       {keys: &apos;\u2303Scroll&apos;, description: &apos;Zoom at cursor&apos;},
++       {keys: &apos;\u2318Scroll&apos;, description: &apos;Vertical scroll&apos;},
++       {keys: &apos;Scroll&apos;, description: &apos;Natural scroll (trackpad)&apos;},
++       {keys: &apos;\u21E7Scroll&apos;, description: &apos;Vertical scroll&apos;},
++       {keys: &apos;S&apos;, description: &apos;Toggle solo mode (base content only)&apos;},
++     ],
++   },
++   {
++     title: &apos;Blur&apos;,
++     entries: [
++       { keys: &apos;\u21E7B&apos;, description: &apos;Toggle bypass all blur&apos; },
++     ],
++   },
++   {
++     title: &apos;Keyframes&apos;,
++     entries: [
++       { keys: &apos;I&apos;, description: &apos;Add keyframe at current frame&apos; },
++     ],
++   },
++   {
++     title: &apos;Paint Mode&apos;,
++     entries: [
++       { keys: &apos;P&apos;, description: &apos;Toggle paint edit mode&apos; },
++       { keys: &apos;F&apos;, description: &apos;Toggle flat/FX preview&apos; },
++       { keys: &apos;O&apos;, description: &apos;Toggle sequence overlay&apos; },
++       { keys: &apos;\u2318/Ctrl+A&apos;, description: &apos;Select all strokes&apos; },
++       { keys: &apos;Delete&apos;, description: &apos;Delete selected strokes&apos; },
++       { keys: &apos;Click&apos;, description: &apos;Select stroke (select tool)&apos; },
++       { keys: &apos;\u2318/Ctrl+Click&apos;, description: &apos;Multi-select strokes&apos; },
++       { keys: &apos;Drag&apos;, description: &apos;Move selected strokes&apos; },
++       { keys: &apos;Corner handle&apos;, description: &apos;Resize selected strokes&apos; },
++       { keys: &apos;Rotate handle&apos;, description: &apos;Rotate selected strokes&apos; },
++     ],
++   },
++ ];
++
++ /** Total number of tabs: Sections index (0) + group tabs */
++ const TAB_COUNT = 1 + SHORTCUT_GROUPS.length;
++
++ /** Tab labels: index 0 = Sections, indices 1-7 = group titles */
++ const TAB_LABELS = [&apos;Sections&apos;, ...SHORTCUT_GROUPS.map((g) =&gt; g.title)];
++
++ export function ShortcutsOverlay() {
++   const [activeTab, setActiveTab] = useState(0);
++   const [focusedRow, setFocusedRow] = useState(0);
++
++   // Reset focusedRow when returning to Sections tab
++   useEffect(() =&gt; {
++     if (activeTab === 0) setFocusedRow(0);
++   }, [activeTab]);
++
++   // Keyboard navigation — capture phase + stopPropagation to block app shortcuts
++   useEffect(() =&gt; {
++     function handleKeyDown(e: KeyboardEvent) {
++       if (e.key === &apos;Escape&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         uiStore.closeShortcutsOverlay();
++         return;
++       }
++       if (e.key === &apos;ArrowDown&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         if (activeTab === 0) {
++           setFocusedRow((prev) =&gt; (prev + 1) % SHORTCUT_GROUPS.length);
++         }
++         return;
++       }
++       if (e.key === &apos;ArrowUp&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         if (activeTab === 0) {
++           setFocusedRow((prev) =&gt; (prev - 1 + SHORTCUT_GROUPS.length) % SHORTCUT_GROUPS.length);
++         }
++         return;
++       }
++       if (e.key === &apos;Enter&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         if (activeTab === 0) {
++           setActiveTab(focusedRow + 1);
++         }
++         return;
++       }
++       if (e.key === &apos;ArrowRight&apos; || e.key === &apos;Tab&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         setActiveTab((prev) =&gt; (prev + 1) % TAB_COUNT);
++         return;
++       }
++       if (e.key === &apos;ArrowLeft&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         setActiveTab((prev) =&gt; (prev - 1 + TAB_COUNT) % TAB_COUNT);
++         return;
++       }
++       // Number keys 1-8: direct jump to group tab
++       const num = parseInt(e.key, 10);
++       if (num &gt;= 1 &amp;&amp; num &lt;= 8) {
++         e.preventDefault();
++         e.stopPropagation();
++         setActiveTab(num);
++         return;
++       }
++       // Block all other keys from reaching app while overlay is open
++       e.stopPropagation();
++     }
++     window.addEventListener(&apos;keydown&apos;, handleKeyDown, true);
++     return () =&gt; window.removeEventListener(&apos;keydown&apos;, handleKeyDown, true);
++   }, [activeTab, focusedRow]);
++
++   return (
++     &lt;div
++       class=&quot;fixed inset-0 z-50 flex items-center justify-center&quot;
++       onClick={(e) =&gt; {
++         // Close on backdrop click (not on modal content click)
++         if (e.target === e.currentTarget) {
++           uiStore.closeShortcutsOverlay();
++         }
++       }}
++     &gt;
++       {/* Backdrop */}
++       &lt;div class=&quot;absolute inset-0 bg-black/60&quot; /&gt;
++
++       {/* Modal */}
++       &lt;div
++         class=&quot;relative bg-(--color-bg-toolbar) border border-(--color-border-subtle) rounded-lg shadow-xl max-w-[600px] w-full mx-4 p-6&quot;
++         onClick={(e) =&gt; e.stopPropagation()}
++       &gt;
++         {/* Header */}
++         &lt;div class=&quot;flex items-center justify-between mb-5&quot;&gt;
++           &lt;h2 class=&quot;text-base font-semibold text-(--color-text-heading)&quot;&gt;
++             Keyboard Shortcuts
++           &lt;/h2&gt;
++           &lt;button
++             class=&quot;flex items-center justify-center w-7 h-7 rounded hover:bg-(--color-border-subtle) transition-colors cursor-pointer&quot;
++             onClick={() =&gt; uiStore.closeShortcutsOverlay()}
++             title=&quot;Close&quot;
++           &gt;
++             &lt;span class=&quot;text-sm text-(--color-text-muted)&quot;&gt;{&apos;\u2715&apos;}&lt;/span&gt;
++           &lt;/button&gt;
++         &lt;/div&gt;
++
++         {/* Tab bar */}
++         &lt;div class=&quot;flex flex-wrap border-b border-(--color-border-subtle)&quot;&gt;
++           {TAB_LABELS.map((label, index) =&gt; {
++             const isActive = activeTab === index;
++             return (
++               &lt;button
++                 key={label}
++                 class={`px-3 py-2 text-xs transition-colors cursor-pointer ${
++                   isActive
++                     ? &apos;text-(--color-text-heading) border-b-2 border-(--color-accent)&apos;
++                     : &apos;text-(--color-text-muted) hover:text-(--color-text-secondary)&apos;
++                 }`}
++                 onClick={() =&gt; setActiveTab(index)}
++               &gt;
++                 {label}
++               &lt;/button&gt;
++             );
++           })}
++         &lt;/div&gt;
++
++         {/* Content area */}
++         &lt;div class=&quot;pt-4 overflow-y-auto&quot; style={{ minHeight: &apos;320px&apos; }}&gt;
++           {activeTab === 0 ? (
++             // Sections index tab: clickable group list with entry counts
++             &lt;div class=&quot;flex flex-col gap-1&quot;&gt;
++               {SHORTCUT_GROUPS.map((group, i) =&gt; (
++                 &lt;button
++                   key={group.title}
++                   class={`flex items-center justify-between px-3 py-2 rounded text-sm transition-colors cursor-pointer ${
++                     focusedRow === i
++                       ? &apos;bg-(--color-bg-hover-item) text-(--color-text-heading)&apos;
++                       : &apos;text-(--color-text-button) hover:bg-(--color-bg-hover-item) hover:text-(--color-text-heading)&apos;
++                   }`}
++                   onClick={() =&gt; setActiveTab(i + 1)}
++                 &gt;
++                   &lt;span&gt;{group.title}&lt;/span&gt;
++                   &lt;span class=&quot;text-xs text-(--color-text-muted)&quot;&gt;
++                     {group.entries.length} {group.entries.length === 1 ? &apos;shortcut&apos; : &apos;shortcuts&apos;}
++                   &lt;/span&gt;
++                 &lt;/button&gt;
++               ))}
++             &lt;/div&gt;
++           ) : (
++             // Group tab: show entries for SHORTCUT_GROUPS[activeTab - 1]
++             &lt;div class=&quot;flex flex-col gap-2&quot;&gt;
++               {SHORTCUT_GROUPS[activeTab - 1].entries.map((entry) =&gt; (
++                 &lt;div key={entry.keys} class=&quot;flex items-center justify-between gap-3 py-1&quot;&gt;
++                   &lt;span class=&quot;text-sm text-(--color-text-button)&quot;&gt;{entry.description}&lt;/span&gt;
++                   &lt;kbd class=&quot;flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded bg-(--color-bg-hover-item) border border-(--color-border-kbd) text-xs font-mono text-(--color-text-link)&quot;&gt;
++                     {entry.keys}
++                   &lt;/kbd&gt;
++                 &lt;/div&gt;
++               ))}
++             &lt;/div&gt;
++           )}
++         &lt;/div&gt;
++       &lt;/div&gt;
++     &lt;/div&gt;
++   );
++ }
++
+
+ ❯ src/components/overlay/shortcutsOverlayContextWiring.test.ts:38:32
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="context seeding &gt; reads each store signal exactly once with .peek() at mount" time="0.00099275">
+            <failure message="expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/overlay/shortcutsOverlayContextWiring.test.ts:48:68
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="context seeding &gt; resolves the context once and seeds the active tab from it" time="0.000235125">
+            <failure message="expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/overlay/shortcutsOverlayContextWiring.test.ts:53:65
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="context seeding &gt; renders the always-visible detected-context label" time="0.000981125">
+            <failure message="expected &apos;import {useEffect, useState} from \&apos;p…&apos; to contain &apos;Detected:&apos;" type="AssertionError">
+AssertionError: expected &apos;import {useEffect, useState} from \&apos;p…&apos; to contain &apos;Detected:&apos;
+
+- Expected
++ Received
+
+- Detected:
++ import {useEffect, useState} from &apos;preact/hooks&apos;;
++ import {uiStore} from &apos;../../stores/uiStore&apos;;
++
++ /** Shortcut entry: key symbol(s) and description */
++ interface ShortcutEntry {
++   keys: string;
++   description: string;
++ }
++
++ interface ShortcutGroup {
++   title: string;
++   entries: ShortcutEntry[];
++ }
++
++ const SHORTCUT_GROUPS: ShortcutGroup[] = [
++   {
++     title: &apos;Playback&apos;,
++     entries: [
++       {keys: &apos;\u2423 Space&apos;, description: &apos;Play / Pause&apos;},
++       {keys: &apos;\u2190 \u2192&apos;, description: &apos;Step frame&apos;},
++       {keys: &apos;J&apos;, description: &apos;Set reverse / increase speed&apos;},
++       {keys: &apos;K&apos;, description: &apos;Reset speed to 1x forward&apos;},
++       {keys: &apos;L&apos;, description: &apos;Set forward / increase speed&apos;},
++       {keys: &apos;\u21E7\u2423&apos;, description: &apos;Full-speed playback (no UI feedback)&apos;},
++     ],
++   },
++   {
++     title: &apos;File&apos;,
++     entries: [
++       {keys: &apos;\u2318S&apos;, description: &apos;Save project&apos;},
++       {keys: &apos;\u2318N&apos;, description: &apos;New project&apos;},
++       {keys: &apos;\u2318O&apos;, description: &apos;Open project&apos;},
++     ],
++   },
++   {
++     title: &apos;Editing&apos;,
++     entries: [
++       {keys: &apos;\u2318Z&apos;, description: &apos;Undo&apos;},
++       {keys: &apos;\u21E7\u2318Z&apos;, description: &apos;Redo&apos;},
++       {keys: &apos;\u232B&apos;, description: &apos;Delete selected&apos;},
++     ],
++   },
++   {
++     title: &apos;Navigation&apos;,
++     entries: [
++       {keys: &apos;Home / \u21E7\u2318\u2190&apos;, description: &apos;Go to start of timeline&apos;},
++       {keys: &apos;End / \u21E7\u2318\u2192&apos;, description: &apos;Go to end of timeline&apos;},
++       {keys: &apos;PgUp / \u2318\u2190 / \u2191&apos;, description: &apos;Jump to previous sequence&apos;},
++       {keys: &apos;PgDn / \u2318\u2192 / \u2193&apos;, description: &apos;Jump to next sequence&apos;},
++       {keys: &apos;\u21E7\u2318T&apos;, description: &apos;Cycle theme&apos;},
++       {keys: &apos;?&apos;, description: &apos;Toggle this help&apos;},
++     ],
++   },
++   {
++     title: &apos;Canvas&apos;,
++     entries: [
++       {keys: &apos;= / +&apos;, description: &apos;Zoom in (when mouse over canvas)&apos;},
++       {keys: &apos;\u2212&apos;, description: &apos;Zoom out (when mouse over canvas)&apos;},
++       {keys: &apos;\u23180&apos;, description: &apos;Fit to window&apos;},
++       {keys: &apos;F&apos;, description: &apos;Toggle fit lock&apos;},
++       {keys: &apos;\u2318Scroll&apos;, description: &apos;Zoom at cursor&apos;},
++       {keys: &apos;\u2190\u2191\u2193\u2192&apos;, description: &apos;Nudge layer 1px&apos;},
++       {keys: &apos;\u21E7\u2190\u2191\u2193\u2192&apos;, description: &apos;Nudge layer 10px&apos;},
++       {keys: &apos;\u21E7\u2318F&apos;, description: &apos;Toggle fullscreen canvas&apos;},
++       {keys: &apos;Esc&apos;, description: &apos;Deselect layer&apos;},
++       {keys: &apos;\u2325Click&apos;, description: &apos;Cycle overlapping layers&apos;},
++     ],
++   },
++   {
++     title: &apos;Timeline&apos;,
++     entries: [
++       {keys: &apos;= / +&apos;, description: &apos;Zoom in (when mouse over timeline)&apos;},
++       {keys: &apos;\u2212&apos;, description: &apos;Zoom out (when mouse over timeline)&apos;},
++       {keys: &apos;\u2303Scroll&apos;, description: &apos;Zoom at cursor&apos;},
++       {keys: &apos;\u2318Scroll&apos;, description: &apos;Vertical scroll&apos;},
++       {keys: &apos;Scroll&apos;, description: &apos;Natural scroll (trackpad)&apos;},
++       {keys: &apos;\u21E7Scroll&apos;, description: &apos;Vertical scroll&apos;},
++       {keys: &apos;S&apos;, description: &apos;Toggle solo mode (base content only)&apos;},
++     ],
++   },
++   {
++     title: &apos;Blur&apos;,
++     entries: [
++       { keys: &apos;\u21E7B&apos;, description: &apos;Toggle bypass all blur&apos; },
++     ],
++   },
++   {
++     title: &apos;Keyframes&apos;,
++     entries: [
++       { keys: &apos;I&apos;, description: &apos;Add keyframe at current frame&apos; },
++     ],
++   },
++   {
++     title: &apos;Paint Mode&apos;,
++     entries: [
++       { keys: &apos;P&apos;, description: &apos;Toggle paint edit mode&apos; },
++       { keys: &apos;F&apos;, description: &apos;Toggle flat/FX preview&apos; },
++       { keys: &apos;O&apos;, description: &apos;Toggle sequence overlay&apos; },
++       { keys: &apos;\u2318/Ctrl+A&apos;, description: &apos;Select all strokes&apos; },
++       { keys: &apos;Delete&apos;, description: &apos;Delete selected strokes&apos; },
++       { keys: &apos;Click&apos;, description: &apos;Select stroke (select tool)&apos; },
++       { keys: &apos;\u2318/Ctrl+Click&apos;, description: &apos;Multi-select strokes&apos; },
++       { keys: &apos;Drag&apos;, description: &apos;Move selected strokes&apos; },
++       { keys: &apos;Corner handle&apos;, description: &apos;Resize selected strokes&apos; },
++       { keys: &apos;Rotate handle&apos;, description: &apos;Rotate selected strokes&apos; },
++     ],
++   },
++ ];
++
++ /** Total number of tabs: Sections index (0) + group tabs */
++ const TAB_COUNT = 1 + SHORTCUT_GROUPS.length;
++
++ /** Tab labels: index 0 = Sections, indices 1-7 = group titles */
++ const TAB_LABELS = [&apos;Sections&apos;, ...SHORTCUT_GROUPS.map((g) =&gt; g.title)];
++
++ export function ShortcutsOverlay() {
++   const [activeTab, setActiveTab] = useState(0);
++   const [focusedRow, setFocusedRow] = useState(0);
++
++   // Reset focusedRow when returning to Sections tab
++   useEffect(() =&gt; {
++     if (activeTab === 0) setFocusedRow(0);
++   }, [activeTab]);
++
++   // Keyboard navigation — capture phase + stopPropagation to block app shortcuts
++   useEffect(() =&gt; {
++     function handleKeyDown(e: KeyboardEvent) {
++       if (e.key === &apos;Escape&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         uiStore.closeShortcutsOverlay();
++         return;
++       }
++       if (e.key === &apos;ArrowDown&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         if (activeTab === 0) {
++           setFocusedRow((prev) =&gt; (prev + 1) % SHORTCUT_GROUPS.length);
++         }
++         return;
++       }
++       if (e.key === &apos;ArrowUp&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         if (activeTab === 0) {
++           setFocusedRow((prev) =&gt; (prev - 1 + SHORTCUT_GROUPS.length) % SHORTCUT_GROUPS.length);
++         }
++         return;
++       }
++       if (e.key === &apos;Enter&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         if (activeTab === 0) {
++           setActiveTab(focusedRow + 1);
++         }
++         return;
++       }
++       if (e.key === &apos;ArrowRight&apos; || e.key === &apos;Tab&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         setActiveTab((prev) =&gt; (prev + 1) % TAB_COUNT);
++         return;
++       }
++       if (e.key === &apos;ArrowLeft&apos;) {
++         e.preventDefault();
++         e.stopPropagation();
++         setActiveTab((prev) =&gt; (prev - 1 + TAB_COUNT) % TAB_COUNT);
++         return;
++       }
++       // Number keys 1-8: direct jump to group tab
++       const num = parseInt(e.key, 10);
++       if (num &gt;= 1 &amp;&amp; num &lt;= 8) {
++         e.preventDefault();
++         e.stopPropagation();
++         setActiveTab(num);
++         return;
++       }
++       // Block all other keys from reaching app while overlay is open
++       e.stopPropagation();
++     }
++     window.addEventListener(&apos;keydown&apos;, handleKeyDown, true);
++     return () =&gt; window.removeEventListener(&apos;keydown&apos;, handleKeyDown, true);
++   }, [activeTab, focusedRow]);
++
++   return (
++     &lt;div
++       class=&quot;fixed inset-0 z-50 flex items-center justify-center&quot;
++       onClick={(e) =&gt; {
++         // Close on backdrop click (not on modal content click)
++         if (e.target === e.currentTarget) {
++           uiStore.closeShortcutsOverlay();
++         }
++       }}
++     &gt;
++       {/* Backdrop */}
++       &lt;div class=&quot;absolute inset-0 bg-black/60&quot; /&gt;
++
++       {/* Modal */}
++       &lt;div
++         class=&quot;relative bg-(--color-bg-toolbar) border border-(--color-border-subtle) rounded-lg shadow-xl max-w-[600px] w-full mx-4 p-6&quot;
++         onClick={(e) =&gt; e.stopPropagation()}
++       &gt;
++         {/* Header */}
++         &lt;div class=&quot;flex items-center justify-between mb-5&quot;&gt;
++           &lt;h2 class=&quot;text-base font-semibold text-(--color-text-heading)&quot;&gt;
++             Keyboard Shortcuts
++           &lt;/h2&gt;
++           &lt;button
++             class=&quot;flex items-center justify-center w-7 h-7 rounded hover:bg-(--color-border-subtle) transition-colors cursor-pointer&quot;
++             onClick={() =&gt; uiStore.closeShortcutsOverlay()}
++             title=&quot;Close&quot;
++           &gt;
++             &lt;span class=&quot;text-sm text-(--color-text-muted)&quot;&gt;{&apos;\u2715&apos;}&lt;/span&gt;
++           &lt;/button&gt;
++         &lt;/div&gt;
++
++         {/* Tab bar */}
++         &lt;div class=&quot;flex flex-wrap border-b border-(--color-border-subtle)&quot;&gt;
++           {TAB_LABELS.map((label, index) =&gt; {
++             const isActive = activeTab === index;
++             return (
++               &lt;button
++                 key={label}
++                 class={`px-3 py-2 text-xs transition-colors cursor-pointer ${
++                   isActive
++                     ? &apos;text-(--color-text-heading) border-b-2 border-(--color-accent)&apos;
++                     : &apos;text-(--color-text-muted) hover:text-(--color-text-secondary)&apos;
++                 }`}
++                 onClick={() =&gt; setActiveTab(index)}
++               &gt;
++                 {label}
++               &lt;/button&gt;
++             );
++           })}
++         &lt;/div&gt;
++
++         {/* Content area */}
++         &lt;div class=&quot;pt-4 overflow-y-auto&quot; style={{ minHeight: &apos;320px&apos; }}&gt;
++           {activeTab === 0 ? (
++             // Sections index tab: clickable group list with entry counts
++             &lt;div class=&quot;flex flex-col gap-1&quot;&gt;
++               {SHORTCUT_GROUPS.map((group, i) =&gt; (
++                 &lt;button
++                   key={group.title}
++                   class={`flex items-center justify-between px-3 py-2 rounded text-sm transition-colors cursor-pointer ${
++                     focusedRow === i
++                       ? &apos;bg-(--color-bg-hover-item) text-(--color-text-heading)&apos;
++                       : &apos;text-(--color-text-button) hover:bg-(--color-bg-hover-item) hover:text-(--color-text-heading)&apos;
++                   }`}
++                   onClick={() =&gt; setActiveTab(i + 1)}
++                 &gt;
++                   &lt;span&gt;{group.title}&lt;/span&gt;
++                   &lt;span class=&quot;text-xs text-(--color-text-muted)&quot;&gt;
++                     {group.entries.length} {group.entries.length === 1 ? &apos;shortcut&apos; : &apos;shortcuts&apos;}
++                   &lt;/span&gt;
++                 &lt;/button&gt;
++               ))}
++             &lt;/div&gt;
++           ) : (
++             // Group tab: show entries for SHORTCUT_GROUPS[activeTab - 1]
++             &lt;div class=&quot;flex flex-col gap-2&quot;&gt;
++               {SHORTCUT_GROUPS[activeTab - 1].entries.map((entry) =&gt; (
++                 &lt;div key={entry.keys} class=&quot;flex items-center justify-between gap-3 py-1&quot;&gt;
++                   &lt;span class=&quot;text-sm text-(--color-text-button)&quot;&gt;{entry.description}&lt;/span&gt;
++                   &lt;kbd class=&quot;flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded bg-(--color-bg-hover-item) border border-(--color-border-kbd) text-xs font-mono text-(--color-text-link)&quot;&gt;
++                     {entry.keys}
++                   &lt;/kbd&gt;
++                 &lt;/div&gt;
++               ))}
++             &lt;/div&gt;
++           )}
++         &lt;/div&gt;
++       &lt;/div&gt;
++     &lt;/div&gt;
++   );
++ }
++
+
+ ❯ src/components/overlay/shortcutsOverlayContextWiring.test.ts:58:28
+            </failure>
+        </testcase>
+        <testcase classname="src/components/overlay/shortcutsOverlayContextWiring.test.ts" name="opening binding &gt; keeps Shift+? as the only overlay opener" time="0.00011775">
+        </testcase>
+    </testsuite>
+</testsuites>
