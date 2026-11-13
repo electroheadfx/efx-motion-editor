@@ -12,6 +12,7 @@ import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlay
 import { PhysicsPaintBrushMenu } from './PhysicsPaintBrushMenu';
 import { PhysicsPaintBrushModal } from './PhysicsPaintBrushModal';
 import { PhysicsPaintSettingsModal } from './PhysicsPaintSettingsModal';
+import { PhysicsPaintShortcutsModal } from './PhysicsPaintShortcutsModal';
 import { PhysicsPaintRailMotionModal } from './PhysicsPaintRailMotionModal';
 import type { RailMotionDialogBundle } from './physicsPaintKeyRailPresentation';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
@@ -503,6 +504,8 @@ export interface PhysicsPaintStudioViewProps {
   status: {
     shortcutsVisible: boolean;
   };
+  /** The Studio's ONE close path for the shared shortcuts modal. */
+  onCloseShortcuts: () => void;
   /** 49-04 (Task 2): the scoped full-area asset picker (S2) swap. */
   backgroundPicker?: ComponentProps<typeof BackgroundAssetPickerView>;
   /** 50-03 (S2): the reference picker — the same full-area region swap reused
@@ -519,7 +522,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, railConversionDialog, referenceDialog, scriptPickerDialog, strokeSettingsDialog, railMotionDialog, onCloseRailMotionDialog, workflow, status, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, railConversionDialog, referenceDialog, scriptPickerDialog, strokeSettingsDialog, railMotionDialog, onCloseRailMotionDialog, workflow, status, onCloseShortcuts, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
   // 260923-fhn (Quick 4): while either gallery picker is open, every parent
   // modal steps aside — the picker overlay is absolute z-20 inside the canvas
   // region, the parents are fixed z-70/72, and stacked they fight for space.
@@ -643,14 +646,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         <PhysicsPaintWorkflowStrip {...workflow} />
 
         {status.shortcutsVisible ? (
-          <aside class="physics-paint-shortcuts-help" aria-label="Physics Paint shortcuts">
-            <strong>Physics Paint shortcuts</strong>
-            <span>Cmd+Z undo · Cmd+Shift+Z / Ctrl+Y redo · Esc stop preview · ? help · I picker · hold Alt to pick temporarily</span>
-            <span>Cmd/Ctrl+C copy selected key(s) · Cmd/Ctrl+V paste at current frame</span>
-            <span>Backspace / Delete remove selected real key</span>
-            <span>Space play/pause · hold Shift+Space and drag to pan the canvas · the pill&apos;s Hand pans while held</span>
-            <span>Roto: arrows navigate · O onion · [ ] onion count · completed paint caches automatically</span>
-          </aside>
+          <PhysicsPaintShortcutsModal onClose={onCloseShortcuts} />
         ) : null}
       </section>
     </main>

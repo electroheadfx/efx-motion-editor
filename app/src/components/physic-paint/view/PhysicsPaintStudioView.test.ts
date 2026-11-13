@@ -87,6 +87,7 @@ function renderView(fixture: ViewFixture): unknown {
     rightPanel: {},
     workflow: {},
     status: { shortcutsVisible: false },
+    onCloseShortcuts: () => {},
     // Parents are only "open" when their prop object/flag is present.
     playScriptDialog: fixture.playScriptPresent ? {} : undefined,
     scriptPickerDialog: fixture.scriptPickerPresent

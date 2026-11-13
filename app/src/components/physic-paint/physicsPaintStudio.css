@@ -8972,23 +8972,6 @@ input[type="range"].physics-paint-photo-reference-slider-input {
 }
 
 
-.physics-paint-shortcuts-help {
-  position: fixed;
-  right: 16px;
-  bottom: 150px;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-width: 420px;
-  padding: 10px;
-  border: 1px solid var(--color-border-subtle, #2a3a4a);
-  border-radius: 8px;
-  background: var(--color-bg-card, #1a1a1a);
-  color: var(--sidebar-text-primary, #e5edf8);
-  font-size: 11px;
-}
-
 .physics-paint-add-swatch {
   width: 32px;
   padding-inline: 0;

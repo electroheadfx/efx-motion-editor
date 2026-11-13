@@ -28,6 +28,7 @@ const headerColumn = readFileSync(fileURLToPath(new URL('./view/physicsPaintTrac
 
 const studio = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudio.tsx', import.meta.url)), 'utf8');
 const studioView = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintStudioView.tsx', import.meta.url)), 'utf8');
+const studioShortcutsHelp = readFileSync(fileURLToPath(new URL('./view/physicsPaintShortcutsHelp.ts', import.meta.url)), 'utf8');
 const main = readFileSync(fileURLToPath(new URL('../../main.tsx', import.meta.url)), 'utf8');
 const scriptsPanel = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintScriptsPanel.tsx', import.meta.url)), 'utf8');
 const workflowStrip = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintWorkflowStrip.tsx', import.meta.url)), 'utf8');
@@ -994,8 +995,10 @@ describe('Physics Paint Roto keyboard shortcut wiring', () => {
   });
 
   it('advertises the Copy, Paste, Backspace, and Delete shortcuts', () => {
-    expect(studioView).toContain('Cmd/Ctrl+C copy selected key(s) · Cmd/Ctrl+V paste at current frame');
-    expect(studioView).toContain('Backspace / Delete remove selected real key');
+    expect(studioShortcutsHelp).toContain("keys: '⌘/Ctrl+C', description: 'Copy the selected key'");
+    expect(studioShortcutsHelp).toContain("keys: '⌘/Ctrl+V', description: 'Paste at the current frame'");
+    expect(studioShortcutsHelp).toContain("keys: 'Delete / ⌫', description: 'Delete the selected real key'");
+    expect(studioView).not.toContain('Cmd/Ctrl+C copy selected key(s)');
   });
 });
 

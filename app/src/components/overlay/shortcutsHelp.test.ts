@@ -8,6 +8,7 @@ import {
   SHORTCUT_TAB_COUNT,
   SHORTCUT_TAB_LABELS,
   SHORTCUTS_CONTEXT_COPY,
+  formatShortcutKeys,
   resolveShortcutsContext,
   resolveShortcutsInitialTab,
   resolveShortcutsTabNumber,
@@ -181,6 +182,32 @@ describe('Canvas catalog', () => {
   });
 });
 
+describe('formatShortcutKeys', () => {
+  it('separates stacked modifier glyphs and the key that follows them', () => {
+    expect(formatShortcutKeys('⇧⌘Z')).toBe('⇧ ⌘ Z');
+    expect(formatShortcutKeys('⇧R')).toBe('⇧ R');
+    expect(formatShortcutKeys('⇧⌘N')).toBe('⇧ ⌘ N');
+    expect(formatShortcutKeys('⌘0')).toBe('⌘ 0');
+    expect(formatShortcutKeys('⌥Click')).toBe('⌥ Click');
+    expect(formatShortcutKeys('⇧␣')).toBe('⇧ ␣');
+  });
+
+  it('separates arrow clusters', () => {
+    expect(formatShortcutKeys('←↑↓→')).toBe('← ↑ ↓ →');
+    expect(formatShortcutKeys('⇧←↑↓→')).toBe('⇧ ← ↑ ↓ →');
+    expect(formatShortcutKeys('⇧← ⇧→')).toBe('⇧ ← ⇧ →');
+  });
+
+  it('spaces cross-platform chords and leaves already spaced labels intact', () => {
+    expect(formatShortcutKeys('⌘/Ctrl+C')).toBe('⌘ / Ctrl + C');
+    expect(formatShortcutKeys('⇧⌘Z / Ctrl+Y')).toBe('⇧ ⌘ Z / Ctrl + Y');
+    expect(formatShortcutKeys('Alt+S')).toBe('Alt + S');
+    expect(formatShortcutKeys('⌥ + click')).toBe('⌥ + click');
+    expect(formatShortcutKeys('Delete / ⌫')).toBe('Delete / ⌫');
+    expect(formatShortcutKeys('= / +')).toBe('= / +');
+  });
+});
+
 describe('resolveShortcutsTabNumber', () => {
   it('maps 1 through the group count to their group tab', () => {
     expect(resolveShortcutsTabNumber(1)).toBe(1);
@@ -192,5 +219,10 @@ describe('resolveShortcutsTabNumber', () => {
     expect(resolveShortcutsTabNumber(10)).toBeNull();
     expect(resolveShortcutsTabNumber(1.5)).toBeNull();
     expect(resolveShortcutsTabNumber(Number.NaN)).toBeNull();
+  });
+
+  it('honours an explicit group count for the shared modal (Studio catalog)', () => {
+    expect(resolveShortcutsTabNumber(7, 7)).toBe(7);
+    expect(resolveShortcutsTabNumber(8, 7)).toBeNull();
   });
 });

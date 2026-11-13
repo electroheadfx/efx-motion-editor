@@ -11980,6 +11980,7 @@ export function PhysicsPaintStudio() {
         rotoScrubFrame: rotoScrubFrameSignal,
       },
     status: { shortcutsVisible },
+    onCloseShortcuts: () => setShortcutsVisible(false),
     backgroundPicker: {
       open: backgroundPicker.open.value,
       images: backgroundPicker.images.value,

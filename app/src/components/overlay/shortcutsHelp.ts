@@ -153,9 +153,23 @@ export const SHORTCUTS_CONTEXT_COPY: Record<ShortcutsContextId, {label: string; 
   sections: {label: 'All shortcuts', detail: 'hover the canvas or the timeline for surface help'},
 };
 
+/**
+ * Spreads stacked key symbols so every badge reads as discrete signs:
+ * "⇧⌘Z" -> "⇧ ⌘ Z", "⇧R" -> "⇧ R", "←↑↓→" -> "← ↑ ↓ →",
+ * "⌘/Ctrl+C" -> "⌘ / Ctrl + C".
+ */
+export function formatShortcutKeys(keys: string): string {
+  return keys
+    .replace(/([⇧⌘⌥⌃])(?=[^\s/])/g, '$1 ')
+    .replace(/([←→↑↓])(?=[←→↑↓])/g, '$1 ')
+    .replace(/\s*\/\s*/g, ' / ')
+    .replace(/\s*\+\s*/g, ' + ')
+    .trim();
+}
+
 /** Number keys 1 through the group count jump to their group tab; anything else does not. */
-export function resolveShortcutsTabNumber(num: number): number | null {
+export function resolveShortcutsTabNumber(num: number, groupCount = SHORTCUT_GROUPS.length): number | null {
   if (!Number.isInteger(num)) return null;
-  if (num < 1 || num > SHORTCUT_GROUPS.length) return null;
+  if (num < 1 || num > groupCount) return null;
   return num;
 }
