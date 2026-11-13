@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 Phase: 62 — Painted-Stroke Curve Editing
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-13 - Completed quick task 261113-fkm (automated-ready, UAT pending): a whole-stroke colour apply now clears explicit per-vertex anchor colours in the same edit (one undo), so the global colour no longer reverts to the local vertex colours on path-edit re-entry. Per-vertex colours stay re-addable through the anchor-selection colour path; a Size apply keeps the width profile (multiplier semantics).
+Last activity: 2026-11-13 - Quick task 261113-fkm CLOSED (UAT approved): a whole-stroke colour apply now clears explicit per-vertex anchor colours in the same edit (one undo), so the global colour no longer reverts to the local vertex colours on path-edit re-entry. Per-vertex colours stay re-addable through the anchor-selection colour path; a Size apply keeps the width profile (multiplier semantics).
 
 Progress: [████████░░] 75%
 
@@ -446,7 +446,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 29 | Hide Vertex size and Corner blocks in the Curve tab unless a vertex is selected (UAT approved 2026-11-12) | 2026-11-12 | 72a69dc94 | — |
 | 261112-n3f | Unify the stroke-size preview into one toggle (vertex-aware, off by default) and remove the vector envelope self-intersection lines (UAT approved, including follow-up 39007da12 restoring the committed sheet on leaving the surface) | 2026-11-12 | 8f5ae4c82 | [261112-n3f-unify-the-stroke-size-preview-into-one-t](./quick/261112-n3f-unify-the-stroke-size-preview-into-one-t/) |
 | 31 | Studio UI polish: EFX mark in the old Engine-ready seat (Engine fail pill on failure), Re-render + Undo + Redo + Flash-dry in the top-bar action cluster (43px, centered inside the flexible settings cluster between the brush dropdown and the right settings; Water stays in the rail), "Script mode" checkbox inside the brush pill (checked by default, label at right, 2px gap), cache-load notice published as info, right-sidebar tab scrollbars use the blue thumb, orange active-track left bar (UAT approved 2026-11-12) | 2026-11-12 | aa03d4139 | — |
-| 261113-fkm | Vector paint: a whole-stroke colour apply replaces explicit per-vertex colours in the same edit (one undo), so the global colour survives path-edit re-entry; Size keeps per-vertex width factors (automated-ready, UAT pending) | 2026-11-13 | 8adfa44ce | [261113-fkm-vector-paint-global-colour-apply-replace](./quick/261113-fkm-vector-paint-global-colour-apply-replace/) |
+| 261113-fkm | Vector paint: a whole-stroke colour apply replaces explicit per-vertex colours in the same edit (one undo), so the global colour survives path-edit re-entry; Size keeps per-vertex width factors (UAT approved 2026-11-13) | 2026-11-13 | 8adfa44ce | [261113-fkm-vector-paint-global-colour-apply-replace](./quick/261113-fkm-vector-paint-global-colour-apply-replace/) |
 
 ## Roadmap Evolution
 
