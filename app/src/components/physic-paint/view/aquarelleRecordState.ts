@@ -756,6 +756,19 @@ export interface AquarelleStrokeAppearancePatch {
 }
 
 /**
+ * 261113-fkm: the inheriting form of one anchor — every paint property except
+ * the explicit per-vertex `color` (261111-wd6). A whole-stroke colour apply
+ * OWNS the stroke colour, so an explicit anchor colour is superseded and
+ * dropped in the SAME write. Only an anchor that carried a colour may reach
+ * this function; a colourless anchor is kept by reference so the sparse
+ * profile stays byte-identical.
+ */
+function withoutAnchorColor(anchor: AquarelleAnchor): AquarelleAnchor {
+  const { color: _color, ...rest } = anchor;
+  return rest;
+}
+
+/**
  * quick 261024-p5q: set canonical params and/or the colour on one recorded
  * stroke OR the whole selection. The Paint section of the Stroke Settings
  * dialog is the only caller; the payload never sees engine 0..1 units.
@@ -775,6 +788,18 @@ export interface AquarelleStrokeAppearancePatch {
  * carry a finite non-negative salt (already-ON targets are skipped); OFF
  * deletes the key. The key still may not arrive through `params` — the
  * unknown-key guard above refuses it, which keeps the sliders out of it.
+ *
+ * 261113-fkm (D-01): a patch carrying `color` is a WHOLE-STROKE colour — it
+ * supersedes every explicit per-anchor colour (261111-wd6) in the SAME write,
+ * and therefore in the same undo entry. Only the `color` key is removed from
+ * an anchor: geometry, order, `kind`, handles and the `width` factor survive
+ * untouched, and the anchor list (or any never-coloured anchor) keeps its
+ * exact reference so nothing is rewritten needlessly. The colour is never
+ * written INTO an anchor, so no canonicalisation or validation surface is
+ * added, and a same-colour apply is still an edit because the clear changes
+ * the stored bytes. D-02: a patch without a colour — Size/params, brush id,
+ * the paint-seed flag or the tool multipliers — never touches the anchor
+ * list; Size is a multiplier channel, not a colour channel.
  */
 export function updateAquarelleStrokesInScript(
   mutationIds: readonly number[],
@@ -836,6 +861,7 @@ export function updateAquarelleStrokesInScript(
     nextColor: string | null;
     nextBrushId: string;
     nextOverrides: AquarelleToolOverrides | null;
+    nextAnchors: readonly AquarelleAnchor[] | undefined;
   }> = [];
   const seen = new Set<number>();
   for (const mutationId of mutationIds) {
@@ -855,6 +881,27 @@ export function updateAquarelleStrokesInScript(
     }
     const nextColor: string | null = hasColor ? (patch.color as string) : stroke.color;
     if (hasColor && nextColor !== stroke.color) changed = true;
+    // 261113-fkm (D-01): a colour patch is a WHOLE-STROKE colour — every
+    // explicit per-vertex colour is superseded in this same write. Only an
+    // anchor that carried a colour is rebuilt; the sparse no-colour anchors
+    // are kept by reference, and an already-colourless list is left
+    // reference-identical (no needless rewrite). A non-colour patch never
+    // enters this block (D-02).
+    let nextAnchors = stroke.anchors;
+    if (hasColor && nextAnchors !== undefined) {
+      let cleared = false;
+      const rebuilt = nextAnchors.map((anchor) => {
+        if (anchor.color === undefined) return anchor;
+        cleared = true;
+        return withoutAnchorColor(anchor);
+      });
+      if (cleared) {
+        nextAnchors = rebuilt;
+        // The colour term alone misses the same-colour case; the clear is the
+        // edit that makes it a real target.
+        changed = true;
+      }
+    }
     const targetBrushId = nextBrushId ?? stroke.brushId;
     if (hasBrush && targetBrushId !== stroke.brushId) changed = true;
     let nextOverrides: AquarelleToolOverrides | null = null;
@@ -894,6 +941,7 @@ export function updateAquarelleStrokesInScript(
       nextColor,
       nextBrushId: targetBrushId,
       nextOverrides,
+      nextAnchors,
     });
   }
   if (targets.length === 0) return 0;
@@ -906,6 +954,7 @@ export function updateAquarelleStrokesInScript(
     nextColor,
     nextBrushId: targetBrushId,
     nextOverrides,
+    nextAnchors,
   } of targets) {
     // `brushId` is required on the stroke record, so the resolved value is
     // always the validated patch id or the stroke's own — never undefined.
@@ -918,6 +967,10 @@ export function updateAquarelleStrokesInScript(
       // Only a patch that carried multipliers writes a bag: every other path
       // preserves the stroke's exact key set through the spread above.
       ...(nextOverrides === null ? {} : { toolOverrides: nextOverrides }),
+      // 261113-fkm: identity is the signal — an untouched (or absent) anchor
+      // list is neither rewritten nor cloned, so a hand-painted stroke never
+      // gains the key and a colourless profile keeps its exact bytes.
+      ...(nextAnchors === stroke.anchors ? {} : { anchors: nextAnchors }),
     };
     // Regenerate through the ONE projection so the engine payload carries the
     // new canonical params/colour; pts/cuisson/recordedOrder re-derive from
