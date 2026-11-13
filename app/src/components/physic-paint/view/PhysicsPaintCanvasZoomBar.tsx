@@ -12,7 +12,8 @@ import { disarmHandTool, isHandToolArmed, setHandToolArmed } from './physicsPain
  * pen) pans the sheet through the zoom store — the same path middle-drag uses
  * — for as long as the press lasts; releasing stops the pan and disarms.
  * Nothing latches, so there is no lingering pan mode to leave. The Hand is
- * never disabled: at Fit the pan simply clamps to zero.
+ * never disabled: the pan is free at every zoom, so the sheet can be pushed
+ * out of the viewport, and Fit is the recovery.
  *
  * Narrow subscriber: it reads only the display values plus the armed flag and
  * drives only store actions. No keyboard binding and no shortcut hint — wheel,

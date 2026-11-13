@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 const view = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudioView.tsx', import.meta.url)), 'utf8');
 const viewport = readFileSync(fileURLToPath(new URL('./PhysicsPaintCanvasZoomViewport.tsx', import.meta.url)), 'utf8');
+const zoomStore = readFileSync(fileURLToPath(new URL('./physicsPaintCanvasZoom.ts', import.meta.url)), 'utf8');
 const mount = readFileSync(fileURLToPath(new URL('../engine/PhysicsPaintCanvasMount.tsx', import.meta.url)), 'utf8');
 const keyboard = readFileSync(fileURLToPath(new URL('./physicsPaintStudioKeyboard.ts', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
@@ -118,6 +119,29 @@ describe('Studio canvas zoom wiring (261104-uyv)', () => {
     expect(viewport).not.toContain('handPan');
     expect(viewport).toContain('physicsPaintCanvasZoom.setPan(');
     expect(viewport).toContain("viewport.addEventListener('pointerdown', onPointerDown, true);");
+  });
+
+  it('gates the plain wheel on overflow but never the unconditional middle press', () => {
+    const pointerDownStart = viewport.indexOf('const onPointerDown = (event: PointerEvent) => {');
+    const pointerMoveStart = viewport.indexOf('const onPointerMove = (event: PointerEvent) => {');
+    expect(pointerDownStart).toBeGreaterThanOrEqual(0);
+    expect(pointerMoveStart).toBeGreaterThan(pointerDownStart);
+    const pointerDownBlock = viewport.slice(pointerDownStart, pointerMoveStart);
+    expect(pointerDownBlock).toContain('if (event.button !== 1) return;');
+    // 261113-o26: the middle press pans at every zoom — the pan is free, so
+    // the sheet may leave the viewport. Only the plain wheel still needs the
+    // sheet to overflow.
+    expect(pointerDownBlock).not.toContain('hasOverflow');
+
+    const wheelStart = viewport.indexOf('const onWheel = (event: WheelEvent) => {');
+    const gestureStart = viewport.indexOf('const onGestureStart = (event: Event) => {');
+    expect(wheelStart).toBeGreaterThanOrEqual(0);
+    expect(gestureStart).toBeGreaterThan(wheelStart);
+    const wheelBlock = viewport.slice(wheelStart, gestureStart);
+    expect(wheelBlock).toContain('physicsPaintCanvasZoom.hasOverflow.peek()');
+    // The computed survives for that one gate.
+    expect(zoomStore).toContain('const hasOverflow = computed(');
+    expect(zoomStore).toContain('  hasOverflow,');
   });
 
   it('adds no keyboard zoom binding', () => {

@@ -129,11 +129,13 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
     // cannot start a stroke or a pick — this keeps it out of every gate too.
     // 261107-sg3: the Hand no longer routes through the canvas — it is a
     // press-and-hold button in the zoom pill that captures its own pointer.
+    // 261113-o26: the press is unconditional at every zoom. The pan is free
+    // and unbounded, so the sheet may be pushed fully off the viewport; Fit
+    // and the Studio-open reset are the recovery paths.
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 1) return;
       event.preventDefault();
       event.stopPropagation();
-      if (!physicsPaintCanvasZoom.hasOverflow.peek()) return;
       drag = {
         pointerId: event.pointerId,
         startX: event.clientX,

@@ -96,7 +96,7 @@ describe('Hand press button in the zoom pill (261107-sg3)', () => {
     expect(button).toContain('onPointerDown={beginHandSession}');
     expect(button).not.toContain('toggleHandTool');
     expect(button).toContain('<Hand size={14} aria-hidden="true" />');
-    // D-03: never disabled — at Fit the pan simply clamps to zero.
+    // D-03 / 261113-o26: never disabled — the pan is free at every zoom.
     expect(button).not.toContain('disabled');
   });
 
