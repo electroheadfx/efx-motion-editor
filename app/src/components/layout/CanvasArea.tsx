@@ -1,6 +1,6 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
 import {useSignal} from '@preact/signals';
-import {Plus, Minus, Maximize, Maximize2, Minimize2, Paintbrush, Hand} from 'lucide-preact';
+import {Plus, Minus, Maximize, Paintbrush, Hand} from 'lucide-preact';
 import {Preview} from '../Preview';
 import {SpeedBadge} from '../overlay/SpeedBadge';
 import {FullSpeedBadge} from '../overlay/FullSpeedBadge';
@@ -384,85 +384,6 @@ export function CanvasArea() {
           <PaintToolbar />
         </div>
       )}
-      {/* Preview Controls (zoom, fit, fullscreen) — hidden in paint mode */}
-      <div class={`flex items-center justify-center gap-3 w-full pt-4 pb-2 px-5 shrink-0 ${isPaintModeActive ? 'hidden' : ''}`}>
-        <button
-          class={`rounded p-1.5 transition-colors ${
-            hasPaintLayerSelected
-              ? 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) text-(--color-text-secondary)'
-              : 'bg-(--color-bg-settings) text-(--color-text-secondary) opacity-40 cursor-not-allowed'
-          }`}
-          onClick={() => hasPaintLayerSelected && paintStore.togglePaintMode()}
-          title={!hasPaintLayerSelected ? 'Select a paint layer first' : 'Enter paint mode (P)'}
-          disabled={!hasPaintLayerSelected}
-        >
-          <Paintbrush size={14} />
-        </button>
-        {!isPaintModeActive && (<>
-          <button
-            class={`rounded-[5px] px-2.5 py-1 text-(--color-text-button) ${
-              canvasStore.isAtMinZoom.value
-                ? 'bg-(--color-bg-settings) opacity-40 cursor-default'
-                : 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) cursor-pointer'
-            }`}
-            onClick={() => canvasStore.zoomOut()}
-            title="Zoom out (-)"
-          >
-            <Minus size={16} />
-          </button>
-          <span class="text-[11px] text-(--color-text-dim)">
-            {canvasStore.zoomPercent.value}%
-          </span>
-          <button
-            class={`rounded-[5px] px-2.5 py-1 text-(--color-text-button) ${
-              canvasStore.isAtMaxZoom.value
-                ? 'bg-(--color-bg-settings) opacity-40 cursor-default'
-                : 'bg-(--color-bg-settings) hover:bg-(--color-bg-input) cursor-pointer'
-            }`}
-            onClick={() => canvasStore.zoomIn()}
-            title="Zoom in (=)"
-          >
-            <Plus size={16} />
-          </button>
-          <button
-            class="rounded px-2.5 py-1.5 cursor-grab bg-(--color-bg-settings) hover:bg-(--color-bg-input) text-(--color-text-secondary)"
-            onPointerDown={beginHandSession}
-            title="Hand \u2014 press and hold, then move to pan; releasing stops"
-          >
-            <Hand size={16} />
-          </button>
-          <button
-            class={`rounded px-2.5 py-1.5 cursor-pointer transition-colors ${
-              canvasStore.fitLocked.value
-                ? 'bg-(--color-accent) text-white hover:brightness-125'
-                : 'bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input) hover:text-white'
-            }`}
-            onClick={() => canvasStore.toggleFitLock()}
-            title={canvasStore.fitLocked.value ? 'Fit to window \u2014 locked (F)' : 'Fit to window (F)'}
-          >
-            {canvasStore.fitLocked.value ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          </button>
-          <button
-            class={`rounded-[5px] px-2 py-1 text-[11px] ${
-              Math.abs(canvasStore.zoom.value - 1) < 0.001
-                ? 'bg-(--color-accent) text-white hover:brightness-125'
-                : 'bg-(--color-bg-settings) text-(--color-text-button) hover:bg-(--color-bg-input)'
-            }`}
-            onClick={() => canvasStore.setSmoothZoom(1)}
-            title="Actual size \u2014 one project pixel per screen pixel"
-          >
-            1:1
-          </button>
-          <button
-            class="rounded px-2.5 py-1.5 bg-(--color-bg-settings) hover:bg-(--color-bg-input) cursor-pointer text-(--color-text-secondary)"
-            onClick={() => enterFullscreen()}
-            title="Fullscreen (\u21E7\u2318F)"
-          >
-            <Maximize size={16} />
-          </button>
-        </>)}
-        <FullSpeedBadge />
-      </div>
       {/* Canvas row: optional color picker + canvas */}
       <div class="flex flex-1 w-full min-h-0">
         {/* Inline color picker panel - vertically centered left of canvas */}
@@ -505,13 +426,83 @@ export function CanvasArea() {
         {/* Preview Frame with zoom/pan */}
         <div
           ref={containerRef}
-          class="flex items-center justify-center flex-1 min-h-0 p-4 pt-0 overflow-hidden"
+          class="relative flex items-center justify-center flex-1 min-h-0 p-4 pt-0 overflow-hidden"
           onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           style={{cursor: cursorStyle}}
         >
+          {/* Floating canvas controls — the Studio pill's glass chrome at the
+              canvas bottom-left. It stays up in paint mode so zoom and pan are
+              reachable while painting; the paint toolbar keeps the top. */}
+          <div class="canvas-zoom-pill" role="group" aria-label="Canvas controls">
+            <button
+              class="canvas-zoom-pill-text"
+              aria-pressed={isPaintModeActive}
+              onClick={() => hasPaintLayerSelected && paintStore.togglePaintMode()}
+              title={
+                !hasPaintLayerSelected
+                  ? 'Select a paint layer first'
+                  : isPaintModeActive
+                    ? 'Leave paint mode (P)'
+                    : 'Enter paint mode (P)'
+              }
+              disabled={!hasPaintLayerSelected}
+            >
+              <Paintbrush size={14} />
+            </button>
+            <span class="canvas-zoom-pill-divider" aria-hidden="true" />
+            <button
+              onClick={() => canvasStore.zoomOut()}
+              title="Zoom out (-)"
+              disabled={canvasStore.isAtMinZoom.value}
+            >
+              <Minus size={14} />
+            </button>
+            <span class="canvas-zoom-pill-level">{canvasStore.zoomPercent.value}%</span>
+            <button
+              onClick={() => canvasStore.zoomIn()}
+              title="Zoom in (=)"
+              disabled={canvasStore.isAtMaxZoom.value}
+            >
+              <Plus size={14} />
+            </button>
+            <button
+              class="cursor-grab"
+              onPointerDown={beginHandSession}
+              title="Hand — press and hold, then move to pan; releasing stops"
+              aria-label="Hand"
+            >
+              <Hand size={14} />
+            </button>
+            <button
+              class="canvas-zoom-pill-text"
+              aria-pressed={canvasStore.fitLocked.value}
+              onClick={() => canvasStore.toggleFitLock()}
+              title={canvasStore.fitLocked.value ? 'Fit to window — locked (F)' : 'Fit to window (F)'}
+            >
+              FIT
+            </button>
+            <button
+              class="canvas-zoom-pill-text"
+              aria-pressed={Math.abs(canvasStore.zoom.value - 1) < 0.001}
+              onClick={() => canvasStore.setSmoothZoom(1)}
+              title="Actual size — one project pixel per screen pixel"
+            >
+              1:1
+            </button>
+            <button
+              onClick={() => enterFullscreen()}
+              title="Fullscreen (⇧⌘F)"
+              aria-label="Fullscreen"
+            >
+              <Maximize size={14} />
+            </button>
+          </div>
+          <div class="absolute right-4 bottom-4 pointer-events-none">
+            <FullSpeedBadge />
+          </div>
           <div
             style={{
               width: `${projectStore.width.value}px`,

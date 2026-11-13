@@ -1121,10 +1121,19 @@ button.destructive {
   align-items: center;
   gap: 2px;
   padding: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
-  background: rgba(28, 30, 34, 0.82);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  /* Liquid glass — identical to the editor canvas pill (.canvas-zoom-pill in
+     index.css): specular top edge, blurred backdrop, inner bottom shade. */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03) 45%, rgba(0, 0, 0, 0.1)),
+    rgba(28, 30, 34, 0.55);
+  -webkit-backdrop-filter: blur(18px) saturate(1.7);
+  backdrop-filter: blur(18px) saturate(1.7);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
 }
 
 .physics-paint-canvas-zoom-button,

@@ -24,9 +24,9 @@ function slice(start: string, end: string): string {
 
 describe('CanvasArea — Hand pan button', () => {
   it('renders the Hand next to the zoom buttons', () => {
-    expect(area).toContain("import {Plus, Minus, Maximize, Maximize2, Minimize2, Paintbrush, Hand} from 'lucide-preact';");
+    expect(area).toContain("import {Plus, Minus, Maximize, Paintbrush, Hand} from 'lucide-preact';");
     expect(area).toContain('onPointerDown={beginHandSession}');
-    expect(area).toContain('title="Hand \\u2014 press and hold, then move to pan; releasing stops"');
+    expect(area).toContain('press and hold, then move to pan; releasing stops');
     expect(area).toContain('cursor-grab');
   });
 
@@ -62,9 +62,46 @@ describe('CanvasArea — Hand pan button', () => {
     expect(area).toContain('if (session) endHandSession(session.pointerId);');
   });
 
-  it('adds the 1:1 control to the same row', () => {
+  it('adds the 1:1 control to the same pill', () => {
     expect(area).toContain('onClick={() => canvasStore.setSmoothZoom(1)}');
-    expect(area).toContain('title="Actual size \\u2014 one project pixel per screen pixel"');
+    expect(area).toContain('one project pixel per screen pixel');
     expect(area).toContain('1:1');
+  });
+});
+
+describe('CanvasArea — floating glass pill', () => {
+  it('replaces the top controls bar with the floating pill', () => {
+    // The old bar (a full-width flex row above the canvas) is gone.
+    expect(area).not.toContain('flex items-center justify-center gap-3 w-full pt-4 pb-2 px-5 shrink-0');
+    expect(area).toContain('<div class="canvas-zoom-pill" role="group" aria-label="Canvas controls">');
+    // The canvas container is the pill's positioning context.
+    expect(area).toContain(
+      'class="relative flex items-center justify-center flex-1 min-h-0 p-4 pt-0 overflow-hidden"',
+    );
+  });
+
+  it('carries the same control set as the Studio pill plus the editor extras', () => {
+    const pill = slice('<div class="canvas-zoom-pill"', '<div class="absolute right-4 bottom-4 pointer-events-none">');
+    for (const control of [
+      'canvasStore.zoomOut()',
+      'canvasStore.zoomPercent.value',
+      'canvasStore.zoomIn()',
+      'onPointerDown={beginHandSession}',
+      'canvasStore.toggleFitLock()',
+      'canvasStore.setSmoothZoom(1)',
+      'canvasStore.isAtMinZoom.value',
+      'canvasStore.isAtMaxZoom.value',
+      'paintStore.togglePaintMode()',
+      'enterFullscreen()',
+    ]) {
+      expect(pill).toContain(control);
+    }
+    // Divider between the paint toggle and the zoom cluster.
+    expect(pill).toContain('canvas-zoom-pill-divider');
+  });
+
+  it('floats the full-speed badge instead of keeping a controls row alive', () => {
+    // The badge lives at the canvas bottom-right so no bar is needed.
+    expect(area).toContain('<div class="absolute right-4 bottom-4 pointer-events-none">\n            <FullSpeedBadge />');
   });
 });

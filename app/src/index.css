@@ -354,6 +354,92 @@
   border-color: #f59e0b;
 }
 
+/* Floating canvas controls pill — the liquid-glass chrome the Physic Paint
+   Studio's zoom pill carries, now shared by the editor canvas. Layout is
+   absolute at the canvas bottom-left; the pill floats over the sheet in both
+   surfaces so Zoom / Hand / Fit / 1:1 stay reachable while painting. */
+.canvas-zoom-pill {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03) 45%, rgba(0, 0, 0, 0.1)),
+    rgba(28, 30, 34, 0.55);
+  -webkit-backdrop-filter: blur(18px) saturate(1.7);
+  backdrop-filter: blur(18px) saturate(1.7);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.canvas-zoom-pill > button,
+.canvas-zoom-pill > .canvas-zoom-pill-level {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #b9c3ce;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.canvas-zoom-pill > button {
+  width: 26px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.canvas-zoom-pill > button.canvas-zoom-pill-text {
+  width: auto;
+  padding: 0 8px;
+  letter-spacing: 0.02em;
+}
+
+.canvas-zoom-pill > .canvas-zoom-pill-level {
+  min-width: 38px;
+  padding: 0 2px;
+  color: #dfe5ec;
+}
+
+.canvas-zoom-pill > button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.canvas-zoom-pill > button[aria-pressed='true'] {
+  background: #f59e0b;
+  color: #241a05;
+}
+
+.canvas-zoom-pill > button[aria-pressed='true']:hover:not(:disabled) {
+  background: #fbbf24;
+  color: #241a05;
+}
+
+.canvas-zoom-pill > button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.canvas-zoom-pill-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 /* Hide native scrollbar for SidebarScrollArea — works in Safari/WKWebView + Chrome */
 [style*="scrollbar-width: none"]::-webkit-scrollbar {
   display: none;
