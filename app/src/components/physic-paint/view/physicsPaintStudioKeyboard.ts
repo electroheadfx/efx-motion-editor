@@ -409,7 +409,10 @@ export function dispatchPhysicsPaintStudioKeyDown(
         return;
       }
     }
-    if (event.key === ' ') {
+    // 261113-o26 follow-up: Shift+Space is the canvas-pan arm (the viewport
+    // consumes it in a window capture listener); it must never also toggle
+    // playback. Bare Space keeps the binding.
+    if (event.key === ' ' && !event.shiftKey) {
       event.preventDefault();
       actions.toggleRotoPlayback();
       return;

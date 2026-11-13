@@ -1254,4 +1254,16 @@ describe('261024-vga retired stroke stack step shortcut', () => {
     expect(handlers.toggleRotoPlayback).toHaveBeenCalledOnce();
     expect(preventDefault).toHaveBeenCalledOnce();
   });
+
+  it('leaves Shift+Space to the canvas-pan arm', () => {
+    const handlers = actions();
+    const { event, preventDefault } = eventFor(' ', new TestHTMLElement('canvas') as unknown as EventTarget, {
+      shiftKey: true,
+    });
+
+    dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
+
+    expect(handlers.toggleRotoPlayback).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
 });

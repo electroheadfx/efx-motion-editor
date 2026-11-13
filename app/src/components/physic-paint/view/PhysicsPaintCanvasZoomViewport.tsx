@@ -1,7 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { physicsPaintCanvasZoom } from './physicsPaintCanvasZoom';
-import { disarmHandTool } from './physicsPaintHandTool';
+import { disarmHandTool, disarmSpacePan, isSpacePanArmedPeek, setSpacePanArmed } from './physicsPaintHandTool';
 
 /**
  * 261104-uyv: the Studio canvas zoom viewport.
@@ -34,6 +34,7 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
   useEffect(() => {
     physicsPaintCanvasZoom.resetForStudioOpen();
     disarmHandTool();
+    disarmSpacePan();
   }, []);
 
   useEffect(() => {
@@ -132,8 +133,11 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
     // 261113-o26: the press is unconditional at every zoom. The pan is free
     // and unbounded, so the sheet may be pushed fully off the viewport; Fit
     // and the Studio-open reset are the recovery paths.
+    // 261113-o26 follow-up: while Shift+Space is held, a PRIMARY press pans
+    // too — the same capture-phase takeover, so it never starts a stroke.
     const onPointerDown = (event: PointerEvent) => {
-      if (event.button !== 1) return;
+      const spacePan = event.button === 0 && isSpacePanArmedPeek();
+      if (!spacePan && event.button !== 1) return;
       event.preventDefault();
       event.stopPropagation();
       drag = {
@@ -161,6 +165,12 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       );
     };
 
+    // The armed cursor is the only cue that Shift+Space is live; it keeps the
+    // viewport honest across arm → drag → release without owning any state.
+    const syncArmedCursor = () => {
+      viewport.style.cursor = drag ? 'grabbing' : isSpacePanArmedPeek() ? 'grab' : '';
+    };
+
     const endDrag = (event: PointerEvent) => {
       if (!drag || event.pointerId !== drag.pointerId) return;
       const pointerId = drag.pointerId;
@@ -170,7 +180,36 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       } catch {
         // Already released by the platform.
       }
-      viewport.style.cursor = '';
+      syncArmedCursor();
+    };
+
+    // Shift+Space arms a keyboard pan. CAPTURE on the window so the chord is
+    // consumed before the Studio's own key handler (bare Space keeps playback)
+    // and before any focused control sees it.
+    const isTypingTarget = (target: EventTarget | null): boolean =>
+      target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || !event.shiftKey) return;
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setSpacePanArmed(true);
+      syncArmedCursor();
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' && event.key !== 'Shift') return;
+      if (!isSpacePanArmedPeek()) return;
+      disarmSpacePan();
+      syncArmedCursor();
+    };
+
+    // A window that loses focus mid-chord never leaves the pan armed.
+    const onBlur = () => {
+      if (!isSpacePanArmedPeek()) return;
+      disarmSpacePan();
+      syncArmedCursor();
     };
 
     const onAuxClick = (event: MouseEvent) => {
@@ -185,11 +224,15 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
     viewport.addEventListener('pointerup', endDrag);
     viewport.addEventListener('pointercancel', endDrag);
     viewport.addEventListener('auxclick', onAuxClick);
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', onBlur);
 
     return () => {
       if (rafId !== 0) window.cancelAnimationFrame(rafId);
       rafId = 0;
       pending = null;
+      disarmSpacePan();
       viewport.style.cursor = '';
       // Options matter only for `capture` on removal; passive defaults alike.
       viewport.removeEventListener('wheel', onWheel);
@@ -200,6 +243,9 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       viewport.removeEventListener('pointerup', endDrag);
       viewport.removeEventListener('pointercancel', endDrag);
       viewport.removeEventListener('auxclick', onAuxClick);
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('blur', onBlur);
     };
   }, []);
 

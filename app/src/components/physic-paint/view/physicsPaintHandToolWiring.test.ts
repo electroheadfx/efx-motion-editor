@@ -147,8 +147,8 @@ describe('Hand press button in the zoom pill (261107-sg3)', () => {
     expect(zoomBar).toContain('useEffect(() => () => {');
   });
 
-  it('leaves the canvas pointer route to middle-drag only', () => {
-    // The Hand no longer consumes primary presses on the canvas.
+  it('leaves the canvas pointer route to middle-drag and the Shift+Space arm', () => {
+    // The pill's Hand never consumes primary presses on the canvas...
     expect(viewport).not.toContain('isHandToolArmedPeek');
     expect(viewport).not.toContain('isHandToolArmed');
     expect(viewport).not.toContain('handPan');
@@ -157,12 +157,37 @@ describe('Hand press button in the zoom pill (261107-sg3)', () => {
     expect(viewport).not.toContain('physics-paint-canvas-hand-armed');
     expect(viewport).not.toContain('disposeHandMode');
     expect(viewport).not.toContain("from '@preact/signals'");
-    // Middle-drag is untouched, including its capture-phase listener.
-    expect(viewport).toContain('if (event.button !== 1) return;');
+    // Middle-drag keeps its capture-phase listener; 261113-o26 follow-up adds
+    // the Shift+Space primary press to the SAME drag start.
+    expect(viewport).toContain('if (!spacePan && event.button !== 1) return;');
+    expect(viewport).toContain("const spacePan = event.button === 0 && isSpacePanArmedPeek();");
     expect(viewport).toContain('viewport.setPointerCapture(event.pointerId)');
     expect(viewport).toContain("viewport.addEventListener('pointerdown', onPointerDown, true);");
     // A fresh Studio open always starts disarmed.
     expect(viewport).toContain('disarmHandTool();');
+    expect(viewport).toContain('disarmSpacePan();');
+  });
+
+  it('arms the canvas pan from Shift+Space without touching playback', () => {
+    // The chord is consumed in a CAPTURE listener on the window, so the
+    // Studio's own key handler never sees it.
+    expect(viewport).toContain("if (event.code !== 'Space' || !event.shiftKey) return;");
+    expect(viewport).toContain('setSpacePanArmed(true);');
+    expect(viewport).toContain("if (event.code !== 'Space' && event.key !== 'Shift') return;");
+    expect(viewport).toContain('disarmSpacePan();');
+    expect(viewport).toContain("window.addEventListener('keydown', onKeyDown, true);");
+    expect(viewport).toContain("window.addEventListener('keyup', onKeyUp, true);");
+    expect(viewport).toContain("window.addEventListener('blur', onBlur);");
+    // A text field keeps its own Space.
+    expect(viewport).toContain(
+      "target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable=\"true\"]'))",
+    );
+    // Bare Space still owns playback; Shift+Space is excluded.
+    expect(keyboard).toContain("if (event.key === ' ' && !event.shiftKey) {");
+    // The keyboard arm is a sibling flag, never the pill's.
+    expect(handStore).toContain('const spacePanArmed = signal(false);');
+    expect(handStore).toContain('export function isSpacePanArmedPeek(): boolean {');
+    expect(handStore).toContain('export function disarmSpacePan(): boolean {');
   });
 
   it('keeps the unchanged hand store API and describes the momentary press', () => {

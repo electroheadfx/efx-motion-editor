@@ -110,11 +110,12 @@ describe('Studio canvas zoom wiring (261104-uyv)', () => {
     expect(panLeaf).not.toContain('effectiveScale');
   });
 
-  it('routes only a middle press to the canvas pan; the Hand owns its own pointer', () => {
-    // 261107-sg3: the Hand is a press button in the zoom pill — it captures
-    // its own pointer, so the canvas stays middle-drag only and primary
-    // presses reach the paint stack untouched.
-    expect(viewport).toContain('if (event.button !== 1) return;');
+  it('routes a middle press and an armed Shift+Space press to the canvas pan', () => {
+    // 261107-sg3: the pill's Hand captures its own pointer, so the canvas
+    // never sees it. 261113-o26 follow-up: a PRIMARY press pans only while
+    // Shift+Space arms it; every other primary press reaches the paint stack.
+    expect(viewport).toContain('if (!spacePan && event.button !== 1) return;');
+    expect(viewport).toContain("const spacePan = event.button === 0 && isSpacePanArmedPeek();");
     expect(viewport).not.toContain('isHandToolArmedPeek');
     expect(viewport).not.toContain('handPan');
     expect(viewport).toContain('physicsPaintCanvasZoom.setPan(');
@@ -127,7 +128,7 @@ describe('Studio canvas zoom wiring (261104-uyv)', () => {
     expect(pointerDownStart).toBeGreaterThanOrEqual(0);
     expect(pointerMoveStart).toBeGreaterThan(pointerDownStart);
     const pointerDownBlock = viewport.slice(pointerDownStart, pointerMoveStart);
-    expect(pointerDownBlock).toContain('if (event.button !== 1) return;');
+    expect(pointerDownBlock).toContain('if (!spacePan && event.button !== 1) return;');
     // 261113-o26: the middle press pans at every zoom — the pan is free, so
     // the sheet may leave the viewport. Only the plain wheel still needs the
     // sheet to overflow.

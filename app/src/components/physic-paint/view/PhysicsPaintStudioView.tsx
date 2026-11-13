@@ -648,6 +648,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
             <span>Cmd+Z undo · Cmd+Shift+Z / Ctrl+Y redo · Esc stop preview · ? help · I picker · hold Alt to pick temporarily</span>
             <span>Cmd/Ctrl+C copy selected key(s) · Cmd/Ctrl+V paste at current frame</span>
             <span>Backspace / Delete remove selected real key</span>
+            <span>Space play/pause · hold Shift+Space and drag to pan the canvas · the pill&apos;s Hand pans while held</span>
             <span>Roto: arrows navigate · O onion · [ ] onion count · completed paint caches automatically</span>
           </aside>
         ) : null}
