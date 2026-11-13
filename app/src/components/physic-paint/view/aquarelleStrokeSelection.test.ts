@@ -152,6 +152,8 @@ function stroke(options: {
   color?: string | null;
   brushId?: string;
   toolOverrides?: AquarelleToolOverrides;
+  // 261113-fkm: an anchor-carrying fixture; omitted => the key stays absent.
+  anchors?: readonly AquarelleAnchor[];
 }): AquarelleStroke {
   return {
     tool: 'brush',
@@ -166,6 +168,7 @@ function stroke(options: {
     ...(options.toolOverrides !== undefined
       ? { toolOverrides: options.toolOverrides }
       : {}),
+    ...(options.anchors !== undefined ? { anchors: options.anchors } : {}),
     playFrame: options.playFrame,
   };
 }
@@ -713,6 +716,46 @@ describe('261024-p5q watercolor appearance edits', () => {
     expect(getRecordedAquarelleStroke(9708)).toBe(secondBefore);
     expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), 9707)).toBe(firstEntryBefore);
     clearScriptStrokeSelection();
+  });
+
+  it('a same-colour whole-stroke apply clears per-vertex colours as one undoable edit', () => {
+    // 261113-fkm (D-01): the stroke already carries the patch colour, so only
+    // the anchor clear makes this an edit. The clear rides the SAME batch that
+    // `beginAquarelleAppearanceEdit`'s before/after registry snapshot pair
+    // wraps, so ONE undo restores the per-vertex colours by reference.
+    recordAquarelleStroke(9720, stroke({
+      points: [point(0.1, 0.5), point(0.8, 0.5)],
+      playFrame: 709,
+      color: '#103c65',
+      anchors: [
+        { x: 0.1, y: 0.5, kind: 'auto', color: '#ff0000' },
+        { x: 0.8, y: 0.5, kind: 'auto' },
+      ],
+    }));
+    const beforeStroke = getRecordedAquarelleStroke(9720)!;
+    const beforeEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), 9720);
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    const editId = beginAquarelleAppearanceEdit([9720], { color: '#103c65' });
+    expect(editId).not.toBeNull();
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    const afterStroke = getRecordedAquarelleStroke(9720)!;
+    // Object replacement, never in-place mutation.
+    expect(afterStroke).not.toBe(beforeStroke);
+    for (const anchor of afterStroke.anchors!) {
+      expect(Object.prototype.hasOwnProperty.call(anchor, 'color')).toBe(false);
+    }
+    expect(afterStroke.color).toBe('#103c65');
+    const afterEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), 9720);
+    expect(afterEntry.color).toBe('#103c65');
+    expect(afterEntry.engine.color).toBe('#103c65');
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    // The exact pre-edit objects come back — explicit anchor colours included.
+    expect(getRecordedAquarelleStroke(9720)).toBe(beforeStroke);
+    expect(beforeStroke.anchors![0]!.color).toBe('#ff0000');
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), 9720)).toBe(beforeEntry);
   });
 
   it('a zero-change or empty appearance edit stores no edit', () => {
