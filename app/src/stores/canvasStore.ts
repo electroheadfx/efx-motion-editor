@@ -35,27 +35,9 @@ const fitZoom = computed(() => {
 
 // --- Helpers ---
 
-/**
- * Clamp pan so the canvas cannot be dragged fully off-screen.
- *
- * With transform `scale(z) translate(px, py)`, the actual pixel offset is `z * px`.
- * The canvas rendered size is `z * pW`. The overflow is `z * pW - cW`.
- * Maximum translate that keeps canvas visible = half the overflow in translate-space
- * (divide by z): `(z * pW - cW) / (2 * z) = (pW - cW/z) / 2`.
- */
-function clampPan() {
-  const z = zoom.peek();
-  const cW = containerWidth.peek();
-  const cH = containerHeight.peek();
-  const pW = projectStore.width.peek();
-  const pH = projectStore.height.peek();
-  if (cW <= 0 || cH <= 0 || pW <= 0 || pH <= 0) return;
-
-  const maxPanX = Math.max(0, (pW - cW / z) / 2);
-  const maxPanY = Math.max(0, (pH - cH / z) / 2);
-
-  panX.value = Math.max(-maxPanX, Math.min(maxPanX, panX.peek()));
-  panY.value = Math.max(-maxPanY, Math.min(maxPanY, panY.peek()));
+/** A pan coordinate: exact when finite, zero otherwise; -0 normalizes to +0. */
+function sanitizePan(value: number): number {
+  return Number.isFinite(value) ? (value === 0 ? 0 : value) : 0;
 }
 
 // --- Store ---
@@ -89,7 +71,6 @@ export const canvasStore = {
     }
     if (next === null) return; // Already at max
     zoom.value = next;
-    clampPan();
   },
 
   /** Snap to next preset below current zoom (center-anchored) */
@@ -105,7 +86,6 @@ export const canvasStore = {
     }
     if (next === null) return; // Already at min
     zoom.value = next;
-    clampPan();
   },
 
   /** Smooth zoom for wheel/pinch — center-anchored, no cursor tracking */
@@ -114,15 +94,20 @@ export const canvasStore = {
     const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
     if (Math.abs(clamped - zoom.peek()) < EPSILON) return;
     zoom.value = clamped;
-    clampPan();
   },
 
-  /** Direct pan setter (clamped to bounds) */
+  /**
+   * Free pan: unbounded on both axes, so the canvas may be pushed entirely
+   * off-screen. Fit (the Fit button, the F key and the `menu:fit-to-window`
+   * event) is the recovery. A non-finite value sanitizes to zero, and each
+   * axis is compare-then-write.
+   */
   setPan(x: number, y: number) {
     fitLocked.value = false;
-    panX.value = x;
-    panY.value = y;
-    clampPan();
+    const nextX = sanitizePan(x);
+    const nextY = sanitizePan(y);
+    if (!Object.is(panX.peek(), nextX)) panX.value = nextX;
+    if (!Object.is(panY.peek(), nextY)) panY.value = nextY;
   },
 
   /** Calculate and apply fit-to-window zoom, reset pan to centered */
