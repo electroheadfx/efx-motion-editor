@@ -10,6 +10,7 @@ import {
   SHORTCUTS_CONTEXT_COPY,
   resolveShortcutsContext,
   resolveShortcutsInitialTab,
+  resolveShortcutsTabNumber,
 } from './shortcutsHelp';
 
 // Pure pins for the context-aware Shortcuts overlay (D-01..D-04). The module is
@@ -20,6 +21,12 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const HELP_SOURCE = readFileSync(join(MODULE_DIR, 'shortcutsHelp.ts'), 'utf8');
 
 const CONTEXT_IDS = ['paint', 'timeline', 'canvas', 'sections'] as const;
+
+function groupByTitle(title: string) {
+  const group = SHORTCUT_GROUPS.find((g) => g.title === title);
+  if (!group) throw new Error(`missing shortcut group: ${title}`);
+  return group;
+}
 
 describe('resolveShortcutsContext', () => {
   it('prefers paint edit mode over every hover region', () => {
@@ -95,5 +102,95 @@ describe('module purity', () => {
   it('contains no import statements (D-04)', () => {
     expect(HELP_SOURCE).not.toMatch(/^\s*import\b/m);
     expect(HELP_SOURCE).not.toMatch(/\bfrom\s+['"]/);
+  });
+});
+
+describe('Paint Mode catalog accuracy', () => {
+  it('documents exactly the real paint bindings, in order', () => {
+    expect(groupByTitle('Paint Mode').entries.map((entry) => entry.keys)).toEqual([
+      'P',
+      'S',
+      'F',
+      'X',
+      'Esc',
+      '⌘/Ctrl+A',
+      'Delete',
+      'Click',
+      '⌘/Ctrl+Click',
+      'Drag',
+      'Corner handle',
+      'Rotate handle',
+    ]);
+    expect(groupByTitle('Paint Mode').entries.map((entry) => entry.description)).toEqual([
+      'Toggle paint edit mode',
+      'Select tool',
+      'Toggle flat/FX preview',
+      'Swap foreground / background',
+      'Leave paint mode',
+      'Select all strokes (select tool)',
+      'Delete selected strokes',
+      'Select stroke (select tool)',
+      'Multi-select strokes',
+      'Move selected strokes',
+      'Resize selected strokes',
+      'Rotate selected strokes',
+    ]);
+  });
+
+  it('drops the unbound single-letter row and every sequence-overlay claim', () => {
+    expect(groupByTitle('Paint Mode').entries.some((entry) => entry.keys === 'O')).toBe(false);
+    expect(
+      groupByTitle('Paint Mode').entries.some((entry) => /sequence overlay/i.test(entry.description)),
+    ).toBe(false);
+  });
+});
+
+describe('Timeline catalog accuracy', () => {
+  it('names Alt+S for solo and nothing else', () => {
+    expect(groupByTitle('Timeline').entries.find((entry) => /solo/i.test(entry.description))).toEqual({
+      keys: 'Alt+S',
+      description: 'Toggle solo mode (base content only)',
+    });
+  });
+
+  it('does not claim a bare S solo binding', () => {
+    expect(groupByTitle('Timeline').entries.some((entry) => entry.keys === 'S')).toBe(false);
+  });
+
+  it('states the device-specific plain scroll behaviour', () => {
+    expect(groupByTitle('Timeline').entries.find((entry) => entry.keys === 'Scroll')?.description).toBe(
+      'Natural two-axis scroll (trackpad); mouse wheel scrolls horizontally',
+    );
+  });
+});
+
+describe('Canvas catalog', () => {
+  it('keeps the ten verified rows unchanged', () => {
+    expect(groupByTitle('Canvas').entries.map((entry) => entry.keys)).toEqual([
+      '= / +',
+      '−',
+      '⌘0',
+      'F',
+      '⌘Scroll',
+      '←↑↓→',
+      '⇧←↑↓→',
+      '⇧⌘F',
+      'Esc',
+      '⌥Click',
+    ]);
+  });
+});
+
+describe('resolveShortcutsTabNumber', () => {
+  it('maps 1 through the group count to their group tab', () => {
+    expect(resolveShortcutsTabNumber(1)).toBe(1);
+    expect(resolveShortcutsTabNumber(9)).toBe(9);
+  });
+
+  it('rejects out-of-range, fractional and NaN values', () => {
+    expect(resolveShortcutsTabNumber(0)).toBeNull();
+    expect(resolveShortcutsTabNumber(10)).toBeNull();
+    expect(resolveShortcutsTabNumber(1.5)).toBeNull();
+    expect(resolveShortcutsTabNumber(Number.NaN)).toBeNull();
   });
 });

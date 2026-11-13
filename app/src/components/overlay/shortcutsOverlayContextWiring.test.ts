@@ -6,13 +6,15 @@ import {describe, expect, it} from 'vitest';
 
 // Source pins for the context-aware Shortcuts overlay wiring (D-01..D-04).
 // The overlay must read each store signal exactly once per open with .peek(),
-// seed its tab from the pure resolver, and keep the Shift+? binding as the only
-// opener. Source scan only — no DOM mount (releaseContract style).
+// seed its tab from the pure resolver, route number keys through the catalog
+// length, and keep the Shift+? binding as the only opener. Source scan only —
+// no DOM mount (releaseContract style).
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = resolve(MODULE_DIR, '..', '..');
 
 const OVERLAY_SOURCE = readFileSync(join(MODULE_DIR, 'ShortcutsOverlay.tsx'), 'utf8');
+const HELP_SOURCE = readFileSync(join(MODULE_DIR, 'shortcutsHelp.ts'), 'utf8');
 const SHORTCUTS_SOURCE = readFileSync(join(SRC_DIR, 'lib', 'shortcuts.ts'), 'utf8');
 
 function countOf(haystack: string, needle: string): number {
@@ -59,6 +61,24 @@ describe('context seeding', () => {
     expect(OVERLAY_SOURCE).toContain('SHORTCUTS_CONTEXT_COPY');
     expect(OVERLAY_SOURCE).toContain('.label');
     expect(OVERLAY_SOURCE).toContain('.detail');
+  });
+});
+
+describe('number-key routing', () => {
+  it('routes every number key through resolveShortcutsTabNumber exactly once', () => {
+    expect(countOf(OVERLAY_SOURCE, 'resolveShortcutsTabNumber(')).toBe(1);
+  });
+
+  it('carries no hardcoded group-count upper bound in the number-key branch', () => {
+    expect(OVERLAY_SOURCE).not.toMatch(/num\s*[<>]=?\s*\d/);
+    expect(OVERLAY_SOURCE).not.toMatch(/num\s*!==\s*\d+/);
+  });
+});
+
+describe('single-source catalog', () => {
+  it('keeps the Paint Mode group title in the help module only', () => {
+    expect(countOf(HELP_SOURCE, "title: 'Paint Mode'")).toBe(1);
+    expect(OVERLAY_SOURCE).not.toContain("title: 'Paint Mode'");
   });
 });
 

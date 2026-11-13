@@ -150,3 +150,8 @@ export const SHORTCUTS_CONTEXT_COPY: Record<ShortcutsContextId, {label: string; 
   canvas: {label: 'Canvas', detail: 'shortcuts for the canvas'},
   sections: {label: 'All shortcuts', detail: 'hover the canvas or the timeline for surface help'},
 };
+
+/** Number keys 1 through the group count jump to their group tab; anything else does not. */
+export function resolveShortcutsTabNumber(_num: number): number | null {
+  return null;
+}
