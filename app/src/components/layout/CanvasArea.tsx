@@ -1,6 +1,6 @@
 import {useRef, useCallback, useEffect} from 'preact/hooks';
 import {useSignal} from '@preact/signals';
-import {Plus, Minus, Maximize, Maximize2, Minimize2, Paintbrush} from 'lucide-preact';
+import {Plus, Minus, Maximize, Maximize2, Minimize2, Paintbrush, Hand} from 'lucide-preact';
 import {Preview} from '../Preview';
 import {SpeedBadge} from '../overlay/SpeedBadge';
 import {FullSpeedBadge} from '../overlay/FullSpeedBadge';
@@ -67,11 +67,23 @@ function getSourceDimensionsForLayer(layer: Layer): {w: number; h: number} | nul
   return null;
 }
 
+interface HandPanSession {
+  readonly pointerId: number;
+  readonly target: HTMLButtonElement;
+  readonly startX: number;
+  readonly startY: number;
+  readonly startPanX: number;
+  readonly startPanY: number;
+  readonly onMove: (event: PointerEvent) => void;
+  readonly onEnd: (event: PointerEvent) => void;
+}
+
 export function CanvasArea() {
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useSignal(false);
   const isSpaceHeld = useRef(false);
   const spaceDragOccurred = useRef(false);
+  const handSessionRef = useRef<HandPanSession | null>(null);
 
   // Drag state for panning (start coordinates, not reactive)
   const dragRef = useRef({
@@ -146,6 +158,75 @@ export function CanvasArea() {
       // Pointer capture may not be active
     }
   }, []);
+
+  // --- Hand: press-and-hold pan button (mirrors the Studio's zoom pill) ---
+  // The canvas transform is `scale(z) translate(px, py)`, so pan values are
+  // pre-scale: a pointer delta in CSS pixels divides by the zoom.
+  const endHandSession = useCallback((pointerId?: number) => {
+    const session = handSessionRef.current;
+    if (!session) return;
+    if (pointerId !== undefined && session.pointerId !== pointerId) return;
+    handSessionRef.current = null;
+    session.target.removeEventListener('pointermove', session.onMove);
+    session.target.removeEventListener('pointerup', session.onEnd);
+    session.target.removeEventListener('pointercancel', session.onEnd);
+    session.target.removeEventListener('lostpointercapture', session.onEnd);
+    try {
+      if (session.target.hasPointerCapture(session.pointerId)) {
+        session.target.releasePointerCapture(session.pointerId);
+      }
+    } catch {
+      // Capture may already be gone with the pointer.
+    }
+    session.target.style.cursor = '';
+  }, []);
+
+  // A window unmounting mid-press must never leave a captured pointer behind.
+  useEffect(() => () => {
+    const session = handSessionRef.current;
+    if (session) endHandSession(session.pointerId);
+  }, [endHandSession]);
+
+  const beginHandSession = useCallback((event: PointerEvent) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const target = event.currentTarget as HTMLButtonElement;
+    const pointerId = event.pointerId;
+    const session: HandPanSession = {
+      pointerId,
+      target,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPanX: canvasStore.panX.peek(),
+      startPanY: canvasStore.panY.peek(),
+      onMove: (moveEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
+        moveEvent.preventDefault();
+        const zoom = canvasStore.zoom.peek() || 1;
+        canvasStore.setPan(
+          session.startPanX + (moveEvent.clientX - session.startX) / zoom,
+          session.startPanY + (moveEvent.clientY - session.startY) / zoom,
+        );
+      },
+      onEnd: (endEvent) => {
+        if (endEvent.pointerId !== pointerId) return;
+        endEvent.preventDefault();
+        endHandSession(pointerId);
+      },
+    };
+    handSessionRef.current = session;
+    target.style.cursor = 'grabbing';
+    target.addEventListener('pointermove', session.onMove, { passive: false });
+    target.addEventListener('pointerup', session.onEnd);
+    target.addEventListener('pointercancel', session.onEnd);
+    target.addEventListener('lostpointercapture', session.onEnd);
+    try {
+      target.setPointerCapture(pointerId);
+    } catch {
+      // Capture is best-effort; without it the press simply ends early.
+    }
+  }, [endHandSession]);
 
   // --- Space: hold for pan mode, tap for play/pause ---
   // --- P key: toggle paint mode ---
@@ -344,6 +425,13 @@ export function CanvasArea() {
             <Plus size={16} />
           </button>
           <button
+            class="rounded px-2.5 py-1.5 cursor-grab bg-(--color-bg-settings) hover:bg-(--color-bg-input) text-(--color-text-secondary)"
+            onPointerDown={beginHandSession}
+            title="Hand \u2014 press and hold, then move to pan; releasing stops"
+          >
+            <Hand size={16} />
+          </button>
+          <button
             class={`rounded px-2.5 py-1.5 cursor-pointer transition-colors ${
               canvasStore.fitLocked.value
                 ? 'bg-(--color-accent) text-white hover:brightness-125'
@@ -353,6 +441,17 @@ export function CanvasArea() {
             title={canvasStore.fitLocked.value ? 'Fit to window \u2014 locked (F)' : 'Fit to window (F)'}
           >
             {canvasStore.fitLocked.value ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+          <button
+            class={`rounded-[5px] px-2 py-1 text-[11px] ${
+              Math.abs(canvasStore.zoom.value - 1) < 0.001
+                ? 'bg-(--color-accent) text-white hover:brightness-125'
+                : 'bg-(--color-bg-settings) text-(--color-text-button) hover:bg-(--color-bg-input)'
+            }`}
+            onClick={() => canvasStore.setSmoothZoom(1)}
+            title="Actual size \u2014 one project pixel per screen pixel"
+          >
+            1:1
           </button>
           <button
             class="rounded px-2.5 py-1.5 bg-(--color-bg-settings) hover:bg-(--color-bg-input) cursor-pointer text-(--color-text-secondary)"

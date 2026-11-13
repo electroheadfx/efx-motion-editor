@@ -36,6 +36,19 @@ describe('canvasStore — free pan', () => {
     expect(canvasStore.panY.value).toBe(-9999);
   });
 
+  it('lands exactly on 1:1 and releases the fit lock', () => {
+    // The zoom row's 1:1 button writes this value.
+    expect(canvasStore.fitLocked.value).toBe(true);
+    canvasStore.setSmoothZoom(1);
+    expect(canvasStore.zoom.value).toBe(1);
+    expect(canvasStore.fitLocked.value).toBe(false);
+    // The pan is untouched by a zoom write.
+    canvasStore.setPan(300, -200);
+    canvasStore.setSmoothZoom(1);
+    expect(canvasStore.panX.value).toBe(300);
+    expect(canvasStore.panY.value).toBe(-200);
+  });
+
   it('sanitizes a non-finite pan to zero and normalizes -0', () => {
     canvasStore.setPan(Number.NaN, Number.POSITIVE_INFINITY);
     expect(canvasStore.panX.value).toBe(0);
