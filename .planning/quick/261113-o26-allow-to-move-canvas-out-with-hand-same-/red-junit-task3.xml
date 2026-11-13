@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="6" failures="6" errors="0" time="1.354">
+    <testsuite name="src/stores/canvasStore.test.ts" timestamp="2026-11-13T16:33:26.338Z" hostname="efx2.home" tests="6" failures="6" errors="0" skipped="0" time="0.004343208">
+        <testcase classname="src/stores/canvasStore.test.ts" name="canvasStore — free pan &gt; keeps any finite pan at Fit: the canvas can be pushed off-screen" time="0.002579334">
+            <failure message="expected +0 to be 5000 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 5000 // Object.is equality
+
+- Expected
++ Received
+
+- 5000
++ 0
+
+ ❯ src/stores/canvasStore.test.ts:27:36
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/canvasStore.test.ts" name="canvasStore — free pan &gt; keeps any finite pan when zoomed in, past the old half-overflow" time="0.00032275">
+            <failure message="expected 760 to be 9999 // Object.is equality" type="AssertionError">
+AssertionError: expected 760 to be 9999 // Object.is equality
+
+- Expected
++ Received
+
+- 9999
++ 760
+
+ ❯ src/stores/canvasStore.test.ts:35:36
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/canvasStore.test.ts" name="canvasStore — free pan &gt; sanitizes a non-finite pan to zero and normalizes -0" time="0.000239625">
+            <failure message="expected NaN to be +0 // Object.is equality" type="AssertionError">
+AssertionError: expected NaN to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ NaN
+
+ ❯ src/stores/canvasStore.test.ts:41:36
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/canvasStore.test.ts" name="canvasStore — free pan &gt; Fit restores the pan to (0, 0) and keeps the fit lock" time="0.00023025">
+            <failure message="expected -0 to be +0 // Object.is equality" type="AssertionError">
+AssertionError: expected -0 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ -0
+
+ ❯ src/stores/canvasStore.test.ts:52:36
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/canvasStore.test.ts" name="canvasStore — free pan &gt; a zoom step keeps the pan" time="0.000234334">
+            <failure message="expected +0 to be 500 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 500 // Object.is equality
+
+- Expected
++ Received
+
+- 500
++ 0
+
+ ❯ src/stores/canvasStore.test.ts:58:36
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/canvasStore.test.ts" name="canvasStore — free pan &gt; a repeated identical pan write notifies zero additional times" time="0.000329">
+            <failure message="expected 5 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected 5 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 5
+
+ ❯ src/stores/canvasStore.test.ts:77:18
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

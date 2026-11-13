@@ -1,0 +1,60 @@
+TAP version 13
+1..20
+ok 1 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — fit / max / min resolution > keeps Fit byte-identical to the sizing authority (getContainedCanvasDisplaySize) # time=0.71ms
+ok 2 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — fit / max / min resolution > bounds the max scale by the backing-pixel budget while always admitting 1:1 # time=0.20ms
+ok 3 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — fit / max / min resolution > floors the minimum at the ladder bottom so Fit is never the floor # time=0.12ms
+ok 4 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — fit / max / min resolution > clamps scales into the allowed range # time=0.09ms
+ok 5 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — preset stepping > ladder matches the main editor presets # time=0.29ms
+ok 6 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — preset stepping > steps to the first preset beyond the current scale, clamped into range # time=0.13ms
+ok 7 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — preset stepping > drives the store buttons from the CURRENT effective scale # time=0.65ms
+ok 8 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — 1:1 and display size > actualSize yields scale 1 and 100%, one working pixel per CSS pixel # time=0.12ms
+ok 9 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — 1:1 and display size > reports the working-to-CSS ratio as an integer percent # time=0.06ms
+ok 10 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — 1:1 and display size > resolves the display box from the working size and scale # time=0.11ms
+not ok 11 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — free pan > keeps any finite pan at Fit: the sheet can be pushed fully off-screen # time=3.14ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected +0 to be 5000 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts:178:47"
+    actual: "0"
+    expected: "5000"
+    ...
+not ok 12 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — free pan > keeps any finite pan at 1:1, past the old half-overflow # time=0.27ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected 140 to be 9999 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts:187:47"
+    actual: "140"
+    expected: "9999"
+    ...
+ok 13 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — free pan > sanitizes a non-finite pan to zero and normalizes -0 # time=0.07ms
+ok 14 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — cursor-anchored zoom > keeps the sheet point under the cursor fixed # time=0.15ms
+ok 15 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — cursor-anchored zoom > resolves the anchored pan from the current display box (pure helper) # time=0.06ms
+not ok 16 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — cursor-anchored zoom > returns the exact anchored pan and is a no-op before measurement # time=0.80ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected { x: +0, y: 25 } to deeply equal { x: -50, y: 25 }"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts:258:7"
+    actual: "Object {
+  \"x\": 0,
+  \"y\": 25,
+}"
+    expected: "Object {
+  \"x\": -50,
+  \"y\": 25,
+}"
+    ...
+ok 17 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — resize behaviour > tracks the container while in fit mode and keeps pan centered # time=0.10ms
+not ok 18 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — resize behaviour > keeps the absolute scale and the pan on resize # time=0.25ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected +0 to be 140 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts:289:47"
+    actual: "0"
+    expected: "140"
+    ...
+ok 19 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — reset and idempotence > resetForStudioOpen restores the opening fit view without clearing measured sizes # time=0.11ms
+ok 20 - src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts > physicsPaintCanvasZoom — reset and idempotence > repeated identical writes notify zero additional times # time=0.16ms

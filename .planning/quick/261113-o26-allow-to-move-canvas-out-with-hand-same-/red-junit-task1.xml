@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="20" failures="4" errors="0" time="0.236">
+    <testsuite name="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" timestamp="2026-11-13T16:31:21.328Z" hostname="efx2.home" tests="20" failures="4" errors="0" skipped="0" time="0.008208083">
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — fit / max / min resolution &gt; keeps Fit byte-identical to the sizing authority (getContainedCanvasDisplaySize)" time="0.00071975">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — fit / max / min resolution &gt; bounds the max scale by the backing-pixel budget while always admitting 1:1" time="0.000194667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — fit / max / min resolution &gt; floors the minimum at the ladder bottom so Fit is never the floor" time="0.0001075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — fit / max / min resolution &gt; clamps scales into the allowed range" time="0.000089417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — preset stepping &gt; ladder matches the main editor presets" time="0.00031525">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — preset stepping &gt; steps to the first preset beyond the current scale, clamped into range" time="0.000141875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — preset stepping &gt; drives the store buttons from the CURRENT effective scale" time="0.000681084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — 1:1 and display size &gt; actualSize yields scale 1 and 100%, one working pixel per CSS pixel" time="0.000113166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — 1:1 and display size &gt; reports the working-to-CSS ratio as an integer percent" time="0.000059125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — 1:1 and display size &gt; resolves the display box from the working size and scale" time="0.000103208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — free pan &gt; keeps any finite pan at Fit: the sheet can be pushed fully off-screen" time="0.003076459">
+            <failure message="expected +0 to be 5000 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 5000 // Object.is equality
+
+- Expected
++ Received
+
+- 5000
++ 0
+
+ ❯ src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts:178:47
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — free pan &gt; keeps any finite pan at 1:1, past the old half-overflow" time="0.000267917">
+            <failure message="expected 140 to be 9999 // Object.is equality" type="AssertionError">
+AssertionError: expected 140 to be 9999 // Object.is equality
+
+- Expected
++ Received
+
+- 9999
++ 140
+
+ ❯ src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts:187:47
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — free pan &gt; sanitizes a non-finite pan to zero and normalizes -0" time="0.000072625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — cursor-anchored zoom &gt; keeps the sheet point under the cursor fixed" time="0.000152125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — cursor-anchored zoom &gt; resolves the anchored pan from the current display box (pure helper)" time="0.000059792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — cursor-anchored zoom &gt; returns the exact anchored pan and is a no-op before measurement" time="0.00079325">
+            <failure message="expected { x: +0, y: 25 } to deeply equal { x: -50, y: 25 }" type="AssertionError">
+AssertionError: expected { x: +0, y: 25 } to deeply equal { x: -50, y: 25 }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;x&quot;: -50,
++   &quot;x&quot;: 0,
+    &quot;y&quot;: 25,
+  }
+
+ ❯ src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts:258:7
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — resize behaviour &gt; tracks the container while in fit mode and keeps pan centered" time="0.000099084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — resize behaviour &gt; keeps the absolute scale and the pan on resize" time="0.000241709">
+            <failure message="expected +0 to be 140 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 140 // Object.is equality
+
+- Expected
++ Received
+
+- 140
++ 0
+
+ ❯ src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts:289:47
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — reset and idempotence &gt; resetForStudioOpen restores the opening fit view without clearing measured sizes" time="0.000115292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintCanvasZoom.test.ts" name="physicsPaintCanvasZoom — reset and idempotence &gt; repeated identical writes notify zero additional times" time="0.000163417">
+        </testcase>
+    </testsuite>
+</testsuites>
