@@ -1,0 +1,32 @@
+TAP version 13
+1..6
+not ok 1 - src/components/physic-paint/view/aquarelleRecordState.appearanceColor.test.ts > 261113-fkm a global colour replaces per-vertex colours > a global colour clears every explicit anchor colour and re-projects the engine entry # time=3.35ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected true to be false // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/aquarelleRecordState.appearanceColor.test.ts:151:35"
+    actual: "true"
+    expected: "false"
+    ...
+ok 2 - src/components/physic-paint/view/aquarelleRecordState.appearanceColor.test.ts > 261113-fkm a global colour replaces per-vertex colours > keeps colourless anchors reference-identical # time=0.25ms
+ok 3 - src/components/physic-paint/view/aquarelleRecordState.appearanceColor.test.ts > 261113-fkm a global colour replaces per-vertex colours > a hand-painted stroke gains no anchors key # time=0.17ms
+not ok 4 - src/components/physic-paint/view/aquarelleRecordState.appearanceColor.test.ts > 261113-fkm a global colour replaces per-vertex colours > a same-colour apply still stores the edit # time=0.31ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected +0 to be 1 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/aquarelleRecordState.appearanceColor.test.ts:218:72"
+    actual: "0"
+    expected: "1"
+    ...
+ok 5 - src/components/physic-paint/view/aquarelleRecordState.appearanceColor.test.ts > 261113-fkm a global colour replaces per-vertex colours > a params-only Size patch never clears anchor colours # time=0.24ms
+not ok 6 - src/components/physic-paint/view/aquarelleRecordState.appearanceColor.test.ts > 261113-fkm a global colour replaces per-vertex colours > a mixed batch writes both targets once # time=0.27ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected true to be false // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/aquarelleRecordState.appearanceColor.test.ts:267:58"
+    actual: "true"
+    expected: "false"
+    ...

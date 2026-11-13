@@ -6,10 +6,10 @@ current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: planning
 stopped_at: Quick 261112-n3f UAT approved (incl. the cache-eye exit fix 39007da12); Phase 62 ready to plan
-last_updated: "2026-11-12T18:38:18.827Z"
+last_updated: "2026-11-13T10:29:46.202Z"
 last_activity: 2026-11-12
 last_activity_desc: Quick 261112-n3f + cache-eye exit fix (39007da12) UAT approved; Phase 62 ready to plan
-state_head: be50196c17422d93efcd583752ae3ed0c974d087
+state_head: 8adfa44ce580162cbb06d0b3b92611673a7b30de
 progress:
   total_phases: 4
   completed_phases: 3
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 Phase: 62 — Painted-Stroke Curve Editing
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-12 - Quick task 261112-n3f CLOSED (UAT approved): stroke-size preview unified behind the one "Preview stroke size" switch (vertex-aware, OFF by default) and the vector envelope's interior self-intersection lines removed via a masked edge on both the Edit-path and Select/Move surfaces. The follow-up UAT issue is also approved: the "Hide the committed sheet" eye and Draft are surface-local view preferences, now restored/reset when the sheet closes or the tool is left (39007da12)
+Last activity: 2026-11-13 - Completed quick task 261113-fkm (automated-ready, UAT pending): a whole-stroke colour apply now clears explicit per-vertex anchor colours in the same edit (one undo), so the global colour no longer reverts to the local vertex colours on path-edit re-entry. Per-vertex colours stay re-addable through the anchor-selection colour path; a Size apply keeps the width profile (multiplier semantics).
 
 Progress: [████████░░] 75%
 
@@ -446,6 +446,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 29 | Hide Vertex size and Corner blocks in the Curve tab unless a vertex is selected (UAT approved 2026-11-12) | 2026-11-12 | 72a69dc94 | — |
 | 261112-n3f | Unify the stroke-size preview into one toggle (vertex-aware, off by default) and remove the vector envelope self-intersection lines (UAT approved, including follow-up 39007da12 restoring the committed sheet on leaving the surface) | 2026-11-12 | 8f5ae4c82 | [261112-n3f-unify-the-stroke-size-preview-into-one-t](./quick/261112-n3f-unify-the-stroke-size-preview-into-one-t/) |
 | 31 | Studio UI polish: EFX mark in the old Engine-ready seat (Engine fail pill on failure), Re-render + Undo + Redo + Flash-dry in the top-bar action cluster (43px, centered inside the flexible settings cluster between the brush dropdown and the right settings; Water stays in the rail), "Script mode" checkbox inside the brush pill (checked by default, label at right, 2px gap), cache-load notice published as info, right-sidebar tab scrollbars use the blue thumb, orange active-track left bar (UAT approved 2026-11-12) | 2026-11-12 | aa03d4139 | — |
+| 261113-fkm | Vector paint: a whole-stroke colour apply replaces explicit per-vertex colours in the same edit (one undo), so the global colour survives path-edit re-entry; Size keeps per-vertex width factors (automated-ready, UAT pending) | 2026-11-13 | 8adfa44ce | [261113-fkm-vector-paint-global-colour-apply-replace](./quick/261113-fkm-vector-paint-global-colour-apply-replace/) |
 
 ## Roadmap Evolution
 
