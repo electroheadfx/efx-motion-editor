@@ -7,14 +7,12 @@ import {
   PHYSICS_PAINT_ZOOM_EPSILON,
   PHYSICS_PAINT_ZOOM_MAX,
   PHYSICS_PAINT_ZOOM_PRESETS,
-  clampPanToBounds,
   clampZoomScale,
   nextScalePreset,
   physicsPaintCanvasZoom,
   resolveCursorAnchoredPan,
   resolveDisplaySize,
   resolveFitScale,
-  resolveMaxPan,
   resolveMaxScale,
   resolveMinScale,
   resolveZoomPercent,
@@ -172,32 +170,32 @@ describe('physicsPaintCanvasZoom — 1:1 and display size', () => {
   });
 });
 
-describe('physicsPaintCanvasZoom — pan bounds', () => {
-  it('is a zero budget when the display fits inside the container', () => {
-    expect(resolveMaxPan(400, 600, 1000, 800)).toEqual({ x: 0, y: 0 });
-    expect(resolveMaxPan(1000, 800, 1000, 800)).toEqual({ x: 0, y: 0 });
-    expect(resolveMaxPan(2000, 1600, 1000, 800)).toEqual({ x: 500, y: 400 });
-  });
-
-  it('clamps pan to the non-negative half-overflow', () => {
-    expect(clampPanToBounds(9999, -9999, 2000, 1600, 1000, 800)).toEqual({ x: 500, y: -400 });
-    expect(clampPanToBounds(-9999, 9999, 2000, 1600, 1000, 800)).toEqual({ x: -500, y: 400 });
-    expect(clampPanToBounds(120, -30, 400, 600, 1000, 800)).toEqual({ x: 0, y: 0 });
-  });
-
-  it('store setPan clamps and panning is unavailable at fit', () => {
+describe('physicsPaintCanvasZoom — free pan', () => {
+  it('keeps any finite pan at Fit: the sheet can be pushed fully off-screen', () => {
     resetStore(1080, 1920, 800, 700);
-    physicsPaintCanvasZoom.setPan(500, 500);
-    expect(physicsPaintCanvasZoom.panX.value).toBe(0);
-    expect(physicsPaintCanvasZoom.panY.value).toBe(0);
     expect(physicsPaintCanvasZoom.hasOverflow.value).toBe(false);
+    physicsPaintCanvasZoom.setPan(5000, -5000);
+    expect(physicsPaintCanvasZoom.panX.value).toBe(5000);
+    expect(physicsPaintCanvasZoom.panY.value).toBe(-5000);
+  });
 
+  it('keeps any finite pan at 1:1, past the old half-overflow', () => {
+    resetStore(1080, 1920, 800, 700);
     physicsPaintCanvasZoom.actualSize();
     expect(physicsPaintCanvasZoom.hasOverflow.value).toBe(true);
     physicsPaintCanvasZoom.setPan(9999, -9999);
-    // half-overflow: (1080-800)/2 = 140, (1920-700)/2 = 610
-    expect(physicsPaintCanvasZoom.panX.value).toBe(140);
-    expect(physicsPaintCanvasZoom.panY.value).toBe(-610);
+    expect(physicsPaintCanvasZoom.panX.value).toBe(9999);
+    expect(physicsPaintCanvasZoom.panY.value).toBe(-9999);
+  });
+
+  it('sanitizes a non-finite pan to zero and normalizes -0', () => {
+    resetStore(1080, 1920, 800, 700);
+    physicsPaintCanvasZoom.setPan(Number.NaN, Number.POSITIVE_INFINITY);
+    expect(physicsPaintCanvasZoom.panX.value).toBe(0);
+    expect(physicsPaintCanvasZoom.panY.value).toBe(0);
+    physicsPaintCanvasZoom.setPan(-0, 0);
+    expect(Object.is(physicsPaintCanvasZoom.panX.value, 0)).toBe(true);
+    expect(Object.is(physicsPaintCanvasZoom.panY.value, 0)).toBe(true);
   });
 });
 
@@ -243,7 +241,7 @@ describe('physicsPaintCanvasZoom — cursor-anchored zoom', () => {
     ).toEqual({ x: -50, y: 25 });
   });
 
-  it('clamps the anchored pan and is a no-op before measurement', () => {
+  it('returns the exact anchored pan and is a no-op before measurement', () => {
     expect(
       resolveCursorAnchoredPan({
         containerWidth: 1000,
@@ -257,7 +255,7 @@ describe('physicsPaintCanvasZoom — cursor-anchored zoom', () => {
         cursorX: 100,
         cursorY: -50,
       }),
-    ).toEqual({ x: 0, y: 25 });
+    ).toEqual({ x: -50, y: 25 });
 
     physicsPaintCanvasZoom.setWorkSize(0, 0);
     physicsPaintCanvasZoom.setContainerSize(0, 0);
@@ -277,7 +275,7 @@ describe('physicsPaintCanvasZoom — resize behaviour', () => {
     expect(physicsPaintCanvasZoom.isFit.value).toBe(true);
   });
 
-  it('keeps the absolute scale on resize and only re-clamps pan', () => {
+  it('keeps the absolute scale and the pan on resize', () => {
     physicsPaintCanvasZoom.setWorkSize(1080, 1920);
     physicsPaintCanvasZoom.setContainerSize(800, 700);
     physicsPaintCanvasZoom.resetForStudioOpen();
@@ -288,8 +286,8 @@ describe('physicsPaintCanvasZoom — resize behaviour', () => {
 
     physicsPaintCanvasZoom.setContainerSize(1200, 1000);
     expect(physicsPaintCanvasZoom.effectiveScale.value).toBe(1);
-    expect(physicsPaintCanvasZoom.panX.value).toBe(0);
-    expect(physicsPaintCanvasZoom.panY.value).toBe(460);
+    expect(physicsPaintCanvasZoom.panX.value).toBe(140);
+    expect(physicsPaintCanvasZoom.panY.value).toBe(610);
   });
 });
 
