@@ -8,6 +8,7 @@ import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  ANCHOR_COLOR_EMPTY_READING,
   ANCHOR_CORNER_COMMIT_REFUSED_MESSAGE,
   ANCHOR_CORNER_EMPTY_READING,
   ANCHOR_CORNER_NO_EDIT_REASON,
@@ -35,6 +36,7 @@ import {
   listStrokeTipOptions,
   listStrokeToolOptions,
   matchesStrokeTypeFilter,
+  readAnchorColorReading,
   readAnchorCornerReading,
   readAnchorWidthReading,
   readCurveMode,
@@ -51,8 +53,9 @@ import {
   shouldMarkSawEmpty,
   sortStrokesTopmostFirst,
   strokeListSummary,
+  strokeRowTypeLabel,
   strokeSettingsFields,
-  strokeToolLabel,
+  strokeToolFilterLabel,
   type AnchorWidthReading,
   type NumericFieldReading,
   type StrokeGeometryControl,
@@ -289,6 +292,28 @@ const ANCHOR_WIDTH_READOUT_STYLE: CSSProperties = {
   fontWeight: 600,
   color: 'var(--sidebar-text-secondary, #9aa5b1)',
   fontVariantNumeric: 'tabular-nums',
+};
+
+/** 62-UAT: the read-only vertex-colour row — a swatch beside its hex readout. */
+const ANCHOR_COLOR_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
+};
+
+const ANCHOR_COLOR_SWATCH_STYLE: CSSProperties = {
+  width: '18px',
+  height: '18px',
+  borderRadius: '3px',
+  border: '1px solid rgba(159, 165, 174, 0.55)',
+  flex: '0 0 auto',
+};
+
+const ANCHOR_COLOR_READOUT_STYLE: CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: '10px',
+  fontWeight: 600,
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
 };
 
 const SEGMENT_GROUP_STYLE: CSSProperties = {
@@ -704,6 +729,23 @@ export function PhysicsPaintStrokeSettingsDialog({
   const anchorWidthVisible = anchorWidthAvailable
     && anchorWidthSizeReading !== null
     && anchorWidthReading.count > 0;
+  // 62-UAT: the selected vertices' EFFECTIVE colour — explicit anchor colour,
+  // else the stroke's own. Read-only: the sidebar colour picker stays the ONE
+  // writer, so this row never adds a second commit route in the Curve tab.
+  const selectedStrokeColor = selectedMutationId === null
+    ? null
+    : (appearances.find((appearance) => appearance.mutationId === selectedMutationId)?.color ?? null);
+  const anchorColorReading = engineModule === 'watercolor' && selectedVectorAnchors !== null
+    ? readAnchorColorReading(
+      selectedVectorAnchors,
+      vectorAnchorSelection.value,
+      selectedStrokeColor,
+    )
+    : ANCHOR_COLOR_EMPTY_READING;
+  const anchorColorVisible = engineModule === 'watercolor'
+    && selectedVectorAnchors !== null
+    && anchorColorReading.count > 0
+    && anchorColorReading.color !== null;
 
   // 61-31 (G-20) / 261112-lq4: the Curve row reading. Spline is an evaluation
   // mode over the same anchors, so only the VECTOR appearances participate. The
@@ -1019,7 +1061,7 @@ export function PhysicsPaintStrokeSettingsDialog({
               enterPathEdit(String(target));
             }}
           >
-            <SplinePointer size={12} aria-hidden="true" />
+            <SplinePointer size={16} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -1035,7 +1077,7 @@ export function PhysicsPaintStrokeSettingsDialog({
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => setStrokeSizePreview(!strokeSizePreview.peek())}
           >
-            <Spline size={12} aria-hidden="true" />
+            <Spline size={16} aria-hidden="true" />
           </button>
           {/* 261101-o2m (D-02): the cache eye — ALWAYS available (Draft and
               Live, both views, never disabled). Display-only: it hides the
@@ -1056,8 +1098,8 @@ export function PhysicsPaintStrokeSettingsDialog({
             onClick={() => setFrozenCacheVisible(!frozenCacheVisible.peek())}
           >
             {cacheVisible
-              ? <Eye size={12} aria-hidden="true" />
-              : <EyeOff size={12} aria-hidden="true" />}
+              ? <Eye size={16} aria-hidden="true" />
+              : <EyeOff size={16} aria-hidden="true" />}
           </button>
         </div>
       ) : null}
@@ -1135,7 +1177,7 @@ export function PhysicsPaintStrokeSettingsDialog({
                 >
                   <option value="all">{ALL_TOOL_FILTER_LABEL}</option>
                   {toolOptions.map((tool) => (
-                    <option key={tool} value={tool}>{strokeToolLabel(tool)}</option>
+                    <option key={tool} value={tool}>{strokeToolFilterLabel(tool)}</option>
                   ))}
                 </select>
                 {tipOptions.length > 1 ? (
@@ -1165,7 +1207,7 @@ export function PhysicsPaintStrokeSettingsDialog({
                   No strokes match this filter.
                 </span>
               ) : listRows.map((stroke, index) => {
-                const typeLabel = strokeToolLabel(stroke.tool);
+                const typeLabel = strokeRowTypeLabel(stroke);
                 const tipName = resolveStrokeTipName(stroke.brushId);
                 const selected = selection.has(stroke.mutationId);
                 return (
@@ -1431,6 +1473,37 @@ export function PhysicsPaintStrokeSettingsDialog({
                     anchorWidthReading={anchorWidthReading}
                     anchorWidthTarget={anchorWidthTarget}
                   />
+                </div>
+              ) : null}
+              {/* 62-UAT: the selected vertices' colour, read-only. Vertex size
+                  is editable here; colour remains the picker's job, so this
+                  row only shows what the vertex actually paints with. Same
+                  context gate as Vertex size: no selected vertex, no block. */}
+              {anchorColorVisible && anchorColorReading.color !== null ? (
+                <div data-testid="stroke-settings-anchor-color">
+                  <div style={SEGMENT_LABEL_ROW_STYLE}>
+                    <span style={PAINT_ROW_LABEL_STYLE}>Vertex colour</span>
+                    {anchorColorReading.mixed ? (
+                      <span
+                        data-testid="stroke-settings-anchor-color-mixed"
+                        style={MIXED_CAPTION_STYLE}
+                      >
+                        Mixed
+                      </span>
+                    ) : null}
+                  </div>
+                  <div style={ANCHOR_COLOR_ROW_STYLE}>
+                    <span
+                      data-testid="stroke-settings-anchor-color-swatch"
+                      style={{ ...ANCHOR_COLOR_SWATCH_STYLE, backgroundColor: anchorColorReading.color }}
+                    />
+                    <span
+                      data-testid="stroke-settings-anchor-color-readout"
+                      style={ANCHOR_COLOR_READOUT_STYLE}
+                    >
+                      {anchorColorReading.color.toUpperCase()}
+                    </span>
+                  </div>
                 </div>
               ) : null}
               {/* 61-31 (G-20 / D-01 revised): the curve-evaluation switch.

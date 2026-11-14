@@ -183,8 +183,14 @@ const VECTOR_FLAG_LEGACY_BYTE = 1 << 1;
 const VECTOR_FLAG_CURVE_MODE = 1 << 2;
 // 261111-wd6: per-anchor colour block (presence byte + verbatim string).
 const VECTOR_FLAG_ANCHOR_COLOR = 1 << 3;
+// 62-UAT: drawn-by-the-vector-pen provenance (the bit IS the whole marker).
+const VECTOR_FLAG_DRAWN = 1 << 4;
 const VECTOR_FLAGS_MASK =
-  VECTOR_FLAG_ANCHORS | VECTOR_FLAG_LEGACY_BYTE | VECTOR_FLAG_CURVE_MODE | VECTOR_FLAG_ANCHOR_COLOR;
+  VECTOR_FLAG_ANCHORS
+  | VECTOR_FLAG_LEGACY_BYTE
+  | VECTOR_FLAG_CURVE_MODE
+  | VECTOR_FLAG_ANCHOR_COLOR
+  | VECTOR_FLAG_DRAWN;
 const ANCHOR_HANDLE_IN = 1 << 0;
 const ANCHOR_HANDLE_OUT = 1 << 1;
 const ANCHOR_HANDLE_MASK = ANCHOR_HANDLE_IN | ANCHOR_HANDLE_OUT;
@@ -603,6 +609,7 @@ function encodeVectorBlock(
   if (anchors !== undefined) flags |= VECTOR_FLAG_ANCHORS;
   if (curveMode !== undefined) flags |= VECTOR_FLAG_CURVE_MODE;
   if (hasAnchorColor) flags |= VECTOR_FLAG_ANCHOR_COLOR;
+  if (engine.vectorDrawn === true) flags |= VECTOR_FLAG_DRAWN;
   writer.u8(flags);
 
   if (anchors !== undefined) {
@@ -859,6 +866,7 @@ function decodeAnchor(reader: BinaryReader, index: number, colorBlock: boolean):
 function decodeVectorBlock(reader: BinaryReader): {
   anchors?: readonly AquarelleAnchor[];
   curveMode?: AquarelleCurveMode;
+  vectorDrawn?: true;
 } {
   const flags = reader.u8();
   if ((flags & ~VECTOR_FLAGS_MASK) !== 0) {
@@ -867,6 +875,7 @@ function decodeVectorBlock(reader: BinaryReader): {
   const result: {
     anchors?: readonly AquarelleAnchor[];
     curveMode?: AquarelleCurveMode;
+    vectorDrawn?: true;
   } = {};
   if ((flags & VECTOR_FLAG_ANCHORS) !== 0) {
     const anchorCount = reader.u16();
@@ -904,6 +913,8 @@ function decodeVectorBlock(reader: BinaryReader): {
     }
     result.curveMode = curveMode;
   }
+  // 62-UAT: the drawn marker is the flag bit alone — no byte follows.
+  if ((flags & VECTOR_FLAG_DRAWN) !== 0) result.vectorDrawn = true;
   return result;
 }
 
@@ -996,6 +1007,7 @@ function decodeStroke(reader: BinaryReader): {
     playFrame: enginePlayFrame,
     ...(vector.anchors !== undefined ? { anchors: vector.anchors } : {}),
     ...(vector.curveMode !== undefined ? { curveMode: vector.curveMode } : {}),
+    ...(vector.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
   };
 
   return {

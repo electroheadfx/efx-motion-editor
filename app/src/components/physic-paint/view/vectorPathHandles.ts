@@ -1014,6 +1014,9 @@ export function buildVectorStroke(
     brushId: source.brushId,
     ...recordedCurveModeField(commit.curveMode),
     anchors: [...commit.anchors],
+    // 62-UAT: provenance for the stroke list — a drawn path reads "Vector",
+    // while a painted stroke converted later reads "<Tool>-Vector".
+    vectorDrawn: true,
     points: paintPoints.map((point, index) => ({
       x: point.x,
       y: point.y,

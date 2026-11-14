@@ -56,6 +56,18 @@ export interface ScriptStrokeSize {
  */
 export type ScriptStrokeTool = 'brush' | 'water' | 'pen' | 'lift';
 
+/**
+ * 62-UAT: the stroke list's filter categories. The four tool values are
+ * hand-painted/ordinary rows; `vector` is a stroke CREATED by the vector pen
+ * and `<tool>-vector` is a painted stroke later converted to a path.
+ */
+export type ScriptStrokeFilterValue =
+  | ScriptStrokeTool
+  | 'vector'
+  | 'brush-vector'
+  | 'water-vector'
+  | 'pen-vector';
+
 export interface SelectableScriptStroke {
   mutationId: number;
   pointsPx: CanvasPoint[];
@@ -80,6 +92,17 @@ export interface SelectableScriptStroke {
    * bounds or selection behavior reads it.
    */
   readonly tool: ScriptStrokeTool;
+  /**
+   * 62-UAT: true when the stroke carries a vector path (readable anchors).
+   * Display metadata only — the row label and the fine filter read it; no
+   * hit-test, bounds or selection behaviour does.
+   */
+  readonly vector: boolean;
+  /**
+   * 62-UAT: true only for a stroke CREATED by the vector pen. A converted
+   * painted path is `vector` but not `vectorDrawn`.
+   */
+  readonly vectorDrawn: boolean;
   /**
    * quick 261031-euf: the recorded tip/brush id (lift strokes record their tip
    * in this same field). Shown through the tip-name resolution with a raw-id

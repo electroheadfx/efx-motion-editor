@@ -975,6 +975,9 @@ describe('buildVectorStroke — every required field has a stated source', () =>
     expect(stroke.diffusionFrames).toBe(120);
     expect(stroke.timestamp).toBe(1234);
     expect(stroke.playFrame).toBe(9);
+    // 62-UAT: a drawn path carries its provenance, so the stroke list can name
+    // it "Vector" apart from a converted painted path ("Brush-Vector").
+    expect(stroke.vectorDrawn).toBe(true);
   });
 
   it('never shares the params / overrides bags with the source', () => {

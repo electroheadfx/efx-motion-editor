@@ -603,6 +603,23 @@ describe('wire validation of the vector fields (61-03 T-61-08)', () => {
     expect('curveMode' in absentParsed.engine).toBe(false)
   })
 
+  it('round-trips the drawn provenance and refuses a non-true marker (62-UAT)', () => {
+    const drawn = makeStrokeEvent({ anchors: WIRE_ANCHORS, vectorDrawn: true })
+    const parsed = parse(serialize(drawn)) as StudioStroke<AquarelleStrokePayload>
+    expect(parsed).not.toBeNull()
+    expect(parsed.engine.vectorDrawn).toBe(true)
+
+    const absent = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    const absentParsed = parse(serialize(absent)) as StudioStroke<AquarelleStrokePayload>
+    expect('vectorDrawn' in absentParsed.engine).toBe(false)
+
+    const raw = {
+      ...absent,
+      engine: { ...absent.engine, vectorDrawn: false },
+    } as unknown as StudioStroke<AquarelleStrokePayload>
+    expect(classifyAquarellePayloadFailure(wrapStroke(raw))).toBe('malformed-engine-payload')
+  })
+
   it('parses to null when curveMode is not a member of the closed union (fail closed)', () => {
     const stroke = makeStrokeEvent()
     const raw = {

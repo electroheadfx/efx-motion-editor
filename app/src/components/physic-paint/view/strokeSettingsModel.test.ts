@@ -32,6 +32,7 @@ import {
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
+  ANCHOR_COLOR_EMPTY_READING,
   ANCHOR_CORNER_EMPTY_READING,
   ANCHOR_CORNER_OPTIONS,
   ANCHOR_WIDTH_COMMIT_REFUSED_MESSAGE,
@@ -62,6 +63,7 @@ import {
   listStrokeTipOptions,
   listStrokeToolOptions,
   matchesStrokeTypeFilter,
+  readAnchorColorReading,
   readAnchorCornerReading,
   readAnchorWidthReading,
   readCurveMode,
@@ -75,7 +77,10 @@ import {
   shouldMarkSawEmpty,
   sortStrokesTopmostFirst,
   strokeListSummary,
+  strokeRowFilterValue,
+  strokeRowTypeLabel,
   strokeSettingsFields,
+  strokeToolFilterLabel,
   strokeToolLabel,
   type ScriptStrokeAppearance,
   type StrokeSettingsDialogBundle,
@@ -403,6 +408,9 @@ function selectableStroke(
     kind,
     // 261031-euf: the additive row metadata (defaults; override per test).
     tool: kind === 'lift' ? 'lift' : 'brush',
+    // 62-UAT: vector provenance defaults to a hand-painted row.
+    vector: false,
+    vectorDrawn: false,
     brushId: 'wc/round-medium',
     customResponse: false,
   };
@@ -426,6 +434,8 @@ function stackStrokeFixture(
     color,
     kind: 'paint',
     tool: 'brush',
+    vector: false,
+    vectorDrawn: false,
     brushId: 'wc/round-medium',
     customResponse: false,
   };
@@ -2186,6 +2196,105 @@ describe('261031-euf finer filter model', () => {
         tip.brushId,
       ).toBeGreaterThan(0);
     }
+  });
+});
+
+// 62-UAT: a drawn path is "Vector", a painted stroke converted to a path is
+// "<Tool>-Vector", and the tool filter offers the same categories.
+describe('62-UAT vector row naming and filter categories', () => {
+  function row(
+    mutationId: number,
+    tool: SelectableScriptStroke['tool'],
+    vector: boolean,
+    vectorDrawn: boolean,
+  ): SelectableScriptStroke {
+    return {
+      ...selectableStroke(
+        mutationId,
+        { x: 0, y: 0, width: 10, height: 10 },
+        tool === 'lift' ? 'lift' : 'paint',
+      ),
+      tool,
+      vector,
+      vectorDrawn,
+    };
+  }
+
+  const DRAWN = row(21, 'brush', true, true);
+  const CONVERTED_BRUSH = row(22, 'brush', true, false);
+  const CONVERTED_WATER = row(23, 'water', true, false);
+  const PAINTED = row(24, 'brush', false, false);
+  const LIFT = row(25, 'lift', false, false);
+
+  it('names a drawn path Vector, a converted path <Tool>-Vector, a painted row by its tool', () => {
+    expect(strokeRowTypeLabel(DRAWN)).toBe('Vector');
+    expect(strokeRowTypeLabel(CONVERTED_BRUSH)).toBe('Brush-Vector');
+    expect(strokeRowTypeLabel(CONVERTED_WATER)).toBe('Water-Vector');
+    expect(strokeRowTypeLabel(PAINTED)).toBe('Brush');
+    expect(strokeRowTypeLabel(LIFT)).toBe('Eraser');
+  });
+
+  it('derives the filter category from the same provenance', () => {
+    expect(strokeRowFilterValue(DRAWN)).toBe('vector');
+    expect(strokeRowFilterValue(CONVERTED_BRUSH)).toBe('brush-vector');
+    expect(strokeRowFilterValue(CONVERTED_WATER)).toBe('water-vector');
+    expect(strokeRowFilterValue(PAINTED)).toBe('brush');
+    expect(strokeRowFilterValue(LIFT)).toBe('lift');
+  });
+
+  it('offers only the present categories, tools first then the vector forms', () => {
+    expect(listStrokeToolOptions([LIFT, CONVERTED_BRUSH, DRAWN, PAINTED, CONVERTED_WATER]))
+      .toEqual(['brush', 'lift', 'vector', 'brush-vector', 'water-vector']);
+    expect(listStrokeToolOptions([])).toEqual([]);
+  });
+
+  it('filters vector rows apart from their painted tool rows', () => {
+    const rows = [PAINTED, DRAWN, CONVERTED_BRUSH, CONVERTED_WATER, LIFT];
+    const ids = (out: readonly SelectableScriptStroke[]) => out.map((entry) => entry.mutationId);
+    expect(ids(filterStrokeListRows(rows, { tool: 'vector', tip: 'all' }))).toEqual([21]);
+    expect(ids(filterStrokeListRows(rows, { tool: 'brush-vector', tip: 'all' }))).toEqual([22]);
+    expect(ids(filterStrokeListRows(rows, { tool: 'water-vector', tip: 'all' }))).toEqual([23]);
+    expect(ids(filterStrokeListRows(rows, { tool: 'brush', tip: 'all' }))).toEqual([24]);
+  });
+
+  it('labels every category the dropdown can show', () => {
+    expect(strokeToolFilterLabel('vector')).toBe('Vector');
+    expect(strokeToolFilterLabel('brush-vector')).toBe('Brush-Vector');
+    expect(strokeToolFilterLabel('water-vector')).toBe('Water-Vector');
+    expect(strokeToolFilterLabel('pen-vector')).toBe('Pen-Vector');
+    expect(strokeToolFilterLabel('brush')).toBe('Brush');
+  });
+});
+
+// 62-UAT: the Curve tab's read-only vertex-colour reading.
+describe('62-UAT vertex colour reading', () => {
+  const ANCHORS: readonly AquarelleAnchor[] = [
+    { x: 0.2, y: 0.5, kind: 'auto' },
+    { x: 0.5, y: 0.5, kind: 'auto', color: '#ff0000' },
+    { x: 0.8, y: 0.5, kind: 'auto', color: '#00ff00' },
+  ];
+
+  it('reads the explicit anchor colour, else the stroke fallback, first-selected first', () => {
+    expect(readAnchorColorReading(ANCHORS, [1], '#103c65'))
+      .toEqual({ color: '#ff0000', mixed: false, count: 1 });
+    expect(readAnchorColorReading(ANCHORS, [0], '#103c65'))
+      .toEqual({ color: '#103c65', mixed: false, count: 1 });
+    expect(readAnchorColorReading(ANCHORS, [2, 1], '#103c65'))
+      .toEqual({ color: '#00ff00', mixed: true, count: 2 });
+  });
+
+  it('is empty with no listed anchor and ignores out-of-range indices', () => {
+    expect(readAnchorColorReading(ANCHORS, [], '#103c65')).toEqual(ANCHOR_COLOR_EMPTY_READING);
+    expect(readAnchorColorReading(ANCHORS, [99, -1], '#103c65')).toEqual(ANCHOR_COLOR_EMPTY_READING);
+  });
+
+  it('compares colours case-insensitively', () => {
+    const same: readonly AquarelleAnchor[] = [
+      { x: 0.2, y: 0.5, kind: 'auto', color: '#AABBCC' },
+      { x: 0.8, y: 0.5, kind: 'auto', color: '#aabbcc' },
+    ];
+    expect(readAnchorColorReading(same, [0, 1], null))
+      .toEqual({ color: '#AABBCC', mixed: false, count: 2 });
   });
 });
 

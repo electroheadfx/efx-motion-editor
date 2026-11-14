@@ -93,7 +93,7 @@ describe('61-11 Edit path Draft-strip button (E2)', () => {
       'class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"',
     );
     // The icon is the button's ONLY child — no text node can overflow.
-    expect(countOf(button, '<SplinePointer size={12} aria-hidden="true" />')).toBe(1);
+    expect(countOf(button, '<SplinePointer size={16} aria-hidden="true" />')).toBe(1);
     expect(button).not.toMatch(/>\s*Edit path\s*</);
     expect(button).not.toContain('{PATH_EDIT_LABEL}');
   });
@@ -292,7 +292,7 @@ describe('61-11 E2 rows: the Edit path disabled state', () => {
     const button = regionOf(dialogSource, SPLINE_START, SPLINE_END);
     // Icon-only: the element's whole child list is the glyph, so no text node
     // can be laid out (and therefore none can overflow).
-    expect(button).toMatch(/>\s*<SplinePointer size=\{12\} aria-hidden="true" \/>\s*<\/button>/);
+    expect(button).toMatch(/>\s*<SplinePointer size=\{16\} aria-hidden="true" \/>\s*<\/button>/);
   });
 
   it('E2 long-text: the reason lives in the native title, never in the DOM', () => {
@@ -301,7 +301,7 @@ describe('61-11 E2 rows: the Edit path disabled state', () => {
     expect(button).not.toContain('{PATH_EDIT_LABEL}');
     expect(button).not.toMatch(/>\s*Edit path\s*</);
     // The whole child list is the glyph — no text node exists to lay out.
-    expect(button).toMatch(/>\s*<SplinePointer size=\{12\} aria-hidden="true" \/>\s*<\/button>/);
+    expect(button).toMatch(/>\s*<SplinePointer size=\{16\} aria-hidden="true" \/>\s*<\/button>/);
   });
 });
 
@@ -964,5 +964,44 @@ describe('62-02 painted-curve entry through the shipped spline-pointer', () => {
     );
     expect(degenerateDeclaration).not.toContain('${');
     expect(degenerateDeclaration).not.toContain('`');
+  });
+});
+
+// 62-UAT: the Curve tab's read-only vertex-colour row.
+describe('62-UAT vertex colour row in the Curve tab', () => {
+  const COLOR_TESTID = 'data-testid="stroke-settings-anchor-color"';
+
+  it('mounts once, inside the Curve tab after Vertex size, and stays read-only', () => {
+    expect(countOf(dialogSource, COLOR_TESTID)).toBe(1);
+    const row = regionOf(
+      dialogSource,
+      COLOR_TESTID,
+      'data-testid="stroke-settings-curve-mode-block"',
+    );
+    expect(row).toContain('data-testid="stroke-settings-anchor-color-swatch"');
+    expect(row).toContain('data-testid="stroke-settings-anchor-color-readout"');
+    expect(row).toContain('data-testid="stroke-settings-anchor-color-mixed"');
+    expect(row).toContain('backgroundColor: anchorColorReading.color');
+    // Read-only: the sidebar picker stays the ONE writer, so the row carries
+    // no colour input and no commit seam.
+    expect(row).not.toContain('<input');
+    expect(row).not.toContain('applyAnchorColor');
+
+    // The mount order inside the Curve tab: Vertex size, then Vertex colour,
+    // then the Curve row.
+    const curveAt = dialogSource.indexOf('data-testid="stroke-settings-curve"');
+    const widthAt = dialogSource.indexOf('data-testid="stroke-settings-curve-anchor-width"');
+    const colorAt = dialogSource.indexOf(COLOR_TESTID);
+    const modeAt = dialogSource.indexOf('data-testid="stroke-settings-curve-mode-block"');
+    expect(curveAt).toBeGreaterThan(-1);
+    expect(widthAt).toBeGreaterThan(curveAt);
+    expect(colorAt).toBeGreaterThan(widthAt);
+    expect(modeAt).toBeGreaterThan(colorAt);
+  });
+
+  it('reads the effective colour through the model, never the stroke directly', () => {
+    expect(modelSource).toContain('export function readAnchorColorReading(');
+    expect(dialogSource).toContain('readAnchorColorReading(');
+    expect(dialogSource).toContain('selectedStrokeColor');
   });
 });

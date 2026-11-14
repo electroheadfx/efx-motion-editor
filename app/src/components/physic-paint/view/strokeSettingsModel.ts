@@ -28,6 +28,7 @@ import {
 } from '@efxlab/efx-watercolor/payload';
 import type {
   SelectableScriptStroke,
+  ScriptStrokeFilterValue,
   ScriptStrokeSize,
   ScriptStrokeTool,
 } from './scriptStrokeEdition';
@@ -319,6 +320,53 @@ export function strokeToolLabel(tool: ScriptStrokeTool): string {
   return STROKE_TOOL_LABELS[tool];
 }
 
+/** 62-UAT: the vector categories' display names. */
+const STROKE_VECTOR_FILTER_LABELS: Readonly<Record<'vector' | `${ScriptStrokeTool}-vector`, string>> =
+  Object.freeze({
+    vector: 'Vector',
+    'brush-vector': 'Brush-Vector',
+    'water-vector': 'Water-Vector',
+    'pen-vector': 'Pen-Vector',
+    'lift-vector': 'Eraser-Vector',
+  });
+
+/**
+ * 62-UAT: the row's filter category. A drawn vector is `vector`; a converted
+ * painted path keeps its tool and gains the `-vector` suffix. A lift stroke
+ * never carries anchors, so it always resolves to its tool.
+ */
+export function strokeRowFilterValue(
+  stroke: Pick<SelectableScriptStroke, 'tool' | 'vector' | 'vectorDrawn'>,
+): ScriptStrokeFilterValue {
+  if (!stroke.vector) return stroke.tool;
+  if (stroke.vectorDrawn) return 'vector';
+  switch (stroke.tool) {
+    case 'brush':
+      return 'brush-vector';
+    case 'water':
+      return 'water-vector';
+    case 'pen':
+      return 'pen-vector';
+    default:
+      return stroke.tool;
+  }
+}
+
+/** The filter dropdown's display label for one category. */
+export function strokeToolFilterLabel(value: ScriptStrokeFilterValue): string {
+  if (value === 'vector' || value.endsWith('-vector')) {
+    return STROKE_VECTOR_FILTER_LABELS[value as keyof typeof STROKE_VECTOR_FILTER_LABELS];
+  }
+  return strokeToolLabel(value as ScriptStrokeTool);
+}
+
+/** The list row's type label — `Vector`, `<Tool>-Vector`, or the tool name. */
+export function strokeRowTypeLabel(
+  stroke: Pick<SelectableScriptStroke, 'tool' | 'vector' | 'vectorDrawn'>,
+): string {
+  return strokeToolFilterLabel(strokeRowFilterValue(stroke));
+}
+
 /** The kind predicate, mirroring `matchesAquarelleStrokeFilter`. */
 export function matchesStrokeTypeFilter(
   stroke: Pick<SelectableScriptStroke, 'kind'>,
@@ -362,23 +410,27 @@ export function sortStrokesTopmostFirst(
 export const ALL_TOOL_FILTER_LABEL = 'All tools';
 export const ALL_TIP_FILTER_LABEL = 'All tips';
 
-/** The engine's closed tool union, in its canonical display order. */
-const STROKE_TOOL_ORDER: readonly ScriptStrokeTool[] = Object.freeze([
+/** The categories, in canonical display order — tools first, vectors after. */
+const STROKE_FILTER_ORDER: readonly ScriptStrokeFilterValue[] = Object.freeze([
   'brush',
   'water',
   'pen',
   'lift',
+  'vector',
+  'brush-vector',
+  'water-vector',
+  'pen-vector',
 ]);
 
-export type StrokeToolFilterValue = ScriptStrokeTool | 'all';
+export type StrokeToolFilterValue = ScriptStrokeFilterValue | 'all';
 
-/** The tools PRESENT in the given rows, in canonical order. */
+/** The categories PRESENT in the given rows, in canonical order. */
 export function listStrokeToolOptions(
-  strokes: readonly Pick<SelectableScriptStroke, 'tool'>[],
-): ScriptStrokeTool[] {
-  const present = new Set<ScriptStrokeTool>();
-  for (const stroke of strokes) present.add(stroke.tool);
-  return STROKE_TOOL_ORDER.filter((tool) => present.has(tool));
+  strokes: readonly Pick<SelectableScriptStroke, 'tool' | 'vector' | 'vectorDrawn'>[],
+): ScriptStrokeFilterValue[] {
+  const present = new Set<ScriptStrokeFilterValue>();
+  for (const stroke of strokes) present.add(strokeRowFilterValue(stroke));
+  return STROKE_FILTER_ORDER.filter((value) => present.has(value));
 }
 
 /** One tip dropdown entry: the recorded id and its resolved display name. */
@@ -415,15 +467,15 @@ export function filterStrokeListRows(
   filter: StrokeListFilter,
 ): SelectableScriptStroke[] {
   return strokes.filter((stroke) => (
-    (filter.tool === 'all' || stroke.tool === filter.tool)
+    (filter.tool === 'all' || strokeRowFilterValue(stroke) === filter.tool)
     && (filter.tip === 'all' || stroke.brushId === filter.tip)
   ));
 }
 
-/** The stored tool when the current rows offer it, else 'all' (read-only). */
+/** The stored category when the current rows offer it, else 'all' (read-only). */
 export function resolveStrokeToolFilter(
   stored: StrokeToolFilterValue,
-  options: readonly ScriptStrokeTool[],
+  options: readonly ScriptStrokeFilterValue[],
 ): StrokeToolFilterValue {
   return stored !== 'all' && options.includes(stored) ? stored : 'all';
 }
@@ -1163,6 +1215,55 @@ export function readAnchorWidthReading(
   }
   const first = factors[0]!;
   return { value: first, mixed: factors.some((factor) => factor !== first), count: factors.length };
+}
+
+// ── The vertex colour row (62-UAT) ──────────────────────────────────
+//
+//  The selected vertices' EFFECTIVE colour: the anchor's sparse explicit
+//  `color` when it carries one, else the stroke's own colour. A read-only
+//  reading — the sidebar colour picker stays the ONE writer.
+
+export interface AnchorColorReading {
+  /** The FIRST listed anchor's effective colour, or null when none exists. */
+  readonly color: string | null;
+  readonly mixed: boolean;
+  readonly count: number;
+}
+
+/** 62-UAT: the reading when no listed anchor exists to describe. */
+export const ANCHOR_COLOR_EMPTY_READING: AnchorColorReading = {
+  color: null,
+  mixed: false,
+  count: 0,
+};
+
+/**
+ * 62-UAT: the Curve tab's vertex-colour reading. Mirrors
+ * `readAnchorWidthReading`: only the listed indices the path actually carries
+ * participate; an explicit anchor colour wins over the stroke fallback. The
+ * comparison is case-insensitive so `#AABBCC` and `#aabbcc` are not "Mixed".
+ */
+export function readAnchorColorReading(
+  anchors: readonly AquarelleAnchor[],
+  indices: readonly number[],
+  strokeColor: string | null,
+): AnchorColorReading {
+  const colors: (string | null)[] = [];
+  for (const index of indices) {
+    const anchor = Number.isInteger(index) && index >= 0 ? anchors[index] : undefined;
+    if (!anchor) continue;
+    const explicit =
+      typeof anchor.color === 'string' && anchor.color.length > 0 ? anchor.color : null;
+    colors.push(explicit ?? strokeColor);
+  }
+  if (colors.length === 0) return ANCHOR_COLOR_EMPTY_READING;
+  const first = colors[0] ?? null;
+  const key = (color: string | null): string => (color ?? '').toLowerCase();
+  return {
+    color: first,
+    mixed: colors.some((color) => key(color) !== key(first)),
+    count: colors.length,
+  };
 }
 
 /**

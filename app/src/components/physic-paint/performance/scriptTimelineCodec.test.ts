@@ -724,11 +724,34 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
 
   it('still refuses an unknown vector flag bit', () => {
     const bytes = encodeScriptTimelineBinary([coloredVectorStroke()]);
+    // 0x10 is the 62-UAT drawn marker; the next free bit is 0x20.
     new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(
       VECTOR_FLAG_OFFSET,
-      VECTOR_FLAG_ANCHOR_COLOR | 0x10,
+      VECTOR_FLAG_ANCHOR_COLOR | 0x20,
     );
     expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
+  });
+
+  it('round-trips the drawn provenance bit with no extra payload byte (62-UAT)', () => {
+    const plain = coloredVectorStroke();
+    const drawn: StudioStroke<AquarelleStrokePayload> = {
+      ...plain,
+      engine: { ...plain.engine, vectorDrawn: true },
+    };
+    const plainBytes = encodeScriptTimelineBinary([plain]);
+    const drawnBytes = encodeScriptTimelineBinary([drawn]);
+    // The bit IS the whole marker: the encoded size never changes.
+    expect(drawnBytes.byteLength).toBe(plainBytes.byteLength);
+    expect(drawnBytes[VECTOR_FLAG_OFFSET] & 0x10).toBe(0x10);
+
+    const decoded = decodeScriptTimelineBinary(drawnBytes);
+    expect(decoded).toHaveLength(1);
+    expect((decoded[0] as StudioStroke<AquarelleStrokePayload>).engine.vectorDrawn).toBe(true);
+
+    // Absence stays absent — a hand-painted or converted stroke gains no key.
+    const decodedPlain = decodeScriptTimelineBinary(plainBytes);
+    expect('vectorDrawn' in (decodedPlain[0] as StudioStroke<AquarelleStrokePayload>).engine)
+      .toBe(false);
   });
 });
 

@@ -83,6 +83,13 @@ export interface AquarelleStrokePayload {
    * it did. An evaluation mode, never a third anchor kind.
    */
   curveMode?: AquarelleCurveMode
+  /**
+   * 62-UAT: true only for a stroke CREATED by the vector pen. Absent on a
+   * hand-painted stroke and on a painted stroke later converted to a path,
+   * so the stroke list can name "Vector" apart from "<Tool>-Vector". An
+   * optional boolean keeps schemaVersion 1 (the anchors/curveMode precedent).
+   */
+  vectorDrawn?: true
 }
 
 /** Host cap policy (55 D-20 / D-19) — engine-owned, script-visible. */
@@ -137,6 +144,11 @@ export interface AquarelleStroke {
   anchors?: readonly AquarelleAnchor[]
   /** 61-30 (G-20): explicit curve-evaluation mode (absent = Bézier). */
   curveMode?: AquarelleCurveMode
+  /**
+   * 62-UAT: true only for a stroke CREATED by the vector pen (absent on a
+   * hand-painted stroke and on a converted path).
+   */
+  vectorDrawn?: true
 }
 
 /**
@@ -186,6 +198,7 @@ export function toStudioStroke(
       // pre-vector key set and a mode-only stroke gains that key alone.
       ...(s.anchors !== undefined ? { anchors: projectVectorPath(s.anchors) } : {}),
       ...(s.curveMode !== undefined ? { curveMode: s.curveMode } : {}),
+      ...(s.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
     },
   }
 }

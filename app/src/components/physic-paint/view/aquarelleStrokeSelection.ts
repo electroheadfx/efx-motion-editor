@@ -30,7 +30,6 @@ import {
   type AquarellePayloadEvent,
   type AquarelleStroke,
   type AquarelleStrokePayload,
-  type AquarelleTool,
 } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleUvToEnginePixel,
@@ -60,6 +59,7 @@ import {
   type ScriptStrokeBounds,
   type ScriptStrokeDrag,
   type ScriptStrokeEditionPort,
+  type ScriptStrokeFilterValue,
   type SelectableScriptStroke,
 } from './scriptStrokeEdition';
 import { disarmAquarellePicker } from './aquarelleColorPicker';
@@ -150,7 +150,7 @@ export const aquarelleStrokeTypeFilter = signal<AquarelleStrokeTypeFilter>(
  * so a stored tool/tip the current rows do not offer renders as All without a
  * render-body write.
  */
-export type AquarelleStrokeToolFilter = AquarelleTool | 'all';
+export type AquarelleStrokeToolFilter = ScriptStrokeFilterValue | 'all';
 
 export const aquarelleStrokeToolFilter = signal<AquarelleStrokeToolFilter>('all');
 
@@ -541,6 +541,9 @@ export function listSelectableAquarelleStrokes(
     const tool = stroke.tool;
     const brushId = stroke.brushId;
     const customResponse = hasCustomToolOverrides(stroke.toolOverrides);
+    // 62-UAT: the row's vector provenance — display metadata only.
+    const vector = stroke.anchors !== undefined && stroke.anchors.length > 0;
+    const vectorDrawn = vector && stroke.vectorDrawn === true;
     if (kind === 'lift') {
       // The polygon IS the drawn border: bounds = its exact bbox plus the
       // shared 6px grab margin (padding by the hit radius would float the
@@ -561,6 +564,8 @@ export function listSelectableAquarelleStrokes(
         color,
         kind,
         tool,
+        vector,
+        vectorDrawn,
         brushId,
         customResponse,
         ribbonPx: ribbon.polygonPx,
@@ -579,6 +584,8 @@ export function listSelectableAquarelleStrokes(
       color,
       kind,
       tool,
+      vector,
+      vectorDrawn,
       brushId,
       customResponse,
     });

@@ -1759,6 +1759,9 @@ export function restoreAquarelleRecordTimeline(
     // edit would silently fall back to Bézier.
     const curveMode =
       engine.curveMode !== undefined ? resolveAquarelleCurveMode(engine.curveMode) : undefined;
+    // 62-UAT: the drawn-by-the-vector-pen marker rides the same conditional-
+    // spread law, so a reopened drawn path still lists as "Vector".
+    const vectorDrawn = engine.vectorDrawn === true ? true : undefined;
     const stroke: AquarelleStroke = {
       tool: engine.tool,
       color: engine.color,
@@ -1779,6 +1782,7 @@ export function restoreAquarelleRecordTimeline(
       playFrame: engine.playFrame,
       ...(anchors !== undefined ? { anchors } : {}),
       ...(curveMode !== undefined ? { curveMode } : {}),
+      ...(vectorDrawn !== undefined ? { vectorDrawn } : {}),
     };
     const entry = toStudioStroke(stroke);
     payloadTimeline.push(entry);

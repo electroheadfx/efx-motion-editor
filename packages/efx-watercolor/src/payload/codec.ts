@@ -124,6 +124,9 @@ function isStrokeShape(value: unknown): value is StudioStroke<AquarelleStrokePay
   if (anchors !== undefined && normaliseAquarelleAnchors(anchors) === undefined) return false
   const curveMode = engine['curveMode']
   if (curveMode !== undefined && !isAquarelleCurveMode(curveMode)) return false
+  // 62-UAT: drawn provenance is optional and, when present, must be `true`.
+  const vectorDrawn = engine['vectorDrawn']
+  if (vectorDrawn !== undefined && vectorDrawn !== true) return false
   return true
 }
 
