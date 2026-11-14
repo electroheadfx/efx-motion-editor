@@ -873,6 +873,125 @@ export function vectorSpinePressures(
   return points.map(() => VECTOR_PRESSURE_SENTINEL);
 }
 
+// --- The edit-time count-preserving re-sample (62-01 D-07/D-08) ------------
+
+/** One edit seam's re-sample: the new stations and the remapped pressures. */
+export interface VectorSpineResample {
+  readonly points: readonly Vec2[];
+  readonly pressures: readonly number[];
+}
+
+/** Cumulative arc length at every vertex; the last entry is the total. */
+function cumulativeArcLength(
+  polyline: readonly { readonly x: number; readonly y: number }[],
+): number[] {
+  const stations = new Array<number>(polyline.length).fill(0);
+  for (let index = 1; index < polyline.length; index += 1) {
+    const previous = polyline[index - 1]!;
+    const point = polyline[index]!;
+    const span = Math.hypot(point.x - previous.x, point.y - previous.y);
+    stations[index] = stations[index - 1]! + (Number.isFinite(span) ? span : 0);
+  }
+  return stations;
+}
+
+/** The point at `distance` along a polyline, clamped to its ends. */
+function pointAtArcDistance(
+  polyline: readonly Vec2[],
+  stations: readonly number[],
+  total: number,
+  distance: number,
+): Vec2 {
+  const first = polyline[0]!;
+  const last = polyline[polyline.length - 1]!;
+  if (!(total > 0) || distance <= 0) return { ...first };
+  if (distance >= total) return { ...last };
+  let low = 0;
+  let high = stations.length - 1;
+  while (low + 1 < high) {
+    const middle = (low + high) >> 1;
+    if (stations[middle]! <= distance) low = middle;
+    else high = middle;
+  }
+  const from = stations[low]!;
+  const span = stations[high]! - from;
+  const t = span > 0 ? (distance - from) / span : 0;
+  const start = polyline[low]!;
+  const end = polyline[high]!;
+  return { x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t };
+}
+
+/**
+ * 62-01 (D-07/D-08): re-derive an EDITED stroke's samples without moving its
+ * wet lifetime.
+ *
+ * The recorded sample count IS the stroke's `ticks`, so an edit keeps exactly
+ * `sourcePoints.length` stations — spread evenly by arc length over the new
+ * spine, both endpoints pinned to the spine's own endpoints. The recorded
+ * pressure is remapped along the ORIGINAL polyline's arc length (linear in
+ * between, both ends pinned), so a reshape slides the profile along the stroke
+ * instead of resetting it. An all-sentinel source stays all-sentinel: the
+ * engine owns that stroke's pressure, exactly as at draw time.
+ *
+ * The draw-time mint above is untouched — this law only redistributes samples
+ * an edit already owns. Never throws; a zero-length spine repeats its first
+ * point, never NaN.
+ */
+export function resampleVectorSpineWithPressureLaw(
+  spine: readonly Vec2[],
+  sourcePoints: readonly { readonly x: number; readonly y: number; readonly p: number }[],
+): VectorSpineResample {
+  const count = Array.isArray(sourcePoints) ? sourcePoints.length : 0;
+  if (count === 0) return { points: [], pressures: [] };
+
+  const spineStations = cumulativeArcLength(spine);
+  const spineTotal = spineStations[spineStations.length - 1] ?? 0;
+  const fractionAt = (index: number): number => (count === 1 ? 0 : index / (count - 1));
+  const points: Vec2[] = [];
+  for (let index = 0; index < count; index += 1) {
+    points.push(
+      pointAtArcDistance(spine, spineStations, spineTotal, fractionAt(index) * spineTotal),
+    );
+  }
+
+  const sourceStations = cumulativeArcLength(sourcePoints);
+  const sourceTotal = sourceStations[sourceStations.length - 1] ?? 0;
+  const readings = sourcePoints.map((sample) => {
+    const raw = sample?.p;
+    return typeof raw === 'number' && Number.isFinite(raw) ? raw : VECTOR_PRESSURE_SENTINEL;
+  });
+  if (readings.every((value) => value === VECTOR_PRESSURE_SENTINEL)) {
+    return { points, pressures: readings.map(() => VECTOR_PRESSURE_SENTINEL) };
+  }
+  const pressureAt = (fraction: number): number => {
+    if (fraction <= 0) return readings[0]!;
+    if (fraction >= 1) return readings[readings.length - 1]!;
+    if (!(sourceTotal > 0)) {
+      // A zero-length source polyline has no arc to remap along: station i
+      // takes source i, which is the only order the samples still carry.
+      return readings[Math.round(fraction * (count - 1))]!;
+    }
+    const target = fraction * sourceTotal;
+    let low = 0;
+    let high = sourceStations.length - 1;
+    while (low + 1 < high) {
+      const middle = (low + high) >> 1;
+      if (sourceStations[middle]! <= target) low = middle;
+      else high = middle;
+    }
+    const from = sourceStations[low]!;
+    const span = sourceStations[high]! - from;
+    const t = span > 0 ? (target - from) / span : 0;
+    const value = readings[low]! + (readings[high]! - readings[low]!) * t;
+    return Number.isFinite(value) ? value : VECTOR_PRESSURE_SENTINEL;
+  };
+  const pressures = readings.map((_, index) => pressureAt(fractionAt(index)));
+  // Pin both ends to the recorded values exactly — no interpolation rounding.
+  pressures[0] = readings[0]!;
+  pressures[pressures.length - 1] = readings[readings.length - 1]!;
+  return { points, pressures };
+}
+
 /**
  * The pure half of the layer's commit seam: a finished path plus its
  * record-time source becomes a complete `AquarelleStroke`. Every required

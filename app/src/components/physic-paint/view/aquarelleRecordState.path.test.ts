@@ -1025,7 +1025,19 @@ describe('62-01 painted-stroke conversion — one write, one undo', () => {
     expect('curveMode' in dropped).toBe(false);
     expect(dropped.anchors).toEqual(splineFit);
     expect(dropped.points).not.toBe(splineStroke.points);
-    expect(dropped.points).toEqual(splineStroke.points);
+    // The geometry is identical (same spine, same count); the pressure is
+    // re-derived from the samples the flip starts from, so it agrees to
+    // interpolation precision rather than bit-for-bit (D-07/D-08).
+    expect(dropped.points).toHaveLength(splineStroke.points.length);
+    expect(dropped.points.map(({ x, y }) => ({ x, y }))).toEqual(
+      splineStroke.points.map(({ x, y }) => ({ x, y })),
+    );
+    for (let sampleIndex = 0; sampleIndex < dropped.points.length; sampleIndex += 1) {
+      expect(dropped.points[sampleIndex]!.p).toBeCloseTo(
+        splineStroke.points[sampleIndex]!.p,
+        9,
+      );
+    }
 
     // An unknown mode refuses the whole write, even when the anchors changed
     // (fail-closed: never a silent Bézier fall back — T-62-01).

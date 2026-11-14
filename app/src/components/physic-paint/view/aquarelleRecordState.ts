@@ -51,8 +51,7 @@ import { exitRailMotionEditing } from './railMotionEditingMode';
 import { reorderForStackPosition, targetIndexForStackPosition } from './stackOrder';
 import {
   VECTOR_STROKE_BASE_PRESSURE,
-  resampleVectorPaintPoints,
-  vectorSpinePressures,
+  resampleVectorSpineWithPressureLaw,
 } from './vectorPathHandles';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
@@ -1030,16 +1029,19 @@ export function updateAquarelleCurveModeInScript(
     if (anchors === undefined) continue;
     const nextAnchors = projectVectorPath(anchors);
     const { points: sampledSpine } = evaluateAquarellePath(nextAnchors, mode);
-    // The paint sampler — the same step `buildVectorStroke` uses, so a mode
-    // switch replays with the stroke's own wet lifetime.
-    const paintSpine = resampleVectorPaintPoints(sampledSpine);
-    const pressures = vectorSpinePressures(paintSpine);
+    // 62-01 (D-07/D-08): an edit preserves the recorded sample count — the
+    // count IS the wet lifetime — and remaps the recorded pressure along the
+    // ORIGINAL polyline's arc length. The draw-time mint is untouched.
+    const { points: editSpine, pressures } = resampleVectorSpineWithPressureLaw(
+      sampledSpine,
+      stroke.points,
+    );
     targets.push({
       mutationId,
       stroke,
       index,
       // The re-derived points carry `buildVectorStroke`'s exact shape.
-      nextPoints: paintSpine.map((point, sampleIndex) => ({
+      nextPoints: editSpine.map((point, sampleIndex) => ({
         x: point.x,
         y: point.y,
         p: pressures[sampleIndex] ?? VECTOR_STROKE_BASE_PRESSURE,
@@ -1081,9 +1083,10 @@ export function updateAquarelleCurveModeInScript(
  * the geometry every replay deposits — so carrying the old `points` through the
  * spread left the entry's two halves disagreeing and made a forced replay
  * (Shift+R) reproduce the PRE-edit curve. The re-derived points carry
- * `buildVectorStroke`'s exact shape (p 1, no tilt), so a replayed edit is
- * indistinguishable from a freshly drawn stroke. Params, diffusionFrames,
- * timestamp and playFrame still survive the path write.
+ * `buildVectorStroke`'s exact shape (no tilt) at the stroke's PRESERVED sample
+ * count, so a replayed edit is indistinguishable from a freshly drawn stroke.
+ * Params, diffusionFrames, timestamp and playFrame still survive the path
+ * write.
  *
  * 61-30 (G-20): the re-sample goes through the stroke's CURVE MODE — a spline
  * stroke stays spline across an anchor edit, and its points are the spline
@@ -1135,9 +1138,14 @@ export function updateAquarellePathInScript(
   // 61-30 (G-20): the evaluation honours the effective curve mode — the
   // stroke's own when the write carries none, the requested one otherwise.
   const { points: sampledSpine } = evaluateAquarellePath(nextAnchors, effectiveMode);
-  const paintSpine = resampleVectorPaintPoints(sampledSpine);
-  const pressures = vectorSpinePressures(paintSpine);
-  const nextPoints = paintSpine.map((point, sampleIndex) => ({
+  // 62-01 (D-07/D-08): keep the stroke's recorded sample count (it IS the wet
+  // lifetime) and remap the recorded pressure along the source polyline's arc
+  // length, both ends pinned. A conversion therefore mints no new lifetime.
+  const { points: editSpine, pressures } = resampleVectorSpineWithPressureLaw(
+    sampledSpine,
+    stroke.points,
+  );
+  const nextPoints = editSpine.map((point, sampleIndex) => ({
     x: point.x,
     y: point.y,
     p: pressures[sampleIndex] ?? VECTOR_STROKE_BASE_PRESSURE,

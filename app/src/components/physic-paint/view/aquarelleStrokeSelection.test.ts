@@ -1963,9 +1963,10 @@ describe('261031-euf stroke list fine-filter state', () => {
 // ============================================================
 //  61-31 (G-20) — the curve-mode batch edit. The mode is an
 //  EVALUATION MODE over the authored anchors: flipping it
-//  re-samples the points from the new evaluation but never
-//  re-rolls the stochastic texture (no seed-salt bump), and the
-//  whole selection is ONE history entry.
+//  re-samples the points from the new evaluation at the stroke's
+//  PRESERVED sample count (62-01 D-07/D-08) but never re-rolls the
+//  stochastic texture (no seed-salt bump), and the whole selection
+//  is ONE history entry.
 // ============================================================
 
 /** An authored path with one off-curve bezier anchor, so spline differs from bezier. */
@@ -1975,11 +1976,11 @@ const CURVE_ANCHORS: readonly AquarelleAnchor[] = [
   { x: 0.8, y: 0.5, kind: 'auto' },
 ];
 
-/** The sampled spine of one evaluation mode, stamped with the vector commit shape. */
-function sampledModePoints(
+/** The evaluated spine of one mode: spline reads the derived-auto view. */
+function evaluationSpine(
   anchors: readonly AquarelleAnchor[],
   mode: 'bezier' | 'spline',
-): readonly AquarellePoint[] {
+): readonly { readonly x: number; readonly y: number }[] {
   const source = mode === 'spline'
     ? anchors.map((anchor) => ({
         x: anchor.x,
@@ -1988,11 +1989,66 @@ function sampledModePoints(
         ...(anchor.width === undefined ? {} : { width: anchor.width }),
       }))
     : anchors;
-  const sampled = resampleVectorPaintPoints(sampleVectorPath(source).points);
+  return sampleVectorPath(source).points;
+}
+
+/** The draw-time sample list of one evaluation mode (the mint, 62-01 untouched). */
+function sampledModePoints(
+  anchors: readonly AquarelleAnchor[],
+  mode: 'bezier' | 'spline',
+): readonly AquarellePoint[] {
+  const sampled = resampleVectorPaintPoints(evaluationSpine(anchors, mode));
   const pressures = vectorSpinePressures(sampled);
   return sampled.map((p, index) => ({
     ...point(p.x, p.y),
     p: pressures[index]!,
+  }));
+}
+
+/**
+ * The 62-01 D-07/D-08 edit seam: the PRESERVED count, spread evenly by arc
+ * length over the mode's spine. Written out here so the pin does not import
+ * the law it checks.
+ */
+function arcStations(
+  anchors: readonly AquarelleAnchor[],
+  mode: 'bezier' | 'spline',
+  count: number,
+): readonly AquarellePoint[] {
+  const spine = evaluationSpine(anchors, mode);
+  const cumulative: number[] = [0];
+  for (let index = 1; index < spine.length; index += 1) {
+    cumulative.push(
+      cumulative[index - 1]! +
+        Math.hypot(
+          spine[index]!.x - spine[index - 1]!.x,
+          spine[index]!.y - spine[index - 1]!.y,
+        ),
+    );
+  }
+  const total = cumulative[cumulative.length - 1]!;
+  const pointAt = (target: number): { x: number; y: number } => {
+    if (!(total > 0) || target <= 0) return { ...spine[0]! };
+    if (target >= total) return { ...spine[spine.length - 1]! };
+    let low = 0;
+    let high = cumulative.length - 1;
+    while (low + 1 < high) {
+      const middle = (low + high) >> 1;
+      if (cumulative[middle]! <= target) low = middle;
+      else high = middle;
+    }
+    const span = cumulative[high]! - cumulative[low]!;
+    const t = span > 0 ? (target - cumulative[low]!) / span : 0;
+    const from = spine[low]!;
+    const to = spine[high]!;
+    return { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+  };
+  return Array.from({ length: count }, (_, index) => ({
+    ...pointAt(count === 1 ? 0 : (index / (count - 1)) * total),
+    p: -1,
+    tx: 0,
+    ty: 0,
+    tw: 0,
   }));
 }
 
@@ -2043,18 +2099,21 @@ describe('61-31 curve-mode batch edit (G-20)', () => {
     expect('curveMode' in getRecordedAquarelleStroke(first)!).toBe(false);
   });
 
-  it('a repeat press stores nothing; switching back drops the key and restores the authored points', () => {
+  it('a repeat press stores nothing; switching back drops the key and keeps the count', () => {
     const id = 63111;
     const other = 63113;
     recordAquarelleStroke(id, curveStroke(id));
     recordAquarelleStroke(other, curveStroke(other));
     const before = getRecordedAquarelleStroke(id)!;
+    const recordedCount = before.points.length;
 
     const firstEditId = beginAquarelleCurveModeEdit([id], 'spline');
     expect(firstEditId).not.toBeNull();
-    // Spline re-samples the points from the derived evaluation.
+    // Spline re-samples from the derived evaluation at the PRESERVED count,
+    // evenly by arc length (62-01 D-07/D-08); the draw-time mint is untouched.
+    expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(recordedCount);
     expect(getRecordedAquarelleStroke(id)!.points)
-      .toEqual(sampledModePoints(CURVE_ANCHORS, 'spline'));
+      .toEqual(arcStations(CURVE_ANCHORS, 'spline', recordedCount));
     expect(getRecordedAquarelleStroke(id)!.points).not.toEqual(before.points);
 
     // Pressing the mode the stroke already holds returns null and writes nothing.
@@ -2067,14 +2126,17 @@ describe('61-31 curve-mode batch edit (G-20)', () => {
     const nextEditId = beginAquarelleCurveModeEdit([other], 'spline');
     expect(nextEditId).toBe(firstEditId! + 1);
 
-    // Switching back to bezier drops the key and restores the authored points.
+    // Switching back to bezier drops the key and re-derives the authored
+    // geometry at the same PRESERVED count (D-08) — the edit seam never
+    // restores the draw-time hand-cadence samples, it redistributes them.
     const backEditId = beginAquarelleCurveModeEdit([id], 'bezier');
     expect(backEditId).not.toBeNull();
     const restored = getRecordedAquarelleStroke(id)!;
     expect('curveMode' in restored).toBe(false);
     expect(restored.anchors).toEqual(CURVE_ANCHORS);
-    expect(restored.points).toEqual(sampledModePoints(CURVE_ANCHORS, 'bezier'));
-    expect(restored.points).toEqual(before.points);
+    expect(restored.points).toHaveLength(recordedCount);
+    expect(restored.points).toEqual(arcStations(CURVE_ANCHORS, 'bezier', recordedCount));
+    expect(restored.points).not.toEqual(before.points);
     expect('curveMode' in strokeEntryAt(getRecordedAquarellePayloadTimeline(), id).engine)
       .toBe(false);
   });
