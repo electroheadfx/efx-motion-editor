@@ -43,6 +43,7 @@ import {
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
+  hasAquarelleScriptForFrame,
   isAquarelleStrokeDeleted,
   markAquarelleStrokeDeleted,
   recordAquarelleStroke,
@@ -266,6 +267,45 @@ describe('261022-pim aquarelle stroke select mode', () => {
     ).toBe(false);
     // Frame 205 still owns it.
     expect(hitTestAquarelleStroke({ x: 200, y: 100 }, 205, SHEET)).toBe(9005);
+  });
+
+  // Phase 62 (CRV-03, D-11): curve mode has exactly ONE entry — the recorded
+  // SOURCE frame. The loop-occurrence mapping the store-level CRV-03 plan pins
+  // is a 5-frame cycle repeated 5x placed at frame 0, so frames 5..24 are the
+  // repeated occurrences of source frames 0..4. No occurrence materializes a
+  // stroke row, so no occurrence frame can list a selectable stroke or report
+  // a recorded script — curve mode is unreachable there by construction, not
+  // by a special-case guard.
+  it('lists a painted stroke only on its recorded source frame, never on an occurrence frame', () => {
+    recordAquarelleStroke(
+      9100,
+      stroke({ points: [point(0.5, 0.5)], playFrame: 0, size: 40 }),
+    );
+
+    const sourceListing = listSelectableAquarelleStrokes(0, SHEET);
+    const sourceRow = sourceListing.find((candidate) => candidate.mutationId === 9100);
+    expect(sourceRow).toBeDefined();
+    // uv 0.5,0.5 → canvas pixels 200,100; the listing carries serial and points.
+    expect(sourceRow!.pointsPx).toEqual([{ x: 200, y: 100 }]);
+    expect(sourceRow!.serial).toBeTypeOf('number');
+    expect(hasAquarelleScriptForFrame(0)).toBe(true);
+
+    for (let frame = 1; frame <= 24; frame += 1) {
+      expect(
+        listSelectableAquarelleStrokes(frame, SHEET),
+        `frame ${frame} lists no editable occurrence row`,
+      ).toEqual([]);
+      expect(aquarelleStrokesOnFrame([9100], frame), `frame ${frame} owns no stroke row`).toEqual([]);
+      expect(
+        hasAquarelleScriptForFrame(frame),
+        `frame ${frame} carries no recorded script`,
+      ).toBe(false);
+    }
+
+    // The source row survives the occurrence walk (no test-order dependency).
+    expect(
+      listSelectableAquarelleStrokes(0, SHEET).some((entry) => entry.mutationId === 9100),
+    ).toBe(true);
   });
 
   it('bbox is inflated by half the brush size on each side', () => {
