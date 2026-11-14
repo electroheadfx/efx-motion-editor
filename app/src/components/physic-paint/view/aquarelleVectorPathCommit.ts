@@ -37,6 +37,14 @@ export interface AquarelleScriptRebakeSequence {
   readonly applyTimeline: () => Promise<boolean>;
   readonly onSuccess?: () => void;
   readonly onFailure?: () => void;
+  /**
+   * 62-04 (D-13): a synchronous cancellation predicate, checked at the produce
+   * turn and again at the commit turn — the `isStillCurrent` epoch precedent,
+   * never an AbortController or a cancellation exception.
+   */
+  readonly isCancelled?: () => boolean;
+  /** 62-04 (D-13): the third terminal. A cancelled apply publishes nothing else. */
+  readonly onCancelled?: () => void;
 }
 
 /**
@@ -95,7 +103,16 @@ async function yieldForPaint(): Promise<void> {
  * ONE in-flight latch per rebake. Already in flight → return false without
  * touching anything (fail closed). Otherwise reset, apply, then exactly one
  * terminal callback: `onSuccess` on true, `onFailure` on false or a rejected
- * apply. The latch is cleared in `finally`, before the callback runs.
+ * apply, or `onCancelled` when the predicate says the edit was undone. The
+ * latch is cleared in `finally`, before the callback runs.
+ *
+ * 62-04 (D-13): cancellation is a FIRST-CLASS third terminal. The predicate is
+ * read after the entry yield — a cancelled run never resets the sheet and never
+ * applies — and again after the exit yield, so an undo that lands while the
+ * apply is pending wins the commit turn even when the apply itself succeeded.
+ * A cancelled run publishes NO success, NO failure and NO error; it resolves
+ * false and writes nothing. Omitting the predicate restores the shipped
+ * exactly-two-terminal behaviour byte-identically.
  *
  * 261112-i6d: the host is yielded ONE painted frame on BOTH sides of the
  * latch. A re-bake only yields between fed strokes (and not at all for a
@@ -110,16 +127,26 @@ export async function runAquarelleScriptRebake(sequence: AquarelleScriptRebakeSe
   if (sequence.isInFlight()) return false;
   sequence.beginInFlight();
   let ok = false;
+  let cancelled = false;
   try {
     await yieldForPaint();
-    sequence.resetSheet();
-    ok = await sequence.applyTimeline();
+    cancelled = sequence.isCancelled?.() === true;
+    if (!cancelled) {
+      sequence.resetSheet();
+      ok = await sequence.applyTimeline();
+    }
   } catch {
     ok = false;
   } finally {
     sequence.endInFlight();
   }
   await yieldForPaint();
+  // The commit turn: either read saw the cancellation, so it wins over the
+  // success/failure outcome the apply may already have produced.
+  if (cancelled || sequence.isCancelled?.() === true) {
+    sequence.onCancelled?.();
+    return false;
+  }
   if (ok) sequence.onSuccess?.();
   else sequence.onFailure?.();
   return ok;
