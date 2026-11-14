@@ -25,6 +25,7 @@ import {
   evaluateAquarellePath,
   normaliseVectorAnchors,
   resolveAnchorHandles,
+  resolveAquarelleCurveMode,
   sampleVectorPath,
   type AquarelleStroke,
   type VectorAnchor,
@@ -33,6 +34,7 @@ import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
 import {
   aquarelleSelectedTipId,
   aquarelleStrokesRevision,
+  bumpAquarelleStrokesRevision,
   captureAquarelleStrokeRegistry,
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
@@ -74,6 +76,7 @@ import {
   buildAnchorWidthCommit,
   buildDraftPath,
   buildVectorStroke,
+  projectVectorPath,
   resampleVectorSpineWithPressureLaw,
   uvToScreen,
   type VectorPathCommit,
@@ -3138,5 +3141,147 @@ describe('62-03 — the armed held fit in the ONE overlay', () => {
     // The fitted path still draws; only the malformed ghost is dropped.
     expect(nodesWithTestId(root, 'vector-path-spine')).toHaveLength(1);
     expect(nodesWithTestId(root, 'vector-path-curve-ghost')).toHaveLength(0);
+  });
+
+  // --- D-09: the construction-view envelope is the recorded pressure band ---
+
+  /** A pen-pressure painted stroke: five samples, a real heavy/light profile. */
+  function pressureStroke(
+    mutationId: number,
+    overrides: Partial<AquarelleStroke> = {},
+  ): AquarelleStroke {
+    return vectorStroke({
+      mutationId,
+      anchors: undefined,
+      points: [
+        { x: 0.2, y: 0.5, p: 0.15, tx: 0, ty: 0, tw: 0 },
+        { x: 0.35, y: 0.52, p: 0.45, tx: 0, ty: 0, tw: 0 },
+        { x: 0.5, y: 0.5, p: 0.9, tx: 0, ty: 0, tw: 0 },
+        { x: 0.65, y: 0.48, p: 0.5, tx: 0, ty: 0, tw: 0 },
+        { x: 0.8, y: 0.5, p: 0.2, tx: 0, ty: 0, tw: 0 },
+      ],
+      ...overrides,
+    });
+  }
+
+  /** A mouse-painted stroke: the engine's -1 speed sentinel in every sample. */
+  function mouseStroke(
+    mutationId: number,
+    overrides: Partial<AquarelleStroke> = {},
+  ): AquarelleStroke {
+    return vectorStroke({
+      mutationId,
+      anchors: [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)],
+      points: [
+        { x: 0.2, y: 0.5, p: -1, tx: 0, ty: 0, tw: 0 },
+        { x: 0.5, y: 0.5, p: -1, tx: 0, ty: 0, tw: 0 },
+        { x: 0.8, y: 0.5, p: -1, tx: 0, ty: 0, tw: 0 },
+      ],
+      ...overrides,
+    });
+  }
+
+  /** The exact closed-ring `d` one polygon builds. */
+  function ringOf(polygon: readonly { readonly x: number; readonly y: number }[]): string {
+    return `M${polygon.map((point) => `${point.x},${point.y}`).join(' L')} Z`;
+  }
+
+  /** The recorded pressure band's ring, in the overlay's canvas-px frame. */
+  function bandRingOf(stroke: AquarelleStroke): string {
+    return ringOf(buildStrokeBand(stroke, { width: WIDTH, height: HEIGHT }).polygonPx);
+  }
+
+  /** The shipped anchor-width envelope ring (D-10's uniform profile included). */
+  function anchorRingOf(stroke: AquarelleStroke): string {
+    return ringOf(
+      projectVectorPath(normaliseVectorAnchors(stroke.anchors ?? []), WIDTH, HEIGHT, {
+        alwaysEnvelope: true,
+        curveMode: resolveAquarelleCurveMode(stroke.curveMode),
+      }).envelope,
+    );
+  }
+
+  function envelopeDOf(tree: unknown): string {
+    const envelopes = nodesWithTestId(tree, 'vector-path-envelope');
+    expect(envelopes, 'exactly one envelope').toHaveLength(1);
+    return String(envelopes[0]!.props['d']);
+  }
+
+  it('draws the recorded pressure band as the construction-view envelope', () => {
+    wireframeMode.value = true;
+    const before = pressureStroke(EDIT_ID);
+    beginPaintedCurveSession(before);
+    enterPathEdit(String(EDIT_ID));
+
+    // Before the first commit the held fit supplies the anchors; the envelope
+    // is still the stroke's OWN recorded footprint.
+    const heldFit = render(VectorPathOverlay(propsWith([[EDIT_ID, before]])));
+    expect(envelopeDOf(heldFit)).toBe(bandRingOf(before));
+
+    // After the first commit the record carries anchors; the same samples keep
+    // the same band, so converting a stroke never changes its drawn footprint.
+    const after = pressureStroke(EDIT_ID, {
+      anchors: [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)],
+    });
+    const converted = render(VectorPathOverlay(propsWith([[EDIT_ID, after]])));
+    expect(envelopeDOf(converted)).toBe(bandRingOf(after));
+    // The pin has teeth: the band ring is NOT the anchor-width ring.
+    expect(bandRingOf(after)).not.toBe(anchorRingOf(after));
+  });
+
+  it('keeps the shipped anchor-width envelope for the all-sentinel mouse profile', () => {
+    wireframeMode.value = true;
+    const stroke = mouseStroke(EDIT_ID + 1);
+
+    const tree = render(VectorPathOverlay(propsWith([[EDIT_ID + 1, stroke]])));
+    // The documented D-09 exception: no per-sample pressure exists to re-map,
+    // and reproducing the engine's speed law here would import the engine into
+    // a view leaf (T-61-31). The shipped envelope is kept, positively.
+    expect(envelopeDOf(tree)).toBe(anchorRingOf(stroke));
+    expect(envelopeDOf(tree)).not.toBe(bandRingOf(stroke));
+  });
+
+  it('draws no envelope for either profile while both display gates are off', () => {
+    wireframeMode.value = false;
+    setStrokeSizePreview(false);
+    const pressure = pressureStroke(EDIT_ID, {
+      anchors: [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)],
+    });
+    const mouse = mouseStroke(EDIT_ID + 1);
+    enterPathEdit(String(EDIT_ID));
+
+    const tree = render(
+      VectorPathOverlay(propsWith([[EDIT_ID, pressure], [EDIT_ID + 1, mouse]])),
+    );
+    // The structure is on — the gate, not the surface, is what is off.
+    expect(nodesWithTestId(tree, 'vector-path-spine')).toHaveLength(2);
+    expect(nodesWithTestId(tree, 'vector-path-envelope')).toHaveLength(0);
+    expect(nodesWithTestId(tree, 'vector-path-envelope-edge')).toHaveLength(0);
+  });
+
+  it('rebuilds the band from the new samples after a revision bump', () => {
+    wireframeMode.value = true;
+    const anchors = [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)];
+    let stroke = pressureStroke(EDIT_ID + 2, { anchors });
+    const firstRing = bandRingOf(stroke);
+    const first = render(VectorPathOverlay(propsWith([[EDIT_ID + 2, stroke]])));
+    expect(envelopeDOf(first)).toBe(firstRing);
+
+    // The same id now carries a DIFFERENT recorded profile; the registry
+    // revision bump is what makes the cached band stale.
+    stroke = pressureStroke(EDIT_ID + 2, {
+      anchors,
+      points: [
+        { x: 0.2, y: 0.35, p: 0.9, tx: 0, ty: 0, tw: 0 },
+        { x: 0.5, y: 0.3, p: 0.9, tx: 0, ty: 0, tw: 0 },
+        { x: 0.8, y: 0.35, p: 0.9, tx: 0, ty: 0, tw: 0 },
+      ],
+    });
+    const secondRing = bandRingOf(stroke);
+    expect(secondRing).not.toBe(firstRing);
+    bumpAquarelleStrokesRevision();
+
+    const second = render(VectorPathOverlay(propsWith([[EDIT_ID + 2, stroke]])));
+    expect(envelopeDOf(second)).toBe(secondRing);
   });
 });

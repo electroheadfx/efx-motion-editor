@@ -419,6 +419,74 @@ describe('261101-mvg stroke band — bounded cache', () => {
   });
 });
 
+// 62-03 (D-09): the recorded pressure predicate. Provenance is per stroke kind,
+// never per painted/drawn: a PEN-painted stroke records real pressure in every
+// sample; a MOUSE-painted stroke records the engine's -1 speed sentinel because
+// the engine derives pressure from speed at replay. The record itself is the
+// discriminator — D-02 forbids a persisted converted flag.
+describe('62-03 D-09 — the recorded pressure profile predicate', () => {
+  /**
+   * The export is PLANNED (62-03 T3) but absent from HEAD, so it is resolved
+   * dynamically: the RED run then fails behaviourally on the missing law
+   * instead of failing at module load, which asserts nothing.
+   */
+  type PressurePredicate = (
+    stroke: Pick<AquarelleStroke, 'points'>,
+  ) => boolean;
+
+  async function pressurePredicate(): Promise<PressurePredicate> {
+    const module = (await import('./aquarelleStrokeBand')) as unknown as {
+      readonly hasRecordedPressureProfile?: PressurePredicate;
+    };
+    const predicate = module.hasRecordedPressureProfile;
+    if (predicate === undefined) {
+      throw new Error('62-03 D-09: hasRecordedPressureProfile is not exported yet');
+    }
+    return predicate;
+  }
+
+  it('is true for a stroke carrying finite non-negative per-sample pressure', async () => {
+    const hasRecordedPressureProfile = await pressurePredicate();
+    expect(hasRecordedPressureProfile(paintStroke('pen', [point(0.2, 0.5, 0.2), point(0.8, 0.5, 0.9)]))).toBe(true);
+    expect(hasRecordedPressureProfile(paintStroke('brush', [point(0.2, 0.5, 0.4), point(0.8, 0.5, 0.6)]))).toBe(true);
+    // Zero is a recorded HEAVY-LIGHT profile too, not an absent one.
+    expect(hasRecordedPressureProfile(paintStroke('water', [point(0.2, 0.5, 0), point(0.8, 0.5, 1)]))).toBe(true);
+  });
+
+  it('is true when even ONE sample carries a real pressure beside sentinels', async () => {
+    const hasRecordedPressureProfile = await pressurePredicate();
+    expect(
+      hasRecordedPressureProfile(paintStroke('brush', [
+        point(0.2, 0.5, -1),
+        point(0.5, 0.5, 0.7),
+        point(0.8, 0.5, -1),
+      ])),
+    ).toBe(true);
+  });
+
+  it('is false for the all-sentinel mouse profile — the one documented exception', async () => {
+    const hasRecordedPressureProfile = await pressurePredicate();
+    expect(
+      hasRecordedPressureProfile(paintStroke('brush', [
+        point(0.2, 0.5, -1),
+        point(0.5, 0.5, -1),
+        point(0.8, 0.5, -1),
+      ])),
+    ).toBe(false);
+  });
+
+  it('is false for an empty sample list and for a non-finite pressure', async () => {
+    const hasRecordedPressureProfile = await pressurePredicate();
+    expect(hasRecordedPressureProfile(paintStroke('brush', []))).toBe(false);
+    expect(
+      hasRecordedPressureProfile(paintStroke('brush', [
+        point(0.2, 0.5, Number.NaN),
+        point(0.8, 0.5, Number.POSITIVE_INFINITY),
+      ])),
+    ).toBe(false);
+  });
+});
+
 describe('261101-mvg stroke band — module purity', () => {
   it('imports neither Preact, signals nor the stateful footprint helper', () => {
     const source = readFileSync(
