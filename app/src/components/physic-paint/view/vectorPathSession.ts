@@ -22,7 +22,7 @@
 import { signal } from '@preact/signals';
 import { disarmAquarellePicker } from './aquarelleColorPicker';
 import { setAquarelleSelectMode } from './aquarelleStrokeSelection';
-import { clearVectorAnchorSelection, exitPathEdit, exitVectorPen, pathEditMutationId, vectorPenActive, writeIfChanged } from './vectorPathLatches';
+import { exitPathEdit, exitVectorPen, pathEditMutationId, vectorPenActive, writeIfChanged } from './vectorPathLatches';
 
 export * from './vectorPathLatches';
 
@@ -140,10 +140,16 @@ export function clearVectorDraft(): void {
   writeIfChanged(vectorDrawDraft, null);
 }
 
-/** Studio open resets every session latch — one mount call, idempotent. */
+/**
+ * Studio open resets every session latch — one mount call, idempotent.
+ *
+ * 62-02 (D-06): path edit closes through `exitPathEdit`, so an open edit's
+ * exit hook (the curve-bracket teardown) runs on this route too — only when
+ * the latch actually transitions. The selection drop lives inside that one
+ * exit action; this module no longer writes it directly.
+ */
 export function resetForStudioOpen(): void {
   writeIfChanged(vectorPenActive, false);
-  writeIfChanged(pathEditMutationId, null);
+  exitPathEdit();
   writeIfChanged(vectorDrawDraft, null);
-  clearVectorAnchorSelection();
 }

@@ -8,9 +8,17 @@
 //  ledger write happens here — the ONE script write the first
 //  committed gesture performs is the conversion (D-03).
 //
-//  The wireframe bracket captures the user's pre-entry wireframe
-//  value BEFORE the shipped latch forces Draft on, and a repeated
-//  arm NEVER overwrites that capture (compare-then-write).
+//  The wireframe bracket captures the user's pre-entry values —
+//  wireframe AND Draft — BEFORE the shipped latch forces Draft
+//  on, and a repeated arm NEVER overwrites that capture
+//  (compare-then-write, D-06).
+//
+//  62-02 adds the exit half: ONE pure `resolveCurveExitAction`
+//  pins every exit (restore the user's own wireframe, settle a
+//  dirty Draft exactly once, or leave Draft directly), and
+//  `endCurveBracket` performs it. The held fit is dropped FIRST;
+//  no exit without a committed gesture ever bakes behind the
+//  user's own construction view (D-14, T-62-08).
 //
 //  PURITY: this module imports the pure fitter, the dependency-free
 //  session latches and `view/scriptStrokeEdition` ONLY. It reads no
@@ -26,7 +34,13 @@ import type {
 } from '@efxlab/efx-watercolor/payload';
 import { writeIfChanged } from './vectorPathLatches';
 import { fitVectorPathAnchors } from './vectorPathFit';
-import { setWireframeMode, wireframeMode } from './scriptStrokeEdition';
+import {
+  draftMode,
+  draftPixelsDirty,
+  setDraftMode,
+  setWireframeMode,
+  wireframeMode,
+} from './scriptStrokeEdition';
 
 /** The held, uncommitted fit for one painted stroke. */
 export interface PaintedCurveSession {
@@ -41,8 +55,44 @@ export interface PaintedCurveSession {
 /** The session-only held fit, or null while no painted stroke is armed. */
 export const curveFitSession = signal<PaintedCurveSession | null>(null);
 
-/** The user's pre-entry wireframe value, or null while no bracket is open. */
-export const curveWireframeRestore = signal<boolean | null>(null);
+/** The user's pre-entry VIEW state — captured before the wireframe latch forces Draft on. */
+export interface CurveEntrySnapshot {
+  readonly wireframe: boolean;
+  readonly draft: boolean;
+}
+
+/** The pre-entry capture, or null while no bracket is open. */
+export const curveEntrySnapshot = signal<CurveEntrySnapshot | null>(null);
+
+/** The pure exit decision: restore the wireframe, settle the Draft, or leave Draft. */
+export interface CurveExitAction {
+  readonly restore: boolean;
+  readonly settle: boolean;
+  readonly leaveDraft: boolean;
+}
+
+/** The three facts an exit resolves from: the capture and the live dirty flag. */
+export interface CurveExitState {
+  readonly preWireframe: boolean;
+  readonly preDraft: boolean;
+  readonly dirty: boolean;
+}
+
+/**
+ * Resolve what an exit must do — the five pinned cases (D-06, D-14, T-62-08):
+ * a dirty Draft can only leave through the shipped settle or stay behind the
+ * user's own wireframe; a clean exit restores exactly the pre-entry view.
+ */
+export function resolveCurveExitAction(state: CurveExitState): CurveExitAction {
+  if (state.dirty) {
+    return state.preWireframe
+      ? { restore: true, settle: false, leaveDraft: false }
+      : { restore: false, settle: true, leaveDraft: false };
+  }
+  if (state.preWireframe) return { restore: true, settle: false, leaveDraft: false };
+  if (state.preDraft) return { restore: false, settle: false, leaveDraft: false };
+  return { restore: false, settle: false, leaveDraft: true };
+}
 
 function sameAnchors(
   left: readonly AquarelleAnchor[],
@@ -96,25 +146,50 @@ export function clearCurveFitSession(): void {
   writeIfChanged(curveFitSession, null);
 }
 
-/** Drop the wireframe bracket capture. An already-empty capture notifies nothing. */
-export function clearCurveWireframeRestore(): void {
-  writeIfChanged(curveWireframeRestore, null);
+/** Drop the bracket capture. An already-empty capture notifies nothing. */
+export function clearCurveEntrySnapshot(): void {
+  writeIfChanged(curveEntrySnapshot, null);
 }
 
 /**
  * Open the painted-curve wireframe bracket: capture the user's current
- * wireframe value FIRST — before the shipped latch forces Draft on — then
- * turn the construction view on. Returns the captured pre-entry value.
+ * wireframe AND Draft values FIRST — before the shipped latch forces Draft
+ * on — then turn the construction view on. Returns the captured pre-entry
+ * wireframe value.
  *
  * A repeated arm never overwrites the capture, so a nested open cannot
  * lose the user's own setting (T-62-04, compare-then-write).
  */
 export function beginCurveWireframeBracket(): boolean {
-  let restore = curveWireframeRestore.peek();
-  if (restore === null) {
-    restore = wireframeMode.peek();
-    curveWireframeRestore.value = restore;
+  let snapshot = curveEntrySnapshot.peek();
+  if (snapshot === null) {
+    snapshot = { wireframe: wireframeMode.peek(), draft: draftMode.peek() };
+    curveEntrySnapshot.value = snapshot;
   }
   setWireframeMode(true);
-  return restore;
+  return snapshot.wireframe;
+}
+
+/**
+ * Close the curve bracket. No-op while no capture is open (compare-then-write,
+ * no notify). Order is the contract: read the action, drop the held fit FIRST,
+ * clear the construction latch, then apply exactly one of leave-Draft / settle,
+ * restore the user's own wireframe, and clear the capture last (T-62-08).
+ */
+export async function endCurveBracket(options: {
+  readonly settle: () => void | Promise<void>;
+}): Promise<void> {
+  const snapshot = curveEntrySnapshot.peek();
+  if (snapshot === null) return;
+  const action = resolveCurveExitAction({
+    preWireframe: snapshot.wireframe,
+    preDraft: snapshot.draft,
+    dirty: draftPixelsDirty.peek(),
+  });
+  clearCurveFitSession();
+  setWireframeMode(false);
+  if (action.leaveDraft) setDraftMode(false);
+  if (action.settle) await options.settle();
+  if (action.restore) setWireframeMode(true);
+  clearCurveEntrySnapshot();
 }
