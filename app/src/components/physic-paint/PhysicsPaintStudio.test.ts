@@ -8111,9 +8111,11 @@ describe('62-04 the pending path-edit apply epoch and the ONE exit-hook registra
     expect(studio.split('registerPathEditExitHook(null)').length - 1).toBe(1);
     // Registered from a DEDICATED effect beside the mount reset — never inside
     // it: the mount reset keeps `[]` deps so `resetForStudioOpen` runs only on
-    // mount. The bracket is the shipped single-flight settle, adopted.
+    // mount. The bracket is the shipped single-flight settle, adopted, and its
+    // promise carries a handler so a rejected settle never becomes an unhandled
+    // rejection on the `void` call (WR-01).
     expect(studio).toMatch(
-      /useEffect\(\(\) => \{\s*registerPathEditExitHook\(\(\) => \{\s*void endCurveBracket\(\{ settle: settleDraftScript \}\);\s*\}\);\s*return \(\) => registerPathEditExitHook\(null\);\s*\}, \[settleDraftScript\]\);/,
+      /useEffect\(\(\) => \{\s*registerPathEditExitHook\(\(\) => \{[\s\S]*?void endCurveBracket\(\{ settle: settleDraftScript \}\)\.catch\(\(error\) => \{[\s\S]*?\}\);\s*\}\);\s*return \(\) => registerPathEditExitHook\(null\);\s*\}, \[settleDraftScript\]\);/,
     );
     const resetAt = studio.indexOf('vectorPathSession.resetForStudioOpen();');
     const registerAt = studio.indexOf('registerPathEditExitHook(() =>');

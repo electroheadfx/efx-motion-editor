@@ -11508,7 +11508,11 @@ export function PhysicsPaintStudio() {
   // cleanup detaches the hook so a remount never leaves a stale one behind.
   useEffect(() => {
     registerPathEditExitHook(() => {
-      void endCurveBracket({ settle: settleDraftScript });
+      // WR-01: the teardown completes in its own `finally`; a rejected settle
+      // must not surface as an unhandled rejection on this `void` call.
+      void endCurveBracket({ settle: settleDraftScript }).catch((error) => {
+        console.error('[PhysicsPaintStudio] curve bracket teardown failed:', error);
+      });
     });
     return () => registerPathEditExitHook(null);
   }, [settleDraftScript]);

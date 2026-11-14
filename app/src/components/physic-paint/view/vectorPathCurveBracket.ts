@@ -114,6 +114,16 @@ function sameSession(a: PaintedCurveSession, b: PaintedCurveSession): boolean {
 }
 
 /**
+ * CR-01: true between the start of a teardown's settle await and its tail.
+ * A bracket opening inside that window TAKES OVER the capture rather than
+ * inheriting it, so the settling teardown can no longer clear the newcomer's
+ * capture by identity — while the newcomer still inherits the ORIGINAL
+ * pre-entry values, so the user's own wireframe/Draft setting survives the
+ * overlap instead of being replaced by the teardown's intermediate state.
+ */
+let curveBracketReleasing = false;
+
+/**
  * Fit a painted stroke's own recorded samples and hold the result.
  *
  * Returns null when there is nothing to fit — fewer than two distinct
@@ -161,11 +171,14 @@ export function clearCurveEntrySnapshot(): void {
  * lose the user's own setting (T-62-04, compare-then-write).
  */
 export function beginCurveWireframeBracket(): boolean {
-  let snapshot = curveEntrySnapshot.peek();
-  if (snapshot === null) {
-    snapshot = { wireframe: wireframeMode.peek(), draft: draftMode.peek() };
-    curveEntrySnapshot.value = snapshot;
-  }
+  const held = curveEntrySnapshot.peek();
+  const snapshot = held === null || curveBracketReleasing
+    ? {
+        wireframe: held === null ? wireframeMode.peek() : held.wireframe,
+        draft: held === null ? draftMode.peek() : held.draft,
+      }
+    : held;
+  if (snapshot !== held) curveEntrySnapshot.value = snapshot;
   setWireframeMode(true);
   return snapshot.wireframe;
 }
@@ -192,7 +205,17 @@ export async function endCurveBracket(options: {
   clearCurveFitSession();
   setWireframeMode(false);
   if (action.leaveDraft) setDraftMode(false);
-  if (action.settle) await options.settle();
-  if (action.restore) setWireframeMode(true);
-  clearCurveEntrySnapshot();
+  // CR-01/WR-01: the tail runs in `finally` and every write is identity-guarded,
+  // so a rejected settle cannot strand the teardown and a bracket that opened
+  // during the await keeps its own capture.
+  curveBracketReleasing = true;
+  try {
+    if (action.settle) await options.settle();
+  } finally {
+    curveBracketReleasing = false;
+    if (curveEntrySnapshot.peek() === snapshot) {
+      if (action.restore) setWireframeMode(true);
+      clearCurveEntrySnapshot();
+    }
+  }
 }

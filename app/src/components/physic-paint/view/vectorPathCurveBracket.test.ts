@@ -343,4 +343,39 @@ describe('62-02 the exit bracket teardown', () => {
     // the construction view the user had on before entry (D-14).
     expect(draftMode.peek()).toBe(true);
   });
+
+  it('does not take a bracket armed while an earlier teardown is still settling (CR-01)', async () => {
+    setDraftPixelsDirty(true);
+    expect(beginCurveWireframeBracket()).toBe(false);
+    let release!: () => void;
+    const settle = vi.fn(() => new Promise<void>((resolve) => { release = resolve; }));
+    const firstTeardown = bracket.endCurveBracket!({ settle });
+    await Promise.resolve();
+    expect(settle).toHaveBeenCalledTimes(1);
+
+    // A second painted entry arms while the first settle is still in flight.
+    expect(beginCurveWireframeBracket()).toBe(false);
+    const secondCapture = bracket.curveEntrySnapshot!.peek();
+    expect(secondCapture).not.toBeNull();
+
+    release();
+    await firstTeardown;
+    // The first teardown must not clear a capture it no longer owns — otherwise
+    // the newcomer can never exit (held fit, forced wireframe and Draft strand).
+    expect(bracket.curveEntrySnapshot!.peek()).toBe(secondCapture);
+
+    const secondSettle = vi.fn();
+    await bracket.endCurveBracket!({ settle: secondSettle });
+    expect(bracket.curveEntrySnapshot!.peek()).toBeNull();
+  });
+
+  it('completes the teardown when the settle rejects (WR-01)', async () => {
+    setDraftPixelsDirty(true);
+    expect(beginCurveWireframeBracket()).toBe(false);
+    const settle = vi.fn(() => Promise.reject(new Error('settle failed')));
+    await expect(bracket.endCurveBracket!({ settle })).rejects.toThrow('settle failed');
+    // The capture is released even on a rejected settle, so the next entry
+    // captures its own state instead of arming behind a stranded snapshot.
+    expect(bracket.curveEntrySnapshot!.peek()).toBeNull();
+  });
 });
