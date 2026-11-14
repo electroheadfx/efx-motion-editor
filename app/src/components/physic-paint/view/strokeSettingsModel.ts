@@ -588,6 +588,21 @@ export interface StrokeSettingsDialogBundle {
    */
   readonly readVectorAnchors?: (ids: readonly number[]) => readonly AquarelleAnchor[] | null;
   /**
+   * 62-02 (D-10): the single selected stroke's curve-entry classification
+   * (vector / painted / refused with its fixed reason). The dialog never
+   * reads the record seam — the Studio resolves ONE recorded stroke. Absent
+   * keeps the shipped vector-only gate byte-identical.
+   */
+  readonly readCurveEntry?: (ids: readonly number[]) => CurveEntryState | null;
+  /**
+   * 62-02 (D-03): enter curve mode on the single eligible painted stroke —
+   * arm the durable base, fit the stroke's own samples lazily, bracket the
+   * wireframe and open the shipped path-edit latch. False when the stroke is
+   * missing or refused, or the base could not be armed (nothing is written,
+   * held or opened). Absent hides the painted entrance.
+   */
+  readonly enterPaintedCurve?: (ids: readonly number[]) => boolean | Promise<boolean>;
+  /**
    * 61-11 (VEC-03 / T-61-38): write one factor on EVERY selected anchor of the
    * single selected vector stroke as ONE path edit, so a multi-anchor change is
    * one undo entry rather than one per anchor. Returns true only when the edit

@@ -456,11 +456,19 @@ export function PhysicsPaintStrokeSettingsDialog({
   const selectedVectorAnchors = selectedMutationId !== null && engineModule === 'watercolor'
     ? (bundle?.readVectorAnchors?.([selectedMutationId]) ?? null)
     : null;
+  // 62-02 (D-10): the SAME single-selection read classifies the curve entry —
+  // ONE recorded stroke through the Studio bundle, never a fit and never a
+  // signal subscription. A vector stroke reads kind `vector`; an eligible
+  // painted stroke reads `painted`; a refusal carries its fixed reason.
+  const curveEntry = selectedMutationId !== null && engineModule === 'watercolor'
+    ? (bundle?.readCurveEntry?.([selectedMutationId]) ?? null)
+    : null;
   const pathEditGate = resolvePathEditGate({
     selectionSize: selection.size,
     vectorStrokeCount: selectedVectorAnchors !== null ? 1 : 0,
     selectedMutationId,
     pathEditMutationId: pathEditMutationId.value,
+    curveEntry,
   });
   const pathEditGateEnabled = pathEditGate.enabled;
 
@@ -999,6 +1007,14 @@ export function PhysicsPaintStrokeSettingsDialog({
               }
               const target = selectedMutationId;
               if (target === null) return;
+              // 62-02 (D-03): an eligible painted stroke enters through the
+              // Studio's lazy fit (arm, fit, bracket, latch); the leaf itself
+              // fits nothing and writes nothing. A vector stroke keeps the
+              // shipped session action — same button, same latch.
+              if (curveEntry?.kind === 'painted') {
+                void bundle?.enterPaintedCurve?.([target]);
+                return;
+              }
               // Session action only: the Studio's overlay owns the record seam.
               enterPathEdit(String(target));
             }}

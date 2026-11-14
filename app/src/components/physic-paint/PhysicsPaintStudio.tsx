@@ -111,6 +111,7 @@ import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import * as vectorPathSession from './view/vectorPathSession';
+import { beginCurveWireframeBracket, beginPaintedCurveSession } from './view/vectorPathCurveBracket';
 import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
@@ -329,7 +330,10 @@ import {
 } from './view/aquarelleVectorPathCommit';
 import {
   ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE,
+  admitsPathEditWrite,
   resolveAnchorWidthTarget,
+  resolvePaintedCurveEligibility,
+  type CurveEntryState,
   type ScriptStrokeAppearancePatch,
   type StrokeSettingsDialogBundle,
 } from './view/strokeSettingsModel';
@@ -10256,6 +10260,46 @@ export function PhysicsPaintStudio() {
     setApplyStatus('error');
     setLastError(message);
   }, []);
+  // 62-02 (D-03 / D-10): the painted-curve entrance's two Studio seams. Both
+  // are declared BEFORE the shared commit so the shipped 61-10 region slices
+  // (commit / handler) keep their exact boundaries and publication pins.
+  //
+  // `readCurveEntry` is the dialog's render-body classification read: ONE
+  // recorded stroke, never a fit (the fit is an ENTRY action, never a
+  // selection or gate action) and never a signal subscription.
+  const readCurveEntry = useCallback((ids: readonly number[]): CurveEntryState | null => {
+    if (ids.length !== 1) return null;
+    const stroke = getRecordedAquarelleStroke(ids[0]!);
+    if (!stroke) return null;
+    return resolvePaintedCurveEligibility(stroke);
+  }, []);
+  // `enterPaintedCurve` is the ONE painted entrance: arm the durable base
+  // FIRST (a refused arm fails closed and publishes the shipped fixed copy),
+  // then fit the stroke's OWN samples and hold them, bracket the wireframe
+  // (capturing the pre-entry view state) and open the shipped path-edit
+  // latch. Nothing is written to the document, the revision or the ledger
+  // here — the first committed gesture performs the ONE conversion write.
+  const enterPaintedCurve = useCallback(async (ids: readonly number[]): Promise<boolean> => {
+    if (ids.length !== 1) return false;
+    const stroke = getRecordedAquarelleStroke(ids[0]!);
+    if (!stroke) return false;
+    if (resolvePaintedCurveEligibility(stroke).kind !== 'painted') return false;
+    const armed = await armDraftBase();
+    if (!armed) {
+      // The awaited arm already published this fixed line; restating it keeps
+      // the entry's refusal on the shipped capsule even if that changes.
+      // Fail closed: no fit held, no bracket, no latch.
+      setApplyMessage(DRAFT_ARM_REFUSAL_MESSAGE);
+      setApplyStatus('error');
+      return false;
+    }
+    const session = beginPaintedCurveSession(stroke);
+    if (session === null) return false;
+    beginCurveWireframeBracket();
+    vectorPathSession.enterPathEdit(String(ids[0]!));
+    return true;
+  }, [armDraftBase, setApplyMessage, setApplyStatus]);
+
   // 61-15 (G-1/G-2): the ONE writer AND the ONE bake for a user path edit.
   // Guard order and the post-await Draft read mirror `handleAquarelleMoveStrokes`
   // (261101-o2m WR-03): the base recovery can settle Draft OFF, so a stale
@@ -10359,13 +10403,17 @@ export function PhysicsPaintStudio() {
 
   // 61-10 (VEC-02 / T-61-34): the ONE path-edit seam. The overlay hands the
   // full next anchor list; this handler is the only writer. A missing stroke or
-  // an unreadable path is refused WHOLE — nothing is written and the existing
-  // status capsule publishes the fixed line. A null edit id for a READABLE path
-  // is an in-flight or unchanged gesture, which must publish nothing.
+  // a stroke the admission predicate refuses is refused WHOLE — nothing is
+  // written and the existing status capsule publishes the fixed line. 62-02
+  // (D-10): `admitsPathEditWrite` is a strict superset of the pre-62
+  // readable-anchors test — it also admits an eligible anchorless painted
+  // stroke, whose gesture is the conversion the one commit then performs. A
+  // null edit id for an admitted path is an in-flight or unchanged gesture,
+  // which must publish nothing.
   const handleAquarelleVectorPathEdit = useCallback(
     async (mutationId: number, anchors: readonly AquarelleAnchor[]): Promise<number | null> => {
       const stroke = getRecordedAquarelleStroke(mutationId);
-      if (!stroke || normaliseAquarelleAnchors(stroke.anchors) === undefined) {
+      if (!stroke || !admitsPathEditWrite(stroke)) {
         setApplyMessage(VECTOR_PATH_REJECTION_MESSAGE);
         setApplyStatus('error');
         setLastError(VECTOR_PATH_REJECTION_MESSAGE);
@@ -11676,6 +11724,10 @@ export function PhysicsPaintStudio() {
       // 61-19 (G-8): the Anchor width write now routes through the shared
       // path-edit commit, so that stable useCallback joins the bundle's deps.
       commitAquarelleVectorPathEdit,
+      // 62-02 (D-03 / D-10): the painted entrance's classification read and
+      // its lazy entry action — both stable useCallbacks.
+      readCurveEntry,
+      enterPaintedCurve,
     ],
     () => {
       const playFrame = launchContextRef.current?.startFrame ?? 0;
@@ -11717,6 +11769,12 @@ export function PhysicsPaintStudio() {
           if (!stroke) return null;
           return normaliseAquarelleAnchors(stroke.anchors) ?? null;
         },
+        // 62-02 (D-03 / D-10): the painted entrance. The render-body read
+        // classifies ONE recorded stroke and never fits; the click entry arms
+        // the base, fits lazily and opens the latch through these callbacks —
+        // the dialog leaf stays engine-free and store-free.
+        readCurveEntry,
+        enterPaintedCurve,
         // 61-11 (VEC-03 / T-61-38) + 61-19 (G-5): the Anchor width commit. The
         // target comes from the OPEN path edit — never `ids[0]` — because the
         // anchor indices belong to that edit; a mismatch or absent edit refuses.
