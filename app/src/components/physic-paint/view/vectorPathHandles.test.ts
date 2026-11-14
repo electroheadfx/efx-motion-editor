@@ -1026,3 +1026,123 @@ describe('buildVectorStroke — every required field has a stated source', () =>
     expect('curveMode' in stroke).toBe(false);
   });
 });
+
+// ============================================================
+//  62-01 D-07/D-08 — the count-preserving edit-time re-sample.
+//
+//  An EDIT redistributes the stroke's existing samples along the
+//  new spine by arc length (the count IS `ticks`) and remaps the
+//  recorded pressure along the ORIGINAL polyline's arc length with
+//  both ends pinned. The draw-time mint above is untouched.
+//
+//  Resolved dynamically so this block pins the planned export
+//  without turning its absence into a module-load failure.
+// ============================================================
+
+type VectorSpinePressureLaw = (
+  spine: readonly Vec2[],
+  sourcePoints: readonly { readonly x: number; readonly y: number; readonly p: number }[],
+) => { readonly points: readonly Vec2[]; readonly pressures: readonly number[] };
+
+async function pressureLaw(): Promise<VectorSpinePressureLaw> {
+  const module = (await import('./vectorPathHandles')) as unknown as Record<string, unknown>;
+  return module.resampleVectorSpineWithPressureLaw as VectorSpinePressureLaw;
+}
+
+describe('62-01 D-07/D-08 — the count-preserving pressure-law re-sample', () => {
+  it('places exactly as many stations as the source, evenly by arc length', async () => {
+    const resample = await pressureLaw();
+    // An L-shaped spine: 0.4 along x, then 0.4 along y.
+    const spine: Vec2[] = [
+      { x: 0.2, y: 0.5 },
+      { x: 0.6, y: 0.5 },
+      { x: 0.6, y: 0.9 },
+    ];
+    const source = [0, 1, 2, 3, 4].map((index) => ({
+      x: 0.1 + index * 0.1,
+      y: 0.5,
+      p: 0.2 + index * 0.1,
+    }));
+
+    const out = resample(spine, source);
+
+    expect(out.points).toHaveLength(5);
+    expect(out.pressures).toHaveLength(5);
+    // Five stations over 0.8 of arc length: 0.2 between each pair.
+    for (let index = 1; index < out.points.length; index += 1) {
+      const previous = out.points[index - 1]!;
+      const point = out.points[index]!;
+      expect(Math.hypot(point.x - previous.x, point.y - previous.y)).toBeCloseTo(0.2, 12);
+    }
+    // Endpoints are the spine's own endpoints; the middle station is the turn.
+    expect(out.points[0]!.x).toBe(0.2);
+    expect(out.points[0]!.y).toBe(0.5);
+    expect(out.points[2]!.x).toBeCloseTo(0.6, 12);
+    expect(out.points[2]!.y).toBeCloseTo(0.5, 12);
+    expect(out.points[4]!.x).toBe(0.6);
+    expect(out.points[4]!.y).toBe(0.9);
+  });
+
+  it('remaps the recorded profile by arc length and pins both ends', async () => {
+    const resample = await pressureLaw();
+    const spine: Vec2[] = [
+      { x: 0.1, y: 0.5 },
+      { x: 0.9, y: 0.5 },
+    ];
+    // Source stations at arc fractions 0, 1/12, 1/2, 7/12 and 1.
+    const xs = [0.2, 0.25, 0.5, 0.55, 0.8];
+    const ps = [0.2, 0.3, 0.5, 0.7, 0.9];
+    const source = xs.map((x, index) => ({ x, y: 0.5, p: ps[index]! }));
+
+    const out = resample(spine, source);
+
+    expect(out.pressures[0]).toBe(0.2);
+    expect(out.pressures[1]).toBeCloseTo(0.38, 9);
+    expect(out.pressures[2]).toBeCloseTo(0.5, 9);
+    expect(out.pressures[3]).toBeCloseTo(0.78, 9);
+    expect(out.pressures[4]).toBe(0.9);
+  });
+
+  it('keeps an all-sentinel source all-sentinel', async () => {
+    const resample = await pressureLaw();
+    const spine: Vec2[] = [
+      { x: 0.1, y: 0.2 },
+      { x: 0.5, y: 0.8 },
+      { x: 0.9, y: 0.2 },
+    ];
+    const source = [0.2, 0.4, 0.6, 0.8].map((x) => ({ x, y: 0.5, p: -1 }));
+
+    const out = resample(spine, source);
+
+    expect(out.points).toHaveLength(4);
+    expect(out.pressures).toEqual([-1, -1, -1, -1]);
+  });
+
+  it('repeats the first point for a zero-length spine, never NaN', async () => {
+    const resample = await pressureLaw();
+    const spine: Vec2[] = [
+      { x: 0.4, y: 0.4 },
+      { x: 0.4, y: 0.4 },
+      { x: 0.4, y: 0.4 },
+    ];
+    const source = [
+      { x: 0.2, y: 0.5, p: 0.25 },
+      { x: 0.5, y: 0.5, p: 0.5 },
+      { x: 0.8, y: 0.5, p: 0.75 },
+    ];
+
+    const out = resample(spine, source);
+
+    expect(out.points).toHaveLength(3);
+    for (const point of out.points) {
+      expect(point.x).toBe(0.4);
+      expect(point.y).toBe(0.4);
+      expect(Number.isFinite(point.x)).toBe(true);
+      expect(Number.isFinite(point.y)).toBe(true);
+    }
+    expect(out.pressures[0]).toBe(0.25);
+    expect(out.pressures[1]).toBeCloseTo(0.5, 9);
+    expect(out.pressures[2]).toBe(0.75);
+    for (const pressure of out.pressures) expect(Number.isFinite(pressure)).toBe(true);
+  });
+});
