@@ -961,11 +961,10 @@ describe('62-01 painted-stroke conversion — one write, one undo', () => {
     expect(afterEntry.traceSeed).toBe(beforeEntry.traceSeed);
     expect(afterEntry.engine.params).toEqual(beforeEntry.engine.params);
     // The ONLY changed keys are the path's three.
+    const afterFields = after as unknown as Record<string, unknown>;
+    const beforeFields = before as unknown as Record<string, unknown>;
     const changed = Object.keys(after)
-      .filter(
-        (key) =>
-          (after as Record<string, unknown>)[key] !== (before as Record<string, unknown>)[key],
-      )
+      .filter((key) => afterFields[key] !== beforeFields[key])
       .sort();
     expect(changed).toEqual(['anchors', 'curveMode', 'points']);
   });

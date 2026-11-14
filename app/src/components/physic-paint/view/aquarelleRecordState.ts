@@ -1092,10 +1092,24 @@ export function updateAquarelleCurveModeInScript(
  * Idempotent: an unchanged anchor list stores nothing, bumps nothing and
  * returns 0. The persisted form drops a width factor equal to 1 (D-10), so a
  * drag can never leave width residue behind.
+ *
+ * 62-01 (D-01, D-02, D-12): the write MAY carry a requested curve mode. This
+ * is the ONE seam the painted-stroke conversion rides: storing the anchors,
+ * the requested mode and the re-derived points together is a single write with
+ * a single revision bump, so one undo restores the exact hand samples and
+ * removes both keys. The default mode is expressed by the ABSENT key (never
+ * `curveMode: 'bezier'`). An invalid requested mode is refused whole — nothing
+ * is written and 0 is returned.
  */
+export interface AquarellePathWriteOptions {
+  /** The evaluation mode to store with the new path; absent keeps the stroke's. */
+  readonly curveMode?: AquarelleCurveMode;
+}
+
 export function updateAquarellePathInScript(
   mutationId: number,
   anchors: readonly AquarelleAnchor[],
+  options?: AquarellePathWriteOptions,
 ): number {
   if (!Number.isFinite(mutationId)) return 0;
   const stroke = recordedStrokes.get(mutationId);
@@ -1103,18 +1117,24 @@ export function updateAquarellePathInScript(
   if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) return 0;
   const index = payloadTimeline.indexOf(entry);
   if (index < 0) return 0;
+  const requestedMode = options?.curveMode;
+  if (requestedMode !== undefined && !isAquarelleCurveMode(requestedMode)) return 0;
   const normalised = normaliseAquarelleAnchors(anchors);
   if (normalised === undefined) return 0;
   const nextAnchors = projectVectorPath(normalised);
-  if (anchorsEqual(stroke.anchors ?? [], nextAnchors)) return 0;
+  const effectiveMode = resolveAquarelleCurveMode(requestedMode ?? stroke.curveMode);
+  if (
+    anchorsEqual(stroke.anchors ?? [], nextAnchors)
+    && resolveAquarelleCurveMode(stroke.curveMode) === effectiveMode
+  ) {
+    return 0;
+  }
   // 61-29 (G-17): re-derive the replay spine from the anchors just stored.
   // `toStudioStroke` projects these points into the payload's `pts`, and they
   // are stamped with the exact six-field shape `buildVectorStroke` writes.
-  // 61-30 (G-20): the evaluation honours the stroke's stored curve mode.
-  const { points: sampledSpine } = evaluateAquarellePath(
-    nextAnchors,
-    resolveAquarelleCurveMode(stroke.curveMode),
-  );
+  // 61-30 (G-20): the evaluation honours the effective curve mode — the
+  // stroke's own when the write carries none, the requested one otherwise.
+  const { points: sampledSpine } = evaluateAquarellePath(nextAnchors, effectiveMode);
   const paintSpine = resampleVectorPaintPoints(sampledSpine);
   const pressures = vectorSpinePressures(paintSpine);
   const nextPoints = paintSpine.map((point, sampleIndex) => ({
@@ -1126,6 +1146,10 @@ export function updateAquarellePathInScript(
     tw: 0,
   }));
   const nextStroke: AquarelleStroke = { ...stroke, points: nextPoints, anchors: nextAnchors };
+  // The default mode is expressed by the ABSENT key (D-02): a write back to
+  // Bézier must drop a previously stored mode, never keep it stale.
+  delete nextStroke.curveMode;
+  if (effectiveMode !== DEFAULT_AQUARELLE_CURVE_MODE) nextStroke.curveMode = effectiveMode;
   // Regenerate through the ONE projection so the payload's opaque engine block
   // carries the same anchors the stroke holds (T-61-34).
   const nextEntry = toStudioStroke(nextStroke);

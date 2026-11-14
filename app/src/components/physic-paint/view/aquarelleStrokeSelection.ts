@@ -96,6 +96,7 @@ import {
   updateAquarelleCurveModeInScript,
   updateAquarellePathInScript,
   updateAquarelleStrokesInScript,
+  type AquarellePathWriteOptions,
   type AquarelleStackStepDirection,
   type AquarelleStrokeRegistrySnapshot,
   type AquarelleStrokeTransform,
@@ -1067,12 +1068,13 @@ export function beginAquarelleCurveModeEdit(
 export function beginAquarellePathEdit(
   mutationId: number,
   anchors: readonly AquarelleAnchor[],
+  options?: AquarellePathWriteOptions,
 ): number | null {
   clearAquarelleStrokeDrag();
   if (aquarelleScriptEditInFlight) return null;
   if (!Number.isFinite(mutationId)) return null;
   const before = captureAquarelleSnapshot();
-  if (updateAquarellePathInScript(mutationId, anchors) === 0) return null;
+  if (updateAquarellePathInScript(mutationId, anchors, options) === 0) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }
