@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: executing
-stopped_at: Completed 62-03-PLAN.md
-last_updated: "2026-11-14T13:09:13.093Z"
+stopped_at: Completed 62-05-PLAN.md
+last_updated: "2026-11-14T13:17:48.067Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 62 execution started
-state_head: b996d469328a4dc402adec322a62e0f619be0d72
+state_head: 7e38f8960a66376363b48565db4bb4b168698341
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 67
-  completed_plans: 65
+  completed_plans: 66
   percent: 75
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 ## Current Position
 
 Phase: 62 (Painted-Stroke Curve Editing) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-11-14 — Phase 62 execution started
 
@@ -124,6 +124,7 @@ Progress: [████████░░] 75%
 | Phase 62 P01 | 22min | 3 tasks | 10 files |
 | Phase 62 P02 | 16min | 3 tasks | 13 files |
 | Phase 62 P03 | 10min | 3 tasks | 6 files |
+| Phase 62 P05 | 6min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -369,6 +370,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 62]: 62-03: D-09 discriminates on recorded samples (any finite p >= 0), never a persisted flag; the all-sentinel mouse profile keeps the shipped anchor-width envelope as the documented exception
 - [Phase 62]: 62-03: renderPath draws ONE envelope ring from drawn.envelopePx ?? projection.envelope, fed by the shipped revision|width|height-keyed buildStrokeBandCached
 - [Phase 62]: 62-03: the shipped 61-25 uniform-profile fixture moved to the all-sentinel profile — the ONE profile D-09's exception leaves under D-10's law
+- [Phase 62]: D-11: buildRotoRealCacheRevision is the ONE production statement of the real-source identity; all store/remap/persistence sites route through it byte-identically.
+- [Phase 62]: The paper cache term stays a verbatim suffix (no separator, no normalization), preserving every shipped persistence key.
+- [Phase 62]: CRV-03 edge probes and the D-11 source-only pin are test-only over shipped seams and landed GREEN by construction; no RED was fabricated.
 
 ### Pending Todos
 
@@ -476,8 +480,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-14T13:09:11.143Z
-Stopped at: Completed 62-03-PLAN.md
+Last session: 2026-11-14T13:17:46.145Z
+Stopped at: Completed 62-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
