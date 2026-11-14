@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: executing
-stopped_at: Phase 62 context gathered
-last_updated: "2026-11-14T12:11:00.060Z"
-last_activity: 2026-11-13
-last_activity_desc: Quick 261113-qjd CLOSED (context-aware Shift+? help, shared editor/Studio modal); Phase 62 ready to plan
-state_head: 86ea686480d427d113a4585114200289d020f8aa
+stopped_at: Completed 62-01-PLAN.md
+last_updated: "2026-11-14T12:37:01.197Z"
+last_activity: 2026-11-14
+last_activity_desc: Phase 62 execution started
+state_head: a21ca9ce669da9315a925954410ff0c125d532f5
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 67
-  completed_plans: 62
+  completed_plans: 63
   percent: 75
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 
 ## Current Position
 
-Phase: 62 (Painted-Stroke Curve Editing) — READY TO EXECUTE
-Plan: Not started
+Phase: 62 (Painted-Stroke Curve Editing) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-11-13 - Quick task 261113-qjd CLOSED (UAT approved): Shift+? opens the shortcuts help on the matching context (Paint Mode while editing strokes, Timeline or Canvas by hover, Sections otherwise) with an always-visible "Detected:" label; the editor and the Physic Paint Studio now render the same shortcuts modal, with the Studio's global button styling isolated away and stacked key symbols spaced (⇧ ⌘ Z) for legibility.
+Last activity: 2026-11-14 — Phase 62 execution started
 
 Progress: [████████░░] 75%
 
@@ -121,6 +121,7 @@ Progress: [████████░░] 75%
 | Phase 61 P29 | 7 min | 3 tasks | 3 files |
 | Phase 61 P30 | 10 | 2 tasks | 15 files |
 | Phase 61 P31 | 11min | 3 tasks | 10 files |
+| Phase 62 P01 | 22min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -352,6 +353,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 61]: The simple-ribbon engine and the `renderMode` field were deleted rather than migrated (payload, engine branch, shaders, preset, adapter, probe, AQTL byte, Rust model); the decoder still skips the legacy byte so older scripts load
 - [Phase 61]: Vector strokes replay as a mouse stroke with speed owning the pressure at a hand's cadence — a flat synthetic pressure read as a dead stroke beside hand-painted work
 - [Phase 261112-lq4-ui-stroke-vector-modal-redesign]: Quick 261112-lq4: Stroke settings is one always-visible List | Geometry | Stack | Curve tab row; List is the watercolor default, Stack stays gated on reorderStroke, Curve on one selected vector stroke, and the active tab is a pure derivation with no write-back (a requested Curve returns after a dip); the list/settings view gate, its ref, marker and model helpers are deleted; the single Vertex size mount, Curve row and Corner row live in Curve; Edit path and Preview stroke size moved to the Draft strip
+- [Phase 62]: Painted-stroke conversion reuses the existing updateAquarellePathInScript seam through a new options argument: anchors, absent-key default curveMode and re-derived points land in ONE write, ONE revision bump and ONE ledger entry.
+- [Phase 62]: The fit is interpolating, never approximating: Douglas-Peucker on the original samples with tolerance equal to PATH_SAMPLE_STEP_UV, a pi/4 cumulative-turn pass, then a deterministic 40-anchor cap (bounded tolerance doubling, index decimation last).
+- [Phase 62]: Every edit seam preserves the recorded sample count (the count IS ticks) and remaps recorded pressure by source arc length with both ends pinned; the draw-time mint is untouched and all-sentinel strokes stay sentinel.
 
 ### Pending Todos
 
@@ -459,9 +463,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-14T11:10:30.491Z
-Stopped at: Phase 62 context gathered
-Resume file: .planning/phases/62-painted-stroke-curve-editing/62-CONTEXT.md
+Last session: 2026-11-14T12:36:59.318Z
+Stopped at: Completed 62-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

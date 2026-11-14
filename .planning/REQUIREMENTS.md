@@ -52,8 +52,8 @@ Each maps to exactly one roadmap phase.
 
 ### Painted-stroke curve editing (Phase 62)
 
-- [ ] **CRV-01**: User can select a painted stroke and enter curve mode, with anchors fitted on entry
-- [ ] **CRV-02**: Editing anchors and handles commits as one ledger entry and re-bakes from the recovered pre-script base rather than deforming cached pixels
+- [x] **CRV-01**: User can select a painted stroke and enter curve mode, with anchors fitted on entry
+- [x] **CRV-02**: Editing anchors and handles commits as one ledger entry and re-bakes from the recovered pre-script base rather than deforming cached pixels
 - [ ] **CRV-03**: Every loop occurrence of the edited stroke is invalidated together
 - [ ] **CRV-04**: Undo cancels or settles an in-flight bake
 
@@ -135,8 +135,8 @@ Deferred to a later milestone. Not in the current roadmap.
 | VEC-05 | Phase 61 | Complete |
 | VEC-06 | Phase 61 | Complete |
 | VEC-07 | Phase 61 | Complete |
-| CRV-01 | Phase 62 | Pending |
-| CRV-02 | Phase 62 | Pending |
+| CRV-01 | Phase 62 | Complete |
+| CRV-02 | Phase 62 | Complete |
 | CRV-03 | Phase 62 | Pending |
 | CRV-04 | Phase 62 | Pending |
 | REL-01 | Phase 59 (enforced first; holds across Phases 59–62) | Complete |
