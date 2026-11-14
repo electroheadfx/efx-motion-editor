@@ -119,6 +119,10 @@ metrics:
   duration: 3min
   completed: 2026-11-07
   status: complete
+audit_acknowledged:
+  milestone: v2.1.0
+  at: 2026-11-14
+  status: unknown
 ---
 
 # Quick 261107-sg3: Move the Hand tool to the canvas for zoom/pan Summary

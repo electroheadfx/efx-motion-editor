@@ -14,7 +14,7 @@ provides:
   - Channel-level `wiggle` (0..1,000,000) and `wiggleGlobal` (boolean) on PhysicPaintRotoRailMotionChannel through the TS model, both canonical encoders, the Rust validator and the golden fixture
   - Tolerant read / canonical write persistence with no migration and no write-back
   - Two-mode evaluator wiggle law (global whole-timeline vs per-key outgoing span) on a pure seeded hash sampled at the snapped frame
-  - `set-channel-wiggle` and `set-easing-all-keys` model edits/commands with one commit each through commitRailMotionRecords
+  - "`set-channel-wiggle` and `set-easing-all-keys` model edits/commands with one commit each through commitRailMotionRecords"
   - Motion sheet rows for per-channel Wiggle + Global toggle, Apply to all keys, and a labelled Reset button
   - One exported Lucide easing-icon mapping shared by the sheet buttons and every lane motion-key marker
   - Tool-strip Motion-key easing/Wiggle controls and their plumbing removed; typecheck proves the deletion

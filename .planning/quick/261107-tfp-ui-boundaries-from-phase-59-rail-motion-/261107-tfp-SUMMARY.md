@@ -115,6 +115,10 @@ metrics:
   duration: 10min
   completed: 2026-11-07
   status: complete
+audit_acknowledged:
+  milestone: v2.1.0
+  at: 2026-11-14
+  status: unknown
 ---
 
 # Quick 261107-tfp: Canvas boundary box hugs the displayed key's ink Summary

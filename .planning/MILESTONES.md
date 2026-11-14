@@ -1,5 +1,34 @@
 # Milestones
 
+## v2.1.0 Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (Shipped: 2026-11-14)
+
+**Phases completed:** 4 phases (59-62), 67 plans, 177 tasks
+
+**Closeout type:** override_closeout
+**Known verification overrides:** 5 newly acknowledged (4 quick tasks — 261107-sg3, 261107-tfp, 261108-gh0, 261113-fkm — completed with UAT approvals but carrying no UAT status file for the scanner; 1 UAT gap — Phase 61's `61-UAT-QUICKS.md`, a follow-up instruction document with 0 open scenarios); 130 carried forward from prior closes (see STATE.md Deferred Items). Two quick SUMMARY frontmatters were repaired (unquoted backtick scalars) before their acknowledgement could be written.
+**Git range:** `v2.0.1` → `5de7c785e` (804 commits), 2026-11-05 → 2026-11-14 (9 days)
+**Requirements:** 38/38 checked (MOTN-01..12, MUI-01..06, ZOOM-01..05, VEC-01..07, CRV-01..04, REL-01..04) — 37 satisfied as written, MOTN-12's undo half accepted as a user deviation (Motion-only operations are absent from the Studio undo ledger; non-destructive, channel removable explicitly)
+**Diff:** 1,227 files, +346,347 / −17,977 (includes `.planning/` and generated artifacts; code-only 271 files, +75,740 / −3,016)
+**Verification:** 4/4 phases `passed` — 21 + 20 + 19 + 49 = 109/109 must-haves; all four VALIDATION.md Nyquist COMPLIANT; live UAT 51 rows approved or resolved
+**Archives:** `milestones/v2.1.0-ROADMAP.md`, `milestones/v2.1.0-REQUIREMENTS.md`, `milestones/v2.1.0-MILESTONE-AUDIT.md`
+**Phases:** `milestones/v2.1.0-phases/` (Phases 59, 60, 61, 62)
+**Tests at close:** app 438 files / 9,221 tests (1 skipped, 96 todo) + watercolor 15 files / 306 tests; `pnpm typecheck` and `cargo check` green
+
+**Delivered:** A MINOR milestone that turns every rail into an animatable object and extends the paint document with two new geometry systems while keeping the one-engine / one-compositor architecture intact. Rail Motion is a second, independent key system on any rail — Standard, Motion, Static, Reveal or bare Key Rail — with no cycle value and no conversion: Position (grouped or split X/Y), Scale, Rotation (unbounded) and Opacity evaluate in rail-local time (Hold, Ease, seeded deterministic Wiggle) and are applied once at the compositor, so content cycles while motion continues and nothing re-bakes. The v7 channel-lane surface is live (18px lanes, header cluster, 6×6 keys, rounded selected-rail outline) with a gizmo plus numeric inspector. Timeline zoom scales frame density 0.25×–4× from one pitch authority, keeping the frame under the cursor and the playhead fixed, with vertical geometry untouched and per-layer memory across Studio reopens. The vector painting tool adds a second stroke kind on the same engine, codec and compositor: pen-drawn anchors with per-vertex size and sparse per-vertex colour, per-stroke style, spline curve mode, wireframe preview, AQTL v2 persistence and export parity. Painted-stroke curve editing converts a stroke one-way to a curve on its first anchor/handle edit and re-bakes from the recovered pre-script base across every Loop Clip occurrence from one source-scoped cache identity. No new runtime dependencies; every new `.mce` field is declared in both TS and Rust with byte-parity golden fixtures. Release state: version 2.1.0 bumped; final `v2.1.0` tag and signed publish remain a user action (audit-before-publish rule).
+
+**Key accomplishments:**
+
+1. Any rail animates: independent Motion keys drive a compositor-level transform with durable derived rail identity (reconciled at split/merge/delete/copy/paste/reopen), one pure evaluator (endpoint hold, Hold/Ease, unbounded rotation, stateless FNV-seeded wiggle at the exact frame the compositor samples), motion joining the canonical revision without ever entering the raster/cache key, and a conditional `rail-motions` canonical term reproduced byte-for-byte in Rust
+2. The v7 motion-lane interface ships on the real Studio timeline: one open rail block at a time, 18px lanes with the header cluster (icon, label, key count, previous/diamond/next), 16×18 cells, 6×6 keys with the lighter rim, the rounded outline wrapping the rail plus its channels, and the add-channel `+` row that never disappears
+3. Motion authoring is commandable and honest: Animate seeds an idempotent rail-local key, add/remove/step work per scope, easing and wiggle attach only to Motion keys, three selection scopes stay independent, a merged-away rail announces its dropped motion, and projected fields render disabled with the command layer's own refusal sentence
+4. Timeline zoom reads one session pitch authority everywhere (ruler, playhead, hit-testing, drag, scrub, selection, paste, sound stains, scroll-to-frame, rail geometry, motion lanes), with a literal-pitch audit that fails on reintroduction, a five-level acceptance matrix, and zoom remembered per paint layer and never persisted
+5. The vector painting tool is a second stroke kind without a second engine: pen/spline draw and edit through one undo entry per gesture, per-vertex size and sparse per-vertex colour ride the deposit path, wireframe serves as the drag-time mode, and AQTL v2 carries anchors, sparse width and render mode end to end — v1 refused outright, reopen editable, export parity pinned
+6. Painted-stroke curve editing converts one-way on the first anchor/handle edit, re-bakes from the recovered pre-script base (sample count, wet lifetime and pressure profile preserved), reaches every loop occurrence through one source-scoped cache identity, and cancels an in-flight bake on undo with no ledger entry
+
+**Technical debt carried forward:** MOTN-12 undo half (Motion-only operations not in the ledger — accepted deviation with a routed-through-coordinator follow-up candidate) · Phase 59 WR-01/WR-02/WR-07 and IN-06/IN-07 · Phase 60 pitch-gutter origin bias, ruler/playhead half-cell divergence and docs lag · Phase 61 fire-and-forget paint-control seam, orphan-focus window route, addKey latch ordering and curve-mode restore copy · Phase 62 tilt-drop (accepted for v1), post-await busy gates, silent cancelled-bake refusals and `resetForStudioOpen` curve-session omission · two Phase 62 integration warnings (canvas painted-entrance selection write; Studio redo lacks the in-flight-bake guard).
+
+---
+
 ## v2.0.1 Rail Editing & v7 Timeline Rails (Shipped: 2026-11-05)
 
 **Phases completed:** 1 phase (58), 10 plans, 21 tasks — plus 5 in-milestone quicks (261104-l0i, 261104-bop, 261105-p9i, 261105-raf, 261105-sk3)

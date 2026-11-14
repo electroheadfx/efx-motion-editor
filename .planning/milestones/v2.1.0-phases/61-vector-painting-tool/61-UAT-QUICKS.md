@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v2.1.0
+  at: 2026-11-14
+  gap_snapshot: "unknown::scenarios=0"
+---
+
 # Phase 61 UAT quicks — per-stroke brush, paint routing, Paint-tab removal, per-vertex color/size
 
 Branch: `gsd/phase-61-vector-painting-tool`, milestone v2.1.0.

@@ -11,7 +11,7 @@ requires:
   - phase: 261111-t74
     provides: The ONE whole-stroke appearance batch (brush id, multipliers, source-pin region)
   - phase: 261024-p5q
-    provides: `beginAquarelleAppearanceEdit` and the registry before/after snapshot pair
+    provides: "`beginAquarelleAppearanceEdit` and the registry before/after snapshot pair"
 provides:
   - A whole-stroke colour apply now clears every explicit anchor `color` in the SAME edit
   - A same-colour apply on a coloured-anchor stroke is an edit again (1 + one revision bump)

@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
-current_phase: 62
-current_phase_name: Painted-Stroke Curve Editing
-status: completed
+status: Awaiting next milestone
 stopped_at: Milestone v2.1.0 summary generated
-last_updated: "2026-11-14T21:20:30.066Z"
+last_updated: "2026-11-14T21:33:29.306Z"
 last_activity: 2026-11-14
-last_activity_desc: Phase 62 complete
-state_head: a6e9a13bf5dfc162cb8bfe2961632332c178558d
+last_activity_desc: Milestone v2.1.0 completed and archived
+state_head: 5de7c785e8469ca3b12b6c788ae97a657d5b4b8f
 progress:
   total_phases: 4
   completed_phases: 4
   total_plans: 67
   completed_plans: 67
   percent: 100
+current_phase: 62
+current_phase_name: Painted-Stroke Curve Editing
 ---
 
 # Project State
@@ -29,12 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-14 after Phase 62)
 
 ## Current Position
 
-Phase: 62 (Painted-Stroke Curve Editing)
-Plan: 5/5 plans complete
-Status: All phases complete
-Last activity: 2026-11-14 — Phase 62 complete
-
-Progress: [████████████████████] 67/67 plans ([██████████] 100%)
+Phase: Milestone v2.1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-11-14 — Milestone v2.1.0 completed and archived
 
 ## Performance Metrics
 
@@ -444,6 +442,11 @@ Items acknowledged and carried forward from previous milestone close:
 | debug_sessions | script-playback-draws-nothing | awaiting_human_verify | 2026-11-02 (v2.0.0) |
 | todos | 261024-frame-fade-compositing.md | (presence-only) | 2026-11-02 (v2.0.0) |
 | quick_tasks | 261105-p9i-extend-rail-with-key-or-paint-inside-mot | unknown — code landed (`8bf0ab4ed`, `715c9c155`) and audit-verified; live native UAT rows unconfirmed | 2026-11-05 (v2.0.1) |
+| quick_tasks | 261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p | unknown — completed, commit `5973f30e5`; scanner sees no UAT status file | 2026-11-14 (v2.1.0) |
+| quick_tasks | 261107-tfp-ui-boundaries-from-phase-59-rail-motion- | unknown — completed, commit `68d7d1cc2`, UAT approved; scanner sees no UAT status file | 2026-11-14 (v2.1.0) |
+| quick_tasks | 261108-gh0-rail-motion-follow-up-lucide-easing-icon | unknown — completed, commit `94b246ed7`, UAT approved 2026-11-08; scanner sees no UAT status file | 2026-11-14 (v2.1.0) |
+| quick_tasks | 261113-fkm-vector-paint-global-colour-apply-replace | unknown — completed, commit `8adfa44ce`, UAT approved 2026-11-13; scanner sees no UAT status file | 2026-11-14 (v2.1.0) |
+| uat_gaps | 61/61-UAT-QUICKS.md | unknown — 0 open scenarios; follow-up instruction doc, not a UAT file (61-UAT.md is complete, verification passed) | 2026-11-14 (v2.1.0) |
 
 ### Quick Tasks Completed
 
@@ -499,7 +502,5 @@ Resume file: .planning/reports/MILESTONE_SUMMARY-v2.1.0.md
 
 ## Operator Next Steps
 
-- Phase 62 is complete (5/5 plans, live UAT 10/10, verification 49/49 must-haves passed, security threats_open 0, code review 1 critical + 3 warnings fixed in 4b26cc5eb, regression gate 438 app files / 9,221 tests + 306 package tests green). It was the last phase of v2.1.0.
-- **v2.1.0 is ready to close.** Next: `/gsd-audit-milestone` (audit before publish — never after), then `/gsd-complete-milestone v2.1.0`, then the release workflow. Nothing has been tagged or pushed.
-- Deferred, non-blocking: the six Phase 62 review findings and the three UI-audit priority fixes (see Blockers/Concerns). Candidate for a follow-up quick before or after the release.
-- Open Phase 61 code-review findings (non-blocking, `61-REVIEW-DISPOSITION.md`): CR-01 an unchanged per-vertex colour commit publishes a false "not applied" banner; WR-01 paint-control refusals are swallowed so the live slider diverges; WR-02 the orphan-focus window key route has no floating-dialog guard.
+
+- Start the next milestone with /gsd-new-milestone
