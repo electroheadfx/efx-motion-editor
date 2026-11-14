@@ -69,9 +69,8 @@ import {
   buildAnchorWidthCommit,
   buildDraftPath,
   buildVectorStroke,
-  resampleVectorPaintPoints,
+  resampleVectorSpineWithPressureLaw,
   uvToScreen,
-  vectorSpinePressures,
   type VectorPathCommit,
 } from '../view/vectorPathHandles';
 import {
@@ -729,8 +728,14 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
     // The POINTS MUST MOVE: they are the replay's geometry (`toStudioStroke`
     // maps points into `pts`), so they are the spine sampled from the new
     // anchors in the commit's six-field shape — never the pre-edit spine.
-    const sampled = resampleVectorPaintPoints(sampleVectorPath(nextAnchors).points);
-    const pressures = vectorSpinePressures(sampled);
+    // 62-01 (D-07/D-08): an edit preserves the recorded sample count — the
+    // count IS the wet lifetime — and remaps the recorded pressure along the
+    // original polyline's arc length. This fixture records 2 samples, so the
+    // re-derived spine carries 2, not the draw-time sampler's 17.
+    const { points: sampled, pressures } = resampleVectorSpineWithPressureLaw(
+      sampleVectorPath(nextAnchors).points,
+      editedStroke().points,
+    );
     const expectedPoints = sampled.map((point, index) => ({
       x: point.x,
       y: point.y,
