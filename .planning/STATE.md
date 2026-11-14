@@ -11,29 +11,29 @@ last_activity_desc: Phase 62 complete
 state_head: 2c4df2459f2660a397d80bf0579d87270b26a432
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 67
   completed_plans: 67
-  percent: 75
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
+See: .planning/PROJECT.md (updated 2026-11-14 after Phase 62)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 62 — Painted-Stroke Curve Editing
+**Current focus:** v2.1.0 complete — all four phases shipped; milestone ready to close.
 
 ## Current Position
 
-Phase: 62
-Plan: Not started
+Phase: 62 (Painted-Stroke Curve Editing)
+Plan: 5/5 plans complete
 Status: All phases complete
 Last activity: 2026-11-14 — Phase 62 complete
 
-Progress: [████████░░] 75%
+Progress: [████████████████████] 67/67 plans (100%)
 
 ## Performance Metrics
 
@@ -377,6 +377,12 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 62]: Cancellation is a synchronous predicate re-read at the produce and commit turns (the isStillCurrent precedent): the commit-turn read wins over a successful or rejected apply, and the latch is released in finally before any terminal
 - [Phase 62]: Undo during an immediate path-edit bake cancels the token, awaits that exact bake and replays its exact editId with one reanchor retry — never a stack pop, because the cancelled run wrote no ledger entry
 - [Phase 62]: The ONE production registerPathEditExitHook registration lives in a dedicated [settleDraftScript] effect beside the mount reset, with a detaching cleanup; the deferred route arms no epoch
+- [Phase 62]: UAT: the Studio registers its ONE painted entrance in a latch slot (registerPaintedCurveEntrance); the canvas double-click route fails closed when no host is mounted and never writes a selection it cannot honour
+- [Phase 62]: UAT: a pre-conversion fit previews AND stores DEFAULT_VECTOR_PATH_CURVE_MODE (Spline), so what the user sees on entry is the mode the first commit persists
+- [Phase 62]: UAT: select-then-move — a press that changes vertex selection is a completed selection gesture (no drag state, no capture, no document write); the drag starts on the next press of an already-selected vertex
+- [Phase 62]: UAT: vectorDrawn is stored provenance, not derivable state — codec flag bit 4 carries no payload byte, the `.mce` declares it in both languages, and the Duplicate/+Key copy seam carries it so a copy cannot reclassify a drawn path
+- [Phase 62]: UAT: the stroke list filters by category (Vector, Brush/Water/Pen-Vector, plus the four tools) and the Curve tab shows the selected vertices' effective colour read-only — the sidebar picker stays the ONE colour writer
+- [Phase 62]: Review round 2 (incremental, base c27dea58b) fixed CR-01 the copy seam dropping vectorDrawn, WR-01 the unguarded entrance promise, WR-02 the AQTL header still documenting only bits 0-3, WR-03 the undeclared `vectorDrawn` in the MCE mirror; 4b26cc5eb
 
 ### Pending Todos
 
@@ -390,6 +396,8 @@ None yet.
 - Four persistence carriers must move as one change or motion silently fails: `serializeRuntimeIntoDocument`, `encodeValidatedEfxPaintTrackContent`, `buildEfxPaintDocumentSyncFingerprint`, and the layer change token (this defect class already cost PKG-06 and BKG-09).
 - [Phase 61] Three code-review findings remain open after the 2026-11-12 re-review (all recorded in `61-REVIEW-DISPOSITION.md`, 8/8 open): CR-01 an unchanged per-vertex colour commit publishes a false "not applied" banner because a no-op returns the same `null` as a refusal; WR-01 the paint-control seam discards its `Promise<boolean>` so a refused patch leaves the live control diverged with no message; WR-02 the new orphan-focus window key route has no floating-dialog guard, so Studio shortcuts reach the canvas through Stroke Settings. The verifier judged none a must-have blocker, but CR-01 is user-visible.
 - [Phase 61] Quick 261111-wd6 revised VEC-04 mid-phase; the Phase 61 verification records three accepted overrides (61-03 colour prohibition, 61-10 per-vertex-paint-properties prohibition, and truth 11's simple-ribbon render-mode clause). Anyone re-reading older plans should treat those clauses as superseded rather than violated.
+- [Phase 62] Six review findings are recorded and deliberately deferred in `62-REVIEW-DISPOSITION.md` (0 open): WR-02 conversion drops recorded stylus tilt (`tx`/`ty` stamped 0), WR-03 busy gates are not re-read after the durable-base await (fails closed), WR-04 both cancelled-bake undo replays refused (silent return), IN-01 unreachable `'lift-vector': 'Eraser-Vector'` label, IN-02 the Vertex colour reading omits the `anchorWidthTarget` guard, IN-03 the `requestAquarellePathEdit` doc over-claims that no refusal leaves a selection. All are non-blocking; UAT 10/10 and verification 49/49 passed.
+- [Phase 62] The UI audit dropped from 18/24 to 15/24 after the UAT changes (`62-UI-REVIEW.md`): curve entry has no pending/failure signal, the Vertex colour row shows the first anchor's swatch beside a "Mixed" caption, and the curve-editing / vector-category vocabulary has no help entries. Advisory only — no blocker; candidate for a follow-up quick.
 - v2.0.1 debt carried in PROJECT.md Context: VIS-02/04 token drift, mixed rail-set header accent, the one-shot prompt's pending window, and the unconfirmed 261105-p9i live native UAT rows.
 
 ## Deferred Items
@@ -484,12 +492,13 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-14T13:27:29.233Z
-Stopped at: Phase 62 complete — all phases complete
+Last session: 2026-11-14T18:28:00Z
+Stopped at: Phase 62 complete — all v2.1.0 phases complete, milestone ready to close
 Resume file: None
 
 ## Operator Next Steps
 
-- Phase 61 is complete (31/31 plans, live UAT 21/21, verification 19/19 passed, security threats_open 0, regression gate 427 files / 8,942 tests green). Next: `/gsd-discuss-phase 62`, then `/gsd-plan-phase 62` — painted-stroke curve editing.
-- Open code-review findings for Phase 61 (non-blocking, recorded in 61-REVIEW-DISPOSITION.md, 8/8 open): CR-01 an unchanged per-vertex colour commit publishes a false "not applied" banner; WR-01 paint-control refusals are swallowed so the live slider diverges from the selected strokes; WR-02 the orphan-focus window key route has no floating-dialog guard. Candidate for a follow-up quick.
-- VEC-04 was revised mid-phase by the user: per-vertex colour is supported (sparse anchor `color?`), per-vertex size remains the anchor width factor exposed as "Vertex size", and the former "width is the only per-vertex property" law is superseded. Phase 61's recorded overrides (61-03 colour prohibition, 61-10 per-vertex-paint-properties prohibition, truth 11's simple-ribbon render-mode clause) are accepted by Laurent Marques on 2026-11-12.
+- Phase 62 is complete (5/5 plans, live UAT 10/10, verification 49/49 must-haves passed, security threats_open 0, code review 1 critical + 3 warnings fixed in 4b26cc5eb, regression gate 438 app files / 9,221 tests + 306 package tests green). It was the last phase of v2.1.0.
+- **v2.1.0 is ready to close.** Next: `/gsd-audit-milestone` (audit before publish — never after), then `/gsd-complete-milestone v2.1.0`, then the release workflow. Nothing has been tagged or pushed.
+- Deferred, non-blocking: the six Phase 62 review findings and the three UI-audit priority fixes (see Blockers/Concerns). Candidate for a follow-up quick before or after the release.
+- Open Phase 61 code-review findings (non-blocking, `61-REVIEW-DISPOSITION.md`): CR-01 an unchanged per-vertex colour commit publishes a false "not applied" banner; WR-01 paint-control refusals are swallowed so the live slider diverges; WR-02 the orphan-focus window key route has no floating-dialog guard.

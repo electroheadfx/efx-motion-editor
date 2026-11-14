@@ -185,10 +185,14 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ A wireframe toggle shows strokes and paths without render and serves as the drag-time performance mode; while it is ON nothing is captured, reset, re-baked or persisted — v2.1.0 Phase 61 (VEC-05)
 - ✓ Vector strokes persist in the `.mce` in both languages, survive reopen including curve mode, export as previewed, and replay deterministically (same script ⇒ same pixels) — v2.1.0 Phase 61 (VEC-06)
 - ✓ Every vector path operation is exactly one undo entry and undo/redo re-applies it — v2.1.0 Phase 61 (VEC-07)
+- ✓ A painted Brush/Water/Pen stroke enters curve mode with anchors fitted lazily on entry from its own recorded samples, and leaves without a gesture writes nothing — v2.1.0 Phase 62 (CRV-01)
+- ✓ An anchor/handle edit commits as one ledger entry that converts the stroke to a vector path and re-bakes from the recovered pre-script base, preserving sample count, wet lifetime and the recorded pressure profile — v2.1.0 Phase 62 (CRV-02)
+- ✓ Every Loop Clip occurrence of an edited stroke repaints from the one source-scoped cache entry; no per-occurrence key, script or cache entry is materialized — v2.1.0 Phase 62 (CRV-03)
+- ✓ Undo during an in-flight path-edit bake cancels the apply and restores the exact pre-edit shape with no ledger entry; redo does not resurrect it — v2.1.0 Phase 62 (CRV-04)
 
 ### Active
 
-**v2.1.0 scope (defined 2026-11-06 — see `.planning/REQUIREMENTS.md`):** Studio timeline horizontal zoom (Phase 60), vector painting tool (Phase 61), painted-script/stroke curve editing (Phase 62). Phase 59 (rail motion channels + v7 interface) shipped 2026-11-08; Phase 60 (timeline horizontal zoom) shipped 2026-11-09; Phase 61 (vector painting tool) shipped 2026-11-12.
+**v2.1.0 scope (defined 2026-11-06 — see `.planning/REQUIREMENTS.md`):** Studio timeline horizontal zoom (Phase 60), vector painting tool (Phase 61), painted-script/stroke curve editing (Phase 62). Phase 59 (rail motion channels + v7 interface) shipped 2026-11-08; Phase 60 (timeline horizontal zoom) shipped 2026-11-09; Phase 61 (vector painting tool) shipped 2026-11-12; Phase 62 (painted-stroke curve editing) shipped 2026-11-14 — **all four phases complete, milestone ready to close.**
 
 **Carried forward (not scheduled in v2.1.0):**
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
@@ -207,7 +211,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - **Phase 59 — Rail motion + v7 interface.** Motion keys are independent of drawing keys; three selection scopes (rail / drawing key / motion key); channels opened on demand one at a time — Position (two modes: grouped whole-position, or split X + Y as in Maya/Softimage), Scale, Rotation, Opacity; rail-local time with repeat = hold or fit-to-span; transform applied at the compositor (1 raster per track per frame, content cycles while motion continues, no re-bake); seeded wiggle deterministic at export; v7 chrome (18px lanes, header chevron minus/right/down, lane-header nav cluster, 6×6 Motion keys, rounded selected-rail outline). Gates A–D are answered in the phase plan. **Any rail animates** — Standard, Motion, Static, Reveal, and bare Key Rails — with no cycle value required or changed.
 - **Phase 60 — Studio timeline horizontal zoom.** Frame density only (row, lane and cell heights stay fixed); Cmd/Ctrl+wheel plus a zoom pill (minus / percent / plus / 100% reset); 0.25×–4×, with the density remembered per paint layer as a UI preference — no document/schema/export change. **Shipped 2026-11-09** (UAT 5/5).
 - **Phase 61 — Vector painting tool.** `pen-tool` / `spline-pointer`, per-vertex paint properties, curve-type choice, wireframe preview. **Shipped 2026-11-12** (31 plans; UAT 21/21, verification 19/19 passed). VEC-04 was revised mid-phase by the user: per-vertex colour is supported and the former "width is the only per-vertex property" law is superseded.
-- **Phase 62 — Painted script/stroke curve editing.**
+- **Phase 62 — Painted script/stroke curve editing.** **Shipped 2026-11-14** (5 plans; UAT 10/10, verification 49/49 must-haves passed, full suite 9,221 green). A painted stroke converts to a Phase 61 vector path on its first anchor/handle edit — one-way, one ledger entry — and the re-bake reaches every Loop Clip occurrence from one source-scoped cache identity.
 
 **Out of scope:** Studio API/MCP → its own v2.3.0 milestone (Phase 65), designed against the shipped v2.2.0 model. Seconds/frames equivalence and Studio canvas zoom shipped in v2.0.1 (261105-cgl, 261104-uyv).
 
@@ -434,6 +438,10 @@ Known technical debt:
 | Per-vertex paint variability is two sparse channels: the anchor width factor (exposed as "Vertex size") and an optional anchor `color?` | The user revised VEC-04 mid-phase: colour is genuinely per-vertex, but a second size channel or a per-vertex brush would duplicate existing semantics | ✓ Good — one undo entry per gesture; colourless paths keep byte-identical output |
 | The simple-ribbon engine and the `renderMode` field were removed rather than migrated | Carrying a second render path through the codec, the `.mce` and the engine cost more than it returned; a clean break beat a migration shim | ✓ Good — codec skips the legacy byte; ribbon rows retired from the UI review |
 | Vector strokes replay as a mouse stroke with speed owning the pressure, at a hand's cadence | A flat synthetic pressure read as a dead stroke next to hand-painted work | ✓ Good — UAT row R1 confirmed native-feeling drag at the 10-stroke reference sheet |
+| v2.1.0 conversion is one-way: the first anchor/handle edit replaces the hand-recorded samples with the re-sampled spine | Keeping both representations would need new fields and a migration, and would leave a "converted" mode hanging over every later operation; the undo ledger already restores the hand points | ✓ Good — one ledger entry carries the conversion; UAT row D confirmed undo/redo restores the wash |
+| v2.1.0 curve mode is source-only for Loop Clips — an edit re-bakes the source and every occurrence presents the new pixels | Per-occurrence edits would need a materialization path and a "which copy" rule for every later operation; one source-scoped cache identity already serves every occurrence | ✓ Good — no per-occurrence key/script/cache entry; UAT rows E/F passed |
+| v2.1.0 conversion drops recorded stylus tilt (`tx`/`ty` stamped 0); select-then-move is the vertex gesture grammar | Carrying tilt needs a nearest-source carry/remap with no clear win; select-then-move keeps selection from nudging the path. Both were accepted with the phase UAT | ✓ Good — recorded as deferred WR-02 in the review disposition, revisit as a follow-up, not a blocker |
+| `vectorDrawn` is persisted provenance, not derivable state | A drawn path and a converted painted path both carry anchors, so the stroke list could not name `Vector` apart from `<Tool>-Vector` without a stored marker | ✓ Good — codec flag bit 4, mirrored in the `.mce` two-language contract; copy seam pinned |
 
 ## Evolution
 
@@ -453,4 +461,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-12 after Phase 61 (Vector painting tool) — 31/31 plans, live UAT 21/21, verification passed 19/19 must-haves. Next: Phase 62 Painted-stroke curve editing. Previous: Phase 60 shipped 2026-11-09 (6/6 plans, UAT 5/5).*
+*Last updated: 2026-11-14 after Phase 62 (Painted-stroke curve editing) — 5/5 plans, live UAT 10/10, verification passed 49/49 must-haves, full suite 9,221 green. Phase 62 was the last phase of v2.1.0; milestone ready to close. Previous: Phase 61 shipped 2026-11-12 (31/31 plans, UAT 21/21).*
