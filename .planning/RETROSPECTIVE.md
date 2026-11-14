@@ -2,6 +2,62 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v2.1.0 — Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
+
+**Shipped:** 2026-11-14
+**Phases:** 4 (Phases 59-62) | **Plans:** 67 | **Commits:** 796 over 9 days
+
+### What Was Built
+
+- Rail Motion: a second, independent key system on any rail (Standard, Motion, Static, Reveal, bare Key Rail) — Position grouped/split, Scale, unbounded Rotation, Opacity — evaluated in rail-local time (Hold, Ease, stateless seeded Wiggle) and applied once at the compositor, with durable derived rail identity reconciled at split/merge/delete/copy/paste/reopen
+- The v7 motion-lane interface on the real Studio timeline: one open block at a time, 18px lanes with the header cluster, 16×18 cells, 6×6 keys with the lighter rim, the rounded outline wrapping rail + channels, and a persistent add-channel `+` row
+- Timeline zoom 0.25×–4× from one session pitch authority, cursor/playhead anchored, vertical geometry fixed, zoom remembered per paint layer and never persisted
+- Vector painting as a second stroke kind on the same engine/codec/compositor: pen-drawn anchors, per-vertex size and sparse per-vertex colour, per-stroke style, spline curve mode, wireframe drag-time mode, AQTL v2 persistence and export parity
+- Painted-stroke curve editing: one-way conversion on the first anchor/handle edit, re-bake from the recovered pre-script base (sample count, wet lifetime, pressure profile preserved), source-scoped loop-occurrence invalidation, in-flight bake cancellation on undo
+- 38/38 requirements met or accepted; every new `.mce` field declared in both TS and Rust with byte-parity golden fixtures; no new runtime dependencies
+
+### What Worked
+
+- **The compositor boundary held under a new animation system.** Motion contributed exactly one transform at both draw sites and joined the canonical revision without ever entering the raster/cache key — a motion drag stayed cheap, and REL-03 was provable rather than argued.
+- **One pitch authority made the zoom conversion finite.** The literal-`18` audit reached zero and a node-environment matrix pinned every promised number at five zoom levels, so a partial conversion could not hide.
+- **Spike-gating the vector tool paid.** A committed headless-WebGL2 probe answered feasibility with numbers before the phase committed to a seam strategy.
+- **Conversion-not-fit was the right curve model.** Recovering the pre-script base and re-sampling the spine meant undo could restore the original wash with one ledger entry, and loop occurrences needed no materialization.
+- **Audit-before-publish held for the third milestone running.** The audit found the one real defect (MOTN-12's undo absence) before any tag or publish.
+
+### What Was Inefficient
+
+- **67 plans across one milestone made the audit surface very wide.** Phase 59 alone carried 25 plans; review closure and gap-closure rounds dominated the back half, and the audit had to re-read every SUMMARY.
+- **59-UAT row 11 misobserved a silent no-op.** The undo step was recorded as passed; a live re-test showed Cmd+Z left the Motion in place. The recorded row, not the code, was wrong — and it became the milestone's single deviation.
+- **Scanner artifacts cost a close cycle.** Four completed quicks carry no scanner-readable UAT status file, and Phase 61's `61-UAT-QUICKS.md` is an instruction document rather than a UAT — five acknowledgements for work that was already approved.
+- **Two quick SUMMARY frontmatters were unparseable YAML** (unquoted backtick scalars), which first refused the acknowledgement writer and needed a repair before the close could proceed.
+- **Three lead-measurement disagreements shipped as debt**: 60's 6px gutter origin bias, 59's MUI-02 rim wording lag, and 60's ROADMAP "Fit"/"session-only" wording vs the shipped 100%-reset/per-layer memory.
+
+### Patterns Established
+
+- Motion (or any animation sampling) joins the canonical document revision; sampled values never enter a flattened cache key or raster identity.
+- Durable identity for a derived object is minted and reconciled at real edit operations — never inferred from a first child id.
+- One coordinate authority per frame→pixel mapping, with an executable audit that fails on a reintroduced literal.
+- A second stroke kind reuses the engine, codec and compositor; the media differences live in the payload, not in a new pipeline.
+- Conversion is one-way and source-scoped: an edit replaces the hand-recorded representation, and the undo ledger is the recovery path.
+- A wireframe/construction mode doubles as the drag-time performance mode and touches neither the cache key nor the persisted bytes.
+
+### Key Lessons
+
+1. Sample animation at the compositor, never in the cache key — the split canonical/raster revision is what keeps drags cheap and save/reopen honest.
+2. One authority per coordinate mapping beats parallel conversions; a single surviving literal is a latent gesture/render disagreement.
+3. UAT rows can misobserve a no-op. Re-test negative claims live before treating a recorded pass as assurance.
+4. Every quick SUMMARY should carry a parseable `status:` frontmatter and YAML-safe scalars — five close items and one repair were pure scanner/parser friction.
+5. A 67-plan MINOR milestone is feasible but its review/audit surface grows faster than its feature surface; budget review closure explicitly or cap plans per phase.
+
+### Cost Observations
+
+- Model mix: project profile `adaptive` (opus for plan/audit/release, sonnet for execution waves)
+- Sessions: 9 days (2026-11-05 → 2026-11-14), 796 commits for 67 plans across 4 phases
+- Tests at close: app 438 files / 9,221 tests + watercolor 15 files / 306; typecheck and cargo green; 109/109 must-haves verified; 51 live UAT rows
+- Notable: phases 59 and 61 (25 and 31 plans) carried most of the surface and nearly all of the review churn
+
+---
+
 ## Milestone: v2.0.1 — Rail Editing & v7 Timeline Rails (PATCH)
 
 **Shipped:** 2026-11-05
@@ -712,6 +768,7 @@
 | v1.0.1 | ~139,400 | 112 changed | 6 (5 acknowledged at close) | 0 new (7 quicks, every one with a round-trip pin) |
 | v2.0.0 | ~175,000 source (+ ~180k test) | 1,220 changed | 14 (6 new + carried) | 0 blockers; 7 requirements superseded by approved pivots, 1 partial (paper-id undo) |
 | v2.0.1 | ~180,600 source | 276 changed | 19 (5 new + carried) | 0 new (audit: 14/14 links, 7/7 flows, 15/15 requirements) |
+| v2.1.0 | ~434k TS/TSX incl. tests (~14.3k Rust) | 1,227 changed (271 code, +75,740/−3,016) | 22 (new + carried; incl. accepted MOTN-12 deviation) | 0 blockers; 37/38 seams, 4/5 flows (MOTN-12) |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -734,3 +791,7 @@
 17. Production first, native UAT gate, then regression tests — approving visible behavior before locking tests eliminates test-thrash
 18. Measure before optimizing — profiler baselines (RED deltas) make render-path performance work provable instead of speculative
 19. Clean break beats migration for formats with no installed base — a pure refusal gate + fixture truth table deleted an entire compat surface and its tests at v1.0.0
+20. Sample animation at the compositor, never in a raster/cache key — split canonical vs raster revisions keep drags cheap and persistence honest (v2.1.0)
+21. One coordinate authority per frame→pixel mapping, enforced by an executable literal audit — a partial conversion silently separates gestures from rendering (v2.1.0)
+22. UAT rows can misobserve a silent no-op; re-test negative claims live before treating a recorded pass as assurance (v2.1.0 MOTN-12)
+23. Scanner-readable quick frontmatter (`status:`, YAML-safe scalars) is cheap insurance against close-cycle friction (v2.1.0)
