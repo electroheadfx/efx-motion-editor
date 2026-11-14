@@ -376,3 +376,128 @@ describe('62-02 the ONE path-edit exit funnel', () => {
     expect(probe.runs).toBe(1);
   });
 });
+
+// 62-04 (D-13): the pending path-edit apply epoch. ONE token-keyed record
+// brackets the immediate bake so an undo that lands mid-apply can cancel the
+// publish and replay THIS edit by its exact id. Arm, cancel and clear all
+// compare the token before writing — a stale token can never touch a newer
+// apply — and the record never outlives the bake.
+describe('62-04 the pending path-edit apply epoch', () => {
+  type PendingPathEditApplyRecord = {
+    readonly token: number;
+    readonly editId: number;
+    readonly mutationId: number;
+    readonly playFrame: number;
+    readonly cancelled: boolean;
+  };
+
+  type PendingApplyEpochSurface = {
+    pendingPathEditApply?: {
+      readonly value: PendingPathEditApplyRecord | null;
+      peek: () => PendingPathEditApplyRecord | null;
+    };
+    beginPathEditApply?: (editId: number, mutationId: number, playFrame: number) => number;
+    cancelPathEditApply?: (token: number) => boolean;
+    isPathEditApplyCancelled?: (token: number) => boolean;
+    clearPathEditApply?: (token: number) => boolean;
+  };
+
+  // Resolved through the namespace so the RED run fails at CALL time on the
+  // planned-but-missing exports (behavioural), never at module load.
+  const epoch = vectorPathSessionSurface as unknown as PendingApplyEpochSurface;
+
+  it('arms one fresh token per apply and a second arm supersedes the first', () => {
+    expect(typeof epoch.beginPathEditApply).toBe('function');
+    const first = epoch.beginPathEditApply!(41, 7, 12);
+    expect(typeof first).toBe('number');
+    expect(epoch.pendingPathEditApply!.peek()).toEqual({
+      token: first,
+      editId: 41,
+      mutationId: 7,
+      playFrame: 12,
+      cancelled: false,
+    });
+
+    const second = epoch.beginPathEditApply!(42, 8, 13);
+    expect(second).toBeGreaterThan(first);
+    expect(epoch.pendingPathEditApply!.peek()).toEqual({
+      token: second,
+      editId: 42,
+      mutationId: 8,
+      playFrame: 13,
+      cancelled: false,
+    });
+  });
+
+  it('cancels only the current token, and a repeat cancel notifies nothing', () => {
+    expect(typeof epoch.cancelPathEditApply).toBe('function');
+    const stale = epoch.beginPathEditApply!(51, 9, 3);
+    const live = epoch.beginPathEditApply!(52, 10, 4);
+
+    // The superseded token is refused and the live record is untouched.
+    expect(epoch.cancelPathEditApply!(stale)).toBe(false);
+    expect(epoch.pendingPathEditApply!.peek()?.cancelled).toBe(false);
+
+    expect(epoch.cancelPathEditApply!(live)).toBe(true);
+    expect(epoch.pendingPathEditApply!.peek()?.token).toBe(live);
+    expect(epoch.pendingPathEditApply!.peek()?.cancelled).toBe(true);
+
+    // Compare-then-write: re-cancelling the same record is a no-op write.
+    const runs = countRuns(() => epoch.pendingPathEditApply!.value);
+    expect(epoch.cancelPathEditApply!(live)).toBe(false);
+    expect(runs.runs()).toBe(1);
+    runs.dispose();
+  });
+
+  it('reads cancellation only for the live cancelled token', () => {
+    expect(typeof epoch.isPathEditApplyCancelled).toBe('function');
+    const stale = epoch.beginPathEditApply!(61, 11, 5);
+    const live = epoch.beginPathEditApply!(62, 12, 6);
+
+    expect(epoch.isPathEditApplyCancelled!(live)).toBe(false);
+    expect(epoch.isPathEditApplyCancelled!(stale)).toBe(false);
+
+    epoch.cancelPathEditApply!(live);
+
+    expect(epoch.isPathEditApplyCancelled!(live)).toBe(true);
+    // A stale token and an unknown token both read false.
+    expect(epoch.isPathEditApplyCancelled!(stale)).toBe(false);
+    expect(epoch.isPathEditApplyCancelled!(live + 1000)).toBe(false);
+  });
+
+  it('clears only the matching record and treats a stale clear as a no-op', () => {
+    expect(typeof epoch.clearPathEditApply).toBe('function');
+    const stale = epoch.beginPathEditApply!(71, 13, 7);
+    const live = epoch.beginPathEditApply!(72, 14, 8);
+
+    expect(epoch.clearPathEditApply!(stale)).toBe(false);
+    expect(epoch.pendingPathEditApply!.peek()?.token).toBe(live);
+
+    expect(epoch.clearPathEditApply!(live)).toBe(true);
+    expect(epoch.pendingPathEditApply!.peek()).toBeNull();
+
+    // Clearing an empty epoch is a no-op, never a throw.
+    expect(epoch.clearPathEditApply!(live)).toBe(false);
+    expect(epoch.pendingPathEditApply!.peek()).toBeNull();
+  });
+
+  it('clears the pending record with the shipped latches on the Studio-open reset', () => {
+    expect(typeof epoch.beginPathEditApply).toBe('function');
+    epoch.beginPathEditApply!(81, 15, 9);
+    enterPathEdit('m15');
+    expect(epoch.pendingPathEditApply!.peek()).not.toBeNull();
+
+    resetForStudioOpen();
+
+    expect(epoch.pendingPathEditApply!.peek()).toBeNull();
+    expect(pathEditMutationId.peek()).toBeNull();
+    expect(vectorPenActive.peek()).toBe(false);
+    expect(vectorDrawDraft.peek()).toBeNull();
+
+    // Idempotent: a second reset notifies nothing.
+    const runs = countRuns(() => epoch.pendingPathEditApply!.value);
+    resetForStudioOpen();
+    expect(runs.runs()).toBe(1);
+    runs.dispose();
+  });
+});

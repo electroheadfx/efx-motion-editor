@@ -8018,3 +8018,101 @@ describe('quick 261111-t74 — the selection brush patch stays one edit', () => 
     expect(write).toContain('...stroke,');
   });
 });
+
+// 62-04 (D-13 / D-06): the pending path-edit apply epoch brackets the ONE
+// immediate bake (arm before, clear after, token-keyed), the deferred route
+// arms nothing, and the Studio installs the ONE production exit-hook
+// registration beside the shipped mount reset so every exit restores the
+// pre-entry wireframe and Draft in-app.
+describe('62-04 the pending path-edit apply epoch and the ONE exit-hook registration', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
+  const COMMIT_END = 'aquarellePathEditCommitRef.current = commitAquarelleVectorPathEdit;';
+
+  it('declares the settled-bake ref beside the shipped settle ref', () => {
+    const anchor = 'const draftSettlePromiseRef = useRef<Promise<boolean> | null>(null);';
+    const at = studio.indexOf(anchor);
+    expect(at).toBeGreaterThan(-1);
+    expect(studio.slice(at, at + 500)).toContain(
+      'const pathEditApplySettledRef = useRef<Promise<boolean> | null>(null);',
+    );
+  });
+
+  it('brackets the ONE immediate bake with exactly one token-keyed arm', () => {
+    const commit = regionOf(studio, COMMIT_START, COMMIT_END);
+    const arm = 'vectorPathSession.beginPathEditApply(editId, mutationId, playFrame)';
+    // EXACTLY one arm and one bake call site in the whole commit.
+    expect(commit.split('beginPathEditApply(').length - 1).toBe(1);
+    expect(commit.split('runAquarelleScriptRebake(').length - 1).toBe(1);
+    // The arm carries THIS commit's exact identity and precedes the bake.
+    expect(commit).toContain(arm);
+    expect(commit.indexOf(arm)).toBeLessThan(commit.indexOf('runAquarelleScriptRebake('));
+    // The token is the synchronous predicate the sequence re-reads at the
+    // produce and commit turns (D-13).
+    expect(commit).toContain('isCancelled: () => vectorPathSession.isPathEditApplyCancelled(applyToken)');
+    expect(commit).toContain('onCancelled: () => {');
+    // The cancellation terminal stays SILENT: no ledger entry, no error, no
+    // message — only the status returns to rest.
+    const cancelledBlock = regionOf(commit, 'onCancelled: () => {', '},');
+    expect(cancelledBlock).toContain("setApplyStatus('idle')");
+    expect(cancelledBlock).not.toContain('recordAquarelleScriptEdit');
+    expect(cancelledBlock).not.toContain('setApplyMessage');
+    expect(cancelledBlock).not.toContain('setLastError');
+  });
+
+  it('stores the settled-bake promise and clears the record in a token-keyed finally', () => {
+    const commit = regionOf(studio, COMMIT_START, COMMIT_END);
+    // The seam the undo router awaits: the run promise is published before it
+    // is awaited.
+    expect(commit).toContain('pathEditApplySettledRef.current = run;');
+    expect(commit.indexOf('pathEditApplySettledRef.current = run;')).toBeLessThan(
+      commit.indexOf('await run;'),
+    );
+    // The record and the ref are cleared on EVERY settle path, in a finally.
+    const finallyAt = commit.indexOf('} finally {');
+    expect(finallyAt).toBeGreaterThan(-1);
+    expect(commit.indexOf('await run;')).toBeLessThan(finallyAt);
+    const finallyBlock = commit.slice(finallyAt);
+    expect(finallyBlock).toContain('if (pathEditApplySettledRef.current === run) pathEditApplySettledRef.current = null;');
+    expect(finallyBlock).toContain('vectorPathSession.clearPathEditApply(applyToken);');
+  });
+
+  it('arms nothing on the deferred route (return editId precedes the arm)', () => {
+    const commit = regionOf(studio, COMMIT_START, COMMIT_END);
+    const deferredAt = commit.indexOf('if (draft || wireframe) {');
+    expect(deferredAt).toBeGreaterThan(-1);
+    const applyStatusAt = commit.indexOf("setApplyStatus('applying');", deferredAt);
+    expect(applyStatusAt).toBeGreaterThan(deferredAt);
+    const deferredBlock = commit.slice(deferredAt, applyStatusAt);
+    expect(deferredBlock).toContain('return editId;');
+    expect(deferredBlock).not.toContain('beginPathEditApply(');
+    // The deferred return is the LAST statement before the immediate route.
+    expect(commit.indexOf('return editId;', deferredAt)).toBeLessThan(commit.indexOf('beginPathEditApply('));
+  });
+
+  it('installs the ONE production exit-hook registration beside the mount reset', () => {
+    // ONE registration call site ...
+    expect(studio.split('registerPathEditExitHook(() =>').length - 1).toBe(1);
+    // ... and ONE detach in the cleanup, so `registerPathEditExitHook(`
+    // occurs exactly twice: the registration and its `(null)` cleanup.
+    expect(studio.split('registerPathEditExitHook(').length - 1).toBe(2);
+    expect(studio.split('registerPathEditExitHook(null)').length - 1).toBe(1);
+    // Registered from a DEDICATED effect beside the mount reset — never inside
+    // it: the mount reset keeps `[]` deps so `resetForStudioOpen` runs only on
+    // mount. The bracket is the shipped single-flight settle, adopted.
+    expect(studio).toMatch(
+      /useEffect\(\(\) => \{\s*registerPathEditExitHook\(\(\) => \{\s*void endCurveBracket\(\{ settle: settleDraftScript \}\);\s*\}\);\s*return \(\) => registerPathEditExitHook\(null\);\s*\}, \[settleDraftScript\]\);/,
+    );
+    const resetAt = studio.indexOf('vectorPathSession.resetForStudioOpen();');
+    const registerAt = studio.indexOf('registerPathEditExitHook(() =>');
+    expect(resetAt).toBeGreaterThan(-1);
+    expect(registerAt).toBeGreaterThan(resetAt);
+  });
+});
