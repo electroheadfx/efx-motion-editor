@@ -4,16 +4,16 @@ milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
 current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
-status: planning
+status: executing
 stopped_at: Phase 62 context gathered
-last_updated: "2026-11-14T11:10:32.419Z"
+last_updated: "2026-11-14T12:11:00.060Z"
 last_activity: 2026-11-13
 last_activity_desc: Quick 261113-qjd CLOSED (context-aware Shift+? help, shared editor/Studio modal); Phase 62 ready to plan
-state_head: f07d7e26d9c630afc2804709046d1908e2cde25b
+state_head: 86ea686480d427d113a4585114200289d020f8aa
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 62
+  total_plans: 67
   completed_plans: 62
   percent: 75
 ---
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 
 ## Current Position
 
-Phase: 62 — Painted-Stroke Curve Editing
+Phase: 62 (Painted-Stroke Curve Editing) — READY TO EXECUTE
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-11-13 - Quick task 261113-qjd CLOSED (UAT approved): Shift+? opens the shortcuts help on the matching context (Paint Mode while editing strokes, Timeline or Canvas by hover, Sections otherwise) with an always-visible "Detected:" label; the editor and the Physic Paint Studio now render the same shortcuts modal, with the Studio's global button styling isolated away and stacked key symbols spaced (⇧ ⌘ Z) for legibility.
 
 Progress: [████████░░] 75%

@@ -336,11 +336,16 @@ Plans:
 **Plans:** 5 plans
 
 Plans:
+**Wave 1**
 - [ ] 62-01-PLAN.md — Fitted anchors convert a painted stroke in one script write; sample count and pressure law preserved
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 62-02-PLAN.md — Eligibility, the spline-pointer entry and the one exit bracket that restores wireframe/Draft
 - [ ] 62-03-PLAN.md — The overlay draws and edits the held fit, the original-spine ghost and the pressure-band envelope
-- [ ] 62-04-PLAN.md — Cancel/settle an in-flight bake on undo, so the ledger never targets the wrong edit
 - [ ] 62-05-PLAN.md — One source-scoped cache identity: every loop occurrence invalidates with its source
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 62-04-PLAN.md — Cancel/settle an in-flight bake on undo, so the ledger never targets the wrong edit
 
 **Scope gate**: do not persist Bézier anchors in v1 unless the measured round-trip deviation is visibly unacceptable — that would be a declared schema change, not a detail.
 
