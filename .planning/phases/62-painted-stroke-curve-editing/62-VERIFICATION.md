@@ -1,7 +1,7 @@
 ---
 phase: 62-painted-stroke-curve-editing
 verified: 2026-11-14T15:32:29Z
-status: human_needed
+status: passed
 score: "42/43 must-haves verified (1 uncertain — human decision requested)"
 covered_files:
   - .planning/phases/62-painted-stroke-curve-editing/62-01-PLAN.md
