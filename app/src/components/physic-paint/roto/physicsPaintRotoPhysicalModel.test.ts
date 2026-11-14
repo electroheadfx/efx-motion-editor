@@ -104,6 +104,60 @@ describe('261108-gh0 channel wiggle canonical bytes', () => {
   });
 });
 
+/**
+ * Phase 62 (CRV-03, D-11): the source-scoped real cache identity is built in
+ * exactly ONE place — `buildRotoRealCacheRevision`. The dynamic import keeps
+ * RED a behavioural failure (the planned export is absent) rather than a
+ * module-load failure, following the 62-01/62-02 precedent.
+ */
+type RealCacheRevisionBuilder = (contentRevision: string, keyId: string, suffix?: string) => string;
+
+interface RealCacheRevisionModuleShape {
+  readonly buildRotoRealCacheRevision: RealCacheRevisionBuilder;
+}
+
+async function realCacheRevisionBuilder(): Promise<RealCacheRevisionBuilder> {
+  const module = (await import('./physicsPaintRotoPhysicalModel')) as unknown as Partial<RealCacheRevisionModuleShape>;
+  const builder = module.buildRotoRealCacheRevision;
+  expect(builder).toBeTypeOf('function');
+  if (typeof builder !== 'function') throw new Error('buildRotoRealCacheRevision is not exported.');
+  return builder;
+}
+
+describe('Phase 62 CRV-03 — the ONE source-scoped real cache identity', () => {
+  it('builds the exact shipped identity string the store hand-built before the extraction', async () => {
+    const buildRotoRealCacheRevision = await realCacheRevisionBuilder();
+    const revision = 'physical-404-c22673ae';
+    // The literal the store, the ownership remap and the persistence
+    // projections hand-built before this extraction (byte for byte).
+    expect(buildRotoRealCacheRevision(revision, 'D')).toBe(`${revision}:real:D`);
+    expect(buildRotoRealCacheRevision(revision, 'D')).toBe('physical-404-c22673ae:real:D');
+  });
+
+  it('appends the suffix verbatim with no separator and no normalization', async () => {
+    const buildRotoRealCacheRevision = await realCacheRevisionBuilder();
+    const revision = 'physical-abc';
+    expect(buildRotoRealCacheRevision(revision, 'D', ':paper:canvas1|str:0.45|scl:1')).toBe(
+      'physical-abc:real:D:paper:canvas1|str:0.45|scl:1',
+    );
+    // No separator, no coercion: a raw suffix lands flush against the key.
+    expect(buildRotoRealCacheRevision(revision, 'D', 'X')).toBe('physical-abc:real:DX');
+    // The default suffix is the empty string, so the shipped strings cannot move.
+    expect(buildRotoRealCacheRevision(revision, 'D', '')).toBe('physical-abc:real:D');
+  });
+
+  it('is deterministic for the same arguments and separates a distinct revision', async () => {
+    const buildRotoRealCacheRevision = await realCacheRevisionBuilder();
+    expect(buildRotoRealCacheRevision('physical-a', 'A')).toBe(buildRotoRealCacheRevision('physical-a', 'A'));
+    expect(buildRotoRealCacheRevision('physical-a', 'A')).not.toBe(buildRotoRealCacheRevision('physical-b', 'A'));
+  });
+
+  it('separates a distinct source key so one cache entry cannot serve two sources', async () => {
+    const buildRotoRealCacheRevision = await realCacheRevisionBuilder();
+    expect(buildRotoRealCacheRevision('physical-a', 'A')).not.toBe(buildRotoRealCacheRevision('physical-a', 'D'));
+  });
+});
+
 describe('physical background grainScale member (260923-bcm)', () => {
   it('260923-bcm: the physical parser accepts an in-range grainScale and normalizes a missing one to 1', () => {
     const scaled = parsePhysicPaintRotoPhysicalDocument(
