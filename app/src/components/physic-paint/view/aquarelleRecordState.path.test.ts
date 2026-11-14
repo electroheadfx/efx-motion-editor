@@ -719,3 +719,254 @@ describe('61-30 G-20 — the curve-mode switch re-samples the path', () => {
     expect(aquarelleStrokesRevision.value).toBe(revision + 1);
   });
 });
+
+// ============================================================
+//  62-01 — a fitted anchor list CONVERTS an anchorless painted
+//  stroke through the ONE script write: `anchors` stored,
+//  `curveMode` stored only when it is not the default, `points`
+//  re-derived from the path, ONE revision bump and ONE timeline
+//  index (D-01, D-02, D-12). One undo restores the hand samples
+//  exactly (count, coordinates and pressures) and removes both
+//  keys; one redo reinstalls the converted pair.
+//
+//  The fitted list below carries the exact shape
+//  `fitVectorPathAnchors` emits — `auto` anchors ON recorded
+//  samples — so the conversion seam is pinned without importing
+//  the session module this plan also adds (that module's own pins
+//  live in `vectorPathCurveBracket.test.ts`).
+// ============================================================
+
+/** The fitted anchor shape: `auto` anchors placed ON recorded samples. */
+function fittedSamples(points: readonly AquarellePoint[]): readonly AquarelleAnchor[] {
+  const indices = [0, Math.floor((points.length - 1) / 2), points.length - 1];
+  return [...new Set(indices)].map((index) => ({
+    x: points[index]!.x,
+    y: points[index]!.y,
+    kind: 'auto' as const,
+  }));
+}
+
+/** A hand-recorded Brush stroke: 300 samples, monotone-but-varying pressure. */
+function handStroke(mutationId: number): AquarelleStroke {
+  const points: AquarellePoint[] = [];
+  for (let index = 0; index < 300; index += 1) {
+    const t = index / 299;
+    points.push({
+      x: 0.1 + 0.8 * t,
+      y: 0.5 + 0.18 * Math.sin(t * Math.PI * 2),
+      p: 0.2 + 0.7 * t,
+      tx: 0.5,
+      ty: -0.5,
+      tw: 0.75,
+    });
+  }
+  return stroke(mutationId, points);
+}
+
+describe('62-01 painted-stroke conversion — one write, one undo', () => {
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    setAquarelleScriptEditInFlight(false);
+  });
+
+  it('converts a fitted hand stroke in one write: anchors, mode and re-derived points', () => {
+    const id = 62001;
+    recordAquarelleStroke(id, handStroke(id));
+    const index = getRecordedAquarellePayloadTimeline().length - 1;
+    const before = getRecordedAquarelleStroke(id)!;
+    const beforeEntry = timelineStrokeAt(index);
+    const revision = aquarelleStrokesRevision.value;
+    const fit = fittedSamples(before.points);
+    expect(fit).toHaveLength(3);
+    expect('anchors' in before).toBe(false);
+
+    const editId = beginAquarellePathEdit(id, fit, { curveMode: 'spline' });
+    expect(editId).not.toBeNull();
+
+    const after = getRecordedAquarelleStroke(id)!;
+    expect(after.anchors).toEqual(fit);
+    expect(after.curveMode).toBe('spline');
+    // The points are re-derived from the path — never the hand's own array.
+    expect(after.points).not.toBe(before.points);
+    expect(after.points).not.toEqual(before.points);
+    // Both endpoints sit exactly on the path's endpoints (first/last samples).
+    expect(after.points[0]!.x).toBeCloseTo(fit[0]!.x, 12);
+    expect(after.points[0]!.y).toBeCloseTo(fit[0]!.y, 12);
+    const last = fit.length - 1;
+    expect(after.points[after.points.length - 1]!.x).toBeCloseTo(fit[last]!.x, 12);
+    expect(after.points[after.points.length - 1]!.y).toBeCloseTo(fit[last]!.y, 12);
+    // ONE revision bump and ONE entry at the SAME index.
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(1);
+    expect(getRecordedAquarellePayloadTimeline().indexOf(beforeEntry)).toBe(-1);
+    const entry = timelineStrokeAt(index);
+    expect(entry).not.toBe(beforeEntry);
+    expect(entry.engine.anchors).toEqual(fit);
+    expect(entry.engine.curveMode).toBe('spline');
+    expect(entry.pts).toHaveLength(after.points.length);
+  });
+
+  it('restores the exact hand samples in one undo and the conversion in one redo', () => {
+    const id = 62003;
+    recordAquarelleStroke(id, handStroke(id));
+    const before = getRecordedAquarelleStroke(id)!;
+    const beforePoints = before.points;
+    const fit = fittedSamples(beforePoints);
+
+    const editId = beginAquarellePathEdit(id, fit, { curveMode: 'spline' });
+    expect(editId).not.toBeNull();
+    const convertedPoints = getRecordedAquarelleStroke(id)!.points;
+    expect(convertedPoints).not.toBe(beforePoints);
+
+    // UNDO: the hand points — count, coordinates AND pressures — come back,
+    // and the conversion's two keys disappear with them (one-way is
+    // ledger-reversible, D-01/D-12).
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    const undone = getRecordedAquarelleStroke(id)!;
+    expect(undone.points).toHaveLength(beforePoints.length);
+    expect(undone.points).toEqual(beforePoints);
+    expect(undone.points.map((sample) => sample.p)).toEqual(
+      beforePoints.map((sample) => sample.p),
+    );
+    expect('anchors' in undone).toBe(false);
+    expect('curveMode' in undone).toBe(false);
+
+    // REDO: the converted pair, points included.
+    expect(restoreAquarelleEditSnapshot(editId!, 'redo')).not.toBeNull();
+    const redone = getRecordedAquarelleStroke(id)!;
+    expect(redone.anchors).toEqual(fit);
+    expect(redone.curveMode).toBe('spline');
+    expect(redone.points).toEqual(convertedPoints);
+  });
+
+  it('treats a second identical commit as a silent no-op that mints no ledger entry', () => {
+    const id = 62005;
+    recordAquarelleStroke(id, handStroke(id));
+    const before = getRecordedAquarelleStroke(id)!;
+    const fit = fittedSamples(before.points);
+    const revision = aquarelleStrokesRevision.value;
+
+    const editId = beginAquarellePathEdit(id, fit, { curveMode: 'spline' });
+    expect(editId).not.toBeNull();
+    const converted = getRecordedAquarelleStroke(id)!;
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+
+    // The identical second commit stores nothing, bumps nothing, mints no edit.
+    expect(beginAquarellePathEdit(id, fit, { curveMode: 'spline' })).toBeNull();
+    expect(getRecordedAquarelleStroke(id)).toBe(converted);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+
+    // The next REAL edit takes the immediate successor id: neither the first
+    // write nor the no-op birthed a second ledger entry.
+    const moved = fit.map((anchor, anchorIndex) =>
+      anchorIndex === 1 ? { ...anchor, y: anchor.y + 0.02 } : anchor,
+    );
+    expect(beginAquarellePathEdit(id, moved, { curveMode: 'spline' })).toBe(editId! + 1);
+  });
+
+  it('refuses a degenerate stroke and an unreadable path without writing', () => {
+    const id = 62007;
+    recordAquarelleStroke(
+      id,
+      stroke(id, [{ x: Number.NaN, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 }]),
+    );
+    const before = getRecordedAquarelleStroke(id)!;
+    const revision = aquarelleStrokesRevision.value;
+
+    expect(beginAquarellePathEdit(id, [])).toBeNull();
+    expect(beginAquarellePathEdit(id, [{ x: Number.NaN, y: 0.5, kind: 'auto' }])).toBeNull();
+    expect(aquarelleStrokesRevision.value).toBe(revision);
+    expect(getRecordedAquarelleStroke(id)).toBe(before);
+    expect('anchors' in before).toBe(false);
+  });
+
+  it('stores no mode key on the in-app route and compares the effective mode on a re-write', () => {
+    // The in-app gesture passes NO explicit mode: the default is the ABSENT
+    // key, exactly the expression the 62-03 overlay previews with (D-01/D-02).
+    const defaultId = 62009;
+    recordAquarelleStroke(defaultId, handStroke(defaultId));
+    const defaultFit = fittedSamples(getRecordedAquarelleStroke(defaultId)!.points);
+    expect(beginAquarellePathEdit(defaultId, defaultFit)).not.toBeNull();
+    const defaultAfter = getRecordedAquarelleStroke(defaultId)!;
+    expect(defaultAfter.anchors).toEqual(defaultFit);
+    expect('curveMode' in defaultAfter).toBe(false);
+    expect('curveMode' in timelineStrokeAt(0).engine).toBe(false);
+
+    // An explicit default mode also writes no key ...
+    const explicitDefaultId = 62011;
+    recordAquarelleStroke(explicitDefaultId, handStroke(explicitDefaultId));
+    const explicitFit = fittedSamples(getRecordedAquarelleStroke(explicitDefaultId)!.points);
+    expect(
+      beginAquarellePathEdit(explicitDefaultId, explicitFit, { curveMode: 'bezier' }),
+    ).not.toBeNull();
+    expect('curveMode' in getRecordedAquarelleStroke(explicitDefaultId)!).toBe(false);
+
+    // ... a spline conversion stores it, and switching back DROPS it: the
+    // write happens on the MODE change alone, with identical anchors.
+    const splineId = 62013;
+    recordAquarelleStroke(splineId, handStroke(splineId));
+    const splineFit = fittedSamples(getRecordedAquarelleStroke(splineId)!.points);
+    expect(beginAquarellePathEdit(splineId, splineFit, { curveMode: 'spline' })).not.toBeNull();
+    const splineStroke = getRecordedAquarelleStroke(splineId)!;
+    expect(splineStroke.curveMode).toBe('spline');
+    expect(updateAquarellePathInScript(splineId, splineFit, { curveMode: 'bezier' })).toBe(1);
+    const dropped = getRecordedAquarelleStroke(splineId)!;
+    expect('curveMode' in dropped).toBe(false);
+    expect(dropped.anchors).toEqual(splineFit);
+    expect(dropped.points).not.toBe(splineStroke.points);
+    expect(dropped.points).toEqual(splineStroke.points);
+
+    // An unknown mode refuses the whole write, even when the anchors changed
+    // (fail-closed: never a silent Bézier fall back — T-62-01).
+    const invalidId = 62015;
+    recordAquarelleStroke(invalidId, handStroke(invalidId));
+    const invalidBefore = getRecordedAquarelleStroke(invalidId)!;
+    const invalidRevision = aquarelleStrokesRevision.value;
+    const invalidFit = fittedSamples(invalidBefore.points);
+    const movedFit = invalidFit.map((anchor, anchorIndex) =>
+      anchorIndex === 0 ? { ...anchor, x: anchor.x + 0.01 } : anchor,
+    );
+    expect(
+      updateAquarellePathInScript(invalidId, movedFit, { curveMode: 'linear' as AquarelleCurveMode }),
+    ).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(invalidRevision);
+    expect(getRecordedAquarelleStroke(invalidId)).toBe(invalidBefore);
+  });
+
+  it('changes only the path — tool, frame, params, seed salt and identity are untouched', () => {
+    const id = 62017;
+    const salted: AquarelleStroke = {
+      ...handStroke(id),
+      params: { size: 12, water: 30, paintSeedSalt: 3 },
+    };
+    recordAquarelleStroke(id, salted);
+    const index = getRecordedAquarellePayloadTimeline().length - 1;
+    const before = getRecordedAquarelleStroke(id)!;
+    const beforeEntry = timelineStrokeAt(index);
+    const fit = fittedSamples(before.points);
+
+    expect(beginAquarellePathEdit(id, fit, { curveMode: 'spline' })).not.toBeNull();
+
+    const after = getRecordedAquarelleStroke(id)!;
+    const afterEntry = timelineStrokeAt(index);
+    // Identity and every non-path field ride the spread untouched.
+    expect(after.mutationId).toBe(id);
+    expect(after.timestamp).toBe(before.timestamp);
+    expect(after.playFrame).toBe(before.playFrame);
+    expect(after.tool).toBe(before.tool);
+    expect(after.color).toBe(before.color);
+    expect(after.brushId).toBe(before.brushId);
+    expect(after.params).toBe(before.params);
+    // No seed bump: the projection's traceSeed is byte-identical (CRV-02).
+    expect(afterEntry.traceSeed).toBe(beforeEntry.traceSeed);
+    expect(afterEntry.engine.params).toEqual(beforeEntry.engine.params);
+    // The ONLY changed keys are the path's three.
+    const changed = Object.keys(after)
+      .filter(
+        (key) =>
+          (after as Record<string, unknown>)[key] !== (before as Record<string, unknown>)[key],
+      )
+      .sort();
+    expect(changed).toEqual(['anchors', 'curveMode', 'points']);
+  });
+});
