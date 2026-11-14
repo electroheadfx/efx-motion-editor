@@ -33,11 +33,13 @@
 //      f64 value) in sorted key order; u8 toolOverrides mask + f64
 //      values; u8 mutationId presence + u32; u8 diffusionFrames
 //      presence + u32; f64 timestamp; u8 playFrame presence + i32.
-//    Vector block (61-05 / 61-30 / 261111-wd6), AFTER the engine block's
-//      playFrame presence and BEFORE pointCount: u8 vectorFlags (bit 0 = a
-//      non-empty anchor list follows, bit 1 = LEGACY optional byte, never
-//      written, bit 2 = a curve-mode byte follows, bit 3 = every anchor
-//      carries a colour-presence byte), then when bit 0 is set u16
+//    Vector block (61-05 / 61-30 / 261111-wd6 / 62-UAT), AFTER the engine
+//      block's playFrame presence and BEFORE pointCount: u8 vectorFlags
+//      (bit 0 = a non-empty anchor list follows, bit 1 = LEGACY optional
+//      byte, never written, bit 2 = a curve-mode byte follows, bit 3 = every
+//      anchor carries a colour-presence byte, bit 4 = the stroke was drawn by
+//      the vector pen — the bit IS the whole marker, NO payload byte follows),
+//      then when bit 0 is set u16
 //      anchorCount + per anchor u8-order: f32 x, f32 y, u8 kindCode
 //      (auto=0, bezier=1), u8 handleFlags (bit 0 in-present, bit 1
 //      out-present), the conditional f32 handle pairs, u8 widthPresent +
@@ -50,10 +52,11 @@
 //      pre-existing offset in the block stays stable. The block sits
 //      inside the engine slot because that slot is the opaque carrier:
 //      appending there leaves every pre-existing field's offset stable. A
-//      hand-painted stroke with no mode pays exactly one flags byte, and a
-//      path with no anchor colour sets no bit 3 and writes no colour byte.
-//      An older reader refuses bit 3 (reserved-flags check): fail closed,
-//      exactly like every other unknown vector flag.
+//      hand-painted stroke with no mode pays exactly one flags byte, a path
+//      with no anchor colour sets no bit 3 and writes no colour byte, and a
+//      converted painted path sets no bit 4. An older reader refuses bit 3
+//      and bit 4 (reserved-flags check): fail closed, exactly like every
+//      other unknown vector flag.
 //    Point record (16 bytes): u16 x, u16 y, u16 p, i16 tx, i16 ty,
 //      i16 tw, u32 tick.
 //

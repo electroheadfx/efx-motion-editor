@@ -279,9 +279,9 @@ describe('Phase 61 vector field set (VEC-06 / REL-02)', () => {
   });
 
   it('declares the vector path shape in both languages', () => {
-    // VEC-06 / G-20: the non-empty anchor list plus the optional
-    // curve-evaluation mode.
-    expectMemberKeys('MceAquarelleVectorPath', ['anchors', 'curveMode']);
+    // VEC-06 / G-20 / 62: the non-empty anchor list, the optional
+    // curve-evaluation mode and the optional drawn-provenance marker.
+    expectMemberKeys('MceAquarelleVectorPath', ['anchors', 'curveMode', 'vectorDrawn']);
   });
 
   it('the in-handle wire key is the rename target of a named field, never a raw identifier', () => {

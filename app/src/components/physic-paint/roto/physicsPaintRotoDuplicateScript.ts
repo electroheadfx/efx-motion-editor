@@ -204,6 +204,10 @@ export function aquarelleStrokeFromScriptEvent(
     // 61-30 (G-20): a copied/duplicated spline stroke must stay a spline
     // stroke; absent stays absent so a hand-painted event keeps its key set.
     ...(engine.curveMode !== undefined ? { curveMode: engine.curveMode } : {}),
+    // 62-UAT: the drawn-by-the-vector-pen marker rides the same law — a copy
+    // must not reclassify a drawn "Vector" row as "<Tool>-Vector" (and must
+    // not drop codec bit 4 on persist).
+    ...(engine.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
   };
 }
 

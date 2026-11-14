@@ -925,11 +925,14 @@ describe('62-02 painted-curve entry through the shipped spline-pointer', () => {
   it('routes an eligible painted click to the Studio entry before the shipped vector action', () => {
     const button = regionOf(dialogSource, SPLINE_START, SPLINE_END);
     const paintedAt = button.indexOf("if (curveEntry?.kind === 'painted') {");
-    const enterAt = button.indexOf('void bundle?.enterPaintedCurve?.([target]);');
+    const enterAt = button.indexOf('bundle?.enterPaintedCurve?.([target])');
     const vectorAt = button.indexOf('enterPathEdit(String(target));');
     expect(paintedAt).toBeGreaterThan(-1);
     expect(enterAt).toBeGreaterThan(paintedAt);
     expect(vectorAt).toBeGreaterThan(enterAt);
+    // 62 CR-01/WR-01: the async entrance is guarded — a rejection must not
+    // surface as an unhandled rejection.
+    expect(button.slice(enterAt, vectorAt)).toContain('.catch(');
     // One button, one entrance: the leaf never fits and never writes.
     expect(button).not.toContain('beginPaintedCurveSession');
     expect(button).not.toContain('fitVectorPathAnchors');

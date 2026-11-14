@@ -1054,7 +1054,14 @@ export function PhysicsPaintStrokeSettingsDialog({
               // fits nothing and writes nothing. A vector stroke keeps the
               // shipped session action — same button, same latch.
               if (curveEntry?.kind === 'painted') {
-                void bundle?.enterPaintedCurve?.([target]);
+                // The entrance publishes its own refusals; a rejection here
+                // (a throw outside its durable-base arm) must not become an
+                // unhandled rejection with no visible error.
+                void Promise.resolve(bundle?.enterPaintedCurve?.([target])).catch(
+                  (error: unknown) => {
+                    console.error('[stroke-settings] painted curve entry failed:', error);
+                  },
+                );
                 return;
               }
               // Session action only: the Studio's overlay owns the record seam.

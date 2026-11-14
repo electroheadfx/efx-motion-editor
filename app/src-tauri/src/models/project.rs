@@ -499,11 +499,15 @@ pub struct MceAquarelleAnchor {
 
 /// The persisted vector-path shape of one stroke (VEC-06 / 61-06): a non-empty
 /// anchor list plus an optional curve-evaluation mode (G-20, absent reads
-/// `bezier`). Mirrors the AQTL v2 field names from 61-05 / 61-30.
+/// `bezier`) and the optional drawn-by-the-vector-pen marker (62-UAT — absent
+/// on a hand-painted stroke and on a converted painted path). Mirrors the
+/// AQTL v2 field names from 61-05 / 61-30 / 62.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MceAquarelleVectorPath {
     pub anchors: Vec<MceAquarelleAnchor>,
     #[serde(rename = "curveMode")]
     pub curve_mode: Option<String>,
+    #[serde(rename = "vectorDrawn")]
+    pub vector_drawn: Option<bool>,
 }
