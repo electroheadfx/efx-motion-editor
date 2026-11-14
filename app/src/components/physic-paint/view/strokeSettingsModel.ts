@@ -17,12 +17,14 @@ import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
 import { findTip, type AquarelleToolOverrides } from '@efxlab/efx-watercolor/brushes';
 import {
   ANCHOR_WIDTH_MAX,
+  normaliseAquarelleAnchors,
   paintSeedSaltOf,
   readAnchorCornerState,
   resolveAquarelleCurveMode,
   type AnchorCornerState,
   type AquarelleAnchor,
   type AquarelleCurveMode,
+  type AquarelleStroke,
 } from '@efxlab/efx-watercolor/payload';
 import type {
   SelectableScriptStroke,
@@ -781,11 +783,139 @@ export const PATH_EDIT_SINGLE_DISABLED_REASON = 'Edit path — select one vector
 /** More than one stroke selected: paths are edited one stroke at a time. */
 export const PATH_EDIT_MULTI_DISABLED_REASON = 'Edit path — select a single vector stroke';
 
+/**
+ * 62-02 (D-10): a Lift stroke records an erasure, not a paint path — there is
+ * nothing to fit and nothing to edit, so it is refused with its own named
+ * copy instead of the shipped "select one vector stroke" line.
+ */
+export const PATH_EDIT_LIFT_DISABLED_REASON = 'Edit path — an eraser stroke cannot be edited';
+
+/**
+ * 62-02 (D-10): fewer than two distinct finite samples is no path at all.
+ * Fixed and non-interpolated, like every other refusal in this module.
+ */
+export const PATH_EDIT_DEGENERATE_DISABLED_REASON =
+  'Edit path — this stroke has too few points to edit';
+
+/**
+ * 62-02 (D-10): what the spline-pointer resolves for ONE recorded stroke.
+ * `vector` keeps the shipped readable-anchors arm, `painted` is the new
+ * conversion entrance, and `refused` carries the fixed disabled reason (or
+ * null when the shipped single-selection copy already says enough).
+ */
+export interface CurveEntryState {
+  readonly kind: 'vector' | 'painted' | 'refused';
+  readonly reason: string | null;
+}
+
+/** Consecutive samples closer than this (document uv) are one sample. */
+const CURVE_ENTRY_DUPLICATE_EPSILON_UV = 1e-6;
+
+/**
+ * Distinct finite samples in recording order, collapsing CONSECUTIVE
+ * duplicates only (the fitter's own law). Never throws on malformed input:
+ * a non-object, a non-finite coordinate or a missing `points` list simply
+ * contributes nothing.
+ */
+function countDistinctFiniteSamples(points: unknown): number {
+  if (!Array.isArray(points)) return 0;
+  let count = 0;
+  let previousX = 0;
+  let previousY = 0;
+  for (const sample of points) {
+    if (typeof sample !== 'object' || sample === null) continue;
+    const { x, y } = sample as { readonly x?: unknown; readonly y?: unknown };
+    if (typeof x !== 'number' || !Number.isFinite(x)) continue;
+    if (typeof y !== 'number' || !Number.isFinite(y)) continue;
+    if (
+      count > 0
+      && Math.abs(previousX - x) <= CURVE_ENTRY_DUPLICATE_EPSILON_UV
+      && Math.abs(previousY - y) <= CURVE_ENTRY_DUPLICATE_EPSILON_UV
+    ) {
+      continue;
+    }
+    count += 1;
+    previousX = x;
+    previousY = y;
+  }
+  return count;
+}
+
+/**
+ * 62-02 (D-10): the ONE eligibility decision the spline-pointer reads. The
+ * shipped vector arm is checked FIRST — readable anchors mean the stroke is
+ * already a path, whatever its tool — so a vector stroke keeps exactly the
+ * pre-62 behaviour. An anchors array that is present but unreadable is
+ * neither a vector path nor a paintable stroke: it refuses with no new copy,
+ * and the gate falls back to the shipped single-selection reason. Lift is
+ * refused with its eraser line; every other tool needs two distinct finite
+ * samples or it is refused as degenerate.
+ */
+export function resolvePaintedCurveEligibility(stroke: AquarelleStroke): CurveEntryState {
+  const candidate = stroke as
+    | {
+        readonly tool?: unknown;
+        readonly points?: unknown;
+        readonly anchors?: unknown;
+      }
+    | null
+    | undefined;
+  if (typeof candidate !== 'object' || candidate === null) {
+    return { kind: 'refused', reason: PATH_EDIT_DEGENERATE_DISABLED_REASON };
+  }
+  if (normaliseAquarelleAnchors(candidate.anchors) !== undefined) {
+    return { kind: 'vector', reason: null };
+  }
+  if (Array.isArray(candidate.anchors) && candidate.anchors.length > 0) {
+    return { kind: 'refused', reason: null };
+  }
+  if (candidate.tool === 'lift') {
+    return { kind: 'refused', reason: PATH_EDIT_LIFT_DISABLED_REASON };
+  }
+  if (
+    candidate.tool !== 'brush'
+    && candidate.tool !== 'water'
+    && candidate.tool !== 'pen'
+  ) {
+    return { kind: 'refused', reason: PATH_EDIT_DEGENERATE_DISABLED_REASON };
+  }
+  if (countDistinctFiniteSamples(candidate.points) < 2) {
+    return { kind: 'refused', reason: PATH_EDIT_DEGENERATE_DISABLED_REASON };
+  }
+  return { kind: 'painted', reason: null };
+}
+
+/**
+ * 62-02 (D-10): the ONE write-admission decision the Studio's writer seam
+ * delegates to. A strict superset of the shipped readable-anchors test: a
+ * stroke with readable anchors may always be written, and an eligible
+ * anchorless painted stroke may now be converted through the same seam.
+ * Everything else — Lift, degenerate, malformed anchors, a missing stroke —
+ * is refused.
+ */
+export function admitsPathEditWrite(stroke: AquarelleStroke): boolean {
+  const candidate = stroke as { readonly anchors?: unknown } | null | undefined;
+  if (
+    typeof candidate === 'object'
+    && candidate !== null
+    && normaliseAquarelleAnchors(candidate.anchors) !== undefined
+  ) {
+    return true;
+  }
+  return resolvePaintedCurveEligibility(stroke).kind === 'painted';
+}
+
 export interface PathEditGateArgs {
   readonly selectionSize: number;
   readonly vectorStrokeCount: number;
   readonly selectedMutationId: number | null;
   readonly pathEditMutationId: string | null;
+  /**
+   * 62-02 (D-10): the single selected stroke's eligibility. OPTIONAL, so
+   * every pre-62 caller (and every shipped case) stays byte-identical when it
+   * is absent or null.
+   */
+  readonly curveEntry?: CurveEntryState | null;
 }
 
 export interface PathEditGate {
@@ -798,16 +928,22 @@ export interface PathEditGate {
  * Resolve the header button's whole state in one place. `title` is the
  * constant label while enabled and the constant disabled reason otherwise,
  * so the sheet never renders a stale hover hint.
+ *
+ * 62-02 (D-10): a single eligible painted stroke joins the shipped vector arm
+ * (the entry fits it on click), and a refused entry contributes its named
+ * reason. The multi-selection reason wins over both, and the shipped single
+ * reason stays the fallback for a refusal with no new copy.
  */
 export function resolvePathEditGate(args: PathEditGateArgs): PathEditGate {
-  const enabled = args.selectionSize === 1 && args.vectorStrokeCount === 1;
+  const enabled = args.selectionSize === 1
+    && (args.vectorStrokeCount === 1 || args.curveEntry?.kind === 'painted');
   return {
     enabled,
     title: enabled
       ? PATH_EDIT_LABEL
       : args.selectionSize > 1
         ? PATH_EDIT_MULTI_DISABLED_REASON
-        : PATH_EDIT_SINGLE_DISABLED_REASON,
+        : args.curveEntry?.reason ?? PATH_EDIT_SINGLE_DISABLED_REASON,
     pressed:
       args.selectedMutationId !== null &&
       args.pathEditMutationId === String(args.selectedMutationId),
