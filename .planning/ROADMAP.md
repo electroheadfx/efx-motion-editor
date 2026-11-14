@@ -333,14 +333,14 @@ Plans:
   3. Every loop occurrence of the edited stroke is invalidated together; no stale occurrence keeps the pre-edit pixels.
   4. Undo cancels or settles an in-flight bake and leaves the stroke at its exact pre-edit state.
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 Plans:
 **Wave 1**
 - [x] 62-01-PLAN.md — Fitted anchors convert a painted stroke in one script write; sample count and pressure law preserved
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 62-02-PLAN.md — Eligibility, the spline-pointer entry and the one exit bracket that restores wireframe/Draft
+- [x] 62-02-PLAN.md — Eligibility, the spline-pointer entry and the one exit bracket that restores wireframe/Draft
 - [ ] 62-03-PLAN.md — The overlay draws and edits the held fit, the original-spine ghost and the pressure-band envelope
 - [ ] 62-05-PLAN.md — One source-scoped cache identity: every loop occurrence invalidates with its source
 
@@ -362,6 +362,6 @@ Plans:
 | 59. Rail Motion Channels & v7 Interface | 25/25 | Complete    | 2026-11-08 |
 | 60. Studio Timeline Horizontal Zoom | 6/6 | Complete    | 2026-11-09 |
 | 61. Vector Painting Tool | 31/31 | Complete    | 2026-11-12 |
-| 62. Painted-Stroke Curve Editing | 1/5 | In Progress | - |
+| 62. Painted-Stroke Curve Editing | 2/5 | In Progress | - |
 
 **Execution Order:** 59 → 60 → 61 → 62 (v2.1.0) → 63 → 64 (v2.2.0) → 65 (v2.3.0). Global numbering continues; Phase 57 is retired and never reused.

@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: executing
-stopped_at: Completed 62-01-PLAN.md
-last_updated: "2026-11-14T12:37:01.197Z"
+stopped_at: Completed 62-02-PLAN.md
+last_updated: "2026-11-14T12:54:44.671Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 62 execution started
-state_head: a21ca9ce669da9315a925954410ff0c125d532f5
+state_head: c187aa033b44d5a5345c1f94a2b1eabb29fa06c0
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 67
-  completed_plans: 63
+  completed_plans: 64
   percent: 75
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 ## Current Position
 
 Phase: 62 (Painted-Stroke Curve Editing) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-11-14 — Phase 62 execution started
 
@@ -122,6 +122,7 @@ Progress: [████████░░] 75%
 | Phase 61 P30 | 10 | 2 tasks | 15 files |
 | Phase 61 P31 | 11min | 3 tasks | 10 files |
 | Phase 62 P01 | 22min | 3 tasks | 10 files |
+| Phase 62 P02 | 16min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -356,6 +357,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 62]: Painted-stroke conversion reuses the existing updateAquarellePathInScript seam through a new options argument: anchors, absent-key default curveMode and re-derived points land in ONE write, ONE revision bump and ONE ledger entry.
 - [Phase 62]: The fit is interpolating, never approximating: Douglas-Peucker on the original samples with tolerance equal to PATH_SAMPLE_STEP_UV, a pi/4 cumulative-turn pass, then a deterministic 40-anchor cap (bounded tolerance doubling, index decimation last).
 - [Phase 62]: Every edit seam preserves the recorded sample count (the count IS ticks) and remaps recorded pressure by source arc length with both ends pinned; the draw-time mint is untouched and all-sentinel strokes stay sentinel.
+- [Phase 62]: Eligibility resolves the vector arm first via normaliseAquarelleAnchors; anchors present but unreadable fail closed.
+- [Phase 62]: Admission reuses the eligibility verdict, so the gate and the ONE writer seam can never disagree.
+- [Phase 62]: Entry arms the durable base through the shipped armDraftBase before fitting; a refused arm publishes the fixed refusal and opens nothing.
+- [Phase 62]: The dirty exit branch settles once when the user had no wireframe, or keeps the deferred render behind the user's own wireframe (D-14).
+- [Phase 62]: resetForStudioOpen closes path edit through exitPathEdit so the reset route reaches the one exit hook.
 
 ### Pending Todos
 
@@ -463,8 +469,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-14T12:36:59.318Z
-Stopped at: Completed 62-01-PLAN.md
+Last session: 2026-11-14T12:54:42.745Z
+Stopped at: Completed 62-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
