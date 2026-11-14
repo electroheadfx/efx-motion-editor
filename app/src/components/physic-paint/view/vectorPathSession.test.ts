@@ -34,6 +34,17 @@ import { aquarellePickerActive, disarmAquarellePicker, setAquarellePickerLatched
 // The draft cursor writer is exercised through the module surface, so the pin
 // observes the module's ONE public writer rather than a test-local copy.
 import * as vectorPathSessionSurface from './vectorPathSession';
+// 62-02's exit funnel is reached through the namespace so the RED run fails on
+// the missing hook rather than at module load (TDD gate evidence).
+import * as vectorPathLatchesSurface from './vectorPathLatches';
+
+type VectorPathLatchesSurface = {
+  registerPathEditExitHook?: (hook: (() => void) | null) => void;
+};
+
+const registerPathEditExitHook = (
+  vectorPathLatchesSurface as unknown as VectorPathLatchesSurface
+).registerPathEditExitHook;
 
 /** Count how many times a read runs — an `effect()` re-runs only on a REAL write. */
 function countRuns(read: () => unknown): { runs: () => number; dispose: () => void } {
@@ -46,6 +57,7 @@ function countRuns(read: () => unknown): { runs: () => number; dispose: () => vo
 }
 
 afterEach(() => {
+  registerPathEditExitHook?.(null);
   resetForStudioOpen();
   setAquarelleSelectMode(false);
   disarmAquarellePicker();
@@ -256,7 +268,7 @@ describe('the session module is session-only (T-61-53)', () => {
       "import { signal } from '@preact/signals';",
       "import { disarmAquarellePicker } from './aquarelleColorPicker';",
       "import { setAquarelleSelectMode } from './aquarelleStrokeSelection';",
-      "import { clearVectorAnchorSelection, exitPathEdit, exitVectorPen, pathEditMutationId, vectorPenActive, writeIfChanged } from './vectorPathLatches';",
+      "import { exitPathEdit, exitVectorPen, pathEditMutationId, vectorPenActive, writeIfChanged } from './vectorPathLatches';",
     ]);
   });
 
@@ -304,5 +316,63 @@ describe('the four paint tools stay closed', () => {
     const payload = readFileSync(payloadPath, 'utf8');
     const union = /export type AquarelleTool = ([^\n]+)/.exec(payload)?.[1] ?? '';
     expect(union.match(/'[a-z]+'/g) ?? []).toHaveLength(4);
+  });
+});
+
+// 62-02 (D-06): ONE module-level hook slot funnels every shipped exit route
+// through `exitPathEdit` / `resetForStudioOpen`. The production registration is
+// 62-04 T2's; these tests register their own probe and drive the REAL exits,
+// so the shape of the funnel is pinned without touching the nine call sites.
+describe('62-02 the ONE path-edit exit funnel', () => {
+  it('runs the registered hook exactly when the latch transitions open -> closed', () => {
+    expect(typeof registerPathEditExitHook).toBe('function');
+    const probe = { runs: 0 };
+    registerPathEditExitHook!(() => { probe.runs += 1; });
+
+    // No open latch: no transition, so no hook and nothing to tear down.
+    exitPathEdit();
+    expect(probe.runs).toBe(0);
+
+    enterPathEdit('m7');
+    exitPathEdit();
+    expect(probe.runs).toBe(1);
+
+    // A repeated call is not a transition: the hook runs nothing.
+    exitPathEdit();
+    exitPathEdit();
+    expect(probe.runs).toBe(1);
+  });
+
+  it('runs the hook from the Studio-open reset only when it cleared an open latch', () => {
+    expect(typeof registerPathEditExitHook).toBe('function');
+    const probe = { runs: 0 };
+    registerPathEditExitHook!(() => { probe.runs += 1; });
+
+    resetForStudioOpen();
+    expect(probe.runs).toBe(0);
+
+    enterPathEdit('m9');
+    resetForStudioOpen();
+    expect(probe.runs).toBe(1);
+
+    resetForStudioOpen();
+    expect(probe.runs).toBe(1);
+  });
+
+  it('reaches the hook from a shipped sibling exit without a per-site change', () => {
+    expect(typeof registerPathEditExitHook).toBe('function');
+    const probe = { runs: 0 };
+    registerPathEditExitHook!(() => { probe.runs += 1; });
+
+    enterPathEdit('m11');
+    // enterVectorPen releases an open path edit through the SAME exitPathEdit.
+    enterVectorPen();
+    expect(probe.runs).toBe(1);
+
+    // Registering null detaches the funnel without throwing.
+    registerPathEditExitHook!(null);
+    enterPathEdit('m13');
+    exitPathEdit();
+    expect(probe.runs).toBe(1);
   });
 });
