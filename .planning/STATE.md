@@ -4,17 +4,17 @@ milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
 current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
-status: executing
-stopped_at: Completed 62-05-PLAN.md
-last_updated: "2026-11-14T13:17:48.067Z"
+status: verifying
+stopped_at: Completed 62-04-PLAN.md
+last_updated: "2026-11-14T13:27:31.096Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 62 execution started
-state_head: 7e38f8960a66376363b48565db4bb4b168698341
+state_head: 8851c38a789aee1ed9bcb17c259b4b2d8aeb6436
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 67
-  completed_plans: 66
+  completed_plans: 67
   percent: 75
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 
 Phase: 62 (Painted-Stroke Curve Editing) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-14 — Phase 62 execution started
 
 Progress: [████████░░] 75%
@@ -125,6 +125,7 @@ Progress: [████████░░] 75%
 | Phase 62 P02 | 16min | 3 tasks | 13 files |
 | Phase 62 P03 | 10min | 3 tasks | 6 files |
 | Phase 62 P05 | 6min | 3 tasks | 8 files |
+| Phase 62 P04 | 9 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -373,6 +374,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 62]: D-11: buildRotoRealCacheRevision is the ONE production statement of the real-source identity; all store/remap/persistence sites route through it byte-identically.
 - [Phase 62]: The paper cache term stays a verbatim suffix (no separator, no normalization), preserving every shipped persistence key.
 - [Phase 62]: CRV-03 edge probes and the D-11 source-only pin are test-only over shipped seams and landed GREEN by construction; no RED was fabricated.
+- [Phase 62]: Cancellation is a synchronous predicate re-read at the produce and commit turns (the isStillCurrent precedent): the commit-turn read wins over a successful or rejected apply, and the latch is released in finally before any terminal
+- [Phase 62]: Undo during an immediate path-edit bake cancels the token, awaits that exact bake and replays its exact editId with one reanchor retry — never a stack pop, because the cancelled run wrote no ledger entry
+- [Phase 62]: The ONE production registerPathEditExitHook registration lives in a dedicated [settleDraftScript] effect beside the mount reset, with a detaching cleanup; the deferred route arms no epoch
 
 ### Pending Todos
 
@@ -480,8 +484,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-14T13:17:46.145Z
-Stopped at: Completed 62-05-PLAN.md
+Last session: 2026-11-14T13:27:29.233Z
+Stopped at: Completed 62-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
