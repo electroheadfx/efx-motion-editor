@@ -12,6 +12,8 @@ import {
   wireframeMode,
   wireframeSettleInFlight,
 } from './view/scriptStrokeEdition';
+import type { AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import { admitsPathEditWrite } from './view/strokeSettingsModel';
 
 // 261027-klx: the G2 census gate forbids the contiguous retired Brush-script
 // tokens in app/src. These negative pins still scan for the real identifiers at
@@ -6455,7 +6457,10 @@ describe('61-10 vector path edit wiring in the Studio', () => {
   it('refuses a missing or unreadable path through the capsule and stores nothing', () => {
     const handler = regionOf(studio, HANDLER_START, HANDLER_END);
     expect(handler).toContain('getRecordedAquarelleStroke(mutationId)');
-    const guardAt = handler.indexOf('normaliseAquarelleAnchors(stroke.anchors) === undefined');
+    // 62-02 (D-10): the refusal decision moved into the pure admission
+    // predicate, a strict superset of the old readable-anchors test — an
+    // eligible anchorless painted stroke must reach the conversion write.
+    const guardAt = handler.indexOf('admitsPathEditWrite(stroke)');
     const publishAt = handler.indexOf('setApplyMessage(VECTOR_PATH_REJECTION_MESSAGE)');
     const commitAt = handler.indexOf('return commitAquarelleVectorPathEdit(mutationId, anchors);');
     expect(guardAt).toBeGreaterThan(-1);
@@ -6536,6 +6541,125 @@ describe('61-10 vector path edit wiring in the Studio', () => {
     expect(publishAt).toBeGreaterThan(restoreAt);
     expect(commit).toContain('scriptApplyRefusalOwnedRef.current = true;');
     expect(commit).toContain('return ok ? editId : null;');
+  });
+});
+
+// 62-02 (D-03 / D-10): the spline-pointer's painted entrance and the ONE
+// writer seam's widened admission. The fit runs lazily on entry — after the
+// durable base is armed — and the seam delegates its refusal decision to the
+// pure `admitsPathEditWrite` predicate, so an eligible anchorless painted
+// stroke reaches the conversion write instead of the fixed rejection copy.
+describe('62-02 painted-curve entry and conversion admission in the Studio', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const READ_START = 'const readCurveEntry = useCallback(';
+  const ENTER_START = 'const enterPaintedCurve = useCallback(';
+  const COMMIT_START = 'const commitAquarelleVectorPathEdit = useCallback(';
+
+  /** The anchorless Brush stroke the in-app conversion must now admit. */
+  const anchorlessBrushFixture: AquarelleStroke = {
+    tool: 'brush',
+    color: '#103c65',
+    params: { size: 12, water: 30 },
+    brushId: 'round',
+    points: [
+      { x: 0.1, y: 0.5, p: 0.5, tx: 0.5, ty: -0.5, tw: 0.75 },
+      { x: 0.9, y: 0.5, p: 0.5, tx: 0.5, ty: -0.5, tw: 0.75 },
+    ],
+    timestamp: 1,
+    playFrame: 601,
+  };
+
+  it('declares both entry callbacks BEFORE the shared commit, so the shipped region slices stay intact', () => {
+    const readAt = studio.indexOf(READ_START);
+    const enterAt = studio.indexOf(ENTER_START);
+    const commitAt = studio.indexOf(COMMIT_START);
+    expect(readAt, 'readCurveEntry exists').toBeGreaterThan(-1);
+    expect(enterAt, 'enterPaintedCurve exists').toBeGreaterThan(readAt);
+    expect(commitAt).toBeGreaterThan(enterAt);
+    // The imports the two callbacks need are the model's pure predicates and
+    // the 62-01 bracket module — no record, engine or save seam is added.
+    expect(studio).toContain('  admitsPathEditWrite,');
+    expect(studio).toContain('  resolvePaintedCurveEligibility,');
+    expect(studio).toContain('  type CurveEntryState,');
+    expect(studio).toContain(
+      "import { beginCurveWireframeBracket, beginPaintedCurveSession } from './view/vectorPathCurveBracket';",
+    );
+  });
+
+  it('classifies ONE recorded stroke on the render-body read and never fits there', () => {
+    const read = regionOf(studio, READ_START, ENTER_START);
+    expect(read).toContain('if (ids.length !== 1) return null;');
+    expect(read).toContain('const stroke = getRecordedAquarelleStroke(ids[0]!);');
+    expect(read).toContain('return resolvePaintedCurveEligibility(stroke);');
+    // D-03: the fit is an ENTRY action — the read only classifies.
+    expect(read).not.toContain('beginPaintedCurveSession');
+    expect(read).not.toContain('fitVectorPathAnchors');
+    // No signal is subscribed by this callback: peek-free plain reads only.
+    expect(read).not.toContain('.value');
+  });
+
+  it('fits lazily on entry: arm FIRST, then hold the fit, bracket the view and open the latch', () => {
+    const enter = regionOf(studio, ENTER_START, COMMIT_START);
+    // The entry refuses a missing or non-painted stroke before any work.
+    expect(enter).toContain(
+      "if (resolvePaintedCurveEligibility(stroke).kind !== 'painted') return false;",
+    );
+    const armAt = enter.indexOf('const armed = await armDraftBase();');
+    const fitAt = enter.indexOf('const session = beginPaintedCurveSession(stroke);');
+    const bracketAt = enter.indexOf('beginCurveWireframeBracket();');
+    const latchAt = enter.indexOf('vectorPathSession.enterPathEdit(String(ids[0]!));');
+    expect(armAt, 'the base arm is awaited').toBeGreaterThan(-1);
+    expect(fitAt, 'the fit runs on entry').toBeGreaterThan(armAt);
+    expect(bracketAt).toBeGreaterThan(fitAt);
+    expect(latchAt).toBeGreaterThan(bracketAt);
+    expect(enter).toContain('if (session === null) return false;');
+    expect(enter).toContain('return true;');
+    // A refused arm fails closed: fixed copy through the shipped capsule, no
+    // fit held, no bracket, no latch.
+    const refusal = enter.slice(enter.indexOf('if (!armed) {'), fitAt);
+    expect(refusal).toContain('setApplyMessage(DRAFT_ARM_REFUSAL_MESSAGE);');
+    expect(refusal).toContain("setApplyStatus('error');");
+    expect(refusal).toContain('return false;');
+    expect(refusal).not.toContain('beginPaintedCurveSession');
+    expect(refusal).not.toContain('beginCurveWireframeBracket');
+  });
+
+  it('wires both members into the bundle body and its memo dependency list', () => {
+    const memoStart = studio.indexOf('const strokeSettingsDialog = strokeSettingsDialogPropsMemo.resolve(');
+    expect(memoStart).toBeGreaterThan(-1);
+    const memoDepEnd = studio.indexOf('() => {', memoStart);
+    expect(memoDepEnd).toBeGreaterThan(memoStart);
+    const bodyEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel({', memoDepEnd);
+    expect(bodyEnd).toBeGreaterThan(memoDepEnd);
+    const deps = studio.slice(memoStart, memoDepEnd);
+    expect(deps).toContain('readCurveEntry,');
+    expect(deps).toContain('enterPaintedCurve,');
+    const body = studio.slice(memoDepEnd, bodyEnd);
+    expect(body).toContain('readCurveEntry,');
+    expect(body).toContain('enterPaintedCurve,');
+  });
+
+  it('widens the ONE writer seam to the admission predicate and keeps one publication site', () => {
+    const HANDLER_START = 'const handleAquarelleVectorPathEdit = useCallback(';
+    const HANDLER_END = 'const canvasMount = canvasMountPropsMemo.resolve(';
+    const handler = regionOf(studio, HANDLER_START, HANDLER_END);
+    expect(handler).toContain('if (!stroke || !admitsPathEditWrite(stroke)) {');
+    // The pre-62 readable-anchors guard is retired: the predicate is its
+    // strict superset and adds the eligible painted arm.
+    expect(handler).not.toContain('normaliseAquarelleAnchors(stroke.anchors) === undefined');
+    expect(handler.split('setApplyMessage(').length - 1).toBe(1);
+    expect(handler).toContain('return commitAquarelleVectorPathEdit(mutationId, anchors);');
+    // The predicate's verdict on the fixtures the seam now forwards/refuses.
+    expect(admitsPathEditWrite(anchorlessBrushFixture)).toBe(true);
+    expect(admitsPathEditWrite({ ...anchorlessBrushFixture, tool: 'lift' })).toBe(false);
+    expect(admitsPathEditWrite({ ...anchorlessBrushFixture, points: [] })).toBe(false);
   });
 });
 

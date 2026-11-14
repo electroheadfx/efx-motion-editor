@@ -892,3 +892,77 @@ describe('261112-n3f — closing the sheet restores the surface', () => {
       .toBeLessThan(closeEdge.indexOf('bundle?.settleDraft?.()'));
   });
 });
+
+// ============================================================
+//  62-02 (D-03 / D-10) — ONE button, two stroke kinds.
+//
+//  The shipped spline-pointer reads the single selection's curve entry
+//  from the Studio bundle and hands it to the ONE gate. An eligible
+//  painted click routes to the Studio entry (which fits lazily on
+//  click); a vector click keeps the shipped `enterPathEdit` action.
+//  The dialog leaf never fits, never reads the record seam and never
+//  writes a signal from its render body.
+// ============================================================
+
+describe('62-02 painted-curve entry through the shipped spline-pointer', () => {
+  it('reads the single selection’s curve entry and hands it to the gate', () => {
+    const read = regionOf(
+      dialogSource,
+      "const curveEntry = selectedMutationId !== null && engineModule === 'watercolor'",
+      'const pathEditGate = resolvePathEditGate({',
+    );
+    expect(read).toContain('bundle?.readCurveEntry?.([selectedMutationId]) ?? null');
+    const gate = regionOf(
+      dialogSource,
+      'const pathEditGate = resolvePathEditGate({',
+      'const pathEditGateEnabled = pathEditGate.enabled;',
+    );
+    expect(gate).toContain('curveEntry,');
+    // The vector arm is untouched: the shipped anchor read still decides it.
+    expect(gate).toContain('vectorStrokeCount: selectedVectorAnchors !== null ? 1 : 0,');
+  });
+
+  it('routes an eligible painted click to the Studio entry before the shipped vector action', () => {
+    const button = regionOf(dialogSource, SPLINE_START, SPLINE_END);
+    const paintedAt = button.indexOf("if (curveEntry?.kind === 'painted') {");
+    const enterAt = button.indexOf('void bundle?.enterPaintedCurve?.([target]);');
+    const vectorAt = button.indexOf('enterPathEdit(String(target));');
+    expect(paintedAt).toBeGreaterThan(-1);
+    expect(enterAt).toBeGreaterThan(paintedAt);
+    expect(vectorAt).toBeGreaterThan(enterAt);
+    // One button, one entrance: the leaf never fits and never writes.
+    expect(button).not.toContain('beginPaintedCurveSession');
+    expect(button).not.toContain('fitVectorPathAnchors');
+    expect(button).not.toContain('getRecordedAquarelleStroke');
+    expect(countOf(dialogSource, SPLINE_TESTID)).toBe(1);
+    // No new lifecycle effect and no new session import: the entry is a
+    // bundle action, exactly like every other commit of this sheet.
+    expect(countOf(dialogSource, 'useEffect(')).toBe(2);
+    expect(dialogSource).toContain(
+      "import { enterPathEdit, exitPathEdit, pathEditMutationId, vectorAnchorSelection } from './vectorPathSession';",
+    );
+  });
+
+  it('declares both optional bundle members and the fixed refusal copy in the model', () => {
+    expect(modelSource).toContain(
+      'readonly readCurveEntry?: (ids: readonly number[]) => CurveEntryState | null;',
+    );
+    expect(modelSource).toContain(
+      'readonly enterPaintedCurve?: (ids: readonly number[]) => boolean | Promise<boolean>;',
+    );
+    // The refusal copy is a fixed module constant, never interpolated.
+    expect(modelSource).toContain(
+      "export const PATH_EDIT_LIFT_DISABLED_REASON = 'Edit path — an eraser stroke cannot be edited';",
+    );
+    expect(modelSource).toContain(
+      'export const PATH_EDIT_DEGENERATE_DISABLED_REASON =',
+    );
+    const degenerateDeclaration = regionOf(
+      modelSource,
+      'export const PATH_EDIT_DEGENERATE_DISABLED_REASON =',
+      ';',
+    );
+    expect(degenerateDeclaration).not.toContain('${');
+    expect(degenerateDeclaration).not.toContain('`');
+  });
+});
