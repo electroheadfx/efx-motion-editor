@@ -23,7 +23,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effect } from '@preact/signals';
 import type { VNode } from 'preact';
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
-import { ANCHOR_WIDTH_MAX, PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
+import {
+  ANCHOR_WIDTH_MAX,
+  PAINT_SEED_SALT_PARAM,
+  type AquarelleAnchor,
+  type AquarelleStroke,
+} from '@efxlab/efx-watercolor/payload';
 import {
   ALL_TIP_FILTER_LABEL,
   ALL_TOOL_FILTER_LABEL,
@@ -3954,5 +3959,280 @@ describe('61-31 curve mode reading (Curve)', () => {
     const curveTree = renderDialogTab(bundle, 'curve');
     expect(findByTestId(curveTree, 'stroke-settings-curve')).toBeDefined();
     expect(findByTestId(curveTree, 'stroke-settings-curve-mode-block')).toBeUndefined();
+  });
+});
+
+// ============================================================
+//  62-02 (D-10) — painted-curve eligibility, the named
+//  refusals and the ONE write-admission predicate.
+//
+//  The spline-pointer must accept a hand-painted Brush, Water
+//  or Pen stroke and still refuse a Lift tool or a degenerate
+//  stroke, with fixed module copy that can never be
+//  interpolated. Every new symbol is reached through a DYNAMIC
+//  import so a RED run fails behaviourally (the shipped module
+//  has no such members yet), never at module load.
+// ============================================================
+
+interface CurveEntryStateShape {
+  readonly kind: string;
+  readonly reason: string | null;
+}
+
+interface CurveEntryModuleShape {
+  readonly PATH_EDIT_LIFT_DISABLED_REASON?: string;
+  readonly PATH_EDIT_DEGENERATE_DISABLED_REASON?: string;
+  readonly resolvePaintedCurveEligibility?: (stroke: AquarelleStroke) => CurveEntryStateShape;
+  readonly admitsPathEditWrite?: (stroke: AquarelleStroke) => boolean;
+  readonly resolvePathEditGate?: (args: {
+    readonly selectionSize: number;
+    readonly vectorStrokeCount: number;
+    readonly selectedMutationId: number | null;
+    readonly pathEditMutationId: string | null;
+    readonly curveEntry?: CurveEntryStateShape | null;
+  }) => { readonly enabled: boolean; readonly title: string; readonly pressed: boolean };
+}
+
+async function curveEntryModule(): Promise<CurveEntryModuleShape> {
+  return (await import('./strokeSettingsModel')) as unknown as CurveEntryModuleShape;
+}
+
+function paintedStrokeFixture(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#103c65',
+    params: { size: 12, water: 30 },
+    brushId: 'round',
+    points: [
+      { x: 0.1, y: 0.5, p: 0.5, tx: 0.5, ty: -0.5, tw: 0.75 },
+      { x: 0.5, y: 0.6, p: 0.4, tx: 0.5, ty: -0.5, tw: 0.75 },
+      { x: 0.9, y: 0.5, p: 0.6, tx: 0.5, ty: -0.5, tw: 0.75 },
+    ],
+    timestamp: 1,
+    playFrame: 601,
+    ...overrides,
+  };
+}
+
+const CURVE_FIXTURE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 0.1, y: 0.5, kind: 'auto' },
+  { x: 0.9, y: 0.5, kind: 'auto' },
+];
+
+describe('62-02 D-10 painted-curve eligibility and named refusals', () => {
+  it('names the Lift and degenerate refusals as fixed module constants', async () => {
+    const model = await curveEntryModule();
+    expect(model.PATH_EDIT_LIFT_DISABLED_REASON)
+      .toBe('Edit path — an eraser stroke cannot be edited');
+    expect(model.PATH_EDIT_DEGENERATE_DISABLED_REASON)
+      .toBe('Edit path — this stroke has too few points to edit');
+  });
+
+  it('admits brush, water and pen strokes with at least two distinct finite points', async () => {
+    const model = await curveEntryModule();
+    for (const tool of ['brush', 'water', 'pen'] as const) {
+      expect(model.resolvePaintedCurveEligibility?.(paintedStrokeFixture({ tool })), tool)
+        .toEqual({ kind: 'painted', reason: null });
+    }
+  });
+
+  it('keeps the shipped vector arm for a stroke carrying readable anchors', async () => {
+    const model = await curveEntryModule();
+    expect(
+      model.resolvePaintedCurveEligibility?.(
+        paintedStrokeFixture({ anchors: CURVE_FIXTURE_ANCHORS }),
+      ),
+    ).toEqual({ kind: 'vector', reason: null });
+    // Vector-ness is the anchors, never the tool: a Lift stroke that somehow
+    // carries a readable path keeps the shipped arm.
+    expect(
+      model.resolvePaintedCurveEligibility?.(
+        paintedStrokeFixture({ tool: 'lift', anchors: CURVE_FIXTURE_ANCHORS }),
+      ),
+    ).toEqual({ kind: 'vector', reason: null });
+  });
+
+  it('refuses a Lift stroke with the eraser reason', async () => {
+    const model = await curveEntryModule();
+    expect(model.resolvePaintedCurveEligibility?.(paintedStrokeFixture({ tool: 'lift' })))
+      .toEqual({ kind: 'refused', reason: model.PATH_EDIT_LIFT_DISABLED_REASON });
+  });
+
+  it('refuses a degenerate stroke with the too-few-points reason', async () => {
+    const model = await curveEntryModule();
+    const degenerate: AquarelleStroke[] = [
+      paintedStrokeFixture({ points: [] }),
+      paintedStrokeFixture({
+        points: [{ x: 0.4, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 }],
+      }),
+      // Consecutive duplicates collapse to one distinct sample.
+      paintedStrokeFixture({
+        points: [
+          { x: 0.4, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+          { x: 0.4, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+        ],
+      }),
+      // Non-finite coordinates never count as a sample.
+      paintedStrokeFixture({
+        points: [
+          { x: Number.NaN, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+          { x: 0.4, y: Number.POSITIVE_INFINITY, p: 0.5, tx: 0, ty: 0, tw: 0 },
+        ],
+      }),
+    ];
+    for (const stroke of degenerate) {
+      expect(model.resolvePaintedCurveEligibility?.(stroke))
+        .toEqual({ kind: 'refused', reason: model.PATH_EDIT_DEGENERATE_DISABLED_REASON });
+    }
+    // Every non-Lift tool degenerates the same way — the refusal is about the
+    // samples, never the tool's paint kind.
+    for (const tool of ['brush', 'water', 'pen'] as const) {
+      expect(model.resolvePaintedCurveEligibility?.(paintedStrokeFixture({ tool, points: [] })))
+        .toEqual({ kind: 'refused', reason: model.PATH_EDIT_DEGENERATE_DISABLED_REASON });
+    }
+  });
+
+  it('never throws on a malformed stroke and treats it as degenerate', async () => {
+    const model = await curveEntryModule();
+    expect(() => model.resolvePaintedCurveEligibility?.(undefined as unknown as AquarelleStroke))
+      .not.toThrow();
+    expect(() => model.resolvePaintedCurveEligibility?.({} as AquarelleStroke)).not.toThrow();
+    expect(model.resolvePaintedCurveEligibility?.(undefined as unknown as AquarelleStroke))
+      .toEqual({ kind: 'refused', reason: model.PATH_EDIT_DEGENERATE_DISABLED_REASON });
+    expect(model.resolvePaintedCurveEligibility?.({} as AquarelleStroke))
+      .toEqual({ kind: 'refused', reason: model.PATH_EDIT_DEGENERATE_DISABLED_REASON });
+  });
+
+  it('refuses an anchors array that is present but unreadable', async () => {
+    const model = await curveEntryModule();
+    const stroke = paintedStrokeFixture({ anchors: [null as unknown as AquarelleAnchor] });
+    expect(model.resolvePaintedCurveEligibility?.(stroke)?.kind).toBe('refused');
+    expect(model.admitsPathEditWrite?.(stroke)).toBe(false);
+  });
+
+  it('admits exactly readable-anchor and eligible painted strokes to the ONE write seam', async () => {
+    const model = await curveEntryModule();
+    expect(model.admitsPathEditWrite?.(paintedStrokeFixture({ anchors: CURVE_FIXTURE_ANCHORS })))
+      .toBe(true);
+    for (const tool of ['brush', 'water', 'pen'] as const) {
+      expect(model.admitsPathEditWrite?.(paintedStrokeFixture({ tool })), tool).toBe(true);
+      // The same tool degenerates out of admission with too few samples.
+      expect(model.admitsPathEditWrite?.(paintedStrokeFixture({ tool, points: [] })), tool)
+        .toBe(false);
+    }
+    expect(model.admitsPathEditWrite?.(paintedStrokeFixture({ tool: 'lift' }))).toBe(false);
+    expect(model.admitsPathEditWrite?.(undefined as unknown as AquarelleStroke)).toBe(false);
+    expect(model.admitsPathEditWrite?.({} as AquarelleStroke)).toBe(false);
+  });
+
+  it('enables the gate for one eligible painted stroke and keeps every shipped result unchanged', async () => {
+    const model = await curveEntryModule();
+    const gateOf = model.resolvePathEditGate!;
+    // A missing or null curve entry is byte-identical to the shipped gate.
+    for (const curveEntry of [undefined, null]) {
+      expect(
+        gateOf({
+          selectionSize: 1,
+          vectorStrokeCount: 1,
+          selectedMutationId: 7,
+          pathEditMutationId: null,
+          curveEntry,
+        }),
+      ).toEqual({ enabled: true, title: PATH_EDIT_LABEL, pressed: false });
+      expect(
+        gateOf({
+          selectionSize: 1,
+          vectorStrokeCount: 0,
+          selectedMutationId: 7,
+          pathEditMutationId: null,
+          curveEntry,
+        }),
+      ).toEqual({ enabled: false, title: PATH_EDIT_SINGLE_DISABLED_REASON, pressed: false });
+      expect(
+        gateOf({
+          selectionSize: 2,
+          vectorStrokeCount: 2,
+          selectedMutationId: null,
+          pathEditMutationId: null,
+          curveEntry,
+        }),
+      ).toEqual({ enabled: false, title: PATH_EDIT_MULTI_DISABLED_REASON, pressed: false });
+    }
+    // The painted arm: exactly one selected stroke that is eligible.
+    expect(
+      gateOf({
+        selectionSize: 1,
+        vectorStrokeCount: 0,
+        selectedMutationId: 7,
+        pathEditMutationId: '7',
+        curveEntry: { kind: 'painted', reason: null },
+      }),
+    ).toEqual({ enabled: true, title: PATH_EDIT_LABEL, pressed: true });
+    // Single-stroke only: a multi-selection is never rescued by the entry.
+    expect(
+      gateOf({
+        selectionSize: 2,
+        vectorStrokeCount: 0,
+        selectedMutationId: 7,
+        pathEditMutationId: null,
+        curveEntry: { kind: 'painted', reason: null },
+      }),
+    ).toEqual({ enabled: false, title: PATH_EDIT_MULTI_DISABLED_REASON, pressed: false });
+    expect(
+      gateOf({
+        selectionSize: 2,
+        vectorStrokeCount: 1,
+        selectedMutationId: 7,
+        pathEditMutationId: null,
+        curveEntry: { kind: 'painted', reason: null },
+      }),
+    ).toEqual({ enabled: false, title: PATH_EDIT_MULTI_DISABLED_REASON, pressed: false });
+  });
+
+  it('titles a refused curve entry with its named reason and keeps the shipped single reason bare', async () => {
+    const model = await curveEntryModule();
+    const gateOf = model.resolvePathEditGate!;
+    expect(
+      gateOf({
+        selectionSize: 1,
+        vectorStrokeCount: 0,
+        selectedMutationId: 7,
+        pathEditMutationId: null,
+        curveEntry: { kind: 'refused', reason: model.PATH_EDIT_LIFT_DISABLED_REASON },
+      }),
+    ).toEqual({ enabled: false, title: model.PATH_EDIT_LIFT_DISABLED_REASON, pressed: false });
+    expect(
+      gateOf({
+        selectionSize: 1,
+        vectorStrokeCount: 0,
+        selectedMutationId: 7,
+        pathEditMutationId: null,
+        curveEntry: { kind: 'refused', reason: model.PATH_EDIT_DEGENERATE_DISABLED_REASON },
+      }),
+    ).toEqual({
+      enabled: false,
+      title: model.PATH_EDIT_DEGENERATE_DISABLED_REASON,
+      pressed: false,
+    });
+    // A refused entry with no known reason keeps the shipped single reason.
+    expect(
+      gateOf({
+        selectionSize: 1,
+        vectorStrokeCount: 0,
+        selectedMutationId: 7,
+        pathEditMutationId: null,
+        curveEntry: { kind: 'refused', reason: null },
+      }).title,
+    ).toBe(PATH_EDIT_SINGLE_DISABLED_REASON);
+    // The vector arm keeps its shipped enabled title.
+    expect(
+      gateOf({
+        selectionSize: 1,
+        vectorStrokeCount: 1,
+        selectedMutationId: 7,
+        pathEditMutationId: null,
+        curveEntry: { kind: 'vector', reason: null },
+      }),
+    ).toEqual({ enabled: true, title: PATH_EDIT_LABEL, pressed: false });
   });
 });
