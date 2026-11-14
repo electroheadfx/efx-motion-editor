@@ -168,3 +168,189 @@ describe('61-15 runAquarelleScriptRebake', () => {
     expect(mocks.onFailure).not.toHaveBeenCalled();
   });
 });
+
+// 62-04 (D-13): cancellation is a THIRD, mutually exclusive terminal. A
+// cancelled apply publishes nothing — no reset, no apply once the predicate is
+// true before the work, no success and no failure — and it still releases the
+// latch it took. `yieldForPaint` hands the host real turns on both sides of the
+// sequence, so a predicate flipped while the apply is pending is observed at
+// the commit turn and the cancellation wins.
+describe('62-04 the rebake sequence third terminal — a cancelled apply publishes nothing', () => {
+  type CancellableSequence = AquarelleScriptRebakeSequence & {
+    readonly isCancelled?: () => boolean;
+    readonly onCancelled?: () => void;
+  };
+
+  function makeSequence(
+    isCancelled: () => boolean,
+    overrides: Partial<CancellableSequence> = {},
+  ): {
+    readonly sequence: CancellableSequence;
+    readonly calls: string[];
+    readonly gate: { value: boolean };
+    readonly mocks: {
+      beginInFlight: ReturnType<typeof vi.fn>;
+      endInFlight: ReturnType<typeof vi.fn>;
+      resetSheet: ReturnType<typeof vi.fn>;
+      applyTimeline: ReturnType<typeof vi.fn>;
+      onSuccess: ReturnType<typeof vi.fn>;
+      onFailure: ReturnType<typeof vi.fn>;
+      onCancelled: ReturnType<typeof vi.fn>;
+    };
+  } {
+    const calls: string[] = [];
+    const gate = { value: false };
+    const resetSheet = vi.fn(() => {
+      calls.push('reset');
+    });
+    const applyTimeline = vi.fn(async () => {
+      calls.push('apply');
+      return true;
+    });
+    const onSuccess = vi.fn(() => {
+      calls.push('success');
+    });
+    const onFailure = vi.fn(() => {
+      calls.push('failure');
+    });
+    const onCancelled = vi.fn(() => {
+      calls.push('cancelled');
+    });
+    const beginInFlight = vi.fn(() => {
+      gate.value = true;
+      calls.push('begin');
+    });
+    const endInFlight = vi.fn(() => {
+      gate.value = false;
+      calls.push('end');
+    });
+    const sequence: CancellableSequence = {
+      isInFlight: () => gate.value,
+      beginInFlight,
+      endInFlight,
+      resetSheet,
+      applyTimeline,
+      onSuccess,
+      onFailure,
+      isCancelled,
+      onCancelled,
+      ...overrides,
+    };
+    return {
+      sequence,
+      calls,
+      gate,
+      mocks: { beginInFlight, endInFlight, resetSheet, applyTimeline, onSuccess, onFailure, onCancelled },
+    };
+  }
+
+  it('publishes only the cancellation terminal when cancelled before the work starts', async () => {
+    const { sequence, calls, gate, mocks } = makeSequence(() => true);
+
+    await expect(runAquarelleScriptRebake(sequence)).resolves.toBe(false);
+
+    // The cancelled run touches neither the sheet nor the apply.
+    expect(mocks.resetSheet).not.toHaveBeenCalled();
+    expect(mocks.applyTimeline).not.toHaveBeenCalled();
+    // Exactly one terminal, and it is the cancellation.
+    expect(mocks.onCancelled).toHaveBeenCalledTimes(1);
+    expect(mocks.onSuccess).not.toHaveBeenCalled();
+    expect(mocks.onFailure).not.toHaveBeenCalled();
+    // The latch is released before the terminal runs.
+    expect(gate.value).toBe(false);
+    expect(calls.indexOf('end')).toBeGreaterThan(-1);
+    expect(calls.indexOf('cancelled')).toBeGreaterThan(calls.indexOf('end'));
+  });
+
+  it('takes the cancellation terminal when the predicate flips while the apply is pending', async () => {
+    let cancelled = false;
+    const { sequence, mocks } = makeSequence(() => cancelled);
+    mocks.applyTimeline.mockImplementation(async () => {
+      // The undo lands mid-bake: the apply itself resolves true.
+      cancelled = true;
+      return true;
+    });
+
+    await expect(runAquarelleScriptRebake(sequence)).resolves.toBe(false);
+
+    expect(mocks.resetSheet).toHaveBeenCalledTimes(1);
+    expect(mocks.applyTimeline).toHaveBeenCalledTimes(1);
+    expect(mocks.onCancelled).toHaveBeenCalledTimes(1);
+    expect(mocks.onSuccess).not.toHaveBeenCalled();
+    expect(mocks.onFailure).not.toHaveBeenCalled();
+  });
+
+  it('takes the cancellation terminal, never the failure terminal, when a cancelled apply rejects', async () => {
+    let cancelled = false;
+    const { sequence, mocks } = makeSequence(() => cancelled);
+    mocks.applyTimeline.mockImplementation(async () => {
+      cancelled = true;
+      throw new Error('engine refused');
+    });
+
+    await expect(runAquarelleScriptRebake(sequence)).resolves.toBe(false);
+
+    expect(mocks.onCancelled).toHaveBeenCalledTimes(1);
+    expect(mocks.onFailure).not.toHaveBeenCalled();
+    expect(mocks.onSuccess).not.toHaveBeenCalled();
+  });
+
+  it('keeps the shipped success/failure terminals byte-identical without a cancellation', async () => {
+    const success = makeSequence(() => false);
+    await expect(runAquarelleScriptRebake(success.sequence)).resolves.toBe(true);
+    expect(success.mocks.onSuccess).toHaveBeenCalledTimes(1);
+    expect(success.mocks.onFailure).not.toHaveBeenCalled();
+    expect(success.mocks.onCancelled).not.toHaveBeenCalled();
+
+    const failure = makeSequence(() => false);
+    failure.mocks.applyTimeline.mockImplementation(async () => false);
+    await expect(runAquarelleScriptRebake(failure.sequence)).resolves.toBe(false);
+    expect(failure.mocks.onFailure).toHaveBeenCalledTimes(1);
+    expect(failure.mocks.onSuccess).not.toHaveBeenCalled();
+    expect(failure.mocks.onCancelled).not.toHaveBeenCalled();
+
+    const rejected = makeSequence(() => false);
+    rejected.mocks.applyTimeline.mockImplementation(async () => {
+      throw new Error('engine refused');
+    });
+    await expect(runAquarelleScriptRebake(rejected.sequence)).resolves.toBe(false);
+    expect(rejected.mocks.onFailure).toHaveBeenCalledTimes(1);
+    expect(rejected.mocks.onCancelled).not.toHaveBeenCalled();
+
+    // No predicate at all: the shipped object shape is untouched.
+    const plain = makeSequence(() => false);
+    const withoutPredicate: AquarelleScriptRebakeSequence = {
+      isInFlight: plain.sequence.isInFlight,
+      beginInFlight: plain.sequence.beginInFlight,
+      endInFlight: plain.sequence.endInFlight,
+      resetSheet: plain.sequence.resetSheet,
+      applyTimeline: plain.sequence.applyTimeline,
+      onSuccess: plain.sequence.onSuccess,
+      onFailure: plain.sequence.onFailure,
+    };
+    await expect(runAquarelleScriptRebake(withoutPredicate)).resolves.toBe(true);
+    expect(plain.mocks.onSuccess).toHaveBeenCalledTimes(1);
+    expect(plain.mocks.onFailure).not.toHaveBeenCalled();
+  });
+
+  it('releases the in-flight latch before the cancellation terminal and still fails closed when already in flight', async () => {
+    const { sequence, calls, gate, mocks } = makeSequence(() => true);
+    await expect(runAquarelleScriptRebake(sequence)).resolves.toBe(false);
+    expect(calls.indexOf('end')).toBeGreaterThan(-1);
+    expect(calls.indexOf('cancelled')).toBeGreaterThan(calls.indexOf('end'));
+    expect(gate.value).toBe(false);
+    expect(mocks.endInFlight).toHaveBeenCalledTimes(1);
+
+    // An already-in-flight call is still a refusal with NO terminal of any kind.
+    const busy = makeSequence(() => true);
+    busy.gate.value = true;
+    await expect(runAquarelleScriptRebake(busy.sequence)).resolves.toBe(false);
+    expect(busy.mocks.beginInFlight).not.toHaveBeenCalled();
+    expect(busy.mocks.endInFlight).not.toHaveBeenCalled();
+    expect(busy.mocks.resetSheet).not.toHaveBeenCalled();
+    expect(busy.mocks.applyTimeline).not.toHaveBeenCalled();
+    expect(busy.mocks.onSuccess).not.toHaveBeenCalled();
+    expect(busy.mocks.onFailure).not.toHaveBeenCalled();
+    expect(busy.mocks.onCancelled).not.toHaveBeenCalled();
+  });
+});
