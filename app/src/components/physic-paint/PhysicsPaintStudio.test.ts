@@ -8119,3 +8119,83 @@ describe('62-04 the pending path-edit apply epoch and the ONE exit-hook registra
     expect(registerAt).toBeGreaterThan(resetAt);
   });
 });
+
+// 62-04 Task 3 (D-13 / D-14): the undo router. A pending immediate bake is
+// cancelled and replayed by its EXACT editId — never a stack pop, because the
+// cancelled run wrote no ledger entry. An in-flight deferred settle is awaited
+// so the ordinary undo runs against a settled script. `redo` stays shipped.
+describe('62-04 the undo router: cancel THIS apply, never the previous history entry', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  const UNDO_START = 'const undo = useCallback(async () => {';
+  const UNDO_END = 'const redo = useCallback(async () => {';
+  const REDO_END = '// 52.1 (undo/redo shortcut)';
+
+  it('reads the pending record before the history call and cancels its token', () => {
+    const undo = regionOf(studio, UNDO_START, UNDO_END);
+    const peekAt = undo.indexOf('vectorPathSession.pendingPathEditApply.peek()');
+    const cancelAt = undo.indexOf('vectorPathSession.cancelPathEditApply(record.token)');
+    const settledAt = undo.indexOf('await pathEditApplySettledRef.current;');
+    const historyAt = undo.indexOf('await rotoMoveHistoryUndo();');
+    expect(peekAt).toBeGreaterThan(-1);
+    expect(cancelAt).toBeGreaterThan(peekAt);
+    expect(settledAt).toBeGreaterThan(cancelAt);
+    expect(historyAt).toBeGreaterThan(settledAt);
+    // EXACTLY one history call site — the stack is never reached on the
+    // pending branch.
+    expect(undo.split('rotoMoveHistoryUndo(').length - 1).toBe(1);
+  });
+
+  it('replays the pending record exact editId through runScriptReplay, with one reanchor retry', () => {
+    const undo = regionOf(studio, UNDO_START, UNDO_END);
+    expect(undo).toContain("runScriptReplay({ direction: 'undo', editId: record.editId })");
+    // The first attempt plus exactly ONE retry.
+    expect(undo.split('runScriptReplay(').length - 1).toBe(2);
+    expect(undo).toContain("reanchorAquarelleEditFromLiveContent(record.editId, 'undo')");
+    // The retry sits AFTER the first failed replay.
+    expect(undo.indexOf("reanchorAquarelleEditFromLiveContent(record.editId, 'undo')")).toBeGreaterThan(
+      undo.indexOf("runScriptReplay({ direction: 'undo', editId: record.editId })"),
+    );
+    // The pending branch returns before the stack path can run.
+    const pendingBranch = undo.slice(
+      undo.indexOf('if (record !== null)'),
+      undo.indexOf('if (draftSettlePromiseRef.current !== null)'),
+    );
+    expect(pendingBranch).toContain('return changed;');
+    expect(pendingBranch).not.toContain('rotoMoveHistoryUndo(');
+  });
+
+  it('awaits an in-flight deferred settle before the ordinary undo', () => {
+    const undo = regionOf(studio, UNDO_START, UNDO_END);
+    const settleAt = undo.indexOf('await draftSettlePromiseRef.current;');
+    const historyAt = undo.indexOf('await rotoMoveHistoryUndo();');
+    expect(settleAt).toBeGreaterThan(-1);
+    expect(historyAt).toBeGreaterThan(settleAt);
+  });
+
+  it('keeps the shipped post-change tail and adds runScriptReplay to the deps', () => {
+    const undo = regionOf(studio, UNDO_START, UNDO_END);
+    expect(undo).toContain('if (isPlaying) return false;');
+    expect(undo).toContain('rotoScript.notifySourceRevision();');
+    expect(undo).toContain('syncBackgroundSettingsFromDocument();');
+    expect(undo).toContain('runScriptReplay,');
+  });
+
+  it('leaves redo exactly as shipped', () => {
+    const redo = regionOf(studio, UNDO_END, REDO_END);
+    expect(redo).toContain('if (isPlaying) return false;');
+    expect(redo).toContain('const changed = await rotoMoveHistoryRedo();');
+    expect(redo).not.toContain('pendingPathEditApply');
+    expect(redo).not.toContain('runScriptReplay');
+    expect(redo).not.toContain('draftSettlePromiseRef');
+    expect(redo).toContain(
+      '}, [rotoMoveHistoryRedo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument]);',
+    );
+  });
+});
