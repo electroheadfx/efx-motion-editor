@@ -3976,7 +3976,9 @@ describe('61-31 curve mode reading (Curve)', () => {
 
 interface CurveEntryStateShape {
   readonly kind: string;
-  readonly reason: string | null;
+  // `undefined` joins the union only because the dynamic-module type cannot
+  // prove the constants exist before the GREEN lands.
+  readonly reason: string | null | undefined;
 }
 
 interface CurveEntryModuleShape {
