@@ -988,9 +988,13 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       editTargetMutationId = mutationId;
       editTargetAnchors = resolutionAnchors;
       // 61-31 (G-20) / 62-03 (D-01): ONE mode expression for both anchor
-      // sources — the exact expression 62-01's converting write persists.
-      // DEFAULT_VECTOR_PATH_CURVE_MODE is the draw-time mint, never this.
-      editTargetCurveMode = resolveAquarelleCurveMode(candidate.curveMode);
+      // sources. 62-UAT: a pre-conversion painted stroke has no stored mode;
+      // it previews and edits in the vector-edit default (Spline), the exact
+      // mode the first commit stores. A record that already owns anchors keeps
+      // its own mode — the Curve row owns that value.
+      editTargetCurveMode = candidateAnchors !== undefined && candidateAnchors.length > 0
+        ? resolveAquarelleCurveMode(candidate.curveMode)
+        : DEFAULT_VECTOR_PATH_CURVE_MODE;
       break;
     }
   }
@@ -1056,6 +1060,9 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       ? editDrag.anchors
       : (recordAnchors ?? heldFitAnchors);
     if (anchors === null || anchors.length === 0) continue;
+    // 62-UAT: a pre-conversion fit draws in the vector-edit default — the mode
+    // the first commit stores — never the absent-key Bézier.
+    const converting = recordAnchors === null && heldFitAnchors !== null;
     // 62-03 (D-09): a stroke whose record carries a real pressure profile shows
     // its painted footprint in the construction view. The band is display chrome
     // over the LAST COMMITTED samples — a live anchor drag previews anchors, not
@@ -1080,8 +1087,11 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       // The open path edit is the live target and wears the louder chrome.
       selected: editMutationId !== null && String(mutationId) === editMutationId,
       // 61-31 (G-20): the stroke's OWN mode — a spline path reads as a spline
-      // even while another stroke is the edit target.
-      curveMode: resolveAquarelleCurveMode(stroke.curveMode),
+      // even while another stroke is the edit target. A held pre-conversion
+      // fit instead reads the mode its first commit will store (62-UAT).
+      curveMode: converting
+        ? DEFAULT_VECTOR_PATH_CURVE_MODE
+        : resolveAquarelleCurveMode(stroke.curveMode),
     });
     if (drawn === null) continue;
     recorded.push(drawn);
@@ -1281,12 +1291,15 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     }
 
     if (target !== null) {
-      // Anchor grab: the press writes the ONE selection (additive on
-      // Shift / Cmd / Ctrl), then D-03 promotes BEFORE any movement so a
-      // grab-and-release still commits the promoted shape.
+      // Anchor press: the press writes the ONE selection (additive on
+      // Shift / Cmd / Ctrl). 62-UAT: SELECT-THEN-MOVE — a press that changes
+      // membership is a selection gesture only, so selecting never nudges the
+      // path. The drag (and D-03's promotion) starts on the NEXT press of an
+      // already-selected vertex.
       const current = editTargetAnchors[target.index];
       if (current === undefined) return;
       const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+      const alreadySelected = vectorAnchorSelection.peek().includes(target.index);
       setVectorAnchorSelection(
         selectAnchor(vectorAnchorSelection.peek(), target.index, additive),
       );
@@ -1307,6 +1320,10 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
         if (next !== editTargetAnchors) props.onPathEdit(editTargetMutationId, next);
         return;
       }
+      // 62-UAT (select-then-move): a press that changes the selection is a
+      // completed SELECTION gesture — no drag state, no pointer capture, no
+      // document write. The next press on the selected vertex starts the move.
+      if (additive || !alreadySelected) return;
       const promoted = promoteAnchorForDrag(editTargetAnchors, target.index, editTargetCurveMode);
       dragRef.current = {
         kind: 'anchor',

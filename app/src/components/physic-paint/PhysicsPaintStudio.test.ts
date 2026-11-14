@@ -6516,7 +6516,10 @@ describe('61-10 vector path edit wiring in the Studio', () => {
     // ONE write wrapper for the whole gesture; a null id (in-flight or
     // unchanged) exits before any bake.
     expect(commit.split('beginAquarellePathEdit(').length - 1).toBe(1);
-    expect(commit).toContain('const editId = beginAquarellePathEdit(mutationId, anchors);');
+    // 62-UAT: the FIRST conversion write mints the vector-edit default
+    // (Spline); an already-vector stroke passes no mode at all.
+    expect(commit).toContain('const editId = beginAquarellePathEdit(');
+    expect(commit).toContain('converting ? { curveMode: DEFAULT_VECTOR_PATH_CURVE_MODE } : undefined,');
     expect(commit).toContain('if (editId === null) return null;');
     // Defer route: mark the pixels dirty, publish nothing, reset/apply nothing.
     const deferAt = commit.indexOf('if (draft || wireframe) {');
@@ -6665,6 +6668,24 @@ describe('62-02 painted-curve entry and conversion admission in the Studio', () 
     expect(admitsPathEditWrite(anchorlessBrushFixture)).toBe(true);
     expect(admitsPathEditWrite({ ...anchorlessBrushFixture, tool: 'lift' })).toBe(false);
     expect(admitsPathEditWrite({ ...anchorlessBrushFixture, points: [] })).toBe(false);
+  });
+
+  it('mints the vector-edit default on the FIRST write only, never on a later anchor edit', () => {
+    const commit = regionOf(
+      studio,
+      COMMIT_START,
+      'const handleAquarelleVectorPathEdit = useCallback(',
+    );
+    // 62-UAT: the conversion writes Spline (the mode a drawn vector is
+    // recorded and edited in). An already-vector stroke passes no mode, so a
+    // Curve-row flip is never re-asserted by the next anchor drag.
+    expect(commit).toContain(
+      'const converting = (getRecordedAquarelleStroke(mutationId)?.anchors?.length ?? 0) === 0;',
+    );
+    expect(commit).toContain(
+      'converting ? { curveMode: DEFAULT_VECTOR_PATH_CURVE_MODE } : undefined,',
+    );
+    expect(studio).toContain('DEFAULT_VECTOR_PATH_CURVE_MODE');
   });
 });
 
@@ -7007,7 +7028,7 @@ describe('61-11 Anchor width bundle wiring in the Studio', () => {
 
   it('composes the pure width commit from the shared handle module', () => {
     expect(studio).toContain(
-      "import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';",
+      "import { DEFAULT_VECTOR_PATH_CURVE_MODE, anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';",
     );
   });
 

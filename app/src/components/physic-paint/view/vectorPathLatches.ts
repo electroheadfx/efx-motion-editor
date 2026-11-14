@@ -103,6 +103,40 @@ export function registerPathEditExitHook(hook: (() => void) | null): void {
 }
 
 /**
+ * 62-UAT: the ONE painted-curve entrance slot. The double-click adapter lives
+ * in a canvas leaf that cannot reach the Studio's durable-base arm, so the
+ * Studio registers its `enterPaintedCurve` action here. A null slot fails
+ * closed — the leaf never arms, fits or opens anything by itself.
+ */
+let paintedCurveEntrance: ((ids: readonly number[]) => boolean | Promise<boolean>) | null = null;
+
+/** Register the ONE painted entrance, or clear it with null. */
+export function registerPaintedCurveEntrance(
+  entrance: ((ids: readonly number[]) => boolean | Promise<boolean>) | null,
+): void {
+  paintedCurveEntrance = entrance;
+}
+
+/** True while a host has registered the painted entrance. */
+export function hasPaintedCurveEntrance(): boolean {
+  return paintedCurveEntrance !== null;
+}
+
+/**
+ * Fire the registered entrance. Returns false when no host is mounted, so the
+ * caller can fail closed before it writes any selection. The entrance's own
+ * contract publishes refusals; a rejected promise is logged, never left as an
+ * unhandled rejection.
+ */
+export function requestPaintedCurveEntrance(ids: readonly number[]): boolean {
+  if (paintedCurveEntrance === null) return false;
+  void Promise.resolve(paintedCurveEntrance(ids)).catch((error: unknown) => {
+    console.error('[vectorPathLatches] painted curve entrance failed:', error);
+  });
+  return true;
+}
+
+/**
  * Close path edit. Re-arms nothing and drops the anchor selection with the
  * edit. The exit hook runs only on a real open -> closed transition: a
  * repeated call is not an exit and notifies nobody.

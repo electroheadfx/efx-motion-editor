@@ -71,6 +71,7 @@ import {
   clearCurveFitSession,
   curveFitSession,
 } from '../view/vectorPathCurveBracket';
+import { registerPaintedCurveEntrance } from '../view/vectorPathLatches';
 import {
   DEFAULT_VECTOR_PATH_CURVE_MODE,
   buildAnchorWidthCommit,
@@ -808,6 +809,9 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
     const onPathEdit = vi.fn();
     const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
 
+    // 62-UAT select-then-move: the first press selects without moving.
+    press(root, clickAt(0.2, 0.5));
+    // The second press on the selected vertex starts the drag.
     press(root, clickAt(0.2, 0.5));
     const onPointerMove = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
     expect(onPointerMove, 'overlay root has no pointer-move handler').toBeTypeOf('function');
@@ -833,6 +837,35 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
     expect(anchors[2]).toEqual(originalAnchors[2]);
   });
 
+  it('selects on the first press without moving, and moves only on the second (62-UAT)', () => {
+    enterPathEdit(String(EDIT_ID));
+    const stroke = editedStroke();
+    const onPathEdit = vi.fn();
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+
+    // First press: selection only — no drag state, no capture, no commit.
+    const selectDown = clickAt(0.2, 0.5);
+    press(root, selectDown);
+    expect(vectorAnchorSelection.value).toEqual([0]);
+    expect(vectorPathEditDrag.peek()).toBeNull();
+    expect(captureOf(selectDown).setPointerCapture).not.toHaveBeenCalled();
+    (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.26, 0.55));
+    (root.props['onPointerUp'] as (e: unknown) => void)(clickAt(0.26, 0.55));
+    expect(onPathEdit).not.toHaveBeenCalled();
+    expect(getRecordedAquarelleStroke(EDIT_ID)!.anchors).toEqual(stroke.anchors);
+
+    // Second press on the now-selected vertex: the move gesture.
+    const dragDown = clickAt(0.2, 0.5);
+    press(root, dragDown);
+    expect(captureOf(dragDown).setPointerCapture).toHaveBeenCalledTimes(1);
+    (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.26, 0.55));
+    (root.props['onPointerUp'] as (e: unknown) => void)(clickAt(0.26, 0.55));
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+    const [, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
+    expect(anchors[0]!.x).toBeCloseTo(0.26, 9);
+    expect(anchors[0]!.y).toBeCloseTo(0.55, 9);
+  });
+
   it('commits the promotion on a grab-and-release of an auto anchor', () => {
     enterPathEdit(String(EDIT_ID));
     const stroke = editedStroke();
@@ -840,6 +873,9 @@ describe('VectorPathOverlay — the path-edit seam (task 1)', () => {
     const onPathEdit = vi.fn();
     const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
 
+    // 62-UAT select-then-move: the first press selects; the second press is the
+    // grab that promotes, and its release still commits the promotion (D-03).
+    press(root, clickAt(0.2, 0.5));
     press(root, clickAt(0.2, 0.5));
     const onPointerUp = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
     expect(onPointerUp, 'overlay root has no pointer-up handler').toBeTypeOf('function');
@@ -1142,6 +1178,9 @@ describe('VectorPathOverlay — the pointer-capture law (61-16)', () => {
     const onPathEdit = vi.fn();
     const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
 
+    // 62-UAT select-then-move: the first press only selects; the drag starts on
+    // the second press of the now-selected vertex.
+    press(root, clickAt(0.2, 0.5));
     const down = clickAt(0.2, 0.5);
     press(root, down);
     const capture = captureOf(down);
@@ -1190,6 +1229,8 @@ describe('VectorPathOverlay — the pointer-capture law (61-16)', () => {
     });
     const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
 
+    // 62-UAT: select first, then press again to start the drag.
+    press(root, clickAt(0.2, 0.5));
     press(root, clickAt(0.2, 0.5));
     (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.26, 0.55));
 
@@ -1210,6 +1251,8 @@ describe('VectorPathOverlay — the pointer-capture law (61-16)', () => {
     const onPathEdit = vi.fn();
     const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
 
+    // 62-UAT: select first, then press again to start the drag.
+    press(root, clickAt(0.2, 0.5));
     press(root, clickAt(0.2, 0.5));
     const cancel = clickAt(0.4, 0.4);
     (root.props['onPointerCancel'] as (e: unknown) => void)(cancel);
@@ -1241,6 +1284,8 @@ describe('VectorPathOverlay — the pointer-capture law (61-16)', () => {
     const onPathEdit = vi.fn();
     const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
 
+    // 62-UAT: select first, then press again to start the drag.
+    press(root, clickAt(0.2, 0.5));
     press(root, clickAt(0.2, 0.5));
     (root.props['onPointerMove'] as (e: unknown) => void)(clickAt(0.26, 0.55));
 
@@ -2301,6 +2346,8 @@ describe('61-28 CR-01 - the edit-lifetime drag law', () => {
     const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]])))!;
     const surface = overlaySurface();
 
+    // 62-UAT: the first press selects; the second starts the drag and captures.
+    press(root, clickAt(0.2, 0.5, { currentTarget: surface, pointerId: 1 }));
     press(root, clickAt(0.2, 0.5, { currentTarget: surface, pointerId: 1 }));
     expect(surface.setPointerCapture).toHaveBeenCalledTimes(1);
     expect(surface.setPointerCapture).toHaveBeenCalledWith(1);
@@ -2319,6 +2366,8 @@ describe('61-28 CR-01 - the edit-lifetime drag law', () => {
     const root = render(VectorPathOverlay(propsWith([[EDIT_ID, editedStroke()]], { onPathEdit })))!;
     const surface = overlaySurface();
 
+    // 62-UAT: select first, then press again to start the drag.
+    press(root, clickAt(0.2, 0.5, { currentTarget: surface, pointerId: 1 }));
     press(root, clickAt(0.2, 0.5, { currentTarget: surface, pointerId: 1 }));
     (root.props['onPointerMove'] as (e: unknown) => void)(
       clickAt(0.26, 0.55, { currentTarget: surface, pointerId: 1 }),
@@ -2459,9 +2508,12 @@ describe('61-31 G-20 - the overlay draws and edits through each path curve mode'
       resolutionAt,
       source.indexOf('useEffect(() => {', resolutionAt),
     );
+    // 62-UAT: a record that owns anchors reads its own mode; a pre-conversion
+    // fit reads the vector-edit default the first commit stores.
     expect(resolutionBlock).toContain(
-      'editTargetCurveMode = resolveAquarelleCurveMode(candidate.curveMode);',
+      'editTargetCurveMode = candidateAnchors !== undefined && candidateAnchors.length > 0',
     );
+    expect(resolutionBlock).toContain(': DEFAULT_VECTOR_PATH_CURVE_MODE;');
 
     // The recorded loop: each stroke's OWN mode, never the edit target's — a
     // spline path reads as a spline while another stroke is being edited.
@@ -2470,7 +2522,8 @@ describe('61-31 G-20 - the overlay draws and edits through each path curve mode'
     );
     expect(recordedAt).toBeGreaterThan(-1);
     const recordedBlock = source.slice(recordedAt, source.indexOf('recorded.push(drawn);', recordedAt));
-    expect(recordedBlock).toContain('curveMode: resolveAquarelleCurveMode(stroke.curveMode),');
+    expect(recordedBlock).toContain('resolveAquarelleCurveMode(stroke.curveMode)');
+    expect(recordedBlock).toContain('DEFAULT_VECTOR_PATH_CURVE_MODE');
     expect(recordedBlock).not.toContain('editTargetCurveMode');
 
     // The draft: the DRAW default, because a new path is recorded spline.
@@ -2741,6 +2794,30 @@ describe('261112-i6d — double-click a vector stroke to enter the path edit', (
     expect(pathEditMutationId.value).toBeNull();
     expect([...scriptSelectedStrokeIds.value]).toEqual([]);
   });
+
+  it('routes an eligible painted stroke through the registered painted entrance (62-UAT)', () => {
+    recordAquarelleStroke(95005, vectorStroke({ mutationId: 95005, anchors: undefined }), 'frame-key');
+    const entrance = vi.fn(() => true);
+    registerPaintedCurveEntrance(entrance);
+    try {
+      expect(requestAquarellePathEdit(95005)).toBe(true);
+      expect(entrance).toHaveBeenCalledTimes(1);
+      expect(entrance).toHaveBeenCalledWith([95005]);
+      // The double-click normalises the selection to the clicked stroke, so
+      // the dialog's gate and the entrance address the same stroke.
+      expect([...scriptSelectedStrokeIds.value]).toEqual([95005]);
+    } finally {
+      registerPaintedCurveEntrance(null);
+    }
+  });
+
+  it('fails closed on a painted stroke with no registered entrance (62-UAT)', () => {
+    recordAquarelleStroke(95006, vectorStroke({ mutationId: 95006, anchors: undefined }), 'frame-key');
+    registerPaintedCurveEntrance(null);
+    expect(requestAquarellePathEdit(95006)).toBe(false);
+    expect([...scriptSelectedStrokeIds.value]).toEqual([]);
+    expect(pathEditMutationId.value).toBeNull();
+  });
 });
 
 // 261112-i6d: Alt+click on a vertex writes the ONE straight-corner shape in
@@ -2928,7 +3005,8 @@ describe('62-03 — the armed held fit in the ONE overlay', () => {
 
     const spines = nodesWithTestId(root, 'vector-path-spine');
     expect(spines).toHaveLength(1);
-    expect(String(spines[0]!.props['points'])).toBe(spineOf(anchors, 'bezier'));
+    // 62-UAT: the held fit previews in the mode its first commit stores.
+    expect(String(spines[0]!.props['points'])).toBe(spineOf(anchors, 'spline'));
     expect(nodesWithTestId(root, 'vector-path-anchor')).toHaveLength(anchors.length);
   });
 
@@ -2946,6 +3024,8 @@ describe('62-03 — the armed held fit in the ONE overlay', () => {
     const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
     const { move, up } = dragHandlers(root);
 
+    // 62-UAT: the first press selects; the second starts the drag.
+    press(root, clickAt(0.2, 0.5));
     press(root, clickAt(0.2, 0.5));
     move(clickAt(0.26, 0.55));
     up(clickAt(0.26, 0.55));
@@ -3027,10 +3107,11 @@ describe('62-03 — the armed held fit in the ONE overlay', () => {
     const second = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
     const spines = nodesWithTestId(second, 'vector-path-spine');
     expect(spines).toHaveLength(1);
-    expect(String(spines[0]!.props['points'])).toBe(spineOf(fit.anchors, 'bezier'));
+    // 62-UAT: the held fit reads the mode its first commit will store.
+    expect(String(spines[0]!.props['points'])).toBe(spineOf(fit.anchors, 'spline'));
   });
 
-  it('draws the held fit in resolveAquarelleCurveMode(stroke.curveMode), never the draw mint', () => {
+  it('draws the held fit in the vector-edit default (Spline), never the record’s absent mode', () => {
     // All-auto fitted anchors evaluate identically in both modes, so the
     // session carries one authored-handle anchor here: a wrong mode is then
     // visible in the drawn spine itself.
@@ -3039,9 +3120,9 @@ describe('62-03 — the armed held fit in the ONE overlay', () => {
       auto(0.8, 0.2),
     ];
     const stroke = paintedStroke();
-    // The model remembers a new pen path as `spline`; the converting write
-    // persists the STROKE's own mode, so reading the mint here would preview
-    // a curve the commit never writes.
+    // 62-UAT: the first commit on an anchorless painted stroke mints the
+    // vector-edit default (Spline), so the pre-conversion preview must read
+    // that SAME mode — never the painted stroke's absent (Bézier) key.
     expect(DEFAULT_VECTOR_PATH_CURVE_MODE).toBe('spline');
     curveFitSession.value = {
       mutationId: EDIT_ID,
@@ -3057,10 +3138,12 @@ describe('62-03 — the armed held fit in the ONE overlay', () => {
     expect(splineSpines).toHaveLength(1);
     expect(String(splineSpines[0]!.props['points'])).toBe(spineOf(MODE_ANCHORS, 'spline'));
 
-    const bezierTree = render(VectorPathOverlay(propsWith([[EDIT_ID, paintedStroke()]])));
-    const bezierSpines = nodesWithTestId(bezierTree, 'vector-path-spine');
-    expect(bezierSpines).toHaveLength(1);
-    expect(String(bezierSpines[0]!.props['points'])).toBe(spineOf(MODE_ANCHORS, 'bezier'));
+    // A painted stroke with NO stored mode still previews Spline — the mode
+    // the conversion writes, not the record's current Bézier default.
+    const absentModeTree = render(VectorPathOverlay(propsWith([[EDIT_ID, paintedStroke()]])));
+    const absentModeSpines = nodesWithTestId(absentModeTree, 'vector-path-spine');
+    expect(absentModeSpines).toHaveLength(1);
+    expect(String(absentModeSpines[0]!.props['points'])).toBe(spineOf(MODE_ANCHORS, 'spline'));
     // The two evaluations genuinely differ, so the assertions above have teeth.
     expect(spineOf(MODE_ANCHORS, 'spline')).not.toBe(spineOf(MODE_ANCHORS, 'bezier'));
   });

@@ -18,6 +18,11 @@ import {
 } from '../view/aquarelleStrokeSelection';
 import { getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
 import { isVectorAquarelleStroke } from '../view/aquarelleVectorPathCommit';
+import { resolvePaintedCurveEligibility } from '../view/strokeSettingsModel';
+import {
+  hasPaintedCurveEntrance,
+  requestPaintedCurveEntrance,
+} from '../view/vectorPathLatches';
 import { ScriptStrokeOverlay } from './ScriptStrokeOverlay';
 import {
   setScriptStrokeSelection,
@@ -37,11 +42,21 @@ import { enterPathEdit } from '../view/vectorPathSession';
  */
 export function requestAquarellePathEdit(mutationId: number): boolean {
   const stroke = getRecordedAquarelleStroke(mutationId);
-  if (stroke === undefined || !isVectorAquarelleStroke(stroke)) return false;
-  if (normaliseAquarelleAnchors(stroke.anchors) === undefined) return false;
+  if (stroke === undefined) return false;
+  if (isVectorAquarelleStroke(stroke)) {
+    if (normaliseAquarelleAnchors(stroke.anchors) === undefined) return false;
+    setScriptStrokeSelection([mutationId]);
+    enterPathEdit(String(mutationId));
+    return true;
+  }
+  // 62-UAT: a hand-painted stroke that passes the SAME eligibility the Edit
+  // path icon reads enters the painted curve session through the Studio's ONE
+  // entrance (base arm, fit, bracket, latch). No registered host — or any
+  // refusal — leaves the stroke and the selection untouched.
+  if (resolvePaintedCurveEligibility(stroke).kind !== 'painted') return false;
+  if (!hasPaintedCurveEntrance()) return false;
   setScriptStrokeSelection([mutationId]);
-  enterPathEdit(String(mutationId));
-  return true;
+  return requestPaintedCurveEntrance([mutationId]);
 }
 
 export function AquarelleStrokeOverlay(props: {

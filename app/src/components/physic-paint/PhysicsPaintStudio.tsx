@@ -111,9 +111,9 @@ import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import * as vectorPathSession from './view/vectorPathSession';
-import { registerPathEditExitHook } from './view/vectorPathLatches';
+import { registerPaintedCurveEntrance, registerPathEditExitHook } from './view/vectorPathLatches';
 import { beginCurveWireframeBracket, beginPaintedCurveSession, endCurveBracket } from './view/vectorPathCurveBracket';
-import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
+import { DEFAULT_VECTOR_PATH_CURVE_MODE, anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
@@ -10351,7 +10351,16 @@ export function PhysicsPaintStudio() {
     // WR-03: read Draft only AFTER the await; `.peek()` never subscribes.
     const draft = draftMode.peek();
     const wireframe = wireframeMode.peek();
-    const editId = beginAquarellePathEdit(mutationId, anchors);
+    // 62-UAT: the FIRST write on an anchorless painted stroke is the
+    // conversion, and it mints the vector-edit default (Spline) — the same
+    // mode a drawn vector is recorded and edited in. A later anchor edit on an
+    // already-vector stroke never re-asserts a mode; the Curve row owns that.
+    const converting = (getRecordedAquarelleStroke(mutationId)?.anchors?.length ?? 0) === 0;
+    const editId = beginAquarellePathEdit(
+      mutationId,
+      anchors,
+      converting ? { curveMode: DEFAULT_VECTOR_PATH_CURVE_MODE } : undefined,
+    );
     if (editId === null) return null;
     // Defer route: the script commit above IS the edit — the engine re-render
     // is deferred to the ONE Draft/wireframe settle. No in-flight flag (the
@@ -11516,6 +11525,14 @@ export function PhysicsPaintStudio() {
     });
     return () => registerPathEditExitHook(null);
   }, [settleDraftScript]);
+  // 62-UAT: the canvas double-click adapter cannot reach this Studio's
+  // durable-base arm, so the ONE painted entrance is registered here beside the
+  // exit funnel. The cleanup detaches it on remount; an unregistered slot
+  // fails closed (the double-click selects nothing and enters nothing).
+  useEffect(() => {
+    registerPaintedCurveEntrance(enterPaintedCurve);
+    return () => registerPaintedCurveEntrance(null);
+  }, [enterPaintedCurve]);
   useEffect(() => {
     void refreshAudioAssets();
     void refreshMissingAudioPaths();
