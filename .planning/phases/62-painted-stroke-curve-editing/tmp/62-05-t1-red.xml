@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="10" failures="4" errors="0" time="0.391">
+    <testsuite name="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" timestamp="2026-11-14T13:11:06.043Z" hostname="efx2.home" tests="10" failures="4" errors="0" skipped="0" time="0.006654959">
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" name="261108-gh0 channel wiggle canonical bytes &gt; emits id, wiggle, wiggleGlobal, key count then the unchanged key terms" time="0.001642625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" name="261108-gh0 channel wiggle canonical bytes &gt; rotates the revision when only the channel wiggle pair changes" time="0.00060625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" name="Phase 62 CRV-03 — the ONE source-scoped real cache identity &gt; builds the exact shipped identity string the store hand-built before the extraction" time="0.002146708">
+            <failure message="expected undefined to be type of &apos;function&apos;" type="AssertionError">
+AssertionError: expected undefined to be type of &apos;function&apos;
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ realCacheRevisionBuilder src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts:122:19
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts:129:40
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" name="Phase 62 CRV-03 — the ONE source-scoped real cache identity &gt; appends the suffix verbatim with no separator and no normalization" time="0.000316">
+            <failure message="expected undefined to be type of &apos;function&apos;" type="AssertionError">
+AssertionError: expected undefined to be type of &apos;function&apos;
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ realCacheRevisionBuilder src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts:122:19
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts:138:40
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" name="Phase 62 CRV-03 — the ONE source-scoped real cache identity &gt; is deterministic for the same arguments and separates a distinct revision" time="0.000248292">
+            <failure message="expected undefined to be type of &apos;function&apos;" type="AssertionError">
+AssertionError: expected undefined to be type of &apos;function&apos;
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ realCacheRevisionBuilder src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts:122:19
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts:150:40
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" name="Phase 62 CRV-03 — the ONE source-scoped real cache identity &gt; separates a distinct source key so one cache entry cannot serve two sources" time="0.000209042">
+            <failure message="expected undefined to be type of &apos;function&apos;" type="AssertionError">
+AssertionError: expected undefined to be type of &apos;function&apos;
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ realCacheRevisionBuilder src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts:122:19
+ ❯ src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts:156:40
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" name="physical background grainScale member (260923-bcm) &gt; 260923-bcm: the physical parser accepts an in-range grainScale and normalizes a missing one to 1" time="0.000179416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" name="physical background grainScale member (260923-bcm) &gt; 260923-bcm: the physical parser refuses an out-of-range grainScale fail-closed" time="0.000459167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" name="physical background grainScale member (260923-bcm) &gt; 260923-bcm: the apply-payload validator accepts an in-range grainScale and refuses an out-of-range one" time="0.00013">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts" name="physical background grainScale member (260923-bcm) &gt; 260923-bcm: project equality rotates when only the grain scale changes and is stable at a fixed scale" time="0.000229833">
+        </testcase>
+    </testsuite>
+</testsuites>

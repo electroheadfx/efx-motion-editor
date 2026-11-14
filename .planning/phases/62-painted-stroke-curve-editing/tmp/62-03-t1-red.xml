@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="102" failures="6" errors="0" time="0.808">
+    <testsuite name="src/components/physic-paint/engine/VectorPathOverlay.test.ts" timestamp="2026-11-14T12:59:13.384Z" hostname="efx2.home" tests="102" failures="6" errors="0" skipped="0" time="0.102247375">
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws nothing when no vector stroke and no draft exist" time="0.000913792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws nothing for a hand-painted stroke (no anchors)" time="0.000163417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws one spine polyline and exactly one marker per anchor" time="0.001466833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws two handle markers for a bezier anchor and none for an auto anchor" time="0.000485875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; draws no structure on an idle frame, so the render stays unobstructed" time="0.00058925">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; skips strokes painted on another frame" time="0.000087125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; mounts the pointer surface while the pen is active with an empty draft" time="0.00011025">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — rendered geometry (task 1) &gt; mounts no pointer surface at all while idle, and one while the pen is active" time="0.000582917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; places a smooth anchor per plain click" time="0.000766">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; places a corner (bezier with zero-length handles) on Shift+click" time="0.000244708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; leaves Alt+click placing a plain smooth anchor" time="0.000187375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; refuses a click within the adjacency radius of the last anchor" time="0.000163584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes at the first anchor without appending a closing anchor" time="0.000425584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes on Enter and commits exactly once" time="0.000223125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; finishes on a double-click" time="0.000221084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; cancels on Escape with zero commits" time="0.000228083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; commits nothing for a zero- or one-anchor path and never throws" time="0.000360958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; clears the draft BEFORE the commit so a same-tick second Enter is a no-op" time="0.00233675">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; commits the draft anchors, the active brush mode and the sampled points" time="0.000620291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; prevents default and stops propagation so no paint stroke starts underneath" time="0.000094041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — draw gesture (task 2) &gt; binds the key listener while the pen or a path edit is active and removes it on cleanup" time="0.000267458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-21 IN-01 — the live rubber band &gt; draws one provisional spine to the cursor, and none without a cursor" time="0.000727209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-21 IN-01 — the live rubber band &gt; never places an anchor or commits from a pointer move, and draws the preview before the spine" time="0.000596041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — one entry per finished path (task 3) &gt; records exactly one entry and one revision bump for a finished path" time="0.000989">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — one entry per finished path (task 3) &gt; records nothing for an empty or one-anchor path — no entry, no serial, no event" time="0.000252333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — one entry per finished path (task 3) &gt; lists a committed vector stroke once, keyed by serial, with the hand-painted row shape" time="0.000545875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; replaces the recorded path at the same timeline index, bumps once, and repeats at zero" time="0.000703333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; stores exactly ONE edit snapshot for one changed anchor, restores it in one undo, and refuses while in flight" time="0.000333542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; owns the pointer while a path edit is open even with the pen released" time="0.000218833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; drags an anchor and commits ONE onPathEdit carrying the promotion and the moved handles" time="0.000699875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; commits the promotion on a grab-and-release of an auto anchor" time="0.000347292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the path-edit seam (task 1) &gt; commits nothing on a grab-and-release of an already-bezier anchor" time="0.000333834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; drags one handle, mirrors its coupled partner and commits ONCE" time="0.000416084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; leaves the partner untouched when Alt breaks the coupling" time="0.000311625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; inserts one anchor on a spine click, commits ONCE and selects it" time="0.000394667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; keeps ONE ascending, deduplicated selection and clears it on exit and reset" time="0.000215042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; ends an in-flight drag BEFORE the Delete write lands (61 CR-01 residual)" time="0.000146875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; deletes every selected anchor in ONE commit and clears the selection" time="0.000109375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; handles delete keys only while a path edit owns a non-empty selection" time="0.000131041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; writes a three-anchor width commit as ONE edit snapshot that one undo restores" time="0.00027225">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — handle drag, insert, delete, width (task 2) &gt; binds the edit key listener for an open path edit and unbinds it on cleanup" time="0.000197042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; captures the pointer at an anchor press, and the drag still commits on up" time="0.000500583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; captures the pointer at a handle press and commits the handle drag on up" time="0.000271333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; releases the capture AFTER the commit decision, on the drag pointer id" time="0.000250834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; releases the capture on cancel and commits nothing" time="0.000253083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; takes no capture for the insert-on-spine click and still commits once" time="0.000196291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the pointer-capture law (61-16) &gt; releases only a pointer the target still holds, and never throws" time="0.000298208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the text-entry key guard (61-16) &gt; stands down on Enter while a dialog text field has focus" time="0.000254583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the text-entry key guard (61-16) &gt; still commits the draft when focus sits outside a text field" time="0.000160875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the text-entry key guard (61-16) &gt; stands down on Backspace in a textarea and still deletes on the canvas" time="0.00017">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the focusable-control key guard (61-21 WR-05) &gt; stands down on a focused button or role control and still commits/deletes on the canvas" time="0.000307625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — authority boundary (T-61-31) &gt; never imports an engine, bake or adapter module and never records" time="0.000341583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — authority boundary (T-61-31) &gt; is mounted beside the stroke overlay and forwards to props.onStrokeEnd" time="0.000151">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; draws the envelope, spine, anchors and handles of every recorded vector stroke" time="0.000597709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; draws a rung only at an anchor carrying an explicit width" time="0.001168833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; draws anchor shapes per kind — square only for bezier — and no handle for auto" time="0.0003845">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; draws the shipped buildStrokeBand footprint and the centreline for a hand-painted stroke" time="0.013511417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; leaves a vector stroke to the construction overlay — no band for it" time="0.000116625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; renders no geometry and throws nothing when the anchors fail normalisation" time="0.000098625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; renders no overlay elements for an empty sheet" time="0.000053334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="VectorPathOverlay — the wireframe drawing law (61-13) &gt; reuses the shipped buildStrokeBand — exactly one import and one call" time="0.000170584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-22 G-11 — the selected-anchor ring &gt; draws one ring around the selected anchor and none for an unselected index" time="0.000303833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-22 G-11 — the selected-anchor ring &gt; fails closed on an empty or out-of-range selection" time="0.000349959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-22 G-11 — the selected-anchor ring &gt; rings only the open edit’s path, never a second recorded vector stroke" time="0.000207917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-22 G-11 — the selected-anchor ring &gt; static: the ring is orange over a dark halo and adds no stray literal" time="0.000253833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-22 G-11 — the selected-anchor ring &gt; layers a soft glow and a dark halo under every selected ring" time="0.000352792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; draws no envelope for a path edit while the preview switch is off" time="0.002205708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; draws the per-vertex envelope only while the preview switch is on" time="0.000732208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; keeps the wireframe envelope for a uniform profile whatever the switch says" time="0.000400833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; masks the edge with the filled polygon while the fill stays unmasked" time="0.000816583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; draws the editing envelope in the stroke’s own colour at 0.14/0.07, with a split fill and a masked 2x edge" time="0.00071875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; gives the wireframe envelope the same band law and keeps no envelope-fill constant" time="0.000866333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; draws every handle dot solid #f59e0b while only the connector is translucent" time="0.000292792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; keeps the bounds box and serial badge in the wireframe-only view, and leaves the lift ribbon unchanged" time="0.017176042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; draws a Select-mode vector band as an unmasked fill plus one masked edge" time="0.010034875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; emits no mask for a listing of hand-painted and lift rows only" time="0.009340959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-25 UI-03/UI-04 — the band, marker and chrome law &gt; moves the fill, the edge and the mask path together under a transform preview" time="0.009921792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-28 CR-01 - the edit-lifetime drag law &gt; ends the previous drag when a new press hits nothing, and releases its capture" time="0.000446541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-28 CR-01 - the edit-lifetime drag law &gt; commits nothing from the abandoned drag after the empty press" time="0.000337041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-28 CR-01 - the edit-lifetime drag law &gt; adds one editMutationId-keyed effect that clears the drag, the preview and the capture" time="0.000257292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-28 CR-01 - the edit-lifetime drag law &gt; keeps a live gesture when the drag still belongs to the open edit" time="0.000148666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-28 CR-01 - the edit-lifetime drag law &gt; refuses a non-matching drag before any preview write or commit in both handlers" time="0.000233958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-31 G-20 - the overlay draws and edits through each path curve mode &gt; captures the edit target mode, draws each recorded path through its own mode and drafts through the draw default" time="0.000206625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-31 G-20 - the overlay draws and edits through each path curve mode &gt; threads the mode through drawnPathOf and all four edit-helper call sites" time="0.000190417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-31 G-20 - the overlay draws and edits through each path curve mode &gt; under Spline draws no handle dot and only circle anchors, leaving the Bezier chrome untouched" time="0.000422125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="61-31 G-20 - the overlay draws and edits through each path curve mode &gt; renders a spline stroke through the spline evaluation while the same stroke without a mode renders Bezier" time="0.000543375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="261112-i6d — double-click a vector stroke to enter the path edit &gt; dispatches one hit double-click with the stroke id and owns the event" time="0.000254416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="261112-i6d — double-click a vector stroke to enter the path edit &gt; calls nothing when the port reports no stroke under the pointer" time="0.000108209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="261112-i6d — double-click a vector stroke to enter the path edit &gt; binds no double-click prop without the callback and never on the display-only root" time="0.000120792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="261112-i6d — double-click a vector stroke to enter the path edit &gt; opens the icon’s session action on a readable vector stroke and normalises the selection" time="0.000115834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="261112-i6d — double-click a vector stroke to enter the path edit &gt; fails closed on a hand-painted stroke, an unknown id and unreadable anchors" time="0.000105208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="261112-i6d — Alt+click a vertex toggles its corner &gt; writes the corner shape under Spline without a drag or a pointer capture" time="0.000346125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="261112-i6d — Alt+click a vertex toggles its corner &gt; collapses a bezier anchor’s stored handles onto the anchor under Bézier" time="0.000209791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="261112-i6d — Alt+click a vertex toggles its corner &gt; toggles an already-corner vertex back to the round shape and still selects it" time="0.000203792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="261112-i6d — Alt+click a vertex toggles its corner &gt; leaves Alt on a handle dot as the shipped handle drag, committing nothing without movement" time="0.000191375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="62-03 — the armed held fit in the ONE overlay &gt; draws one spine and one marker per fitted anchor for an armed held fit, and turns the surface on" time="0.003020708">
+            <failure message="expected null not to be null" type="AssertionError">
+AssertionError: expected null not to be null
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:2909:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="62-03 — the armed held fit in the ONE overlay &gt; leaves an anchorless painted stroke undrawn and inert without an armed fit" time="0.000054084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="62-03 — the armed held fit in the ONE overlay &gt; commits ONE onPathEdit for a fitted-anchor drag and writes no record state" time="0.000220625">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ dragHandlers src/components/physic-paint/engine/VectorPathOverlay.test.ts:2881:23
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:2932:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="62-03 — the armed held fit in the ONE overlay &gt; inserts on a fitted spine click and commits nothing on empty space" time="0.000198875">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:264:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:2957:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="62-03 — the armed held fit in the ONE overlay &gt; deletes a fitted anchor through the getHeldFit seam in ONE onPathEdit" time="0.000290542">
+            <failure message="expected &quot;spy&quot; to be called 1 times, but got 0 times" type="AssertionError">
+AssertionError: expected &quot;spy&quot; to be called 1 times, but got 0 times
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:2983:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="62-03 — the armed held fit in the ONE overlay &gt; resolves the held fit again on a re-render while the record still carries no anchors" time="0.000169583">
+            <failure message="Cannot read properties of null (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of null (reading &apos;props&apos;)
+ ❯ press src/components/physic-paint/engine/VectorPathOverlay.test.ts:264:30
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:3007:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/engine/VectorPathOverlay.test.ts" name="62-03 — the armed held fit in the ONE overlay &gt; draws the held fit in resolveAquarelleCurveMode(stroke.curveMode), never the draw mint" time="0.001189709">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/engine/VectorPathOverlay.test.ts:3042:26
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

@@ -60,6 +60,7 @@ entities.json
 .gsd/dispatch-isolation-sentinel.json
 .gsd/dispatch-isolation-sentinel.json.tmp-*
 .planning/milestone.lock
+.planning/.gsd-beads.lock
 .planning/.mempalace-stage/
 .planning/state.json
 .planning/.gsd-allow-shrink

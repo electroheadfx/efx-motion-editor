@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="12" failures="4" errors="0" time="0.223">
+    <testsuite name="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" timestamp="2026-11-14T13:20:37.965Z" hostname="efx2.home" tests="12" failures="4" errors="0" skipped="0" time="0.009521542">
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 the vector commit route &gt; treats only a non-empty anchor list as a vector stroke, and ships fixed Script-Off copy" time="0.000615333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 the vector commit route &gt; rebakes only when neither the Draft nor the wireframe latch is on" time="0.000117">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 runAquarelleScriptRebake &gt; resets, applies, then succeeds once — holding the gate for the whole apply" time="0.001504584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 runAquarelleScriptRebake &gt; reports exactly one failure and never a success when the apply resolves false" time="0.000400667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 runAquarelleScriptRebake &gt; converts a rejected apply into one failure result and clears the gate" time="0.00105125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 runAquarelleScriptRebake &gt; hands the host one turn between the latch and the work" time="0.00027925">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="61-15 runAquarelleScriptRebake &gt; calls nothing at all while a rebake is already in flight" time="0.000164708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="62-04 the rebake sequence third terminal — a cancelled apply publishes nothing &gt; publishes only the cancellation terminal when cancelled before the work starts" time="0.003231584">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts:250:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="62-04 the rebake sequence third terminal — a cancelled apply publishes nothing &gt; takes the cancellation terminal when the predicate flips while the apply is pending" time="0.000394084">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts:274:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="62-04 the rebake sequence third terminal — a cancelled apply publishes nothing &gt; takes the cancellation terminal, never the failure terminal, when a cancelled apply rejects" time="0.000350291">
+            <failure message="expected &quot;spy&quot; to be called 1 times, but got 0 times" type="AssertionError">
+AssertionError: expected &quot;spy&quot; to be called 1 times, but got 0 times
+ ❯ src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts:293:31
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="62-04 the rebake sequence third terminal — a cancelled apply publishes nothing &gt; keeps the shipped success/failure terminals byte-identical without a cancellation" time="0.000527458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts" name="62-04 the rebake sequence third terminal — a cancelled apply publishes nothing &gt; releases the in-flight latch before the cancellation terminal and still fails closed when already in flight" time="0.000295333">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts:338:5
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>
