@@ -338,6 +338,150 @@ describe('linked-loop render-source branch (D-26/D-27)', async () => {
   });
 });
 
+// Phase 62 (CRV-03, D-11): a curve conversion re-bakes the SOURCE key once and
+// every loop occurrence must follow it. The three edge probes decide whether
+// that re-bake can be safely shared — the source/occurrence adjacency boundary,
+// the ordering of two loops over one cycle, and the empty placeholder frames
+// that must never become edit targets — plus the no-materialization proof that
+// occurrences stay resolution-time projections.
+describe('Phase 62 CRV-03 — occurrence invalidation and source-only identity', async () => {
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+  });
+
+  it('crosses the source/occurrence boundary with the same source identity, no added cache entry and no collision', async () => {
+    installRecords(cycleRecords());
+    installLoops([loopClip('loop-1', 5, ['A', 'B', 'C', 'D', 'E'], 4)]);
+    const revision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    expect(revision).toBeTruthy();
+
+    // The last source frame and its first occurrence are different source keys
+    // under distinct identities ...
+    const sourceA = expectRealSource(LAYER, 0);
+    const sourceE = expectRealSource(LAYER, 4);
+    expect(sourceA.keyId).toBe('A');
+    expect(sourceE.keyId).toBe('E');
+    expect(sourceE.cacheRevision).toBe(`${revision}:real:E`);
+    expect(sourceE.cacheRevision).not.toBe(sourceA.cacheRevision);
+
+    // ... and the boundary is the SAME source-scoped identity as the source
+    // frame — no blank frame and no doubled paint.
+    const firstOccurrence = expectRealSource(LAYER, 5);
+    expect(firstOccurrence.keyId).toBe('A');
+    expect(firstOccurrence.cacheRevision).toBe(sourceA.cacheRevision);
+    expect(firstOccurrence.cacheRevision).toBe(`${revision}:real:A`);
+
+    // Every frame across source AND occurrence shares exactly the five source
+    // identities: the boundary adds no cache entry and no materialized key.
+    const identities = new Set<string>();
+    for (let frame = 0; frame < 25; frame += 1) identities.add(expectRealSource(LAYER, frame).cacheRevision);
+    expect(identities.size, 'the boundary adds no cache entry (D-11)').toBe(5);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID)).toHaveLength(5);
+    expect(physicPaintStore.getRotoRealKeyRecordByAppFrame(LAYER, TEST_TRACK_ID, 5)).toBeNull();
+    // Frame 25 is past the effective end [5, 25).
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 25)).toBeNull();
+  });
+
+  it('makes one source re-bake invalidate both loops in the same transition, rendered from the source payload by reference', async () => {
+    installRecords(cycleRecords());
+    installLoops([
+      loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 2),
+      loopClip('loop-2', 20, ['A', 'B', 'C', 'D', 'E'], 2),
+    ]);
+    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const recordsBefore = physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID);
+    const loopsBefore = physicPaintStore.getRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID);
+    const recordD = physicPaintStore.getRotoRealKeyRecord(LAYER, TEST_TRACK_ID, 'D');
+    if (!recordD) throw new Error('Expected the source D record.');
+
+    // Frames 13 and 23 are the same cycle offset over the same source cycle in
+    // two distinct loops: ONE identical source-scoped cache identity.
+    for (const frame of [13, 23]) {
+      const source = expectRealSource(LAYER, frame);
+      expect(source.keyId).toBe('D');
+      expect(source.appFrame).toBe(frame);
+      expect(source.cacheRevision).toBe(`${revisionBefore}:real:D`);
+      // The occurrence renders the SOURCE payload by reference — no copy, no
+      // per-occurrence raster.
+      expect(source.renderedFrame).toBe(recordD.payload);
+    }
+
+    // ONE source-key re-bake ...
+    const update = physicPaintStore.updateRotoPhysicalRealKeyPayload(LAYER, TEST_TRACK_ID, 'D', revisionBefore, payload(3, 'repainted'));
+    expect(update.ok).toBe(true);
+    if (update.ok) expect(update.changed).toBe(true);
+    const revisionAfter = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    expect(revisionAfter).not.toBe(revisionBefore);
+
+    // ... reaches BOTH loops in the same transition, still by source-payload
+    // reference, so one anchor move repaints every repeated occurrence.
+    const repaintedD = physicPaintStore.getRotoRealKeyRecord(LAYER, TEST_TRACK_ID, 'D');
+    if (!repaintedD) throw new Error('Expected the re-baked source D record.');
+    expect(repaintedD.payload.bytes).toEqual(payload(3, 'repainted').bytes);
+    for (const frame of [13, 23]) {
+      const source = expectRealSource(LAYER, frame);
+      expect(source.keyId).toBe('D');
+      expect(source.cacheRevision, `occurrence ${frame} follows the single source re-bake`).toBe(`${revisionAfter}:real:D`);
+      expect(source.renderedFrame).toBe(repaintedD.payload);
+    }
+
+    // The re-bake changed no durable row: same record count, same loops.
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID)).toHaveLength(recordsBefore.length);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID)).toEqual(loopsBefore);
+  });
+
+  it('materializes no record and no loop change when the single source entry is re-baked', async () => {
+    installRecords(cycleRecords());
+    installLoops([
+      loopClip('loop-1', 10, ['A', 'B', 'C', 'D', 'E'], 2),
+      loopClip('loop-2', 20, ['A', 'B', 'C', 'D', 'E'], 2),
+    ]);
+    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const recordsBefore = physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID);
+    const loopsBefore = physicPaintStore.getRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID);
+    expect(recordsBefore).toHaveLength(5);
+    expect(loopsBefore).toHaveLength(2);
+
+    const update = physicPaintStore.updateRotoPhysicalRealKeyPayload(LAYER, TEST_TRACK_ID, 'D', revisionBefore, payload(3, 'repainted'));
+    expect(update.ok).toBe(true);
+
+    // Occurrences remain resolution-time projections: no record and no chip
+    // appears at either occurrence frame.
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID)).toHaveLength(recordsBefore.length);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID)).toEqual(loopsBefore);
+    expect(physicPaintStore.getRotoRealKeyRecordByAppFrame(LAYER, TEST_TRACK_ID, 13)).toBeNull();
+    expect(physicPaintStore.getRotoRealKeyRecordByAppFrame(LAYER, TEST_TRACK_ID, 23)).toBeNull();
+
+    // Both occurrence frames still resolve through the ONE re-baked source entry.
+    const revisionAfter = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    for (const frame of [13, 23]) {
+      expect(expectRealSource(LAYER, frame).cacheRevision).toBe(`${revisionAfter}:real:D`);
+    }
+  });
+
+  it('resolves missing-source frames as loop-placeholder with no key identity, and frames beyond every loop as null', async () => {
+    installRecords([record('A', 0), record('C', 10)]);
+    installLoops([loopClip('loop-x', 0, ['A', 'missing-1'], 3)]);
+
+    for (const frame of [1, 2, 3, 4, 5]) {
+      const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, frame);
+      if (!source || source.kind !== 'loop-placeholder') {
+        throw new Error(`Expected the loop-placeholder variant at frame ${frame}, got ${source?.kind ?? 'null'}.`);
+      }
+      // No identity at all: the frame can never become a curve edit target or a
+      // re-bake source (D-11).
+      expect('keyId' in source).toBe(false);
+      expect('cacheRevision' in source).toBe(false);
+      expect(source.missingSourceKeyIds).toEqual(['missing-1']);
+    }
+
+    // The resolved source key still owns frame 0; beyond every loop is empty.
+    expect(expectRealSource(LAYER, 0).keyId).toBe('A');
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 6)).toBeNull();
+  });
+});
+
 describe('typed linked-unresolved surfacing as the loop-placeholder variant (audit finding 3, D-31, D-28)', async () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
