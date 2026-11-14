@@ -177,7 +177,10 @@ export function beginCurveWireframeBracket(): boolean {
  * restore the user's own wireframe, and clear the capture last (T-62-08).
  */
 export async function endCurveBracket(options: {
-  readonly settle: () => void | Promise<void>;
+  // 62-04: the Studio's ONE production registration hands in the shipped
+  // single-flight `settleDraftScript`, which resolves boolean — `unknown`
+  // admits it while the bracket still awaits the real settle before restoring.
+  readonly settle: () => void | Promise<unknown>;
 }): Promise<void> {
   const snapshot = curveEntrySnapshot.peek();
   if (snapshot === null) return;

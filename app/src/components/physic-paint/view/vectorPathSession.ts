@@ -94,6 +94,65 @@ export function setPathEditRebakeActive(active: boolean): void {
   writeIfChanged(pathEditRebakeActive, active);
 }
 
+/**
+ * 62-04 (D-13): ONE in-flight path-edit bake, token-keyed. The immediate
+ * `runAquarelleScriptRebake` route arms a record before the bake and clears it
+ * when the bake settles; an undo that lands mid-apply cancels THIS token and
+ * then replays the record's exact `editId`, so a cancelled apply can never
+ * publish a ledger entry and the previous history entry is never consumed.
+ *
+ * Every transition compares the token before writing, so a stale token can
+ * never cancel or clear a newer bake. Session state only — it reads no document
+ * and imports no payload module, exactly like every other signal here.
+ */
+export interface PendingPathEditApply {
+  readonly token: number;
+  readonly editId: number;
+  readonly mutationId: number;
+  readonly playFrame: number;
+  readonly cancelled: boolean;
+}
+
+/** Tokens never reset: a stale token is refused for the lifetime of the session. */
+let nextPathEditApplyToken = 1;
+
+/** The ONE pending path-edit apply, or null when no bake is in flight. */
+export const pendingPathEditApply = signal<PendingPathEditApply | null>(null);
+
+/** Arm a fresh token for the bake this commit is about to start. */
+export function beginPathEditApply(editId: number, mutationId: number, playFrame: number): number {
+  const token = nextPathEditApplyToken;
+  nextPathEditApplyToken += 1;
+  pendingPathEditApply.value = { token, editId, mutationId, playFrame, cancelled: false };
+  return token;
+}
+
+/**
+ * Mark the matching record cancelled (compare-then-write). Returns true only on
+ * the real transition: a stale token, an already-cancelled record or an empty
+ * epoch is a no-op and notifies nobody.
+ */
+export function cancelPathEditApply(token: number): boolean {
+  const pending = pendingPathEditApply.peek();
+  if (pending === null || pending.token !== token || pending.cancelled) return false;
+  pendingPathEditApply.value = { ...pending, cancelled: true };
+  return true;
+}
+
+/** True only for the live, cancelled token — `.peek()`, so a read never subscribes. */
+export function isPathEditApplyCancelled(token: number): boolean {
+  const pending = pendingPathEditApply.peek();
+  return pending !== null && pending.token === token && pending.cancelled;
+}
+
+/** Clear the matching record; a stale token leaves the live record untouched. */
+export function clearPathEditApply(token: number): boolean {
+  const pending = pendingPathEditApply.peek();
+  if (pending === null || pending.token !== token) return false;
+  pendingPathEditApply.value = null;
+  return true;
+}
+
 /** Start a draft from its first anchor; the cursor starts at that anchor. */
 export function beginVectorDraft(anchor: VectorDraftAnchor): void {
   vectorDrawDraft.value = {
@@ -152,4 +211,6 @@ export function resetForStudioOpen(): void {
   writeIfChanged(vectorPenActive, false);
   exitPathEdit();
   writeIfChanged(vectorDrawDraft, null);
+  // 62-04 (D-13): no bake outlives a Studio open, so drop the epoch too.
+  writeIfChanged(pendingPathEditApply, null);
 }

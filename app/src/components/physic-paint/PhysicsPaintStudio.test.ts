@@ -6588,8 +6588,11 @@ describe('62-02 painted-curve entry and conversion admission in the Studio', () 
     expect(studio).toContain('  admitsPathEditWrite,');
     expect(studio).toContain('  resolvePaintedCurveEligibility,');
     expect(studio).toContain('  type CurveEntryState,');
+    // 62-04 T2: `endCurveBracket` joins the same import — the ONE production
+    // registration of the exit hook is exactly what the bracket module needs;
+    // no record, engine or save seam is added.
     expect(studio).toContain(
-      "import { beginCurveWireframeBracket, beginPaintedCurveSession } from './view/vectorPathCurveBracket';",
+      "import { beginCurveWireframeBracket, beginPaintedCurveSession, endCurveBracket } from './view/vectorPathCurveBracket';",
     );
   });
 

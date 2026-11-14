@@ -111,7 +111,8 @@ import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import * as vectorPathSession from './view/vectorPathSession';
-import { beginCurveWireframeBracket, beginPaintedCurveSession } from './view/vectorPathCurveBracket';
+import { registerPathEditExitHook } from './view/vectorPathLatches';
+import { beginCurveWireframeBracket, beginPaintedCurveSession, endCurveBracket } from './view/vectorPathCurveBracket';
 import { anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
@@ -5424,6 +5425,9 @@ export function PhysicsPaintStudio() {
     return run;
   }, [setApplyMessage, setApplyStatus, setLastError]);
   const draftSettlePromiseRef = useRef<Promise<boolean> | null>(null);
+  // 62-04 (D-13): the ONE immediate path-edit bake currently in flight. The
+  // undo router awaits this exact promise after cancelling the pending record.
+  const pathEditApplySettledRef = useRef<Promise<boolean> | null>(null);
   const settleDraftScript = useCallback((): Promise<boolean> => {
     // 61-18 (D-16, T-61-62): while the wireframe view is on, the sheet must
     // never be reset or re-baked behind it. Refuse FIRST — ahead of the clean
@@ -10336,7 +10340,12 @@ export function PhysicsPaintStudio() {
     // while it is up. The `applying` status stays because it is the busy gate
     // every key action reads; it publishes no copy of its own.
     setApplyStatus('applying');
-    const ok = await runAquarelleScriptRebake({
+    // 62-04 (D-13): ONE token-keyed record brackets this bake. An undo that
+    // lands mid-apply cancels the token, so the sequence publishes neither
+    // terminal, and then replays THIS editId — the previous history entry is
+    // never consumed because the cancelled run wrote no ledger entry.
+    const applyToken = vectorPathSession.beginPathEditApply(editId, mutationId, playFrame);
+    const run = runAquarelleScriptRebake({
       isInFlight: isAquarelleScriptEditInFlight,
       // The veil is bracketed by the rebake's OWN latch, never around the
       // call: a refused (already in flight) rebake opens and closes nothing,
@@ -10384,7 +10393,27 @@ export function PhysicsPaintStudio() {
         setApplyStatus('error');
         scriptApplyRefusalOwnedRef.current = true;
       },
+      // D-13: the synchronous predicate the sequence reads at the produce and
+      // commit turns. The token is this bake's alone — a stale token reads
+      // false and can never suppress a newer apply.
+      isCancelled: () => vectorPathSession.isPathEditApplyCancelled(applyToken),
+      onCancelled: () => {
+        // D-13: a cancelled bake publishes NOTHING — no ledger entry, no error
+        // copy, no message. The undo branch replays this exact editId; every
+        // latch is already free, so the status simply returns to rest.
+        setApplyStatus('idle');
+      },
     });
+    pathEditApplySettledRef.current = run;
+    let ok = false;
+    try {
+      ok = await run;
+    } finally {
+      // Compare-then-write on both halves: a newer bake can never be cleared
+      // by this settle, even if this promise resolves after another began.
+      if (pathEditApplySettledRef.current === run) pathEditApplySettledRef.current = null;
+      vectorPathSession.clearPathEditApply(applyToken);
+    }
     return ok ? editId : null;
   }, [
     isPhysicalMutationLocked,
@@ -11439,6 +11468,19 @@ export function PhysicsPaintStudio() {
   useEffect(() => {
     vectorPathSession.resetForStudioOpen();
   }, []);
+  // 62-04 (D-06/D-13): the ONE production registration of 62-02's exit funnel.
+  // Every shipped path-edit exit now runs the curve bracket in-app: the held fit
+  // is dropped and the pre-entry wireframe / Draft are restored. Registered
+  // beside — never inside — the mount reset above, which must keep its `[]`
+  // deps so the reset runs only on mount. `[settleDraftScript]` re-registers
+  // only if the shipped single-flight settle's identity changes, and the
+  // cleanup detaches the hook so a remount never leaves a stale one behind.
+  useEffect(() => {
+    registerPathEditExitHook(() => {
+      void endCurveBracket({ settle: settleDraftScript });
+    });
+    return () => registerPathEditExitHook(null);
+  }, [settleDraftScript]);
   useEffect(() => {
     void refreshAudioAssets();
     void refreshMissingAudioPaths();
