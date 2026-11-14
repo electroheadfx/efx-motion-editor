@@ -1889,9 +1889,20 @@ describe('61-25 UI-03/UI-04 — the band, marker and chrome law', () => {
   });
 
   it('keeps the wireframe envelope for a uniform profile whatever the switch says', () => {
+    // 62-03 (D-09): the fixture is the all-sentinel mouse profile. That is the
+    // ONE profile whose documented D-09 exception keeps the shipped
+    // anchor-width envelope, so D-10's uniform-profile law still governs it; a
+    // stroke with a real pressure profile now draws its recorded band and is
+    // pinned by the 62-03 D-09 cases instead.
+    const sentinel = vectorStroke({
+      points: [
+        { x: 0.2, y: 0.5, p: -1, tx: 0, ty: 0, tw: 0 },
+        { x: 0.8, y: 0.5, p: -1, tx: 0, ty: 0, tw: 0 },
+      ],
+    });
     // Construction view: unconditional, uniform profile included, switch OFF.
     wireframeMode.value = true;
-    const inWireframe = render(VectorPathOverlay(propsWith([[OTHER_ID, vectorStroke()]])));
+    const inWireframe = render(VectorPathOverlay(propsWith([[OTHER_ID, sentinel]])));
     expect(strokeSizePreview.value).toBe(false);
     expect(nodesWithTestId(inWireframe, 'vector-path-envelope')).toHaveLength(1);
     expect(nodesWithTestId(inWireframe, 'vector-path-envelope-edge')).toHaveLength(1);
@@ -1902,7 +1913,7 @@ describe('61-25 UI-03/UI-04 — the band, marker and chrome law', () => {
     wireframeMode.value = false;
     vectorPenActive.value = true;
     setStrokeSizePreview(true);
-    const editing = render(VectorPathOverlay(propsWith([[OTHER_ID, vectorStroke()]])));
+    const editing = render(VectorPathOverlay(propsWith([[OTHER_ID, sentinel]])));
     expect(nodesWithTestId(editing, 'vector-path-spine')).toHaveLength(1);
     expect(nodesWithTestId(editing, 'vector-path-anchor')).toHaveLength(3);
     expect(nodesWithTestId(editing, 'vector-path-envelope')).toHaveLength(0);

@@ -100,6 +100,10 @@ import {
   type VectorDraftAnchor,
 } from '../view/vectorPathSession';
 import { curveFitSession, type PaintedCurveSession } from '../view/vectorPathCurveBracket';
+import {
+  buildStrokeBandCached,
+  hasRecordedPressureProfile,
+} from '../view/aquarelleStrokeBand';
 
 // --- The overlay's one palette -------------------------------------------
 
@@ -251,6 +255,13 @@ interface DrawnVectorPath {
   readonly curveMode: AquarelleCurveMode;
   readonly handles: readonly ResolvedAnchorHandles[];
   readonly projection: VectorPathProjection;
+  /**
+   * 62-03 (D-09): the construction-view envelope override, in the SAME
+   * canvas-pixel frame as `projectVectorPath`. A stroke whose record carries a
+   * real pressure profile shows its painted footprint (the recorded band);
+   * null keeps the shipped anchor-width envelope.
+   */
+  readonly envelopePx: readonly CanvasPoint[] | null;
   /** 61-13: the recorded stroke's own colour; null for the pen draft. */
   readonly color: string | null;
   /** 61-13: the live target (open path edit / pen draft) wears louder chrome. */
@@ -431,6 +442,7 @@ function drawnPathOf(
     readonly color?: string | null;
     readonly selected?: boolean;
     readonly curveMode?: AquarelleCurveMode;
+    readonly envelopePx?: readonly CanvasPoint[] | null;
   } = {},
 ): DrawnVectorPath | null {
   const normalised = normaliseVectorAnchors(anchors);
@@ -448,6 +460,7 @@ function drawnPathOf(
       alwaysEnvelope: options.alwaysEnvelope === true,
       curveMode,
     }),
+    envelopePx: options.envelopePx ?? null,
     color: options.color ?? null,
     selected: options.selected === true,
   };
@@ -544,9 +557,13 @@ function renderPath(
   const spline = curveMode === 'spline';
   const ownsHandles = (anchor: VectorAnchor): boolean => !spline && anchor.kind === 'bezier';
   const spinePoints = projection.spine.map((point) => `${point.x},${point.y}`).join(' ');
-  const envelope = projection.envelope.length < 3
+  // 62-03 (D-09): ONE envelope source — the recorded band when the stroke
+  // carries a pressure profile, the shipped anchor-width sweep otherwise.
+  // Never both: a path draws exactly one ring.
+  const envelopeRing = drawn.envelopePx ?? projection.envelope;
+  const envelope = envelopeRing.length < 3
     ? null
-    : `M${projection.envelope.map((point) => `${point.x},${point.y}`).join(' L')} Z`;
+    : `M${envelopeRing.map((point) => `${point.x},${point.y}`).join(' L')} Z`;
   const anchorSizePx = ANCHOR_BODY_PX / scale;
   const coreRadiusPx = ANCHOR_CORE_RADIUS_PX / scale;
   const handleRadiusPx = HANDLE_BODY_PX / 2 / scale;
@@ -1039,9 +1056,26 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       ? editDrag.anchors
       : (recordAnchors ?? heldFitAnchors);
     if (anchors === null || anchors.length === 0) continue;
+    // 62-03 (D-09): a stroke whose record carries a real pressure profile shows
+    // its painted footprint in the construction view. The band is display chrome
+    // over the LAST COMMITTED samples — a live anchor drag previews anchors, not
+    // a rebuilt band; the committed write re-derives it. `polygonPx` is already
+    // in the canvas-pixel frame `uvToScreen` projects into (the equality pin),
+    // and the revision|width|height-keyed cache is the shipped ONE band cache.
+    // An all-sentinel mouse profile has no per-sample pressure to map (D-07,
+    // D-09's one exception) and keeps the shipped anchor-width envelope.
+    const envelopePx = (wireframe || previewStrokeSize) && hasRecordedPressureProfile(stroke)
+      ? buildStrokeBandCached(
+        stroke,
+        mutationId,
+        { width: props.width, height: props.height },
+        aquarelleStrokesRevision.value,
+      ).polygonPx
+      : null;
     const drawn = drawnPathOf(`stroke-${mutationId}`, anchors, props.width, props.height, {
       // The wireframe always shows the swept envelope, uniform profile or not.
       alwaysEnvelope: wireframe,
+      envelopePx,
       color: typeof stroke.color === 'string' && stroke.color.length > 0 ? stroke.color : null,
       // The open path edit is the live target and wears the louder chrome.
       selected: editMutationId !== null && String(mutationId) === editMutationId,

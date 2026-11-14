@@ -170,6 +170,40 @@ export function buildStrokeBand(
   return { polygonPx: buildSupportBandPolygon(stations, size.height, tip.aspect) };
 }
 
+/**
+ * 62-03 (D-09): does this record carry a REAL per-sample pressure profile?
+ *
+ * Provenance is per stroke KIND, never per painted/drawn — and the recorded
+ * samples themselves are the discriminator. D-02 forbids persisting a
+ * "converted" flag, so the construction view must decide from the record:
+ *
+ *   - a PEN-painted stroke records real pressure in every sample, converted
+ *     to `auto` anchors or not, so it always carries a profile;
+ *   - a MOUSE-painted stroke records `VECTOR_PRESSURE_SENTINEL` (-1) in every
+ *     sample because the engine derives its pressure from speed at replay
+ *     (`engineAdapter.ts`). No per-sample pressure ever reaches the record,
+ *     and D-07 has nothing to re-map. This is D-09's ONE documented
+ *     exception: such a stroke keeps the shipped anchor-width envelope.
+ *     Reproducing the engine's speed law here would import the engine into a
+ *     view leaf, which T-61-31 forbids — and the anchor-width envelope loses
+ *     no data and adds no document field.
+ *
+ * Total and fail-closed: true only when at least one sample's `p` is a finite
+ * value at or above zero (0 is a real heavy-light reading, not an absence);
+ * an empty, malformed or all-sentinel list is false.
+ */
+export function hasRecordedPressureProfile(
+  stroke: Pick<AquarelleStroke, 'points'>,
+): boolean {
+  const points = stroke.points;
+  if (!Array.isArray(points)) return false;
+  for (const point of points) {
+    const pressure = point.p;
+    if (Number.isFinite(pressure) && pressure >= 0) return true;
+  }
+  return false;
+}
+
 interface StrokeBandCacheEntry {
   readonly stamp: string;
   readonly polygonPx: CanvasPoint[];
