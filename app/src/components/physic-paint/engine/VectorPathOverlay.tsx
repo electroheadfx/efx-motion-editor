@@ -99,7 +99,7 @@ import {
   type VectorDrawDraft,
   type VectorDraftAnchor,
 } from '../view/vectorPathSession';
-import { curveFitSession } from '../view/vectorPathCurveBracket';
+import { curveFitSession, type PaintedCurveSession } from '../view/vectorPathCurveBracket';
 
 // --- The overlay's one palette -------------------------------------------
 
@@ -118,6 +118,15 @@ const SELECTED_ANCHOR_COLOR = '#f97316';
 /** The handle CONNECTOR's opacity — the dot itself stays solid (§6 item 5). */
 const HANDLE_OPACITY = 0.6;
 const SPINE_STROKE_PX = 1.5;
+/**
+ * 62-03 (D-06): the ghost of the ORIGINAL recorded spine, drawn beneath the
+ * fitted path for the whole curve session. A neutral slate that must read over
+ * both paper and paint — never the selected accent, never the owned-control
+ * amber, never the selection orange.
+ */
+const CURVE_GHOST_SPINE_COLOR = '#94a3b8';
+const CURVE_GHOST_SPINE_OPACITY = 0.45;
+const CURVE_GHOST_STROKE_PX = 1;
 
 /** Immediately above the stroke overlay (40), below the brush cursor (50). */
 const VECTOR_PATH_Z_INDEX = 41;
@@ -471,6 +480,28 @@ function draftPreviewPointsOf(
       return `${at.x},${at.y}`;
     })
     .join(' ');
+}
+
+/**
+ * 62-03 (D-06): the ghost polyline of the ORIGINAL recorded spine — the
+ * session's recorded-points snapshot projected into layer pixels. Display-only:
+ * a non-finite projection is dropped and fewer than two survivors draw nothing
+ * (T-62-11), so a malformed sample can never break the render or reach the
+ * document.
+ */
+function curveGhostPointsOf(
+  curveFit: PaintedCurveSession | null,
+  width: number,
+  height: number,
+): string | null {
+  if (curveFit === null) return null;
+  const projected: string[] = [];
+  for (const point of curveFit.sourcePoints) {
+    const at = uvToScreen(point, width, height);
+    if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) continue;
+    projected.push(`${at.x},${at.y}`);
+  }
+  return projected.length < 2 ? null : projected.join(' ');
 }
 
 /**
@@ -1032,6 +1063,15 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     });
   // 61-21 (IN-01): the live rubber band to the cursor — display-only.
   const draftPreviewPoints = draftPreviewPointsOf(draft, props.width, props.height);
+  // 62-03 (D-06): the ghost is session chrome — it draws only while the fit
+  // targets the OPEN edit, and it disappears with `curveFitSession` itself
+  // (no separate teardown). It survives every commit made inside the session
+  // because the entry snapshot is never rewritten.
+  const curveGhostPoints = editMutationId !== null
+    && curveFit !== null
+    && String(curveFit.mutationId) === editMutationId
+    ? curveGhostPointsOf(curveFit, props.width, props.height)
+    : null;
 
   if (recorded.length === 0 && draftPath === null && !penActive && editTargetMutationId === null) {
     return null;
@@ -1389,6 +1429,20 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
           pointerEvents: 'none',
         }}
       >
+        {/* 62-03 (D-06): the faint original spine, FIRST — every skeleton path
+            and the fitted skeleton itself draw over it. Display-only. */}
+        {curveGhostPoints === null ? null : (
+          <polyline
+            data-testid="vector-path-curve-ghost"
+            points={curveGhostPoints}
+            fill="none"
+            stroke={CURVE_GHOST_SPINE_COLOR}
+            strokeOpacity={CURVE_GHOST_SPINE_OPACITY}
+            strokeWidth={CURVE_GHOST_STROKE_PX}
+            strokeDasharray="3 3"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
         {recorded.map((drawn) => renderPath(
           drawn,
           scale,

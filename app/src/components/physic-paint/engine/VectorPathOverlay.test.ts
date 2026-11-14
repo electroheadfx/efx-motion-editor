@@ -1733,10 +1733,11 @@ describe('61-22 G-11 — the selected-anchor ring', () => {
     expect(block).toContain('fill="none"');
     expect(block).toContain('strokeWidth={1.5}');
     expect(block).toContain('stroke={OUTLINE_DARK}');
-    // The palette is the shipped five literals — the chrome introduces none else.
+    // The palette is the shipped five literals plus 62-03's documented ghost
+    // slate (D-06) — the chrome introduces none else.
     const hexes = [...source.matchAll(/'#[0-9a-fA-F]{3,6}'/g)].map((match) => match[0]);
     expect(new Set(hexes)).toEqual(
-      new Set(["'#38bdf8'", "'#111111'", "'#ffffff'", "'#f59e0b'", "'#f97316'"]),
+      new Set(["'#38bdf8'", "'#111111'", "'#ffffff'", "'#f59e0b'", "'#f97316'", "'#94a3b8'"]),
     );
   });
 
@@ -3048,5 +3049,94 @@ describe('62-03 — the armed held fit in the ONE overlay', () => {
     expect(String(bezierSpines[0]!.props['points'])).toBe(spineOf(MODE_ANCHORS, 'bezier'));
     // The two evaluations genuinely differ, so the assertions above have teeth.
     expect(spineOf(MODE_ANCHORS, 'spline')).not.toBe(spineOf(MODE_ANCHORS, 'bezier'));
+  });
+
+  // --- Task 2: the ghost of the original recorded spine (D-06) ------------
+
+  function recordedSpineOf(points: AquarelleStroke['points']): string {
+    return points!
+      .map((point) => {
+        const at = uvToScreen(point, WIDTH, HEIGHT);
+        return `${at.x},${at.y}`;
+      })
+      .join(' ');
+  }
+
+  it('draws the original recorded spine as a ghost beneath the fitted path for the session', () => {
+    const stroke = paintedStroke();
+    beginPaintedCurveSession(stroke);
+    enterPathEdit(String(EDIT_ID));
+
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]])))!;
+    const ghosts = nodesWithTestId(root, 'vector-path-curve-ghost');
+    expect(ghosts).toHaveLength(1);
+    const ghost = ghosts[0]!;
+    expect(String(ghost.props['points'])).toBe(recordedSpineOf(stroke.points));
+    expect(ghost.type).toBe('polyline');
+    expect(ghost.props['fill']).toBe('none');
+    expect(ghost.props['stroke']).toBe('#94a3b8');
+    expect(ghost.props['strokeOpacity']).toBe(0.45);
+    expect(ghost.props['strokeWidth']).toBe(1);
+    expect(ghost.props['strokeDasharray']).toBe('3 3');
+    expect(ghost.props['vectorEffect']).toBe('non-scaling-stroke');
+  });
+
+  it('removes the ghost the moment the curve session clears', () => {
+    const stroke = paintedStroke();
+    beginPaintedCurveSession(stroke);
+    enterPathEdit(String(EDIT_ID));
+    expect(
+      nodesWithTestId(render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]]))), 'vector-path-curve-ghost'),
+    ).toHaveLength(1);
+
+    clearCurveFitSession();
+    const after = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]])));
+    expect(nodesWithTestId(after, 'vector-path-curve-ghost')).toHaveLength(0);
+    // The record still has no anchors, so the fitted path is gone too.
+    expect(after).toBeNull();
+  });
+
+  it('draws no ghost for a Phase 61 vector stroke edited with no session', () => {
+    const stroke = vectorStroke({ mutationId: EDIT_ID, anchors: [auto(0.2, 0.5), auto(0.8, 0.5)] });
+    enterPathEdit(String(EDIT_ID));
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]])));
+    expect(nodesWithTestId(root, 'vector-path-spine')).toHaveLength(1);
+    expect(nodesWithTestId(root, 'vector-path-curve-ghost')).toHaveLength(0);
+  });
+
+  it('keeps the frozen original ghost after a commit-shaped gesture inside the session', () => {
+    const stroke = paintedStroke();
+    beginPaintedCurveSession(stroke);
+    enterPathEdit(String(EDIT_ID));
+    const onPathEdit = vi.fn();
+    const first = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+    press(first, clickAt(0.5, 0.5));
+    expect(onPathEdit).toHaveBeenCalledTimes(1);
+
+    // The session snapshot is never rewritten by a commit, so the ghost still
+    // shows where the hand painted — not the edited spine.
+    const second = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
+    const ghosts = nodesWithTestId(second, 'vector-path-curve-ghost');
+    expect(ghosts).toHaveLength(1);
+    expect(String(ghosts[0]!.props['points'])).toBe(recordedSpineOf(stroke.points));
+  });
+
+  it('drops a ghost whose every sample projects to a non-finite value', () => {
+    const stroke = paintedStroke();
+    const fit = beginPaintedCurveSession(stroke)!;
+    curveFitSession.value = {
+      mutationId: EDIT_ID,
+      anchors: fit.anchors,
+      sourcePoints: [
+        { x: Number.NaN, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0 },
+        { x: 0.8, y: Number.NaN, p: 1, tx: 0, ty: 0, tw: 0 },
+      ],
+    };
+    enterPathEdit(String(EDIT_ID));
+
+    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]])))!;
+    // The fitted path still draws; only the malformed ghost is dropped.
+    expect(nodesWithTestId(root, 'vector-path-spine')).toHaveLength(1);
+    expect(nodesWithTestId(root, 'vector-path-curve-ghost')).toHaveLength(0);
   });
 });
