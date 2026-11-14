@@ -161,9 +161,10 @@ export interface PhysicPaintRotoGeneratedCell {
  *
  * Phase 43 (D-26/D-27): linked Loop Clip occurrences resolve through the SAME
  * 'real' variant as their source key — `keyId` is the source keyId and the
- * cache revision is source-scoped (`${contentRevision}:real:${sourceKeyId}`),
- * so one source cache entry serves every occurrence and one source edit
- * invalidates them all. A frame inside an unresolvable loop range surfaces the
+ * cache revision is source-scoped through
+ * {@link buildRotoRealCacheRevision}(contentRevision, sourceKeyId), so one
+ * source cache entry serves every occurrence and one source edit invalidates
+ * them all. A frame inside an unresolvable loop range surfaces the
  * 'loop-placeholder' variant (43-09, D-28) carrying the full 43-02 typed
  * 'linked-unresolved' contract payload (loopId, placementStart, source keyIds,
  * missing source keyIds) — enough for the capsule error state, the
@@ -1517,6 +1518,26 @@ export function buildPhysicPaintRotoPhysicalRasterRevision(
     groupOverrideRecords,
     PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
   );
+}
+
+/**
+ * Phase 62 (CRV-03, D-11): the ONE source-scoped real cache identity builder.
+ *
+ * The identity is SOURCE-scoped: every real render source, every ownership
+ * remap and every persistence projection builds its cache revision here, and
+ * on a Loop Clip occurrence `keyId` is the SOURCE key, never the occurrence
+ * frame. One cache entry therefore serves every occurrence, and a single
+ * source re-bake invalidates all of them in the same transition.
+ *
+ * `suffix` is appended verbatim after the key with no separator and no
+ * normalization (the persistence projections pass their paper term through
+ * this slot), and it defaults to the empty string so the shipped strings are
+ * byte-identical to the hand-built literals this builder replaced.
+ *
+ * Do not state the identity shape anywhere else in production.
+ */
+export function buildRotoRealCacheRevision(contentRevision: string, keyId: string, suffix = ''): string {
+  return `${contentRevision}:real:${keyId}${suffix}`;
 }
 
 /**

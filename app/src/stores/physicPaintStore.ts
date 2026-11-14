@@ -140,7 +140,7 @@ import {
   type StagedRotoPlayScriptFrame,
 } from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
 import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
-import { createPhysicPaintRotoKeyId, requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { buildRotoRealCacheRevision, createPhysicPaintRotoKeyId, requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 // 52.2-06 (D-06/D-07): the persist seam's media projection. Both roto
 // collections are projected through the same pure functions — the store does
 // not learn which collection a record came from.
@@ -5691,9 +5691,10 @@ export const physicPaintStore = {
    * cells stay the projection's authority; frames the projection reports
    * empty (or does not cover) consult the Phase 43 lazy per-frame loop query
    * (D-26/D-27): 'linked' occurrences return the SOURCE key's payload under
-   * the source-scoped cache revision `${rasterRevision}:real:${sourceKeyId}`
-   * — one source cache entry serves every occurrence — and 'linked-unresolved'
-   * surfaces as the 'loop-placeholder' variant (D-28) instead of a blank.
+   * the source-scoped cache revision from
+   * `buildRotoRealCacheRevision(rasterRevision, sourceKeyId)` — one source
+   * cache entry serves every occurrence — and 'linked-unresolved' surfaces as
+   * the 'loop-placeholder' variant (D-28) instead of a blank.
    */
   getRotoPhysicalRenderSource(layerId: string, trackId: string, appFrame: number): PhysicPaintRotoPhysicalRenderSource | null {
     if (!Number.isInteger(appFrame) || appFrame < 0) return null;
@@ -5790,7 +5791,7 @@ export const physicPaintStore = {
         appFrame,
         keyId: record.keyId,
         contentRevision: rasterRevision,
-        cacheRevision: `${rasterRevision}:real:${record.keyId}`,
+        cacheRevision: buildRotoRealCacheRevision(rasterRevision, record.keyId),
         renderedFrame: record.payload,
       };
     }
@@ -5836,7 +5837,7 @@ export const physicPaintStore = {
           appFrame,
           keyId: record.keyId,
           contentRevision: rasterRevision,
-          cacheRevision: `${rasterRevision}:real:${record.keyId}`,
+          cacheRevision: buildRotoRealCacheRevision(rasterRevision, record.keyId),
           renderedFrame: record.payload,
         };
       }
@@ -5851,7 +5852,7 @@ export const physicPaintStore = {
           appFrame,
           keyId: record.keyId,
           contentRevision: rasterRevision,
-          cacheRevision: `${rasterRevision}:real:${record.keyId}`,
+          cacheRevision: buildRotoRealCacheRevision(rasterRevision, record.keyId),
           renderedFrame: record.payload,
         };
       }

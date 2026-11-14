@@ -1,6 +1,7 @@
-import type {
-  PhysicPaintRotoPhysicalDocument,
-  PhysicPaintRotoRealKeyRecord,
+import {
+  buildRotoRealCacheRevision,
+  type PhysicPaintRotoPhysicalDocument,
+  type PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
 import { classifyPhysicPaintRotoGroupFrameTarget } from './physicsPaintRotoGroupLifecycle';
 import { buildKeyIdentityFrameMap } from './keyIdentityFrameMap';
@@ -149,7 +150,7 @@ export function rebuildRotoPhysicalOwnership<TState, TFrame extends RotoPhysical
     appFrame,
     keyId,
     contentRevision: input.contentRevision,
-    cacheRevision: `${input.contentRevision}:real:${keyId}`,
+    cacheRevision: buildRotoRealCacheRevision(input.contentRevision, keyId),
   });
   const frameStates = remapOwnedMap(input.snapshot.frameStates, ownerByOldFrame, frameRemap, discardUnownedAppFrames, (value) => value);
   const previewFrames = remapOwnedMap(input.snapshot.previewFrames, ownerByOldFrame, frameRemap, discardUnownedAppFrames, remapFrame);

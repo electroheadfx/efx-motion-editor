@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'preact/hooks';
 import type { BgMode } from '../types/paintCore';
 import type { PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
-import { requirePhysicPaintRotoInlineBytes } from '../roto/physicsPaintRotoPhysicalModel';
+import { buildRotoRealCacheRevision, requirePhysicPaintRotoInlineBytes } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import { buildBlankRotoFrame, encodeRotoFrameFromCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
@@ -294,7 +294,7 @@ export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument
     source: 'real-key' as const,
     keyId: record.keyId,
     contentRevision: document.revision,
-    cacheRevision: `${document.revision}:real:${record.keyId}${paper}`,
+    cacheRevision: buildRotoRealCacheRevision(document.revision, record.keyId, paper),
   }));
 }
 
@@ -343,7 +343,7 @@ export function recordsAsRuntimeFramesToleratingReferences(
       source: 'real-key' as const,
       keyId: record.keyId,
       contentRevision: document.revision,
-      cacheRevision: `${document.revision}:real:${record.keyId}${paper}`,
+      cacheRevision: buildRotoRealCacheRevision(document.revision, record.keyId, paper),
     }));
 }
 
@@ -563,7 +563,11 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       contentRevision: route.contentRevision,
       // 261017-fz3: paper id+strength+scale join the aquarelle cache fingerprint
       // so a paper change is a cache miss (stale WebP frames are not served).
-      cacheRevision: `${route.contentRevision}:real:${route.keyId}${paperCacheTerm(inputRef.current.getBackgroundMetadata())}`,
+      cacheRevision: buildRotoRealCacheRevision(
+        route.contentRevision,
+        route.keyId,
+        paperCacheTerm(inputRef.current.getBackgroundMetadata()),
+      ),
     };
     // The local frame buffers belong to the LIVE active track. A switch flush
     // persists the outgoing key through the parent but must never seed the
