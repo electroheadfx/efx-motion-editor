@@ -91,7 +91,7 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
 - [x] **Phase 59: Rail Motion Channels & v7 Interface** - Any rail animates through independent Motion keys applied at the compositor, with the v7 channel lanes (completed 2026-11-08)
 - [x] **Phase 60: Studio Timeline Horizontal Zoom** - Frame density zooms 0.25×-4× from one pitch authority with all vertical geometry fixed (completed 2026-11-09)
 - [x] **Phase 61: Vector Painting Tool** - Pen-drawn vector strokes with per-vertex width, per-stroke style, wireframe preview, persistence, and export (completed 2026-11-12)
-- [ ] **Phase 62: Painted-Stroke Curve Editing** - A selected painted stroke reshapes as a curve and re-bakes from its pre-script base across every loop occurrence
+- [x] **Phase 62: Painted-Stroke Curve Editing** - A selected painted stroke reshapes as a curve and re-bakes from its pre-script base across every loop occurrence (completed 2026-11-14)
 
 ---
 
