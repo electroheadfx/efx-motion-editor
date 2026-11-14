@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 62
 current_phase_name: Painted-Stroke Curve Editing
 status: executing
-stopped_at: Completed 62-02-PLAN.md
-last_updated: "2026-11-14T12:54:44.671Z"
+stopped_at: Completed 62-03-PLAN.md
+last_updated: "2026-11-14T13:09:13.093Z"
 last_activity: 2026-11-14
 last_activity_desc: Phase 62 execution started
-state_head: c187aa033b44d5a5345c1f94a2b1eabb29fa06c0
+state_head: b996d469328a4dc402adec322a62e0f619be0d72
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 67
-  completed_plans: 64
+  completed_plans: 65
   percent: 75
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-12 after Phase 61)
 ## Current Position
 
 Phase: 62 (Painted-Stroke Curve Editing) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-11-14 — Phase 62 execution started
 
@@ -123,6 +123,7 @@ Progress: [████████░░] 75%
 | Phase 61 P31 | 11min | 3 tasks | 10 files |
 | Phase 62 P01 | 22min | 3 tasks | 10 files |
 | Phase 62 P02 | 16min | 3 tasks | 13 files |
+| Phase 62 P03 | 10min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -362,6 +363,12 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 62]: Entry arms the durable base through the shipped armDraftBase before fitting; a refused arm publishes the fixed refusal and opens nothing.
 - [Phase 62]: The dirty exit branch settles once when the user had no wireframe, or keeps the deferred render behind the user's own wireframe (D-14).
 - [Phase 62]: resetForStudioOpen closes path edit through exitPathEdit so the reset route reaches the one exit hook.
+- [Phase 62]: 62-03: record anchors outrank the armed held fit (recordAnchors ?? heldFitAnchors), so a committed gesture's write is instantly the edit target
+- [Phase 62]: 62-03: the held fit draws in resolveAquarelleCurveMode(stroke.curveMode) for BOTH anchor sources; DEFAULT_VECTOR_PATH_CURVE_MODE stays the draw-time mint only
+- [Phase 62]: 62-03: the original spine ghost is display chrome over the immutable session snapshot and vanishes with the session (T-62-11 fails closed on non-finite samples)
+- [Phase 62]: 62-03: D-09 discriminates on recorded samples (any finite p >= 0), never a persisted flag; the all-sentinel mouse profile keeps the shipped anchor-width envelope as the documented exception
+- [Phase 62]: 62-03: renderPath draws ONE envelope ring from drawn.envelopePx ?? projection.envelope, fed by the shipped revision|width|height-keyed buildStrokeBandCached
+- [Phase 62]: 62-03: the shipped 61-25 uniform-profile fixture moved to the all-sentinel profile — the ONE profile D-09's exception leaves under D-10's law
 
 ### Pending Todos
 
@@ -469,8 +476,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-14T12:54:42.745Z
-Stopped at: Completed 62-02-PLAN.md
+Last session: 2026-11-14T13:09:11.143Z
+Stopped at: Completed 62-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
