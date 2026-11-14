@@ -89,7 +89,7 @@ Deferred to a later milestone. Not in the current roadmap.
 
 | Feature | Reason |
 |---------|--------|
-| Studio API/MCP | Own v2.2.0 milestone (Phase 63), designed against the shipped v2.1.0 model |
+| Studio API/MCP | Own v2.3.0 milestone (Phase 65), designed against the shipped v2.2.0 model |
 | Per-vertex brush *type* | No reference implementation in any comparable tool |
 | Baking motion into drawing keys or frame caches | Breaks the compositor law and forces re-bakes |
 | Constraining Motion keys to drawing keys | Superseded by the v3 model |

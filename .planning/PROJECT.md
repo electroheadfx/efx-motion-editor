@@ -209,7 +209,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - **Phase 61 — Vector painting tool.** `pen-tool` / `spline-pointer`, per-vertex paint properties, curve-type choice, wireframe preview. **Shipped 2026-11-12** (31 plans; UAT 21/21, verification 19/19 passed). VEC-04 was revised mid-phase by the user: per-vertex colour is supported and the former "width is the only per-vertex property" law is superseded.
 - **Phase 62 — Painted script/stroke curve editing.**
 
-**Out of scope:** Studio API/MCP → its own v2.2.0 milestone (Phase 63). Seconds/frames equivalence and Studio canvas zoom shipped in v2.0.1 (261105-cgl, 261104-uyv).
+**Out of scope:** Studio API/MCP → its own v2.3.0 milestone (Phase 65), designed against the shipped v2.2.0 model. Seconds/frames equivalence and Studio canvas zoom shipped in v2.0.1 (261105-cgl, 261104-uyv).
 
 **Source of truth:** `SPECS/v2.1.0-motion-channels/` — `CONTEXT.md` is the model/intent authority, `README.md` the motion-lane UI contract, `MOTION-CHANNELS.tsx` / `motion-channels.css` the surface reference. Chrome authority is v7 (`VjszJ`); the v3 frame (`w3YrPL`) supplies only the animation model; v2 chrome (20px lanes, orange selection, Animate dropdown) is superseded and must not ship.
 

@@ -16,6 +16,8 @@
 - ✅ **v2.0.0 Multi-Module Paint Workstation (MAJOR)** — Phases 54-56 (shipped 2026-11-02)
 - ✅ **v2.0.1 Rail Editing & v7 Timeline Rails (PATCH)** — Phase 58 + in-milestone v7 quick (shipped 2026-11-05)
 - 🚧 **v2.1.0 Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)** — Phases 59-62 (in progress)
+- ⏳ **v2.2.0 Brush Tips & Medium Engine (MINOR)** — Phases 63-64 (planned)
+- ⏳ **v2.3.0 Studio API/MCP (MINOR)** — Phase 65 (planned)
 
 ## Phases
 
@@ -90,6 +92,23 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
 - [x] **Phase 60: Studio Timeline Horizontal Zoom** - Frame density zooms 0.25×-4× from one pitch authority with all vertical geometry fixed (completed 2026-11-09)
 - [x] **Phase 61: Vector Painting Tool** - Pen-drawn vector strokes with per-vertex width, per-stroke style, wireframe preview, persistence, and export (completed 2026-11-12)
 - [ ] **Phase 62: Painted-Stroke Curve Editing** - A selected painted stroke reshapes as a curve and re-bakes from its pre-script base across every loop occurrence
+
+---
+
+### ⏳ v2.2.0 Brush Tips & Medium Engine (Planned)
+
+**Milestone Goal:** Make the brush tip a real stamp — an imported image becomes the 192×192 mask, travels inside the `.mce`, and survives reopen with three textured tips shipped by default — then give paint a named Medium so it can read denser and heavier than a wash.
+
+- [ ] **Phase 63: Brush Tip Pipeline** - An imported PNG/JPG becomes the real 192×192 tip mask, stored inside the project and rebuilt on open, with three textured tips shipped by default
+- [ ] **Phase 64: Medium Engine** - A Viscosity global and named Medium profiles make paint read denser and heavier, with heavy pigment gaining visible body from its own density
+
+---
+
+### ⏳ v2.3.0 Studio API/MCP (Planned)
+
+**Milestone Goal:** Expose the shipped Studio model through an external API/MCP surface, designed against the model v2.2.0 finalises.
+
+- [ ] **Phase 65: Studio API/MCP** - An external API/MCP surface drives the Studio from outside the app on the shipped model
 
 ---
 
@@ -333,4 +352,4 @@ Plans:
 | 61. Vector Painting Tool | 31/31 | Complete    | 2026-11-12 |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
 
-**Execution Order:** 59 → 60 → 61 → 62 (global numbering continues; Phase 57 is retired and never reused)
+**Execution Order:** 59 → 60 → 61 → 62 (v2.1.0) → 63 → 64 (v2.2.0) → 65 (v2.3.0). Global numbering continues; Phase 57 is retired and never reused.
