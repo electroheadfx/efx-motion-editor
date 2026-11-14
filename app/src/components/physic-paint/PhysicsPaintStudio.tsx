@@ -6350,15 +6350,46 @@ export function PhysicsPaintStudio() {
   // 261029-lsr UAT row 5 (user decision): cached playback is a read-only
   // preview — undo/redo are inert until it stops. Pressing Cmd+Z while playing
   // is a no-op, never a hidden document edit under the playing frames.
+  // 62-04 (D-13/D-14): undo targets the edit under the user's finger. Three
+  // ordered branches:
+  //  1. An immediate path-edit bake is still in flight. Cancel its token so the
+  //     sequence publishes neither terminal, await that exact bake, then replay
+  //     THIS editId through the shipped revision-authoritative route — never a
+  //     stack pop, because the cancelled run wrote no ledger entry and a pop
+  //     would consume the previous edit. A refused replay re-seats the
+  //     attempted side from the live content and retries once, the shipped
+  //     replay shape.
+  //  2. The curve session's deferred settle is in flight (D-14). Await the
+  //     single-flight settle, then fall through: the ordinary undo runs against
+  //     a settled script and sheet, and the top entry is this edit.
+  //  3. The shipped history undo, unchanged.
   const undo = useCallback(async () => {
     if (isPlaying) return false;
+    const record = vectorPathSession.pendingPathEditApply.peek();
+    if (record !== null) {
+      vectorPathSession.cancelPathEditApply(record.token);
+      await pathEditApplySettledRef.current;
+      let changed = await runScriptReplay({ direction: 'undo', editId: record.editId });
+      if (!changed) {
+        reanchorAquarelleEditFromLiveContent(record.editId, 'undo');
+        changed = await runScriptReplay({ direction: 'undo', editId: record.editId });
+      }
+      if (changed) {
+        rotoScript.notifySourceRevision();
+        syncBackgroundSettingsFromDocument();
+      }
+      return changed;
+    }
+    if (draftSettlePromiseRef.current !== null) {
+      await draftSettlePromiseRef.current;
+    }
     const changed = await rotoMoveHistoryUndo();
     if (changed) {
       rotoScript.notifySourceRevision();
       syncBackgroundSettingsFromDocument();
     }
     return changed;
-  }, [rotoMoveHistoryUndo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument]);
+  }, [rotoMoveHistoryUndo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument, runScriptReplay]);
   const redo = useCallback(async () => {
     if (isPlaying) return false;
     const changed = await rotoMoveHistoryRedo();

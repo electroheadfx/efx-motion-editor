@@ -3442,7 +3442,9 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(undoStart).toBeGreaterThan(-1);
     const undoBlock = studio.slice(undoStart, studio.indexOf('const redo = useCallback', undoStart));
     expect(undoBlock).toContain('if (isPlaying) return false;');
-    expect(undoBlock).toContain('}, [rotoMoveHistoryUndo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument]);');
+    // 62-04 T3: the pending-apply branch replays through `runScriptReplay`, so
+    // the callback gained exactly that one dependency.
+    expect(undoBlock).toContain('}, [rotoMoveHistoryUndo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument, runScriptReplay]);');
     const redoStart = studio.indexOf('const redo = useCallback(async () => {');
     expect(redoStart).toBeGreaterThan(-1);
     const redoBlock = studio.slice(redoStart, studio.indexOf('// 52.1 (undo/redo shortcut)', redoStart));
@@ -8184,7 +8186,9 @@ describe('62-04 the undo router: cancel THIS apply, never the previous history e
     expect(undo).toContain('if (isPlaying) return false;');
     expect(undo).toContain('rotoScript.notifySourceRevision();');
     expect(undo).toContain('syncBackgroundSettingsFromDocument();');
-    expect(undo).toContain('runScriptReplay,');
+    expect(undo).toContain(
+      '}, [rotoMoveHistoryUndo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument, runScriptReplay]);',
+    );
   });
 
   it('leaves redo exactly as shipped', () => {
