@@ -175,22 +175,27 @@ The library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](app/src/lib
 
 A portable package: the `project.mce` manifest, one `layers/<layerId>.json` sub-file per changed paint layer, and `frames/<layerId>/<keyId>.webp` frame media — references only, never inline payloads or machine-local paths. Saves are digest-verified, changed-files-only, and published atomically; audio stays a disk reference, never copied into the package. v1.0.0 is a clean break: pre-v1.0 Physics Paint data is refused with an explicit rejection dialog.
 
-## What's New in v2.1.0-beta2
+## What's New in v2.1.0
 
-Phases 59 and 60 of the v2.1.0 milestone. **Compatibility: v2.1.0 changes the project document. Back up projects created with v2.0.1 before upgrading — there is no migration path, and a project saved by v2.1.0 may not reopen in v2.0.1.**
+Phases 59-62 of the v2.1.0 milestone. **Compatibility: v2.1.0 changes the project document. Back up projects created with v2.0.1 before upgrading — there is no migration path, and a project saved by v2.1.0 may not reopen in v2.0.1.**
 
 | Area | Shipped |
 |------|---------|
 | Motion channels | Every rail — Standard, Motion, Static, Reveal and bare Key Rails — gains an independent Motion block: `Animate` seeds a key at the playhead and Position, Scale, Rotation and Opacity lanes evaluate separately from the rail's drawing keys |
 | Compositor transform | The transform is applied once at the compositor, so Edit view, Play, the Studio program monitor and export agree frame for frame; sub-frame transforms move smoothly while content stays on integer frames |
 | Rail lifecycle | Motion follows the rail through moves, copy/paste and first-key deletion; deleting the last drawing key collapses the block; a two-sided rail merge keeps the head motion, names the dropped tail range, and restores everything in one undo |
-| Timeline zoom | Cmd/Ctrl+wheel and trackpad pinch zoom the Studio timeline from 0.25× to 4×, anchored on the frame under the cursor; the zoom pill adds Fit and a 100% reset, and a plain wheel still scrolls horizontally |
+| Timeline zoom | Cmd/Ctrl+wheel and trackpad pinch zoom the Studio timeline from 0.25× to 4×, anchored on the frame under the cursor; the zoom pill adds minus/percent/plus and a one-shot 100% reset, and a plain wheel still scrolls horizontally |
 | Zoom geometry | One pitch authority drives every consumer — ruler labels and ticks, non-active row cells, the current-frame marker, in-between dashes, rail and ghost spans, sound leaves — so they stay aligned at every level; each paint layer remembers its own zoom across Studio close/reopen |
-| Persistence & undo | Motion records round-trip through save/close/reopen with their keys, values, easing and wiggle; each Motion edit is exactly one undo step and never touches drawing cells |
-| Fixes | Paint cursors now sit on the rail-edit chain under a Motion offset; returning to a cached key shows paint added since its last cache commit on the first visit; script saving is restored |
+| Motion persistence | Motion records round-trip through save/close/reopen with their keys, values, easing and wiggle, and never touch drawing cells |
 | v7 interface | 18px channel lanes, 6×6 Motion keys, selected-block outline, a coloured chevron while the block is collapsed, and consistent `playhead` / `Motion` / `easing` / `Wiggle` vocabulary |
+| Vector painting | A fifth, visually separated Pen tool draws resolution-independent vector strokes with corner and smooth anchors; the Spline pointer edits anchors, coupled handles, handle break, insert, delete and multi-select in the same surface |
+| Vector paint properties | Width varies per vertex with a sparse 0.2-2.0 profile ("Vertex size"); brush and colour are per stroke, with an optional per-anchor colour override; strokes persist in the `.mce`, survive reopen and export exactly as previewed |
+| Wireframe & replay | A session-only wireframe toggle draws every stroke's construction geometry as the drag-time performance mode; AQTL v2 keeps anchors, curve mode, colour and vector provenance deterministic across runs, undo/redo and reopen |
+| Painted-stroke curves | Selecting a painted stroke and entering curve mode fits anchors on entry; a commit is one ledger entry and re-bakes from the recovered pre-script base, so erased regions stay erased and the texture is not re-rolled |
+| Loop-aware rebake | One source-scoped cache identity invalidates every loop occurrence of an edited stroke together, and undo cancels or settles an in-flight bake at the stroke's exact pre-edit state |
+| Fixes | Paint cursors now sit on the rail-edit chain under a Motion offset; returning to a cached key shows paint added since its last cache commit on the first visit; script saving is restored |
 
-This build covers Phases 59-60: Phases 61-62 (vector painting, painted-stroke curve editing) are not included. It ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG and is published as the latest release.
+This build covers Phases 59-62 of the v2.1.0 milestone. It ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG and is published as the latest release. Known limitation: Motion-only edits (adding a Motion key or channel, changing a Motion value) are not recorded in the undo ledger in this release; remove a Motion channel explicitly to revert it.
 
 ## What's New in v2.0.1
 
