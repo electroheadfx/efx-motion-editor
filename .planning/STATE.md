@@ -3,7 +3,7 @@ gsd_state_version: "1.0"
 milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
 status: Awaiting next milestone
-stopped_at: Milestone v2.1.0 summary generated
+stopped_at: Milestone v2.1.0 completed and archived
 last_updated: "2026-11-14T21:33:29.306Z"
 last_activity: 2026-11-14
 last_activity_desc: Milestone v2.1.0 completed and archived
@@ -22,10 +22,10 @@ current_phase_name: Painted-Stroke Curve Editing
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-14 after Phase 62)
+See: .planning/PROJECT.md (updated 2026-11-14 after the v2.1.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v2.1.0 complete — all four phases shipped; milestone ready to close.
+**Current focus:** v2.1.0 shipped and archived — planning the next milestone (v2.2.0 Brush Tips & Medium Engine, Phases 63-64).
 
 ## Current Position
 
@@ -393,7 +393,7 @@ None yet.
 - [post-Phase 60] Code review of the interleaved quick/debug commits raised WR-05 (cursor seat re-applies the rail transform to already-transformed coordinates — ring renders `s²` when rail scale ≠ 1) and WR-06 (roto settle can force-reload the base mid-playback). Not phase-60 scope; unverified by UAT.
 - `.mce` paint-field enforcement does not exist yet — `mceFieldContract.test.ts` covers `Mce*` interfaces only while the paint document rides as `HashMap<String, Value>`; motion persistence needs a dedicated load → save byte-identical round-trip pin.
 - Four persistence carriers must move as one change or motion silently fails: `serializeRuntimeIntoDocument`, `encodeValidatedEfxPaintTrackContent`, `buildEfxPaintDocumentSyncFingerprint`, and the layer change token (this defect class already cost PKG-06 and BKG-09).
-- [Phase 61] Three code-review findings remain open after the 2026-11-12 re-review (all recorded in `61-REVIEW-DISPOSITION.md`, 8/8 open): CR-01 an unchanged per-vertex colour commit publishes a false "not applied" banner because a no-op returns the same `null` as a refusal; WR-01 the paint-control seam discards its `Promise<boolean>` so a refused patch leaves the live control diverged with no message; WR-02 the new orphan-focus window key route has no floating-dialog guard, so Studio shortcuts reach the canvas through Stroke Settings. The verifier judged none a must-have blocker, but CR-01 is user-visible.
+- [Phase 61] CR-01 (false "not applied" banner on an unchanged per-vertex colour commit) was FIXED by quick 261112-hfk (`749d79dec`); WR-01 (the paint-control seam discards its `Promise<boolean>` so a refused patch leaves the live control diverged with no message) and WR-02 (the orphan-focus window key route has no floating-dialog guard) remain open advisories from `61-REVIEW-DISPOSITION.md`.
 - [Phase 61] Quick 261111-wd6 revised VEC-04 mid-phase; the Phase 61 verification records three accepted overrides (61-03 colour prohibition, 61-10 per-vertex-paint-properties prohibition, and truth 11's simple-ribbon render-mode clause). Anyone re-reading older plans should treat those clauses as superseded rather than violated.
 - [Phase 62] Six review findings are recorded and deliberately deferred in `62-REVIEW-DISPOSITION.md` (0 open): WR-02 conversion drops recorded stylus tilt (`tx`/`ty` stamped 0), WR-03 busy gates are not re-read after the durable-base await (fails closed), WR-04 both cancelled-bake undo replays refused (silent return), IN-01 unreachable `'lift-vector': 'Eraser-Vector'` label, IN-02 the Vertex colour reading omits the `anchorWidthTarget` guard, IN-03 the `requestAquarellePathEdit` doc over-claims that no refusal leaves a selection. All are non-blocking; UAT 10/10 and verification 49/49 passed.
 - [Phase 62] The UI audit dropped from 18/24 to 15/24 after the UAT changes (`62-UI-REVIEW.md`): curve entry has no pending/failure signal, the Vertex colour row shows the first anchor's swatch beside a "Mixed" caption, and the curve-editing / vector-category vocabulary has no help entries. Advisory only — no blocker; candidate for a follow-up quick.
@@ -496,8 +496,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-14T21:20:27.926Z
-Stopped at: Milestone v2.1.0 summary generated
+Last session: 2026-11-14
+Stopped at: Milestone v2.1.0 completed and archived (audit `tech_debt`, 0 blocking gaps; closeout `override_closeout`)
 Resume file: .planning/reports/MILESTONE_SUMMARY-v2.1.0.md
 
 ## Operator Next Steps
