@@ -1,147 +1,145 @@
 ---
 phase: 62-painted-stroke-curve-editing
-reviewed: 2026-11-14T15:21:57Z
+reviewed: 2026-11-14T17:33:58Z
 depth: deep
-files_reviewed: 31
+files_reviewed: 22
 files_reviewed_list:
-  - app/src/components/physic-paint/engine/VectorPathOverlay.test.ts
-  - app/src/components/physic-paint/engine/VectorPathOverlay.tsx
-  - app/src/components/physic-paint/hooks/useRotoFramePersistenceCoordinator.ts
   - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx
-  - app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.test.ts
-  - app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts
-  - app/src/components/physic-paint/roto/rotoPhysicalOwnership.ts
-  - app/src/components/physic-paint/view/aquarelleRecordState.path.test.ts
-  - app/src/components/physic-paint/view/aquarelleRecordState.ts
-  - app/src/components/physic-paint/view/aquarelleStrokeBand.test.ts
-  - app/src/components/physic-paint/view/aquarelleStrokeBand.ts
-  - app/src/components/physic-paint/view/aquarelleStrokeSelection.test.ts
-  - app/src/components/physic-paint/view/aquarelleStrokeSelection.ts
-  - app/src/components/physic-paint/view/aquarelleVectorPathCommit.test.ts
-  - app/src/components/physic-paint/view/aquarelleVectorPathCommit.ts
+  - app/src/components/physic-paint/engine/AquarelleStrokeOverlay.tsx
+  - app/src/components/physic-paint/engine/VectorPathOverlay.test.ts
+  - app/src/components/physic-paint/engine/VectorPathOverlay.tsx
+  - app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts
+  - app/src/components/physic-paint/performance/scriptTimelineCodec.ts
   - app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts
   - app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx
+  - app/src/components/physic-paint/view/aquarelleRecordState.ts
+  - app/src/components/physic-paint/view/aquarelleStrokeSelection.ts
+  - app/src/components/physic-paint/view/scriptStrokeEdition.ts
   - app/src/components/physic-paint/view/strokeSettingsModel.test.ts
   - app/src/components/physic-paint/view/strokeSettingsModel.ts
   - app/src/components/physic-paint/view/vectorPathCurveBracket.test.ts
   - app/src/components/physic-paint/view/vectorPathCurveBracket.ts
-  - app/src/components/physic-paint/view/vectorPathFit.test.ts
-  - app/src/components/physic-paint/view/vectorPathFit.ts
   - app/src/components/physic-paint/view/vectorPathHandles.test.ts
   - app/src/components/physic-paint/view/vectorPathHandles.ts
   - app/src/components/physic-paint/view/vectorPathLatches.ts
-  - app/src/components/physic-paint/view/vectorPathSession.test.ts
-  - app/src/components/physic-paint/view/vectorPathSession.ts
-  - app/src/stores/physicPaintStore.rotoLoopClips.test.ts
-  - app/src/stores/physicPaintStore.ts
+  - packages/efx-watercolor/src/payload/codec.test.ts
+  - packages/efx-watercolor/src/payload/codec.ts
+  - packages/efx-watercolor/src/payload/toStudioStroke.ts
 findings:
   critical: 1
-  warning: 4
+  warning: 3
   info: 3
-  total: 8
+  total: 7
   necessity: 0
 status: issues_found
 ---
 
 # Phase 62: Code Review Report
 
-**Reviewed:** 2026-11-14T15:21:57Z
+**Reviewed:** 2026-11-14T17:33:58Z
 **Depth:** deep
-**Files Reviewed:** 31
+**Files Reviewed:** 22
 **Status:** issues_found
 
 ## Summary
 
-Reviewed the complete phase-62 diff against `2b05506be320df3abe5e065f7aa3e7bb7bd4f345`, with targeted full reads of every new large region (curve bracket, fitter, pressure re-sample, overlay wiring, dialog gate, commit/undo/cancel sequencing), and ran all 14 in-scope test files through `pnpm --filter efx-motion-editor exec vitest run` — 1121 tests pass. The line numbers below are from the current tree.
+Incremental adversarial review of the phase-62 diff since `c27dea58b`: the three follow-up commits `84f544d60` (vector provenance in the stroke list / AQTL flag bit 4 / read-only Vertex colour), `e6ba5b8b9` (canvas entrance into painted curves, select-then-move vertices), and `a07baf51b` (the settling-teardown bracket fix). Scope is the 22 source files touched by those commits; planning artifacts are excluded.
 
-The central defect is a teardown race in the new curve bracket: the only exit path that awaits (the dirty-Draft settle) is also the only window a second entry can interleave with, and the teardown unconditionally clears a capture it does not own, leaving the newer session permanently unable to exit. The second theme is the conversion write: it now rewrites a hand-painted record's samples and silently zeroes real recorded data (stylus tilt) that the replay consumes. The third theme is the new commit/undo/cancel sequencing, which has three failure windows where a script edit can be left unrecorded or a lock can be lost across an await.
+The prior report's **CR-01 and WR-01 are verified FIXED in `a07baf51b` and are not re-reported.** `endCurveBracket` now preserves the captured snapshot across an awaited settle, and `beginCurveWireframeBracket` takes over an in-flight teardown by inheriting the ORIGINAL pre-entry values (`curveBracketReleasing`), so a third entry can never capture a mid-teardown view. Double-entry, triple-entry, restore/no-restore and leave-Draft interleavings all terminate in the correct state; the new pins in `vectorPathCurveBracket.test.ts` hold.
 
-Verified sound, for the record: the roto cache-revision refactor produces byte-identical identity strings at all eight call sites including the paper suffix; the fitter is bounded (DP + turn anchors + a doubling cap + index decimation, 40-anchor ceiling), deterministic, and preserves endpoints; the five `resolveCurveExitAction` cases match the D-06/D-14 table; the eligibility/gate matrix is coherent (empty anchors is not "vector", lift and degenerate refuse with named copy); and the D-09 band selection cannot regress drawn vector strokes because `buildVectorStroke` mints every drawn sample with the `-1` pressure sentinel (`vectorPathHandles.ts:869-874`), so `hasRecordedPressureProfile` is false for them and Phase 61's anchor-width envelope is retained.
+Also verified sound and not re-reported: the entrance latch races (identity-stable `enterPaintedCurve`, unmount cleanup nulls the slot, single-flight arm, compare-then-write session/bracket writes, latch route rejects safely); select-then-move versus D-03 promotion; the AQTL bit-4 round trip (bit 4 writes no payload byte, unknown-bit rejection correctly moved to `0x20`, absent-vs-true preserved end to end through `decodeVectorBlock` → `toStudioStroke` → `restoreAquarelleRecordTimeline`); and every record-store edit seam (`updateAquarelleStrokesInScript`, `updateAquarelleCurveModeInScript`, `updateAquarellePathInScript`), which spread the source stroke and therefore preserve provenance. Deferred items from the previous report (WR-02..04, IN-01..03) were re-checked and deliberately not re-listed.
 
-No security findings (no injection, secret, or trust-boundary defect in scope). Performance is out of v1 scope. The necessity rubric was read and applied: no necessity findings — the payload-shaped defensive reads sit on deserialized-record data (negative space: trust boundary) and the two single-instantiation seams (`AquarellePathWriteOptions.curveMode`, `beginCurveWireframeBracket`'s return value) are test seams (negative space: test seams).
+Seven findings: 1 BLOCKER, 3 WARNING, 3 INFO. The blocker is a new-field integration gap: the new `vectorDrawn` provenance is dropped by the script-copy seam, exactly the class of defect that `physicsPaintRotoDuplicateScript.curveMode.test.ts` was written to pin for `curveMode`. The necessity rubric (`.claude/gsd-core/references/necessity-review.md`) was read and applied: **zero necessity findings** — the defensive payload reads sit on a deserialization trust boundary, the guarded seams are test seams, and the one unreachable label is classified as an INFO code-quality item rather than necessity.
+
+Tool status at review time: `npx tsc --noEmit` exit 0 and targeted `npx vitest run` exit 0.
 
 ## Narrative Findings (AI reviewer)
 
 ### Critical Issues
 
-#### CR-01: The curve-bracket teardown destroys a newer session's capture, stranding the wireframe, the Draft and a stale held fit
+#### CR-01: The script-copy seam drops `vectorDrawn`, so Duplicate / +Key / rail-key copies reclassify a drawn vector and permanently lose its provenance
 
-**File:** `app/src/components/physic-paint/view/vectorPathCurveBracket.ts:179-198`
-**Issue:** `endCurveBracket` reads the capture once (line 185), performs the exit actions, then — in the `action.settle` branch — `await options.settle()` (line 195) before the unconditional `clearCurveEntrySnapshot()` at line 197. The settle is a full reset + replay with painted host yields (`PhysicsPaintStudio.tsx:5463-5503`, `aquarelleVectorPathCommit.ts:83-100`), so it can take hundreds of milliseconds to seconds, and nothing blocks re-entry during it: the dialog's spline button stays enabled, and `enterPaintedCurve` → `armDraftBase` does not consult `isAquarelleScriptEditInFlight` (`PhysicsPaintStudio.tsx:5400-5421, 10317-10335`). A user who edits a painted stroke and then selects/enters another painted stroke while the settle runs hits this sequence:
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoDuplicateScript.ts:181-208`
+**Severity:** BLOCKER
+**Issue:** `aquarelleStrokeFromScriptEvent` reconstructs an `AquarelleStroke` field by field and carries `anchors` (line 205) and `curveMode` (line 208), but not the new `vectorDrawn` provenance added by `84f544d60`. Its own docstring (lines 163-180) states the governing law: "the vector path and its discriminator are part of the timeline, not of the pixels — a replay that dropped them would leave the duplicated key hand-painted and un-editable," and both terms follow `toStudioStroke`'s conditional-spread convention. `vectorDrawn` is the same kind of term and is dropped, so every copy made through this seam produces a recorded stroke whose payload has `anchors` but no `vectorDrawn`.
 
-1. The old teardown has already turned the wireframe off (line 193), so `beginCurveWireframeBracket` for the new stroke sees the OLD capture still present and deliberately does not overwrite it (lines 164-168), then forces the wireframe on and opens the latch.
-2. The old settle resolves; the old teardown's `clearCurveEntrySnapshot()` (line 197) destroys the only capture the NEW session has.
-3. The new session can never be torn down: its own exit returns at line 186 (`snapshot === null`), so the held fit is never cleared, `setWireframeMode(false)` never runs, and a dirty Draft never settles. `settleDraftScript` then refuses forever on its first guard (`PhysicsPaintStudio.tsx:5436-5440`, wireframe still on), while the overlay keeps drawing the stale held-fit anchors for that stroke whenever structure is shown (`VectorPathOverlay.tsx:1040-1057`). The user is left in a construction view they cannot exit without manually toggling the wireframe.
+Consequences, all reachable from the shipped UI:
+- The stroke list reclassifies the copy: `aquarelleStrokeSelection.ts:500-594` computes `vectorDrawn = vector && stroke.vectorDrawn === true`, and `strokeRowFilterValue` in `strokeSettingsModel.ts` then renders the row as `<tool>-vector` ("Brush-Vector") instead of `vector` ("Vector") and moves it out of the `vector` filter category into `<tool>-vector`.
+- The loss is permanent: `scriptTimelineCodec.ts:612` sets `VECTOR_FLAG_DRAWN` only when `engine.vectorDrawn === true`, so the copied event persists without bit 4 and `restoreAquarelleRecordTimeline` cannot recover it on reopen.
 
-The old settle also fights the new bracket inside the same window: `setDraftMode(false)` is refused while the wireframe is on (`scriptStrokeEdition.ts:165-166`), so the settle's Draft-off is discarded. Reachability needs `preWireframe === false && draftPixelsDirty === true` at exit — the default first-use path (wireframe off, one committed gesture) — and the code and tests cover neither a rejecting settle nor an overlapping bracket.
+Callers: `copyAquarelleScriptToFrame` (the Duplicate / record-only `+Key` route, entered from `PhysicsPaintStudio.tsx:3877`) and `physicsPaintRotoRailKeyScripts.ts:86` (rail-key scripts). The repo already pins this exact defect class for the sibling field: `physicsPaintRotoDuplicateScript.curveMode.test.ts:1-12` documents "the vector path survives but its evaluation mode does not" as a prior 61-30 bug.
 
-**Fix:** Only ever clear the capture this call opened, and release it before the await so a re-entry captures its own state (this also fixes WR-01):
+**Fix:** Carry the provenance with the same conditional-spread convention the neighbouring fields use, and pin it:
 
 ```ts
-const snapshot = curveEntrySnapshot.peek();
-if (snapshot === null) return;
-const action = resolveCurveExitAction({ /* unchanged */ });
-clearCurveFitSession();
-setWireframeMode(false);
-if (curveEntrySnapshot.peek() === snapshot) clearCurveEntrySnapshot(); // release before the await
-if (action.leaveDraft) setDraftMode(false);
-try {
-  if (action.settle) await options.settle();
-} finally {
-  if (action.restore) setWireframeMode(true);
-  if (curveEntrySnapshot.peek() === snapshot) clearCurveEntrySnapshot();
-}
+...(engine.anchors !== undefined ? { anchors: engine.anchors } : {}),
+...(engine.curveMode !== undefined ? { curveMode: engine.curveMode } : {}),
+// 62-UAT: drawn provenance is part of the timeline too; absent stays absent
+// so a hand-painted or converted event keeps its exact key set.
+...(engine.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
 ```
+
+Add a `physicsPaintRotoDuplicateScript.vectorDrawn.test.ts` mirroring the curveMode suite: a drawn event projects `vectorDrawn: true`; a plain and a converted event project no `vectorDrawn` key.
 
 ### Warnings
 
-#### WR-01: `endCurveBracket` has no try/finally around the awaited settle, and the hook's `void` call swallows a rejection
+#### WR-01: The Curve-tab entrance drops the promise from `enterPaintedCurve`, leaving any unexpected rejection unhandled
 
-**File:** `app/src/components/physic-paint/view/vectorPathCurveBracket.ts:195` (call site: `app/src/components/physic-paint/PhysicsPaintStudio.tsx:11509-11514`)
-**Issue:** If `options.settle()` rejects, lines 196-197 never run: the user's wireframe is not restored and the capture is left open, while the exit hook's `void endCurveBracket({ settle: settleDraftScript })` converts the rejection into an unhandled promise rejection. Rejection is a recognized possibility elsewhere in the Studio — other settle callers attach `.catch` (`PhysicsPaintStudio.tsx:5549-5559`, `9098`) — and the bracket's option type (`() => void | Promise<unknown>`) admits any callback, so the teardown invariant should not depend on the callback being non-throwing. The exact effect shape is pinned by `PhysicsPaintStudio.test.ts:8116`, so the pin needs updating with the fix.
-**Fix:** Wrap the state-changing tail in `try/finally` as shown in CR-01, and attach `.catch` (or an internal `try/catch` that completes the teardown) at the hook so no exit can produce an unhandled rejection.
+**File:** `app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx:1057`
+**Severity:** WARNING
+**Issue:** `void bundle?.enterPaintedCurve?.([target]);` is the only entrance that neither awaits nor catches the promise. `enterPaintedCurve` is `async` (`PhysicsPaintStudio.tsx:10317-10337`) and awaits `armDraftBase()`, whose body reaches store/composite reads and then `beginPaintedCurveSession` / `beginCurveWireframeBracket`. Expected refusals return `false` (the bake inside `ensureAquarelleDurableBaseRef.current` is wrapped in `try { … } catch { return false }` at `PhysicsPaintStudio.tsx:8038`), but any throw outside those catches — e.g. `aquarelleCompositeRef.current(appFrame)` at `PhysicsPaintStudio.tsx:7922`, which runs before the try — rejects the promise. The latch route (`vectorPathLatches.ts`, `requestPaintedCurveEntrance`) already guards the identical call with `.catch(console.error)`; this route does not, so such a failure surfaces only as an unhandled rejection with no user-visible error for the failed Edit press.
 
-#### WR-02: The conversion silently zeroes recorded per-sample tilt (`tx`/`ty`)
+**Fix:** Match the latch route's guard:
 
-**File:** `app/src/components/physic-paint/view/aquarelleRecordState.ts:1148-1155` (same defect in the curve-mode rewrite at `1044-1051`)
-**Issue:** The new write path rebuilds every sample as `{ x, y, p, tx: 0, ty: 0, tw: 0 }`. For 61's vector strokes that was lossless — every minted sample already carries zero tilt/width (`vectorPathHandles.ts:1017-1024`). Phase 62 makes the same write the conversion for a HAND-PAINTED record, and those samples carry real data: the live recorder interpolates the pointer's tilt into every tick sample (`AquarelleCanvasLayer.tsx:236-269`), and the aquarelle replay feeds `tx`/`ty` to the engine (`engineAdapter.ts:346-359`), where `processInput` turns magnitude > 12 into `s.azimuth` (`Engine.ts:1746`) and `brushAngle` prefers it for every `rotation: 'fixed'` brush (`Engine.ts:1726-1730`). Several shipped presets are fixed-rotation and anisotropic (`brushes.ts:230, 254, 314`), so a stylus-painted stroke repaints with a different dab orientation across its whole length after conversion. The wireframe band consumes the same tilt for its station angles (`aquarelleLiftRibbon.ts:129`), so the D-09 envelope orientation changes too. `tw` is genuinely zero for hand-painted records (`AquarelleCanvasLayer.tsx:246, 266`), so only tilt is lost.
-**Fix:** Carry or remap `tx`/`ty` alongside the pressure (nearest-source carry is enough — tilt varies slowly relative to the re-spaced samples); keep `tw: 0`.
+```ts
+if (curveEntry?.kind === 'painted') {
+  void Promise.resolve(bundle?.enterPaintedCurve?.([target])).catch(console.error);
+  return;
+}
+```
 
-#### WR-03: `commitAquarelleVectorPathEdit` does not re-check the busy gates after its await — a stolen latch leaves an unrecorded script edit and a stuck `applying` status
+#### WR-02: The AQTL v2 format header was not updated for flag bit 4 and still claims bit 3 is the highest reserved flag
 
-**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:10346-10354`
-**Issue:** The three busy guards are read before `await ensureAquarelleDurableBaseRef.current(playFrame)` (lines 10350), and only the Draft/wireframe pair is re-read afterwards (10352-10353, the WR-03 comment). If another script edit or settle takes the shared latch during that await, the commit still writes the path at line 10354, then arms the token and calls `runAquarelleScriptRebake`. That sequence fails closed at its entry when `isInFlight()` is true — `return false` at `aquarelleVectorPathCommit.ts:126-128`, before its `try/finally`, so it invokes no terminal callback. Consequences: `onFailure` never restores the snapshot, the ledger never records the edit, `setApplyStatus('applying')` (line 10373) is never reset, and the sheet keeps pre-edit pixels over a mutated script. The caller sees only `null`, i.e. an ordinary refusal.
-**Fix:** Re-read `isPhysicalMutationLocked()`, `rotoScript.applying`/`mutationLocked` and `isAquarelleScriptEditInFlight()` after the await and return `null` before `beginAquarellePathEdit` — exactly the post-await pattern the function already applies to the Draft latch.
+**File:** `app/src/components/physic-paint/performance/scriptTimelineCodec.ts:36-56`
+**Severity:** WARNING
+**Issue:** The header is the format's only written specification. It still enumerates the vector flags as "bit 0 … bit 1 … bit 2 … bit 3" (lines 37-40), and line 55 states "An older reader refuses bit 3 (reserved-flags check): fail closed" — after `84f544d60` added `VECTOR_FLAG_DRAWN = 1 << 4` (line 187) and widened the reserved mask to include it (lines 190-193). The header also never records the new bit's wire law: bit 4 carries **no payload byte** — the flag byte is the entire marker — which is why the encoded size is unchanged and why the bit must be decoded before any byte-consuming branch. Anyone implementing a second reader/writer from this header would treat bit 4 as reserved and refuse valid files, or write the bit and then look for a phantom byte.
 
-#### WR-04: A refused cancelled-bake undo replay is silent and leaves the cancelled edit applied and unrecorded
+**Fix:** Extend the vector-block paragraph: add "bit 4 = the stroke was CREATED by the vector pen (drawn provenance); it carries no payload byte — the flag IS the marker," and restate the fail-closed sentence as "An older reader refuses bit 3 or bit 4 (reserved-flags check): fail closed, exactly like every other unknown vector flag."
 
-**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:6366-6392`
-**Issue:** The D-13 undo branch cancels the pending token, awaits the bake, then replays the edit as `undo` with one reanchor retry. `runScriptReplay` refuses silently on every busy gate (`PhysicsPaintStudio.tsx:5996-6006`), so when both attempts return false the branch returns false with no copy. If the cancellation landed at the commit turn, the apply already succeeded: the script holds the edit, the sheet shows it, no ledger entry exists (by design, `onCancelled` published nothing), and the user's Cmd+Z appears to do nothing. The next Cmd+Z finds no pending record, falls through to `rotoMoveHistoryUndo()`, and consumes the PREVIOUS history entry — silently reverting two visual edits with one visible undo.
-**Fix:** When both attempts fail, fall back to `restoreAquarelleEditSnapshot(record.editId, 'undo')` directly (the same revision-authoritative primitive `onFailure` uses) and, if that also fails, publish the shared refusal line via `setApplyMessage`/`setApplyStatus('error')` so the user is never left with a silent no-op over an applied edit.
+#### WR-03: The new persisted engine key `vectorDrawn` is undeclared in the `MceAquarelleVectorPath` dual-language mirror and its exact-keys pin
+
+**File:** `app/src/types/project.ts:361-364`, `app/src-tauri/src/models/project.rs:505-509`, `app/src/lib/mceFieldContract.test.ts:284`
+**Severity:** WARNING
+**Issue:** `vectorDrawn` rides inside `MceEngineStrokePayload.engine` alongside `anchors` and `curveMode` (the carrier is opaque: `Record<string, unknown>` / `Option<Value>`), but neither the TS view interface nor the Rust mirror declares it, and the pin at `mceFieldContract.test.ts:284` still asserts exactly `['anchors', 'curveMode']`. The contract test's own header names the risk: "SILENT NON-DECLARATION: the payload works today and drops out of the dual-language contract the first time the models are regenerated." Phase 61 treated this as load-bearing — `261111-wd6` added `color` to the anchor pin when anchor colour landed. The save/load path does not lose the key today, so this is contract drift, not data loss.
+
+**Fix:** Declare `vectorDrawn?: boolean` in `MceAquarelleVectorPath` (TS) and add `#[serde(rename = "vectorDrawn")] pub vector_drawn: Option<bool>` (Rust), then extend the pin to `['anchors', 'curveMode', 'vectorDrawn']` and extend the Phase-61 envelope round trip with a drawn fixture.
 
 ### Info
 
-#### IN-01: Redo during an in-flight path-edit bake is a silent no-op
+#### IN-01: `'lift-vector': 'Eraser-Vector'` is an unreachable filter label
 
-**File:** `app/src/components/physic-paint/PhysicsPaintStudio.tsx:6393-6401`
-**Issue:** `redo` has no pending-apply branch, deliberately pinned by `PhysicsPaintStudio.test.ts:8194-8198` ("leaves redo exactly as shipped"). The behavior is fail-closed — the aquarelle-script route's replay refuses while the bake holds the script-edit latch and the entry is preserved (`useRotoPhysicalEditHistory.ts:1272-1284`) — so this is not incorrect. The only gap is feedback: the shortcut silently does nothing. If a future change adds a branch, it must not reintroduce `pendingPathEditApply` into `redo` without updating that pin.
-**Fix:** Optional: publish the shipped busy reason when an in-flight path-edit bake is the cause, without changing the stack behavior.
+**File:** `app/src/components/physic-paint/view/strokeSettingsModel.ts:330`
+**Severity:** INFO
+**Issue:** `ScriptStrokeFilterValue` (`scriptStrokeEdition.ts:56-105`) excludes `'lift-vector'`, `strokeRowFilterValue` returns `'lift'` for every lift row, and `resolveStrokeToolFilter` can never produce `'lift-vector'`. The entry exists only because the record key is typed as `` `${ScriptStrokeTool}-vector` ``; it can never render and advertises a category the filter model deliberately retired.
+**Fix:** Narrow the record key type to `'vector' | \`${'brush' | 'water' | 'pen'}-vector\`` (or drop the entry and widen the type at the call sites).
 
-#### IN-02: `hasRecordedPressureProfile`'s doc claims fail-closed malformed input, but a null element throws
+#### IN-02: The Vertex colour reading omits the `anchorWidthTarget` guard its Vertex size and Corner siblings use
 
-**File:** `app/src/components/physic-paint/view/aquarelleStrokeBand.ts:191-205`
-**Issue:** The doc promises "an empty, malformed or all-sentinel list is false", but the loop reads `point.p` without an element guard (lines 200-202), so a `null` element would throw a TypeError from the overlay's render path. The repository's restore path dereferences every element first (`aquarelleRecordState.ts:1767-1774`), and the type is `readonly AquarellePoint[]`, so the state is not reachable through the document loader — this is a doc/behavior mismatch, not a live crash.
-**Fix:** Either softens the doc to "a non-array is false" or add `if (typeof point !== 'object' || point === null) continue;` to match `countDistinctFiniteSamples`'s law.
+**File:** `app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx:732-748`
+**Severity:** INFO
+**Issue:** `anchorColorReading` gates only on `engineModule` and `selectedVectorAnchors !== null`, then reads `vectorAnchorSelection.value` — the OPEN edit's selection. Vertex size (lines 703-707) and Corner (lines 758-765) first resolve `anchorWidthTarget`, which requires `pathEditMutationId === String(ids[0])` (`strokeSettingsModel.ts:1033-1040`). During a selection swap between two strokes, before the dialog's exit effect closes the old edit, `selectedVectorAnchors` can name the newly selected stroke while `vectorAnchorSelection` still holds the previous stroke's indices, so the row can display a colour derived from mismatched anchors for one painted frame. Display-only and self-correcting; the row writes nothing.
+**Fix:** Resolve the colour reading from the same guard: `anchorWidthTarget === null ? ANCHOR_COLOR_EMPTY_READING : readAnchorColorReading(...)`, mirroring `cornerReading`.
 
-#### IN-03: The Studio-open reset omits the two phase-62 session latches
+#### IN-03: The `requestAquarellePathEdit` doc claims any refusal leaves selection untouched, but the painted branch writes selection before an async entrance can refuse
 
-**File:** `app/src/components/physic-paint/view/vectorPathSession.ts:210-216` (reset) and `app/src/components/physic-paint/PhysicsPaintStudio.tsx:11499-11514` (effect order)
-**Issue:** `resetForStudioOpen` is documented as resetting "every session latch", but it does not clear `curveFitSession` or `curveEntrySnapshot`. On mount the reset effect runs BEFORE the exit-hook registration (declaration order), and the hook is detached by the previous mount's cleanup, so if the Studio ever unmounts with a path edit open, the remount's `exitPathEdit()` fires with no hook: the capture and the held fit survive, the forced wireframe survives, and the next entry silently reuses the stale capture. Under today's topology the Studio is rendered once per webview (`app/src/main.tsx:102-103`) and a reload also clears module state, so this is latent rather than live justification for the reset contract itself.
-**Fix:** Clear both signals in the same mount effect (the Studio already imports the module's clear helpers), or register the exit hook before the reset effect so the reset's `exitPathEdit()` can tear the bracket down.
+**File:** `app/src/components/physic-paint/engine/AquarelleStrokeOverlay.tsx:52-59`
+**Severity:** INFO
+**Issue:** The comment states "No registered host — or any refusal — leaves the stroke and the selection untouched." The host-absence check at line 57 is indeed before the selection write at line 58, but `requestPaintedCurveEntrance` (line 59) is asynchronous: a later refusal (arm refused, eligibility re-check, session refusal) leaves the selection already changed. Behaviour is acceptable — selecting the double-clicked stroke is what the user asked for — but the comment overstates the invariant for future readers.
+**Fix:** Reword to "No registered host leaves the stroke and the selection untouched; a refusal after dispatch may leave the stroke selected with no session open."
 
 ---
 
-_Reviewed: 2026-11-14T15:21:57Z_
+_Reviewed: 2026-11-14T17:33:58Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
