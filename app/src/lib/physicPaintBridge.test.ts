@@ -8374,6 +8374,8 @@ describe('63-05 brush-tip realm channels', () => {
   });
 
   describe('import round trip through the main realm', () => {
+    // Re-importing the whole bridge graph under full-suite CPU contention is the
+    // slow part; the default 5 s budget is not a property this test asserts.
     it('answers with the same operationId and publishes the catalog before the answer', async () => {
       vi.resetModules();
       const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
@@ -8432,7 +8434,7 @@ describe('63-05 brush-tip realm channels', () => {
       // The main realm mutated too.
       expect(catalog.customBrushTips.peek()).toHaveLength(1);
       expect(assets.brushAssetBytes(BRUSH_DIGEST)).toEqual(brushWebp(192, 192));
-    });
+    }, 20_000);
 
     // 63-12 (WR-04): a catalog publish that fails AFTER the mutation landed
     // must not destroy the answer. The import already changed project state
@@ -8632,6 +8634,8 @@ describe('63-05 brush-tip realm channels', () => {
       ]);
     });
 
+    // Same contention note as above: the bounded wait is advanced with fake
+    // timers, so only the module re-import is real time.
     it('removes its one-shot listener when no receiver answers (bounded wait)', async () => {
       vi.resetModules();
       const unlisten = vi.fn();
@@ -8650,7 +8654,7 @@ describe('63-05 brush-tip realm channels', () => {
       await pending;
 
       expect(unlisten).toHaveBeenCalledTimes(1);
-    });
+    }, 20_000);
 
     it('installing the catalog transport wires the store publisher (63-07 / TIP-17)', async () => {
       vi.resetModules();
