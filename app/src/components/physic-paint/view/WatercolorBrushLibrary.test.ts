@@ -675,8 +675,11 @@ describe('WatercolorBrushLibrary texture strip (quick-261115-oh9)', () => {
       cssRuleBody(css, '.watercolor-texture-strip {'),
       'row spans both grid columns',
     ).toContain('grid-column: 1 / -1');
+    // Anchored at a line start: the menu popover adds a compound
+    // `.physics-paint-brush-menu-textures .watercolor-texture-chip-canvas`
+    // rule (34px) earlier in the stylesheet, which a bare substring would hit.
     expect(
-      cssRuleBody(css, '.watercolor-texture-chip-canvas'),
+      cssRuleBody(css, '\n.watercolor-texture-chip-canvas'),
       'chip canvas is 44px square',
     ).toContain('44px');
     expect(
