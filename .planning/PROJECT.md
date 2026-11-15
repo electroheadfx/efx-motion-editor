@@ -192,15 +192,30 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
-**v2.1.0 shipped 2026-11-14** — all 38 requirements validated across Phases 59–62 (MOTN-12's undo half accepted as a recorded deviation). No active milestone: the next milestone is v2.2.0 Brush Tips & Medium Engine (Phases 63–64), planned in `.planning/ROADMAP.md`; its requirements are defined by `/gsd-new-milestone`.
+**v2.2.0 Brush Tips & Medium Engine (MINOR) — in progress.** Phases 63–64, five in-milestone quicks: the brush tip becomes a real 192×192 stamp that travels inside the `.mce` with three textured defaults shipped, then a Viscosity global, three named Medium profiles and a pigment-density relief give paint weight beyond a wash. Requirements live in `.planning/REQUIREMENTS.md` (TIP-01..12, MED-01..12).
 
-**Carried forward (not scheduled in v2.1.0):**
+**Carried forward (not scheduled in v2.2.0):**
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 - [ ] Delete the dead `efx-spectral` path (package + workspace dependency + `engine/deposit.ts` import; only tests call it) — optional cleanup, no behavior change — v2.0.0 audit
 - [ ] Dual paper-fingerprint drift: `aquarelleBake` exports `aquarellePaperCacheFingerprint` while the app re-derives the paper term in `useRotoFramePersistenceCoordinator.ts:280` — v2.0.0 audit
 - [ ] Frame fade (compositing/export cumulative-frame crossfade, separate from opacity) — idea only, not scheduled — todo 261024-frame-fade-compositing
+
+## Current Milestone: v2.2.0 Brush Tips & Medium Engine (MINOR) — In progress
+
+**Goal:** Make the brush tip a real stamp — an imported image becomes the 192×192 mask, travels inside the `.mce`, and survives reopen with three textured tips shipped by default — then give paint a named Medium so it can read denser and heavier than a wash.
+
+**Target features:**
+
+- **Phase 63 — Brush Tip Pipeline.** Quicks 01–02. `importTip` derives a real 192×192 mask (alpha when the image carries meaningful transparency, otherwise inverted luminance; 64 MP / 64 MB pre-decode caps) and `buildBrushForStroke` builds custom tips from `CUSTOM_BASE` so live and bake share one mapping. The mask is encoded as an alpha PNG, base64'd and carried in the `.mce` root `brushPack` entry — embed-only, no path reference — decoded and registered before the first stroke replay, with a corrupt-or-wrong-length mask degrading to the neutral round fallback plus one named warning. Three app-owned textured tips (Bristle fan, Chalk grain, Sponge) ship as compile-time constants and are never written into a project.
+- **Phase 64 — Medium Engine.** Quicks 03–05. One `Viscosity` global raises the water-motion decay coefficient without lowering its floor and suppresses spread (`0.12 × (1 − v·0.9)`), snapshotted per stroke like `lift` at a neutral default. Three named Medium records (`watercolor`, `dry`, `opaque`) are derived from the existing nine globals only, applied in one store write, with the per-stroke params snapshot remaining authoritative. Heavy pigment gains visible body from its own deposited-density gradient perturbing the lit relief additively — no height field, no extra render target — with `watercolor` byte-identical at strength 0.
+
+**Source of truth:** `SPECS/v2.2.0-brush-tips/` (quicks 01–02) and `SPECS/v2.2.0-medium-engine/` (quicks 03–05). All five carry exact file anchors; verified against the live tree 2026-11-15 (minor line drift only).
+
+**Constraints carried into this milestone:** `.mce` gains the `brushPack` root key and the entry `mask` field, so both are declared in BOTH TS and Rust under the field-diff pin (`app/src/lib/mceFieldContract.test.ts`); the refs-only package law holds except for this documented inline-data exception; masks must be registered before the first replay of a loaded project's strokes; replay determinism (same stroke ⇒ same raster live, bake and replay) is the acceptance bar for Viscosity; watercolor must stay byte-identical at relief strength 0; no new runtime dependencies; the three embedded default masks must stay well inside the 2 MB chunk ceiling.
+
+**Out of scope:** Studio API/MCP → its own v2.3.0 milestone (Phase 65), designed against the shipped v2.2.0 model. No package/type/signal/`BRUSH_PACK_KIND` rename, no tip delete or GC UI, no paint height field, no new global slider for relief, no TIF/EXR, no path reference of any kind for a tip.
 
 ## Latest Milestone: v2.1.0 Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR) — Shipped 2026-11-14
 
@@ -480,4 +495,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-14 after the v2.1.0 milestone close — 4/4 phases, 67/67 plans, 38/38 requirements met or accepted (MOTN-12 undo half accepted as a deviation), audit verdict `tech_debt` with zero blocking gaps. Previous: Phase 62 shipped 2026-11-14 (5/5 plans, UAT 10/10, verification 49/49).*
+*Last updated: 2026-11-15 after starting milestone v2.2.0 Brush Tips & Medium Engine (MINOR) — Phases 63–64, driven by `SPECS/v2.2.0-brush-tips/` and `SPECS/v2.2.0-medium-engine/`. Previous: v2.1.0 closed 2026-11-14 (4/4 phases, 67/67 plans, 38/38 requirements met or accepted, audit verdict `tech_debt` with zero blocking gaps).*

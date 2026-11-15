@@ -1,21 +1,16 @@
 ---
 gsd_state_version: "1.0"
-milestone: v2.1.0
-milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
-status: Awaiting next milestone
-stopped_at: Milestone v2.1.0 completed and archived
-last_updated: "2026-11-14T21:33:29.306Z"
-last_activity: 2026-11-14
-last_activity_desc: Milestone v2.1.0 completed and archived
-state_head: 5de7c785e8469ca3b12b6c788ae97a657d5b4b8f
+milestone: v2.2.0
+milestone_name: Brush Tips & Medium Engine (MINOR)
+status: planning
+last_updated: "2026-11-15T07:58:44.550Z"
+last_activity: 2026-11-15
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 67
-  completed_plans: 67
-  percent: 100
-current_phase: 62
-current_phase_name: Painted-Stroke Curve Editing
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -29,10 +24,11 @@ See: .planning/PROJECT.md (updated 2026-11-14 after the v2.1.0 milestone close)
 
 ## Current Position
 
-Phase: Milestone v2.1.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-11-14 — Milestone v2.1.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-11-15 — Milestone v2.2.0 started
+
 
 ## Performance Metrics
 
