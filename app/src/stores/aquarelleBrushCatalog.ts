@@ -273,13 +273,45 @@ export function applyProjectBrushSet(set: ProjectBrushSet, packageRoot: string):
  * `null` when there are no customs — the caller must then omit the key
  * entirely rather than emit an empty pack (D-10). Built-in ids can never
  * appear here: they are not part of the custom list and are never persisted.
+ *
+ * WR-07 / T-63-27 (D-18): the whole-list fast path is unchanged, but a
+ * refusal no longer erases the pack. When `buildBrushPackSnapshot` refuses the
+ * list, each tip is retried ALONE in insertion order — the first entry for an
+ * id wins — so a validation failure costs exactly the offending tip and every
+ * other imported tip still persists. Each dropped tip is logged by id with its
+ * class (invalid record / duplicate id); `null` is returned only when nothing
+ * survives (the project then omits the key, as today).
  */
 export function buildProjectBrushPack(): MceBrushPackSnapshot | null {
   const customs = customBrushTipsSignal.value;
   if (customs.length === 0) return null;
   const snapshot = buildBrushPackSnapshot(customs);
-  if (snapshot === null) return null;
-  return { kind: snapshot.kind, entries: [...snapshot.entries] };
+  if (snapshot !== null) return { kind: snapshot.kind, entries: [...snapshot.entries] };
+
+  // Per-entry fallback (D-18): one bad entry degrades alone, never the set.
+  const seen = new Set<string>();
+  const entries: unknown[] = [];
+  let kind: string | null = null;
+  for (const tip of customs) {
+    const single = buildBrushPackSnapshot([tip]);
+    if (single === null) {
+      console.error(
+        `[aquarelleBrushCatalog] save: dropping brush tip "${tip.id}" — the record fails the package carrier law (invalid record).`,
+      );
+      continue;
+    }
+    if (seen.has(tip.id)) {
+      console.error(
+        `[aquarelleBrushCatalog] save: dropping duplicate brush tip "${tip.id}" — the first inserted entry is kept.`,
+      );
+      continue;
+    }
+    seen.add(tip.id);
+    if (kind === null) kind = single.kind;
+    entries.push(...single.entries);
+  }
+  if (entries.length === 0) return null;
+  return { kind: kind as string, entries };
 }
 
 // ---------------------------------------------------------------------------
