@@ -371,20 +371,29 @@ export function buildScriptBrushEntries(): ScriptBrushEntryBuild {
 }
 
 /**
- * WR-03 / T-63-28: the custom tip ids a capture actually PAINTS, unique and in
- * first-seen order. Reads `engine.brushId` — the tip id — never the top-level
- * `brushId`, which `serializeAquarelleRotoScript` stamps with the engine id.
- * Dry events carry no brush id; built-in and preset ids are ignored.
+ * WR-03 / T-63-28 (quick-261115-oh9): the custom ids a capture actually
+ * PAINTS, unique and in first-seen order. Both axes are read from the engine
+ * slot — never the top-level `brushId`, which `serializeAquarelleRotoScript`
+ * stamps with the engine id:
+ *   · `engine.brushId`   the RESPONSE id (a custom catalog tip, when custom)
+ *   · `engine.textureId` the TEXTURE mask id, when the stroke names one
+ * A custom TEXTURE must travel exactly like a custom response tip — the same
+ * inline-mask carrier. Built-in textures (`wc/builtin-*`) ship with the app,
+ * so they are never reported and can never block a save. Dry events carry no
+ * ids; preset and built-in response ids are ignored.
  */
 export function referencedCustomBrushIds(events: readonly AquarellePayloadEvent[]): string[] {
   const ids: string[] = [];
   const seen = new Set<string>();
-  for (const event of events) {
-    if (isAquarelleDryEvent(event)) continue;
-    const id = event.engine.brushId;
-    if (!id.startsWith('wc/custom-') || seen.has(id)) continue;
+  const collect = (id: string | undefined): void => {
+    if (id === undefined || !id.startsWith('wc/custom-') || seen.has(id)) return;
     seen.add(id);
     ids.push(id);
+  };
+  for (const event of events) {
+    if (isAquarelleDryEvent(event)) continue;
+    collect(event.engine.brushId);
+    collect(event.engine.textureId);
   }
   return ids;
 }

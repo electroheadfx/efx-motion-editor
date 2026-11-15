@@ -4,13 +4,14 @@ import {
   buildRotoScriptDeleteReferenceImpact,
   createRotoScriptLibraryController,
   prepareReferencedActionDeletion,
+  referencedCustomBrushIds,
   type RotoScriptLibraryController,
   type RotoScriptLibraryControllerPorts,
 } from './physicsPaintRotoScriptLibrary';
 import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
-import { serializeAquarelleRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
-import { isAquarelleDryEvent, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import { parseRotoScript, serializeAquarelleRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
+import { isAquarelleDryEvent, type AquarellePayloadEvent, type AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const context = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, project: { name: 'Project', saved: true, contextId: 'context-1' } });
@@ -1002,6 +1003,93 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
     expect(test.requests.filter((request) => request.kind === 'save')).toHaveLength(0);
   });
 
+  // quick-261115-oh9: a texture is a SETTING of the response. The save law
+  // reads BOTH ids from the capture; a custom texture must travel or the save
+  // refuses by name, while a built-in travels with the app and never blocks.
+  it('references custom texture ids beside response ids, first-seen and unique', () => {
+    const withEngine = (brushId: string, textureId?: string): AquarellePayloadEvent => {
+      const [event] = aquarelleEvents();
+      if (!event || isAquarelleDryEvent(event)) throw new Error('expected a stroke event');
+      return {
+        ...event,
+        engine: {
+          ...event.engine,
+          brushId,
+          ...(textureId !== undefined ? { textureId } : {}),
+        },
+      };
+    };
+    const events = [
+      withEngine('round', 'wc/custom-tex-first'),
+      withEngine('flat', 'wc/custom-tex-second'),
+      withEngine('round', 'wc/custom-tex-first'),
+      withEngine('wc/custom-response-id'),
+      withEngine('round', 'wc/builtin-chalk'),
+    ];
+    expect(referencedCustomBrushIds(events)).toEqual([
+      'wc/custom-tex-first',
+      'wc/custom-tex-second',
+      'wc/custom-response-id',
+    ]);
+  });
+
+  it('never reports a built-in texture id', () => {
+    const [event] = aquarelleEvents();
+    if (!event || isAquarelleDryEvent(event)) throw new Error('expected a stroke event');
+    const events: AquarellePayloadEvent[] = [
+      { ...event, engine: { ...event.engine, textureId: 'wc/builtin-chalk' } },
+    ];
+    expect(referencedCustomBrushIds(events)).toEqual([]);
+  });
+
+  it('save leg: refuses by name when a painted custom TEXTURE cannot travel', async () => {
+    vi.resetModules();
+    const library = await import('./physicsPaintRotoScriptLibrary');
+    const test = harness(true, {}, library.createRotoScriptLibraryController);
+    test.capture.script.aquarelleEvents = aquarelleEvents().map((event) =>
+      isAquarelleDryEvent(event)
+        ? event
+        : { ...event, engine: { ...event.engine, textureId: 'wc/custom-texture-missing' } },
+    );
+
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(false);
+    expect(test.controller.status.value).toContain('wc/custom-texture-missing');
+    expect(test.requests.filter((request) => request.kind === 'save')).toHaveLength(0);
+  });
+
+  it('save leg: a built-in texture travels with the app and never blocks the save', async () => {
+    vi.resetModules();
+    const library = await import('./physicsPaintRotoScriptLibrary');
+    const test = harness(true, {}, library.createRotoScriptLibraryController);
+    test.capture.script.aquarelleEvents = aquarelleEvents().map((event) =>
+      isAquarelleDryEvent(event)
+        ? event
+        : { ...event, engine: { ...event.engine, textureId: 'wc/builtin-chalk' } },
+    );
+
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(true);
+  });
+
+  it('serialize → parse keeps engine.textureId (the engine spread is the carrier)', () => {
+    const [event] = aquarelleEvents();
+    if (!event || isAquarelleDryEvent(event)) throw new Error('expected a stroke event');
+    const script = serializeAquarelleRotoScript({
+      id: scriptIds.a,
+      name: 'Textured',
+      createdAt: '2026-07-16T12:00:00Z',
+      updatedAt: '2026-07-16T12:00:00Z',
+      source: row('a', 'Textured').source,
+      thumbnail: { ...row('a', 'Textured').thumbnail, dataUrl: webp },
+      events: [{ ...event, engine: { ...event.engine, textureId: 'wc/builtin-chalk' } }],
+    });
+
+    const parsed = parseRotoScript(script);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error('expected the script to parse');
+    const engine = parsed.document.strokes[0]!.engine as AquarelleStrokePayload;
+    expect(engine.textureId).toBe('wc/builtin-chalk');
+  });
+
   it('load leg: registers the carried mask in the registry only and paints with it', async () => {
     vi.resetModules();
     const catalog = await import('../../../stores/aquarelleBrushCatalog');
@@ -1029,7 +1117,15 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
 
     expect(registered).toBe(1);
     expect(watercolor.resolveMask('wc/custom-script-load')).toBe(decodedMask);
-    expect(watercolor.buildBrushForStroke('wc/custom-script-load').id).toBe('wc/custom-script-load');
+    // quick-261115-oh9: a texture id is not a response id. With no options the
+    // builder resolves the round response; the registered mask is stamped only
+    // when the stroke names it as the texture.
+    expect(watercolor.buildBrushForStroke('wc/custom-script-load').id).toBe('round');
+    expect(
+      watercolor.buildBrushForStroke('wc/custom-script-load', {
+        textureId: 'wc/custom-script-load',
+      }).tipData,
+    ).toBe(decodedMask);
     // Registry only: the project catalog never learns a script's tips.
     expect(catalog.customBrushTips.value).toHaveLength(0);
     expect(catalog.listAquarelleBrushTips()).toHaveLength(3);

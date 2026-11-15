@@ -1059,6 +1059,27 @@ button.destructive {
   white-space: nowrap;
 }
 
+/* quick-261115-oh9: the TEXTURE axis pinned below the brush scroller. It is a
+   sibling of SidebarScrollArea (never a child), so the natural-height
+   measurement counts it as chrome automatically. Chips reuse the library
+   geometry; only the canvas box shrinks to fit the 212px popover. */
+.physics-paint-brush-menu-textures {
+  display: flex;
+  flex: 0 0 auto;
+  padding: 6px 2px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  overflow-x: auto;
+}
+
+.physics-paint-brush-menu-textures .watercolor-texture-chip-canvas {
+  width: 34px;
+  height: 34px;
+}
+
+.physics-paint-brush-menu-textures .watercolor-texture-chip-name {
+  display: none;
+}
+
 /* 261027-gh9g: the floating brush modal — a MORE transparent glass panel
    (0.55, set inline) with the backdrop blur on the surface itself, so the
    canvas paint reads through it. */

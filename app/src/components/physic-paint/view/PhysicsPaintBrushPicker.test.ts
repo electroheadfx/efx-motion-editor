@@ -41,6 +41,7 @@ import {
   sheetZIndex,
 } from './floatingSheetStack';
 import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
+import { WatercolorTextureStrip } from './WatercolorTextureStrip';
 import {
   aquarelleActiveTool,
   aquarelleBrushMenuAnchor,
@@ -48,6 +49,7 @@ import {
   aquarelleBrushMenuTarget,
   aquarelleBrushModalOpen,
   aquarelleLiftTipId,
+  aquarelleSelectedTextureId,
   aquarelleSelectedTipId,
   aquarelleSettingsModalOpen,
   aquarelleToolOverrides,
@@ -87,12 +89,41 @@ function click(node: TestVNode): void {
   onClick!();
 }
 
+/**
+ * Materialize the vnode tree so the strip's inner testids and click handlers
+ * become reachable — `collect()` alone never invokes function components.
+ */
+function materialize(node: unknown): unknown {
+  if (node === null || node === undefined || typeof node === 'boolean') return node;
+  if (Array.isArray(node)) return node.map(materialize);
+  if (typeof node !== 'object') return node;
+  const vnode = node as TestVNode;
+  if (typeof vnode.type === 'function') {
+    try {
+      return materialize((vnode.type as (props: Record<string, unknown>) => unknown)(vnode.props));
+    } catch {
+      return vnode;
+    }
+  }
+  const children = vnode.props?.children;
+  const list = children === undefined ? [] : Array.isArray(children) ? children : [children];
+  return {
+    ...vnode,
+    props: { ...vnode.props, children: list.map(materialize) },
+  } as TestVNode;
+}
+
+function renderedStrip(): TestVNode {
+  return materialize(WatercolorTextureStrip({ compact: true })) as TestVNode;
+}
+
 const MENU_SOURCE = readFileSync(resolve(__dirname, 'PhysicsPaintBrushMenu.tsx'), 'utf8');
 const MODAL_SOURCE = readFileSync(resolve(__dirname, 'PhysicsPaintBrushModal.tsx'), 'utf8');
 const CSS_SOURCE = readFileSync(resolve(__dirname, '..', 'physicsPaintStudio.css'), 'utf8');
 
 beforeEach(() => {
   aquarelleSelectedTipId.value = 'chalk';
+  aquarelleSelectedTextureId.value = null;
   aquarelleActiveTool.value = 'brush';
   aquarelleBrushMenuTarget.value = 'brush';
   aquarelleLiftTipId.value = 'filbert';
@@ -107,6 +138,7 @@ beforeEach(() => {
 
 afterEach(() => {
   aquarelleSelectedTipId.value = 'chalk';
+  aquarelleSelectedTextureId.value = null;
   aquarelleActiveTool.value = 'brush';
   aquarelleBrushMenuTarget.value = 'brush';
   aquarelleLiftTipId.value = 'filbert';
@@ -176,6 +208,88 @@ describe('261027-gh9g top-bar brush dropdown', () => {
     expect(liftRegion, 'the lift region writes the lift tip').toContain('setAquarelleLiftTipId');
     expect(liftRegion, 'a lift pick never routes through the brush picker').not.toContain('selectAquarelleTip');
     expect(liftRegion, 'a lift pick never flips the tool directly').not.toContain('setAquarelleTool');
+  });
+
+  // quick-261115-oh9: the texture axis is pinned below the scroller. It is
+  // OUTSIDE the SidebarScrollArea so the natural-height measurement counts it
+  // as chrome, and it exists only in the brush branch (an eraser has no
+  // texture: its stroke never reads a texture id).
+  it('mounts the compact texture strip in the brush branch only', () => {
+    setAquarelleBrushMenuOpen(true);
+    const brush = collect(PhysicsPaintBrushMenu());
+    expect(brush.some((node) => node.type === WatercolorTextureStrip)).toBe(true);
+
+    aquarelleActiveTool.value = 'lift';
+    setAquarelleBrushMenuOpen(true, undefined, 'lift');
+    const lift = collect(PhysicsPaintBrushMenu());
+    expect(lift.some((node) => node.type === WatercolorTextureStrip)).toBe(false);
+    // The lift branch keeps its shape list and no Open modal.
+    const liftIds = buttonTestIds(lift);
+    expect(liftIds).not.toContain('watercolor-brush-menu-open-modal');
+    expect(liftIds.filter((id) => id.startsWith('watercolor-brush-menu-item-')).length).toBe(
+      BRUSH_PRESETS.length,
+    );
+  });
+
+  it('renders the strip as a sibling AFTER the scroll area (pinned chrome)', () => {
+    const brushRegion = MENU_SOURCE.slice(
+      MENU_SOURCE.indexOf('// 261029-hy2 menu-branch:brush'),
+    );
+    const scrollClose = brushRegion.indexOf('</SidebarScrollArea>');
+    const stripIndex = brushRegion.indexOf('<WatercolorTextureStrip');
+    expect(scrollClose, 'the brush branch keeps its scroller').toBeGreaterThan(-1);
+    expect(stripIndex, 'the strip mounts in the brush branch').toBeGreaterThan(-1);
+    expect(stripIndex, 'the strip sits outside the scroller').toBeGreaterThan(scrollClose);
+
+    const liftRegion = MENU_SOURCE.slice(
+      MENU_SOURCE.indexOf('// 261029-hy2 menu-branch:lift'),
+      MENU_SOURCE.indexOf('// 261029-hy2 menu-branch:brush'),
+    );
+    expect(liftRegion, 'the eraser branch gains no texture axis').not.toContain(
+      'WatercolorTextureStrip',
+    );
+  });
+
+  it('a texture pick writes only the texture and keeps the menu open; a response pick closes', () => {
+    setAquarelleBrushMenuOpen(true);
+    const chip = collect(renderedStrip()).find(
+      (node) => node.props?.['data-testid'] === 'watercolor-texture-chip-wc/builtin-chalk',
+    )!;
+    expect(chip, 'a built-in texture chip renders').toBeTruthy();
+    click(chip);
+    expect(aquarelleSelectedTextureId.value, 'texture selected').toBe('wc/builtin-chalk');
+    expect(aquarelleSelectedTipId.value, 'the response is untouched').toBe('chalk');
+    expect(aquarelleBrushMenuOpen.value, 'a texture pick keeps the menu open').toBe(true);
+
+    const flat = collect(PhysicsPaintBrushMenu()).find(
+      (node) => node.props?.['data-testid'] === 'watercolor-brush-menu-item-flat',
+    )!;
+    click(flat);
+    expect(aquarelleBrushMenuOpen.value, 'a response pick still closes the menu').toBe(false);
+  });
+
+  it('re-measures on a catalog generation change while the menu is open', () => {
+    // The strip's height is part of `chrome`; an import (which selects on
+    // arrival) can grow the pinned row while the menu is open.
+    expect(MENU_SOURCE).toContain('brushCatalogGeneration.value');
+    expect(MENU_SOURCE).toContain('}, [open, anchor?.top, catalogGeneration]);');
+  });
+
+  it('pins the compact strip below the scroller with 34px chips', () => {
+    const rule = CSS_SOURCE.slice(
+      CSS_SOURCE.indexOf('.physics-paint-brush-menu-textures {'),
+      CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu-textures {')),
+    );
+    expect(rule, 'a separator above the pinned row').toContain('border-top');
+    expect(rule, 'a flex row').toContain('display: flex');
+    const chipRule = CSS_SOURCE.slice(
+      CSS_SOURCE.indexOf('.physics-paint-brush-menu-textures .watercolor-texture-chip-canvas'),
+      CSS_SOURCE.indexOf(
+        '}',
+        CSS_SOURCE.indexOf('.physics-paint-brush-menu-textures .watercolor-texture-chip-canvas'),
+      ),
+    );
+    expect(chipRule, 'compact chips are 34px').toContain('34px');
   });
 
   it('picking a brush selects it and closes the dropdown', () => {
