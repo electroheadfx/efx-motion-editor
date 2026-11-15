@@ -11,9 +11,9 @@
 
 - [ ] **TIP-01**: User can import a PNG or JPG and the imported image becomes the actual brush tip — selecting it visibly changes the stroke footprint to that texture instead of a round blob
 - [ ] **TIP-02**: A derived tip is exactly 192 × 192 pixels = 36,864 bytes, one 8-bit value per pixel, produced once at import through the existing `createImageBitmap` / `Image+decode()` path with a high-quality downscale
-- [ ] **TIP-03**: Mask derivation follows one pinned two-branch rule — alpha when the decoded image carries meaningful transparency (any alpha < 250); otherwise luminance with polarity from mean luminance over opaque pixels (mean < 128 → `mask = luminance` for a light-on-dark stamp, else `mask = 255 − luminance`) — documented in the module header, both branches covered by tests, and shared with the built-in bake
+- [x] **TIP-03**: Mask derivation follows one pinned two-branch rule — alpha when the decoded image carries meaningful transparency (any alpha < 250); otherwise luminance with polarity from mean luminance over opaque pixels (mean < 128 → `mask = luminance` for a light-on-dark stamp, else `mask = 255 − luminance`) — documented in the module header, both branches covered by tests, and shared with the built-in bake
 - [ ] **TIP-04**: An image whose decoded pixel count exceeds 64 megapixels is refused before decode with the existing named failure and no allocation; a corrupt file with a valid PNG header is refused without crashing
-- [ ] **TIP-05**: `buildBrushForStroke` is the single tip mapping shared by live paint and bake — a custom tip builds from `CUSTOM_BASE` with its derived mask, so a stroke rasters identically live and baked
+- [x] **TIP-05**: `buildBrushForStroke` is the single tip mapping shared by live paint and bake — a custom tip builds from `CUSTOM_BASE` with its derived mask, so a stroke rasters identically live and baked
 - [ ] **TIP-06**: An imported tip's mask is registered in a module-level engine registry fed by the brush library's import surface; resetting that catalog and the registry (D-20) leaves no ghost mask behind, so a later stroke with that id falls back cleanly rather than reusing a stale mask
 - [ ] **TIP-07**: User's imported tip survives save → quit → relaunch → open: the tip is listed and its strokes replay with the texture, reproduced from the `.mce` alone
 - [ ] **TIP-08**: The mask is stored inside the project package as a lossless WebP asset at `brushes/<sha256>.webp`, content-addressed with a fixed 64-hex name, and decoding the stored artifact is byte-identical to what was encoded; save copies the stored bytes and never re-encodes; the source image is discarded at the end of the import, so only the derived mask is ever stored
@@ -90,9 +90,9 @@ Which phases cover which requirements.
 |-------------|-------|--------|
 | TIP-01 | Phase 63 | Pending |
 | TIP-02 | Phase 63 | Pending |
-| TIP-03 | Phase 63 | Pending |
+| TIP-03 | Phase 63 | Complete |
 | TIP-04 | Phase 63 | Pending |
-| TIP-05 | Phase 63 | Pending |
+| TIP-05 | Phase 63 | Complete |
 | TIP-06 | Phase 63 | Pending |
 | TIP-07 | Phase 63 | Pending |
 | TIP-08 | Phase 63 | Pending |

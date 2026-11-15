@@ -4,17 +4,17 @@ milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
-status: planning
-stopped_at: Phase 63 context gathered
-last_updated: "2026-11-15T10:19:37.281Z"
+status: executing
+stopped_at: Completed 63-01-PLAN.md
+last_updated: "2026-11-15T10:40:11.209Z"
 last_activity: 2026-11-15
-last_activity_desc: "v2.2.0 roadmap created: Phases 63-64, 35 requirements mapped (17 TIP + 18 MED)"
-state_head: dd88e86f37c3ac3f450488403910ab9e25d406b0
+last_activity_desc: Phase 63 execution started
+state_head: fdd423f69c66226085e9d122c1d35432fe9a0ba9
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v2.2.0 Brush Tips & Medium Engine — roadmap created (Phases 63-64, 35 requirements mapped); next: plan Phase 63.
+**Current focus:** Phase 63 — Brush Tip Pipeline
 
 ## Current Position
 
-Phase: 63 (Brush Tip Pipeline) — READY TO EXECUTE
-Plan: — (not planned)
-Status: Roadmap created — ready to plan Phase 63
-Last activity: 2026-11-15 — v2.2.0 roadmap created: Phases 63-64, 35 requirements mapped (17 TIP + 18 MED)
+Phase: 63 (Brush Tip Pipeline) — EXECUTING
+Plan: 2 of 9
+Status: Ready to execute
+Last activity: 2026-11-15 — Phase 63 execution started
 
 
 ## Performance Metrics
@@ -126,6 +126,7 @@ Last activity: 2026-11-15 — v2.2.0 roadmap created: Phases 63-64, 35 requireme
 | Phase 62 P03 | 10min | 3 tasks | 6 files |
 | Phase 62 P05 | 6min | 3 tasks | 8 files |
 | Phase 62 P04 | 9 | 3 tasks | 9 files |
+| Phase 63 P01 | 5 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -383,6 +384,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 62]: UAT: vectorDrawn is stored provenance, not derivable state — codec flag bit 4 carries no payload byte, the `.mce` declares it in both languages, and the Duplicate/+Key copy seam carries it so a copy cannot reclassify a drawn path
 - [Phase 62]: UAT: the stroke list filters by category (Vector, Brush/Water/Pen-Vector, plus the four tools) and the Curve tab shows the selected vertices' effective colour read-only — the sidebar picker stays the ONE colour writer
 - [Phase 62]: Review round 2 (incremental, base c27dea58b) fixed CR-01 the copy seam dropping vectorDrawn, WR-01 the unguarded entrance promise, WR-02 the AQTL header still documenting only bits 0-3, WR-03 the undeclared `vectorDrawn` in the MCE mirror; 4b26cc5eb
+- [Phase 63]: deriveMask fails closed on any length other than 36,864 before allocating; the alpha branch scans first and never consults RGB
+- [Phase 63]: normalizeMaskContrast is exported but never called from deriveMask (bake-only by law), pinned by a source-level test
+- [Phase 63]: replaceMaskRegistry clears then installs valid entries individually (D-18); resolveMask returns the exact registered array (identity contract)
+- [Phase 63]: buildBrushForStroke resolves the registry before the preset lookup; D-08 multipliers apply identically to masked and preset bases (D-21/D-22)
 
 ### Pending Todos
 
@@ -500,9 +505,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T09:06:37.777Z
-Stopped at: Phase 63 context gathered
-Resume file: .planning/phases/63-brush-tip-pipeline/63-CONTEXT.md
+Last session: 2026-11-15T10:40:11.184Z
+Stopped at: Completed 63-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
