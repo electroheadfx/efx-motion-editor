@@ -3,6 +3,26 @@ phase: 63
 review: 63-REVIEW.md
 titles: json
 findings:
+  - id: WR-08
+    severity: warning
+    disposition: open
+    title: "WR-06 bounds each asset read but the batch itself is unbounded"
+  - id: WR-09
+    severity: warning
+    disposition: open
+    title: "Catalog pushes carry no ordering token; a late older snapshot erases newer catalog state"
+  - id: WR-10
+    severity: warning
+    disposition: open
+    title: "The WR-03 save gate classifies custom ids by the `wc/custom-` prefix, so a script-registered id of another shape bypasses it"
+  - id: IN-05
+    severity: info
+    disposition: open
+    title: "A stored WebP the script carrier cannot hold fails the save with a raw message after the whole build"
+  - id: IN-06
+    severity: info
+    disposition: open
+    title: "The wire guard admits a `custom` tip whose id equals a built-in id"
   - id: CR-01
     severity: critical
     disposition: open
@@ -51,28 +71,33 @@ findings:
     severity: info
     disposition: open
     title: "The import request mask is decoded twice"
-open: 12
-total: 12
-recorded: 2026-11-15T13:40:00.000Z
+open: 17
+total: 17
+recorded: 2026-11-15T16:02:45.551Z
 ---
 
 # Phase 63: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
-| WR-01 | warning | open | - |
-| WR-02 | warning | open | - |
-| WR-03 | warning | open | - |
-| WR-04 | warning | open | - |
-| WR-05 | warning | open | - |
-| WR-06 | warning | open | - |
-| WR-07 | warning | open | - |
-| IN-01 | info | open | - |
-| IN-02 | info | open | - |
-| IN-03 | info | open | - |
-| IN-04 | info | open | - |
+| WR-08 | warning | open | - |
+| WR-09 | warning | open | - |
+| WR-10 | warning | open | - |
+| IN-05 | info | open | - |
+| IN-06 | info | open | - |
+| CR-01 | critical | open | - (not in the current review) |
+| WR-01 | warning | open | - (not in the current review) |
+| WR-02 | warning | open | - (not in the current review) |
+| WR-03 | warning | open | - (not in the current review) |
+| WR-04 | warning | open | - (not in the current review) |
+| WR-05 | warning | open | - (not in the current review) |
+| WR-06 | warning | open | - (not in the current review) |
+| WR-07 | warning | open | - (not in the current review) |
+| IN-01 | info | open | - (not in the current review) |
+| IN-02 | info | open | - (not in the current review) |
+| IN-03 | info | open | - (not in the current review) |
+| IN-04 | info | open | - (not in the current review) |
 
 Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
 Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
-Re-running the gate keeps every row it can. A row the current review no longer reports is kept and its Source cell flagged, so a finding does not leave this record silently.
+Re-running the gate keeps every row it can. A row the current review no longer reports is kept and its Source cell flagged, so a finding does not leave this record silently. ONE exception: when a finding id is REUSED by a different finding, the earlier decision cannot keep a row — the id is taken — and it is dropped. A RECORDED decision (anything but `open`) is named on the console when that happens; a row still at `open` is replaced silently, because `open` records no decision to lose.
