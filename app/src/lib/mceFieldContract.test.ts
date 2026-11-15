@@ -406,3 +406,48 @@ describe('Phase 61 envelope round trip (REL-02)', () => {
     expect([...ALLOWED_ONE_LANGUAGE]).toEqual(PRE_PLAN_ALLOWED_ONE_LANGUAGE);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 63 brush-tip carrier (TIP-11 / D-10 / T-63-15)
+//
+// The `.mce` root gains ONE optional key, `brushPack`, whose entries carry
+// package-relative asset refs (`brushes/<64 hex>.webp`). Two things must never
+// drift:
+//   1. the key is declared in BOTH languages — serde drops an undeclared key,
+//      so a one-language `brushPack` silently erases every imported tip on the
+//      next save;
+//   2. the entry carrier shape (`kind` + `entries`) stays two-language and no
+//      one-language exception is claimed for it. The retired D-23 inline
+//      carrier is NOT an allowlist entry: the migration is a field rewrite,
+//      not an exception (T-63-06).
+// ---------------------------------------------------------------------------
+
+describe('Phase 63 brush-tip carrier (TIP-11 / D-10)', () => {
+  it('declares the optional .mce root brushPack in both languages', () => {
+    expectMemberKeys('MceProject', [
+      'version', 'name', 'fps', 'width', 'height', 'created_at', 'modified_at',
+      'sequences', 'images', 'audio_assets', 'video_assets', 'audio_tracks',
+      'motion_blur', 'efx_paint_documents', 'formatVersion', 'projectId', 'efxPaint',
+      'brushPack',
+    ]);
+  });
+
+  it('wires brush_pack to the camelCase brushPack key in Rust', () => {
+    // The field-diff parser reads `pub <ident>:`; a Rust field without the
+    // rename would be invisible to the wire and the key would never be emitted.
+    expect(rust.get('MceProject')!.get('brush_pack')).toBe('brushPack');
+    expect(ts.get('MceProject')!.has('brushPack')).toBe(true);
+  });
+
+  it('keeps the brushPack entry shape two-language (kind, entries)', () => {
+    expectMemberKeys('MceBrushPackSnapshot', ['kind', 'entries']);
+  });
+
+  it('did not claim a one-language exception for the brush carrier', () => {
+    expect(ALLOWED_ONE_LANGUAGE.size).toBe(1);
+    for (const entry of ALLOWED_ONE_LANGUAGE) {
+      expect(entry.toLowerCase()).not.toContain('brush');
+      expect(entry.toLowerCase()).not.toContain('asset');
+    }
+  });
+});

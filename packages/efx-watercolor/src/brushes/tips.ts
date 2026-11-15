@@ -47,6 +47,14 @@ export interface AquarelleTip extends AquarelleToolOverrides {
   id: string
   category: AquarelleTipCategory
   name: string
+  /**
+   * Package-relative asset reference — exactly `brushes/<64 lower-case
+   * hex>.webp` inside the project package (63-04 / D-10). This is where the
+   * tip's mask lives; it is never mask bytes and never a path outside the
+   * package. Absent on the compile-time base/built-in tips, whose masks ship
+   * with the app, and on script-carried entries (`maskDataUrl` instead).
+   */
+  asset?: string
 }
 
 /** Neutral multipliers (global value × 1 = global value). */

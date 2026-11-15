@@ -50,6 +50,7 @@ import {
 } from './efxPaintStore';
 import {readAudioSourceBytes} from '../lib/mainAppAudioSources';
 import {readMceAudioSourcePath, readMceVideoLayerPath} from '../lib/mceAudioSourcePath';
+import {buildProjectBrushPack} from './aquarelleBrushCatalog';
 
 // --- Signals ---
 
@@ -432,6 +433,11 @@ function buildMceProject(): RuntimeMceProject {
     }),
   );
 
+  // 63-04 / TIP-11 / D-10: the project-scoped brush pack rides the manifest as
+  // refs only. A project with no imported tips omits the key entirely (never
+  // an empty pack), so a built-ins-only project writes no `brushPack`.
+  const brushPack = buildProjectBrushPack();
+
   return {
     version: 16,
     name: name.value,
@@ -477,6 +483,10 @@ function buildMceProject(): RuntimeMceProject {
       preview_quality: motionBlurStore.previewQuality.peek(),
       export_sub_frames: exportStore.motionBlurSubFrames.peek(),
     },
+    // 63-04 / D-10: omit the key (never an empty pack) when there are no
+    // imported tips — a built-ins-only project stays byte-identical to a
+    // pre-63 manifest.
+    ...(brushPack ? {brushPack} : {}),
     // v1.0: EFX Paint documents are persisted by the package save funnel
     // (savePackage), never by this builder — buildMceProject emits only the
     // main-editor fields the manifest is built from (D-04, one save path only).

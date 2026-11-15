@@ -60,6 +60,14 @@ pub struct MceProject {
     /// save -> close -> reopen reset the prefs to defaults.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub motion_blur: Option<MceMotionBlur>,
+    /// The project-scoped brush pack (63-04 / TIP-11 / D-10), co-change with
+    /// the TS `MceProject.brushPack`. REFS ONLY: every entry carries a
+    /// package-relative asset ref (`brushes/<64 hex>.webp`) — never mask bytes,
+    /// never an external path. `None` = the project has no imported tips, and
+    /// the key is then omitted entirely. Declared here because serde drops
+    /// undeclared keys: without this field every save would erase the pack.
+    #[serde(default, rename = "brushPack", skip_serializing_if = "Option::is_none")]
+    pub brush_pack: Option<MceBrushPackSnapshot>,
 }
 
 /// Motion-blur prefs carried on the project (N2, dual-language law).
@@ -454,9 +462,15 @@ pub struct MceEngineStrokePayload {
     pub engine: Option<Value>,
 }
 
-/// Brush-pack snapshot travelling in `.mce` (MOD-04 / D-23). Deliberate
-/// exception to the 52.2 refs-only law: entries are inline data, never a file
-/// reference. Two-language by design — NOT an ALLOWED_ONE_LANGUAGE entry.
+/// Brush-pack snapshot travelling in `.mce` (MOD-04 / D-23, carried by 63-04 /
+/// TIP-11). Two-language by design — NOT an ALLOWED_ONE_LANGUAGE entry.
+///
+/// CARRIER LAW (63-04 / D-10, D-11): in the PACKAGE carrier each entry carries
+/// a package-relative `asset` ref of the form `brushes/<64 lower-case
+/// hex>.webp` — the mask lives in that content-addressed file, never inline in
+/// the manifest and never at a path outside the project package. The retired
+/// D-23 inline shape (`mask`, `maskDataUrl`) is REFUSED by the pack builder in
+/// this carrier; the script carrier is the one that carries `maskDataUrl`.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MceBrushPackSnapshot {
@@ -510,4 +524,67 @@ pub struct MceAquarelleVectorPath {
     pub curve_mode: Option<String>,
     #[serde(rename = "vectorDrawn")]
     pub vector_drawn: Option<bool>,
+}
+
+/// 63-04 (TIP-11 / D-10): the `brushPack` root key must SURVIVE a save -> open
+/// -> save round trip. Declared here as a serde-level pin because the
+/// field-diff contract test only reads the declarations: without this test a
+/// `#[serde(skip)]` or a wrong rename would still pass the contract and erase
+/// every imported tip on the next save.
+#[cfg(test)]
+mod brush_pack_tests {
+    use super::MceProject;
+    use serde_json::{json, Value};
+
+    fn minimal_manifest() -> Value {
+        json!({
+            "version": 16,
+            "name": "carrier",
+            "fps": 24,
+            "width": 1920,
+            "height": 1080,
+            "created_at": "2026-11-15T00:00:00Z",
+            "modified_at": "2026-11-15T00:00:00Z",
+            "sequences": [],
+            "images": [],
+        })
+    }
+
+    #[test]
+    fn brush_pack_absent_deserializes_to_none_and_reencodes_without_the_key() {
+        let project: MceProject = serde_json::from_value(minimal_manifest()).expect("manifest parses");
+        assert!(project.brush_pack.is_none());
+        let reencoded = serde_json::to_value(&project).expect("project re-encodes");
+        assert!(reencoded.get("brushPack").is_none(), "an absent pack must not invent the key");
+    }
+
+    #[test]
+    fn brush_pack_present_survives_a_round_trip_unchanged() {
+        let digest = "a".repeat(64);
+        let entry = json!({
+            "id": "wc/custom-1234abcd",
+            "category": "custom",
+            "name": "Imported texture",
+            "tip": 1.0,
+            "aspect": 1.0,
+            "rotation": 1.0,
+            "sizeCurve": 1.0,
+            "scatter": 1.0,
+            "capacity": 1.0,
+            "grain": 1.0,
+            "wetRound": 1.0,
+            "asset": format!("brushes/{digest}.webp"),
+        });
+        let mut raw = minimal_manifest();
+        raw["brushPack"] = json!({ "kind": "efx-watercolor", "entries": [entry] });
+
+        let project: MceProject = serde_json::from_value(raw.clone()).expect("manifest parses");
+        let pack = project.brush_pack.as_ref().expect("brushPack present");
+        assert_eq!(pack.kind, "efx-watercolor");
+        assert_eq!(pack.entries.len(), 1);
+        assert_eq!(pack.entries[0], raw["brushPack"]["entries"][0]);
+
+        let reencoded = serde_json::to_value(&project).expect("project re-encodes");
+        assert_eq!(reencoded["brushPack"], raw["brushPack"]);
+    }
 }
