@@ -10,15 +10,15 @@
 ### Brush Tip Pipeline (Phase 63)
 
 - [ ] **TIP-01**: User can import a PNG or JPG and the imported image becomes the actual brush tip — selecting it visibly changes the stroke footprint to that texture instead of a round blob
-- [ ] **TIP-02**: A derived tip is exactly 192 × 192 pixels = 36,864 bytes, one 8-bit value per pixel, produced once at import through the existing `createImageBitmap` / `Image+decode()` path with a high-quality downscale
+- [x] **TIP-02**: A derived tip is exactly 192 × 192 pixels = 36,864 bytes, one 8-bit value per pixel, produced once at import through the existing `createImageBitmap` / `Image+decode()` path with a high-quality downscale
 - [x] **TIP-03**: Mask derivation follows one pinned two-branch rule — alpha when the decoded image carries meaningful transparency (any alpha < 250); otherwise luminance with polarity from mean luminance over opaque pixels (mean < 128 → `mask = luminance` for a light-on-dark stamp, else `mask = 255 − luminance`) — documented in the module header, both branches covered by tests, and shared with the built-in bake
-- [ ] **TIP-04**: An image whose decoded pixel count exceeds 64 megapixels is refused before decode with the existing named failure and no allocation; a corrupt file with a valid PNG header is refused without crashing
+- [x] **TIP-04**: An image whose decoded pixel count exceeds 64 megapixels is refused before decode with the existing named failure and no allocation; a corrupt file with a valid PNG header is refused without crashing
 - [x] **TIP-05**: `buildBrushForStroke` is the single tip mapping shared by live paint and bake — a custom tip builds from `CUSTOM_BASE` with its derived mask, so a stroke rasters identically live and baked
-- [ ] **TIP-06**: An imported tip's mask is registered in a module-level engine registry fed by the brush library's import surface; resetting that catalog and the registry (D-20) leaves no ghost mask behind, so a later stroke with that id falls back cleanly rather than reusing a stale mask
+- [x] **TIP-06**: An imported tip's mask is registered in a module-level engine registry fed by the brush library's import surface; resetting that catalog and the registry (D-20) leaves no ghost mask behind, so a later stroke with that id falls back cleanly rather than reusing a stale mask
 - [ ] **TIP-07**: User's imported tip survives save → quit → relaunch → open: the tip is listed and its strokes replay with the texture, reproduced from the `.mce` alone
 - [x] **TIP-08**: The mask is stored inside the project package as a lossless WebP asset at `brushes/<sha256>.webp`, content-addressed with a fixed 64-hex name, and decoding the stored artifact is byte-identical to what was encoded; save copies the stored bytes and never re-encodes; the source image is discarded at the end of the import, so only the derived mask is ever stored
 - [x] **TIP-09**: No tip depends on any file outside the app bundle or the project — moving, renaming, then deleting the original source image changes nothing on reopen
-- [ ] **TIP-10**: Both import caps are enforced before read and before decode (`file.size` ≤ 64 MB, decoded pixels ≤ 64 MP), and a stored mask asset that is missing, fails to decode, or is not exactly `TIP_SIZE²` bytes degrades to an unavailable tip, the neutral round fallback, and exactly one aggregate named warning — never a crash and never blank paint; a failed asset never aborts the project open
+- [x] **TIP-10**: Both import caps are enforced before read and before decode (`file.size` ≤ 64 MB, decoded pixels ≤ 64 MP), and a stored mask asset that is missing, fails to decode, or is not exactly `TIP_SIZE²` bytes degrades to an unavailable tip, the neutral round fallback, and exactly one aggregate named warning — never a crash and never blank paint; a failed asset never aborts the project open
 - [x] **TIP-11**: The brush pack travels in the `.mce` root as `brushPack?: { kind, entries }`, each entry carrying a package-relative asset ref to its mask — not the mask bytes — declared in both the TypeScript model and the Rust struct under the field-diff pin
 - [ ] **TIP-12**: Masks are decoded and registered inside the project-open await, before the first stroke replay of a loaded project, so painting before registration completes is impossible by construction; the whole brush set decodes in one call and a failing tip never aborts the open
 - [x] **TIP-13**: Three textured tips ship without any import — `wc/builtin-bristle` (Bristle fan), `wc/builtin-chalk` (Chalk grain), `wc/builtin-sponge` (Sponge) — as compile-time constants under stable ids, category `texture`, listed in the brush library, resolvable on every install, and never written into a project
@@ -89,15 +89,15 @@ Which phases cover which requirements.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | TIP-01 | Phase 63 | Pending |
-| TIP-02 | Phase 63 | Pending |
+| TIP-02 | Phase 63 | Complete |
 | TIP-03 | Phase 63 | Complete |
-| TIP-04 | Phase 63 | Pending |
+| TIP-04 | Phase 63 | Complete |
 | TIP-05 | Phase 63 | Complete |
-| TIP-06 | Phase 63 | Pending |
+| TIP-06 | Phase 63 | Complete |
 | TIP-07 | Phase 63 | Pending |
 | TIP-08 | Phase 63 | Complete |
 | TIP-09 | Phase 63 | Complete |
-| TIP-10 | Phase 63 | Pending |
+| TIP-10 | Phase 63 | Complete |
 | TIP-11 | Phase 63 | Complete |
 | TIP-12 | Phase 63 | Pending |
 | TIP-13 | Phase 63 | Complete |

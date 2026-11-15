@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: executing
-stopped_at: Completed 63-04-PLAN.md
-last_updated: "2026-11-15T11:20:23.103Z"
+stopped_at: Completed 63-05-PLAN.md
+last_updated: "2026-11-15T11:44:00.102Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: ddf016a1b92fbe9060679d8e47ef47060ff91899
+state_head: 7461c7212ec3fc40f4be2a989f4e79ae52b35c6c
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 ## Current Position
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 Status: Ready to execute
 Last activity: 2026-11-15 — Phase 63 execution started
 
@@ -131,6 +131,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P03 | 4min | 2 tasks | 7 files |
 | Phase 63 P09 | 3min | 2 tasks | 2 files |
 | Phase 63 P04 | 11min | 2 tasks | 16 files |
+| Phase 63 P05 | 71min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -404,6 +405,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: Engine-boundary mirror: packages/efx-watercolor is built standalone by tsup and cannot import app/src, so pack.ts owns a local brushes/<64 hex>.webp predicate; the app parser at intake and the Rust bound guard remain independent re-validations (T-63-15)
 - [Phase 63]: aquarelleBrushCatalog lives in app/src/stores/ rather than PATTERNS.md's component path because both realms import it; recorded as a deliberate relocation in the module header
 - [Phase 63]: Brush change token is brush:<relativePath> with the digest as value, so an import always forces its own change entry while a second identical save is an empty change set
+- [Phase 63]: 63-05: the cross-realm brush catalog travels as ONE replace-only snapshot (customs + decoded masks + stored WebP + unavailable ids); the Studio receiver pulls on mount so a webview re-booted by a layer switch repopulates without a new import
+- [Phase 63]: 63-05: brush imports run only in the main realm; the injected catalog publisher is awaited so the catalog push strictly precedes the correlated result across the Tauri event bus
 
 ### Pending Todos
 
@@ -521,8 +524,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T11:20:23.077Z
-Stopped at: Completed 63-04-PLAN.md
+Last session: 2026-11-15T11:44:00.075Z
+Stopped at: Completed 63-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
