@@ -1461,6 +1461,56 @@ mod tests {
         fs::remove_dir_all(package).expect("fixture cleanup");
     }
 
+    // WR-06 / D-18: an over-cap asset costs only its own entry. The healthy
+    // sibling is still a full Read and the batch returns every entry in input
+    // order — the cap surfaces as the existing per-entry `unreadable` reason,
+    // never as a whole-batch failure.
+    #[test]
+    fn brush_mask_batch_read_over_cap_entry_degrades_alone() {
+        let package = fixture_package("brush-batch-over-cap");
+        fs::create_dir_all(package.join(BRUSH_ASSET_ROOT)).expect("brushes directory");
+
+        // healthy: a real encoded mask asset under its own digest.
+        let mask = brush_probe_mask();
+        let webp = crate::services::frame_codec::encode_mask_webp(&mask).expect("mask encode");
+        let healthy_relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", digest_bytes(&webp));
+        fs::write(package.join(&healthy_relative), &webp).expect("healthy asset");
+
+        // over-cap: a sparse regular file one byte past the read cap.
+        let over_cap_relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", "3".repeat(64));
+        sparse_brush_asset(&package, &over_cap_relative, BRUSH_ASSET_MAX_READ_BYTES + 1);
+
+        let entries = vec![
+            ("id-healthy".to_string(), healthy_relative),
+            ("id-over-cap".to_string(), over_cap_relative),
+        ];
+        let results = read_brush_assets(&package, &entries);
+        // Both entries are returned, in input order, and nothing aborted.
+        assert_eq!(results.len(), entries.len());
+        for (result, (id, _)) in results.iter().zip(entries.iter()) {
+            assert_eq!(&result.id, id);
+        }
+        match &results[0].outcome {
+            BrushAssetReadOutcome::Read {
+                digest,
+                webp: stored,
+                mask: decoded,
+            } => {
+                assert_eq!(digest, &digest_bytes(&webp));
+                assert_eq!(stored, &webp);
+                assert_eq!(decoded, &mask);
+            }
+            other => panic!("expected a read outcome, got {other:?}"),
+        }
+        match &results[1].outcome {
+            BrushAssetReadOutcome::Failed { reason } => {
+                assert_eq!(*reason, BRUSH_READ_UNREADABLE);
+            }
+            other => panic!("expected a failed outcome, got {other:?}"),
+        }
+        fs::remove_dir_all(package).expect("fixture cleanup");
+    }
+
     #[test]
     fn layer_file_read_returns_text_and_maps_absent_and_irregular_leaves() {
         let package = fixture_package("layer-read");
