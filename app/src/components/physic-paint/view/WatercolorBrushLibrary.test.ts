@@ -26,13 +26,17 @@ import {
   buildBrush,
 } from '@efxlab/efx-watercolor';
 import {
+  IMPORT_TIP_FAILURE_COPY,
   NEUTRAL_TOOL_OVERRIDES,
   resolveMask,
   type AquarelleTip,
 } from '@efxlab/efx-watercolor/brushes';
 import {
   addCustomBrushTip,
+  customBrushTips,
   replaceCustomBrushTips,
+  replaceUnavailableTipIds,
+  unavailableTipCount,
 } from '../../../stores/aquarelleBrushCatalog';
 import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
@@ -65,6 +69,8 @@ import {
 import {
   WatercolorBrushLibrary,
   WatercolorBrushThumb,
+  watercolorBrushImportFailure,
+  watercolorBrushImporting,
 } from './WatercolorBrushLibrary';
 
 vi.mock('preact/hooks', async (importOriginal) => {
@@ -334,6 +340,9 @@ function resetSelection(): void {
   aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES };
   // The catalog belongs to the open project: every case starts with none.
   replaceCustomBrushTips([]);
+  replaceUnavailableTipIds([]);
+  watercolorBrushImporting.value = false;
+  watercolorBrushImportFailure.value = false;
   clearStrokeThumbCache();
   createdCanvases = [];
   toDataUrlCalls = [];
@@ -634,6 +643,154 @@ describe('WatercolorBrushLibrary stroke-thumb cache (52.1 D-19)', () => {
     } finally {
       paintSpy.mockRestore();
     }
+  });
+});
+
+// 63-06 D-01 / D-19: the import row, the greyed unavailable cards and
+// the ONE aggregate warning line. The import affordance is the only new
+// control; the category filter and the search field stay absent (the
+// sibling negative test above pins that half).
+describe('WatercolorBrushLibrary import row and unavailable tips (63-06)', () => {
+  beforeEach(() => {
+    originalDocument = globalThis.document;
+    resetSelection();
+  });
+
+  afterEach(() => {
+    Object.assign(globalThis, { document: originalDocument });
+    replaceCustomBrushTips([]);
+    replaceUnavailableTipIds([]);
+    watercolorBrushImporting.value = false;
+    watercolorBrushImportFailure.value = false;
+  });
+
+  function fileInputOf(tree: TestVNode): TestVNode | undefined {
+    return [...walk(tree)].find(
+      (n) => n.type === 'input' && n.props?.['type'] === 'file',
+    );
+  }
+
+  it('renders one import toolbar row above the grid with a hidden PNG/JPEG input', () => {
+    const tree = renderLibrary();
+    const nodes = [...walk(tree)];
+    const rowIndex = nodes.findIndex(
+      (n) => n.props?.['data-testid'] === 'watercolor-brush-import-row',
+    );
+    const presetsIndex = nodes.findIndex(
+      (n) => n.props?.['data-testid'] === 'watercolor-brush-section-presets',
+    );
+    expect(rowIndex, 'import row renders').toBeGreaterThanOrEqual(0);
+    expect(rowIndex, 'import row sits above the grid').toBeLessThan(presetsIndex);
+    const fileInputs = nodes.filter(
+      (n) => n.type === 'input' && n.props?.['type'] === 'file',
+    );
+    expect(fileInputs.length, 'exactly one file input').toBe(1);
+    expect(fileInputs[0]!.props?.['accept'], 'PNG + JPEG only').toBe('image/png,image/jpeg');
+    expect(fileInputs[0]!.props?.['style'], 'input stays hidden').toMatchObject({
+      display: 'none',
+    });
+    const importButtons = nodes.filter(
+      (n) => n.props?.['data-testid'] === 'watercolor-brush-import',
+    );
+    expect(importButtons.length, 'one import button').toBe(1);
+    expect(importButtons[0]!.type, 'button element').toBe('button');
+  });
+
+  it('disables the import button while an import is in flight', () => {
+    watercolorBrushImporting.value = true;
+    try {
+      const button = [...walk(renderLibrary())].find(
+        (n) => n.props?.['data-testid'] === 'watercolor-brush-import',
+      );
+      expect(button!.props?.['disabled'], 'busy control is disabled').toBe(true);
+    } finally {
+      watercolorBrushImporting.value = false;
+    }
+    const idle = [...walk(renderLibrary())].find(
+      (n) => n.props?.['data-testid'] === 'watercolor-brush-import',
+    );
+    expect(idle!.props?.['disabled'], 'idle control is enabled').toBe(false);
+  });
+
+  it('a refused import leaves the catalog unchanged and shows the existing copy', async () => {
+    const input = fileInputOf(renderLibrary())!;
+    const onChange = input.props?.['onChange'] as (event: unknown) => Promise<void>;
+    expect(typeof onChange, 'file input handles a pick').toBe('function');
+    // Foreign bytes stop at the magic sniff — no catalog row is created and
+    // the named refusal copy is the only visible change.
+    await onChange({
+      currentTarget: {
+        files: [
+          {
+            name: 'not-an-image.png',
+            size: 3,
+            arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+          },
+        ],
+        value: '',
+      },
+    });
+    expect(watercolorBrushImportFailure.value, 'failure state set').toBe(true);
+    expect(customBrushTips.value.length, 'catalog unchanged').toBe(0);
+    expect(textContent(renderLibrary()), 'named refusal copy').toContain(IMPORT_TIP_FAILURE_COPY);
+  });
+
+  it('greys each unavailable tip and renders exactly ONE aggregate warning line', () => {
+    const tips: AquarelleTip[] = ['a', 'b', 'c'].map((suffix) => ({
+      id: `wc/custom-63-06-unavailable-${suffix}`,
+      category: 'custom' as const,
+      name: `Unavailable ${suffix}`,
+      ...NEUTRAL_TOOL_OVERRIDES,
+    }));
+    for (const tip of tips) addCustomBrushTip(tip);
+    replaceUnavailableTipIds(tips.map((tip) => tip.id));
+    try {
+      const tree = renderLibrary();
+      // One warning STATE (the store signal) …
+      expect(unavailableTipCount.value, 'one aggregate state').toBe(3);
+      // … and one rendered LINE, not one per tip.
+      const warnings = [...walk(tree)].filter(
+        (n) => n.props?.['data-testid'] === 'watercolor-brush-unavailable-warning',
+      );
+      expect(warnings.length, 'exactly one aggregate line').toBe(1);
+      expect(textContent(warnings[0])).toContain('3 brush tips unavailable in this project');
+      const greyed = cardNodes(tree).filter(
+        (card) => card.props?.['data-unavailable'] === 'true',
+      );
+      expect(greyed.length, 'one greyed card per unavailable tip').toBe(3);
+      for (const card of greyed) {
+        expect(card.props?.['disabled'], 'greyed card is unselectable').toBe(true);
+      }
+    } finally {
+      replaceCustomBrushTips([]);
+      replaceUnavailableTipIds([]);
+    }
+  });
+
+  it('an unavailable card cannot become the active tip', () => {
+    addCustomBrushTip({ ...CUSTOM_TIP, id: 'wc/custom-63-06-greyed' });
+    replaceUnavailableTipIds(['wc/custom-63-06-greyed']);
+    try {
+      aquarelleSelectedTipId.value = null;
+      const tree = renderLibrary();
+      const card = cardNodes(tree).find(
+        (c) => c.props?.['data-testid'] === 'watercolor-brush-card-wc/custom-63-06-greyed',
+      );
+      expect(card, 'greyed card renders').toBeTruthy();
+      (card!.props as { onClick?: () => void }).onClick!();
+      expect(aquarelleSelectedTipId.value, 'the greyed tip is never selected').toBeNull();
+    } finally {
+      replaceCustomBrushTips([]);
+      replaceUnavailableTipIds([]);
+    }
+  });
+
+  it('describes the delivered surface in the module header', () => {
+    const source = readFileSync(resolve(__dirname, 'WatercolorBrushLibrary.tsx'), 'utf8');
+    expect(source, 'header names the three sections').toMatch(/three sections/i);
+    expect(source, 'header names the one import row').toMatch(/import toolbar row/i);
+    expect(source, 'the stale no-import claim is gone').not.toMatch(/no import affordance/i);
+    expect(source, 'no filter / search claim kept').toMatch(/no category filter, no search field/i);
   });
 });
 
