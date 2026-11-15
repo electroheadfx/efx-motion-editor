@@ -3,6 +3,10 @@ phase: 63
 review: 63-REVIEW.md
 titles: json
 findings:
+  - id: CR-02
+    severity: critical
+    disposition: open
+    title: "The AQTL v3 gate makes every existing snapshot unreadable, and the next save overwrites the unread authoritative file"
   - id: WR-08
     severity: warning
     disposition: open
@@ -15,6 +19,14 @@ findings:
     severity: warning
     disposition: open
     title: "The WR-03 save gate classifies custom ids by the `wc/custom-` prefix, so a script-registered id of another shape bypasses it"
+  - id: WR-11
+    severity: warning
+    disposition: open
+    title: "The legacy-byte fixture inserts its byte at 117 — inside the last anchor — not after the anchor block at 118"
+  - id: WR-12
+    severity: warning
+    disposition: open
+    title: "A deliberate format retirement is reported to the user as a corrupt snapshot, with no named notice"
   - id: IN-05
     severity: info
     disposition: open
@@ -23,6 +35,18 @@ findings:
     severity: info
     disposition: open
     title: "The wire guard admits a `custom` tip whose id equals a built-in id"
+  - id: IN-07
+    severity: info
+    disposition: open
+    title: "The JSON baseline validator never learned `textureId`"
+  - id: IN-08
+    severity: info
+    disposition: open
+    title: "The decode-side empty-id refusal is unpinned although the threat register claims it"
+  - id: IN-09
+    severity: info
+    disposition: open
+    title: "No textured fixture crosses the vector block, and every id is ASCII"
   - id: CR-01
     severity: critical
     disposition: open
@@ -71,20 +95,26 @@ findings:
     severity: info
     disposition: open
     title: "The import request mask is decoded twice"
-open: 17
-total: 17
-recorded: 2026-11-15T16:02:45.551Z
+open: 23
+total: 23
+recorded: 2026-11-15T22:33:11.662Z
 ---
 
 # Phase 63: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
+| CR-02 | critical | open | - |
 | WR-08 | warning | open | - |
 | WR-09 | warning | open | - |
 | WR-10 | warning | open | - |
+| WR-11 | warning | open | - |
+| WR-12 | warning | open | - |
 | IN-05 | info | open | - |
 | IN-06 | info | open | - |
+| IN-07 | info | open | - |
+| IN-08 | info | open | - |
+| IN-09 | info | open | - |
 | CR-01 | critical | open | - (not in the current review) |
 | WR-01 | warning | open | - (not in the current review) |
 | WR-02 | warning | open | - (not in the current review) |
