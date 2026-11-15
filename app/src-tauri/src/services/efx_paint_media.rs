@@ -5,9 +5,11 @@
 //! * the MEDIA lock (`resolve_package_media_path` / `resolve_package_media_write_path`)
 //!   accepts exactly `frames/<layerId>/<keyId>.webp` and is never widened;
 //! * the BOUND-path guard (`resolve_package_bound_path`) carries the save
-//!   transaction's file set — `project.mce`, `layers/<layerId>.json` and every
-//!   `frames/*.webp` entry, with the `frames/` branch delegated back to the
-//!   media code path so the `.webp` rule is literally the same code.
+//!   transaction's file set — `project.mce`, `layers/<layerId>.json`, every
+//!   `frames/*.webp` entry (delegated back to the media code path so the
+//!   `.webp` rule is literally the same code), and every content-addressed
+//!   `brushes/<sha256>.webp` entry (plan 63-02, its own sibling branch — the
+//!   MEDIA lock is never widened).
 //!
 //! Every path is canonicalized level by level below the canonicalized package
 //! root and re-checked with `Path::starts_with` (never a string prefix), and
@@ -25,6 +27,11 @@ use uuid::Uuid;
 
 /// D-02: the media tree at the package root.
 pub const FRAME_MEDIA_ROOT: &str = "frames";
+/// 63-02 (D-10): the content-addressed brush-asset tree at the package root.
+/// A sibling of `frames/`, never inside its lock.
+pub const BRUSH_ASSET_ROOT: &str = "brushes";
+/// A brush asset's stem is the SHA-256 of its own bytes, full-width lower hex.
+pub const BRUSH_ASSET_STEM_LEN: usize = 64;
 /// The package manifest basename (the save transaction's primary bound path).
 pub const PACKAGE_MANIFEST_BASENAME: &str = "project.mce";
 /// The per-layer sub-file root (`layers/<layerId>.json`).
@@ -55,8 +62,18 @@ pub enum EfxPaintMediaRejection {
     NotARegularFile,
     /// The path is not in the package's bound file set.
     UnsupportedPackagePath,
-    /// The media file is absent — the Phase 49 slate path, not a refusal.
+    /// The file is absent — the Phase 49 slate path, not a refusal.
     Missing,
+    /// The content-addressed name and the bytes disagree (T-63-05): a brush
+    /// asset's `brushes/<sha256>.webp` stem must equal the SHA-256 of its
+    /// bytes on both write and read, so a renamed or corrupted asset is
+    /// refused rather than trusted.
+    DigestMismatch,
+    /// A WebP payload whose declared dimensions are not the pinned 192×192
+    /// mask size (T-63-03) — refused from the header, before any decode.
+    WrongSize,
+    /// A WebP payload that could not be decoded at all; never a mask.
+    Undecodable,
 }
 
 impl EfxPaintMediaRejection {
@@ -69,6 +86,9 @@ impl EfxPaintMediaRejection {
             Self::NotARegularFile => "notARegularFile",
             Self::UnsupportedPackagePath => "unsupportedPackagePath",
             Self::Missing => "missing",
+            Self::DigestMismatch => "digestMismatch",
+            Self::WrongSize => "wrongSize",
+            Self::Undecodable => "undecodable",
         }
     }
 }
@@ -215,6 +235,13 @@ pub fn resolve_package_bound_path(
             return Err(rejected(EfxPaintMediaRejection::PathEscape));
         }
         return Ok(resolved);
+    }
+    // 63-02 (D-12): a SIBLING branch for the content-addressed brush tree. The
+    // `frames/` lock above is untouched — a brush-shaped path under `frames/`
+    // still goes through `parse_media_relative_path` and is refused there.
+    if relative.starts_with(&format!("{BRUSH_ASSET_ROOT}/")) {
+        let file_name = validated_brush_asset_file_name(relative).map_err(rejected)?;
+        return resolve_bound_leaf(&root, &[BRUSH_ASSET_ROOT, file_name]);
     }
     Err(rejected(EfxPaintMediaRejection::UnsupportedPackagePath))
 }
@@ -515,6 +542,150 @@ fn parse_layer_relative_path(relative: &str) -> Result<&str, EfxPaintMediaError>
         return Err(rejected(EfxPaintMediaRejection::WrongExtension));
     }
     Ok(segments[0])
+}
+
+/// 63-02 (D-10, T-63-01): the ONE parser for a brush asset's package-relative
+/// path. Accepts exactly `brushes/<64 lower-case hex>.webp` — a fixed root, one
+/// segment below it, a full-width lower-case hex stem, and a `.webp` leaf.
+/// Anything else is refused before any filesystem access, and the same parser
+/// serves the bound-path guard, the writer and the reader so the accept-set
+/// cannot drift.
+pub fn parse_brush_asset_relative_path(
+    relative: &str,
+) -> Result<(), EfxPaintMediaRejection> {
+    validated_brush_asset_file_name(relative).map(|_| ())
+}
+
+/// The validated bare file name (`<64 lower-hex>.webp`) of a brush asset path.
+/// Only its own shape is checked here; callers that accept untrusted input run
+/// `validate_package_relative_path_shape` first.
+fn validated_brush_asset_file_name(
+    relative: &str,
+) -> Result<&str, EfxPaintMediaRejection> {
+    let remainder = relative
+        .strip_prefix(&format!("{BRUSH_ASSET_ROOT}/"))
+        .ok_or(EfxPaintMediaRejection::UnsupportedPackagePath)?;
+    let segments: Vec<&str> = remainder.split('/').collect();
+    if segments.len() != 1 || segments[0].is_empty() {
+        return Err(EfxPaintMediaRejection::UnsupportedPackagePath);
+    }
+    let stem = segments[0]
+        .strip_suffix(&format!(".{MEDIA_EXTENSION}"))
+        .ok_or(EfxPaintMediaRejection::WrongExtension)?;
+    if stem.len() != BRUSH_ASSET_STEM_LEN
+        || !stem.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err(EfxPaintMediaRejection::UnsupportedPackagePath);
+    }
+    Ok(segments[0])
+}
+
+/// The validated stem (the SHA-256 hex) of an already-parsed brush asset path.
+fn brush_asset_stem(file_name: &str) -> &str {
+    file_name
+        .strip_suffix(&format!(".{MEDIA_EXTENSION}"))
+        .unwrap_or(file_name)
+}
+
+/// 63-02 (D-10, T-63-05): write one content-addressed brush asset. The path is
+/// parsed first, then the bytes are digested and compared with the stem — a
+/// name/content disagreement is `DigestMismatch` and nothing touches disk. The
+/// destination root is derived in Rust from the package root plus a validated
+/// staging basename (the same rule as `write_frame_media`): the renderer never
+/// supplies a destination root. Returns the canonical package-relative path.
+pub fn write_brush_asset(
+    package_dir: &Path,
+    relative_path: &str,
+    bytes: &[u8],
+    staging_basename: Option<&str>,
+) -> Result<String, EfxPaintMediaError> {
+    if let Some(basename) = staging_basename {
+        validate_package_staging_basename(basename)?;
+    }
+    validate_package_relative_path_shape(relative_path)?;
+    let file_name = validated_brush_asset_file_name(relative_path).map_err(rejected)?;
+    if digest_bytes(bytes) != brush_asset_stem(file_name) {
+        return Err(rejected(EfxPaintMediaRejection::DigestMismatch));
+    }
+    let root = canonical_package_root(package_dir)?;
+    let destination_root = match staging_basename {
+        Some(basename) => {
+            let staged = root.join(basename);
+            fs::create_dir_all(&staged).map_err(|error| {
+                io_error(format!("Could not create the package staging root: {error}"))
+            })?;
+            let canonical_staging = fs::canonicalize(&staged).map_err(|error| {
+                io_error(format!("Could not resolve the package staging root: {error}"))
+            })?;
+            if canonical_staging.parent() != Some(root.as_path()) {
+                return Err(rejected(EfxPaintMediaRejection::PathEscape));
+            }
+            canonical_staging
+        }
+        None => root.clone(),
+    };
+    let brushes_dir = destination_root.join(BRUSH_ASSET_ROOT);
+    fs::create_dir_all(&brushes_dir).map_err(|error| {
+        io_error(format!(
+            "Could not create the brush assets directory: {error}"
+        ))
+    })?;
+    let canonical_brushes = fs::canonicalize(&brushes_dir).map_err(|error| {
+        io_error(format!(
+            "Could not resolve the brush assets directory: {error}"
+        ))
+    })?;
+    if canonical_brushes.parent() != Some(destination_root.as_path()) {
+        return Err(rejected(EfxPaintMediaRejection::PathEscape));
+    }
+    let target = canonical_brushes.join(file_name);
+    if is_symlink_leaf(&target) {
+        return Err(rejected(EfxPaintMediaRejection::PathEscape));
+    }
+    write_atomically(&target, bytes)?;
+    Ok(relative_path.to_string())
+}
+
+/// 63-02: read one content-addressed brush asset back as `(bytes, digest)`.
+/// The bound guard resolves the leaf (refusing a symlink), the bytes are
+/// re-digested and compared with the stem — a renamed or corrupted asset is
+/// `DigestMismatch`, never a mask — and an absent leaf is `Missing`.
+pub fn read_brush_asset(
+    package_dir: &Path,
+    relative_path: &str,
+) -> Result<(Vec<u8>, String), EfxPaintMediaError> {
+    validate_package_relative_path_shape(relative_path)?;
+    let file_name = validated_brush_asset_file_name(relative_path).map_err(rejected)?;
+    let stem = brush_asset_stem(file_name);
+    let root = canonical_package_root(package_dir)?;
+    let candidate = resolve_bound_leaf(&root, &[BRUSH_ASSET_ROOT, file_name])?;
+    let canonical = match fs::canonicalize(&candidate) {
+        Ok(canonical) => canonical,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(rejected(EfxPaintMediaRejection::Missing));
+        }
+        Err(error) => {
+            return Err(io_error(format!(
+                "Could not resolve the brush asset file: {error}"
+            )));
+        }
+    };
+    if !canonical.starts_with(&root) {
+        return Err(rejected(EfxPaintMediaRejection::PathEscape));
+    }
+    if !canonical.is_file() {
+        return Err(rejected(EfxPaintMediaRejection::NotARegularFile));
+    }
+    if canonical.extension().and_then(|extension| extension.to_str()) != Some(MEDIA_EXTENSION) {
+        return Err(rejected(EfxPaintMediaRejection::WrongExtension));
+    }
+    let bytes = fs::read(&canonical)
+        .map_err(|error| io_error(format!("Could not read the brush asset file: {error}")))?;
+    let digest = digest_bytes(&bytes);
+    if digest != stem {
+        return Err(rejected(EfxPaintMediaRejection::DigestMismatch));
+    }
+    Ok((bytes, digest))
 }
 
 fn validate_media_id(value: &str) -> Result<(), EfxPaintMediaError> {
@@ -832,6 +1003,90 @@ mod tests {
         assert_eq!(entries, vec!["Pkg.mce".to_string()]);
         assert!(!package.join(&basename).exists());
         fs::remove_dir_all(outer).expect("fixture cleanup");
+    }
+
+    // --- 63-02: the brush tip pipeline's disk boundary -----------------------
+
+    fn brush_probe_mask() -> Vec<u8> {
+        let mut state = 0x2545_f491_u32;
+        (0..crate::services::frame_codec::BRUSH_MASK_BYTES)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                (state & 0xff) as u8
+            })
+            .collect()
+    }
+
+    #[test]
+    fn brush_mask_asset_round_trips_through_disk_and_decodes_byte_identical() {
+        use crate::services::frame_codec::{decode_mask_webp, encode_mask_webp, BRUSH_MASK_BYTES};
+        let package = fixture_package("brush-round-trip");
+        let mask = brush_probe_mask();
+        let webp = encode_mask_webp(&mask).expect("mask encode");
+        let relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", digest_bytes(&webp));
+
+        let written =
+            write_brush_asset(&package, &relative, &webp, None).expect("brush asset write");
+        assert_eq!(written, relative);
+
+        let (stored, digest) = read_brush_asset(&package, &relative).expect("brush asset read");
+        assert_eq!(stored, webp);
+        assert_eq!(digest, digest_bytes(&webp));
+        assert_eq!(decode_mask_webp(&stored).expect("mask decode"), mask);
+        assert_eq!(mask.len(), BRUSH_MASK_BYTES);
+        fs::remove_dir_all(package).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn brush_mask_write_refuses_a_stem_that_is_not_the_digest_of_its_bytes() {
+        let package = fixture_package("brush-write-digest");
+        let bytes = b"a brush asset whose name must match its bytes";
+        let forged = format!("{BRUSH_ASSET_ROOT}/{}.webp", "ab".repeat(32));
+        assert_eq!(
+            write_brush_asset(&package, &forged, bytes, None).unwrap_err(),
+            rejected(EfxPaintMediaRejection::DigestMismatch)
+        );
+        // Refused before any IO: not even the tree was created.
+        assert!(!package.join(BRUSH_ASSET_ROOT).exists());
+        fs::remove_dir_all(package).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn brush_mask_write_stages_under_the_transaction_root() {
+        let package = fixture_package("brush-staging");
+        let bytes = b"staged brush asset";
+        let relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", digest_bytes(bytes));
+        let basename = format!("{PACKAGE_STAGING_PREFIX}{}", Uuid::new_v4());
+        write_brush_asset(&package, &relative, bytes, Some(&basename))
+            .expect("staged brush write");
+        assert!(package.join(&basename).join(&relative).is_file());
+        // The canonical tree is never touched by a staged write.
+        assert!(!package.join(BRUSH_ASSET_ROOT).exists());
+        fs::remove_dir_all(package).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn brush_mask_read_refuses_content_that_disagrees_with_the_name() {
+        let package = fixture_package("brush-read-digest");
+        let relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", "0".repeat(64));
+        fs::create_dir_all(package.join(BRUSH_ASSET_ROOT)).expect("brushes directory");
+        fs::write(package.join(&relative), b"renamed or corrupted").expect("forged asset");
+        assert_eq!(
+            read_brush_asset(&package, &relative).unwrap_err(),
+            rejected(EfxPaintMediaRejection::DigestMismatch)
+        );
+        // A valid-shaped but absent asset is `Missing`, never a mask.
+        assert_eq!(
+            read_brush_asset(
+                &package,
+                &format!("{BRUSH_ASSET_ROOT}/{}.webp", "1".repeat(64))
+            )
+            .unwrap_err(),
+            rejected(EfxPaintMediaRejection::Missing)
+        );
+        fs::remove_dir_all(package).expect("fixture cleanup");
     }
 
     #[test]

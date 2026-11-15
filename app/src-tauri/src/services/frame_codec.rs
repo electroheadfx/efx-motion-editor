@@ -15,6 +15,162 @@ pub trait FrameCodec: Send + Sync {
 /// WebP lossless codec using libwebp `config_exact` alpha semantics (D-01).
 pub struct WebPLosslessCodec;
 
+/// The brush-tip mask edge (`TIP_SIZE` in `packages/efx-watercolor`). A mask is
+/// exactly `BRUSH_MASK_EDGE²` alpha bytes — no width/height header rides the
+/// renderer → native leg, so this constant IS the shape contract.
+pub const BRUSH_MASK_EDGE: u32 = 192;
+/// Exactly the number of alpha bytes a brush mask carries (36,864).
+pub const BRUSH_MASK_BYTES: usize = (BRUSH_MASK_EDGE * BRUSH_MASK_EDGE) as usize;
+
+/// Named refusal: the stored WebP's DECLARED dimensions are not 192×192.
+pub const BRUSH_MASK_WRONG_SIZE: &str = "wrong-size";
+/// Named refusal: the payload is not a decodable WebP.
+pub const BRUSH_MASK_UNREADABLE: &str = "unreadable";
+
+/// Encode one 192×192 alpha mask as a lossless WebP (D-10/D-11).
+///
+/// The mask bytes are the ALPHA channel; RGB is a constant 255 so the encoded
+/// stream is a plain white stamp and `decode_mask_webp` can read the alpha
+/// back untouched. This profile is deliberately separate from
+/// `WebPLosslessCodec::encode_rgba`'s hot-path numbers: a mask is encoded
+/// exactly ONCE at import and never on the save path (save copies the stored
+/// bytes), so it takes the highest-effort settings instead of the frame path's
+/// latency-tuned ones, and it does NOT take the trivial-payload retry (masks
+/// are decoded by libwebp in Rust, never by Apple's ImageIO decoder).
+pub fn encode_mask_webp(mask: &[u8]) -> Result<Vec<u8>, String> {
+    if mask.len() != BRUSH_MASK_BYTES {
+        return Err(format!(
+            "brush mask must be exactly {BRUSH_MASK_BYTES} bytes (192x192); got {}",
+            mask.len()
+        ));
+    }
+
+    let mut rgba = Vec::with_capacity(BRUSH_MASK_BYTES * 4);
+    for alpha in mask {
+        rgba.extend_from_slice(&[255, 255, 255, *alpha]);
+    }
+
+    let mut config =
+        webp::WebPConfig::new().map_err(|_| "failed to init WebP config".to_string())?;
+    config.lossless = 1;
+    // `exact`: keep the RGB bytes verbatim even where alpha is 0, so the
+    // stored stream is the mask and nothing else.
+    config.exact = 1;
+    config.alpha_compression = 0;
+    config.quality = 100.0;
+    config.method = 6;
+
+    webp::Encoder::from_rgba(&rgba, BRUSH_MASK_EDGE, BRUSH_MASK_EDGE)
+        .encode_advanced(&config)
+        .map(|memory| memory.to_vec())
+        .map_err(|e| format!("WebP encode failed: {e:?}"))
+}
+
+/// The declared canvas dimensions of a WebP container, read from the container
+/// HEADER alone (T-63-03). A bounded RIFF chunk walk: it never scans past
+/// [`WEBP_DIMENSION_SCAN_BYTES`], so a hostile payload cannot make the guard
+/// itself expensive. Returns `None` for anything it cannot parse.
+///
+/// Every mask decode path calls this BEFORE `decode_rgba`, so a payload
+/// declaring e.g. 20000×20000 allocates no decoded buffer at all.
+pub fn parse_webp_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
+    const WEBP_DIMENSION_SCAN_BYTES: usize = 512;
+    if bytes.len() < 20 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WEBP" {
+        return None;
+    }
+
+    let scan_end = bytes.len().min(WEBP_DIMENSION_SCAN_BYTES);
+    let mut offset = 12usize;
+    while offset.checked_add(8)? <= scan_end {
+        let chunk = &bytes[offset..offset + 4];
+        let chunk_size = u32::from_le_bytes([
+            bytes[offset + 4],
+            bytes[offset + 5],
+            bytes[offset + 6],
+            bytes[offset + 7],
+        ]) as usize;
+        let data_start = offset + 8;
+        let data_end = data_start.checked_add(chunk_size)?;
+        if data_end > bytes.len() {
+            return None;
+        }
+        let read_u24 = |at: usize| -> Option<u32> {
+            let window = bytes.get(at..at + 3)?;
+            Some(window[0] as u32 | (window[1] as u32) << 8 | (window[2] as u32) << 16)
+        };
+        match chunk {
+            // Extended format: the canvas size is declared 24-bit minus one.
+            b"VP8X" => {
+                if chunk_size < 10 {
+                    return None;
+                }
+                let width = read_u24(data_start + 4)? + 1;
+                let height = read_u24(data_start + 7)? + 1;
+                return Some((width, height));
+            }
+            // Lossy frame: 3-byte frame tag, then the 9d 01 2a start code.
+            b"VP8 " => {
+                if chunk_size < 10
+                    || bytes.get(data_start + 3..data_start + 6) != Some(&[0x9d, 0x01, 0x2a][..])
+                {
+                    return None;
+                }
+                let width = u16::from_le_bytes([bytes[data_start + 6], bytes[data_start + 7]])
+                    as u32
+                    & 0x3fff;
+                let height = u16::from_le_bytes([bytes[data_start + 8], bytes[data_start + 9]])
+                    as u32
+                    & 0x3fff;
+                return Some((width, height));
+            }
+            // Lossless frame: 0x2f signature, then 14-bit width and height.
+            b"VP8L" => {
+                if chunk_size < 5 || bytes[data_start] != 0x2f {
+                    return None;
+                }
+                let byte = |index: usize| bytes[data_start + index] as u32;
+                let width = 1 + byte(1) + ((byte(2) & 0x3f) << 8);
+                let height = 1 + ((byte(2) >> 6) | (byte(3) << 2) | ((byte(4) & 0x0f) << 10));
+                return Some((width, height));
+            }
+            _ => {}
+        }
+        let padded_end = data_end + (chunk_size & 1);
+        if padded_end > bytes.len() || padded_end <= offset {
+            return None;
+        }
+        offset = padded_end;
+    }
+    None
+}
+
+/// Decode a stored brush-mask WebP back into its 36,864 alpha bytes.
+///
+/// The declared-dimension gate runs FIRST (before `decode_rgba`), so an
+/// oversize payload never allocates a decoded buffer; the post-decode size
+/// assertion stays as the second line. Both refusals are fixed labels so the
+/// batch read can map them to per-entry reasons without parsing prose.
+pub fn decode_mask_webp(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    match parse_webp_dimensions(bytes) {
+        Some((width, height))
+            if width == BRUSH_MASK_EDGE && height == BRUSH_MASK_EDGE => {}
+        Some(_) => return Err(BRUSH_MASK_WRONG_SIZE.to_string()),
+        None => return Err(BRUSH_MASK_UNREADABLE.to_string()),
+    }
+
+    let (width, height, rgba) =
+        WebPLosslessCodec.decode_rgba(bytes).map_err(|_| BRUSH_MASK_UNREADABLE.to_string())?;
+    if width != BRUSH_MASK_EDGE || height != BRUSH_MASK_EDGE || rgba.len() != BRUSH_MASK_BYTES * 4 {
+        return Err(BRUSH_MASK_WRONG_SIZE.to_string());
+    }
+
+    let mut mask = Vec::with_capacity(BRUSH_MASK_BYTES);
+    for pixel in rgba.chunks_exact(4) {
+        mask.push(pixel[3]);
+    }
+    Ok(mask)
+}
+
 /// Payload-size floor below which the encode took libwebp's trivial
 /// single-colour shortcut.
 ///
@@ -210,5 +366,146 @@ mod tests {
         assert_eq!(width, 2);
         assert_eq!(height, 2);
         assert_eq!(decoded.len(), 2 * 2 * 4);
+    }
+
+    // --- Phase 63: the brush-mask codec profile (D-10/D-11, T-63-03) -------
+
+    /// Deterministic pseudo-random mask (xorshift32) so the round trip is
+    /// reproducible with no `rand` dependency — a uniform buffer would not
+    /// exercise the lossless stream.
+    fn probe_mask() -> Vec<u8> {
+        let mut state = 0x2545_f491_u32;
+        let mut mask = Vec::with_capacity(BRUSH_MASK_BYTES);
+        for _ in 0..BRUSH_MASK_BYTES {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            mask.push((state >> 24) as u8);
+        }
+        mask
+    }
+
+    /// A RIFF/WEBP container whose VP8X chunk declares `width`×`height` and
+    /// whose VP8L payload is garbage no decoder accepts.
+    fn vp8x_header(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(b"WEBP");
+        bytes.extend_from_slice(b"VP8X");
+        bytes.extend_from_slice(&10u32.to_le_bytes());
+        bytes.push(0);
+        bytes.extend_from_slice(&[0, 0, 0]);
+        for value in [width - 1, height - 1] {
+            bytes.extend_from_slice(&[
+                (value & 0xff) as u8,
+                ((value >> 8) & 0xff) as u8,
+                ((value >> 16) & 0xff) as u8,
+            ]);
+        }
+        bytes.extend_from_slice(b"VP8L");
+        bytes.extend_from_slice(&4u32.to_le_bytes());
+        bytes.extend_from_slice(&[0xde, 0xad, 0xbe, 0xef]);
+        bytes
+    }
+
+    #[test]
+    fn brush_mask_round_trip_is_byte_identical() {
+        let mask = probe_mask();
+
+        let encoded = encode_mask_webp(&mask).expect("mask encode");
+        assert_eq!(
+            parse_webp_dimensions(&encoded),
+            Some((BRUSH_MASK_EDGE, BRUSH_MASK_EDGE))
+        );
+
+        let decoded = decode_mask_webp(&encoded).expect("mask decode");
+        assert_eq!(decoded.len(), BRUSH_MASK_BYTES);
+        assert_eq!(decoded, mask);
+    }
+
+    #[test]
+    fn brush_mask_uniform_mask_round_trips_without_the_trivial_payload_retry() {
+        // The frame path re-encodes below a 64-byte floor because Apple's
+        // ImageIO rejects the trivial stream. Masks are decoded by libwebp
+        // (Rust) only, so the retry is deliberately absent — a uniform stamp
+        // must still round-trip.
+        let mask = vec![255u8; BRUSH_MASK_BYTES];
+
+        let encoded = encode_mask_webp(&mask).expect("mask encode");
+        let decoded = decode_mask_webp(&encoded).expect("mask decode");
+
+        assert_eq!(decoded, mask);
+    }
+
+    #[test]
+    fn brush_mask_encode_refuses_a_body_that_is_not_192_squared_bytes() {
+        assert!(encode_mask_webp(&[]).is_err());
+        assert!(encode_mask_webp(&vec![0u8; BRUSH_MASK_BYTES - 1]).is_err());
+        assert!(encode_mask_webp(&vec![0u8; BRUSH_MASK_BYTES + 1]).is_err());
+    }
+
+    #[test]
+    fn brush_mask_decode_refuses_declared_dimensions_other_than_192_before_decoding() {
+        // The VP8X canvas declares 20000×20000 while the payload is garbage
+        // that libwebp rejects as `unreadable`. A `wrong-size` answer proves
+        // the header gate ran BEFORE decode_rgba — no decoded buffer was
+        // allocated for the hostile drawing.
+        let hostile = vp8x_header(20_000, 20_000);
+        assert_eq!(
+            decode_mask_webp(&hostile),
+            Err(BRUSH_MASK_WRONG_SIZE.to_string())
+        );
+
+        // A real 96×96 WebP (a frame-shaped asset) is refused the same way.
+        let small = WebPLosslessCodec
+            .encode_rgba(&vec![0u8; 96 * 96 * 4], 96, 96)
+            .expect("frame encode");
+        assert_eq!(parse_webp_dimensions(&small), Some((96, 96)));
+        assert_eq!(
+            decode_mask_webp(&small),
+            Err(BRUSH_MASK_WRONG_SIZE.to_string())
+        );
+
+        // Garbage is a DISTINCT reason, never a mask.
+        assert_eq!(
+            decode_mask_webp(b"not a webp at all"),
+            Err(BRUSH_MASK_UNREADABLE.to_string())
+        );
+    }
+
+    #[test]
+    fn brush_mask_dimension_parser_reads_every_declared_size_kind() {
+        // VP8 : 3-byte frame tag, 9d 01 2a start code, 14-bit packed size.
+        let mut vp8 = Vec::new();
+        vp8.extend_from_slice(b"RIFF");
+        vp8.extend_from_slice(&0u32.to_le_bytes());
+        vp8.extend_from_slice(b"WEBP");
+        vp8.extend_from_slice(b"VP8 ");
+        vp8.extend_from_slice(&10u32.to_le_bytes());
+        vp8.extend_from_slice(&[0, 0, 0]);
+        vp8.extend_from_slice(&[0x9d, 0x01, 0x2a]);
+        vp8.extend_from_slice(&320u16.to_le_bytes());
+        vp8.extend_from_slice(&240u16.to_le_bytes());
+        assert_eq!(parse_webp_dimensions(&vp8), Some((320, 240)));
+
+        // VP8X: 24-bit canvas size minus one, on each axis.
+        assert_eq!(
+            parse_webp_dimensions(&vp8x_header(20_000, 12_345)),
+            Some((20_000, 12_345))
+        );
+
+        // VP8L: what this codec actually emits.
+        let mask = probe_mask();
+        let encoded = encode_mask_webp(&mask).expect("mask encode");
+        assert_eq!(
+            parse_webp_dimensions(&encoded),
+            Some((BRUSH_MASK_EDGE, BRUSH_MASK_EDGE))
+        );
+
+        // Anything the bounded walk cannot parse is `None`, never a guess.
+        assert_eq!(parse_webp_dimensions(&[]), None);
+        assert_eq!(parse_webp_dimensions(b"RIFF____WEBP"), None);
+        assert_eq!(parse_webp_dimensions(&encoded[..20]), None);
     }
 }
