@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: verifying
-stopped_at: Completed 63-12-PLAN.md
-last_updated: "2026-11-15T18:05:40.200Z"
+stopped_at: Completed 63-15-PLAN.md
+last_updated: "2026-11-15T22:16:03.236Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: 314209671d4c58345fb03e1e8b24d96d1ee5d65c
+state_head: 6d83d5ea219eadb383596cffb76c08fc2870f9e9
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 15
+  completed_plans: 15
   percent: 0
 ---
 
@@ -30,9 +30,9 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 ## Current Position
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 14 of 14
+Plan: 15 of 15
 Status: Phase complete — ready for verification
-Last activity: 2026-11-15 - Completed quick task 261115-oh9: Texture is a setting of the brush response (response owns physics, texture replaces the footprint; Default = no texture)
+Last activity: 2026-11-15 — Phase 63 execution started
 
 
 ## Performance Metrics
@@ -140,6 +140,7 @@ Last activity: 2026-11-15 - Completed quick task 261115-oh9: Texture is a settin
 | Phase 63 P14 | 3 min | 2 tasks | 1 files |
 | Phase 63 P11 | 29min | 2 tasks | 4 files |
 | Phase 63 P12 | 8min | 2 tasks | 4 files |
+| Phase 63 P15 | 9min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -439,6 +440,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: 63-12: the publish is a notification, not part of the answer — the bridge injects a caught port (returned, not voided, to keep request→catalog→result order) and the handler logs a rejecting or throwing publish while still answering {ok:true, entry} (D-15, WR-04)
 - [Phase 63]: 63-12: one total producer plus one total emitter make all three brush-import registrations rejection-free — a handler throw answers {ok:false, reason:'encode-failed'} through both the Tauri listener and the window CustomEvent path (WR-04)
 - [Phase 63]: 63-12: TIP-01's 36,864-byte mask boundary is pinned at both seams — the wire guard refuses 36,863/36,865 and the handler refuses 36,865 before any IPC or publish
+- [Phase 63]: 63-15: AQTL v3 appends engine.textureId presence-prefixed after the vector block and before pointCount (minimal pointCount 74->75, vector 118->119)
+- [Phase 63]: 63-15: AQTL bumped to v3, v1/v2 refused with unsupported-version (no migration reader); stale v2 .snap caches refuse whole, track starts empty - accepted
+- [Phase 63]: 63-15: codec carries ids verbatim (shape validation only); lift policy stays at the single projection toStudioStroke:207
+- [Phase 63]: 63-15: absence stays absent on decode - engine rebuild adds textureId only when presence marker is 1
+- [Phase 63]: 63-15: Studio texture pick remains realm-session state; restoring it after a realm reset is a separate UX decision, deferred
 
 ### Pending Todos
 
@@ -557,8 +563,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T15:51:11.925Z
-Stopped at: Completed 63-12-PLAN.md
+Last session: 2026-11-15T22:16:02.698Z
+Stopped at: Completed 63-15-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
