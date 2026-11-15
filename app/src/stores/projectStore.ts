@@ -50,8 +50,9 @@ import {
 } from './efxPaintStore';
 import {readAudioSourceBytes} from '../lib/mainAppAudioSources';
 import {readMceAudioSourcePath, readMceVideoLayerPath} from '../lib/mceAudioSourcePath';
-import {buildProjectBrushPack} from './aquarelleBrushCatalog';
+import {applyProjectBrushSet, buildProjectBrushPack} from './aquarelleBrushCatalog';
 import {pendingBrushAssets} from '../lib/efxPaintBrushAssets';
+import {loadProjectBrushSet} from '../lib/efxPaintBrushSet';
 
 // --- Signals ---
 
@@ -106,6 +107,16 @@ function rotateProjectContext(): void {
 function rotateProjectId(): void {
   projectId.value = crypto.randomUUID();
 }
+
+/**
+ * Monotonic open-request token (63-07 / D-17 / T-63-21). `openProject` awaits
+ * several legs (manifest, package load, roto media, brush set), so a second
+ * open can begin while the first is still in flight. Each open takes a token
+ * at entry and re-checks it after every await: a superseded open abandons the
+ * work it loaded instead of applying it over the newer project's state, so a
+ * stale brush set can never reach the catalog, the registry or the Studio.
+ */
+let openRequestSeq = 0;
 
 /**
  * The machine-local derived-frame cache root for one package identity
@@ -1096,7 +1107,9 @@ export const projectStore = {
 
   /** Open a project from an .mce file */
   async openProject(openFilePath: string) {
+    const openRequest = ++openRequestSeq;
     const result = await ipcProjectOpen(openFilePath);
+    if (openRequest !== openRequestSeq) return;
     if (!result.ok) {
       throw new Error(result.error);
     }
@@ -1131,6 +1144,7 @@ export const projectStore = {
       manifest: result.data,
       machineCacheRoot: await resolveCacheRootFor(nextProjectId),
     });
+    if (openRequest !== openRequestSeq) return;
     // quick-260913-52r (G): read every referenced frame file BEFORE hydration —
     // the runtime must hold bytes for the consumers that structurally require
     // them (authority frames projection, launch pack, engine preparation).
@@ -1143,19 +1157,39 @@ export const projectStore = {
         `[efxPaintPersistence] reopen: frame media "${failure.relativePath}" (layer ${failure.layerId}, track ${failure.trackId}, ${failure.collection} ${failure.keyId}) is unreadable — ${failure.reason}. The key stays reference-only until its file is restored.`,
       );
     }
+    // 63-07 (D-17): the brush set joins this same pre-reset read leg. ONE
+    // native call reads, digest-verifies and decodes every stored mask, so the
+    // registry can be filled after the close/reset and before the first
+    // replay; a failing tip degrades alone and never aborts the open (D-18).
+    const brushSet = await loadProjectBrushSet(projectRoot, result.data.brushPack);
+    if (openRequest !== openRequestSeq) return;
+    for (const failure of brushSet.failures) {
+      console.error(
+        `[efxPaintBrushSet] open: brush tip "${failure.tipId}" could not be resolved — ${failure.reason}. The rest of the project opens normally.`,
+      );
+    }
     const runtimeProject: RuntimeMceProject = {
       ...result.data,
     };
 
     projectStore.closeProject({ preservePreparedRotoCanvases: true });
+    // A reset inside closeProject may invalidate every prior token; whichever
+    // token is current after it belongs to this open (nothing can interleave
+    // between the synchronous close and this read).
+    const currentRequest = openRequestSeq;
     batch(() => {
       filePath.value = openFilePath;
       dirPath.value = projectRoot;
       projectId.value = nextProjectId;
     });
 
+    // Registration completes AFTER the reset and BEFORE hydrate/replay, which
+    // is exactly what makes painting from a half-registered state impossible
+    // by construction (TIP-12 / D-17).
+    applyProjectBrushSet(brushSet, projectRoot);
     hydrateFromMce(runtimeProject, projectRoot, loadedDocuments, materialized.runtimeDocuments);
     await bindScriptLibraryAuthority(openFilePath);
+    if (currentRequest !== openRequestSeq) return;
 
     // Update recent projects
     await addRecentProject({
@@ -1163,7 +1197,9 @@ export const projectStore = {
       path: openFilePath,
       lastOpened: new Date().toISOString(),
     });
+    if (currentRequest !== openRequestSeq) return;
     await setLastProjectPath(openFilePath);
+    if (currentRequest !== openRequestSeq) return;
 
     // Restart auto-save for the opened project
     startAutoSave();

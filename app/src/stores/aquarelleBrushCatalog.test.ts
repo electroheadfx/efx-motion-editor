@@ -19,11 +19,20 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BUILTIN_TIPS, TIP_MASK_BYTES, type AquarelleTip } from '@efxlab/efx-watercolor';
+import {
+  BUILTIN_TIPS,
+  TIP_MASK_BYTES,
+  resetMaskRegistry,
+  resolveMask,
+  type AquarelleTip,
+} from '@efxlab/efx-watercolor';
 import { bytesToBase64 } from '../lib/webpBytes';
+import { brushAssetBytes, pendingBrushAssets, resetBrushAssets } from '../lib/efxPaintBrushAssets';
+import type { ProjectBrushSet } from '../lib/efxPaintBrushSet';
 import type { PhysicPaintBrushCatalogPayload } from '../types/physicPaint';
 import {
   addCustomBrushTip,
+  applyProjectBrushSet,
   brushCatalogGeneration,
   buildProjectBrushPack,
   customBrushTips,
@@ -59,6 +68,8 @@ function customTip(id: string, extra: Partial<AquarelleTip> = {}): AquarelleTip 
 
 afterEach(() => {
   resetAquarelleBrushCatalog();
+  resetBrushAssets();
+  resetMaskRegistry();
 });
 
 describe('aquarelleBrushCatalog — built-in baseline (TIP-13)', () => {
@@ -124,6 +135,54 @@ describe('aquarelleBrushCatalog — custom entries', () => {
     // A second reset has nothing left to clear.
     resetAquarelleBrushCatalog();
     expect(brushCatalogGeneration.value).toBe(before + 1);
+  });
+});
+
+describe('aquarelleBrushCatalog — applyProjectBrushSet (63-07 / D-17 / D-20)', () => {
+  function projectSet(tip: AquarelleTip, mask: Uint8Array): ProjectBrushSet {
+    return {
+      entries: [{ tip, digest: DIGEST, mask }],
+      masks: [{ id: tip.id, mask }],
+      unavailableTipIds: ['wc/custom-unavailable'],
+      assets: [{ digest: DIGEST, webp: new Uint8Array([82, 73, 70, 70, 5]) }],
+      failures: [],
+    };
+  }
+
+  it('replaces customs, registry and unavailable set from ONE open and marks its assets written', () => {
+    const mask = new Uint8Array(TIP_MASK_BYTES).fill(9);
+    const tip = customTip('wc/custom-open');
+    addCustomBrushTip(customTip('wc/custom-previous'));
+
+    applyProjectBrushSet(projectSet(tip, mask), '/project/brush-package');
+
+    expect(customBrushTips.value).toHaveLength(1);
+    expect(customBrushTips.value[0]!.id).toBe('wc/custom-open');
+    expect(listAquarelleBrushTips()).toHaveLength(4);
+    expect(resolveCatalogTip('wc/custom-previous')).toBe(null);
+    expect(resolveMask(tip.id)).toBe(mask);
+    expect(resolveMask('wc/custom-previous')).toBe(null);
+    expect(resolveMask('wc/builtin-bristle') === null).toBe(false);
+    expect(unavailableTipIds.value.size).toBe(1);
+    expect(unavailableTipIds.value.has('wc/custom-unavailable')).toBe(true);
+    expect(brushAssetBytes(DIGEST)?.length).toBe(5);
+    expect(pendingBrushAssets('/project/brush-package')).toHaveLength(0);
+  });
+
+  it('an empty set restores exactly the three built-ins and drops the prior project', () => {
+    applyProjectBrushSet(
+      projectSet(customTip('wc/custom-open'), new Uint8Array(TIP_MASK_BYTES).fill(9)),
+      '/project/brush-package',
+    );
+
+    applyProjectBrushSet(
+      { entries: [], masks: [], unavailableTipIds: [], assets: [], failures: [] },
+      '/project/brush-package',
+    );
+
+    expect(listAquarelleBrushTips()).toHaveLength(3);
+    expect(resolveMask('wc/custom-open')).toBe(null);
+    expect(unavailableTipIds.value.size).toBe(0);
   });
 });
 

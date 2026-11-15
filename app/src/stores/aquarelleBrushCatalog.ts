@@ -47,8 +47,14 @@ import {
 } from '@efxlab/efx-watercolor';
 import type { MceBrushPackSnapshot } from '../types/project';
 import type { PhysicPaintBrushCatalogPayload } from '../types/physicPaint';
-import { brushAssetBytes, brushAssetDigestFromPath, rememberBrushAsset } from '../lib/efxPaintBrushAssets';
+import {
+  brushAssetBytes,
+  brushAssetDigestFromPath,
+  markBrushAssetsWritten,
+  rememberBrushAsset,
+} from '../lib/efxPaintBrushAssets';
 import { decodeBridgeBase64, encodeBridgeBase64 } from '../lib/webpBytes';
+import type { ProjectBrushSet } from '../lib/efxPaintBrushSet';
 
 /** The imported tips of the open project (empty on a project with no imports). */
 const customBrushTipsSignal = signal<readonly AquarelleTip[]>([]);
@@ -156,6 +162,50 @@ export function resetAquarelleBrushCatalog(): void {
     unavailableTipIdsSignal.value = new Set();
     brushCatalogGenerationSignal.value += 1;
   });
+}
+
+// ---------------------------------------------------------------------------
+// 63-07 (D-17 / D-18 / D-20 / TIP-07): apply ONE open's brush set.
+//
+// The main realm is the only realm that reads package assets; this function
+// installs what `loadProjectBrushSet` decoded. It is REPLACE-ONLY by
+// construction — the set IS the project's state, so opening B overwrites A's
+// customs, registry rows and unavailable set in one batch, and an empty set
+// restores exactly the three built-ins (T-63-21).
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply the open project's decoded brush set: replace the customs, replace the
+ * mask registry (built-ins first, then this set's masks), replace the
+ * unavailable set, and remember every stored WebP body so a later save copies
+ * it verbatim (D-11 / TIP-07). The bytes are also marked written for THIS
+ * package root: the open read them from the package, so a save without an
+ * import stages nothing.
+ *
+ * A body the content-addressed cache refuses (a different payload under an
+ * already-remembered digest) is logged, never thrown: the tip's mask is still
+ * live for painting, and a subsequent save cannot copy that asset.
+ */
+export function applyProjectBrushSet(set: ProjectBrushSet, packageRoot: string): void {
+  const masks: { id: string; mask: Uint8Array }[] = [...BUILTIN_TIP_MASKS];
+  for (const entry of set.masks) masks.push({ id: entry.id, mask: entry.mask });
+  batch(() => {
+    replaceCustomBrushTips(set.entries.map((entry) => entry.tip));
+    replaceMaskRegistry(masks);
+    replaceUnavailableTipIds(set.unavailableTipIds);
+  });
+  const written: string[] = [];
+  for (const asset of set.assets) {
+    try {
+      rememberBrushAsset(asset.digest, asset.webp);
+      written.push(asset.digest);
+    } catch (error) {
+      console.error(
+        `[aquarelleBrushCatalog] open: stored brush asset "${asset.digest}" was refused by the asset cache — ${String(error)}. The tip's mask stays registered, but a later save cannot copy its stored bytes.`,
+      );
+    }
+  }
+  markBrushAssetsWritten(packageRoot, written);
 }
 
 /**
