@@ -2,12 +2,15 @@
  * 261017-xa0 I-03 — Brush tab is the shipped playground brushes.
  *
  * Laws pinned here:
- *   one card per BRUSH_PRESETS entry, in catalog order, 2-column grid
- *   each card = 150x44 stroke thumb canvas + mixed-case name + title tooltip
- *   testids: root watercolor-brush-library, cards watercolor-brush-card-${id}
- *   no category filter / search / import affordance / wc/ size-variant rows
- *   card pick -> selectAquarelleTip(presetId) -> selection + Brush tool
- *   stroke painter runs at most once per preset id (cache hit on remount)
+ *   three sections in catalog order: Presets, Texture (built-ins), Custom
+ *   one card per catalog entry, 2-column grids inside each section
+ *   each card = 150x44 stroke thumb canvas + mixed-case name + tooltip
+ *   testids: root watercolor-brush-library, cards watercolor-brush-card-${id},
+ *            sections watercolor-brush-section-${presets|texture|custom}
+ *   no category filter / search field / wc/ size-variant rows
+ *   card pick -> selectAquarelleTip(tipId) -> selection + Brush tool
+ *   stroke painter runs at most once per tip id (cache hit on remount)
+ *   a mask-backed tip paints through buildBrushForStroke + its mask (63-06)
  *   never canvas.toDataURL / toBlob (52.1 D-19)
  *   blitStrokeThumb matches the visible bitmap to the DPR-scaled cache (261029-uoz)
  *
@@ -17,8 +20,20 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BRUSH_PRESETS, buildBrush } from '@efxlab/efx-watercolor';
-import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
+import {
+  BRUSH_PRESETS,
+  BUILTIN_TIPS,
+  buildBrush,
+} from '@efxlab/efx-watercolor';
+import {
+  NEUTRAL_TOOL_OVERRIDES,
+  resolveMask,
+  type AquarelleTip,
+} from '@efxlab/efx-watercolor/brushes';
+import {
+  addCustomBrushTip,
+  replaceCustomBrushTips,
+} from '../../../stores/aquarelleBrushCatalog';
 import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleActiveTool,
@@ -173,6 +188,33 @@ function libraryRoot(tree: TestVNode): TestVNode | undefined {
 }
 
 const PRESET_IDS = BRUSH_PRESETS.map((p) => p.id);
+const BUILTIN_IDS = BUILTIN_TIPS.map((t) => t.id);
+
+/** One project import fixture: a custom-category, neutral-multiplier tip. */
+const CUSTOM_TIP: AquarelleTip = {
+  id: 'wc/custom-63-06-fixture',
+  category: 'custom',
+  name: 'Imported wash',
+  ...NEUTRAL_TOOL_OVERRIDES,
+};
+
+function cardIdOf(node: TestVNode): string {
+  return String(node.props?.['data-testid']).replace('watercolor-brush-card-', '');
+}
+
+function cardNodesOf(node: TestVNode): TestVNode[] {
+  return [...walk(node)].filter((n) => {
+    const testId = n.props?.['data-testid'];
+    return typeof testId === 'string' && testId.startsWith('watercolor-brush-card-');
+  });
+}
+
+function sectionNodes(tree: TestVNode): TestVNode[] {
+  return [...walk(tree)].filter((n) => {
+    const testId = n.props?.['data-testid'];
+    return typeof testId === 'string' && testId.startsWith('watercolor-brush-section-');
+  });
+}
 
 /** Minimal canvas stub so getStrokeThumb can paint under node (no DOM env). */
 function makeStubCanvas(): Record<string, unknown> {
@@ -290,6 +332,8 @@ function resetSelection(): void {
   aquarelleSelectedTipId.value = null;
   aquarelleActiveTool.value = 'brush';
   aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES };
+  // The catalog belongs to the open project: every case starts with none.
+  replaceCustomBrushTips([]);
   clearStrokeThumbCache();
   createdCanvases = [];
   toDataUrlCalls = [];
@@ -321,12 +365,40 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
     Object.assign(globalThis, { document: originalDocument });
   });
 
-  it('renders exactly one card per preset in BRUSH_PRESETS catalog order', () => {
+  it('renders one card per catalog entry: presets first, then the built-ins', () => {
     const tree = renderLibrary();
     const cards = cardNodes(tree);
-    expect(cards.length).toBe(BRUSH_PRESETS.length);
-    const walkedIds = cards.map((c) => String(c.props?.['data-testid']).replace('watercolor-brush-card-', ''));
-    expect(walkedIds).toEqual(PRESET_IDS);
+    const expectedIds = [...PRESET_IDS, ...BUILTIN_IDS];
+    expect(cards.length).toBe(expectedIds.length);
+    expect(cards.map(cardIdOf)).toEqual(expectedIds);
+  });
+
+  it('sections the grid: Presets, then Texture (the three built-ins), then Custom', () => {
+    addCustomBrushTip(CUSTOM_TIP);
+    try {
+      const tree = renderLibrary();
+      expect(sectionNodes(tree).map((n) => n.props?.['data-testid'])).toEqual([
+        'watercolor-brush-section-presets',
+        'watercolor-brush-section-texture',
+        'watercolor-brush-section-custom',
+      ]);
+      const [presets, texture, custom] = sectionNodes(tree);
+      expect(cardNodesOf(presets!).map(cardIdOf), 'presets section ids').toEqual(PRESET_IDS);
+      expect(cardNodesOf(texture!).map(cardIdOf), 'texture section = built-ins').toEqual(
+        BUILTIN_IDS,
+      );
+      expect(cardNodesOf(custom!).map(cardIdOf), 'custom section ids').toEqual([CUSTOM_TIP.id]);
+    } finally {
+      replaceCustomBrushTips([]);
+    }
+  });
+
+  it('skips the Custom section when the project has no imports', () => {
+    const tree = renderLibrary();
+    expect(sectionNodes(tree).map((n) => n.props?.['data-testid'])).toEqual([
+      'watercolor-brush-section-presets',
+      'watercolor-brush-section-texture',
+    ]);
   });
 
   it('exposes the library root testid on a 2-column grid', () => {
@@ -386,17 +458,20 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
     expect(selectedRule, 'selected border is orange').toContain('border-color: #f08a24');
   });
 
-  it('has no category filter, search field, or import affordance', () => {
+  it('has no category filter and no search field', () => {
+    // 63-06 D-01: the import affordance is now a contract of this surface
+    // (it is the ONLY new control); the filter and the search field stay out,
+    // and the size-variant rows stay out too.
     const tree = renderLibrary();
-    const inputs = [...walk(tree)].filter((n) => n.type === 'input');
-    expect(inputs.length, 'no input elements').toBe(0);
-    const buttons = [...walk(tree)].map((n) => textContent(n).trim());
-    expect(buttons.some((t) => /import/i.test(t)), 'no import affordance').toBe(false);
-    expect(buttons.some((t) => /^texture$/i.test(t)), 'no texture category row').toBe(false);
+    const selects = [...walk(tree)].filter((n) => n.type === 'select');
+    expect(selects.length, 'no category filter').toBe(0);
+    const searchInputs = [...walk(tree)].filter(
+      (n) => n.type === 'input' && n.props?.['type'] === 'search',
+    );
+    expect(searchInputs.length, 'no search field').toBe(0);
     expect(textContent(tree), 'no wc/ size-variant names').not.toMatch(/wc\//);
     const source = readFileSync(resolve(__dirname, 'WatercolorBrushLibrary.tsx'), 'utf8');
     expect(source, 'no search input in source').not.toMatch(/type="search"|type='search'|brushes-search/);
-    expect(source, 'no file input in source').not.toMatch(/type="file"|type='file'/);
     expect(source, 'no category filter in source').not.toMatch(/category-filter|CATEGORY_FILTER/);
   });
 
@@ -449,6 +524,36 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
     expect(selected.length, 'exactly one selected card').toBe(1);
     expect(selected[0]!.props?.['data-testid']).toBe('watercolor-brush-card-flat');
   });
+
+  it('picking a Texture card selects that catalog tip', () => {
+    resetSelection();
+    const tree = renderLibrary();
+    const card = cardNodes(tree).find(
+      (c) => c.props?.['data-testid'] === 'watercolor-brush-card-wc/builtin-chalk',
+    );
+    expect(card, 'built-in card renders').toBeTruthy();
+    (card!.props as { onClick?: () => void }).onClick!();
+
+    expect(aquarelleSelectedTipId.value, 'built-in tip selected').toBe('wc/builtin-chalk');
+    expect(aquarelleActiveTool.value, 'pick forces brush').toBe('brush');
+  });
+
+  it('picking a Custom card selects that tip and loads its multipliers', () => {
+    addCustomBrushTip({ ...CUSTOM_TIP, aspect: 1.5 });
+    try {
+      const tree = renderLibrary();
+      const card = cardNodes(tree).find(
+        (c) => c.props?.['data-testid'] === `watercolor-brush-card-${CUSTOM_TIP.id}`,
+      );
+      expect(card, 'custom card renders').toBeTruthy();
+      (card!.props as { onClick?: () => void }).onClick!();
+
+      expect(aquarelleSelectedTipId.value, 'custom tip selected').toBe(CUSTOM_TIP.id);
+      expect(aquarelleToolOverrides.value.aspect, 'custom multipliers loaded').toBe(1.5);
+    } finally {
+      replaceCustomBrushTips([]);
+    }
+  });
 });
 
 describe('WatercolorBrushLibrary stroke-thumb cache (52.1 D-19)', () => {
@@ -469,8 +574,34 @@ describe('WatercolorBrushLibrary stroke-thumb cache (52.1 D-19)', () => {
     try {
       renderLibrary();
       renderLibrary();
-      expect(paintSpy.mock.calls.length, 'one paint per preset id across two mounts').toBe(BRUSH_PRESETS.length);
+      expect(paintSpy.mock.calls.length, 'one paint per catalog id across two mounts').toBe(
+        BRUSH_PRESETS.length + BUILTIN_TIPS.length,
+      );
       expect(toDataUrlCalls, 'never toDataURL / toBlob').toEqual([]);
+    } finally {
+      paintSpy.mockRestore();
+    }
+  });
+
+  it('paints a built-in texture thumb from its registered mask, not a preset', () => {
+    const paintSpy = vi
+      .spyOn(strokeThumbPainter, 'drawStroke')
+      .mockImplementation(() => {});
+
+    try {
+      clearStrokeThumbCache();
+      getStrokeThumb('wc/builtin-chalk');
+
+      expect(paintSpy.mock.calls.length, 'one paint for the built-in').toBe(1);
+      // D-05 / D-21: the preview is the SAME brush the engine stamps —
+      // buildBrushForStroke binding its registered mask, not a preset.
+      const brush = paintSpy.mock.calls[0]![1] as ReturnType<typeof buildBrush>;
+      expect(brush.id, 'built through buildBrushForStroke').toBe('wc/builtin-chalk');
+      expect(brush.tipData, 'painted with the registered mask').toBe(
+        resolveMask('wc/builtin-chalk'),
+      );
+      // A distinct cache entry per tip id: never another tip's thumbnail.
+      expect(getStrokeThumb('wc/builtin-chalk')).not.toBe(getStrokeThumb('round'));
     } finally {
       paintSpy.mockRestore();
     }

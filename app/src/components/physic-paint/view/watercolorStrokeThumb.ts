@@ -4,18 +4,30 @@
 //  (SPECS/v1.1.0-water-color/watercolor-playground/src/ui/preview.ts).
 //
 //  261017-xa0 I-03: Brush-tab card thumbs are painted strokes,
-//  not icons or solid swatches. Paint once per preset id into an
+//  not icons or solid swatches. Paint once per tip id into an
 //  HTMLCanvasElement, cache it, and blit (drawImage) onto the
 //  visible card canvas. Never toDataURL / toBlob (52.1 D-19).
 //
+//  63-06 D-05: the cache key is the tip id PLUS the mask-registry
+//  generation (T-63-18). A mask-backed tip — one of the three
+//  built-ins or a project import — is painted from the SAME
+//  `buildBrushForStroke` binding the engine and the bake use, so
+//  its preview cannot drift from the stroke it produces. Replacing
+//  a mask under an unchanged id (or resetting the registry) bumps
+//  the generation and the next read paints anew; a stale mask can
+//  never be served.
+//
 //  `strokeThumbPainter` is the spyable seam: getStrokeThumb paints
-//  through it so a pin can assert one invocation per preset id.
+//  through it so a pin can assert one invocation per tip id.
 // ============================================================
 
 import {
   BRUSH_PRESETS,
   buildBrush,
+  buildBrushForStroke,
   hexToRgb,
+  maskGeneration,
+  resolveMask,
   type Brush,
 } from '@efxlab/efx-watercolor';
 
@@ -154,22 +166,44 @@ export const strokeThumbPainter = {
 };
 
 /**
- * Paint-once thumb cache, keyed by preset id. The first call paints
- * the stroke; later calls return the same HTMLCanvasElement (never
- * repaint, never serialize).
+ * The cache key: tip id plus the mask-registry generation (63-06 / D-05 /
+ * T-63-18). A mask replaced under an unchanged id, and a registry reset,
+ * both bump the generation — so a stale thumb can never be served.
  */
-export function getStrokeThumb(presetId: string): HTMLCanvasElement {
-  const cached = thumbCache.get(presetId);
-  if (cached) return cached;
-  const preset = BRUSH_PRESETS.find((p) => p.id === presetId);
-  if (!preset) {
-    throw new Error(`watercolorStrokeThumb: unknown preset id ${presetId}`);
+function strokeThumbKey(tipId: string): string {
+  return `${tipId}|g${maskGeneration()}`;
+}
+
+/**
+ * The brush one thumb is painted with. A registered mask — a built-in tip or
+ * an imported one — is a STAMP: it builds through the same
+ * `buildBrushForStroke` binding the engine and the bake use (D-21), so the
+ * preview cannot drift from the stroke. Preset ids keep the shipped
+ * `buildBrush(preset)` path untouched. Total: a catalog id whose mask is
+ * unavailable degrades to the neutral round brush instead of throwing.
+ */
+function brushForThumb(tipId: string): Brush {
+  if (resolveMask(tipId) === null) {
+    const preset = BRUSH_PRESETS.find((p) => p.id === tipId);
+    if (preset) return buildBrush(preset);
   }
+  return buildBrushForStroke(tipId);
+}
+
+/**
+ * Paint-once thumb cache, keyed by tip id plus the mask generation. The
+ * first call paints the stroke; later calls return the same
+ * HTMLCanvasElement (never repaint, never serialize).
+ */
+export function getStrokeThumb(tipId: string): HTMLCanvasElement {
+  const key = strokeThumbKey(tipId);
+  const cached = thumbCache.get(key);
+  if (cached) return cached;
   const canvas = document.createElement('canvas');
   canvas.width = STROKE_THUMB_WIDTH;
   canvas.height = STROKE_THUMB_HEIGHT;
-  strokeThumbPainter.drawStroke(canvas, buildBrush(preset), STROKE_THUMB_HEX);
-  thumbCache.set(presetId, canvas);
+  strokeThumbPainter.drawStroke(canvas, brushForThumb(tipId), STROKE_THUMB_HEX);
+  thumbCache.set(key, canvas);
   return canvas;
 }
 
@@ -200,7 +234,13 @@ export function blitStrokeThumb(
   ctx.drawImage(thumb, 0, 0);
 }
 
-/** Test seam: drop every cached thumb (paints again on next get). */
+/**
+ * Test seam and registry-change reset: drop every cached thumb AND every
+ * tinted tip canvas (63-06 T-63-18). The two caches are one preview unit —
+ * a card blits the stroke, which blits the tinted tip — so clearing one
+ * without the other would keep serving the pre-change mask.
+ */
 export function clearStrokeThumbCache(): void {
   thumbCache.clear();
+  tipCache.clear();
 }

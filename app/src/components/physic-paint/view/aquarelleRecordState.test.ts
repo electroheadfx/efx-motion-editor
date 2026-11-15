@@ -18,15 +18,30 @@ import type {
 } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import {
+  aquarelleActiveTool,
+  aquarelleLiftTipId,
   aquarelleRecordClock,
+  aquarelleSelectedTipId,
   aquarelleStrokeSerial,
+  aquarelleToolOverrides,
   getAquarelleStrokeKeyAnchors,
   getRecordedAquarelleDryEvents,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
   resetAquarelleRecordState,
   restoreAquarelleRecordTimeline,
+  selectAquarelleTip,
+  setAquarelleLiftTipId,
+  setAquarelleTool,
 } from './aquarelleRecordState';
+import {
+  NEUTRAL_TOOL_OVERRIDES,
+  type AquarelleTip,
+} from '@efxlab/efx-watercolor/brushes';
+import {
+  addCustomBrushTip,
+  replaceCustomBrushTips,
+} from '../../../stores/aquarelleBrushCatalog';
 
 /** `1.8` as the codec stores it (f32 wire precision), so equality is exact. */
 const VECTOR_WIDTH_1_8 = Math.fround(1.8);
@@ -162,5 +177,71 @@ describe('61-05 reopen-lossless vector restore', () => {
 
     const entry = getRecordedAquarellePayloadTimeline()[0] as StudioStroke<AquarelleStrokePayload>;
     expect('anchors' in entry.engine).toBe(false);
+  });
+});
+
+// 63-06 D-03 / G-5: a mask-backed catalog tip (built-in or project import)
+// is a valid Brush pick, resolved after findTip(TIPS) and BRUSH_PRESETS.
+// The lift selection stays preset-only (D-04) — that is pinned here so the
+// two lookups cannot be "unified" by a later refactor.
+describe('63-06 catalog tip selection', () => {
+  it('selects a built-in texture tip and forces the Brush tool', () => {
+    selectAquarelleTip(null);
+    setAquarelleTool('water');
+
+    selectAquarelleTip('wc/builtin-chalk');
+
+    expect(aquarelleSelectedTipId.value).toBe('wc/builtin-chalk');
+    expect(aquarelleActiveTool.value).toBe('brush');
+    // Built-ins ship neutral multipliers (D-07).
+    expect(aquarelleToolOverrides.value).toEqual({ ...NEUTRAL_TOOL_OVERRIDES });
+  });
+
+  it('selects an imported custom tip and loads the multipliers it carries', () => {
+    const tip: AquarelleTip = {
+      id: 'wc/custom-63-06-test',
+      category: 'custom',
+      name: 'Imported tip',
+      ...NEUTRAL_TOOL_OVERRIDES,
+      aspect: 1.6,
+    };
+    addCustomBrushTip(tip);
+    try {
+      selectAquarelleTip(null);
+
+      selectAquarelleTip(tip.id);
+
+      expect(aquarelleSelectedTipId.value).toBe(tip.id);
+      expect(aquarelleToolOverrides.value.aspect).toBe(1.6);
+    } finally {
+      replaceCustomBrushTips([]);
+    }
+  });
+
+  it('keeps the lift selection preset-only (D-04)', () => {
+    addCustomBrushTip({
+      id: 'wc/custom-63-06-lift',
+      category: 'custom',
+      name: 'Imported lift trap',
+      ...NEUTRAL_TOOL_OVERRIDES,
+    });
+    try {
+      setAquarelleLiftTipId(null);
+      setAquarelleLiftTipId('wc/builtin-chalk');
+      expect(aquarelleLiftTipId.value).toBeNull();
+      setAquarelleLiftTipId('wc/custom-63-06-lift');
+      expect(aquarelleLiftTipId.value).toBeNull();
+      // A preset still normalizes as before.
+      setAquarelleLiftTipId('filbert');
+      expect(aquarelleLiftTipId.value).toBe('filbert');
+    } finally {
+      replaceCustomBrushTips([]);
+    }
+  });
+
+  it('still normalizes an unknown id to null', () => {
+    selectAquarelleTip('round');
+    selectAquarelleTip('wc/does-not-exist');
+    expect(aquarelleSelectedTipId.value).toBeNull();
   });
 });

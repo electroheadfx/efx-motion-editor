@@ -42,6 +42,7 @@ import {
   type AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor/brushes';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
+import { resolveCatalogTip } from '../../../stores/aquarelleBrushCatalog';
 import {
   buildKeyIdentityFrameMap,
   type KeyIdentityFrameRecord,
@@ -247,13 +248,20 @@ export function setAquarelleTool(tool: AquarelleTool): void {
  * keeps the id. Any successful non-null pick also forces the active
  * tool back to `brush` (user directive 2026-10-16) — picking while
  * Water / Pen / Lift is active returns the surface to Brush.
+ *
+ * 63-06 D-03 / G-5: a mask-backed CATALOG tip (a `wc/builtin-*` or a
+ * project import) is a valid pick too. It resolves LAST, after the
+ * `findTip(TIPS)` and `BRUSH_PRESETS` lookups, so those id spaces keep
+ * winning. Only this selection path is extended — `setAquarelleLiftTipId`
+ * below stays preset-only by design (D-04).
  */
 export function selectAquarelleTip(tipId: string | null): void {
   const tip = tipId ? findTip(tipId) : undefined;
   const preset = !tip && tipId
     ? BRUSH_PRESETS.find((b) => b.id === tipId)
     : undefined;
-  const nextId = tip ? tip.id : preset ? preset.id : null;
+  const catalogTip = !tip && !preset && tipId ? resolveCatalogTip(tipId) : null;
+  const nextId = tip ? tip.id : preset ? preset.id : catalogTip ? catalogTip.id : null;
   // A successful pick is a brush-tool variant pick — flip the tool first
   // so a re-pick of the already-selected id still returns to Brush.
   if (nextId !== null) setAquarelleTool('brush');
@@ -275,10 +283,13 @@ export function selectAquarelleTip(tipId: string | null): void {
 
   aquarelleSelectedTipId.value = nextId;
   const remembered = nextId ? aquarelleBrushResponseMemory.value[nextId] : undefined;
+  // A catalog tip carries its own eight multipliers (63-04 stores the import's
+  // response profile in the entry); a preset hit keeps the neutral bag.
+  const picked = tip ?? catalogTip ?? null;
   aquarelleToolOverrides.value = remembered
     ? { ...remembered }
-    : tip
-      ? toolOverridesFromTip(tip)
+    : picked
+      ? toolOverridesFromTip(picked)
       : { ...NEUTRAL_TOOL_OVERRIDES };
 }
 
