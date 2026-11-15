@@ -10,13 +10,16 @@
 //             live path and the bake path share one allocation
 //    generation only a mutation bumps it — reads and rejected
 //             writes never do
+//    WR-05    the three built-in ids are reserved: registerMask can
+//             never install one, and a refused registration mutates
+//             nothing and bumps nothing
 //
 //  The registry is module-scoped, so every test starts from a reset.
 //  Assertion style: scalar predicates (boolean/primitive toBe) so TAP
 //  diagnostics stay one-line and the RED evidence classifier parses.
 // ============================================================
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   listRegisteredMaskIds,
   maskGeneration,
@@ -26,6 +29,7 @@ import {
   resolveMask,
 } from './maskRegistry'
 import { TIP_MASK_BYTES } from './deriveMask'
+import { BUILTIN_TIP_MASKS } from './builtinTips'
 import { buildBrushForStroke } from '../playground/brushBridge'
 import { buildBrush, BRUSH_PRESETS, CUSTOM_BASE } from '../playground/brushes'
 
@@ -68,6 +72,35 @@ describe('registerMask — exact-length admission (T-63-02)', () => {
     // empty id is absent.
     expect(listRegisteredMaskIds().length).toBe(3)
     expect(listRegisteredMaskIds().includes('')).toBe(false)
+  })
+})
+
+describe('registerMask — built-in ids are reserved (WR-05)', () => {
+  it('refuses all three built-in ids, logs each, and never mutates or bumps', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const before = maskGeneration()
+      for (const builtin of BUILTIN_TIP_MASKS) {
+        const shipped = resolveMask(builtin.id)
+        expect(shipped === builtin.mask).toBe(true)
+        expect(registerMask(builtin.id, solidMask(11))).toBe(false)
+        expect(resolveMask(builtin.id) === shipped).toBe(true)
+      }
+      expect(maskGeneration()).toBe(before)
+      expect(warn.mock.calls.length).toBe(BUILTIN_TIP_MASKS.length)
+      const logged = warn.mock.calls.map((call) => String(call[0])).join('\n')
+      for (const builtin of BUILTIN_TIP_MASKS) {
+        expect(logged.includes(builtin.id)).toBe(true)
+      }
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('a custom id still registers and resolves by identity', () => {
+    const mask = solidMask(33)
+    expect(registerMask('wc/custom-not-reserved', mask)).toBe(true)
+    expect(resolveMask('wc/custom-not-reserved') === mask).toBe(true)
   })
 })
 
