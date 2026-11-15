@@ -374,8 +374,9 @@ const SCRIPT_WEBP_PREFIX = 'data:image/webp;base64,';
 
 /** Minimal well-formed 25-byte lossless VP8L header declaring the frame size. */
 function scriptWebp(width: number, height: number): Uint8Array {
-  const bytes = new Uint8Array(25);
+  const bytes = new Uint8Array(26);
   bytes.set([0x52, 0x49, 0x46, 0x46], 0);
+  bytes[4] = 18; // RIFF size = total − 8 (the walker requires full-length containers)
   bytes.set([0x57, 0x45, 0x42, 0x50], 8);
   bytes.set([0x56, 0x50, 0x38, 0x4c], 12);
   bytes[16] = 5;
@@ -391,6 +392,16 @@ function scriptWebp(width: number, height: number): Uint8Array {
 
 function scriptDataUrl(width: number, height: number): string {
   return `${SCRIPT_WEBP_PREFIX}${Buffer.from(scriptWebp(width, height)).toString('base64')}`;
+}
+
+/**
+ * The same bytes re-encoded with a non-zero ignored bit in the final quantum:
+ * it decodes to the identical WebP but is NOT canonical base64.
+ */
+function nonCanonicalScriptDataUrl(): string {
+  const canonical = scriptDataUrl(192, 192);
+  expect(canonical.endsWith('AAA=')).toBe(true);
+  return `${canonical.slice(0, -2)}B=`;
 }
 
 function scriptTip(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -443,9 +454,7 @@ describe('script brush carrier (63-08 / TIP-14 / D-14)', () => {
     expect(schema.decodeScriptMaskDataUrl!(scriptDataUrl(192, 192))).not.toBeNull();
     expect(schema.decodeScriptMaskDataUrl!(scriptDataUrl(96, 64))).toBeNull();
     // Canonical base64 only: the same bytes re-encoded non-canonically refuse.
-    const canonical = scriptDataUrl(192, 192);
-    expect(canonical.endsWith('AA==')).toBe(true);
-    expect(schema.decodeScriptMaskDataUrl!(`${canonical.slice(0, -4)}AB==`)).toBeNull();
+    expect(schema.decodeScriptMaskDataUrl!(nonCanonicalScriptDataUrl())).toBeNull();
   });
 
   it('the parser refuses every malformed script carrier entry with a named reason', async () => {
@@ -462,7 +471,7 @@ describe('script brush carrier (63-08 / TIP-14 / D-14)', () => {
     const refusals = [
       parseWith((entry) => { entry.maskDataUrl = `${SCRIPT_WEBP_PREFIX}${Buffer.alloc(512 * 1024 + 1).toString('base64')}`; }),
       parseWith((entry) => { entry.maskDataUrl = scriptDataUrl(96, 64); }),
-      parseWith((entry) => { entry.maskDataUrl = `${scriptDataUrl(192, 192).slice(0, -4)}AB==`; }),
+      parseWith((entry) => { entry.maskDataUrl = nonCanonicalScriptDataUrl(); }),
       parseWith((entry) => { entry.mask = 'retired'; }),
       parseWith((entry) => { entry.asset = `brushes/${'a'.repeat(64)}.webp`; }),
       parseWith((entry) => { delete entry.maskDataUrl; }),

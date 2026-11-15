@@ -400,7 +400,14 @@ export async function registerScriptBrushMasks(
       ports.log(`Script tip "${tip.id}" carries no valid mask data URL — skipped.`, true);
       continue;
     }
-    const decoded = await ports.decode(webp);
+    let decoded: Result<EfxPaintBrushMaskDecodeResult, EfxPaintMediaFailure>;
+    try {
+      decoded = await ports.decode(webp);
+    } catch (error) {
+      // A rejected native seam is a bad mask, not a dead script: isolate it.
+      ports.log(`Script tip "${tip.id}" mask could not be decoded — skipped (${String(error)}).`, true);
+      continue;
+    }
     if (!decoded.ok) {
       ports.log(`Script tip "${tip.id}" mask could not be decoded — skipped.`, true);
       continue;

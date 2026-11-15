@@ -852,8 +852,9 @@ const SCRIPT_WEBP_PREFIX = 'data:image/webp;base64,';
 
 /** Minimal well-formed 25-byte lossless VP8L header declaring the frame size. */
 function brushWebp(width: number, height: number): Uint8Array {
-  const bytes = new Uint8Array(25);
+  const bytes = new Uint8Array(26);
   bytes.set([0x52, 0x49, 0x46, 0x46], 0);
+  bytes[4] = 18; // RIFF size = total − 8 (the walker requires full-length containers)
   bytes.set([0x57, 0x45, 0x42, 0x50], 8);
   bytes.set([0x56, 0x50, 0x38, 0x4c], 12);
   bytes[16] = 5;
