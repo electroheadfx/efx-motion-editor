@@ -4,17 +4,17 @@ milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
-status: executing
-stopped_at: Completed 63-11-PLAN.md
-last_updated: "2026-11-15T15:43:45.135Z"
+status: verifying
+stopped_at: Completed 63-12-PLAN.md
+last_updated: "2026-11-15T15:51:11.959Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: b9031029c9f7fe37fc02a22048f4b5089fb90cef
+state_head: 709e891d888425d7404a74f94ef3bacdafcfe604
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
 Plan: 14 of 14
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-15 — Phase 63 execution started
 
 
@@ -139,6 +139,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P13 | 3 min | 2 tasks | 3 files |
 | Phase 63 P14 | 3 min | 2 tasks | 1 files |
 | Phase 63 P11 | 29min | 2 tasks | 4 files |
+| Phase 63 P12 | 8min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -435,6 +436,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: Only an id the open marked in unavailableTipIds may skip per entry with a log; an unmarked missing body still refuses with the established no-stored-mask-bytes reason
 - [Phase 63]: referencedCustomBrushIds reads engine.brushId (the tip id), never the top-level brushId the serializer stamps with the engine id; dry events carry none
 - [Phase 63]: The save-law refusal splits on brushCatalogSynced: an unsynced realm names the missing project catalog, a synced-but-uncarried id is named with both causes; both refusals precede serialization so no save request is written
+- [Phase 63]: 63-12: the publish is a notification, not part of the answer — the bridge injects a caught port (returned, not voided, to keep request→catalog→result order) and the handler logs a rejecting or throwing publish while still answering {ok:true, entry} (D-15, WR-04)
+- [Phase 63]: 63-12: one total producer plus one total emitter make all three brush-import registrations rejection-free — a handler throw answers {ok:false, reason:'encode-failed'} through both the Tauri listener and the window CustomEvent path (WR-04)
+- [Phase 63]: 63-12: TIP-01's 36,864-byte mask boundary is pinned at both seams — the wire guard refuses 36,863/36,865 and the handler refuses 36,865 before any IPC or publish
 
 ### Pending Todos
 
@@ -552,8 +556,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T15:43:45.102Z
-Stopped at: Completed 63-11-PLAN.md
+Last session: 2026-11-15T15:51:11.925Z
+Stopped at: Completed 63-12-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
