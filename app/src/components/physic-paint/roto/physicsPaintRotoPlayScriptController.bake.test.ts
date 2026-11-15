@@ -593,6 +593,77 @@ describe('aquarelle bake consume branch (56-08)', () => {
     expect(fake.bakeEvents[1]).toBe(dry);
   });
 
+  // 63-15 (G-63-5): each play mode hands its bake port the saved stroke's own
+  // texture id. aquarelleEventsFromScript is persisted-first, so these pins
+  // exist so any future re-projection on a routing leg fails loudly instead of
+  // silently painting the response tip.
+  const texturedBakeTimeline = () => {
+    const stroke: StudioStroke<AquarelleStrokePayload> = {
+      pts: [{ x: 0.5, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0, tick: 0 }],
+      ticks: 1,
+      cuisson: 0,
+      motion: null,
+      brushId: 'wc/round-medium',
+      toolOverrides: {},
+      traceSeed: 1,
+      recordedOrder: 10,
+      playFrame: null,
+      color: '#224466',
+      engine: {
+        tool: 'brush',
+        color: '#224466',
+        params: { size: 12 },
+        brushId: 'wc/round-medium',
+        textureId: 'wc/builtin-chalk',
+        timestamp: 10,
+      },
+    };
+    return [stroke, { kind: 'dry' as const, tick: 2, recordedOrder: 20 }];
+  };
+
+  it('texture carrier: the motion render hands bake.bake the snapshot textureId', async () => {
+    const committed: AquarelleBakeFrame[] = [];
+    const { bake, harness: fake } = makeFakeBake(committed);
+    fake.framesToReturn = [{ eventIndex: 0, strokeIndex: 0, tick: 0, bytes: webpStub('p'), width: 10, height: 10 }];
+    const test = harness({ createAquarelleBake: vi.fn(() => bake), createAquarelleAdapter: vi.fn(() => makeAdapter()) });
+    const timeline = texturedBakeTimeline();
+    test.setSnapshot({ ...baseScript(99), engineId: 'efx-watercolor', aquarelleEvents: timeline });
+
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '1';
+    const confirmPromise = test.controller.confirm();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    fake.bakeGate.resolve();
+    await confirmPromise;
+
+    expect(fake.bakeEvents[0]).toBe(timeline[0]);
+    expect((fake.bakeEvents[0] as AquarelleStrokePayload).engine.textureId).toBe('wc/builtin-chalk');
+  });
+
+  it('texture carrier: the static render hands bake.bake the snapshot textureId', async () => {
+    const committed: AquarelleBakeFrame[] = [];
+    const { bake, harness: fake } = makeFakeBake(committed);
+    fake.framesToReturn = [{ eventIndex: 0, strokeIndex: 0, tick: 0, bytes: webpStub('p'), width: 10, height: 10 }];
+    const test = harness({ createAquarelleBake: vi.fn(() => bake), createAquarelleAdapter: vi.fn(() => makeAdapter()) });
+    const timeline = texturedBakeTimeline();
+    test.setSnapshot({ ...baseScript(99), engineId: 'efx-watercolor', aquarelleEvents: timeline });
+
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '1';
+    const confirmPromise = test.controller.confirm();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    fake.bakeGate.resolve();
+    await confirmPromise;
+
+    expect(fake.bakeEvents[0]).toBe(timeline[0]);
+    expect((fake.bakeEvents[0] as AquarelleStrokePayload).engine.textureId).toBe('wc/builtin-chalk');
+  });
+
   it('a snapshot without aquarelleEvents still reaches bake.bake via the in-memory fallback', async () => {
     const committed: AquarelleBakeFrame[] = [];
     const { bake, harness: fake } = makeFakeBake(committed);
