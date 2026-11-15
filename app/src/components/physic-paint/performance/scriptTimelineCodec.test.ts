@@ -4,12 +4,13 @@
 //
 //  Two formats over the SAME in-memory timeline:
 //    - JSON baseline: exact JSON.stringify / JSON.parse round-trip.
-//    - AQTL v2 packed binary (61-05): versioned header, packed stroke
-//      metadata, quantized point records (documented tolerances), and
-//      the vector path inside the engine block — anchor block plus the
-//      optional render-mode byte.
+//    - AQTL v3 packed binary (61-05; textureId in 63-15): versioned header,
+//      packed stroke metadata, quantized point records (documented
+//      tolerances), the vector path inside the engine block — anchor block
+//      plus the optional render-mode byte — and the presence-prefixed
+//      textureId after the vector block.
 //  Every corrupt-input case must fail closed with a typed
-//  ScriptTimelineCodecError — never a raw RangeError. Version 1 is
+//  ScriptTimelineCodecError — never a raw RangeError. Versions 1 and 2 are
 //  REFUSED outright (no upgrade path, per the project's clean-break law).
 // ============================================================
 
@@ -204,9 +205,10 @@ const TOTAL_POINTS = 3 + 17 + 64 + 100 + 1;
 // Pinned after the first measured run — never guessed.
 // 61-05: the watercolor binary grew by one vector-flags byte per stroke
 // (5 strokes in FIXTURE): the measured v1 length was 3737.
+// 63-15: AQTL v3 adds one textureId presence byte per stroke (5 in FIXTURE).
 const JSON_BYTE_LENGTH = 18068;
-const BINARY_BYTE_LENGTH = 3742;
-const MEASURED_RATIO = 4.83;
+const BINARY_BYTE_LENGTH = 3747;
+const MEASURED_RATIO = 4.82;
 
 const asStroke = (event: AquarellePayloadEvent): StudioStroke<AquarelleStrokePayload> =>
   event as StudioStroke<AquarelleStrokePayload>;
@@ -226,23 +228,26 @@ function expectedCode(run: () => unknown): ScriptTimelineCodecErrorCode | 'no-th
 
 // ---------------------------------------------------------------------------
 // Minimal one-stroke buffer: a documented fixed layout so corrupt-byte tests
-// can address exact fields. Header 24 bytes, then (AQTL v2):
+// can address exact fields. Header 24 bytes, then (AQTL v3):
 //   24 kind | 25 mutation presence | 26 play presence | 27 ticks | 31 cuisson
 //   35 traceSeed | 39 recordedOrder(f64) | 47 brushId len | 49 brushId
 //   50 color presence | 51 overrides mask | 52 engine tool
 //   53 engine color presence | 54 engine brushId len | 56 engine brushId
 //   57 params count | 61 engine overrides mask | 62 engine mutation presence
 //   63 engine diffusion presence | 64 timestamp(f64) | 72 engine play presence
-//   73 vectorFlags | 74 pointCount | 78 point record (16 bytes each)
+//   73 vectorFlags | 74 texture presence | 75 pointCount | 79 point record
 // ---------------------------------------------------------------------------
 
 const MINIMAL_RECORDED_ORDER_OFFSET = 39;
 const MINIMAL_BRUSH_ID_LENGTH_OFFSET = 47;
 const MINIMAL_TOOL_OFFSET = 52;
-const MINIMAL_POINT_COUNT_OFFSET = 74;
+// 63-15: the texture presence byte sits between the vector block and the
+// point count, so pointCount now starts at 75.
+const MINIMAL_POINT_COUNT_OFFSET = 75;
 // 61-30: when a curve mode is present it is written AFTER the render-mode byte
 // (which is itself absent here), so the code byte sits directly after the
-// vectorFlags byte at 73 and pointCount shifts one byte later.
+// vectorFlags byte at 73; the texture presence byte follows it and pointCount
+// shifts one byte later.
 const MINIMAL_CURVE_MODE_OFFSET = 74;
 
 // ---------------------------------------------------------------------------
@@ -250,7 +255,9 @@ const MINIMAL_CURVE_MODE_OFFSET = 74;
 //   73 vectorFlags (bit 0 anchors, bit 1 render mode) | 74 anchorCount(u16)
 //   per anchor: x(f32) y(f32) kind(u8) handleFlags(u8)
 //               [in.xy(f32 pair)] [out.xy(f32 pair)] widthPresent(u8) [width(f32)]
-//   118 pointCount | 122 point record (16 bytes each)
+//   118 texture presence | 119 pointCount | 123 point record (16 bytes each)
+// The texture presence byte is written after the WHOLE vector block, so every
+// offset inside the anchor block above is unchanged by 63-15.
 // Anchor scalars are f32 on the wire, so every value below is exactly
 // representable in binary32 — including the 1.8 factor, stored through
 // Math.fround so the whole-stroke deep equality is exact rather than a
@@ -369,8 +376,8 @@ describe('JSON baseline codec', () => {
 describe('AQTL packed binary codec', () => {
   it('pins the magic/version constants', () => {
     expect(SCRIPT_TIMELINE_BINARY_MAGIC).toBe('AQTL');
-    // 61-05: AQTL v2 is the one accepted version; v1 is refused below.
-    expect(SCRIPT_TIMELINE_BINARY_VERSION).toBe(2);
+    // 63-15: AQTL v3 is the one accepted version; v1 and v2 are refused below.
+    expect(SCRIPT_TIMELINE_BINARY_VERSION).toBe(3);
     expect(POINT_UV_STEP).toBeCloseTo(1 / 65535, 12);
     expect(POINT_DEGREE_STEP).toBeCloseTo(0.02, 12);
   });
@@ -533,13 +540,14 @@ describe('AQTL v2 vector payload (61-05)', () => {
   });
 
   it('costs a hand-painted stroke one vector-flags byte', () => {
-    // The version field keeps its u16 width, so bumping it costs nothing: the
-    // ONLY structural addition for a hand-painted stroke is the single u8
-    // vector-flags byte.
+    // The version field keeps its u16 width, so bumping it costs nothing. A
+    // v2 hand-painted stroke pays the vector-flags byte alone; v3 adds the
+    // textureId presence byte on every stroke (63-15).
     const V1_MINIMAL_BYTE_LENGTH = 93;
+    const V2_MINIMAL_BYTE_LENGTH = V1_MINIMAL_BYTE_LENGTH + 1;
     const handPainted = minimalStroke();
     expect(encodeScriptTimelineBinary([handPainted]).byteLength).toBe(
-      V1_MINIMAL_BYTE_LENGTH + 1,
+      V2_MINIMAL_BYTE_LENGTH + 1,
     );
   });
 
@@ -644,13 +652,14 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
 
   it('leaves an anchor-colourless path byte-identical (bit 3 clear)', () => {
     const plain = encodeScriptTimelineBinary([minimalStroke()]);
-    expect(plain.byteLength).toBe(94);
+    expect(plain.byteLength).toBe(95);
     expect(plain[VECTOR_FLAG_OFFSET]).toBe(0);
 
     const colourless = encodeScriptTimelineBinary([coloredVectorStroke()]);
     expect(colourless[VECTOR_FLAG_OFFSET] & VECTOR_FLAG_ANCHOR_COLOR).toBe(0);
-    // No block at all: the colourless path is byte-identical to pre-change.
-    expect(colourless.byteLength).toBe(118);
+    // No colour block at all: the colourless path pays only the v3 texture
+    // presence byte over the v2 118 bytes.
+    expect(colourless.byteLength).toBe(119);
   });
 
   it('costs one presence byte per anchor plus 1 + 2 + UTF-8 bytes for a colour', () => {
@@ -756,6 +765,32 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 63-15 (G-63-5) — the texture axis rides the wire.
+//
+//  `engine.textureId` is a presence-prefixed, u16-length UTF-8 id written
+//  AFTER the whole vector block and BEFORE pointCount. Absence stays absent:
+//  the decoder never materialises a `textureId: undefined` key, and the
+//  codec enforces presence + a non-empty string only — no registry lookup,
+//  no lift policy (that is `toStudioStroke`'s single projection).
+// ---------------------------------------------------------------------------
+
+describe('AQTL v3 textureId (63-15 G-63-5)', () => {
+  it('round-trips a textured stroke deep-equal and re-encodes byte-identically', () => {
+    const base = minimalStroke();
+    const textured: StudioStroke<AquarelleStrokePayload> = {
+      ...base,
+      engine: { ...base.engine, textureId: 'wc/custom-abc' },
+    };
+
+    const first = encodeScriptTimelineBinary([textured]);
+    const decoded = decodeScriptTimelineBinary(first);
+
+    expect(decoded).toEqual([textured]);
+    expect(encodeScriptTimelineBinary(decoded)).toEqual(first);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 61-05 task 3 — the codec-level determinism the reopen path relies on.
 // ---------------------------------------------------------------------------
 
@@ -802,8 +837,9 @@ describe('AQTL v2 encode/decode fixed point (61-05)', () => {
 describe('AQTL fail-closed validation', () => {
   it('pins the minimal one-stroke layout used by the corrupt-byte helpers', () => {
     // v1 measured 93 bytes; v2 adds the one vector-flags byte (the version
-    // field keeps its u16 width, so its bump costs nothing).
-    expect(MINIMAL_BYTES.byteLength).toBe(94);
+    // field keeps its u16 width, so its bump costs nothing); v3 adds the
+    // textureId presence byte (63-15).
+    expect(MINIMAL_BYTES.byteLength).toBe(95);
     expect(decodeScriptTimelineBinary(MINIMAL_BYTES)).toEqual(MINIMAL_EVENTS);
   });
 
@@ -813,12 +849,17 @@ describe('AQTL fail-closed validation', () => {
     });
     expect(expectedCode(() => decodeScriptTimelineBinary(badMagic))).toBe('magic-mismatch');
 
-    // 61-05: version 1 is refused outright — there is no upgrade path and no
-    // v1 reader left behind (project law: no backward compatibility).
-    const badVersion = corruptMinimal((_bytes, view) => {
+    // 63-15: versions 1 and 2 are refused outright — there is no upgrade path
+    // and no older reader left behind (project law: no backward compatibility).
+    const v1 = corruptMinimal((_bytes, view) => {
       view.setUint16(4, 1, true);
     });
-    expect(expectedCode(() => decodeScriptTimelineBinary(badVersion))).toBe('unsupported-version');
+    expect(expectedCode(() => decodeScriptTimelineBinary(v1))).toBe('unsupported-version');
+
+    const v2 = corruptMinimal((_bytes, view) => {
+      view.setUint16(4, 2, true);
+    });
+    expect(expectedCode(() => decodeScriptTimelineBinary(v2))).toBe('unsupported-version');
 
     expect(expectedCode(() => decodeScriptTimelineBinary(MINIMAL_BYTES.slice(0, 12)))).toBe('truncated');
 
