@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: executing
-stopped_at: Completed 63-13-PLAN.md
-last_updated: "2026-11-15T15:29:07.257Z"
+stopped_at: Completed 63-14-PLAN.md
+last_updated: "2026-11-15T15:33:22.070Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: b55095148cd6c92caa81305c4474f5674e8971f4
+state_head: eb329aa2a2653d13597e7d408d1d6485d0113ca3
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 ## Current Position
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 12 of 14
+Plan: 13 of 14
 Status: Ready to execute
 Last activity: 2026-11-15 — Phase 63 execution started
 
@@ -137,6 +137,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P08 | 8 | 2 tasks | 6 files |
 | Phase 63 P10 | 6min | 3 tasks | 5 files |
 | Phase 63 P13 | 3 min | 2 tasks | 3 files |
+| Phase 63 P14 | 3 min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -427,6 +428,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: builtinMasksById (id -> exact BUILTIN_TIP_MASKS allocation) is built once at module load and is the single authority for both mask-registry write laws; the reserved set derives from BUILTIN_TIP_MASKS alone and is never widened (WR-05).
 - [Phase 63]: replaceMaskRegistry admits a built-in id on IDENTITY, not bytes: an equal-byte copy under wc/builtin-* is logged and skipped, because a copy is not the shipped allocation (T-63-31).
 - [Phase 63]: registerMask refuses a reserved id BEFORE the writable check and before any mutation, so a refused registration bumps no generation and the log names the real reason; a refused built-in entry in replace installs nothing and the appliers' built-ins-first prefix preserves the shipped allocations.
+- [Phase 63]: 63-14: BRUSH_ASSET_MAX_READ_BYTES (16 MiB) is checked from fs::metadata on the canonicalized leaf after the extension check and strictly before fs::read, so an over-cap asset is refused without its bytes ever being allocated (WR-06 / T-63-32).
+- [Phase 63]: 63-14: the cap refusal stays EfxPaintMediaError::Io so read_one_brush_asset maps it to the existing BRUSH_READ_UNREADABLE per-entry reason — no sixth wire string, no whole-batch failure; the boundary is strict greater-than and both ends are pinned with sparse-file fixtures.
 
 ### Pending Todos
 
@@ -544,8 +547,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T15:29:07.223Z
-Stopped at: Completed 63-13-PLAN.md
+Last session: 2026-11-15T15:33:12.903Z
+Stopped at: Completed 63-14-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
