@@ -153,11 +153,65 @@ describe('applyBrushImportRequest — the one mutation path', () => {
   });
 });
 
+// 63-12 (WR-04): the publish is a NOTIFICATION, not part of the answer. The
+// mutation batch is the commit point (D-15 — an import is not undoable), so a
+// failed push must never turn a landed import into a failure answer.
+describe('applyBrushImportRequest — a publish failure is never the import failure (WR-04)', () => {
+  it('a rejecting publish port still answers success and keeps the landed mutation', async () => {
+    const mask = makeMask(17);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const result = await applyBrushImportRequest(
+        { operationId: 'op-11', fileName: 'cedar.png', mask },
+        { publishCatalog: async () => { throw new Error('catalog push refused'); } },
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(customBrushTips.value).toHaveLength(1);
+      expect(customBrushTips.value[0]).toBe(result.entry);
+      expect(resolveMask(result.entry.id)).toBe(mask);
+      expect(warn.mock.calls.some((call) => String(call[0]).includes('Brush catalog publish failed'))).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a port that throws synchronously is treated the same as a rejection', async () => {
+    const mask = makeMask(19);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const result = await applyBrushImportRequest(
+        { operationId: 'op-12', fileName: 'birch.png', mask },
+        { publishCatalog: () => { throw new Error('sync refusal'); } },
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(customBrushTips.value).toHaveLength(1);
+      expect(resolveMask(result.entry.id)).toBe(mask);
+      expect(warn.mock.calls.some((call) => String(call[0]).includes('Brush catalog publish failed'))).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe('applyBrushImportRequest — refusals are total (T-63-04)', () => {
   it('a mask that is not 36,864 bytes is refused before any IPC or publish', async () => {
     const published = vi.fn();
     const result = await applyBrushImportRequest(
       { operationId: 'op-7', fileName: 'short.png', mask: new Uint8Array(TIP_MASK_BYTES - 1) },
+      { publishCatalog: published },
+    );
+    expect(result).toEqual({ ok: false, reason: 'bad-mask' });
+    expect(mockEncode).not.toHaveBeenCalled();
+    expect(published).not.toHaveBeenCalled();
+    expect(customBrushTips.value).toHaveLength(0);
+  });
+
+  it('a mask one byte above 36,864 is refused the same way (TIP-01 boundary)', async () => {
+    const published = vi.fn();
+    const result = await applyBrushImportRequest(
+      { operationId: 'op-13', fileName: 'long.png', mask: new Uint8Array(TIP_MASK_BYTES + 1) },
       { publishCatalog: published },
     );
     expect(result).toEqual({ ok: false, reason: 'bad-mask' });
