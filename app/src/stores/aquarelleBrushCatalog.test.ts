@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BUILTIN_TIPS,
   TIP_MASK_BYTES,
+  buildBrushForStroke,
   resetMaskRegistry,
   resolveMask,
   type AquarelleTip,
@@ -183,6 +184,38 @@ describe('aquarelleBrushCatalog — applyProjectBrushSet (63-07 / D-17 / D-20)',
     expect(listAquarelleBrushTips()).toHaveLength(3);
     expect(resolveMask('wc/custom-open')).toBe(null);
     expect(unavailableTipIds.value.size).toBe(0);
+  });
+
+  it('an unavailable custom stays listed yet paints with the neutral round fallback, never a partial mask', () => {
+    const healthyMask = new Uint8Array(TIP_MASK_BYTES).fill(3);
+    const unavailable = customTip('wc/custom-missing');
+    const healthy = customTip('wc/custom-available');
+
+    applyProjectBrushSet(
+      {
+        entries: [
+          { tip: unavailable, digest: null, mask: null },
+          { tip: healthy, digest: DIGEST, mask: healthyMask },
+        ],
+        masks: [{ id: healthy.id, mask: healthyMask }],
+        unavailableTipIds: [unavailable.id],
+        assets: [],
+        failures: [],
+      },
+      '/project/brush-package',
+    );
+
+    // The library greys the unavailable entry — it is listed, not deleted.
+    expect(customBrushTips.value.map((tip) => tip.id).join(',')).toBe(
+      'wc/custom-missing,wc/custom-available',
+    );
+    expect(unavailableTipCount.value).toBe(1);
+    // Only the healthy tip owns a mask; the other takes the neutral round
+    // preset rather than a fabricated or partial mask (D-18).
+    expect(resolveMask(unavailable.id)).toBe(null);
+    expect(buildBrushForStroke(unavailable.id).id).toBe('round');
+    expect(resolveMask(healthy.id)).toBe(healthyMask);
+    expect(buildBrushForStroke(healthy.id).id).toBe(healthy.id);
   });
 });
 

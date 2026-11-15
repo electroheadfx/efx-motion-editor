@@ -108,7 +108,7 @@ describe('loadProjectBrushSet — one native read, decoded before hydrate (63-07
     expect(result.failures).toHaveLength(0);
   });
 
-  it('a refused batch degrades every requested tip instead of throwing', async () => {
+  it('a refused batch degrades every requested tip, keeps each listed, and never throws', async () => {
     const port: ProjectBrushSetReadPort = async () => ({ ok: false, error: { kind: 'missing' } });
 
     const result = await loadProjectBrushSet(
@@ -117,13 +117,19 @@ describe('loadProjectBrushSet — one native read, decoded before hydrate (63-07
       port,
     );
 
-    expect(result.entries).toHaveLength(0);
+    // D-18/D-19: the tips are still listed (the library greys them), they are
+    // simply absent from the registry — never a thrown open.
+    expect(result.entries).toHaveLength(2);
+    expect(result.entries[0]!.tip.id).toBe('wc/custom-a');
+    expect(result.entries[0]!.mask).toBeNull();
+    expect(result.entries[1]!.mask).toBeNull();
+    expect(result.masks).toHaveLength(0);
     expect(result.unavailableTipIds.join(',')).toBe('wc/custom-a,wc/custom-b');
     expect(result.failures).toHaveLength(2);
     expect(result.failures[0]!.reason).toBe('batch-failed');
   });
 
-  it('one failed entry degrades alone: its healthy sibling still registers', async () => {
+  it('one failed entry degrades alone: it stays listed while its healthy sibling registers', async () => {
     const port: ProjectBrushSetReadPort = async (_packageDir, entries) => ({
       ok: true,
       data: entries.map((entry): EfxPaintBrushAssetReadEntry =>
@@ -145,8 +151,13 @@ describe('loadProjectBrushSet — one native read, decoded before hydrate (63-07
       port,
     );
 
-    expect(result.entries).toHaveLength(1);
-    expect(result.entries[0]!.tip.id).toBe('wc/custom-b');
+    expect(result.entries).toHaveLength(2);
+    expect(result.entries[0]!.tip.id).toBe('wc/custom-a');
+    expect(result.entries[0]!.mask).toBeNull();
+    expect(result.entries[1]!.tip.id).toBe('wc/custom-b');
+    expect(result.entries[1]!.digest).toBe(DIGEST_B);
+    expect(result.entries[1]!.mask?.length).toBe(TIP_MASK_BYTES);
+    expect(result.masks).toHaveLength(1);
     expect(result.unavailableTipIds.join(',')).toBe('wc/custom-a');
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0]!.tipId).toBe('wc/custom-a');
@@ -171,9 +182,98 @@ describe('loadProjectBrushSet — one native read, decoded before hydrate (63-07
       port,
     );
 
-    expect(result.entries).toHaveLength(0);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.mask).toBeNull();
+    expect(result.masks).toHaveLength(0);
     expect(result.unavailableTipIds.join(',')).toBe('wc/custom-a');
     expect(result.failures[0]!.reason).toBe('digest-mismatch');
+  });
+
+  it('an entry with an invalid asset ref never reaches the read port and is marked unavailable', async () => {
+    const asked: string[] = [];
+    const port: ProjectBrushSetReadPort = async (_packageDir, entries) => {
+      asked.push(...entries.map((entry) => entry.id));
+      return {
+        ok: true,
+        data: entries.map((entry): EfxPaintBrushAssetReadEntry => ({
+          id: entry.id,
+          ok: true,
+          digest: digestOf(entry.relativePath),
+          mask: mask(),
+          webp: webp(),
+        })),
+      };
+    };
+
+    const invalidRef = { ...customTip('wc/custom-bad', DIGEST_A), asset: 'frames/not-a-brush.webp' };
+    const result = await loadProjectBrushSet(
+      '/project/pkg',
+      snapshot([invalidRef, customTip('wc/custom-ok', DIGEST_B)]),
+      port,
+    );
+
+    // The malformed entry is never sent to the native boundary; the healthy
+    // sibling still registers. The bad id is marked unavailable for the one
+    // aggregate warning state (D-18/D-19).
+    expect(asked.join(',')).toBe('wc/custom-ok');
+    expect(result.entries.map((entry) => entry.tip.id).join(',')).toBe('wc/custom-ok');
+    expect(result.unavailableTipIds.join(',')).toBe('wc/custom-bad');
+    expect(result.failures[0]!.tipId).toBe('wc/custom-bad');
+    expect(result.failures[0]!.reason).toBe('invalid-asset-ref');
+  });
+
+  it('a valid record without an asset ref is listed and marked unavailable', async () => {
+    const { asset: _omitted, ...noAsset } = customTip('wc/custom-noasset', DIGEST_A);
+    const port: ProjectBrushSetReadPort = async () => {
+      throw new Error('the read port must not be called');
+    };
+
+    const result = await loadProjectBrushSet('/project/pkg', snapshot([noAsset]), port);
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.tip.id).toBe('wc/custom-noasset');
+    expect(result.entries[0]!.mask).toBeNull();
+    expect(result.unavailableTipIds.join(',')).toBe('wc/custom-noasset');
+    expect(result.failures[0]!.reason).toBe('invalid-asset-ref');
+  });
+
+  it('three failures produce one aggregate unavailable state with three ids', async () => {
+    const invalidRef = { ...customTip('wc/custom-badref', DIGEST_A), asset: 'brushes/not-hex.webp' };
+    const port: ProjectBrushSetReadPort = async (_packageDir, entries) => ({
+      ok: true,
+      data: entries.map((entry): EfxPaintBrushAssetReadEntry => {
+        if (entry.id === 'wc/custom-missing') return { id: entry.id, ok: false, reason: 'missing' };
+        if (entry.id === 'wc/custom-unreadable') return { id: entry.id, ok: false, reason: 'unreadable' };
+        return {
+          id: entry.id,
+          ok: true,
+          digest: digestOf(entry.relativePath),
+          mask: mask(),
+          webp: webp(),
+        };
+      }),
+    });
+
+    const result = await loadProjectBrushSet(
+      '/project/pkg',
+      snapshot([
+        invalidRef,
+        customTip('wc/custom-missing', DIGEST_A),
+        customTip('wc/custom-unreadable', DIGEST_B),
+        customTip('wc/custom-healthy', DIGEST_A),
+      ]),
+      port,
+    );
+
+    expect(result.entries).toHaveLength(4);
+    expect(result.entries.map((entry) => entry.mask === null).join(',')).toBe('true,true,true,false');
+    expect(result.unavailableTipIds).toHaveLength(3);
+    expect(result.unavailableTipIds.join(',')).toBe(
+      'wc/custom-badref,wc/custom-missing,wc/custom-unreadable',
+    );
+    expect(result.failures.map((failure) => failure.reason).join(',')).toBe(
+      'invalid-asset-ref,missing,unreadable',
+    );
   });
 
   it('applies the set after the close/reset and before hydrate (source-order pin)', () => {
