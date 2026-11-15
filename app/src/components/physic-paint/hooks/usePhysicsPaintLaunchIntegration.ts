@@ -19,7 +19,7 @@ import { registerDocument } from '../../../stores/efxPaintStore';
 import { imageStore } from '../../../stores/imageStore';
 import { requestImageLibrary } from '../../../lib/physicPaintBridge';
 import { readEfxPaintSessionDocumentCheckpoint } from '../bridge/physicsPaintBridgeTransport';
-import { useEfxPaintAudioContextBridge, usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
+import { useEfxPaintAudioContextBridge, usePhysicsPaintBrushCatalogBridge, usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
 import { createPhysicsPaintProjectContextSettlement, type PhysicsPaintProjectContextSettlement } from './physicsPaintProjectContextSettlement';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
@@ -331,4 +331,10 @@ export function usePhysicsPaintLaunchIntegration(input: {
   // The bridge's callback type carries `undefined` (it is typed off the optional
   // launch field) while its validation gate only ever hands over a real payload.
   usePhysicsPaintProjectContextBridge((project) => { if (project) settlementRef.current?.accept(project); });
+  // 63-05 (D-20): the Studio's own copy of the project brush catalog — custom
+  // tips, engine masks and stored WebP bytes — applied into this realm's
+  // modules. Pulls once on mount, so a layer switch (which re-boots the child
+  // webview) repopulates without a new import. Mounted beside the
+  // project-context receiver it mirrors.
+  usePhysicsPaintBrushCatalogBridge();
 }

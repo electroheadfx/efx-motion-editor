@@ -32,6 +32,7 @@ export type { PhysicPaintRotoInterpolationMode } from '../components/physic-pain
 import { isWebpBytes, isPngBytes, buildFrameBytesToken } from '../lib/webpBytes';
 export { isWebpBytes, isPngBytes, buildFrameBytesToken };
 import { parseFrameMediaReference, type FrameMediaReference } from '../lib/efxPaintPackage';
+import { asTipRecord, TIP_MASK_BYTES, TIP_SIZE, type AquarelleTip } from '@efxlab/efx-watercolor';
 
 /**
  * 59-12 Task 4 (MOTN-10): session-only settlement metadata for a rail merge
@@ -2473,6 +2474,74 @@ export interface PhysicPaintImageImportResultMessage {
   payload: PhysicPaintImageImportResult;
 }
 
+/**
+ * 63-05 (D-15 / D-20 / T-63-04): the brush-tip realm channels.
+ *
+ * The import pair is the SAME child→main shape as the image-import pair: the
+ * Studio decodes the picked file and derives the 36,864-byte mask, then names
+ * the mask and the file here; the MAIN realm encodes it, registers it, adds
+ * the catalog entry and answers with the entry. The mask travels as base64
+ * because `emitTo` JSON-serializes `Uint8Array` into an index object.
+ *
+ * The catalog pair is the project-context pattern applied to the brush state:
+ * the main realm publishes ONE full snapshot of its custom tips (each with its
+ * mask and its stored WebP bytes when it has them), the Studio applies that
+ * snapshot into its OWN module instances (`aquarelleBrushCatalog`,
+ * `maskRegistry`, `efxPaintBrushAssets`), and pulls once on mount so a Studio
+ * re-booted by a layer switch lists and paints the project's tips without a
+ * new import. Built-ins never travel — both realms derive them from the
+ * compile-time constants.
+ */
+export interface PhysicPaintBrushImportRequest {
+  operationId: string;
+  fileName: string;
+  /** Base64 of the derived mask; exactly TIP_MASK_BYTES after decode (T-63-04). */
+  maskBase64: string;
+}
+
+/**
+ * Why one import was refused on the wire. The first three mirror the
+ * main-realm handler's own reasons; the last two are synthesized by the
+ * child's request when the bridge is unavailable or the bounded wait expires.
+ */
+export type PhysicPaintBrushImportFailureReason =
+  | 'bad-mask'
+  | 'bad-file-name'
+  | 'encode-failed'
+  | 'bridge-unavailable'
+  | 'timed-out';
+
+/** The import answer — correlation id plus status/identity only (T-63-04). */
+export interface PhysicPaintBrushImportResult {
+  operationId: string;
+  ok: boolean;
+  entry?: AquarelleTip;
+  reason?: PhysicPaintBrushImportFailureReason;
+}
+
+/**
+ * One custom tip in the catalog snapshot. Both byte fields are OPTIONAL so an
+ * unavailable tip (its stored asset could not be resolved) travels as an entry
+ * with neither — its id also appears in `unavailableTipIds`.
+ */
+export interface PhysicPaintBrushCatalogEntry {
+  tip: AquarelleTip;
+  maskBase64?: string;
+  webpBase64?: string;
+}
+
+/** The ONE cross-realm catalog snapshot (D-20): custom tips only, never built-ins. */
+export interface PhysicPaintBrushCatalogPayload {
+  contextId: string;
+  entries: PhysicPaintBrushCatalogEntry[];
+  unavailableTipIds: string[];
+}
+
+/** The child's read-only pull for a fresh snapshot (mount pull after a re-boot). */
+export interface PhysicPaintBrushCatalogRequest {
+  operationId: string;
+}
+
 export interface PhysicPaintReadinessState {
   ready: boolean;
   engineReady: boolean;
@@ -2863,6 +2932,121 @@ export function isPhysicPaintImageImportRequestMessage(value: unknown): value is
 
 export function isPhysicPaintImageImportResultMessage(value: unknown): value is PhysicPaintImageImportResultMessage {
   return Boolean(isRecord(value) && value.type === 'physic-paint:image-import-result' && isPhysicPaintImageImportResult(value.payload));
+}
+
+// ---------------------------------------------------------------------------
+// 63-05: brush-tip realm channels (T-63-04). Every guard is total and
+// fail-closed — a malformed member is refused before anything reaches a store.
+// ---------------------------------------------------------------------------
+
+/** Bounded caps for the brush channels: a payload over any cap is refused whole. */
+const PHYSIC_PAINT_BRUSH_FILE_NAME_MAX_LENGTH = 512;
+const PHYSIC_PAINT_BRUSH_CONTEXT_ID_MAX_LENGTH = 256;
+const PHYSIC_PAINT_BRUSH_ID_MAX_LENGTH = 256;
+const PHYSIC_PAINT_BRUSH_CATALOG_MAX_ENTRIES = 4096;
+
+/** The exact custom-tip member set — anything else is an unknown member shape. */
+const AQUARELLE_TIP_MEMBER_KEYS = [
+  'id', 'category', 'name', 'tip', 'aspect', 'rotation', 'sizeCurve',
+  'scatter', 'capacity', 'grain', 'wetRound', 'asset',
+] as const;
+
+const BRUSH_IMPORT_FAILURE_REASONS: ReadonlySet<string> = new Set<PhysicPaintBrushImportFailureReason>([
+  'bad-mask',
+  'bad-file-name',
+  'encode-failed',
+  'bridge-unavailable',
+  'timed-out',
+]);
+
+function decodeBase64OrNull(value: unknown): Uint8Array | null {
+  if (typeof value !== 'string') return null;
+  return base64ToBytes(value);
+}
+
+/**
+ * The wire shape of one custom tip: the exact member set plus the pack-side
+ * field law (`asTipRecord`, package carrier — inline carriers and foreign
+ * asset refs are refused). Category is pinned to `custom`: built-ins already
+ * exist in both realms from the compile-time constants and never travel.
+ */
+function isCustomTipWire(value: unknown): value is AquarelleTip {
+  if (!isRecord(value) || !hasOnlyKeys(value, AQUARELLE_TIP_MEMBER_KEYS)) return false;
+  const tip = asTipRecord(value, 'package');
+  return tip !== null && tip.category === 'custom';
+}
+
+/**
+ * The stored WebP must declare exactly the TIP_SIZE × TIP_SIZE frame.
+ * Structural and bounded — a VP8L header read, never a decode. `isWebpBytes`
+ * admits lossless VP8L only (the app's one stored format), so the VP8L branch
+ * is the whole surface.
+ */
+function isTipSizedBrushWebp(bytes: Uint8Array): boolean {
+  if (!isWebpBytes(bytes) || bytes.length < 25) return false;
+  if (bytes[20] !== 0x2f) return false;
+  const width = 1 + bytes[21]! + ((bytes[22]! & 0x3f) << 8);
+  const height = 1 + ((bytes[22]! >> 6) | (bytes[23]! << 2) | ((bytes[24]! & 0x0f) << 10));
+  return width === TIP_SIZE && height === TIP_SIZE;
+}
+
+export function isPhysicPaintBrushCatalogEntry(value: unknown): value is PhysicPaintBrushCatalogEntry {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['tip', 'maskBase64', 'webpBase64'])) return false;
+  if (!isCustomTipWire(value.tip)) return false;
+  if (value.maskBase64 !== undefined) {
+    const mask = decodeBase64OrNull(value.maskBase64);
+    if (mask === null || mask.length !== TIP_MASK_BYTES) return false;
+  }
+  if (value.webpBase64 !== undefined) {
+    const webp = decodeBase64OrNull(value.webpBase64);
+    if (webp === null || !isTipSizedBrushWebp(webp)) return false;
+  }
+  return true;
+}
+
+/**
+ * Fail-closed guard for the whole catalog snapshot. Any malformed member —
+ * an unknown key, a duplicate non-string id, a mask that is not exactly
+ * TIP_MASK_BYTES after decode, or a non-TIP_SIZE WebP — refuses the payload
+ * WHOLE (nothing is partially applied), and it never throws.
+ */
+export function isPhysicPaintBrushCatalogPayload(value: unknown): value is PhysicPaintBrushCatalogPayload {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['contextId', 'entries', 'unavailableTipIds'])) return false;
+  if (!isNonEmptyString(value.contextId) || value.contextId.length > PHYSIC_PAINT_BRUSH_CONTEXT_ID_MAX_LENGTH) return false;
+  if (!Array.isArray(value.entries) || value.entries.length > PHYSIC_PAINT_BRUSH_CATALOG_MAX_ENTRIES) return false;
+  if (!value.entries.every(isPhysicPaintBrushCatalogEntry)) return false;
+  if (!Array.isArray(value.unavailableTipIds) || value.unavailableTipIds.length > PHYSIC_PAINT_BRUSH_CATALOG_MAX_ENTRIES) return false;
+  if (!value.unavailableTipIds.every((id: unknown) => isNonEmptyString(id) && id.length <= PHYSIC_PAINT_BRUSH_ID_MAX_LENGTH)) return false;
+  const ids = value.entries.map((entry) => entry.tip.id);
+  return new Set(ids).size === ids.length;
+}
+
+/** The mask is decoded ONCE at the boundary: the decoded length is the law (T-63-04). */
+export function isPhysicPaintBrushImportRequest(value: unknown): value is PhysicPaintBrushImportRequest {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'fileName', 'maskBase64'])) return false;
+  if (!isBoundedOperationId(value.operationId)) return false;
+  if (!isNonEmptyString(value.fileName) || value.fileName.length > PHYSIC_PAINT_BRUSH_FILE_NAME_MAX_LENGTH) return false;
+  const mask = decodeBase64OrNull(value.maskBase64);
+  return mask !== null && mask.length === TIP_MASK_BYTES;
+}
+
+export function isPhysicPaintBrushImportResult(value: unknown): value is PhysicPaintBrushImportResult {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'entry', 'reason'])) return false;
+  if (!isBoundedOperationId(value.operationId) || typeof value.ok !== 'boolean') return false;
+  if (value.ok) {
+    return value.reason === undefined && value.entry !== undefined && isCustomTipWire(value.entry);
+  }
+  return value.entry === undefined
+    && typeof value.reason === 'string'
+    && BRUSH_IMPORT_FAILURE_REASONS.has(value.reason);
+}
+
+export function isPhysicPaintBrushCatalogRequest(value: unknown): value is PhysicPaintBrushCatalogRequest {
+  return Boolean(
+    isRecord(value) &&
+      hasOnlyKeys(value, ['operationId']) &&
+      isBoundedOperationId(value.operationId),
+  );
 }
 
 export function isPhysicPaintProjectContextLayer(value: unknown): value is PhysicPaintProjectContextLayer {

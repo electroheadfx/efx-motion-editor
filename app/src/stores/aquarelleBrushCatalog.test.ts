@@ -9,13 +9,19 @@
  *   3. `buildProjectBrushPack` covers CUSTOM entries only and returns `null`
  *      when there are none, so a project with no imports omits the key (D-10).
  *   4. Built-in ids never appear in a project pack.
+ *   5. `applyBrushCatalogPayload` populates a FRESH module instance — the
+ *      Studio realm's starting state — and REPLACES rather than appends
+ *      (63-05 / D-20): a second payload without a prior id leaves that id
+ *      unlisted and its mask unresolvable.
  *
  * Assertion style: scalar predicates (toHaveLength / toBe) so failures stay
  * one-line, matching the 63-01 corpus.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
-import { BUILTIN_TIPS, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BUILTIN_TIPS, TIP_MASK_BYTES, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { bytesToBase64 } from '../lib/webpBytes';
+import type { PhysicPaintBrushCatalogPayload } from '../types/physicPaint';
 import {
   addCustomBrushTip,
   brushCatalogGeneration,
@@ -170,5 +176,104 @@ describe('aquarelleBrushCatalog — buildProjectBrushPack (D-10)', () => {
     // the projection refuses rather than writing bytes into the manifest.
     addCustomBrushTip(customTip('wc/custom-99999999', { mask: 'AAAA' } as Partial<AquarelleTip>));
     expect(buildProjectBrushPack()).toBe(null);
+  });
+});
+
+/**
+ * Minimal well-formed lossless VP8L header declaring the given frame size —
+ * the 25 bytes `isTipSizedBrushWebp` reads. Duplicated from the 63-05 bridge
+ * suite on purpose: this file pins the STORE half with no bridge import.
+ */
+function brushWebp(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(25);
+  bytes.set([0x52, 0x49, 0x46, 0x46], 0);
+  bytes.set([0x57, 0x45, 0x42, 0x50], 8);
+  bytes.set([0x56, 0x50, 0x38, 0x4c], 12);
+  bytes[16] = 5;
+  bytes[20] = 0x2f;
+  const w = width - 1;
+  const h = height - 1;
+  bytes[21] = w & 0xff;
+  bytes[22] = ((w >> 8) & 0x3f) | ((h & 0x03) << 6);
+  bytes[23] = (h >> 2) & 0xff;
+  bytes[24] = (h >> 10) & 0x0f;
+  return bytes;
+}
+
+describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module instance (63-05 / D-20)', () => {
+  beforeEach(() => {
+    // The Studio webview is a separate JS context whose modules start empty;
+    // resetting the registry here is that starting state.
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  it('populates a fresh instance: catalog, mask, unavailable set and stored WebP', async () => {
+    const catalog = await import('./aquarelleBrushCatalog');
+    const watercolor = await import('@efxlab/efx-watercolor');
+    const assets = await import('../lib/efxPaintBrushAssets');
+
+    const mask = new Uint8Array(TIP_MASK_BYTES).fill(9);
+    const webp = brushWebp(192, 192);
+    const payload: PhysicPaintBrushCatalogPayload = {
+      contextId: 'ctx-63-05-fresh',
+      entries: [{
+        tip: customTip('wc/custom-fresh-1'),
+        maskBase64: bytesToBase64(mask),
+        webpBase64: bytesToBase64(webp),
+      }],
+      unavailableTipIds: ['wc/custom-gone'],
+    };
+
+    catalog.applyBrushCatalogPayload(payload);
+
+    expect(catalog.customBrushTips.value).toHaveLength(1);
+    expect(catalog.customBrushTips.value[0]?.id).toBe('wc/custom-fresh-1');
+    expect(catalog.listAquarelleBrushTips()).toHaveLength(4);
+    expect(catalog.resolveCatalogTip('wc/custom-fresh-1')?.id).toBe('wc/custom-fresh-1');
+
+    const resolvedMask = watercolor.resolveMask('wc/custom-fresh-1');
+    expect(resolvedMask === null).toBe(false);
+    expect(resolvedMask?.length).toBe(TIP_MASK_BYTES);
+    expect(resolvedMask).toEqual(mask);
+    // The registry replacement carries the built-ins first — a fresh
+    // instance still resolves every built-in mask.
+    expect(watercolor.resolveMask('wc/builtin-bristle') === null).toBe(false);
+
+    expect([...catalog.unavailableTipIds.value]).toEqual(['wc/custom-gone']);
+
+    const stored = assets.brushAssetBytes(DIGEST);
+    expect(stored === undefined).toBe(false);
+    expect(stored).toEqual(webp);
+  });
+
+  it('replaces rather than appends: a second payload without a prior id leaves it unlisted', async () => {
+    const catalog = await import('./aquarelleBrushCatalog');
+    const watercolor = await import('@efxlab/efx-watercolor');
+
+    const firstMask = new Uint8Array(TIP_MASK_BYTES).fill(1);
+    catalog.applyBrushCatalogPayload({
+      contextId: 'ctx-63-05-first',
+      entries: [{ tip: customTip('wc/custom-replaced-1'), maskBase64: bytesToBase64(firstMask) }],
+      unavailableTipIds: [],
+    });
+    expect(catalog.customBrushTips.value).toHaveLength(1);
+    expect(watercolor.resolveMask('wc/custom-replaced-1') === null).toBe(false);
+
+    const secondMask = new Uint8Array(TIP_MASK_BYTES).fill(2);
+    catalog.applyBrushCatalogPayload({
+      contextId: 'ctx-63-05-second',
+      entries: [{ tip: customTip('wc/custom-replaced-2'), maskBase64: bytesToBase64(secondMask) }],
+      unavailableTipIds: [],
+    });
+
+    expect(catalog.customBrushTips.value.map((tip) => tip.id)).toEqual(['wc/custom-replaced-2']);
+    expect(catalog.resolveCatalogTip('wc/custom-replaced-1')).toBe(null);
+    expect(catalog.listAquarelleBrushTips()).toHaveLength(4);
+    expect(watercolor.resolveMask('wc/custom-replaced-1')).toBe(null);
+    expect(watercolor.resolveMask('wc/custom-replaced-2')).toEqual(secondMask);
   });
 });

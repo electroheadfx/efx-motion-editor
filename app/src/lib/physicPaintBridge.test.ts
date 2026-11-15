@@ -45,6 +45,10 @@ import {
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
   buildFrameBytesToken,
   isPhysicPaintApplyResult,
+  isPhysicPaintBrushCatalogPayload,
+  isPhysicPaintBrushCatalogRequest,
+  isPhysicPaintBrushImportRequest,
+  isPhysicPaintBrushImportResult,
   isPhysicPaintRotoPhysicalEditApplyPayload,
   isPhysicPaintRotoPhysicalEditIntent,
 } from '../types/physicPaint';
@@ -8144,5 +8148,339 @@ describe('importAudio never-copy law (261009-ofk)', () => {
     expect(result!.refs[1].sourcePath).toBe(pathB);
     // Distinct gallery ids for distinct paths.
     expect(result!.refs[0].id).not.toBe(result!.refs[1].id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 63-05 (D-15 / D-20 / T-63-04): the brush-tip realm channels.
+//
+// Laws pinned here:
+//   1. The catalog payload guard is total and fail-closed: an unknown member,
+//      a non-string id, a mask that is not exactly 36,864 bytes after decode,
+//      a non-192×192 WebP or a built-in-category entry refuses the WHOLE
+//      payload, and it never throws.
+//   2. A Studio import request reaches the main realm and the answer echoes
+//      the SAME operationId, with the catalog push emitted BEFORE the answer.
+//   3. The Studio's mount pull republishes a fresh snapshot and always
+//      removes its one-shot listener (including on timeout).
+//   4. The receiver hook and both main-realm installs are wired in their
+//      production mount points.
+// ---------------------------------------------------------------------------
+
+const BRUSH_MASK_BYTES = 36_864;
+const BRUSH_DIGEST = 'd'.repeat(64);
+const BRUSH_ASSET = `brushes/${BRUSH_DIGEST}.webp`;
+
+/** Minimal well-formed lossless VP8L header declaring the given frame size. */
+function brushWebp(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(25);
+  bytes.set([0x52, 0x49, 0x46, 0x46], 0);
+  bytes.set([0x57, 0x45, 0x42, 0x50], 8);
+  bytes.set([0x56, 0x50, 0x38, 0x4c], 12);
+  bytes[16] = 5;
+  bytes[20] = 0x2f;
+  const w = width - 1;
+  const h = height - 1;
+  bytes[21] = w & 0xff;
+  bytes[22] = ((w >> 8) & 0x3f) | ((h & 0x03) << 6);
+  bytes[23] = (h >> 2) & 0xff;
+  bytes[24] = (h >> 10) & 0x0f;
+  return bytes;
+}
+
+function brushWireTip(id: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id,
+    category: 'custom',
+    name: `Tip ${id}`,
+    tip: 1,
+    aspect: 1,
+    rotation: 1,
+    sizeCurve: 1,
+    scatter: 1,
+    capacity: 1,
+    grain: 1,
+    wetRound: 1,
+    asset: BRUSH_ASSET,
+    ...overrides,
+  };
+}
+
+function brushCatalogPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    contextId: 'ctx-63-05',
+    entries: [{
+      tip: brushWireTip('wc/custom-wire-1'),
+      maskBase64: bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES).fill(4)),
+      webpBase64: bytesToBase64(brushWebp(192, 192)),
+    }],
+    unavailableTipIds: ['wc/custom-gone'],
+    ...overrides,
+  };
+}
+
+function installBridgeWindow(): void {
+  Object.defineProperty(globalThis, 'window', {
+    value: {
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      location: { origin: 'http://localhost:1420' },
+      // Delegate at CALL time so vi.useFakeTimers() governs the bridge waits.
+      setTimeout: (handler: () => void, timeout: number) => setTimeout(handler, timeout),
+      clearTimeout: (handle: ReturnType<typeof setTimeout>) => clearTimeout(handle),
+    },
+    writable: true,
+    configurable: true,
+  });
+}
+
+/**
+ * Mark this window as a Tauri runtime (the transport branch under test). The
+ * `invoke` stub is not used by the code paths here — the event module is
+ * mocked per test — but a prior suite's `projectStore.closeProject()` leaves
+ * an async script-library publish in flight, and if that lands while this
+ * window is installed it must not reject on a missing `invoke`.
+ */
+function markTauriRuntime(): void {
+  Object.defineProperty(window, '__TAURI_INTERNALS__', {
+    value: { invoke: vi.fn(async () => undefined) },
+    configurable: true,
+  });
+}
+
+describe('63-05 brush-tip realm channels', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.doUnmock('@tauri-apps/api/event');
+    vi.doUnmock('./ipc');
+    vi.resetModules();
+    Object.defineProperty(globalThis, 'window', { value: originalWindow, writable: true, configurable: true });
+  });
+
+  describe('catalog payload guard (T-63-04)', () => {
+    it('accepts a well-formed custom snapshot and an unavailable entry with neither byte field', () => {
+      const payload = brushCatalogPayload({
+        entries: [
+          { tip: brushWireTip('wc/custom-wire-1'), maskBase64: bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES)), webpBase64: bytesToBase64(brushWebp(192, 192)) },
+          { tip: brushWireTip('wc/custom-wire-2') },
+        ],
+      });
+      expect(isPhysicPaintBrushCatalogPayload(payload)).toBe(true);
+    });
+
+    it('refuses an unknown member shape', () => {
+      expect(isPhysicPaintBrushCatalogPayload(brushCatalogPayload({ extra: true }))).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload({
+        entries: [{ tip: brushWireTip('wc/custom-wire-1', { mask: 'AAAA' }) }],
+      })).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload({
+        contextId: 'ctx',
+        entries: [{ tip: brushWireTip('wc/custom-wire-1'), bytes: 'AAAA' }],
+        unavailableTipIds: [],
+      })).toBe(false);
+    });
+
+    it('refuses a non-string id and a non-custom category', () => {
+      expect(isPhysicPaintBrushCatalogPayload({
+        contextId: 'ctx',
+        entries: [{ tip: brushWireTip('wc/custom-wire-1', { id: 7 }) }],
+        unavailableTipIds: [],
+      })).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload({
+        contextId: 'ctx',
+        entries: [{ tip: brushWireTip('wc/round-1', { category: 'round' }) }],
+        unavailableTipIds: [],
+      })).toBe(false);
+    });
+
+    it('refuses a mask that is not exactly 36,864 bytes after decode', () => {
+      expect(isPhysicPaintBrushCatalogPayload({
+        contextId: 'ctx',
+        entries: [{ tip: brushWireTip('wc/custom-wire-1'), maskBase64: bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES - 1)) }],
+        unavailableTipIds: [],
+      })).toBe(false);
+    });
+
+    it('refuses a non-192×192 WebP', () => {
+      expect(isPhysicPaintBrushCatalogPayload({
+        contextId: 'ctx',
+        entries: [{ tip: brushWireTip('wc/custom-wire-1'), webpBase64: bytesToBase64(brushWebp(100, 192)) }],
+        unavailableTipIds: [],
+      })).toBe(false);
+    });
+
+    it('refuses duplicate ids and never throws on foreign input', () => {
+      expect(isPhysicPaintBrushCatalogPayload({
+        contextId: 'ctx',
+        entries: [{ tip: brushWireTip('wc/custom-wire-1') }, { tip: brushWireTip('wc/custom-wire-1') }],
+        unavailableTipIds: [],
+      })).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload(null)).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload('garbage')).toBe(false);
+    });
+
+    it('pins the import request, result and catalog-request shapes', () => {
+      const mask = bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES));
+      expect(isPhysicPaintBrushImportRequest({ operationId: 'op-1', fileName: 'stamp.png', maskBase64: mask })).toBe(true);
+      expect(isPhysicPaintBrushImportRequest({ operationId: 'op-1', fileName: 'stamp.png', maskBase64: bytesToBase64(new Uint8Array(8)) })).toBe(false);
+      expect(isPhysicPaintBrushImportRequest({ operationId: 'op-1', fileName: 'stamp.png', maskBase64: mask, projectDir: '/tmp' })).toBe(false);
+      expect(isPhysicPaintBrushCatalogRequest({ operationId: 'op-2' })).toBe(true);
+      expect(isPhysicPaintBrushCatalogRequest({ operationId: 'op-2', scriptScope: 'all' })).toBe(false);
+      expect(isPhysicPaintBrushImportResult({ operationId: 'op-1', ok: true, entry: brushWireTip('wc/custom-wire-1') })).toBe(true);
+      expect(isPhysicPaintBrushImportResult({ operationId: 'op-1', ok: true })).toBe(false);
+      expect(isPhysicPaintBrushImportResult({ operationId: 'op-1', ok: false, reason: 'bad-mask' })).toBe(true);
+      expect(isPhysicPaintBrushImportResult({ operationId: 'op-1', ok: false, reason: 'not-a-reason' })).toBe(false);
+    });
+  });
+
+  describe('import round trip through the main realm', () => {
+    it('answers with the same operationId and publishes the catalog before the answer', async () => {
+      vi.resetModules();
+      const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
+      const emits: Array<{ target: string; event: string; payload: unknown }> = [];
+      const emitTo = vi.fn(async (target: string, event: string, payload: unknown) => {
+        emits.push({ target, event, payload });
+        await handlers.get(event)?.({ payload });
+      });
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async (event: string, cb: (event: { payload: unknown }) => unknown) => {
+          handlers.set(event, cb);
+          return () => { handlers.delete(event); };
+        }),
+        emitTo,
+      }));
+      vi.doMock('./ipc', async (importOriginal) => {
+        const actual = await importOriginal<Record<string, unknown>>();
+        return { ...actual, ipcEfxPaintEncodeBrushMask: vi.fn(async () => ({ ok: true, data: { webp: brushWebp(192, 192), digest: BRUSH_DIGEST, width: 192, height: 192 } })) };
+      });
+      installBridgeWindow();
+      markTauriRuntime();
+
+      const bridge = await import('./physicPaintBridge');
+      const catalog = await import('../stores/aquarelleBrushCatalog');
+      const assets = await import('../lib/efxPaintBrushAssets');
+      expect(catalog.customBrushTips.peek()).toHaveLength(0);
+
+      const cleanup = await bridge.installPhysicPaintBrushImportListener();
+      const result = await bridge.requestPhysicPaintBrushImport(new Uint8Array(BRUSH_MASK_BYTES).fill(7), 'stamp.png');
+      cleanup();
+
+      expect(result.ok).toBe(true);
+      expect(result.entry?.name).toBe('stamp.png');
+      // Scope to this channel: a prior suite's in-flight project-context
+      // publish (projectStore.closeProject leaves one) can land in the ledger
+      // and must not shift the brush ordering under test.
+      const brushEmits = emits.filter((entry) => entry.event.startsWith('physic-paint:brush-'));
+      const request = brushEmits[0] as { target: string; event: string; payload: { operationId: string } };
+      expect(request.target).toBe('main');
+      expect(request.event).toBe(bridge.PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT);
+      expect(request.payload.operationId).toBe(result.operationId);
+      // Publish BEFORE answer.
+      expect(brushEmits.map((entry) => entry.event)).toEqual([
+        bridge.PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT,
+        bridge.PHYSIC_PAINT_BRUSH_CATALOG_EVENT,
+        bridge.PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT,
+      ]);
+      // The push carries the custom entry only, with no external path.
+      const pushed = brushEmits[1]!.payload as { entries: Array<{ tip: { id: string; category: string; asset: string }; maskBase64: string }>; unavailableTipIds: string[] };
+      expect(isPhysicPaintBrushCatalogPayload(pushed)).toBe(true);
+      expect(pushed.entries).toHaveLength(1);
+      expect(pushed.entries[0]!.tip.id).toBe(result.entry!.id);
+      expect(pushed.entries[0]!.tip.category).toBe('custom');
+      expect(pushed.entries[0]!.tip.asset).toBe(BRUSH_ASSET);
+      expect(pushed.entries[0]!.maskBase64.length > 0).toBe(true);
+      // The main realm mutated too.
+      expect(catalog.customBrushTips.peek()).toHaveLength(1);
+      expect(assets.brushAssetBytes(BRUSH_DIGEST)).toEqual(brushWebp(192, 192));
+    });
+
+    it('drops a malformed request without publishing or mutating', async () => {
+      vi.resetModules();
+      const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
+      const emitTo = vi.fn(async () => undefined);
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async (event: string, cb: (event: { payload: unknown }) => unknown) => {
+          handlers.set(event, cb);
+          return () => { handlers.delete(event); };
+        }),
+        emitTo,
+      }));
+      installBridgeWindow();
+      markTauriRuntime();
+
+      const bridge = await import('./physicPaintBridge');
+      const catalog = await import('../stores/aquarelleBrushCatalog');
+      const cleanup = await bridge.installPhysicPaintBrushImportListener();
+      await handlers.get(bridge.PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT)?.({ payload: { operationId: 'op-bad', fileName: 'x.png', maskBase64: 'AAAA' } });
+      cleanup();
+
+      expect(emitTo).not.toHaveBeenCalled();
+      expect(catalog.customBrushTips.peek()).toHaveLength(0);
+    });
+  });
+
+  describe('catalog pull', () => {
+    it('resolves on a fresh snapshot and removes its listener', async () => {
+      vi.resetModules();
+      const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
+      const emits: string[] = [];
+      let unlisten: (() => void) | undefined;
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async (event: string, cb: (event: { payload: unknown }) => unknown) => {
+          handlers.set(event, cb);
+          unlisten = () => { handlers.delete(event); };
+          return unlisten;
+        }),
+        emitTo: vi.fn(async (_target: string, event: string, payload: unknown) => {
+          emits.push(event);
+          await handlers.get(event)?.({ payload });
+        }),
+      }));
+      installBridgeWindow();
+      markTauriRuntime();
+
+      const bridge = await import('./physicPaintBridge');
+      const cleanup = await bridge.installPhysicPaintBrushCatalogRequestListener();
+      await bridge.requestPhysicPaintBrushCatalog();
+      cleanup();
+
+      expect(emits.filter((event) => event.startsWith('physic-paint:brush-'))).toEqual([
+        bridge.PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT,
+        bridge.PHYSIC_PAINT_BRUSH_CATALOG_EVENT,
+      ]);
+    });
+
+    it('removes its one-shot listener when no receiver answers (bounded wait)', async () => {
+      vi.resetModules();
+      const unlisten = vi.fn();
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async () => unlisten),
+        emitTo: vi.fn(async () => undefined),
+      }));
+      installBridgeWindow();
+      markTauriRuntime();
+      vi.useFakeTimers();
+
+      const bridge = await import('./physicPaintBridge');
+      const pending = bridge.requestPhysicPaintBrushCatalog();
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await pending;
+
+      expect(unlisten).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('wires the receiver hook and both main-realm installs in their production mount points', () => {
+    const launch = readFileSync(fileURLToPath(new URL('../components/physic-paint/hooks/usePhysicsPaintLaunchIntegration.ts', import.meta.url)), 'utf8');
+    const hook = readFileSync(fileURLToPath(new URL('../components/physic-paint/bridge/usePhysicsPaintParentBridge.ts', import.meta.url)), 'utf8');
+    const main = readFileSync(fileURLToPath(new URL('../main.tsx', import.meta.url)), 'utf8');
+    expect(launch).toContain('usePhysicsPaintBrushCatalogBridge()');
+    expect(hook).toContain('void requestPhysicPaintBrushCatalog();');
+    expect(hook).toContain('applyBrushCatalogPayload(value)');
+    expect(main).toContain('installPhysicPaintBrushImportListener()');
+    expect(main).toContain('installPhysicPaintBrushCatalogRequestListener()');
   });
 });

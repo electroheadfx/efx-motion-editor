@@ -1,9 +1,9 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintDocumentAudioClipRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRailMotionMergeNotice, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
-import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
+import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintBrushImportResult, PhysicPaintDocumentAudioClipRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRailMotionMergeNotice, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintBrushCatalogPayload, isPhysicPaintBrushCatalogRequest, isPhysicPaintBrushImportRequest, isPhysicPaintBrushImportResult, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import { base64ToBytes, base64ToWebpBytes, bytesToBase64, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
 import { buildBytesPayload } from './efxPaintMediaMaterialize';
 import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import type { MceImageRef } from '../types/project';
@@ -75,6 +75,8 @@ import {
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
+import { buildBrushCatalogPayload } from '../stores/aquarelleBrushCatalog';
+import { applyBrushImportRequest } from './efxPaintBrushImport';
 import { imageStore } from '../stores/imageStore';
 import { tempProjectDir } from './projectDir';
 import { fxTrackLayouts, resolveSequenceTimelineRange, trackLayouts } from './frameMap';
@@ -145,6 +147,28 @@ export const PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT = 'physic-paint:image-libra
  */
 export const PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT = 'physic-paint:image-import-request';
 export const PHYSIC_PAINT_IMAGE_IMPORT_RESULT_EVENT = 'physic-paint:image-import-result';
+/**
+ * 63-05 (D-15): child→main brush-tip import request/result pair. The Studio
+ * decodes the picked file and derives the 36,864-byte mask, then names the
+ * mask and the file; the MAIN realm — the one that owns the project, the
+ * catalog, the registry and the asset bytes — encodes, registers, mutates and
+ * answers with the entry. Same correlation and bounded-wait discipline as the
+ * image-import pair above.
+ */
+export const PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT = 'physic-paint:brush-import-request';
+export const PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT = 'physic-paint:brush-import-result';
+/**
+ * 63-05 (D-20): main→Studio catalog snapshot push, plus the child's read-only
+ * pull. The Studio is a fresh realm after every layer switch, so the push
+ * mirrors the project-context channel: the main realm publishes the whole
+ * snapshot, and the mounted receiver pulls once. The pull writes NOTHING in
+ * the main realm — it is a republish, exactly like the project-context pull.
+ */
+export const PHYSIC_PAINT_BRUSH_CATALOG_EVENT = 'physic-paint:brush-catalog';
+export const PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT = 'physic-paint:brush-catalog-request';
+/** Bounded waits: a missing receiver never hangs a Studio request. */
+const PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_TIMEOUT_MS = 15_000;
+const PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_TIMEOUT_MS = 5_000;
 /**
  * 52.2-10 (D-12): main→Studio frame-media request. With the document crossing
  * reference-shaped, the main window is the receiving side of the digest-keyed
@@ -3095,6 +3119,182 @@ export async function installPhysicPaintImageImportListener(): Promise<() => voi
   window.addEventListener(PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT, custom);
   window.addEventListener('message', message);
   return () => { window.removeEventListener(PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT, custom); window.removeEventListener('message', message); };
+}
+
+/**
+ * 63-05 (D-15): consumer-side entry point for the STUDIO realm's import
+ * surface. Self-contained in the requestImageImport shape (listen → 15s
+ * bounded wait → emitTo('main') → await), validating the answer with the wire
+ * guard AND correlating on operationId so a forged/foreign result is dropped
+ * (T-63-04). Only the derived mask and the file name travel — the child never
+ * names a project path, a digest or an id.
+ */
+export async function requestPhysicPaintBrushImport(
+  mask: Uint8Array,
+  fileName: string,
+): Promise<PhysicPaintBrushImportResult> {
+  const eventApi = await import('@tauri-apps/api/event');
+  const operationId = `physics-paint-brush-import-${Date.now()}-${crypto.randomUUID()}`;
+  if (typeof eventApi.emitTo !== 'function' || typeof eventApi.listen !== 'function') {
+    return { operationId, ok: false, reason: 'bridge-unavailable' };
+  }
+  let timeout = 0;
+  let unlisten: (() => void) | undefined;
+  try {
+    let resolveResult: (result: PhysicPaintBrushImportResult) => void = () => {};
+    const resultPromise = new Promise<PhysicPaintBrushImportResult>((resolve) => { resolveResult = resolve; });
+    unlisten = await eventApi.listen(PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT, (event) => {
+      if (!isPhysicPaintBrushImportResult(event.payload) || event.payload.operationId !== operationId) return;
+      resolveResult(event.payload);
+    });
+    timeout = window.setTimeout(() => resolveResult({ operationId, ok: false, reason: 'timed-out' }), PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_TIMEOUT_MS);
+    await eventApi.emitTo('main', PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT, {
+      operationId,
+      fileName,
+      maskBase64: bytesToBase64(mask),
+    });
+    return await resultPromise;
+  } finally {
+    if (timeout) window.clearTimeout(timeout);
+    unlisten?.();
+  }
+}
+
+/**
+ * 63-05 (D-15 / T-63-04): MAIN-realm installer for the Studio's brush-import
+ * request. Mirrors `installPhysicPaintImageImportListener` exactly: Tauri
+ * `listen` + CustomEvent + origin-checked `postMessage`, a fail-closed wire
+ * guard (a malformed request mutates nothing and publishes nothing), and the
+ * total handler `applyBrushImportRequest`. THIS is where the handler's
+ * injected publish port meets the real publisher, so the catalog snapshot
+ * carrying the new entry reaches the Studio ahead of the result event.
+ */
+export async function installPhysicPaintBrushImportListener(): Promise<() => void> {
+  const applyRequest = async (value: unknown): Promise<PhysicPaintBrushImportResult | null> => {
+    if (!isPhysicPaintBrushImportRequest(value)) return null;
+    let mask: Uint8Array;
+    try {
+      mask = base64ToBytes(value.maskBase64);
+    } catch {
+      return { operationId: value.operationId, ok: false, reason: 'bad-mask' };
+    }
+    const result = await applyBrushImportRequest(
+      { operationId: value.operationId, fileName: value.fileName, mask },
+      { publishCatalog: publishPhysicPaintBrushCatalog },
+    );
+    return { operationId: value.operationId, ...result };
+  };
+  const emitResult = async (result: PhysicPaintBrushImportResult, source?: Pick<Window, 'postMessage'> | null) => {
+    if (isTauriRuntime()) {
+      const eventApi = await import('@tauri-apps/api/event');
+      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT, result);
+    }
+    if (typeof window !== 'undefined') {
+      const message = { type: PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT, payload: result };
+      window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT, { detail: result }));
+      source?.postMessage?.(message, window.location.origin);
+      window.opener?.postMessage?.(message, window.location.origin);
+    }
+  };
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    const unlisten = await eventApi.listen?.(PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT, async (event) => {
+      const result = await applyRequest(event.payload);
+      if (result) await emitResult(result);
+    });
+    if (unlisten) return unlisten;
+  }
+  if (typeof window === 'undefined') return () => {};
+  const custom = (event: Event) => {
+    void applyRequest((event as CustomEvent).detail).then((result) => { if (result) void emitResult(result); });
+  };
+  const message = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || !event.data || event.data.type !== PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT) return;
+    const source = event.source && 'postMessage' in event.source ? event.source as Pick<Window, 'postMessage'> : undefined;
+    void applyRequest(event.data.payload).then((result) => { if (result) void emitResult(result, source); });
+  };
+  window.addEventListener(PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT, custom);
+  window.addEventListener('message', message);
+  return () => { window.removeEventListener(PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT, custom); window.removeEventListener('message', message); };
+}
+
+/**
+ * 63-05 (D-20): MAIN-realm publisher of the whole brush-catalog snapshot —
+ * custom tips with their masks and stored WebP bytes. Same triple transport as
+ * `publishPhysicPaintProjectContext` (Tauri `emitTo` window-label + CustomEvent
+ * + opener.postMessage fallbacks). Called after every import and on every
+ * Studio pull; never broadcasts with a bare `emit` (T-41-08).
+ */
+export async function publishPhysicPaintBrushCatalog(): Promise<void> {
+  const payload = buildBrushCatalogPayload(projectStore.projectContextId.peek());
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_BRUSH_CATALOG_EVENT, payload);
+  }
+  if (typeof window !== 'undefined') {
+    const message = { type: PHYSIC_PAINT_BRUSH_CATALOG_EVENT, payload };
+    window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_BRUSH_CATALOG_EVENT, { detail: payload }));
+    window.opener?.postMessage?.(message, window.location.origin);
+  }
+}
+
+/**
+ * 63-05 (D-20): STUDIO-side PULL half of the catalog channel. The child
+ * webview is re-booted on every layer switch, so its stores start empty and
+ * the publisher only fires after an import — a Studio opened later must ask.
+ * Self-contained in the project-context pull shape (one-shot listen → bounded
+ * wait → emitTo('main') → await); it writes NOTHING in the main realm, never
+ * throws, and the one-shot listener is always removed.
+ */
+export async function requestPhysicPaintBrushCatalog(): Promise<void> {
+  const eventApi = await import('@tauri-apps/api/event');
+  if (typeof eventApi.emitTo !== 'function' || typeof eventApi.listen !== 'function') return;
+  const operationId = `physics-paint-brush-catalog-${Date.now()}-${crypto.randomUUID()}`;
+  let timeout = 0;
+  let unlisten: (() => void) | undefined;
+  try {
+    let resolveReceived: () => void = () => {};
+    const received = new Promise<void>((resolve) => { resolveReceived = resolve; });
+    unlisten = await eventApi.listen(PHYSIC_PAINT_BRUSH_CATALOG_EVENT, (event) => {
+      if (isPhysicPaintBrushCatalogPayload(event.payload)) resolveReceived();
+    });
+    timeout = window.setTimeout(resolveReceived, PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_TIMEOUT_MS);
+    await eventApi.emitTo('main', PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT, { operationId });
+    await received;
+  } catch (error) {
+    console.warn('[physicPaintBridge] Brush catalog request failed', error);
+  } finally {
+    if (timeout) window.clearTimeout(timeout);
+    unlisten?.();
+  }
+}
+
+/**
+ * 63-05 (D-20): MAIN-window installer for the child's catalog pull. Same
+ * triple-transport discipline as the sibling installers and the same
+ * fail-closed contract: a malformed request publishes nothing, and an
+ * accepted one is a READ-ONLY republish — the main realm's catalog state is
+ * never written by a pull.
+ */
+export async function installPhysicPaintBrushCatalogRequestListener(): Promise<() => void> {
+  const applyRequest = async (value: unknown): Promise<void> => {
+    if (!isPhysicPaintBrushCatalogRequest(value)) return;
+    await publishPhysicPaintBrushCatalog();
+  };
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    const unlisten = await eventApi.listen?.(PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT, (event) => { void applyRequest(event.payload); });
+    if (unlisten) return unlisten;
+  }
+  if (typeof window === 'undefined') return () => {};
+  const custom = (event: Event) => { void applyRequest((event as CustomEvent).detail); };
+  const message = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || !event.data || event.data.type !== PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT) return;
+    void applyRequest(event.data.payload);
+  };
+  window.addEventListener(PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT, custom);
+  window.addEventListener('message', message);
+  return () => { window.removeEventListener(PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT, custom); window.removeEventListener('message', message); };
 }
 
 export async function publishPhysicPaintProjectContext(): Promise<void> {

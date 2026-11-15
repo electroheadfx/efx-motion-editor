@@ -36,8 +36,19 @@
  */
 
 import { batch, computed, signal, type ReadonlySignal } from '@preact/signals';
-import { BUILTIN_TIPS, buildBrushPackSnapshot, type AquarelleTip } from '@efxlab/efx-watercolor';
+import {
+  BUILTIN_TIP_MASKS,
+  BUILTIN_TIPS,
+  TIP_MASK_BYTES,
+  buildBrushPackSnapshot,
+  replaceMaskRegistry,
+  resolveMask,
+  type AquarelleTip,
+} from '@efxlab/efx-watercolor';
 import type { MceBrushPackSnapshot } from '../types/project';
+import type { PhysicPaintBrushCatalogPayload } from '../types/physicPaint';
+import { brushAssetBytes, brushAssetDigestFromPath, rememberBrushAsset } from '../lib/efxPaintBrushAssets';
+import { base64ToBytes, bytesToBase64 } from '../lib/webpBytes';
 
 /** The imported tips of the open project (empty on a project with no imports). */
 const customBrushTipsSignal = signal<readonly AquarelleTip[]>([]);
@@ -160,4 +171,95 @@ export function buildProjectBrushPack(): MceBrushPackSnapshot | null {
   const snapshot = buildBrushPackSnapshot(customs);
   if (snapshot === null) return null;
   return { kind: snapshot.kind, entries: [...snapshot.entries] };
+}
+
+// ---------------------------------------------------------------------------
+// 63-05 (D-20 / T-63-04): the cross-realm catalog snapshot.
+//
+// The Studio webview is a separate JS context whose module instances start
+// empty and are re-created on every layer switch, so a push to the window
+// cannot update its stores. The catalog therefore travels as ONE full
+// snapshot: the main realm builds it here, and the Studio applies it into its
+// OWN `aquarelleBrushCatalog`, `maskRegistry` and `efxPaintBrushAssets`
+// instances with `applyBrushCatalogPayload`. Building and applying live next
+// to the store they read/write so the two halves cannot drift; the payload
+// type itself is a leaf type import (erased at build time), never a cycle.
+// ---------------------------------------------------------------------------
+
+/**
+ * The MAIN realm's snapshot of the open project's custom tips. Each entry
+ * carries its decoded mask and its stored WebP bytes when this realm has
+ * them; an unavailable tip travels with neither (its id also rides
+ * `unavailableTipIds`). Built-ins never travel — both realms derive them from
+ * `BUILTIN_TIPS` / `BUILTIN_TIP_MASKS`.
+ */
+export function buildBrushCatalogPayload(contextId: string): PhysicPaintBrushCatalogPayload {
+  const entries = customBrushTipsSignal.value.map((tip) => {
+    const mask = resolveMask(tip.id);
+    const digest = brushAssetDigestFromPath(tip.asset);
+    const webp = digest === null ? undefined : brushAssetBytes(digest);
+    return {
+      tip: { ...tip },
+      ...(mask === null ? {} : { maskBase64: bytesToBase64(mask) }),
+      ...(webp === undefined ? {} : { webpBase64: bytesToBase64(webp) }),
+    };
+  });
+  return {
+    contextId,
+    entries,
+    unavailableTipIds: [...unavailableTipIdsSignal.value],
+  };
+}
+
+function decodeBase64OrNull(value: string): Uint8Array | null {
+  try {
+    return base64ToBytes(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The STUDIO realm's one application path: replace this realm's customs, mask
+ * registry (built-ins first, then the payload's decoded masks), unavailable
+ * set and remembered asset bytes, then let the setters bump
+ * `brushCatalogGeneration` for every real change. Replace-only by
+ * construction — a second payload without a prior id leaves that id
+ * unresolvable and unlisted. Never appends, never throws on one bad entry
+ * (the wire guard refuses a malformed payload whole; this defensive branch
+ * degrades a single undecodable mask to unavailable instead).
+ */
+export function applyBrushCatalogPayload(payload: PhysicPaintBrushCatalogPayload): void {
+  const entries: AquarelleTip[] = [];
+  const masks: { id: string; mask: Uint8Array }[] = [...BUILTIN_TIP_MASKS];
+  const unavailable = new Set<string>(payload.unavailableTipIds);
+  for (const entry of payload.entries) {
+    const tip = { ...entry.tip };
+    entries.push(tip);
+    if (entry.maskBase64 !== undefined) {
+      const mask = decodeBase64OrNull(entry.maskBase64);
+      if (mask !== null && mask.length === TIP_MASK_BYTES) {
+        masks.push({ id: tip.id, mask });
+      } else {
+        unavailable.add(tip.id);
+      }
+    }
+    if (entry.webpBase64 !== undefined) {
+      const digest = brushAssetDigestFromPath(tip.asset);
+      const webp = decodeBase64OrNull(entry.webpBase64);
+      if (digest !== null && webp !== null) {
+        try {
+          rememberBrushAsset(digest, webp);
+        } catch {
+          // A conflicting body under the same digest is refused loudly by the
+          // asset cache; the already-remembered bytes stay authoritative.
+        }
+      }
+    }
+  }
+  batch(() => {
+    replaceCustomBrushTips(entries);
+    replaceMaskRegistry(masks);
+    replaceUnavailableTipIds([...unavailable]);
+  });
 }

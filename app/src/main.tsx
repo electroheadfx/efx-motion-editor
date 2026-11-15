@@ -17,7 +17,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageImportListener, installPhysicPaintImageLibraryListener, installPhysicPaintProjectContextRequestListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintBrushCatalogRequestListener, installPhysicPaintBrushImportListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageImportListener, installPhysicPaintImageLibraryListener, installPhysicPaintProjectContextRequestListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
 import {installPhysicPaintDraftModeListener} from './lib/physicPaintDraftMode';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
 import {shouldReloadPaintWindow} from './lib/paintWindowWatchdog';
@@ -141,6 +141,19 @@ if (window.location.pathname === '/physics-paint') {
     // stored scope through this installer. Without it the pull has no receiver
     // and the scope stays All with snapshotted provenance.
     await installPhysicPaintProjectContextRequestListener();
+    // 63-05 (D-15): the main webview PERFORMS the Studio's brush-tip imports.
+    // The child decodes the file and derives the mask only; this realm — which
+    // owns projectStore, the catalog, the engine registry and the stored asset
+    // bytes — encodes, registers, adds the entry, marks the project dirty and
+    // answers with the entry. Without this install the child's request has no
+    // receiver and every import times out. Main window only.
+    await installPhysicPaintBrushImportListener();
+    // 63-05 (D-20): the main webview also answers the Studio's brush-catalog
+    // pull. The Studio webview is re-booted on every layer switch and its
+    // catalog/mask/asset modules start empty, so its receiver pulls a fresh
+    // snapshot after every mount; this installer republishes one. A pull is
+    // read-only in this realm. Main window only; app-lifetime install.
+    await installPhysicPaintBrushCatalogRequestListener();
     // Route physic-paint:seek-frame navigation events from the standalone
     // Physics Paint window to the editor timeline. Awaited install like the
     // sibling bridge installs above; the discarded cleanup handle matches the

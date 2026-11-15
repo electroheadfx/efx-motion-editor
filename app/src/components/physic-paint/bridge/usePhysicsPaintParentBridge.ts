@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintProjectContext, PhysicPaintProjectContextLayer, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_ID_LENGTH, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH, isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, requestPhysicPaintProjectContext } from '../../../lib/physicPaintBridge';
+import { PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_ID_LENGTH, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH, isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintBrushCatalogPayload, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, PHYSIC_PAINT_BRUSH_CATALOG_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, requestPhysicPaintBrushCatalog, requestPhysicPaintProjectContext } from '../../../lib/physicPaintBridge';
+import { applyBrushCatalogPayload } from '../../../stores/aquarelleBrushCatalog';
 import { fromTransportPayload, isWebpBytes } from '../../../lib/webpBytes';
 
 export type PhysicsPaintBridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
@@ -199,6 +200,35 @@ export function usePhysicsPaintProjectContextBridge(handleProject: (project: Phy
     // child's default.
     void requestPhysicPaintProjectContext();
     return () => { disposed = true; unlisten?.(); window.removeEventListener(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, custom); window.removeEventListener('message', message); };
+  }, []);
+}
+
+/**
+ * 63-05 (D-20): child-realm receiver for the main realm's brush-catalog
+ * snapshot — same triple-transport + disposed-guard idiom as
+ * `usePhysicsPaintProjectContextBridge`. Every accepted payload is applied
+ * through `applyBrushCatalogPayload` into THIS realm's module instances
+ * (`aquarelleBrushCatalog`, `maskRegistry`, `efxPaintBrushAssets`), which is
+ * what makes the painted tips, the engine masks and the stored WebP bytes
+ * exist in the Studio webview. The mount pull is load-bearing: the child is
+ * navigated on every layer switch, so without it a Studio opened after the
+ * project bind (and after earlier imports) renders an empty catalog. NO
+ * handler argument — the application path is fixed, never caller-shaped.
+ */
+export function usePhysicsPaintBrushCatalogBridge(): void {
+  useEffect(() => {
+    let disposed = false; let unlisten: (() => void) | undefined;
+    const accept = (value: unknown) => { if (isPhysicPaintBrushCatalogPayload(value)) applyBrushCatalogPayload(value); };
+    const custom = (event: Event) => accept((event as CustomEvent).detail);
+    const message = (event: MessageEvent) => { if (event.origin === window.location.origin && event.data?.type === PHYSIC_PAINT_BRUSH_CATALOG_EVENT) accept(event.data.payload); };
+    window.addEventListener(PHYSIC_PAINT_BRUSH_CATALOG_EVENT, custom);
+    window.addEventListener('message', message);
+    void import('@tauri-apps/api/event').then(async (eventApi) => {
+      unlisten = await eventApi.listen?.(PHYSIC_PAINT_BRUSH_CATALOG_EVENT, (event) => accept(event.payload));
+      if (disposed) unlisten?.();
+    }).catch(() => undefined);
+    void requestPhysicPaintBrushCatalog();
+    return () => { disposed = true; unlisten?.(); window.removeEventListener(PHYSIC_PAINT_BRUSH_CATALOG_EVENT, custom); window.removeEventListener('message', message); };
   }, []);
 }
 

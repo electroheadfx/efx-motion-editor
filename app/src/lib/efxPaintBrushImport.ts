@@ -61,8 +61,13 @@ export interface EfxPaintBrushImportRequest {
 
 /** The ports one handler run needs. Task 3 supplies the real publisher. */
 export interface EfxPaintBrushImportPorts {
-  /** Publish the whole catalog snapshot; called AFTER the mutation, BEFORE the answer. */
-  readonly publishCatalog: () => void;
+  /**
+   * Publish the whole catalog snapshot; called AFTER the mutation, BEFORE the
+   * answer. Awaited when it returns a promise so the real publisher's
+   * `emitTo` completes ahead of the result event (the transport ordering the
+   * Studio depends on).
+   */
+  readonly publishCatalog: () => void | Promise<void>;
 }
 
 /** Why one import was refused. `encode-failed` covers any native encode error. */
@@ -138,8 +143,9 @@ export async function applyBrushImportRequest(
     projectStore.markDirty();
   });
 
-  // Publish BEFORE answering: the push is how the Studio gets the entry.
-  ports.publishCatalog();
+  // Publish BEFORE answering: the push is how the Studio gets the entry, so
+  // it must reach the child ahead of the result event.
+  await ports.publishCatalog();
 
   return { ok: true, entry };
 }
