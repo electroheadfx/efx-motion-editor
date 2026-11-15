@@ -61,6 +61,20 @@ created: "2026-11-15"
 | 63-08.2 | 08 | 7 | TIP-14 | T-63-23 | Per-entry isolation; script masks are registry-only | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/roto/physicsPaintRotoScriptLibrary.test.ts` | ✅ | ✅ green |
 | 63-09.1 | 09 | 2 | TIP-16 | T-63-13 | Copy re-validated through bound path + SHA-256 stem | Rust | `cargo test fresh_profile` (app/src-tauri) | ✅ | ✅ green |
 | 63-09.2 | 09 | 2 | TIP-16 | T-63-24 | New project never creates an empty brushes tree | Rust | `cargo test create_project_dir` (app/src-tauri) | ✅ | ✅ green |
+| 63-10.1 | 10 | 1 | TIP-11, TIP-12, TIP-17 | T-63-25 | Catalog channel halves agree; one admission law for project tips | unit | `pnpm --filter efx-motion-editor exec vitest run src/stores/aquarelleBrushCatalog.test.ts` | ✅ | ✅ green |
+| 63-10.2 | 10 | 1 | TIP-15, TIP-17 | T-63-26 | Wire guards are total; no throw escapes the bridge | unit | `pnpm --filter efx-motion-editor exec vitest run src/lib/physicPaintBridge.test.ts` | ✅ | ✅ green |
+| 63-10.3 | 10 | 1 | TIP-16, TIP-17 | T-63-27 | A bad tip no longer erases the project brush pack | unit | `pnpm --filter efx-motion-editor exec vitest run src/stores/aquarelleBrushCatalog.test.ts` | ✅ | ✅ green |
+| 63-11.1 | 11 | 2 | TIP-07 | T-63-28 | Catalog sync flag records an applied payload | unit | `pnpm --filter efx-motion-editor exec vitest run src/stores/aquarelleBrushCatalog.test.ts` | ✅ | ✅ green |
+| 63-11.2 | 11 | 2 | TIP-14 | T-63-29 | Save law refuses exactly the masks that cannot travel | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/roto/physicsPaintRotoScriptLibrary.test.ts` | ✅ | ✅ green |
+| 63-12.1 | 12 | 2 | TIP-01 | T-63-30 | A publish failure is never the import's failure | unit | `pnpm --filter efx-motion-editor exec vitest run src/lib/physicPaintBridge.test.ts` | ✅ | ✅ green |
+| 63-12.2 | 12 | 2 | TIP-01, TIP-05 | T-63-30 | 36,864-byte mask boundary pinned at both seams | unit | `pnpm --filter efx-motion-editor exec vitest run src/lib/efxPaintBrushImport.test.ts` | ✅ | ✅ green |
+| 63-13.1 | 13 | 1 | TIP-06, TIP-13 | T-63-31 | registerMask refuses all three built-in ids before mutation | unit | `pnpm --filter @efxlab/efx-watercolor exec vitest run src/brushes/maskRegistry.test.ts` | ✅ | ✅ green |
+| 63-13.2 | 13 | 1 | TIP-06, TIP-13 | T-63-31 | replaceMaskRegistry admits the compile-time allocation only | unit | `pnpm --filter @efxlab/efx-watercolor exec vitest run src/brushes/maskRegistry.test.ts` | ✅ | ✅ green |
+| 63-14.1 | 14 | 1 | TIP-09, TIP-10 | T-63-32 | Over-cap stored asset refused before any read | Rust | `cargo test --manifest-path app/src-tauri/Cargo.toml brush_mask_read_cap` | ✅ | ✅ green |
+| 63-14.2 | 14 | 1 | TIP-09, TIP-10 | T-63-32 | Batch degradation — an over-cap asset costs only its entry | Rust | `cargo test --manifest-path app/src-tauri/Cargo.toml brush_mask_batch_read_over_cap` | ✅ | ✅ green |
+| 63-15.1 | 15 | 1 | TIP-14 | T-63-33 | AQTL v3 carries `engine.textureId`; v1/v2 refused `unsupported-version` | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/view/aquarelleRecordState.reopenTexture.test.ts src/components/physic-paint/performance/scriptTimelineCodec.test.ts` | ✅ | ✅ green |
+| 63-15.2 | 15 | 1 | TIP-14 | T-63-33 | Lift/absence/unknown-id/built-in boundaries; hostile marker and length refused | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/view/aquarelleRecordState.reopenTexture.test.ts src/components/physic-paint/performance/scriptTimelineCodec.test.ts` | ✅ | ✅ green |
+| 63-15.3 | 15 | 1 | TIP-14 | T-63-34 | Every play-routing leg hands its bake port the stroke's own textureId | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.bake.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts -t "texture carrier"` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -95,3 +109,11 @@ created: "2026-11-15"
 - [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** approved 2026-11-15
+
+## Validation Audit 2026-11-15
+
+| Metric | Count |
+|---|---|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
