@@ -24,6 +24,7 @@ import {
   aquarelleVisibleSettleTicks,
   buildBrushForStroke,
   DEFAULT_PAPER,
+  maskGeneration,
   PAPERS,
   pigmentFromHex,
   toEngineParams,
@@ -304,7 +305,20 @@ function toolForSelection(): AquarelleTool {
   return aquarelleActiveTool.value;
 }
 
+/**
+ * quick-261115-oh9 / WR-02: the last mask-registry generation this layer
+ * applied. The engine's GPU tip cache keys on ids, but a registry change can
+ * replace the BYTES under an unchanged id — sweep the uploads once per
+ * generation, exactly like the chip and footprint caches.
+ */
+let appliedMaskGeneration = -1;
+
 function applyLiveConfig(engine: WatercolorEngine): void {
+  const generation = maskGeneration();
+  if (generation !== appliedMaskGeneration) {
+    appliedMaskGeneration = generation;
+    engine.clearTipTextures();
+  }
   engine.setParams(toEngineParams(aquarelleParams.value));
   engine.setTool(aquarelleActiveTool.value as Tool);
   // 261028-k03c: the live brush is the SAME selection law the record uses
@@ -324,7 +338,10 @@ function applyLiveConfig(engine: WatercolorEngine): void {
   // record drops the texture on a lift for the same reason).
   engine.setLiftBrush(selection.textureId === null
     ? null
-    : buildBrushForStroke(selection.brushId, {
+    : buildBrushForStroke(selection.brushId || 'filbert', {
+      // IN-04: the punch resolves an empty response id to filbert
+      // (`liftShapeForStroke`), so the live lift must not fall through to
+      // `presetFor('')` → round.
       textureId: null,
       overrides: selection.toolOverrides,
     }));

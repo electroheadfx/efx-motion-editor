@@ -291,12 +291,17 @@ export function createAquarelleEngineAdapter(
   const configure = (stroke: StudioStroke<AquarelleStrokePayload>): void => {
     if (!engine) return
     const payload = stroke.engine
+    const tool = asTool(payload.tool)
     engine.setParams(toEngineParams(payload.params))
     engine.setBrush(
       buildBrushForStroke(payload.brushId ?? stroke.brushId, {
         // quick-261115-oh9: the texture axis rides the opaque engine slot.
-        // Absent stays absent — the response's own tip is stamped.
-        textureId: payload.textureId ?? null,
+        // Absent stays absent — the response's own tip is stamped. A LIFT
+        // never carries one (the eraser has no texture, and the punch erased
+        // the response tip): a persisted lift+texture pair — an earlier build
+        // wrote them — replays as the response tip instead of erasing a
+        // silhouette the punch never removed.
+        textureId: tool === 'lift' ? null : payload.textureId ?? null,
         overrides: payload.toolOverrides ?? stroke.toolOverrides,
       }),
     )
@@ -304,7 +309,7 @@ export function createAquarelleEngineAdapter(
     // bridge — configure() and the sampler can never disagree on the base.
     const hex = resolveStrokeBaseColor(stroke)
     if (hex !== null) engine.setPigment(pigmentFromHex(hex))
-    engine.setTool(asTool(payload.tool))
+    engine.setTool(tool)
     // traceSeed is the D-20 per-stroke determinism key. With a paint-seed
     // frame set, the key is mixed with that frame (pure host mix) so the same
     // stroke re-patterns per output frame without touching its geometry.

@@ -45,6 +45,14 @@ describe('GPU tip identity (quick-261115-oh9)', () => {
     expect(ENGINE_SOURCE).toContain('key !== id && !key.startsWith(prefix)')
   })
 
+  it('clearTipTextures exists for a mask replaced under an unchanged id (WR-02)', () => {
+    // The cache keys on ids alone, but the registry can replace the BYTES
+    // under an id. The host sweeps once per mask-registry generation.
+    expect(ENGINE_SOURCE).toContain('clearTipTextures()')
+    expect(ENGINE_SOURCE).toContain('for (const t of this.tipTextures.values()) this.gl.deleteTexture(t)')
+    expect(ENGINE_SOURCE).toContain('this.tipTextures.clear()')
+  })
+
   it('lift() prefers the host-bound liftBrush over the textured brush', () => {
     expect(ENGINE_SOURCE).toContain('const b = this.liftBrush ?? this.brush')
     expect(ENGINE_SOURCE).toContain('setLiftBrush(b: Brush | null)')

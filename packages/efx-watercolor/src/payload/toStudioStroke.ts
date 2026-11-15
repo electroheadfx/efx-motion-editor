@@ -200,8 +200,11 @@ export function toStudioStroke(
       brushId: s.brushId,
       toolOverrides: s.toolOverrides ? { ...s.toolOverrides } : undefined,
       // quick-261115-oh9: written ONLY when a texture was chosen, so an
-      // untextured stroke keeps its exact pre-texture key set.
-      ...(s.textureId !== undefined ? { textureId: s.textureId } : {}),
+      // untextured stroke keeps its exact pre-texture key set. A LIFT never
+      // carries one — the eraser has no texture, and the one projection is
+      // where that law is enforced for every producer (record, restore,
+      // duplicate, script copy).
+      ...(s.textureId !== undefined && s.tool !== 'lift' ? { textureId: s.textureId } : {}),
       mutationId: s.mutationId,
       diffusionFrames: s.diffusionFrames,
       timestamp: s.timestamp,

@@ -26,7 +26,7 @@
 //  handler).
 // ============================================================
 
-import { BUILTIN_TIPS, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { BUILTIN_TIPS, resolveMask, type AquarelleTip } from '@efxlab/efx-watercolor';
 import {
   brushCatalogGeneration,
   customBrushTips,
@@ -126,7 +126,13 @@ export function WatercolorTextureStrip(props: { compact?: boolean }) {
   const imports = customBrushTips.value;
   const unavailableIds = unavailableTipIds.value;
   const responseId = aquarelleSelectedTipId.value ?? 'round';
-  const selectedTextureId = aquarelleSelectedTextureId.value;
+  const pinnedTextureId = aquarelleSelectedTextureId.value;
+  // IN-03: show what the BINDING law would stamp, not the raw pick. A texture
+  // the registry lost resolves to the response's own tip at the seam — the row
+  // must agree, or no chip looks selected while the engine paints Default.
+  const selectedTextureId = pinnedTextureId !== null && resolveMask(pinnedTextureId) !== null
+    ? pinnedTextureId
+    : null;
   // Catalog changes (project open / close, import arrival) must re-render and
   // re-measure the row, so the generation is read — and exposed as data.
   const catalogGeneration = brushCatalogGeneration.value;

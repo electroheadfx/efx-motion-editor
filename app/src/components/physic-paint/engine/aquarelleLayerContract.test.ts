@@ -356,8 +356,18 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('buildBrushForStroke(selection.brushId, {');
     expect(layer).toContain('textureId: selection.textureId,');
     // The stroke-end literal and the vector commit source carry the texture
-    // conditionally — an untextured stroke keeps its exact key set.
-    expect(layer).toContain('...(snap.textureId !== null ? { textureId: snap.textureId } : {}),');
+    // conditionally — an untextured stroke keeps its exact key set, and a LIFT
+    // never carries one (CR-01: the eraser has no texture).
+    expect(layer).toContain('...(recordedTool !== \'lift\' && snap.textureId !== null');
+  });
+
+  it('WR-02: sweeps the GPU tip uploads when the mask registry changes', () => {
+    // The engine caches uploaded tips by id, but the registry can replace the
+    // bytes under an unchanged id; the chip and footprint caches already key on
+    // maskGeneration(), so the engine must sweep on the same signal.
+    expect(layer).toContain('let appliedMaskGeneration = -1;');
+    expect(layer).toContain('engine.clearTipTextures();');
+    expect(engine).toContain('clearTipTextures()');
   });
 
   it('WR-01: re-renders on a stationary tilt/pressure change', () => {

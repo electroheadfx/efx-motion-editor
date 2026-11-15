@@ -204,6 +204,15 @@ describe('textureId carrier (quick-261115-oh9)', () => {
     expect(round).toEqual(stroke)
   })
 
+  it('a LIFT stroke never carries a texture through the projection (CR-01)', () => {
+    // The eraser has no texture. Every producer (record, restore, duplicate,
+    // script copy) projects through toStudioStroke, so the law holds once here.
+    const lift = makeStrokeEvent({ tool: 'lift', textureId: 'wc/builtin-chalk' })
+    expect('textureId' in lift.engine).toBe(false)
+    const round = parse(serialize(lift)) as StudioStroke<AquarelleStrokePayload>
+    expect('textureId' in round.engine).toBe(false)
+  })
+
   it('absent stays absent: no textureId key is invented and schemaVersion is still 1', () => {
     const stroke = makeStrokeEvent()
     const wire = serialize(stroke)

@@ -1303,6 +1303,19 @@ export class WatercolorEngine {
     }
   }
 
+  /**
+   * Drop every uploaded tip (quick-261115-oh9 / WR-02). The mask registry can
+   * replace the BYTES under an unchanged id (`registerMask` overwrites,
+   * `replaceMaskRegistry` re-seeds on a project open), and this cache keys on
+   * the ids alone — so a host that observes a registry change must sweep, or
+   * the GPU would keep stamping the pre-change mask while every other cache
+   * (chip, footprint) has already repainted.
+   */
+  clearTipTextures() {
+    for (const t of this.tipTextures.values()) this.gl.deleteTexture(t);
+    this.tipTextures.clear();
+  }
+
   private tipTexture(b: Brush): WebGLTexture {
     const key = brushTipCacheKey(b);
     let t = this.tipTextures.get(key);

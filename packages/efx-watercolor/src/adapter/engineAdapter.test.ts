@@ -780,9 +780,23 @@ describe('configure() forwards the texture axis to buildBrushForStroke (source p
     const configure = adapterSource.slice(start, adapterSource.indexOf('return {', start))
     expect(configure.length).toBeGreaterThan(0)
     expect(configure).toContain('payload.brushId ?? stroke.brushId')
-    expect(configure).toContain('textureId: payload.textureId')
+    // The texture is forwarded — under the lift gate asserted below.
+    expect(configure).toContain('payload.textureId ?? null')
     // The options object is the ONE call form: no positional-overrides call
     // may survive beside it.
     expect(configure).toContain('buildBrushForStroke(payload.brushId ?? stroke.brushId, {')
+  })
+
+  it('drops the texture on a LIFT so a replay matches the punch (CR-01)', () => {
+    const adapterSource = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'engineAdapter.ts'),
+      'utf8',
+    )
+    const start = adapterSource.indexOf('const configure')
+    const configure = adapterSource.slice(start, adapterSource.indexOf('return {', start))
+    // The eraser has no texture. A persisted lift+texture pair — an earlier
+    // build wrote them — must replay as the response tip, the silhouette the
+    // punch actually erased.
+    expect(configure).toContain("tool === 'lift' ? null : payload.textureId")
   })
 })
