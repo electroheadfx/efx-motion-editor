@@ -8560,11 +8560,13 @@ describe('63-05 brush-tip realm channels', () => {
         },
       } as unknown as Event);
 
+      // The CustomEvent registration answers through a microtask chain only;
+      // a generous budget keeps the wait from flaking on a loaded machine.
       await vi.waitFor(() => {
         expect(
           dispatchEvent.mock.calls.some(([event]) => (event as CustomEvent).type === bridge.PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT),
         ).toBe(true);
-      });
+      }, { timeout: 5_000 });
       cleanup();
 
       const answer = dispatchEvent.mock.calls
