@@ -4,17 +4,17 @@ milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
-status: executing
-stopped_at: Completed 63-07 plan
-last_updated: "2026-11-15T13:02:06.887Z"
+status: verifying
+stopped_at: Completed 63-08-PLAN.md
+last_updated: "2026-11-15T13:16:17.765Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: 5ec3a029e3ea071bd6ed01e4fec8be80096beed5
+state_head: 08c38e84e9f6e1b8ced5e26a41c06fd7438448ca
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
 Plan: 9 of 9
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-15 — Phase 63 execution started
 
 
@@ -134,6 +134,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P05 | 71min | 3 tasks | 15 files |
 | Phase 63 P06 | 49 | 3 tasks | 8 files |
 | Phase 63 P07 | 18 | 3 tasks | 9 files |
+| Phase 63 P08 | 8 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -415,6 +416,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: Unavailable brush tips stay LISTED with null digest/mask so the library greys them; only invalid-entry records are unlisted, and invalid-asset-ref records are recovered by dropping the asset member (63-07 / D-18).
 - [Phase 63]: The catalog publisher is a store hook (_setBrushCatalogPublisher) installed by the main-realm bridge installer, because physicPaintBridge imports projectStore and a direct import would cycle; every applied open and every reset publishes through it (63-07 / TIP-17).
 - [Phase 63]: closeProject bumps the open-request token so an in-flight open cannot apply, hydrate or publish over the closed project (63-07 / T-63-21).
+- [Phase 63]: 63-08: the script save leg refuses by name when a custom tip's stored mask bytes are missing from the Studio realm instead of dropping the mask.
+- [Phase 63]: 63-08: structurally malformed script carriers (cap, dimensions, base64, mask/asset members) refuse the whole document at parse time; native-decode and registry failures degrade one entry with a named log.
 
 ### Pending Todos
 
@@ -532,8 +535,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T13:02:06.836Z
-Stopped at: Completed 63-07 plan
+Last session: 2026-11-15T13:16:17.728Z
+Stopped at: Completed 63-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

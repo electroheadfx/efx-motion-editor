@@ -138,7 +138,7 @@ Both phases are **plan-backed**: `/gsd-plan-phase` produces the plans from these
   4. A stored mask that is missing, corrupt or not exactly 192×192 degrades to an unavailable tip with the neutral round fallback and exactly one aggregate named warning — never a crash, never blank paint, never an aborted open — and closing the project or starting a New Project resets the catalog and mask registry so no ghost mask survives.
   5. A roto script saved with an imported tip paints that texture when applied into a project that never imported it, and opening a project replaces — never appends to — the tip catalog and mask registry with that project's entries plus the three built-ins, so a tip imported in project A does not exist in project B.
 
-**Plans:** 8/9 plans executed
+**Plans:** 9/9 plans executed
 
 Plans:
 **Wave 1**
@@ -162,7 +162,7 @@ Plans:
 - [x] 63-07-PLAN.md — Project-open registration, per-tip degradation, replace/reset
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 63-08-PLAN.md — Roto script mask carrier: inline WebP data URL, session masks
+- [x] 63-08-PLAN.md — Roto script mask carrier: inline WebP data URL, session masks
 
 **Specs**: `SPECS/v2.2.0-brush-tips/GSD-QUICK-PROMPT-01-mask-wiring.md`, `SPECS/v2.2.0-brush-tips/GSD-QUICK-PROMPT-02-embedded-tips.md`
 
@@ -203,7 +203,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 63. Brush Tip Pipeline | 8/9 | In Progress | - |
+| 63. Brush Tip Pipeline | 9/9 | In Progress | - |
 | 64. Medium Engine | 0 plans | Not started | - |
 
 ---
