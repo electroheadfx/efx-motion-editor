@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: executing
-stopped_at: Completed 63-14-PLAN.md
-last_updated: "2026-11-15T15:33:22.070Z"
+stopped_at: Completed 63-11-PLAN.md
+last_updated: "2026-11-15T15:43:45.135Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: eb329aa2a2653d13597e7d408d1d6485d0113ca3
+state_head: b9031029c9f7fe37fc02a22048f4b5089fb90cef
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 ## Current Position
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 13 of 14
+Plan: 14 of 14
 Status: Ready to execute
 Last activity: 2026-11-15 — Phase 63 execution started
 
@@ -138,6 +138,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P10 | 6min | 3 tasks | 5 files |
 | Phase 63 P13 | 3 min | 2 tasks | 3 files |
 | Phase 63 P14 | 3 min | 2 tasks | 1 files |
+| Phase 63 P11 | 29min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -430,6 +431,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: registerMask refuses a reserved id BEFORE the writable check and before any mutation, so a refused registration bumps no generation and the log names the real reason; a refused built-in entry in replace installs nothing and the appliers' built-ins-first prefix preserves the shipped allocations.
 - [Phase 63]: 63-14: BRUSH_ASSET_MAX_READ_BYTES (16 MiB) is checked from fs::metadata on the canonicalized leaf after the extension check and strictly before fs::read, so an over-cap asset is refused without its bytes ever being allocated (WR-06 / T-63-32).
 - [Phase 63]: 63-14: the cap refusal stays EfxPaintMediaError::Io so read_one_brush_asset maps it to the existing BRUSH_READ_UNREADABLE per-entry reason — no sixth wire string, no whole-batch failure; the boundary is strict greater-than and both ends are pinned with sparse-file fixtures.
+- [Phase 63]: brushCatalogSynced flips true inside applyBrushCatalogPayload's existing batch behind a compare guard and resetAquarelleBrushCatalog deliberately leaves it true: a post-close catalog is empty-but-known, not un-delivered
+- [Phase 63]: Only an id the open marked in unavailableTipIds may skip per entry with a log; an unmarked missing body still refuses with the established no-stored-mask-bytes reason
+- [Phase 63]: referencedCustomBrushIds reads engine.brushId (the tip id), never the top-level brushId the serializer stamps with the engine id; dry events carry none
+- [Phase 63]: The save-law refusal splits on brushCatalogSynced: an unsynced realm names the missing project catalog, a synced-but-uncarried id is named with both causes; both refusals precede serialization so no save request is written
 
 ### Pending Todos
 
@@ -547,8 +552,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T15:33:12.903Z
-Stopped at: Completed 63-14-PLAN.md
+Last session: 2026-11-15T15:43:45.102Z
+Stopped at: Completed 63-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
