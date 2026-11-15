@@ -75,7 +75,7 @@ import {
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
-import { buildBrushCatalogPayload } from '../stores/aquarelleBrushCatalog';
+import { _setBrushCatalogPublisher, buildBrushCatalogPayload } from '../stores/aquarelleBrushCatalog';
 import { applyBrushImportRequest } from './efxPaintBrushImport';
 import { imageStore } from '../stores/imageStore';
 import { tempProjectDir } from './projectDir';
@@ -3277,6 +3277,18 @@ export async function requestPhysicPaintBrushCatalog(): Promise<void> {
  * never written by a pull.
  */
 export async function installPhysicPaintBrushCatalogRequestListener(): Promise<() => void> {
+  // 63-07 (TIP-17): the main realm is the only catalog owner, so its installer
+  // also wires the publisher every project-scoped catalog change calls — the
+  // open apply and the close/new-project reset. The hook lives in the store
+  // because the bridge imports the store, never the reverse. A failed push is
+  // logged, never thrown: a Studio that missed a push pulls a fresh snapshot
+  // on its next mount.
+  const previousPublisher = _setBrushCatalogPublisher(() => {
+    void publishPhysicPaintBrushCatalog().catch((error) => {
+      console.warn('[physicPaintBridge] Brush catalog publish failed', error);
+    });
+  });
+  const restorePublisher = () => { _setBrushCatalogPublisher(previousPublisher); };
   const applyRequest = async (value: unknown): Promise<void> => {
     if (!isPhysicPaintBrushCatalogRequest(value)) return;
     await publishPhysicPaintBrushCatalog();
@@ -3284,9 +3296,12 @@ export async function installPhysicPaintBrushCatalogRequestListener(): Promise<(
   if (isTauriRuntime()) {
     const eventApi = await import('@tauri-apps/api/event');
     const unlisten = await eventApi.listen?.(PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT, (event) => { void applyRequest(event.payload); });
-    if (unlisten) return unlisten;
+    if (unlisten) return () => { unlisten(); restorePublisher(); };
   }
-  if (typeof window === 'undefined') return () => {};
+  if (typeof window === 'undefined') {
+    restorePublisher();
+    return () => {};
+  }
   const custom = (event: Event) => { void applyRequest((event as CustomEvent).detail); };
   const message = (event: MessageEvent) => {
     if (event.origin !== window.location.origin || !event.data || event.data.type !== PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT) return;
@@ -3294,7 +3309,11 @@ export async function installPhysicPaintBrushCatalogRequestListener(): Promise<(
   };
   window.addEventListener(PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT, custom);
   window.addEventListener('message', message);
-  return () => { window.removeEventListener(PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT, custom); window.removeEventListener('message', message); };
+  return () => {
+    window.removeEventListener(PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT, custom);
+    window.removeEventListener('message', message);
+    restorePublisher();
+  };
 }
 
 export async function publishPhysicPaintProjectContext(): Promise<void> {

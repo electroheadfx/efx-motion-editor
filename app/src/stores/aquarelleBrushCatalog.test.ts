@@ -27,20 +27,23 @@ import {
   resolveMask,
   type AquarelleTip,
 } from '@efxlab/efx-watercolor';
-import { bytesToBase64 } from '../lib/webpBytes';
+import { bytesToBase64, decodeBridgeBase64 } from '../lib/webpBytes';
 import { brushAssetBytes, pendingBrushAssets, resetBrushAssets } from '../lib/efxPaintBrushAssets';
 import type { ProjectBrushSet } from '../lib/efxPaintBrushSet';
 import type { PhysicPaintBrushCatalogPayload } from '../types/physicPaint';
 import {
+  _setBrushCatalogPublisher,
   addCustomBrushTip,
   applyProjectBrushSet,
   brushCatalogGeneration,
+  buildBrushCatalogPayload,
   buildProjectBrushPack,
   customBrushTips,
   listAquarelleBrushTips,
   replaceCustomBrushTips,
   replaceUnavailableTipIds,
   resetAquarelleBrushCatalog,
+  resetAquarelleBrushState,
   resolveCatalogTip,
   unavailableTipCount,
   unavailableTipIds,
@@ -68,6 +71,7 @@ function customTip(id: string, extra: Partial<AquarelleTip> = {}): AquarelleTip 
 }
 
 afterEach(() => {
+  _setBrushCatalogPublisher(() => {});
   resetAquarelleBrushCatalog();
   resetBrushAssets();
   resetMaskRegistry();
@@ -367,5 +371,145 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
     expect(catalog.listAquarelleBrushTips()).toHaveLength(4);
     expect(watercolor.resolveMask('wc/custom-replaced-1')).toBe(null);
     expect(watercolor.resolveMask('wc/custom-replaced-2')).toEqual(secondMask);
+  });
+});
+
+describe('aquarelleBrushCatalog — replace on open, reset on close, publish (63-07 / D-20 / TIP-17)', () => {
+  it('opening B replaces open A: only B is listed, resolvable and remembered', () => {
+    const digestA = 'a'.repeat(64);
+    const digestB = 'c'.repeat(64);
+    const maskA = new Uint8Array(TIP_MASK_BYTES).fill(1);
+    const maskB = new Uint8Array(TIP_MASK_BYTES).fill(2);
+    const webpB = new Uint8Array([82, 73, 70, 70, 8]);
+    const tipA = customTip('wc/custom-project-a', { asset: `brushes/${digestA}.webp` });
+    const tipB = customTip('wc/custom-project-b', { asset: `brushes/${digestB}.webp` });
+
+    applyProjectBrushSet(
+      {
+        entries: [{ tip: tipA, digest: digestA, mask: maskA }],
+        masks: [{ id: tipA.id, mask: maskA }],
+        unavailableTipIds: [],
+        assets: [{ digest: digestA, webp: new Uint8Array([82, 73, 70, 70, 6]) }],
+        failures: [],
+      },
+      '/project/brush-package',
+    );
+    applyProjectBrushSet(
+      {
+        entries: [{ tip: tipB, digest: digestB, mask: maskB }],
+        masks: [{ id: tipB.id, mask: maskB }],
+        unavailableTipIds: [],
+        assets: [{ digest: digestB, webp: webpB }],
+        failures: [],
+      },
+      '/project/brush-package',
+    );
+
+    expect(customBrushTips.value.map((tip) => tip.id).join(',')).toBe('wc/custom-project-b');
+    expect(listAquarelleBrushTips()).toHaveLength(4);
+    expect(resolveCatalogTip(tipA.id)).toBe(null);
+    expect(resolveMask(tipA.id)).toBe(null);
+    expect(resolveMask(tipB.id)).toBe(maskB);
+    expect(brushAssetBytes(digestB)).toEqual(webpB);
+    expect(pendingBrushAssets('/project/brush-package')).toHaveLength(0);
+  });
+
+  it('close resets to exactly the three built-ins and empties the asset cache', () => {
+    const digest = 'd'.repeat(64);
+    const mask = new Uint8Array(TIP_MASK_BYTES).fill(3);
+    const tip = customTip('wc/custom-open', { asset: `brushes/${digest}.webp` });
+    applyProjectBrushSet(
+      {
+        entries: [
+          { tip, digest, mask },
+          { tip: customTip('wc/custom-gone'), digest: null, mask: null },
+        ],
+        masks: [{ id: tip.id, mask }],
+        unavailableTipIds: ['wc/custom-gone'],
+        assets: [{ digest, webp: new Uint8Array([82, 73, 70, 70, 9]) }],
+        failures: [],
+      },
+      '/project/brush-package',
+    );
+    expect(brushAssetBytes(digest) === undefined).toBe(false);
+
+    resetAquarelleBrushState();
+
+    expect(customBrushTips.value).toHaveLength(0);
+    expect(unavailableTipCount.value).toBe(0);
+    expect(listAquarelleBrushTips().map((entry) => entry.id).join(',')).toBe(
+      'wc/builtin-bristle,wc/builtin-chalk,wc/builtin-sponge',
+    );
+    expect(resolveCatalogTip('wc/custom-open')).toBe(null);
+    expect(resolveMask('wc/custom-open')).toBe(null);
+    expect(resolveMask('wc/custom-gone')).toBe(null);
+    expect(resolveMask('wc/builtin-bristle') === null).toBe(false);
+    expect(brushAssetBytes(digest)).toBeUndefined();
+    expect(pendingBrushAssets('/project/brush-package')).toHaveLength(0);
+    // A New Project starts neutral for any former custom id, not blank.
+    expect(buildBrushForStroke('wc/custom-open').id).toBe('round');
+  });
+
+  it('every apply and every reset publishes exactly one snapshot', () => {
+    const published: number[] = [];
+    _setBrushCatalogPublisher(() => {
+      published.push(published.length + 1);
+    });
+    const mask = new Uint8Array(TIP_MASK_BYTES).fill(4);
+    const tip = customTip('wc/custom-publish');
+    const set: ProjectBrushSet = {
+      entries: [{ tip, digest: DIGEST, mask }],
+      masks: [{ id: tip.id, mask }],
+      unavailableTipIds: [],
+      assets: [{ digest: DIGEST, webp: new Uint8Array([82, 73, 70, 70, 3]) }],
+      failures: [],
+    };
+
+    applyProjectBrushSet(set, '/project/brush-package');
+    expect(published).toHaveLength(1);
+
+    resetAquarelleBrushState();
+    expect(published).toHaveLength(2);
+
+    // A repeated reset publishes too: every close is a lifecycle event the
+    // Studio mirrors, even when the state was already empty.
+    resetAquarelleBrushState();
+    expect(published).toHaveLength(3);
+  });
+
+  it('the published payload carries each custom tip mask and its stored WebP bytes', () => {
+    const digest = 'e'.repeat(64);
+    const mask = new Uint8Array(TIP_MASK_BYTES).fill(5);
+    const webp = new Uint8Array([82, 73, 70, 70, 11, 12]);
+    const tip = customTip('wc/custom-payload', { asset: `brushes/${digest}.webp` });
+    const gone = customTip('wc/custom-payload-gone', { asset: `brushes/${'f'.repeat(64)}.webp` });
+
+    applyProjectBrushSet(
+      {
+        entries: [
+          { tip, digest, mask },
+          { tip: gone, digest: null, mask: null },
+        ],
+        masks: [{ id: tip.id, mask }],
+        unavailableTipIds: [gone.id],
+        assets: [{ digest, webp }],
+        failures: [],
+      },
+      '/project/brush-package',
+    );
+
+    const payload = buildBrushCatalogPayload('ctx-63-07-payload');
+
+    expect(payload.contextId).toBe('ctx-63-07-payload');
+    expect(payload.entries).toHaveLength(2);
+    expect(payload.entries[0]!.tip.id).toBe('wc/custom-payload');
+    expect(payload.entries[0]!.maskBase64 === undefined).toBe(false);
+    expect(decodeBridgeBase64(payload.entries[0]!.maskBase64!)).toEqual(mask);
+    expect(payload.entries[0]!.webpBase64 === undefined).toBe(false);
+    expect(decodeBridgeBase64(payload.entries[0]!.webpBase64!)).toEqual(webp);
+    // An unavailable tip travels with neither leg — only its id.
+    expect(payload.entries[1]!.maskBase64).toBeUndefined();
+    expect(payload.entries[1]!.webpBase64).toBeUndefined();
+    expect(payload.unavailableTipIds.join(',')).toBe('wc/custom-payload-gone');
   });
 });

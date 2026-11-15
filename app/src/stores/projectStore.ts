@@ -50,7 +50,7 @@ import {
 } from './efxPaintStore';
 import {readAudioSourceBytes} from '../lib/mainAppAudioSources';
 import {readMceAudioSourcePath, readMceVideoLayerPath} from '../lib/mceAudioSourcePath';
-import {applyProjectBrushSet, buildProjectBrushPack} from './aquarelleBrushCatalog';
+import {applyProjectBrushSet, buildProjectBrushPack, resetAquarelleBrushState} from './aquarelleBrushCatalog';
 import {pendingBrushAssets} from '../lib/efxPaintBrushAssets';
 import {loadProjectBrushSet} from '../lib/efxPaintBrushSet';
 
@@ -1212,6 +1212,10 @@ export const projectStore = {
   /** Close the current project and reset all stores */
   closeProject(options?: { preservePreparedRotoCanvases?: boolean }) {
     rotateProjectContext();
+    // A reset invalidates any in-flight open (63-07 / T-63-21): the token
+    // checks in openProject then abandon the stale leg before it can apply or
+    // publish a brush set over the closed project.
+    openRequestSeq += 1;
     // A closed project's package identity must never key the next project's
     // derived-frame cache: a fresh UUID makes the next cache root a brand-new
     // directory rather than a stale, disposable-but-readable one.
@@ -1238,6 +1242,10 @@ export const projectStore = {
     paintStore.reset();
     physicPaintStore.reset({ preserveRotoAlphaCanvases: options?.preservePreparedRotoCanvases });
     resetEfxPaintStore();
+    // The brush catalog is project-scoped (D-20 / TIP-17): closing a project
+    // leaves exactly the three built-in tips, no custom masks, and an empty
+    // stored-asset cache — the Studio receives the reset snapshot.
+    resetAquarelleBrushState();
     motionBlurStore.reset();
     audioPeaksCache.clear();
     audioEngine.stopAll();

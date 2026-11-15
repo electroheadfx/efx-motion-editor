@@ -37,7 +37,11 @@ import { mountTrackRuntime, physicPaintStore } from './physicPaintStore';
 import { projectStore } from './projectStore';
 import { sequenceStore } from './sequenceStore';
 import { brushAssetBytes, pendingBrushAssets, resetBrushAssets } from '../lib/efxPaintBrushAssets';
-import { customBrushTips, resetAquarelleBrushCatalog } from './aquarelleBrushCatalog';
+import {
+  _setBrushCatalogPublisher,
+  customBrushTips,
+  resetAquarelleBrushCatalog,
+} from './aquarelleBrushCatalog';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 const TRACK_A = 'track-a';
@@ -1443,6 +1447,7 @@ describe('63-07: project-open brush set', () => {
   });
 
   afterEach(() => {
+    _setBrushCatalogPublisher(() => {});
     resetAquarelleBrushCatalog();
     resetBrushAssets();
     resetMaskRegistry();
@@ -1498,5 +1503,57 @@ describe('63-07: project-open brush set', () => {
     expect(brushAssetBytes(BRUSH_DIGEST_A)).toBeUndefined();
     expect(brushAssetBytes(BRUSH_DIGEST_B)?.length).toBe(webpBytes().length);
     expect(pendingBrushAssets('/project')).toHaveLength(0);
+  });
+
+  it('a superseded open never emits a catalog snapshot', async () => {
+    const published: number[] = [];
+    _setBrushCatalogPublisher(() => {
+      published.push(published.length + 1);
+    });
+    const tipA = brushTip('wc/custom-a', BRUSH_DIGEST_A);
+    const tipB = brushTip('wc/custom-b', BRUSH_DIGEST_B);
+    ipcProjectOpen.mockReset();
+    ipcProjectOpen
+      .mockResolvedValueOnce({ ok: true, data: brushProject('Project A', tipA) })
+      .mockResolvedValueOnce({ ok: true, data: brushProject('Project B', tipB) });
+
+    let releaseFirstRead: () => void = () => {};
+    let markStarted: () => void = () => {};
+    const firstReadStarted = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    ipcEfxPaintReadBrushAssets.mockImplementationOnce(
+      async (_packageDir: string, entries: readonly { id: string; relativePath: string }[]) => {
+        markStarted();
+        return await new Promise((resolve) => {
+          releaseFirstRead = () =>
+            resolve({
+              ok: true,
+              data: entries.map((entry) => ({
+                id: entry.id,
+                ok: true,
+                digest: entry.relativePath.slice('brushes/'.length, -'.webp'.length),
+                mask: maskBytes(),
+                webp: webpBytes(),
+              })),
+            });
+        });
+      },
+    );
+
+    const firstOpen = projectStore.openProject('/project/a.mce');
+    await firstReadStarted;
+    await projectStore.openProject('/project/b.mce');
+
+    // B's open publishes once for its reset and once for its apply; A is
+    // already superseded and contributed nothing.
+    expect(published).toHaveLength(2);
+
+    releaseFirstRead();
+    await firstOpen;
+
+    // The stale open ran its read to completion but never reached apply or
+    // reset, so it emitted no catalog snapshot over B's.
+    expect(published).toHaveLength(2);
   });
 });

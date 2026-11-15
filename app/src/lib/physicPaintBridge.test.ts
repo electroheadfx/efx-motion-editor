@@ -8478,6 +8478,31 @@ describe('63-05 brush-tip realm channels', () => {
 
       expect(unlisten).toHaveBeenCalledTimes(1);
     });
+
+    it('installing the catalog transport wires the store publisher (63-07 / TIP-17)', async () => {
+      vi.resetModules();
+      const emits: string[] = [];
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async () => () => {}),
+        emitTo: vi.fn(async (_target: string, event: string) => {
+          emits.push(event);
+        }),
+      }));
+      installBridgeWindow();
+      markTauriRuntime();
+
+      const bridge = await import('./physicPaintBridge');
+      const catalog = await import('../stores/aquarelleBrushCatalog');
+      const cleanup = await bridge.installPhysicPaintBrushCatalogRequestListener();
+      emits.length = 0;
+
+      catalog.resetAquarelleBrushState();
+
+      await vi.waitFor(() => {
+        expect(emits).toContain(bridge.PHYSIC_PAINT_BRUSH_CATALOG_EVENT);
+      });
+      cleanup();
+    });
   });
 
   it('wires the receiver hook and both main-realm installs in their production mount points', () => {

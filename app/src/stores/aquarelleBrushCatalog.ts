@@ -42,6 +42,7 @@ import {
   TIP_MASK_BYTES,
   buildBrushPackSnapshot,
   replaceMaskRegistry,
+  resetMaskRegistry,
   resolveMask,
   type AquarelleTip,
 } from '@efxlab/efx-watercolor';
@@ -52,6 +53,7 @@ import {
   brushAssetDigestFromPath,
   markBrushAssetsWritten,
   rememberBrushAsset,
+  resetBrushAssets,
 } from '../lib/efxPaintBrushAssets';
 import { decodeBridgeBase64, encodeBridgeBase64 } from '../lib/webpBytes';
 import type { ProjectBrushSet } from '../lib/efxPaintBrushSet';
@@ -79,6 +81,30 @@ export const unavailableTipCount = computed(() => unavailableTipIdsSignal.value.
 
 /** Monotonic catalog mutation counter; never bumped by a no-op write. */
 export const brushCatalogGeneration: ReadonlySignal<number> = brushCatalogGenerationSignal;
+
+/**
+ * The MAIN realm's installed catalog transport (63-07 / TIP-17). This module
+ * cannot import `physicPaintBridge` — the bridge imports THIS module for
+ * `buildBrushCatalogPayload` — so the bridge's main-realm installer calls
+ * `_setBrushCatalogPublisher` once at boot with
+ * `publishPhysicPaintBrushCatalog`. Every project-scoped catalog mutation then
+ * pushes the snapshot a Studio needs to paint and to save a script. Default is
+ * a no-op: the Studio realm never owns project catalog state, and unit tests
+ * opt in.
+ */
+export type BrushCatalogPublisher = () => void;
+let brushCatalogPublisher: BrushCatalogPublisher = () => {};
+
+/**
+ * Install the one publisher every catalog change calls; returns the previous
+ * one so the installer (or a test) can restore it. Named with the `_set*`
+ * convention of the cross-store wiring callbacks in projectStore.
+ */
+export function _setBrushCatalogPublisher(publisher: BrushCatalogPublisher): BrushCatalogPublisher {
+  const previous = brushCatalogPublisher;
+  brushCatalogPublisher = publisher;
+  return previous;
+}
 
 /**
  * The full catalog in display order: the three built-ins from `BUILTIN_TIPS`
@@ -164,6 +190,20 @@ export function resetAquarelleBrushCatalog(): void {
   });
 }
 
+/**
+ * Close / New Project (63-07 / D-20 / TIP-17 / T-63-21): back to exactly the
+ * three built-ins. The customs and the unavailable set clear (one catalog
+ * generation bump when anything changed), the mask registry returns to the
+ * built-in masks only, the stored-asset cache empties, and the Studio receives
+ * the resulting snapshot. Idempotent: a repeated reset writes no state.
+ */
+export function resetAquarelleBrushState(): void {
+  resetAquarelleBrushCatalog();
+  resetMaskRegistry();
+  resetBrushAssets();
+  brushCatalogPublisher();
+}
+
 // ---------------------------------------------------------------------------
 // 63-07 (D-17 / D-18 / D-20 / TIP-07): apply ONE open's brush set.
 //
@@ -206,6 +246,8 @@ export function applyProjectBrushSet(set: ProjectBrushSet, packageRoot: string):
     }
   }
   markBrushAssetsWritten(packageRoot, written);
+  // The Studio paints and saves from THIS snapshot: one push per applied open.
+  brushCatalogPublisher();
 }
 
 /**
