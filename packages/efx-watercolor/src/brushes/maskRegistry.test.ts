@@ -120,6 +120,7 @@ describe('resetMaskRegistry — no ghost mask', () => {
     expect(listRegisteredMaskIds().join(',')).toBe(
       'wc/builtin-bristle,wc/builtin-chalk,wc/builtin-sponge',
     )
+    expect(resolveMask('wc/builtin-bristle')?.length).toBe(TIP_MASK_BYTES)
     expect(resolveMask('wc/custom-ghost') === null).toBe(true)
   })
 
