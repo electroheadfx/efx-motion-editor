@@ -256,6 +256,10 @@ describe('aquarelleBrushCatalog — the replace-only unavailable set (D-20)', ()
 });
 
 describe('aquarelleBrushCatalog — buildProjectBrushPack (D-10)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('returns null when the project has no imports (the key is then omitted)', () => {
     expect(buildProjectBrushPack()).toBe(null);
   });
@@ -279,6 +283,39 @@ describe('aquarelleBrushCatalog — buildProjectBrushPack (D-10)', () => {
     // the projection refuses rather than writing bytes into the manifest.
     addCustomBrushTip(customTip('wc/custom-99999999', { mask: 'AAAA' } as Partial<AquarelleTip>));
     expect(buildProjectBrushPack()).toBe(null);
+  });
+
+  it('keeps every valid tip when one entry fails the carrier law, logging the dropped id (WR-07)', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    addCustomBrushTip(customTip('wc/custom-valid'));
+    addCustomBrushTip(customTip('wc/custom-invalid', { mask: 'AAAA' } as Partial<AquarelleTip>));
+
+    const pack = buildProjectBrushPack();
+
+    expect(pack === null).toBe(false);
+    if (pack === null) return;
+    expect(pack.entries).toHaveLength(1);
+    expect((pack.entries[0] as AquarelleTip).id).toBe('wc/custom-valid');
+    const logged = errorSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n');
+    expect(logged).toContain('wc/custom-invalid');
+    expect(logged).toContain('invalid');
+  });
+
+  it('keeps the first entry of a duplicate id and logs the duplicate (WR-07)', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    addCustomBrushTip(customTip('wc/custom-dup'));
+    addCustomBrushTip(customTip('wc/custom-dup', { name: 'Duplicate' }));
+
+    const pack = buildProjectBrushPack();
+
+    expect(pack === null).toBe(false);
+    if (pack === null) return;
+    expect(pack.entries).toHaveLength(1);
+    expect((pack.entries[0] as AquarelleTip).id).toBe('wc/custom-dup');
+    expect((pack.entries[0] as AquarelleTip).name).toBe('Custom wc/custom-dup');
+    const logged = errorSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n');
+    expect(logged).toContain('wc/custom-dup');
+    expect(logged.toLowerCase()).toContain('duplicate');
   });
 });
 
