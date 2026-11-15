@@ -51,6 +51,7 @@ import {
 import {readAudioSourceBytes} from '../lib/mainAppAudioSources';
 import {readMceAudioSourcePath, readMceVideoLayerPath} from '../lib/mceAudioSourcePath';
 import {buildProjectBrushPack} from './aquarelleBrushCatalog';
+import {pendingBrushAssets} from '../lib/efxPaintBrushAssets';
 
 // --- Signals ---
 
@@ -244,6 +245,9 @@ async function savePackageWithTelemetry(
     documents,
     projectId: projectId.value,
     cacheRoot: await resolveCacheRoot(),
+    // 63-04 (D-11): the save copies the stored mask bytes this root still
+    // owes. The producer is the remembered-asset state, never an encoder.
+    brushAssets: pendingBrushAssets(packageDir),
   });
   recordSaveStage('persist.media', result.metrics.mediaMs, branch);
   recordSaveStage('persist.layers', result.metrics.layersMs, branch);
