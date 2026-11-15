@@ -76,7 +76,7 @@ import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
 import { _setBrushCatalogPublisher, buildBrushCatalogPayload } from '../stores/aquarelleBrushCatalog';
-import { applyBrushImportRequest } from './efxPaintBrushImport';
+import { applyBrushImportRequest, type EfxPaintBrushImportResult } from './efxPaintBrushImport';
 import { imageStore } from '../stores/imageStore';
 import { tempProjectDir } from './projectDir';
 import { fxTrackLayouts, resolveSequenceTimelineRange, trackLayouts } from './frameMap';
@@ -3170,6 +3170,17 @@ export async function requestPhysicPaintBrushImport(
  * carrying the new entry reaches the Studio ahead of the result event.
  */
 export async function installPhysicPaintBrushImportListener(): Promise<() => void> {
+  // 63-12 (WR-04): the import's publish port must never reject. The handler
+  // awaits it AFTER the non-undoable (D-15) mutation batch has written the
+  // registry, the catalog, the asset cache and the dirty flag, so a rejected
+  // publish would propagate out of `applyRequest` and leave the Studio to its
+  // 15 s timer — reporting an import that already landed as a failure. The
+  // caught promise is RETURNED (never voided): `applyBrushImportRequest`
+  // still awaits the publish attempt, so request -> catalog -> result holds.
+  const publishImportCatalog = (): Promise<void> =>
+    publishPhysicPaintBrushCatalog().catch((error) => {
+      console.warn('[physicPaintBridge] Brush catalog publish failed', error);
+    });
   const applyRequest = async (value: unknown): Promise<PhysicPaintBrushImportResult | null> => {
     if (!isPhysicPaintBrushImportRequest(value)) return null;
     let mask: Uint8Array;
@@ -3178,16 +3189,32 @@ export async function installPhysicPaintBrushImportListener(): Promise<() => voi
     } catch {
       return { operationId: value.operationId, ok: false, reason: 'bad-mask' };
     }
-    const result = await applyBrushImportRequest(
-      { operationId: value.operationId, fileName: value.fileName, mask },
-      { publishCatalog: publishPhysicPaintBrushCatalog },
-    );
+    // 63-12 (WR-04): a structurally valid request always answers. The handler
+    // is total for its documented refusals, so a throw here means the native
+    // encode IPC (or anything else on its await path) rejected — answer with
+    // the catch-all refusal instead of leaving the Studio to time out.
+    let result: EfxPaintBrushImportResult;
+    try {
+      result = await applyBrushImportRequest(
+        { operationId: value.operationId, fileName: value.fileName, mask },
+        { publishCatalog: publishImportCatalog },
+      );
+    } catch (error) {
+      console.warn('[physicPaintBridge] Brush import failed', error);
+      return { operationId: value.operationId, ok: false, reason: 'encode-failed' };
+    }
     return { operationId: value.operationId, ...result };
   };
   const emitResult = async (result: PhysicPaintBrushImportResult, source?: Pick<Window, 'postMessage'> | null) => {
+    // 63-12 (WR-04): total emit — a transport failure must not reject a
+    // listener body (none of the three registrations has a catch of its own).
     if (isTauriRuntime()) {
-      const eventApi = await import('@tauri-apps/api/event');
-      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT, result);
+      try {
+        const eventApi = await import('@tauri-apps/api/event');
+        await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT, result);
+      } catch (error) {
+        console.warn('[physicPaintBridge] Brush import result emit failed', error);
+      }
     }
     if (typeof window !== 'undefined') {
       const message = { type: PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT, payload: result };

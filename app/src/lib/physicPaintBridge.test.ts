@@ -8358,6 +8358,19 @@ describe('63-05 brush-tip realm channels', () => {
       expect(isPhysicPaintBrushImportResult({ operationId: 'op-1', ok: false, reason: 'bad-mask' })).toBe(true);
       expect(isPhysicPaintBrushImportResult({ operationId: 'op-1', ok: false, reason: 'not-a-reason' })).toBe(false);
     });
+
+    // 63-12 (TIP-01): the mask law is byte-exact at the wire guard — exactly
+    // 36,864 decoded bytes, refused one byte either side.
+    it('pins the import wire guard at exactly 36,864 decoded mask bytes (TIP-01)', () => {
+      const importWire = (bytes: number) => ({
+        operationId: 'op-tip',
+        fileName: 'tip.png',
+        maskBase64: bytesToBase64(new Uint8Array(bytes)),
+      });
+      expect(isPhysicPaintBrushImportRequest(importWire(BRUSH_MASK_BYTES))).toBe(true);
+      expect(isPhysicPaintBrushImportRequest(importWire(BRUSH_MASK_BYTES - 1))).toBe(false);
+      expect(isPhysicPaintBrushImportRequest(importWire(BRUSH_MASK_BYTES + 1))).toBe(false);
+    });
   });
 
   describe('import round trip through the main realm', () => {
@@ -8419,6 +8432,146 @@ describe('63-05 brush-tip realm channels', () => {
       // The main realm mutated too.
       expect(catalog.customBrushTips.peek()).toHaveLength(1);
       expect(assets.brushAssetBytes(BRUSH_DIGEST)).toEqual(brushWebp(192, 192));
+    });
+
+    // 63-12 (WR-04): a catalog publish that fails AFTER the mutation landed
+    // must not destroy the answer. The import already changed project state
+    // (D-15 — an import is not undoable), so the request still resolves ok and
+    // the failure is a logged notification problem, not a Studio-visible timeout.
+    it('answers success when the catalog publish rejects after the mutation landed (WR-04)', async () => {
+      vi.resetModules();
+      const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
+      const emits: Array<{ target: string; event: string; payload: unknown }> = [];
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async (event: string, cb: (event: { payload: unknown }) => unknown) => {
+          handlers.set(event, cb);
+          return () => { handlers.delete(event); };
+        }),
+        emitTo: vi.fn(async (target: string, event: string, payload: unknown) => {
+          emits.push({ target, event, payload });
+          // Literal spelling: the factory is hoisted, so it cannot close over the module constant.
+          if (event === 'physic-paint:brush-catalog') throw new Error('catalog push refused');
+          await handlers.get(event)?.({ payload });
+        }),
+      }));
+      vi.doMock('./ipc', async (importOriginal) => {
+        const actual = await importOriginal<Record<string, unknown>>();
+        return { ...actual, ipcEfxPaintEncodeBrushMask: vi.fn(async () => ({ ok: true, data: { webp: brushWebp(192, 192), digest: BRUSH_DIGEST, width: 192, height: 192 } })) };
+      });
+      installBridgeWindow();
+      markTauriRuntime();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const bridge = await import('./physicPaintBridge');
+      const catalog = await import('../stores/aquarelleBrushCatalog');
+      const assets = await import('../lib/efxPaintBrushAssets');
+
+      const cleanup = await bridge.installPhysicPaintBrushImportListener();
+      const result = await bridge.requestPhysicPaintBrushImport(new Uint8Array(BRUSH_MASK_BYTES).fill(2), 'larch.png');
+      cleanup();
+
+      expect(result.ok).toBe(true);
+      expect(result.entry?.name).toBe('larch.png');
+      expect(catalog.customBrushTips.peek()).toHaveLength(1);
+      expect(catalog.customBrushTips.peek()[0]!.id).toBe(result.entry!.id);
+      // The landed mutation survives: the stored digest bytes are still cached.
+      expect(assets.brushAssetBytes(BRUSH_DIGEST)).toEqual(brushWebp(192, 192));
+      // The publish was still attempted ahead of the answer.
+      const brushEmits = emits.filter((entry) => entry.event.startsWith('physic-paint:brush-'));
+      expect(brushEmits.map((entry) => entry.event)).toEqual([
+        bridge.PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT,
+        bridge.PHYSIC_PAINT_BRUSH_CATALOG_EVENT,
+        bridge.PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT,
+      ]);
+      expect(warn.mock.calls.some((call) => String(call[0]).includes('Brush catalog publish failed'))).toBe(true);
+    });
+
+    // 63-12 (WR-04): a throwing handler still answers through the Tauri
+    // listener with a defined failure reason instead of a 15 s timeout.
+    it('answers {ok:false, reason:encode-failed} when the encode IPC rejects (WR-04)', async () => {
+      vi.resetModules();
+      const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
+      const emits: Array<{ target: string; event: string; payload: unknown }> = [];
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async (event: string, cb: (event: { payload: unknown }) => unknown) => {
+          handlers.set(event, cb);
+          return () => { handlers.delete(event); };
+        }),
+        emitTo: vi.fn(async (target: string, event: string, payload: unknown) => {
+          emits.push({ target, event, payload });
+          await handlers.get(event)?.({ payload });
+        }),
+      }));
+      vi.doMock('./ipc', async (importOriginal) => {
+        const actual = await importOriginal<Record<string, unknown>>();
+        return { ...actual, ipcEfxPaintEncodeBrushMask: vi.fn(async () => { throw new Error('encode transport refused'); }) };
+      });
+      installBridgeWindow();
+      markTauriRuntime();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const bridge = await import('./physicPaintBridge');
+      const catalog = await import('../stores/aquarelleBrushCatalog');
+
+      const cleanup = await bridge.installPhysicPaintBrushImportListener();
+      const result = await bridge.requestPhysicPaintBrushImport(new Uint8Array(BRUSH_MASK_BYTES).fill(5), 'pine.png');
+      cleanup();
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.reason).toBe('encode-failed');
+      expect(result.operationId.startsWith('physics-paint-brush-import-')).toBe(true);
+      expect(catalog.customBrushTips.peek()).toHaveLength(0);
+      const brushEmits = emits.filter((entry) => entry.event.startsWith('physic-paint:brush-'));
+      expect(brushEmits.map((entry) => entry.event)).toEqual([
+        bridge.PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT,
+        bridge.PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT,
+      ]);
+      expect(warn.mock.calls.some((call) => String(call[0]).includes('Brush import failed'))).toBe(true);
+    });
+
+    // 63-12 (WR-04): the window CustomEvent registration is total too — a
+    // handler throw still dispatches a correlated, defined failure result.
+    it('answers a named failure through the window CustomEvent registration (WR-04)', async () => {
+      vi.resetModules();
+      vi.doMock('./ipc', async (importOriginal) => {
+        const actual = await importOriginal<Record<string, unknown>>();
+        return { ...actual, ipcEfxPaintEncodeBrushMask: vi.fn(async () => { throw new Error('encode transport refused'); }) };
+      });
+      installBridgeWindow();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const bridge = await import('./physicPaintBridge');
+      const cleanup = await bridge.installPhysicPaintBrushImportListener();
+
+      const addEventListener = window.addEventListener as unknown as {
+        mock: { calls: Array<[string, (event: Event) => void]> };
+      };
+      const registration = addEventListener.mock.calls
+        .find(([name]) => name === bridge.PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT);
+      expect(registration).toBeDefined();
+
+      const dispatchEvent = window.dispatchEvent as unknown as { mock: { calls: Array<[Event]> } };
+      registration![1]({
+        detail: {
+          operationId: 'op-window-1',
+          fileName: 'yew.png',
+          maskBase64: bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES).fill(1)),
+        },
+      } as unknown as Event);
+
+      await vi.waitFor(() => {
+        expect(
+          dispatchEvent.mock.calls.some(([event]) => (event as CustomEvent).type === bridge.PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT),
+        ).toBe(true);
+      });
+      cleanup();
+
+      const answer = dispatchEvent.mock.calls
+        .map(([event]) => event as CustomEvent)
+        .find((event) => event.type === bridge.PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT)!;
+      expect(answer.detail).toEqual({ operationId: 'op-window-1', ok: false, reason: 'encode-failed' });
+      expect(warn.mock.calls.some((call) => String(call[0]).includes('Brush import failed'))).toBe(true);
     });
 
     it('drops a malformed request without publishing or mutating', async () => {
