@@ -55,11 +55,15 @@ export interface ProjectBrushSetFailure {
   readonly reason: ProjectBrushSetFailureReason;
 }
 
-/** One healthy tip: its validated record, its content address and decoded mask. */
+/**
+ * One tip the open will LIST. An unavailable tip keeps its entry with
+ * `digest`/`mask` null so the library can grey it (D-18); only a healthy tip
+ * carries a verified content address and its decoded 36,864-byte mask.
+ */
 export interface ProjectBrushSetEntry {
   readonly tip: AquarelleTip;
-  readonly digest: string;
-  readonly mask: Uint8Array;
+  readonly digest: string | null;
+  readonly mask: Uint8Array | null;
 }
 
 /** One registry row the open contributes (built-ins are added by the applier). */
@@ -75,8 +79,11 @@ export interface ProjectBrushSetAsset {
 }
 
 /**
- * The whole outcome of one open's brush read. `entries` / `masks` / `assets`
- * cover the healthy tips; `unavailableTipIds` and `failures` cover the rest.
+ * The whole outcome of one open's brush read. `entries` lists EVERY validated
+ * tip in snapshot order — healthy entries carry a verified digest and mask,
+ * unavailable ones carry nulls so the library can grey them. `masks` /
+ * `assets` cover the healthy tips only; `unavailableTipIds` and `failures`
+ * name every degradation.
  */
 export interface ProjectBrushSet {
   readonly entries: readonly ProjectBrushSetEntry[];
@@ -113,9 +120,37 @@ function readTipId(raw: unknown): string {
 }
 
 /**
+ * Narrow one snapshot record to a tip, total. A record whose ONLY carrier
+ * violation is its `asset` member (missing, wrong shape, or an untrusted
+ * path) is still a valid tip: the member is dropped and the record re-validated
+ * so the tip can be LISTED with a null mask. Any other violation — a retired
+ * `mask` member, a bad field, a foreign carrier field — still yields null
+ * (the carrier law of 63-04 stands; the applier never sees an untrusted tip).
+ */
+function tipFromRaw(raw: unknown): AquarelleTip | null {
+  const direct = asTipRecord(raw, 'package');
+  if (direct !== null) return direct;
+  if (typeof raw !== 'object' || raw === null) return null;
+  const record = raw as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, 'asset')) return null;
+  const { asset: _asset, ...withoutAsset } = record;
+  return asTipRecord(withoutAsset, 'package');
+}
+
+/** One listed tip before the read: a candidate carries its ref and digest. */
+interface PlannedTip {
+  readonly tip: AquarelleTip;
+  readonly ref: string | null;
+  readonly digest: string | null;
+}
+
+/**
  * Load one project's brush set from its manifest snapshot. Total: every
  * malformed record and every failed read degrades that tip, never the open;
- * the returned arrays are immutable copies owned by the caller.
+ * the returned arrays are immutable copies owned by the caller. Every
+ * validated tip is LISTED, in snapshot order, so an unavailable one can be
+ * greyed rather than silently vanish (D-18); only a healthy tip reaches
+ * `masks` / `assets` and the paint registry.
  */
 export async function loadProjectBrushSet(
   packageDir: string,
@@ -125,12 +160,13 @@ export async function loadProjectBrushSet(
   if (snapshot === undefined || !Array.isArray(snapshot.entries)) return EMPTY_SET;
 
   const failures: ProjectBrushSetFailure[] = [];
-  const tips: AquarelleTip[] = [];
+  const unavailable: string[] = [];
+  const planned: PlannedTip[] = [];
   const refs: { id: string; relativePath: string }[] = [];
   const seen = new Set<string>();
 
   for (const raw of snapshot.entries) {
-    const tip = asTipRecord(raw, 'package');
+    const tip = tipFromRaw(raw);
     if (tip === null) {
       failures.push(Object.freeze({ tipId: readTipId(raw), reason: 'invalid-entry' as const }));
       continue;
@@ -143,85 +179,79 @@ export async function loadProjectBrushSet(
     }
     seen.add(tip.id);
     const digest = tip.asset === undefined ? null : brushAssetDigestFromPath(tip.asset);
-    if (digest === null || tip.asset === undefined) {
+    if (digest === null) {
+      // Listed with a null mask: the library greys it, the registry skips it.
+      planned.push(Object.freeze({ tip, ref: null, digest: null }));
+      unavailable.push(tip.id);
       failures.push(Object.freeze({ tipId: tip.id, reason: 'invalid-asset-ref' as const }));
       continue;
     }
-    tips.push(tip);
-    refs.push({ id: tip.id, relativePath: tip.asset });
+    const relativePath = tip.asset as string;
+    planned.push(Object.freeze({ tip, ref: relativePath, digest }));
+    refs.push({ id: tip.id, relativePath });
   }
 
-  if (refs.length === 0) {
-    return Object.freeze({
-      entries: Object.freeze([]) as readonly ProjectBrushSetEntry[],
-      masks: Object.freeze([]) as readonly ProjectBrushSetMask[],
-      unavailableTipIds: Object.freeze([]) as readonly string[],
-      assets: Object.freeze([]) as readonly ProjectBrushSetAsset[],
-      failures: Object.freeze(failures),
-    });
-  }
+  const healthy = new Map<string, { digest: string; mask: Uint8Array; webp: Uint8Array }>();
 
-  const read = await readPort(packageDir, refs);
-  if (!read.ok) {
-    // The whole call failed: every requested tip degrades. The open proceeds
-    // with the built-ins plus its other stores — never an aborted project.
-    const unavailable = refs.map((ref) => ref.id);
-    const refused = refs.map((ref) =>
-      Object.freeze({ tipId: ref.id, reason: 'batch-failed' as const }),
-    );
-    return Object.freeze({
-      entries: Object.freeze([]) as readonly ProjectBrushSetEntry[],
-      masks: Object.freeze([]) as readonly ProjectBrushSetMask[],
-      unavailableTipIds: Object.freeze(unavailable),
-      assets: Object.freeze([]) as readonly ProjectBrushSetAsset[],
-      failures: Object.freeze([...failures, ...refused]),
-    });
-  }
-
-  const byId = new Map<string, EfxPaintBrushAssetReadEntry>();
-  for (const result of read.data) {
-    if (!byId.has(result.id)) byId.set(result.id, result);
+  if (refs.length > 0) {
+    const read = await readPort(packageDir, refs);
+    if (!read.ok) {
+      // The whole call failed: every requested tip degrades. The open proceeds
+      // with the built-ins plus its other stores — never an aborted project.
+      for (const ref of refs) {
+        unavailable.push(ref.id);
+        failures.push(Object.freeze({ tipId: ref.id, reason: 'batch-failed' as const }));
+      }
+    } else {
+      const byId = new Map<string, EfxPaintBrushAssetReadEntry>();
+      for (const result of read.data) {
+        if (!byId.has(result.id)) byId.set(result.id, result);
+      }
+      for (const plannedTip of planned) {
+        if (plannedTip.ref === null || plannedTip.digest === null) continue;
+        const id = plannedTip.tip.id;
+        const result = byId.get(id);
+        if (result === undefined) {
+          // No answer for a requested id is a contract violation: fail closed.
+          unavailable.push(id);
+          failures.push(Object.freeze({ tipId: id, reason: 'refused' as const }));
+          continue;
+        }
+        if (!result.ok) {
+          unavailable.push(id);
+          failures.push(Object.freeze({ tipId: id, reason: result.reason }));
+          continue;
+        }
+        if (result.mask.length !== TIP_MASK_BYTES) {
+          unavailable.push(id);
+          failures.push(Object.freeze({ tipId: id, reason: 'wrong-size' as const }));
+          continue;
+        }
+        if (result.digest !== plannedTip.digest) {
+          // Content addressing is the mask's identity: a mismatch means the
+          // file no longer carries the ref's bytes, so it must not become
+          // live paint.
+          unavailable.push(id);
+          failures.push(Object.freeze({ tipId: id, reason: 'digest-mismatch' as const }));
+          continue;
+        }
+        healthy.set(id, { digest: plannedTip.digest, mask: result.mask, webp: result.webp });
+      }
+    }
   }
 
   const entries: ProjectBrushSetEntry[] = [];
   const masks: ProjectBrushSetMask[] = [];
   const assets: ProjectBrushSetAsset[] = [];
-  const unavailable: string[] = [];
-
-  for (const tip of tips) {
-    const result = byId.get(tip.id);
-    if (result === undefined) {
-      // No answer for a requested id is a contract violation: fail closed.
-      unavailable.push(tip.id);
-      failures.push(Object.freeze({ tipId: tip.id, reason: 'refused' as const }));
+  for (const plannedTip of planned) {
+    const live = healthy.get(plannedTip.tip.id);
+    if (live === undefined) {
+      entries.push(Object.freeze({ tip: plannedTip.tip, digest: null, mask: null }));
       continue;
     }
-    if (!result.ok) {
-      unavailable.push(tip.id);
-      failures.push(Object.freeze({ tipId: tip.id, reason: result.reason }));
-      continue;
-    }
-    if (result.mask.length !== TIP_MASK_BYTES) {
-      unavailable.push(tip.id);
-      failures.push(Object.freeze({ tipId: tip.id, reason: 'wrong-size' as const }));
-      continue;
-    }
-    const digest = brushAssetDigestFromPath(tip.asset);
-    if (digest === null) {
-      unavailable.push(tip.id);
-      failures.push(Object.freeze({ tipId: tip.id, reason: 'invalid-asset-ref' as const }));
-      continue;
-    }
-    if (result.digest !== digest) {
-      // Content addressing is the mask's identity: a mismatch means the file
-      // no longer carries the ref's bytes, so it must not become live paint.
-      unavailable.push(tip.id);
-      failures.push(Object.freeze({ tipId: tip.id, reason: 'digest-mismatch' as const }));
-      continue;
-    }
-    entries.push(Object.freeze({ tip, digest, mask: result.mask }));
-    masks.push(Object.freeze({ id: tip.id, mask: result.mask }));
-    assets.push(Object.freeze({ digest, webp: result.webp }));
+    entries.push(Object.freeze({ tip: plannedTip.tip, digest: live.digest, mask: live.mask }));
+    masks.push(Object.freeze({ id: plannedTip.tip.id, mask: live.mask }));
+    assets.push(Object.freeze({ digest: live.digest, webp: live.webp }));
   }
 
   return Object.freeze({

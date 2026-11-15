@@ -87,7 +87,7 @@ describe('loadProjectBrushSet — one native read, decoded before hydrate (63-07
     expect(result.entries).toHaveLength(2);
     expect(result.entries[0]!.tip.id).toBe('wc/custom-a');
     expect(result.entries[0]!.digest).toBe(DIGEST_A);
-    expect(result.entries[0]!.mask.length).toBe(TIP_MASK_BYTES);
+    expect(result.entries[0]!.mask?.length).toBe(TIP_MASK_BYTES);
     expect(result.masks).toHaveLength(2);
     expect(result.assets).toHaveLength(2);
     expect(result.assets[1]!.digest).toBe(DIGEST_B);
