@@ -524,6 +524,60 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
     expect(watercolor.resolveMask('wc/custom-replaced-1')).toBe(null);
     expect(watercolor.resolveMask('wc/custom-replaced-2')).toEqual(secondMask);
   });
+
+  // WR-03: an empty `customBrushTips` is ambiguous — a project that imported
+  // nothing looks exactly like a realm whose catalog payload never arrived. The
+  // flag records the second fact, so the save leg can refuse by name instead of
+  // writing a script whose custom masks silently vanished.
+  it('records that a catalog payload arrived: false on a fresh instance, true after any payload (WR-03)', async () => {
+    const catalog = await import('./aquarelleBrushCatalog');
+
+    expect(catalog.brushCatalogSynced?.value).toBe(false);
+
+    // An EMPTY payload is still a delivered catalog: this realm now knows the
+    // project has no imports, which is a known-empty state, not an unknown one.
+    catalog.applyBrushCatalogPayload({
+      contextId: 'ctx-63-11-synced-empty',
+      entries: [],
+      unavailableTipIds: [],
+    });
+    expect(catalog.brushCatalogSynced?.value).toBe(true);
+  });
+
+  it('a repeated payload leaves the flag true and bumps no catalog generation for it (WR-03)', async () => {
+    const catalog = await import('./aquarelleBrushCatalog');
+    catalog.applyBrushCatalogPayload({
+      contextId: 'ctx-63-11-repeat-1',
+      entries: [],
+      unavailableTipIds: [],
+    });
+    const settledGeneration = catalog.brushCatalogGeneration.value;
+
+    catalog.applyBrushCatalogPayload({
+      contextId: 'ctx-63-11-repeat-2',
+      entries: [],
+      unavailableTipIds: [],
+    });
+
+    expect(catalog.brushCatalogSynced?.value).toBe(true);
+    expect(catalog.brushCatalogGeneration.value).toBe(settledGeneration);
+  });
+
+  it('a catalog reset never clears the flag behind a delivered empty snapshot (WR-03)', async () => {
+    const catalog = await import('./aquarelleBrushCatalog');
+    catalog.applyBrushCatalogPayload({
+      contextId: 'ctx-63-11-reset',
+      entries: [],
+      unavailableTipIds: [],
+    });
+
+    catalog.resetAquarelleBrushCatalog();
+
+    // Clearing the customs is legitimate; forgetting that the catalog was
+    // DELIVERED is not — a post-close save still knows the catalog is empty.
+    expect(catalog.brushCatalogSynced?.value).toBe(true);
+    expect(catalog.customBrushTips.value).toHaveLength(0);
+  });
 });
 
 describe('aquarelleBrushCatalog — replace on open, reset on close, publish (63-07 / D-20 / TIP-17)', () => {
