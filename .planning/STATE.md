@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: executing
-stopped_at: Completed 63-10-PLAN.md
-last_updated: "2026-11-15T15:22:41.730Z"
+stopped_at: Completed 63-13-PLAN.md
+last_updated: "2026-11-15T15:29:07.257Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: 0a35c538e47f1ebf60578885a5acc9144170bba8
+state_head: b55095148cd6c92caa81305c4474f5674e8971f4
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 14
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 ## Current Position
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 11 of 14
+Plan: 12 of 14
 Status: Ready to execute
 Last activity: 2026-11-15 — Phase 63 execution started
 
@@ -136,6 +136,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P07 | 18 | 3 tasks | 9 files |
 | Phase 63 P08 | 8 | 2 tasks | 6 files |
 | Phase 63 P10 | 6min | 3 tasks | 5 files |
+| Phase 63 P13 | 3 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -423,6 +424,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: The built-in-id refusal reads the RAW id before record validation, so a malformed record still logs invalid-entry while a well-formed entry naming one of the three shipped tips logs the named reason builtin-id.
 - [Phase 63]: WR-01's stated root cause is refuted on the current tree: physicPaint.ts's decodeBase64OrNull already resolves to its own total base64ToBytes, not webpBytes.ts's throwing converter; the totality pins landed green by construction (63-03 / CRV-03 precedent, no fabricated RED) and the guard-boundary try/catch was applied as defence-in-depth.
 - [Phase 63]: buildProjectBrushPack keeps the whole-list fast path; the per-entry walk runs only on refusal, the first entry of a duplicate id wins, each dropped tip is logged by id and class, and null is returned only when nothing survives.
+- [Phase 63]: builtinMasksById (id -> exact BUILTIN_TIP_MASKS allocation) is built once at module load and is the single authority for both mask-registry write laws; the reserved set derives from BUILTIN_TIP_MASKS alone and is never widened (WR-05).
+- [Phase 63]: replaceMaskRegistry admits a built-in id on IDENTITY, not bytes: an equal-byte copy under wc/builtin-* is logged and skipped, because a copy is not the shipped allocation (T-63-31).
+- [Phase 63]: registerMask refuses a reserved id BEFORE the writable check and before any mutation, so a refused registration bumps no generation and the log names the real reason; a refused built-in entry in replace installs nothing and the appliers' built-ins-first prefix preserves the shipped allocations.
 
 ### Pending Todos
 
@@ -540,8 +544,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T15:22:41.699Z
-Stopped at: Completed 63-10-PLAN.md
+Last session: 2026-11-15T15:29:07.223Z
+Stopped at: Completed 63-13-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
