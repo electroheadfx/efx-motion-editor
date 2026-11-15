@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 63-brush-tip-pipeline
 source: [63-VERIFICATION.md]
 started: 2026-11-15T17:05:00Z
@@ -55,5 +55,18 @@ blocked: 0
   reason: "User reported: No work, apply script and play script with motion/static/reveal draw to neutral round fallback. The saved or copied script doesn't not store texture choice for each strokes."
   severity: major
   test: 5
-  artifacts: []
-  missing: []
+  root_cause: "The per-track Studio script snapshot (SNP1/AQTL) never carries engine.textureId: AQTL encode (scriptTimelineCodec.ts:635-743, engine block 680-726) and decode (998-1014) omit it, so every Studio boot/layer switch/track reseed calls studioScriptSnapshotController.restore() which wholesale-replaces payloadTimeline (aquarelleRecordState.ts:1771-1781), silently stripping every recorded stroke's texture before Save/Copy Script captures it. Secondary: aquarelleSelectedTextureId is session-only module state (aquarelleRecordState.ts:132), never restored on boot, and silently nulls an absent pick (360-368; AquarelleCanvasLayer.tsx:629-631,535). Confirmed by the real saved script on disk (v2.1.0-phase-60-2.mce scripts/c649ad32...efx-roto-script.json): brushPack carries all 3 imported tips with inline maskDataUrl, 23 brush strokes + 15 Dry events, zero occurrences of textureId; u16-quantized UV on strokes 0-18 vs raw floats on 19-22 proves a mid-session restore."
+  artifacts:
+    - path: "app/src/components/physic-paint/performance/scriptTimelineCodec.ts"
+      issue: "AQTL encode (635-743) and decode (998-1014) omit engine.textureId — the drop point"
+    - path: "app/src/components/physic-paint/snapshot/studioScriptSnapshotController.ts"
+      issue: "restore() decodes and wholesale-replaces the timeline (676, 712, 755)"
+    - path: "app/src/components/physic-paint/view/aquarelleRecordState.ts"
+      issue: "restore replaces payloadTimeline (1771-1781); texture selection is session-only (132) and silently gated (360-368)"
+    - path: "app/src/components/physic-paint/engine/AquarelleCanvasLayer.tsx"
+      issue: "record conditionally writes texture (629-631, 535)"
+  missing:
+    - "Add a presence-prefixed textureId string to the AQTL stroke engine block, encode + decode, with the format's clean-break version bump"
+    - "Regression test covering record -> SNP1 encode/decode -> restore -> save script, which no current test exercises (76/76 pass while this path is broken)"
+    - "Optional: restore/retain the Studio texture selection across a realm reset"
+  debug_session: .planning/debug/roto-script-drops-texture.md
