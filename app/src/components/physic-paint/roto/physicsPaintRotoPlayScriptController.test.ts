@@ -15,6 +15,7 @@ import {
   type RotoPlayScriptSourceCycleMatchInput,
 } from './physicsPaintRotoPlayScriptController';
 import type { AquarelleBakeOptions, AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
+import type { StudioStroke } from '@efxlab/efx-paint-host';
 import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke, type AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 
 // Preact hook shims for the REAL useRotoPhysicalEditHistory hook driven by the
@@ -5635,7 +5636,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     const call = (test.bakeRevealStackTail.mock.calls as unknown as Array<[{
       scriptEvents: readonly unknown[];
     }]>) [0]![0];
-    expect((call.scriptEvents[0] as AquarelleStrokePayload).engine.textureId).toBe('wc/builtin-chalk');
+    expect((call.scriptEvents[0] as StudioStroke<AquarelleStrokePayload>).engine.textureId).toBe('wc/builtin-chalk');
   });
 
   it('reloads the extended Reveal rail with the same rendered frames and repeat resolution (Quick B)', async () => {
@@ -6881,7 +6882,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     const runCall = (test.bakeRevealStackRun.mock.calls as unknown as Array<[{
       scriptEvents: readonly unknown[];
     }]>) [0]![0];
-    expect((runCall.scriptEvents[0] as AquarelleStrokePayload).engine.textureId).toBe('wc/builtin-chalk');
+    expect((runCall.scriptEvents[0] as StudioStroke<AquarelleStrokePayload>).engine.textureId).toBe('wc/builtin-chalk');
   });
 
   it('flattens a Reveal run when the union port is absent, recording nothing (Quick C2)', async () => {

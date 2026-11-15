@@ -639,7 +639,7 @@ describe('aquarelle bake consume branch (56-08)', () => {
     await confirmPromise;
 
     expect(fake.bakeEvents[0]).toBe(timeline[0]);
-    expect((fake.bakeEvents[0] as AquarelleStrokePayload).engine.textureId).toBe('wc/builtin-chalk');
+    expect((fake.bakeEvents[0] as StudioStroke<AquarelleStrokePayload>).engine.textureId).toBe('wc/builtin-chalk');
   });
 
   it('texture carrier: the static render hands bake.bake the snapshot textureId', async () => {
@@ -661,7 +661,7 @@ describe('aquarelle bake consume branch (56-08)', () => {
     await confirmPromise;
 
     expect(fake.bakeEvents[0]).toBe(timeline[0]);
-    expect((fake.bakeEvents[0] as AquarelleStrokePayload).engine.textureId).toBe('wc/builtin-chalk');
+    expect((fake.bakeEvents[0] as StudioStroke<AquarelleStrokePayload>).engine.textureId).toBe('wc/builtin-chalk');
   });
 
   it('a snapshot without aquarelleEvents still reaches bake.bake via the in-memory fallback', async () => {
