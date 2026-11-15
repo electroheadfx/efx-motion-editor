@@ -2959,9 +2959,19 @@ const BRUSH_IMPORT_FAILURE_REASONS: ReadonlySet<string> = new Set<PhysicPaintBru
   'timed-out',
 ]);
 
+/**
+ * The guards' own totality boundary (WR-01 / T-63-26). The documented
+ * never-throws contract belongs to the GUARD, not to whatever decode it
+ * delegates to: a non-canonical string yields null here rather than an
+ * exception thrown into a listener body that has no catch.
+ */
 function decodeBase64OrNull(value: unknown): Uint8Array | null {
   if (typeof value !== 'string') return null;
-  return base64ToBytes(value);
+  try {
+    return base64ToBytes(value);
+  } catch {
+    return null;
+  }
 }
 
 /**
