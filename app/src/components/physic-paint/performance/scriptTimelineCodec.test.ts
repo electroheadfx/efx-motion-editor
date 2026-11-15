@@ -775,18 +775,82 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
 // ---------------------------------------------------------------------------
 
 describe('AQTL v3 textureId (63-15 G-63-5)', () => {
-  it('round-trips a textured stroke deep-equal and re-encodes byte-identically', () => {
+  function texturedStroke(textureId: string): StudioStroke<AquarelleStrokePayload> {
     const base = minimalStroke();
-    const textured: StudioStroke<AquarelleStrokePayload> = {
-      ...base,
-      engine: { ...base.engine, textureId: 'wc/custom-abc' },
-    };
+    return { ...base, engine: { ...base.engine, textureId } };
+  }
+
+  it('round-trips a textured stroke deep-equal and re-encodes byte-identically', () => {
+    const textured = texturedStroke('wc/custom-abc');
 
     const first = encodeScriptTimelineBinary([textured]);
     const decoded = decodeScriptTimelineBinary(first);
 
     expect(decoded).toEqual([textured]);
     expect(encodeScriptTimelineBinary(decoded)).toEqual(first);
+  });
+
+  it('round-trips the built-in id with no imports and re-encodes byte-identically', () => {
+    const textured = texturedStroke('wc/builtin-chalk');
+
+    const first = encodeScriptTimelineBinary([textured]);
+    const decoded = decodeScriptTimelineBinary(first);
+
+    expect(decoded).toEqual([textured]);
+    expect(encodeScriptTimelineBinary(decoded)).toEqual(first);
+  });
+
+  it('costs one presence byte for absence and 1 + 2 + UTF-8 bytes for an id', () => {
+    // No anchors: flags at 73, texture presence at 74. Every stroke pays the
+    // presence byte (0 for absence, 1 for a carried id); a present id adds
+    // the u16 length plus the UTF-8 bytes on top of the same stroke.
+    const plain = encodeScriptTimelineBinary([minimalStroke()]);
+    expect(plain[74]).toBe(0);
+
+    const id = 'wc/builtin-chalk';
+    const bytes = encodeScriptTimelineBinary([texturedStroke(id)]);
+    expect(bytes[74]).toBe(1);
+    expect(bytes.byteLength).toBe(
+      plain.byteLength + 2 + new TextEncoder().encode(id).byteLength,
+    );
+  });
+
+  it('refuses an empty or non-string textureId at encode (fail closed)', () => {
+    expect(expectedCode(() => encodeScriptTimelineBinary([texturedStroke('')]))).toBe(
+      'invalid-string',
+    );
+
+    const nonString = texturedStroke('wc/builtin-chalk');
+    (asStroke(nonString).engine as { textureId?: unknown }).textureId = 42;
+    expect(expectedCode(() => encodeScriptTimelineBinary([nonString]))).toBe('invalid-string');
+  });
+
+  it('refuses a texture presence marker that is not 0 or 1', () => {
+    const bytes = encodeScriptTimelineBinary([texturedStroke('wc/builtin-chalk')]);
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(74, 2);
+    expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
+  });
+
+  it('fails closed when the texture id length runs past the body', () => {
+    const bytes = encodeScriptTimelineBinary([texturedStroke('wc/builtin-chalk')]);
+    // No anchors: flags at 73, presence at 74, u16 length at 75.
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint16(75, 0xffff, true);
+    expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('truncated');
+  });
+
+  it('writes one presence byte for a textureless lift stroke and invents no key', () => {
+    const base = minimalStroke();
+    const lift: StudioStroke<AquarelleStrokePayload> = {
+      ...base,
+      engine: { ...base.engine, tool: 'lift' },
+    };
+
+    const bytes = encodeScriptTimelineBinary([lift]);
+    // Same size as any textureless stroke: presence 0 is the one added byte.
+    expect(bytes.byteLength).toBe(MINIMAL_BYTES.byteLength);
+
+    const [decoded] = decodeScriptTimelineBinary(bytes);
+    expect('textureId' in asStroke(decoded).engine).toBe(false);
   });
 });
 

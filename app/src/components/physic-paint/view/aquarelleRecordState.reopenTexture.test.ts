@@ -34,6 +34,7 @@ import {
 } from '../performance/studioScriptSnapshotCodec';
 import { serializeAquarelleRotoScript } from '../roto/physicsPaintRotoScriptSchema';
 import {
+  aquarelleBrushForActiveTool,
   getAquarelleEventsForFrame,
   recordAquarelleStroke,
   resetAquarelleRecordState,
@@ -181,5 +182,44 @@ describe('G-63-5 — a recorded texture survives the per-track snapshot and reac
     const secondCycle = decodeStudioScriptSnapshot(secondBytes, IDENTITY);
     restoreAquarelleRecordTimeline(secondCycle.watercolorEvents);
     expect(strokeEventAt(getAquarelleEventsForFrame(FRAME))).toEqual(strokeEventAt(firstEvents));
+  });
+
+  it('drops a lift stroke texture at the single projection and restores none', () => {
+    // The one enforcement point is toStudioStroke:207 — the codec adds no
+    // lift policy of its own.
+    recordAquarelleStroke(ID, stroke(ID, { tool: 'lift', textureId: 'wc/builtin-chalk' }));
+    expect('textureId' in strokeEventAt(getAquarelleEventsForFrame(FRAME)).engine).toBe(false);
+
+    snapshotCycle();
+
+    expect('textureId' in strokeEventAt(getAquarelleEventsForFrame(FRAME)).engine).toBe(false);
+  });
+
+  it('carries an unknown id verbatim and fails closed at the live bind', () => {
+    const unknown = 'wc/custom-missing';
+    recordAquarelleStroke(ID, stroke(ID, { textureId: unknown }));
+
+    snapshotCycle();
+
+    // The carrier never resolves ids: it survives the round trip untouched.
+    expect(strokeEventAt(getAquarelleEventsForFrame(FRAME)).engine.textureId).toBe(unknown);
+
+    // The brush seam is where an unresolvable id degrades, and only there.
+    setAquarelleSelectedTextureId(unknown);
+    expect(aquarelleBrushForActiveTool().textureId).toBeNull();
+  });
+
+  it('carries a built-in id with no imports and binds it live', () => {
+    recordAquarelleStroke(ID, stroke(ID, { textureId: 'wc/builtin-chalk' }));
+
+    snapshotCycle();
+
+    expect(strokeEventAt(getAquarelleEventsForFrame(FRAME)).engine.textureId).toBe(
+      'wc/builtin-chalk',
+    );
+
+    // The registry seeds the built-ins at module load: no import needed.
+    setAquarelleSelectedTextureId('wc/builtin-chalk');
+    expect(aquarelleBrushForActiveTool().textureId).toBe('wc/builtin-chalk');
   });
 });
