@@ -7,6 +7,7 @@ import type {
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import { AQUARELLE_TOOLS, isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
+import { buildBrushPackSnapshot, type AquarelleTip } from '@efxlab/efx-watercolor';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { isGrainScaleValue } from '../../../efx-paint/document/efxPaintDocument';
 import { aquarelleUvToEnginePixel } from '../engine/aquarelleStrokeBridge';
@@ -102,7 +103,12 @@ export type RotoScriptParseResult =
   | { ok: false; refusal: HostScriptRefusal };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const WEBP_PREFIX = 'data:image/webp;base64,';
+/**
+ * The ONE inline image carrier of a script (D-14): the thumbnail and each
+ * custom tip's mask both travel as a WebP data URL, because a script cannot
+ * reference another project's package asset.
+ */
+export const ROTO_SCRIPT_WEBP_PREFIX = 'data:image/webp;base64,';
 
 export function isCanonicalRotoScriptId(value: unknown): value is string {
   return typeof value === 'string' && UUID_PATTERN.test(value);
@@ -140,6 +146,14 @@ export function serializeAquarelleRotoScript(input: {
   source: PersistedRotoScriptSourceV1;
   thumbnail: PersistedRotoScriptThumbnailV1;
   events: readonly AquarellePayloadEvent[];
+  /**
+   * The script carrier's brush entries (63-08 / TIP-14 / D-14): each CUSTOM
+   * tip the project paints with, carrying its mask inline as a WebP data URL
+   * (`maskDataUrl`) and NEVER a package `asset` ref. Omitted for a script
+   * painted with built-ins only. The pack law validates the entries — an
+   * entry carrying an `asset` or the retired `mask` member refuses the save.
+   */
+  brushEntries?: readonly AquarelleTip[];
 }): PersistedRotoScriptAquarelleV1 {
   const strokes: StudioStroke<AquarelleStrokePayload | AquarelleDryEvent>[] = [];
   for (const event of input.events) {
@@ -173,7 +187,8 @@ export function serializeAquarelleRotoScript(input: {
       engine: { ...event.engine },
     });
   }
-  const brushPack: BrushPackSnapshot = { kind: ROTO_SCRIPT_ENGINE_ID_AQUARELLE, entries: [] };
+  const brushPack = buildBrushPackSnapshot(input.brushEntries ?? [], 'script');
+  if (brushPack === null) throw new Error('Captured Roto script brush entries are not persistable');
   const document: PersistedRotoScriptAquarelleV1 = {
     kind: ROTO_SCRIPT_KIND,
     schemaVersion: ROTO_SCRIPT_SCHEMA_VERSION,
@@ -477,14 +492,29 @@ function isThumbnail(value: unknown): value is PersistedRotoScriptThumbnailV1 {
   if (!isRecord(value) || value.mimeType !== 'image/webp') return false;
   if (!positiveInteger(value.width, ROTO_SCRIPT_LIMITS.thumbnailWidth) || !positiveInteger(value.height, ROTO_SCRIPT_LIMITS.thumbnailHeight)) return false;
   if (typeof value.quality !== 'number' || !Number.isFinite(value.quality) || value.quality < 0.75 || value.quality > 0.85) return false;
-  if (typeof value.dataUrl !== 'string' || !value.dataUrl.startsWith(WEBP_PREFIX)) return false;
+  if (typeof value.dataUrl !== 'string' || !value.dataUrl.startsWith(ROTO_SCRIPT_WEBP_PREFIX)) return false;
   try {
-    const bytes = decodeBase64(value.dataUrl.slice(WEBP_PREFIX.length));
+    const bytes = decodeBase64(value.dataUrl.slice(ROTO_SCRIPT_WEBP_PREFIX.length));
     const dimensions = parseWebpDimensions(bytes);
     return bytes.length <= ROTO_SCRIPT_LIMITS.thumbnailBytes
       && dimensions?.width === value.width && dimensions.height === value.height;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Decode ONE script-carried mask data URL back to its stored WebP bytes
+ * (63-08 / TIP-14 / D-14). Prefix and canonical base64 only; `null` on any
+ * other value — the load leg then skips that entry with a named log rather
+ * than aborting the script.
+ */
+export function decodeScriptMaskDataUrl(value: unknown): Uint8Array | null {
+  if (typeof value !== 'string' || !value.startsWith(ROTO_SCRIPT_WEBP_PREFIX)) return null;
+  try {
+    return decodeBase64(value.slice(ROTO_SCRIPT_WEBP_PREFIX.length));
+  } catch {
+    return null;
   }
 }
 

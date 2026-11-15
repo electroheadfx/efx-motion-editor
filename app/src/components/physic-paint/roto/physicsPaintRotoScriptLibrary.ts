@@ -1,4 +1,5 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
+import { TIP_MASK_BYTES, asTipRecord, type AquarelleTip } from '@efxlab/efx-watercolor';
 import type {
   PhysicPaintActionTransactionPrepareRequest,
   PhysicPaintActionTransactionRecord,
@@ -12,7 +13,26 @@ import { ROTO_SCRIPT_SCOPE_ALL } from './physicsPaintRotoScriptScope';
 import { buildPhysicPaintRotoProjectEquality, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { getCarriedRotoPhysical } from './rotoLaunchHydration';
 import { proposePhysicPaintRotoActionGroupLifecycle, type PhysicPaintRotoActionGroupLifecycleImpact } from './physicsPaintRotoGroupLifecycle';
-import { isRefusedRotoScriptRow, normalizeRotoScriptName, persistedRotoScriptToRuntime, serializeAquarelleRotoScript, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
+import {
+  ROTO_SCRIPT_WEBP_PREFIX,
+  decodeScriptMaskDataUrl,
+  isRefusedRotoScriptRow,
+  normalizeRotoScriptName,
+  parseRotoScript,
+  persistedRotoScriptToRuntime,
+  serializeAquarelleRotoScript,
+  type PersistedRotoScriptAnyV1,
+  type RotoScriptLibraryRow,
+} from './physicsPaintRotoScriptSchema';
+import { customBrushTips, registerScriptMask } from '../../../stores/aquarelleBrushCatalog';
+import { brushAssetBytes, brushAssetDigestFromPath } from '../../../lib/efxPaintBrushAssets';
+import { encodeBridgeBase64 } from '../../../lib/webpBytes';
+import {
+  ipcEfxPaintDecodeBrushMask,
+  type EfxPaintBrushMaskDecodeResult,
+  type EfxPaintMediaFailure,
+  type Result,
+} from '../../../lib/ipc';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoPaintScript, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import type { PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 import type { RotoScriptThumbnailComposite } from './physicsPaintRotoScriptThumbnail';
@@ -78,6 +98,13 @@ export interface RotoScriptLibraryControllerPorts {
    * been bitten by.
    */
   publishScriptScope: (scope: string) => void;
+  /**
+   * 63-08 / TIP-14: register a loaded script's inline brush masks into THIS
+   * realm's engine registry. Optional — the default calls
+   * `registerScriptBrushMasks` against the real native decode boundary, so
+   * production needs no extra wiring; the unit harness injects it.
+   */
+  registerScriptMasks?: (script: PersistedRotoScriptAnyV1) => Promise<void>;
   readonly referencedActionDeletion?: ReferencedActionDeletionPorts;
 }
 
@@ -284,6 +311,113 @@ export function buildRotoScriptDeleteReferenceImpact(
   });
 }
 
+// ---------------------------------------------------------------------------
+// 63-08 / TIP-14 / D-14: the script brush carrier.
+//
+// A script cannot reference another project's package asset, so each CUSTOM
+// tip travels with its mask inline as a WebP data URL. The save leg copies the
+// bytes the STUDIO realm already holds; the load leg decodes them back into
+// the engine registry — never into the project catalog.
+// ---------------------------------------------------------------------------
+
+/** A script-carrier brush entry: a CUSTOM tip plus its inline mask data URL. */
+export type ScriptBrushTipEntry = AquarelleTip & { readonly maskDataUrl: string };
+
+export type ScriptBrushEntryBuild =
+  | { readonly ok: true; readonly entries: readonly ScriptBrushTipEntry[] }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Build the script carrier's `brushPack` entries from the open project's
+ * CUSTOM tips and THIS realm's stored WebP bytes. `saveActiveFrame` runs in
+ * the Studio child webview, and the only writer of its asset cache is
+ * `applyBrushCatalogPayload` (63-05/63-07) — reading the main realm's cache is
+ * not an option here, so an absent body means the catalog push never arrived.
+ *
+ * Refusal, not omission: dropping one tip's mask would write a script that
+ * silently paints that tip with the neutral fallback on another machine.
+ * Built-ins are never written — both realms derive them from constants.
+ */
+export function buildScriptBrushEntries(): ScriptBrushEntryBuild {
+  const entries: ScriptBrushTipEntry[] = [];
+  for (const tip of customBrushTips.value) {
+    const digest = brushAssetDigestFromPath(tip.asset);
+    const webp = digest === null ? undefined : brushAssetBytes(digest);
+    if (webp === undefined) {
+      return {
+        ok: false,
+        reason: `Save refused — custom tip "${tip.id}" has no stored mask bytes in this realm; the catalog push never arrived.`,
+      };
+    }
+    // The script carrier refuses `asset`: the mask is inline, the ref is gone.
+    const { asset: _asset, ...record } = tip;
+    entries.push({ ...record, maskDataUrl: `${ROTO_SCRIPT_WEBP_PREFIX}${encodeBridgeBase64(webp)}` });
+  }
+  return { ok: true, entries };
+}
+
+/** The injectable seams of the load leg's mask registration. */
+export interface ScriptBrushMaskPorts {
+  decode: (webp: Uint8Array) => Promise<Result<EfxPaintBrushMaskDecodeResult, EfxPaintMediaFailure>>;
+  register: (id: string, mask: Uint8Array) => boolean;
+  log: (message: string, error?: boolean) => void;
+}
+
+const SCRIPT_BRUSH_MASK_PORTS: ScriptBrushMaskPorts = {
+  decode: ipcEfxPaintDecodeBrushMask,
+  register: registerScriptMask,
+  log: () => {},
+};
+
+/**
+ * Register a loaded script's inline masks into THIS realm's engine registry
+ * (63-08 / TIP-14 / D-14 / T-63-23). Registry only — a script's tips must
+ * never become project catalog rows, and the next open or close resets the
+ * registry wholesale, so nothing a script registers survives a switch.
+ *
+ * Total and per-entry isolated: a malformed entry, an undecodable payload, a
+ * wrong-size mask or a refused registration each skip THAT entry with a named
+ * log and never abort the script's activation. Re-parses the document so it is
+ * safe to call directly on a wire value. Returns how many masks became live
+ * paint state.
+ */
+export async function registerScriptBrushMasks(
+  document: PersistedRotoScriptAnyV1,
+  overrides: Partial<ScriptBrushMaskPorts> = {},
+): Promise<number> {
+  const ports: ScriptBrushMaskPorts = { ...SCRIPT_BRUSH_MASK_PORTS, ...overrides };
+  const parsed = parseRotoScript(document);
+  if (!parsed.ok) return 0;
+  let registered = 0;
+  for (const raw of parsed.document.brushPack.entries) {
+    const tip = asTipRecord(raw, 'script');
+    if (tip === null) {
+      ports.log('Script brush entry is malformed — skipped.', true);
+      continue;
+    }
+    const webp = decodeScriptMaskDataUrl((raw as Record<string, unknown>).maskDataUrl);
+    if (webp === null) {
+      ports.log(`Script tip "${tip.id}" carries no valid mask data URL — skipped.`, true);
+      continue;
+    }
+    const decoded = await ports.decode(webp);
+    if (!decoded.ok) {
+      ports.log(`Script tip "${tip.id}" mask could not be decoded — skipped.`, true);
+      continue;
+    }
+    if (decoded.data.mask.length !== TIP_MASK_BYTES) {
+      ports.log(`Script tip "${tip.id}" mask has the wrong size — skipped.`, true);
+      continue;
+    }
+    if (!ports.register(tip.id, decoded.data.mask)) {
+      ports.log(`Script tip "${tip.id}" mask was refused by the registry — skipped.`, true);
+      continue;
+    }
+    registered += 1;
+  }
+  return registered;
+}
+
 export function createRotoScriptLibraryController(ports: RotoScriptLibraryControllerPorts): RotoScriptLibraryController {
   const rows = signal<readonly RotoScriptLibraryRow[]>([]);
   const selectedId = signal<string | null>(null);
@@ -335,6 +469,17 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       canDelete: Boolean(row) && actionMutationDisabledReason.value === null,
     };
   });
+
+  /**
+   * 63-08 / TIP-14: the load leg's mask registration. The default routes to
+   * `registerScriptBrushMasks` against the real native decode boundary, so
+   * production needs no extra wiring; the harness overrides it. The explicit
+   * async arrow keeps the port's `Promise<void>` shape (the helper counts).
+   */
+  const registerLoadedScriptMasks = ports.registerScriptMasks
+    ?? (async (script: PersistedRotoScriptAnyV1) => {
+      await registerScriptBrushMasks(script, { log: ports.log });
+    });
 
   function contextIdentity(context: PhysicPaintLaunchContext | null): string { return context?.project ? `${context.project.contextId}:${context.layerId}` : 'closed'; }
   function operationId(kind: string): string { return `roto-library-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
@@ -524,7 +669,13 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       // the efx-watercolor envelope. A capture without an aquarelle timeline has
       // no persistable payload — report it instead of writing a half-document.
       if (!scriptSnapshot.aquarelleEvents) return fail('This script has no Water color timeline to save.');
-      const script = serializeAquarelleRotoScript({ id, name, createdAt: now, updatedAt: now, source: sourceBag, thumbnail, events: scriptSnapshot.aquarelleEvents });
+      // 63-08 / TIP-14 / D-14: the painted CUSTOM tips travel INSIDE the script
+      // as inline mask data URLs. A tip whose stored bytes this realm never
+      // received refuses the save by name — dropping its mask would write a
+      // script that silently paints that tip with the neutral fallback.
+      const build = buildScriptBrushEntries();
+      if (!build.ok) return fail(build.reason);
+      const script = serializeAquarelleRotoScript({ id, name, createdAt: now, updatedAt: now, source: sourceBag, thumbnail, events: scriptSnapshot.aquarelleEvents, brushEntries: build.entries });
       const result = await execute({ kind: 'save', operationId: operationId('save'), script }, id);
       status.value = result.ok ? `Saved ${name}` : result.error ?? 'Save failed';
       return result.ok;
@@ -562,6 +713,9 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
         ports.log(status.value, true);
         return false;
       }
+      // 63-08 / TIP-14 / T-63-23: the script's masks become live paint state in
+      // THIS realm's registry only — never a project catalog row.
+      await registerLoadedScriptMasks(result.script);
       publishResult(result, row.id, true);
       const loadedRow = rows.peek().find((candidate) => candidate.id === row.id) ?? row;
       status.value = `Loaded ${loadedRow.name} — ${loadedRow.brushCount} brushes`;
@@ -584,6 +738,8 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     }
     try {
       const runtime = persistedRotoScriptToRuntime(result.script);
+      // 63-08 / TIP-14: a snapshot read is another load path — same registry-only law.
+      await registerLoadedScriptMasks(result.script);
       return deepFreezeSnapshot(runtime);
     } catch (error) {
       const message = String(error);

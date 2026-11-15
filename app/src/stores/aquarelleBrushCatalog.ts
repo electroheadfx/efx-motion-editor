@@ -41,6 +41,7 @@ import {
   BUILTIN_TIPS,
   TIP_MASK_BYTES,
   buildBrushPackSnapshot,
+  registerMask,
   replaceMaskRegistry,
   resetMaskRegistry,
   resolveMask,
@@ -113,6 +114,19 @@ export function _setBrushCatalogPublisher(publisher: BrushCatalogPublisher): Bru
  */
 export function listAquarelleBrushTips(): readonly AquarelleTip[] {
   return [...BUILTIN_TIPS, ...customBrushTipsSignal.value];
+}
+
+/**
+ * Register ONE mask a loaded Roto script carries (63-08 / TIP-14 / D-14 /
+ * T-63-23). REGISTRY ONLY — never a catalog row, never an unavailable id,
+ * never a stored asset: a script's tips paint for this session but must not
+ * become project data. The next project open replaces the whole registry and
+ * a close resets it to the three built-ins, so nothing a script registered
+ * survives a project switch. Returns false (and writes nothing) unless the
+ * mask is exactly `TIP_MASK_BYTES` long — the engine's own fail-closed law.
+ */
+export function registerScriptMask(id: string, mask: Uint8Array): boolean {
+  return registerMask(id, mask);
 }
 
 /**
