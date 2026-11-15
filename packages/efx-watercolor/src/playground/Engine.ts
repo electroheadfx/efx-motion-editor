@@ -1,4 +1,4 @@
-import { BRUSH_PRESETS, buildBrush, type Brush } from './brushes';
+import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, type Brush } from './brushes';
 import { GL, type DoubleTarget, type Format, type Program, type Rect, type Target } from './gl';
 import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
@@ -1275,14 +1275,23 @@ export class WatercolorEngine {
 
   private redraw() { this.dirtyAll = true; this.schedule(); }
 
-  /** Drop the GPU copy of a brush tip (after a custom brush is removed or replaced). */
+  /**
+   * Drop every GPU copy of a response's tips — one per texture it can be
+   * stamped through (quick-261115-oh9: the cache key is the response id AND the
+   * texture, so a response may own several uploaded tips).
+   */
   forgetBrush(id: string) {
-    const t = this.tipTextures.get(id);
-    if (t) { this.gl.deleteTexture(t); this.tipTextures.delete(id); }
+    const prefix = `${id}|`;
+    for (const [key, t] of this.tipTextures) {
+      if (key !== id && !key.startsWith(prefix)) continue;
+      this.gl.deleteTexture(t);
+      this.tipTextures.delete(key);
+    }
   }
 
   private tipTexture(b: Brush): WebGLTexture {
-    let t = this.tipTextures.get(b.id);
+    const key = brushTipCacheKey(b);
+    let t = this.tipTextures.get(key);
     if (t) return t;
     const { gl } = this;
     t = gl.createTexture()!;
@@ -1294,7 +1303,7 @@ export class WatercolorEngine {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    this.tipTextures.set(b.id, t);
+    this.tipTextures.set(key, t);
     return t;
   }
 

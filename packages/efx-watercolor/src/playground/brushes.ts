@@ -65,6 +65,23 @@ export interface Brush extends Omit<BrushPreset, 'tip'> {
   tipData: Uint8Array;
   /** Mean tip value over the tip square; used to normalise deposit between brushes. */
   tipMean: number;
+  /**
+   * quick-261115-oh9: the TEXTURE id whose mask supplied `tipData`, or
+   * null/absent when the response's own procedural tip did. It is part of the
+   * tip's GPU identity — `id` alone no longer identifies the bytes, because one
+   * response can be stamped through several textures.
+   */
+  textureId?: string | null;
+}
+
+/**
+ * The GPU tip-texture identity: the response id AND the texture that supplied
+ * the bytes. Engine.tipTexture caches by this, so switching texture on the same
+ * response uploads a new tip instead of reusing the first one (the bug this
+ * quick fixes); an unknown texture resolves to null and keeps the base key.
+ */
+export function brushTipCacheKey(b: Pick<Brush, 'id' | 'textureId'>): string {
+  return `${b.id}|${b.textureId ?? ''}`;
 }
 
 export const TIP_SIZE = 192;

@@ -87,7 +87,10 @@ function presetFor(brushId: string): BrushPreset {
 function resolveStrokeBrush(brushId: string, textureId: string | null, seed: number): Brush {
   const base = presetFor(brushId)
   const mask = textureId ? resolveMask(textureId) : null
-  return buildBrush({ ...base, tip: mask ?? base.tip }, seed)
+  // `textureId` rides the brush ONLY when the mask supplied the bytes: the
+  // engine's GPU tip cache keys on (id, textureId), so an unknown texture must
+  // resolve to the same key as no texture at all.
+  return { ...buildBrush({ ...base, tip: mask ?? base.tip }, seed), textureId: mask ? textureId : null }
 }
 
 /**

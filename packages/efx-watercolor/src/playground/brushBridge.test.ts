@@ -21,7 +21,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { buildBrushForStroke, strokeTipData } from './brushBridge'
-import { BRUSH_PRESETS, TIP_SIZE, buildBrush, type BrushPreset } from './brushes'
+import { BRUSH_PRESETS, TIP_SIZE, brushTipCacheKey, buildBrush, type BrushPreset } from './brushes'
 import { deriveMask, TIP_MASK_BYTES } from '../brushes/deriveMask'
 import {
   registerMask,
@@ -144,6 +144,30 @@ describe('buildBrushForStroke (texture-axis law)', () => {
     expect(unknown.id).toBe('round')
     expect(sameBytes(unknown.tipData, fallback.tipData)).toBe(true)
     expect(unknown.tipMean).toBe(fallback.tipMean)
+  })
+
+  it('GPU identity: the texture rides the brush so its tip cache cannot collide', () => {
+    // Engine.tipTexture caches the uploaded tip by brushTipCacheKey. If that key
+    // were the response id alone, picking a second texture on the same response
+    // would reuse the first uploaded tip forever (the live bug: "I can't change
+    // the texture, it always the same").
+    const plain = buildBrushForStroke('chalk')
+    const textured = buildBrushForStroke('chalk', { textureId: 'wc/builtin-chalk' })
+    expect(plain.textureId).toBe(null)
+    expect(textured.textureId).toBe('wc/builtin-chalk')
+    expect(brushTipCacheKey(plain) === brushTipCacheKey(textured)).toBe(false)
+    // Two different textures on one response are two different GPU tips.
+    const sponge = buildBrushForStroke('chalk', { textureId: 'wc/builtin-sponge' })
+    expect(brushTipCacheKey(textured) === brushTipCacheKey(sponge)).toBe(false)
+  })
+
+  it('GPU identity: an unknown texture keeps the response tip key', () => {
+    // An unavailable texture stamps the response's own tip, so it must resolve
+    // to the SAME cache entry — no duplicate upload, no phantom texture id.
+    const plain = buildBrushForStroke('round')
+    const unknown = buildBrushForStroke('round', { textureId: 'wc/custom-missing' })
+    expect(unknown.textureId).toBe(null)
+    expect(brushTipCacheKey(unknown)).toBe(brushTipCacheKey(plain))
   })
 
   it('LAW 3: a built-in texture id absent from the registry falls back the same way', () => {
