@@ -18,6 +18,7 @@ interface SchemaModule {
   ROTO_SCRIPT_ENGINE_ID_AQUARELLE?: unknown;
   ROTO_SCRIPT_EXTENSION?: unknown;
   ROTO_SCRIPT_WEBP_PREFIX?: unknown;
+  ROTO_SCRIPT_LIMITS?: { maskDataUrlBytes?: unknown };
   decodeScriptMaskDataUrl?: (value: unknown) => Uint8Array | null;
   serializeRotoScript?: SerializeFn;
   serializeAquarelleRotoScript?: SerializeFn;
@@ -369,6 +370,28 @@ describe('aquarelle script codec (261018-odm ODM-01)', () => {
 // ---------------------------------------------------------------------------
 
 const SCRIPT_MASK_TIP_ID = 'wc/custom-script';
+const SCRIPT_WEBP_PREFIX = 'data:image/webp;base64,';
+
+/** Minimal well-formed 25-byte lossless VP8L header declaring the frame size. */
+function scriptWebp(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(25);
+  bytes.set([0x52, 0x49, 0x46, 0x46], 0);
+  bytes.set([0x57, 0x45, 0x42, 0x50], 8);
+  bytes.set([0x56, 0x50, 0x38, 0x4c], 12);
+  bytes[16] = 5;
+  bytes[20] = 0x2f;
+  const w = width - 1;
+  const h = height - 1;
+  bytes[21] = w & 0xff;
+  bytes[22] = ((w >> 8) & 0x3f) | ((h & 0x03) << 6);
+  bytes[23] = (h >> 2) & 0xff;
+  bytes[24] = (h >> 10) & 0x0f;
+  return bytes;
+}
+
+function scriptDataUrl(width: number, height: number): string {
+  return `${SCRIPT_WEBP_PREFIX}${Buffer.from(scriptWebp(width, height)).toString('base64')}`;
+}
 
 function scriptTip(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -376,7 +399,7 @@ function scriptTip(overrides: Record<string, unknown> = {}): Record<string, unkn
     category: 'custom',
     name: 'Script tip',
     tip: 1, aspect: 1, rotation: 1, sizeCurve: 1, scatter: 1, capacity: 1, grain: 1, wetRound: 1,
-    maskDataUrl: webp,
+    maskDataUrl: scriptDataUrl(192, 192),
     ...overrides,
   };
 }
@@ -393,7 +416,7 @@ describe('script brush carrier (63-08 / TIP-14 / D-14)', () => {
     expect(value.brushPack.entries).toHaveLength(1);
     const entry = value.brushPack.entries[0];
     expect(entry.id).toBe(SCRIPT_MASK_TIP_ID);
-    expect(entry.maskDataUrl).toBe(webp);
+    expect(entry.maskDataUrl).toBe(scriptDataUrl(192, 192));
     expect('asset' in entry).toBe(false);
     // The document carrying an inline entry still parses and loads.
     expect(schema.parseRotoScript!(value).ok).toBe(true);
@@ -402,12 +425,52 @@ describe('script brush carrier (63-08 / TIP-14 / D-14)', () => {
   it('decodes a mask data URL and refuses a non-WebP prefix or malformed base64', async () => {
     const schema = await loadSchema();
     expect(schema.decodeScriptMaskDataUrl, 'schema must export decodeScriptMaskDataUrl').toBeTypeOf('function');
-    const bytes = schema.decodeScriptMaskDataUrl!(webp);
+    const bytes = schema.decodeScriptMaskDataUrl!(scriptDataUrl(192, 192));
     expect(bytes instanceof Uint8Array).toBe(true);
     expect([...(bytes as Uint8Array).subarray(0, 4)]).toEqual([0x52, 0x49, 0x46, 0x46]);
     expect(schema.decodeScriptMaskDataUrl!('data:image/png;base64,AAAA')).toBeNull();
     expect(schema.decodeScriptMaskDataUrl!('data:image/webp;base64,***')).toBeNull();
     expect(schema.decodeScriptMaskDataUrl!(42)).toBeNull();
+  });
+
+  it('bounds the mask carrier: 512 KB cap and exactly 192x192, checked before any native decode', async () => {
+    const schema = await loadSchema();
+    expect(schema.ROTO_SCRIPT_LIMITS?.maskDataUrlBytes, 'ROTO_SCRIPT_LIMITS.maskDataUrlBytes').toBe(512 * 1024);
+    // Over the cap: refused by the length check, before the base64/RIFF walk.
+    const oversized = `${SCRIPT_WEBP_PREFIX}${Buffer.alloc(512 * 1024 + 1).toString('base64')}`;
+    expect(schema.decodeScriptMaskDataUrl!(oversized)).toBeNull();
+    // Exactly 192x192 is the only accepted mask size.
+    expect(schema.decodeScriptMaskDataUrl!(scriptDataUrl(192, 192))).not.toBeNull();
+    expect(schema.decodeScriptMaskDataUrl!(scriptDataUrl(96, 64))).toBeNull();
+    // Canonical base64 only: the same bytes re-encoded non-canonically refuse.
+    const canonical = scriptDataUrl(192, 192);
+    expect(canonical.endsWith('AA==')).toBe(true);
+    expect(schema.decodeScriptMaskDataUrl!(`${canonical.slice(0, -4)}AB==`)).toBeNull();
+  });
+
+  it('the parser refuses every malformed script carrier entry with a named reason', async () => {
+    const schema = await loadSchema();
+    const base = schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [aquarelleStrokeEvent()],
+      brushEntries: [scriptTip()],
+    }));
+    const parseWith = (mutate: (entry: any) => void) => {
+      const copy = structuredClone(base) as any;
+      mutate(copy.brushPack.entries[0]);
+      return schema.parseRotoScript!(copy);
+    };
+    const refusals = [
+      parseWith((entry) => { entry.maskDataUrl = `${SCRIPT_WEBP_PREFIX}${Buffer.alloc(512 * 1024 + 1).toString('base64')}`; }),
+      parseWith((entry) => { entry.maskDataUrl = scriptDataUrl(96, 64); }),
+      parseWith((entry) => { entry.maskDataUrl = `${scriptDataUrl(192, 192).slice(0, -4)}AB==`; }),
+      parseWith((entry) => { entry.mask = 'retired'; }),
+      parseWith((entry) => { entry.asset = `brushes/${'a'.repeat(64)}.webp`; }),
+      parseWith((entry) => { delete entry.maskDataUrl; }),
+    ];
+    for (const parsed of refusals) {
+      expect(parsed.ok).toBe(false);
+      if (!parsed.ok) expect(parsed.refusal.code).toBe('malformed-engine-payload');
+    }
   });
 
   it('refuses to serialize a script entry carrying a package asset ref', async () => {

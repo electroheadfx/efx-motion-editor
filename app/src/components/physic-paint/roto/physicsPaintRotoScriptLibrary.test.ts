@@ -961,6 +961,50 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
     expect(catalog.resolveCatalogTip('wc/custom-script-load')).toBe(null);
   });
 
+  it('load leg: one bad mask degrades alone and never aborts the script', async () => {
+    vi.resetModules();
+    const catalog = await import('../../../stores/aquarelleBrushCatalog');
+    const watercolor = await import('@efxlab/efx-watercolor');
+    const library = await import('./physicsPaintRotoScriptLibrary');
+    const schema = await import('./physicsPaintRotoScriptSchema');
+
+    const carriedUrl = `${SCRIPT_WEBP_PREFIX}${Buffer.from(brushWebp(192, 192)).toString('base64')}`;
+    const entryFor = (id: string) => {
+      const { asset: _asset, ...tip } = scriptCustomTip(id);
+      return { ...tip, maskDataUrl: carriedUrl } as never;
+    };
+    const script = schema.serializeAquarelleRotoScript({
+      id: scriptIds.a,
+      name: 'Mixed',
+      createdAt: '2026-07-16T12:00:00Z',
+      updatedAt: '2026-07-16T12:00:00Z',
+      source: row('a', 'Mixed').source,
+      thumbnail: { ...row('a', 'Mixed').thumbnail, dataUrl: webp },
+      events: aquarelleEvents(),
+      brushEntries: [entryFor('wc/custom-good'), entryFor('wc/custom-bad')],
+    });
+
+    const goodMask = new Uint8Array(watercolor.TIP_MASK_BYTES).fill(4);
+    let decodeCalls = 0;
+    const log = vi.fn();
+    const registered = await library.registerScriptBrushMasks(script, {
+      decode: async () => {
+        decodeCalls += 1;
+        if (decodeCalls === 1) return { ok: true, data: { mask: goodMask, width: 192, height: 192 } };
+        // The harsher failure: the native seam THROWS instead of returning a Result.
+        throw new Error('native decode exploded');
+      },
+      log,
+    });
+
+    expect(registered).toBe(1);
+    expect(watercolor.resolveMask('wc/custom-good')).toBe(goodMask);
+    expect(watercolor.resolveMask('wc/custom-bad')).toBe(null);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('could not be decoded'), true);
+    // Registry only, still: no catalog row for a script's tips.
+    expect(catalog.customBrushTips.value).toHaveLength(0);
+  });
+
   it('activation registers the loaded script masks through the controller port', async () => {
     const registerScriptMasks = vi.fn(async () => {});
     const test = harness(true, { registerScriptMasks });
