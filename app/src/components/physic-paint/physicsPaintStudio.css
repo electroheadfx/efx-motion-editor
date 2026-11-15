@@ -2134,6 +2134,65 @@ button.destructive {
   text-transform: none;
 }
 
+/* quick-261115-oh9 texture row: the TEXTURE axis of the brush surface.
+   Spans both library columns. A chip is a square mask button painted from
+   the engine's own tip bytes; selection reuses the card accent, and an
+   unavailable project texture reuses the card's greyed treatment. No new
+   colors beyond the existing sidebar tokens. */
+.watercolor-texture-strip {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.watercolor-texture-chip {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 5px;
+  border: 1px solid #777777;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.watercolor-texture-chip[data-selected="true"] {
+  background: rgba(240, 138, 36, 0.32);
+  border-color: #f08a24;
+}
+
+.watercolor-texture-chip[data-unavailable="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The 192px mask bitmap scaled into the chip box. */
+.watercolor-texture-chip-canvas {
+  width: 44px;
+  height: 44px;
+  display: block;
+  border-radius: 4px;
+  background: #000;
+}
+
+.watercolor-texture-chip-name {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--sidebar-text, #e6edf5);
+  letter-spacing: 0.01em;
+  text-align: center;
+  text-transform: none;
+  max-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* No top dead space on the chrome-less brush color section: the shared
    tab-panel's 20px top padding was designed for the retired tab strip.
    261018-ias AREA 2: top 10px (UAT list; was 0 from 36.15-13 UAT Gap I-3).

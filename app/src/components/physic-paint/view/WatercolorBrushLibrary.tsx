@@ -1,28 +1,39 @@
 // ============================================================
-//  WatercolorBrushLibrary — the project brush catalog
-//  (261017-xa0 I-03; chalk added by 261027-gh9; sectioned by 63-06).
+//  WatercolorBrushLibrary — the project brush surface
+//  (261017-xa0 I-03; split into the two axes by quick-261115-oh9).
 //
-//  Delivered surface (63-06 D-01 / D-03 / D-05 / D-19):
-//   · ONE import toolbar row above the grid — a button plus a
-//     hidden PNG/JPEG file input. This is the only new control.
-//   · three sections in order: the shipped BRUSH_PRESETS first,
-//     then "Texture" (the three compile-time wc/builtin-* tips,
-//     immediately after the presets), then "Custom" (the open
-//     project's imports, rendered only when the project has any).
-//   · every card is a painted stroke thumb (watercolorStrokeThumb,
-//     generation-keyed paint-once cache) + name; a preset card also
-//     carries its hint as a title tooltip.
-//   · an unavailable project tip renders as a greyed, unselectable
-//     card, and the library shows exactly ONE aggregate warning
-//     line for the whole set (D-19) — never one line per tip.
-//   · still absent by design: no category filter, no search field,
-//     no wc/ size-variant rows.
+//  A brush has TWO independent axes:
+//   · the RESPONSE — a preset id that owns every Brush field
+//     (physics, size, spacing, rotation, grain…). The grid below is
+//     the response axis: ONE section, "Brushes", over BRUSH_PRESETS.
+//     A response card is never a texture and never a project import.
+//   · the TEXTURE — an optional mask that replaces the footprint and
+//     nothing else. The WatercolorTextureStrip texture row above the
+//     grid is that axis: Default first (the response's own tip), then
+//     the three compile-time built-ins, then the project imports, each
+//     chip painting the engine's real grayscale mask.
+//
+//  The texture row also owns the import controls: one import button
+//  plus a hidden PNG/JPEG file input. An import selects on arrival:
+//  the new texture becomes the selection, so the next stroke stamps
+//  it without a second click; a refused import keeps the existing
+//  copy and leaves the selection untouched.
+//
+//  Every response card is a painted stroke thumb (watercolorStrokeThumb,
+//  generation-keyed paint-once cache) + name; a card also carries its
+//  hint as a title tooltip. An unavailable project texture renders as a
+//  greyed, unselectable chip, and the library shows exactly ONE
+//  aggregate warning line for the whole set (63-06 D-19) — never one
+//  line per tip.
+//
+//  Still absent by design: no category filter, no search field, no
+//  wc/ size-variant rows.
 //
 //  The import row mutates nothing here. It decodes the picked file
 //  into one 192×192 mask (importTip), then asks the MAIN realm via
 //  requestPhysicPaintBrushImport — that realm owns the project
 //  catalog, the mask registry and the stored bytes (63-05). The
-//  catalog push lists the new tip below the control; this component
+//  catalog push lists the new tip in the texture row; this component
 //  never appends to the catalog itself.
 //
 //  Both mounts (floating brush modal + right-panel Brush tab) render
@@ -30,7 +41,7 @@
 //  filled by plan 63-05's applyBrushCatalogPayload. BrushesDocker
 //  stays unmounted and is never revived (D-02).
 //
-//  Picking a card is a brush-tool variant pick: it runs
+//  Picking a response card is a brush-tool variant pick: it runs
 //  selectAquarelleTip(id), which keeps the id and forces
 //  aquarelleActiveTool to 'brush'. Selection is the existing
 //  aquarelleSelectedTipId signal — applied in the click handler,
@@ -45,28 +56,24 @@ import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { FolderOpen } from 'lucide-preact';
-import {
-  BRUSH_PRESETS,
-  BUILTIN_TIPS,
-  type AquarelleTip,
-} from '@efxlab/efx-watercolor';
+import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
 import {
   IMPORT_TIP_FAILURE_COPY,
   decodeRgbaAtTipSize,
   importTip,
 } from '@efxlab/efx-watercolor/brushes';
 import { requestPhysicPaintBrushImport } from '../../../lib/physicPaintBridge';
+import { unavailableTipCount } from '../../../stores/aquarelleBrushCatalog';
 import {
-  customBrushTips,
-  unavailableTipCount,
-  unavailableTipIds,
-} from '../../../stores/aquarelleBrushCatalog';
-import { aquarelleSelectedTipId } from './aquarelleRecordState';
+  aquarelleSelectedTipId,
+  setAquarelleSelectedTextureId,
+} from './aquarelleRecordState';
 import {
   aquarelleSelectionEditActive,
   setAquarelleSelectMode,
 } from './aquarelleStrokeSelection';
 import { pickAquarelleBrush } from './aquarellePaintControls';
+import { WatercolorTextureStrip } from './WatercolorTextureStrip';
 import {
   STROKE_THUMB_HEIGHT,
   STROKE_THUMB_WIDTH,
@@ -96,11 +103,11 @@ function setImportFailure(next: boolean): void {
 }
 
 /**
- * The painted stroke thumbnail, shared by the Brush tab cards and the Studio
- * top bar. `presetId` is the TIP id: a shipped preset id or a mask-backed
- * catalog id — the thumb module resolves either. Paint-once cache fill
- * (module-level Map keyed by tip id + mask generation): first call paints,
- * later renders are a Map hit — no repaint, no toDataURL.
+ * The painted stroke thumbnail, shared by the response cards and the Studio
+ * top bar. `presetId` is the RESPONSE id — the thumb module resolves a
+ * preset or a legacy catalog id to the response's procedural tip. Paint-once
+ * cache fill (module-level Map keyed by id + mask generation): first call
+ * paints, later renders are a Map hit — no repaint, no bitmap serialization.
  */
 export function WatercolorBrushThumb(props: {
   presetId: string;
@@ -122,49 +129,33 @@ export function WatercolorBrushThumb(props: {
 }
 
 /**
- * One card: a painted stroke preview plus the entry's name. `id` is the tip
- * id the pick records — a preset id (`round`, …) or a catalog tip id
- * (`wc/builtin-chalk`, `wc/custom-…`) — and the thumbnail module resolves
- * both. `title` is the hover tooltip (a preset hint, or the name).
- *
- * `unavailable` is the project-catalog degradation (63-06 D-19): the tip's
- * stored mask could not be resolved, so the card is greyed and cannot be
- * picked. The early return in the click handler keeps the law true even when
- * a caller invokes the handler directly (the DOM `disabled` attribute covers
- * the pointer path).
+ * One RESPONSE card: a painted stroke preview plus the preset name and its
+ * hint as the hover tooltip. The pick runs `pickAquarelleBrush(id)`, which
+ * selects the response AND records the appearance on an armed selection.
+ * A response is never a project asset, so this card has no unavailable
+ * state.
  */
 function BrushCard(props: {
   id: string;
   name: string;
   title: string;
   selected: boolean;
-  unavailable?: boolean;
 }) {
-  const unavailable = props.unavailable === true;
   return (
     <button
       type="button"
       class="watercolor-brush-card"
       data-testid={`watercolor-brush-card-${props.id}`}
       data-selected={props.selected ? 'true' : 'false'}
-      data-unavailable={unavailable ? 'true' : 'false'}
       aria-pressed={props.selected}
-      aria-disabled={unavailable}
-      disabled={unavailable}
       title={props.title}
       onClick={() => {
-        if (unavailable) return;
         // 261029-eur WR-03, two-part law: leave Edit mode before the pick
         // flips the tool UNLESS a non-empty selection is armed — leaving
         // Select mode clears the selection the pick is about to edit.
         if (!aquarelleSelectionEditActive()) setAquarelleSelectMode(false);
         void pickAquarelleBrush(props.id);
       }}
-      style={
-        unavailable
-          ? { opacity: 0.45, cursor: 'not-allowed' }
-          : undefined
-      }
     >
       <WatercolorBrushThumb
         presetId={props.id}
@@ -178,11 +169,11 @@ function BrushCard(props: {
 }
 
 /**
- * One catalog section (63-06 D-03). The section spans both library columns
- * and lays its own 2-column card grid, so section order is the visual order.
+ * One section (63-06 D-03). The section spans both library columns and lays
+ * its own 2-column card grid, so section order is the visual order.
  */
 function BrushSection(props: {
-  id: 'presets' | 'texture' | 'custom';
+  id: 'responses';
   title: string;
   children?: ComponentChildren;
 }) {
@@ -222,17 +213,14 @@ function BrushSection(props: {
 }
 
 /**
- * The catalog grid plus its import row. The root keeps its 2-column track set
- * (the CSS contract the card rules were written against) while the toolbar
- * row and every section span both columns; empty sections are skipped,
- * exactly like the category grouping law the retired docker used.
+ * The response grid below the shared texture row. The root keeps its
+ * 2-column track set (the CSS contract the card rules were written against)
+ * while the texture row and the section span both columns.
  */
 export function WatercolorBrushLibrary() {
   // Narrow signal reads (efx-preact-reactivity rule 5): one read per signal
   // per render, and no signal is written from this body.
   const selectedTipId = aquarelleSelectedTipId.value;
-  const customTips: readonly AquarelleTip[] = customBrushTips.value;
-  const unavailableIds = unavailableTipIds.value;
   const unavailableCount = unavailableTipCount.value;
   const busy = importInFlight.value;
   const importFailedValue = importFailed.value;
@@ -242,7 +230,8 @@ export function WatercolorBrushLibrary() {
    * One import: decode the picked file into a 192×192 mask in THIS realm
    * (importTip owns both caps and the derivation law), then ask the project
    * realm to register it. The answer carries only the catalog entry; the
-   * catalog push is the one path that lists it (63-05).
+   * catalog push is the one path that lists it (63-05). A successful import
+   * selects the new texture on arrival — the next stroke stamps it.
    */
   const onImportFile = async (event: Event): Promise<void> => {
     const input = event.currentTarget as HTMLInputElement;
@@ -259,7 +248,11 @@ export function WatercolorBrushLibrary() {
           return answer.ok && answer.entry ? answer.entry : null;
         },
       });
-      if (!result.ok) setImportFailure(true);
+      if (result.ok) {
+        setAquarelleSelectedTextureId(result.tip.id);
+      } else {
+        setImportFailure(true);
+      }
     } catch {
       setImportFailure(true);
     } finally {
@@ -276,50 +269,60 @@ export function WatercolorBrushLibrary() {
         gap: '8px',
       }}
     >
-      {/* 63-06 D-01: the ONE import toolbar row, above the grid. */}
+      {/* The texture axis above the grid: the shared strip plus the ONE
+          import control (63-06 D-01). */}
       <div
         data-testid="watercolor-brush-import-row"
         style={{
           gridColumn: '1 / -1',
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
           gap: '6px',
         }}
       >
-        <button
-          type="button"
-          data-testid="watercolor-brush-import"
-          title="Import brush tip (PNG/JPG)"
-          aria-label="Import brush tip (PNG/JPG)"
-          disabled={busy}
-          onClick={() => fileInputRef.current?.click()}
+        <WatercolorTextureStrip />
+        <div
           style={{
-            display: 'inline-flex',
+            display: 'flex',
             alignItems: 'center',
-            gap: '4px',
-            height: '24px',
-            padding: '0 8px',
-            border: '1px solid var(--sidebar-border-unselected, rgba(159, 165, 174, 0.55))',
-            borderRadius: '3px',
-            background: 'transparent',
-            cursor: busy ? 'default' : 'pointer',
-            opacity: busy ? 0.5 : 1,
-            color: 'var(--sidebar-text-primary, #eceff2)',
-            fontSize: '10px',
-            fontWeight: 600,
+            gap: '6px',
           }}
         >
-          <FolderOpen size={14} />
-          Import tip
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg"
-          data-testid="watercolor-brush-import-input"
-          style={{ display: 'none' }}
-          onChange={(event) => onImportFile(event)}
-        />
+          <button
+            type="button"
+            data-testid="watercolor-brush-import"
+            title="Import brush tip (PNG/JPG)"
+            aria-label="Import brush tip (PNG/JPG)"
+            disabled={busy}
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              height: '24px',
+              padding: '0 8px',
+              border: '1px solid var(--sidebar-border-unselected, rgba(159, 165, 174, 0.55))',
+              borderRadius: '3px',
+              background: 'transparent',
+              cursor: busy ? 'default' : 'pointer',
+              opacity: busy ? 0.5 : 1,
+              color: 'var(--sidebar-text-primary, #eceff2)',
+              fontSize: '10px',
+              fontWeight: 600,
+            }}
+          >
+            <FolderOpen size={14} />
+            Import tip
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg"
+            data-testid="watercolor-brush-import-input"
+            style={{ display: 'none' }}
+            onChange={(event) => onImportFile(event)}
+          />
+        </div>
       </div>
       {/* 63-06 D-19: ONE aggregate line for the whole unavailable set. */}
       {unavailableCount > 0 ? (
@@ -353,7 +356,7 @@ export function WatercolorBrushLibrary() {
           {IMPORT_TIP_FAILURE_COPY}
         </div>
       ) : null}
-      <BrushSection id="presets" title="Presets">
+      <BrushSection id="responses" title="Brushes">
         {BRUSH_PRESETS.map((preset) => (
           <BrushCard
             key={preset.id}
@@ -364,33 +367,6 @@ export function WatercolorBrushLibrary() {
           />
         ))}
       </BrushSection>
-      <BrushSection id="texture" title="Texture">
-        {BUILTIN_TIPS.map((tip) => (
-          <BrushCard
-            key={tip.id}
-            id={tip.id}
-            name={tip.name}
-            title={tip.name}
-            selected={tip.id === selectedTipId}
-          />
-        ))}
-      </BrushSection>
-      {customTips.length > 0 ? (
-        <BrushSection id="custom" title="Custom">
-          {customTips.map((tip) => (
-            <BrushCard
-              key={tip.id}
-              id={tip.id}
-              name={tip.name}
-              title={tip.name}
-              selected={tip.id === selectedTipId}
-              // Project entries only: a built-in mask is compile-time and can
-              // never be unavailable, so the built-in cards stay selectable.
-              unavailable={unavailableIds.has(tip.id)}
-            />
-          ))}
-        </BrushSection>
-      ) : null}
     </div>
   );
 }
