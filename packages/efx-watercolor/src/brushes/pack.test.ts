@@ -8,29 +8,61 @@
 //    T-56-10 importTip is total — named failure, never a throw
 //    T-56-12 parseBrushPackSnapshot is total and fail-closed
 //
-//  Idempotency (flagged assumption, pinned): importing the same
-//  PNG bytes twice creates two tips with distinct ids — no silent
-//  dedupe. Single-flight: concurrent imports queue, never interleave.
+//  Idempotency (63-05): this package no longer mints ids — the
+//  main-realm handler does, so two identical imports stay two
+//  catalog rows over one content-addressed asset (that pin lives
+//  in app/src/lib/efxPaintBrushImport.test.ts). Single-flight:
+//  concurrent imports queue, never interleave.
 //
 //  Assertion style: scalar predicates (boolean/primitive toBe) so
 //  TAP diagnostics stay one-line and the RED evidence classifier
 //  can parse the report — vitest's object dumps break strict TAP.
 // ============================================================
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { TIP_SIZE } from '../playground/brushes'
 import type { AquarelleTip, AquarelleToolOverrides } from './tips'
-import { TIPS } from './tips'
+import { NEUTRAL_TOOL_OVERRIDES, TIPS } from './tips'
 import { asTipRecord, buildBrushPackSnapshot, parseBrushPackSnapshot } from './pack'
-import { importTip, IMPORT_TIP_FAILURE_COPY } from './importTip'
+import {
+  importTip,
+  IMPORT_TIP_FAILURE_COPY,
+  type ImportTipFile,
+  type ImportTipPorts,
+} from './importTip'
 
 // ---------------------------------------------------------------------------
-// Fixtures — magic-byte correct heads, decoder stubbed per test (T-56-10).
+// Fixtures — magic-correct heads with declared extents (63-05: the import
+// path reads PNG IHDR / JPEG SOF before any decode, so a bare signature is
+// no longer a legal fixture).
 // ---------------------------------------------------------------------------
 
-/** PNG signature 89 50 4E 47 0D 0A 1A 0A. */
-const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
-/** JPEG signature FF D8 FF. */
-const JPG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0])
+/** PNG signature + a valid IHDR chunk declaring width×height. */
+function pngWithSize(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(24)
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0)
+  bytes[11] = 13
+  bytes.set([0x49, 0x48, 0x44, 0x52], 12)
+  bytes[18] = (width >>> 8) & 0xff
+  bytes[19] = width & 0xff
+  bytes[22] = (height >>> 8) & 0xff
+  bytes[23] = height & 0xff
+  return bytes
+}
+
+/** JPEG SOI + APP0 + SOF0 declaring width×height. */
+function jpegWithSize(width: number, height: number): Uint8Array {
+  return new Uint8Array([
+    0xff, 0xd8,
+    0xff, 0xe0, 0x00, 0x04, 0x00, 0x00,
+    0xff, 0xc0, 0x00, 0x11, 0x08,
+    (height >>> 8) & 0xff, height & 0xff,
+    (width >>> 8) & 0xff, width & 0xff,
+  ])
+}
+
+const PNG_BYTES = pngWithSize(64, 64)
+const JPG_BYTES = jpegWithSize(64, 48)
 /** Random non-image bytes. */
 const GARBAGE_BYTES = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
 /** SVG is text — must be rejected by magic sniff, never decoded. */
@@ -79,31 +111,45 @@ function makeTip(
   } as AquarelleTip
 }
 
+/** A File-shaped fixture whose bytes are the supplied header. */
+function fileOf(bytes: Uint8Array, name: string): ImportTipFile {
+  return {
+    name,
+    size: bytes.length,
+    arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer,
+  }
+}
+
 /**
- * Stub the browser decoder. ok=false rejects like a corrupt body.
- * onEnter/onExit bracket the decode so concurrency is observable —
- * the stub yields a macrotask mid-decode so unserialized imports
- * would overlap and push maxActive above 1.
+ * The two injected ports. `decodeOk=false` behaves like a corrupt
+ * body. onEnter/onExit bracket the decode so concurrency is
+ * observable — the stub yields a macrotask mid-decode so
+ * unserialized imports would overlap and push maxActive above 1.
  */
-function stubDecoder(
-  ok: boolean,
-  opts?: { onEnter?: () => void; onExit?: () => void },
-): void {
-  vi.stubGlobal(
-    'createImageBitmap',
-    vi.fn(async () => {
+function stubPorts(opts?: {
+  decodeOk?: boolean
+  onEnter?: () => void
+  onExit?: () => void
+}): { ports: ImportTipPorts; decodeCalls: () => number } {
+  let calls = 0
+  const ports: ImportTipPorts = {
+    decode: async () => {
+      calls += 1
       opts?.onEnter?.()
       await new Promise((resolve) => setTimeout(resolve, 1))
       opts?.onExit?.()
-      if (!ok) throw new Error('decode failed')
-      return { width: 8, height: 8 }
+      if (opts?.decodeOk === false) return null
+      return new Uint8Array(TIP_SIZE * TIP_SIZE * 4)
+    },
+    register: async ({ name }) => ({
+      id: 'wc/custom-package-test',
+      category: 'custom',
+      name,
+      ...NEUTRAL_TOOL_OVERRIDES,
     }),
-  )
+  }
+  return { ports, decodeCalls: () => calls }
 }
-
-afterEach(() => {
-  vi.unstubAllGlobals()
-})
 
 // ---------------------------------------------------------------------------
 // Base tip pack — 14 categorized tips, full property surface (R1.7 / D-07)
@@ -162,54 +208,49 @@ describe('base tip pack', () => {
 // ---------------------------------------------------------------------------
 
 describe('importTip', () => {
-  it('accepts PNG bytes and returns a Custom tip with a fresh wc/custom- id', async () => {
-    stubDecoder(true)
-    const result = await importTip(PNG_BYTES, 'my-brush.png')
+  it('accepts PNG bytes and returns the registered Custom tip', async () => {
+    const { ports, decodeCalls } = stubPorts()
+    const result = await importTip(fileOf(PNG_BYTES, 'my-brush.png'), ports)
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.tip.category).toBe('custom')
-    expect(/^wc\/custom-[0-9a-f]{8}$/.test(result.tip.id)).toBe(true)
     expect(result.tip.name).toBe('my-brush.png')
     const allNumeric = PROPERTY_FIELDS.every((field) => typeof result.tip[field] === 'number')
     expect(allNumeric).toBe(true)
+    expect(decodeCalls()).toBe(1)
   })
 
   it('accepts JPG bytes and returns an ok tip', async () => {
-    stubDecoder(true)
-    const result = await importTip(JPG_BYTES, 'scan.jpg')
+    const { ports } = stubPorts()
+    const result = await importTip(fileOf(JPG_BYTES, 'scan.jpg'), ports)
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.tip.category).toBe('custom')
-    expect(/^wc\/custom-[0-9a-f]{8}$/.test(result.tip.id)).toBe(true)
   })
 
   it('rejects garbage bytes with the named failure and does not throw', async () => {
-    stubDecoder(true)
-    const result = await importTip(GARBAGE_BYTES, 'noise.bin')
+    const { ports, decodeCalls } = stubPorts()
+    const result = await importTip(fileOf(GARBAGE_BYTES, 'noise.bin'), ports)
     expect(isRejected(result)).toBe(true)
+    expect(decodeCalls()).toBe(0)
   })
 
   it('rejects SVG text with the named failure (magic sniff, never a decode)', async () => {
-    let decoderCalls = 0
-    stubDecoder(true, {
-      onEnter: () => {
-        decoderCalls += 1
-      },
-    })
-    const result = await importTip(SVG_BYTES, 'icon.svg')
+    const { ports, decodeCalls } = stubPorts()
+    const result = await importTip(fileOf(SVG_BYTES, 'icon.svg'), ports)
     expect(isRejected(result)).toBe(true)
-    expect(decoderCalls).toBe(0)
+    expect(decodeCalls()).toBe(0)
   })
 
   it('rejects an empty buffer with the named failure', async () => {
-    stubDecoder(true)
-    const result = await importTip(new Uint8Array(0), 'empty.png')
+    const { ports } = stubPorts()
+    const result = await importTip(fileOf(new Uint8Array(0), 'empty.png'), ports)
     expect(isRejected(result)).toBe(true)
   })
 
   it('maps a decoder failure to the named failure (never throws)', async () => {
-    stubDecoder(false)
-    const result = await importTip(PNG_BYTES, 'corrupt.png')
+    const { ports } = stubPorts({ decodeOk: false })
+    const result = await importTip(fileOf(PNG_BYTES, 'corrupt.png'), ports)
     expect(isRejected(result)).toBe(true)
   })
 
@@ -219,20 +260,10 @@ describe('importTip', () => {
     )
   })
 
-  it('importing the same bytes twice yields two tips with distinct ids (no silent dedupe)', async () => {
-    stubDecoder(true)
-    const first = await importTip(PNG_BYTES, 'twin.png')
-    const second = await importTip(PNG_BYTES, 'twin.png')
-    expect(first.ok).toBe(true)
-    expect(second.ok).toBe(true)
-    if (!first.ok || !second.ok) return
-    expect(first.tip.id === second.tip.id).toBe(false)
-  })
-
   it('is single-flight: concurrent imports queue and never interleave mid-decode', async () => {
     let active = 0
     let maxActive = 0
-    stubDecoder(true, {
+    const { ports, decodeCalls } = stubPorts({
       onEnter: () => {
         active += 1
         maxActive = Math.max(maxActive, active)
@@ -242,14 +273,15 @@ describe('importTip', () => {
       },
     })
     const [a, b, c] = await Promise.all([
-      importTip(PNG_BYTES, 'a.png'),
-      importTip(JPG_BYTES, 'b.jpg'),
-      importTip(PNG_BYTES, 'c.png'),
+      importTip(fileOf(PNG_BYTES, 'a.png'), ports),
+      importTip(fileOf(JPG_BYTES, 'b.jpg'), ports),
+      importTip(fileOf(PNG_BYTES, 'c.png'), ports),
     ])
     expect(a.ok).toBe(true)
     expect(b.ok).toBe(true)
     expect(c.ok).toBe(true)
     expect(maxActive).toBe(1)
+    expect(decodeCalls()).toBe(3)
   })
 })
 
