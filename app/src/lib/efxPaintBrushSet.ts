@@ -19,11 +19,20 @@
  *
  * FAILURE VOCABULARY
  *   The five per-entry reasons come from the native read (`missing`,
- *   `unreadable`, `wrong-size`, `digest-mismatch`, `refused`). Three local
+ *   `unreadable`, `wrong-size`, `digest-mismatch`, `refused`). Four local
  *   classes complete it: `invalid-entry` (the record fails the package
  *   carrier law), `invalid-asset-ref` (a valid record with no resolvable
- *   `brushes/<sha256>.webp` ref) and `batch-failed` (the whole call refused,
- *   which degrades every requested tip rather than aborting the open).
+ *   `brushes/<sha256>.webp` ref), `batch-failed` (the whole call refused,
+ *   which degrades every requested tip rather than aborting the open) and
+ *   `builtin-id` (the id names one of the three app-owned built-in tips, so
+ *   the entry is refused rather than allowed to shadow a shipped tip).
+ *
+ * ONE NORMALIZATION LAW (CR-01 / TIP-15)
+ *   `normalizeProjectBrushTip` is the ONE admission law both producers apply:
+ *   the open loader (below) and the catalog payload producer. It refuses a
+ *   built-in id and projects the record onto exactly the wire member set with
+ *   `category` pinned to `'custom'`, so a project tip the package carrier
+ *   accepted can never be a shape the Studio's strict wire guard refuses.
  *
  * NEVER APPENDS, NEVER THROWS
  *   The returned set IS the project's state: replacing the catalog and the
@@ -31,7 +40,7 @@
  *   so a project's tips can never accumulate on top of another project's.
  */
 
-import { TIP_MASK_BYTES, asTipRecord, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { BUILTIN_TIPS, TIP_MASK_BYTES, asTipRecord, type AquarelleTip } from '@efxlab/efx-watercolor';
 import type { MceBrushPackSnapshot } from '../types/project';
 import {
   ipcEfxPaintReadBrushAssets,
@@ -47,7 +56,8 @@ export type ProjectBrushSetFailureReason =
   | EfxPaintBrushAssetReadReason
   | 'invalid-entry'
   | 'invalid-asset-ref'
-  | 'batch-failed';
+  | 'batch-failed'
+  | 'builtin-id';
 
 /** One logged degradation: the tip id (best-effort when the record is bad) and why. */
 export interface ProjectBrushSetFailure {
@@ -120,21 +130,68 @@ function readTipId(raw: unknown): string {
 }
 
 /**
+ * The three app-owned built-in ids. The project catalog lists built-ins from
+ * `BUILTIN_TIPS` alone (TIP-13 / D-20), so a project entry can never duplicate
+ * or shadow a shipped tip: the normalizer refuses one and the open names the
+ * refusal `builtin-id`.
+ */
+const BUILTIN_TIP_IDS: ReadonlySet<string> = new Set(BUILTIN_TIPS.map((tip) => tip.id));
+
+/**
+ * The ONE project-tip normality law (CR-01 / T-63-25 / TIP-13 / TIP-15).
+ *
+ * Two laws, applied by BOTH producers — the open loader (`tipFromRaw` below,
+ * plus the pre-validation refusal in `loadProjectBrushSet`) and the Studio
+ * catalog payload producer (`buildBrushCatalogPayload`):
+ *
+ *   1. Built-in refusal: an id naming any of the three app-owned tips yields
+ *      `null`. The project catalog lists built-ins from `BUILTIN_TIPS` alone
+ *      (TIP-13 / D-20), so no project entry can duplicate, shadow or re-emit
+ *      a shipped tip.
+ *   2. Wire projection: the record is rebuilt from the named members only and
+ *      `category` is pinned to `'custom'`. The projection mirrors
+ *      `AQUARELLE_TIP_MEMBER_KEYS` in `types/physicPaint.ts`, so the sender can
+ *      never emit a shape `isCustomTipWire` refuses — the strict wire law
+ *      stands and the senders become conforming (never the reverse). `asset`
+ *      rides only when it is present; it never invents a carrier member.
+ */
+export function normalizeProjectBrushTip(tip: AquarelleTip): AquarelleTip | null {
+  if (BUILTIN_TIP_IDS.has(tip.id)) return null;
+  return {
+    id: tip.id,
+    category: 'custom',
+    name: tip.name,
+    tip: tip.tip,
+    aspect: tip.aspect,
+    rotation: tip.rotation,
+    sizeCurve: tip.sizeCurve,
+    scatter: tip.scatter,
+    capacity: tip.capacity,
+    grain: tip.grain,
+    wetRound: tip.wetRound,
+    ...(tip.asset === undefined ? {} : { asset: tip.asset }),
+  };
+}
+
+/**
  * Narrow one snapshot record to a tip, total. A record whose ONLY carrier
  * violation is its `asset` member (missing, wrong shape, or an untrusted
  * path) is still a valid tip: the member is dropped and the record re-validated
  * so the tip can be LISTED with a null mask. Any other violation — a retired
  * `mask` member, a bad field, a foreign carrier field — still yields null
  * (the carrier law of 63-04 stands; the applier never sees an untrusted tip).
+ * BOTH branches pass through `normalizeProjectBrushTip`, so what the open
+ * admits is what the Studio wire accepts (CR-01).
  */
 function tipFromRaw(raw: unknown): AquarelleTip | null {
   const direct = asTipRecord(raw, 'package');
-  if (direct !== null) return direct;
+  if (direct !== null) return normalizeProjectBrushTip(direct);
   if (typeof raw !== 'object' || raw === null) return null;
   const record = raw as Record<string, unknown>;
   if (!Object.prototype.hasOwnProperty.call(record, 'asset')) return null;
   const { asset: _asset, ...withoutAsset } = record;
-  return asTipRecord(withoutAsset, 'package');
+  const revalidated = asTipRecord(withoutAsset, 'package');
+  return revalidated === null ? null : normalizeProjectBrushTip(revalidated);
 }
 
 /** One listed tip before the read: a candidate carries its ref and digest. */
@@ -166,9 +223,17 @@ export async function loadProjectBrushSet(
   const seen = new Set<string>();
 
   for (const raw of snapshot.entries) {
+    // The built-in refusal is read off the RAW id BEFORE the record is
+    // validated, so a well-formed entry naming a shipped tip is refused with
+    // the named reason (a malformed record still logs `invalid-entry` below).
+    const rawId = readTipId(raw);
+    if (BUILTIN_TIP_IDS.has(rawId)) {
+      failures.push(Object.freeze({ tipId: rawId, reason: 'builtin-id' as const }));
+      continue;
+    }
     const tip = tipFromRaw(raw);
     if (tip === null) {
-      failures.push(Object.freeze({ tipId: readTipId(raw), reason: 'invalid-entry' as const }));
+      failures.push(Object.freeze({ tipId: rawId, reason: 'invalid-entry' as const }));
       continue;
     }
     if (seen.has(tip.id)) {

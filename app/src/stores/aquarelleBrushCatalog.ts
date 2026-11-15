@@ -48,7 +48,10 @@ import {
   type AquarelleTip,
 } from '@efxlab/efx-watercolor';
 import type { MceBrushPackSnapshot } from '../types/project';
-import type { PhysicPaintBrushCatalogPayload } from '../types/physicPaint';
+import type {
+  PhysicPaintBrushCatalogEntry,
+  PhysicPaintBrushCatalogPayload,
+} from '../types/physicPaint';
 import {
   brushAssetBytes,
   brushAssetDigestFromPath,
@@ -57,7 +60,7 @@ import {
   resetBrushAssets,
 } from '../lib/efxPaintBrushAssets';
 import { decodeBridgeBase64, encodeBridgeBase64 } from '../lib/webpBytes';
-import type { ProjectBrushSet } from '../lib/efxPaintBrushSet';
+import { normalizeProjectBrushTip, type ProjectBrushSet } from '../lib/efxPaintBrushSet';
 
 /** The imported tips of the open project (empty on a project with no imports). */
 const customBrushTipsSignal = signal<readonly AquarelleTip[]>([]);
@@ -298,18 +301,27 @@ export function buildProjectBrushPack(): MceBrushPackSnapshot | null {
  * them; an unavailable tip travels with neither (its id also rides
  * `unavailableTipIds`). Built-ins never travel — both realms derive them from
  * `BUILTIN_TIPS` / `BUILTIN_TIP_MASKS`.
+ *
+ * CR-01 / T-63-25: every tip is projected through `normalizeProjectBrushTip`,
+ * the SAME admission law the open loader applies. A tip the store somehow
+ * holds in a shape the strict wire guard refuses (foreign category, stray
+ * member, or a built-in id) is normalized, or dropped, HERE — so one such tip
+ * can never refuse the Studio's snapshot whole.
  */
 export function buildBrushCatalogPayload(contextId: string): PhysicPaintBrushCatalogPayload {
-  const entries = customBrushTipsSignal.value.map((tip) => {
-    const mask = resolveMask(tip.id);
-    const digest = brushAssetDigestFromPath(tip.asset);
+  const entries: PhysicPaintBrushCatalogEntry[] = [];
+  for (const tip of customBrushTipsSignal.value) {
+    const normalized = normalizeProjectBrushTip(tip);
+    if (normalized === null) continue;
+    const mask = resolveMask(normalized.id);
+    const digest = brushAssetDigestFromPath(normalized.asset);
     const webp = digest === null ? undefined : brushAssetBytes(digest);
-    return {
-      tip: { ...tip },
+    entries.push({
+      tip: normalized,
       ...(mask === null ? {} : { maskBase64: encodeBridgeBase64(mask) }),
       ...(webp === undefined ? {} : { webpBase64: encodeBridgeBase64(webp) }),
-    };
-  });
+    });
+  }
   return {
     contextId,
     entries,

@@ -29,8 +29,15 @@ import {
 } from '@efxlab/efx-watercolor';
 import { bytesToBase64, decodeBridgeBase64 } from '../lib/webpBytes';
 import { brushAssetBytes, pendingBrushAssets, resetBrushAssets } from '../lib/efxPaintBrushAssets';
-import type { ProjectBrushSet } from '../lib/efxPaintBrushSet';
-import type { PhysicPaintBrushCatalogPayload } from '../types/physicPaint';
+import {
+  loadProjectBrushSet,
+  type ProjectBrushSet,
+  type ProjectBrushSetReadPort,
+} from '../lib/efxPaintBrushSet';
+import {
+  isPhysicPaintBrushCatalogPayload,
+  type PhysicPaintBrushCatalogPayload,
+} from '../types/physicPaint';
 import {
   _setBrushCatalogPublisher,
   addCustomBrushTip,
@@ -274,6 +281,114 @@ describe('aquarelleBrushCatalog — buildProjectBrushPack (D-10)', () => {
     expect(buildProjectBrushPack()).toBe(null);
   });
 });
+
+/**
+ * CR-01 / WR-07 regression pins — the open half and the save half agree.
+ *
+ * The package carrier accepts shapes the cross-realm wire guard refuses (all
+ * five categories, unknown extra members). Before 63-10 one such accepted tip
+ * refused the Studio snapshot WHOLE. These pins prove the normalization law:
+ * the tip the open accepted still reaches the Studio as a `custom` entry, one
+ * bad tip costs exactly one tip on save, and a built-in id is refused by name.
+ */
+describe('aquarelleBrushCatalog — the one project-tip normalization law (CR-01 / TIP-15 / T-63-25)', () => {
+  function okPort(asked: string[]): ProjectBrushSetReadPort {
+    return async (_packageDir, entries) => {
+      asked.push(...entries.map((entry) => entry.id));
+      return {
+        ok: true,
+        data: entries.map((entry) => ({
+          id: entry.id,
+          ok: true,
+          digest: entry.relativePath.slice('brushes/'.length, -'.webp'.length),
+          mask: new Uint8Array(TIP_MASK_BYTES).fill(7),
+          webp: brushWebp(192, 192),
+        })),
+      };
+    };
+  }
+
+  it('normalizes a stray-member tip with a foreign category into a wire-valid custom entry', async () => {
+    const raw = { ...customTip('wc/custom-stray', { category: 'texture' }), strayMember: 'left over' };
+    const set = await loadProjectBrushSet(
+      '/project/pkg',
+      { kind: 'efx-watercolor', entries: [raw] },
+      okPort([]),
+    );
+    expect(set.entries).toHaveLength(1);
+    applyProjectBrushSet(set, '/project/pkg');
+
+    const payload = buildBrushCatalogPayload('ctx-63-10-stray');
+
+    // No guard relaxation: the payload passes the strict wire law unchanged.
+    expect(isPhysicPaintBrushCatalogPayload(payload)).toBe(true);
+    expect(payload.entries).toHaveLength(1);
+    const entry = payload.entries[0]!;
+    expect(entry.tip.id).toBe('wc/custom-stray');
+    expect(entry.tip.category).toBe('custom');
+    expect(Object.prototype.hasOwnProperty.call(entry.tip, 'strayMember')).toBe(false);
+    expect(entry.maskBase64 === undefined).toBe(false);
+    expect(decodeBridgeBase64(entry.maskBase64!)).toEqual(new Uint8Array(TIP_MASK_BYTES).fill(7));
+  });
+
+  it('pins a foreign-category-only tip to custom so it still reaches the Studio', async () => {
+    const raw = customTip('wc/custom-texture', { category: 'texture' });
+    const set = await loadProjectBrushSet(
+      '/project/pkg',
+      { kind: 'efx-watercolor', entries: [raw] },
+      okPort([]),
+    );
+    applyProjectBrushSet(set, '/project/pkg');
+
+    const payload = buildBrushCatalogPayload('ctx-63-10-category');
+
+    expect(isPhysicPaintBrushCatalogPayload(payload)).toBe(true);
+    expect(payload.entries.map((entry) => entry.tip.id)).toEqual(['wc/custom-texture']);
+    expect(payload.entries[0]!.tip.category).toBe('custom');
+    expect(payloadMaskLegsValid(payload)).toBe(true);
+  });
+
+  it('refuses a built-in id at the open by name and never re-emits it', async () => {
+    const asked: string[] = [];
+    const builtinRaw = { ...customTip('wc/builtin-chalk', { category: 'texture' }) };
+    const customRaw = customTip('wc/custom-sibling');
+
+    const set = await loadProjectBrushSet(
+      '/project/pkg',
+      { kind: 'efx-watercolor', entries: [builtinRaw, customRaw] },
+      okPort(asked),
+    );
+
+    // Refused BEFORE the record is validated: the read port never asks for it
+    // and the set never lists or registers it.
+    expect(asked.join(',')).toBe('wc/custom-sibling');
+    expect(set.entries.map((entry) => entry.tip.id).join(',')).toBe('wc/custom-sibling');
+    expect(set.masks.map((mask) => mask.id).join(',')).toBe('wc/custom-sibling');
+    expect(set.failures).toContainEqual({ tipId: 'wc/builtin-chalk', reason: 'builtin-id' });
+
+    applyProjectBrushSet(set, '/project/pkg');
+    const payload = buildBrushCatalogPayload('ctx-63-10-builtin');
+
+    expect(isPhysicPaintBrushCatalogPayload(payload)).toBe(true);
+    expect(payload.entries.map((entry) => entry.tip.id)).toEqual(['wc/custom-sibling']);
+    // Each built-in is still listed exactly once, from BUILTIN_TIPS alone.
+    expect(listAquarelleBrushTips().map((tip) => tip.id)).toEqual([
+      'wc/builtin-bristle',
+      'wc/builtin-chalk',
+      'wc/builtin-sponge',
+      'wc/custom-sibling',
+    ]);
+    expect(listAquarelleBrushTips().filter((tip) => tip.id === 'wc/builtin-chalk')).toHaveLength(1);
+  });
+});
+
+/** Every entry of a payload carries a decode-length-valid mask leg. */
+function payloadMaskLegsValid(payload: PhysicPaintBrushCatalogPayload): boolean {
+  return payload.entries.every(
+    (entry) => entry.maskBase64 !== undefined
+      && decodeBridgeBase64(entry.maskBase64).length === TIP_MASK_BYTES,
+  );
+}
 
 /**
  * Minimal well-formed lossless VP8L header declaring the given frame size —
