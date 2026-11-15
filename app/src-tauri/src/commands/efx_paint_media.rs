@@ -13,14 +13,14 @@
 
 use crate::commands::frame_codec::encode_base64;
 use crate::services::efx_paint_media::{
-    digest_bytes, read_frame_media, write_brush_asset, write_frame_media, EfxPaintMediaError,
-    EfxPaintMediaIoError, EfxPaintMediaRejection,
+    digest_bytes, read_brush_assets, read_frame_media, write_brush_asset, write_frame_media,
+    BrushAssetReadOutcome, EfxPaintMediaError, EfxPaintMediaIoError, EfxPaintMediaRejection,
 };
 use crate::services::frame_codec::{
     decode_mask_webp, encode_mask_webp, BRUSH_MASK_BYTES, BRUSH_MASK_EDGE,
     BRUSH_MASK_UNREADABLE, BRUSH_MASK_WRONG_SIZE,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::http::HeaderMap;
 use tauri::ipc::{InvokeBody, Request};
@@ -233,6 +233,104 @@ fn decode_brush_mask_bytes(bytes: &[u8]) -> Result<BrushMaskDecodeResponse, EfxP
         width: BRUSH_MASK_EDGE,
         height: BRUSH_MASK_EDGE,
     })
+}
+
+/// One entry of the `{entries: [{id, relativePath}]}` batch request body.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrushAssetBatchEntry {
+    id: String,
+    relative_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BrushAssetBatchRequest {
+    entries: Vec<BrushAssetBatchEntry>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrushAssetReadOkResponse {
+    pub id: String,
+    pub ok: bool,
+    pub digest: String,
+    pub mask_base64: String,
+    pub webp_base64: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrushAssetReadFailedResponse {
+    pub id: String,
+    pub ok: bool,
+    pub reason: &'static str,
+}
+
+/// The batch wire shape: a success carries digest + both byte payloads, a
+/// failure carries exactly one fixed reason. Untagged so the two shapes are
+/// never mixed.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum BrushAssetReadEntryResponse {
+    Ok(BrushAssetReadOkResponse),
+    Failed(BrushAssetReadFailedResponse),
+}
+
+#[derive(Debug, Serialize)]
+pub struct BrushAssetsReadResponse {
+    pub results: Vec<BrushAssetReadEntryResponse>,
+}
+
+/// 63-02: reads a whole brush set in one call. `packageDir` rides a header and
+/// the `{entries: [{id, relativePath}]}` JSON body carries the request; every
+/// entry answers independently — a failing entry becomes a reason string and
+/// never rejects the batch.
+#[tauri::command(async)]
+pub fn efx_paint_read_brush_assets(
+    request: Request,
+) -> Result<BrushAssetsReadResponse, EfxPaintMediaError> {
+    let package_dir = header(request.headers(), "packageDir")?;
+    let batch: BrushAssetBatchRequest = match request.body() {
+        InvokeBody::Json(value) => serde_json::from_value(value.clone()).map_err(|error| {
+            EfxPaintMediaError::Io(EfxPaintMediaIoError::new(format!(
+                "efx_paint_read_brush_assets: invalid entries body: {error}"
+            )))
+        })?,
+        _ => {
+            return Err(EfxPaintMediaError::Io(EfxPaintMediaIoError::new(
+                "efx_paint_read_brush_assets: expected a JSON body carrying {entries}",
+            )))
+        }
+    };
+    let entries: Vec<(String, String)> = batch
+        .entries
+        .into_iter()
+        .map(|entry| (entry.id, entry.relative_path))
+        .collect();
+    let results = read_brush_assets(&PathBuf::from(package_dir), &entries)
+        .into_iter()
+        .map(|result| match result.outcome {
+            BrushAssetReadOutcome::Read {
+                digest,
+                webp,
+                mask,
+            } => BrushAssetReadEntryResponse::Ok(BrushAssetReadOkResponse {
+                id: result.id,
+                ok: true,
+                digest,
+                mask_base64: encode_base64(&mask),
+                webp_base64: encode_base64(&webp),
+            }),
+            BrushAssetReadOutcome::Failed { reason } => {
+                BrushAssetReadEntryResponse::Failed(BrushAssetReadFailedResponse {
+                    id: result.id,
+                    ok: false,
+                    reason,
+                })
+            }
+        })
+        .collect();
+    Ok(BrushAssetsReadResponse { results })
 }
 
 #[cfg(test)]

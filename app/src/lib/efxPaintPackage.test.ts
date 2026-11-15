@@ -21,10 +21,13 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import {
+  BRUSH_ASSETS_DIR,
+  BRUSH_ASSET_DIGEST_PATTERN,
   EFX_PAINT_FRAMES_DIR,
   EFX_PAINT_LAYERS_DIR,
   EFX_PAINT_MACHINE_CACHE_DIR,
   PKG_FORMAT_VERSION,
+  buildBrushAssetRelativePath,
   buildFrameMediaRelativePath,
   buildLayerFileRelativePath,
   buildMachineCacheRelativePath,
@@ -33,6 +36,7 @@ import {
   isProjectId,
   isSafeMachineCacheRelativePath,
   isSafePackageRelativePath,
+  parseBrushAssetRelativePath,
   resolveMachineCachePath,
 } from './efxPaintPackage';
 
@@ -99,6 +103,60 @@ describe('frame media references (D-02)', () => {
 
   it.each(FORBIDDEN_KEY_IDS)('throws on a key id containing %s', (_label, keyId) => {
     expect(() => buildFrameMediaRelativePath(LAYER_ID, keyId)).toThrow(UNSAFE_ID_MESSAGE);
+  });
+});
+
+describe('brush asset references (63-02, D-10)', () => {
+  const DIGEST = '0123456789abcdef'.repeat(4);
+
+  it('names the brush assets directory as a sibling of frames/', () => {
+    expect(BRUSH_ASSETS_DIR).toBe('brushes');
+    expect(BRUSH_ASSETS_DIR).not.toBe(EFX_PAINT_FRAMES_DIR);
+  });
+
+  it('builds a content-addressed brush asset path as brushes/<sha256>.webp', () => {
+    expect(buildBrushAssetRelativePath(DIGEST)).toBe(`brushes/${DIGEST}.webp`);
+    expect(isSafePackageRelativePath(buildBrushAssetRelativePath(DIGEST))).toBe(true);
+  });
+
+  it('rejects a digest that is not 64 lower-case hex characters', () => {
+    for (const digest of [
+      '',
+      DIGEST.toUpperCase(),
+      DIGEST.slice(0, 63),
+      `${DIGEST}0`,
+      '../escape',
+      'A/'.repeat(32),
+      `${DIGEST}.webp`,
+    ]) {
+      expect(BRUSH_ASSET_DIGEST_PATTERN.test(digest)).toBe(false);
+      expect(() => buildBrushAssetRelativePath(digest)).toThrow(
+        'brush asset digest must be 64 lower-case hex characters.',
+      );
+    }
+  });
+
+  it('parses exactly the shape the builder mints', () => {
+    expect(parseBrushAssetRelativePath(buildBrushAssetRelativePath(DIGEST))).toBe(DIGEST);
+  });
+
+  const REFUSED_BRUSH_PATHS: ReadonlyArray<readonly [string, unknown]> = [
+    ['a traversal segment', `brushes/../x.webp`],
+    ['an upper-case stem', `brushes/${DIGEST.toUpperCase()}.webp`],
+    ['a short stem', `brushes/${DIGEST.slice(0, 63)}.webp`],
+    ['a non-webp extension', `brushes/${DIGEST}.png`],
+    ['an extra segment', `brushes/${DIGEST}.webp/extra`],
+    ['a nested stem', `brushes/a/${DIGEST}.webp`],
+    ['a foreign root', `frames/L1/${DIGEST}.webp`],
+    ['an absolute path', `/brushes/${DIGEST}.webp`],
+    ['no extension', `brushes/${DIGEST}`],
+    ['a non-string value', 42],
+    ['null', null],
+    ['an empty string', ''],
+  ];
+
+  it.each(REFUSED_BRUSH_PATHS)('refuses %s', (_label, value) => {
+    expect(parseBrushAssetRelativePath(value)).toBeNull();
   });
 });
 

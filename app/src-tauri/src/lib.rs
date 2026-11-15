@@ -972,6 +972,7 @@ pub fn run() {
             efx_paint_media_commands::efx_paint_encode_brush_mask,
             efx_paint_media_commands::efx_paint_write_brush_asset,
             efx_paint_media_commands::efx_paint_decode_brush_mask,
+            efx_paint_media_commands::efx_paint_read_brush_assets,
             studio_script_snapshot_commands::studio_script_snapshot_write,
             studio_script_snapshot_commands::studio_script_snapshot_read,
             studio_script_snapshot_commands::studio_script_snapshot_delete,

@@ -549,15 +549,20 @@ export interface EfxPaintFrameMediaReadResult {
  * The Rust `EfxPaintMediaRejection` labels, verbatim (T-52.2-03). Rust variant
  * → wire label: `PathEscape` → `pathEscape`, `UnsafeId` → `unsafeId`,
  * `WrongExtension` → `wrongExtension`, `NotARegularFile` → `notARegularFile`,
- * `UnsupportedPackagePath` → `unsupportedPackagePath` (and `Missing` →
- * `missing`, carried by the `EfxPaintMediaFailure` union below).
+ * `UnsupportedPackagePath` → `unsupportedPackagePath`, `DigestMismatch` →
+ * `digestMismatch`, `WrongSize` → `wrongSize`, `Undecodable` → `undecodable`
+ * (and `Missing` → `missing`, carried by the `EfxPaintMediaFailure` union
+ * below). The 63-02 labels cover the brush-asset boundary.
  */
 export type EfxPaintMediaRejectionLabel =
   | 'pathEscape'
   | 'unsafeId'
   | 'wrongExtension'
   | 'notARegularFile'
-  | 'unsupportedPackagePath';
+  | 'unsupportedPackagePath'
+  | 'digestMismatch'
+  | 'wrongSize'
+  | 'undecodable';
 
 /**
  * Typed frame-media failure. D-13 gives the classes different product
@@ -575,6 +580,9 @@ const EFX_PAINT_MEDIA_REJECTION_LABELS: readonly EfxPaintMediaRejectionLabel[] =
   'wrongExtension',
   'notARegularFile',
   'unsupportedPackagePath',
+  'digestMismatch',
+  'wrongSize',
+  'undecodable',
 ];
 
 /**
@@ -635,6 +643,150 @@ export async function ipcEfxPaintReadFrameMedia(
       { headers: { packageDir, relativePath } },
     );
     return { ok: true, data: { bytes: base64ToBytes(data.bytesBase64), digest: data.digest } };
+  } catch (error) {
+    return { ok: false, error: efxPaintMediaFailureFrom(error) };
+  }
+}
+
+// --- Brush tip pipeline: the content-addressed asset boundary (63-02) -----
+
+/**
+ * The five fixed per-entry reasons a batch brush read can report. They are
+ * deliberately a SEPARATE vocabulary from `EfxPaintMediaRejectionLabel`: a
+ * batch degrades one entry instead of rejecting the call.
+ */
+export type EfxPaintBrushAssetReadReason =
+  | 'missing'
+  | 'unreadable'
+  | 'wrong-size'
+  | 'digest-mismatch'
+  | 'refused';
+
+const BRUSH_ASSET_READ_REASONS: readonly EfxPaintBrushAssetReadReason[] = [
+  'missing',
+  'unreadable',
+  'wrong-size',
+  'digest-mismatch',
+  'refused',
+];
+
+export type EfxPaintBrushAssetReadEntry =
+  | { id: string; ok: true; digest: string; mask: Uint8Array; webp: Uint8Array }
+  | { id: string; ok: false; reason: EfxPaintBrushAssetReadReason };
+
+export interface EfxPaintBrushMaskEncodeResult {
+  /** The lossless WebP bytes; `digest` is their SHA-256 and filename stem. */
+  webp: Uint8Array;
+  digest: string;
+  width: number;
+  height: number;
+}
+
+export interface EfxPaintBrushMaskDecodeResult {
+  /** The 36,864 alpha bytes. */
+  mask: Uint8Array;
+  width: number;
+  height: number;
+}
+
+/**
+ * Encode one 36,864-byte 192×192 mask into the lossless brush-asset WebP
+ * profile. The mask crosses as the raw invoke body — never a JSON number
+ * array — and the response's base64 is decoded locally.
+ */
+export async function ipcEfxPaintEncodeBrushMask(
+  mask: Uint8Array,
+): Promise<Result<EfxPaintBrushMaskEncodeResult, EfxPaintMediaFailure>> {
+  try {
+    const data = await invoke<{ bytesBase64: string; digest: string; width: number; height: number }>(
+      'efx_paint_encode_brush_mask',
+      mask,
+    );
+    return {
+      ok: true,
+      data: { webp: base64ToBytes(data.bytesBase64), digest: data.digest, width: data.width, height: data.height },
+    };
+  } catch (error) {
+    return { ok: false, error: efxPaintMediaFailureFrom(error) };
+  }
+}
+
+/**
+ * Write one content-addressed brush asset to `brushes/<sha256>.webp` (or the
+ * save transaction's staging root). The digest MUST equal the stem; the Rust
+ * side refuses a mismatch before any IO.
+ */
+export async function ipcEfxPaintWriteBrushAsset(
+  packageDir: string,
+  relativePath: string,
+  webp: Uint8Array,
+  stagingBasename?: string,
+): Promise<Result<EfxPaintFrameMediaWriteResult, EfxPaintMediaFailure>> {
+  const headers: Record<string, string> = { packageDir, relativePath };
+  if (stagingBasename !== undefined) headers.stagingBasename = stagingBasename;
+  try {
+    const data = await invoke<EfxPaintFrameMediaWriteResult>('efx_paint_write_brush_asset', webp, { headers });
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: efxPaintMediaFailureFrom(error) };
+  }
+}
+
+/**
+ * Read a whole brush set in ONE native call. Each entry answers independently
+ * with the decoded mask AND the exact stored WebP bytes (save copies them
+ * without re-encoding, D-11); a failing entry carries one fixed reason and
+ * never takes the batch down (D-18).
+ */
+export async function ipcEfxPaintReadBrushAssets(
+  packageDir: string,
+  entries: readonly { id: string; relativePath: string }[],
+): Promise<Result<EfxPaintBrushAssetReadEntry[], EfxPaintMediaFailure>> {
+  try {
+    const data = await invoke<{
+      results: readonly (
+        | { id: string; ok: true; digest: string; maskBase64: string; webpBase64: string }
+        | { id: string; ok: false; reason: string }
+      )[];
+    }>('efx_paint_read_brush_assets', { entries }, { headers: { packageDir } });
+    const results: EfxPaintBrushAssetReadEntry[] = data.results.map((result) => {
+      if (result.ok) {
+        return {
+          id: result.id,
+          ok: true,
+          digest: result.digest,
+          mask: base64ToBytes(result.maskBase64),
+          webp: base64ToBytes(result.webpBase64),
+        };
+      }
+      // An unknown reason fails closed into `refused` rather than inventing a
+      // sixth class the caller cannot handle.
+      const reason = BRUSH_ASSET_READ_REASONS.find((entry) => entry === result.reason) ?? 'refused';
+      return { id: result.id, ok: false, reason };
+    });
+    return { ok: true, data: results };
+  } catch (error) {
+    return { ok: false, error: efxPaintMediaFailureFrom(error) };
+  }
+}
+
+/**
+ * Decode one stored brush asset back to its 36,864 mask bytes. The Rust side
+ * refuses a non-192×192 declaration from the WebP header BEFORE allocating a
+ * decoded buffer (T-63-03).
+ */
+export async function ipcEfxPaintDecodeBrushMask(
+  webp: Uint8Array,
+): Promise<Result<EfxPaintBrushMaskDecodeResult, EfxPaintMediaFailure>> {
+  try {
+    const data = await invoke<{ maskBase64: string; width: number; height: number }>(
+      'efx_paint_decode_brush_mask',
+      webp,
+    );
+    return {
+      ok: true,
+      data: { mask: base64ToBytes(data.maskBase64), width: data.width, height: data.height },
+    };
   } catch (error) {
     return { ok: false, error: efxPaintMediaFailureFrom(error) };
   }

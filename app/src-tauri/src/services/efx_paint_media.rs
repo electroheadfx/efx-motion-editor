@@ -18,6 +18,7 @@
 //! are computed in Rust (`sha2`) because the JS `crypto.subtle` surface is
 //! unresolved under WKWebView (Assumption A1).
 
+use crate::services::frame_codec::{decode_mask_webp, BRUSH_MASK_WRONG_SIZE};
 use serde::{Serialize, Serializer};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
@@ -688,6 +689,85 @@ pub fn read_brush_asset(
     Ok((bytes, digest))
 }
 
+/// 63-02: the fixed per-entry failure vocabulary of a batch brush read. Exactly
+/// these five strings cross the wire — never a filesystem detail.
+pub const BRUSH_READ_MISSING: &str = "missing";
+pub const BRUSH_READ_UNREADABLE: &str = "unreadable";
+pub const BRUSH_READ_WRONG_SIZE: &str = "wrong-size";
+pub const BRUSH_READ_DIGEST_MISMATCH: &str = "digest-mismatch";
+pub const BRUSH_READ_REFUSED: &str = "refused";
+
+/// One entry's batch outcome: either the stored WebP plus its decoded mask, or
+/// one fixed reason. Never an error for the whole batch.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BrushAssetReadOutcome {
+    Read {
+        digest: String,
+        webp: Vec<u8>,
+        mask: Vec<u8>,
+    },
+    Failed {
+        reason: &'static str,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BrushAssetReadResult {
+    pub id: String,
+    pub outcome: BrushAssetReadOutcome,
+}
+
+/// 63-02: read a whole brush set in ONE native call. Every entry is resolved,
+/// digest-checked and decoded independently — a missing, unreadable,
+/// wrong-sized, renamed or malformed entry degrades to its reason and never
+/// aborts the batch (D-18). The stored WebP is returned untouched alongside the
+/// decoded mask, because paint needs the mask while save must copy the exact
+/// stored bytes without re-encoding (D-11).
+pub fn read_brush_assets(
+    package_dir: &Path,
+    entries: &[(String, String)],
+) -> Vec<BrushAssetReadResult> {
+    entries
+        .iter()
+        .map(|(id, relative_path)| BrushAssetReadResult {
+            id: id.clone(),
+            outcome: read_one_brush_asset(package_dir, relative_path),
+        })
+        .collect()
+}
+
+fn read_one_brush_asset(package_dir: &Path, relative_path: &str) -> BrushAssetReadOutcome {
+    let (webp, digest) = match read_brush_asset(package_dir, relative_path) {
+        Ok(read) => read,
+        Err(error) => {
+            return BrushAssetReadOutcome::Failed {
+                reason: match &error {
+                    EfxPaintMediaError::Rejected(EfxPaintMediaRejection::Missing) => {
+                        BRUSH_READ_MISSING
+                    }
+                    EfxPaintMediaError::Rejected(EfxPaintMediaRejection::DigestMismatch) => {
+                        BRUSH_READ_DIGEST_MISMATCH
+                    }
+                    EfxPaintMediaError::Rejected(_) => BRUSH_READ_REFUSED,
+                    EfxPaintMediaError::Io(_) => BRUSH_READ_UNREADABLE,
+                },
+            };
+        }
+    };
+    // The declared dimensions are checked inside `decode_mask_webp` BEFORE any
+    // decoded buffer is allocated (T-63-03), so a hostile payload costs nothing.
+    match decode_mask_webp(&webp) {
+        Ok(mask) => BrushAssetReadOutcome::Read { digest, webp, mask },
+        Err(message) => BrushAssetReadOutcome::Failed {
+            reason: if message == BRUSH_MASK_WRONG_SIZE {
+                BRUSH_READ_WRONG_SIZE
+            } else {
+                BRUSH_READ_UNREADABLE
+            },
+        },
+    }
+}
+
 fn validate_media_id(value: &str) -> Result<(), EfxPaintMediaError> {
     if value.is_empty()
         || value.contains('/')
@@ -1161,6 +1241,96 @@ mod tests {
             )
             .unwrap_err(),
             rejected(EfxPaintMediaRejection::Missing)
+        );
+        fs::remove_dir_all(package).expect("fixture cleanup");
+    }
+
+    fn brush_vp8x_header(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(b"WEBP");
+        bytes.extend_from_slice(b"VP8X");
+        bytes.extend_from_slice(&10_u32.to_le_bytes());
+        bytes.extend_from_slice(&[0, 0, 0, 0]);
+        bytes.extend_from_slice(&(width - 1).to_le_bytes()[..3]);
+        bytes.extend_from_slice(&(height - 1).to_le_bytes()[..3]);
+        bytes
+    }
+
+    #[test]
+    fn brush_mask_batch_read_returns_every_entry_with_its_own_reason() {
+        let package = fixture_package("brush-batch");
+        fs::create_dir_all(package.join(BRUSH_ASSET_ROOT)).expect("brushes directory");
+
+        // ok: a real encoded mask asset under its own digest.
+        let mask = brush_probe_mask();
+        let webp = crate::services::frame_codec::encode_mask_webp(&mask).expect("mask encode");
+        let ok_relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", digest_bytes(&webp));
+        fs::write(package.join(&ok_relative), &webp).expect("ok asset");
+
+        // missing: a valid shape whose file is absent.
+        let missing_relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", "1".repeat(64));
+
+        // unreadable: content-address correct, bytes are not a WebP.
+        let corrupt = b"not a webp".to_vec();
+        let corrupt_relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", digest_bytes(&corrupt));
+        fs::write(package.join(&corrupt_relative), &corrupt).expect("corrupt asset");
+
+        // wrong-size: correctly named WebP declaring 96x96.
+        let small = brush_vp8x_header(96, 96);
+        let small_relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", digest_bytes(&small));
+        fs::write(package.join(&small_relative), &small).expect("small asset");
+
+        // digest-mismatch: a valid WebP under a forged name.
+        let forged_relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", "2".repeat(64));
+        fs::write(package.join(&forged_relative), &webp).expect("forged asset");
+
+        // refused: a malformed relative path never reaches the filesystem.
+        let refused_relative = format!("{BRUSH_ASSET_ROOT}/not-a-digest.webp");
+
+        let entries = vec![
+            ("id-ok".to_string(), ok_relative),
+            ("id-missing".to_string(), missing_relative),
+            ("id-corrupt".to_string(), corrupt_relative),
+            ("id-small".to_string(), small_relative),
+            ("id-forged".to_string(), forged_relative),
+            ("id-refused".to_string(), refused_relative),
+        ];
+        let results = read_brush_assets(&package, &entries);
+        assert_eq!(results.len(), entries.len());
+        // Input order is preserved, and no failing entry took the batch down.
+        for (result, (id, _)) in results.iter().zip(entries.iter()) {
+            assert_eq!(&result.id, id);
+        }
+        match &results[0].outcome {
+            BrushAssetReadOutcome::Read {
+                digest,
+                webp: stored,
+                mask: decoded,
+            } => {
+                assert_eq!(digest, &digest_bytes(&webp));
+                assert_eq!(stored, &webp);
+                assert_eq!(decoded, &mask);
+            }
+            other => panic!("expected a read outcome, got {other:?}"),
+        }
+        let reasons: Vec<&'static str> = results[1..]
+            .iter()
+            .map(|result| match &result.outcome {
+                BrushAssetReadOutcome::Failed { reason } => *reason,
+                other => panic!("expected a failed outcome, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            reasons,
+            vec![
+                BRUSH_READ_MISSING,
+                BRUSH_READ_UNREADABLE,
+                BRUSH_READ_WRONG_SIZE,
+                BRUSH_READ_DIGEST_MISMATCH,
+                BRUSH_READ_REFUSED,
+            ]
         );
         fs::remove_dir_all(package).expect("fixture cleanup");
     }
