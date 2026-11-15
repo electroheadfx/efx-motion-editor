@@ -865,13 +865,26 @@ mod tests {
             resolve_package_media_path(&package, "../escape.webp").unwrap_err(),
             rejected(EfxPaintMediaRejection::PathEscape)
         );
+        // 63-02 (D-12): the lock stays locked to `frames/`. The new brush tree
+        // is a sibling and is never admitted here, and a brush-shaped path
+        // under `frames/` is not a frame path either.
+        let brush_shaped = format!("{BRUSH_ASSET_ROOT}/{}.webp", "ab".repeat(32));
+        assert_eq!(
+            resolve_package_media_path(&package, &brush_shaped).unwrap_err(),
+            rejected(EfxPaintMediaRejection::UnsupportedPackagePath)
+        );
+        assert_eq!(
+            resolve_package_media_path(&package, "frames/anything-brush-shaped.webp").unwrap_err(),
+            rejected(EfxPaintMediaRejection::UnsupportedPackagePath)
+        );
         fs::remove_dir_all(package).expect("fixture cleanup");
     }
 
     #[test]
     fn bound_guard_refuses_everything_outside_the_transaction_file_set() {
         let package = fixture_package("bound");
-        for relative in [
+        let valid_stem = "0123456789abcdef".repeat(4);
+        let mut crafted: Vec<String> = [
             "images/a.webp",
             "cache/efx-paint/a.webp",
             "scripts/x.json",
@@ -880,12 +893,75 @@ mod tests {
             "/absolute/path",
             "frames\\L1\\K1.webp",
             "",
-        ] {
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+        // 63-02: every malformed brush shape is refused by the same guard,
+        // before any filesystem access — nested, off-by-one stems, upper-case
+        // hex, a foreign extension, traversal, a `.` segment, an absolute
+        // path and a separator beyond the leaf.
+        crafted.extend([
+            format!("{BRUSH_ASSET_ROOT}/a/b.webp"),
+            format!("{BRUSH_ASSET_ROOT}/{}.webp", &valid_stem[..63]),
+            format!("{BRUSH_ASSET_ROOT}/{valid_stem}0.webp"),
+            format!("{BRUSH_ASSET_ROOT}/{}.webp", valid_stem.to_uppercase()),
+            format!("{BRUSH_ASSET_ROOT}/{valid_stem}.png"),
+            format!("{BRUSH_ASSET_ROOT}/../escape.webp"),
+            format!("{BRUSH_ASSET_ROOT}/./{valid_stem}.webp"),
+            format!("/{BRUSH_ASSET_ROOT}/{valid_stem}.webp"),
+            format!("{BRUSH_ASSET_ROOT}/{valid_stem}.webp/extra"),
+        ]);
+        for relative in crafted {
             assert!(
-                resolve_package_bound_path(&package, relative).is_err(),
+                resolve_package_bound_path(&package, &relative).is_err(),
                 "expected refusal: {relative}"
             );
         }
+        fs::remove_dir_all(package).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn bound_guard_admits_exactly_the_brush_asset_shape() {
+        let package = fixture_package("brush-bound");
+        let root = canonical_package_root(&package).expect("canonical root");
+        let valid_stem = "0123456789abcdef".repeat(4);
+        let relative = format!("{BRUSH_ASSET_ROOT}/{valid_stem}.webp");
+
+        // Positive: a content-addressed brush asset resolves inside the package.
+        let resolved = resolve_package_bound_path(&package, &relative).expect("brush bound path");
+        assert_eq!(resolved, root.join(&relative));
+        assert!(resolved.starts_with(&root));
+
+        // Positive with a staging basename: the save path resolves the same
+        // relative path inside the transaction's staging generation, whose
+        // root is derived in Rust by `write_brush_asset`.
+        let bytes = b"staged brush asset bytes";
+        let digest_relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", digest_bytes(bytes));
+        let basename = format!("{PACKAGE_STAGING_PREFIX}{}", Uuid::new_v4());
+        write_brush_asset(&package, &digest_relative, bytes, Some(&basename))
+            .expect("staged brush write");
+        let staged = resolve_package_bound_path(&package.join(&basename), &digest_relative)
+            .expect("staged brush bound path");
+        assert!(staged.is_file());
+        // The canonical tree is untouched by the staged write.
+        assert!(!resolve_package_bound_path(&package, &digest_relative)
+            .expect("canonical brush bound path")
+            .exists());
+
+        // Negative: a symlinked leaf under `brushes/` is refused.
+        fs::create_dir_all(package.join(BRUSH_ASSET_ROOT)).expect("brushes directory");
+        let outside = std::env::temp_dir().join(format!("efx-brush-outside-{}", Uuid::new_v4()));
+        fs::write(&outside, b"outside").expect("outside file");
+        let linked_relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", "cd".repeat(32));
+        std::os::unix::fs::symlink(&outside, package.join(&linked_relative))
+            .expect("symlink leaf");
+        assert_eq!(
+            resolve_package_bound_path(&package, &linked_relative).unwrap_err(),
+            rejected(EfxPaintMediaRejection::PathEscape)
+        );
+
+        fs::remove_file(&outside).ok();
         fs::remove_dir_all(package).expect("fixture cleanup");
     }
 
