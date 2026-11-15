@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: executing
-stopped_at: Completed 63-03-PLAN.md
-last_updated: "2026-11-15T11:00:05.218Z"
+stopped_at: Completed 63-09-PLAN.md
+last_updated: "2026-11-15T11:04:39.710Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: a219a43525e6bb2c4759e981a6391d1a9f3a678e
+state_head: eaaadbb91dc4f896d566bdcfe2e1aa7f81620c8e
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 ## Current Position
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
 Last activity: 2026-11-15 — Phase 63 execution started
 
@@ -129,6 +129,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P01 | 5 min | 3 tasks | 7 files |
 | Phase 63 P02 | 8min | 3 tasks | 7 files |
 | Phase 63 P03 | 4min | 2 tasks | 7 files |
+| Phase 63 P09 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -397,6 +398,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: Built-in bake is an env-gated vitest authoring step: BAKE_BUILTIN_TIPS=1 runs sips -> BMP parse -> deriveMask -> normalizeMaskContrast and writes builtinTipMasks.generated.ts; the gate unset leaves exactly one named skipped test and performs no IO
 - [Phase 63]: builtinTips.ts owns one private D-07 definition list; BUILTIN_TIPS (catalog surface) and BUILTIN_TIP_MASKS (registry surface) derive from it, so ids and labels cannot drift
 - [Phase 63]: maskRegistry seeds from BUILTIN_TIP_MASKS at module load and resetMaskRegistry() is replaceMaskRegistry(BUILTIN_TIP_MASKS), so reset restores exactly the three built-ins with the same allocations (D-20)
+- [Phase 63]: 63-09: the fresh-profile copy is fs::copy-only (one encode at setup) and the copy is re-validated through read_brush_asset, never trusted because it copied
+- [Phase 63]: 63-09: create_project_dir never provisions brushes/ (D-20); pinned by an assertion plus a recorded reason, green-by-construction with no fabricated RED
 
 ### Pending Todos
 
@@ -514,8 +517,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T11:00:05.192Z
-Stopped at: Completed 63-03-PLAN.md
+Last session: 2026-11-15T11:04:39.684Z
+Stopped at: Completed 63-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

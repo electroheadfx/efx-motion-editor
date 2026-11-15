@@ -24,7 +24,7 @@
 - [x] **TIP-13**: Three textured tips ship without any import — `wc/builtin-bristle` (Bristle fan), `wc/builtin-chalk` (Chalk grain), `wc/builtin-sponge` (Sponge) — as compile-time constants under stable ids, category `texture`, listed in the brush library, resolvable on every install, and never written into a project
 - [ ] **TIP-14**: A roto script saved with an imported tip carries that tip's mask in its `brushPack` entries and rehydrates on load, so applying it into a project that lacks the tip still paints the texture
 - [ ] **TIP-15**: `buildBrushPackSnapshot` remains the one place that knows entry shape — stays total and fail-closed on malformed input while carrying the asset ref through
-- [ ] **TIP-16**: Saving and reopening an untouched project is byte-identical — mask asset bytes included — and copying the project alone to a fresh profile reproduces identical strokes and an identical brush library listing
+- [x] **TIP-16**: Saving and reopening an untouched project is byte-identical — mask asset bytes included — and copying the project alone to a fresh profile reproduces identical strokes and an identical brush library listing
 - [ ] **TIP-17**: Opening a project **replaces** — never appends to — the tip catalog and the mask registry with that project's entries plus the three built-ins, so a tip imported in project A is not listed or resolvable in project B; closing the project or starting a New Project resets both to the three built-ins, so no stale custom id resolves
 
 ### Medium Engine (Phase 64)
@@ -103,7 +103,7 @@ Which phases cover which requirements.
 | TIP-13 | Phase 63 | Complete |
 | TIP-14 | Phase 63 | Pending |
 | TIP-15 | Phase 63 | Pending |
-| TIP-16 | Phase 63 | Pending |
+| TIP-16 | Phase 63 | Complete |
 | TIP-17 | Phase 63 | Pending |
 | MED-01 | Phase 64 | Pending |
 | MED-02 | Phase 64 | Pending |
