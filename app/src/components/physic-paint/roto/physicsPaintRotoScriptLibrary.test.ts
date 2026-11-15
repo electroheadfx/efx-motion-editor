@@ -10,7 +10,7 @@ import {
 import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import { serializeAquarelleRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
-import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import { isAquarelleDryEvent, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const context = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, project: { name: 'Project', saved: true, contextId: 'context-1' } });
@@ -925,6 +925,80 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
     await expect(test.controller.saveActiveFrame()).resolves.toBe(false);
     expect(test.controller.status.value).toContain('no stored mask bytes');
     expect(test.log).toHaveBeenCalledWith(expect.stringContaining('no stored mask bytes'), true);
+    expect(test.requests.filter((request) => request.kind === 'save')).toHaveLength(0);
+  });
+
+  /** Replace ONLY the non-dry events' engine brush id; dry ticks pass through. */
+  function captureWithEngineBrushId(id: string): readonly AquarellePayloadEvent[] {
+    return aquarelleEvents().map((event) => (
+      isAquarelleDryEvent(event) ? event : { ...event, engine: { ...event.engine, brushId: id } }
+    ));
+  }
+
+  it('save leg: an unavailable tip is skipped with a log instead of refusing the whole save (WR-02)', async () => {
+    vi.resetModules();
+    const catalog = await import('../../../stores/aquarelleBrushCatalog');
+    const library = await import('./physicsPaintRotoScriptLibrary');
+
+    // Distinct digests per tip: the shared `scriptCustomTip` asset would let
+    // the healthy tip's remembered bytes satisfy the unavailable one.
+    const tipWithDigest = (id: string, fill: string) => ({ ...scriptCustomTip(id), asset: `brushes/${fill.repeat(64)}.webp` });
+    catalog.applyBrushCatalogPayload({
+      contextId: 'ctx-63-11-unavailable-skip',
+      entries: [
+        {
+          tip: tipWithDigest('wc/custom-healthy', 'b') as never,
+          webpBase64: Buffer.from(brushWebp(192, 192)).toString('base64'),
+        },
+        { tip: tipWithDigest('wc/custom-unavailable', 'c') as never },
+      ],
+      unavailableTipIds: ['wc/custom-unavailable'],
+    });
+
+    // The capture paints a built-in id: only the catalog's own state can refuse.
+    const test = harness(true, {}, library.createRotoScriptLibraryController);
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(true);
+
+    const saveRequest = test.requests.find((request) => request.kind === 'save') as { script?: any } | undefined;
+    expect(saveRequest === undefined).toBe(false);
+    const entries = saveRequest!.script.brushPack.entries as any[];
+    expect(entries.map((entry: { id: string }) => entry.id)).toEqual(['wc/custom-healthy']);
+    expect(test.log).toHaveBeenCalledWith(expect.stringContaining('wc/custom-unavailable'), true);
+  });
+
+  it('save leg: refuses a custom-brush capture when this realm never received a catalog (WR-03)', async () => {
+    vi.resetModules();
+    const library = await import('./physicsPaintRotoScriptLibrary');
+
+    // Fresh modules: no payload was applied, so the catalog is UNKNOWN — not
+    // known-empty. The capture still paints a custom tip.
+    const test = harness(true, {}, library.createRotoScriptLibraryController);
+    test.capture.script.aquarelleEvents = captureWithEngineBrushId('wc/custom-painted');
+
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(false);
+    expect(test.controller.status.value).toContain('brush catalog');
+    expect(test.controller.status.value).toContain('wc/custom-painted');
+    expect(test.requests.filter((request) => request.kind === 'save')).toHaveLength(0);
+  });
+
+  it('save leg: refuses by name when a painted custom tip is not in the synced catalog (WR-03)', async () => {
+    vi.resetModules();
+    const catalog = await import('../../../stores/aquarelleBrushCatalog');
+    const library = await import('./physicsPaintRotoScriptLibrary');
+
+    catalog.applyBrushCatalogPayload({
+      contextId: 'ctx-63-11-uncarried',
+      entries: [{ tip: scriptCustomTip('wc/custom-other') as never, webpBase64: Buffer.from(brushWebp(192, 192)).toString('base64') }],
+      unavailableTipIds: [],
+    });
+
+    // Painted from ANOTHER script's registry: the id resolves for painting but
+    // this project catalog carries no entry for it.
+    const test = harness(true, {}, library.createRotoScriptLibraryController);
+    test.capture.script.aquarelleEvents = captureWithEngineBrushId('wc/custom-script-only');
+
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(false);
+    expect(test.controller.status.value).toContain('wc/custom-script-only');
     expect(test.requests.filter((request) => request.kind === 'save')).toHaveLength(0);
   });
 
