@@ -25,6 +25,13 @@
 //  entries individually (D-18: one bad tip must not abort the
 //  rest of the set); callers that own the degradation warning
 //  validate before calling.
+//
+//  Reserved ids (WR-05 / T-63-31): the three built-in ids are
+//  unshadowable. `registerMask` refuses them outright, and
+//  `replaceMaskRegistry` admits one only with the exact
+//  `BUILTIN_TIP_MASKS` allocation, so script data or a foreign
+//  package entry can never replace a shipped texture for the
+//  session.
 // ============================================================
 
 import { TIP_MASK_BYTES } from './deriveMask'
@@ -86,10 +93,28 @@ export function registerMask(id: string, mask: Uint8Array): boolean {
  * Replace the whole registry (project open — REPLACES, never appends).
  * Every prior entry is dropped, including ids absent from the new set.
  * Wrong-length entries are refused individually; valid siblings install.
+ *
+ * BUILT-IN IDS (WR-05): a built-in id is admitted ONLY with the identical
+ * compile-time `BUILTIN_TIP_MASKS` allocation (which is exactly what
+ * `resetMaskRegistry` passes). A foreign array under that id — equal bytes
+ * included, since bytes equality is not identity — is logged and skipped, so
+ * a project or payload entry can never shadow a shipped texture. Custom ids
+ * are unaffected.
  */
 export function replaceMaskRegistry(entries: readonly { id: string; mask: Uint8Array }[]): void {
   masks.clear()
   for (const entry of entries) {
+    const builtin = builtinMasksById.get(entry.id)
+    if (builtin !== undefined) {
+      if (entry.mask !== builtin) {
+        console.warn(
+          `[maskRegistry] refused to replace built-in tip "${entry.id}" — only the compile-time BUILTIN_TIP_MASKS allocation may seed a built-in id; the entry was skipped.`,
+        )
+        continue
+      }
+      masks.set(entry.id, builtin)
+      continue
+    }
     if (!isWritable(entry.id, entry.mask)) continue
     masks.set(entry.id, entry.mask)
   }
