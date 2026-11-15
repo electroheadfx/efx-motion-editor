@@ -477,6 +477,33 @@ describe('aquarelleBrushCatalog — replace on open, reset on close, publish (63
     expect(published).toHaveLength(3);
   });
 
+  it('a script mask is registry-only and never survives a project reset', async () => {
+    // Dynamic import: the module-cache instance is the one the static imports
+    // above use (this describe never calls vi.resetModules), so the registry
+    // checks read the same graph the function writes.
+    const catalog = await import('./aquarelleBrushCatalog');
+    const watercolor = await import('@efxlab/efx-watercolor');
+    expect(catalog.registerScriptMask, 'catalog must export registerScriptMask').toBeTypeOf('function');
+    const mask = new Uint8Array(watercolor.TIP_MASK_BYTES).fill(8);
+
+    expect(catalog.registerScriptMask('wc/custom-script', mask)).toBe(true);
+    // The registry paints it, but the project catalog never learns the tip.
+    expect(watercolor.resolveMask('wc/custom-script')).toBe(mask);
+    expect(watercolor.buildBrushForStroke('wc/custom-script').id).toBe('wc/custom-script');
+    expect(catalog.customBrushTips.value).toHaveLength(0);
+    expect(catalog.listAquarelleBrushTips()).toHaveLength(3);
+    expect(catalog.resolveCatalogTip('wc/custom-script')).toBe(null);
+    expect(catalog.unavailableTipIds.value.size).toBe(0);
+
+    // Fail-closed on a wrong-length mask: refused, never stored.
+    expect(catalog.registerScriptMask('wc/custom-script-bad', new Uint8Array(5))).toBe(false);
+    expect(watercolor.resolveMask('wc/custom-script-bad')).toBe(null);
+
+    // T-63-23: a close / New Project clears every session mask.
+    catalog.resetAquarelleBrushState();
+    expect(watercolor.resolveMask('wc/custom-script')).toBe(null);
+  });
+
   it('the published payload carries each custom tip mask and its stored WebP bytes', () => {
     const digest = 'e'.repeat(64);
     const mask = new Uint8Array(TIP_MASK_BYTES).fill(5);

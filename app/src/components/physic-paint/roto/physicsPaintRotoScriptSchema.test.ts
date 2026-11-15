@@ -17,6 +17,8 @@ interface SchemaModule {
   ROTO_SCRIPT_LEGACY_ENGINE_ID?: unknown;
   ROTO_SCRIPT_ENGINE_ID_AQUARELLE?: unknown;
   ROTO_SCRIPT_EXTENSION?: unknown;
+  ROTO_SCRIPT_WEBP_PREFIX?: unknown;
+  decodeScriptMaskDataUrl?: (value: unknown) => Uint8Array | null;
   serializeRotoScript?: SerializeFn;
   serializeAquarelleRotoScript?: SerializeFn;
   createPersistedRotoScript?: SerializeFn;
@@ -357,5 +359,62 @@ describe('aquarelle script codec (261018-odm ODM-01)', () => {
     const parsed = schema.parseRotoScript!(poisoned);
     expect(parsed.ok).toBe(false);
     if (!parsed.ok) expect(parsed.refusal.code).toBe('malformed-engine-payload');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 63-08 / TIP-14: the inline script carrier. A script cannot point into
+// another project's package, so each custom tip travels with its mask inline
+// as a WebP data URL (D-14) — never an `asset` ref.
+// ---------------------------------------------------------------------------
+
+const SCRIPT_MASK_TIP_ID = 'wc/custom-script';
+
+function scriptTip(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: SCRIPT_MASK_TIP_ID,
+    category: 'custom',
+    name: 'Script tip',
+    tip: 1, aspect: 1, rotation: 1, sizeCurve: 1, scatter: 1, capacity: 1, grain: 1, wetRound: 1,
+    maskDataUrl: webp,
+    ...overrides,
+  };
+}
+
+describe('script brush carrier (63-08 / TIP-14 / D-14)', () => {
+  it('serializes custom brush entries inline: a data URL, never a package asset ref', async () => {
+    const schema = await loadSchema();
+    expect(schema.ROTO_SCRIPT_WEBP_PREFIX, 'schema must export ROTO_SCRIPT_WEBP_PREFIX').toBe('data:image/webp;base64,');
+    const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [aquarelleStrokeEvent()],
+      brushEntries: [scriptTip()],
+    }));
+    expect(value.brushPack.kind).toBe(AQUARELLE_ENGINE_ID);
+    expect(value.brushPack.entries).toHaveLength(1);
+    const entry = value.brushPack.entries[0];
+    expect(entry.id).toBe(SCRIPT_MASK_TIP_ID);
+    expect(entry.maskDataUrl).toBe(webp);
+    expect('asset' in entry).toBe(false);
+    // The document carrying an inline entry still parses and loads.
+    expect(schema.parseRotoScript!(value).ok).toBe(true);
+  });
+
+  it('decodes a mask data URL and refuses a non-WebP prefix or malformed base64', async () => {
+    const schema = await loadSchema();
+    expect(schema.decodeScriptMaskDataUrl, 'schema must export decodeScriptMaskDataUrl').toBeTypeOf('function');
+    const bytes = schema.decodeScriptMaskDataUrl!(webp);
+    expect(bytes instanceof Uint8Array).toBe(true);
+    expect([...(bytes as Uint8Array).subarray(0, 4)]).toEqual([0x52, 0x49, 0x46, 0x46]);
+    expect(schema.decodeScriptMaskDataUrl!('data:image/png;base64,AAAA')).toBeNull();
+    expect(schema.decodeScriptMaskDataUrl!('data:image/webp;base64,***')).toBeNull();
+    expect(schema.decodeScriptMaskDataUrl!(42)).toBeNull();
+  });
+
+  it('refuses to serialize a script entry carrying a package asset ref', async () => {
+    const schema = await loadSchema();
+    expect(() => schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [aquarelleStrokeEvent()],
+      brushEntries: [scriptTip({ asset: `brushes/${'a'.repeat(64)}.webp` })],
+    }))).toThrow();
   });
 });

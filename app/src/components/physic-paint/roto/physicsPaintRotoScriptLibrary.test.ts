@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
-import { buildRotoScriptDeleteReferenceImpact, createRotoScriptLibraryController, prepareReferencedActionDeletion } from './physicsPaintRotoScriptLibrary';
+import {
+  buildRotoScriptDeleteReferenceImpact,
+  createRotoScriptLibraryController,
+  prepareReferencedActionDeletion,
+  type RotoScriptLibraryController,
+  type RotoScriptLibraryControllerPorts,
+} from './physicsPaintRotoScriptLibrary';
 import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import { serializeAquarelleRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
@@ -11,7 +17,11 @@ const context = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerI
 const row = (id: string, name: string, createdAt = '2026-07-16T12:00:00Z') => ({ id, revision: `rev-${id}`, integritySha256: 'a'.repeat(64), name, createdAt, updatedAt: createdAt, source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 4, width: 1600, height: 900, background: { background: 'white' as const, grainStrength: 0 } }, thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' }, brushCount: 1 });
 const result = (request: PhysicPaintScriptLibraryRequest, rows = [row('b', 'B'), row('a', 'A')], extra: Partial<PhysicPaintScriptLibraryResult> = {}): PhysicPaintScriptLibraryResult => ({ operationId: request.operationId, kind: request.kind, ok: true, rows, skippedInvalidCount: 0, diagnostics: [], ...extra });
 
-function harness(saved = true) {
+function harness(
+  saved = true,
+  overrides: Partial<RotoScriptLibraryControllerPorts> = {},
+  create: (ports: RotoScriptLibraryControllerPorts) => RotoScriptLibraryController = createRotoScriptLibraryController,
+) {
   let launch = saved ? context() : { ...context(), project: { name: 'Project', saved: false, contextId: 'context-1' } };
   const requests: PhysicPaintScriptLibraryRequest[] = [];
   const request = vi.fn(async (input: PhysicPaintScriptLibraryRequest) => { requests.push(input); return result(input); });
@@ -37,7 +47,7 @@ function harness(saved = true) {
   // loop-termination claims are observable rather than assumed.
   const publishScriptScope = vi.fn();
   const captureThumbnail = vi.fn(async () => thumbnail);
-  const controller = createRotoScriptLibraryController({ request, capturePersistence: vi.fn(async () => capture), captureThumbnail, replaceClipboard, getLaunchContext: () => launch, log, publishScriptScope });
+  const controller = create({ request, capturePersistence: vi.fn(async () => capture), captureThumbnail, replaceClipboard, getLaunchContext: () => launch, log, publishScriptScope, ...overrides });
   return { controller, request, requests, clipboard, replaceClipboard, log, publishScriptScope, capture, captureThumbnail, setLaunch: (value: PhysicPaintLaunchContext) => { launch = value; } };
 }
 
@@ -823,5 +833,144 @@ describe('quick-260922-al1 child-realm scope state and its hydration hop', () =>
     });
     expect(test.controller.scriptLayers.value).toEqual(LAYERS);
     expect(test.controller.scriptScope.value).toBe('layer-2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 63-08 / TIP-14: the script carrier. A script cannot reference another
+// project's package asset, so each custom tip travels with its mask inline as
+// a WebP data URL (D-14) — the save leg copies the STUDIO realm's stored WebP
+// bytes, whose only writer is `applyBrushCatalogPayload`, and the load leg
+// registers the decoded mask in the engine registry ONLY (never a catalog row).
+//
+// The save-leg tests rebuild the module graph on purpose: the main realm's
+// `efxPaintBrushAssets` instance is NOT the Studio's, so a one-instance test
+// would pass while the real app refuses every save.
+// ---------------------------------------------------------------------------
+
+const SCRIPT_WEBP_PREFIX = 'data:image/webp;base64,';
+
+/** Minimal well-formed 25-byte lossless VP8L header declaring the frame size. */
+function brushWebp(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(25);
+  bytes.set([0x52, 0x49, 0x46, 0x46], 0);
+  bytes.set([0x57, 0x45, 0x42, 0x50], 8);
+  bytes.set([0x56, 0x50, 0x38, 0x4c], 12);
+  bytes[16] = 5;
+  bytes[20] = 0x2f;
+  const w = width - 1;
+  const h = height - 1;
+  bytes[21] = w & 0xff;
+  bytes[22] = ((w >> 8) & 0x3f) | ((h & 0x03) << 6);
+  bytes[23] = (h >> 2) & 0xff;
+  bytes[24] = (h >> 10) & 0x0f;
+  return bytes;
+}
+
+/** A project CUSTOM tip record as the package carrier shapes it. */
+function scriptCustomTip(id: string): Record<string, unknown> {
+  return {
+    id,
+    category: 'custom',
+    name: `Custom ${id}`,
+    tip: 1, aspect: 1, rotation: 1, sizeCurve: 1, scatter: 1, capacity: 1, grain: 1, wetRound: 1,
+    asset: `brushes/${'a'.repeat(64)}.webp`,
+  };
+}
+
+describe('script brush carrier (63-08 / TIP-14)', () => {
+  it('save leg: each custom tip mask travels as an inline data URL read from the Studio realm cache', async () => {
+    vi.resetModules();
+    const catalog = await import('../../../stores/aquarelleBrushCatalog');
+    const watercolor = await import('@efxlab/efx-watercolor');
+    const library = await import('./physicsPaintRotoScriptLibrary');
+
+    const webpBytes = brushWebp(192, 192);
+    const mask = new Uint8Array(watercolor.TIP_MASK_BYTES).fill(6);
+    // The two-realm shape: this payload is the ONLY writer of the Studio
+    // realm's stored bytes. Nothing below calls rememberBrushAsset directly.
+    catalog.applyBrushCatalogPayload({
+      contextId: 'ctx-63-08-save',
+      entries: [{
+        tip: scriptCustomTip('wc/custom-script-save') as never,
+        maskBase64: Buffer.from(mask).toString('base64'),
+        webpBase64: Buffer.from(webpBytes).toString('base64'),
+      }],
+      unavailableTipIds: [],
+    });
+
+    const test = harness(true, {}, library.createRotoScriptLibraryController);
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(true);
+
+    const saveRequest = test.requests.find((request) => request.kind === 'save') as { script?: any } | undefined;
+    expect(saveRequest === undefined).toBe(false);
+    const entries = saveRequest!.script.brushPack.entries as any[];
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe('wc/custom-script-save');
+    expect(entries[0].maskDataUrl).toBe(`${SCRIPT_WEBP_PREFIX}${Buffer.from(webpBytes).toString('base64')}`);
+    expect('asset' in entries[0]).toBe(false);
+  });
+
+  it('save leg: refuses when a custom tip has no stored bytes in this realm', async () => {
+    vi.resetModules();
+    const catalog = await import('../../../stores/aquarelleBrushCatalog');
+    const library = await import('./physicsPaintRotoScriptLibrary');
+
+    // No catalog payload was ever applied here: the tip row exists, its bytes
+    // do not — exactly what the real Studio sees when the push never arrived.
+    catalog.addCustomBrushTip(scriptCustomTip('wc/custom-no-bytes') as never);
+
+    const test = harness(true, {}, library.createRotoScriptLibraryController);
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(false);
+    expect(test.controller.status.value).toContain('no stored mask bytes');
+    expect(test.log).toHaveBeenCalledWith(expect.stringContaining('no stored mask bytes'), true);
+    expect(test.requests.filter((request) => request.kind === 'save')).toHaveLength(0);
+  });
+
+  it('load leg: registers the carried mask in the registry only and paints with it', async () => {
+    vi.resetModules();
+    const catalog = await import('../../../stores/aquarelleBrushCatalog');
+    const watercolor = await import('@efxlab/efx-watercolor');
+    const library = await import('./physicsPaintRotoScriptLibrary');
+    const schema = await import('./physicsPaintRotoScriptSchema');
+
+    const webpBytes = brushWebp(192, 192);
+    const { asset: _asset, ...tip } = scriptCustomTip('wc/custom-script-load');
+    const script = schema.serializeAquarelleRotoScript({
+      id: scriptIds.a,
+      name: 'Carried',
+      createdAt: '2026-07-16T12:00:00Z',
+      updatedAt: '2026-07-16T12:00:00Z',
+      source: row('a', 'Carried').source,
+      thumbnail: { ...row('a', 'Carried').thumbnail, dataUrl: webp },
+      events: aquarelleEvents(),
+      brushEntries: [{ ...tip, maskDataUrl: `${SCRIPT_WEBP_PREFIX}${Buffer.from(webpBytes).toString('base64')}` } as never],
+    });
+
+    const decodedMask = new Uint8Array(watercolor.TIP_MASK_BYTES).fill(9);
+    const registered = await library.registerScriptBrushMasks(script, {
+      decode: async () => ({ ok: true, data: { mask: decodedMask, width: 192, height: 192 } }),
+    });
+
+    expect(registered).toBe(1);
+    expect(watercolor.resolveMask('wc/custom-script-load')).toBe(decodedMask);
+    expect(watercolor.buildBrushForStroke('wc/custom-script-load').id).toBe('wc/custom-script-load');
+    // Registry only: the project catalog never learns a script's tips.
+    expect(catalog.customBrushTips.value).toHaveLength(0);
+    expect(catalog.listAquarelleBrushTips()).toHaveLength(3);
+    expect(catalog.resolveCatalogTip('wc/custom-script-load')).toBe(null);
+  });
+
+  it('activation registers the loaded script masks through the controller port', async () => {
+    const registerScriptMasks = vi.fn(async () => {});
+    const test = harness(true, { registerScriptMasks });
+    await test.controller.refresh();
+    test.request.mockImplementation(async (input) => result(input, [row('b', 'B'), row('a', 'A')], {
+      script: input.kind === 'load' ? loadedScript(input.scriptId as 'a' | 'b', 'A') : undefined,
+    }));
+
+    await expect(test.controller.activateAndLoad('a')).resolves.toBe(true);
+
+    expect(registerScriptMasks).toHaveBeenCalledWith(expect.objectContaining({ id: scriptIds.a }));
   });
 });
