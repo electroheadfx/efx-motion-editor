@@ -66,6 +66,10 @@ export interface EfxPaintBrushImportPorts {
    * answer. Awaited when it returns a promise so the real publisher's
    * `emitTo` completes ahead of the result event (the transport ordering the
    * Studio depends on).
+   *
+   * An implementation MAY reject — or throw synchronously (63-12 / WR-04).
+   * The publish is a notification, not part of the answer: this handler owns
+   * the result, logs the failure and still reports the landed import.
    */
   readonly publishCatalog: () => void | Promise<void>;
 }
@@ -144,8 +148,16 @@ export async function applyBrushImportRequest(
   });
 
   // Publish BEFORE answering: the push is how the Studio gets the entry, so
-  // it must reach the child ahead of the result event.
-  await ports.publishCatalog();
+  // it must reach the child ahead of the result event. 63-12 (WR-04): a
+  // failed push is LOGGED, never fatal — the batch above is the commit point
+  // (D-15 — an import is not undoable), and the Studio pulls a fresh snapshot
+  // on its next mount, so a notification failure must not misreport a landed
+  // import as a failed one.
+  try {
+    await ports.publishCatalog();
+  } catch (error) {
+    console.warn('[efxPaintBrushImport] Brush catalog publish failed', error);
+  }
 
   return { ok: true, entry };
 }
