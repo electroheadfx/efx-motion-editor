@@ -1195,6 +1195,61 @@ mod tests {
         fs::remove_dir_all(package).expect("fixture cleanup");
     }
 
+    fn copy_directory_tree(source: &Path, destination: &Path) {
+        fs::create_dir_all(destination).expect("copy destination root");
+        for entry in fs::read_dir(source).expect("copy source root") {
+            let entry = entry.expect("copy entry");
+            let file_type = entry.file_type().expect("copy entry type");
+            let target = destination.join(entry.file_name());
+            if file_type.is_dir() {
+                copy_directory_tree(&entry.path(), &target);
+            } else if file_type.is_file() {
+                fs::copy(entry.path(), &target).expect("filesystem copy");
+            }
+        }
+    }
+
+    // 63-09 (TIP-16): a package directory copied ALONE to a fresh root must
+    // reproduce every brush asset byte for byte. The copy leg below is a
+    // filesystem copy only — never a re-encode, never a read-back-and-write
+    // (D-11/D-12). The single `encode_mask_webp` happens at setup, exactly as
+    // import mints the asset; after that the mask is carried by the bytes.
+    #[test]
+    fn brush_asset_survives_a_fresh_profile_directory_copy() {
+        use crate::services::frame_codec::{decode_mask_webp, encode_mask_webp, BRUSH_MASK_BYTES};
+        let package = fixture_package("brush-fresh-profile");
+        let mask = brush_probe_mask();
+        let webp = encode_mask_webp(&mask).expect("mask encode");
+        let relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", digest_bytes(&webp));
+        write_brush_asset(&package, &relative, &webp, None).expect("brush asset write");
+
+        let original_bytes = fs::read(package.join(&relative)).expect("original asset");
+        // A fresh profile: the package directory alone, copied byte for byte.
+        let fresh_root =
+            std::env::temp_dir().join(format!("efx-paint-fresh-profile-{}", Uuid::new_v4()));
+        copy_directory_tree(&package, &fresh_root);
+
+        let copied_bytes = fs::read(fresh_root.join(&relative)).expect("copied asset");
+        assert_eq!(copied_bytes, original_bytes);
+        let stem = relative
+            .strip_prefix(&format!("{BRUSH_ASSET_ROOT}/"))
+            .and_then(|name| name.strip_suffix(&format!(".{MEDIA_EXTENSION}")))
+            .expect("canonical brush asset shape");
+        assert_eq!(stem.len(), BRUSH_ASSET_STEM_LEN);
+        // T-63-24: the digest recomputed from the copy is the stem.
+        assert_eq!(digest_bytes(&copied_bytes), stem);
+        // T-63-13: the copy is re-validated through the same bound guard and
+        // digest check as the original rather than trusted because it copied.
+        let (stored, digest) = read_brush_asset(&fresh_root, &relative).expect("copied asset read");
+        assert_eq!(stored, original_bytes);
+        assert_eq!(digest, stem);
+        let decoded = decode_mask_webp(&stored).expect("copied mask decode");
+        assert_eq!(decoded, mask);
+        assert_eq!(decoded.len(), BRUSH_MASK_BYTES);
+        fs::remove_dir_all(package).expect("fixture cleanup");
+        fs::remove_dir_all(fresh_root).expect("fixture cleanup");
+    }
+
     #[test]
     fn brush_mask_write_refuses_a_stem_that_is_not_the_digest_of_its_bytes() {
         let package = fixture_package("brush-write-digest");
