@@ -24,7 +24,8 @@ import {
   type PersistedRotoScriptAnyV1,
   type RotoScriptLibraryRow,
 } from './physicsPaintRotoScriptSchema';
-import { customBrushTips, registerScriptMask } from '../../../stores/aquarelleBrushCatalog';
+import { brushCatalogSynced, customBrushTips, registerScriptMask, unavailableTipIds } from '../../../stores/aquarelleBrushCatalog';
+import { isAquarelleDryEvent, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import { brushAssetBytes, brushAssetDigestFromPath } from '../../../lib/efxPaintBrushAssets';
 import { encodeBridgeBase64 } from '../../../lib/webpBytes';
 import {
@@ -324,7 +325,12 @@ export function buildRotoScriptDeleteReferenceImpact(
 export type ScriptBrushTipEntry = AquarelleTip & { readonly maskDataUrl: string };
 
 export type ScriptBrushEntryBuild =
-  | { readonly ok: true; readonly entries: readonly ScriptBrushTipEntry[] }
+  | {
+    readonly ok: true;
+    readonly entries: readonly ScriptBrushTipEntry[];
+    /** Ids the open already reported unavailable; skipped, never refused (WR-02). */
+    readonly unavailableSkipped: readonly string[];
+  }
   | { readonly ok: false; readonly reason: string };
 
 /**
@@ -334,16 +340,24 @@ export type ScriptBrushEntryBuild =
  * `applyBrushCatalogPayload` (63-05/63-07) — reading the main realm's cache is
  * not an option here, so an absent body means the catalog push never arrived.
  *
- * Refusal, not omission: dropping one tip's mask would write a script that
- * silently paints that tip with the neutral fallback on another machine.
- * Built-ins are never written — both realms derive them from constants.
+ * WR-02 / T-63-29: a tip the OPEN already reported unavailable degrades alone —
+ * it is skipped and its id returned in `unavailableSkipped` so the caller can
+ * log it, because that tip's mask cannot travel no matter what this realm does.
+ * Only a tip this realm believes healthy refuses (its mask may have been
+ * dropped by the push itself). Built-ins are never written — both realms
+ * derive them from constants.
  */
 export function buildScriptBrushEntries(): ScriptBrushEntryBuild {
   const entries: ScriptBrushTipEntry[] = [];
+  const unavailableSkipped: string[] = [];
   for (const tip of customBrushTips.value) {
     const digest = brushAssetDigestFromPath(tip.asset);
     const webp = digest === null ? undefined : brushAssetBytes(digest);
     if (webp === undefined) {
+      if (unavailableTipIds.value.has(tip.id)) {
+        unavailableSkipped.push(tip.id);
+        continue;
+      }
       return {
         ok: false,
         reason: `Save refused — custom tip "${tip.id}" has no stored mask bytes in this realm; the catalog push never arrived.`,
@@ -353,7 +367,26 @@ export function buildScriptBrushEntries(): ScriptBrushEntryBuild {
     const { asset: _asset, ...record } = tip;
     entries.push({ ...record, maskDataUrl: `${ROTO_SCRIPT_WEBP_PREFIX}${encodeBridgeBase64(webp)}` });
   }
-  return { ok: true, entries };
+  return { ok: true, entries, unavailableSkipped };
+}
+
+/**
+ * WR-03 / T-63-28: the custom tip ids a capture actually PAINTS, unique and in
+ * first-seen order. Reads `engine.brushId` — the tip id — never the top-level
+ * `brushId`, which `serializeAquarelleRotoScript` stamps with the engine id.
+ * Dry events carry no brush id; built-in and preset ids are ignored.
+ */
+export function referencedCustomBrushIds(events: readonly AquarellePayloadEvent[]): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const event of events) {
+    if (isAquarelleDryEvent(event)) continue;
+    const id = event.engine.brushId;
+    if (!id.startsWith('wc/custom-') || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
 }
 
 /** The injectable seams of the load leg's mask registration. */
@@ -680,8 +713,29 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       // as inline mask data URLs. A tip whose stored bytes this realm never
       // received refuses the save by name — dropping its mask would write a
       // script that silently paints that tip with the neutral fallback.
+      const referenced = referencedCustomBrushIds(scriptSnapshot.aquarelleEvents);
       const build = buildScriptBrushEntries();
       if (!build.ok) return fail(build.reason);
+      // WR-02 / T-63-29: an unavailable tip costs ONE entry, logged by name —
+      // the open already knows it cannot travel, so it never blocks a save.
+      if (build.unavailableSkipped.length > 0) {
+        const ids = build.unavailableSkipped.map((id) => `"${id}"`).join(', ');
+        ports.log(
+          `Save: brush tip${build.unavailableSkipped.length === 1 ? '' : 's'} ${ids} unavailable in this project — saved without the mask; painting falls back to the neutral round elsewhere.`,
+          true,
+        );
+      }
+      // WR-03 / T-63-28: every custom id the capture PAINTS must travel. A gap
+      // is either a realm that never received the catalog or an id this
+      // project does not carry — both would write a script with a silent hole.
+      const carried = new Set(build.entries.map((entry) => entry.id));
+      const missing = referenced.filter((id) => !carried.has(id));
+      if (missing.length > 0) {
+        const first = missing[0]!;
+        return fail(brushCatalogSynced.value
+          ? `Save refused — custom tip "${first}" is painted in the capture but its mask cannot travel (unavailable, or loaded from another script). The script would fall back to the neutral round.`
+          : `Save refused — this Studio never received the project's brush catalog, so the mask for custom tip "${first}" is missing. Reopen the project and try again.`);
+      }
       const script = serializeAquarelleRotoScript({ id, name, createdAt: now, updatedAt: now, source: sourceBag, thumbnail, events: scriptSnapshot.aquarelleEvents, brushEntries: build.entries });
       const result = await execute({ kind: 'save', operationId: operationId('save'), script }, id);
       status.value = result.ok ? `Saved ${name}` : result.error ?? 'Save failed';
