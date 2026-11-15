@@ -74,6 +74,16 @@ const unavailableTipIdsSignal = signal<ReadonlySet<string>>(new Set());
 /** Monotonic mutation counter for derived-cache keying (D-20 / G-2 analog). */
 const brushCatalogGenerationSignal = signal(0);
 
+/**
+ * WR-03: whether THIS realm instance has applied at least one catalog
+ * snapshot. An empty `customBrushTips` is ambiguous — a project that imported
+ * nothing looks exactly like a realm whose payload never arrived — so the
+ * save leg consults this flag before attributing a missing mask to the wrong
+ * cause. Deliberately NOT cleared by `resetAquarelleBrushCatalog`: closing a
+ * project leaves the catalog empty-but-known, not un-delivered.
+ */
+const brushCatalogSyncedSignal = signal(false);
+
 /** The imported tips of the open project, read-only (mutate via the setters). */
 export const customBrushTips: ReadonlySignal<readonly AquarelleTip[]> = customBrushTipsSignal;
 
@@ -85,6 +95,13 @@ export const unavailableTipCount = computed(() => unavailableTipIdsSignal.value.
 
 /** Monotonic catalog mutation counter; never bumped by a no-op write. */
 export const brushCatalogGeneration: ReadonlySignal<number> = brushCatalogGenerationSignal;
+
+/**
+ * Whether this realm instance has ever applied a catalog payload (WR-03).
+ * False only until the first `applyBrushCatalogPayload`; empty-after-delivery
+ * still reads true.
+ */
+export const brushCatalogSynced: ReadonlySignal<boolean> = brushCatalogSyncedSignal;
 
 /**
  * The MAIN realm's installed catalog transport (63-07 / TIP-17). This module
@@ -411,5 +428,10 @@ export function applyBrushCatalogPayload(payload: PhysicPaintBrushCatalogPayload
     replaceCustomBrushTips(entries);
     replaceMaskRegistry(masks);
     replaceUnavailableTipIds([...unavailable]);
+    // WR-03: this realm instance applied a catalog snapshot. From here on an
+    // empty custom list means the project has no imports (known-empty), not
+    // that the push never arrived — the save leg relies on that distinction.
+    // Compare before writing so a repeated payload changes no state at all.
+    if (!brushCatalogSyncedSignal.value) brushCatalogSyncedSignal.value = true;
   });
 }
