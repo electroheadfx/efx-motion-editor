@@ -176,15 +176,23 @@ if (process.env.BAKE_BUILTIN_TIPS === '1') {
         decoded.push({ id: target.id, mask })
       }
 
-      // End-to-end: install the freshly decoded masks, then paint the bristle tip.
-      const { replaceMaskRegistry } = await import('./maskRegistry')
+      // End-to-end: the artifact just written is the tip the engine paints.
+      // WR-05 (63-13): a built-in id admits ONLY the compile-time allocation,
+      // so the freshly decoded copy is refused by the registry on purpose —
+      // BYTE equality against the shipped mask is the proof that the baked
+      // constant and the mask the engine installs are the same tip.
+      const { resetMaskRegistry } = await import('./maskRegistry')
+      const { BUILTIN_TIP_MASKS } = await import('./builtinTips')
       const { buildBrushForStroke } = await import('../playground/brushBridge')
-      replaceMaskRegistry(decoded)
+      resetMaskRegistry()
       const bristle = decoded.find((entry) => entry.id === 'wc/builtin-bristle')
       if (bristle === undefined) throw new Error('bristle mask missing from the baked set')
+      const shipped = BUILTIN_TIP_MASKS.find((entry) => entry.id === 'wc/builtin-bristle')
+      if (shipped === undefined) throw new Error('bristle mask missing from the shipped set')
       const brush = buildBrushForStroke('wc/builtin-bristle')
       expect(brush.tipSize).toBe(192)
-      expect(brush.tipData === bristle.mask).toBe(true)
+      expect(brush.tipData === shipped.mask).toBe(true)
+      expect(Buffer.from(brush.tipData).equals(Buffer.from(bristle.mask))).toBe(true)
       expect(brush.tipData.length).toBe(TIP_MASK_BYTES)
     } finally {
       rmSync(workDir, { recursive: true, force: true })
