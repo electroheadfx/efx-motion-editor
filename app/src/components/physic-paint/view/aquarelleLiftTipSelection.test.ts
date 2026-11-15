@@ -20,7 +20,12 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
-import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
+import {
+  BUILTIN_TIP_MASKS,
+  NEUTRAL_TOOL_OVERRIDES,
+  registerMask,
+  replaceMaskRegistry,
+} from '@efxlab/efx-watercolor/brushes';
 import {
   aquarelleActiveTipId,
   aquarelleActiveTool,
@@ -202,6 +207,30 @@ describe('261028-k03c D1 aquarelleBrushForActiveTool', () => {
     setAquarelleTool('brush');
     aquarelleSelectedTipId.value = null;
     expect(aquarelleBrushForActiveTool().brushId).toBe('');
+  });
+
+  it('quick-261115-oh9: the Lift selection never carries a texture', () => {
+    setAquarelleTool('brush');
+    setAquarelleSelectedTextureId('wc/builtin-chalk');
+    setAquarelleTool('lift');
+    expect(aquarelleBrushForActiveTool().textureId).toBe(null);
+  });
+
+  it('quick-261115-oh9 WR-01: a texture the registry lost resolves to null', () => {
+    // A project close / a different project's open replaces the mask registry
+    // wholesale. A dangling custom id must not be bound — nor recorded.
+    setAquarelleTool('brush');
+    const mask = new Uint8Array(192 * 192);
+    registerMask('wc/custom-gone', mask);
+    setAquarelleSelectedTextureId('wc/custom-gone');
+    expect(aquarelleBrushForActiveTool().textureId).toBe('wc/custom-gone');
+    replaceMaskRegistry([...BUILTIN_TIP_MASKS]);
+    expect(aquarelleBrushForActiveTool().textureId).toBe(null);
+    expect(
+      'textureId' in buildAquarelleStrokePayload(),
+      'a dead texture is never recorded',
+    ).toBe(false);
+    setAquarelleSelectedTextureId(null);
   });
 });
 

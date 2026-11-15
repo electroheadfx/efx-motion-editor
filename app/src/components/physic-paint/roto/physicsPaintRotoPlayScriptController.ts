@@ -4392,6 +4392,10 @@ function aquarelleEventsFromScript(script: RotoPaintScript): AquarellePayloadEve
             granulation: 50,
           },
       brushId: stored?.brushId || 'wc/round-medium',
+      // quick-261115-oh9 (IN-03): this fallback rebuilds the record's stroke —
+      // it must carry the texture too, or a bake on this branch paints the
+      // response tip while the live sheet painted the mask.
+      ...(stored?.textureId !== undefined ? { textureId: stored.textureId } : {}),
       // 56-11: prefer the recorded aquarelle stroke's own points (the live
       // surface is the record source of truth). Fall back to the script's
       // points only when no aquarelle stroke was recorded for this id.

@@ -118,8 +118,27 @@ describe('Lift pointerdown gate (261028-k03 D3)', () => {
     // eraser end, pen barrel, finger-water). A ref filled from onStrokeTool
     // would leak across strokes because the engine emits only on a change.
     expect(layer).toContain('onStrokeEnd(tool)');
-    expect(layer).toContain('tool: (tool ?? toolForSelection()) as AquarelleTool');
+    // quick-261115-oh9 lifted the resolution into one `recordedTool` const so
+    // the texture can be gated on it (a lift never records a texture). The
+    // law is unchanged: the tool comes from the engine's onStrokeEnd argument.
+    expect(layer).toContain('const recordedTool = (tool ?? toolForSelection()) as AquarelleTool');
+    expect(layer).toContain('tool: recordedTool,');
     expect(layer).not.toContain('onStrokeTool');
+  });
+
+  it('quick-261115-oh9: a LIFT stroke never records a texture', () => {
+    // The eraser has no texture. The engine-resolved tool gates the spread, so
+    // a pen's eraser end (tool 'lift' while Brush is selected) cannot record
+    // the brush's texture — a replay would otherwise erase a textured
+    // silhouette the punch never removed.
+    expect(layer).toContain("recordedTool !== 'lift' && snap.textureId !== null");
+  });
+
+  it('quick-261115-oh9: the live lift binds an untextured brush', () => {
+    // A pen's eraser end lifts with whatever brush is bound; applyLiveConfig
+    // binds the response's own untextured tip so the live silhouette matches
+    // the punch and the bake.
+    expect(layer).toContain('engine.setLiftBrush(');
   });
 });
 
@@ -568,8 +587,11 @@ describe('Lift copy and untouched laws (261028-k03)', () => {
     expect(topBarUi).toContain('physics-paint-topbar-lift');
     expect(topBarUi).toContain('physics-lift-shape');
     expect(studio).toContain('AQUARELLE_LIFT_SCRIPT_OFF_REFUSAL');
-    // The serialized tool id a recorded stroke carries is untouched.
-    expect(layer).toContain("tool: (tool ?? toolForSelection()) as AquarelleTool");
+    // The serialized tool id a recorded stroke carries is untouched (the
+    // resolution lives in `recordedTool` since quick-261115-oh9, which also
+    // gates the texture on it).
+    expect(layer).toContain('const recordedTool = (tool ?? toolForSelection()) as AquarelleTool');
+    expect(layer).toContain('tool: recordedTool,');
     expect(layer).toContain("toolForSelection() === 'lift'");
   });
 

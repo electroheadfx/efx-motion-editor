@@ -147,7 +147,7 @@ function engineSizeOf(params: Record<string, number>): number {
 export function buildStrokeBand(
   stroke: Pick<
     AquarelleStroke,
-    'tool' | 'points' | 'params' | 'brushId' | 'toolOverrides'
+    'tool' | 'points' | 'params' | 'brushId' | 'toolOverrides' | 'textureId'
   >,
   size: ScriptStrokeSize,
 ): StrokeBandGeometry {
@@ -227,7 +227,7 @@ const strokeBandCache = new Map<number, StrokeBandCacheEntry>();
 export function buildStrokeBandCached(
   stroke: Pick<
     AquarelleStroke,
-    'tool' | 'points' | 'params' | 'brushId' | 'toolOverrides'
+    'tool' | 'points' | 'params' | 'brushId' | 'toolOverrides' | 'textureId'
   >,
   mutationId: number,
   size: ScriptStrokeSize,
@@ -238,7 +238,9 @@ export function buildStrokeBandCached(
       polygonPx: buildLiftRibbonCached(stroke, mutationId, size, revision).polygonPx,
     };
   }
-  const stamp = `${revision}|${size.width}|${size.height}`;
+  // quick-261115-oh9 (IN-01): the texture is part of the footprint, so it is
+  // part of the stamp — same treatment as the footprint and chip caches.
+  const stamp = `${revision}|${size.width}|${size.height}|${stroke.textureId ?? ''}`;
   const cached = strokeBandCache.get(mutationId);
   if (cached && cached.stamp === stamp) return { polygonPx: cached.polygonPx };
   if (cached) strokeBandCache.clear();

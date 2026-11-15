@@ -209,6 +209,8 @@ export class WatercolorEngine {
   // 261027-gh9f: the Studio opens on the dry chalk stick (first Brush-tab
   // card); the everyday round remains the fallback.
   brush: Brush = buildBrush(BRUSH_PRESETS.find((p) => p.id === 'chalk') ?? BRUSH_PRESETS.find((p) => p.id === 'round') ?? BRUSH_PRESETS[0]!);
+  /** quick-261115-oh9: the untextured silhouette a lift stroke erases with (see setLiftBrush). */
+  private liftBrush: Brush | null = null;
   /** Once an Apple Pencil / stylus is seen, fingers paint with clear water. */
   fingerIsWater = true;
   /** When false, pointers on the paper are ignored (another tool, e.g. text, is driving it). */
@@ -1159,6 +1161,18 @@ export class WatercolorEngine {
   }
 
   /**
+   * quick-261115-oh9: the silhouette a LIFT stroke erases with. The eraser has
+   * no texture, but a pen's eraser end lifts while the Brush tool (and its
+   * textured brush) is selected — without this the live erase would wear the
+   * brush's texture while the committed punch erases the response's own tip.
+   * The host sets the untextured counterpart of the selected response; null
+   * falls back to the bound brush (an untextured selection needs no override).
+   */
+  setLiftBrush(b: Brush | null) {
+    this.liftBrush = b;
+  }
+
+  /**
    * 261027-gh9e: inject native tablet input for hosts where the webview's
    * PointerEvent carries no pen dynamics (macOS tablets often arrive as
    * pointerType 'mouse' / pressure 0). Mirrors the engine-1 host bridge:
@@ -2092,7 +2106,7 @@ export class WatercolorEngine {
 
   private lift(x: number, y: number, r: number, angle: number, amount: number) {
     const { gl, g } = this;
-    const b = this.brush;
+    const b = this.liftBrush ?? this.brush;
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
     this.touch(rect);
     // 261028-k03 D1: Lift is the ONE tool that also reaches fixed pigment, so the

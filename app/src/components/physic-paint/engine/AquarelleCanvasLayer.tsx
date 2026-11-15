@@ -318,6 +318,16 @@ function applyLiveConfig(engine: WatercolorEngine): void {
     textureId: selection.textureId,
     overrides: selection.toolOverrides,
   }));
+  // quick-261115-oh9: a pen's ERASER END lifts while the Brush tool — and its
+  // textured brush — is bound. Bind the response's own untextured tip too, so
+  // the live erase silhouette is the one the punch and the bake erase (the
+  // record drops the texture on a lift for the same reason).
+  engine.setLiftBrush(selection.textureId === null
+    ? null
+    : buildBrushForStroke(selection.brushId, {
+      textureId: null,
+      overrides: selection.toolOverrides,
+    }));
 }
 
 export function AquarelleCanvasLayer(props: {
@@ -580,21 +590,28 @@ export function AquarelleCanvasLayer(props: {
             // id this literal stores, so the stamp and the brushId can never
             // disagree about what the live stroke deposited.
             const recordedBrushId = snap.brushId || brushIdForSelection();
+            // The ENGINE-resolved tool for THIS stroke — never the carried
+            // selection. It also gates the texture: the eraser has none.
+            const recordedTool = (tool ?? toolForSelection()) as AquarelleTool;
             const stroke: AquarelleStroke = {
               // 261028-k03: the ENGINE resolves the live tool for THIS stroke
               // (stylus eraser end, pen barrel, finger-water) and hands it to
               // onStrokeEnd. Record that, not the selection, or a re-bake
               // replays a brush where the user erased. Never carry it across
               // strokes: the engine emits only on a change.
-              tool: (tool ?? toolForSelection()) as AquarelleTool,
+              tool: recordedTool,
               color: colorRef.current,
               // CANONICAL AQUA-04 globals — never the mapped bag.
               params: { ...snap.params },
               brushId: recordedBrushId,
               points,
               // quick-261115-oh9: written ONLY when a texture is selected, so
-              // an untextured stroke keeps its exact pre-texture key set.
-              ...(snap.textureId !== null ? { textureId: snap.textureId } : {}),
+              // an untextured stroke keeps its exact pre-texture key set. A
+              // LIFT stroke never carries one: the eraser has no texture, and
+              // the punch/bake would ignore it while a replay would not.
+              ...(recordedTool !== 'lift' && snap.textureId !== null
+                ? { textureId: snap.textureId }
+                : {}),
               toolOverrides: { ...snap.toolOverrides },
               // Visible settle window (D-19, cap 600) — the SAME cap the live
               // sheet force-dries at and the bake replays.

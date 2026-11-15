@@ -41,7 +41,7 @@ import {
   toolOverridesFromTip,
   type AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor/brushes';
-import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
+import { BRUSH_PRESETS, resolveMask } from '@efxlab/efx-watercolor';
 import { resolveCatalogTip } from '../../../stores/aquarelleBrushCatalog';
 import {
   buildKeyIdentityFrameMap,
@@ -357,9 +357,15 @@ export function aquarelleBrushForActiveTool(): {
       toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES },
     };
   }
+  const textureId = aquarelleSelectedTextureId.value;
   return {
     brushId: aquarelleSelectedTipId.value ?? '',
-    textureId: aquarelleSelectedTextureId.value,
+    // quick-261115-oh9 / WR-01: never bind — or record — a texture the mask
+    // registry cannot resolve. A project close or a different project's open
+    // replaces the registry wholesale, so a `wc/custom-*` pick from the closed
+    // project would otherwise paint the fallback while every later stroke
+    // stored a dead id (and a script save then refused by that name).
+    textureId: textureId !== null && resolveMask(textureId) !== null ? textureId : null,
     toolOverrides: { ...aquarelleToolOverrides.value },
   };
 }
