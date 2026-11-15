@@ -4,9 +4,11 @@
 //  The engine (buildBrushForStroke) resolves a brushId here BEFORE
 //  any preset lookup. The app feeds it: import registers one mask,
 //  project open REPLACES the whole set (never appends), project
-//  close / New Project resets it. Plan 63-03 reseeds the reset
-//  state with the three built-in tips; in this plan reset simply
-//  leaves the registry empty.
+//  close / New Project resets it. The reset state is the three
+//  compile-time built-in tips (63-03 / D-20): the module seeds
+//  from BUILTIN_TIP_MASKS at load and `resetMaskRegistry()` is
+//  `replaceMaskRegistry(BUILTIN_TIP_MASKS)`, so a project that
+//  never imported a tip always resolves the built-ins.
 //
 //  Preact-free by law — the package core never imports a signal
 //  library. Module state only, with an explicit generation counter
@@ -26,8 +28,13 @@
 // ============================================================
 
 import { TIP_MASK_BYTES } from './deriveMask'
+import { BUILTIN_TIP_MASKS } from './builtinTips'
 
 const masks = new Map<string, Uint8Array>()
+
+for (const builtin of BUILTIN_TIP_MASKS) {
+  masks.set(builtin.id, builtin.mask)
+}
 
 let generation = 0
 
@@ -63,10 +70,13 @@ export function replaceMaskRegistry(entries: readonly { id: string; mask: Uint8A
   generation += 1
 }
 
-/** Reset to the empty registry (project close / New Project). Always bumps. */
+/**
+ * Reset to the built-in set (project close / New Project, D-20).
+ * Never empty: the three compile-time built-ins always resolve.
+ * Always bumps.
+ */
 export function resetMaskRegistry(): void {
-  masks.clear()
-  generation += 1
+  replaceMaskRegistry(BUILTIN_TIP_MASKS)
 }
 
 /** The registered mask for an id (identity contract), or null. */

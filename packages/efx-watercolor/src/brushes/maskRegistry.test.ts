@@ -64,7 +64,10 @@ describe('registerMask — exact-length admission (T-63-02)', () => {
 
   it('rejects an empty id', () => {
     expect(registerMask('', solidMask(10))).toBe(false)
-    expect(listRegisteredMaskIds().length).toBe(0)
+    // The registry always carries the three built-ins (63-03); only the
+    // empty id is absent.
+    expect(listRegisteredMaskIds().length).toBe(3)
+    expect(listRegisteredMaskIds().includes('')).toBe(false)
   })
 })
 
@@ -111,10 +114,12 @@ describe('replaceMaskRegistry — replaces, never appends', () => {
 })
 
 describe('resetMaskRegistry — no ghost mask', () => {
-  it('empties the registry and the previously registered id resolves to null', () => {
+  it('restores exactly the three built-ins and the previously registered id resolves to null', () => {
     registerMask('wc/custom-ghost', solidMask(64))
     resetMaskRegistry()
-    expect(listRegisteredMaskIds().length).toBe(0)
+    expect(listRegisteredMaskIds().join(',')).toBe(
+      'wc/builtin-bristle,wc/builtin-chalk,wc/builtin-sponge',
+    )
     expect(resolveMask('wc/custom-ghost') === null).toBe(true)
   })
 
