@@ -14,7 +14,7 @@
 //    u32 anchorByteLength      | anchor body
 //    u32 durableBaseByteLength | durable-base body
 //
-//  The watercolor body IS the proven AQTL v1 buffer
+//  The watercolor body IS the proven AQTL v3 buffer
 //  (encodeScriptTimelineBinary) — the IDs, order, playFrame,
 //  params, toolOverrides, cuisson and Dry events all ride there.
 //  There is deliberately no JSON fallback.

@@ -9,12 +9,12 @@
 //  1. JSON baseline — JSON.stringify / JSON.parse, UTF-8.
 //     Exact and simple; repeats keys and writes decimal numbers.
 //
-//  2. AQTL v2 packed binary (61-05) — little-endian, 24-byte fixed
-//     header, packed stroke metadata, quantized point records and the
-//     vector path block.
+//  2. AQTL v3 packed binary (61-05; textureId in 63-15) — little-endian,
+//     24-byte fixed header, packed stroke metadata, quantized point
+//     records, the vector path block and the texture axis.
 //
 //  HEADER (24 bytes):
-//    magic 'AQTL' (4) | u16 version=2 | u16 flags=0 | u32 eventCount |
+//    magic 'AQTL' (4) | u16 version=3 | u16 flags=0 | u32 eventCount |
 //    u32 totalPointCount | u32 bodyByteLength | u32 reserved=0
 //  bodyByteLength counts the bytes AFTER the header, so
 //  bodyByteLength + 24 must equal the buffer length (no trailing bytes).
@@ -32,9 +32,12 @@
 //      presence + string; brushId string; u32 params count + (u16 key,
 //      f64 value) in sorted key order; u8 toolOverrides mask + f64
 //      values; u8 mutationId presence + u32; u8 diffusionFrames
-//      presence + u32; f64 timestamp; u8 playFrame presence + i32.
+//      presence + u32; f64 timestamp; u8 playFrame presence + i32; and —
+//      written AFTER the vector block and BEFORE pointCount — u8 textureId
+//      presence + u16-length UTF-8 textureId (63-15).
 //    Vector block (61-05 / 61-30 / 261111-wd6 / 62-UAT), AFTER the engine
-//      block's playFrame presence and BEFORE pointCount: u8 vectorFlags
+//      block's playFrame presence and BEFORE the texture presence byte and
+//      pointCount: u8 vectorFlags
 //      (bit 0 = a non-empty anchor list follows, bit 1 = LEGACY optional
 //      byte, never written, bit 2 = a curve-mode byte follows, bit 3 = every
 //      anchor carries a colour-presence byte, bit 4 = the stroke was drawn by
@@ -77,9 +80,11 @@
 //  BEFORE allocating or reading. Every failure is a typed
 //  ScriptTimelineCodecError — never a raw RangeError.
 //
-//  VERSION LAW: v2 is the ONE accepted version. Version 1 is refused with
-//  `unsupported-version` and there is no upgrade path and no v1 reader
-//  left behind (project law: no backward compatibility for old payloads).
+//  VERSION LAW: v3 is the ONE accepted version. Versions 1 and 2 are refused
+//  with `unsupported-version`; there is no upgrade path and no older reader
+//  left behind (project law: no backward compatibility for old payloads). An
+//  AQTL v2 `.snap` written before this change refuses whole on first open and
+//  its track starts empty — accepted, no migration.
 //
 //  NOTE on the point-record size: the field list above (three u16 +
 //  three i16 + one u32) is 16 bytes; the plan's 14-byte lower bound in
@@ -99,8 +104,8 @@ import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation
 /** ASCII magic carried by every AQTL buffer. */
 export const SCRIPT_TIMELINE_BINARY_MAGIC = 'AQTL';
 
-/** The one binary version this module encodes and accepts (61-05). */
-export const SCRIPT_TIMELINE_BINARY_VERSION = 2;
+/** The one binary version this module encodes and accepts (63-15: v3). */
+export const SCRIPT_TIMELINE_BINARY_VERSION = 3;
 
 /** UV/pressure quantization step (u16 over [0,1]). */
 export const POINT_UV_STEP = 1 / 65535;
@@ -725,6 +730,22 @@ function encodeStroke(writer: BinaryWriter, stroke: StudioStroke<AquarelleStroke
 
   encodeVectorBlock(writer, engine);
 
+  // 63-15 (G-63-5): the texture axis. `textureId` is only ever a mask-registry
+  // map key — the codec validates presence and a non-empty string, and
+  // resolves, canonicalises or filters nothing (the lift law lives in
+  // `toStudioStroke`, the single projection). Written AFTER the whole vector
+  // block and BEFORE pointCount so every pre-existing offset stays stable.
+  const textureId = engine.textureId;
+  if (textureId === undefined) {
+    writer.u8(0);
+  } else {
+    if (typeof textureId !== 'string' || textureId.length === 0) {
+      fail('invalid-string', 'engine.textureId must be a non-empty string');
+    }
+    writer.u8(1);
+    writer.string(textureId, 'engine.textureId');
+  }
+
   const pts = stroke.pts;
   if (!Array.isArray(pts)) fail('invalid-value', 'stroke.pts must be an array');
   writer.u32(assertUint(pts.length, 'stroke.pts length'));
@@ -986,6 +1007,18 @@ function decodeStroke(reader: BinaryReader): {
 
   const vector = decodeVectorBlock(reader);
 
+  // 63-15 (G-63-5): mirror of the encoder. Absence stays absent — the engine
+  // rebuild adds the key only when the presence marker carried it, so a
+  // textureless stroke never gains a `textureId: undefined` residue.
+  const hasTextureId = reader.presence('engine.textureId');
+  let textureId: string | undefined;
+  if (hasTextureId) {
+    textureId = reader.string('engine.textureId');
+    if (textureId.length === 0) {
+      fail('invalid-string', 'engine.textureId must be a non-empty string', reader.offset);
+    }
+  }
+
   const pointCount = reader.u32();
   if (pointCount * POINT_RECORD_BYTE_LENGTH > reader.remaining) {
     fail('invalid-count', 'point count exceeds the remaining body bytes', reader.offset);
@@ -1008,6 +1041,7 @@ function decodeStroke(reader: BinaryReader): {
     diffusionFrames,
     timestamp,
     playFrame: enginePlayFrame,
+    ...(textureId !== undefined ? { textureId } : {}),
     ...(vector.anchors !== undefined ? { anchors: vector.anchors } : {}),
     ...(vector.curveMode !== undefined ? { curveMode: vector.curveMode } : {}),
     ...(vector.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
