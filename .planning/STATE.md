@@ -1,12 +1,17 @@
 ---
 gsd_state_version: "1.0"
 milestone: v2.2.0
-milestone_name: Brush Tips & Medium Engine (MINOR)
+milestone_name: Brush Tips & Medium Engine (Planned)
+current_phase: 63
+current_phase_name: Brush Tip Pipeline
 status: planning
-last_updated: "2026-11-15T08:09:54.000Z"
+stopped_at: Phase 63 context gathered
+last_updated: "2026-11-15T09:06:37.798Z"
 last_activity: 2026-11-15
+last_activity_desc: "v2.2.0 roadmap created: Phases 63-64, 35 requirements mapped (17 TIP + 18 MED)"
+state_head: 46e11b0aca3f9f94cc89b8f033c20dd5f1fba779
 progress:
-  total_phases: 2
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -495,9 +500,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15
-Stopped at: v2.2.0 roadmap created (Phases 63-64; 35/35 requirements mapped); Phase 63 not yet planned
-Resume file: .planning/ROADMAP.md
+Last session: 2026-11-15T09:06:37.777Z
+Stopped at: Phase 63 context gathered
+Resume file: .planning/phases/63-brush-tip-pipeline/63-CONTEXT.md
 
 ## Operator Next Steps
 
