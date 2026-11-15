@@ -31,6 +31,13 @@ pub const FRAME_MEDIA_ROOT: &str = "frames";
 /// 63-02 (D-10): the content-addressed brush-asset tree at the package root.
 /// A sibling of `frames/`, never inside its lock.
 pub const BRUSH_ASSET_ROOT: &str = "brushes";
+/// WR-06 (T-63-32): the stored-asset read cap. A 192×192 lossless WebP mask is
+/// far under this bound, and the cap exists so a hostile or corrupted package
+/// cannot make the read allocate unbounded memory before the digest and the
+/// pre-decode dimension guards run (D-12 — all package IO stays in Rust, so the
+/// cap lives here). The boundary is strictly greater-than: a file of exactly
+/// this size is read and reaches the digest check.
+pub const BRUSH_ASSET_MAX_READ_BYTES: u64 = 16 * 1024 * 1024;
 /// A brush asset's stem is the SHA-256 of its own bytes, full-width lower hex.
 pub const BRUSH_ASSET_STEM_LEN: usize = 64;
 /// The package manifest basename (the save transaction's primary bound path).
@@ -680,6 +687,21 @@ pub fn read_brush_asset(
     if canonical.extension().and_then(|extension| extension.to_str()) != Some(MEDIA_EXTENSION) {
         return Err(rejected(EfxPaintMediaRejection::WrongExtension));
     }
+    // WR-06 (T-63-32): bound the read from the resolved leaf's metadata BEFORE
+    // any bytes are allocated. Reading the file first and rejecting it after
+    // would let a multi-GB regular file become fully resident before the digest
+    // and the pre-decode dimension guards could refuse it. The refusal is an
+    // `Io` error on purpose: `read_one_brush_asset` maps `Io(_)` to the
+    // existing `unreadable` per-entry reason, so no new wire vocabulary is
+    // introduced and the batch still degrades exactly one entry.
+    let metadata = fs::metadata(&canonical).map_err(|error| {
+        io_error(format!("Could not inspect the brush asset file: {error}"))
+    })?;
+    if metadata.len() > BRUSH_ASSET_MAX_READ_BYTES {
+        return Err(io_error(format!(
+            "Brush asset exceeds the {BRUSH_ASSET_MAX_READ_BYTES} byte read cap"
+        )));
+    }
     let bytes = fs::read(&canonical)
         .map_err(|error| io_error(format!("Could not read the brush asset file: {error}")))?;
     let digest = digest_bytes(&bytes);
@@ -1296,6 +1318,55 @@ mod tests {
             )
             .unwrap_err(),
             rejected(EfxPaintMediaRejection::Missing)
+        );
+        fs::remove_dir_all(package).expect("fixture cleanup");
+    }
+
+    /// Create a sparse file of `length` bytes: the metadata length is real, the
+    /// contents are never written, so the pin costs no disk and proves the
+    /// refusal did not need the bytes.
+    fn sparse_brush_asset(package: &Path, relative: &str, length: u64) {
+        let file = File::create(package.join(relative)).expect("sparse brush asset");
+        file.set_len(length).expect("sparse brush asset length");
+    }
+
+    // WR-06 (T-63-32): the read cap is checked from metadata BEFORE the file is
+    // read. A file one byte over the cap is refused without its contents ever
+    // being allocated — reading the all-zero payload first would have produced
+    // a digest mismatch instead, which is exactly what this pin discriminates.
+    #[test]
+    fn brush_mask_read_cap_refuses_an_asset_one_byte_over_the_limit() {
+        let package = fixture_package("brush-read-cap-over");
+        fs::create_dir_all(package.join(BRUSH_ASSET_ROOT)).expect("brushes directory");
+        let relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", "0".repeat(64));
+        sparse_brush_asset(&package, &relative, BRUSH_ASSET_MAX_READ_BYTES + 1);
+
+        let error = read_brush_asset(&package, &relative).unwrap_err();
+        // The cap surfaces as an `Io` refusal, the shape the batch maps to the
+        // existing `unreadable` per-entry reason (no new wire vocabulary).
+        assert!(
+            matches!(error, EfxPaintMediaError::Io(_)),
+            "expected an I/O refusal for an over-cap asset, got {error:?}"
+        );
+        // Discriminator: had the bytes been read first, the all-zero payload
+        // would have failed the digest guard instead.
+        assert_ne!(error, rejected(EfxPaintMediaRejection::DigestMismatch));
+        fs::remove_dir_all(package).expect("fixture cleanup");
+    }
+
+    // WR-06 (T-63-32): the cap is byte-exact — strict greater-than. A file of
+    // exactly the cap is read and reaches the digest check, so the size guard
+    // can never refuse a legitimate asset.
+    #[test]
+    fn brush_mask_read_cap_admits_an_asset_exactly_at_the_limit() {
+        let package = fixture_package("brush-read-cap-at-limit");
+        fs::create_dir_all(package.join(BRUSH_ASSET_ROOT)).expect("brushes directory");
+        let relative = format!("{BRUSH_ASSET_ROOT}/{}.webp", "0".repeat(64));
+        sparse_brush_asset(&package, &relative, BRUSH_ASSET_MAX_READ_BYTES);
+
+        assert_eq!(
+            read_brush_asset(&package, &relative).unwrap_err(),
+            rejected(EfxPaintMediaRejection::DigestMismatch)
         );
         fs::remove_dir_all(package).expect("fixture cleanup");
     }
