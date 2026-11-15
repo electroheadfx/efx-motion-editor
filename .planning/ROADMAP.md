@@ -138,7 +138,17 @@ Both phases are **plan-backed**: `/gsd-plan-phase` produces the plans from these
   4. A stored mask that is missing, corrupt or not exactly 192×192 degrades to an unavailable tip with the neutral round fallback and exactly one aggregate named warning — never a crash, never blank paint, never an aborted open — and closing the project or starting a New Project resets the catalog and mask registry so no ghost mask survives.
   5. A roto script saved with an imported tip paints that texture when applied into a project that never imported it, and opening a project replaces — never appends to — the tip catalog and mask registry with that project's entries plus the three built-ins, so a tip imported in project A does not exist in project B.
 
-**Plans**: TBD
+**Plans:** 8 plans
+
+Plans:
+- [ ] 63-01-PLAN.md — Mask derivation law, registry and the one live/bake mapping
+- [ ] 63-02-PLAN.md — Rust brush-asset branch: encode, write, bound guard, batch read
+- [ ] 63-03-PLAN.md — Three compile-time textured tips baked from the supplied art
+- [ ] 63-04-PLAN.md — `.mce` brushPack carrier and byte-identical persistence
+- [ ] 63-05-PLAN.md — Import pipeline across the two realms, with caps and failure copy
+- [ ] 63-06-PLAN.md — Sectioned brush library, per-tip previews, import row, one warning
+- [ ] 63-07-PLAN.md — Project-open registration, per-tip degradation, replace/reset
+- [ ] 63-08-PLAN.md — Roto script mask carrier: inline WebP data URL, session masks
 
 **Specs**: `SPECS/v2.2.0-brush-tips/GSD-QUICK-PROMPT-01-mask-wiring.md`, `SPECS/v2.2.0-brush-tips/GSD-QUICK-PROMPT-02-embedded-tips.md`
 
