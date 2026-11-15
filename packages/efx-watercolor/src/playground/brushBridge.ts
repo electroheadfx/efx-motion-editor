@@ -7,7 +7,8 @@
 //  mapping both live and bake use so they cannot drift (A1/A2).
 // ============================================================
 
-import { BRUSH_PRESETS, buildBrush, type Brush, type BrushPreset } from './brushes'
+import { BRUSH_PRESETS, CUSTOM_BASE, buildBrush, type Brush, type BrushPreset } from './brushes'
+import { resolveMask } from '../brushes/maskRegistry'
 
 /** Tip id → vendor preset id. Unknown ids fall back to 'round'. */
 const TIP_TO_PRESET: Record<string, string> = {
@@ -52,13 +53,22 @@ function presetFor(brushId: string): BrushPreset {
  * Build the vendor Brush for a recorded stroke. `brushId` is the
  * canonical tip id; `overrides` are the D-08 multipliers snapshot
  * at record time. Same call on the live path and the bake path.
+ *
+ * Phase 63 / D-21: a mask-backed tip is the STAMP, not a response
+ * mode. When the registry holds a mask for `brushId` it is built
+ * from CUSTOM_BASE with that mask as the tip; otherwise the preset
+ * path runs unchanged. The multiplier bag below applies to both
+ * identically (D-22) — never gated by the mask.
  */
 export function buildBrushForStroke(
   brushId: string,
   overrides?: BrushMultiplierOverrides | null,
   seed = 7,
 ): Brush {
-  const base = buildBrush(presetFor(brushId), seed)
+  const mask = resolveMask(brushId)
+  const base = mask
+    ? buildBrush({ ...CUSTOM_BASE, id: brushId, name: brushId, hint: '', tip: mask }, seed)
+    : buildBrush(presetFor(brushId), seed)
   if (!overrides) return base
   return {
     ...base,
