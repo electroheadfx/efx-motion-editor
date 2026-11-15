@@ -15,17 +15,17 @@
 - [x] **TIP-04**: An image whose decoded pixel count exceeds 64 megapixels is refused before decode with the existing named failure and no allocation; a corrupt file with a valid PNG header is refused without crashing
 - [x] **TIP-05**: `buildBrushForStroke` is the single tip mapping shared by live paint and bake — a custom tip builds from `CUSTOM_BASE` with its derived mask, so a stroke rasters identically live and baked
 - [x] **TIP-06**: An imported tip's mask is registered in a module-level engine registry fed by the brush library's import surface; resetting that catalog and the registry (D-20) leaves no ghost mask behind, so a later stroke with that id falls back cleanly rather than reusing a stale mask
-- [ ] **TIP-07**: User's imported tip survives save → quit → relaunch → open: the tip is listed and its strokes replay with the texture, reproduced from the `.mce` alone
+- [x] **TIP-07**: User's imported tip survives save → quit → relaunch → open: the tip is listed and its strokes replay with the texture, reproduced from the `.mce` alone
 - [x] **TIP-08**: The mask is stored inside the project package as a lossless WebP asset at `brushes/<sha256>.webp`, content-addressed with a fixed 64-hex name, and decoding the stored artifact is byte-identical to what was encoded; save copies the stored bytes and never re-encodes; the source image is discarded at the end of the import, so only the derived mask is ever stored
 - [x] **TIP-09**: No tip depends on any file outside the app bundle or the project — moving, renaming, then deleting the original source image changes nothing on reopen
 - [x] **TIP-10**: Both import caps are enforced before read and before decode (`file.size` ≤ 64 MB, decoded pixels ≤ 64 MP), and a stored mask asset that is missing, fails to decode, or is not exactly `TIP_SIZE²` bytes degrades to an unavailable tip, the neutral round fallback, and exactly one aggregate named warning — never a crash and never blank paint; a failed asset never aborts the project open
 - [x] **TIP-11**: The brush pack travels in the `.mce` root as `brushPack?: { kind, entries }`, each entry carrying a package-relative asset ref to its mask — not the mask bytes — declared in both the TypeScript model and the Rust struct under the field-diff pin
-- [ ] **TIP-12**: Masks are decoded and registered inside the project-open await, before the first stroke replay of a loaded project, so painting before registration completes is impossible by construction; the whole brush set decodes in one call and a failing tip never aborts the open
+- [x] **TIP-12**: Masks are decoded and registered inside the project-open await, before the first stroke replay of a loaded project, so painting before registration completes is impossible by construction; the whole brush set decodes in one call and a failing tip never aborts the open
 - [x] **TIP-13**: Three textured tips ship without any import — `wc/builtin-bristle` (Bristle fan), `wc/builtin-chalk` (Chalk grain), `wc/builtin-sponge` (Sponge) — as compile-time constants under stable ids, category `texture`, listed in the brush library, resolvable on every install, and never written into a project
 - [ ] **TIP-14**: A roto script saved with an imported tip carries that tip's mask in its `brushPack` entries and rehydrates on load, so applying it into a project that lacks the tip still paints the texture
 - [x] **TIP-15**: `buildBrushPackSnapshot` remains the one place that knows entry shape — stays total and fail-closed on malformed input while carrying the asset ref through
 - [x] **TIP-16**: Saving and reopening an untouched project is byte-identical — mask asset bytes included — and copying the project alone to a fresh profile reproduces identical strokes and an identical brush library listing
-- [ ] **TIP-17**: Opening a project **replaces** — never appends to — the tip catalog and the mask registry with that project's entries plus the three built-ins, so a tip imported in project A is not listed or resolvable in project B; closing the project or starting a New Project resets both to the three built-ins, so no stale custom id resolves
+- [x] **TIP-17**: Opening a project **replaces** — never appends to — the tip catalog and the mask registry with that project's entries plus the three built-ins, so a tip imported in project A is not listed or resolvable in project B; closing the project or starting a New Project resets both to the three built-ins, so no stale custom id resolves
 
 ### Medium Engine (Phase 64)
 
@@ -94,17 +94,17 @@ Which phases cover which requirements.
 | TIP-04 | Phase 63 | Complete |
 | TIP-05 | Phase 63 | Complete |
 | TIP-06 | Phase 63 | Complete |
-| TIP-07 | Phase 63 | Pending |
+| TIP-07 | Phase 63 | Complete |
 | TIP-08 | Phase 63 | Complete |
 | TIP-09 | Phase 63 | Complete |
 | TIP-10 | Phase 63 | Complete |
 | TIP-11 | Phase 63 | Complete |
-| TIP-12 | Phase 63 | Pending |
+| TIP-12 | Phase 63 | Complete |
 | TIP-13 | Phase 63 | Complete |
 | TIP-14 | Phase 63 | Pending |
 | TIP-15 | Phase 63 | Complete |
 | TIP-16 | Phase 63 | Complete |
-| TIP-17 | Phase 63 | Pending |
+| TIP-17 | Phase 63 | Complete |
 | MED-01 | Phase 64 | Pending |
 | MED-02 | Phase 64 | Pending |
 | MED-03 | Phase 64 | Pending |

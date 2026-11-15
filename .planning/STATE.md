@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: executing
-stopped_at: Completed 63-06-PLAN.md
-last_updated: "2026-11-15T12:43:46.721Z"
+stopped_at: Completed 63-07 plan
+last_updated: "2026-11-15T13:02:06.887Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: 71e35f2c740bbe6d61b4d57b0e85ed6b108255ed
+state_head: 5ec3a029e3ea071bd6ed01e4fec8be80096beed5
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 ## Current Position
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
 Last activity: 2026-11-15 — Phase 63 execution started
 
@@ -133,6 +133,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P04 | 11min | 2 tasks | 16 files |
 | Phase 63 P05 | 71min | 3 tasks | 15 files |
 | Phase 63 P06 | 49 | 3 tasks | 8 files |
+| Phase 63 P07 | 18 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -411,6 +412,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: 63-06: unavailable project tips are the catalog store's one replace-only set; the library renders greyed disabled cards plus exactly one aggregate warning line (D-19).
 - [Phase 63]: 63-06: every preview cache (footprint signature, stroke thumb, tipImage tinted canvas) keys on maskGeneration(), so a mask replaced under an unchanged id is never served stale.
 - [Phase 63]: 63-06: the import toolbar row decodes in the Studio realm and registers through requestPhysicPaintBrushImport; the library never appends to the catalog itself.
+- [Phase 63]: Unavailable brush tips stay LISTED with null digest/mask so the library greys them; only invalid-entry records are unlisted, and invalid-asset-ref records are recovered by dropping the asset member (63-07 / D-18).
+- [Phase 63]: The catalog publisher is a store hook (_setBrushCatalogPublisher) installed by the main-realm bridge installer, because physicPaintBridge imports projectStore and a direct import would cycle; every applied open and every reset publishes through it (63-07 / TIP-17).
+- [Phase 63]: closeProject bumps the open-request token so an in-flight open cannot apply, hydrate or publish over the closed project (63-07 / T-63-21).
 
 ### Pending Todos
 
@@ -528,8 +532,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T12:43:46.683Z
-Stopped at: Completed 63-06-PLAN.md
+Last session: 2026-11-15T13:02:06.836Z
+Stopped at: Completed 63-07 plan
 Resume file: None
 
 ## Operator Next Steps
