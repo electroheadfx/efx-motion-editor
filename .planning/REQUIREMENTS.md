@@ -84,51 +84,51 @@ Deferred to a future release. Tracked but not in the current roadmap.
 
 ## Traceability
 
-Which phases cover which requirements. Populated during roadmap creation.
+Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TIP-01 | — | Pending |
-| TIP-02 | — | Pending |
-| TIP-03 | — | Pending |
-| TIP-04 | — | Pending |
-| TIP-05 | — | Pending |
-| TIP-06 | — | Pending |
-| TIP-07 | — | Pending |
-| TIP-08 | — | Pending |
-| TIP-09 | — | Pending |
-| TIP-10 | — | Pending |
-| TIP-11 | — | Pending |
-| TIP-12 | — | Pending |
-| TIP-13 | — | Pending |
-| TIP-14 | — | Pending |
-| TIP-15 | — | Pending |
-| TIP-16 | — | Pending |
-| TIP-17 | — | Pending |
-| MED-01 | — | Pending |
-| MED-02 | — | Pending |
-| MED-03 | — | Pending |
-| MED-04 | — | Pending |
-| MED-05 | — | Pending |
-| MED-06 | — | Pending |
-| MED-07 | — | Pending |
-| MED-08 | — | Pending |
-| MED-09 | — | Pending |
-| MED-10 | — | Pending |
-| MED-11 | — | Pending |
-| MED-12 | — | Pending |
-| MED-13 | — | Pending |
-| MED-14 | — | Pending |
-| MED-15 | — | Pending |
-| MED-16 | — | Pending |
-| MED-17 | — | Pending |
-| MED-18 | — | Pending |
+| TIP-01 | Phase 63 | Pending |
+| TIP-02 | Phase 63 | Pending |
+| TIP-03 | Phase 63 | Pending |
+| TIP-04 | Phase 63 | Pending |
+| TIP-05 | Phase 63 | Pending |
+| TIP-06 | Phase 63 | Pending |
+| TIP-07 | Phase 63 | Pending |
+| TIP-08 | Phase 63 | Pending |
+| TIP-09 | Phase 63 | Pending |
+| TIP-10 | Phase 63 | Pending |
+| TIP-11 | Phase 63 | Pending |
+| TIP-12 | Phase 63 | Pending |
+| TIP-13 | Phase 63 | Pending |
+| TIP-14 | Phase 63 | Pending |
+| TIP-15 | Phase 63 | Pending |
+| TIP-16 | Phase 63 | Pending |
+| TIP-17 | Phase 63 | Pending |
+| MED-01 | Phase 64 | Pending |
+| MED-02 | Phase 64 | Pending |
+| MED-03 | Phase 64 | Pending |
+| MED-04 | Phase 64 | Pending |
+| MED-05 | Phase 64 | Pending |
+| MED-06 | Phase 64 | Pending |
+| MED-07 | Phase 64 | Pending |
+| MED-08 | Phase 64 | Pending |
+| MED-09 | Phase 64 | Pending |
+| MED-10 | Phase 64 | Pending |
+| MED-11 | Phase 64 | Pending |
+| MED-12 | Phase 64 | Pending |
+| MED-13 | Phase 64 | Pending |
+| MED-14 | Phase 64 | Pending |
+| MED-15 | Phase 64 | Pending |
+| MED-16 | Phase 64 | Pending |
+| MED-17 | Phase 64 | Pending |
+| MED-18 | Phase 64 | Pending |
 
 **Coverage:**
 - v1 requirements: 35 total (17 TIP + 18 MED)
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 35 ⚠️
+- Mapped to phases: 35 (Phase 63: 17 TIP · Phase 64: 18 MED)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-11-15*
-*Last updated: 2026-11-15 after initial definition for v2.2.0*
+*Last updated: 2026-11-15 after v2.2.0 roadmap creation (Phases 63-64; 35/35 mapped)*

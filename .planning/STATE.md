@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (MINOR)
 status: planning
-last_updated: "2026-11-15T07:58:44.550Z"
+last_updated: "2026-11-15T08:09:54.000Z"
 last_activity: 2026-11-15
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-14 after the v2.1.0 milestone close)
+See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v2.1.0 shipped and archived — planning the next milestone (v2.2.0 Brush Tips & Medium Engine, Phases 63-64).
+**Current focus:** v2.2.0 Brush Tips & Medium Engine — roadmap created (Phases 63-64, 35 requirements mapped); next: plan Phase 63.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-11-15 — Milestone v2.2.0 started
+Phase: 63 of 64 (Brush Tip Pipeline)
+Plan: — (not planned)
+Status: Roadmap created — ready to plan Phase 63
+Last activity: 2026-11-15 — v2.2.0 roadmap created: Phases 63-64, 35 requirements mapped (17 TIP + 18 MED)
 
 
 ## Performance Metrics
@@ -394,6 +394,7 @@ None yet.
 - [Phase 62] Six review findings are recorded and deliberately deferred in `62-REVIEW-DISPOSITION.md` (0 open): WR-02 conversion drops recorded stylus tilt (`tx`/`ty` stamped 0), WR-03 busy gates are not re-read after the durable-base await (fails closed), WR-04 both cancelled-bake undo replays refused (silent return), IN-01 unreachable `'lift-vector': 'Eraser-Vector'` label, IN-02 the Vertex colour reading omits the `anchorWidthTarget` guard, IN-03 the `requestAquarellePathEdit` doc over-claims that no refusal leaves a selection. All are non-blocking; UAT 10/10 and verification 49/49 passed.
 - [Phase 62] The UI audit dropped from 18/24 to 15/24 after the UAT changes (`62-UI-REVIEW.md`): curve entry has no pending/failure signal, the Vertex colour row shows the first anchor's swatch beside a "Mixed" caption, and the curve-editing / vector-category vocabulary has no help entries. Advisory only — no blocker; candidate for a follow-up quick.
 - v2.0.1 debt carried in PROJECT.md Context: VIS-02/04 token drift, mixed rail-set header accent, the one-shot prompt's pending window, and the unconfirmed 261105-p9i live native UAT rows.
+- [v2.2.0] Phase 63 must register decoded tip masks before the first stroke replay of a loaded project, and project-open scoping REPLACES the tip catalog and mask registry (TIP-17) — `resetBrushesDockerUi()` has no production caller today, so scoping is new work. Phase 64's Viscosity must reach live pass, bake and replay identically (MED-05/06); replay determinism is its acceptance bar.
 
 ## Deferred Items
 
@@ -489,14 +490,17 @@ Items acknowledged and carried forward from previous milestone close:
 - Phase 60: Studio timeline horizontal zoom (inserted after 59 — shares the frame→pixel pitch expressions)
 - Phase 61: Vector painting tool (spike-gated on per-vertex watercolour feasibility)
 - Phase 62: Painted-stroke curve editing (depends on Phase 61's editing surface)
+- Phase 63: Brush Tip Pipeline (v2.2.0, plan-backed from specs 01-02 — real tip mask, embedded `brushPack`, three built-in tips)
+- Phase 64: Medium Engine (v2.2.0, plan-backed from specs 03-05 — Viscosity, Medium profiles, pigment relief)
 
 ## Session Continuity
 
-Last session: 2026-11-14
-Stopped at: Milestone v2.1.0 completed and archived (audit `tech_debt`, 0 blocking gaps; closeout `override_closeout`)
-Resume file: .planning/reports/MILESTONE_SUMMARY-v2.1.0.md
+Last session: 2026-11-15
+Stopped at: v2.2.0 roadmap created (Phases 63-64; 35/35 requirements mapped); Phase 63 not yet planned
+Resume file: .planning/ROADMAP.md
 
 ## Operator Next Steps
 
 
-- Start the next milestone with /gsd-new-milestone
+- Plan Phase 63 with /gsd-plan-phase 63 (quicks 01-02: brush tip mask + embedded tips)
+- Then Phase 64 (quicks 03-05: Viscosity, Medium profiles, pigment relief)
