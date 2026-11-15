@@ -9,7 +9,7 @@
 
 ### Brush Tip Pipeline (Phase 63)
 
-- [ ] **TIP-01**: User can import a PNG or JPG and the imported image becomes the actual brush tip — selecting it visibly changes the stroke footprint to that texture instead of a round blob
+- [x] **TIP-01**: User can import a PNG or JPG and the imported image becomes the actual brush tip — selecting it visibly changes the stroke footprint to that texture instead of a round blob
 - [x] **TIP-02**: A derived tip is exactly 192 × 192 pixels = 36,864 bytes, one 8-bit value per pixel, produced once at import through the existing `createImageBitmap` / `Image+decode()` path with a high-quality downscale
 - [x] **TIP-03**: Mask derivation follows one pinned two-branch rule — alpha when the decoded image carries meaningful transparency (any alpha < 250); otherwise luminance with polarity from mean luminance over opaque pixels (mean < 128 → `mask = luminance` for a light-on-dark stamp, else `mask = 255 − luminance`) — documented in the module header, both branches covered by tests, and shared with the built-in bake
 - [x] **TIP-04**: An image whose decoded pixel count exceeds 64 megapixels is refused before decode with the existing named failure and no allocation; a corrupt file with a valid PNG header is refused without crashing
@@ -88,7 +88,7 @@ Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TIP-01 | Phase 63 | Pending |
+| TIP-01 | Phase 63 | Complete |
 | TIP-02 | Phase 63 | Complete |
 | TIP-03 | Phase 63 | Complete |
 | TIP-04 | Phase 63 | Complete |
