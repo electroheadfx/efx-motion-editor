@@ -213,10 +213,13 @@ describe('loadProjectBrushSet — one native read, decoded before hydrate (63-07
     );
 
     // The malformed entry is never sent to the native boundary; the healthy
-    // sibling still registers. The bad id is marked unavailable for the one
-    // aggregate warning state (D-18/D-19).
+    // sibling still registers. The bad tip stays LISTED so the library can
+    // grey it (mask null), and its id joins the one aggregate warning state
+    // (D-18/D-19).
     expect(asked.join(',')).toBe('wc/custom-ok');
-    expect(result.entries.map((entry) => entry.tip.id).join(',')).toBe('wc/custom-ok');
+    expect(result.entries.map((entry) => entry.tip.id).join(',')).toBe('wc/custom-bad,wc/custom-ok');
+    expect(result.entries[0]!.mask).toBeNull();
+    expect(result.entries[1]!.mask?.length).toBe(TIP_MASK_BYTES);
     expect(result.unavailableTipIds.join(',')).toBe('wc/custom-bad');
     expect(result.failures[0]!.tipId).toBe('wc/custom-bad');
     expect(result.failures[0]!.reason).toBe('invalid-asset-ref');
