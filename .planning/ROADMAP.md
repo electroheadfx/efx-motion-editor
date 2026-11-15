@@ -141,15 +141,28 @@ Both phases are **plan-backed**: `/gsd-plan-phase` produces the plans from these
 **Plans:** 9 plans
 
 Plans:
+**Wave 1**
 - [ ] 63-01-PLAN.md — Mask derivation law, registry and the one live/bake mapping
 - [ ] 63-02-PLAN.md — Rust brush-asset branch: encode, write, bound guard, batch read
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 63-03-PLAN.md — Three compile-time textured tips baked from the supplied art
-- [ ] 63-04-PLAN.md — `.mce` brushPack carrier, catalog store and save staging
-- [ ] 63-05-PLAN.md — Import pipeline and the cross-realm catalog boundary (producer + Studio receiver)
-- [ ] 63-06-PLAN.md — Sectioned brush library, per-tip previews, import row, one warning
-- [ ] 63-07-PLAN.md — Project-open registration, per-tip degradation, replace/reset
-- [ ] 63-08-PLAN.md — Roto script mask carrier: inline WebP data URL, session masks
 - [ ] 63-09-PLAN.md — Fresh-profile copy and project provisioning (runs in wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 63-04-PLAN.md — `.mce` brushPack carrier, catalog store and save staging
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 63-05-PLAN.md — Import pipeline and the cross-realm catalog boundary (producer + Studio receiver)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 63-06-PLAN.md — Sectioned brush library, per-tip previews, import row, one warning
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 63-07-PLAN.md — Project-open registration, per-tip degradation, replace/reset
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 63-08-PLAN.md — Roto script mask carrier: inline WebP data URL, session masks
 
 **Specs**: `SPECS/v2.2.0-brush-tips/GSD-QUICK-PROMPT-01-mask-wiring.md`, `SPECS/v2.2.0-brush-tips/GSD-QUICK-PROMPT-02-embedded-tips.md`
 
