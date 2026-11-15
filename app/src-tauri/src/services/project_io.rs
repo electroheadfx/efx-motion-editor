@@ -9,6 +9,12 @@ use std::path::Path;
 /// derived frames live in the machine-local cache root (D-05), so a package
 /// carries authoritative content only. Heavy media stay disk references: no
 /// `videos/` tree is provisioned (261012-d6q, VID-03).
+///
+/// No `brushes/` tree is provisioned either (63 D-20): a new project carries
+/// only the three compile-time built-in tips, and those are never written into
+/// a project. `brushes/` first appears when the first imported asset is
+/// written — the atomic asset writer creates its parent. Provisioning an empty
+/// tree here would imply a carrier with no entries.
 pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
     let base = Path::new(dir_path);
     let images_dir = base.join("images");
@@ -206,6 +212,11 @@ mod tests {
         // 261012-d6q (VID-03): heavy media stay disk references — a fresh
         // package provisions NO videos/ tree and no code path ever writes one.
         assert!(!test_dir.join("videos").exists());
+        // 63 (D-20): a new project carries NO brush scaffolding — the three
+        // built-in tips are compile-time constants and are never written into a
+        // project; the first imported asset creates `brushes/` itself. This
+        // guard trips the moment provisioning gains a brush entry.
+        assert!(!test_dir.join("brushes").exists());
         let _ = std::fs::remove_dir_all(&test_dir);
     }
 
