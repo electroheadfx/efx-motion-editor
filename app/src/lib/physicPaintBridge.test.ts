@@ -8328,6 +8328,24 @@ describe('63-05 brush-tip realm channels', () => {
       expect(isPhysicPaintBrushCatalogPayload('garbage')).toBe(false);
     });
 
+    it('refuses non-canonical base64 without throwing (WR-01)', () => {
+      const badMaskPayload = brushCatalogPayload({
+        entries: [{ tip: brushWireTip('wc/custom-wire-1'), maskBase64: '!!!!' }],
+      });
+      expect(() => isPhysicPaintBrushCatalogPayload(badMaskPayload)).not.toThrow();
+      expect(isPhysicPaintBrushCatalogPayload(badMaskPayload)).toBe(false);
+
+      const badWebpPayload = brushCatalogPayload({
+        entries: [{ tip: brushWireTip('wc/custom-wire-1'), webpBase64: '!!!!' }],
+      });
+      expect(() => isPhysicPaintBrushCatalogPayload(badWebpPayload)).not.toThrow();
+      expect(isPhysicPaintBrushCatalogPayload(badWebpPayload)).toBe(false);
+
+      const badImport = { operationId: 'op-1', fileName: 'stamp.png', maskBase64: '!!!!' };
+      expect(() => isPhysicPaintBrushImportRequest(badImport)).not.toThrow();
+      expect(isPhysicPaintBrushImportRequest(badImport)).toBe(false);
+    });
+
     it('pins the import request, result and catalog-request shapes', () => {
       const mask = bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES));
       expect(isPhysicPaintBrushImportRequest({ operationId: 'op-1', fileName: 'stamp.png', maskBase64: mask })).toBe(true);
