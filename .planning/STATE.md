@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: executing
-stopped_at: Completed 63-09-PLAN.md
-last_updated: "2026-11-15T11:04:39.710Z"
+stopped_at: Completed 63-04-PLAN.md
+last_updated: "2026-11-15T11:20:23.103Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: eaaadbb91dc4f896d566bdcfe2e1aa7f81620c8e
+state_head: ddf016a1b92fbe9060679d8e47ef47060ff91899
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 ## Current Position
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 5 of 9
+Plan: 6 of 9
 Status: Ready to execute
 Last activity: 2026-11-15 — Phase 63 execution started
 
@@ -130,6 +130,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P02 | 8min | 3 tasks | 7 files |
 | Phase 63 P03 | 4min | 2 tasks | 7 files |
 | Phase 63 P09 | 3min | 2 tasks | 2 files |
+| Phase 63 P04 | 11min | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -400,6 +401,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: maskRegistry seeds from BUILTIN_TIP_MASKS at module load and resetMaskRegistry() is replaceMaskRegistry(BUILTIN_TIP_MASKS), so reset restores exactly the three built-ins with the same allocations (D-20)
 - [Phase 63]: 63-09: the fresh-profile copy is fs::copy-only (one encode at setup) and the copy is re-validated through read_brush_asset, never trusted because it copied
 - [Phase 63]: 63-09: create_project_dir never provisions brushes/ (D-20); pinned by an assertion plus a recorded reason, green-by-construction with no fabricated RED
+- [Phase 63]: Engine-boundary mirror: packages/efx-watercolor is built standalone by tsup and cannot import app/src, so pack.ts owns a local brushes/<64 hex>.webp predicate; the app parser at intake and the Rust bound guard remain independent re-validations (T-63-15)
+- [Phase 63]: aquarelleBrushCatalog lives in app/src/stores/ rather than PATTERNS.md's component path because both realms import it; recorded as a deliberate relocation in the module header
+- [Phase 63]: Brush change token is brush:<relativePath> with the digest as value, so an import always forces its own change entry while a second identical save is an empty change set
 
 ### Pending Todos
 
@@ -517,8 +521,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T11:04:39.684Z
-Stopped at: Completed 63-09-PLAN.md
+Last session: 2026-11-15T11:20:23.077Z
+Stopped at: Completed 63-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
