@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: executing
-stopped_at: Completed 63-08-PLAN.md
-last_updated: "2026-11-15T15:11:59.515Z"
+stopped_at: Completed 63-10-PLAN.md
+last_updated: "2026-11-15T15:22:41.730Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: 719678e9c10e2a05ee1595aff8a011aa3fca6922
+state_head: 0a35c538e47f1ebf60578885a5acc9144170bba8
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 14
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 
 ## Current Position
 
-Phase: 63 (Brush Tip Pipeline) — READY TO EXECUTE
-Plan: 9 of 9
+Phase: 63 (Brush Tip Pipeline) — EXECUTING
+Plan: 11 of 14
 Status: Ready to execute
 Last activity: 2026-11-15 — Phase 63 execution started
 
@@ -135,6 +135,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P06 | 49 | 3 tasks | 8 files |
 | Phase 63 P07 | 18 | 3 tasks | 9 files |
 | Phase 63 P08 | 8 | 2 tasks | 6 files |
+| Phase 63 P10 | 6min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -418,6 +419,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: closeProject bumps the open-request token so an in-flight open cannot apply, hydrate or publish over the closed project (63-07 / T-63-21).
 - [Phase 63]: 63-08: the script save leg refuses by name when a custom tip's stored mask bytes are missing from the Studio realm instead of dropping the mask.
 - [Phase 63]: 63-08: structurally malformed script carriers (cap, dimensions, base64, mask/asset members) refuse the whole document at parse time; native-decode and registry failures degrade one entry with a named log.
+- [Phase 63]: One project-tip admission law: normalizeProjectBrushTip lives in efxPaintBrushSet.ts and is called by both the open loader and the catalog payload producer; isCustomTipWire and its member-key list stay byte-for-byte unchanged, so the senders conform instead of the guard being relaxed.
+- [Phase 63]: The built-in-id refusal reads the RAW id before record validation, so a malformed record still logs invalid-entry while a well-formed entry naming one of the three shipped tips logs the named reason builtin-id.
+- [Phase 63]: WR-01's stated root cause is refuted on the current tree: physicPaint.ts's decodeBase64OrNull already resolves to its own total base64ToBytes, not webpBytes.ts's throwing converter; the totality pins landed green by construction (63-03 / CRV-03 precedent, no fabricated RED) and the guard-boundary try/catch was applied as defence-in-depth.
+- [Phase 63]: buildProjectBrushPack keeps the whole-list fast path; the per-entry walk runs only on refusal, the first entry of a duplicate id wins, each dropped tip is logged by id and class, and null is returned only when nothing survives.
 
 ### Pending Todos
 
@@ -535,8 +540,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T13:16:17.728Z
-Stopped at: Completed 63-08-PLAN.md
+Last session: 2026-11-15T15:22:41.699Z
+Stopped at: Completed 63-10-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
