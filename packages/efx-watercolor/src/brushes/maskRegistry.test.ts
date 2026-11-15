@@ -12,7 +12,8 @@
 //             writes never do
 //    WR-05    the three built-in ids are reserved: registerMask can
 //             never install one, and a refused registration mutates
-//             nothing and bumps nothing
+//             nothing and bumps nothing; replace admits a built-in id
+//             only with the exact compile-time allocation
 //
 //  The registry is module-scoped, so every test starts from a reset.
 //  Assertion style: scalar predicates (boolean/primitive toBe) so TAP
@@ -143,6 +144,77 @@ describe('replaceMaskRegistry — replaces, never appends', () => {
     replaceMaskRegistry([])
     expect(listRegisteredMaskIds().length).toBe(0)
     expect(resolveMask('wc/custom-a') === null).toBe(true)
+  })
+})
+
+describe('replaceMaskRegistry — built-in ids admit only the compile-time allocation (WR-05)', () => {
+  it('a built-ins-first list keeps all three built-ins resolvable by identity', () => {
+    replaceMaskRegistry([...BUILTIN_TIP_MASKS])
+    for (const builtin of BUILTIN_TIP_MASKS) {
+      expect(resolveMask(builtin.id) === builtin.mask).toBe(true)
+    }
+    expect(listRegisteredMaskIds().join(',')).toBe(
+      'wc/builtin-bristle,wc/builtin-chalk,wc/builtin-sponge',
+    )
+  })
+
+  it('refuses a later equal-bytes shadow and still installs a custom sibling', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const chalk = BUILTIN_TIP_MASKS.find((builtin) => builtin.id === 'wc/builtin-chalk')
+      expect(chalk === undefined).toBe(false)
+      if (chalk === undefined) return
+      const copy = new Uint8Array(chalk.mask)
+      expect(copy === chalk.mask).toBe(false)
+      expect(copy.length).toBe(chalk.mask.length)
+      const sibling = solidMask(42)
+      replaceMaskRegistry([
+        ...BUILTIN_TIP_MASKS,
+        { id: 'wc/builtin-chalk', mask: copy },
+        { id: 'wc/custom-sibling', mask: sibling },
+      ])
+      expect(resolveMask('wc/builtin-chalk') === chalk.mask).toBe(true)
+      expect(resolveMask('wc/builtin-chalk') === copy).toBe(false)
+      expect(resolveMask('wc/custom-sibling') === sibling).toBe(true)
+      expect(warn.mock.calls.length).toBe(1)
+      expect(String(warn.mock.calls[0]?.[0]).includes('wc/builtin-chalk')).toBe(true)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('refuses a wrong-length built-in entry and keeps the shipped allocation', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const sponge = BUILTIN_TIP_MASKS.find((builtin) => builtin.id === 'wc/builtin-sponge')
+      expect(sponge === undefined).toBe(false)
+      if (sponge === undefined) return
+      replaceMaskRegistry([
+        ...BUILTIN_TIP_MASKS,
+        { id: 'wc/builtin-sponge', mask: new Uint8Array(TIP_MASK_BYTES - 1) },
+      ])
+      expect(resolveMask('wc/builtin-sponge') === sponge.mask).toBe(true)
+      expect(warn.mock.calls.length).toBe(1)
+      expect(String(warn.mock.calls[0]?.[0]).includes('wc/builtin-sponge')).toBe(true)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('a foreign-only built-in id never resolves to the foreign array', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const bristle = BUILTIN_TIP_MASKS.find((builtin) => builtin.id === 'wc/builtin-bristle')
+      expect(bristle === undefined).toBe(false)
+      if (bristle === undefined) return
+      const foreign = solidMask(200)
+      replaceMaskRegistry([{ id: 'wc/builtin-bristle', mask: foreign }])
+      expect(resolveMask('wc/builtin-bristle') === foreign).toBe(false)
+      expect(warn.mock.calls.length).toBe(1)
+      expect(String(warn.mock.calls[0]?.[0]).includes('wc/builtin-bristle')).toBe(true)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
 
