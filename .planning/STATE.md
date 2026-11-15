@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: executing
-stopped_at: Completed 63-01-PLAN.md
-last_updated: "2026-11-15T10:40:11.209Z"
+stopped_at: Completed 63-02-PLAN.md
+last_updated: "2026-11-15T10:51:40.338Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: fdd423f69c66226085e9d122c1d35432fe9a0ba9
+state_head: 756068506b3127d104dd3254d4b174fdedd2b139
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 ## Current Position
 
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-11-15 — Phase 63 execution started
 
@@ -127,6 +127,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 62 P05 | 6min | 3 tasks | 8 files |
 | Phase 62 P04 | 9 | 3 tasks | 9 files |
 | Phase 63 P01 | 5 min | 3 tasks | 7 files |
+| Phase 63 P02 | 8min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -388,6 +389,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: normalizeMaskContrast is exported but never called from deriveMask (bake-only by law), pinned by a source-level test
 - [Phase 63]: replaceMaskRegistry clears then installs valid entries individually (D-18); resolveMask returns the exact registered array (identity contract)
 - [Phase 63]: buildBrushForStroke resolves the registry before the preset lookup; D-08 multipliers apply identically to masked and preset bases (D-21/D-22)
+- [Phase 63]: Brush asset stem hashes the stored WebP bytes, not the source mask, so a copy is verifiable without decoding (63-02)
+- [Phase 63]: decode_mask_webp gates declared dimensions from the header before decode_rgba; WrongSize and Undecodable are separate rejection labels (63-02)
+- [Phase 63]: Batch brush reads degrade per entry to five fixed reasons and never reject the call; save copies the stored WebP bytes without re-encoding (63-02)
+- [Phase 63]: brushes/ is a sibling bound-guard branch with its own parser; the frames MEDIA lock is provably not widened (63-02)
 
 ### Pending Todos
 
@@ -505,8 +510,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T10:40:11.184Z
-Stopped at: Completed 63-01-PLAN.md
+Last session: 2026-11-15T10:51:33.060Z
+Stopped at: Completed 63-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
