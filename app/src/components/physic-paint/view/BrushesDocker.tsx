@@ -13,7 +13,9 @@ import { useRef } from 'preact/hooks';
 import { ChevronDown, ChevronRight, FolderOpen, Plus, Star } from 'lucide-preact';
 import {
   IMPORT_TIP_FAILURE_COPY,
+  NEUTRAL_TOOL_OVERRIDES,
   TIPS,
+  decodeRgbaAtTipSize,
   importTip,
   type AquarelleTip,
   type AquarelleTipCategory,
@@ -74,6 +76,27 @@ function matchesFilter(tip: AquarelleTip, query: string, cat: 'all' | AquarelleT
   if (cat !== 'all' && tip.category !== cat) return false;
   if (query.length === 0) return true;
   return tip.name.toLowerCase().includes(query.toLowerCase());
+}
+
+/**
+ * Local-only registration for this UNMOUNTED docker. The project-authority
+ * import path is the main-realm handler (`app/src/lib/efxPaintBrushImport.ts`),
+ * which owns id minting, the project catalog and the stored asset bytes; the
+ * Studio import surface replaces this docker in 63-06/63-07. Until then this
+ * port keeps the docker typechecked and locally usable.
+ */
+let dockerImportCounter = 0;
+
+function registerDockerTip(name: string): AquarelleTip {
+  dockerImportCounter += 1;
+  const tip: AquarelleTip = {
+    id: `wc/custom-docker-${dockerImportCounter}`,
+    category: 'custom',
+    name,
+    ...NEUTRAL_TOOL_OVERRIDES,
+  };
+  customTips.value = [...customTips.value, tip];
+  return tip;
 }
 
 function TipRow(props: { tip: AquarelleTip }) {
@@ -206,10 +229,11 @@ export function BrushesDocker(props: BrushesDockerProps = {}) {
     importing.value = true;
     importFailure.value = false;
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const result = await importTip(bytes, file.name);
+      const result = await importTip(file, {
+        decode: decodeRgbaAtTipSize,
+        register: async ({ name }) => registerDockerTip(name),
+      });
       if (result.ok) {
-        customTips.value = [...customTips.value, result.tip];
         void pickAquarelleBrush(result.tip.id);
       } else {
         importFailure.value = true;
