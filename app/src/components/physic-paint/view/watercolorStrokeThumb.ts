@@ -46,9 +46,14 @@ const DEGREES = Math.PI / 180;
 const tipCache = new Map<string, HTMLCanvasElement>();
 const thumbCache = new Map<string, HTMLCanvasElement>();
 
-/** The tip as a tinted RGBA image (alpha = tip value). */
+/**
+ * The tip as a tinted RGBA image (alpha = tip value). The key carries the
+ * mask-registry generation (63-06 / T-63-18): the canvas is rasterized from
+ * `b.tipData`, so a mask replaced under an unchanged id must paint anew
+ * instead of blitting the pre-change mask.
+ */
 export function tipImage(b: Brush, hex: string): HTMLCanvasElement {
-  const key = `${b.id}|${hex}`;
+  const key = `${b.id}|${hex}|g${maskGeneration()}`;
   let c = tipCache.get(key);
   if (c) return c;
   const n = b.tipSize;

@@ -14,6 +14,7 @@
 
 import {
   buildBrushForStroke,
+  maskGeneration,
   toEngineParams,
   type AquarelleTool,
   type AquarelleToolOverrides,
@@ -73,9 +74,14 @@ function overridesSignature(overrides: AquarelleToolOverrides | null): string {
   ].join(',');
 }
 
-/** Single-entry cache keyed by the scalar tip signature (no identity churn). */
+/**
+ * Single-entry cache keyed by the scalar tip signature (no identity churn)
+ * PLUS the mask-registry generation (63-06 / G-2 / T-63-18): a mask replaced
+ * under an unchanged id, and a registry reset, both change the brush the
+ * engine would stamp — so the cache must rebuild instead of reusing it.
+ */
 function brushFor(tipId: string | null, overrides: AquarelleToolOverrides | null): Brush {
-  const signature = `${tipId ?? ''}|${overridesSignature(overrides)}`;
+  const signature = `${tipId ?? ''}|${overridesSignature(overrides)}|g${maskGeneration()}`;
   if (!cachedBrush || cachedSignature !== signature) {
     cachedBrush = buildBrushForStroke(tipId ?? 'round', overrides);
     cachedSignature = signature;
