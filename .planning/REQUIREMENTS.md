@@ -21,7 +21,7 @@
 - [ ] **TIP-10**: Both import caps are enforced before read and before decode (`file.size` ≤ 64 MB, decoded pixels ≤ 64 MP), and a stored mask asset that is missing, fails to decode, or is not exactly `TIP_SIZE²` bytes degrades to an unavailable tip, the neutral round fallback, and exactly one aggregate named warning — never a crash and never blank paint; a failed asset never aborts the project open
 - [ ] **TIP-11**: The brush pack travels in the `.mce` root as `brushPack?: { kind, entries }`, each entry carrying a package-relative asset ref to its mask — not the mask bytes — declared in both the TypeScript model and the Rust struct under the field-diff pin
 - [ ] **TIP-12**: Masks are decoded and registered inside the project-open await, before the first stroke replay of a loaded project, so painting before registration completes is impossible by construction; the whole brush set decodes in one call and a failing tip never aborts the open
-- [ ] **TIP-13**: Three textured tips ship without any import — `wc/builtin-bristle` (Bristle fan), `wc/builtin-chalk` (Chalk grain), `wc/builtin-sponge` (Sponge) — as compile-time constants under stable ids, category `texture`, listed in the brush library, resolvable on every install, and never written into a project
+- [x] **TIP-13**: Three textured tips ship without any import — `wc/builtin-bristle` (Bristle fan), `wc/builtin-chalk` (Chalk grain), `wc/builtin-sponge` (Sponge) — as compile-time constants under stable ids, category `texture`, listed in the brush library, resolvable on every install, and never written into a project
 - [ ] **TIP-14**: A roto script saved with an imported tip carries that tip's mask in its `brushPack` entries and rehydrates on load, so applying it into a project that lacks the tip still paints the texture
 - [ ] **TIP-15**: `buildBrushPackSnapshot` remains the one place that knows entry shape — stays total and fail-closed on malformed input while carrying the asset ref through
 - [ ] **TIP-16**: Saving and reopening an untouched project is byte-identical — mask asset bytes included — and copying the project alone to a fresh profile reproduces identical strokes and an identical brush library listing
@@ -100,7 +100,7 @@ Which phases cover which requirements.
 | TIP-10 | Phase 63 | Pending |
 | TIP-11 | Phase 63 | Pending |
 | TIP-12 | Phase 63 | Pending |
-| TIP-13 | Phase 63 | Pending |
+| TIP-13 | Phase 63 | Complete |
 | TIP-14 | Phase 63 | Pending |
 | TIP-15 | Phase 63 | Pending |
 | TIP-16 | Phase 63 | Pending |
