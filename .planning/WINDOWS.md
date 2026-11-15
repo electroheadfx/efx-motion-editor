@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 14
 waived_count: 18
-fixed_count: 91
-total_count: 123
-last_updated: 2026-11-11T11:50:07.646Z
+fixed_count: 92
+total_count: 124
+last_updated: 2026-11-15T17:40:07.809Z
 ---
 
 # Broken Windows Ledger
@@ -138,6 +138,7 @@ last_updated: 2026-11-11T11:50:07.646Z
 | 121 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-26 Task 3 GREEN repointed the shipped stroke-end TAIL pin to the bake continuation and added vector-guard + stale-arm assertions (Rule 3 - Blocking). | open |  | 2026-11-11T11:28:45.928Z |  |
 | 122 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-27 Task 2 GREEN repointed the shipped 61-13 scriptStrokeEdition import pin to start at DRAFT_SETTLE_BUSY_MESSAGE, keeping every symbol assertion (Rule 3 - Blocking). | open |  | 2026-11-11T11:50:07.489Z |  |
 | 123 | 61 | deviation | app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts |  | 61-27 Task 3 GREEN repointed two shipped commit-call pins (61-19 live and 61-22 G-11 identifiers) from the bare 'void bundle.applyAnchorWidths?.' to its consuming form, preserving every other assertion (Rule 3 - Blocking). | open |  | 2026-11-11T11:50:07.646Z |  |
+| 124 | quick/261115-oh9 | deviation | app/src/components/physic-paint/view/WatercolorBrushLibrary.test.ts |  | CSS pin re-anchored after the full app suite exposed a substring collision with the menu's compound 34px rule | fixed |  | 2026-11-15T17:39:56.666Z | 2026-11-15T17:40:07.809Z |
 
 ````json
 [
@@ -1667,6 +1668,19 @@ last_updated: 2026-11-11T11:50:07.646Z
     "recorded_at": "2026-11-11T11:50:07.646Z",
     "resolved_at": null,
     "milestone": "v2.1.0"
+  },
+  {
+    "id": 124,
+    "kind": "deviation",
+    "phase": "quick/261115-oh9",
+    "file": "app/src/components/physic-paint/view/WatercolorBrushLibrary.test.ts",
+    "line": null,
+    "description": "CSS pin re-anchored after the full app suite exposed a substring collision with the menu's compound 34px rule",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-11-15T17:39:56.666Z",
+    "resolved_at": "2026-11-15T17:40:07.809Z",
+    "milestone": "v2.2.0"
   }
 ]
 ````

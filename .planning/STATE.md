@@ -6,10 +6,10 @@ current_phase: 63
 current_phase_name: Brush Tip Pipeline
 status: verifying
 stopped_at: Completed 63-12-PLAN.md
-last_updated: "2026-11-15T15:51:11.959Z"
+last_updated: "2026-11-15T18:05:40.200Z"
 last_activity: 2026-11-15
 last_activity_desc: Phase 63 execution started
-state_head: 709e891d888425d7404a74f94ef3bacdafcfe604
+state_head: 314209671d4c58345fb03e1e8b24d96d1ee5d65c
 progress:
   total_phases: 1
   completed_phases: 0
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 Phase: 63 (Brush Tip Pipeline) — EXECUTING
 Plan: 14 of 14
 Status: Phase complete — ready for verification
-Last activity: 2026-11-15 — Phase 63 execution started
+Last activity: 2026-11-15 - Completed quick task 261115-oh9: Texture is a setting of the brush response (response owns physics, texture replaces the footprint; Default = no texture)
 
 
 ## Performance Metrics
@@ -544,6 +544,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261113-fkm | Vector paint: a whole-stroke colour apply replaces explicit per-vertex colours in the same edit (one undo), so the global colour survives path-edit re-entry; Size keeps per-vertex width factors (UAT approved 2026-11-13) | 2026-11-13 | 8adfa44ce | [261113-fkm-vector-paint-global-colour-apply-replace](./milestones/v2.1.0-quick/261113-fkm-vector-paint-global-colour-apply-replace/) |
 | 261113-o26 | Free canvas pan on both surfaces (Studio Hand / Shift+Space, main editor Space- and middle-drag push past any edge at Fit or 1:1; Fit restores) + a hover-revealed liquid-glass zoom pill seated bottom-right on both canvases, with Hand, FIT and 1:1 in the editor row (UAT approved 2026-11-13) | 2026-11-13 | b655ba3bb | [261113-o26-allow-to-move-canvas-out-with-hand-same-](./milestones/v2.1.0-quick/261113-o26-allow-to-move-canvas-out-with-hand-same-/) |
 | 261113-qjd | Context-aware Shift+? help: the overlay opens on the Paint Mode tab in stroke editing, Timeline/Canvas on hover, Sections elsewhere, with a Detected label; all 9 groups reachable via number keys 1-9; documented keys verified against real bindings; the editor and Studio share one shortcuts modal (Studio global button styles isolated, stacked key symbols spaced) (UAT approved 2026-11-13) | 2026-11-13 | f8b265b32 | [261113-qjd-i-want-a-shift-shortcut-for-show-all-key](./milestones/v2.1.0-quick/261113-qjd-i-want-a-shift-shortcut-for-show-all-key/) |
+| 261115-oh9 | Texture is a setting of the brush response (response owns physics, texture replaces the footprint; Default = no texture); real-mask chips, both UI surfaces, payload carrier | 2026-11-15 | 314209671 | [261115-oh9-fix-texture-becomes-a-setting-of-the-bru](./quick/261115-oh9-fix-texture-becomes-a-setting-of-the-bru/) |
 
 ## Roadmap Evolution
 
