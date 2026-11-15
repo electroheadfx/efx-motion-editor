@@ -32,6 +32,18 @@ import { BUILTIN_TIP_MASKS } from './builtinTips'
 
 const masks = new Map<string, Uint8Array>()
 
+/**
+ * The reserved built-in set, built ONCE at module load: id -> the exact
+ * compile-time allocation. It is the one authority for both write laws —
+ * `registerMask` refuses every id in it, and `replaceMaskRegistry` admits a
+ * built-in id only when the entry's mask IS that allocation (WR-05 / T-63-31:
+ * script or package data can never alter a shipped texture for the session).
+ * Derived from `BUILTIN_TIP_MASKS` alone — the set is never widened.
+ */
+const builtinMasksById = new Map<string, Uint8Array>(
+  BUILTIN_TIP_MASKS.map((builtin): [string, Uint8Array] => [builtin.id, builtin.mask]),
+)
+
 for (const builtin of BUILTIN_TIP_MASKS) {
   masks.set(builtin.id, builtin.mask)
 }
@@ -48,8 +60,22 @@ function isWritable(id: unknown, mask: unknown): mask is Uint8Array {
 /**
  * Register (or overwrite) one mask. False and NO mutation unless the
  * id is non-empty and the mask is exactly TIP_MASK_BYTES long.
+ *
+ * RESERVED IDS (WR-05): the three compile-time built-in ids are refused
+ * outright — before the writable check — with a warning naming the id, no
+ * map write and no generation bump. A script's `brushPack` or a foreign
+ * package entry named after a built-in therefore can never replace the
+ * shipped texture for the session; only `replaceMaskRegistry` with the
+ * exact `BUILTIN_TIP_MASKS` allocation (i.e. `resetMaskRegistry`) installs
+ * one. Custom ids register exactly as before.
  */
 export function registerMask(id: string, mask: Uint8Array): boolean {
+  if (builtinMasksById.has(id)) {
+    console.warn(
+      `[maskRegistry] refused to register "${id}" — built-in tip ids are reserved; only the compile-time BUILTIN_TIP_MASKS allocation may install one.`,
+    )
+    return false
+  }
   if (!isWritable(id, mask)) return false
   masks.set(id, mask)
   generation += 1
