@@ -23,6 +23,7 @@ import {
   getAquarelleEventsForFrame,
   getAquarelleStrokeKeyAnchors,
   getRecordedAquarelleDryEvents,
+  getRecordedAquarellePayload,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
   purgeAllAquarelleKeyScripts,
@@ -117,6 +118,38 @@ describe('restoreAquarelleRecordTimeline', () => {
     expect(getRecordedAquarellePayloadTimeline()).toHaveLength(0);
     expect(getRecordedAquarelleStroke(101)).toBeUndefined();
     expect(aquarelleRecordClock()).toBe(0);
+  });
+});
+
+// ============================================================
+//  quick-261115-oh9 — the texture carrier survives restore.
+//
+//  A restored stroke rebuilds its payload explicitly, so the texture
+//  must be copied conditionally: present stays present, absent stays
+//  absent (the payload codec's default is the response's own tip).
+// ============================================================
+describe('quick-261115-oh9 restored textureId carrier', () => {
+  function texturedFixture(
+    playFrame: number,
+    mutationId: number,
+    textureId: string,
+  ): StudioStroke<AquarelleStrokePayload> {
+    const base = fixtureStroke(playFrame, mutationId);
+    return { ...base, engine: { ...base.engine, textureId } };
+  }
+
+  it('preserves a recorded engine.textureId through restore and getRecordedAquarellePayload', () => {
+    restoreAquarelleRecordTimeline([texturedFixture(7, 42, 'wc/builtin-chalk')]);
+    const entry = getRecordedAquarellePayloadTimeline()[0] as StudioStroke<AquarelleStrokePayload>;
+    expect(entry.engine.textureId).toBe('wc/builtin-chalk');
+    expect(getRecordedAquarelleStroke(42)!.textureId).toBe('wc/builtin-chalk');
+    expect(getRecordedAquarellePayload(42)!.textureId).toBe('wc/builtin-chalk');
+  });
+
+  it('keeps an untextured restore free of the key', () => {
+    restoreAquarelleRecordTimeline([fixtureStroke(7, 43)]);
+    expect('textureId' in getRecordedAquarelleStroke(43)!).toBe(false);
+    expect('textureId' in getRecordedAquarellePayload(43)!).toBe(false);
   });
 });
 

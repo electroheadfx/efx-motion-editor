@@ -79,9 +79,11 @@ describe('stroke thumb cache (63-06 D-05 / T-63-18)', () => {
     ).toBe(true);
   });
 
-  it('paints a mask-backed tip through buildBrushForStroke and never throws', () => {
-    expect(SOURCE).toContain('resolveMask(tipId)');
-    expect(SOURCE).toContain('buildBrushForStroke(tipId)');
+  it('paints a RESPONSE preview through the options-form builder and never throws', () => {
+    // quick-261115-oh9: a painted thumb is a response preview, so the mask
+    // branch is gone and the builder is called with the neutral texture.
+    expect(SOURCE).toContain('buildBrushForStroke(tipId, { textureId: null })');
+    expect(SOURCE).not.toContain('resolveMask(tipId)');
     // The old unknown-preset throw is gone: a catalog id is always paintable.
     expect(SOURCE).not.toContain('unknown preset id');
   });
@@ -110,10 +112,10 @@ describe('thumbnail caches observe mask generation (63-06 / T-63-18)', () => {
 
   it('returns a new tinted tip canvas after a mask replacement under the same id', () => {
     registerMask(MASKED, uniformMask(30));
-    const first = tipImage(buildBrushForStroke(MASKED), '#2338a8');
+    const first = tipImage(buildBrushForStroke('round', { textureId: MASKED }), '#2338a8');
 
     registerMask(MASKED, uniformMask(210));
-    const second = tipImage(buildBrushForStroke(MASKED), '#2338a8');
+    const second = tipImage(buildBrushForStroke('round', { textureId: MASKED }), '#2338a8');
 
     // Boolean identity: an object `.not.toBe` diagnostic prints both canvases
     // across many lines, which breaks the TAP-red evidence parser.
@@ -162,13 +164,13 @@ describe('thumbnail caches observe mask generation (63-06 / T-63-18)', () => {
     try {
       registerMask(MASKED, uniformMask(60));
       const thumb = getStrokeThumb(MASKED);
-      const tip = tipImage(buildBrushForStroke(MASKED), '#2338a8');
+      const tip = tipImage(buildBrushForStroke('round', { textureId: MASKED }), '#2338a8');
 
       clearStrokeThumbCache();
 
       expect(getStrokeThumb(MASKED), 'the stroke thumb repaints').not.toBe(thumb);
       expect(
-        tipImage(buildBrushForStroke(MASKED), '#2338a8'),
+        tipImage(buildBrushForStroke('round', { textureId: MASKED }), '#2338a8'),
         'the tinted tip canvas repaints',
       ).not.toBe(tip);
       expect(paintSpy.mock.calls.length, 'both reads repaint after the reset').toBe(2);

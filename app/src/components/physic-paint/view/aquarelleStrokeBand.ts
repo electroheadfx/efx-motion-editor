@@ -87,9 +87,14 @@ export interface StrokeBandTip {
  * flat/chalk. Force aspect 1 and angle 0 here.
  */
 export function paintTipForStroke(
-  stroke: Pick<AquarelleStroke, 'tool' | 'brushId' | 'toolOverrides'>,
+  stroke: Pick<AquarelleStroke, 'tool' | 'brushId' | 'toolOverrides' | 'textureId'>,
 ): StrokeBandTip {
-  const brush = buildBrushForStroke(stroke.brushId || 'round', stroke.toolOverrides);
+  // quick-261115-oh9: the recorded texture rides beside the response id, so
+  // the band shows the exact footprint the bake would stamp.
+  const brush = buildBrushForStroke(stroke.brushId || 'round', {
+    textureId: stroke.textureId ?? null,
+    overrides: stroke.toolOverrides,
+  });
   if (stroke.tool === 'pen') {
     return { brush, aspect: 1, angle: 0, rotation: 'fixed' };
   }

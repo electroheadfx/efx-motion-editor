@@ -189,7 +189,7 @@ if (process.env.BAKE_BUILTIN_TIPS === '1') {
       if (bristle === undefined) throw new Error('bristle mask missing from the baked set')
       const shipped = BUILTIN_TIP_MASKS.find((entry) => entry.id === 'wc/builtin-bristle')
       if (shipped === undefined) throw new Error('bristle mask missing from the shipped set')
-      const brush = buildBrushForStroke('wc/builtin-bristle')
+      const brush = buildBrushForStroke('round', { textureId: 'wc/builtin-bristle' })
       expect(brush.tipSize).toBe(192)
       expect(brush.tipData === shipped.mask).toBe(true)
       expect(Buffer.from(brush.tipData).equals(Buffer.from(bristle.mask))).toBe(true)

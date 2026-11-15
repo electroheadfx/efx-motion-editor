@@ -35,7 +35,10 @@ export interface AquarelleFootprint {
 
 export interface AquarelleFootprintInput {
   tool: AquarelleTool;
+  /** The RESPONSE id (never a texture id, quick-261115-oh9). */
   tipId: string | null;
+  /** The texture (mask) id replacing the footprint; null keeps the response tip. */
+  textureId: string | null;
   toolOverrides: AquarelleToolOverrides | null;
   /** Canonical AQUA-04 size (0..80, the top-bar slider). */
   size: number;
@@ -75,15 +78,20 @@ function overridesSignature(overrides: AquarelleToolOverrides | null): string {
 }
 
 /**
- * Single-entry cache keyed by the scalar tip signature (no identity churn)
- * PLUS the mask-registry generation (63-06 / G-2 / T-63-18): a mask replaced
- * under an unchanged id, and a registry reset, both change the brush the
- * engine would stamp — so the cache must rebuild instead of reusing it.
+ * Single-entry cache keyed by the scalar (response, texture) signature (no
+ * identity churn) PLUS the mask-registry generation (63-06 / G-2 / T-63-18):
+ * a texture change, a mask replaced under an unchanged id, and a registry
+ * reset all change the brush the engine would stamp — so the cache must
+ * rebuild instead of reusing it.
  */
-function brushFor(tipId: string | null, overrides: AquarelleToolOverrides | null): Brush {
-  const signature = `${tipId ?? ''}|${overridesSignature(overrides)}|g${maskGeneration()}`;
+function brushFor(
+  tipId: string | null,
+  textureId: string | null,
+  overrides: AquarelleToolOverrides | null,
+): Brush {
+  const signature = `${tipId ?? ''}|${textureId ?? ''}|${overridesSignature(overrides)}|g${maskGeneration()}`;
   if (!cachedBrush || cachedSignature !== signature) {
-    cachedBrush = buildBrushForStroke(tipId ?? 'round', overrides);
+    cachedBrush = buildBrushForStroke(tipId ?? 'round', { textureId, overrides });
     cachedSignature = signature;
   }
   return cachedBrush;
@@ -132,7 +140,7 @@ export function aquarelleFootprintFor(input: AquarelleFootprintInput): Aquarelle
       rounded: false,
     };
   }
-  const brush = brushFor(input.tipId, input.toolOverrides);
+  const brush = brushFor(input.tipId, input.textureId, input.toolOverrides);
   const angle = angleFor(brush, input.moveAngle, input.tiltX, input.tiltY);
   if (input.tool === 'lift') {
     return {

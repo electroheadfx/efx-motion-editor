@@ -330,6 +330,7 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('const footprint = aquarelleFootprintFor({');
     expect(layer).toContain('size: params.size,');
     expect(layer).toContain('tipId: aquarelleActiveTipId(),');
+    expect(layer).toContain('textureId: selection.textureId,');
     expect(layer).toContain('toolOverrides: selection.toolOverrides,');
     expect(layer).toContain(
       'pressure: cursorPreviewPressure(lastPointerType, lastPointerButtons, lastPointerPressure),',
@@ -348,6 +349,15 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // Dual-ring family: dark under-stroke + white over-stroke.
     expect(layer).toContain('stroke="#111111"');
     expect(layer).toContain('stroke="#ffffff"');
+  });
+
+  it('TEXTURE (quick-261115-oh9): live, record and vector commit share the pair', () => {
+    // The live brush binds the same (response, texture) pair the record stores.
+    expect(layer).toContain('buildBrushForStroke(selection.brushId, {');
+    expect(layer).toContain('textureId: selection.textureId,');
+    // The stroke-end literal and the vector commit source carry the texture
+    // conditionally — an untextured stroke keeps its exact key set.
+    expect(layer).toContain('...(snap.textureId !== null ? { textureId: snap.textureId } : {}),');
   });
 
   it('WR-01: re-renders on a stationary tilt/pressure change', () => {

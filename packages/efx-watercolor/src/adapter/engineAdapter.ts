@@ -292,7 +292,14 @@ export function createAquarelleEngineAdapter(
     if (!engine) return
     const payload = stroke.engine
     engine.setParams(toEngineParams(payload.params))
-    engine.setBrush(buildBrushForStroke(payload.brushId ?? stroke.brushId, payload.toolOverrides ?? stroke.toolOverrides))
+    engine.setBrush(
+      buildBrushForStroke(payload.brushId ?? stroke.brushId, {
+        // quick-261115-oh9: the texture axis rides the opaque engine slot.
+        // Absent stays absent — the response's own tip is stamped.
+        textureId: payload.textureId ?? null,
+        overrides: payload.toolOverrides ?? stroke.toolOverrides,
+      }),
+    )
     // 261111-wd6: ONE base-colour resolution, shared with the per-sample
     // bridge — configure() and the sampler can never disagree on the base.
     const hex = resolveStrokeBaseColor(stroke)

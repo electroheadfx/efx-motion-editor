@@ -77,7 +77,13 @@ function liftStroke(
 }
 
 function roundBrush(overrides: typeof NEUTRAL_TOOL_OVERRIDES = ROUND): Brush {
-  return buildBrushForStroke('round', overrides);
+  return buildBrushForStroke('round', { textureId: null, overrides });
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 function engineSizeOf(params: Record<string, number> = CANONICAL): number {
@@ -222,6 +228,7 @@ describe('261101-mvg stroke band — pinned to the engine/cursor footprint law',
         const footprint = aquarelleFootprintFor({
           tool,
           tipId: 'round',
+          textureId: null,
           toolOverrides: wideTip,
           size: 12,
           pressure,
@@ -246,6 +253,7 @@ describe('261101-mvg stroke band — pinned to the engine/cursor footprint law',
       const footprint = aquarelleFootprintFor({
         tool: 'pen',
         tipId: 'round',
+        textureId: null,
         toolOverrides: wideTip,
         size: 12,
         pressure,
@@ -294,6 +302,42 @@ describe('261101-mvg stroke band — pinned to the engine/cursor footprint law',
     // over the cap sweep — the rounded-rect branch, never the ellipse one.
     expect(maxAcross).toBeGreaterThan(0.5 * radiusPx);
     expect(maxAcross).toBeLessThanOrEqual(Math.hypot(1, 0.5) * radiusPx + 1e-6);
+  });
+});
+
+// quick-261115-oh9: the recorded texture is part of the tip. The band reads
+// the SAME `buildBrushForStroke` binding the bake and the punch use, so a
+// textured stroke's band is resolved from the (response, texture) pair.
+describe('quick-261115-oh9 — the band resolves the recorded texture', () => {
+  const TEXTURE_ID = 'wc/builtin-chalk';
+
+  it('paintTipForStroke stamps a recorded textureId through the response law', () => {
+    const recorded = {
+      ...paintStroke('brush', [point(0.2, 0.5), point(0.8, 0.5)]),
+      textureId: TEXTURE_ID,
+    };
+    const tip = paintTipForStroke(recorded);
+    const plain = paintTipForStroke(
+      paintStroke('brush', [point(0.2, 0.5), point(0.8, 0.5)]),
+    );
+    const expected = buildBrushForStroke('round', {
+      textureId: TEXTURE_ID,
+      overrides: ROUND,
+    });
+    // The response owns the physics; the texture only replaces the tip bytes.
+    expect(tip.brush.id).toBe('round');
+    expect(sameBytes(tip.brush.tipData, expected.tipData)).toBe(true);
+    expect(sameBytes(tip.brush.tipData, plain.brush.tipData)).toBe(false);
+    expect(tip.aspect).toBe(plain.aspect);
+    expect(tip.angle).toBe(plain.angle);
+  });
+
+  it('a stroke without a textureId uses the response tip', () => {
+    const tip = paintTipForStroke(
+      paintStroke('brush', [point(0.2, 0.5), point(0.8, 0.5)]),
+    );
+    const expected = buildBrushForStroke('round', { textureId: null, overrides: ROUND });
+    expect(sameBytes(tip.brush.tipData, expected.tipData)).toBe(true);
   });
 });
 

@@ -123,6 +123,13 @@ export const aquarelleToolOverrides = signal<AquarelleToolOverrides>({
  * punch share one number.
  */
 export const aquarelleLiftTipId = signal<string | null>('filbert');
+/**
+ * quick-261115-oh9: the texture axis. A texture (a mask id registered in the
+ * engine) is a SETTING of the active brush RESPONSE — it replaces the
+ * footprint and nothing else. Studio-realm selection only; the recorded
+ * stroke carries it on `engine.textureId`. The eraser never reads it.
+ */
+export const aquarelleSelectedTextureId = signal<string | null>(null);
 
 /**
  * 261027-gh9g: the top-bar brush dropdown (open state + the trigger's viewport
@@ -238,6 +245,16 @@ export function setAquarelleTool(tool: AquarelleTool): void {
 }
 
 /**
+ * quick-261115-oh9: compare-then-write (efx-preact-reactivity rule 3). A
+ * re-pick of the current texture writes nothing, so narrow readers never
+ * re-render on an unchanged value.
+ */
+export function setAquarelleSelectedTextureId(textureId: string | null): void {
+  if (aquarelleSelectedTextureId.value === textureId) return;
+  aquarelleSelectedTextureId.value = textureId;
+}
+
+/**
  * Select a tip and load its per-brush multipliers into the Brush
  * response surface (D-07 / R1.7). A null id clears the selection
  * and resets multipliers to neutral.
@@ -329,16 +346,20 @@ export function aquarelleActiveTipId(): string | null {
  */
 export function aquarelleBrushForActiveTool(): {
   brushId: string;
+  textureId: string | null;
   toolOverrides: AquarelleToolOverrides;
 } {
   if (aquarelleActiveTool.value === 'lift') {
+    // quick-261115-oh9: the eraser never carries a texture (hard exclusion).
     return {
       brushId: aquarelleLiftTipId.value ?? 'filbert',
+      textureId: null,
       toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES },
     };
   }
   return {
     brushId: aquarelleSelectedTipId.value ?? '',
+    textureId: aquarelleSelectedTextureId.value,
     toolOverrides: { ...aquarelleToolOverrides.value },
   };
 }
@@ -413,6 +434,7 @@ export function snapshotAquarelleRecord(): {
   params: Record<string, number>;
   toolOverrides: AquarelleToolOverrides;
   brushId: string;
+  textureId: string | null;
   tool: AquarelleTool;
 } {
   const live = aquarelleParams.value;
@@ -426,6 +448,7 @@ export function snapshotAquarelleRecord(): {
     params,
     toolOverrides: selection.toolOverrides,
     brushId: selection.brushId,
+    textureId: selection.textureId,
     tool: aquarelleActiveTool.value,
   };
 }
@@ -441,6 +464,9 @@ export function buildAquarelleStrokePayload(
     params: snap.params,
     brushId: snap.brushId,
     toolOverrides: snap.toolOverrides,
+    // quick-261115-oh9: written ONLY when a texture is selected, so an
+    // untextured stroke keeps its exact pre-texture payload shape.
+    ...(snap.textureId !== null ? { textureId: snap.textureId } : {}),
     timestamp: 0,
     ...extra,
   };
@@ -1773,6 +1799,9 @@ export function restoreAquarelleRecordTimeline(
     // 62-UAT: the drawn-by-the-vector-pen marker rides the same conditional-
     // spread law, so a reopened drawn path still lists as "Vector".
     const vectorDrawn = engine.vectorDrawn === true ? true : undefined;
+    // quick-261115-oh9: the texture axis. Absent stays absent; a present id
+    // rides the stroke so a reopen replays the footprint the user painted.
+    const textureId = engine.textureId;
     const stroke: AquarelleStroke = {
       tool: engine.tool,
       color: engine.color,
@@ -1794,6 +1823,7 @@ export function restoreAquarelleRecordTimeline(
       ...(anchors !== undefined ? { anchors } : {}),
       ...(curveMode !== undefined ? { curveMode } : {}),
       ...(vectorDrawn !== undefined ? { vectorDrawn } : {}),
+      ...(textureId !== undefined ? { textureId } : {}),
     };
     const entry = toStudioStroke(stroke);
     payloadTimeline.push(entry);
@@ -2037,6 +2067,9 @@ export function getRecordedAquarellePayload(
     params: { ...stroke.params },
     brushId: stroke.brushId,
     toolOverrides: stroke.toolOverrides ? { ...stroke.toolOverrides } : undefined,
+    // quick-261115-oh9: conditional — a stroke recorded without a texture
+    // keeps its exact pre-texture key set.
+    ...(stroke.textureId !== undefined ? { textureId: stroke.textureId } : {}),
     mutationId: stroke.mutationId,
     diffusionFrames: stroke.diffusionFrames,
     timestamp: stroke.timestamp,

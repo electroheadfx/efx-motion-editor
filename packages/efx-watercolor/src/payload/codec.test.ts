@@ -185,6 +185,64 @@ describe('serialize → parse round-trip', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 2b. textureId — the texture axis rides the opaque engine slot (quick-oh9)
+//
+// The response owns the physics; `engine.textureId` names the footprint the
+// response stencils through. Absent is the documented default (no texture),
+// so schemaVersion stays 1 — the anchors / curveMode precedent. A present
+// non-string or an empty string is malformed and refuses the event.
+// ---------------------------------------------------------------------------
+
+describe('textureId carrier (quick-261115-oh9)', () => {
+  it('round-trips a stroke whose engine.textureId names a built-in texture', () => {
+    const stroke = makeStrokeEvent({ textureId: 'wc/builtin-chalk' })
+    expect(stroke.engine.textureId).toBe('wc/builtin-chalk')
+    const reparsed = parse(serialize(stroke))
+    expect(reparsed).not.toBeNull()
+    const round = reparsed as StudioStroke<AquarelleStrokePayload>
+    expect(round.engine.textureId).toBe('wc/builtin-chalk')
+    expect(round).toEqual(stroke)
+  })
+
+  it('absent stays absent: no textureId key is invented and schemaVersion is still 1', () => {
+    const stroke = makeStrokeEvent()
+    const wire = serialize(stroke)
+    expect(wire.schemaVersion).toBe(AQUARELLE_SCHEMA_VERSION)
+    expect(AQUARELLE_SCHEMA_VERSION).toBe(1)
+    const round = parse(wire) as StudioStroke<AquarelleStrokePayload>
+    expect('textureId' in round.engine).toBe(false)
+  })
+
+  it('refuses a present empty string, a number and null', () => {
+    const stroke = makeStrokeEvent({ textureId: 'wc/builtin-chalk' })
+    const wire = serialize(stroke) as {
+      schemaVersion: number
+      event: StudioStroke<AquarelleStrokePayload>
+    }
+    for (const bad of ['', 42, null]) {
+      const tampered = {
+        schemaVersion: wire.schemaVersion,
+        event: { ...wire.event, engine: { ...wire.event.engine, textureId: bad } },
+      }
+      expect(parse(tampered) === null).toBe(true)
+    }
+  })
+
+  it('keeps an unrelated unknown engine key allowed (the allowance is not tightened)', () => {
+    const stroke = makeStrokeEvent()
+    const wire = serialize(stroke) as {
+      schemaVersion: number
+      event: StudioStroke<AquarelleStrokePayload>
+    }
+    const withExtra = {
+      schemaVersion: wire.schemaVersion,
+      event: { ...wire.event, engine: { ...wire.event.engine, futureAxis: 1 } },
+    }
+    expect(parse(withExtra) === null).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 3. Dry event shape (D-16) — distinguished union member, one payload union
 // ---------------------------------------------------------------------------
 

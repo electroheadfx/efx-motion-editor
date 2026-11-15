@@ -86,7 +86,10 @@ class Rig {
     e.setBrush(
       buildBrushForStroke(
         stroke.engine.brushId ?? stroke.brushId,
-        stroke.engine.toolOverrides ?? stroke.toolOverrides,
+        {
+          textureId: stroke.engine.textureId ?? null,
+          overrides: stroke.engine.toolOverrides ?? stroke.toolOverrides,
+        },
       ),
     )
     const hex = stroke.color ?? stroke.engine.color

@@ -121,6 +121,8 @@ export interface VectorStrokeSource {
   readonly color: string | null;
   readonly params: Readonly<Record<string, number>>;
   readonly brushId: string;
+  /** quick-261115-oh9: texture (mask) id; absent keeps the response tip. */
+  readonly textureId?: string;
   readonly toolOverrides: NonNullable<AquarelleStroke['toolOverrides']>;
   readonly tool: AquarelleTool;
   readonly diffusionFrames: number;
@@ -1012,6 +1014,9 @@ export function buildVectorStroke(
     color: source.color,
     params: { ...source.params },
     brushId: source.brushId,
+    // quick-261115-oh9: the texture axis rides the same conditional-spread
+    // law — an untextured path keeps its exact pre-texture key set.
+    ...(source.textureId !== undefined ? { textureId: source.textureId } : {}),
     ...recordedCurveModeField(commit.curveMode),
     anchors: [...commit.anchors],
     // 62-UAT: provenance for the stroke list — a drawn path reads "Vector",

@@ -13,7 +13,10 @@
 //    ticks        ← max(1, pts.length - 1)
 //    cuisson      ← diffusionFrames when > 0, else 0 (capped at 600)
 //    motion       ← null
-//    brushId      ← the selected tip id (stable brush-pack key)
+//    brushId      ← the selected RESPONSE id (stable brush-pack key)
+//    textureId    ← the selected texture (mask) id, written only when
+//                  one was chosen (quick-261115-oh9) — the texture
+//                  replaces the footprint, never the response
 //    toolOverrides ← the tip's 8 numeric multipliers snapshotted
 //                  at record time (R1.7 / D-08) — {} when absent
 //    traceSeed    ← hashMutationId(mutationId)   (D-20 / D-25),
@@ -68,6 +71,11 @@ export interface AquarelleStrokePayload {
   params: Record<string, number>
   brushId: string
   toolOverrides?: AquarelleToolOverrides
+  /**
+   * quick-261115-oh9: the texture (mask) id that replaces the footprint.
+   * ABSENT means the response's own tip; `brushId` is never a texture id.
+   */
+  textureId?: string
   mutationId?: number
   diffusionFrames?: number
   timestamp: number
@@ -136,6 +144,8 @@ export interface AquarelleStroke {
   brushId: string
   points: readonly AquarellePoint[]
   toolOverrides?: AquarelleToolOverrides
+  /** quick-261115-oh9: texture (mask) id; absent keeps the response tip. */
+  textureId?: string
   mutationId?: number
   diffusionFrames?: number
   timestamp: number
@@ -189,6 +199,9 @@ export function toStudioStroke(
       params: { ...s.params } as Record<string, number>,
       brushId: s.brushId,
       toolOverrides: s.toolOverrides ? { ...s.toolOverrides } : undefined,
+      // quick-261115-oh9: written ONLY when a texture was chosen, so an
+      // untextured stroke keeps its exact pre-texture key set.
+      ...(s.textureId !== undefined ? { textureId: s.textureId } : {}),
       mutationId: s.mutationId,
       diffusionFrames: s.diffusionFrames,
       timestamp: s.timestamp,

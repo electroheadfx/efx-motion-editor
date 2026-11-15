@@ -11,10 +11,11 @@
 //  deep-equals x. Ticks are integer host-grid values (DATA-03).
 //  No unseeded RNG (D-20). No second events array (D-16).
 //
-//  schemaVersion stays 1 because `anchors` and `curveMode` are optional
-//  additions whose ABSENCE is the documented state, not a legacy path. A
-//  legacy `renderMode` key, if an older payload still carries one, is an
-//  ignored extra field: no mode is read or written anywhere.
+//  schemaVersion stays 1 because `anchors`, `curveMode` and `textureId`
+//  are optional additions whose ABSENCE is the documented state, not a
+//  legacy path. A legacy `renderMode` key, if an older payload still
+//  carries one, is an ignored extra field: no mode is read or written
+//  anywhere.
 // ============================================================
 
 import type { StudioStroke, StudioPoint } from '@efxlab/efx-paint-host/animation'
@@ -127,6 +128,14 @@ function isStrokeShape(value: unknown): value is StudioStroke<AquarelleStrokePay
   // 62-UAT: drawn provenance is optional and, when present, must be `true`.
   const vectorDrawn = engine['vectorDrawn']
   if (vectorDrawn !== undefined && vectorDrawn !== true) return false
+  // quick-261115-oh9: the texture axis. Absent is valid (no texture); a
+  // present value must be a non-empty string. The Roto script schema runs
+  // the same rule at its own boundary — a script can meet that guard
+  // without ever passing through this codec.
+  const textureId = engine['textureId']
+  if (textureId !== undefined && (typeof textureId !== 'string' || textureId.length === 0)) {
+    return false
+  }
   return true
 }
 

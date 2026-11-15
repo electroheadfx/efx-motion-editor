@@ -50,7 +50,7 @@ function sizeMult(size: number): number {
 }
 
 function brushOf(id: string, overrides: AquarelleToolOverrides = NEUTRAL_TOOL_OVERRIDES) {
-  return buildBrushForStroke(id, overrides);
+  return buildBrushForStroke(id, { textureId: null, overrides });
 }
 
 function fp(
@@ -61,6 +61,7 @@ function fp(
   return aquarelleFootprintFor({
     tool,
     tipId,
+    textureId: null,
     toolOverrides: NEUTRAL_TOOL_OVERRIDES,
     size: 40,
     pressure: 0.4,
@@ -129,6 +130,7 @@ describe('shape law', () => {
     const actual = aquarelleFootprintFor({
       tool: 'brush',
       tipId: 'filbert',
+      textureId: null,
       toolOverrides: overrides,
       size: 40,
       pressure: 0.4,
@@ -227,18 +229,39 @@ describe('footprint brush cache is generation-aware (63-06 / G-2 / T-63-18)', ()
     expect(brushBuildState.count, 'a mask replacement rebuilds the brush').toBe(2);
   });
 
-  it('after resetMaskRegistry the same id reverts to the preset footprint', () => {
+  it('after resetMaskRegistry a texture id reverts to the response footprint', () => {
     registerMask(MASKED, uniformMask(30));
-    // CUSTOM_BASE rotates with the stroke ('follow'), so a non-zero move
-    // direction shows the masked build; the round preset is fixed at angle 0.
-    const masked = fp('brush', MASKED, { moveAngle: 0.7 });
-    expect(masked.angle, 'masked tip follows the stroke direction').toBeCloseTo(0.7);
-    expect(brushBuildState.count, 'the masked brush was built once').toBe(1);
+    // quick-261115-oh9: the RESPONSE owns the physics. 'round' is a fixed-
+    // rotation response, so a texture never turns it into a follow tip.
+    const textured = fp('brush', 'round', { textureId: MASKED, moveAngle: 0.7 });
+    expect(textured.angle, 'the textured tip keeps the response rotation').toBe(0);
+    expect(brushBuildState.count, 'the textured brush was built once').toBe(1);
 
     resetMaskRegistry();
-    const reverted = fp('brush', MASKED, { moveAngle: 0.7 });
-    expect(reverted.angle, 'reset reverts to the preset round footprint').toBe(0);
-    expect(brushBuildState.count, 'the cached masked brush was rebuilt').toBe(2);
+    const reverted = fp('brush', 'round', { textureId: MASKED, moveAngle: 0.7 });
+    expect(reverted.angle, 'reset keeps the response rotation').toBe(0);
+    expect(brushBuildState.count, 'the cached textured brush was rebuilt').toBe(2);
+  });
+});
+
+describe('footprint texture axis (quick-261115-oh9)', () => {
+  beforeEach(() => {
+    resetMaskRegistry();
+    brushBuildState.count = 0;
+  });
+
+  it('invalidates its single-entry cache when textureId changes', () => {
+    fp('brush', 'round', { textureId: null });
+    expect(brushBuildState.count, 'the untextured brush was built once').toBe(1);
+
+    fp('brush', 'round', { textureId: null });
+    expect(brushBuildState.count, 'an unchanged texture stays a cache hit').toBe(1);
+
+    fp('brush', 'round', { textureId: 'wc/builtin-chalk' });
+    expect(brushBuildState.count, 'a texture change rebuilds the brush').toBe(2);
+
+    fp('brush', 'round', { textureId: 'wc/builtin-chalk' });
+    expect(brushBuildState.count, 'the textured entry caches').toBe(2);
   });
 });
 

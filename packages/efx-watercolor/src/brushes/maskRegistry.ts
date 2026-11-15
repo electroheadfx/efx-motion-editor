@@ -1,14 +1,17 @@
 // ============================================================
 //  maskRegistry — module-level engine registry of derived tip masks (D-20).
 //
-//  The engine (buildBrushForStroke) resolves a brushId here BEFORE
-//  any preset lookup. The app feeds it: import registers one mask,
-//  project open REPLACES the whole set (never appends), project
-//  close / New Project resets it. The reset state is the three
-//  compile-time built-in tips (63-03 / D-20): the module seeds
-//  from BUILTIN_TIP_MASKS at load and `resetMaskRegistry()` is
-//  `replaceMaskRegistry(BUILTIN_TIP_MASKS)`, so a project that
-//  never imported a tip always resolves the built-ins.
+//  quick-261115-oh9: the engine (buildBrushForStroke) resolves the
+//  TEXTURE id here — a response id never enters this registry. A
+//  resolved mask replaces the footprint of whichever RESPONSE preset
+//  the stroke names; an unresolved texture id silently falls back to
+//  that preset's own procedural tip. The app feeds it: import
+//  registers one mask, project open REPLACES the whole set (never
+//  appends), project close / New Project resets it. The reset state
+//  is the three compile-time built-in tips (63-03 / D-20): the module
+//  seeds from BUILTIN_TIP_MASKS at load and `resetMaskRegistry()` is
+//  `replaceMaskRegistry(BUILTIN_TIP_MASKS)`, so a project that never
+//  imported a tip always resolves the built-ins.
 //
 //  Preact-free by law — the package core never imports a signal
 //  library. Module state only, with an explicit generation counter

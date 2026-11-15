@@ -90,7 +90,13 @@ export interface LiftFootprintShape {
 export function liftShapeForStroke(
   stroke: Pick<AquarelleStroke, 'brushId' | 'toolOverrides'>,
 ): LiftFootprintShape {
-  const brush = buildBrushForStroke(stroke.brushId || 'filbert', stroke.toolOverrides);
+  // quick-261115-oh9: the eraser never applies a texture (hard exclusion) —
+  // the neutral texture is explicit so a caller's widened selection object
+  // cannot leak one into the punch shape.
+  const brush = buildBrushForStroke(stroke.brushId || 'filbert', {
+    textureId: null,
+    overrides: stroke.toolOverrides,
+  });
   return {
     tipData: brush.tipData,
     tipSize: brush.tipSize,

@@ -754,3 +754,35 @@ describe('resolveStrokeBaseColor / resolveStrokeColors (261111-wd6)', () => {
     expect(colors![0]).toEqual(pigmentFromHex('#2244aa'))
   })
 })
+
+// ---------------------------------------------------------------------------
+// 10. quick-261115-oh9 — the bake leg forwards the texture axis.
+//    `configure()` is a closure inside `createAquarelleEngineAdapter` with no
+//    injectable engine seam, and the behavioural legs that would observe
+//    `setBrush` need a real WebGL2 context (they skip in vitest — project law
+//    `feedback_live_evidence_over_unit_probes`). This source pin closes ONLY
+//    the forwarding gap: the (brushId, textureId) resolution itself is pinned
+//    behaviourally in `brushBridge.test.ts` and the codec round-trip, so a
+//    mis-passed id at the adapter is still caught.
+// ---------------------------------------------------------------------------
+
+describe('configure() forwards the texture axis to buildBrushForStroke (source pin)', () => {
+  it('passes payload.textureId beside the payload.brushId read', () => {
+    const adapterSource = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'engineAdapter.ts'),
+      'utf8',
+    )
+    const start = adapterSource.indexOf('const configure')
+    expect(start).toBeGreaterThan(-1)
+    // Boundary matches the file's existing source-slice template: the next
+    // `return {` after configure's body. Do NOT slice to the next `const ` —
+    // the payload local is declared before the asserted setBrush line.
+    const configure = adapterSource.slice(start, adapterSource.indexOf('return {', start))
+    expect(configure.length).toBeGreaterThan(0)
+    expect(configure).toContain('payload.brushId ?? stroke.brushId')
+    expect(configure).toContain('textureId: payload.textureId')
+    // The options object is the ONE call form: no positional-overrides call
+    // may survive beside it.
+    expect(configure).toContain('buildBrushForStroke(payload.brushId ?? stroke.brushId, {')
+  })
+})

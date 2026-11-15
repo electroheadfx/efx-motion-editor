@@ -364,6 +364,62 @@ describe('aquarelle script codec (261018-odm ODM-01)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// quick-261115-oh9: the texture axis on the script boundary. `textureId` rides
+// the opaque engine slot; the boundary guard runs the SAME present-means-a-
+// non-empty-string rule as the payload codec (`isStrokeShape`), because a
+// saved Roto script can meet this guard without ever calling the codec.
+// ---------------------------------------------------------------------------
+
+describe('textureId on the script engine slot (quick-261115-oh9)', () => {
+  function texturedEvent(textureId: unknown): any {
+    const event = aquarelleStrokeEvent();
+    event.engine = { ...event.engine, textureId };
+    return event;
+  }
+
+  it('a valid built-in texture id parses', async () => {
+    const schema = await loadSchema();
+    const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [texturedEvent('wc/builtin-chalk')],
+    }));
+    const parsed = schema.parseRotoScript!(value);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
+    expect(runtime.aquarelleEvents![0].engine.textureId).toBe('wc/builtin-chalk');
+  });
+
+  it('absence still parses and stays absent', async () => {
+    const schema = await loadSchema();
+    const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [aquarelleStrokeEvent()],
+    }));
+    const parsed = schema.parseRotoScript!(value);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
+    expect('textureId' in runtime.aquarelleEvents![0].engine).toBe(false);
+  });
+
+  it('a number or a present empty string refuses as malformed-engine-payload', async () => {
+    const schema = await loadSchema();
+    // The serializer shares the guard, so malformed data can only reach the
+    // parse leg from disk. Serialize a valid stroke, then tamper its engine
+    // slot exactly as a hand-edited or foreign script would.
+    const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [texturedEvent('wc/builtin-chalk')],
+    }));
+    for (const bad of [7, '', null]) {
+      const tampered = structuredClone(value);
+      tampered.strokes[0].engine.textureId = bad;
+      const parsed = schema.parseRotoScript!(tampered);
+      expect(parsed.ok).toBe(false);
+      if (!parsed.ok) expect(parsed.refusal.code).toBe('malformed-engine-payload');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 63-08 / TIP-14: the inline script carrier. A script cannot point into
 // another project's package, so each custom tip travels with its mask inline
 // as a WebP data URL (D-14) — never an `asset` ref.

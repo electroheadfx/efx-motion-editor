@@ -257,7 +257,9 @@ class Rig {
   configure(stroke: StudioStroke<AquarelleStrokePayload>): void {
     const e = this.engine
     e.setParams(toEngineParams(stroke.engine.params))
-    e.setBrush(buildBrushForStroke(stroke.engine.brushId))
+    e.setBrush(buildBrushForStroke(stroke.engine.brushId, {
+      textureId: stroke.engine.textureId ?? null,
+    }))
     const hex = stroke.color ?? stroke.engine.color
     if (typeof hex === 'string' && hex.length > 0) e.setPigment(pigmentFromHex(hex))
     e.setTool(stroke.engine.tool as Tool)
@@ -515,7 +517,7 @@ function measureCost(
   density: number,
 ): SizeCost {
   const points = resampleAnchors(anchors, density)
-  const brushDabs = buildBrushForStroke(BRUSH_ID).dabs ?? 1
+  const brushDabs = buildBrushForStroke(BRUSH_ID, { textureId: null }).dabs ?? 1
 
   // Warm up the shader programs before timing, then measure one stroke on
   // the same engine (a cold first stroke carries the program link cost).

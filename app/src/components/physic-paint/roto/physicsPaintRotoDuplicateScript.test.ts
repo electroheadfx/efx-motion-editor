@@ -263,6 +263,7 @@ function aquarelleEvent(
     cuisson?: number;
     engineDiffusionFrames?: number;
     anchors?: readonly AquarelleAnchor[];
+    textureId?: string;
   } = {},
 ): StudioStroke<AquarelleStrokePayload> {
   const playFrame = overrides.playFrame ?? 3;
@@ -293,6 +294,8 @@ function aquarelleEvent(
       // 61-24: a conditional spread keeps every pre-vector fixture key-for-key
       // identical — only the vector fixtures gain the anchor term.
       ...(overrides.anchors !== undefined ? { anchors: overrides.anchors } : {}),
+      // quick-261115-oh9: the same conditional-spread law for the texture.
+      ...(overrides.textureId !== undefined ? { textureId: overrides.textureId } : {}),
     },
   };
 }
@@ -449,6 +452,41 @@ describe('61-24 G-15 — the script projection carries the vector path', () => {
     expect(recorded[0].stroke).not.toBe(source);
     expect(JSON.stringify(source)).toBe(before);
     expect(source.playFrame).toBe(3);
+  });
+});
+
+// quick-261115-oh9: the texture is part of the recorded stroke, so a copied
+// key keeps it. The carry is conditional — an absent texture stays absent.
+describe('quick-261115-oh9 — the script projection carries the texture', () => {
+  it('preserves engine.textureId on a copied stroke', () => {
+    const projected = aquarelleStrokeFromScriptEvent(
+      aquarelleEvent(41, { textureId: 'wc/builtin-chalk' }),
+      9,
+    );
+
+    expect(projected.textureId).toBe('wc/builtin-chalk');
+  });
+
+  it('gains no texture key when the source had none', () => {
+    const projected = aquarelleStrokeFromScriptEvent(aquarelleEvent(41), 9);
+
+    expect('textureId' in projected).toBe(false);
+  });
+
+  it('records the copy with its texture intact without mutating the source', () => {
+    const source = aquarelleEvent(41, { textureId: 'wc/builtin-chalk' });
+    const before = JSON.stringify(source);
+    const recorded: Array<{ id: number; stroke: AquarelleStroke }> = [];
+
+    copyAquarelleScriptToFrame({
+      events: [source],
+      destinationFrame: 9,
+      allocateMutationId: () => 777,
+      record: (id, stroke) => { recorded.push({ id, stroke }); },
+    });
+
+    expect(recorded[0]!.stroke.textureId).toBe('wc/builtin-chalk');
+    expect(JSON.stringify(source)).toBe(before);
   });
 });
 

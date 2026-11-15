@@ -32,7 +32,7 @@ import {
 import { TIP_MASK_BYTES } from './deriveMask'
 import { BUILTIN_TIP_MASKS } from './builtinTips'
 import { buildBrushForStroke } from '../playground/brushBridge'
-import { buildBrush, BRUSH_PRESETS, CUSTOM_BASE } from '../playground/brushes'
+import { buildBrush, BRUSH_PRESETS } from '../playground/brushes'
 
 function solidMask(value: number): Uint8Array {
   return new Uint8Array(TIP_MASK_BYTES).fill(value)
@@ -229,23 +229,23 @@ describe('resetMaskRegistry — no ghost mask', () => {
     expect(resolveMask('wc/custom-ghost') === null).toBe(true)
   })
 
-  it('after reset buildBrushForStroke returns the preset brush, never the stale mask', () => {
+  it('after reset buildBrushForStroke returns the response tip, never the stale mask', () => {
     const mask = solidMask(64)
     registerMask('round', mask)
-    const masked = buildBrushForStroke('round')
+    const masked = buildBrushForStroke('round', { textureId: 'round' })
     expect(masked.tipMean).toBe(64 / 255)
     resetMaskRegistry()
-    const afterReset = buildBrushForStroke('round')
-    // Preset path: the procedural round tip, not the stale 64/255 stamp.
+    const afterReset = buildBrushForStroke('round', { textureId: 'round' })
+    // Texture law: the response's procedural tip, not the stale 64/255 stamp.
     expect(afterReset.tipMean === 64 / 255).toBe(false)
     expect(afterReset.tipData.every((v) => v === 64)).toBe(false)
     expect(resolveMask('round') === null).toBe(true)
   })
 
-  it('after a replace without the id, buildBrushForStroke falls back to the preset path', () => {
+  it('after a replace without the id, a texture falls back to the response tip', () => {
     registerMask('wc/custom-dropped', solidMask(30))
     replaceMaskRegistry([{ id: 'wc/custom-other', mask: solidMask(90) }])
-    const brush = buildBrushForStroke('wc/custom-dropped')
+    const brush = buildBrushForStroke('round', { textureId: 'wc/custom-dropped' })
     expect(brush.id).toBe('round')
     expect(brush.tipMean === 30 / 255).toBe(false)
   })
@@ -293,22 +293,30 @@ describe('maskGeneration — the one change signal', () => {
   })
 })
 
-describe('registry builds — base and multipliers are not forked by the mask', () => {
+describe('registry builds — the response base is not forked by the texture', () => {
   it('a replaced array under the same id is the one buildBrushForStroke stamps', () => {
     registerMask('wc/custom-swap', solidMask(10))
-    const first = buildBrushForStroke('wc/custom-swap')
+    const first = buildBrushForStroke('round', { textureId: 'wc/custom-swap' })
     replaceMaskRegistry([{ id: 'wc/custom-swap', mask: solidMask(200) }])
-    const second = buildBrushForStroke('wc/custom-swap')
+    const second = buildBrushForStroke('round', { textureId: 'wc/custom-swap' })
     expect(first.tipMean).toBe(Math.max(0.01, 10 / 255))
     expect(second.tipMean).toBe(200 / 255)
-    expect(second.spacing).toBe(CUSTOM_BASE.spacing)
+    // quick-261115-oh9: the response owns the physics — 'round' stays round.
+    const preset = BRUSH_PRESETS.find((b) => b.id === 'round')
+    expect(preset === undefined).toBe(false)
+    if (preset === undefined) return
+    expect(second.spacing).toBe(preset.spacing)
   })
 
-  it('the CUSTOM_BASE build equals buildBrush over the same assembled preset', () => {
+  it('the textured build equals buildBrush over the RESPONSE preset with the mask tip', () => {
     const mask = solidMask(99)
     registerMask('wc/custom-equal', mask)
-    const viaBridge = buildBrushForStroke('wc/custom-equal')
-    const direct = buildBrush({ ...CUSTOM_BASE, id: 'wc/custom-equal', name: 'wc/custom-equal', hint: '', tip: mask })
+    const viaBridge = buildBrushForStroke('chalk', { textureId: 'wc/custom-equal' })
+    const preset = BRUSH_PRESETS.find((b) => b.id === 'chalk')
+    expect(preset === undefined).toBe(false)
+    if (preset === undefined) return
+    const direct = buildBrush({ ...preset, tip: mask })
+    expect(viaBridge.id).toBe('chalk')
     expect(viaBridge.tipMean).toBe(direct.tipMean)
     expect(viaBridge.spacing).toBe(direct.spacing)
     expect(viaBridge.tipSize).toBe(direct.tipSize)

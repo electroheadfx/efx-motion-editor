@@ -9,25 +9,25 @@
 //  visible card canvas. Never toDataURL / toBlob (52.1 D-19).
 //
 //  63-06 D-05: the cache key is the tip id PLUS the mask-registry
-//  generation (T-63-18). A mask-backed tip — one of the three
-//  built-ins or a project import — is painted from the SAME
+//  generation (T-63-18). A thumb is painted from the SAME
 //  `buildBrushForStroke` binding the engine and the bake use, so
 //  its preview cannot drift from the stroke it produces. Replacing
 //  a mask under an unchanged id (or resetting the registry) bumps
 //  the generation and the next read paints anew; a stale mask can
 //  never be served.
 //
+//  quick-261115-oh9: this module paints RESPONSE thumbs only — the
+//  texture axis has its own strip, and a card is a response card. The
+//  brush is therefore always built with an explicit neutral texture.
+//
 //  `strokeThumbPainter` is the spyable seam: getStrokeThumb paints
 //  through it so a pin can assert one invocation per tip id.
 // ============================================================
 
 import {
-  BRUSH_PRESETS,
-  buildBrush,
   buildBrushForStroke,
   hexToRgb,
   maskGeneration,
-  resolveMask,
   type Brush,
 } from '@efxlab/efx-watercolor';
 
@@ -180,19 +180,14 @@ function strokeThumbKey(tipId: string): string {
 }
 
 /**
- * The brush one thumb is painted with. A registered mask — a built-in tip or
- * an imported one — is a STAMP: it builds through the same
- * `buildBrushForStroke` binding the engine and the bake use (D-21), so the
- * preview cannot drift from the stroke. Preset ids keep the shipped
- * `buildBrush(preset)` path untouched. Total: a catalog id whose mask is
- * unavailable degrades to the neutral round brush instead of throwing.
+ * The brush one thumb is painted with. quick-261115-oh9: a catalog card is a
+ * RESPONSE card, so the thumb paints the response's own procedural tip
+ * through the same `buildBrushForStroke` binding the engine and the bake use
+ * (D-21) — the preview cannot drift from the stroke. Total: an unknown id
+ * resolves to the round response exactly as the builder does.
  */
 function brushForThumb(tipId: string): Brush {
-  if (resolveMask(tipId) === null) {
-    const preset = BRUSH_PRESETS.find((p) => p.id === tipId);
-    if (preset) return buildBrush(preset);
-  }
-  return buildBrushForStroke(tipId);
+  return buildBrushForStroke(tipId, { textureId: null });
 }
 
 /**

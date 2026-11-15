@@ -473,6 +473,11 @@ function isEnginePayloadAquarelleStroke(value: unknown): value is AquarelleStrok
   if (value.mutationId !== undefined && !nonNegativeInteger(value.mutationId)) return false;
   if (value.playFrame !== undefined && !nonNegativeInteger(value.playFrame)) return false;
   if (value.diffusionFrames !== undefined && !positiveInteger(value.diffusionFrames, DIFFUSION_CAP)) return false;
+  // quick-261115-oh9: the texture axis. Same rule as the payload codec
+  // (`isStrokeShape`): absent is valid, present must be a non-empty string.
+  // Duplicated deliberately — a saved Roto script can reach this guard
+  // without ever calling the codec.
+  if (value.textureId !== undefined && (typeof value.textureId !== 'string' || value.textureId.length === 0)) return false;
   return true;
 }
 

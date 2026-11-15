@@ -28,11 +28,14 @@ import {
   aquarelleBrushResponseMemory,
   aquarelleLiftTipId,
   aquarelleParams,
+  aquarelleSelectedTextureId,
   aquarelleSelectedTipId,
   aquarelleToolOverrides,
+  buildAquarelleStrokePayload,
   selectAquarelleTip,
   setAquarelleLiftTipId,
   setAquarelleMultiplier,
+  setAquarelleSelectedTextureId,
   setAquarelleTool,
   snapshotAquarelleRecord,
 } from './aquarelleRecordState';
@@ -233,6 +236,60 @@ describe('261028-k03c D1 snapshotAquarelleRecord through the one law', () => {
     setAquarelleTool('lift');
     setAquarelleLiftTipId(null);
     expect(snapshotAquarelleRecord().brushId).toBe('filbert');
+  });
+});
+
+// ============================================================
+//  quick-261115-oh9 — the texture axis on the ONE selection law.
+//
+//  A texture is a setting of the brush response: it rides the live
+//  selection and therefore the snapshot and the payload. The eraser
+//  never carries one — its branch reports `textureId: null` and the
+//  payload omits the key entirely.
+// ============================================================
+describe('quick-261115-oh9 the texture axis on the selection law', () => {
+  beforeEach(() => {
+    resetSelection();
+    setAquarelleSelectedTextureId(null);
+  });
+
+  it('aquarelleBrushForActiveTool carries the texture on brush and null on lift', () => {
+    setAquarelleSelectedTextureId('wc/builtin-chalk');
+    setAquarelleTool('brush');
+    expect(aquarelleBrushForActiveTool().textureId).toBe('wc/builtin-chalk');
+    setAquarelleTool('water');
+    expect(aquarelleBrushForActiveTool().textureId).toBe('wc/builtin-chalk');
+    setAquarelleTool('lift');
+    expect(aquarelleBrushForActiveTool().textureId, 'the eraser has no texture').toBe(null);
+  });
+
+  it('snapshot and payload carry the selected texture; a lift selection omits the key', () => {
+    setAquarelleSelectedTextureId('wc/builtin-chalk');
+    setAquarelleTool('brush');
+    expect(aquarelleSelectedTextureId.value).toBe('wc/builtin-chalk');
+    expect(snapshotAquarelleRecord().textureId).toBe('wc/builtin-chalk');
+    expect(buildAquarelleStrokePayload().textureId).toBe('wc/builtin-chalk');
+    setAquarelleTool('lift');
+    expect(snapshotAquarelleRecord().textureId).toBe(null);
+    expect('textureId' in buildAquarelleStrokePayload()).toBe(false);
+  });
+
+  it('setAquarelleSelectedTextureId is a compare-then-write no-op on a re-pick', () => {
+    let writes = 0;
+    const unsubscribe = aquarelleSelectedTextureId.subscribe(() => {
+      writes += 1;
+    });
+    const baseline = writes;
+    try {
+      setAquarelleSelectedTextureId(null);
+      expect(writes, 'a null re-pick writes nothing').toBe(baseline);
+      setAquarelleSelectedTextureId('wc/builtin-chalk');
+      expect(writes - baseline, 'a real change writes once').toBe(1);
+      setAquarelleSelectedTextureId('wc/builtin-chalk');
+      expect(writes - baseline, 'a same-value re-pick writes nothing more').toBe(1);
+    } finally {
+      unsubscribe();
+    }
   });
 });
 

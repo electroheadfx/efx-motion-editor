@@ -150,6 +150,7 @@ export function AquarelleBrushCursor(): JSX.Element | null {
   const footprint = aquarelleFootprintFor({
     tool,
     tipId: aquarelleActiveTipId(),
+    textureId: selection.textureId,
     toolOverrides: selection.toolOverrides,
     size: params.size,
     pressure: cursorPreviewPressure(lastPointerType, lastPointerButtons, lastPointerPressure),
@@ -311,7 +312,12 @@ function applyLiveConfig(engine: WatercolorEngine): void {
   // recorded brushId and the bake can never disagree. `brushIdForSelection`
   // stays as the historical stroke-end fallback only.
   const selection = aquarelleBrushForActiveTool();
-  engine.setBrush(buildBrushForStroke(selection.brushId, selection.toolOverrides));
+  engine.setBrush(buildBrushForStroke(selection.brushId, {
+    // quick-261115-oh9: the live brush binds the same (response, texture)
+    // pair the record stores. The eraser selection reports null here.
+    textureId: selection.textureId,
+    overrides: selection.toolOverrides,
+  }));
 }
 
 export function AquarelleCanvasLayer(props: {
@@ -497,6 +503,9 @@ export function AquarelleCanvasLayer(props: {
       color: colorRef.current,
       params: { ...snap.params },
       brushId: snap.brushId || brushIdForSelection(),
+      // quick-261115-oh9: the texture axis rides the same conditional-spread
+      // law the stroke-end literal uses.
+      ...(snap.textureId !== null ? { textureId: snap.textureId } : {}),
       toolOverrides: { ...snap.toolOverrides },
       tool: toolForSelection(),
       diffusionFrames: aquarelleVisibleSettleTicks(snap.params['dry'] ?? 50),
@@ -583,6 +592,9 @@ export function AquarelleCanvasLayer(props: {
               params: { ...snap.params },
               brushId: recordedBrushId,
               points,
+              // quick-261115-oh9: written ONLY when a texture is selected, so
+              // an untextured stroke keeps its exact pre-texture key set.
+              ...(snap.textureId !== null ? { textureId: snap.textureId } : {}),
               toolOverrides: { ...snap.toolOverrides },
               // Visible settle window (D-19, cap 600) — the SAME cap the live
               // sheet force-dries at and the bake replays.

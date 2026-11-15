@@ -80,7 +80,7 @@ describe('applyBrushImportRequest — the one mutation path', () => {
     expect(resolveMask(result.entry.id)).toBe(mask);
   });
 
-  it('buildBrushForStroke(entry.id) resolves the imported footprint', async () => {
+  it('a texture selection naming entry.id resolves the imported footprint', async () => {
     const mask = makeMask(11);
     const result = await applyBrushImportRequest(
       { operationId: 'op-2', fileName: 'reed.jpg', mask },
@@ -88,7 +88,7 @@ describe('applyBrushImportRequest — the one mutation path', () => {
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const brush = buildBrushForStroke(result.entry.id);
+    const brush = buildBrushForStroke('round', { textureId: result.entry.id });
     expect(brush.tipSize).toBe(192);
     expect(brush.tipData).toBe(mask);
   });

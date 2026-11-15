@@ -208,6 +208,9 @@ export function aquarelleStrokeFromScriptEvent(
     // must not reclassify a drawn "Vector" row as "<Tool>-Vector" (and must
     // not drop codec bit 4 on persist).
     ...(engine.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
+    // quick-261115-oh9: the texture axis rides the same conditional-spread
+    // law — a copied stroke must stamp the texture it was painted with.
+    ...(engine.textureId !== undefined ? { textureId: engine.textureId } : {}),
   };
 }
 

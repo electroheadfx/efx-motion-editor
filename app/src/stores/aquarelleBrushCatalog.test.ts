@@ -224,9 +224,15 @@ describe('aquarelleBrushCatalog — applyProjectBrushSet (63-07 / D-17 / D-20)',
     // Only the healthy tip owns a mask; the other takes the neutral round
     // preset rather than a fabricated or partial mask (D-18).
     expect(resolveMask(unavailable.id)).toBe(null);
-    expect(buildBrushForStroke(unavailable.id).id).toBe('round');
+    // quick-261115-oh9: a catalog tip is a TEXTURE. It never displaces the
+    // response — an unavailable texture falls back to the response tip, and a
+    // healthy one stamps through the same (response, texture) pair.
+    expect(buildBrushForStroke('round').id).toBe('round');
+    expect(buildBrushForStroke(healthy.id).id).toBe('round');
     expect(resolveMask(healthy.id)).toBe(healthyMask);
-    expect(buildBrushForStroke(healthy.id).id).toBe(healthy.id);
+    const healthyBrush = buildBrushForStroke('round', { textureId: healthy.id });
+    expect(healthyBrush.tipSize).toBe(192);
+    expect(healthyBrush.tipData.every((value, index) => value === healthyMask[index])).toBe(true);
   });
 });
 
@@ -653,7 +659,7 @@ describe('aquarelleBrushCatalog — replace on open, reset on close, publish (63
     expect(brushAssetBytes(digest)).toBeUndefined();
     expect(pendingBrushAssets('/project/brush-package')).toHaveLength(0);
     // A New Project starts neutral for any former custom id, not blank.
-    expect(buildBrushForStroke('wc/custom-open').id).toBe('round');
+    expect(buildBrushForStroke('round', { textureId: 'wc/custom-open' }).id).toBe('round');
   });
 
   it('every apply and every reset publishes exactly one snapshot', () => {
@@ -695,7 +701,14 @@ describe('aquarelleBrushCatalog — replace on open, reset on close, publish (63
     expect(catalog.registerScriptMask('wc/custom-script', mask)).toBe(true);
     // The registry paints it, but the project catalog never learns the tip.
     expect(watercolor.resolveMask('wc/custom-script')).toBe(mask);
-    expect(watercolor.buildBrushForStroke('wc/custom-script').id).toBe('wc/custom-script');
+    // The script mask stamps as a TEXTURE through the response law — the
+    // response id never becomes the mask id.
+    expect(watercolor.buildBrushForStroke('wc/custom-script').id).toBe('round');
+    expect(
+      watercolor
+        .buildBrushForStroke('round', { textureId: 'wc/custom-script' })
+        .tipData.every((value, index) => value === mask[index]),
+    ).toBe(true);
     expect(catalog.customBrushTips.value).toHaveLength(0);
     expect(catalog.listAquarelleBrushTips()).toHaveLength(3);
     expect(catalog.resolveCatalogTip('wc/custom-script')).toBe(null);

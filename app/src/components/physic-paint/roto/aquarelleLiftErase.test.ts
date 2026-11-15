@@ -724,7 +724,7 @@ describe('liftShapeForStroke — the RECORDED brush is the punched shape', () =>
   it('resolves the preset through buildBrushForStroke, deterministically', () => {
     const overrides = { ...NEUTRAL_TOOL_OVERRIDES, aspect: 1.5 };
     const resolved = liftShapeForStroke({ brushId: 'flat', toolOverrides: overrides });
-    const brush = buildBrushForStroke('flat', overrides);
+    const brush = buildBrushForStroke('flat', { textureId: null, overrides });
     expect(resolved.tipSize).toBe(brush.tipSize);
     expect(resolved.aspect).toBeCloseTo(brush.aspect, 9);
     expect(resolved.rotation).toBe(brush.rotation);
@@ -738,6 +738,24 @@ describe('liftShapeForStroke — the RECORDED brush is the punched shape', () =>
     const brush = buildBrushForStroke('filbert');
     expect(resolved.aspect).toBeCloseTo(brush.aspect, 9);
     expect(resolved.rotation).toBe(brush.rotation);
+  });
+
+  it('never applies a texture, even when handed a selection object that carries one', () => {
+    // quick-261115-oh9: the eraser has no texture. The neutral texture is
+    // explicit in the call, never inherited from a wider selection object.
+    const withTexture = {
+      brushId: 'round',
+      toolOverrides: NEUTRAL_TOOL_OVERRIDES,
+      textureId: 'wc/builtin-chalk',
+    };
+    const resolved = liftShapeForStroke(withTexture);
+    const plain = buildBrushForStroke('round', {
+      textureId: null,
+      overrides: NEUTRAL_TOOL_OVERRIDES,
+    });
+    expect(Array.from(resolved.tipData)).toEqual(Array.from(plain.tipData));
+    expect(resolved.aspect).toBeCloseTo(plain.aspect, 9);
+    expect(resolved.rotation).toBe(plain.rotation);
   });
 });
 

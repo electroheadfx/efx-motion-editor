@@ -93,7 +93,7 @@ describe('I-03 playground preset ids on the tip seam', () => {
 
   it('buildBrushForStroke(id) matches buildBrush(preset) on the vendor Brush fields', () => {
     for (const preset of BRUSH_PRESETS) {
-      const viaStroke = buildBrushForStroke(preset.id, undefined, 7);
+      const viaStroke = buildBrushForStroke(preset.id, { seed: 7 });
       const viaPreset = buildBrush(preset, 7);
       expect(viaStroke.tipSize, `tipSize ${preset.id}`).toBe(viaPreset.tipSize);
       expect(viaStroke.tipMean, `tipMean ${preset.id}`).toBe(viaPreset.tipMean);
@@ -284,7 +284,7 @@ describe('chalk dry-media preset contract (261027-gh9)', () => {
   });
 
   it('replays through buildBrushForStroke deterministically', () => {
-    const viaStroke = buildBrushForStroke('chalk', undefined, 7);
+    const viaStroke = buildBrushForStroke('chalk', { seed: 7 });
     const viaPreset = buildBrush(chalk!, 7);
     expect(viaStroke.tipSize).toBe(viaPreset.tipSize);
     expect(viaStroke.tipMean).toBe(viaPreset.tipMean);
@@ -293,6 +293,6 @@ describe('chalk dry-media preset contract (261027-gh9)', () => {
     expect(viaStroke.capacity).toBe(viaPreset.capacity);
     expect(viaStroke.grain).toBe(viaPreset.grain);
     expect(viaStroke.wetRound).toBe(viaPreset.wetRound);
-    expect(buildBrushForStroke('chalk', undefined, 7).tipMean).toBe(viaStroke.tipMean);
+    expect(buildBrushForStroke('chalk', { seed: 7 }).tipMean).toBe(viaStroke.tipMean);
   });
 });

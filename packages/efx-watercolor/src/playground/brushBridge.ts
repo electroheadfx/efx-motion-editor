@@ -1,16 +1,37 @@
 // ============================================================
-//  brushBridge — canonical tip id + toolOverrides → vendor Brush.
+//  brushBridge — the ONE live/bake mapping between a stored stroke
+//  and a vendor Brush, under the two-axis law (quick-261115-oh9).
 //
-//  The payload stores the brush-pack tip id (`wc/round-medium`)
-//  and the D-08 multiplier bag. The vendor engine paints with a
-//  `Brush` built from a BRUSH_PRESETS entry. This is the ONE
-//  mapping both live and bake use so they cannot drift (A1/A2).
+//  A stroke carries TWO independent ids:
+//    - `brushId`   the RESPONSE: a preset id that owns every Brush
+//                  field — physics, size, spacing, rotation, grain…
+//    - `textureId` the TEXTURE: an optional mask id that replaces the
+//                  footprint (`tip`) and nothing else.
+//
+//  The law (supersedes the 63-01 TIP-05 "mask wins" rule):
+//    base  = presetFor(brushId)
+//    tip   = textureId ? resolveMask(textureId) ?? base.tip : base.tip
+//    brush = buildBrush({ ...base, tip }, seed)
+//
+//  A texture therefore can never turn a fixed-rotation response into
+//  a follow tip, and never changes a response scalar. `CUSTOM_BASE`
+//  is no longer reachable from any texture path.
+//
+//  Silent fallback: an unknown, unregistered or dropped texture id
+//  paints the response's own procedural tip — never throws, never
+//  blanks. `strokeTipData` shares this ONE resolution, so a chip can
+//  only ever show what the engine actually stamps.
+//
+//  Accepted loss (declared, no migration, no recovery): a phase-63
+//  project stroke whose `brushId` IS a texture id replays through
+//  `presetFor` → `round`. The texture id used to be the carrier; the
+//  new law reads `textureId`, which such a stroke does not have.
 // ============================================================
 
-import { BRUSH_PRESETS, CUSTOM_BASE, buildBrush, type Brush, type BrushPreset } from './brushes'
+import { BRUSH_PRESETS, buildBrush, type Brush, type BrushPreset } from './brushes'
 import { resolveMask } from '../brushes/maskRegistry'
 
-/** Tip id → vendor preset id. Unknown ids fall back to 'round'. */
+/** Response id → vendor preset id. Unknown ids fall back to 'round'. */
 const TIP_TO_PRESET: Record<string, string> = {
   'wc/round-small': 'round',
   'wc/round-medium': 'round',
@@ -40,6 +61,16 @@ export interface BrushMultiplierOverrides {
   wetRound?: number
 }
 
+/** Options for {@link buildBrushForStroke} — omit for the plain response brush. */
+export interface BrushStrokeOptions {
+  /** Mask id replacing the footprint; absent/null keeps the response tip. */
+  textureId?: string | null
+  /** D-08 multiplier bag snapshot at record time. */
+  overrides?: BrushMultiplierOverrides | null
+  /** Tip-noise seed; the bake path must pass the same seed as the live path. */
+  seed?: number
+}
+
 function mult(v: number | undefined, fallback = 1): number {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback
 }
@@ -50,25 +81,24 @@ function presetFor(brushId: string): BrushPreset {
 }
 
 /**
- * Build the vendor Brush for a recorded stroke. `brushId` is the
- * canonical tip id; `overrides` are the D-08 multipliers snapshot
- * at record time. Same call on the live path and the bake path.
- *
- * Phase 63 / D-21: a mask-backed tip is the STAMP, not a response
- * mode. When the registry holds a mask for `brushId` it is built
- * from CUSTOM_BASE with that mask as the tip; otherwise the preset
- * path runs unchanged. The multiplier bag below applies to both
- * identically (D-22) — never gated by the mask.
+ * The ONE resolution both public readers share: response preset base,
+ * texture mask as the footprint when it resolves, `buildBrush` seed.
  */
-export function buildBrushForStroke(
-  brushId: string,
-  overrides?: BrushMultiplierOverrides | null,
-  seed = 7,
-): Brush {
-  const mask = resolveMask(brushId)
-  const base = mask
-    ? buildBrush({ ...CUSTOM_BASE, id: brushId, name: brushId, hint: '', tip: mask }, seed)
-    : buildBrush(presetFor(brushId), seed)
+function resolveStrokeBrush(brushId: string, textureId: string | null, seed: number): Brush {
+  const base = presetFor(brushId)
+  const mask = textureId ? resolveMask(textureId) : null
+  return buildBrush({ ...base, tip: mask ?? base.tip }, seed)
+}
+
+/**
+ * Build the vendor Brush for a recorded stroke. `brushId` is the
+ * RESPONSE id; `textureId` only replaces the tip; `overrides` are the
+ * D-08 multipliers from the same snapshot. Same call on the live path
+ * and the bake path.
+ */
+export function buildBrushForStroke(brushId: string, options?: BrushStrokeOptions | null): Brush {
+  const base = resolveStrokeBrush(brushId, options?.textureId ?? null, options?.seed ?? 7)
+  const overrides = options?.overrides
   if (!overrides) return base
   return {
     ...base,
@@ -81,4 +111,13 @@ export function buildBrushForStroke(
     grain: base.grain * mult(overrides.grain),
     wetRound: base.wetRound * mult(overrides.wetRound),
   }
+}
+
+/**
+ * The exact tip bytes {@link buildBrushForStroke} would stamp for the
+ * same response + texture + seed. Catalog chips render these, so a
+ * chip can never show a footprint the engine would not stamp.
+ */
+export function strokeTipData(brushId: string, textureId: string | null = null, seed = 7): Uint8Array {
+  return resolveStrokeBrush(brushId, textureId, seed).tipData
 }
