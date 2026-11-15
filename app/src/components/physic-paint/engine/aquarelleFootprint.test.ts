@@ -8,10 +8,13 @@
 //  engine actually stamps.
 // ============================================================
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildBrushForStroke,
   NEUTRAL_TOOL_OVERRIDES,
+  registerMask,
+  resetMaskRegistry,
+  TIP_MASK_BYTES,
   toEngineParams,
   type AquarelleTool,
   type AquarelleToolOverrides,
@@ -23,6 +26,22 @@ import {
   type AquarelleFootprint,
   type AquarelleFootprintInput,
 } from './aquarelleFootprint';
+
+// 63-06 / G-2: count real builds through a delegating wrapper. The footprint
+// cache is module state with no accessor, so the build count is the observable
+// that proves a mask replacement (or a registry reset) invalidated it.
+const brushBuildState = vi.hoisted(() => ({ count: 0 }));
+
+vi.mock('@efxlab/efx-watercolor', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@efxlab/efx-watercolor')>();
+  return {
+    ...actual,
+    buildBrushForStroke: (...args: Parameters<typeof actual.buildBrushForStroke>) => {
+      brushBuildState.count += 1;
+      return actual.buildBrushForStroke(...args);
+    },
+  };
+});
 
 const DEG = Math.PI / 180;
 
@@ -179,6 +198,47 @@ describe('cursorPreviewPressure', () => {
     expect(cursorPreviewPressure('mouse', 1, 0.5)).toBe(0.4);
     expect(cursorPreviewPressure('pen', 1, 0)).toBe(0.4);
     expect(cursorPreviewPressure('pen', 1, Number.NaN)).toBe(0.4);
+  });
+});
+
+describe('footprint brush cache is generation-aware (63-06 / G-2 / T-63-18)', () => {
+  const MASKED = 'wc/custom-footprint-generation';
+  const uniformMask = (value: number) => new Uint8Array(TIP_MASK_BYTES).fill(value);
+
+  beforeEach(() => {
+    resetMaskRegistry();
+    brushBuildState.count = 0;
+  });
+
+  afterEach(() => {
+    resetMaskRegistry();
+  });
+
+  it('rebuilds the footprint brush when a mask changes under an unchanged id', () => {
+    registerMask(MASKED, uniformMask(30));
+    fp('brush', MASKED);
+    expect(brushBuildState.count, 'first read builds once').toBe(1);
+
+    fp('brush', MASKED);
+    expect(brushBuildState.count, 'an unchanged generation stays a cache hit').toBe(1);
+
+    registerMask(MASKED, uniformMask(210));
+    fp('brush', MASKED);
+    expect(brushBuildState.count, 'a mask replacement rebuilds the brush').toBe(2);
+  });
+
+  it('after resetMaskRegistry the same id reverts to the preset footprint', () => {
+    registerMask(MASKED, uniformMask(30));
+    // CUSTOM_BASE rotates with the stroke ('follow'), so a non-zero move
+    // direction shows the masked build; the round preset is fixed at angle 0.
+    const masked = fp('brush', MASKED, { moveAngle: 0.7 });
+    expect(masked.angle, 'masked tip follows the stroke direction').toBeCloseTo(0.7);
+    expect(brushBuildState.count, 'the masked brush was built once').toBe(1);
+
+    resetMaskRegistry();
+    const reverted = fp('brush', MASKED, { moveAngle: 0.7 });
+    expect(reverted.angle, 'reset reverts to the preset round footprint').toBe(0);
+    expect(brushBuildState.count, 'the cached masked brush was rebuilt').toBe(2);
   });
 });
 
