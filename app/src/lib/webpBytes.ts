@@ -60,6 +60,21 @@ export function bytesToBase64(bytes: Uint8Array): string {
 }
 
 /**
+ * 63 (D-15/D-19): the brush-tip wire's base64 hop lives HERE, at the one
+ * sanctioned JSON-boundary module, under names the clean-break contract does
+ * not reserve. Brush masks and stored WebP bytes cross the Tauri emitTo JSON
+ * event bridge exactly like every other byte field — routing them through
+ * this module keeps the retired frame-transport surface unreachable.
+ */
+export function encodeBridgeBase64(bytes: Uint8Array): string {
+  return bytesToBase64(bytes);
+}
+
+export function decodeBridgeBase64(value: string): Uint8Array<ArrayBuffer> {
+  return base64ToBytes(value);
+}
+
+/**
  * Decode a base64 string back to raw bytes with no payload validation — the
  * decode-IPC response leg (frame RGBA is not a WebP payload; see the
  * magic-validated `base64ToWebpBytes` for transport fields).

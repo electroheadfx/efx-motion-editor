@@ -48,7 +48,7 @@ import {
 import type { MceBrushPackSnapshot } from '../types/project';
 import type { PhysicPaintBrushCatalogPayload } from '../types/physicPaint';
 import { brushAssetBytes, brushAssetDigestFromPath, rememberBrushAsset } from '../lib/efxPaintBrushAssets';
-import { base64ToBytes, bytesToBase64 } from '../lib/webpBytes';
+import { decodeBridgeBase64, encodeBridgeBase64 } from '../lib/webpBytes';
 
 /** The imported tips of the open project (empty on a project with no imports). */
 const customBrushTipsSignal = signal<readonly AquarelleTip[]>([]);
@@ -200,8 +200,8 @@ export function buildBrushCatalogPayload(contextId: string): PhysicPaintBrushCat
     const webp = digest === null ? undefined : brushAssetBytes(digest);
     return {
       tip: { ...tip },
-      ...(mask === null ? {} : { maskBase64: bytesToBase64(mask) }),
-      ...(webp === undefined ? {} : { webpBase64: bytesToBase64(webp) }),
+      ...(mask === null ? {} : { maskBase64: encodeBridgeBase64(mask) }),
+      ...(webp === undefined ? {} : { webpBase64: encodeBridgeBase64(webp) }),
     };
   });
   return {
@@ -213,7 +213,7 @@ export function buildBrushCatalogPayload(contextId: string): PhysicPaintBrushCat
 
 function decodeBase64OrNull(value: string): Uint8Array | null {
   try {
-    return base64ToBytes(value);
+    return decodeBridgeBase64(value);
   } catch {
     return null;
   }

@@ -3,7 +3,7 @@ import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintBrushImportResult, PhysicPaintDocumentAudioClipRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRailMotionMergeNotice, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintBrushCatalogPayload, isPhysicPaintBrushCatalogRequest, isPhysicPaintBrushImportRequest, isPhysicPaintBrushImportResult, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
-import { base64ToBytes, base64ToWebpBytes, bytesToBase64, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
+import { base64ToWebpBytes, decodeBridgeBase64, encodeBridgeBase64, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
 import { buildBytesPayload } from './efxPaintMediaMaterialize';
 import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import type { MceImageRef } from '../types/project';
@@ -3151,7 +3151,7 @@ export async function requestPhysicPaintBrushImport(
     await eventApi.emitTo('main', PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT, {
       operationId,
       fileName,
-      maskBase64: bytesToBase64(mask),
+      maskBase64: encodeBridgeBase64(mask),
     });
     return await resultPromise;
   } finally {
@@ -3174,7 +3174,7 @@ export async function installPhysicPaintBrushImportListener(): Promise<() => voi
     if (!isPhysicPaintBrushImportRequest(value)) return null;
     let mask: Uint8Array;
     try {
-      mask = base64ToBytes(value.maskBase64);
+      mask = decodeBridgeBase64(value.maskBase64);
     } catch {
       return { operationId: value.operationId, ok: false, reason: 'bad-mask' };
     }

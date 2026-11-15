@@ -8244,7 +8244,14 @@ function installBridgeWindow(): void {
  */
 function markTauriRuntime(): void {
   Object.defineProperty(window, '__TAURI_INTERNALS__', {
-    value: { invoke: vi.fn(async () => undefined) },
+    value: {
+      invoke: vi.fn(async () => undefined),
+      // A stray in-flight call from an earlier suite can resolve against the
+      // REAL event module after a mock reset; without these the real listen
+      // throws mid-suite. Stubbing them keeps such a stray call inert.
+      transformCallback: vi.fn(() => 1),
+      unregisterCallback: vi.fn(),
+    },
     configurable: true,
   });
 }
