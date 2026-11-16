@@ -189,10 +189,15 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ An anchor/handle edit commits as one ledger entry that converts the stroke to a vector path and re-bakes from the recovered pre-script base, preserving sample count, wet lifetime and the recorded pressure profile — v2.1.0 Phase 62 (CRV-02)
 - ✓ Every Loop Clip occurrence of an edited stroke repaints from the one source-scoped cache entry; no per-occurrence key, script or cache entry is materialized — v2.1.0 Phase 62 (CRV-03)
 - ✓ Undo during an in-flight path-edit bake cancels the apply and restores the exact pre-edit shape with no ledger entry; redo does not resurrect it — v2.1.0 Phase 62 (CRV-04)
+- ✓ An imported PNG/JPG becomes the actual brush tip — a 192×192 mask derived by one pinned two-branch rule, carried inside the `.mce` as a content-addressed lossless WebP asset, replayed from the package alone with no dependency on the source image — v2.2.0 Phase 63 (TIP-01..10)
+- ✓ The mask travels in a `.mce` root `brushPack` and is registered before the first stroke replay of a loaded project; a missing or wrong-length asset degrades to the neutral round fallback plus exactly one aggregate warning — v2.2.0 Phase 63 (TIP-11/TIP-12)
+- ✓ Three textured tips (Bristle fan, Chalk grain, Sponge) are resolvable on every install with no import and are never written into a project — v2.2.0 Phase 63 (TIP-13)
+- ✓ A Roto script carries each stroke's recorded tip id through the per-track snapshot (AQTL v3), so applying it into a project that lacks the tip still paints the recorded texture — v2.2.0 Phase 63 (TIP-14)
+- ✓ Opening a project replaces — never appends to — the tip catalog and mask registry; closing it or starting a New Project resets both to the three built-ins — v2.2.0 Phase 63 (TIP-15..17)
 
 ### Active
 
-**v2.2.0 Brush Tips & Medium Engine (MINOR) — in progress.** Two plan-backed phases (63–64) planned from five spec documents: the brush tip becomes a real 192×192 stamp that travels inside the `.mce` with three textured defaults shipped, then a Viscosity global, three named Medium profiles and a pigment-density relief give paint weight beyond a wash. Requirements live in `.planning/REQUIREMENTS.md` (TIP-01..17, MED-01..18).
+**v2.2.0 Brush Tips & Medium Engine (MINOR) — in progress.** Two plan-backed phases (63–64) planned from five spec documents: the brush tip becomes a real 192×192 stamp that travels inside the `.mce` with three textured defaults shipped, then a Viscosity global, three named Medium profiles and a pigment-density relief give paint weight beyond a wash. **Phase 63 shipped 2026-11-16** (16 plans; UAT 7/8 passed with the one issue resolved by gap-closure plan 63-15, verification 40/42 must-haves with the remaining two closed by 63-15/63-16). Requirements live in `.planning/REQUIREMENTS.md` (TIP-01..17, MED-01..18); TIP-01..17 are complete, MED-01..18 remain.
 
 **Carried forward (not scheduled in v2.2.0):**
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
@@ -476,6 +481,9 @@ Known technical debt:
 | Timeline zoom has ONE session-only pitch authority every frame→pixel consumer reads; no context provider, no CSS scale | A partial conversion makes gestures and rendering disagree at non-100% zoom; a CSS scale double-scales client-rect mappings | ✓ Good — literal-`18` audit reached zero; per-layer memory in the main realm, never persisted |
 | Vector painting is a second stroke kind on the one engine, not a second engine; wireframe is the drag-time performance mode | A second engine would double the surface; the shared compositor and AQTL codec already carry the new geometry | ✓ Good — shared editing surface with curve mode; export parity pinned |
 | Motion-only commits are NOT routed through the physical-edit ledger (MOTN-12 undo half) | Accepting the deviation kept a non-destructive, explicitly removable operation out of the critical path for v2.1.0 | ⚠️ Revisit — accepted deviation 2026-11-14; follow-up candidate routes motion commits through the coordinator for one ledger entry per operation |
+| The brush tip mask lives inside the `.mce` (`brushPack` root key + content-addressed `brushes/<sha256>.webp`), the documented exception to the refs-only package law | A tip is document state, not media: a path reference would break the "copy the project directory alone" guarantee that TIP-09/TIP-16 demand | ✓ Good — the exception is declared in BOTH TS and Rust under the field-diff pin; source images are discarded at import |
+| Per-stroke `engine.textureId` travels in the per-track snapshot wire (AQTL v3), not in a side channel or the top-level stroke `brushId` | The SNP1 restore wholesale-replaces the timeline on every Studio boot, so any field the AQTL body omits is silently stripped before Save Script captures it — that was G-63-5 | ✓ Good — clean-break v3 with v1/v2 refused (`unsupported-version`), no migration reader; verified live in UAT test 7 |
+| A refused snapshot read/decode latches `refusedRestore` and withholds every routine save until a successful commit | Silently closing after a failed restore writes a project missing the user's work — the failure has to be loud and sticky, not a one-shot warning | ✓ Good — CR-01/CR-02 closed; the latch is binding-scoped and only a successful `sessionOnly` purge commit clears it |
 
 ## Evolution
 
@@ -495,4 +503,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-15 after starting milestone v2.2.0 Brush Tips & Medium Engine (MINOR) — Phases 63–64, driven by `SPECS/v2.2.0-brush-tips/` and `SPECS/v2.2.0-medium-engine/`. Previous: v2.1.0 closed 2026-11-14 (4/4 phases, 67/67 plans, 38/38 requirements met or accepted, audit verdict `tech_debt` with zero blocking gaps).*
+*Last updated: 2026-11-16 after Phase 63 (Brush Tip Pipeline) completed — 16 plans, TIP-01..17 delivered, UAT 7/8 with the one issue closed by gap-closure plan 63-15. Milestone v2.2.0 continues with Phase 64 (Medium Engine). Previous: v2.1.0 closed 2026-11-14 (4/4 phases, 67/67 plans, 38/38 requirements met or accepted, audit verdict `tech_debt` with zero blocking gaps).*

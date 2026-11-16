@@ -104,7 +104,7 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
 
 **Source of truth:** `SPECS/v2.2.0-brush-tips/` (specs 01-02) and `SPECS/v2.2.0-medium-engine/` (specs 03-05). No research phase: the five specs carry the exact file anchors, laws and UAT rows.
 
-- [ ] **Phase 63: Brush Tip Pipeline** - An imported PNG/JPG becomes the real 192×192 tip mask, stored inside the project and rebuilt on open, with three textured tips shipped by default
+- [x] **Phase 63: Brush Tip Pipeline** - An imported PNG/JPG becomes the real 192×192 tip mask, stored inside the project and rebuilt on open, with three textured tips shipped by default (completed 2026-11-16)
 - [ ] **Phase 64: Medium Engine** - A Viscosity global and named Medium profiles make paint read denser and heavier, with heavy pigment gaining visible body from its own density
 
 **Spec provenance** (planner input, not an execution unit): `GSD-QUICK-PROMPT-01-mask-wiring.md` → Phase 63 (TIP-01..06, TIP-10 import caps) · `GSD-QUICK-PROMPT-02-embedded-tips.md` → Phase 63 (TIP-07..09, TIP-11..17, TIP-10 stored-mask caps) · `GSD-QUICK-PROMPT-03-viscosity.md` → Phase 64 (MED-01..06) · `GSD-QUICK-PROMPT-04-medium-profile.md` → Phase 64 (MED-07..13) · `GSD-QUICK-PROMPT-05-pigment-relief.md` → Phase 64 (MED-14..18).

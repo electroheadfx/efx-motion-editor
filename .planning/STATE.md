@@ -2,37 +2,37 @@
 gsd_state_version: "1.0"
 milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
-current_phase: 63
-current_phase_name: Brush Tip Pipeline
-status: verifying
-stopped_at: Completed 63-16-PLAN.md
-last_updated: "2026-11-16T08:00:15.523Z"
+current_phase: 64
+current_phase_name: Medium Engine
+status: planning
+stopped_at: Phase 63 complete, ready to plan Phase 64
+last_updated: "2026-11-16T10:41:50.767Z"
 last_activity: 2026-11-16
-last_activity_desc: Phase 63 execution started
-state_head: b970e84d7933c4634a4e71d1849b83c012837129
+last_activity_desc: Phase 63 complete, transitioned to Phase 64
+state_head: 1ab4866518d1761565cb3569dc02cc3c928f7e5b
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 16
   completed_plans: 16
-  percent: 0
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
+See: .planning/PROJECT.md (updated 2026-11-16 after Phase 63)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 63 — Brush Tip Pipeline
+**Current focus:** Phase 64 — Medium Engine
 
 ## Current Position
 
-Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 16 of 16
-Status: Phase complete — ready for verification
-Last activity: 2026-11-16 — Phase 63 execution started
+Phase: 64 — Medium Engine
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-16 — Phase 63 complete, transitioned to Phase 64
 
 
 ## Performance Metrics
@@ -53,6 +53,7 @@ Last activity: 2026-11-16 — Phase 63 execution started
 | 60 | 6 | - | - |
 | 61 | 31 | - | - |
 | 62 | 5 | - | - |
+| 63 | 16 | - | - |
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -465,7 +466,8 @@ None yet.
 - [Phase 62] Six review findings are recorded and deliberately deferred in `62-REVIEW-DISPOSITION.md` (0 open): WR-02 conversion drops recorded stylus tilt (`tx`/`ty` stamped 0), WR-03 busy gates are not re-read after the durable-base await (fails closed), WR-04 both cancelled-bake undo replays refused (silent return), IN-01 unreachable `'lift-vector': 'Eraser-Vector'` label, IN-02 the Vertex colour reading omits the `anchorWidthTarget` guard, IN-03 the `requestAquarellePathEdit` doc over-claims that no refusal leaves a selection. All are non-blocking; UAT 10/10 and verification 49/49 passed.
 - [Phase 62] The UI audit dropped from 18/24 to 15/24 after the UAT changes (`62-UI-REVIEW.md`): curve entry has no pending/failure signal, the Vertex colour row shows the first anchor's swatch beside a "Mixed" caption, and the curve-editing / vector-category vocabulary has no help entries. Advisory only — no blocker; candidate for a follow-up quick.
 - v2.0.1 debt carried in PROJECT.md Context: VIS-02/04 token drift, mixed rail-set header accent, the one-shot prompt's pending window, and the unconfirmed 261105-p9i live native UAT rows.
-- [v2.2.0] Phase 63 must register decoded tip masks before the first stroke replay of a loaded project, and project-open scoping REPLACES the tip catalog and mask registry (TIP-17) — `resetBrushesDockerUi()` has no production caller today, so scoping is new work. Phase 64's Viscosity must reach live pass, bake and replay identically (MED-05/06); replay determinism is its acceptance bar.
+- [v2.2.0] Phase 63 closed the tip-mask registration and project-open scoping work (TIP-12/TIP-17): masks register inside the open await before the first stroke replay, and opening a project replaces the catalog and the registry. Phase 64's Viscosity must reach live pass, bake and replay identically (MED-05/06); replay determinism is its acceptance bar.
+- [Phase 63] AQTL is now v3 — a presence-prefixed `engine.textureId` sits after the vector block and before `pointCount`. v1/v2 bodies refuse with `unsupported-version` and no migration reader exists: stale v2 `.snap` caches refuse whole on first open and that track starts empty. Accepted by design; reintroducing an older AQTL reader would reopen the no-backward-compat law.
 
 ## Deferred Items
 
@@ -567,12 +569,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-16T08:00:15.490Z
-Stopped at: Completed 63-16-PLAN.md
+Last session: 2026-11-16T10:45:00.000Z
+Stopped at: Phase 63 complete, ready to plan Phase 64
 Resume file: None
 
 ## Operator Next Steps
 
 
-- Plan Phase 63 with /gsd-plan-phase 63 (quicks 01-02: brush tip mask + embedded tips)
-- Then Phase 64 (quicks 03-05: Viscosity, Medium profiles, pigment relief)
+- Plan Phase 64 with /gsd-plan-phase 64 (quicks 03-05: Viscosity, Medium profiles, pigment relief)
