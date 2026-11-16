@@ -1,4 +1,4 @@
-import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, type Brush } from './brushes';
+import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, tipRowsForUpload, type Brush } from './brushes';
 import { GL, type DoubleTarget, type Format, type Program, type Rect, type Target } from './gl';
 import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
@@ -1325,7 +1325,14 @@ export class WatercolorEngine {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, t);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, b.tipSize, b.tipSize, 0, gl.RED, gl.UNSIGNED_BYTE, b.tipData);
+    // quick 261116-inu: a mask-backed tip is stored top-down (image order, so
+    // the library file opens the right way up in any viewer) but the stamp
+    // samples t=1 as the TOP of the dab while texImage2D maps the first data
+    // row to t=0. Flip the rows for those tips only — procedural tips are
+    // generated in engine order and must keep their exact appearance for every
+    // already-recorded stroke.
+    const tipSource = b.textureId != null ? tipRowsForUpload(b.tipData, b.tipSize) : b.tipData;
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, b.tipSize, b.tipSize, 0, gl.RED, gl.UNSIGNED_BYTE, tipSource);
     // quick 261116-inu: a 512 mask is heavily minified at small brush sizes, so
     // the coarse mip levels are what keep the stamp from shimmering while the
     // stroke moves. R8 is color-renderable and filterable in core WebGL2 and

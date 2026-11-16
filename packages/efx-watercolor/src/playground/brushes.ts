@@ -94,6 +94,31 @@ export function brushTipCacheKey(b: Pick<Brush, 'id' | 'textureId'>): string {
   return `${b.id}|${b.textureId ?? ''}`;
 }
 
+/**
+ * Reorder a MASK-BACKED tip's rows for upload.
+ *
+ * A stored mask keeps image order: row 0 is the picture's TOP row, which is why
+ * the library's `.webp` opens the right way up in any viewer and the chip
+ * preview (a 2-D canvas) reads correctly. The stamp, however, samples `t = 1`
+ * as the TOP of the dab (`vUv.y = 1` is up), while `texImage2D` maps the first
+ * data row to `t = 0`. Uploading the mask as-is therefore paints every texture
+ * vertically inverted — invisible on abstract grain, obvious on lettering.
+ *
+ * Flipping the rows here, once per cached tip upload, fixes the orientation
+ * without touching the stored bytes. Procedural tips are generated directly in
+ * engine order and never pass through this, so every stroke recorded before
+ * textures existed keeps its exact appearance.
+ */
+export function tipRowsForUpload(data: Uint8Array, size: number): Uint8Array {
+  if (size <= 1 || data.length !== size * size) return data;
+  const out = new Uint8Array(data.length);
+  for (let row = 0; row < size; row++) {
+    const source = (size - 1 - row) * size;
+    out.set(data.subarray(source, source + size), row * size);
+  }
+  return out;
+}
+
 export const TIP_SIZE = 192;
 const DEG = Math.PI / 180;
 
