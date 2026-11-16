@@ -41,7 +41,6 @@ import {
   sheetZIndex,
 } from './floatingSheetStack';
 import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
-import { WatercolorTextureStrip } from './WatercolorTextureStrip';
 import {
   aquarelleActiveTool,
   aquarelleBrushMenuAnchor,
@@ -87,34 +86,6 @@ function click(node: TestVNode): void {
   const onClick = node.props?.onClick as (() => void) | undefined;
   expect(onClick, 'element has no onClick').toBeTypeOf('function');
   onClick!();
-}
-
-/**
- * Materialize the vnode tree so the strip's inner testids and click handlers
- * become reachable — `collect()` alone never invokes function components.
- */
-function materialize(node: unknown): unknown {
-  if (node === null || node === undefined || typeof node === 'boolean') return node;
-  if (Array.isArray(node)) return node.map(materialize);
-  if (typeof node !== 'object') return node;
-  const vnode = node as TestVNode;
-  if (typeof vnode.type === 'function') {
-    try {
-      return materialize((vnode.type as (props: Record<string, unknown>) => unknown)(vnode.props));
-    } catch {
-      return vnode;
-    }
-  }
-  const children = vnode.props?.children;
-  const list = children === undefined ? [] : Array.isArray(children) ? children : [children];
-  return {
-    ...vnode,
-    props: { ...vnode.props, children: list.map(materialize) },
-  } as TestVNode;
-}
-
-function renderedStrip(): TestVNode {
-  return materialize(WatercolorTextureStrip({ compact: true })) as TestVNode;
 }
 
 const MENU_SOURCE = readFileSync(resolve(__dirname, 'PhysicsPaintBrushMenu.tsx'), 'utf8');
@@ -210,86 +181,16 @@ describe('261027-gh9g top-bar brush dropdown', () => {
     expect(liftRegion, 'a lift pick never flips the tool directly').not.toContain('setAquarelleTool');
   });
 
-  // quick-261115-oh9: the texture axis is pinned below the scroller. It is
-  // OUTSIDE the SidebarScrollArea so the natural-height measurement counts it
-  // as chrome, and it exists only in the brush branch (an eraser has no
-  // texture: its stroke never reads a texture id).
-  it('mounts the compact texture strip in the brush branch only', () => {
-    setAquarelleBrushMenuOpen(true);
-    const brush = collect(PhysicsPaintBrushMenu());
-    expect(brush.some((node) => node.type === WatercolorTextureStrip)).toBe(true);
-
-    aquarelleActiveTool.value = 'lift';
-    setAquarelleBrushMenuOpen(true, undefined, 'lift');
-    const lift = collect(PhysicsPaintBrushMenu());
-    expect(lift.some((node) => node.type === WatercolorTextureStrip)).toBe(false);
-    // The lift branch keeps its shape list and no Open modal.
-    const liftIds = buttonTestIds(lift);
-    expect(liftIds).not.toContain('watercolor-brush-menu-open-modal');
-    expect(liftIds.filter((id) => id.startsWith('watercolor-brush-menu-item-')).length).toBe(
-      BRUSH_PRESETS.length,
-    );
-  });
-
-  it('renders the strip as a sibling AFTER the scroll area (pinned chrome)', () => {
-    const brushRegion = MENU_SOURCE.slice(
-      MENU_SOURCE.indexOf('// 261029-hy2 menu-branch:brush'),
-    );
-    const scrollClose = brushRegion.indexOf('</SidebarScrollArea>');
-    const stripIndex = brushRegion.indexOf('<WatercolorTextureStrip');
-    expect(scrollClose, 'the brush branch keeps its scroller').toBeGreaterThan(-1);
-    expect(stripIndex, 'the strip mounts in the brush branch').toBeGreaterThan(-1);
-    expect(stripIndex, 'the strip sits outside the scroller').toBeGreaterThan(scrollClose);
-
-    const liftRegion = MENU_SOURCE.slice(
-      MENU_SOURCE.indexOf('// 261029-hy2 menu-branch:lift'),
-      MENU_SOURCE.indexOf('// 261029-hy2 menu-branch:brush'),
-    );
-    expect(liftRegion, 'the eraser branch gains no texture axis').not.toContain(
-      'WatercolorTextureStrip',
-    );
-  });
-
-  it('a texture pick writes only the texture and keeps the menu open; a response pick closes', () => {
-    setAquarelleBrushMenuOpen(true);
-    const chip = collect(renderedStrip()).find(
-      (node) => node.props?.['data-testid'] === 'watercolor-texture-chip-wc/builtin-chalk',
-    )!;
-    expect(chip, 'a built-in texture chip renders').toBeTruthy();
-    click(chip);
-    expect(aquarelleSelectedTextureId.value, 'texture selected').toBe('wc/builtin-chalk');
-    expect(aquarelleSelectedTipId.value, 'the response is untouched').toBe('chalk');
-    expect(aquarelleBrushMenuOpen.value, 'a texture pick keeps the menu open').toBe(true);
-
-    const flat = collect(PhysicsPaintBrushMenu()).find(
-      (node) => node.props?.['data-testid'] === 'watercolor-brush-menu-item-flat',
-    )!;
-    click(flat);
-    expect(aquarelleBrushMenuOpen.value, 'a response pick still closes the menu').toBe(false);
-  });
-
-  it('re-measures on a catalog generation change while the menu is open', () => {
-    // The strip's height is part of `chrome`; an import (which selects on
-    // arrival) can grow the pinned row while the menu is open.
-    expect(MENU_SOURCE).toContain('brushCatalogGeneration.value');
-    expect(MENU_SOURCE).toContain('}, [open, anchor?.top, catalogGeneration]);');
-  });
-
-  it('pins the compact strip below the scroller with 34px chips', () => {
-    const rule = CSS_SOURCE.slice(
-      CSS_SOURCE.indexOf('.physics-paint-brush-menu-textures {'),
-      CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu-textures {')),
-    );
-    expect(rule, 'a separator above the pinned row').toContain('border-top');
-    expect(rule, 'a flex row').toContain('display: flex');
-    const chipRule = CSS_SOURCE.slice(
-      CSS_SOURCE.indexOf('.physics-paint-brush-menu-textures .watercolor-texture-chip-canvas'),
-      CSS_SOURCE.indexOf(
-        '}',
-        CSS_SOURCE.indexOf('.physics-paint-brush-menu-textures .watercolor-texture-chip-canvas'),
-      ),
-    );
-    expect(chipRule, 'compact chips are 34px').toContain('34px');
+  it('never mounts a texture strip and never reads the catalog generation', () => {
+    // quick 261116-gcn: the strip (and its generation re-measure) moved to the
+    // Textures popover. ABSENCE pin — a leftover strip would pass every named
+    // suite while the truth "the brush dropdown shows no texture strip"
+    // silently regressed.
+    expect(MENU_SOURCE).not.toContain('WatercolorTextureStrip');
+    expect(MENU_SOURCE).not.toContain('physics-paint-brush-menu-textures');
+    expect(MENU_SOURCE).not.toContain('brushCatalogGeneration');
+    // The measurement deps keep only the open flag and the anchor's top.
+    expect(MENU_SOURCE).toContain('}, [open, anchor?.top]);');
   });
 
   it('picking a brush selects it and closes the dropdown', () => {
@@ -482,8 +383,8 @@ describe('261027-gh9g floating brush catalog', () => {
     ).toBeTypeOf('function');
     bringSheetToFront(SHEET_ID_BRUSHES);
     const after = PhysicsPaintBrushModal() as TestVNode;
-    // 261107-qgj: four sheets, so a raise from the bottom reaches 53.
-    expect((after.props?.style as Record<string, unknown>)?.zIndex).toBe(53);
+    // 261116-gcn: five sheets, so a raise from the bottom reaches 54.
+    expect((after.props?.style as Record<string, unknown>)?.zIndex).toBe(54);
   });
 });
 
@@ -504,8 +405,8 @@ describe('261029-hy2 CR-01 raise-on-open', () => {
   it('opens Settings then Brushes: the newly opened Brushes sheet is on top', () => {
     click(openingFromBrushTab());
     expect(aquarelleSettingsModalOpen.value).toBe(true);
-    // 261107-qgj: the four-sheet order makes the top level 53.
-    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(53);
+    // 261116-gcn: the five-sheet order makes the top level 54.
+    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(54);
 
     setAquarelleBrushMenuOpen(true);
     const menu = PhysicsPaintBrushMenu() as TestVNode;
@@ -518,7 +419,7 @@ describe('261029-hy2 CR-01 raise-on-open', () => {
 
     const brushStyle = (PhysicsPaintBrushModal() as TestVNode).props?.style as Record<string, unknown>;
     const settingsStyle = (PhysicsPaintSettingsModal() as TestVNode).props?.style as Record<string, unknown>;
-    expect(brushStyle?.zIndex, 'the newly opened catalog takes the top level').toBe(53);
+    expect(brushStyle?.zIndex, 'the newly opened catalog takes the top level').toBe(54);
     expect(
       settingsStyle?.zIndex as number,
       'the covered Settings sheet drops one level',
@@ -534,7 +435,7 @@ describe('261029-hy2 CR-01 raise-on-open', () => {
     // The setter's compare-then-write early-returns on an already-open sheet;
     // the raise happens regardless, so the button is never dead.
     expect(aquarelleSettingsModalOpen.value).toBe(true);
-    // 261107-qgj: raising Settings from the four-sheet order reaches 53.
-    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(53);
+    // 261116-gcn: raising Settings from the five-sheet order reaches 54.
+    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(54);
   });
 });
