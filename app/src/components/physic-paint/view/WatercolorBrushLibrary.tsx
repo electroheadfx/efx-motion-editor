@@ -63,7 +63,6 @@ import {
   importTip,
 } from '@efxlab/efx-watercolor/brushes';
 import { requestPhysicPaintBrushImport } from '../../../lib/physicPaintBridge';
-import { unavailableTipCount } from '../../../stores/aquarelleBrushCatalog';
 import {
   aquarelleSelectedTipId,
   setAquarelleSelectedTextureId,
@@ -115,16 +114,10 @@ function setImportFailure(next: boolean): void {
  */
 export function WatercolorTextureImport(props: { testIdPrefix?: string }) {
   const prefix = props.testIdPrefix ?? 'watercolor-brush-import';
-  // The catalogue's shipped warning id predates the prefix scheme and omits
-  // `-import`; it stays byte-identical for the default surface.
-  const warningId = props.testIdPrefix === undefined
-    ? 'watercolor-brush-unavailable-warning'
-    : `${props.testIdPrefix}-unavailable-warning`;
   // Narrow signal reads: the module-scope signals make both mounts agree on the
-  // in-flight / failure state, and the unavailable count is the same set.
+  // in-flight / failure state.
   const busy = importInFlight.value;
   const importFailedValue = importFailed.value;
-  const unavailableCount = unavailableTipCount.value;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const onImportFile = async (event: Event): Promise<void> => {
@@ -198,24 +191,12 @@ export function WatercolorTextureImport(props: { testIdPrefix?: string }) {
           onChange={(event) => onImportFile(event)}
         />
       </div>
-      {/* 63-06 D-19: ONE aggregate line for the whole unavailable set. */}
-      {unavailableCount > 0 ? (
-        <div
-          data-testid={warningId}
-          role="status"
-          style={{
-            gridColumn: '1 / -1',
-            fontSize: '10px',
-            fontWeight: 600,
-            lineHeight: 1.2,
-            color: 'var(--color-error-text, #FF6666)',
-          }}
-        >
-          {unavailableCount === 1
-            ? '1 brush tip unavailable in this project'
-            : `${unavailableCount} brush tips unavailable in this project`}
-        </div>
-      ) : null}
+      {/* 261116-inu: no aggregate "unavailable" line. A missing texture is a
+          machine-library fact, not a project error, and it is already visible
+          where it matters — the chip that owns it renders data-unavailable, and
+          the delete confirmation names the fallback before the gesture commits.
+          A standing red line here only restated a state the artist had just
+          chosen. */}
       {importFailedValue ? (
         <div
           data-testid={`${prefix}-import-failure`}

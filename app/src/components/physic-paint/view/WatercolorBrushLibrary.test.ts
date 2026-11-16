@@ -879,7 +879,7 @@ describe('WatercolorBrushLibrary import row and unavailable tips (63-06)', () =>
     expect(customBrushTips.value.length, 'no local catalog mutation').toBe(0);
   });
 
-  it('greys each unavailable project texture and renders ONE aggregate warning line', () => {
+  it('greys each unavailable texture and renders NO aggregate warning line', () => {
     const tips: AquarelleTip[] = ['a', 'b', 'c'].map((suffix) => ({
       id: `wc/custom-63-06-unavailable-${suffix}`,
       category: 'custom' as const,
@@ -890,14 +890,12 @@ describe('WatercolorBrushLibrary import row and unavailable tips (63-06)', () =>
     replaceUnavailableTipIds(tips.map((tip) => tip.id));
     try {
       const tree = renderLibrary();
-      // One warning STATE (the store signal) …
-      expect(unavailableTipCount.value, 'one aggregate state').toBe(3);
-      // … and one rendered LINE, not one per tip.
+      // The store still tracks the set — the chips are the only surface for it.
+      expect(unavailableTipCount.value, 'the unavailable state still exists').toBe(3);
       const warnings = [...walk(tree)].filter(
         (n) => n.props?.['data-testid'] === 'watercolor-brush-unavailable-warning',
       );
-      expect(warnings.length, 'exactly one aggregate line').toBe(1);
-      expect(textContent(warnings[0])).toContain('3 brush tips unavailable in this project');
+      expect(warnings.length, '261116-inu: no standing warning line').toBe(0);
       const greyed = textureChipNodes(tree).filter(
         (chip) => chip.props?.['data-unavailable'] === 'true',
       );
