@@ -80,6 +80,7 @@ function findByTestId(tree: unknown, testId: string): TestVNode | undefined {
 }
 
 const MODAL_SOURCE = readFileSync(resolve(__dirname, 'PhysicsPaintTextureModal.tsx'), 'utf8');
+const CSS_SOURCE = readFileSync(resolve(__dirname, '..', 'physicsPaintStudio.css'), 'utf8');
 
 beforeEach(() => {
   aquarelleTextureModalOpen.value = false;
@@ -219,7 +220,7 @@ describe('quick 261116-gcn Textures sheet', () => {
     expect(aquarelleTextureModalOpen.value).toBe(false);
   });
 
-  it('mounts the shared import control below the strip under its own testid prefix', () => {
+  it('mounts the shared import control above the strip under its own testid prefix', () => {
     setAquarelleTextureModalOpen(true);
     const tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
     const mounted = collect(tree).find((node) => node.type === WatercolorTextureImport);
@@ -234,7 +235,8 @@ describe('quick 261116-gcn Textures sheet', () => {
       '<WatercolorTextureImport testIdPrefix="watercolor-texture-import" />',
     );
     expect(importAt, 'the import control renders').toBeGreaterThan(-1);
-    expect(importAt, 'the import control sits below the strip').toBeGreaterThan(stripAt);
+    expect(importAt, 'the import control leads the strip').toBeLessThan(stripAt);
+    expect(stripAt, 'the strip still renders').toBeGreaterThan(-1);
 
     // The control itself: ONE button and ONE hidden PNG/JPEG input, sharing the
     // catalogue's single decode/register path.
@@ -253,6 +255,29 @@ describe('quick 261116-gcn Textures sheet', () => {
     expect(inputs[0]!.props?.['style'], 'input stays hidden').toMatchObject({
       display: 'none',
     });
+  });
+
+  it('pins the sheet-only 72px chips and the widened name', () => {
+    const canvasAt = CSS_SOURCE.indexOf(
+      '.physics-paint-texture-modal .watercolor-texture-chip-canvas {',
+    );
+    expect(canvasAt, 'the sheet chip rule exists').toBeGreaterThan(-1);
+    const canvasRule = CSS_SOURCE.slice(canvasAt, CSS_SOURCE.indexOf('}', canvasAt));
+    expect(canvasRule, 'larger than the 44px catalogue chip').toContain('width: 72px');
+    expect(canvasRule).toContain('height: 72px');
+
+    const nameAt = CSS_SOURCE.indexOf(
+      '.physics-paint-texture-modal .watercolor-texture-chip-name {',
+    );
+    expect(nameAt, 'the sheet name rule exists').toBeGreaterThan(-1);
+    const nameRule = CSS_SOURCE.slice(nameAt, CSS_SOURCE.indexOf('}', nameAt));
+    expect(nameRule, 'the name widens with the chip').toContain('max-width: 80px');
+
+    // The catalogue keeps its shipped 44px base rule untouched.
+    const baseAt = CSS_SOURCE.indexOf('\n.watercolor-texture-chip-canvas {');
+    expect(baseAt, 'the base chip rule exists').toBeGreaterThan(-1);
+    const baseRule = CSS_SOURCE.slice(baseAt, CSS_SOURCE.indexOf('}', baseAt));
+    expect(baseRule, 'the catalogue chip stays 44px').toContain('width: 44px');
   });
 
   it('source pins the full strip, the Size-before-strip order and the front-only Escape law', () => {

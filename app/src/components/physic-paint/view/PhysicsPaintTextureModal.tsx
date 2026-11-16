@@ -298,11 +298,14 @@ export function PhysicsPaintTextureModal(props: {
             onBrushSizeChange={props.onBrushSizeChange}
             disabled={props.disabled}
           />
-          <WatercolorTextureStrip />
           {/* quick 261116-gcn: the SAME import control the brush catalog uses
-              (one decode/register path). Its own testid prefix keeps the two
-              mounted surfaces addressable. */}
-          <WatercolorTextureImport testIdPrefix="watercolor-texture-import" />
+              (one decode/register path), seated ABOVE the strip with breathing
+              room on both sides. Its own testid prefix keeps the two mounted
+              surfaces addressable. */}
+          <div style={{ margin: '8px 0 12px' }}>
+            <WatercolorTextureImport testIdPrefix="watercolor-texture-import" />
+          </div>
+          <WatercolorTextureStrip />
         </div>
       </SidebarScrollArea>
 

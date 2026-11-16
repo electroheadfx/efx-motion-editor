@@ -1127,6 +1127,19 @@ button.destructive {
   padding: 4px 2px 10px;
 }
 
+/* quick 261116-gcn: the sheet is the FULL-size pick surface, so its chips are
+   larger than the catalogue's 44px — a mask's tooth has to read before
+   painting. The name widens with the chip instead of clipping at 56px. */
+.physics-paint-texture-modal .watercolor-texture-chip-canvas {
+  width: 72px;
+  height: 72px;
+}
+
+.physics-paint-texture-modal .watercolor-texture-chip-name {
+  max-width: 80px;
+  font-size: 10px;
+}
+
 .physics-paint-canvas-region {
   position: relative;
   grid-row: 2;
