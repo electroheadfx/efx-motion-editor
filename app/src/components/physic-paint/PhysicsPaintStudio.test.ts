@@ -2543,8 +2543,10 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // commitAquarelleVectorPathEdit — same mapper, same capsule.
     // 61-31: a fourteenth site — the curve-mode re-bake failure in
     // handleAquarelleCurveModeStrokes — same mapper, same capsule.
+    // quick 261116-u63: a fifteenth site — the duplicate re-bake failure in
+    // handleAquarelleDuplicateStrokes — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(14); // one import + thirteen call sites
+    expect(mentions).toBe(15); // one import + fourteen call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
@@ -4341,6 +4343,56 @@ describe('261024-vga watercolor exact stack placement wiring', () => {
       'deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),',
     );
   });
+
+  // quick 261116-u63: the Duplicate affordances share the trash's row/header
+  // call shape. Every pin is scoped to its slice — the same call strings exist
+  // at the edition-port registration and the memo dependency list.
+  it('wires the Duplicate bundle callback and owns the clone path in order', () => {
+    const memoStart = studio.indexOf('const strokeSettingsDialog = strokeSettingsDialogPropsMemo.resolve(');
+    expect(memoStart).toBeGreaterThan(-1);
+    const memoDepEnd = studio.indexOf('() => {', memoStart);
+    expect(memoDepEnd).toBeGreaterThan(memoStart);
+    expect(studio.slice(memoStart, memoDepEnd)).toContain('handleAquarelleDuplicateStrokes');
+
+    const bodyEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel({', memoDepEnd);
+    expect(bodyEnd).toBeGreaterThan(memoDepEnd);
+    expect(studio.slice(memoDepEnd, bodyEnd)).toContain(
+      'duplicateStrokes: (ids) => handleAquarelleDuplicateStrokes(ids),',
+    );
+
+    const handlerStart = studio.indexOf('const handleAquarelleDuplicateStrokes = useCallback(');
+    const handlerEnd = studio.indexOf('const handleAquarelleAppearanceStrokes', handlerStart);
+    expect(handlerStart).toBeGreaterThan(-1);
+    expect(handlerEnd).toBeGreaterThan(handlerStart);
+    const handler = studio.slice(handlerStart, handlerEnd);
+    expect(handler).toContain('if (isPhysicalMutationLocked()) return false;');
+    expect(handler).toContain(
+      'if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;',
+    );
+    expect(handler).toContain("if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;");
+    expect(handler).toContain('if (isAquarelleScriptEditInFlight()) return false;');
+    expect(handler).toContain('aquarelleStrokesOnFrame(ids, playFrame)');
+    // The WR-03 law: the Draft read sits AFTER the durable-base await.
+    const durableSite = handler.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);');
+    const draftSite = handler.indexOf('const draft = draftMode.peek();');
+    expect(durableSite).toBeGreaterThan(-1);
+    expect(draftSite).toBeGreaterThan(durableSite);
+    // One duplicate = begin -> reset -> await apply -> record on success ->
+    // rollback. The Live record is anchored from the apply site (the Draft
+    // branch records ABOVE it).
+    const beginSite = handler.indexOf('beginAquarelleCloneEdit(');
+    const resetSite = handler.indexOf('aquarelleResetSheetRef.current?.();');
+    const applySite = handler.indexOf(
+      'await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))',
+    );
+    const recordSite = handler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(edit.editId)', applySite);
+    const rollbackSite = handler.indexOf("restoreAquarelleEditSnapshot(edit.editId, 'undo')");
+    expect(beginSite).toBeGreaterThan(-1);
+    expect(resetSite).toBeGreaterThan(beginSite);
+    expect(applySite).toBeGreaterThan(resetSite);
+    expect(recordSite).toBeGreaterThan(applySite);
+    expect(rollbackSite).toBeGreaterThan(recordSite);
+  });
 });
 
 // ============================================================
@@ -5566,11 +5618,12 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
   });
 
   it('delivers exactly one completion per allocation and routes it through the ONE memoized port', () => {
-    // Three accepted-stroke paths (live stroke end, duplicate copy, and the
-    // 261030-np9 Run Script per-key script recorder) — no other site may
-    // invent an id, or a stroke would complete twice.
+    // Four accepted-stroke paths (live stroke end, duplicate copy, the
+    // 261030-np9 Run Script per-key script recorder, and the quick 261116-u63
+    // Stroke Settings duplicate) — no other site may invent an id, or a
+    // stroke would complete twice.
     const allocations = studio.match(/paintMutationLedger\.allocateStrokeMutation\(/g) ?? [];
-    expect(allocations).toHaveLength(3);
+    expect(allocations).toHaveLength(4);
     // The ledger is the completion SOURCE; the ref keeps the existing ordering
     // (latest render's closure) while staying synchronous.
     expect(studio).toContain('useEffect(() => paintMutationLedger.subscribe((mutation) => {');
@@ -5635,8 +5688,9 @@ describe('quick 261028-k03d — key-payload recovery and non-blanking failures',
     // both are no-ops once the arm has resolved the frame's durable base.
     // 61-15: the shared vector path edit commit joins them.
     // 61-31: the curve-mode batch joins them.
-    expect(calls, 'delete + move + appearance + curve mode + transform + apply + rebake target + draft arm + draft settle + path edit').toBe(10);
-    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleCurveModeStrokes', 'handleAquarelleTransformStrokes', 'commitAquarelleVectorPathEdit']) {
+    // quick 261116-u63: the Stroke Settings duplicate joins them.
+    expect(calls, 'delete + move + appearance + curve mode + duplicate + transform + apply + rebake target + draft arm + draft settle + path edit').toBe(11);
+    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleCurveModeStrokes', 'handleAquarelleDuplicateStrokes', 'handleAquarelleTransformStrokes', 'commitAquarelleVectorPathEdit']) {
       const start = studio.indexOf(`const ${handler} = useCallback`);
       expect(start, `${handler} exists`).toBeGreaterThan(-1);
       const call = studio.indexOf('await ensureAquarelleDurableBaseRef.current(', start);

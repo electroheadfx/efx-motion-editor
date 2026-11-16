@@ -283,6 +283,8 @@ import {
   aquarelleSelectMode,
   aquarelleStrokesOnFrame,
   beginAquarelleAppearanceEdit,
+  beginAquarelleCloneEdit,
+  type AquarelleCloneEdit,
   beginAquarelleCurveModeEdit,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
@@ -9280,6 +9282,105 @@ export function PhysicsPaintStudio() {
     canvasHeight,
   ]);
 
+  // quick 261116-u63: Duplicate from the Stroke Settings List row / header.
+  // One duplicate = ONE undoable edit (one before/after snapshot pair) and ONE
+  // re-bake through the SAME shared Apply pipeline as delete/move. The ledger
+  // records the edit only after the re-bake succeeds, and the builder never
+  // moves the selection — this handler selects the clones on success only, so
+  // a refused re-bake leaves the user's selection untouched. A Draft edit is
+  // synchronous (no in-flight flag, no reset, no apply).
+  const handleAquarelleDuplicateStrokes = useCallback(async (
+    ids: readonly number[],
+  ): Promise<boolean> => {
+    if (isPhysicalMutationLocked()) return false;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;
+    if (isAquarelleScriptEditInFlight()) return false;
+    // Stale ids never leak across frames: keep only live strokes of the
+    // current edit frame before the batch edit.
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
+    if (frameIds.length === 0) return false;
+    // 261028-k03d: recover the key's durable base BEFORE the clone mutates the
+    // script, exactly like the delete/move paths.
+    await ensureAquarelleDurableBaseRef.current(playFrame);
+    // 261101-o2m (WR-03): the Draft read must be AFTER the await, never
+    // before it. `.peek()` only — the handler must not subscribe the body.
+    const draft = draftMode.peek();
+    const keyId = resolveStudioScriptKeyIdForFrame(
+      studioScriptSnapshotIdentityRef.current,
+      playFrame,
+    );
+    // One duplicate = one edit with before/after script snapshots. An
+    // allocator throw must leave the script untouched.
+    let edit: AquarelleCloneEdit | null;
+    try {
+      edit = beginAquarelleCloneEdit(
+        frameIds,
+        (stroke) => paintMutationLedger.allocateStrokeMutation({
+          primary: aquarelleStrokeToPaintStroke(stroke, {
+            width: canvasWidth,
+            height: canvasHeight,
+          }),
+        }),
+        { keyId },
+      );
+    } catch {
+      return false;
+    }
+    if (edit === null) return false;
+    // 261101-o2m (Draft): the script commit above IS the edit — the engine
+    // re-render is deferred to the ONE settle. Record exactly like the Live
+    // success tail; no in-flight flag, no reset, no apply, no rollback.
+    if (draft) {
+      setAquarelleStrokeSelection(edit.newIds);
+      rotoMoveHistory.recordAquarelleScriptEdit(edit.editId);
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return true;
+    }
+    setAquarelleScriptEditInFlight(true);
+    try {
+      // The recorded timeline IS the script (same replay source as delete).
+      aquarelleResetSheetRef.current?.();
+      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+      if (ok) {
+        setAquarelleStrokeSelection(edit.newIds);
+        rotoMoveHistory.recordAquarelleScriptEdit(edit.editId);
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+        return true;
+      }
+      // Failed re-bake: put the pre-duplicate script back exactly.
+      restoreAquarelleEditSnapshot(edit.editId, 'undo');
+      const error = rotoScript.error.peek();
+      const message = buildRotoScriptApplyRefusalMessage(error)
+        ?? error?.message
+        ?? 'Could not re-apply the watercolor script — the stroke was restored.';
+      setLastError(message);
+      setApplyMessage(message);
+      setApplyStatus('error');
+      scriptApplyRefusalOwnedRef.current = true;
+      return false;
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    rotoTimelineModel,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+    canvasWidth,
+    canvasHeight,
+  ]);
+
   // quick 261024-p5q Task 2: intrinsic / color appearance of the selected
   // watercolor strokes. Same shape as the move handler: the recorded registry
   // is replaced (never mutated), the sheet is reset, and the current frame's
@@ -11877,6 +11978,7 @@ export function PhysicsPaintStudio() {
       handleAquarelleTransformStrokes,
       handleAquarellePlaceStroke,
       handleAquarelleDeleteStrokes,
+      handleAquarelleDuplicateStrokes,
       // 261101-o2m: the Draft strip's two engine seams — the entry arm and
       // the ONE recompute. Stable useCallbacks, so the memo identity holds.
       settleDraftScript,
@@ -12003,6 +12105,11 @@ export function PhysicsPaintStudio() {
         // Backspace/Delete — one undoable edit, one re-bake, the frame guards
         // intact. The dialog never touches the engine.
         deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),
+        // quick 261116-u63: Duplicate shares the trash's row/header call shape
+        // — the row passes its own id, the header the whole selection — and
+        // mints ONE undoable edit + ONE re-bake. The dialog never touches the
+        // engine.
+        duplicateStrokes: (ids) => handleAquarelleDuplicateStrokes(ids),
         // 261029-eur UAT: close LEAVES the surface — the same result as
         // releasing Cmd or toggling the rail Select off, so painting resumes
         // with the paint tool that was active. `keepOpenOnEmpty` only keeps the

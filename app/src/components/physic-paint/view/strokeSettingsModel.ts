@@ -618,6 +618,15 @@ export interface StrokeSettingsDialogBundle {
    */
   readonly deleteStrokes?: (ids: readonly number[]) => boolean | Promise<boolean> | void;
   /**
+   * quick 261116-u63: the Duplicate path, mirroring the delete path exactly —
+   * the SAME `aquarelleStrokesOnFrame` frame guards, one undoable edit, one
+   * re-bake. Each clone lands directly above its source and the new ids become
+   * the selection on success. The row duplicate passes exactly its own
+   * `mutationId`; the header duplicate passes the whole current selection.
+   * Absent hides both affordances. The dialog never touches the engine.
+   */
+  readonly duplicateStrokes?: (ids: readonly number[]) => boolean | Promise<boolean> | void;
+  /**
    * 261101-o2m: the ONE recompute the sheet runs when it closes (D-04's dialog
    * close exit). The dialog never writes `draftMode` false itself — a dirty
    * Draft may only leave through this settle. Absent means there is nothing to
