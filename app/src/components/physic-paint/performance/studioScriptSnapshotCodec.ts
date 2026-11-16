@@ -625,7 +625,17 @@ export function decodeStudioScriptSnapshot(
     // a pinned message of our own — never interpolate the inner text, and never
     // flatten it into `watercolor` corruption: the frame pixels are intact.
     if (error instanceof ScriptTimelineCodecError && error.code === 'unsupported-version') {
-      fail('aqtl-retired', 'AQTL body predates the texture format');
+      // WR-01 (63 review): the inner codec raises `unsupported-version` for
+      // EVERY version other than 3. Retirement is versions 1-2 only — a future
+      // body, a pre-format body or a bit-flipped version word must keep the
+      // generic diagnosis, or an intact-but-unknown script is reported as
+      // "older" and its user is steered away from real corruption.
+      const version = watercolorBody.byteLength >= 6
+        ? watercolorBody[4]! | (watercolorBody[5]! << 8)
+        : -1;
+      if (version === 1 || version === 2) {
+        fail('aqtl-retired', 'AQTL body predates the texture format');
+      }
     }
     // Keep the inner codec's precise diagnosis but tag the section.
     if (error instanceof Error) {

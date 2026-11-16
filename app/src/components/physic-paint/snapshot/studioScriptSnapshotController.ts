@@ -542,13 +542,20 @@ export function mergeStudioScriptSnapshotContent(
     // track owns. Identity comes from the live key map, the merged anchors and
     // the retained bases — never from an array index or a frame number. An
     // unknown (null) live key map disables scoping rather than losing a base.
+    // WR-02 (63 review): the scope set is built from the POST-foreign-filter
+    // anchors. The pre-filter set re-admitted a key whose only evidence was a
+    // foreign stroke the save is already dropping, which let that track's base
+    // land under this one.
     const scopedKeyIds = new Set<string>([
       ...liveKeyIdValues,
-      ...watercolorKeyAnchors.map((anchor) => anchor.keyId),
+      ...finalWatercolorKeyAnchors.map((anchor) => anchor.keyId),
       ...retainedBaseIds,
     ]);
     for (const [keyId, bytes] of sessionDurableBases) {
       if (keyId.length === 0) continue;
+      // Foreign ownership is checked explicitly, like the retained loops above:
+      // an unknown (null) live key map disables the scope set, not this guard.
+      if (foreignIds?.has(keyId)) continue;
       if (liveKeyIds !== null && liveKeyIds !== undefined && !scopedKeyIds.has(keyId)) continue;
       mergedBases.set(keyId, bytes);
     }
@@ -606,6 +613,14 @@ export const STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE = 'Studio script snap
  */
 export const STUDIO_SCRIPT_SNAPSHOT_AQTL_RETIRED_MESSAGE = "This track's script was saved in an older format and is not loaded. The frame pixels are unchanged.";
 
+/**
+ * CR-01 (63 review): CR-02's latch protects the unread leaf by NOT writing, so
+ * a user who keeps painting after a refusal would otherwise lose that work in
+ * silence — the close path's flush is a no-op and simply closes. Disclose the
+ * pause once per latch episode and name the only exit.
+ */
+export const STUDIO_SCRIPT_SNAPSHOT_SAVE_WITHHELD_MESSAGE = "This track's unread script snapshot is being preserved, so new script edits are not being saved. Clear this track's script to resume saving.";
+
 export function studioScriptSnapshotRestoreFailureMessage(kind: string): string {
   if (kind === 'corrupt:snap-v4-retired') {
     return STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE;
@@ -653,6 +668,12 @@ export function createStudioScriptSnapshotController(
    * a later successful restore, or a SUCCESSFUL explicit purge commit.
    */
   let refusedRestore = false;
+  /**
+   * CR-01 (63 review): one save-paused notice per latch episode. Without it the
+   * withholding is silent — the user keeps painting, the close flush no-ops, and
+   * the work is lost with no message. Reset wherever the latch is cleared.
+   */
+  let saveWithheldReported = false;
   /** quick-261026-odd: the file's durable rail-cleanup marker. */
   let railCleanupDone = false;
   /** One restore-failure report per bound identity. */
@@ -699,6 +720,7 @@ export function createStudioScriptSnapshotController(
     retainedContent = null;
     // CR-02: the latch is per binding — the incoming identity starts clean.
     refusedRestore = false;
+    saveWithheldReported = false;
     railCleanupDone = false;
     restoreFailureReported = false;
   }
@@ -805,6 +827,7 @@ export function createStudioScriptSnapshotController(
       lastSavedSignature = deps.getContentSignature();
       // CR-02: a successful read proves the bound file is understood again.
       refusedRestore = false;
+      saveWithheldReported = false;
       return { status: 'restored', maxRestoredMutationId };
     } finally {
       restoringCount -= 1;
@@ -852,11 +875,6 @@ export function createStudioScriptSnapshotController(
     if (signature === lastSavedSignature) return null;
     const sessionOnly = options?.sessionOnly === true;
     const allowEmpty = options?.allowEmpty === true;
-    // CR-02 (63-16): a refused restore latches the binding. Every routine save
-    // is withheld HERE, upstream of `deps.write`, so the IPC write and the
-    // Rust atomic replace are never reached for an unread leaf. Only the
-    // explicit purge (an existing option, no new surface) may rewrite it.
-    if (refusedRestore && !sessionOnly) return null;
     // The authority is captured WITH the identity and bytes: the prepared
     // payload is already bound to the package it was prepared for.
     const authority = deps.getAuthority();
@@ -887,6 +905,23 @@ export function createStudioScriptSnapshotController(
       ) {
         // An empty session proves nothing about the file (refused read, or a
         // rebind whose restore has not seeded it). Never overwrite with it.
+        return null;
+      }
+      // CR-02 (63-16): a refused restore latches the binding. Every routine save
+      // is withheld HERE — upstream of `deps.write`, so the IPC write and the
+      // Rust atomic replace are never reached for an unread leaf. Only the
+      // explicit purge (an existing option, no new surface) may rewrite it.
+      // Placed AFTER the empty-payload guard so CR-01's disclosure fires only
+      // when there is real content being withheld (an empty session loses
+      // nothing, and the guard above already withholds it on its own).
+      if (refusedRestore && !sessionOnly) {
+        // CR-01: disclose the withholding ONCE per latch episode. Nothing was
+        // attempted, so this is not a save failure — it is the pause itself,
+        // with the only non-destructive exit named.
+        if (!saveWithheldReported) {
+          saveWithheldReported = true;
+          deps.report(STUDIO_SCRIPT_SNAPSHOT_SAVE_WITHHELD_MESSAGE);
+        }
         return null;
       }
       const bytes = encodeStudioScriptSnapshot({
@@ -926,7 +961,10 @@ export function createStudioScriptSnapshotController(
     // CR-02 (63-16): only a SUCCESSFUL explicit purge acknowledges the
     // destructive rewrite and clears the latch. A failed write returned above,
     // leaving the latch set.
-    if (prepared.sessionOnly) refusedRestore = false;
+    if (prepared.sessionOnly) {
+      refusedRestore = false;
+      saveWithheldReported = false;
+    }
     // Only a save that still represents the CURRENT identity and content
     // clears the dirty flag; a mutation during the write leaves it dirty.
     if (deps.getContentSignature() === prepared.signature) {
@@ -1100,6 +1138,7 @@ export function createStudioScriptSnapshotController(
     restoreSettledGeneration = null;
     retainedContent = null;
     refusedRestore = false;
+    saveWithheldReported = false;
     railCleanupDone = false;
     restoreFailureReported = false;
   }
