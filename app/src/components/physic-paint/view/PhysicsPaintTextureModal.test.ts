@@ -54,6 +54,7 @@ import {
 } from './aquarelleStrokeSelection';
 import { clearScriptStrokeSelection, setScriptStrokeSelection } from './scriptStrokeEdition';
 import type { ScriptStrokeAppearancePatch } from './strokeSettingsModel';
+import { WatercolorTextureImport } from './WatercolorBrushLibrary';
 
 interface TestVNode {
   type: unknown;
@@ -216,6 +217,42 @@ describe('quick 261116-gcn Textures sheet', () => {
     const close = findByTestId(moved, 'watercolor-texture-modal-close')!;
     (close.props?.onClick as () => void)();
     expect(aquarelleTextureModalOpen.value).toBe(false);
+  });
+
+  it('mounts the shared import control below the strip under its own testid prefix', () => {
+    setAquarelleTextureModalOpen(true);
+    const tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    const mounted = collect(tree).find((node) => node.type === WatercolorTextureImport);
+    expect(mounted, 'the sheet mounts the catalogue import control').toBeTruthy();
+    expect(
+      (mounted!.props as Record<string, unknown>)['testIdPrefix'],
+      'the sheet never reuses the catalogue testids',
+    ).toBe('watercolor-texture-import');
+
+    const stripAt = MODAL_SOURCE.indexOf('<WatercolorTextureStrip />');
+    const importAt = MODAL_SOURCE.indexOf(
+      '<WatercolorTextureImport testIdPrefix="watercolor-texture-import" />',
+    );
+    expect(importAt, 'the import control renders').toBeGreaterThan(-1);
+    expect(importAt, 'the import control sits below the strip').toBeGreaterThan(stripAt);
+
+    // The control itself: ONE button and ONE hidden PNG/JPEG input, sharing the
+    // catalogue's single decode/register path.
+    const control = WatercolorTextureImport({
+      testIdPrefix: 'watercolor-texture-import',
+    }) as TestVNode;
+    const nodes = collect(control);
+    const button = nodes.find(
+      (node) => node.props?.['data-testid'] === 'watercolor-texture-import',
+    );
+    expect(button?.type, 'a real button').toBe('button');
+    expect(button!.props?.['disabled'], 'idle control is enabled').toBe(false);
+    const inputs = nodes.filter((node) => node.type === 'input');
+    expect(inputs.length, 'exactly one file input').toBe(1);
+    expect(inputs[0]!.props?.['accept'], 'PNG + JPEG only').toBe('image/png,image/jpeg');
+    expect(inputs[0]!.props?.['style'], 'input stays hidden').toMatchObject({
+      display: 'none',
+    });
   });
 
   it('source pins the full strip, the Size-before-strip order and the front-only Escape law', () => {

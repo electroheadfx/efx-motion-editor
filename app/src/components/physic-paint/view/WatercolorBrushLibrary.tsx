@@ -103,6 +103,138 @@ function setImportFailure(next: boolean): void {
 }
 
 /**
+ * 63-06 D-01 / quick 261116-gcn: the ONE import control. Extracted so the brush
+ * catalog's texture row and the floating Textures sheet share a single decode +
+ * register path — importTip derives the 192×192 mask in this realm, then
+ * requestPhysicPaintBrushImport asks the MAIN realm to register it (that realm
+ * owns the catalog, the mask registry and the stored bytes). A successful
+ * import selects the new texture on arrival, so the next stroke stamps it.
+ *
+ * `testIdPrefix` keeps the two mounted surfaces addressable without sharing a
+ * DOM testid: the catalog keeps the shipped `watercolor-brush-import*` names.
+ */
+export function WatercolorTextureImport(props: { testIdPrefix?: string }) {
+  const prefix = props.testIdPrefix ?? 'watercolor-brush-import';
+  // The catalogue's shipped warning id predates the prefix scheme and omits
+  // `-import`; it stays byte-identical for the default surface.
+  const warningId = props.testIdPrefix === undefined
+    ? 'watercolor-brush-unavailable-warning'
+    : `${props.testIdPrefix}-unavailable-warning`;
+  // Narrow signal reads: the module-scope signals make both mounts agree on the
+  // in-flight / failure state, and the unavailable count is the same set.
+  const busy = importInFlight.value;
+  const importFailedValue = importFailed.value;
+  const unavailableCount = unavailableTipCount.value;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const onImportFile = async (event: Event): Promise<void> => {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    setImporting(true);
+    setImportFailure(false);
+    try {
+      const result = await importTip(file, {
+        decode: decodeRgbaAtTipSize,
+        register: async ({ mask, name }) => {
+          const answer = await requestPhysicPaintBrushImport(mask, name);
+          return answer.ok && answer.entry ? answer.entry : null;
+        },
+      });
+      if (result.ok) {
+        setAquarelleSelectedTextureId(result.tip.id);
+      } else {
+        setImportFailure(true);
+      }
+    } catch {
+      setImportFailure(true);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}
+      >
+        <button
+          type="button"
+          data-testid={prefix}
+          title="Import brush tip (PNG/JPG)"
+          aria-label="Import brush tip (PNG/JPG)"
+          disabled={busy}
+          onClick={() => fileInputRef.current?.click()}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            height: '24px',
+            padding: '0 8px',
+            border: '1px solid var(--sidebar-border-unselected, rgba(159, 165, 174, 0.55))',
+            borderRadius: '3px',
+            background: 'transparent',
+            cursor: busy ? 'default' : 'pointer',
+            opacity: busy ? 0.5 : 1,
+            color: 'var(--sidebar-text-primary, #eceff2)',
+            fontSize: '10px',
+            fontWeight: 600,
+          }}
+        >
+          <FolderOpen size={14} />
+          Import tip
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg"
+          data-testid={`${prefix}-input`}
+          style={{ display: 'none' }}
+          onChange={(event) => onImportFile(event)}
+        />
+      </div>
+      {/* 63-06 D-19: ONE aggregate line for the whole unavailable set. */}
+      {unavailableCount > 0 ? (
+        <div
+          data-testid={warningId}
+          role="status"
+          style={{
+            gridColumn: '1 / -1',
+            fontSize: '10px',
+            fontWeight: 600,
+            lineHeight: 1.2,
+            color: 'var(--color-error-text, #FF6666)',
+          }}
+        >
+          {unavailableCount === 1
+            ? '1 brush tip unavailable in this project'
+            : `${unavailableCount} brush tips unavailable in this project`}
+        </div>
+      ) : null}
+      {importFailedValue ? (
+        <div
+          data-testid={`${prefix}-import-failure`}
+          style={{
+            gridColumn: '1 / -1',
+            fontSize: '10px',
+            fontWeight: 600,
+            lineHeight: 1.2,
+            color: 'var(--color-error-text, #FF6666)',
+          }}
+        >
+          {IMPORT_TIP_FAILURE_COPY}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/**
  * The painted stroke thumbnail, shared by the response cards and the Studio
  * top bar. `presetId` is the RESPONSE id — the thumb module resolves a
  * preset or a legacy catalog id to the response's procedural tip. Paint-once
@@ -221,44 +353,6 @@ export function WatercolorBrushLibrary() {
   // Narrow signal reads (efx-preact-reactivity rule 5): one read per signal
   // per render, and no signal is written from this body.
   const selectedTipId = aquarelleSelectedTipId.value;
-  const unavailableCount = unavailableTipCount.value;
-  const busy = importInFlight.value;
-  const importFailedValue = importFailed.value;
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  /**
-   * One import: decode the picked file into a 192×192 mask in THIS realm
-   * (importTip owns both caps and the derivation law), then ask the project
-   * realm to register it. The answer carries only the catalog entry; the
-   * catalog push is the one path that lists it (63-05). A successful import
-   * selects the new texture on arrival — the next stroke stamps it.
-   */
-  const onImportFile = async (event: Event): Promise<void> => {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
-    setImporting(true);
-    setImportFailure(false);
-    try {
-      const result = await importTip(file, {
-        decode: decodeRgbaAtTipSize,
-        register: async ({ mask, name }) => {
-          const answer = await requestPhysicPaintBrushImport(mask, name);
-          return answer.ok && answer.entry ? answer.entry : null;
-        },
-      });
-      if (result.ok) {
-        setAquarelleSelectedTextureId(result.tip.id);
-      } else {
-        setImportFailure(true);
-      }
-    } catch {
-      setImportFailure(true);
-    } finally {
-      setImporting(false);
-    }
-  };
 
   return (
     <div
@@ -281,81 +375,8 @@ export function WatercolorBrushLibrary() {
         }}
       >
         <WatercolorTextureStrip />
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-          }}
-        >
-          <button
-            type="button"
-            data-testid="watercolor-brush-import"
-            title="Import brush tip (PNG/JPG)"
-            aria-label="Import brush tip (PNG/JPG)"
-            disabled={busy}
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              height: '24px',
-              padding: '0 8px',
-              border: '1px solid var(--sidebar-border-unselected, rgba(159, 165, 174, 0.55))',
-              borderRadius: '3px',
-              background: 'transparent',
-              cursor: busy ? 'default' : 'pointer',
-              opacity: busy ? 0.5 : 1,
-              color: 'var(--sidebar-text-primary, #eceff2)',
-              fontSize: '10px',
-              fontWeight: 600,
-            }}
-          >
-            <FolderOpen size={14} />
-            Import tip
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg"
-            data-testid="watercolor-brush-import-input"
-            style={{ display: 'none' }}
-            onChange={(event) => onImportFile(event)}
-          />
-        </div>
+        <WatercolorTextureImport />
       </div>
-      {/* 63-06 D-19: ONE aggregate line for the whole unavailable set. */}
-      {unavailableCount > 0 ? (
-        <div
-          data-testid="watercolor-brush-unavailable-warning"
-          role="status"
-          style={{
-            gridColumn: '1 / -1',
-            fontSize: '10px',
-            fontWeight: 600,
-            lineHeight: 1.2,
-            color: 'var(--color-error-text, #FF6666)',
-          }}
-        >
-          {unavailableCount === 1
-            ? '1 brush tip unavailable in this project'
-            : `${unavailableCount} brush tips unavailable in this project`}
-        </div>
-      ) : null}
-      {importFailedValue ? (
-        <div
-          data-testid="watercolor-brush-import-failure"
-          style={{
-            gridColumn: '1 / -1',
-            fontSize: '10px',
-            fontWeight: 600,
-            lineHeight: 1.2,
-            color: 'var(--color-error-text, #FF6666)',
-          }}
-        >
-          {IMPORT_TIP_FAILURE_COPY}
-        </div>
-      ) : null}
       <BrushSection id="responses" title="Brushes">
         {BRUSH_PRESETS.map((preset) => (
           <BrushCard

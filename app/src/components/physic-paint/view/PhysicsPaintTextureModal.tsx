@@ -33,6 +33,7 @@ import {
   sheetZIndex,
 } from './floatingSheetStack';
 import { WatercolorTextureStrip } from './WatercolorTextureStrip';
+import { WatercolorTextureImport } from './WatercolorBrushLibrary';
 
 interface DragOffset {
   readonly dxPx: number;
@@ -298,6 +299,10 @@ export function PhysicsPaintTextureModal(props: {
             disabled={props.disabled}
           />
           <WatercolorTextureStrip />
+          {/* quick 261116-gcn: the SAME import control the brush catalog uses
+              (one decode/register path). Its own testid prefix keeps the two
+              mounted surfaces addressable. */}
+          <WatercolorTextureImport testIdPrefix="watercolor-texture-import" />
         </div>
       </SidebarScrollArea>
 
