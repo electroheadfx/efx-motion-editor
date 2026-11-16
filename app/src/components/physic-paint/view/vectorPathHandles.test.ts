@@ -1038,11 +1038,6 @@ describe('buildVectorStroke — every required field has a stated source', () =>
 //  recorded pressure along the ORIGINAL polyline's arc length with
 //  both ends pinned. The draw-time mint above is untouched.
 //
-//  Quick 261116-r9k splits the law by argument count: TWO arguments
-//  are the EDIT law pinned here, THREE are the CONVERSION law (the
-//  block below). No pin in this block rides the conversion seam —
-//  all four call the two-argument form.
-//
 //  Resolved dynamically so this block pins the planned export
 //  without turning its absence into a module-load failure.
 // ============================================================

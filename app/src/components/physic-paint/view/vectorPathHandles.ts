@@ -897,51 +897,6 @@ function cumulativeArcLength(
   return stations;
 }
 
-// --- The conversion count law (quick 261116-r9k) ---------------------------
-
-/**
- * The CONVERSION seam's station spacing, in document uv.
- *
- * Half the draw-time mint's `VECTOR_PAINT_SAMPLE_STEP_UV` (0.04): the
- * conversion's job is to follow a fitted curve the user is about to edit, not
- * to replay a hand's cadence, while the path-edit overlay already samples at
- * 0.002 uv. Spacing is the only knob — the multiplier below caps growth.
- */
-export const VECTOR_CONVERSION_SAMPLE_STEP_UV = 0.02;
-
-/**
- * The conversion's growth ceiling against the recorded sample count.
- *
- * A converted station is one more engine tick, i.e. more wet lifetime, so the
- * recorded count is the anchor of the clamp. Dropping the cap to 2x is the
- * sanctioned response to a too-wet UAT: one production-code change plus the
- * pinned literals that ride it.
- */
-export const VECTOR_CONVERSION_MAX_SAMPLE_MULTIPLIER = 3;
-
-/**
- * The station count a painted-to-vector CONVERSION mints for its spine:
- * `clamp(ceil(arcLength(spine) / VECTOR_CONVERSION_SAMPLE_STEP_UV), sourceCount,
- * VECTOR_CONVERSION_MAX_SAMPLE_MULTIPLIER x sourceCount)`.
- *
- * The recorded count is a hand cadence, not a resolution — at conversion it
- * under-samples the curve the user is about to edit — so this is the ONE seam
- * that may grow it. Degrades safely: a non-finite or non-positive source count
- * returns 0 and an unmeasurable (zero-length) spine returns the source count.
- */
-export function resolveVectorConversionSampleCount(
-  spine: readonly { readonly x: number; readonly y: number }[],
-  sourceCount: number,
-): number {
-  if (!Number.isFinite(sourceCount) || sourceCount <= 0) return 0;
-  const floor = Math.max(1, Math.floor(sourceCount));
-  const stations = cumulativeArcLength(spine);
-  const total = stations[stations.length - 1] ?? 0;
-  if (!Number.isFinite(total) || total <= 0) return floor;
-  const demanded = Math.ceil(total / VECTOR_CONVERSION_SAMPLE_STEP_UV);
-  return Math.min(Math.max(demanded, floor), floor * VECTOR_CONVERSION_MAX_SAMPLE_MULTIPLIER);
-}
-
 /** The point at `distance` along a polyline, clamped to its ends. */
 function pointAtArcDistance(
   polyline: readonly Vec2[],
@@ -972,43 +927,30 @@ function pointAtArcDistance(
  * 62-01 (D-07/D-08): re-derive an EDITED stroke's samples without moving its
  * wet lifetime.
  *
- * The TWO-argument call is the EDIT law: the recorded sample count IS the
- * stroke's `ticks`, so an edit keeps exactly `sourcePoints.length` stations —
- * spread evenly by arc length over the new spine, both endpoints pinned to the
- * spine's own endpoints. The recorded pressure is remapped along the ORIGINAL
- * polyline's arc length (linear in between, both ends pinned), so a reshape
- * slides the profile along the stroke instead of resetting it. An all-sentinel
- * source stays all-sentinel: the engine owns that stroke's pressure, exactly
- * as at draw time.
- *
- * The optional third argument is the CONVERSION law (quick 261116-r9k): the
- * painted-to-vector seam re-stations at `targetCount` stations because the
- * recorded count is a hand cadence, not a resolution. EDIT seams must never
- * pass it — a second multiplication is exactly the compounding this law
- * forbids.
+ * The recorded sample count IS the stroke's `ticks`, so an edit keeps exactly
+ * `sourcePoints.length` stations — spread evenly by arc length over the new
+ * spine, both endpoints pinned to the spine's own endpoints. The recorded
+ * pressure is remapped along the ORIGINAL polyline's arc length (linear in
+ * between, both ends pinned), so a reshape slides the profile along the stroke
+ * instead of resetting it. An all-sentinel source stays all-sentinel: the
+ * engine owns that stroke's pressure, exactly as at draw time.
  *
  * The draw-time mint above is untouched — this law only redistributes samples
- * an edit or conversion already owns. Never throws; a zero-length spine
- * repeats its first point, never NaN.
+ * an edit already owns. Never throws; a zero-length spine repeats its first
+ * point, never NaN.
  */
 export function resampleVectorSpineWithPressureLaw(
   spine: readonly Vec2[],
   sourcePoints: readonly { readonly x: number; readonly y: number; readonly p: number }[],
-  targetCount?: number,
 ): VectorSpineResample {
   const count = Array.isArray(sourcePoints) ? sourcePoints.length : 0;
   if (count === 0) return { points: [], pressures: [] };
-  const stationCount =
-    typeof targetCount === 'number' && Number.isFinite(targetCount) && targetCount >= 1
-      ? Math.max(1, Math.floor(targetCount))
-      : count;
 
   const spineStations = cumulativeArcLength(spine);
   const spineTotal = spineStations[spineStations.length - 1] ?? 0;
-  const fractionAt = (index: number): number =>
-    stationCount === 1 ? 0 : index / (stationCount - 1);
+  const fractionAt = (index: number): number => (count === 1 ? 0 : index / (count - 1));
   const points: Vec2[] = [];
-  for (let index = 0; index < stationCount; index += 1) {
+  for (let index = 0; index < count; index += 1) {
     points.push(
       pointAtArcDistance(spine, spineStations, spineTotal, fractionAt(index) * spineTotal),
     );
@@ -1021,10 +963,7 @@ export function resampleVectorSpineWithPressureLaw(
     return typeof raw === 'number' && Number.isFinite(raw) ? raw : VECTOR_PRESSURE_SENTINEL;
   });
   if (readings.every((value) => value === VECTOR_PRESSURE_SENTINEL)) {
-    return {
-      points,
-      pressures: Array.from({ length: stationCount }, () => VECTOR_PRESSURE_SENTINEL),
-    };
+    return { points, pressures: readings.map(() => VECTOR_PRESSURE_SENTINEL) };
   }
   const pressureAt = (fraction: number): number => {
     if (fraction <= 0) return readings[0]!;
@@ -1048,12 +987,10 @@ export function resampleVectorSpineWithPressureLaw(
     const value = readings[low]! + (readings[high]! - readings[low]!) * t;
     return Number.isFinite(value) ? value : VECTOR_PRESSURE_SENTINEL;
   };
-  const pressures = Array.from({ length: stationCount }, (_, index) =>
-    pressureAt(fractionAt(index)),
-  );
+  const pressures = readings.map((_, index) => pressureAt(fractionAt(index)));
   // Pin both ends to the recorded values exactly — no interpolation rounding.
   pressures[0] = readings[0]!;
-  pressures[stationCount - 1] = readings[readings.length - 1]!;
+  pressures[pressures.length - 1] = readings[readings.length - 1]!;
   return { points, pressures };
 }
 
