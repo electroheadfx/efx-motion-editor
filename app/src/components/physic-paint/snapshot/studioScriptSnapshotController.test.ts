@@ -933,6 +933,27 @@ describe('studioScriptSnapshotController — CR-02 refused-restore latch', () =>
     expect(write).not.toHaveBeenCalled();
   });
 
+  it('CR-02: the debounced drain writes nothing while latched', async () => {
+    vi.useFakeTimers();
+    try {
+      const { controller, read, write, setSignature } = harness();
+      read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+      controller.bind(IDENTITY);
+      await controller.restore();
+
+      // The habitual routine-save route (markDirty -> 800 ms drain) is the
+      // same prepareSave choke point, so it must be withheld too.
+      recordAquarelleStroke(911, recordableAquarelleStroke(911, 0));
+      setSignature('sig-debounced');
+      controller.markDirty();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(write).not.toHaveBeenCalled();
+      controller.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('CR-02: withholds the decode-refused arm too', async () => {
     const bytes = retiredContainer(6);
     const { controller, read, write, report, setSignature } = harness();
