@@ -22,6 +22,14 @@
 //  resets a now-dangling selection to Default. The handler is
 //  container-scoped: never a window listener, never the global paint
 //  shortcut dispatcher, and inert while a text field owns the key.
+//
+//  quick 261116-inu / Task 10: the Rotation row (integer DEGREES,
+//  -180..180) sits UNDER Brush size. It renders only from a machine-
+//  library row — Default and a script-registered external tip carry no
+//  persisted rotation — previews the gesture locally while the child
+//  realm (which never writes the catalog) waits for the ONE
+//  set-rotation request on release, and shows the committed value from
+//  the row once the request's catalog pull lands.
 // ============================================================
 
 import { useEffect, useRef } from 'preact/hooks';
@@ -101,6 +109,27 @@ function clearPendingTextureDelete(): void {
 export function resetTextureDeleteState(): void {
   if (pendingTextureDelete.value !== null) pendingTextureDelete.value = null;
   if (textureDeleteInFlight.value) textureDeleteInFlight.value = false;
+}
+
+/**
+ * quick 261116-inu / Task 10: the rotation row's live gesture PREVIEW. The
+ * child realm never writes the machine catalog — the committed value lives in
+ * the main realm and in `catalog.json` — so a drag renders through this local
+ * signal until the mutation's catalog pull arrives. Keyed by tip id, so a
+ * selection change discards a stale preview by construction.
+ */
+interface TextureRotationPreview {
+  readonly tipId: string;
+  readonly degrees: number;
+}
+const textureRotationPreview = signal<TextureRotationPreview | null>(null);
+/** One set-rotation request in flight at a time; the row disables meanwhile. */
+const textureRotationInFlight = signal(false);
+
+/** Clear the rotation preview and in-flight latch (sheet close / test hygiene). */
+export function resetTextureRotationState(): void {
+  if (textureRotationPreview.value !== null) textureRotationPreview.value = null;
+  if (textureRotationInFlight.value) textureRotationInFlight.value = false;
 }
 
 const SURFACE_INSET_PX = 12;
@@ -193,6 +222,89 @@ export function TextureSizeControl(props: {
   );
 }
 
+/**
+ * quick 261116-inu / Task 10: the projected-texture Rotation row — integer
+ * DEGREES in -180..180, the ONE unit law's non-byte end (hundredths exist only
+ * inside the AQTL byte body). Rendered ONLY from a machine-library row the
+ * child realm actually received a digest for: the Default chip and a
+ * script-registered external tip have no persisted rotation to edit, so the
+ * row is absent rather than a dead control.
+ *
+ * The child never mutates the library itself and never writes the catalog row:
+ * `onChange` previews the gesture locally, and the release `onCommit` sends
+ * exactly ONE `set-rotation` through the main realm's mutation pair. The
+ * main realm mutates, publishes and answers; the request's post-answer pull
+ * then re-renders this row from the committed degrees.
+ */
+export function TextureRotationControl(props: { disabled?: boolean }) {
+  const selectedId = aquarelleSelectedTextureId.value;
+  const row = selectedId === null ? null : libraryRowFor(selectedId);
+  if (selectedId === null || row === null) return null;
+  const preview = textureRotationPreview.value;
+  const degrees = preview !== null && preview.tipId === selectedId
+    ? preview.degrees
+    : row.textureRotation;
+  const inFlight = textureRotationInFlight.value;
+
+  const commit = (next: number) => {
+    if (textureRotationInFlight.value) return;
+    // A gesture that lands on the committed value asks for nothing: the
+    // native rewrite would be a no-op and the preview is already spent.
+    if (next === row.textureRotation) {
+      if (textureRotationPreview.value?.tipId === selectedId) {
+        textureRotationPreview.value = null;
+      }
+      return;
+    }
+    textureRotationInFlight.value = true;
+    void (async () => {
+      try {
+        const result = await requestPhysicPaintBrushTextureMutation({
+          operation: 'set-rotation',
+          digest: row.digest,
+          textureRotation: next,
+        });
+        if (!result.ok) {
+          console.warn('[PhysicsPaintTextureModal] texture rotation refused', result.reason);
+        }
+      } catch (error) {
+        console.warn('[PhysicsPaintTextureModal] texture rotation request failed', error);
+      } finally {
+        textureRotationInFlight.value = false;
+        // The gesture ends with the request: the row (or the pull the request
+        // awaited) owns the displayed value from here on.
+        if (textureRotationPreview.value?.tipId === selectedId) {
+          textureRotationPreview.value = null;
+        }
+      }
+    })();
+  };
+
+  return (
+    <div
+      class="physics-paint-texture-rotation"
+      data-testid="watercolor-texture-modal-rotation"
+      title="Rotation — saved with this texture on this machine"
+    >
+      <SliderStepper
+        id="physics-texture-rotation"
+        label="Rotation"
+        value={degrees}
+        onChange={(next) => {
+          if (textureRotationInFlight.value) return;
+          textureRotationPreview.value = { tipId: selectedId, degrees: next };
+        }}
+        onCommit={commit}
+        step={1}
+        min={-180}
+        max={180}
+        disabled={props.disabled === true || inFlight}
+        ariaLabel="Rotation — textures"
+      />
+    </div>
+  );
+}
+
 export function PhysicsPaintTextureModal(props: {
   onBrushSizeChange: (value: number) => void;
   disabled?: boolean;
@@ -207,8 +319,9 @@ export function PhysicsPaintTextureModal(props: {
       // A closed sheet must leave the order — a stale front id would make the
       // front-only Escape gate inert for every sheet that is still open.
       releaseSheet(SHEET_ID_TEXTURES);
-      // A confirmation never outlives its sheet.
+      // A confirmation never outlives its sheet; a preview neither.
       resetTextureDeleteState();
+      resetTextureRotationState();
       return undefined;
     }
     const onKeyDown = (event: KeyboardEvent) => {
@@ -234,6 +347,7 @@ export function PhysicsPaintTextureModal(props: {
 
   const close = () => {
     resetTextureDeleteState();
+    resetTextureRotationState();
     setAquarelleTextureModalOpen(false);
   };
 
@@ -424,6 +538,9 @@ export function PhysicsPaintTextureModal(props: {
             onBrushSizeChange={props.onBrushSizeChange}
             disabled={props.disabled}
           />
+          {/* quick 261116-inu / Task 10: the rotation row sits directly under
+              Brush size; it renders only from a library row (never Default). */}
+          <TextureRotationControl disabled={props.disabled} />
           {/* quick 261116-gcn: the SAME import control the brush catalog uses
               (one decode/register path), seated ABOVE the strip with breathing
               room on both sides. Its own testid prefix keeps the two mounted

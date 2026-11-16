@@ -3,7 +3,7 @@ import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintBrushImportResult, PhysicPaintBrushTextureMutation, PhysicPaintBrushTextureMutationResult, PhysicPaintDocumentAudioClipRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRailMotionMergeNotice, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintBrushCatalogPayload, isPhysicPaintBrushCatalogRequest, isPhysicPaintBrushImportRequest, isPhysicPaintBrushImportResult, isPhysicPaintBrushTextureMutationRequest, isPhysicPaintBrushTextureMutationResult, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
-import { deleteBrushTexture } from './brushLibrary';
+import { deleteBrushTexture, setBrushTextureRotation } from './brushLibrary';
 import { base64ToWebpBytes, decodeBridgeBase64, encodeBridgeBase64, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
 import { buildBytesPayload } from './efxPaintMediaMaterialize';
 import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
@@ -3436,11 +3436,11 @@ function refusalForMalformedMutationRequest(
 
 /**
  * quick 261116-inu / Task 6: MAIN-realm installer for the Studio's machine-
- * library mutation requests (delete now; Task 10 adds set-rotation to the same
- * pair). Same triple transport as the sibling installers, a fail-closed wire
- * guard that still answers a correlated refusal, and the publish-then-answer
- * law: a landed mutation is republished BEFORE the result event so the child's
- * pull can never race a stale snapshot.
+ * library mutation requests — delete and set-rotation share the one pair. Same
+ * triple transport as the sibling installers, a fail-closed wire guard that
+ * still answers a correlated refusal, and the publish-then-answer law: a
+ * landed mutation is republished BEFORE the result event so the child's pull
+ * can never race a stale snapshot.
  */
 export async function installPhysicPaintBrushTextureMutationListener(): Promise<() => void> {
   const applyRequest = async (
@@ -3457,8 +3457,7 @@ export async function installPhysicPaintBrushTextureMutationListener(): Promise<
           ok = await deleteBrushTexture(mutation.digest);
           break;
         case 'set-rotation':
-          // Task 10 owns the rotation arm in the SAME pair.
-          ok = false;
+          ok = await setBrushTextureRotation(mutation.digest, mutation.textureRotation);
           break;
       }
     } catch (error) {

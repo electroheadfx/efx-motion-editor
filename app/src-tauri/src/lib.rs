@@ -978,6 +978,7 @@ pub fn run() {
             brush_library::brush_library_decode,
             brush_library::brush_library_scan,
             brush_library::brush_library_delete,
+            brush_library::brush_library_set_rotation,
             studio_script_snapshot_commands::studio_script_snapshot_write,
             studio_script_snapshot_commands::studio_script_snapshot_read,
             studio_script_snapshot_commands::studio_script_snapshot_delete,

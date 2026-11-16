@@ -9,6 +9,9 @@
  *   3. The load never rejects: a failed scan degrades to an empty catalog.
  *   4. A repeated identical load bumps no revision (compare-then-write), and
  *      one replacement publishes once.
+ *   5. quick 261116-inu / Task 10: a rotation is integer DEGREES sent through
+ *      the same compare-then-write seam — one row replaced, one publish, and a
+ *      refused/failed native answer leaves the catalog byte-identical.
  *
  * The library commands are mocked at the `./ipc` boundary (partial mock); the
  * catalog store and the mask registry are the REAL instances.
@@ -19,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mockScan = vi.hoisted(() => vi.fn());
 const mockDecode = vi.hoisted(() => vi.fn());
 const mockDelete = vi.hoisted(() => vi.fn());
+const mockSetRotation = vi.hoisted(() => vi.fn());
 
 vi.mock('./ipc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./ipc')>();
@@ -27,6 +31,7 @@ vi.mock('./ipc', async (importOriginal) => {
     ipcBrushLibraryScan: mockScan,
     ipcBrushLibraryDecode: mockDecode,
     ipcBrushLibraryDelete: mockDelete,
+    ipcBrushLibrarySetRotation: mockSetRotation,
   };
 });
 
@@ -36,7 +41,7 @@ import {
   resetMaskRegistry,
   resolveMask,
 } from '@efxlab/efx-watercolor';
-import { deleteBrushTexture, loadBrushLibrary } from './brushLibrary';
+import { deleteBrushTexture, loadBrushLibrary, setBrushTextureRotation } from './brushLibrary';
 import {
   _setBrushCatalogPublisher,
   customBrushTips,
@@ -91,12 +96,14 @@ beforeEach(() => {
   mockScan.mockReset();
   mockDecode.mockReset();
   mockDelete.mockReset();
+  mockSetRotation.mockReset();
   mockScan.mockResolvedValue({ ok: true, data: { entries: [ENTRY_A, ENTRY_B], unavailable: [] } });
   mockDecode.mockImplementation(async (digest: string) => ({
     ok: true as const,
     data: { mask: makeMask(digest === DIGEST_A ? 7 : 11), width: 512, height: 512 },
   }));
   mockDelete.mockResolvedValue({ ok: true, data: null });
+  mockSetRotation.mockResolvedValue({ ok: true, data: ENTRY_A });
 });
 
 afterEach(() => {
@@ -282,5 +289,97 @@ describe('deleteBrushTexture — one row and one file, never a project', () => {
 
     expect(unavailableTipIds.value.has(ENTRY_A.id)).toBe(false);
     expect(libraryRows.value.map((row) => row.tip.id)).toEqual([ENTRY_B.id, ENTRY_A.id]);
+  });
+});
+
+describe('setBrushTextureRotation — integer degrees through the one mutation seam', () => {
+  it('sends the degrees through the native command and replaces exactly one row', async () => {
+    await loadBrushLibrary();
+    const published = vi.fn();
+    _setBrushCatalogPublisher(published);
+    const revisionBefore = libraryRevision.value;
+
+    await expect(setBrushTextureRotation(DIGEST_A, 37)).resolves.toBe(true);
+
+    // The wire carries DEGREES — never hundredths (the AQTL byte unit).
+    expect(mockSetRotation).toHaveBeenCalledWith(DIGEST_A, 37);
+    expect(libraryRows.value.map((row) => row.textureRotation)).toEqual([37, 37]);
+    // The sibling row (37 already) and its mask are untouched.
+    expect(resolveMask(ENTRY_B.id)).toEqual(makeMask(11));
+    expect(unavailableTipIds.value.size).toBe(0);
+    expect(libraryRevision.value, 'one bump, never two').toBe(revisionBefore + 1);
+    expect(published, 'one publish, never two').toHaveBeenCalledTimes(1);
+  });
+
+  it('a repeated rotation is an idempotent success that touches nothing', async () => {
+    await loadBrushLibrary();
+    const rowsBefore = libraryRows.value;
+    const revisionBefore = libraryRevision.value;
+    const published = vi.fn();
+    _setBrushCatalogPublisher(published);
+
+    await expect(setBrushTextureRotation(DIGEST_B, 37)).resolves.toBe(true);
+
+    // The command still runs (its native no-op is idempotent too)…
+    expect(mockSetRotation).toHaveBeenCalledWith(DIGEST_B, 37);
+    // …but equal degrees are not a library change.
+    expect(libraryRows.value).toBe(rowsBefore);
+    expect(libraryRevision.value).toBe(revisionBefore);
+    expect(published).not.toHaveBeenCalled();
+  });
+
+  it('negative degrees are stored verbatim on the one row', async () => {
+    await loadBrushLibrary();
+    await expect(setBrushTextureRotation(DIGEST_A, -120)).resolves.toBe(true);
+    expect(mockSetRotation).toHaveBeenCalledWith(DIGEST_A, -120);
+    expect(libraryRows.value[0]!.textureRotation).toBe(-120);
+    expect(libraryRows.value[1]!.textureRotation, 'the sibling keeps its own').toBe(37);
+  });
+
+  it('a digest this realm never listed answers false and touches nothing', async () => {
+    await loadBrushLibrary();
+    const rowsBefore = libraryRows.value;
+    const revisionBefore = libraryRevision.value;
+    const published = vi.fn();
+    _setBrushCatalogPublisher(published);
+
+    await expect(setBrushTextureRotation('f'.repeat(64), 90)).resolves.toBe(false);
+
+    expect(mockSetRotation).toHaveBeenCalledWith('f'.repeat(64), 90);
+    expect(libraryRows.value).toBe(rowsBefore);
+    expect(libraryRevision.value).toBe(revisionBefore);
+    expect(published).not.toHaveBeenCalled();
+  });
+
+  it('a refused native rotation answers false and leaves the catalog unchanged', async () => {
+    await loadBrushLibrary();
+    mockSetRotation.mockResolvedValue({ ok: false, error: 'invalid-texture-rotation' });
+    const rowsBefore = libraryRows.value;
+    const revisionBefore = libraryRevision.value;
+    const published = vi.fn();
+    _setBrushCatalogPublisher(published);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(setBrushTextureRotation(DIGEST_A, 37)).resolves.toBe(false);
+      expect(libraryRows.value).toBe(rowsBefore);
+      expect(libraryRevision.value).toBe(revisionBefore);
+      expect(libraryRows.value[0]!.textureRotation).toBe(0);
+      expect(published).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a rejected rotation command answers false and never rejects', async () => {
+    await loadBrushLibrary();
+    mockSetRotation.mockRejectedValue(new Error('ipc exploded'));
+    const rowsBefore = libraryRows.value;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(setBrushTextureRotation(DIGEST_A, 37)).resolves.toBe(false);
+      expect(libraryRows.value).toBe(rowsBefore);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

@@ -16,9 +16,9 @@
  *   degrades to an empty (or partially unavailable) catalog and logs.
  *
  * MUTATIONS
- *   `deleteBrushTexture` (and Task 10's `setBrushTextureRotation`) replace the
- *   catalog through `replaceLibraryEntries` (compare-then-write, so a no-op
- *   touches nothing), bump `libraryRevision` exactly once and publish once.
+ *   `deleteBrushTexture` and `setBrushTextureRotation` replace the catalog
+ *   through `replaceLibraryEntries` (compare-then-write, so a no-op touches
+ *   nothing), bump `libraryRevision` exactly once and publish once.
  *   The Rust commands serialise on one native mutex; the renderer serialises
  *   nothing itself because every mutation is a single await → single replace.
  */
@@ -29,7 +29,12 @@ import {
   replaceMaskRegistry,
   resolveMask,
 } from '@efxlab/efx-watercolor';
-import { ipcBrushLibraryDecode, ipcBrushLibraryDelete, ipcBrushLibraryScan } from './ipc';
+import {
+  ipcBrushLibraryDecode,
+  ipcBrushLibraryDelete,
+  ipcBrushLibraryScan,
+  ipcBrushLibrarySetRotation,
+} from './ipc';
 import {
   libraryRowToTip,
   libraryRows,
@@ -133,6 +138,50 @@ export async function deleteBrushTexture(digest: string): Promise<boolean> {
     return true;
   } catch (error) {
     console.warn('[brushLibrary] library delete failed — the catalog is unchanged', error);
+    return false;
+  }
+}
+
+/**
+ * Set ONE texture's projected rotation in integer DEGREES (quick 261116-inu /
+ * Task 10). Never hundredths: `3700` exists only inside the AQTL byte body.
+ *
+ * Order: native catalog rewrite → one compare-then-write catalog replacement
+ * (the row's rotation only; tip and mask identities untouched, ONE
+ * `libraryRevision` bump so the Studio's pull sees the change) → ONE publish.
+ * Setting the value the row already holds returns true WITHOUT touching the
+ * store or the revision (idempotent, matching the native no-op). An unknown
+ * digest answers false and changes nothing.
+ *
+ * The mask registry is untouched: a rotation is a shader uniform, never stored
+ * bytes. Never rejects.
+ */
+export async function setBrushTextureRotation(
+  digest: string,
+  textureRotation: number,
+): Promise<boolean> {
+  try {
+    const updated = await ipcBrushLibrarySetRotation(digest, textureRotation);
+    if (!updated.ok) {
+      console.warn('[brushLibrary] library rotation failed — the catalog is unchanged', updated.error);
+      return false;
+    }
+    const rows = libraryRows.peek();
+    const row = rows.find((entry) => entry.digest === digest);
+    if (!row) return false;
+    // Idempotent: a repeated rotation is not a library change.
+    if (row.textureRotation === textureRotation) return true;
+
+    replaceLibraryEntries(
+      rows.map((entry) =>
+        entry.digest === digest ? { ...entry, textureRotation } : entry,
+      ),
+      [...unavailableTipIds.peek()],
+    );
+    publishBrushCatalog();
+    return true;
+  } catch (error) {
+    console.warn('[brushLibrary] library rotation failed — the catalog is unchanged', error);
     return false;
   }
 }

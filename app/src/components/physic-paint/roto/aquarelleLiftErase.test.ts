@@ -746,7 +746,7 @@ describe('liftShapeForStroke — the RECORDED brush is the punched shape', () =>
     const withTexture = {
       brushId: 'round',
       toolOverrides: NEUTRAL_TOOL_OVERRIDES,
-      textureId: 'wc/builtin-chalk',
+      textureId: 'wc/custom-lift-neutral',
     };
     const resolved = liftShapeForStroke(withTexture);
     const plain = buildBrushForStroke('round', {

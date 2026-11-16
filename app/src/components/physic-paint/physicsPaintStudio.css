@@ -1223,6 +1223,12 @@ button.destructive {
   padding: 4px 2px 10px;
 }
 
+/* quick 261116-inu / Task 10: the Rotation row sits directly under Brush size;
+   its own bottom inset separates it from the import control. */
+.physics-paint-texture-rotation {
+  padding: 0 2px 10px;
+}
+
 /* quick 261116-gcn: the sheet is the FULL-size pick surface, so its chips are
    larger than the catalogue's 44px — a mask's tooth has to read before
    painting. The name widens with the chip instead of clipping at 56px. */

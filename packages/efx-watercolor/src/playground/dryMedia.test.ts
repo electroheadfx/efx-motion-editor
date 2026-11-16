@@ -15,7 +15,9 @@ describe('261027-gh9f dry media stamp law', () => {
   it('the stamp shader carries the per-dab dry threshold and tip jitter', () => {
     expect(stampFS).toContain('uniform float uRough, uJitter;');
     expect(stampFS).toContain('float sharp = mix(t, dry, step(0.0001, uRough));');
-    expect(stampFS).toContain('vec2 uv = clamp(q * 0.5 + 0.5 + (vec2(e0, e1) - 0.5) * uJitter, 0.0, 1.0);');
+    // quick 261116-inu / Task 10: the per-dab jitter now lands on the ROTATED
+    // tip-space coordinate (tq); the discard and silhouette keep the unrotated q.
+    expect(stampFS).toContain('vec2 uv = clamp(tq * 0.5 + 0.5 + (vec2(e0, e1) - 0.5) * uJitter, 0.0, 1.0);');
   });
 
   it('only chalk opts into the dry path, and buildBrush keeps the fields for replay', () => {

@@ -342,9 +342,10 @@ export function buildScriptBrushEntries(referenced: readonly string[]): ScriptBr
  *   · `engine.brushId`   the RESPONSE id (a custom catalog tip, when custom)
  *   · `engine.textureId` the TEXTURE mask id, when the stroke names one
  * A custom TEXTURE travels exactly like a custom response tip — the same
- * metadata row in the script's carrier. Built-in textures (`wc/builtin-*`)
- * ship with the app, so they are never reported. Dry events carry no ids;
- * preset and built-in response ids are ignored.
+ * metadata row in the script's carrier. Only machine-library imports exist
+ * (quick 261116-inu retired the built-in textures), so the `wc/custom-`
+ * prefix is the whole reported id space. Dry events carry no ids; preset
+ * response ids are ignored.
  */
 export function referencedCustomBrushIds(events: readonly AquarellePayloadEvent[]): string[] {
   const ids: string[] = [];

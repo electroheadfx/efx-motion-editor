@@ -460,11 +460,11 @@ describe('61-24 G-15 — the script projection carries the vector path', () => {
 describe('quick-261115-oh9 — the script projection carries the texture', () => {
   it('preserves engine.textureId on a copied stroke', () => {
     const projected = aquarelleStrokeFromScriptEvent(
-      aquarelleEvent(41, { textureId: 'wc/builtin-chalk' }),
+      aquarelleEvent(41, { textureId: 'wc/custom-duplicate-texture' }),
       9,
     );
 
-    expect(projected.textureId).toBe('wc/builtin-chalk');
+    expect(projected.textureId).toBe('wc/custom-duplicate-texture');
   });
 
   it('gains no texture key when the source had none', () => {
@@ -474,7 +474,7 @@ describe('quick-261115-oh9 — the script projection carries the texture', () =>
   });
 
   it('records the copy with its texture intact without mutating the source', () => {
-    const source = aquarelleEvent(41, { textureId: 'wc/builtin-chalk' });
+    const source = aquarelleEvent(41, { textureId: 'wc/custom-duplicate-texture' });
     const before = JSON.stringify(source);
     const recorded: Array<{ id: number; stroke: AquarelleStroke }> = [];
 
@@ -485,7 +485,7 @@ describe('quick-261115-oh9 — the script projection carries the texture', () =>
       record: (id, stroke) => { recorded.push({ id, stroke }); },
     });
 
-    expect(recorded[0]!.stroke.textureId).toBe('wc/builtin-chalk');
+    expect(recorded[0]!.stroke.textureId).toBe('wc/custom-duplicate-texture');
     expect(JSON.stringify(source)).toBe(before);
   });
 });

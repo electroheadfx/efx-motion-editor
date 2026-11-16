@@ -19,7 +19,9 @@
 //  the same bytes, so a chip can never show a footprint the engine
 //  would not stamp. The Default chip follows the selected response
 //  because the chip cache key carries that response id, and the
-//  inline ref identity is fresh on every render.
+//  inline ref identity is fresh on every render. A chip also previews
+//  its library row's rotation (integer DEGREES; 0 for Default) — the
+//  one hop that makes the Textures rotation stepper visible here.
 //
 //  A pick writes aquarelleSelectedTextureId ONLY, through its
 //  compare-then-write setter. The response selection and the
@@ -32,6 +34,7 @@ import { resolveMask, type AquarelleTip } from '@efxlab/efx-watercolor';
 import {
   brushCatalogGeneration,
   customBrushTips,
+  libraryRows,
   unavailableTipIds,
 } from '../../../stores/aquarelleBrushCatalog';
 import {
@@ -70,12 +73,14 @@ function textureEntries(
 }
 
 /**
- * One chip: a 44px mask canvas (the 192px bitmap scaled by CSS) plus the
+ * One chip: a 44px mask canvas (the mask's own bitmap scaled by CSS) plus the
  * name, which the compact popover variant hides.
  */
 function TextureChip(props: {
   entry: TextureEntry;
   responseId: string;
+  /** The row's integer-degree rotation; 0 for the Default chip. */
+  textureRotation: number;
   selected: boolean;
   compact: boolean;
 }) {
@@ -106,7 +111,7 @@ function TextureChip(props: {
         width={44}
         height={44}
         ref={(el: HTMLCanvasElement | null) => {
-          if (el) blitMaskChip(el, props.responseId, textureId);
+          if (el) blitMaskChip(el, props.responseId, textureId, props.textureRotation);
         }}
       />
       <span
@@ -124,6 +129,11 @@ export function WatercolorTextureStrip(props: { compact?: boolean }) {
   // per render, no signal write in this body.
   const imports = customBrushTips.value;
   const unavailableIds = unavailableTipIds.value;
+  // quick 261116-inu / Task 10: one read of the rows this render, so each chip
+  // can preview its own integer-degree rotation without a per-chip signal read.
+  const rotationById = new Map(
+    libraryRows.value.map((row) => [row.tip.id, row.textureRotation] as const),
+  );
   const responseId = aquarelleSelectedTipId.value ?? 'round';
   const pinnedTextureId = aquarelleSelectedTextureId.value;
   // IN-03: show what the BINDING law would stamp, not the raw pick. A texture
@@ -148,6 +158,7 @@ export function WatercolorTextureStrip(props: { compact?: boolean }) {
           key={entry.id ?? 'default'}
           entry={entry}
           responseId={responseId}
+          textureRotation={entry.id === null ? 0 : rotationById.get(entry.id) ?? 0}
           selected={entry.id === selectedTextureId}
           compact={compact}
         />

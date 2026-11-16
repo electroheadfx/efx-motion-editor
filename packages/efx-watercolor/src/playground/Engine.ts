@@ -1326,7 +1326,13 @@ export class WatercolorEngine {
     gl.bindTexture(gl.TEXTURE_2D, t);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, b.tipSize, b.tipSize, 0, gl.RED, gl.UNSIGNED_BYTE, b.tipData);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    // quick 261116-inu: a 512 mask is heavily minified at small brush sizes, so
+    // the coarse mip levels are what keep the stamp from shimmering while the
+    // stroke moves. R8 is color-renderable and filterable in core WebGL2 and
+    // 512 is a power of two, so no extension is needed (the context is
+    // WebGL2-only). Cost: ~349 KB VRAM per distinct (id, textureId) chain.
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -1999,6 +2005,9 @@ export class WatercolorEngine {
     gl.uniform2f(p.u.uPoint, x, y);
     gl.uniform1f(p.u.uRadius, r);
     gl.uniform1f(p.u.uTipAspect, b.aspect);
+    // quick 261116-inu: the stroke's recorded rotation (integer degrees) is a
+    // tip-space sampling uniform — degrees → radians at the ONE GPU boundary.
+    gl.uniform1f(p.u.uTipRotation, (b.textureRotation ?? 0) * DEG);
     gl.uniform2f(p.u.uAxis, Math.cos(angle), Math.sin(angle));
     gl.uniform1f(p.u.uRound, round);
     gl.uniform1f(p.u.uGrain, grain);
@@ -2137,6 +2146,9 @@ export class WatercolorEngine {
     gl.uniform2f(p.u.uPoint, x, y);
     gl.uniform1f(p.u.uRadius, r);
     gl.uniform1f(p.u.uTipAspect, b.aspect);
+    // quick 261116-inu: the lift brush falls back to this.brush, so the same
+    // expression covers the punch's own tip and a textured brush's eraser end.
+    gl.uniform1f(p.u.uTipRotation, (b.textureRotation ?? 0) * DEG);
     gl.uniform2f(p.u.uAxis, Math.cos(angle), Math.sin(angle));
     gl.uniform1f(p.u.uRound, 0);
     gl.enable(gl.BLEND);

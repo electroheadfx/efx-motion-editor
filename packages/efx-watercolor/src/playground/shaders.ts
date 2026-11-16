@@ -38,18 +38,26 @@ layout(location=1) out vec4 o1;
 uniform sampler2D uTip, uPaper;
 uniform float uAspect, uRadius, uTipAspect, uRound, uGrain, uGrainThr;
 uniform float uRough, uJitter;
+// quick 261116-inu: the recorded texture rotation, in RADIANS (the engine
+// converts the stroke's integer degrees at bind time).
+uniform float uTipRotation;
 uniform vec2 uPoint, uAxis;
 uniform vec4 uColor0, uColor1;
 void main(){
   vec2 p = vUv - uPoint; p.x *= uAspect;
   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
   q.y /= uTipAspect;
+  // Rotate the TIP-SPACE sampling coordinates only. The discard test and every
+  // footprint value below keep using the UNROTATED q, so the stamp's silhouette
+  // is unchanged and only the texture inside it turns.
+  float a = uTipRotation;
+  vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
   if (abs(q.x) > 1.0 || abs(q.y) > 1.0) discard;
   // Dry media (uRough > 0): every dab reads a different slice of the tip, so
   // the silhouette breaks up randomly instead of repeating one contour.
   float e0 = fract(sin(dot(uPoint, vec2(12.9898, 78.233))) * 43758.5453);
   float e1 = fract(e0 * 63.7264 + 0.37);
-  vec2 uv = clamp(q * 0.5 + 0.5 + (vec2(e0, e1) - 0.5) * uJitter, 0.0, 1.0);
+  vec2 uv = clamp(tq * 0.5 + 0.5 + (vec2(e0, e1) - 0.5) * uJitter, 0.0, 1.0);
   float t = texture(uTip, uv).r;
   // Re-threshold the tip into a hard, crumbly mask. uRough = 0 keeps the
   // smooth alpha every wet brush expects.
@@ -274,13 +282,18 @@ layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
 uniform sampler2D uTip;
 uniform float uAspect, uRadius, uAmount, uTipAspect, uRound;
+uniform float uTipRotation;
 uniform vec2 uPoint, uAxis;
 void main(){
   vec2 p = vUv - uPoint; p.x *= uAspect;
   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
   q.y /= uTipAspect;
+  // quick 261116-inu: rotate the sampled UV only; the discard and the radial
+  // envelope keep the unrotated q.
+  float a = uTipRotation;
+  vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
   if (abs(q.x) > 1.0 || abs(q.y) > 1.0) discard;
-  float t = texture(uTip, clamp(q * 0.5 + 0.5, 0.0, 1.0)).r;
+  float t = texture(uTip, clamp(tq * 0.5 + 0.5, 0.0, 1.0)).r;
   float f = uAmount * exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);
   o0 = vec4(f);
   o1 = vec4(f);

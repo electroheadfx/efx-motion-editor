@@ -13,6 +13,9 @@
 //    quick 261116-inu: Delete/Backspace on the sheet or a chip opens
 //    ONE confirmation; Confirm asks the bridge once, Cancel changes
 //    nothing, and inert targets never open it
+//    quick 261116-inu / Task 10: the Rotation row renders only from a
+//    machine-library row, previews the gesture locally and sends ONE
+//    integer-degrees set-rotation on release
 // ============================================================
 
 import { readFileSync } from 'node:fs';
@@ -45,9 +48,11 @@ vi.mock('../../../lib/physicPaintBridge', async (importOriginal) => {
 
 import {
   PhysicsPaintTextureModal,
+  TextureRotationControl,
   TextureSizeControl,
   resetTextureDeleteState,
   resetTextureModalLayout,
+  resetTextureRotationState,
 } from './PhysicsPaintTextureModal';
 import {
   SHEET_ID_BRUSHES,
@@ -67,6 +72,7 @@ import {
 } from './aquarelleRecordState';
 import {
   libraryRowToTip,
+  libraryRows,
   replaceLibraryEntries,
   resetAquarelleBrushCatalog,
 } from '../../../stores/aquarelleBrushCatalog';
@@ -123,11 +129,16 @@ const TEXTURE_ENTRY = {
   wetRound: 1,
 };
 
-function seedTextureRow(): void {
+function seedTextureRow(textureRotation = 0): void {
   replaceLibraryEntries([
-    { tip: libraryRowToTip(TEXTURE_ENTRY), digest: TEXTURE_DIGEST, textureRotation: 0 },
+    { tip: libraryRowToTip(TEXTURE_ENTRY), digest: TEXTURE_DIGEST, textureRotation },
   ]);
   registerMask(TEXTURE_ENTRY.id, new Uint8Array(TIP_MASK_BYTES));
+}
+
+/** The Rotation row's SliderStepper vnode, if the control renders at all. */
+function rotationSlider(tree: unknown): TestVNode | undefined {
+  return collect(tree).find((node) => node.props?.id === 'physics-texture-rotation');
 }
 
 /** The surface's own keydown prop, invoked with a DOM-like target. */
@@ -159,6 +170,7 @@ beforeEach(() => {
   aquarelleTextureModalOpen.value = false;
   resetTextureModalLayout();
   resetTextureDeleteState();
+  resetTextureRotationState();
   resetAquarelleBrushCatalog();
   resetMaskRegistry();
   setAquarelleSelectedTextureId(null);
@@ -179,6 +191,7 @@ afterEach(() => {
   aquarelleTextureModalOpen.value = false;
   resetTextureModalLayout();
   resetTextureDeleteState();
+  resetTextureRotationState();
   resetAquarelleBrushCatalog();
   resetMaskRegistry();
   setAquarelleSelectedTextureId(null);
@@ -547,6 +560,139 @@ describe('quick 261116-inu texture delete on the Textures surface', () => {
     expect(buttonRule, 'sentence-case copy, never the global uppercase').toContain(
       'text-transform: none',
     );
+  });
+});
+
+describe('quick 261116-inu texture rotation on the Textures surface', () => {
+  it('renders only from a machine-library row — absent for Default and an external tip', () => {
+    // Default: no texture selected, nothing persisted to rotate.
+    expect(TextureRotationControl({}), 'the Default chip has no rotation row').toBeNull();
+
+    seedTextureRow();
+    setAquarelleSelectedTextureId('wc/custom-external-unknown');
+    expect(
+      TextureRotationControl({}),
+      'a script-registered id with no library row has no rotation row',
+    ).toBeNull();
+
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    const control = TextureRotationControl({}) as TestVNode;
+    expect(control.props?.['data-testid']).toBe('watercolor-texture-modal-rotation');
+    expect(String(control.props?.class)).toBe('physics-paint-texture-rotation');
+  });
+
+  it('shows the row’s committed integer degrees with the degrees range', () => {
+    seedTextureRow(-120);
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    setAquarelleTextureModalOpen(true);
+    // The open sheet seats the row from the same library row.
+    const sheet = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    expect(
+      collect(sheet).find((node) => node.type === TextureRotationControl),
+      'the open sheet mounts the Rotation row',
+    ).toBeTruthy();
+
+    const slider = rotationSlider(TextureRotationControl({}))!;
+    expect(slider.props?.label).toBe('Rotation');
+    expect(slider.props?.ariaLabel).toBe('Rotation — textures');
+    expect(slider.props?.value, 'the committed row value, never hundredths').toBe(-120);
+    expect(slider.props?.min).toBe(-180);
+    expect(slider.props?.max).toBe(180);
+    expect(slider.props?.step).toBe(1);
+    expect(slider.props?.disabled).toBeFalsy();
+  });
+
+  it('a gesture previews locally and never asks the bridge before the release', () => {
+    seedTextureRow(0);
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    const slider = rotationSlider(TextureRotationControl({}))!;
+    (slider.props?.onChange as (value: number) => void)(45);
+
+    expect(mockTextureMutation, 'no request from a live drag').not.toHaveBeenCalled();
+    expect(rotationSlider(TextureRotationControl({}))!.props?.value, 'the preview drives the row').toBe(45);
+    expect(libraryRows.value[0]!.textureRotation, 'the child never writes the catalog row').toBe(0);
+  });
+
+  it('a release sends exactly one integer-degrees set-rotation and spends the preview', async () => {
+    seedTextureRow(0);
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    const slider = rotationSlider(TextureRotationControl({}))!;
+    (slider.props?.onChange as (value: number) => void)(45);
+    (slider.props?.onCommit as (value: number) => void)(45);
+
+    await vi.waitFor(() => {
+      expect(mockTextureMutation).toHaveBeenCalledTimes(1);
+    });
+    expect(mockTextureMutation).toHaveBeenCalledWith({
+      operation: 'set-rotation',
+      digest: TEXTURE_DIGEST,
+      textureRotation: 45,
+    });
+    await vi.waitFor(() => {
+      expect(
+        rotationSlider(TextureRotationControl({}))!.props?.value,
+        'the gesture ended: the row value owns the display again',
+      ).toBe(0);
+    });
+  });
+
+  it('a release landing on the committed value asks for nothing', () => {
+    seedTextureRow(37);
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    const slider = rotationSlider(TextureRotationControl({}))!;
+    (slider.props?.onChange as (value: number) => void)(37);
+    (slider.props?.onCommit as (value: number) => void)(37);
+
+    expect(mockTextureMutation).not.toHaveBeenCalled();
+    expect(rotationSlider(TextureRotationControl({}))!.props?.value).toBe(37);
+  });
+
+  it('is disabled while the bar lock is on or a request is in flight', async () => {
+    seedTextureRow(0);
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    expect(
+      rotationSlider(TextureRotationControl({ disabled: true }))!.props?.disabled,
+      'the bar lock reaches the Rotation row',
+    ).toBe(true);
+
+    let resolveRequest: (value: unknown) => void = () => {};
+    mockTextureMutation.mockImplementation(
+      () => new Promise((resolve) => { resolveRequest = resolve; }),
+    );
+    const slider = rotationSlider(TextureRotationControl({}))!;
+    (slider.props?.onCommit as (value: number) => void)(45);
+    await vi.waitFor(() => {
+      expect(
+        rotationSlider(TextureRotationControl({}))!.props?.disabled,
+        'one request at a time',
+      ).toBe(true);
+    });
+
+    resolveRequest({ operationId: 'op-test', ok: true, digest: TEXTURE_DIGEST });
+    await vi.waitFor(() => {
+      expect(rotationSlider(TextureRotationControl({}))!.props?.disabled).toBeFalsy();
+    });
+  });
+
+  it('source and CSS pin the Size-before-Rotation-before-strip order and the child law', () => {
+    const sizeAt = MODAL_SOURCE.indexOf('<TextureSizeControl');
+    const rotationAt = MODAL_SOURCE.indexOf('<TextureRotationControl');
+    const stripAt = MODAL_SOURCE.indexOf('<WatercolorTextureStrip />');
+    expect(rotationAt, 'the Rotation row renders').toBeGreaterThan(-1);
+    expect(rotationAt, 'directly below Brush size').toBeGreaterThan(sizeAt);
+    expect(rotationAt, 'above the texture strip').toBeLessThan(stripAt);
+    expect(MODAL_SOURCE, 'a close and a re-open reset the preview').toContain(
+      'resetTextureRotationState();',
+    );
+    expect(
+      MODAL_SOURCE,
+      'the child requests the mutation; it never calls the main-realm library function',
+    ).not.toContain('setBrushTextureRotation');
+
+    const ruleAt = CSS_SOURCE.indexOf('\n.physics-paint-texture-rotation {');
+    expect(ruleAt, 'the Rotation row rule exists').toBeGreaterThan(-1);
+    const rule = CSS_SOURCE.slice(ruleAt, CSS_SOURCE.indexOf('}', ruleAt));
+    expect(rule).toContain('padding: 0 2px 10px');
   });
 });
 

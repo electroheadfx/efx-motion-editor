@@ -58,3 +58,23 @@ describe('GPU tip identity (quick-261115-oh9)', () => {
     expect(ENGINE_SOURCE).toContain('setLiftBrush(b: Brush | null)')
   })
 })
+
+describe('tip sampling quality and the rotation bind (quick 261116-inu / Task 10)', () => {
+  it('mipmaps the 512 tip at the ONE texture-creation site and filters it trilinearly', () => {
+    expect(ENGINE_SOURCE).toContain('gl.generateMipmap(gl.TEXTURE_2D)')
+    expect(ENGINE_SOURCE).toContain(
+      'gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)',
+    )
+    expect(ENGINE_SOURCE).toContain(
+      'gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)',
+    )
+  })
+
+  it('binds uTipRotation in drawStamp and lift from the brush degrees', () => {
+    const bindings = ENGINE_SOURCE.split('uTipRotation').length - 1
+    expect(bindings, 'stamp + lift bindings').toBe(2)
+    expect(ENGINE_SOURCE).toContain(
+      'gl.uniform1f(p.u.uTipRotation, (b.textureRotation ?? 0) * DEG)',
+    )
+  })
+})

@@ -240,7 +240,7 @@ describe('63-06 catalog tip selection', () => {
     });
     try {
       setAquarelleLiftTipId(null);
-      setAquarelleLiftTipId('wc/builtin-chalk');
+      setAquarelleLiftTipId('wc/custom-unknown-lift');
       expect(aquarelleLiftTipId.value).toBeNull();
       setAquarelleLiftTipId('wc/custom-63-06-lift');
       expect(aquarelleLiftTipId.value).toBeNull();

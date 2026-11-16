@@ -364,8 +364,8 @@ export function clearAquarelleTextureSelectionIfDeleted(deletedTipId: string | n
  * tool back to `brush` (user directive 2026-10-16) — picking while
  * Water / Pen / Lift is active returns the surface to Brush.
  *
- * 63-06 D-03 / G-5: a mask-backed CATALOG tip (a `wc/builtin-*` or a
- * project import) is a valid pick too. It resolves LAST, after the
+ * 63-06 D-03 / G-5: a mask-backed CATALOG tip (a machine-library import,
+ * `wc/custom-*`) is a valid pick too. It resolves LAST, after the
  * `findTip(TIPS)` and `BRUSH_PRESETS` lookups, so those id spaces keep
  * winning. Only this selection path is extended — `setAquarelleLiftTipId`
  * below stays preset-only by design (D-04).

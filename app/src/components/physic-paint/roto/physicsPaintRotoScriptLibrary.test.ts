@@ -929,8 +929,8 @@ describe('script brush carrier (63-08 / TIP-14, metadata only)', () => {
 
   // quick-261115-oh9: a texture is a SETTING of the response. The save law
   // reads BOTH ids from the capture; a custom texture travels as metadata when
-  // the library knows it, and a built-in travels with the app — neither ever
-  // blocks the save.
+  // the library knows it, and any non-custom id travels without metadata —
+  // neither ever blocks the save.
   it('references custom texture ids beside response ids, first-seen and unique', () => {
     const withEngine = (brushId: string, textureId?: string): AquarellePayloadEvent => {
       const [event] = aquarelleEvents();
@@ -949,7 +949,7 @@ describe('script brush carrier (63-08 / TIP-14, metadata only)', () => {
       withEngine('flat', 'wc/custom-tex-second'),
       withEngine('round', 'wc/custom-tex-first'),
       withEngine('wc/custom-response-id'),
-      withEngine('round', 'wc/builtin-chalk'),
+      withEngine('round', 'wc/legacy-chalk'),
     ];
     expect(referencedCustomBrushIds(events)).toEqual([
       'wc/custom-tex-first',
@@ -958,11 +958,11 @@ describe('script brush carrier (63-08 / TIP-14, metadata only)', () => {
     ]);
   });
 
-  it('never reports a built-in texture id', () => {
+  it('never reports a non-custom texture id', () => {
     const [event] = aquarelleEvents();
     if (!event || isAquarelleDryEvent(event)) throw new Error('expected a stroke event');
     const events: AquarellePayloadEvent[] = [
-      { ...event, engine: { ...event.engine, textureId: 'wc/builtin-chalk' } },
+      { ...event, engine: { ...event.engine, textureId: 'wc/legacy-chalk' } },
     ];
     expect(referencedCustomBrushIds(events)).toEqual([]);
   });
@@ -981,14 +981,14 @@ describe('script brush carrier (63-08 / TIP-14, metadata only)', () => {
     expect(test.log).toHaveBeenCalledWith(expect.stringContaining('wc/custom-texture-missing'));
   });
 
-  it('save leg: a built-in texture travels with the app and never blocks the save', async () => {
+  it('save leg: a non-custom texture id travels without metadata and never blocks the save', async () => {
     vi.resetModules();
     const library = await import('./physicsPaintRotoScriptLibrary');
     const test = harness(true, {}, library.createRotoScriptLibraryController);
     test.capture.script.aquarelleEvents = aquarelleEvents().map((event) =>
       isAquarelleDryEvent(event)
         ? event
-        : { ...event, engine: { ...event.engine, textureId: 'wc/builtin-chalk' } },
+        : { ...event, engine: { ...event.engine, textureId: 'wc/legacy-chalk' } },
     );
 
     await expect(test.controller.saveActiveFrame()).resolves.toBe(true);
@@ -1004,14 +1004,14 @@ describe('script brush carrier (63-08 / TIP-14, metadata only)', () => {
       updatedAt: '2026-07-16T12:00:00Z',
       source: row('a', 'Textured').source,
       thumbnail: { ...row('a', 'Textured').thumbnail, dataUrl: webp },
-      events: [{ ...event, engine: { ...event.engine, textureId: 'wc/builtin-chalk' } }],
+      events: [{ ...event, engine: { ...event.engine, textureId: 'wc/custom-serialized-texture' } }],
     });
 
     const parsed = parseRotoScript(script);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) throw new Error('expected the script to parse');
     const engine = parsed.document.strokes[0]!.engine as AquarelleStrokePayload;
-    expect(engine.textureId).toBe('wc/builtin-chalk');
+    expect(engine.textureId).toBe('wc/custom-serialized-texture');
   });
 
   it('load leg: a script whose texture is absent locally still loads and paints with the response tip', async () => {

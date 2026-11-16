@@ -46,9 +46,7 @@ const MAX_NAME_CHARS: usize = 200;
 
 /// The projected-texture rotation is integer DEGREES in -180..180 everywhere
 /// except the AQTL byte body (which owns hundredths of a degree).
-#[allow(dead_code)] // Task 10's set-rotation command consumes the range.
 pub const TEXTURE_ROTATION_MIN_DEGREES: i32 = -180;
-#[allow(dead_code)]
 pub const TEXTURE_ROTATION_MAX_DEGREES: i32 = 180;
 
 /// One machine-library row. `textureRotation` is DEGREES; `rotation` is the
@@ -417,6 +415,52 @@ pub fn brush_library_decode(digest: String) -> Result<BrushLibraryDecodeResponse
     decode_library_entry_at(&library_root(), &digest)
 }
 
+/// Set one row's projected-texture orientation in integer DEGREES.
+///
+/// The unit law: -180..180 DEGREES in the catalog and every JSON carrier; the
+/// hundredths boundary lives only inside the AQTL byte body, never here. The
+/// digest is validated before any path is built (T-01), and the catalog rewrite
+/// is atomic — a failed write leaves the previous rotation intact. Setting the
+/// value a row already holds is a no-op that rewrites nothing and returns the
+/// unchanged row. Holds the same single-flight mutex as the other mutations.
+fn set_rotation_at(
+    root: &Path,
+    digest: &str,
+    texture_rotation: i32,
+) -> Result<BrushLibraryEntry, String> {
+    if !valid_digest(digest) {
+        return Err("invalid-digest".to_string());
+    }
+    if !(TEXTURE_ROTATION_MIN_DEGREES..=TEXTURE_ROTATION_MAX_DEGREES).contains(&texture_rotation) {
+        return Err("invalid-texture-rotation".to_string());
+    }
+    let mut catalog = read_catalog(root);
+    let Some(row) = catalog.entries.iter_mut().find(|entry| entry.digest == digest) else {
+        return Err("missing".to_string());
+    };
+    if row.texture_rotation == texture_rotation {
+        return Ok(row.clone());
+    }
+    row.texture_rotation = texture_rotation;
+    let entry = row.clone();
+    write_catalog(root, &catalog)?;
+    Ok(entry)
+}
+
+/// Rotate one machine-library texture by content address.
+///
+/// The renderer names a DIGEST only (64 lower-case hex) — never a path. Holds
+/// the same single-flight mutex as write/decode/scan/delete so a rotation can
+/// never interleave a catalog rewrite with an import.
+#[tauri::command(async)]
+pub fn brush_library_set_rotation(
+    digest: String,
+    texture_rotation: i32,
+) -> Result<BrushLibraryEntry, String> {
+    let _guard = lock_library();
+    set_rotation_at(&library_root(), &digest, texture_rotation)
+}
+
 /// Scan the whole machine library at app boot. Never fails: a missing or
 /// unreadable catalog reads as empty and unusable files are reported per id.
 #[tauri::command(async)]
@@ -752,6 +796,127 @@ mod tests {
             fs::read(catalog_path(&root)).expect("catalog after"),
             catalog_before,
             "the previous catalog survives a failed rewrite"
+        );
+    }
+
+    #[test]
+    fn set_rotation_stores_exactly_the_integer_degrees_given() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "rot.png", &probe_mask(0xaaaa_1111))
+            .expect("write");
+        assert_eq!(entry.texture_rotation, 0);
+
+        let rotated = set_rotation_at(&root, &entry.digest, 37).expect("rotate");
+        assert_eq!(rotated.texture_rotation, 37);
+        assert_eq!(rotated.id, entry.id);
+        assert_eq!(rotated.digest, entry.digest);
+        // The catalog holds the same integer — never hundredths (3700) and
+        // never a fraction (0.37).
+        let catalog = read_catalog(&root);
+        assert_eq!(catalog.entries.len(), 1);
+        assert_eq!(catalog.entries[0].texture_rotation, 37);
+
+        for degrees in [-180, -120, 0, 180] {
+            set_rotation_at(&root, &entry.digest, degrees).expect("rotate again");
+            assert_eq!(read_catalog(&root).entries[0].texture_rotation, degrees);
+        }
+    }
+
+    #[test]
+    fn set_rotation_refuses_values_outside_integer_degrees_minus_180_to_180() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "bounds.png", &probe_mask(0xbbbb_2222))
+            .expect("write");
+        let catalog_before = fs::read(catalog_path(&root)).expect("catalog before");
+        for bad in [-181, 181, 3700, i32::MIN, i32::MAX] {
+            assert_eq!(
+                set_rotation_at(&root, &entry.digest, bad),
+                Err("invalid-texture-rotation".to_string())
+            );
+        }
+        assert_eq!(
+            fs::read(catalog_path(&root)).expect("catalog after"),
+            catalog_before,
+            "a refused rotation rewrites nothing"
+        );
+    }
+
+    #[test]
+    fn set_rotation_refuses_a_bad_digest_and_an_absent_row() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "safe-rot.png", &probe_mask(0xcccc_3333))
+            .expect("write");
+        for bad in [
+            "",
+            "abc",
+            "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789",
+            "../0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd",
+        ] {
+            assert!(!valid_digest(bad));
+            assert_eq!(
+                set_rotation_at(&root, bad, 10),
+                Err("invalid-digest".to_string())
+            );
+        }
+        let absent = "0".repeat(64);
+        assert_eq!(
+            set_rotation_at(&root, &absent, 10),
+            Err("missing".to_string())
+        );
+        assert_eq!(read_catalog(&root).entries, vec![entry]);
+    }
+
+    #[test]
+    fn set_rotation_to_the_current_value_rewrites_nothing() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "same-rot.png", &probe_mask(0xdddd_4444))
+            .expect("write");
+        set_rotation_at(&root, &entry.digest, 45).expect("rotate");
+        let catalog_before = fs::read(catalog_path(&root)).expect("catalog before");
+        let unchanged = set_rotation_at(&root, &entry.digest, 45).expect("no-op rotate");
+        assert_eq!(unchanged.texture_rotation, 45);
+        assert_eq!(
+            fs::read(catalog_path(&root)).expect("catalog after"),
+            catalog_before
+        );
+    }
+
+    #[test]
+    fn set_rotation_keeps_the_sibling_rows_and_their_bytes() {
+        let root = scratch_root();
+        let kept = write_library_entry_at(&root, "kept.png", &probe_mask(0xeeee_5555))
+            .expect("write");
+        let rotated = write_library_entry_at(&root, "rotated.png", &probe_mask(0xffff_6666))
+            .expect("write");
+
+        set_rotation_at(&root, &rotated.digest, -90).expect("rotate");
+
+        let catalog = read_catalog(&root);
+        assert_eq!(catalog.entries.len(), 2);
+        assert_eq!(catalog.entries[0], kept);
+        assert_eq!(catalog.entries[1].texture_rotation, -90);
+        // Rotation never touches the stored bytes.
+        assert!(mask_path(&root, &rotated.digest).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn set_rotation_reports_a_catalog_rewrite_failure_and_keeps_the_previous_rotation() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "frozen-rot.png", &probe_mask(0x1234_abcd))
+            .expect("write");
+        let catalog_before = fs::read(catalog_path(&root)).expect("catalog before");
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o555)).expect("freeze root");
+
+        let result = set_rotation_at(&root, &entry.digest, 37);
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).expect("thaw root");
+
+        assert!(result.is_err(), "a failed rewrite must report, not silently pass");
+        assert_eq!(
+            fs::read(catalog_path(&root)).expect("catalog after"),
+            catalog_before,
+            "the previous rotation survives a failed rewrite"
         );
     }
 

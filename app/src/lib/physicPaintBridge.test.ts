@@ -8945,6 +8945,130 @@ describe('63-05 brush-tip realm channels', () => {
       }
     }, 20_000);
 
+    it('performs a Studio set-rotation in the main realm and publishes before the answer', async () => {
+      vi.resetModules();
+      const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
+      const emits: Array<{ target: string; event: string; payload: unknown }> = [];
+      const emitTo = vi.fn(async (target: string, event: string, payload: unknown) => {
+        emits.push({ target, event, payload });
+        await handlers.get(event)?.({ payload });
+      });
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async (event: string, cb: (event: { payload: unknown }) => unknown) => {
+          handlers.set(event, cb);
+          return () => { handlers.delete(event); };
+        }),
+        emitTo,
+      }));
+      const ipcSetRotation = vi.fn(async () => ({ ok: true, data: null }));
+      vi.doMock('./ipc', async (importOriginal) => {
+        const actual = await importOriginal<Record<string, unknown>>();
+        return { ...actual, ipcBrushLibrarySetRotation: ipcSetRotation };
+      });
+      installBridgeWindow();
+      markTauriRuntime();
+
+      const bridge = await import('./physicPaintBridge');
+      const catalog = await import('../stores/aquarelleBrushCatalog');
+      const cleanupMutation = await bridge.installPhysicPaintBrushTextureMutationListener();
+      const cleanupCatalog = await bridge.installPhysicPaintBrushCatalogRequestListener();
+      try {
+        catalog.replaceLibraryEntries([{
+          tip: catalog.libraryRowToTip(BRUSH_LIBRARY_ROW),
+          digest: BRUSH_DIGEST,
+          textureRotation: 0,
+        }]);
+
+        const result = await bridge.requestPhysicPaintBrushTextureMutation({
+          operation: 'set-rotation',
+          digest: BRUSH_DIGEST,
+          textureRotation: -120,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.digest).toBe(BRUSH_DIGEST);
+        // The wire carried integer DEGREES — never the AQTL hundredths body.
+        expect(ipcSetRotation).toHaveBeenCalledWith(BRUSH_DIGEST, -120);
+        // The child's catalog already reflects the committed row before the
+        // request resolves (the post-answer pull ran).
+        expect(catalog.libraryRows.peek()[0]?.textureRotation).toBe(-120);
+
+        const brushEmits = emits.filter((entry) => entry.event.startsWith('physic-paint:brush-'));
+        const catalogAt = brushEmits.findIndex(
+          (entry) => entry.event === bridge.PHYSIC_PAINT_BRUSH_CATALOG_EVENT,
+        );
+        const resultAt = brushEmits.findIndex(
+          (entry) => entry.event === bridge.PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT,
+        );
+        expect(catalogAt, 'the republished snapshot rides ahead of the answer').toBeGreaterThan(-1);
+        expect(resultAt).toBeGreaterThan(catalogAt);
+      } finally {
+        cleanupMutation();
+        cleanupCatalog();
+      }
+    }, 20_000);
+
+    it('refuses a hundredths rotation (3700) as invalid-request and mutates nothing', async () => {
+      vi.resetModules();
+      const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
+      const emits: Array<{ target: string; event: string; payload: unknown }> = [];
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async (event: string, cb: (event: { payload: unknown }) => unknown) => {
+          handlers.set(event, cb);
+          return () => { handlers.delete(event); };
+        }),
+        emitTo: vi.fn(async (target: string, event: string, payload: unknown) => {
+          emits.push({ target, event, payload });
+          await handlers.get(event)?.({ payload });
+        }),
+      }));
+      const ipcSetRotation = vi.fn(async () => ({ ok: true, data: null }));
+      vi.doMock('./ipc', async (importOriginal) => {
+        const actual = await importOriginal<Record<string, unknown>>();
+        return { ...actual, ipcBrushLibrarySetRotation: ipcSetRotation };
+      });
+      installBridgeWindow();
+      markTauriRuntime();
+
+      const bridge = await import('./physicPaintBridge');
+      const catalog = await import('../stores/aquarelleBrushCatalog');
+      const cleanup = await bridge.installPhysicPaintBrushTextureMutationListener();
+      try {
+        catalog.replaceLibraryEntries([{
+          tip: catalog.libraryRowToTip(BRUSH_LIBRARY_ROW),
+          digest: BRUSH_DIGEST,
+          textureRotation: 0,
+        }]);
+        const rowsBefore = catalog.libraryRows.peek();
+
+        await handlers.get(bridge.PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_EVENT)!({
+          payload: {
+            operationId: 'op-hundredths',
+            mutation: { operation: 'set-rotation', digest: BRUSH_DIGEST, textureRotation: 3700 },
+          },
+        });
+
+        const result = emits.find(
+          (entry) => entry.event === bridge.PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT,
+        );
+        expect(result, 'a correlated malformed request still gets an answer').toBeTruthy();
+        expect(result!.payload).toMatchObject({
+          operationId: 'op-hundredths',
+          ok: false,
+          digest: BRUSH_DIGEST,
+          reason: 'invalid-request',
+        });
+        expect(ipcSetRotation, 'nothing reaches the native command').not.toHaveBeenCalled();
+        expect(catalog.libraryRows.peek()).toBe(rowsBefore);
+        expect(
+          emits.some((entry) => entry.event === bridge.PHYSIC_PAINT_BRUSH_CATALOG_EVENT),
+          'a refusal publishes nothing',
+        ).toBe(false);
+      } finally {
+        cleanup();
+      }
+    });
+
     it('answers an invalid-request refusal and mutates nothing', async () => {
       vi.resetModules();
       const handlers = new Map<string, (event: { payload: unknown }) => unknown>();

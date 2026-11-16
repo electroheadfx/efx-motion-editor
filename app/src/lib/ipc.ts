@@ -863,6 +863,19 @@ export async function ipcBrushLibraryDelete(digest: string): Promise<Result<null
 }
 
 /**
+ * Set one machine-library row's projected-texture rotation in integer DEGREES
+ * (-180..180). Rust validates the digest and the range, then rewrites the
+ * catalog atomically and answers with the updated row. `3700` (hundredths)
+ * belongs only inside the AQTL byte body and is refused here.
+ */
+export async function ipcBrushLibrarySetRotation(
+  digest: string,
+  textureRotation: number,
+): Promise<Result<BrushLibraryEntry>> {
+  return safeInvoke<BrushLibraryEntry>('brush_library_set_rotation', { digest, textureRotation });
+}
+
+/**
  * Decode one stored library mask back to its alpha bytes. Rust validates the
  * digest and runs the declared-dimension gate before any allocation.
  */

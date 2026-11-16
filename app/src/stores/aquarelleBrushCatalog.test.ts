@@ -87,11 +87,10 @@ describe('aquarelleBrushCatalog — empty machine-library baseline (quick 261116
     expect(listAquarelleBrushTips()).toHaveLength(0);
   });
 
-  it('resolves no retired built-in id and returns null for an unknown id', () => {
-    // The retired ids carry no special meaning any more: nothing seeded the
-    // catalog, so they resolve like any unknown id.
-    expect(resolveCatalogTip('wc/builtin-bristle')).toBe(null);
+  it('returns null for any id no library row carries', () => {
+    // Nothing seeds the catalog: every unlisted id resolves the same way.
     expect(resolveCatalogTip('wc/custom-missing')).toBe(null);
+    expect(resolveCatalogTip('wc/unknown-missing')).toBe(null);
   });
 });
 
@@ -216,7 +215,7 @@ describe('aquarelleBrushCatalog — the replace-only unavailable set (D-20)', ()
 describe('aquarelleBrushCatalog — the wire projection of a library row (CR-01 / TIP-15)', () => {
   it('normalizes a stray-member, foreign-category row into a wire-valid custom entry', () => {
     const raw = {
-      ...customTip('wc/builtin-chalk', { category: 'texture' }),
+      ...customTip('wc/custom-0123456789ab', { category: 'texture' }),
       strayMember: 'left over',
     } as AquarelleTip;
     const mask = new Uint8Array(TIP_MASK_BYTES).fill(7);
@@ -230,15 +229,15 @@ describe('aquarelleBrushCatalog — the wire projection of a library row (CR-01 
     expect(payload.libraryRevision).toBe(5);
     expect(payload.entries).toHaveLength(1);
     const entry = payload.entries[0]!;
-    expect(entry.tip.id).toBe('wc/builtin-chalk');
+    expect(entry.tip.id).toBe('wc/custom-0123456789ab');
     expect(entry.tip.category).toBe('custom');
     expect(Object.prototype.hasOwnProperty.call(entry.tip, 'strayMember')).toBe(false);
     expect(entry.digest).toBe(DIGEST);
     expect(entry.textureRotation).toBe(0);
     expect(entry.maskBase64 === undefined).toBe(false);
     expect(decodeBridgeBase64(entry.maskBase64!)).toEqual(mask);
-    // A legacy built-in-shaped id is an ordinary row (no reserved ids).
-    expect(listAquarelleBrushTips().map((tip) => tip.id)).toEqual(['wc/builtin-chalk']);
+    // A machine-library id is an ordinary row (no reserved ids).
+    expect(listAquarelleBrushTips().map((tip) => tip.id)).toEqual(['wc/custom-0123456789ab']);
   });
 });
 
@@ -284,8 +283,8 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
     expect(resolvedMask?.length).toBe(TIP_MASK_BYTES);
     expect(resolvedMask).toEqual(mask);
     // quick 261116-inu: the payload installs its own rows and nothing else —
-    // no compile-time built-in mask survives a fresh instance.
-    expect(watercolor.resolveMask('wc/builtin-bristle')).toBe(null);
+    // no other id's mask survives a fresh instance.
+    expect(watercolor.resolveMask('wc/unknown-missing')).toBe(null);
 
     // The payload carries masks only — no WebP bytes leg exists any more
     // (quick 261116-inu / Task 4): the machine library owns the files.
