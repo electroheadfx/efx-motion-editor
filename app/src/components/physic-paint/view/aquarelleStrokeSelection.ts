@@ -83,12 +83,14 @@ import {
   clearAquarelleStrokeDeletion,
   deleteAquarelleStrokesFromScript,
   getAquarelleEventsForFrame,
+  getAquarelleStrokeKeyAnchors,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
   getRecordedAquarelleStrokeEntries,
   isAquarelleStrokeDeleted,
   markAquarelleStrokeDeleted,
   placeAquarelleStrokeInScript,
+  recordAquarelleStroke,
   restoreAquarelleStrokeRegistry,
   stepAquarelleStrokeInScript,
   transformAquarelleStrokesInScript,
@@ -1002,6 +1004,170 @@ export function beginAquarelleMoveEdit(
   bumpAquarellePaintSeedSalts(ids);
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
+}
+
+/**
+ * quick 261116-u63: build the Duplicate clone of one recorded stroke.
+ *
+ * Field-by-field on purpose: every mutable carrier the source holds is
+ * re-allocated (params, points and each point, pointTicks, toolOverrides,
+ * anchors and each anchor's in/out handle) so a clone can never share a
+ * mutable graph with the stroke it was copied from (T-U63-01). Optional keys
+ * are written ONLY when the source carried them, so an untextured
+ * hand-painted stroke keeps its exact pre-clone key set. The caller's fresh
+ * ordering key becomes `timestamp`; the clone carries NO mutationId — the
+ * recording seam mints it.
+ */
+export function cloneAquarelleStrokeForDuplicate(
+  stroke: Readonly<AquarelleStroke>,
+  timestamp: number,
+): AquarelleStroke {
+  return {
+    tool: stroke.tool,
+    color: stroke.color,
+    params: { ...stroke.params },
+    brushId: stroke.brushId,
+    points: stroke.points.map((point) => ({
+      x: point.x,
+      y: point.y,
+      p: point.p,
+      tx: point.tx,
+      ty: point.ty,
+      tw: point.tw,
+    })),
+    timestamp,
+    ...(stroke.pointTicks !== undefined ? { pointTicks: [...stroke.pointTicks] } : {}),
+    ...(stroke.toolOverrides !== undefined
+      ? { toolOverrides: { ...stroke.toolOverrides } }
+      : {}),
+    ...(stroke.textureId !== undefined ? { textureId: stroke.textureId } : {}),
+    ...(stroke.textureRotation !== undefined
+      ? { textureRotation: stroke.textureRotation }
+      : {}),
+    ...(stroke.diffusionFrames !== undefined
+      ? { diffusionFrames: stroke.diffusionFrames }
+      : {}),
+    ...(stroke.playFrame !== undefined ? { playFrame: stroke.playFrame } : {}),
+    ...(stroke.anchors !== undefined
+      ? {
+          anchors: stroke.anchors.map((anchor) => ({
+            x: anchor.x,
+            y: anchor.y,
+            kind: anchor.kind,
+            ...(anchor.in !== undefined ? { in: { x: anchor.in.x, y: anchor.in.y } } : {}),
+            ...(anchor.out !== undefined ? { out: { x: anchor.out.x, y: anchor.out.y } } : {}),
+            ...(anchor.width !== undefined ? { width: anchor.width } : {}),
+            ...(anchor.color !== undefined ? { color: anchor.color } : {}),
+          })),
+        }
+      : {}),
+    ...(stroke.curveMode !== undefined ? { curveMode: stroke.curveMode } : {}),
+    ...(stroke.vectorDrawn === true ? { vectorDrawn: true as const } : {}),
+  };
+}
+
+/** quick 261116-u63: the Duplicate edit handle — one edit id, one id per clone. */
+export interface AquarelleCloneEdit {
+  readonly editId: number;
+  readonly newIds: readonly number[];
+}
+
+export interface BeginAquarelleCloneEditOptions {
+  /** Anchor for a source that carries none (the Studio's frame key id). */
+  readonly keyId?: string | null;
+  /** Ordering-clock seam (tests inject; production keeps Date.now). */
+  readonly now?: () => number;
+}
+
+/**
+ * quick 261116-u63: duplicate one stroke or the whole selection as a SINGLE
+ * undoable edit with one re-bake. Each clone is recorded on top (the record
+ * seam's only push) then placed directly ABOVE its source through the shipped
+ * `placeAquarelleStrokeInScript`.
+ *
+ * Two invariants keep the batch atomic:
+ * 1. EVERY clone id is allocated before the first record, so an allocator
+ *    throw propagates with the timeline untouched (no partial batch).
+ * 2. The placement target is the source's CURRENT position-from-top minus
+ *    one, so batch processing order never matters.
+ *
+ * The clone inherits its source's key anchor, falling back to the caller's
+ * key id; an unanchored source stays unanchored. No paint-seed salt bump is
+ * needed — the fresh mutation id already re-seeds the texture — and the
+ * selection is NEVER touched here: the caller selects the new ids only after
+ * a successful re-bake, so a refused apply cannot move the user's selection.
+ */
+export function beginAquarelleCloneEdit(
+  mutationIds: number | readonly number[],
+  allocateMutationId: (stroke: AquarelleStroke) => number,
+  options: BeginAquarelleCloneEditOptions = {},
+): AquarelleCloneEdit | null {
+  // A duplicate/apply must never leave a drag ghost behind.
+  clearAquarelleStrokeDrag();
+  if (aquarelleScriptEditInFlight) return null;
+  const ids = normalizeAquarelleMutationIds(mutationIds);
+  if (ids.length === 0) return null;
+
+  const sources: Array<{ mutationId: number; stroke: AquarelleStroke; frame: number }> = [];
+  for (const mutationId of ids) {
+    const stroke = getRecordedAquarelleStroke(mutationId);
+    if (!stroke) continue;
+    if (isAquarelleStrokeDeleted(mutationId)) continue;
+    if (stroke.points.length === 0) continue;
+    sources.push({ mutationId, stroke, frame: stroke.playFrame ?? 0 });
+  }
+  if (sources.length === 0) return null;
+  const frame = sources[0]!.frame;
+  for (const source of sources) {
+    if (source.frame !== frame) return null;
+  }
+
+  // A clone must land on TOP of everything already recorded, then be placed
+  // under its source: the fresh key is max(caller clock, highest + 1).
+  let maxRecordedOrder = 0;
+  for (const event of getRecordedAquarellePayloadTimeline()) {
+    if (Number.isFinite(event.recordedOrder) && event.recordedOrder > maxRecordedOrder) {
+      maxRecordedOrder = event.recordedOrder;
+    }
+  }
+  const stampBase = Math.max((options.now ?? Date.now)(), maxRecordedOrder + 1);
+
+  const before = captureAquarelleSnapshot();
+  // INVARIANT 1 — allocate every clone id before the first record.
+  const clones = sources.map((source, index) => {
+    const clone = cloneAquarelleStrokeForDuplicate(source.stroke, stampBase + index);
+    return { source, clone, newId: allocateMutationId(clone) };
+  });
+
+  const keyAnchors = getAquarelleStrokeKeyAnchors();
+  const newIds: number[] = [];
+  // INVARIANT 2 — each clone lands at the source's CURRENT position minus one.
+  for (const { source, clone, newId } of clones) {
+    recordAquarelleStroke(
+      newId,
+      { ...clone, mutationId: newId },
+      keyAnchors.get(source.mutationId) ?? options.keyId ?? null,
+    );
+    newIds.push(newId);
+    const stack: number[] = [];
+    for (const event of getAquarelleEventsForFrame(frame)) {
+      if (isAquarelleDryEvent(event)) continue;
+      const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+      if (mutationId !== undefined) stack.push(mutationId);
+    }
+    const sourceIndex = stack.indexOf(source.mutationId);
+    if (sourceIndex < 0) continue;
+    const positionFromTop = stack.length - sourceIndex;
+    // `false` is success here: the only remaining refusal is the
+    // already-adjacent no-op (the clone was just recorded on top).
+    if (positionFromTop >= 2) {
+      placeAquarelleStrokeInScript(newId, positionFromTop - 1);
+    }
+  }
+
+  const after = captureAquarelleSnapshot();
+  const editId = storeAquarelleEdit({ before, after });
+  return { editId, newIds };
 }
 
 /**
