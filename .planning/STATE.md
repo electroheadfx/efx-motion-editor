@@ -6,10 +6,10 @@ current_phase: 64
 current_phase_name: Medium Engine
 status: planning
 stopped_at: Phase 63 complete, ready to plan Phase 64
-last_updated: "2026-11-16T15:32:49.071Z"
+last_updated: "2026-11-16T18:21:58.209Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 63 complete, transitioned to Phase 64
-state_head: 678e04d64e6335a6d23bd3ded100a03d5567defd
+state_head: 8686ef88c96a9fcc543067fee0553cb239dc824f
 progress:
   total_phases: 1
   completed_phases: 1
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-16 after Phase 63)
 Phase: 64 — Medium Engine
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-16 — Quick task 261116-inu COMPLETE and UAT approved (machine-level 512 texture library, px-true size, per-stroke rotation; aggregate unavailable-warning line removed). Phase 64 (Medium Engine) unblocked and ready to plan.
+Last activity: 2026-11-16 - Completed quick task 261116-qhm: Painted-stroke path edit is a plain vector session from entry — first-session deferred rebake removed, painted-curve bracket/fit/ghost machinery deleted (automated-ready, UAT pending).
 
 
 ## Performance Metrics
@@ -560,6 +560,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261116-gcn | Studio Textures axis: a 2nd trigger inside the brush pill opens a Textures popover (Open modal first, then the relocated compact strip); Open modal raises a floating Textures sheet with Import tip leading the list, 72px chips and the shared brush Size (fifth seat at z 54 / top 76px) (UAT approved 2026-11-16) | 2026-11-16 | dd37f5e48 | [261116-gcn-in-studio-head-top-bar-add-a-2nd-dropdow](./quick/261116-gcn-in-studio-head-top-bar-add-a-2nd-dropdow/) |
 | 37 | Studio Script/Pixel control: pulse dot + state label replaces the checkbox; sentence case; hover drops the blue fill, turns the text white and previews the next mode (Script ⇄ Pixel); bare S toggles recording (UAT approved 2026-11-16) | 2026-11-16 | c2123898e | — |
 | 261116-inu | Imported-only brush textures from a machine-level user library: 512 mask edge, px-true 1..512 size with the engine floor retired, per-stroke texture rotation through AQTL v4; built-ins, the .mce brush carrier and script mask bytes all removed; standing "unavailable" warning line dropped on request (UAT approved 2026-11-16) | 2026-11-16 | 50e745a65 | [261116-inu-imported-only-brush-textures-from-a-user](./quick/261116-inu-imported-only-brush-textures-from-a-user/) |
+| 261116-qhm | Painted-stroke path edit is a plain vector session from entry: the conversion commits at entry through the ONE writer (fitVectorPathAnchors -> commitAquarelleVectorPathEdit), and the path-edit latch opens only on a resolved edit id; the held fit, entry wireframe/Draft bracket, exit settle hook and original-spine ghost are deleted (automated-ready, UAT pending) | 2026-11-16 | 8686ef88c | [261116-qhm-painted-stroke-path-edit-is-a-plain-vect](./quick/261116-qhm-painted-stroke-path-edit-is-a-plain-vect/) |
 
 ## Roadmap Evolution
 
