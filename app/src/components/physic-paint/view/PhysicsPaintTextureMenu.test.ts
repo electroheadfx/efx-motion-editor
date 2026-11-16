@@ -45,6 +45,14 @@ import {
   aquarelleTextureModalOpen,
   setAquarelleTextureMenuOpen,
 } from './aquarelleRecordState';
+import {
+  addCustomBrushTip,
+  replaceCustomBrushTips,
+} from '../../../stores/aquarelleBrushCatalog';
+import {
+  NEUTRAL_TOOL_OVERRIDES,
+  type AquarelleTip,
+} from '@efxlab/efx-watercolor/brushes';
 
 interface TestVNode {
   type: unknown;
@@ -115,12 +123,21 @@ function openMenu(): void {
   setAquarelleTextureMenuOpen(true, { left: 20, top: 70 });
 }
 
+/** quick 261116-inu: a library row is the only texture source. */
+const MENU_TEXTURE: AquarelleTip = {
+  id: 'wc/custom-261116-menu-fixture',
+  category: 'custom',
+  name: 'Menu wash',
+  ...NEUTRAL_TOOL_OVERRIDES,
+};
+
 beforeEach(() => {
   aquarelleSelectedTipId.value = 'chalk';
   aquarelleSelectedTextureId.value = null;
   aquarelleTextureMenuOpen.value = false;
   aquarelleTextureMenuAnchor.value = null;
   aquarelleTextureModalOpen.value = false;
+  replaceCustomBrushTips([]);
   // The stack order is module-global: a raise in one case would leak.
   resetFloatingSheetStack();
 });
@@ -131,6 +148,7 @@ afterEach(() => {
   aquarelleTextureMenuOpen.value = false;
   aquarelleTextureMenuAnchor.value = null;
   aquarelleTextureModalOpen.value = false;
+  replaceCustomBrushTips([]);
   resetFloatingSheetStack();
 });
 
@@ -159,14 +177,16 @@ describe('quick 261116-gcn Textures popover', () => {
   });
 
   it('a chip pick writes only the texture and keeps the popover open', () => {
+    addCustomBrushTip(MENU_TEXTURE);
     openMenu();
     const tree = materialize(PhysicsPaintTextureMenu());
     const chip = collect(tree).find(
-      (node) => node.props?.['data-testid'] === 'watercolor-texture-chip-wc/builtin-chalk',
+      (node) =>
+        node.props?.['data-testid'] === `watercolor-texture-chip-${MENU_TEXTURE.id}`,
     )!;
-    expect(chip, 'a built-in texture chip renders').toBeTruthy();
+    expect(chip, 'a library texture chip renders').toBeTruthy();
     click(chip);
-    expect(aquarelleSelectedTextureId.value, 'texture selected').toBe('wc/builtin-chalk');
+    expect(aquarelleSelectedTextureId.value, 'texture selected').toBe(MENU_TEXTURE.id);
     expect(aquarelleSelectedTipId.value, 'the response is untouched').toBe('chalk');
     expect(aquarelleTextureMenuOpen.value, 'a texture pick keeps the popover open').toBe(true);
   });

@@ -5,7 +5,8 @@
  *   ONE response section ("Brushes") over BRUSH_PRESETS — a response card
  *   is never a texture and never a project import
  *   a texture row (watercolor-texture-strip) above the grid: Default first,
- *   then the three BUILTIN_TIPS in order, then the project imports
+ *   then the machine library's rows in catalog order (no compile-time
+ *   built-ins — quick 261116-inu)
  *   chips render the engine's real grayscale mask (watercolorMaskChip)
  *   every response card = 150x44 stroke thumb canvas + mixed-case name + tooltip
  *   testids: root watercolor-brush-library, cards watercolor-brush-card-${id},
@@ -28,12 +29,14 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BRUSH_PRESETS,
-  BUILTIN_TIPS,
+  TIP_MASK_BYTES,
   buildBrush,
 } from '@efxlab/efx-watercolor';
 import {
   IMPORT_TIP_FAILURE_COPY,
   NEUTRAL_TOOL_OVERRIDES,
+  registerMask,
+  resetMaskRegistry,
   type AquarelleTip,
 } from '@efxlab/efx-watercolor/brushes';
 import {
@@ -213,7 +216,11 @@ function libraryRoot(tree: TestVNode): TestVNode | undefined {
 }
 
 const PRESET_IDS = BRUSH_PRESETS.map((p) => p.id);
-const BUILTIN_IDS = BUILTIN_TIPS.map((t) => t.id);
+
+/** A library mask fixture: exactly TIP_MASK_BYTES, so registerMask accepts it. */
+function libraryMask(value: number): Uint8Array {
+  return new Uint8Array(TIP_MASK_BYTES).fill(value);
+}
 
 /** One project import fixture: a custom-category, neutral-multiplier tip. */
 const CUSTOM_TIP: AquarelleTip = {
@@ -373,9 +380,11 @@ function resetSelection(): void {
   aquarelleSelectedTextureId.value = null;
   aquarelleActiveTool.value = 'brush';
   aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES };
-  // The catalog belongs to the open project: every case starts with none.
+  // quick 261116-inu: the catalog is the machine library; every case starts
+  // with none, and there are no compile-time masks to restore.
   replaceCustomBrushTips([]);
   replaceUnavailableTipIds([]);
+  resetMaskRegistry();
   watercolorBrushImporting.value = false;
   watercolorBrushImportFailure.value = false;
   importTipMock.mockReset();
@@ -420,9 +429,10 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
       ]);
       expect(cardNodes(tree).map(cardIdOf), 'one response card per preset').toEqual(PRESET_IDS);
       const testIds = [...walk(tree)].map((n) => n.props?.['data-testid']);
-      expect(testIds, 'a built-in texture is never a response card').not.toContain(
-        'watercolor-brush-card-wc/builtin-chalk',
+      const textureCards = testIds.filter(
+        (id): id is string => typeof id === 'string' && id.startsWith('watercolor-brush-card-wc/'),
       );
+      expect(textureCards, 'a texture is never a response card').toEqual([]);
       expect(testIds, 'a project import is never a response card').not.toContain(
         `watercolor-brush-card-${CUSTOM_TIP.id}`,
       );
@@ -563,8 +573,9 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
 });
 
 // quick-261115-oh9: the texture axis has its own row — Default first, then
-// the compile-time built-ins, then the project imports. A chip is a texture
-// pick only: it never selects a response, never writes the multiplier bag.
+// the machine library's rows (quick 261116-inu: imports are the only source).
+// A chip is a texture pick only: it never selects a response, never writes
+// the multiplier bag.
 describe('WatercolorBrushLibrary texture strip (quick-261115-oh9)', () => {
   beforeEach(() => {
     originalDocument = globalThis.document;
@@ -577,7 +588,7 @@ describe('WatercolorBrushLibrary texture strip (quick-261115-oh9)', () => {
     replaceUnavailableTipIds([]);
   });
 
-  it('renders the row above the grid: Default, then built-ins, then imports', () => {
+  it('renders the row above the grid: Default, then library rows', () => {
     addCustomBrushTip(CUSTOM_TIP);
     try {
       const tree = renderLibrary();
@@ -590,11 +601,10 @@ describe('WatercolorBrushLibrary texture strip (quick-261115-oh9)', () => {
       );
       expect(stripIndex, 'texture row renders').toBeGreaterThanOrEqual(0);
       expect(stripIndex, 'texture row sits above the grid').toBeLessThan(sectionIndex);
-      expect(textureChipNodes(tree).map(chipTextureIdOf)).toEqual([
-        'default',
-        ...BUILTIN_IDS,
-        CUSTOM_TIP.id,
-      ]);
+      const stripChips = textureChipNodes(tree);
+      // quick 261116-inu: no compile-time built-ins — Default, then the rows.
+      expect(stripChips[0]!.props?.['data-testid']).toBe('watercolor-texture-chip-default');
+      expect(stripChips.map(chipTextureIdOf)).toEqual(['default', CUSTOM_TIP.id]);
     } finally {
       replaceCustomBrushTips([]);
     }
@@ -603,24 +613,26 @@ describe('WatercolorBrushLibrary texture strip (quick-261115-oh9)', () => {
   it('a texture chip writes ONLY aquarelleSelectedTextureId', () => {
     selectAquarelleTip('flat');
     aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES, aspect: 1.4 };
+    addCustomBrushTip(CUSTOM_TIP);
     try {
-      const chip = chipOf(renderLibrary(), 'wc/builtin-chalk');
-      expect(chip, 'built-in texture chip renders').toBeTruthy();
+      const chip = chipOf(renderLibrary(), CUSTOM_TIP.id);
+      expect(chip, 'library texture chip renders').toBeTruthy();
       (chip!.props as { onClick?: () => void }).onClick!();
 
-      expect(aquarelleSelectedTextureId.value, 'texture selected').toBe('wc/builtin-chalk');
+      expect(aquarelleSelectedTextureId.value, 'texture selected').toBe(CUSTOM_TIP.id);
       expect(aquarelleSelectedTipId.value, 'the response is untouched').toBe('flat');
       expect(aquarelleToolOverrides.value.aspect, 'the multipliers are untouched').toBe(1.4);
       const source = readFileSync(resolve(__dirname, 'WatercolorTextureStrip.tsx'), 'utf8');
       expect(source, 'a texture chip never selects a response').not.toMatch(/selectAquarelleTip/);
     } finally {
       aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES };
+      replaceCustomBrushTips([]);
     }
   });
 
   it('marks the Default chip when the texture signal is null; every chip carries data-selected', () => {
     const chips = textureChipNodes(renderLibrary());
-    expect(chips.length, 'Default + built-ins').toBe(1 + BUILTIN_IDS.length);
+    expect(chips.length, 'Default alone when the library is empty').toBe(1);
     expect(chips[0]!.props?.['data-testid']).toBe('watercolor-texture-chip-default');
     for (const chip of chips) {
       const expected = chipTextureIdOf(chip) === 'default' ? 'true' : 'false';
@@ -630,13 +642,19 @@ describe('WatercolorBrushLibrary texture strip (quick-261115-oh9)', () => {
       );
     }
 
-    setAquarelleSelectedTextureId('wc/builtin-sponge');
-    const selected = textureChipNodes(renderLibrary()).filter(
-      (chip) => chip.props?.['data-selected'] === 'true',
-    );
-    expect(selected.map(chipTextureIdOf), 'exactly the picked texture').toEqual([
-      'wc/builtin-sponge',
-    ]);
+    addCustomBrushTip(CUSTOM_TIP);
+    expect(registerMask(CUSTOM_TIP.id, libraryMask(17)), 'fixture mask accepted').toBe(true);
+    try {
+      setAquarelleSelectedTextureId(CUSTOM_TIP.id);
+      const selected = textureChipNodes(renderLibrary()).filter(
+        (chip) => chip.props?.['data-selected'] === 'true',
+      );
+      expect(selected.map(chipTextureIdOf), 'exactly the picked texture').toEqual([
+        CUSTOM_TIP.id,
+      ]);
+    } finally {
+      replaceCustomBrushTips([]);
+    }
   });
 
   it('every chip renders one real mask canvas through an inline blit ref', () => {
@@ -832,7 +850,8 @@ describe('WatercolorBrushLibrary import row and unavailable tips (63-06)', () =>
   }
 
   it('a refused import leaves the catalog and the selection unchanged', async () => {
-    setAquarelleSelectedTextureId('wc/builtin-chalk');
+    // quick 261116-inu: a library row is the only kind of texture that exists.
+    setAquarelleSelectedTextureId(CUSTOM_TIP.id);
     // The refusal copy and the unchanged state are this surface's law; the
     // real sniff/decode law lives in the package's importTip.test.ts.
     importTipMock.mockResolvedValue({ ok: false, reason: 'not-an-image' });
@@ -840,7 +859,7 @@ describe('WatercolorBrushLibrary import row and unavailable tips (63-06)', () =>
     expect(watercolorBrushImportFailure.value, 'failure state set').toBe(true);
     expect(customBrushTips.value.length, 'catalog unchanged').toBe(0);
     expect(aquarelleSelectedTextureId.value, 'failed import leaves selection untouched').toBe(
-      'wc/builtin-chalk',
+      CUSTOM_TIP.id,
     );
     expect(textContent(renderLibrary()), 'named refusal copy').toContain(IMPORT_TIP_FAILURE_COPY);
   });

@@ -30,8 +30,6 @@
 
 import { batch, computed, signal, type ReadonlySignal } from '@preact/signals';
 import {
-  BUILTIN_TIP_MASKS,
-  BUILTIN_TIPS,
   TIP_MASK_BYTES,
   buildBrushPackSnapshot,
   registerMask,
@@ -120,12 +118,13 @@ export function _setBrushCatalogPublisher(publisher: BrushCatalogPublisher): Bru
 }
 
 /**
- * The full catalog in display order: the three built-ins from `BUILTIN_TIPS`
- * first, then the project's customs in insertion order. A fresh install with
- * no project still lists exactly the three built-ins (TIP-13).
+ * The full catalog in display order: the machine library's rows in insertion
+ * order. There are no compile-time built-ins (quick 261116-inu / spec 04) —
+ * the surfaces' Default chip is their own `null` entry, never a catalog row,
+ * so a fresh install with an empty library lists nothing here.
  */
 export function listAquarelleBrushTips(): readonly AquarelleTip[] {
-  return [...BUILTIN_TIPS, ...customBrushTipsSignal.value];
+  return customBrushTipsSignal.value;
 }
 
 /**
@@ -142,14 +141,11 @@ export function registerScriptMask(id: string, mask: Uint8Array): boolean {
 }
 
 /**
- * Resolve one tip id against the catalog: built-ins first, then project
- * customs. `null` when the id is unknown to this install/project, which is the
- * caller's signal to degrade to the neutral round fallback (one warning).
+ * Resolve one tip id against the machine library's rows. `null` when the id is
+ * unknown on this machine, which is the caller's signal to degrade to the
+ * neutral round fallback (one warning).
  */
 export function resolveCatalogTip(id: string): AquarelleTip | null {
-  for (const tip of BUILTIN_TIPS) {
-    if (tip.id === id) return tip;
-  }
   for (const tip of customBrushTipsSignal.value) {
     if (tip.id === id) return tip;
   }
@@ -378,7 +374,7 @@ export function resetAquarelleBrushCatalog(): void {
 // installs what `loadProjectBrushSet` decoded. It is REPLACE-ONLY by
 // construction — the set IS the project's state, so opening B overwrites A's
 // customs, registry rows and unavailable set in one batch, and an empty set
-// restores exactly the three built-ins (T-63-21).
+// leaves an empty registry (no compile-time built-ins remain).
 // ---------------------------------------------------------------------------
 
 /**
@@ -394,7 +390,7 @@ export function resetAquarelleBrushCatalog(): void {
  * live for painting, and a subsequent save cannot copy that asset.
  */
 export function applyProjectBrushSet(set: ProjectBrushSet, packageRoot: string): void {
-  const masks: { id: string; mask: Uint8Array }[] = [...BUILTIN_TIP_MASKS];
+  const masks: { id: string; mask: Uint8Array }[] = [];
   for (const entry of set.masks) masks.push({ id: entry.id, mask: entry.mask });
   batch(() => {
     replaceCustomBrushTips(set.entries.map((entry) => entry.tip));
@@ -523,8 +519,9 @@ function decodeBase64OrNull(value: string): Uint8Array | null {
 
 /**
  * The STUDIO realm's one application path: replace this realm's customs, mask
- * registry (built-ins first, then the payload's decoded masks), unavailable
- * set and remembered asset bytes, then let the setters bump
+ * registry (exactly the payload's decoded masks; there are no compile-time
+ * built-ins left), unavailable set and remembered asset bytes, then let the
+ * setters bump
  * `brushCatalogGeneration` for every real change. Replace-only by
  * construction — a second payload without a prior id leaves that id
  * unresolvable and unlisted. Never appends, never throws on one bad entry
@@ -533,7 +530,7 @@ function decodeBase64OrNull(value: string): Uint8Array | null {
  */
 export function applyBrushCatalogPayload(payload: PhysicPaintBrushCatalogPayload): void {
   const rows: AquarelleLibraryRow[] = [];
-  const masks: { id: string; mask: Uint8Array }[] = [...BUILTIN_TIP_MASKS];
+  const masks: { id: string; mask: Uint8Array }[] = [];
   const unavailable = new Set<string>(payload.unavailableTipIds);
   for (const entry of payload.entries) {
     const tip = { ...entry.tip };

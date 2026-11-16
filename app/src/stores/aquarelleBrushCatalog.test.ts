@@ -3,8 +3,8 @@
  * MACHINE-scoped brush catalog standing pins.
  *
  * Laws pinned here:
- *   1. The built-ins come from `BUILTIN_TIPS` and are listed first (Task 3
- *      deletes them); a fresh catalog resolves them.
+ *   1. There are no compile-time built-ins (quick 261116-inu): a fresh catalog
+ *      lists nothing, and only machine-library rows ever appear.
  *   2. `replaceUnavailableTipIds` REPLACES the whole set — `[]` clears it and
  *      a second call never appends to the first (D-20).
  *   3. `replaceLibraryEntries` is replace-only and compare-then-write: a real
@@ -26,7 +26,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  BUILTIN_TIPS,
   TIP_MASK_BYTES,
   TIP_MASK_EDGE,
   buildBrushForStroke,
@@ -99,20 +98,15 @@ afterEach(() => {
   resetMaskRegistry();
 });
 
-describe('aquarelleBrushCatalog — built-in baseline (TIP-13)', () => {
-  it('a fresh catalog lists exactly the three built-ins from BUILTIN_TIPS', () => {
-    const listed = listAquarelleBrushTips();
-    expect(listed).toHaveLength(3);
-    expect(listed.map((tip) => tip.id)).toEqual([
-      'wc/builtin-bristle',
-      'wc/builtin-chalk',
-      'wc/builtin-sponge',
-    ]);
-    expect(listed[0]).toBe(BUILTIN_TIPS[0]);
+describe('aquarelleBrushCatalog — empty machine-library baseline (quick 261116-inu)', () => {
+  it('a fresh catalog lists nothing: there are no compile-time built-ins', () => {
+    expect(listAquarelleBrushTips()).toHaveLength(0);
   });
 
-  it('resolves a built-in with no project and returns null for an unknown id', () => {
-    expect(resolveCatalogTip('wc/builtin-bristle')?.name).toBe('Bristle fan');
+  it('resolves no retired built-in id and returns null for an unknown id', () => {
+    // The retired ids carry no special meaning any more: nothing seeded the
+    // catalog, so they resolve like any unknown id.
+    expect(resolveCatalogTip('wc/builtin-bristle')).toBe(null);
     expect(resolveCatalogTip('wc/custom-missing')).toBe(null);
   });
 });
@@ -125,7 +119,7 @@ describe('aquarelleBrushCatalog — custom entries', () => {
     expect(customBrushTips.value).toHaveLength(1);
     expect(customBrushTips.value[0]).toBe(tip);
     expect(resolveCatalogTip('wc/custom-11111111')).toBe(tip);
-    expect(listAquarelleBrushTips()).toHaveLength(4);
+    expect(listAquarelleBrushTips()).toHaveLength(1);
     expect(brushCatalogGeneration.value).toBe(before + 1);
   });
 
@@ -158,7 +152,7 @@ describe('aquarelleBrushCatalog — custom entries', () => {
     expect(customBrushTips.value).toHaveLength(0);
     expect(unavailableTipIds.value.size).toBe(0);
     expect(brushCatalogGeneration.value).toBe(before + 1);
-    expect(listAquarelleBrushTips()).toHaveLength(3);
+    expect(listAquarelleBrushTips()).toHaveLength(0);
     // A second reset has nothing left to clear.
     resetAquarelleBrushCatalog();
     expect(brushCatalogGeneration.value).toBe(before + 1);
@@ -185,18 +179,19 @@ describe('aquarelleBrushCatalog — applyProjectBrushSet (63-07 / D-17 / D-20)',
 
     expect(customBrushTips.value).toHaveLength(1);
     expect(customBrushTips.value[0]!.id).toBe('wc/custom-open');
-    expect(listAquarelleBrushTips()).toHaveLength(4);
+    expect(listAquarelleBrushTips()).toHaveLength(1);
     expect(resolveCatalogTip('wc/custom-previous')).toBe(null);
     expect(resolveMask(tip.id)).toBe(mask);
     expect(resolveMask('wc/custom-previous')).toBe(null);
-    expect(resolveMask('wc/builtin-bristle') === null).toBe(false);
+    // quick 261116-inu: no built-in mask is seeded any more.
+    expect(resolveMask('wc/builtin-bristle')).toBe(null);
     expect(unavailableTipIds.value.size).toBe(1);
     expect(unavailableTipIds.value.has('wc/custom-unavailable')).toBe(true);
     expect(brushAssetBytes(DIGEST)?.length).toBe(5);
     expect(pendingBrushAssets('/project/brush-package')).toHaveLength(0);
   });
 
-  it('an empty set restores exactly the three built-ins and drops the prior project', () => {
+  it('an empty set leaves an empty catalog and drops the prior project', () => {
     applyProjectBrushSet(
       projectSet(customTip('wc/custom-open'), new Uint8Array(TIP_MASK_BYTES).fill(9)),
       '/project/brush-package',
@@ -207,7 +202,7 @@ describe('aquarelleBrushCatalog — applyProjectBrushSet (63-07 / D-17 / D-20)',
       '/project/brush-package',
     );
 
-    expect(listAquarelleBrushTips()).toHaveLength(3);
+    expect(listAquarelleBrushTips()).toHaveLength(0);
     expect(resolveMask('wc/custom-open')).toBe(null);
     expect(unavailableTipIds.value.size).toBe(0);
   });
@@ -297,8 +292,9 @@ describe('aquarelleBrushCatalog — buildProjectBrushPack (D-10)', () => {
     const entry = pack.entries[0] as AquarelleTip;
     expect(entry.id).toBe('wc/custom-88888888');
     expect(entry.asset).toBe(ASSET);
-    const builtInIds = BUILTIN_TIPS.map((tip) => tip.id);
-    expect(pack.entries.some((raw) => builtInIds.includes((raw as AquarelleTip).id))).toBe(false);
+    // quick 261116-inu: there are no built-in tips to emit.
+    const retiredIds = ['wc/builtin-bristle', 'wc/builtin-chalk', 'wc/builtin-sponge'];
+    expect(pack.entries.some((raw) => retiredIds.includes((raw as AquarelleTip).id))).toBe(false);
   });
 
   it('returns null instead of emitting a pack whose entry fails the carrier law', () => {
@@ -429,38 +425,40 @@ describe('aquarelleBrushCatalog — the one project-tip normalization law (CR-01
     expect(payloadMaskLegsValid(payload)).toBe(true);
   });
 
-  it('refuses a built-in id at the open by name and never re-emits it', async () => {
+  it('admits a legacy built-in-shaped id as an ordinary custom row (no reserved ids)', async () => {
     const asked: string[] = [];
-    const builtinRaw = { ...customTip('wc/builtin-chalk', { category: 'texture' }) };
+    const legacyRaw = { ...customTip('wc/builtin-chalk', { category: 'texture' }) };
     const customRaw = customTip('wc/custom-sibling');
 
     const set = await loadProjectBrushSet(
       '/project/pkg',
-      { kind: 'efx-watercolor', entries: [builtinRaw, customRaw] },
+      { kind: 'efx-watercolor', entries: [legacyRaw, customRaw] },
       okPort(asked),
     );
 
-    // Refused BEFORE the record is validated: the read port never asks for it
-    // and the set never lists or registers it.
-    expect(asked.join(',')).toBe('wc/custom-sibling');
-    expect(set.entries.map((entry) => entry.tip.id).join(',')).toBe('wc/custom-sibling');
-    expect(set.masks.map((mask) => mask.id).join(',')).toBe('wc/custom-sibling');
-    expect(set.failures).toContainEqual({ tipId: 'wc/builtin-chalk', reason: 'builtin-id' });
+    // quick 261116-inu: the built-in namespace is retired, so the open no
+    // longer refuses by name — the record is normalized like every other tip.
+    expect(asked.join(',')).toBe('wc/builtin-chalk,wc/custom-sibling');
+    expect(set.entries.map((entry) => entry.tip.id).join(',')).toBe(
+      'wc/builtin-chalk,wc/custom-sibling',
+    );
+    expect(set.masks.map((mask) => mask.id).join(',')).toBe('wc/builtin-chalk,wc/custom-sibling');
+    expect(set.failures).toHaveLength(0);
 
     applyProjectBrushSet(set, '/project/pkg');
     installRowsFromSet(set);
     const payload = buildBrushCatalogPayload(7);
 
     expect(isPhysicPaintBrushCatalogPayload(payload)).toBe(true);
-    expect(payload.entries.map((entry) => entry.tip.id)).toEqual(['wc/custom-sibling']);
-    // Each built-in is still listed exactly once, from BUILTIN_TIPS alone.
-    expect(listAquarelleBrushTips().map((tip) => tip.id)).toEqual([
-      'wc/builtin-bristle',
+    expect(payload.entries.map((entry) => entry.tip.id)).toEqual([
       'wc/builtin-chalk',
-      'wc/builtin-sponge',
       'wc/custom-sibling',
     ]);
-    expect(listAquarelleBrushTips().filter((tip) => tip.id === 'wc/builtin-chalk')).toHaveLength(1);
+    // Exactly one row per id — nothing is duplicated from a compile-time seed.
+    expect(listAquarelleBrushTips().map((tip) => tip.id)).toEqual([
+      'wc/builtin-chalk',
+      'wc/custom-sibling',
+    ]);
   });
 });
 
@@ -530,16 +528,16 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
     expect(catalog.libraryRevision.value).toBe(2);
     expect(catalog.customBrushTips.value).toHaveLength(1);
     expect(catalog.customBrushTips.value[0]?.id).toBe('wc/custom-fresh-1');
-    expect(catalog.listAquarelleBrushTips()).toHaveLength(4);
+    expect(catalog.listAquarelleBrushTips()).toHaveLength(1);
     expect(catalog.resolveCatalogTip('wc/custom-fresh-1')?.id).toBe('wc/custom-fresh-1');
 
     const resolvedMask = watercolor.resolveMask('wc/custom-fresh-1');
     expect(resolvedMask === null).toBe(false);
     expect(resolvedMask?.length).toBe(TIP_MASK_BYTES);
     expect(resolvedMask).toEqual(mask);
-    // The registry replacement carries the built-ins first — a fresh
-    // instance still resolves every built-in mask.
-    expect(watercolor.resolveMask('wc/builtin-bristle') === null).toBe(false);
+    // quick 261116-inu: the payload installs its own rows and nothing else —
+    // no compile-time built-in mask survives a fresh instance.
+    expect(watercolor.resolveMask('wc/builtin-bristle')).toBe(null);
 
     expect([...catalog.unavailableTipIds.value]).toEqual(['wc/custom-gone']);
 
@@ -580,7 +578,7 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
 
     expect(catalog.customBrushTips.value.map((tip) => tip.id)).toEqual(['wc/custom-replaced-2']);
     expect(catalog.resolveCatalogTip('wc/custom-replaced-1')).toBe(null);
-    expect(catalog.listAquarelleBrushTips()).toHaveLength(4);
+    expect(catalog.listAquarelleBrushTips()).toHaveLength(1);
     expect(watercolor.resolveMask('wc/custom-replaced-1')).toBe(null);
     expect(watercolor.resolveMask('wc/custom-replaced-2')).toEqual(secondMask);
   });
@@ -672,7 +670,7 @@ describe('aquarelleBrushCatalog — the machine library lifecycle (quick 261116-
     );
 
     expect(customBrushTips.value.map((tip) => tip.id).join(',')).toBe('wc/custom-project-b');
-    expect(listAquarelleBrushTips()).toHaveLength(4);
+    expect(listAquarelleBrushTips()).toHaveLength(1);
     expect(resolveCatalogTip(tipA.id)).toBe(null);
     expect(resolveMask(tipA.id)).toBe(null);
     expect(resolveMask(tipB.id)).toBe(maskB);
@@ -715,7 +713,7 @@ describe('aquarelleBrushCatalog — the machine library lifecycle (quick 261116-
     expect(catalog.unavailableTipIds.value.has('wc/custom-gone')).toBe(true);
     expect(watercolor.resolveMask(tip.id)).toBe(mask);
     expect(catalog.listAquarelleBrushTips().map((entry) => entry.id).join(',')).toBe(
-      'wc/builtin-bristle,wc/builtin-chalk,wc/builtin-sponge,wc/custom-machine',
+      'wc/custom-machine',
     );
   });
 
@@ -773,7 +771,7 @@ describe('aquarelleBrushCatalog — the machine library lifecycle (quick 261116-
         .tipData.every((value, index) => value === mask[index]),
     ).toBe(true);
     expect(catalog.customBrushTips.value).toHaveLength(0);
-    expect(catalog.listAquarelleBrushTips()).toHaveLength(3);
+    expect(catalog.listAquarelleBrushTips()).toHaveLength(0);
     expect(catalog.resolveCatalogTip('wc/custom-script')).toBe(null);
     expect(catalog.unavailableTipIds.value.size).toBe(0);
 

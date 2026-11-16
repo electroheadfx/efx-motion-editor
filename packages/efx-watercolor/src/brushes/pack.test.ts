@@ -20,7 +20,7 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
-import { TIP_SIZE } from '../playground/brushes'
+import { TIP_MASK_EDGE } from './deriveMask'
 import type { AquarelleTip, AquarelleToolOverrides } from './tips'
 import { NEUTRAL_TOOL_OVERRIDES, TIPS } from './tips'
 import { asTipRecord, buildBrushPackSnapshot, parseBrushPackSnapshot } from './pack'
@@ -139,7 +139,7 @@ function stubPorts(opts?: {
       await new Promise((resolve) => setTimeout(resolve, 1))
       opts?.onExit?.()
       if (opts?.decodeOk === false) return null
-      return new Uint8Array(TIP_SIZE * TIP_SIZE * 4)
+      return new Uint8Array(TIP_MASK_EDGE * TIP_MASK_EDGE * 4)
     },
     register: async ({ name }) => ({
       id: 'wc/custom-package-test',

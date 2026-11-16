@@ -40,7 +40,7 @@
  *   so a project's tips can never accumulate on top of another project's.
  */
 
-import { BUILTIN_TIPS, TIP_MASK_BYTES, asTipRecord, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { TIP_MASK_BYTES, asTipRecord, type AquarelleTip } from '@efxlab/efx-watercolor';
 import type { MceBrushPackSnapshot } from '../types/project';
 import {
   ipcEfxPaintReadBrushAssets,
@@ -130,33 +130,23 @@ function readTipId(raw: unknown): string {
 }
 
 /**
- * The three app-owned built-in ids. The project catalog lists built-ins from
- * `BUILTIN_TIPS` alone (TIP-13 / D-20), so a project entry can never duplicate
- * or shadow a shipped tip: the normalizer refuses one and the open names the
- * refusal `builtin-id`.
- */
-const BUILTIN_TIP_IDS: ReadonlySet<string> = new Set(BUILTIN_TIPS.map((tip) => tip.id));
-
-/**
  * The ONE project-tip normality law (CR-01 / T-63-25 / TIP-13 / TIP-15).
  *
- * Two laws, applied by BOTH producers — the open loader (`tipFromRaw` below,
- * plus the pre-validation refusal in `loadProjectBrushSet`) and the Studio
- * catalog payload producer (`buildBrushCatalogPayload`):
+ * One law, applied by BOTH producers — the open loader (`tipFromRaw` below)
+ * and the Studio catalog payload producer (`buildBrushCatalogPayload`):
+ *   Wire projection: the record is rebuilt from the named members only and
+ *   `category` is pinned to `'custom'`. The projection mirrors
+ *   `AQUARELLE_TIP_MEMBER_KEYS` in `types/physicPaint.ts`, so the sender can
+ *   never emit a shape `isCustomTipWire` refuses — the strict wire law
+ *   stands and the senders become conforming (never the reverse). `asset`
+ *   rides only when it is present; it never invents a carrier member.
  *
- *   1. Built-in refusal: an id naming any of the three app-owned tips yields
- *      `null`. The project catalog lists built-ins from `BUILTIN_TIPS` alone
- *      (TIP-13 / D-20), so no project entry can duplicate, shadow or re-emit
- *      a shipped tip.
- *   2. Wire projection: the record is rebuilt from the named members only and
- *      `category` is pinned to `'custom'`. The projection mirrors
- *      `AQUARELLE_TIP_MEMBER_KEYS` in `types/physicPaint.ts`, so the sender can
- *      never emit a shape `isCustomTipWire` refuses — the strict wire law
- *      stands and the senders become conforming (never the reverse). `asset`
- *      rides only when it is present; it never invents a carrier member.
+ * quick 261116-inu: the built-in refusal is gone with the compile-time
+ * built-in textures — every tip this path admits is a machine-library row.
+ * This module is deleted whole in Task 4; the decoupling exists so this
+ * task's boundary compiles without the deleted exports.
  */
 export function normalizeProjectBrushTip(tip: AquarelleTip): AquarelleTip | null {
-  if (BUILTIN_TIP_IDS.has(tip.id)) return null;
   return {
     id: tip.id,
     category: 'custom',
@@ -223,14 +213,7 @@ export async function loadProjectBrushSet(
   const seen = new Set<string>();
 
   for (const raw of snapshot.entries) {
-    // The built-in refusal is read off the RAW id BEFORE the record is
-    // validated, so a well-formed entry naming a shipped tip is refused with
-    // the named reason (a malformed record still logs `invalid-entry` below).
     const rawId = readTipId(raw);
-    if (BUILTIN_TIP_IDS.has(rawId)) {
-      failures.push(Object.freeze({ tipId: rawId, reason: 'builtin-id' as const }));
-      continue;
-    }
     const tip = tipFromRaw(raw);
     if (tip === null) {
       failures.push(Object.freeze({ tipId: rawId, reason: 'invalid-entry' as const }));

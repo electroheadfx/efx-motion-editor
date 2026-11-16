@@ -10,17 +10,16 @@
 //             live path and the bake path share one allocation
 //    generation only a mutation bumps it — reads and rejected
 //             writes never do
-//    WR-05    the three built-in ids are reserved: registerMask can
-//             never install one, and a refused registration mutates
-//             nothing and bumps nothing; replace admits a built-in id
-//             only with the exact compile-time allocation
+//    empty    there are no compile-time built-ins (quick 261116-inu):
+//             a fresh registry is empty and resetMaskRegistry leaves
+//             it empty
 //
 //  The registry is module-scoped, so every test starts from a reset.
 //  Assertion style: scalar predicates (boolean/primitive toBe) so TAP
 //  diagnostics stay one-line and the RED evidence classifier parses.
 // ============================================================
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import {
   listRegisteredMaskIds,
   maskGeneration,
@@ -30,7 +29,6 @@ import {
   resolveMask,
 } from './maskRegistry'
 import { TIP_MASK_BYTES } from './deriveMask'
-import { BUILTIN_TIP_MASKS } from './builtinTips'
 import { buildBrushForStroke } from '../playground/brushBridge'
 import { buildBrush, BRUSH_PRESETS } from '../playground/brushes'
 
@@ -43,11 +41,11 @@ beforeEach(() => {
 })
 
 describe('registerMask — exact-length admission (T-63-02)', () => {
-  it('accepts a mask of exactly 36,864 bytes', () => {
+  it('accepts a mask of exactly TIP_MASK_BYTES', () => {
     expect(registerMask('wc/custom-ok', solidMask(128))).toBe(true)
   })
 
-  it('rejects a mask of 36,863 bytes and leaves the registry unchanged', () => {
+  it('rejects a mask one byte short and leaves the registry unchanged', () => {
     registerMask('wc/custom-keep', solidMask(90))
     const before = listRegisteredMaskIds().join(',')
     expect(registerMask('wc/custom-short', new Uint8Array(TIP_MASK_BYTES - 1))).toBe(false)
@@ -55,7 +53,7 @@ describe('registerMask — exact-length admission (T-63-02)', () => {
     expect(resolveMask('wc/custom-short') === null).toBe(true)
   })
 
-  it('rejects a mask of 36,865 bytes and leaves the registry unchanged', () => {
+  it('rejects a mask one byte long and leaves the registry unchanged', () => {
     expect(registerMask('wc/custom-long', new Uint8Array(TIP_MASK_BYTES + 1))).toBe(false)
     expect(resolveMask('wc/custom-long') === null).toBe(true)
   })
@@ -67,41 +65,11 @@ describe('registerMask — exact-length admission (T-63-02)', () => {
     expect(resolveMask('wc/custom-keep') === original).toBe(true)
   })
 
-  it('rejects an empty id', () => {
+  it('rejects an empty id and a fresh registry lists nothing', () => {
+    expect(listRegisteredMaskIds().length).toBe(0)
     expect(registerMask('', solidMask(10))).toBe(false)
-    // The registry always carries the three built-ins (63-03); only the
-    // empty id is absent.
-    expect(listRegisteredMaskIds().length).toBe(3)
+    expect(listRegisteredMaskIds().length).toBe(0)
     expect(listRegisteredMaskIds().includes('')).toBe(false)
-  })
-})
-
-describe('registerMask — built-in ids are reserved (WR-05)', () => {
-  it('refuses all three built-in ids, logs each, and never mutates or bumps', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const before = maskGeneration()
-      for (const builtin of BUILTIN_TIP_MASKS) {
-        const shipped = resolveMask(builtin.id)
-        expect(shipped === builtin.mask).toBe(true)
-        expect(registerMask(builtin.id, solidMask(11))).toBe(false)
-        expect(resolveMask(builtin.id) === shipped).toBe(true)
-      }
-      expect(maskGeneration()).toBe(before)
-      expect(warn.mock.calls.length).toBe(BUILTIN_TIP_MASKS.length)
-      const logged = warn.mock.calls.map((call) => String(call[0])).join('\n')
-      for (const builtin of BUILTIN_TIP_MASKS) {
-        expect(logged.includes(builtin.id)).toBe(true)
-      }
-    } finally {
-      warn.mockRestore()
-    }
-  })
-
-  it('a custom id still registers and resolves by identity', () => {
-    const mask = solidMask(33)
-    expect(registerMask('wc/custom-not-reserved', mask)).toBe(true)
-    expect(resolveMask('wc/custom-not-reserved') === mask).toBe(true)
   })
 })
 
@@ -147,85 +115,25 @@ describe('replaceMaskRegistry — replaces, never appends', () => {
   })
 })
 
-describe('replaceMaskRegistry — built-in ids admit only the compile-time allocation (WR-05)', () => {
-  it('a built-ins-first list keeps all three built-ins resolvable by identity', () => {
-    replaceMaskRegistry([...BUILTIN_TIP_MASKS])
-    for (const builtin of BUILTIN_TIP_MASKS) {
-      expect(resolveMask(builtin.id) === builtin.mask).toBe(true)
-    }
-    expect(listRegisteredMaskIds().join(',')).toBe(
-      'wc/builtin-bristle,wc/builtin-chalk,wc/builtin-sponge',
-    )
-  })
-
-  it('refuses a later equal-bytes shadow and still installs a custom sibling', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const chalk = BUILTIN_TIP_MASKS.find((builtin) => builtin.id === 'wc/builtin-chalk')
-      expect(chalk === undefined).toBe(false)
-      if (chalk === undefined) return
-      const copy = new Uint8Array(chalk.mask)
-      expect(copy === chalk.mask).toBe(false)
-      expect(copy.length).toBe(chalk.mask.length)
-      const sibling = solidMask(42)
-      replaceMaskRegistry([
-        ...BUILTIN_TIP_MASKS,
-        { id: 'wc/builtin-chalk', mask: copy },
-        { id: 'wc/custom-sibling', mask: sibling },
-      ])
-      expect(resolveMask('wc/builtin-chalk') === chalk.mask).toBe(true)
-      expect(resolveMask('wc/builtin-chalk') === copy).toBe(false)
-      expect(resolveMask('wc/custom-sibling') === sibling).toBe(true)
-      expect(warn.mock.calls.length).toBe(1)
-      expect(String(warn.mock.calls[0]?.[0]).includes('wc/builtin-chalk')).toBe(true)
-    } finally {
-      warn.mockRestore()
-    }
-  })
-
-  it('refuses a wrong-length built-in entry and keeps the shipped allocation', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const sponge = BUILTIN_TIP_MASKS.find((builtin) => builtin.id === 'wc/builtin-sponge')
-      expect(sponge === undefined).toBe(false)
-      if (sponge === undefined) return
-      replaceMaskRegistry([
-        ...BUILTIN_TIP_MASKS,
-        { id: 'wc/builtin-sponge', mask: new Uint8Array(TIP_MASK_BYTES - 1) },
-      ])
-      expect(resolveMask('wc/builtin-sponge') === sponge.mask).toBe(true)
-      expect(warn.mock.calls.length).toBe(1)
-      expect(String(warn.mock.calls[0]?.[0]).includes('wc/builtin-sponge')).toBe(true)
-    } finally {
-      warn.mockRestore()
-    }
-  })
-
-  it('a foreign-only built-in id never resolves to the foreign array', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const bristle = BUILTIN_TIP_MASKS.find((builtin) => builtin.id === 'wc/builtin-bristle')
-      expect(bristle === undefined).toBe(false)
-      if (bristle === undefined) return
-      const foreign = solidMask(200)
-      replaceMaskRegistry([{ id: 'wc/builtin-bristle', mask: foreign }])
-      expect(resolveMask('wc/builtin-bristle') === foreign).toBe(false)
-      expect(warn.mock.calls.length).toBe(1)
-      expect(String(warn.mock.calls[0]?.[0]).includes('wc/builtin-bristle')).toBe(true)
-    } finally {
-      warn.mockRestore()
-    }
+describe('replaceMaskRegistry — machine-library replacement', () => {
+  it('installs a library list by identity and keeps every id resolvable', () => {
+    const first = solidMask(41)
+    const second = solidMask(42)
+    replaceMaskRegistry([
+      { id: 'wc/custom-library-a', mask: first },
+      { id: 'wc/custom-library-b', mask: second },
+    ])
+    expect(resolveMask('wc/custom-library-a') === first).toBe(true)
+    expect(resolveMask('wc/custom-library-b') === second).toBe(true)
+    expect(listRegisteredMaskIds().join(',')).toBe('wc/custom-library-a,wc/custom-library-b')
   })
 })
 
 describe('resetMaskRegistry — no ghost mask', () => {
-  it('restores exactly the three built-ins and the previously registered id resolves to null', () => {
+  it('leaves the registry empty and the previously registered id resolves to null', () => {
     registerMask('wc/custom-ghost', solidMask(64))
     resetMaskRegistry()
-    expect(listRegisteredMaskIds().join(',')).toBe(
-      'wc/builtin-bristle,wc/builtin-chalk,wc/builtin-sponge',
-    )
-    expect(resolveMask('wc/builtin-bristle')?.length).toBe(TIP_MASK_BYTES)
+    expect(listRegisteredMaskIds().length).toBe(0)
     expect(resolveMask('wc/custom-ghost') === null).toBe(true)
   })
 

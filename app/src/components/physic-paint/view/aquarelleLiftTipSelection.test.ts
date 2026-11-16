@@ -19,9 +19,8 @@
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
+import { BRUSH_PRESETS, TIP_MASK_BYTES } from '@efxlab/efx-watercolor';
 import {
-  BUILTIN_TIP_MASKS,
   NEUTRAL_TOOL_OVERRIDES,
   registerMask,
   replaceMaskRegistry,
@@ -211,20 +210,24 @@ describe('261028-k03c D1 aquarelleBrushForActiveTool', () => {
 
   it('quick-261115-oh9: the Lift selection never carries a texture', () => {
     setAquarelleTool('brush');
-    setAquarelleSelectedTextureId('wc/builtin-chalk');
+    // quick 261116-inu: register the row so the Brush branch really has a live
+    // texture — otherwise the null below would prove nothing.
+    expect(registerMask('wc/custom-lift-chalk', new Uint8Array(TIP_MASK_BYTES))).toBe(true);
+    setAquarelleSelectedTextureId('wc/custom-lift-chalk');
+    expect(aquarelleBrushForActiveTool().textureId).toBe('wc/custom-lift-chalk');
     setAquarelleTool('lift');
     expect(aquarelleBrushForActiveTool().textureId).toBe(null);
   });
 
   it('quick-261115-oh9 WR-01: a texture the registry lost resolves to null', () => {
-    // A project close / a different project's open replaces the mask registry
-    // wholesale. A dangling custom id must not be bound — nor recorded.
+    // A library scan replaces the mask registry wholesale; a row the scan
+    // omits must not be bound — nor recorded.
     setAquarelleTool('brush');
-    const mask = new Uint8Array(192 * 192);
+    const mask = new Uint8Array(TIP_MASK_BYTES);
     registerMask('wc/custom-gone', mask);
     setAquarelleSelectedTextureId('wc/custom-gone');
     expect(aquarelleBrushForActiveTool().textureId).toBe('wc/custom-gone');
-    replaceMaskRegistry([...BUILTIN_TIP_MASKS]);
+    replaceMaskRegistry([]);
     expect(aquarelleBrushForActiveTool().textureId).toBe(null);
     expect(
       'textureId' in buildAquarelleStrokePayload(),
@@ -283,21 +286,23 @@ describe('quick-261115-oh9 the texture axis on the selection law', () => {
   });
 
   it('aquarelleBrushForActiveTool carries the texture on brush and null on lift', () => {
-    setAquarelleSelectedTextureId('wc/builtin-chalk');
+    expect(registerMask('wc/custom-selection-chalk', new Uint8Array(TIP_MASK_BYTES))).toBe(true);
+    setAquarelleSelectedTextureId('wc/custom-selection-chalk');
     setAquarelleTool('brush');
-    expect(aquarelleBrushForActiveTool().textureId).toBe('wc/builtin-chalk');
+    expect(aquarelleBrushForActiveTool().textureId).toBe('wc/custom-selection-chalk');
     setAquarelleTool('water');
-    expect(aquarelleBrushForActiveTool().textureId).toBe('wc/builtin-chalk');
+    expect(aquarelleBrushForActiveTool().textureId).toBe('wc/custom-selection-chalk');
     setAquarelleTool('lift');
     expect(aquarelleBrushForActiveTool().textureId, 'the eraser has no texture').toBe(null);
   });
 
   it('snapshot and payload carry the selected texture; a lift selection omits the key', () => {
-    setAquarelleSelectedTextureId('wc/builtin-chalk');
+    expect(registerMask('wc/custom-selection-chalk', new Uint8Array(TIP_MASK_BYTES))).toBe(true);
+    setAquarelleSelectedTextureId('wc/custom-selection-chalk');
     setAquarelleTool('brush');
-    expect(aquarelleSelectedTextureId.value).toBe('wc/builtin-chalk');
-    expect(snapshotAquarelleRecord().textureId).toBe('wc/builtin-chalk');
-    expect(buildAquarelleStrokePayload().textureId).toBe('wc/builtin-chalk');
+    expect(aquarelleSelectedTextureId.value).toBe('wc/custom-selection-chalk');
+    expect(snapshotAquarelleRecord().textureId).toBe('wc/custom-selection-chalk');
+    expect(buildAquarelleStrokePayload().textureId).toBe('wc/custom-selection-chalk');
     setAquarelleTool('lift');
     expect(snapshotAquarelleRecord().textureId).toBe(null);
     expect('textureId' in buildAquarelleStrokePayload()).toBe(false);
@@ -312,9 +317,9 @@ describe('quick-261115-oh9 the texture axis on the selection law', () => {
     try {
       setAquarelleSelectedTextureId(null);
       expect(writes, 'a null re-pick writes nothing').toBe(baseline);
-      setAquarelleSelectedTextureId('wc/builtin-chalk');
+      setAquarelleSelectedTextureId('wc/custom-repick-texture');
       expect(writes - baseline, 'a real change writes once').toBe(1);
-      setAquarelleSelectedTextureId('wc/builtin-chalk');
+      setAquarelleSelectedTextureId('wc/custom-repick-texture');
       expect(writes - baseline, 'a same-value re-pick writes nothing more').toBe(1);
     } finally {
       unsubscribe();

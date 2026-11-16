@@ -21,15 +21,14 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { buildBrushForStroke, strokeTipData } from './brushBridge'
-import { BRUSH_PRESETS, TIP_SIZE, brushTipCacheKey, buildBrush, type BrushPreset } from './brushes'
-import { deriveMask, TIP_MASK_BYTES } from '../brushes/deriveMask'
+import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, type BrushPreset } from './brushes'
+import { deriveMask, TIP_MASK_BYTES, TIP_MASK_EDGE } from '../brushes/deriveMask'
 import {
   registerMask,
   replaceMaskRegistry,
   resetMaskRegistry,
   resolveMask,
 } from '../brushes/maskRegistry'
-import { BUILTIN_TIP_MASKS } from '../brushes/builtinTips'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -68,19 +67,19 @@ beforeEach(() => {
 })
 
 // ---------------------------------------------------------------------------
-// deriveMask — the declared 192×192 contract (branch law in deriveMask.test.ts)
+// deriveMask — the declared TIP_MASK_EDGE contract (branch law in deriveMask.test.ts)
 // ---------------------------------------------------------------------------
 
 describe('deriveMask (declared extent)', () => {
-  it('yields exactly 36,864 bytes for a 192×192 RGBA image', () => {
+  it('yields exactly TIP_MASK_BYTES for a TIP_MASK_EDGE-square RGBA image', () => {
     const mask = deriveMask(makeRgba([255, 255, 255, 255]))
     expect(mask === null).toBe(false)
     if (mask === null) return
     expect(mask.length).toBe(TIP_MASK_BYTES)
-    expect(TIP_MASK_BYTES).toBe(36_864)
+    expect(TIP_MASK_BYTES).toBe(TIP_MASK_EDGE * TIP_MASK_EDGE)
   })
 
-  it('returns null for any buffer whose length is not exactly 192×192×4', () => {
+  it('returns null for any buffer whose length is not exactly TIP_MASK_EDGE²×4', () => {
     const short = new Uint8Array(TIP_MASK_BYTES * 4 - 1)
     const long = new Uint8Array(TIP_MASK_BYTES * 4 + 1)
     const empty = new Uint8Array(0)
@@ -107,7 +106,7 @@ describe('deriveMask (declared extent)', () => {
 describe('buildBrushForStroke (texture-axis law)', () => {
   it('LAW 1: chalk keeps the chalk response when a texture is applied', () => {
     const chalk = presetOf('chalk')
-    const brush = buildBrushForStroke('chalk', { textureId: 'wc/builtin-chalk' })
+    const brush = buildBrushForStroke('chalk', { textureId: 'wc/custom-chalk' })
     expect(brush.id).toBe('chalk')
     expect(brush.water).toBe(chalk.water)
     expect(brush.load).toBe(chalk.load)
@@ -118,17 +117,20 @@ describe('buildBrushForStroke (texture-axis law)', () => {
     expect(brush.rotation).toBe(chalk.rotation)
   })
 
-  it('LAW 2: round with the bristle texture stamps the registered bristle bytes', () => {
-    const mask = resolveMask('wc/builtin-bristle')
-    expect(mask === null).toBe(false)
-    const brush = buildBrushForStroke('round', { textureId: 'wc/builtin-bristle' })
-    expect(brush.tipSize).toBe(TIP_SIZE)
-    expect(mask !== null && brush.tipData === mask).toBe(true)
+  it('LAW 2: round with a library texture stamps the registered bytes', () => {
+    const mask = solidMask(19)
+    expect(registerMask('wc/custom-bristle', mask)).toBe(true)
+    expect(resolveMask('wc/custom-bristle') === mask).toBe(true)
+    const brush = buildBrushForStroke('round', { textureId: 'wc/custom-bristle' })
+    // A library mask is TIP_MASK_EDGE-square, so the derived tip edge follows it.
+    expect(brush.tipSize).toBe(TIP_MASK_EDGE)
+    expect(brush.tipData === mask).toBe(true)
   })
 
   it('LAW 2: the texture changes tipData only — response scalars stay the preset', () => {
+    expect(registerMask('wc/custom-chalk', solidMask(19))).toBe(true)
     const plain = buildBrushForStroke('chalk')
-    const textured = buildBrushForStroke('chalk', { textureId: 'wc/builtin-chalk' })
+    const textured = buildBrushForStroke('chalk', { textureId: 'wc/custom-chalk' })
     expect(sameBytes(plain.tipData, textured.tipData)).toBe(false)
     expect(textured.aspect).toBe(plain.aspect)
     expect(textured.size[0]).toBe(plain.size[0])
@@ -151,13 +153,15 @@ describe('buildBrushForStroke (texture-axis law)', () => {
     // were the response id alone, picking a second texture on the same response
     // would reuse the first uploaded tip forever (the live bug: "I can't change
     // the texture, it always the same").
+    expect(registerMask('wc/custom-chalk', solidMask(19))).toBe(true)
+    expect(registerMask('wc/custom-sponge', solidMask(23))).toBe(true)
     const plain = buildBrushForStroke('chalk')
-    const textured = buildBrushForStroke('chalk', { textureId: 'wc/builtin-chalk' })
+    const textured = buildBrushForStroke('chalk', { textureId: 'wc/custom-chalk' })
     expect(plain.textureId).toBe(null)
-    expect(textured.textureId).toBe('wc/builtin-chalk')
+    expect(textured.textureId).toBe('wc/custom-chalk')
     expect(brushTipCacheKey(plain) === brushTipCacheKey(textured)).toBe(false)
     // Two different textures on one response are two different GPU tips.
-    const sponge = buildBrushForStroke('chalk', { textureId: 'wc/builtin-sponge' })
+    const sponge = buildBrushForStroke('chalk', { textureId: 'wc/custom-sponge' })
     expect(brushTipCacheKey(textured) === brushTipCacheKey(sponge)).toBe(false)
   })
 
@@ -170,13 +174,13 @@ describe('buildBrushForStroke (texture-axis law)', () => {
     expect(brushTipCacheKey(unknown)).toBe(brushTipCacheKey(plain))
   })
 
-  it('LAW 3: a built-in texture id absent from the registry falls back the same way', () => {
-    // A project open REPLACES the registry; when the open set omits the
-    // built-ins, a stroke naming one must still paint the response tip.
+  it('LAW 3: a texture id absent from the replaced registry falls back the same way', () => {
+    // A library replacement REPLACES the registry; when the new set omits an
+    // id, a stroke naming it must still paint the response tip.
     replaceMaskRegistry([{ id: 'wc/custom-other', mask: solidMask(90) }])
-    expect(resolveMask('wc/builtin-chalk') === null).toBe(true)
+    expect(resolveMask('wc/custom-chalk') === null).toBe(true)
     const fallback = buildBrushForStroke('chalk')
-    const missing = buildBrushForStroke('chalk', { textureId: 'wc/builtin-chalk' })
+    const missing = buildBrushForStroke('chalk', { textureId: 'wc/custom-chalk' })
     expect(sameBytes(missing.tipData, fallback.tipData)).toBe(true)
   })
 
@@ -205,9 +209,12 @@ describe('buildBrushForStroke (texture-axis law)', () => {
 
 describe('strokeTipData (one resolution)', () => {
   it('is byte-equal to the builder tip for every preset × texture case', () => {
+    // quick 261116-inu: no compile-time textures remain — the registered
+    // fixture stands in for a machine-library row.
+    registerMask('wc/custom-registered', solidMask(17))
     const textures: ReadonlyArray<string | null> = [
       null,
-      ...BUILTIN_TIP_MASKS.map((entry) => entry.id),
+      'wc/custom-registered',
       'wc/custom-missing',
     ]
     for (const preset of BRUSH_PRESETS) {
@@ -232,8 +239,8 @@ describe('strokeTipData (one resolution)', () => {
   })
 
   it('honours an explicit seed on both paths', () => {
-    const built = buildBrushForStroke('sponge', { textureId: 'wc/builtin-sponge', seed: 31 })
-    const tip = strokeTipData('sponge', 'wc/builtin-sponge', 31)
+    const built = buildBrushForStroke('sponge', { textureId: 'wc/custom-sponge', seed: 31 })
+    const tip = strokeTipData('sponge', 'wc/custom-sponge', 31)
     expect(sameBytes(tip, built.tipData)).toBe(true)
   })
 })
@@ -246,7 +253,7 @@ describe('multipliers (D-21 / D-22)', () => {
   it('applies the eight multipliers on the preset base with a texture present', () => {
     const chalk = presetOf('chalk')
     const brush = buildBrushForStroke('chalk', {
-      textureId: 'wc/builtin-chalk',
+      textureId: 'wc/custom-chalk',
       overrides: { tip: 2, aspect: 3 },
     })
     expect(brush.spacing).toBe(chalk.spacing / 2)
@@ -265,7 +272,7 @@ describe('multipliers (D-21 / D-22)', () => {
       wetRound: 0.5,
     }
     const plain = buildBrushForStroke('round', { overrides })
-    const textured = buildBrushForStroke('round', { textureId: 'wc/builtin-bristle', overrides })
+    const textured = buildBrushForStroke('round', { textureId: 'wc/custom-bristle', overrides })
     expect(textured.spacing).toBe(plain.spacing)
     expect(textured.aspect).toBe(plain.aspect)
     expect(textured.angle).toBe(plain.angle)
@@ -279,7 +286,7 @@ describe('multipliers (D-21 / D-22)', () => {
   it('a non-positive or non-finite multiplier keeps its base value', () => {
     const chalk = presetOf('chalk')
     const brush = buildBrushForStroke('chalk', {
-      textureId: 'wc/builtin-chalk',
+      textureId: 'wc/custom-chalk',
       overrides: { tip: 0, aspect: Number.NaN, grain: -1 },
     })
     expect(brush.spacing).toBe(chalk.spacing)

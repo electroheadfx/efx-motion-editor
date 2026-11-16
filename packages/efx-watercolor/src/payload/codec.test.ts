@@ -195,19 +195,19 @@ describe('serialize → parse round-trip', () => {
 
 describe('textureId carrier (quick-261115-oh9)', () => {
   it('round-trips a stroke whose engine.textureId names a built-in texture', () => {
-    const stroke = makeStrokeEvent({ textureId: 'wc/builtin-chalk' })
-    expect(stroke.engine.textureId).toBe('wc/builtin-chalk')
+    const stroke = makeStrokeEvent({ textureId: 'wc/custom-chalk' })
+    expect(stroke.engine.textureId).toBe('wc/custom-chalk')
     const reparsed = parse(serialize(stroke))
     expect(reparsed).not.toBeNull()
     const round = reparsed as StudioStroke<AquarelleStrokePayload>
-    expect(round.engine.textureId).toBe('wc/builtin-chalk')
+    expect(round.engine.textureId).toBe('wc/custom-chalk')
     expect(round).toEqual(stroke)
   })
 
   it('a LIFT stroke never carries a texture through the projection (CR-01)', () => {
     // The eraser has no texture. Every producer (record, restore, duplicate,
     // script copy) projects through toStudioStroke, so the law holds once here.
-    const lift = makeStrokeEvent({ tool: 'lift', textureId: 'wc/builtin-chalk' })
+    const lift = makeStrokeEvent({ tool: 'lift', textureId: 'wc/custom-chalk' })
     expect('textureId' in lift.engine).toBe(false)
     const round = parse(serialize(lift)) as StudioStroke<AquarelleStrokePayload>
     expect('textureId' in round.engine).toBe(false)
@@ -223,7 +223,7 @@ describe('textureId carrier (quick-261115-oh9)', () => {
   })
 
   it('refuses a present empty string, a number and null', () => {
-    const stroke = makeStrokeEvent({ textureId: 'wc/builtin-chalk' })
+    const stroke = makeStrokeEvent({ textureId: 'wc/custom-chalk' })
     const wire = serialize(stroke) as {
       schemaVersion: number
       event: StudioStroke<AquarelleStrokePayload>

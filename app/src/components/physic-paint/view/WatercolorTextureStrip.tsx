@@ -9,10 +9,12 @@
 //  top-bar popover (compact).
 //
 //  Order: Default (no texture — the response's own procedural tip),
-//  then the three compile-time built-ins in BUILTIN_TIPS order, then
-//  the open project's imports in catalog order.
+//  then the machine library's rows in catalog order. quick 261116-inu:
+//  import is the ONLY way to obtain a texture; there are no
+//  compile-time built-ins and nothing is project-scoped. A picked
+//  texture is a library row, not an "import".
 //
-//  Every chip paints the engine's real 192x192 grayscale mask
+//  Every chip paints the engine's real grayscale mask
 //  (watercolorMaskChip → strokeTipData): live, bake and chip resolve
 //  the same bytes, so a chip can never show a footprint the engine
 //  would not stamp. The Default chip follows the selected response
@@ -26,7 +28,7 @@
 //  handler).
 // ============================================================
 
-import { BUILTIN_TIPS, resolveMask, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { resolveMask, type AquarelleTip } from '@efxlab/efx-watercolor';
 import {
   brushCatalogGeneration,
   customBrushTips,
@@ -47,9 +49,9 @@ interface TextureEntry {
 }
 
 /**
- * Default first, then the compile-time built-ins in catalog order, then the
- * project imports. Only a project import can be unavailable: built-in masks
- * ship with the app and never fail to resolve.
+ * Default first, then the machine library's rows in catalog order. A row can
+ * be unavailable (its stored file is missing or undecodable on this machine);
+ * the Default chip never is.
  */
 function textureEntries(
   imports: readonly AquarelleTip[],
@@ -57,9 +59,6 @@ function textureEntries(
 ): TextureEntry[] {
   return [
     { id: null, name: 'Default', unavailable: false },
-    ...BUILTIN_TIPS.map(
-      (tip): TextureEntry => ({ id: tip.id, name: tip.name, unavailable: false }),
-    ),
     ...imports.map(
       (tip): TextureEntry => ({
         id: tip.id,
