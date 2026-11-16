@@ -190,6 +190,43 @@ export function setAquarelleBrushModalOpen(open: boolean): void {
   aquarelleBrushModalOpen.value = open;
 }
 
+/**
+ * quick 261116-gcn — the Studio's Textures axis surfaces. Studio UI state only,
+ * never persisted: the texture SELECTION itself stays on
+ * aquarelleSelectedTextureId. `menuOpen`/`menuAnchor` describe the second
+ * top-bar popover (anchored under its trigger); `modalOpen` is the floating
+ * Textures sheet.
+ */
+export const aquarelleTextureMenuOpen = signal(false);
+export const aquarelleTextureMenuAnchor = signal<{ left: number; top: number } | null>(null);
+export const aquarelleTextureModalOpen = signal(false);
+
+/**
+ * Compare-then-write (efx-preact-reactivity rule 3). The anchor is only
+ * meaningful while opening, and a plain close never rewrites it — the mirror
+ * of setAquarelleBrushMenuOpen minus the tool target. Event handlers only,
+ * never a render body.
+ */
+export function setAquarelleTextureMenuOpen(
+  open: boolean,
+  anchor?: { left: number; top: number },
+): void {
+  if (open && anchor) {
+    const current = aquarelleTextureMenuAnchor.value;
+    if (!current || current.left !== anchor.left || current.top !== anchor.top) {
+      aquarelleTextureMenuAnchor.value = { ...anchor };
+    }
+  }
+  if (aquarelleTextureMenuOpen.value === open) return;
+  aquarelleTextureMenuOpen.value = open;
+}
+
+/** Compare-then-write (efx-preact-reactivity rule 3). */
+export function setAquarelleTextureModalOpen(open: boolean): void {
+  if (aquarelleTextureModalOpen.value === open) return;
+  aquarelleTextureModalOpen.value = open;
+}
+
 /** Compare-then-write (efx-preact-reactivity rule 3). */
 export function setAquarelleSettingsModalOpen(open: boolean): void {
   if (aquarelleSettingsModalOpen.value === open) return;

@@ -51,6 +51,7 @@ import { SliderStepper } from '../../shared/SliderStepper';
 import {
   SHEET_ID_RAIL_MOTION,
   SHEET_ID_SETTINGS,
+  SHEET_ID_TEXTURES,
   bringSheetToFront,
   resetFloatingSheetStack,
   sheetZIndex,
@@ -698,10 +699,12 @@ describe('261107-qgj floating Motion modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('takes its z-index from the shared four-sheet stack and seats the fourth step', () => {
+  it('takes its z-index from the shared five-sheet stack and seats the fourth step', () => {
     const tree = renderModal({ dialog: signal(partialBundle()) });
     const style = tree.props?.style as Record<string, unknown>;
     expect(style?.zIndex).toBe(sheetZIndex(SHEET_ID_RAIL_MOTION));
+    // quick 261116-gcn: the Textures seat was APPENDED last, so the four
+    // shipped absolute pins are untouched — rail-motion still seats at 53.
     expect(style?.zIndex).toBe(53);
     expect(style?.top).toBe('60px');
     expect(style?.right).toBe('12px');
@@ -716,8 +719,10 @@ describe('261107-qgj floating Motion modal', () => {
     ).toBeTypeOf('function');
 
     bringSheetToFront(SHEET_ID_SETTINGS);
+    // quick 261116-gcn: Textures is the seat that now sits BETWEEN rail-motion
+    // and Settings (Settings is two levels up at the top).
     expect((renderModal({ dialog: signal(partialBundle()) }).props?.style as Record<string, unknown>)?.zIndex)
-      .toBe(sheetZIndex(SHEET_ID_SETTINGS) - 1);
+      .toBe(sheetZIndex(SHEET_ID_TEXTURES) - 1);
   });
 
   it('pins the sheet contract in source: props-driven, front-only Escape, one close path', () => {

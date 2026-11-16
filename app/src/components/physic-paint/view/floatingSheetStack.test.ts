@@ -1,10 +1,11 @@
 // ============================================================
 //  261029-hy2 — the shared floating-sheet stack (click-to-front).
 //
-//  One bottom-to-top order owns the four Studio sheets' z-indexes:
-//  the Move-edit sheet, the brush catalog, the Settings sheet and
-//  the 261107-qgj Motion modal. This suite mutates the module-global
-//  order, so every case resets it on both sides.
+//  One bottom-to-top order owns the five Studio sheets' z-indexes:
+//  the Move-edit sheet, the brush catalog, the Settings sheet, the
+//  261107-qgj Motion modal and the quick-261116-gcn Textures sheet.
+//  This suite mutates the module-global order, so every case resets
+//  it on both sides.
 // ============================================================
 
 import { readFileSync } from 'node:fs';
@@ -15,6 +16,7 @@ import {
   SHEET_ID_RAIL_MOTION,
   SHEET_ID_SETTINGS,
   SHEET_ID_STROKE_SETTINGS,
+  SHEET_ID_TEXTURES,
   bringSheetToFront,
   closeSheetIfFront,
   floatingSheetOrder,
@@ -34,37 +36,46 @@ afterEach(() => {
 });
 
 describe('261029-hy2 floating-sheet stack', () => {
-  it('starts bottom-to-top at 50 / 51 / 52 / 53', () => {
+  it('starts bottom-to-top at 50 / 51 / 52 / 53 / 54 with textures last', () => {
     expect(floatingSheetOrder.value).toEqual([
       'stroke-settings',
       'brushes',
       'settings',
       'rail-motion',
+      'textures',
     ]);
     expect(sheetZIndex(SHEET_ID_STROKE_SETTINGS)).toBe(50);
     expect(sheetZIndex(SHEET_ID_BRUSHES)).toBe(51);
     expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(52);
     expect(sheetZIndex(SHEET_ID_RAIL_MOTION)).toBe(53);
+    expect(sheetZIndex(SHEET_ID_TEXTURES)).toBe(54);
   });
 
-  it('raising the bottom sheet moves it to 53 and shifts the others down', () => {
+  it('raising the bottom sheet moves it to 54 and shifts the others down', () => {
     bringSheetToFront(SHEET_ID_STROKE_SETTINGS);
     expect(floatingSheetOrder.value).toEqual([
       'brushes',
       'settings',
       'rail-motion',
+      'textures',
       'stroke-settings',
     ]);
-    expect(sheetZIndex(SHEET_ID_STROKE_SETTINGS)).toBe(53);
+    expect(sheetZIndex(SHEET_ID_STROKE_SETTINGS)).toBe(54);
     expect(sheetZIndex(SHEET_ID_BRUSHES)).toBe(50);
     expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(51);
     expect(sheetZIndex(SHEET_ID_RAIL_MOTION)).toBe(52);
+    expect(sheetZIndex(SHEET_ID_TEXTURES)).toBe(53);
   });
 
+  // quick 261116-gcn: the unopened Textures seat holds the top level (the
+  // property rail-motion had before it), so raising rail-motion now writes.
   it('raising the already-front sheet keeps the same array reference', () => {
     const before = floatingSheetOrder.value;
-    bringSheetToFront(SHEET_ID_RAIL_MOTION);
+    bringSheetToFront(SHEET_ID_TEXTURES);
     expect(floatingSheetOrder.value, 'a front raise writes nothing').toBe(before);
+    bringSheetToFront(SHEET_ID_RAIL_MOTION);
+    expect(floatingSheetOrder.value, 'rail-motion is no longer front').not.toBe(before);
+    expect(isFrontSheet(SHEET_ID_RAIL_MOTION)).toBe(true);
   });
 
   it('an unknown id resolves to the base z-index and never enters the order', () => {
@@ -80,7 +91,7 @@ describe('261029-hy2 floating-sheet stack', () => {
     expect(isFrontSheet(SHEET_ID_BRUSHES)).toBe(true);
     releaseSheet(SHEET_ID_BRUSHES);
     expect(floatingSheetOrder.value).not.toContain(SHEET_ID_BRUSHES);
-    expect(isFrontSheet(SHEET_ID_RAIL_MOTION)).toBe(true);
+    expect(isFrontSheet(SHEET_ID_TEXTURES)).toBe(true);
   });
 
   it('a released sheet rejoins at the front when it opens again', () => {
@@ -96,7 +107,7 @@ describe('261029-hy2 floating-sheet stack', () => {
     expect(closeSheetIfFront(SHEET_ID_SETTINGS, () => { closed = true; })).toBe(true);
     expect(closed).toBe(true);
     expect(floatingSheetOrder.value).not.toContain(SHEET_ID_SETTINGS);
-    expect(isFrontSheet(SHEET_ID_RAIL_MOTION)).toBe(true);
+    expect(isFrontSheet(SHEET_ID_TEXTURES)).toBe(true);
   });
 
   it('reset restores the initial order', () => {
@@ -107,11 +118,13 @@ describe('261029-hy2 floating-sheet stack', () => {
       'brushes',
       'settings',
       'rail-motion',
+      'textures',
     ]);
     expect(sheetZIndex(SHEET_ID_STROKE_SETTINGS)).toBe(50);
     expect(sheetZIndex(SHEET_ID_BRUSHES)).toBe(51);
     expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(52);
     expect(sheetZIndex(SHEET_ID_RAIL_MOTION)).toBe(53);
+    expect(sheetZIndex(SHEET_ID_TEXTURES)).toBe(54);
   });
 });
 
@@ -121,11 +134,15 @@ describe('261029-hy2 floating-sheet stack', () => {
 // stopImmediatePropagation().
 describe('261029-hy2 WR-03 front-only Escape dismissal', () => {
   it('isFrontSheet answers for the top of the order', () => {
-    expect(isFrontSheet(SHEET_ID_RAIL_MOTION)).toBe(true);
+    // quick 261116-gcn: textures is the last seat, so it starts front and the
+    // four shipped sheets start behind it.
+    expect(isFrontSheet(SHEET_ID_TEXTURES)).toBe(true);
+    expect(isFrontSheet(SHEET_ID_RAIL_MOTION)).toBe(false);
     expect(isFrontSheet(SHEET_ID_SETTINGS)).toBe(false);
     expect(isFrontSheet(SHEET_ID_BRUSHES)).toBe(false);
     bringSheetToFront(SHEET_ID_BRUSHES);
     expect(isFrontSheet(SHEET_ID_BRUSHES)).toBe(true);
+    expect(isFrontSheet(SHEET_ID_TEXTURES)).toBe(false);
     expect(isFrontSheet(SHEET_ID_RAIL_MOTION)).toBe(false);
     expect(isFrontSheet(SHEET_ID_SETTINGS)).toBe(false);
     expect(isFrontSheet(SHEET_ID_STROKE_SETTINGS)).toBe(false);
@@ -141,6 +158,9 @@ describe('261029-hy2 WR-03 front-only Escape dismissal', () => {
     expect(brushesClosed).toBe(true);
   });
 
+  // The fifth entry (PhysicsPaintTextureModal.tsx, SHEET_ID_TEXTURES) arrives
+  // with the Textures sheet in quick 261116-gcn task 4 — the file does not
+  // exist yet, and readFileSync would throw.
   it('all four sheet handlers gate on the front sheet and stop their siblings', () => {
     const handlers = [
       ['PhysicsPaintBrushModal.tsx', 'SHEET_ID_BRUSHES'],

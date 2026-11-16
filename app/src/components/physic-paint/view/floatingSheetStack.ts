@@ -1,11 +1,12 @@
 // ============================================================
 //  261029-hy2 — the shared floating-sheet stack.
 //
-//  Four Studio sheets overlap inside the canvas region: the
+//  Five Studio sheets overlap inside the canvas region: the
 //  Move-edit (Stroke settings) sheet, the brush catalog, the
-//  Settings sheet and the 261107-qgj Motion modal. They share ONE
-//  bottom-to-top order so pressing anywhere inside a sheet brings
-//  it to the front.
+//  Settings sheet, the 261107-qgj Motion modal and (quick
+//  261116-gcn) the Textures sheet. They share ONE bottom-to-top
+//  order so pressing anywhere inside a sheet brings it to the
+//  front.
 //
 //  This module is UI layering only — never confuse it with
 //  stackOrder (the paint-layer ordering law).
@@ -13,7 +14,12 @@
 
 import { signal } from '@preact/signals';
 
-export type FloatingSheetId = 'stroke-settings' | 'brushes' | 'settings' | 'rail-motion';
+export type FloatingSheetId =
+  | 'stroke-settings'
+  | 'brushes'
+  | 'settings'
+  | 'rail-motion'
+  | 'textures';
 
 /**
  * Per-sheet ids: a sheet imports ITS id and never spells the string inline,
@@ -23,12 +29,20 @@ export const SHEET_ID_STROKE_SETTINGS: FloatingSheetId = 'stroke-settings';
 export const SHEET_ID_BRUSHES: FloatingSheetId = 'brushes';
 export const SHEET_ID_SETTINGS: FloatingSheetId = 'settings';
 export const SHEET_ID_RAIL_MOTION: FloatingSheetId = 'rail-motion';
+/**
+ * quick 261116-gcn: the Textures sheet is APPENDED LAST on purpose. Appending
+ * keeps the four shipped seats' absolute z-indexes byte-identical (50/51/52/53)
+ * and their 12/28/44/60 insets untouched; an insert between brushes and
+ * settings would shift both cascades.
+ */
+export const SHEET_ID_TEXTURES: FloatingSheetId = 'textures';
 
 const INITIAL_ORDER: readonly FloatingSheetId[] = [
   SHEET_ID_STROKE_SETTINGS,
   SHEET_ID_BRUSHES,
   SHEET_ID_SETTINGS,
   SHEET_ID_RAIL_MOTION,
+  SHEET_ID_TEXTURES,
 ];
 
 /** Bottom-to-top. Components read it through sheetZIndex only (narrow read). */
