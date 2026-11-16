@@ -212,7 +212,7 @@ Constraints in force: Preact + @preact/signals only (no useState, compare-then-w
 <verification>
 - pnpm --filter efx-motion-editor run typecheck
 - pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/view/floatingSheetStack.test.ts src/components/physic-paint/view/PhysicsPaintTextureMenu.test.ts src/components/physic-paint/view/PhysicsPaintTextureModal.test.ts src/components/physic-paint/view/PhysicsPaintBrushPicker.test.ts src/components/physic-paint/view/PhysicsPaintTopBar.test.ts src/components/physic-paint/view/PhysicsPaintBrushMenu.test.ts src/components/physic-paint/view/WatercolorBrushLibrary.test.ts src/components/physic-paint/view/physicsPaintSettingsModal.test.ts src/components/physic-paint/view/PhysicsPaintRailMotionModal.test.ts src/components/physic-paint/view/PhysicsPaintStudioView.test.ts
-- Source pins: PhysicsPaintBrushMenu.tsx contains neither WatercolorTextureStrip nor brushCatalogGeneration; SHEET_ID_TEXTURES is the last INITIAL_ORDER entry; the four shipped seat pins (z 52 / top 44px, z 53 / top 60px) are unchanged; package manifests are untouched.
+- Source pins: the brush dropdown module no longer imports or mounts the texture strip and no longer reads the brush catalog generation; SHEET_ID_TEXTURES is the last INITIAL_ORDER entry; the four shipped seat pins (z 52 / top 44px, z 53 / top 60px) are unchanged; package manifests are untouched.
 - UAT row for the user (the executor never launches the app): open the Studio, click Textures, pick a texture (popover stays), Open modal, drag the Size control — live strokes follow the shared size and one undo entry appears on release.
 </verification>
 
