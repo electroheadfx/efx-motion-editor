@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-16 after Phase 63)
 Phase: 64 — Medium Engine
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-16 - Completed quick task 261116-u63: Studio Stroke Settings list gains a Duplicate button on each stroke/vector row (beside the trash) and in the header, cloning the recorded stroke directly above its source as one undoable edit.
+Last activity: 2026-11-16 - Completed quick task 261116-u63: Studio Stroke Settings list gains a Duplicate button on each stroke/vector row (beside the trash) and in the header, cloning the recorded stroke directly above its source as one undoable edit (UAT approved 2026-11-16).
 
 
 ## Performance Metrics
@@ -562,7 +562,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261116-inu | Imported-only brush textures from a machine-level user library: 512 mask edge, px-true 1..512 size with the engine floor retired, per-stroke texture rotation through AQTL v4; built-ins, the .mce brush carrier and script mask bytes all removed; standing "unavailable" warning line dropped on request (UAT approved 2026-11-16) | 2026-11-16 | 50e745a65 | [261116-inu-imported-only-brush-textures-from-a-user](./quick/261116-inu-imported-only-brush-textures-from-a-user/) |
 | 261116-qhm | Painted-stroke path edit is a plain vector session from entry: the conversion commits at entry through the ONE writer (fitVectorPathAnchors -> commitAquarelleVectorPathEdit), and the path-edit latch opens only on a resolved edit id; the held fit, entry wireframe/Draft bracket, exit settle hook and original-spine ghost are deleted (UAT approved 2026-11-16) | 2026-11-16 | 8686ef88c | [261116-qhm-painted-stroke-path-edit-is-a-plain-vect](./quick/261116-qhm-painted-stroke-path-edit-is-a-plain-vect/) |
 | 261116-r9k | Studio: a converted painted stroke's paint is now tessellated at RENDER time from its anchors (paint cadence via resampleVectorPaintPoints), so the document keeps its spline; the conversion also simplifies anchors while the evaluated curve stays within 0.006 uv of every recorded sample (18 -> 11 on a hand stroke); D-08 unamended, the stored-station approach was reverted (UAT approved 2026-11-16) | 2026-11-16 | 72a8d6cdf | [261116-r9k-in-the-studio-canvas-make-a-painted-stro](./quick/261116-r9k-in-the-studio-canvas-make-a-painted-stro/) |
-| 261116-u63 | Studio Stroke Settings list: Duplicate button on each stroke/vector row beside the trash and in the header — clones the recorded stroke (anchors, curve mode, vector flag, texture, key anchors) directly above its source as one undoable edit | 2026-11-16 | 4c021d178 | [261116-u63-in-studio-when-i-select-vector-or-stroke](./quick/261116-u63-in-studio-when-i-select-vector-or-stroke/) |
+| 261116-u63 | Studio Stroke Settings list: Duplicate button on each stroke/vector row beside the trash and in the header — clones the recorded stroke (anchors, curve mode, vector flag, texture, key anchors) directly above its source as one undoable edit (UAT approved 2026-11-16) | 2026-11-16 | 4c021d178 | [261116-u63-in-studio-when-i-select-vector-or-stroke](./quick/261116-u63-in-studio-when-i-select-vector-or-stroke/) |
 
 ## Roadmap Evolution
 
