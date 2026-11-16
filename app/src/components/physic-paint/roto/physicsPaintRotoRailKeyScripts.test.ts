@@ -126,6 +126,8 @@ describe('sliceRailKeyScripts', () => {
         { x: 1, y: 2, p: 0.5, tx: 0, ty: 0, tw: 0 },
         { x: 3, y: 4, p: 0.6, tx: 1, ty: 1, tw: 0.2 },
       ],
+      // quick 261116-rp: the slice keeps the source's per-point raw ticks.
+      pointTicks: [0, 1],
       toolOverrides: {
         tip: 1.5,
         aspect: 1,

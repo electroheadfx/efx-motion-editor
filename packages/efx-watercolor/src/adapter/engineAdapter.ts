@@ -338,12 +338,19 @@ export function createAquarelleEngineAdapter(
     }
   }
 
-  /** Feed the next recorded sample for the active stroke, if its tick has arrived. */
-  const feedDueSample = (timelineTick: number): void => {
+  /**
+   * Feed the first `maxCount` recorded samples for the active stroke.
+   *
+   * COUNT, never a tick index: `pts[].tick` now carries the real 60 Hz pointer
+   * offset (quick 261116-rp), so a sample's tick can exceed its index. The
+   * bake decides how many points are due from their own ticks; the adapter
+   * feeds exactly that many, one engine tick each.
+   */
+  const feedDueSample = (maxCount: number): void => {
     if (!engine || !active) return
     const pts = active.stroke.pts
-    // pts[].tick is the sample index on the host grid (toStudioStroke law).
-    while (active.index < pts.length && pts[active.index]!.tick <= timelineTick) {
+    const count = Math.max(0, Math.trunc(maxCount))
+    while (active.index < pts.length && active.index < count) {
       const p = pts[active.index]!
       // 61-04: the factor is indexed by the sample's OWN position — derived
       // once at activation, never rebuilt inside the tick loop (T-61-12).
@@ -535,9 +542,9 @@ export function createAquarelleEngineAdapter(
           colors: state.colors,
         }
         active = cursor
-        // pts[].tick === the sample index (toStudioStroke law), so feeding the
-        // first `pointCount` samples means timelineTick = pointCount - 1.
-        feedDueSample(Math.max(0, Math.trunc(pointCount) - 1))
+        // `pointCount` is a SAMPLE COUNT: the first N recorded samples land on
+        // the paper, whatever their real ticks are (quick 261116-rp).
+        feedDueSample(pointCount)
         state.index = cursor.index
         state.started = cursor.started
         // Complete when every sample is on the paper (an empty stroke

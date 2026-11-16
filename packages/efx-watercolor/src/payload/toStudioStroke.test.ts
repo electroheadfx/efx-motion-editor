@@ -284,3 +284,40 @@ describe('sparse vector width projection (61-03 D-10)', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// 3. Raw pointer timing (quick 261116-rp) — repeats and gaps survive
+// ---------------------------------------------------------------------------
+
+describe('toStudioStroke raw pointer ticks (quick 261116-rp)', () => {
+  it('carries pointTicks into pts[].tick and uses the last tick as the span', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ pointTicks: [0, 0, 3, 9] }))
+    expect(stroke.pts.map((point) => point.tick)).toEqual([0, 0, 3, 9])
+    expect(stroke.ticks).toBe(9)
+  })
+
+  it('keeps the legacy index law when pointTicks is absent or ill-sized', () => {
+    const legacy = toStudioStroke(makeRuntimeStroke())
+    expect(legacy.pts.map((point) => point.tick)).toEqual([0, 1, 2, 3])
+    expect(legacy.ticks).toBe(3)
+
+    const illSized = toStudioStroke(makeRuntimeStroke({ pointTicks: [0, 2] }))
+    expect(illSized.pts.map((point) => point.tick)).toEqual([0, 1, 2, 3])
+    expect(illSized.ticks).toBe(3)
+  })
+
+  it('never lets a corrupt trace run backwards', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ pointTicks: [0, 5, 3, 7] }))
+    expect(stroke.pts.map((point) => point.tick)).toEqual([0, 5, 5, 7])
+    expect(stroke.ticks).toBe(7)
+  })
+
+  it('survives the payload codec so the ticks reach AQTL and the script', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ pointTicks: [0, 0, 3, 9] }))
+    const decoded = payloadCodec.parse(payloadCodec.serialize(stroke))
+    expect(decoded).not.toBeNull()
+    if (decoded === null || isAquarelleDryEvent(decoded)) throw new Error('expected a stroke')
+    expect(decoded.pts.map((point) => point.tick)).toEqual([0, 0, 3, 9])
+    expect(decoded.ticks).toBe(9)
+  })
+})

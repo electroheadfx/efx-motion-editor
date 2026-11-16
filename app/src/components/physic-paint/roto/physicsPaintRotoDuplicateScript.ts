@@ -196,6 +196,9 @@ export function aquarelleStrokeFromScriptEvent(
       ty: point.ty,
       tw: point.tw,
     })),
+    // quick 261116-rp: the copy keeps the source's real raw-trace ticks, or
+    // the duplicated frame replays a flattened path.
+    pointTicks: event.pts.map((point) => point.tick),
     toolOverrides: engine.toolOverrides ? { ...engine.toolOverrides } : undefined,
     diffusionFrames: event.cuisson > 0 ? event.cuisson : engine.diffusionFrames,
     timestamp: engine.timestamp,

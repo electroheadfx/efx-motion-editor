@@ -1264,7 +1264,10 @@ export function updateAquarelleCurveModeInScript(
   if (targets.length === 0) return 0;
 
   for (const { mutationId, stroke, index, nextPoints } of targets) {
-    const nextStroke: AquarelleStroke = { ...stroke, points: nextPoints };
+    // A re-sampled path has its own point count; the raw trace's ticks no
+    // longer describe it. Dropping them restores the index law (quick
+    // 261116-rp) instead of leaving an ill-sized stale array behind.
+    const nextStroke: AquarelleStroke = { ...stroke, points: nextPoints, pointTicks: undefined };
     // The default mode is expressed by the ABSENT key: switching back must
     // drop the previous mode, never store `curveMode: 'bezier'`.
     delete nextStroke.curveMode;
@@ -1363,7 +1366,14 @@ export function updateAquarellePathInScript(
     ty: 0,
     tw: 0,
   }));
-  const nextStroke: AquarelleStroke = { ...stroke, points: nextPoints, anchors: nextAnchors };
+  const nextStroke: AquarelleStroke = {
+    ...stroke,
+    points: nextPoints,
+    anchors: nextAnchors,
+    // The re-sampled spine has its own count; the raw trace ticks no longer
+    // describe it (quick 261116-rp).
+    pointTicks: undefined,
+  };
   // The default mode is expressed by the ABSENT key (D-02): a write back to
   // Bézier must drop a previously stored mode, never keep it stale.
   delete nextStroke.curveMode;
@@ -1891,10 +1901,12 @@ export function recordAquarelleStroke(
   recordedStrokes.set(mutationId, recorded);
   // Creation-order serial FIRST so the badge number can never reshuffle.
   aquarelleStrokeSerial(mutationId, recorded.playFrame ?? 0);
-  // The record clock advances by the stroke's own tick span so the next
-  // Dry lands after it on the host grid (toStudioStroke: ticks = max(1, pts-1)).
-  advanceRecordClock(Math.max(1, recorded.points.length - 1));
+  // The record clock advances by the stroke's own tick span so the next Dry
+  // lands after it on the host grid.
   const entry = toStudioStroke(recorded);
+  // quick 261116-rp: advance by the stroke's REAL span (the last raw tick),
+  // not its sample count — a sub-60 Hz trace has fewer samples than ticks.
+  advanceRecordClock(Math.max(1, entry.ticks));
   recordedStrokeEntries.set(mutationId, entry);
   payloadTimeline.push(entry);
   bumpAquarelleStrokesRevision();
@@ -1991,6 +2003,10 @@ export function restoreAquarelleRecordTimeline(
         ty: point.ty,
         tw: point.tw,
       })),
+      // quick 261116-rp: a reopened stroke keeps its REAL raw-trace ticks. The
+      // projection would otherwise regenerate the index law and flatten the
+      // path again on every reopen.
+      pointTicks: event.pts.map((point) => point.tick),
       toolOverrides: engine.toolOverrides ? { ...engine.toolOverrides } : undefined,
       mutationId: engine.mutationId,
       diffusionFrames: engine.diffusionFrames,
@@ -2011,7 +2027,7 @@ export function restoreAquarelleRecordTimeline(
       aquarelleStrokeSerial(mutationId, entry.playFrame ?? 0);
       maxMutationId = Math.max(maxMutationId, mutationId);
     }
-    advanceRecordClock(Math.max(1, entry.pts.length - 1));
+    advanceRecordClock(Math.max(1, entry.ticks));
   }
   // 261027: seed the key anchors for events that actually entered the session.
   // An anchor with no matching stroke is meaningless (Dry events, pruned

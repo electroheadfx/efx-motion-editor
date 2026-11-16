@@ -390,6 +390,24 @@ describe('AQTL packed binary codec', () => {
     expect(POINT_DEGREE_STEP).toBeCloseTo(0.02, 12);
   });
 
+  it('round-trips a raw-timed trace with repeated and skipped ticks (quick 261116-rp)', () => {
+    const base = minimalStroke();
+    const point = base.pts[0]!;
+    const raw: StudioStroke<AquarelleStrokePayload> = {
+      ...base,
+      ticks: 9,
+      pts: [
+        { ...point, tick: 0 },
+        { ...point, tick: 0 },
+        { ...point, tick: 3 },
+        { ...point, tick: 9 },
+      ],
+    };
+    const [decoded] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([raw]));
+    expect(asStroke(decoded!).pts.map((sample) => sample.tick)).toEqual([0, 0, 3, 9]);
+    expect(asStroke(decoded!).ticks).toBe(9);
+  });
+
   it('round-trips every metadata field exactly and points within tolerance', () => {
     const decoded = decodeScriptTimelineBinary(encodeScriptTimelineBinary(FIXTURE));
 

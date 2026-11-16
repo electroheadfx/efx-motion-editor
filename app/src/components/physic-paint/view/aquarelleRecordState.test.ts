@@ -258,3 +258,19 @@ describe('63-06 catalog tip selection', () => {
     expect(aquarelleSelectedTipId.value).toBeNull();
   });
 });
+
+describe('quick 261116-rp — a reopen keeps the raw pointer timing', () => {
+  it('projects the real per-point ticks, repeats and gaps included', () => {
+    const base = fixtureStroke(7, 901, 4);
+    const raw: StudioStroke<AquarelleStrokePayload> = {
+      ...base,
+      ticks: 9,
+      pts: base.pts.map((point, index) => ({ ...point, tick: [0, 0, 3, 9][index]! })),
+    };
+    restoreAquarelleRecordTimeline([raw]);
+
+    const [entry] = getRecordedAquarellePayloadTimeline() as StudioStroke<AquarelleStrokePayload>[];
+    expect(entry!.pts.map((point) => point.tick)).toEqual([0, 0, 3, 9]);
+    expect(entry!.ticks).toBe(9);
+  });
+});

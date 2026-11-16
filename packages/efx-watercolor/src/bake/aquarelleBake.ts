@@ -270,6 +270,17 @@ const HOST_TICK_MS = 1000 / 60
  */
 const SETTLE_MAX_TICKS = 3600
 
+/**
+ * A point's real 60 Hz tick offset (quick 261116-rp). The recorder now keeps
+ * the raw pointer timing in `pts[].tick`, so samples may repeat or skip ticks.
+ * Absent/non-finite timings fall back to the index law, which keeps every
+ * pre-change stroke replaying byte-identically.
+ */
+function pointTickAt(stroke: StudioStroke<AquarelleStrokePayload>, index: number): number {
+  const tick = stroke.pts[index]?.tick
+  return typeof tick === 'number' && Number.isFinite(tick) && tick >= 0 ? Math.trunc(tick) : index
+}
+
 function readSize(frame: CanvasImageSource): { width: number; height: number } {
   const carrier = frame as { width?: number; height?: number }
   return { width: carrier.width ?? 0, height: carrier.height ?? 0 }
@@ -535,7 +546,7 @@ export function createAquarelleBake(
     if (timedBase) {
       for (const entry of timedBase) {
         for (let index = 0; index < entry.stroke.pts.length; index += 1) {
-          sampleTicks.push(entry.beginTick + index)
+          sampleTicks.push(entry.beginTick + pointTickAt(entry.stroke, index))
         }
       }
     }
@@ -560,12 +571,17 @@ export function createAquarelleBake(
       )
       settleCapped = rawSettle <= 0 || rawSettle >= settleCap
       const settleEstimate = Math.min(rawSettle || settleCap, settleCap)
-      // The last SAMPLE sits at endTick (ticks = pts - 1) — the timeline must
-      // cover one more tick so a zero-settle stroke can still feed it.
+      // The last SAMPLE sits at its own recorded tick — the timeline must
+      // cover one more tick so a zero-settle stroke can still feed it. A raw
+      // pointer trace repeats and skips ticks, so the LAST tick, never the
+      // point count, is the stroke's true span (quick 261116-rp).
       timelineEnd = Math.max(
         1,
         lastEntry.endTick + settleEstimate,
-        lastEntry.beginTick + lastEntry.stroke.pts.length,
+        lastEntry.beginTick + pointTickAt(
+          lastEntry.stroke,
+          Math.max(0, lastEntry.stroke.pts.length - 1),
+        ) + 1,
       )
       const frameForTick = (tick: number) => Math.max(0, Math.min(
         frameSpan - 1,
@@ -736,16 +752,23 @@ export function createAquarelleBake(
         let cursor = state.cursor
         for (const entry of timed) {
           if (entry.beginTick > window.windowEnd) break
-          const pointCount = Math.min(entry.stroke.pts.length, window.windowEnd - entry.beginTick)
-          if (pointCount <= 0) {
-            // A zero-point stroke is fully fed by definition. A window that
-            // has NOT opened yet (beginTick === windowEnd) is not progress.
-            if (entry.stroke.pts.length === 0) await reportFed(entry.stroke, state.report)
+          const pts = entry.stroke.pts
+          const fed = state.fedCounts.get(entry.stroke) ?? 0
+          if (pts.length === 0) {
+            // A zero-point stroke is fully fed by definition.
+            await reportFed(entry.stroke, state.report)
             continue
           }
-          const fed = state.fedCounts.get(entry.stroke) ?? 0
+          // Samples are due by their OWN recorded tick, never by index: a raw
+          // pointer trace repeats a tick (several samples) and skips ticks
+          // (resting). The window bound is exclusive.
+          const windowDelta = window.windowEnd - entry.beginTick
+          let pointCount = fed
+          while (pointCount < pts.length && pointTickAt(entry.stroke, pointCount) < windowDelta) {
+            pointCount += 1
+          }
           if (pointCount <= fed) continue
-          const firstTick = entry.beginTick + fed
+          const firstTick = entry.beginTick + pointTickAt(entry.stroke, fed)
           stepGap(cursor, firstTick)
           if (fed === 0) {
             for (const dry of drysBeforeStroke.get(entry.stroke) ?? []) {
@@ -754,9 +777,9 @@ export function createAquarelleBake(
           }
           // The adapter ticks once per fed sample.
           adapter.renderPartialStrokes([{ stroke: entry.stroke, pointCount }])
-          cursor = firstTick + (pointCount - fed)
+          cursor = entry.beginTick + pointTickAt(entry.stroke, pointCount - 1) + 1
           state.fedCounts.set(entry.stroke, pointCount)
-          if (pointCount >= entry.stroke.pts.length) await reportFed(entry.stroke, state.report)
+          if (pointCount >= pts.length) await reportFed(entry.stroke, state.report)
         }
         // A user Dry after the last stroke settles at the end of the span
         // (the span end — never the replay end, so a static replay re-fires it).

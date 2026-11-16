@@ -381,3 +381,23 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('footprintInputsChanged = true;');
   });
 });
+
+describe('quick 261116-rp — the record keeps the raw pointer path', () => {
+  it('records every raw sample with its real 60 Hz tick offset', () => {
+    // A 60 Hz linear resample flattened the between-tick path; the engine
+    // deposits by arc length, so point strokes replayed about twice as light.
+    expect(layer).not.toContain('resampleToTickGrid');
+    expect(layer).toContain('function recordRawSamples');
+    expect(layer).toContain('pointTicks.push(Math.max(0, Math.round((sample.t - start) / HOST_TICK_MS)));');
+    // Every raw sample becomes a point — never one point per tick.
+    expect(layer).toContain('for (const sample of samples) {');
+    expect(layer).toContain('points.push({ x: sample.x, y: sample.y, p: sample.p, tx: sample.tx, ty: sample.ty, tw: 0 });');
+  });
+
+  it('carries the real ticks into the recorded stroke', () => {
+    expect(layer).toContain('const recorded = recordRawSamples(raw);');
+    expect(layer).toContain('if (recorded.points.length === 0) return;');
+    expect(layer).toContain('points: recorded.points,');
+    expect(layer).toContain('pointTicks: recorded.pointTicks,');
+  });
+});

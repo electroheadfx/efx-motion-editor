@@ -317,6 +317,8 @@ describe('aquarelleStrokeFromScriptEvent', () => {
         { x: 0.1, y: 0.2, p: 0.3, tx: 0.4, ty: 0.5, tw: 0.6 },
         { x: 0.2, y: 0.3, p: 0.4, tx: 0.5, ty: 0.6, tw: 0.7 },
       ],
+      // quick 261116-rp: the copy keeps the source's real raw-trace ticks.
+      pointTicks: [0, 1],
       toolOverrides: aquarelleToolOverrides(),
       diffusionFrames: 0,
       timestamp: 41,

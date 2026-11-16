@@ -8,10 +8,11 @@
 //  paper composite — this component mounts it, keeps the tool +
 //  param signals in sync, and records the stroke at stroke end.
 //
-//  RECORD (56-12): points are document uv (y up) on the 60 Hz
-//  tick grid; params are the CANONICAL AQUA-04 globals (never the
-//  mapped 0..1 bag). Live and bake both map through
-//  toEngineParams() so they cannot drift (A1/A2).
+//  RECORD (56-12 / quick 261116-rp): every raw pointer sample is kept in
+//  document uv (y up) with its REAL 60 Hz tick offset — repeats and gaps
+//  included — because the deposit is spacing along the raw path. Params are
+//  the CANONICAL AQUA-04 globals (never the mapped 0..1 bag). Live and bake
+//  both map through toEngineParams() so they cannot drift (A1/A2).
 //
 //  PHYSIC PAINT STUDIO modal only. Never the inline EFX Paint
 //  editor, never p5.brush.
@@ -68,7 +69,7 @@ import {
 // did not reach the Studio capture handler. Installs nothing in production.
 import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
 
-/** Host tick grid (toStudioStroke law: pts[].tick = sample index). */
+/** Host tick grid: a raw pointer sample's time is quantized onto it (quick 261116-rp). */
 const HOST_TICK_HZ = 60;
 const HOST_TICK_MS = 1000 / HOST_TICK_HZ;
 
@@ -241,37 +242,28 @@ export function AquarelleBrushCursor(): JSX.Element | null {
 type RawSample = { x: number; y: number; p: number; tx: number; ty: number; t: number };
 
 /**
- * Resample a pointer path onto the 60 Hz tick grid so recorded
- * sample spacing matches the bake's stepTick spacing (A1).
+ * quick 261116-rp: record EVERY raw pointer sample with its real 60 Hz tick
+ * offset. The old linear 60 Hz resample kept the tick grid but flattened the
+ * path between ticks — the engine deposits dabs by arc length, so a slow
+ * stroke's between-tick tremor (the dabs the live sheet actually made) was
+ * lost and every replay came out about twice as light. Ticks may repeat (a
+ * fast pointer reports several samples inside one tick) and may skip (a
+ * resting pointer); both are real and the bake feeds samples by their own
+ * tick, so the raw path is the only faithful recording.
  */
-function resampleToTickGrid(samples: readonly RawSample[]): AquarellePoint[] {
-  if (samples.length === 0) return [];
-  if (samples.length === 1) {
-    const s = samples[0]!;
-    return [{ x: s.x, y: s.y, p: s.p, tx: s.tx, ty: s.ty, tw: 0 }];
-  }
+function recordRawSamples(samples: readonly RawSample[]): {
+  points: AquarellePoint[];
+  pointTicks: number[];
+} {
+  if (samples.length === 0) return { points: [], pointTicks: [] };
   const start = samples[0]!.t;
-  const end = samples[samples.length - 1]!.t;
-  const totalTicks = Math.max(1, Math.round((end - start) / HOST_TICK_MS));
-  const out: AquarellePoint[] = [];
-  let cursor = 0;
-  for (let i = 0; i <= totalTicks; i += 1) {
-    const target = start + i * HOST_TICK_MS;
-    while (cursor < samples.length - 2 && samples[cursor + 1]!.t < target) cursor += 1;
-    const a = samples[cursor]!;
-    const b = samples[Math.min(cursor + 1, samples.length - 1)]!;
-    const span = b.t - a.t;
-    const u = span > 0 ? Math.max(0, Math.min(1, (target - a.t) / span)) : 0;
-    out.push({
-      x: a.x + (b.x - a.x) * u,
-      y: a.y + (b.y - a.y) * u,
-      p: a.p + (b.p - a.p) * u,
-      tx: a.tx + (b.tx - a.tx) * u,
-      ty: a.ty + (b.ty - a.ty) * u,
-      tw: 0,
-    });
+  const points: AquarellePoint[] = [];
+  const pointTicks: number[] = [];
+  for (const sample of samples) {
+    points.push({ x: sample.x, y: sample.y, p: sample.p, tx: sample.tx, ty: sample.ty, tw: 0 });
+    pointTicks.push(Math.max(0, Math.round((sample.t - start) / HOST_TICK_MS)));
   }
-  return out;
+  return { points, pointTicks };
 }
 
 function brushIdForSelection(): string {
@@ -621,8 +613,8 @@ export function AquarelleCanvasLayer(props: {
             const carrier = engine as unknown as { __samples?: RawSample[] };
             const raw = carrier.__samples ?? [];
             carrier.__samples = [];
-            const points = resampleToTickGrid(raw);
-            if (points.length === 0) return;
+            const recorded = recordRawSamples(raw);
+            if (recorded.points.length === 0) return;
             const snap = snapshotAquarelleRecord();
             // 61-07 (D-14): the record-time mode resolves from the SAME brush
             // id this literal stores, so the stamp and the brushId can never
@@ -642,7 +634,11 @@ export function AquarelleCanvasLayer(props: {
               // CANONICAL AQUA-04 globals — never the mapped bag.
               params: { ...snap.params },
               brushId: recordedBrushId,
-              points,
+              points: recorded.points,
+              // quick 261116-rp: every raw pointer sample's real tick. The
+              // projection carries these to pts[].tick so the bake can feed
+              // the same path the live sheet deposited.
+              pointTicks: recorded.pointTicks,
               // quick-261115-oh9: written ONLY when a texture is selected, so
               // an untextured stroke keeps its exact pre-texture key set. A
               // LIFT stroke never carries one: the eraser has no texture, and

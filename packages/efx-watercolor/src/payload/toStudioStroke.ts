@@ -9,8 +9,10 @@
 //
 //  FIELD-MAPPING CONTRACT (identical words to engine-1's
 //  toStudioStroke — one law in two places; keep them in lockstep):
-//    pts[].tick   ← sample index i (0-based, monotonic)
-//    ticks        ← max(1, pts.length - 1)
+//    pts[].tick   ← the recorded 60 Hz tick offset when `pointTicks` is
+//                   present (raw pointer timing: repeats and gaps kept),
+//                   else the sample index i (legacy index law)
+//    ticks        ← max(1, last pts[].tick)
 //    cuisson      ← diffusionFrames when > 0, else 0 (capped at 600)
 //    motion       ← null
 //    brushId      ← the selected RESPONSE id (stable brush-pack key)
@@ -150,6 +152,14 @@ export interface AquarelleStroke {
   params: Record<string, number>
   brushId: string
   points: readonly AquarellePoint[]
+  /**
+   * Real 60 Hz tick offsets for `points`, when the recorder captured the raw
+   * pointer timing. ABSENT means the points sit on consecutive ticks (the
+   * legacy index law). Samples may share a tick (a fast pointer reports
+   * several per tick) and may skip ticks (a slow one rests); both are the
+   * deposit the live sheet actually made, so replay must keep them.
+   */
+  pointTicks?: readonly number[]
   toolOverrides?: AquarelleToolOverrides
   /** quick-261115-oh9: texture (mask) id; absent keeps the response tip. */
   textureId?: string
@@ -179,6 +189,7 @@ export function toStudioStroke(
 ): StudioStroke<AquarelleStrokePayload> {
   const baseSeed = hashMutationId(s.mutationId)
   const salt = paintSeedSaltOf(s.params)
+  const pointTicks = s.pointTicks
   const pts: StudioPoint[] = s.points.map((p, i) => ({
     x: p.x,
     y: p.y,
@@ -186,11 +197,24 @@ export function toStudioStroke(
     tx: p.tx,
     ty: p.ty,
     tw: p.tw,
-    tick: i,
+    // quick 261116-rp: a raw-timed stroke keeps its REAL tick offsets. They
+    // are nondecreasing but may repeat or skip — the deposit the live sheet
+    // made. Absent/ill-sized timings fall back to the index law.
+    tick: pointTicks !== undefined && pointTicks.length === s.points.length
+      ? Math.max(0, Math.trunc(pointTicks[i] ?? i))
+      : i,
   }))
+  // The bake's window walk scans ticks forward and stops at the first one
+  // outside the window, so a corrupt trace must never go backwards.
+  let previousTick = 0
+  for (const point of pts) {
+    point.tick = Math.max(previousTick, point.tick)
+    previousTick = point.tick
+  }
+  const lastTick = pts.length > 0 ? pts[pts.length - 1]!.tick : 0
   return {
     pts,
-    ticks: Math.max(1, pts.length - 1),
+    ticks: Math.max(1, lastTick),
     cuisson:
       s.diffusionFrames !== undefined && s.diffusionFrames > 0
         ? Math.min(DIFFUSION_CAP, Math.trunc(s.diffusionFrames))

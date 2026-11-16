@@ -1669,3 +1669,68 @@ describe('261030-v1t per-frame paint seed variation', () => {
     expect(reports).toEqual([[1, 3], [2, 3], [3, 3]])
   })
 })
+
+// ---------------------------------------------------------------------------
+// quick 261116-rp — a raw pointer trace feeds by its own ticks
+// ---------------------------------------------------------------------------
+
+describe('quick 261116-rp — raw pointer ticks in the timed walk', () => {
+  function rawStroke(pointTicks: number[]): StudioStroke<AquarelleStrokePayload> {
+    return toStudioStroke({
+      tool: 'brush',
+      color: '#2244aa',
+      params: { size: 8, water: 50, flow: 50 },
+      brushId: 'wc/round-medium',
+      points: pointTicks.map((_tick, index) => ({
+        x: 4 + index,
+        y: 4,
+        p: 0.5,
+        tx: 0,
+        ty: 0,
+        tw: 0,
+      })),
+      pointTicks,
+      mutationId: 21,
+      timestamp: 1000,
+    })
+  }
+
+  it('feeds every sample in a one-frame bake, repeated ticks and gaps included', async () => {
+    const { adapter } = makeFakeAdapter()
+    const counts: number[] = []
+    adapter.renderPartialStrokes = (entries) => {
+      for (const entry of entries) counts.push(entry.pointCount)
+    }
+    const bake = createAquarelleBake(adapter, {
+      frameCount: 1,
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+    })
+    const result = await bake.bake([rawStroke([0, 0, 3, 7])])
+    expect(result.ok).toBe(true)
+    expect(counts.length).toBeGreaterThan(0)
+    expect(counts[counts.length - 1]).toBe(4)
+  })
+
+  it('splits a multi-frame walk by ticks without dropping a repeated-tick sample', async () => {
+    const { adapter } = makeFakeAdapter()
+    const counts: number[] = []
+    adapter.renderPartialStrokes = (entries) => {
+      for (const entry of entries) counts.push(entry.pointCount)
+    }
+    const bake = createAquarelleBake(adapter, {
+      frameCount: 3,
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+    })
+    const result = await bake.bake([rawStroke([0, 0, 3, 7])])
+    expect(result.ok).toBe(true)
+    expect(counts[counts.length - 1]).toBe(4)
+    for (let index = 1; index < counts.length; index += 1) {
+      expect(counts[index]!).toBeGreaterThanOrEqual(counts[index - 1]!)
+      expect(counts[index]!).toBeLessThanOrEqual(4)
+    }
+  })
+})
