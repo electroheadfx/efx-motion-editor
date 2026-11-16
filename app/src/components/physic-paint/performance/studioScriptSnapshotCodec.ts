@@ -44,6 +44,7 @@
 
 import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import {
+  ScriptTimelineCodecError,
   decodeScriptTimelineBinary,
   encodeScriptTimelineBinary,
 } from './scriptTimelineCodec';
@@ -126,6 +127,12 @@ export type StudioScriptSnapshotCodecErrorCode =
   | 'count'
   | 'trailing'
   | 'watercolor'
+  /**
+   * WR-12 (63-16): the inner AQTL body predates the texture format. This is a
+   * deliberate retirement with no migration reader — not corruption. The
+   * frame pixels are intact; only the script is not loaded.
+   */
+  | 'aqtl-retired'
   | 'anchor'
   | 'durableBase';
 
@@ -613,6 +620,13 @@ export function decodeStudioScriptSnapshot(
   try {
     watercolorEvents = decodeScriptTimelineBinary(watercolorBody);
   } catch (error) {
+    // WR-12 (63-16): a pre-v3 AQTL body predates the texture format. There is
+    // no migration reader (no-backward-compat law), so name the retirement with
+    // a pinned message of our own — never interpolate the inner text, and never
+    // flatten it into `watercolor` corruption: the frame pixels are intact.
+    if (error instanceof ScriptTimelineCodecError && error.code === 'unsupported-version') {
+      fail('aqtl-retired', 'AQTL body predates the texture format');
+    }
     // Keep the inner codec's precise diagnosis but tag the section.
     if (error instanceof Error) {
       fail('watercolor', `watercolor section is invalid: ${error.message}`);

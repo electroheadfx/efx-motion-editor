@@ -599,9 +599,19 @@ export function backfillSessionWatercolorAnchors(
 /** The ONE clean-break notice (261027-klx): pinned wording, never reworded. */
 export const STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE = 'Studio script snapshot could not be restored — it was written by an earlier Studio format that predates Water color only. The frame pixels are unchanged.';
 
+/**
+ * WR-12 (63-16): a pre-v3 AQTL body is a deliberate retirement, not corruption
+ * (no migration reader, per the no-backward-compat law). The frame pixels are
+ * intact; only the track's script is not loaded.
+ */
+export const STUDIO_SCRIPT_SNAPSHOT_AQTL_RETIRED_MESSAGE = "This track's script was saved in an older format and is not loaded. The frame pixels are unchanged.";
+
 export function studioScriptSnapshotRestoreFailureMessage(kind: string): string {
   if (kind === 'corrupt:snap-v4-retired') {
     return STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE;
+  }
+  if (kind === 'corrupt:aqtl-retired') {
+    return STUDIO_SCRIPT_SNAPSHOT_AQTL_RETIRED_MESSAGE;
   }
   return `Studio script snapshot could not be restored (${kind}). The frame pixels are unchanged.`;
 }
