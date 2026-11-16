@@ -202,7 +202,8 @@ export function serializeAquarelleRotoScript(input: {
     brushPack,
     strokes,
   };
-  if (!isPersistedRotoScriptAquarelleV1(document)) throw new Error('Captured Roto script is not persistable');
+  const refusal = describePersistedRotoScriptRefusal(document);
+  if (refusal !== null) throw new Error(`Captured Roto script is not persistable (${refusal})`);
   return document;
 }
 
@@ -378,24 +379,98 @@ export function isPersistedRotoScriptV1(value: unknown): value is PersistedRotoS
  * brushes or continuations.
  */
 export function isPersistedRotoScriptAquarelleV1(value: unknown): value is PersistedRotoScriptAquarelleV1 {
-  if (!isRecord(value) || value.kind !== ROTO_SCRIPT_KIND || value.schemaVersion !== ROTO_SCRIPT_SCHEMA_VERSION) return false;
-  if (value.engineId !== ROTO_SCRIPT_ENGINE_ID_AQUARELLE) return false;
-  if (!isCanonicalRotoScriptId(value.id) || !normalizeRotoScriptName(value.name)) return false;
-  if (!isIsoDate(value.createdAt) || !isIsoDate(value.updatedAt) || Date.parse(value.updatedAt) < Date.parse(value.createdAt)) return false;
-  if (!isSource(value.source) || !isThumbnail(value.thumbnail)) return false;
-  if (!isBrushPack(value.brushPack)) return false;
-  if (!Array.isArray(value.strokes) || value.strokes.length < 1 || value.strokes.length > ROTO_SCRIPT_LIMITS.brushes + ROTO_SCRIPT_LIMITS.brushes * ROTO_SCRIPT_LIMITS.continuationsPerBrush) return false;
+  return describePersistedRotoScriptRefusal(value) === null;
+}
+
+/**
+ * WHY a captured document is refused — null when it is persistable.
+ *
+ * `serializeAquarelleRotoScript` runs this on its own output, so a refusal here
+ * is a bug in the capture path, never bad user data. "Not persistable" alone
+ * made that bug unreportable: the artist saw a dead Save button and the log said
+ * nothing about which field offended. Name the field, and for a paint stroke
+ * name the engine-slot member (this is where a recorder change lands).
+ */
+export function describePersistedRotoScriptRefusal(value: unknown): string | null {
+  if (!isRecord(value)) return 'document is not an object';
+  if (value.kind !== ROTO_SCRIPT_KIND) return 'kind';
+  if (value.schemaVersion !== ROTO_SCRIPT_SCHEMA_VERSION) return 'schemaVersion';
+  if (value.engineId !== ROTO_SCRIPT_ENGINE_ID_AQUARELLE) return 'engineId';
+  if (!isCanonicalRotoScriptId(value.id)) return 'id';
+  if (!normalizeRotoScriptName(value.name)) return 'name';
+  if (!isIsoDate(value.createdAt)) return 'createdAt';
+  if (!isIsoDate(value.updatedAt)) return 'updatedAt';
+  if (Date.parse(value.updatedAt) < Date.parse(value.createdAt)) return 'updatedAt precedes createdAt';
+  if (!isSource(value.source)) return 'source';
+  if (!isThumbnail(value.thumbnail)) return 'thumbnail';
+  if (!isBrushPack(value.brushPack)) return 'brushPack';
+  if (!Array.isArray(value.strokes)) return 'strokes';
+  if (value.strokes.length < 1) return 'strokes is empty';
+  if (value.strokes.length > ROTO_SCRIPT_LIMITS.brushes + ROTO_SCRIPT_LIMITS.brushes * ROTO_SCRIPT_LIMITS.continuationsPerBrush) return 'stroke count over the limit';
   let totalPoints = 0;
   let brushes = 0;
-  for (const stroke of value.strokes) {
-    if (!isEnvelopeStrokeAquarelle(stroke)) return false;
+  for (let index = 0; index < value.strokes.length; index++) {
+    const stroke: unknown = value.strokes[index];
+    if (!isEnvelopeStrokeAquarelle(stroke)) return `stroke ${index}: ${describeStrokeRefusal(stroke)}`;
     if (isAquarelleDryMarker(stroke.engine)) continue;
     brushes += 1;
-    if (brushes > ROTO_SCRIPT_LIMITS.brushes) return false;
+    if (brushes > ROTO_SCRIPT_LIMITS.brushes) return 'brush count over the limit';
     totalPoints += stroke.pts.length;
-    if (totalPoints > ROTO_SCRIPT_LIMITS.totalPoints) return false;
+    if (totalPoints > ROTO_SCRIPT_LIMITS.totalPoints) return 'total point count over the limit';
   }
-  return true;
+  return null;
+}
+
+/** The envelope member a stroke refusal came from (same order as the guard). */
+function describeStrokeRefusal(value: unknown): string {
+  if (!isRecord(value)) return 'not an object';
+  if (!Array.isArray(value.pts)) return 'pts';
+  if (isAquarelleDryMarker(value.engine)) {
+    if (value.pts.length !== 0) return 'dry pts';
+    if (value.ticks !== 0) return 'dry ticks';
+    if (value.cuisson !== 0) return 'dry cuisson';
+    if (value.motion !== null) return 'dry motion';
+    if (value.brushId !== ROTO_SCRIPT_ENGINE_ID_AQUARELLE) return 'dry brushId';
+    if (!isRecord(value.toolOverrides) || Object.keys(value.toolOverrides).length !== 0) return 'dry toolOverrides';
+    if (value.traceSeed !== 0) return 'dry traceSeed';
+    if (!safeInteger(value.recordedOrder)) return 'dry recordedOrder';
+    if (value.playFrame !== null) return 'dry playFrame';
+    if (value.color !== null) return 'dry color';
+    return 'dry engine';
+  }
+  if (value.pts.length < 1 || value.pts.length > ROTO_SCRIPT_LIMITS.pointsPerBrush) return 'pts count';
+  if (!value.pts.every(isEnvelopePointAquarelle)) return 'pts point shape';
+  if (!nonNegativeInteger(value.ticks)) return 'ticks';
+  if (value.pts.length > 1 && value.ticks !== Math.max(1, value.pts.length - 1)) return 'ticks vs pts';
+  if (value.cuisson !== 0) return 'cuisson';
+  if (value.motion !== null) return 'motion';
+  if (value.brushId !== ROTO_SCRIPT_ENGINE_ID_AQUARELLE) return 'brushId';
+  if (!isRecord(value.toolOverrides)) return 'toolOverrides';
+  if (typeof value.traceSeed !== 'number' || !Number.isFinite(value.traceSeed)) return 'traceSeed';
+  if (!safeInteger(value.recordedOrder)) return 'recordedOrder';
+  if (value.playFrame !== null && !nonNegativeInteger(value.playFrame)) return 'playFrame';
+  if (value.color !== null && (typeof value.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(value.color))) return 'color';
+  return describeEngineRefusal(value.engine);
+}
+
+/** The engine-slot member a paint-stroke refusal came from. */
+function describeEngineRefusal(value: unknown): string {
+  if (!isRecord(value)) return 'engine';
+  if (typeof value.tool !== 'string' || !(AQUARELLE_TOOLS as readonly string[]).includes(value.tool)) return 'engine.tool';
+  if (value.color !== null && (typeof value.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(value.color))) return 'engine.color';
+  if (!isRecord(value.params)) return 'engine.params';
+  for (const [key, param] of Object.entries(value.params)) {
+    if (typeof param !== 'number' || !Number.isFinite(param)) return `engine.params.${key}`;
+  }
+  if (typeof value.brushId !== 'string' || value.brushId.length === 0) return 'engine.brushId';
+  if (!safeInteger(value.timestamp)) return 'engine.timestamp';
+  if (value.toolOverrides !== undefined && !isRecord(value.toolOverrides)) return 'engine.toolOverrides';
+  if (value.mutationId !== undefined && !nonNegativeInteger(value.mutationId)) return 'engine.mutationId';
+  if (value.playFrame !== undefined && !nonNegativeInteger(value.playFrame)) return 'engine.playFrame';
+  if (value.diffusionFrames !== undefined && !positiveInteger(value.diffusionFrames, DIFFUSION_CAP)) return 'engine.diffusionFrames';
+  if (value.textureId !== undefined && (typeof value.textureId !== 'string' || value.textureId.length === 0)) return 'engine.textureId';
+  if (value.textureRotation !== undefined) return 'engine.textureRotation';
+  return 'engine';
 }
 
 /**

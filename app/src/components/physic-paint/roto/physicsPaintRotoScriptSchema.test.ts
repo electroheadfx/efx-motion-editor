@@ -25,6 +25,7 @@ interface SchemaModule {
   persistedRotoScriptToRuntime?: ToRuntimeFn;
   isPersistedRotoScriptV1?: IsPersistedFn;
   isPersistedRotoScriptAquarelleV1?: IsPersistedFn;
+  describePersistedRotoScriptRefusal?: (value: unknown) => string | null;
   rotoScriptLibraryRow?: RowFn;
   managedRotoScriptFilename?: (id: string) => string;
 }
@@ -206,6 +207,37 @@ function aquarelleInput(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+describe('capture-refusal diagnostics (quick 261116-inu regression)', () => {
+  it('names the offending field instead of a bare "not persistable"', async () => {
+    const schema = await loadSchema();
+    const refused = schema.describePersistedRotoScriptRefusal!;
+    expect(refused, 'the diagnostic must be exported').toBeTypeOf('function');
+
+    const good = schema.serializeAquarelleRotoScript!(aquarelleInput({ events: [aquarelleStrokeEvent()] }));
+    expect(refused(good), 'a valid capture has no reason').toBeNull();
+
+    // A recorder change that stops writing a number names the exact param key.
+    const badParam = structuredClone(good);
+    badParam.strokes[0].engine.params.size = undefined;
+    expect(refused(badParam)).toBe('stroke 0: engine.params.size');
+
+    // A degree/hundredths mix-up names the rotation slot, not the whole doc.
+    const badRotation = structuredClone(good);
+    badRotation.strokes[0].engine.textureRotation = 3700;
+    expect(refused(badRotation)).toBe('stroke 0: engine.textureRotation');
+
+    // An empty texture id names its own slot.
+    const badTexture = structuredClone(good);
+    badTexture.strokes[0].engine.textureId = '';
+    expect(refused(badTexture)).toBe('stroke 0: engine.textureId');
+
+    // …and the thrown message carries the reason to the artist's log.
+    expect(() => schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [aquarelleStrokeEvent({ engine: { ...aquarelleStrokeEvent().engine, params: { size: null } } })],
+    }))).toThrow('Captured Roto script is not persistable (stroke 0: engine.params.size)');
+  });
+});
 
 describe('aquarelle script codec (261018-odm ODM-01)', () => {
   it('serializeAquarelleRotoScript emits engineId efx-watercolor with UV pts and an AquarelleStrokePayload engine slot', async () => {
