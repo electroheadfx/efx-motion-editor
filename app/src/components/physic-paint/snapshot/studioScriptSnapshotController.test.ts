@@ -105,6 +105,47 @@ function retiredContainer(version: number): Uint8Array {
   return bytes;
 }
 
+/** The pinned WR-12 notice (63-16) — the named AQTL-body retirement. */
+const AQTL_RETIRED_NOTICE = "This track's script was saved in an older format and is not loaded. The frame pixels are unchanged.";
+
+/** Offset of the inner AQTL magic inside a SNAP v5 container. */
+function aqtlMagicOffset(bytes: Uint8Array): number {
+  const magic = 'AQTL';
+  for (let index = 0; index + magic.length <= bytes.byteLength; index += 1) {
+    let matched = true;
+    for (let at = 0; at < magic.length; at += 1) {
+      if (bytes[index + at] !== magic.charCodeAt(at)) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return index;
+  }
+  throw new Error('AQTL magic not found');
+}
+
+/**
+ * A v5 container whose inner AQTL body claims a retired version (WR-12).
+ * The container itself is valid; only the watercolor body predates the
+ * texture format.
+ */
+function retiredAqtlContainer(version: number): Uint8Array {
+  const bytes = encodedFixture();
+  new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint16(
+    aqtlMagicOffset(bytes) + 4,
+    version,
+    true,
+  );
+  return bytes;
+}
+
+/** A v5 container whose inner AQTL magic is corrupt (genuine corruption). */
+function corruptAqtlContainer(): Uint8Array {
+  const bytes = encodedFixture();
+  bytes[aqtlMagicOffset(bytes)] = 0x00;
+  return bytes;
+}
+
 interface Harness {
   controller: ReturnType<typeof createStudioScriptSnapshotController>;
   report: ReturnType<typeof vi.fn>;
@@ -458,6 +499,66 @@ describe('studioScriptSnapshotController — SNAP v5 clean break (261027-klx)', 
     expect(report).toHaveBeenCalledTimes(1);
     expect(report.mock.calls[0]?.[0]).toContain('could not be restored (corrupt:version)');
     expect(report.mock.calls[0]?.[0]).not.toBe(STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE);
+  });
+});
+
+// ------------------------------------------------------------
+//  WR-12 (63-16) — the retired AQTL body.
+//
+//  A script written before the texture format carries an AQTL
+//  v1/v2 body. There is no migration reader (no-backward-compat
+//  law), so the body is retired and NAMED — never reported as
+//  watercolor corruption: the frame pixels are intact.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — retired AQTL body (WR-12)', () => {
+  it('AQTL_RETIRED: shows the pinned named notice exactly once per binding', async () => {
+    const bytes = retiredAqtlContainer(2);
+    const { controller, read, report } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    expect(await controller.restore()).toEqual({ status: 'refused', maxRestoredMutationId: 0 });
+    await controller.restore();
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(report.mock.calls[0]?.[0]).toBe(AQTL_RETIRED_NOTICE);
+    expect(report.mock.calls[0]?.[0]).not.toContain('corrupt:');
+
+    // A track switch is a NEW binding: the notice is allowed again.
+    controller.bind({ ...IDENTITY, trackId: 'track-2' });
+    await controller.restore();
+    expect(report).toHaveBeenCalledTimes(2);
+    expect(report.mock.calls[1]?.[0]).toBe(AQTL_RETIRED_NOTICE);
+  });
+
+  it('AQTL_RETIRED: keeps the generic corrupt message for a broken AQTL body', async () => {
+    const bytes = corruptAqtlContainer();
+    const { controller, read, report } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    await controller.restore();
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(report.mock.calls[0]?.[0]).toContain('could not be restored (corrupt:watercolor)');
+    expect(report.mock.calls[0]?.[0]).not.toBe(AQTL_RETIRED_NOTICE);
+  });
+
+  it('AQTL_RETIRED: the refusal latches — no routine save replaces the snapshot', async () => {
+    const bytes = retiredAqtlContainer(2);
+    const { controller, read, write, report, setSignature } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    expect(await controller.restore()).toEqual({ status: 'refused', maxRestoredMutationId: 0 });
+    expect(report).toHaveBeenCalledTimes(1);
+
+    // One real session stroke makes the payload non-empty, so only the
+    // CR-02 latch can protect the unread authoritative leaf.
+    recordAquarelleStroke(921, recordableAquarelleStroke(921, 0));
+    setSignature('sig-after-aqtl-retirement');
+    await controller.saveNow();
+    await controller.flushNow();
+
+    expect(write).not.toHaveBeenCalled();
   });
 });
 
