@@ -77,6 +77,7 @@ function actions() {
     toggleSelectAllAquarelleStrokes: vi.fn(),
     cycleAquarelleSelectFilter: vi.fn(),
     dryAquarelleSheet: vi.fn(),
+    toggleAquarelleScriptRecording: vi.fn(),
     clearAquarelleFrame: vi.fn(),
     resetFgBg: vi.fn(),
     // 261030-cnq: the color picker latch.
@@ -804,6 +805,21 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
     const { handlers, preventDefault } = dispatch('f', new TestHTMLElement('canvas') as unknown as EventTarget);
     expect(handlers.dryAquarelleSheet).toHaveBeenCalledOnce();
     expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('toggles Script/Pixel recording on a bare S key', () => {
+    const { handlers, preventDefault } = dispatch('s', new TestHTMLElement('canvas') as unknown as EventTarget);
+    expect(handlers.toggleAquarelleScriptRecording).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+    // Modified / shifted / repeated S never fires.
+    for (const overrides of [{ metaKey: true }, { altKey: true }, { shiftKey: true }, { repeat: true }]) {
+      const { handlers: blocked } = dispatch('s', new TestHTMLElement('canvas') as unknown as EventTarget, overrides);
+      expect(blocked.toggleAquarelleScriptRecording).not.toHaveBeenCalled();
+    }
+    // Typing S into a field keeps the field's own input.
+    const inField = dispatch('s', new TestHTMLElement('input') as unknown as EventTarget);
+    expect(inField.handlers.toggleAquarelleScriptRecording).not.toHaveBeenCalled();
+    expect(inField.preventDefault).not.toHaveBeenCalled();
   });
 
   it('clears the frame on a bare C key', () => {

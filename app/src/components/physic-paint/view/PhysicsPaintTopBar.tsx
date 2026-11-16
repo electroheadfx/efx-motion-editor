@@ -177,30 +177,34 @@ export function TopBarTextureTrigger(props: {
 }
 
 /**
- * 261027-k6j: the session "Script" switch. On (default) records finished
+ * 261027-k6j: the session recording switch. On (default) records finished
  * watercolor strokes into the current key's script; Off paints pixels without
- * writing any script entry. A native button: Enter/Space work for free.
- * Never disabled — recording mode is orthogonal to mutation/apply locks.
+ * writing any script entry. 261116: a pulse dot + STATE label ("Script" /
+ * "Pixel") replaces the checkbox — the dot's fill and the label's text both
+ * name what is active, instead of labelling the setting. A native button:
+ * Enter/Space work for free. Never disabled — recording mode is orthogonal to
+ * mutation/apply locks.
  */
 export function ScriptRecordingSwitch() {
   // Narrow read (same idiom as aquarelleParams.value): only this control
   // re-renders when the session flag flips.
   const enabled = aquarelleScriptRecordingEnabled.value;
   return (
-    <label
-      class="physics-paint-script-checkbox"
+    <button
+      type="button"
+      class={`physics-paint-script-dot${enabled ? ' is-on' : ''}`}
+      role="switch"
+      aria-checked={enabled ? 'true' : 'false'}
+      aria-label="Script recording"
+      data-testid="physics-script-mode"
       title={enabled
-        ? 'Script on — strokes are recorded into the key script'
-        : 'Script off — strokes paint pixels without a script entry'}
+        ? "Script mode — each stroke is recorded into this key's script (re-render, select, library). Click to paint pixels only."
+        : 'Pixel mode — raster strokes, no re-render, no select. Click to record strokes again.'}
+      onClick={() => setAquarelleScriptRecordingEnabled(!aquarelleScriptRecordingEnabled.peek())}
     >
-      <input
-        type="checkbox"
-        class="physics-paint-script-checkbox-input"
-        checked={enabled}
-        onChange={(event) => setAquarelleScriptRecordingEnabled(event.currentTarget.checked)}
-      />
-      <span class="physics-paint-script-checkbox-label">Script mode</span>
-    </label>
+      <span class="physics-paint-script-dot-mark" aria-hidden="true" />
+      <span class="physics-paint-script-dot-label">{enabled ? 'Script' : 'Pixel'}</span>
+    </button>
   );
 }
 

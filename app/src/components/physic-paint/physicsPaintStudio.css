@@ -933,26 +933,91 @@ button.destructive {
   padding: 1px 2px;
 }
 
-/* quick-261112: the paint-mode control is a native checkbox with its label to
-   the right, seated inside the brush pill. */
-.physics-paint-script-checkbox {
+/* 261116: the paint-mode control is a pulse dot + STATE label ("Script" /
+   "Pixel"), seated inside the brush pill. Both the dot's fill and the label's
+   text name the ACTIVE mode, so the control reads as state, not a setting. */
+.physics-paint-script-dot {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
+  height: 38px;
+  margin: 0;
+  padding: 0 9px 0 5px;
+  border: none;
+  background: transparent;
+  color: #9aa5b1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.physics-paint-script-checkbox-input {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  accent-color: #2f9fe0;
-  cursor: pointer;
+.physics-paint-script-dot-mark {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #7a818a;
+  border-radius: 999px;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.physics-paint-script-dot.is-on .physics-paint-script-dot-mark {
+  border-color: #f5a623;
+  background: #f5a623;
+}
+
+/* Halo: static OFF (invisible), heartbeat ONLY while recording. */
+.physics-paint-script-dot-mark::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 999px;
+  background: rgba(245, 166, 35, 0.55);
+  box-shadow: 0 0 8px 2px rgba(245, 166, 35, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.physics-paint-script-dot.is-on .physics-paint-script-dot-mark::after {
+  animation: physics-paint-heartbeat 2.4s ease-in-out infinite;
+}
+
+/* Double thump (lub-dub): a small lub, then a bigger dub, then rest. */
+@keyframes physics-paint-heartbeat {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  28% { transform: scale(1); opacity: 0.5; }
+  42% { transform: scale(1.6); opacity: 0.95; }
+  70% { transform: scale(1); opacity: 0.45; }
+}
+
+.physics-paint-script-dot-label {
+  min-width: 36px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-align: left;
+  color: #9aa5b1;
+}
+
+.physics-paint-script-dot.is-on .physics-paint-script-dot-label {
+  color: #e8edf4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .physics-paint-script-dot.is-on .physics-paint-script-dot-mark::after {
+    animation: none;
+    opacity: 0.8;
+  }
 }
 
 /* The dropdown is viewport-fixed: the top bar is an overflow-x scroller, so an

@@ -851,49 +851,59 @@ describe('261027-k6j Script switch', () => {
     expect(pill!.props?.children).toBe('Engine fail');
   });
 
-  it('renders a checkbox mirrored to the session signal, label at its right', () => {
+  it('renders a pulse dot + STATE label mirrored to the session signal', () => {
     const previous = aquarelleScriptRecordingEnabled.value;
     setAquarelleScriptRecordingEnabled(true);
     try {
       const tree = renderSwitch();
-      expect(tree.type).toBe('label');
-      expect(String(tree.props?.class)).toContain('physics-paint-script-checkbox');
-      const input = childrenOf(tree).find((n) => (n as AnyVNode).type === 'input') as AnyVNode | undefined;
-      expect(input, 'the checkbox input renders').toBeDefined();
-      expect(input!.props?.type).toBe('checkbox');
-      expect(input!.props?.checked, 'checked by default').toBe(true);
-      // No aria-label: the visible label text is the accessible name.
-      expect(input!.props?.['aria-label']).toBeUndefined();
-      const label = childrenOf(tree).find(
-        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-checkbox-label',
+      expect(tree.type).toBe('button');
+      expect(tree.props?.type).toBe('button');
+      expect(tree.props?.role).toBe('switch');
+      expect(tree.props?.['aria-checked']).toBe('true');
+      expect(tree.props?.['aria-label']).toBe('Script recording');
+      expect(tree.props?.['data-testid']).toBe('physics-script-mode');
+      expect(String(tree.props?.class)).toContain('physics-paint-script-dot');
+      expect(String(tree.props?.class)).toContain('is-on');
+      expect(String(tree.props?.title)).toContain('Script mode');
+      expect(String(tree.props?.title)).toContain("into this key's script");
+      const dot = childrenOf(tree).find(
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-dot-mark',
       ) as AnyVNode | undefined;
-      expect(label?.props?.children).toBe('Script mode');
+      expect(dot, 'the dot mark renders').toBeDefined();
+      expect(dot!.props?.['aria-hidden']).toBe('true');
+      const label = childrenOf(tree).find(
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-dot-label',
+      ) as AnyVNode | undefined;
+      expect(label?.props?.children).toBe('Script');
 
       setAquarelleScriptRecordingEnabled(false);
       const offTree = renderSwitch();
-      const offInput = childrenOf(offTree).find((n) => (n as AnyVNode).type === 'input') as AnyVNode;
-      expect(offInput.props?.checked).toBe(false);
-      // The caption is a stable mode label — it never flips with the state.
+      expect(String(offTree.props?.class)).not.toContain('is-on');
+      expect(offTree.props?.['aria-checked']).toBe('false');
+      // Stable accessible name + seat; only the visible state text flips.
+      expect(offTree.props?.['aria-label']).toBe('Script recording');
+      expect(offTree.props?.['data-testid']).toBe('physics-script-mode');
+      expect(String(offTree.props?.title)).toContain('Pixel mode');
       const offLabel = childrenOf(offTree).find(
-        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-checkbox-label',
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-dot-label',
       ) as AnyVNode | undefined;
-      expect(offLabel?.props?.children).toBe('Script mode');
+      expect(offLabel?.props?.children).toBe('Pixel');
 
-      // Toggling flips through the setter, reading the event's checked state.
-      (offInput.props?.onChange as (event: { currentTarget: { checked: boolean } }) => void)({
-        currentTarget: { checked: true },
-      });
+      // Toggling flips through the session setter.
+      (offTree.props?.onClick as () => void)();
       expect(aquarelleScriptRecordingEnabled.value).toBe(true);
     } finally {
       setAquarelleScriptRecordingEnabled(previous);
     }
   });
 
-  it('source pins the checkbox contract and never uses useState', () => {
+  it('source pins the pulse-dot contract and never uses useState', () => {
     const body = stripComments(topBarSource());
-    expect(body).toContain('type="checkbox"');
-    expect(body).toContain('checked={enabled}');
+    expect(body).toContain('role="switch"');
+    expect(body).toContain('data-testid="physics-script-mode"');
+    expect(body).toContain('aria-label="Script recording"');
     expect(body).toContain('setAquarelleScriptRecordingEnabled');
+    expect(body).not.toContain('type="checkbox"');
     expect(body).not.toContain('useState');
   });
 
@@ -917,12 +927,41 @@ describe('261027-k6j Script switch', () => {
     expect(stacked).toContain('flex-direction: column');
     expect(stacked).not.toContain('column-reverse');
     expect(stacked).toContain('align-items: center');
-    // quick-261112: the paint-mode control is a native checkbox + caption.
-    const checkbox = getCssRuleBlock(styles, '.physics-paint-script-checkbox {');
-    expect(checkbox).toContain('display: inline-flex');
-    expect(checkbox).toContain('align-items: center');
-    const checkboxInput = getCssRuleBlock(styles, '.physics-paint-script-checkbox-input {');
-    expect(checkboxInput).toContain('accent-color: #2f9fe0');
+    // 261116: the paint-mode control is a pulse dot + state label; the old
+    // checkbox rules are gone (no backward-compat shim).
+    expect(styles).not.toContain('physics-paint-script-checkbox');
+    const dot = getCssRuleBlock(styles, '.physics-paint-script-dot {');
+    expect(dot).toContain('display: inline-flex');
+    expect(dot).toContain('align-items: center');
+    expect(dot).toContain('height: 38px');
+    expect(dot).toContain('border: none');
+    const mark = getCssRuleBlock(styles, '.physics-paint-script-dot-mark {');
+    expect(mark).toContain('position: relative');
+    expect(mark).toContain('border-radius: 999px');
+    expect(mark).toContain('background: transparent');
+    expect(mark).toContain('1.5px solid #7a818a');
+    const onMark = getCssRuleBlock(styles, '.physics-paint-script-dot.is-on .physics-paint-script-dot-mark {');
+    expect(onMark).toContain('#f5a623');
+    const halo = getCssRuleBlock(styles, '.physics-paint-script-dot-mark::after {');
+    expect(halo).toContain('width: 10px');
+    expect(halo).toContain('border-radius: 999px');
+    expect(halo).toContain('box-shadow: 0 0 8px 2px rgba(245, 166, 35, 0.55)');
+    expect(halo).toContain('will-change: transform, opacity');
+    const onHalo = getCssRuleBlock(styles, '.physics-paint-script-dot.is-on .physics-paint-script-dot-mark::after {');
+    expect(onHalo).toContain('animation: physics-paint-heartbeat 2.4s');
+    const heartbeat = styles.slice(styles.indexOf('@keyframes physics-paint-heartbeat'));
+    expect(heartbeat).not.toBe('');
+    expect(heartbeat).toContain('scale(1.6)');
+    const dotLabel = getCssRuleBlock(styles, '.physics-paint-script-dot-label {');
+    expect(dotLabel).toContain('font-size: 11px');
+    expect(dotLabel).toContain('font-weight: 700');
+    expect(dotLabel).toContain('min-width: 36px');
+    expect(dotLabel).toContain('text-align: left');
+    const onLabel = getCssRuleBlock(styles, '.physics-paint-script-dot.is-on .physics-paint-script-dot-label {');
+    expect(onLabel).toContain('#e8edf4');
+    const reducedMotion = styles.slice(styles.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reducedMotion).toContain('animation: none');
+    expect(reducedMotion).toContain('opacity: 0.8');
   });
 });
 

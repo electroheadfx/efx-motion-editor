@@ -256,6 +256,7 @@ import {
   resetAquarelleRecordState,
   resetAquarelleScriptRecording,
   setAquarelleParam,
+  setAquarelleScriptRecordingEnabled,
   setAquarelleStrokeDiffusionFrames,
 } from './view/aquarelleRecordState';
 import { recoverAquarelleDurableBase } from './roto/aquarelleBaseRecovery';
@@ -6858,6 +6859,11 @@ export function PhysicsPaintStudio() {
       dryAquarelleSheet: () => {
         if (staticControlsLocked || wireframeMode.peek()) return;
         emitAquarelleDry(aquarelleRecordClock());
+      },
+      // 261116: bare S — the same session flag the top-bar pulse-dot switch
+      // drives; orthogonal to mutation/apply locks, so no lock gate here.
+      toggleAquarelleScriptRecording: () => {
+        setAquarelleScriptRecordingEnabled(!aquarelleScriptRecordingEnabled.peek());
       },
       clearAquarelleFrame: () => {
         if (staticControlsLocked) return;

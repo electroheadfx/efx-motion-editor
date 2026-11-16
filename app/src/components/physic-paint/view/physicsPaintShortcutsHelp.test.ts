@@ -81,6 +81,7 @@ describe('Studio catalog accuracy', () => {
       'X',
       'D',
       'F',
+      'S',
       'C',
     ]);
   });

@@ -42,6 +42,7 @@ export const PHYSICS_PAINT_SHORTCUT_GROUPS: ShortcutGroup[] = [
       {keys: 'X', description: 'Swap foreground / background'},
       {keys: 'D', description: 'Reset foreground / background'},
       {keys: 'F', description: 'Flash-dry the sheet'},
+      {keys: 'S', description: 'Toggle Script / Pixel recording'},
       {keys: 'C', description: 'Clear the current frame'},
     ],
   },

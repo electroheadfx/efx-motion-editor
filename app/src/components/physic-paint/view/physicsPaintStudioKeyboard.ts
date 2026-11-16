@@ -57,6 +57,9 @@ export interface PhysicsPaintStudioKeyboardActions {
   cycleAquarelleSelectFilter?: () => boolean;
   /** Bare F: flash-dry the sheet (the rail's Dry action). */
   dryAquarelleSheet?: () => void;
+  /** Bare S: toggle Script recording (strokes into the key script) against
+   *  Pixel painting (raster only) — the top-bar pulse-dot switch. */
+  toggleAquarelleScriptRecording?: () => void;
   /** Bare C: clear the current Roto frame (the rail's Trash action). */
   clearAquarelleFrame?: () => void;
   /** 261029-lsr: Shift+R — reset the sheet and replay the frame's script. */
@@ -353,8 +356,8 @@ export function dispatchPhysicsPaintStudioKeyDown(
     // Bare tool keys: B / W / E / P pick a painting tool and leave Select mode,
     // A toggles the Move/Edit surface (leaving resumes the previous paint
     // tool), Tab cycles its stroke filter Paint → Eraser → All while Move/Edit
-    // is on; F flash-dries, C clears the frame, D resets the swatch, I
-    // latches/unlatches the color picker.
+    // is on; F flash-dries, S toggles Script/Pixel recording, C clears the
+    // frame, D resets the swatch, I latches/unlatches the color picker.
     // Modifier chords (Cmd+A select-all, Cmd+Shift+D duplicate track, …) are
     // owned by the branches above, so these fire only on a bare keypress.
     if (!meta && !event.altKey && !event.shiftKey && !event.repeat) {
@@ -396,6 +399,11 @@ export function dispatchPhysicsPaintStudioKeyDown(
       if (key === 'f' && actions.dryAquarelleSheet) {
         event.preventDefault();
         actions.dryAquarelleSheet();
+        return;
+      }
+      if (key === 's' && actions.toggleAquarelleScriptRecording) {
+        event.preventDefault();
+        actions.toggleAquarelleScriptRecording();
         return;
       }
       if (key === 'c' && actions.clearAquarelleFrame) {
