@@ -995,6 +995,19 @@ describe('AQTL v4 textureRotation (quick 261116-inu)', () => {
     );
     expect(asStroke(decoded).engine.textureRotation).toBe(-120);
   });
+
+  it('rejects hundredths that are not a whole degree instead of decoding a fraction', () => {
+    // 4550 hundredths would decode to 45.5 degrees. The unit law keeps DEGREES
+    // integral in memory, so a fractional value would make the encoder refuse
+    // every later save of this timeline — refuse it at the boundary instead.
+    const fractional = encodeScriptTimelineBinary([rotatedStroke(ROTATION_ID, 37)]);
+    new DataView(fractional.buffer, fractional.byteOffset, fractional.byteLength).setInt16(
+      ROTATION_HUNDREDTHS_OFFSET,
+      4550,
+      true,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(fractional))).toBe('invalid-value');
+  });
 });
 
 // ---------------------------------------------------------------------------

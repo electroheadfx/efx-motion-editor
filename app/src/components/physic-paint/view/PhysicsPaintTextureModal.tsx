@@ -418,9 +418,13 @@ export function PhysicsPaintTextureModal(props: {
    * Delete/Backspace on this sheet's OWN subtree (the container is focusable,
    * and a chip button receives the key after a click). Acts only when the
    * target is the sheet or a texture chip; a text field — the Size row's free
-   * entry — keeps the key. The subject is the SELECTED texture (a chip click
-   * selects it), so there is no second selection seam, and the gesture never
-   * leaves the surface: no window listener, never the global paint dispatcher.
+   * entry — keeps the key. The gesture never leaves the surface: no window
+   * listener, never the global paint dispatcher.
+   *
+   * The subject is the FOCUSED chip when the key came from one, and the
+   * selection only when the sheet container itself has focus. Chips are Tab
+   * stops, so taking the selection as the subject would delete texture A after
+   * tabbing to B — the key must act on what the user is looking at.
    */
   const onSurfaceKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'Delete' && event.key !== 'Backspace') return;
@@ -435,14 +439,16 @@ export function PhysicsPaintTextureModal(props: {
     const chip = target?.closest?.('.watercolor-texture-chip') ?? null;
     if (target !== sheet && chip === null) return;
     if (pendingTextureDelete.value !== null) return;
-    const selectedId = aquarelleSelectedTextureId.value;
-    if (selectedId === null) return;
-    const row = libraryRowFor(selectedId);
+    // A chip carries its own id; the Default chip carries '' and is never deletable.
+    const chipId = chip === null ? null : (chip.getAttribute('data-texture-id') || null);
+    const subjectId = chip === null ? aquarelleSelectedTextureId.value : chipId;
+    if (subjectId === null) return;
+    const row = libraryRowFor(subjectId);
     if (row === null) return;
-    const name = customBrushTips.value.find((tip) => tip.id === selectedId)?.name ?? selectedId;
+    const name = customBrushTips.value.find((tip) => tip.id === subjectId)?.name ?? subjectId;
     event.preventDefault();
     event.stopPropagation();
-    pendingTextureDelete.value = { digest: row.digest, tipId: selectedId, name };
+    pendingTextureDelete.value = { digest: row.digest, tipId: subjectId, name };
   };
 
   const cancelTextureDelete = () => {

@@ -90,6 +90,7 @@ function TextureChip(props: {
       type="button"
       class="watercolor-texture-chip"
       data-testid={`watercolor-texture-chip-${textureId ?? 'default'}`}
+      data-texture-id={textureId ?? ''}
       data-selected={props.selected ? 'true' : 'false'}
       data-unavailable={props.entry.unavailable ? 'true' : 'false'}
       aria-pressed={props.selected}

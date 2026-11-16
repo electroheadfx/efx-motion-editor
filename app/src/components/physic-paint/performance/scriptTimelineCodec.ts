@@ -1071,6 +1071,17 @@ function decodeStroke(reader: BinaryReader): {
         reader.offset,
       );
     }
+    // The unit law keeps DEGREES integral in memory. A body whose hundredths are
+    // not a whole degree (e.g. 4550) would decode to 45.5, which the encoder
+    // then refuses — bricking every later save of that timeline. Refuse it at
+    // the boundary instead, as invalid rather than silently rounded.
+    if (hundredths % 100 !== 0) {
+      fail(
+        'invalid-value',
+        'engine.textureRotation hundredths must be a whole degree',
+        reader.offset,
+      );
+    }
     textureRotation = hundredths / 100;
   }
 

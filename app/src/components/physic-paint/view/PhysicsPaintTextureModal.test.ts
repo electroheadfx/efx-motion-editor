@@ -154,8 +154,22 @@ function fireSurfaceKey(
   return { preventDefault, stopPropagation };
 }
 
-/** A texture-chip button target (passes the closest('.watercolor-texture-chip') gate). */
-const CHIP_TARGET = { tagName: 'BUTTON', closest: () => ({}) };
+/**
+ * A texture-chip button target. `closest` yields the chip element, which carries
+ * the row's id in `data-texture-id` — the gesture's subject is the FOCUSED chip.
+ */
+const CHIP_TARGET = {
+  tagName: 'BUTTON',
+  closest: () => ({
+    getAttribute: (name: string) => (name === 'data-texture-id' ? TEXTURE_ENTRY.id : null),
+  }),
+};
+
+/** The Default chip: it renders `data-texture-id=""` and is never a deletion subject. */
+const DEFAULT_CHIP_TARGET = {
+  tagName: 'BUTTON',
+  closest: () => ({ getAttribute: () => '' }),
+};
 
 /** Concatenated text of a vnode subtree. */
 function textOf(node: unknown): string {
@@ -435,6 +449,26 @@ describe('quick 261116-inu texture delete on the Textures surface', () => {
     expect(text).toContain('fall back to the response tip');
   });
 
+  it('acts on the FOCUSED chip, never the selection — Tab elsewhere then Delete', () => {
+    seedTextureRow();
+    // The selection points somewhere with no library row, as after tabbing away.
+    setAquarelleSelectedTextureId('wc/custom-000000000000');
+    setAquarelleTextureModalOpen(true);
+    const tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    fireSurfaceKey(tree, 'Delete', CHIP_TARGET);
+
+    const next = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    const confirm = findByTestId(next, 'watercolor-texture-delete-confirm');
+    expect(
+      confirm,
+      'the focused chip is the subject even when the selection names another texture',
+    ).toBeTruthy();
+    const copy = collect(confirm).find(
+      (node) => String(node.props?.class ?? '') === 'physics-paint-texture-modal-confirm-copy',
+    );
+    expect(textOf(copy), 'the dialog names the focused chip').toContain('fern.png');
+  });
+
   it('Backspace opens the same confirmation and Cancel is a no-op', () => {
     seedTextureRow();
     setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
@@ -527,7 +561,7 @@ describe('quick 261116-inu texture delete on the Textures surface', () => {
 
     // The Default chip is no deletion subject.
     setAquarelleSelectedTextureId(null);
-    fireSurfaceKey(tree, 'Delete', CHIP_TARGET);
+    fireSurfaceKey(tree, 'Delete', DEFAULT_CHIP_TARGET);
     expect(
       findByTestId(PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }), 'watercolor-texture-delete-confirm'),
     ).toBeUndefined();

@@ -41,6 +41,13 @@ pub const BRUSH_LIBRARY_CATALOG_VERSION: u32 = 1;
 /// Upper bound on a readable `catalog.json` — a bounded parse (T-06).
 const MAX_CATALOG_BYTES: u64 = 4 * 1024 * 1024;
 
+/// Upper bound on a stored mask file. A 512x512 lossless alpha WebP is a few
+/// tens of KB; this keeps a swapped-in multi-GB file from being allocated whole
+/// before the dimension gate can reject it. `parse_webp_dimensions` requires the
+/// enclosing chunk to be wholly present, so the file is read whole — just never
+/// more than this bound, and never a non-regular file.
+const MAX_MASK_FILE_BYTES: u64 = 4 * 1024 * 1024;
+
 /// Upper bound on an imported texture name (a catalog label, not a path).
 const MAX_NAME_CHARS: usize = 200;
 
@@ -157,25 +164,42 @@ fn lock_library() -> MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// Read `catalog.json` tolerantly: missing or malformed reads as empty. The
-/// scan command (Task 2) reports per-entry failures; the write path only needs
-/// the list it upserts into.
-fn read_catalog(root: &Path) -> BrushLibraryCatalog {
-    let Ok(metadata) = fs::metadata(catalog_path(root)) else {
-        return BrushLibraryCatalog::default();
+/// Read `catalog.json` for a MUTATION — never for the scan.
+///
+/// Absent is `Ok(default)`. Present-but-unreadable is an ERROR, not an empty
+/// list: every mutation rewrites the whole catalog, so degrading to empty here
+/// would serialize a fresh document holding only the row being written and drop
+/// every sibling's name/rotation/createdAt while orphaning its `<digest>.webp`
+/// on disk. A symlinked catalog, a non-regular file (a FIFO would block, a
+/// device would read unbounded), an oversized document and a whole-document
+/// parse failure all refuse instead.
+///
+/// The scan path keeps its own deliberately-lenient reader
+/// (`read_catalog_entries_lenient`): it never mutates, so dropping malformed
+/// rows individually is correct there.
+fn read_catalog(root: &Path) -> Result<BrushLibraryCatalog, String> {
+    let path = catalog_path(root);
+    reject_symlink(&path, "brush library catalog").map_err(|_| "catalog-unreadable".to_string())?;
+    let metadata = match fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(BrushLibraryCatalog::default())
+        }
+        Err(_) => return Err("catalog-unreadable".to_string()),
     };
-    if metadata.len() > MAX_CATALOG_BYTES {
-        return BrushLibraryCatalog::default();
+    if !metadata.is_file() {
+        return Err("catalog-unreadable".to_string());
     }
-    let Ok(bytes) = fs::read(catalog_path(root)) else {
-        return BrushLibraryCatalog::default();
-    };
+    if metadata.len() > MAX_CATALOG_BYTES {
+        return Err("catalog-too-large".to_string());
+    }
+    let bytes = fs::read(&path).map_err(|_| "catalog-unreadable".to_string())?;
     let mut catalog: BrushLibraryCatalog =
-        serde_json::from_slice(&bytes).unwrap_or_else(|_| BrushLibraryCatalog::default());
+        serde_json::from_slice(&bytes).map_err(|_| "catalog-unreadable".to_string())?;
     if catalog.version == 0 {
         catalog.version = BRUSH_LIBRARY_CATALOG_VERSION;
     }
-    catalog
+    Ok(catalog)
 }
 
 fn write_catalog(root: &Path, catalog: &BrushLibraryCatalog) -> Result<(), String> {
@@ -223,11 +247,27 @@ fn read_catalog_entries_lenient(root: &Path) -> Vec<BrushLibraryEntry> {
     entries
 }
 
-/// True only for a regular (non-symlinked) file that declares exactly the
-/// 512x512 mask frame. The RIFF header read allocates no pixel buffer (T-02).
+/// True only for a regular, size-capped, non-symlinked file. `fs::metadata`
+/// FOLLOWS symlinks, so the caller must run `reject_symlink` first. A FIFO or a
+/// device is not a regular file and is refused here — before any `open`, which
+/// on a FIFO would block the boot scan forever.
+fn mask_file_is_bounded(target: &Path) -> bool {
+    match fs::metadata(target) {
+        Ok(metadata) => metadata.is_file() && metadata.len() <= MAX_MASK_FILE_BYTES,
+        Err(_) => false,
+    }
+}
+
+/// True only for a regular (non-symlinked) file within the size cap that
+/// declares exactly the 512x512 mask frame. The regular-file gate runs BEFORE
+/// the read: a FIFO would block the boot scan forever and a device node would
+/// read unbounded (T-02).
 fn library_file_is_usable(root: &Path, digest: &str) -> bool {
     let target = mask_path(root, digest);
     if reject_symlink(&target, "brush library file").is_err() {
+        return false;
+    }
+    if !mask_file_is_bounded(&target) {
         return false;
     }
     let Ok(bytes) = fs::read(&target) else {
@@ -306,6 +346,15 @@ fn write_library_entry_at(
     fs::create_dir_all(root)
         .map_err(|error| format!("could not create brush library root: {error}"))?;
     reject_symlink(root, "brush library root")?;
+
+    // Load the catalog BEFORE writing anything: an unreadable catalog refuses
+    // the import instead of storing an orphan file next to a catalog we then
+    // cannot safely rewrite.
+    let mut catalog = read_catalog(root)?;
+
+    // The collision check must run BEFORE the "row already exists" shortcut: a
+    // stored file whose bytes no longer hash to its own name is a refusal even
+    // when the catalog still lists that digest.
     let target = mask_path(root, &digest);
     reject_symlink(&target, "brush library file")?;
     if target.exists() {
@@ -314,14 +363,15 @@ fn write_library_entry_at(
         if digest_bytes(&existing) != digest {
             return Err("digest-collision".to_string());
         }
-    } else {
-        atomic_write_bytes(&target, &webp, false)?;
     }
 
-    let mut catalog = read_catalog(root);
     if let Some(existing) = catalog.entries.iter().find(|entry| entry.digest == digest) {
         return Ok(existing.clone());
     }
+    if !target.exists() {
+        atomic_write_bytes(&target, &webp, false)?;
+    }
+
     let entry = new_entry(&digest, &name);
     catalog.entries.push(entry.clone());
     write_catalog(root, &catalog)?;
@@ -337,6 +387,9 @@ fn decode_library_entry_at(
     }
     let target = mask_path(root, digest);
     reject_symlink(&target, "brush library file")?;
+    if !mask_file_is_bounded(&target) {
+        return Err("missing".to_string());
+    }
     let bytes = fs::read(&target).map_err(|_| "missing".to_string())?;
     // Declared-dimension gate runs BEFORE any pixel allocation (T-02).
     let mask = decode_mask_webp(&bytes)?;
@@ -363,6 +416,10 @@ fn delete_library_entry_at(root: &Path, digest: &str) -> Result<(), String> {
     if !valid_digest(digest) {
         return Err("invalid-digest".to_string());
     }
+    // Read the catalog BEFORE removing the file: an unreadable catalog must
+    // refuse the delete outright, not destroy the file and then leave the row
+    // listed (which would resurface as an unavailable chip after reboot).
+    let mut catalog = read_catalog(root)?;
     let target = mask_path(root, digest);
     reject_symlink(&target, "brush library file")?;
     match fs::remove_file(&target) {
@@ -371,7 +428,6 @@ fn delete_library_entry_at(root: &Path, digest: &str) -> Result<(), String> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(format!("could not remove brush library file: {error}")),
     }
-    let mut catalog = read_catalog(root);
     let before = catalog.entries.len();
     catalog.entries.retain(|entry| entry.digest != digest);
     if catalog.entries.len() != before {
@@ -434,7 +490,7 @@ fn set_rotation_at(
     if !(TEXTURE_ROTATION_MIN_DEGREES..=TEXTURE_ROTATION_MAX_DEGREES).contains(&texture_rotation) {
         return Err("invalid-texture-rotation".to_string());
     }
-    let mut catalog = read_catalog(root);
+    let mut catalog = read_catalog(root)?;
     let Some(row) = catalog.entries.iter_mut().find(|entry| entry.digest == digest) else {
         return Err("missing".to_string());
     };
@@ -514,7 +570,7 @@ mod tests {
         let decoded = decode_mask_webp(&stored).expect("lossless decode");
         assert_eq!(decoded, mask);
 
-        let catalog = read_catalog(&root);
+        let catalog = read_catalog(&root).expect("catalog readable");
         assert_eq!(catalog.version, BRUSH_LIBRARY_CATALOG_VERSION);
         assert_eq!(catalog.entries.len(), 1);
         assert_eq!(catalog.entries[0], entry);
@@ -541,7 +597,7 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.id, second.id);
         assert_eq!(catalog_before, catalog_after);
-        let catalog = read_catalog(&root);
+        let catalog = read_catalog(&root).expect("catalog readable");
         assert_eq!(catalog.entries.len(), 1);
         assert_eq!(fs::read_dir(&root).expect("root listing").count(), 2); // one webp + catalog
     }
@@ -556,6 +612,59 @@ mod tests {
         let error = write_library_entry_at(&root, "a.png", &mask).unwrap_err();
         assert_eq!(error, "digest-collision");
         assert_eq!(fs::read(&target).expect("poison survives"), b"different bytes");
+    }
+
+    #[test]
+    fn an_unreadable_catalog_refuses_a_mutation_instead_of_rewriting_it_empty() {
+        let root = scratch_root();
+        write_library_entry_at(&root, "keep.png", &probe_mask(0x0bad_c0de)).expect("first write");
+        fs::write(catalog_path(&root), b"{ not json").expect("corrupt the catalog");
+
+        // An import must not serialize a fresh single-row catalog over the
+        // unreadable one: that would drop every sibling row and orphan its file.
+        let error = write_library_entry_at(&root, "next.png", &probe_mask(0x1111_2222))
+            .expect_err("an unreadable catalog refuses the import");
+        assert_eq!(error, "catalog-unreadable");
+        assert_eq!(
+            fs::read(catalog_path(&root)).expect("catalog still on disk"),
+            b"{ not json",
+            "a refused import must leave the catalog byte-identical"
+        );
+
+        // Delete and rotation refuse for the same reason.
+        let digest = "d".repeat(64);
+        assert_eq!(
+            delete_library_entry_at(&root, &digest).expect_err("delete refuses"),
+            "catalog-unreadable"
+        );
+        assert_eq!(
+            set_rotation_at(&root, &digest, 10).expect_err("rotation refuses"),
+            "catalog-unreadable"
+        );
+    }
+
+    #[test]
+    fn an_oversized_catalog_is_refused_rather_than_read_as_empty() {
+        let root = scratch_root();
+        fs::create_dir_all(&root).expect("root");
+        fs::write(catalog_path(&root), vec![b'x'; MAX_CATALOG_BYTES as usize + 1])
+            .expect("oversized catalog");
+
+        let error = write_library_entry_at(&root, "next.png", &probe_mask(0x3333_4444))
+            .expect_err("an oversized catalog refuses the import");
+        assert_eq!(error, "catalog-too-large");
+        assert_eq!(
+            fs::metadata(catalog_path(&root)).expect("catalog").len(),
+            MAX_CATALOG_BYTES + 1,
+            "the refused import must not rewrite the catalog"
+        );
+    }
+
+    #[test]
+    fn a_missing_catalog_is_not_an_error() {
+        let root = scratch_root();
+        assert!(read_catalog(&root).is_ok(), "no catalog yet is fine");
+        assert!(read_catalog(&root).expect("empty").entries.is_empty());
     }
 
     #[test]
@@ -708,7 +817,7 @@ mod tests {
 
         assert!(!mask_path(&root, &gone.digest).exists());
         assert!(mask_path(&root, &kept.digest).exists());
-        let catalog = read_catalog(&root);
+        let catalog = read_catalog(&root).expect("catalog readable");
         assert_eq!(catalog.entries, vec![kept]);
     }
 
@@ -720,7 +829,7 @@ mod tests {
         fs::remove_file(mask_path(&root, &entry.digest)).expect("remove file behind the row");
 
         delete_library_entry_at(&root, &entry.digest).expect("delete");
-        assert!(read_catalog(&root).entries.is_empty());
+        assert!(read_catalog(&root).expect("catalog readable").entries.is_empty());
     }
 
     #[test]
@@ -755,7 +864,7 @@ mod tests {
         }
         // Nothing was touched by a refused digest.
         assert!(mask_path(&root, &entry.digest).exists());
-        assert_eq!(read_catalog(&root).entries, vec![entry]);
+        assert_eq!(read_catalog(&root).expect("catalog readable").entries, vec![entry]);
     }
 
     #[cfg(unix)]
@@ -772,7 +881,7 @@ mod tests {
         let error = delete_library_entry_at(&root, &entry.digest).unwrap_err();
         assert!(error.contains("Symlinked"), "unexpected error: {error}");
         assert!(elsewhere.exists(), "the symlink target survives");
-        assert_eq!(read_catalog(&root).entries, vec![entry]);
+        assert_eq!(read_catalog(&root).expect("catalog readable").entries, vec![entry]);
     }
 
     #[cfg(unix)]
@@ -812,13 +921,13 @@ mod tests {
         assert_eq!(rotated.digest, entry.digest);
         // The catalog holds the same integer — never hundredths (3700) and
         // never a fraction (0.37).
-        let catalog = read_catalog(&root);
+        let catalog = read_catalog(&root).expect("catalog readable");
         assert_eq!(catalog.entries.len(), 1);
         assert_eq!(catalog.entries[0].texture_rotation, 37);
 
         for degrees in [-180, -120, 0, 180] {
             set_rotation_at(&root, &entry.digest, degrees).expect("rotate again");
-            assert_eq!(read_catalog(&root).entries[0].texture_rotation, degrees);
+            assert_eq!(read_catalog(&root).expect("catalog readable").entries[0].texture_rotation, degrees);
         }
     }
 
@@ -863,7 +972,7 @@ mod tests {
             set_rotation_at(&root, &absent, 10),
             Err("missing".to_string())
         );
-        assert_eq!(read_catalog(&root).entries, vec![entry]);
+        assert_eq!(read_catalog(&root).expect("catalog readable").entries, vec![entry]);
     }
 
     #[test]
@@ -891,7 +1000,7 @@ mod tests {
 
         set_rotation_at(&root, &rotated.digest, -90).expect("rotate");
 
-        let catalog = read_catalog(&root);
+        let catalog = read_catalog(&root).expect("catalog readable");
         assert_eq!(catalog.entries.len(), 2);
         assert_eq!(catalog.entries[0], kept);
         assert_eq!(catalog.entries[1].texture_rotation, -90);
