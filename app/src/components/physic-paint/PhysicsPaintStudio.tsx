@@ -10423,6 +10423,7 @@ export function PhysicsPaintStudio() {
     // appear, never whether the gesture is undoable. This is the seam's SECOND
     // and last record site (the other is the re-bake onSuccess tail).
     if (draft || wireframe) {
+      console.debug('[261116-qhm] path-edit deferred route', { mutationId, draft, wireframe });
       rotoMoveHistory.recordAquarelleScriptEdit(editId);
       setDraftPixelsDirty(true);
       setLastError(null);

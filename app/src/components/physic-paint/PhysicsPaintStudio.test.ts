@@ -6672,6 +6672,44 @@ describe('62-02 painted-curve entry and conversion admission in the Studio', () 
     expect(admitsPathEditWrite({ ...anchorlessBrushFixture, points: [] })).toBe(false);
   });
 
+  // quick 261116-qhm — Step 1 reproduction (TEMPORARY; Task 3 replaces it with
+  // the post-fix pins). The FIRST path-edit session of a painted stroke never
+  // shows pigment while a vertex is dragged because the entry bracket forces
+  // the construction latches: `beginCurveWireframeBracket` calls
+  // `setWireframeMode(true)`, which forces Draft on, so every following commit
+  // takes the `if (draft || wireframe)` deferred branch — record + dirty
+  // pixels, NO bake — and only the exit settle ever renders. The chain is
+  // closed at HEAD; the live confirmation is UAT row 2, which the user runs.
+  it('quick 261116-qhm — the entry bracket forces the deferred commit that only the exit settle renders', () => {
+    const enter = regionOf(studio, ENTER_START, COMMIT_START);
+    const bracketAt = enter.indexOf('beginCurveWireframeBracket();');
+    const latchAt = enter.indexOf('vectorPathSession.enterPathEdit(');
+    expect(bracketAt, 'the entry opens the wireframe bracket').toBeGreaterThan(-1);
+    expect(latchAt, 'the bracket precedes the latch').toBeGreaterThan(bracketAt);
+
+    const bracket = readFileSync(
+      fileURLToPath(new URL('./view/vectorPathCurveBracket.ts', import.meta.url)),
+      'utf8',
+    );
+    const captureAt = bracket.indexOf('const held = curveEntrySnapshot.peek();');
+    const wireframeAt = bracket.indexOf('setWireframeMode(true);');
+    expect(captureAt, 'the bracket captures the pre-entry view FIRST').toBeGreaterThan(-1);
+    expect(wireframeAt, 'the bracket then forces the wireframe on').toBeGreaterThan(captureAt);
+
+    const commit = regionOf(
+      studio,
+      COMMIT_START,
+      'const handleAquarelleVectorPathEdit = useCallback(',
+    );
+    const deferredAt = commit.indexOf('if (draft || wireframe) {');
+    expect(deferredAt, 'the commit reads the forced latches').toBeGreaterThan(-1);
+    const applyAt = commit.indexOf('beginPathEditApply(', deferredAt);
+    expect(applyAt, 'the immediate bake follows the deferred branch').toBeGreaterThan(deferredAt);
+    // The deduction: the deferred branch records and returns BEFORE the arm,
+    // so every vertex commit defers and only the exit settle renders.
+    expect(commit.slice(deferredAt, applyAt)).toContain('return editId;');
+  });
+
   it('mints the vector-edit default on the FIRST write only, never on a later anchor edit', () => {
     const commit = regionOf(
       studio,
