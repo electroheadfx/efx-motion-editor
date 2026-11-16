@@ -935,6 +935,8 @@ describe('261027-k6j Script switch', () => {
     expect(dot).toContain('align-items: center');
     expect(dot).toContain('height: 38px');
     expect(dot).toContain('border: none');
+    // The global button rule uppercases text; the state label opts out.
+    expect(dot).toContain('text-transform: none');
     const mark = getCssRuleBlock(styles, '.physics-paint-script-dot-mark {');
     expect(mark).toContain('position: relative');
     expect(mark).toContain('border-radius: 999px');
