@@ -882,6 +882,185 @@ describe('studioScriptSnapshotController — empty-save guard (studio-snapshot-e
 });
 
 // ------------------------------------------------------------
+//  CR-02 (63-16) — a refused restore is LATCHED for its binding.
+//
+//  The refusal branch clears `retainedContent`, but the settlement
+//  `finally` still settles the generation, so a routine save would
+//  union `null` with the session and overwrite the ONLY copy of a
+//  script the app could not read (Rust replaces the leaf atomically
+//  with no backup). The latch withholds every routine save of that
+//  binding; the only doors that may write again are a new
+//  binding/reset, a later SUCCESSFUL restore, and the explicit purge
+//  door after a SUCCESSFUL write.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — CR-02 refused-restore latch', () => {
+  it('CR-02: withholds saveNow and flushNow after a refused read with a non-empty session', async () => {
+    const { controller, read, write, report, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    expect(await controller.restore()).toEqual({ status: 'refused', maxRestoredMutationId: 0 });
+
+    // The exact CR-02 shape: one painted stroke makes the session payload
+    // non-empty, so the empty-payload guard alone no longer protects the
+    // file the app could not read.
+    recordAquarelleStroke(901, recordableAquarelleStroke(901, 0));
+    setSignature('sig-after-refusal');
+    await controller.saveNow();
+    await controller.flushNow();
+
+    expect(write).not.toHaveBeenCalled();
+    // ONE report: the restore notice. A withheld save reports nothing.
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(String(report.mock.calls[0]?.[0])).toContain('could not be restored');
+  });
+
+  it('CR-02: the latch stands across repeated routine saves', async () => {
+    const { controller, read, write, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(902, recordableAquarelleStroke(902, 0));
+    setSignature('sig-first');
+    await controller.saveNow();
+    // A fresh mutation and a second save attempt: still withheld.
+    recordAquarelleStroke(903, recordableAquarelleStroke(903, 0));
+    setSignature('sig-second');
+    await controller.saveNow();
+    await controller.flushNow();
+
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('CR-02: withholds the decode-refused arm too', async () => {
+    const bytes = retiredContainer(6);
+    const { controller, read, write, report, setSignature } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    expect(await controller.restore()).toEqual({ status: 'refused', maxRestoredMutationId: 0 });
+
+    recordAquarelleStroke(904, recordableAquarelleStroke(904, 0));
+    setSignature('sig-decode-refusal');
+    await controller.saveNow();
+
+    expect(write).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(String(report.mock.calls[0]?.[0])).toContain('corrupt:version');
+  });
+
+  it('CR-02: a successful restore still saves the union exactly as before', async () => {
+    const bytes = encodedFixture();
+    const { controller, read, write, setSignature } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    expect(await controller.restore()).toEqual({ status: 'restored', maxRestoredMutationId: 102 });
+
+    recordAquarelleStroke(905, recordableAquarelleStroke(905, 0));
+    setSignature('sig-healthy');
+    await controller.saveNow();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(writtenSnapshot(write).watercolorEvents).toHaveLength(4);
+  });
+
+  it('CR-02: a missing snapshot never latches', async () => {
+    const { controller, write, setSignature } = harness();
+    controller.bind(IDENTITY);
+    expect(await controller.restore()).toEqual({ status: 'empty', maxRestoredMutationId: 0 });
+
+    recordAquarelleStroke(906, recordableAquarelleStroke(906, 0));
+    setSignature('sig-missing');
+    await controller.saveNow();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(writtenSnapshot(write).watercolorEvents).toHaveLength(1);
+  });
+
+  it('CR-02: the explicit purge writes once, clears the latch, and routine saves resume', async () => {
+    const { controller, read, write, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(907, recordableAquarelleStroke(907, 0));
+    setSignature('sig-purge');
+    await controller.persistAfterPurge();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    // Session-only: the unread file's retained content is dropped.
+    expect(writtenSnapshot(write).watercolorEvents).toHaveLength(1);
+
+    // The successful purge is the acknowledgement: a routine save resumes.
+    recordAquarelleStroke(908, recordableAquarelleStroke(908, 0));
+    setSignature('sig-after-purge');
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(writtenSnapshot(write, 1).watercolorEvents).toHaveLength(2);
+  });
+
+  it('CR-02: a FAILED purge write leaves the latch set; a later successful purge clears it', async () => {
+    const { controller, read, write, report, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(909, recordableAquarelleStroke(909, 0));
+    setSignature('sig-failed-purge');
+    write.mockResolvedValueOnce({ ok: false, error: { kind: 'io' } });
+    await controller.persistAfterPurge();
+
+    // The write failed, so it is NOT the acknowledgement: the file stays
+    // protected and the latch stays set.
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledTimes(2); // restore notice + save failure
+    setSignature('sig-still-latched');
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(1);
+
+    // A retried purge that SUCCEEDS clears the latch. The default mock
+    // implementation (success) resumes after the queued failure.
+    await controller.persistAfterPurge();
+    expect(write).toHaveBeenCalledTimes(2);
+    setSignature('sig-recovered');
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(3);
+  });
+
+  it('CR-02: the latch is binding-scoped — a rebind whose restore succeeds saves', async () => {
+    const secondIdentity: StudioScriptSnapshotIdentity = { ...IDENTITY, trackId: 'track-2' };
+    const secondBytes = encodeStudioScriptSnapshot({
+      ...secondIdentity,
+      watercolorEvents: fixtureEvents(),
+    });
+    const { controller, read, write, setSignature } = harness();
+    read.mockResolvedValueOnce({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    // The outgoing binding was refused: its routine save is withheld.
+    recordAquarelleStroke(910, recordableAquarelleStroke(910, 0));
+    setSignature('sig-track-a');
+    await controller.saveNow();
+    expect(write).not.toHaveBeenCalled();
+
+    // A new binding starts clean (D-20's replace-on-open law).
+    read.mockResolvedValue({
+      ok: true,
+      data: { bytes: secondBytes, digest: 'd', byteLength: secondBytes.byteLength },
+    });
+    controller.bind(secondIdentity);
+    expect(await controller.restore()).toEqual({ status: 'restored', maxRestoredMutationId: 102 });
+
+    setSignature('sig-track-b');
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(1);
+    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    expect(decodeStudioScriptSnapshot(written, secondIdentity).watercolorEvents).toHaveLength(3);
+  });
+});
+
+// ------------------------------------------------------------
 //  quick-261023-ors Task 2 — the purge's persistence cleanup.
 //  Order law: rewrite the authoritative leg FIRST, then (only when
 //  the rewrite left the store clean and an authority is bound)
