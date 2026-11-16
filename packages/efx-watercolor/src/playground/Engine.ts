@@ -1789,6 +1789,13 @@ export class WatercolorEngine {
     const s = this.stroke;
     if (!s) return;
     s.moved = false;
+    // The tick that starts a stroke already deposits its first dab; a dwell
+    // stamp on that same tick is a SECOND impression of the stroke's origin.
+    // Live hides it when the first frame drains the pointerdown together with
+    // the first moves; the scripted feed (one sample per tick) always exposed
+    // it — a texture tip stamped twice at two different radii (quick 261116-rp
+    // apply: "the text is doubled"). Resting is a NEXT-tick law.
+    const startedThisTick = !s.started;
     const aspect = this.dw / this.dh;
     for (const q of this.queue) {
       // a tilted pen tells us which way it leans; a vertical one tells us nothing
@@ -1840,7 +1847,7 @@ export class WatercolorEngine {
     // the curve trails half a sample behind; catch up once the pointer rests or lifts
     if (s.started && (!s.moved || s.ending) && (s.x !== s.cx || s.y !== s.cy)) this.trace(s, s.cx, s.cy, s.cx, s.cy, s.pr, 0, 0);
     // resting in place: pigment keeps soaking in, water keeps pooling
-    if (!s.moved && s.started && !s.ending) this.stampScripted(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1), 1);
+    if (!s.moved && s.started && !s.ending && !startedThisTick) this.stampScripted(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1), 1);
     if (s.ending) {
       this.stroke = null;
       this.restoreStrokePigment();
