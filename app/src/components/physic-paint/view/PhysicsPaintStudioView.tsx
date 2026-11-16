@@ -11,6 +11,7 @@ import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { PhysicsPaintBrushMenu } from './PhysicsPaintBrushMenu';
 import { PhysicsPaintBrushModal } from './PhysicsPaintBrushModal';
+import { PhysicsPaintTextureMenu } from './PhysicsPaintTextureMenu';
 import { PhysicsPaintSettingsModal } from './PhysicsPaintSettingsModal';
 import { PhysicsPaintShortcutsModal } from './PhysicsPaintShortcutsModal';
 import { PhysicsPaintRailMotionModal } from './PhysicsPaintRailMotionModal';
@@ -557,6 +558,9 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         {/* 261027-gh9g: the brush dropdown is viewport-fixed (the top bar is
             an overflow-x scroller) and renders outside that scroller. */}
         {!pickerOpen ? <PhysicsPaintBrushMenu /> : null}
+        {/* quick 261116-gcn: the Textures popover rides the same viewport-fixed
+            seat as the brush dropdown, immediately after it. */}
+        {!pickerOpen ? <PhysicsPaintTextureMenu /> : null}
         <PhysicsPaintToolRail {...toolRail} />
 
         <section

@@ -14,6 +14,7 @@ import {
   TopBarBrushTrigger,
   TopBarDryButton,
   TopBarRebakeButton,
+  TopBarTextureTrigger,
   type PhysicsPaintTopBarProps,
 } from './PhysicsPaintTopBar';
 import { activeModule } from '../../shared/activeModule';
@@ -22,8 +23,11 @@ import {
   aquarelleBrushMenuOpen,
   aquarelleBrushMenuTarget,
   aquarelleScriptRecordingEnabled,
+  aquarelleTextureMenuAnchor,
+  aquarelleTextureMenuOpen,
   recordAquarelleStroke,
   setAquarelleScriptRecordingEnabled,
+  setAquarelleTextureMenuOpen,
   setAquarelleTool,
 } from './aquarelleRecordState';
 import { wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
@@ -299,6 +303,107 @@ describe('261027-gh9g top bar brush trigger + centered sliders', () => {
   });
 });
 
+// quick 261116-gcn: the Textures axis' trigger — a SECOND pill inside the
+// shared brush pill opens its own popover. The FIRST onToggle node stays the
+// brush trigger so every shipped assertion and picker path is untouched.
+describe('quick 261116-gcn Textures trigger', () => {
+  afterEach(() => {
+    aquarelleTextureMenuOpen.value = false;
+    aquarelleTextureMenuAnchor.value = null;
+    aquarelleBrushMenuOpen.value = false;
+    aquarelleBrushMenuAnchor.value = null;
+  });
+
+  it('seats the texture trigger inside the pill, after the brush trigger and before the Script switch', () => {
+    const tree = renderTopBar(baseTopBarProps());
+    const nodes = childrenOf(tree) as AnyVNode[];
+    const pill = nodes.find((n) => n.props?.['class'] === 'physics-paint-topbar-brush-pill');
+    expect(pill, 'the pill hosts both triggers').toBeDefined();
+    const pillDesc = childrenOf(pill) as AnyVNode[];
+    const brushIdx = pillDesc.findIndex((n) => n.type === TopBarBrushTrigger);
+    const textureIdx = pillDesc.findIndex((n) => n.type === TopBarTextureTrigger);
+    const switchIdx = pillDesc.findIndex((n) => n.type === ScriptRecordingSwitch);
+    expect(brushIdx, 'the brush trigger leads the pill').toBeGreaterThan(-1);
+    expect(textureIdx, 'the texture trigger follows').toBeGreaterThan(brushIdx);
+    expect(switchIdx, 'the Script switch still closes the pill').toBeGreaterThan(textureIdx);
+    const texture = pillDesc[textureIdx]!;
+    expect(texture.props?.open).toBe(false);
+    expect(texture.props?.disabled).toBe(false);
+    // The mount threads the shared toggle; the label lives on the button the
+    // component returns (invoke it directly — the host walk never expands
+    // function components).
+    expect(typeof texture.props?.onToggle).toBe('function');
+    const textureButton = TopBarTextureTrigger({
+      open: texture.props?.open as boolean,
+      onToggle: texture.props?.onToggle as never,
+      disabled: texture.props?.disabled as boolean,
+    }) as AnyVNode;
+    expect(textureButton.props?.['aria-label']).toBe('Textures');
+    expect(textureButton.props?.['aria-expanded']).toBe(false);
+    expect(textureButton.props?.['data-watercolor-texture-trigger']).toBe(true);
+    // The shipped first-onToggle contract is untouched.
+    const firstToggle = pillDesc.findIndex((n) => typeof n.props?.onToggle === 'function');
+    expect(firstToggle).toBe(brushIdx);
+  });
+
+  it('clicking the texture trigger opens the Textures menu at its own rect', () => {
+    const tree = renderTopBar(baseTopBarProps());
+    const texture = [...childrenOf(tree)].find((n) => (n as AnyVNode).type === TopBarTextureTrigger) as AnyVNode;
+    expect(texture, 'the texture trigger renders').toBeDefined();
+    const firstToggle = [...childrenOf(tree)].find(
+      (n) => typeof (n as AnyVNode).props?.onToggle === 'function',
+    ) as AnyVNode;
+    expect(firstToggle.type, 'the first onToggle node is still the brush trigger').toBe(TopBarBrushTrigger);
+    (texture.props?.onToggle as (event: unknown) => void)({
+      currentTarget: { getBoundingClientRect: () => ({ left: 120, bottom: 58 }) },
+    });
+    expect(aquarelleTextureMenuOpen.value).toBe(true);
+    expect(aquarelleTextureMenuAnchor.value).toEqual({ left: 120, top: 64 });
+    expect(aquarelleBrushMenuOpen.value, 'the brush menu stays untouched').toBe(false);
+  });
+
+  it('opening one popover closes the other in both directions', () => {
+    // Textures open -> the brush trigger closes it and opens Brushes.
+    setAquarelleTextureMenuOpen(true, { left: 120, top: 64 });
+    let tree = renderTopBar(baseTopBarProps());
+    const brush = [...childrenOf(tree)].find(
+      (n) => (n as AnyVNode).type === TopBarBrushTrigger,
+    ) as AnyVNode;
+    (brush.props?.onToggle as (event: unknown) => void)({
+      currentTarget: { getBoundingClientRect: () => ({ left: 24, bottom: 58 }) },
+    });
+    expect(aquarelleTextureMenuOpen.value).toBe(false);
+    expect(aquarelleBrushMenuOpen.value).toBe(true);
+
+    // Brushes open -> the texture trigger closes it and opens Textures.
+    tree = renderTopBar(baseTopBarProps());
+    const texture = [...childrenOf(tree)].find(
+      (n) => (n as AnyVNode).type === TopBarTextureTrigger,
+    ) as AnyVNode;
+    (texture.props?.onToggle as (event: unknown) => void)({
+      currentTarget: { getBoundingClientRect: () => ({ left: 120, bottom: 58 }) },
+    });
+    expect(aquarelleBrushMenuOpen.value).toBe(false);
+    expect(aquarelleTextureMenuOpen.value).toBe(true);
+  });
+
+  it('source pins the texture trigger attribute, its label and the second pill seat', () => {
+    const body = stripComments(topBarSource());
+    expect(body).toContain('data-watercolor-texture-trigger');
+    expect(body).toContain('<span class="physics-paint-brush-trigger-name">Textures</span>');
+    expect(body).toContain('aria-label="Textures"');
+    const pillStart = body.indexOf('class="physics-paint-topbar-brush-pill"');
+    const brushAt = body.indexOf('<TopBarBrushTrigger', pillStart);
+    const textureAt = body.indexOf('<TopBarTextureTrigger', pillStart);
+    const switchAt = body.indexOf('<ScriptRecordingSwitch />', pillStart);
+    expect(pillStart, 'the pill mount exists').toBeGreaterThan(-1);
+    expect(brushAt, 'the brush trigger seats in the pill').toBeGreaterThan(pillStart);
+    expect(textureAt, 'the texture trigger follows the brush trigger').toBeGreaterThan(brushAt);
+    expect(switchAt, 'the Script switch stays after both triggers').toBeGreaterThan(textureAt);
+    expect(body).not.toContain('useState');
+  });
+});
+
 // 261029-hy2: ONE tool pill for Brush and Eraser, and the settings cluster
 // renders only for tools that own settings.
 describe('261029-hy2 tool pill + settings-cluster gating', () => {
@@ -538,8 +643,11 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
       // preset for the Eraser tool), exactly like aquarelleSelectedTipId.
       aquarelleLiftTipId: { value: null },
       aquarelleBrushMenuOpen: { value: false },
+      // quick 261116-gcn: the bar reads the second popover's open state.
+      aquarelleTextureMenuOpen: { value: false },
       aquarelleScriptRecordingEnabled: { value: true, peek: () => true },
       setAquarelleBrushMenuOpen: vi.fn(),
+      setAquarelleTextureMenuOpen: vi.fn(),
       setAquarelleLiftTipId: vi.fn(),
       setAquarelleParam: vi.fn(),
       setAquarelleScriptRecordingEnabled: vi.fn(),

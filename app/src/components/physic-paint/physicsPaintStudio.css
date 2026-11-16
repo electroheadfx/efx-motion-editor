@@ -836,6 +836,16 @@ button.destructive {
   opacity: 0.85;
 }
 
+/* quick 261116-gcn: the SECOND trigger inside the pill — the Textures axis.
+   Square left edge behind a hairline divider (the tool trigger keeps its
+   rounded left corners) and slightly tighter horizontal padding. */
+.physics-paint-texture-trigger {
+  border-radius: 0;
+  padding: 3px 7px;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  gap: 6px;
+}
+
 /* 261027-k6j: the session "Script" switch — sits right after the brush
    trigger. The left cluster's gap is 0, so the control carries its own
    left margin. */
@@ -1078,6 +1088,43 @@ button.destructive {
 
 .physics-paint-brush-menu-textures .watercolor-texture-chip-name {
   display: none;
+}
+
+/* quick 261116-gcn: the Textures popover — the texture axis' pick surface,
+   opened by the second trigger inside the brush pill. Viewport-fixed for the
+   same reason as the brush popover (the top bar is an overflow-x scroller);
+   the inline maxHeight clamps it to the space below the trigger, and a tall
+   catalog scrolls the whole surface instead of clipping its strip. */
+.physics-paint-texture-menu {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  width: 212px;
+  min-height: 0;
+  padding: 15px 6px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(24, 26, 30, 0.96);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  color: #e8edf4;
+  box-sizing: border-box;
+  overflow-y: auto;
+  max-height: 320px;
+}
+
+/* quick 261116-gcn: the compact strip's seat below the separator. */
+.physics-paint-texture-menu-strip {
+  flex: 0 0 auto;
+  padding: 6px 2px 0;
+}
+
+/* The compact chips shrink to fit the 212px popover; the library keeps the
+   44px base rule. The chip NAME needs no hiding rule — the compact prop
+   already inlines display: none. */
+.physics-paint-texture-menu .watercolor-texture-chip-canvas {
+  width: 34px;
+  height: 34px;
 }
 
 /* 261027-gh9g: the floating brush modal — a MORE transparent glass panel

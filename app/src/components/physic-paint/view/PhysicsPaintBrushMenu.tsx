@@ -7,16 +7,11 @@
 //  action and hands off to the floating catalog; picking a brush
 //  selects it (aquarelleSelectedTipId) and closes the menu.
 //
-//  quick-261115-oh9: the popover shows the brush's TWO axes.
-//   · RESPONSE — the scrolled preset list. A pick selects the
-//     response and closes the menu (today's law, unchanged).
-//   · TEXTURE — the compact WatercolorTextureStrip pinned BELOW the
-//     scroller. It is a sibling of SidebarScrollArea, never a child:
-//     the natural-height measurement counts only the menu minus the
-//     scroller, so a strip inside the scroller would be measured as
-//     list content. A texture pick writes aquarelleSelectedTextureId
-//     and KEEPS the menu open — the user may pick a response and
-//     then a texture. The lift (eraser) branch has no texture axis.
+//  quick-261115-oh9 / quick-261116-gcn: this popover owns the
+//  RESPONSE axis only — the scrolled preset list. A pick selects
+//  the response and closes the menu. The TEXTURE axis moved to the
+//  Textures popover (PhysicsPaintTextureMenu, quick-261116-gcn):
+//  the strip no longer mounts here in either branch.
 //
 //  Fixed positioning is deliberate: the top bar is an
 //  overflow-x:auto scroller, so an absolutely positioned child
@@ -41,9 +36,7 @@ import { pickAquarelleBrush } from './aquarellePaintControls';
 // 261029-hy2 CR-01: the catalog's open path must raise its sheet — the seat
 // sits UNDER the Settings sheet, so click-to-front alone can never reach it.
 import { SHEET_ID_BRUSHES, bringSheetToFront } from './floatingSheetStack';
-import { brushCatalogGeneration } from '../../../stores/aquarelleBrushCatalog';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
-import { WatercolorTextureStrip } from './WatercolorTextureStrip';
 import { brushMenuPresets } from './brushMenuPresets';
 
 export function PhysicsPaintBrushMenu() {
@@ -55,10 +48,6 @@ export function PhysicsPaintBrushMenu() {
   // completely independent of the brush selection.
   const menuTarget = aquarelleBrushMenuTarget.value;
   const liftTipId = aquarelleLiftTipId.value ?? 'filbert';
-  // quick-261115-oh9: the pinned texture strip's height is part of `chrome`,
-  // and it can change while the menu is open (an import selects on arrival).
-  // Reading the generation subscribes this component and feeds the effect.
-  const catalogGeneration = brushCatalogGeneration.value;
   const menuRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   // The catalog's own height, measured once the menu has a definite box. Kept
@@ -80,7 +69,7 @@ export function PhysicsPaintBrushMenu() {
     const measured = Math.ceil(chrome + list.offsetHeight);
     const current = naturalHeightRef.current!;
     if (current.value !== measured) current.value = measured;
-  }, [open, anchor?.top, catalogGeneration]);
+  }, [open, anchor?.top]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -213,11 +202,6 @@ export function PhysicsPaintBrushMenu() {
               })}
             </div>
           </SidebarScrollArea>
-          {/* quick-261115-oh9: the texture axis, OUTSIDE the scroller so the
-              chrome measurement counts it. A pick here keeps the menu open. */}
-          <div class="physics-paint-brush-menu-textures">
-            <WatercolorTextureStrip compact />
-          </div>
         </>
       )}
     </div>

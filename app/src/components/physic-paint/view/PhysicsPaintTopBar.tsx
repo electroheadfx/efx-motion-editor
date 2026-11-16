@@ -1,7 +1,7 @@
 import type { TargetedMouseEvent } from 'preact';
 import type { ReadonlySignal } from '@preact/signals';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
-import { ChevronDown, Eraser, Paintbrush, RefreshCcwDot, Wind } from 'lucide-preact';
+import { ChevronDown, Eraser, Grid2x2, Paintbrush, RefreshCcwDot, Wind } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
@@ -15,10 +15,12 @@ import {
   aquarelleRecordClock,
   aquarelleScriptRecordingEnabled,
   aquarelleSelectedTipId,
+  aquarelleTextureMenuOpen,
   emitAquarelleDry,
   setAquarelleBrushMenuOpen,
   setAquarelleParam,
   setAquarelleScriptRecordingEnabled,
+  setAquarelleTextureMenuOpen,
 } from './aquarelleRecordState';
 import { wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
@@ -137,6 +139,38 @@ export function TopBarBrushTrigger(props: {
         />
       ) : <span class="physics-paint-brush-trigger-thumb is-empty" aria-hidden="true" />}
       <span class="physics-paint-brush-trigger-name">{name}</span>
+      <ChevronDown size={13} class="physics-paint-brush-trigger-chevron" aria-hidden="true" />
+    </button>
+  );
+}
+
+/**
+ * quick 261116-gcn: the SECOND trigger inside the brush pill — the Textures
+ * axis. It carries no preset/thumb (textures are picked in the popover), so it
+ * is the tool pill's icon + name + chevron only. It renders for both tools:
+ * an eraser pick never reads a texture, but the selection persists for the
+ * brush, and the pill's lock is the bar's `disabled` prop alone.
+ */
+export function TopBarTextureTrigger(props: {
+  open: boolean;
+  onToggle: (event: TargetedMouseEvent<HTMLButtonElement>) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      class="physics-paint-brush-trigger physics-paint-texture-trigger"
+      data-watercolor-texture-trigger
+      data-testid="physics-texture-trigger"
+      aria-haspopup="menu"
+      aria-expanded={props.open}
+      title="Choose a texture"
+      aria-label="Textures"
+      disabled={props.disabled}
+      onClick={props.onToggle}
+    >
+      <Grid2x2 size={15} class="physics-paint-brush-trigger-icon" aria-hidden="true" />
+      <span class="physics-paint-brush-trigger-name">Textures</span>
       <ChevronDown size={13} class="physics-paint-brush-trigger-chevron" aria-hidden="true" />
     </button>
   );
@@ -361,15 +395,30 @@ export function PhysicsPaintTopBar({
   // fallback the retired native picker used).
   const liftTipId = aquarelleLiftTipId.value ?? 'filbert';
   const brushMenuOpen = aquarelleBrushMenuOpen.value;
+  // quick 261116-gcn: the second popover's open state (narrow read — the bar
+  // never reads the texture anchor or the modal flag).
+  const textureMenuOpen = aquarelleTextureMenuOpen.value;
   // The tool is captured when the pill opens its dropdown, so the popover
   // always shows the content of the tool that was clicked.
   const toggleBrushMenu = (tool: 'brush' | 'lift') => (event: TargetedMouseEvent<HTMLButtonElement>) => {
+    // quick 261116-gcn: the two popovers are mutually exclusive — opening one
+    // closes the other (compare-then-write closes, event handler only).
+    if (textureMenuOpen) setAquarelleTextureMenuOpen(false);
     if (brushMenuOpen) {
       setAquarelleBrushMenuOpen(false);
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
     setAquarelleBrushMenuOpen(true, { left: rect.left, top: rect.bottom + 6 }, tool);
+  };
+  const toggleTextureMenu = (event: TargetedMouseEvent<HTMLButtonElement>) => {
+    if (brushMenuOpen) setAquarelleBrushMenuOpen(false);
+    if (textureMenuOpen) {
+      setAquarelleTextureMenuOpen(false);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setAquarelleTextureMenuOpen(true, { left: rect.left, top: rect.bottom + 6 });
   };
   // UI checklist row 3: one shared Size slider — the displayed Brush size is
   // the live aquarelle size (signal read bypasses the memo).
@@ -432,6 +481,14 @@ export function PhysicsPaintTopBar({
               disabled={disabled}
             />
           )}
+          {/* quick 261116-gcn: the texture axis opens its OWN popover from this
+              second trigger, after the tool trigger and before the Script
+              switch. Unconditional for both tools. */}
+          <TopBarTextureTrigger
+            open={textureMenuOpen}
+            onToggle={toggleTextureMenu}
+            disabled={disabled}
+          />
           {ready ? <ScriptRecordingSwitch /> : null}
         </div>
       </div>
