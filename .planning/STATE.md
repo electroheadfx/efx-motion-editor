@@ -4,17 +4,17 @@ milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 63
 current_phase_name: Brush Tip Pipeline
-status: executing
-stopped_at: Completed 63-15-PLAN.md
-last_updated: "2026-11-16T07:45:52.901Z"
-last_activity: 2026-11-15
+status: verifying
+stopped_at: Completed 63-16-PLAN.md
+last_updated: "2026-11-16T08:00:15.523Z"
+last_activity: 2026-11-16
 last_activity_desc: Phase 63 execution started
-state_head: e8088bd856e0da38a0358c7e68bed304f76c9ff6
+state_head: b970e84d7933c4634a4e71d1849b83c012837129
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 16
-  completed_plans: 15
+  completed_plans: 16
   percent: 0
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-15 when v2.2.0 started)
 
 ## Current Position
 
-Phase: 63 (Brush Tip Pipeline) — READY TO EXECUTE
-Plan: 15 of 15
-Status: Ready to execute
-Last activity: 2026-11-15 — Phase 63 execution started
+Phase: 63 (Brush Tip Pipeline) — EXECUTING
+Plan: 16 of 16
+Status: Phase complete — ready for verification
+Last activity: 2026-11-16 — Phase 63 execution started
 
 
 ## Performance Metrics
@@ -141,6 +141,7 @@ Last activity: 2026-11-15 — Phase 63 execution started
 | Phase 63 P11 | 29min | 2 tasks | 4 files |
 | Phase 63 P12 | 8min | 2 tasks | 4 files |
 | Phase 63 P15 | 9min | 3 tasks | 6 files |
+| Phase 63 P63-16 | 11 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -445,6 +446,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: 63-15: codec carries ids verbatim (shape validation only); lift policy stays at the single projection toStudioStroke:207
 - [Phase 63]: 63-15: absence stays absent on decode - engine rebuild adds textureId only when presence marker is 1
 - [Phase 63]: 63-15: Studio texture pick remains realm-session state; restoring it after a realm reset is a separate UX decision, deferred
+- [Phase 63]: CR-02 closed with a binding-scoped refusedRestore latch read in prepareSave before deps.write, not a backup artifact.
+- [Phase 63]: Latch set by both refusal arms and never by missing; cleared only by bind/reset, a successful restore, or a successful sessionOnly purge commit.
+- [Phase 63]: WR-12: inner unsupported-version AQTL becomes container code aqtl-retired with a pinned named notice; no migration reader (no-backward-compat law).
 
 ### Pending Todos
 
@@ -563,8 +567,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-15T22:16:02.698Z
-Stopped at: Completed 63-15-PLAN.md
+Last session: 2026-11-16T08:00:15.490Z
+Stopped at: Completed 63-16-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
