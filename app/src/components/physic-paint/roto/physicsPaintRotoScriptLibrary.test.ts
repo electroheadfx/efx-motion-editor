@@ -892,9 +892,12 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
     // The two-realm shape: this payload is the ONLY writer of the Studio
     // realm's stored bytes. Nothing below calls rememberBrushAsset directly.
     catalog.applyBrushCatalogPayload({
-      contextId: 'ctx-63-08-save',
+      libraryRevision: 0,
       entries: [{
         tip: scriptCustomTip('wc/custom-script-save') as never,
+        // Task 2's required row fields; Task 5 owns this file's full retarget.
+        digest: 'f'.repeat(64),
+        textureRotation: 0,
         maskBase64: Buffer.from(mask).toString('base64'),
         webpBase64: Buffer.from(webpBytes).toString('base64'),
       }],
@@ -945,13 +948,15 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
     // the healthy tip's remembered bytes satisfy the unavailable one.
     const tipWithDigest = (id: string, fill: string) => ({ ...scriptCustomTip(id), asset: `brushes/${fill.repeat(64)}.webp` });
     catalog.applyBrushCatalogPayload({
-      contextId: 'ctx-63-11-unavailable-skip',
+      libraryRevision: 0,
       entries: [
         {
           tip: tipWithDigest('wc/custom-healthy', 'b') as never,
+          digest: 'b'.repeat(64),
+          textureRotation: 0,
           webpBase64: Buffer.from(brushWebp(192, 192)).toString('base64'),
         },
-        { tip: tipWithDigest('wc/custom-unavailable', 'c') as never },
+        { tip: tipWithDigest('wc/custom-unavailable', 'c') as never, digest: 'c'.repeat(64), textureRotation: 0 },
       ],
       unavailableTipIds: ['wc/custom-unavailable'],
     });
@@ -988,8 +993,8 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
     const library = await import('./physicsPaintRotoScriptLibrary');
 
     catalog.applyBrushCatalogPayload({
-      contextId: 'ctx-63-11-uncarried',
-      entries: [{ tip: scriptCustomTip('wc/custom-other') as never, webpBase64: Buffer.from(brushWebp(192, 192)).toString('base64') }],
+      libraryRevision: 0,
+      entries: [{ tip: scriptCustomTip('wc/custom-other') as never, digest: 'a'.repeat(64), textureRotation: 0, webpBase64: Buffer.from(brushWebp(192, 192)).toString('base64') }],
       unavailableTipIds: [],
     });
 

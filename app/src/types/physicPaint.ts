@@ -2500,14 +2500,17 @@ export interface PhysicPaintBrushImportRequest {
 }
 
 /**
- * Why one import was refused on the wire. The first three mirror the
- * main-realm handler's own reasons; the last two are synthesized by the
- * child's request when the bridge is unavailable or the bounded wait expires.
+ * Why one import was refused on the wire. `library-failed` mirrors the
+ * main-realm handler's native-library refusal (quick 261116-inu); `bad-mask`
+ * and `bad-file-name` are its validation refusals; the last two are
+ * synthesized by the child's request when the bridge is unavailable or the
+ * bounded wait expires.
  */
 export type PhysicPaintBrushImportFailureReason =
   | 'bad-mask'
   | 'bad-file-name'
   | 'encode-failed'
+  | 'library-failed'
   | 'bridge-unavailable'
   | 'timed-out';
 
@@ -2520,19 +2523,24 @@ export interface PhysicPaintBrushImportResult {
 }
 
 /**
- * One custom tip in the catalog snapshot. Both byte fields are OPTIONAL so an
- * unavailable tip (its stored asset could not be resolved) travels as an entry
- * with neither — its id also appears in `unavailableTipIds`.
+ * One machine-library row in the catalog snapshot. `digest` is the row's
+ * content address (64 lower-case hex) and `textureRotation` is integer DEGREES
+ * in -180..180 — both REQUIRED: they are the only way the Studio child realm
+ * ever learns a row's digest and rotation. The byte legs are OPTIONAL so an
+ * unavailable tip travels with neither — its id also appears in
+ * `unavailableTipIds`.
  */
 export interface PhysicPaintBrushCatalogEntry {
   tip: AquarelleTip;
+  digest: string;
+  textureRotation: number;
   maskBase64?: string;
   webpBase64?: string;
 }
 
-/** The ONE cross-realm catalog snapshot (D-20): custom tips only, never built-ins. */
+/** The ONE cross-realm machine-library snapshot; the revision is the staleness key. */
 export interface PhysicPaintBrushCatalogPayload {
-  contextId: string;
+  libraryRevision: number;
   entries: PhysicPaintBrushCatalogEntry[];
   unavailableTipIds: string[];
 }
@@ -2941,9 +2949,29 @@ export function isPhysicPaintImageImportResultMessage(value: unknown): value is 
 
 /** Bounded caps for the brush channels: a payload over any cap is refused whole. */
 const PHYSIC_PAINT_BRUSH_FILE_NAME_MAX_LENGTH = 512;
-const PHYSIC_PAINT_BRUSH_CONTEXT_ID_MAX_LENGTH = 256;
 const PHYSIC_PAINT_BRUSH_ID_MAX_LENGTH = 256;
 const PHYSIC_PAINT_BRUSH_CATALOG_MAX_ENTRIES = 4096;
+
+/**
+ * Exactly 64 lower-case hex characters — a library row's content address.
+ * Anything else is refused before it can name a file (T-01).
+ */
+export function isBrushLibraryDigest(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+}
+
+/**
+ * Integer DEGREES in -180..180 — the ONE rotation unit on every in-memory and
+ * JSON carrier. `3700` exists only inside the AQTL byte body.
+ */
+export function isTextureRotationDegrees(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= -180 && value <= 180;
+}
+
+/** A non-negative safe integer: the library revision is a monotonic counter. */
+function isLibraryRevision(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
 
 /** The exact custom-tip member set — anything else is an unknown member shape. */
 const AQUARELLE_TIP_MEMBER_KEYS = [
@@ -2955,6 +2983,7 @@ const BRUSH_IMPORT_FAILURE_REASONS: ReadonlySet<string> = new Set<PhysicPaintBru
   'bad-mask',
   'bad-file-name',
   'encode-failed',
+  'library-failed',
   'bridge-unavailable',
   'timed-out',
 ]);
@@ -3001,8 +3030,13 @@ function isTipSizedBrushWebp(bytes: Uint8Array): boolean {
 }
 
 export function isPhysicPaintBrushCatalogEntry(value: unknown): value is PhysicPaintBrushCatalogEntry {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['tip', 'maskBase64', 'webpBase64'])) return false;
+  if (
+    !isRecord(value)
+    || !hasOnlyKeys(value, ['tip', 'digest', 'textureRotation', 'maskBase64', 'webpBase64'])
+  ) return false;
   if (!isCustomTipWire(value.tip)) return false;
+  if (!isBrushLibraryDigest(value.digest)) return false;
+  if (!isTextureRotationDegrees(value.textureRotation)) return false;
   if (value.maskBase64 !== undefined) {
     const mask = decodeBase64OrNull(value.maskBase64);
     if (mask === null || mask.length !== TIP_MASK_BYTES) return false;
@@ -3021,8 +3055,8 @@ export function isPhysicPaintBrushCatalogEntry(value: unknown): value is PhysicP
  * WHOLE (nothing is partially applied), and it never throws.
  */
 export function isPhysicPaintBrushCatalogPayload(value: unknown): value is PhysicPaintBrushCatalogPayload {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['contextId', 'entries', 'unavailableTipIds'])) return false;
-  if (!isNonEmptyString(value.contextId) || value.contextId.length > PHYSIC_PAINT_BRUSH_CONTEXT_ID_MAX_LENGTH) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['libraryRevision', 'entries', 'unavailableTipIds'])) return false;
+  if (!isLibraryRevision(value.libraryRevision)) return false;
   if (!Array.isArray(value.entries) || value.entries.length > PHYSIC_PAINT_BRUSH_CATALOG_MAX_ENTRIES) return false;
   if (!value.entries.every(isPhysicPaintBrushCatalogEntry)) return false;
   if (!Array.isArray(value.unavailableTipIds) || value.unavailableTipIds.length > PHYSIC_PAINT_BRUSH_CATALOG_MAX_ENTRIES) return false;

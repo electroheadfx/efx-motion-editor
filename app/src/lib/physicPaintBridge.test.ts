@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TIP_MASK_BYTES, TIP_MASK_EDGE } from '@efxlab/efx-watercolor';
 import { fromTransportPayload, toTransportPayload } from './webpBytes';
 
 vi.mock('./webpFrameCodec', () => ({
@@ -8156,20 +8157,38 @@ describe('importAudio never-copy law (261009-ofk)', () => {
 //
 // Laws pinned here:
 //   1. The catalog payload guard is total and fail-closed: an unknown member,
-//      a non-string id, a mask that is not exactly 36,864 bytes after decode,
-//      a non-192×192 WebP or a built-in-category entry refuses the WHOLE
+//      a non-string id, a mask that is not exactly TIP_MASK_BYTES after
+//      decode, a non-TIP_MASK_EDGE WebP, a missing library `digest` or
+//      `textureRotation`, or a built-in-category entry refuses the WHOLE
 //      payload, and it never throws.
-//   2. A Studio import request reaches the main realm and the answer echoes
-//      the SAME operationId, with the catalog push emitted BEFORE the answer.
+//   2. A Studio import request reaches the main realm's MACHINE LIBRARY and
+//      the answer echoes the SAME operationId, with the catalog push emitted
+//      BEFORE the answer.
 //   3. The Studio's mount pull republishes a fresh snapshot and always
 //      removes its one-shot listener (including on timeout).
 //   4. The receiver hook and both main-realm installs are wired in their
 //      production mount points.
 // ---------------------------------------------------------------------------
 
-const BRUSH_MASK_BYTES = 36_864;
 const BRUSH_DIGEST = 'd'.repeat(64);
 const BRUSH_ASSET = `brushes/${BRUSH_DIGEST}.webp`;
+
+/** One machine-library row as `brush_library_write` returns it. */
+const BRUSH_LIBRARY_ROW = {
+  id: `wc/custom-${BRUSH_DIGEST.slice(0, 12)}`,
+  name: 'stamp.png',
+  digest: BRUSH_DIGEST,
+  textureRotation: 0,
+  createdAt: '2026-11-16T10:00:00Z',
+  tip: 1,
+  aspect: 1,
+  rotation: 1,
+  sizeCurve: 1,
+  scatter: 1,
+  capacity: 1,
+  grain: 1,
+  wetRound: 1,
+};
 
 /** Minimal well-formed lossless VP8L header declaring the given frame size. */
 function brushWebp(width: number, height: number): Uint8Array {
@@ -8206,13 +8225,23 @@ function brushWireTip(id: string, overrides: Record<string, unknown> = {}): Reco
   };
 }
 
+/** One otherwise-valid catalog entry: tip + the two required library fields. */
+function brushWireEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    tip: brushWireTip('wc/custom-wire-1'),
+    digest: BRUSH_DIGEST,
+    textureRotation: 0,
+    ...overrides,
+  };
+}
+
 function brushCatalogPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    contextId: 'ctx-63-05',
+    libraryRevision: 0,
     entries: [{
-      tip: brushWireTip('wc/custom-wire-1'),
-      maskBase64: bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES).fill(4)),
-      webpBase64: bytesToBase64(brushWebp(192, 192)),
+      ...brushWireEntry(),
+      maskBase64: bytesToBase64(new Uint8Array(TIP_MASK_BYTES).fill(4)),
+      webpBase64: bytesToBase64(brushWebp(TIP_MASK_EDGE, TIP_MASK_EDGE)),
     }],
     unavailableTipIds: ['wc/custom-gone'],
     ...overrides,
@@ -8270,8 +8299,8 @@ describe('63-05 brush-tip realm channels', () => {
     it('accepts a well-formed custom snapshot and an unavailable entry with neither byte field', () => {
       const payload = brushCatalogPayload({
         entries: [
-          { tip: brushWireTip('wc/custom-wire-1'), maskBase64: bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES)), webpBase64: bytesToBase64(brushWebp(192, 192)) },
-          { tip: brushWireTip('wc/custom-wire-2') },
+          { ...brushWireEntry(), maskBase64: bytesToBase64(new Uint8Array(TIP_MASK_BYTES)), webpBase64: bytesToBase64(brushWebp(TIP_MASK_EDGE, TIP_MASK_EDGE)) },
+          brushWireEntry({ tip: brushWireTip('wc/custom-wire-2'), digest: 'e'.repeat(64), textureRotation: -180 }),
         ],
       });
       expect(isPhysicPaintBrushCatalogPayload(payload)).toBe(true);
@@ -8280,52 +8309,98 @@ describe('63-05 brush-tip realm channels', () => {
     it('refuses an unknown member shape', () => {
       expect(isPhysicPaintBrushCatalogPayload(brushCatalogPayload({ extra: true }))).toBe(false);
       expect(isPhysicPaintBrushCatalogPayload({
-        entries: [{ tip: brushWireTip('wc/custom-wire-1', { mask: 'AAAA' }) }],
+        libraryRevision: 0,
+        entries: [brushWireEntry({ tip: brushWireTip('wc/custom-wire-1', { mask: 'AAAA' }) })],
+        unavailableTipIds: [],
       })).toBe(false);
       expect(isPhysicPaintBrushCatalogPayload({
-        contextId: 'ctx',
-        entries: [{ tip: brushWireTip('wc/custom-wire-1'), bytes: 'AAAA' }],
+        libraryRevision: 0,
+        entries: [brushWireEntry({ bytes: 'AAAA' })],
         unavailableTipIds: [],
       })).toBe(false);
     });
 
     it('refuses a non-string id and a non-custom category', () => {
       expect(isPhysicPaintBrushCatalogPayload({
-        contextId: 'ctx',
-        entries: [{ tip: brushWireTip('wc/custom-wire-1', { id: 7 }) }],
+        libraryRevision: 0,
+        entries: [brushWireEntry({ tip: brushWireTip('wc/custom-wire-1', { id: 7 }) })],
         unavailableTipIds: [],
       })).toBe(false);
       expect(isPhysicPaintBrushCatalogPayload({
-        contextId: 'ctx',
-        entries: [{ tip: brushWireTip('wc/round-1', { category: 'round' }) }],
-        unavailableTipIds: [],
-      })).toBe(false);
-    });
-
-    it('refuses a mask that is not exactly 36,864 bytes after decode', () => {
-      expect(isPhysicPaintBrushCatalogPayload({
-        contextId: 'ctx',
-        entries: [{ tip: brushWireTip('wc/custom-wire-1'), maskBase64: bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES - 1)) }],
+        libraryRevision: 0,
+        entries: [brushWireEntry({ tip: brushWireTip('wc/round-1', { category: 'round' }) })],
         unavailableTipIds: [],
       })).toBe(false);
     });
 
-    it('refuses a non-192×192 WebP', () => {
+    it('refuses a mask that is not exactly TIP_MASK_BYTES after decode', () => {
       expect(isPhysicPaintBrushCatalogPayload({
-        contextId: 'ctx',
-        entries: [{ tip: brushWireTip('wc/custom-wire-1'), webpBase64: bytesToBase64(brushWebp(100, 192)) }],
+        libraryRevision: 0,
+        entries: [brushWireEntry({ maskBase64: bytesToBase64(new Uint8Array(TIP_MASK_BYTES - 1)) })],
+        unavailableTipIds: [],
+      })).toBe(false);
+    });
+
+    it('refuses a non-TIP_MASK_EDGE WebP', () => {
+      expect(isPhysicPaintBrushCatalogPayload({
+        libraryRevision: 0,
+        entries: [brushWireEntry({ webpBase64: bytesToBase64(brushWebp(100, TIP_MASK_EDGE)) })],
         unavailableTipIds: [],
       })).toBe(false);
     });
 
     it('refuses duplicate ids and never throws on foreign input', () => {
       expect(isPhysicPaintBrushCatalogPayload({
-        contextId: 'ctx',
-        entries: [{ tip: brushWireTip('wc/custom-wire-1') }, { tip: brushWireTip('wc/custom-wire-1') }],
+        libraryRevision: 0,
+        entries: [brushWireEntry(), brushWireEntry()],
         unavailableTipIds: [],
       })).toBe(false);
       expect(isPhysicPaintBrushCatalogPayload(null)).toBe(false);
       expect(isPhysicPaintBrushCatalogPayload('garbage')).toBe(false);
+    });
+
+    // quick 261116-inu: `digest` and `textureRotation` are REQUIRED on the
+    // wire — the child realm has no other way to learn them — and the payload
+    // is machine-scoped: the legacy project `contextId` key is refused.
+    it('refuses an entry missing its digest or rotation, a bad revision and a legacy contextId', () => {
+      const entry = brushWireEntry();
+      const { digest: _digest, ...withoutDigest } = entry;
+      const withoutRotation = { tip: brushWireTip('wc/custom-wire-1'), digest: BRUSH_DIGEST };
+      expect(isPhysicPaintBrushCatalogPayload({
+        libraryRevision: 0,
+        entries: [withoutDigest],
+        unavailableTipIds: [],
+      })).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload({
+        libraryRevision: 0,
+        entries: [withoutRotation],
+        unavailableTipIds: [],
+      })).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload({
+        libraryRevision: 0,
+        entries: [brushWireEntry({ digest: 'D'.repeat(64) })],
+        unavailableTipIds: [],
+      })).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload({
+        libraryRevision: 0,
+        entries: [brushWireEntry({ textureRotation: 3700 })],
+        unavailableTipIds: [],
+      })).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload({
+        contextId: 'ctx-legacy',
+        entries: [],
+        unavailableTipIds: [],
+      })).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload({
+        libraryRevision: -1,
+        entries: [],
+        unavailableTipIds: [],
+      })).toBe(false);
+      expect(isPhysicPaintBrushCatalogPayload({
+        libraryRevision: 1.5,
+        entries: [],
+        unavailableTipIds: [],
+      })).toBe(false);
     });
 
     it('refuses non-canonical base64 without throwing (WR-01)', () => {
@@ -8347,7 +8422,7 @@ describe('63-05 brush-tip realm channels', () => {
     });
 
     it('pins the import request, result and catalog-request shapes', () => {
-      const mask = bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES));
+      const mask = bytesToBase64(new Uint8Array(TIP_MASK_BYTES));
       expect(isPhysicPaintBrushImportRequest({ operationId: 'op-1', fileName: 'stamp.png', maskBase64: mask })).toBe(true);
       expect(isPhysicPaintBrushImportRequest({ operationId: 'op-1', fileName: 'stamp.png', maskBase64: bytesToBase64(new Uint8Array(8)) })).toBe(false);
       expect(isPhysicPaintBrushImportRequest({ operationId: 'op-1', fileName: 'stamp.png', maskBase64: mask, projectDir: '/tmp' })).toBe(false);
@@ -8367,9 +8442,9 @@ describe('63-05 brush-tip realm channels', () => {
         fileName: 'tip.png',
         maskBase64: bytesToBase64(new Uint8Array(bytes)),
       });
-      expect(isPhysicPaintBrushImportRequest(importWire(BRUSH_MASK_BYTES))).toBe(true);
-      expect(isPhysicPaintBrushImportRequest(importWire(BRUSH_MASK_BYTES - 1))).toBe(false);
-      expect(isPhysicPaintBrushImportRequest(importWire(BRUSH_MASK_BYTES + 1))).toBe(false);
+      expect(isPhysicPaintBrushImportRequest(importWire(TIP_MASK_BYTES))).toBe(true);
+      expect(isPhysicPaintBrushImportRequest(importWire(TIP_MASK_BYTES - 1))).toBe(false);
+      expect(isPhysicPaintBrushImportRequest(importWire(TIP_MASK_BYTES + 1))).toBe(false);
     });
   });
 
@@ -8393,22 +8468,23 @@ describe('63-05 brush-tip realm channels', () => {
       }));
       vi.doMock('./ipc', async (importOriginal) => {
         const actual = await importOriginal<Record<string, unknown>>();
-        return { ...actual, ipcEfxPaintEncodeBrushMask: vi.fn(async () => ({ ok: true, data: { webp: brushWebp(192, 192), digest: BRUSH_DIGEST, width: 192, height: 192 } })) };
+        return { ...actual, ipcBrushLibraryWrite: vi.fn(async (name: string) => ({ ok: true, data: { ...BRUSH_LIBRARY_ROW, name } })) };
       });
       installBridgeWindow();
       markTauriRuntime();
 
       const bridge = await import('./physicPaintBridge');
       const catalog = await import('../stores/aquarelleBrushCatalog');
-      const assets = await import('../lib/efxPaintBrushAssets');
-      expect(catalog.customBrushTips.peek()).toHaveLength(0);
+      const watercolor = await import('@efxlab/efx-watercolor');
+      expect(catalog.libraryRows.peek()).toHaveLength(0);
 
       const cleanup = await bridge.installPhysicPaintBrushImportListener();
-      const result = await bridge.requestPhysicPaintBrushImport(new Uint8Array(BRUSH_MASK_BYTES).fill(7), 'stamp.png');
+      const result = await bridge.requestPhysicPaintBrushImport(new Uint8Array(TIP_MASK_BYTES).fill(7), 'stamp.png');
       cleanup();
 
       expect(result.ok).toBe(true);
       expect(result.entry?.name).toBe('stamp.png');
+      expect(result.entry?.id).toBe(BRUSH_LIBRARY_ROW.id);
       // Scope to this channel: a prior suite's in-flight project-context
       // publish (projectStore.closeProject leaves one) can land in the ledger
       // and must not shift the brush ordering under test.
@@ -8423,17 +8499,33 @@ describe('63-05 brush-tip realm channels', () => {
         bridge.PHYSIC_PAINT_BRUSH_CATALOG_EVENT,
         bridge.PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT,
       ]);
-      // The push carries the custom entry only, with no external path.
-      const pushed = brushEmits[1]!.payload as { entries: Array<{ tip: { id: string; category: string; asset: string }; maskBase64: string }>; unavailableTipIds: string[] };
+      // The push carries the new library row only, with no external path: the
+      // row's digest and rotation are the ONLY way the child learns them.
+      const pushed = brushEmits[1]!.payload as {
+        libraryRevision: number;
+        entries: Array<{
+          tip: { id: string; category: string; asset?: string };
+          digest: string;
+          textureRotation: number;
+          maskBase64?: string;
+          webpBase64?: string;
+        }>;
+        unavailableTipIds: string[];
+      };
       expect(isPhysicPaintBrushCatalogPayload(pushed)).toBe(true);
+      expect(pushed.libraryRevision).toBe(1);
       expect(pushed.entries).toHaveLength(1);
       expect(pushed.entries[0]!.tip.id).toBe(result.entry!.id);
       expect(pushed.entries[0]!.tip.category).toBe('custom');
-      expect(pushed.entries[0]!.tip.asset).toBe(BRUSH_ASSET);
-      expect(pushed.entries[0]!.maskBase64.length > 0).toBe(true);
-      // The main realm mutated too.
-      expect(catalog.customBrushTips.peek()).toHaveLength(1);
-      expect(assets.brushAssetBytes(BRUSH_DIGEST)).toEqual(brushWebp(192, 192));
+      expect(pushed.entries[0]!.tip.asset).toBeUndefined();
+      expect(pushed.entries[0]!.digest).toBe(BRUSH_DIGEST);
+      expect(pushed.entries[0]!.textureRotation).toBe(0);
+      expect(pushed.entries[0]!.maskBase64!.length > 0).toBe(true);
+      expect(pushed.entries[0]!.webpBase64).toBeUndefined();
+      // The main realm's MACHINE LIBRARY mutated too: one row, one mask.
+      expect(catalog.libraryRows.peek()).toHaveLength(1);
+      expect(catalog.libraryRevision.peek()).toBe(1);
+      expect(watercolor.resolveMask(result.entry!.id)).toEqual(new Uint8Array(TIP_MASK_BYTES).fill(7));
     }, 20_000);
 
     // 63-12 (WR-04): a catalog publish that fails AFTER the mutation landed
@@ -8458,7 +8550,7 @@ describe('63-05 brush-tip realm channels', () => {
       }));
       vi.doMock('./ipc', async (importOriginal) => {
         const actual = await importOriginal<Record<string, unknown>>();
-        return { ...actual, ipcEfxPaintEncodeBrushMask: vi.fn(async () => ({ ok: true, data: { webp: brushWebp(192, 192), digest: BRUSH_DIGEST, width: 192, height: 192 } })) };
+        return { ...actual, ipcBrushLibraryWrite: vi.fn(async (name: string) => ({ ok: true, data: { ...BRUSH_LIBRARY_ROW, name } })) };
       });
       installBridgeWindow();
       markTauriRuntime();
@@ -8466,18 +8558,17 @@ describe('63-05 brush-tip realm channels', () => {
 
       const bridge = await import('./physicPaintBridge');
       const catalog = await import('../stores/aquarelleBrushCatalog');
-      const assets = await import('../lib/efxPaintBrushAssets');
 
       const cleanup = await bridge.installPhysicPaintBrushImportListener();
-      const result = await bridge.requestPhysicPaintBrushImport(new Uint8Array(BRUSH_MASK_BYTES).fill(2), 'larch.png');
+      const result = await bridge.requestPhysicPaintBrushImport(new Uint8Array(TIP_MASK_BYTES).fill(2), 'larch.png');
       cleanup();
 
       expect(result.ok).toBe(true);
       expect(result.entry?.name).toBe('larch.png');
-      expect(catalog.customBrushTips.peek()).toHaveLength(1);
-      expect(catalog.customBrushTips.peek()[0]!.id).toBe(result.entry!.id);
-      // The landed mutation survives: the stored digest bytes are still cached.
-      expect(assets.brushAssetBytes(BRUSH_DIGEST)).toEqual(brushWebp(192, 192));
+      // The landed mutation survives the failed notification: row + revision.
+      expect(catalog.libraryRows.peek()).toHaveLength(1);
+      expect(catalog.libraryRows.peek()[0]!.tip.id).toBe(result.entry!.id);
+      expect(catalog.libraryRevision.peek()).toBe(1);
       // The publish was still attempted ahead of the answer.
       const brushEmits = emits.filter((entry) => entry.event.startsWith('physic-paint:brush-'));
       expect(brushEmits.map((entry) => entry.event)).toEqual([
@@ -8490,7 +8581,7 @@ describe('63-05 brush-tip realm channels', () => {
 
     // 63-12 (WR-04): a throwing handler still answers through the Tauri
     // listener with a defined failure reason instead of a 15 s timeout.
-    it('answers {ok:false, reason:encode-failed} when the encode IPC rejects (WR-04)', async () => {
+    it('answers {ok:false, reason:encode-failed} when the library IPC rejects (WR-04)', async () => {
       vi.resetModules();
       const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
       const emits: Array<{ target: string; event: string; payload: unknown }> = [];
@@ -8506,7 +8597,7 @@ describe('63-05 brush-tip realm channels', () => {
       }));
       vi.doMock('./ipc', async (importOriginal) => {
         const actual = await importOriginal<Record<string, unknown>>();
-        return { ...actual, ipcEfxPaintEncodeBrushMask: vi.fn(async () => { throw new Error('encode transport refused'); }) };
+        return { ...actual, ipcBrushLibraryWrite: vi.fn(async () => { throw new Error('library transport refused'); }) };
       });
       installBridgeWindow();
       markTauriRuntime();
@@ -8516,14 +8607,15 @@ describe('63-05 brush-tip realm channels', () => {
       const catalog = await import('../stores/aquarelleBrushCatalog');
 
       const cleanup = await bridge.installPhysicPaintBrushImportListener();
-      const result = await bridge.requestPhysicPaintBrushImport(new Uint8Array(BRUSH_MASK_BYTES).fill(5), 'pine.png');
+      const result = await bridge.requestPhysicPaintBrushImport(new Uint8Array(TIP_MASK_BYTES).fill(5), 'pine.png');
       cleanup();
 
       expect(result.ok).toBe(false);
       if (result.ok) return;
       expect(result.reason).toBe('encode-failed');
       expect(result.operationId.startsWith('physics-paint-brush-import-')).toBe(true);
-      expect(catalog.customBrushTips.peek()).toHaveLength(0);
+      expect(catalog.libraryRows.peek()).toHaveLength(0);
+      expect(catalog.libraryRevision.peek()).toBe(0);
       const brushEmits = emits.filter((entry) => entry.event.startsWith('physic-paint:brush-'));
       expect(brushEmits.map((entry) => entry.event)).toEqual([
         bridge.PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_EVENT,
@@ -8538,7 +8630,7 @@ describe('63-05 brush-tip realm channels', () => {
       vi.resetModules();
       vi.doMock('./ipc', async (importOriginal) => {
         const actual = await importOriginal<Record<string, unknown>>();
-        return { ...actual, ipcEfxPaintEncodeBrushMask: vi.fn(async () => { throw new Error('encode transport refused'); }) };
+        return { ...actual, ipcBrushLibraryWrite: vi.fn(async () => { throw new Error('library transport refused'); }) };
       });
       installBridgeWindow();
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -8558,7 +8650,7 @@ describe('63-05 brush-tip realm channels', () => {
         detail: {
           operationId: 'op-window-1',
           fileName: 'yew.png',
-          maskBase64: bytesToBase64(new Uint8Array(BRUSH_MASK_BYTES).fill(1)),
+          maskBase64: bytesToBase64(new Uint8Array(TIP_MASK_BYTES).fill(1)),
         },
       } as unknown as Event);
 
@@ -8673,7 +8765,14 @@ describe('63-05 brush-tip realm channels', () => {
       const cleanup = await bridge.installPhysicPaintBrushCatalogRequestListener();
       emits.length = 0;
 
-      catalog.resetAquarelleBrushState();
+      // A real machine-library mutation reaches the child through the one
+      // installed publisher; the store itself never broadcasts.
+      catalog.replaceLibraryEntries([{
+        tip: catalog.libraryRowToTip(BRUSH_LIBRARY_ROW),
+        digest: BRUSH_DIGEST,
+        textureRotation: 0,
+      }]);
+      catalog.publishBrushCatalog();
 
       await vi.waitFor(() => {
         expect(emits).toContain(bridge.PHYSIC_PAINT_BRUSH_CATALOG_EVENT);
@@ -8691,5 +8790,11 @@ describe('63-05 brush-tip realm channels', () => {
     expect(hook).toContain('applyBrushCatalogPayload(value)');
     expect(main).toContain('installPhysicPaintBrushImportListener()');
     expect(main).toContain('installPhysicPaintBrushCatalogRequestListener()');
+    // quick 261116-inu: the machine library is scanned and decoded ONCE,
+    // before the first render, so any project open can replay a stroke.
+    const loadAt = main.indexOf('await loadBrushLibrary();');
+    const renderAt = main.indexOf('render(<App />, root);');
+    expect(loadAt > 0).toBe(true);
+    expect(loadAt).toBeLessThan(renderAt);
   });
 });

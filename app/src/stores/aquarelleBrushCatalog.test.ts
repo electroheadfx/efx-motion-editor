@@ -1,18 +1,24 @@
 /**
- * 63-04 / TIP-11 / TIP-13 — the project brush-tip catalog standing pins.
+ * quick 261116-inu (supersedes 63-04's project-scoped pins) — the
+ * MACHINE-scoped brush catalog standing pins.
  *
  * Laws pinned here:
- *   1. The built-ins come from `BUILTIN_TIPS` (63-03) and are always listed
- *      first; a fresh catalog with no project imports resolves them.
+ *   1. The built-ins come from `BUILTIN_TIPS` and are listed first (Task 3
+ *      deletes them); a fresh catalog resolves them.
  *   2. `replaceUnavailableTipIds` REPLACES the whole set — `[]` clears it and
  *      a second call never appends to the first (D-20).
- *   3. `buildProjectBrushPack` covers CUSTOM entries only and returns `null`
- *      when there are none, so a project with no imports omits the key (D-10).
- *   4. Built-in ids never appear in a project pack.
- *   5. `applyBrushCatalogPayload` populates a FRESH module instance — the
- *      Studio realm's starting state — and REPLACES rather than appends
- *      (63-05 / D-20): a second payload without a prior id leaves that id
- *      unlisted and its mask unresolvable.
+ *   3. `replaceLibraryEntries` is replace-only and compare-then-write: a real
+ *      replacement bumps `libraryRevision` and `brushCatalogGeneration` once;
+ *      an identical replacement writes nothing.
+ *   4. The machine library survives a project close: rows, masks and
+ *      `libraryRevision` are untouched by `closeProject` (spec 04).
+ *   5. `buildBrushCatalogPayload(libraryRevision)` reads the LIBRARY ROWS and
+ *      stamps the revision; `applyBrushCatalogPayload` replaces this realm's
+ *      rows, masks and unavailable set and adopts the payload's revision.
+ *
+ * The `applyProjectBrushSet` / `buildProjectBrushPack` blocks below still pin
+ * the legacy project carrier Task 4 deletes; they are updated only where the
+ * machine law changed their inputs.
  *
  * Assertion style: scalar predicates (toHaveLength / toBe) so failures stay
  * one-line, matching the 63-01 corpus.
@@ -22,13 +28,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BUILTIN_TIPS,
   TIP_MASK_BYTES,
+  TIP_MASK_EDGE,
   buildBrushForStroke,
+  registerMask,
   resetMaskRegistry,
   resolveMask,
   type AquarelleTip,
 } from '@efxlab/efx-watercolor';
 import { bytesToBase64, decodeBridgeBase64 } from '../lib/webpBytes';
-import { brushAssetBytes, pendingBrushAssets, resetBrushAssets } from '../lib/efxPaintBrushAssets';
+import {
+  brushAssetBytes,
+  pendingBrushAssets,
+  rememberBrushAsset,
+  resetBrushAssets,
+} from '../lib/efxPaintBrushAssets';
 import {
   loadProjectBrushSet,
   type ProjectBrushSet,
@@ -46,11 +59,13 @@ import {
   buildBrushCatalogPayload,
   buildProjectBrushPack,
   customBrushTips,
+  libraryRevision,
   listAquarelleBrushTips,
+  publishBrushCatalog,
   replaceCustomBrushTips,
+  replaceLibraryEntries,
   replaceUnavailableTipIds,
   resetAquarelleBrushCatalog,
-  resetAquarelleBrushState,
   resolveCatalogTip,
   unavailableTipCount,
   unavailableTipIds,
@@ -231,7 +246,9 @@ describe('aquarelleBrushCatalog — applyProjectBrushSet (63-07 / D-17 / D-20)',
     expect(buildBrushForStroke(healthy.id).id).toBe('round');
     expect(resolveMask(healthy.id)).toBe(healthyMask);
     const healthyBrush = buildBrushForStroke('round', { textureId: healthy.id });
-    expect(healthyBrush.tipSize).toBe(192);
+    // A library texture is TIP_MASK_EDGE square (262,144 bytes) — the tip size
+    // is derived from the mask, never from the procedural TIP_SIZE (192).
+    expect(healthyBrush.tipSize).toBe(TIP_MASK_EDGE);
     expect(healthyBrush.tipData.every((value, index) => value === healthyMask[index])).toBe(true);
   });
 });
@@ -345,10 +362,26 @@ describe('aquarelleBrushCatalog — the one project-tip normalization law (CR-01
           ok: true,
           digest: entry.relativePath.slice('brushes/'.length, -'.webp'.length),
           mask: new Uint8Array(TIP_MASK_BYTES).fill(7),
-          webp: brushWebp(192, 192),
+          webp: brushWebp(TIP_MASK_EDGE, TIP_MASK_EDGE),
         })),
       };
     };
+  }
+
+  /**
+   * The payload reads the machine library's ROWS (Task 2): install the open's
+   * tips as rows beside the legacy project-open apply, exactly as the boot
+   * scan installs its own. Task 4 deletes this block with the project carrier.
+   */
+  function installRowsFromSet(set: ProjectBrushSet): void {
+    replaceLibraryEntries(
+      set.entries.map((entry) => ({
+        tip: entry.tip,
+        digest: entry.digest ?? DIGEST,
+        textureRotation: 0,
+      })),
+      set.unavailableTipIds,
+    );
   }
 
   it('normalizes a stray-member tip with a foreign category into a wire-valid custom entry', async () => {
@@ -360,16 +393,20 @@ describe('aquarelleBrushCatalog — the one project-tip normalization law (CR-01
     );
     expect(set.entries).toHaveLength(1);
     applyProjectBrushSet(set, '/project/pkg');
+    installRowsFromSet(set);
 
-    const payload = buildBrushCatalogPayload('ctx-63-10-stray');
+    const payload = buildBrushCatalogPayload(5);
 
     // No guard relaxation: the payload passes the strict wire law unchanged.
     expect(isPhysicPaintBrushCatalogPayload(payload)).toBe(true);
+    expect(payload.libraryRevision).toBe(5);
     expect(payload.entries).toHaveLength(1);
     const entry = payload.entries[0]!;
     expect(entry.tip.id).toBe('wc/custom-stray');
     expect(entry.tip.category).toBe('custom');
     expect(Object.prototype.hasOwnProperty.call(entry.tip, 'strayMember')).toBe(false);
+    expect(entry.digest).toBe(DIGEST);
+    expect(entry.textureRotation).toBe(0);
     expect(entry.maskBase64 === undefined).toBe(false);
     expect(decodeBridgeBase64(entry.maskBase64!)).toEqual(new Uint8Array(TIP_MASK_BYTES).fill(7));
   });
@@ -382,8 +419,9 @@ describe('aquarelleBrushCatalog — the one project-tip normalization law (CR-01
       okPort([]),
     );
     applyProjectBrushSet(set, '/project/pkg');
+    installRowsFromSet(set);
 
-    const payload = buildBrushCatalogPayload('ctx-63-10-category');
+    const payload = buildBrushCatalogPayload(6);
 
     expect(isPhysicPaintBrushCatalogPayload(payload)).toBe(true);
     expect(payload.entries.map((entry) => entry.tip.id)).toEqual(['wc/custom-texture']);
@@ -410,7 +448,8 @@ describe('aquarelleBrushCatalog — the one project-tip normalization law (CR-01
     expect(set.failures).toContainEqual({ tipId: 'wc/builtin-chalk', reason: 'builtin-id' });
 
     applyProjectBrushSet(set, '/project/pkg');
-    const payload = buildBrushCatalogPayload('ctx-63-10-builtin');
+    installRowsFromSet(set);
+    const payload = buildBrushCatalogPayload(7);
 
     expect(isPhysicPaintBrushCatalogPayload(payload)).toBe(true);
     expect(payload.entries.map((entry) => entry.tip.id)).toEqual(['wc/custom-sibling']);
@@ -471,11 +510,13 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
     const assets = await import('../lib/efxPaintBrushAssets');
 
     const mask = new Uint8Array(TIP_MASK_BYTES).fill(9);
-    const webp = brushWebp(192, 192);
+    const webp = brushWebp(TIP_MASK_EDGE, TIP_MASK_EDGE);
     const payload: PhysicPaintBrushCatalogPayload = {
-      contextId: 'ctx-63-05-fresh',
+      libraryRevision: 2,
       entries: [{
         tip: customTip('wc/custom-fresh-1'),
+        digest: DIGEST,
+        textureRotation: 37,
         maskBase64: bytesToBase64(mask),
         webpBase64: bytesToBase64(webp),
       }],
@@ -484,6 +525,9 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
 
     catalog.applyBrushCatalogPayload(payload);
 
+    expect(catalog.libraryRows.value).toHaveLength(1);
+    expect(catalog.libraryRows.value[0]).toMatchObject({ digest: DIGEST, textureRotation: 37 });
+    expect(catalog.libraryRevision.value).toBe(2);
     expect(catalog.customBrushTips.value).toHaveLength(1);
     expect(catalog.customBrushTips.value[0]?.id).toBe('wc/custom-fresh-1');
     expect(catalog.listAquarelleBrushTips()).toHaveLength(4);
@@ -510,8 +554,13 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
 
     const firstMask = new Uint8Array(TIP_MASK_BYTES).fill(1);
     catalog.applyBrushCatalogPayload({
-      contextId: 'ctx-63-05-first',
-      entries: [{ tip: customTip('wc/custom-replaced-1'), maskBase64: bytesToBase64(firstMask) }],
+      libraryRevision: 1,
+      entries: [{
+        tip: customTip('wc/custom-replaced-1'),
+        digest: 'a'.repeat(64),
+        textureRotation: 0,
+        maskBase64: bytesToBase64(firstMask),
+      }],
       unavailableTipIds: [],
     });
     expect(catalog.customBrushTips.value).toHaveLength(1);
@@ -519,8 +568,13 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
 
     const secondMask = new Uint8Array(TIP_MASK_BYTES).fill(2);
     catalog.applyBrushCatalogPayload({
-      contextId: 'ctx-63-05-second',
-      entries: [{ tip: customTip('wc/custom-replaced-2'), maskBase64: bytesToBase64(secondMask) }],
+      libraryRevision: 2,
+      entries: [{
+        tip: customTip('wc/custom-replaced-2'),
+        digest: 'b'.repeat(64),
+        textureRotation: -120,
+        maskBase64: bytesToBase64(secondMask),
+      }],
       unavailableTipIds: [],
     });
 
@@ -543,7 +597,7 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
     // An EMPTY payload is still a delivered catalog: this realm now knows the
     // project has no imports, which is a known-empty state, not an unknown one.
     catalog.applyBrushCatalogPayload({
-      contextId: 'ctx-63-11-synced-empty',
+      libraryRevision: 0,
       entries: [],
       unavailableTipIds: [],
     });
@@ -553,14 +607,14 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
   it('a repeated payload leaves the flag true and bumps no catalog generation for it (WR-03)', async () => {
     const catalog = await import('./aquarelleBrushCatalog');
     catalog.applyBrushCatalogPayload({
-      contextId: 'ctx-63-11-repeat-1',
+      libraryRevision: 0,
       entries: [],
       unavailableTipIds: [],
     });
     const settledGeneration = catalog.brushCatalogGeneration.value;
 
     catalog.applyBrushCatalogPayload({
-      contextId: 'ctx-63-11-repeat-2',
+      libraryRevision: 0,
       entries: [],
       unavailableTipIds: [],
     });
@@ -572,7 +626,7 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
   it('a catalog reset never clears the flag behind a delivered empty snapshot (WR-03)', async () => {
     const catalog = await import('./aquarelleBrushCatalog');
     catalog.applyBrushCatalogPayload({
-      contextId: 'ctx-63-11-reset',
+      libraryRevision: 0,
       entries: [],
       unavailableTipIds: [],
     });
@@ -586,7 +640,7 @@ describe('aquarelleBrushCatalog — applyBrushCatalogPayload on a FRESH module i
   });
 });
 
-describe('aquarelleBrushCatalog — replace on open, reset on close, publish (63-07 / D-20 / TIP-17)', () => {
+describe('aquarelleBrushCatalog — the machine library lifecycle (quick 261116-inu / spec 04)', () => {
   it('opening B replaces open A: only B is listed, resolvable and remembered', () => {
     const digestA = 'a'.repeat(64);
     const digestB = 'c'.repeat(64);
@@ -626,43 +680,46 @@ describe('aquarelleBrushCatalog — replace on open, reset on close, publish (63
     expect(pendingBrushAssets('/project/brush-package')).toHaveLength(0);
   });
 
-  it('close resets to exactly the three built-ins and empties the asset cache', () => {
+  /**
+   * Run the production project-close leg that used to clear the catalog, in
+   * the SAME fresh module graph as the catalog these tests inspect (the
+   * preceding describe resets the registry, so a dynamic import here builds a
+   * new graph and every dynamic import below shares it).
+   */
+  async function closeProjectNow(): Promise<void> {
+    const { projectStore } = await import('./projectStore');
+    projectStore.closeProject();
+  }
+
+  it('a project close leaves every library row, its mask and the revision intact', async () => {
+    const catalog = await import('./aquarelleBrushCatalog');
+    const watercolor = await import('@efxlab/efx-watercolor');
+    // A fresh graph starts unseeded, but a sibling dynamic test's rows persist
+    // across `it` bodies — the file-level afterEach resets the STATIC graph.
+    catalog.resetAquarelleBrushCatalog();
     const digest = 'd'.repeat(64);
-    const mask = new Uint8Array(TIP_MASK_BYTES).fill(3);
-    const tip = customTip('wc/custom-open', { asset: `brushes/${digest}.webp` });
-    applyProjectBrushSet(
-      {
-        entries: [
-          { tip, digest, mask },
-          { tip: customTip('wc/custom-gone'), digest: null, mask: null },
-        ],
-        masks: [{ id: tip.id, mask }],
-        unavailableTipIds: ['wc/custom-gone'],
-        assets: [{ digest, webp: new Uint8Array([82, 73, 70, 70, 9]) }],
-        failures: [],
-      },
-      '/project/brush-package',
-    );
-    expect(brushAssetBytes(digest) === undefined).toBe(false);
+    const mask = new Uint8Array(watercolor.TIP_MASK_BYTES).fill(3);
+    const tip = customTip('wc/custom-machine');
+    watercolor.registerMask(tip.id, mask);
+    catalog.replaceLibraryEntries([{ tip, digest, textureRotation: 37 }], ['wc/custom-gone']);
+    const revision = catalog.libraryRevision.value;
+    const rows = catalog.libraryRows.value;
 
-    resetAquarelleBrushState();
+    await closeProjectNow();
 
-    expect(customBrushTips.value).toHaveLength(0);
-    expect(unavailableTipCount.value).toBe(0);
-    expect(listAquarelleBrushTips().map((entry) => entry.id).join(',')).toBe(
-      'wc/builtin-bristle,wc/builtin-chalk,wc/builtin-sponge',
+    // Machine-scope law (spec 04): a close is not a library event — the rows,
+    // the mask registry, the unavailable set and the revision all survive.
+    expect(catalog.libraryRows.value).toBe(rows);
+    expect(catalog.customBrushTips.value.map((entry) => entry.id)).toEqual([tip.id]);
+    expect(catalog.libraryRevision.value).toBe(revision);
+    expect(catalog.unavailableTipIds.value.has('wc/custom-gone')).toBe(true);
+    expect(watercolor.resolveMask(tip.id)).toBe(mask);
+    expect(catalog.listAquarelleBrushTips().map((entry) => entry.id).join(',')).toBe(
+      'wc/builtin-bristle,wc/builtin-chalk,wc/builtin-sponge,wc/custom-machine',
     );
-    expect(resolveCatalogTip('wc/custom-open')).toBe(null);
-    expect(resolveMask('wc/custom-open')).toBe(null);
-    expect(resolveMask('wc/custom-gone')).toBe(null);
-    expect(resolveMask('wc/builtin-bristle') === null).toBe(false);
-    expect(brushAssetBytes(digest)).toBeUndefined();
-    expect(pendingBrushAssets('/project/brush-package')).toHaveLength(0);
-    // A New Project starts neutral for any former custom id, not blank.
-    expect(buildBrushForStroke('round', { textureId: 'wc/custom-open' }).id).toBe('round');
   });
 
-  it('every apply and every reset publishes exactly one snapshot', () => {
+  it('one applied open publishes exactly once; a library replacement never publishes by itself', () => {
     const published: number[] = [];
     _setBrushCatalogPublisher(() => {
       published.push(published.length + 1);
@@ -680,21 +737,27 @@ describe('aquarelleBrushCatalog — replace on open, reset on close, publish (63
     applyProjectBrushSet(set, '/project/brush-package');
     expect(published).toHaveLength(1);
 
-    resetAquarelleBrushState();
-    expect(published).toHaveLength(2);
+    // The machine library's replacement writer is silent: the boot
+    // orchestration publishes AFTER it, and only for a REAL change.
+    const revision = libraryRevision.value;
+    const row = { tip: customTip('wc/custom-row'), digest: DIGEST, textureRotation: 0 };
+    replaceLibraryEntries([row]);
+    expect(published).toHaveLength(1);
+    expect(libraryRevision.value).toBe(revision + 1);
+    replaceLibraryEntries([{ tip: row.tip, digest: row.digest, textureRotation: row.textureRotation }]);
+    expect(published).toHaveLength(1);
+    expect(libraryRevision.value).toBe(revision + 1);
 
-    // A repeated reset publishes too: every close is a lifecycle event the
-    // Studio mirrors, even when the state was already empty.
-    resetAquarelleBrushState();
-    expect(published).toHaveLength(3);
+    publishBrushCatalog();
+    expect(published).toHaveLength(2);
   });
 
-  it('a script mask is registry-only and never survives a project reset', async () => {
-    // Dynamic import: the module-cache instance is the one the static imports
-    // above use (this describe never calls vi.resetModules), so the registry
-    // checks read the same graph the function writes.
+  it('a script mask is registry-only and survives a project close', async () => {
     const catalog = await import('./aquarelleBrushCatalog');
     const watercolor = await import('@efxlab/efx-watercolor');
+    // Same-graph hygiene as the close test above (the static afterEach cannot
+    // reach this graph).
+    catalog.resetAquarelleBrushCatalog();
     expect(catalog.registerScriptMask, 'catalog must export registerScriptMask').toBeTypeOf('function');
     const mask = new Uint8Array(watercolor.TIP_MASK_BYTES).fill(8);
 
@@ -718,36 +781,38 @@ describe('aquarelleBrushCatalog — replace on open, reset on close, publish (63
     expect(catalog.registerScriptMask('wc/custom-script-bad', new Uint8Array(5))).toBe(false);
     expect(watercolor.resolveMask('wc/custom-script-bad')).toBe(null);
 
-    // T-63-23: a close / New Project clears every session mask.
-    catalog.resetAquarelleBrushState();
-    expect(watercolor.resolveMask('wc/custom-script')).toBe(null);
+    // quick 261116-inu: a project close no longer clears the registry — the
+    // script's mask stays resolvable until a real library replacement swaps
+    // the registry as a whole.
+    await closeProjectNow();
+    expect(watercolor.resolveMask('wc/custom-script')).toBe(mask);
   });
 
-  it('the published payload carries each custom tip mask and its stored WebP bytes', () => {
+  it('the published payload carries the library revision and each row its digest, rotation and mask', () => {
     const digest = 'e'.repeat(64);
     const mask = new Uint8Array(TIP_MASK_BYTES).fill(5);
-    const webp = new Uint8Array([82, 73, 70, 70, 11, 12]);
+    const webp = brushWebp(TIP_MASK_EDGE, TIP_MASK_EDGE);
     const tip = customTip('wc/custom-payload', { asset: `brushes/${digest}.webp` });
     const gone = customTip('wc/custom-payload-gone', { asset: `brushes/${'f'.repeat(64)}.webp` });
 
-    applyProjectBrushSet(
-      {
-        entries: [
-          { tip, digest, mask },
-          { tip: gone, digest: null, mask: null },
-        ],
-        masks: [{ id: tip.id, mask }],
-        unavailableTipIds: [gone.id],
-        assets: [{ digest, webp }],
-        failures: [],
-      },
-      '/project/brush-package',
+    // Library rows are the payload's ONE source (Task 2). The mask registry
+    // supplies the mask leg; the asset cache (until Task 4 removes it) still
+    // supplies the stored-WebP leg for a tip that names an asset.
+    registerMask(tip.id, mask);
+    rememberBrushAsset(digest, webp);
+    replaceLibraryEntries(
+      [
+        { tip, digest, textureRotation: 37 },
+        { tip: gone, digest: 'f'.repeat(64), textureRotation: -90 },
+      ],
+      [gone.id],
     );
 
-    const payload = buildBrushCatalogPayload('ctx-63-07-payload');
+    const payload = buildBrushCatalogPayload(9);
 
-    expect(payload.contextId).toBe('ctx-63-07-payload');
+    expect(payload.libraryRevision).toBe(9);
     expect(payload.entries).toHaveLength(2);
+    expect(payload.entries[0]).toMatchObject({ digest, textureRotation: 37 });
     expect(payload.entries[0]!.tip.id).toBe('wc/custom-payload');
     expect(payload.entries[0]!.maskBase64 === undefined).toBe(false);
     expect(decodeBridgeBase64(payload.entries[0]!.maskBase64!)).toEqual(mask);

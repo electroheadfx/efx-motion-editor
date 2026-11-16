@@ -50,7 +50,7 @@ import {
 } from './efxPaintStore';
 import {readAudioSourceBytes} from '../lib/mainAppAudioSources';
 import {readMceAudioSourcePath, readMceVideoLayerPath} from '../lib/mceAudioSourcePath';
-import {applyProjectBrushSet, buildProjectBrushPack, resetAquarelleBrushState} from './aquarelleBrushCatalog';
+import {applyProjectBrushSet, buildProjectBrushPack} from './aquarelleBrushCatalog';
 import {pendingBrushAssets} from '../lib/efxPaintBrushAssets';
 import {loadProjectBrushSet} from '../lib/efxPaintBrushSet';
 
@@ -1242,10 +1242,8 @@ export const projectStore = {
     paintStore.reset();
     physicPaintStore.reset({ preserveRotoAlphaCanvases: options?.preservePreparedRotoCanvases });
     resetEfxPaintStore();
-    // The brush catalog is project-scoped (D-20 / TIP-17): closing a project
-    // leaves exactly the three built-in tips, no custom masks, and an empty
-    // stored-asset cache — the Studio receives the reset snapshot.
-    resetAquarelleBrushState();
+    // The brush library is a MACHINE resource (quick 261116-inu / spec 04):
+    // closing a project never clears its rows, masks or revision.
     motionBlurStore.reset();
     audioPeaksCache.clear();
     audioEngine.stopAll();

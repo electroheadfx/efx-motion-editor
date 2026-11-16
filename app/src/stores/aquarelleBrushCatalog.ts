@@ -1,35 +1,28 @@
 /**
- * aquarelleBrushCatalog — the project-scoped brush-tip catalog (63-04 /
- * TIP-11 / TIP-13 / D-10 / D-20).
+ * aquarelleBrushCatalog — the MACHINE-scoped brush-texture catalog
+ * (quick 261116-inu / spec 04; supersedes the project-scoped 63-04 store).
  *
  * WHAT THIS OWNS
- *   · `customBrushTips`    — the imported tips of the OPEN project. Backed by
- *                            `customTips`-style module state, but owned by the
- *                            project instead of the docker UI, so a save can
- *                            emit the pack (see `buildProjectBrushPack`).
- *   · `unavailableTipIds`  — the per-open set of ids whose stored asset could
- *                            not be resolved. REPLACE-ONLY: one setter,
- *                            `replaceUnavailableTipIds`, mirrors D-20 (an open
- *                            replaces, a close resets) and can never be
- *                            appended to by accident.
+ *   · `libraryRows`        — one row per `catalog.json` entry under
+ *                            `~/.config/efx-motion/brushes/`: the tip half plus
+ *                            the library-only `digest` and `textureRotation`.
+ *   · `customBrushTips`    — the tip list the surfaces render (the Default chip
+ *                            is the strip's own `null` entry, never a row).
+ *   · `unavailableTipIds`  — the ids whose stored file is missing or unusable
+ *                            on this machine. REPLACE-ONLY.
+ *   · `libraryRevision`    — a monotonic counter bumped once per REAL library
+ *                            mutation; the cross-realm payload's staleness key.
  *   · `brushCatalogGeneration` — bumped on every real mutation so derived
  *                            readers can key a cache (maskGeneration analog).
  *
- * WHY THIS LIVES IN `app/src/stores/` (recorded relocation)
- *   PATTERNS.md G-N classifies `aquarelleBrushCatalog` under
- *   `app/src/components/physic-paint/view/` (analogs: `BrushesDocker.tsx`'s
- *   `customTips` module signal and `aquarelleRecordState.ts`). This module is
- *   placed in `app/src/stores/` instead because BOTH realms import it — the
- *   main window publishes the catalog into the `.mce`, the Studio child
- *   applies it — and every other cross-realm store in the project lives under
- *   `app/src/stores/`. The two analogs supply the signal conventions, not the
- *   directory; the move is deliberate, not drift.
+ * WHY THIS LIVES IN `app/src/stores/`
+ *   BOTH realms import it — the main window owns the library and publishes the
+ *   snapshot, the Studio child applies it — and every other cross-realm store
+ *   in the project lives under `app/src/stores/`.
  *
  * TRUTH SOURCE
- *   The three built-ins ALWAYS come from `BUILTIN_TIPS` (63-03) and are never
- *   stored in a project: `buildProjectBrushPack` returns entries over CUSTOM
- *   tips only, and `null` when there are none, so a project with no imports
- *   omits the `brushPack` key entirely (D-10).
+ *   The machine library's `catalog.json` is the one truth. Nothing here is
+ *   project data: opening, closing or creating a project never clears it.
  *
  * Preact signals only (no `useState`); every setter compares before writing and
  * is idempotent — a repeated state application bumps nothing.
@@ -43,7 +36,6 @@ import {
   buildBrushPackSnapshot,
   registerMask,
   replaceMaskRegistry,
-  resetMaskRegistry,
   resolveMask,
   type AquarelleTip,
 } from '@efxlab/efx-watercolor';
@@ -58,7 +50,6 @@ import {
   brushAssetDigestFromPath,
   markBrushAssetsWritten,
   rememberBrushAsset,
-  resetBrushAssets,
 } from '../lib/efxPaintBrushAssets';
 import { decodeBridgeBase64, encodeBridgeBase64 } from '../lib/webpBytes';
 import { normalizeProjectBrushTip, type ProjectBrushSet } from '../lib/efxPaintBrushSet';
@@ -200,8 +191,18 @@ export interface AquarelleLibraryRow {
 
 const libraryRowsSignal = signal<readonly AquarelleLibraryRow[]>([]);
 
+/**
+ * Monotonic library mutation counter: bumped once per REAL library change (an
+ * import, a boot replacement, a future delete or rotation). It is the
+ * cross-realm payload's staleness key — never a project identity.
+ */
+const libraryRevisionSignal = signal(0);
+
 /** The machine library's rows, read-only (mutate via the setters). */
 export const libraryRows: ReadonlySignal<readonly AquarelleLibraryRow[]> = libraryRowsSignal;
+
+/** How many real library mutations this realm has recorded. */
+export const libraryRevision: ReadonlySignal<number> = libraryRevisionSignal;
 
 /**
  * ROW → TIP MAPPING. Copies exactly the tip members (`id`, `category`, `name`
@@ -277,7 +278,46 @@ export function upsertLibraryRow(row: AquarelleLibraryRow): void {
     libraryRowsSignal.value = next;
     customBrushTipsSignal.value = next.map((entry) => entry.tip);
     brushCatalogGenerationSignal.value += 1;
+    libraryRevisionSignal.value += 1;
   });
+}
+
+/**
+ * REPLACE the whole machine library (boot scan / cross-realm payload). Never
+ * appends. An identical row list AND an identical unavailable set is a no-op —
+ * a repeated payload writes nothing and bumps no revision.
+ */
+export function replaceLibraryEntries(
+  rows: readonly AquarelleLibraryRow[],
+  unavailable: readonly string[] = [],
+): void {
+  const nextRows = [...rows];
+  const currentRows = libraryRowsSignal.value;
+  const rowsChanged =
+    nextRows.length !== currentRows.length
+    || nextRows.some((row, index) => !sameLibraryRow(row, currentRows[index]!));
+  const nextUnavailable = new Set(unavailable);
+  const currentUnavailable = unavailableTipIdsSignal.value;
+  const unavailableChanged =
+    nextUnavailable.size !== currentUnavailable.size
+    || [...nextUnavailable].some((id) => !currentUnavailable.has(id));
+  if (!rowsChanged && !unavailableChanged) return;
+  batch(() => {
+    if (rowsChanged) {
+      libraryRowsSignal.value = nextRows;
+      customBrushTipsSignal.value = nextRows.map((row) => row.tip);
+    }
+    if (unavailableChanged) unavailableTipIdsSignal.value = nextUnavailable;
+    brushCatalogGenerationSignal.value += 1;
+    // Boot is a real library change: the machine catalog now has an identity
+    // the Studio can compare against. One bump per replacement.
+    libraryRevisionSignal.value += 1;
+  });
+}
+
+/** Push the current snapshot through the installed publisher (no-op until wired). */
+export function publishBrushCatalog(): void {
+  brushCatalogPublisher();
 }
 
 /**
@@ -329,20 +369,6 @@ export function resetAquarelleBrushCatalog(): void {
     unavailableTipIdsSignal.value = new Set();
     brushCatalogGenerationSignal.value += 1;
   });
-}
-
-/**
- * Close / New Project (63-07 / D-20 / TIP-17 / T-63-21): back to exactly the
- * three built-ins. The customs and the unavailable set clear (one catalog
- * generation bump when anything changed), the mask registry returns to the
- * built-in masks only, the stored-asset cache empties, and the Studio receives
- * the resulting snapshot. Idempotent: a repeated reset writes no state.
- */
-export function resetAquarelleBrushState(): void {
-  resetAquarelleBrushCatalog();
-  resetMaskRegistry();
-  resetBrushAssets();
-  brushCatalogPublisher();
 }
 
 // ---------------------------------------------------------------------------
@@ -452,34 +478,36 @@ export function buildProjectBrushPack(): MceBrushPackSnapshot | null {
 // ---------------------------------------------------------------------------
 
 /**
- * The MAIN realm's snapshot of the open project's custom tips. Each entry
- * carries its decoded mask and its stored WebP bytes when this realm has
- * them; an unavailable tip travels with neither (its id also rides
- * `unavailableTipIds`). Built-ins never travel — both realms derive them from
- * `BUILTIN_TIPS` / `BUILTIN_TIP_MASKS`.
+ * The MAIN realm's snapshot of the machine library. Each entry carries its
+ * content address (`digest`), its integer-degree `textureRotation`, and its
+ * decoded mask; the stored WebP bytes ride along while this realm still has
+ * them (the project-asset leg is removed by a later task). An unavailable tip
+ * travels with neither byte leg — its id also rides `unavailableTipIds`.
  *
  * CR-01 / T-63-25: every tip is projected through `normalizeProjectBrushTip`,
- * the SAME admission law the open loader applies. A tip the store somehow
+ * the same admission law the old open loader applied. A tip the store somehow
  * holds in a shape the strict wire guard refuses (foreign category, stray
- * member, or a built-in id) is normalized, or dropped, HERE — so one such tip
- * can never refuse the Studio's snapshot whole.
+ * member) is normalized, or dropped, HERE — so one such tip can never refuse
+ * the Studio's snapshot whole.
  */
-export function buildBrushCatalogPayload(contextId: string): PhysicPaintBrushCatalogPayload {
+export function buildBrushCatalogPayload(libraryRevision: number): PhysicPaintBrushCatalogPayload {
   const entries: PhysicPaintBrushCatalogEntry[] = [];
-  for (const tip of customBrushTipsSignal.value) {
-    const normalized = normalizeProjectBrushTip(tip);
+  for (const row of libraryRowsSignal.value) {
+    const normalized = normalizeProjectBrushTip(row.tip);
     if (normalized === null) continue;
     const mask = resolveMask(normalized.id);
-    const digest = brushAssetDigestFromPath(normalized.asset);
-    const webp = digest === null ? undefined : brushAssetBytes(digest);
+    const assetDigest = brushAssetDigestFromPath(normalized.asset);
+    const webp = assetDigest === null ? undefined : brushAssetBytes(assetDigest);
     entries.push({
       tip: normalized,
+      digest: row.digest,
+      textureRotation: row.textureRotation,
       ...(mask === null ? {} : { maskBase64: encodeBridgeBase64(mask) }),
       ...(webp === undefined ? {} : { webpBase64: encodeBridgeBase64(webp) }),
     });
   }
   return {
-    contextId,
+    libraryRevision,
     entries,
     unavailableTipIds: [...unavailableTipIdsSignal.value],
   };
@@ -504,12 +532,12 @@ function decodeBase64OrNull(value: string): Uint8Array | null {
  * degrades a single undecodable mask to unavailable instead).
  */
 export function applyBrushCatalogPayload(payload: PhysicPaintBrushCatalogPayload): void {
-  const entries: AquarelleTip[] = [];
+  const rows: AquarelleLibraryRow[] = [];
   const masks: { id: string; mask: Uint8Array }[] = [...BUILTIN_TIP_MASKS];
   const unavailable = new Set<string>(payload.unavailableTipIds);
   for (const entry of payload.entries) {
     const tip = { ...entry.tip };
-    entries.push(tip);
+    rows.push({ tip, digest: entry.digest, textureRotation: entry.textureRotation });
     if (entry.maskBase64 !== undefined) {
       const mask = decodeBase64OrNull(entry.maskBase64);
       if (mask !== null && mask.length === TIP_MASK_BYTES) {
@@ -532,13 +560,18 @@ export function applyBrushCatalogPayload(payload: PhysicPaintBrushCatalogPayload
     }
   }
   batch(() => {
-    replaceCustomBrushTips(entries);
+    replaceLibraryEntries(rows, [...unavailable]);
     replaceMaskRegistry(masks);
-    replaceUnavailableTipIds([...unavailable]);
     // WR-03: this realm instance applied a catalog snapshot. From here on an
-    // empty custom list means the project has no imports (known-empty), not
-    // that the push never arrived — the save leg relies on that distinction.
-    // Compare before writing so a repeated payload changes no state at all.
+    // empty custom list means the machine library has no rows (known-empty),
+    // not that the push never arrived — the save leg relies on that
+    // distinction. Compare before writing so a repeated payload changes no
+    // state at all.
     if (!brushCatalogSyncedSignal.value) brushCatalogSyncedSignal.value = true;
+    // Adopt the MAIN realm's revision: the child's reads are only stale when
+    // the owner's count differs. A replacement bump above is superseded here.
+    if (libraryRevisionSignal.value !== payload.libraryRevision) {
+      libraryRevisionSignal.value = payload.libraryRevision;
+    }
   });
 }

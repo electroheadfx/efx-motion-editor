@@ -75,7 +75,7 @@ import {
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
-import { _setBrushCatalogPublisher, buildBrushCatalogPayload } from '../stores/aquarelleBrushCatalog';
+import { _setBrushCatalogPublisher, buildBrushCatalogPayload, libraryRevision } from '../stores/aquarelleBrushCatalog';
 import { applyBrushImportRequest, type EfxPaintBrushImportResult } from './efxPaintBrushImport';
 import { imageStore } from '../stores/imageStore';
 import { tempProjectDir } from './projectDir';
@@ -3246,14 +3246,15 @@ export async function installPhysicPaintBrushImportListener(): Promise<() => voi
 }
 
 /**
- * 63-05 (D-20): MAIN-realm publisher of the whole brush-catalog snapshot —
- * custom tips with their masks and stored WebP bytes. Same triple transport as
+ * 63-05 (D-20) / quick 261116-inu: MAIN-realm publisher of the whole machine
+ * brush-library snapshot — rows with their digest, rotation, masks and (until
+ * the project-asset leg is removed) stored WebP bytes. Same triple transport as
  * `publishPhysicPaintProjectContext` (Tauri `emitTo` window-label + CustomEvent
- * + opener.postMessage fallbacks). Called after every import and on every
- * Studio pull; never broadcasts with a bare `emit` (T-41-08).
+ * + opener.postMessage fallbacks). Called after every library mutation and on
+ * every Studio pull; never broadcasts with a bare `emit` (T-41-08).
  */
 export async function publishPhysicPaintBrushCatalog(): Promise<void> {
-  const payload = buildBrushCatalogPayload(projectStore.projectContextId.peek());
+  const payload = buildBrushCatalogPayload(libraryRevision.peek());
   if (isTauriRuntime()) {
     const eventApi = await import('@tauri-apps/api/event');
     await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_BRUSH_CATALOG_EVENT, payload);

@@ -5,6 +5,7 @@ import {listen} from '@tauri-apps/api/event';
 import {invoke} from '@tauri-apps/api/core';
 import {App} from './app';
 import {initTempProjectDir} from './lib/projectDir';
+import {loadBrushLibrary} from './lib/brushLibrary';
 import {initTheme} from './lib/themeManager';
 import {guardUnsavedChanges} from './lib/unsavedGuard';
 import {startAutoSave} from './lib/autoSave';
@@ -107,6 +108,10 @@ if (window.location.pathname === '/physics-paint') {
   initTempProjectDir().then(async () => {
     await initTheme();
     await paintStore.initFromPreferences(); // Load saved brush prefs BEFORE render
+    // quick 261116-inu: the machine brush library is scanned and decoded ONCE
+    // before the first render, so any project open can replay a stroke. It
+    // never rejects — a failed scan degrades to an empty catalog.
+    await loadBrushLibrary();
     render(<App />, root);
     startAutoSave();
     // 261101-o2m (D-05): mirror the Studio's Draft gate so the autosave above

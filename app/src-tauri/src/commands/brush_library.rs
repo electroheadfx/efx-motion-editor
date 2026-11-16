@@ -25,7 +25,9 @@
 //! mutex so two imports can never interleave a catalog rewrite.
 
 use crate::services::efx_paint_media::digest_bytes;
-use crate::services::frame_codec::{decode_mask_webp, encode_mask_webp, BRUSH_MASK_BYTES};
+use crate::services::frame_codec::{
+    decode_mask_webp, encode_mask_webp, parse_webp_dimensions, BRUSH_MASK_BYTES, BRUSH_MASK_EDGE,
+};
 use crate::services::script_library::{atomic_write_bytes, decode_base64, reject_symlink};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -88,6 +90,19 @@ impl Default for BrushLibraryCatalog {
             entries: Vec::new(),
         }
     }
+}
+
+/// The whole library as the renderer boots: every well-formed catalog row plus
+/// the ids whose stored file is unusable on THIS machine. A row with a missing,
+/// symlinked or non-512x512 file stays listed in `entries` and its id appears in
+/// `unavailable`, so the surfaces can render it degraded instead of dropping it
+/// silently. The scan never fails: a missing or hostile catalog reads as empty
+/// and every malformed row is dropped individually (T-06).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrushLibraryScanResponse {
+    pub entries: Vec<BrushLibraryEntry>,
+    pub unavailable: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -169,6 +184,71 @@ fn write_catalog(root: &Path, catalog: &BrushLibraryCatalog) -> Result<(), Strin
     let bytes = serde_json::to_vec_pretty(catalog)
         .map_err(|error| format!("could not serialize brush library catalog: {error}"))?;
     atomic_write_bytes(&catalog_path(root), &bytes, true)
+}
+
+/// Read `catalog.json` for the SCAN path: every malformed or forged row is
+/// dropped INDIVIDUALLY, never the whole list (T-06). A row whose id does not
+/// derive from its digest is forged and dropped; a repeated digest keeps the
+/// first row, so one content address can never list twice. The byte cap keeps
+/// the parse bounded.
+fn read_catalog_entries_lenient(root: &Path) -> Vec<BrushLibraryEntry> {
+    let path = catalog_path(root);
+    let Ok(metadata) = fs::metadata(&path) else {
+        return Vec::new();
+    };
+    if metadata.len() > MAX_CATALOG_BYTES {
+        return Vec::new();
+    }
+    let Ok(bytes) = fs::read(&path) else {
+        return Vec::new();
+    };
+    let Ok(document) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return Vec::new();
+    };
+    let Some(raw_entries) = document.get("entries").and_then(|value| value.as_array()) else {
+        return Vec::new();
+    };
+    let mut entries: Vec<BrushLibraryEntry> = Vec::new();
+    let mut seen_digests = std::collections::HashSet::new();
+    for raw in raw_entries {
+        let Ok(entry) = serde_json::from_value::<BrushLibraryEntry>(raw.clone()) else {
+            continue;
+        };
+        if !valid_digest(&entry.digest) || entry.id != id_for_digest(&entry.digest) {
+            continue;
+        }
+        if !seen_digests.insert(entry.digest.clone()) {
+            continue;
+        }
+        entries.push(entry);
+    }
+    entries
+}
+
+/// True only for a regular (non-symlinked) file that declares exactly the
+/// 512x512 mask frame. The RIFF header read allocates no pixel buffer (T-02).
+fn library_file_is_usable(root: &Path, digest: &str) -> bool {
+    let target = mask_path(root, digest);
+    if reject_symlink(&target, "brush library file").is_err() {
+        return false;
+    }
+    let Ok(bytes) = fs::read(&target) else {
+        return false;
+    };
+    parse_webp_dimensions(&bytes) == Some((BRUSH_MASK_EDGE, BRUSH_MASK_EDGE))
+}
+
+fn scan_library_at(root: &Path) -> BrushLibraryScanResponse {
+    let entries = read_catalog_entries_lenient(root);
+    let unavailable: Vec<String> = entries
+        .iter()
+        .filter(|entry| !library_file_is_usable(root, &entry.digest))
+        .map(|entry| entry.id.clone())
+        .collect();
+    BrushLibraryScanResponse {
+        entries,
+        unavailable,
+    }
 }
 
 fn normalize_name(value: &str) -> Result<String, String> {
@@ -295,6 +375,14 @@ pub fn brush_library_write(request: Request) -> Result<BrushLibraryEntry, String
 pub fn brush_library_decode(digest: String) -> Result<BrushLibraryDecodeResponse, String> {
     let _guard = lock_library();
     decode_library_entry_at(&library_root(), &digest)
+}
+
+/// Scan the whole machine library at app boot. Never fails: a missing or
+/// unreadable catalog reads as empty and unusable files are reported per id.
+#[tauri::command(async)]
+pub fn brush_library_scan() -> Result<BrushLibraryScanResponse, String> {
+    let _guard = lock_library();
+    Ok(scan_library_at(&library_root()))
 }
 
 #[cfg(test)]
@@ -439,6 +527,89 @@ mod tests {
         assert!(valid_digest(
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         ));
+    }
+
+    #[test]
+    fn scan_tolerates_a_missing_catalog_and_returns_an_empty_library() {
+        let root = scratch_root();
+        let scan = scan_library_at(&root);
+        assert!(scan.entries.is_empty());
+        assert!(scan.unavailable.is_empty());
+    }
+
+    #[test]
+    fn scan_lists_rows_whose_file_is_missing_and_marks_them_unavailable() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "gone.png", &probe_mask(0x51ed_9a01))
+            .expect("write");
+        fs::remove_file(mask_path(&root, &entry.digest)).expect("remove stored file");
+        let scan = scan_library_at(&root);
+        assert_eq!(scan.entries, vec![entry.clone()]);
+        assert_eq!(scan.unavailable, vec![entry.id]);
+    }
+
+    #[test]
+    fn scan_drops_malformed_and_forged_rows_individually_keeping_valid_siblings() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "keep.png", &probe_mask(0x0ddc_0ffe))
+            .expect("write");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(catalog_path(&root)).expect("catalog"))
+                .expect("parse");
+        let entries = value
+            .get_mut("entries")
+            .and_then(|array| array.as_array_mut())
+            .expect("entries");
+        // Malformed: every numeric field missing, so the row does not parse.
+        entries.push(serde_json::json!({
+            "id": "wc/custom-deadbeefdead",
+            "name": "bad",
+            "digest": "d".repeat(64),
+        }));
+        // Forged: the id does not derive from the digest.
+        let mut forged = serde_json::to_value(&entry).expect("entry json");
+        forged["id"] = serde_json::json!("wc/custom-000000000000");
+        entries.push(forged);
+        // Duplicate digest: the same content address twice keeps the first row.
+        entries.push(serde_json::to_value(&entry).expect("entry json"));
+        fs::write(catalog_path(&root), serde_json::to_vec(&value).expect("serialize"))
+            .expect("rewrite catalog");
+
+        let scan = scan_library_at(&root);
+        assert_eq!(scan.entries, vec![entry]);
+        assert!(scan.unavailable.is_empty());
+    }
+
+    #[test]
+    fn scan_marks_a_wrong_size_webp_unavailable() {
+        use crate::services::frame_codec::{FrameCodec, WebPLosslessCodec};
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "small.png", &probe_mask(0xabc0_1234))
+            .expect("write");
+        let edge = BRUSH_MASK_EDGE - 1;
+        let rgba = vec![0u8; (edge * edge * 4) as usize];
+        let small = WebPLosslessCodec
+            .encode_rgba(&rgba, edge, edge)
+            .expect("edge frame encode");
+        fs::write(mask_path(&root, &entry.digest), &small).expect("overwrite stored file");
+        let scan = scan_library_at(&root);
+        assert_eq!(scan.entries, vec![entry.clone()]);
+        assert_eq!(scan.unavailable, vec![entry.id]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_marks_a_symlinked_file_unavailable() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "link.png", &probe_mask(0x5ee1_1e55))
+            .expect("write");
+        let target = mask_path(&root, &entry.digest);
+        let elsewhere = scratch_root().join("real.webp");
+        fs::rename(&target, &elsewhere).expect("move real file");
+        std::os::unix::fs::symlink(&elsewhere, &target).expect("symlink stored file");
+        let scan = scan_library_at(&root);
+        assert_eq!(scan.entries, vec![entry.clone()]);
+        assert_eq!(scan.unavailable, vec![entry.id]);
     }
 
     #[test]

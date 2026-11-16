@@ -822,6 +822,14 @@ export interface BrushLibraryDecodeResult {
   height: number;
 }
 
+/** One boot scan of the machine library. */
+export interface BrushLibraryScanResult {
+  /** Every well-formed `catalog.json` row, in catalog order. */
+  entries: BrushLibraryEntry[];
+  /** Ids whose stored file is missing, symlinked or not a 512x512 WebP. */
+  unavailable: string[];
+}
+
 /**
  * Write one 262,144-byte mask into the machine library. The renderer sends
  * BYTES only — Rust derives the root, the digest, the filename and the id.
@@ -835,6 +843,14 @@ export async function ipcBrushLibraryWrite(
     name,
     maskBase64: bytesToBase64(mask),
   });
+}
+
+/**
+ * Scan the machine library. Never fails on the Rust side: a missing or hostile
+ * catalog reads as empty and an unusable file is reported per id.
+ */
+export async function ipcBrushLibraryScan(): Promise<Result<BrushLibraryScanResult>> {
+  return safeInvoke<BrushLibraryScanResult>('brush_library_scan');
 }
 
 /**
