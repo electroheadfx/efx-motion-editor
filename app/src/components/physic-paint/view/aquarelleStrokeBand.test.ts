@@ -22,6 +22,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   buildBrushForStroke,
+  registerMask,
+  resetMaskRegistry,
+  TIP_MASK_BYTES,
   toEngineParams,
   type Brush,
 } from '@efxlab/efx-watercolor';
@@ -309,7 +312,16 @@ describe('261101-mvg stroke band — pinned to the engine/cursor footprint law',
 // the SAME `buildBrushForStroke` binding the bake and the punch use, so a
 // textured stroke's band is resolved from the (response, texture) pair.
 describe('quick-261115-oh9 — the band resolves the recorded texture', () => {
-  const TEXTURE_ID = 'wc/builtin-chalk';
+  // quick 261116-inu / Task 3 boundary: the machine library is the only
+  // texture source, so the fixture registers its own 512 mask.
+  const TEXTURE_ID = 'wc/custom-4a7c19';
+  const TEXTURE_MASK = (() => {
+    const mask = new Uint8Array(TIP_MASK_BYTES);
+    for (let i = 0; i < mask.length; i += 1) mask[i] = (i * 31 + 7) % 256;
+    return mask;
+  })();
+  resetMaskRegistry();
+  registerMask(TEXTURE_ID, TEXTURE_MASK);
 
   it('paintTipForStroke stamps a recorded textureId through the response law', () => {
     const recorded = {

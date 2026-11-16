@@ -185,16 +185,29 @@ describe('61-05 reopen-lossless vector restore', () => {
 // The lift selection stays preset-only (D-04) — that is pinned here so the
 // two lookups cannot be "unified" by a later refactor.
 describe('63-06 catalog tip selection', () => {
-  it('selects a built-in texture tip and forces the Brush tool', () => {
-    selectAquarelleTip(null);
-    setAquarelleTool('water');
+  it('selects a texture-category catalog tip and forces the Brush tool', () => {
+    // quick 261116-inu / Task 3 boundary: no built-ins — a texture tip is a
+    // catalogue row, and the pick still flips the tool to Brush.
+    const tip: AquarelleTip = {
+      id: 'wc/custom-63-06-texture',
+      category: 'texture',
+      name: 'Texture',
+      ...NEUTRAL_TOOL_OVERRIDES,
+    };
+    addCustomBrushTip(tip);
+    try {
+      selectAquarelleTip(null);
+      setAquarelleTool('water');
 
-    selectAquarelleTip('wc/builtin-chalk');
+      selectAquarelleTip(tip.id);
 
-    expect(aquarelleSelectedTipId.value).toBe('wc/builtin-chalk');
-    expect(aquarelleActiveTool.value).toBe('brush');
-    // Built-ins ship neutral multipliers (D-07).
-    expect(aquarelleToolOverrides.value).toEqual({ ...NEUTRAL_TOOL_OVERRIDES });
+      expect(aquarelleSelectedTipId.value).toBe(tip.id);
+      expect(aquarelleActiveTool.value).toBe('brush');
+      // A row carrying neutral multipliers loads the neutral bag.
+      expect(aquarelleToolOverrides.value).toEqual({ ...NEUTRAL_TOOL_OVERRIDES });
+    } finally {
+      replaceCustomBrushTips([]);
+    }
   });
 
   it('selects an imported custom tip and loads the multipliers it carries', () => {

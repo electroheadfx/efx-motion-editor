@@ -7,10 +7,12 @@
 //  rounded-square close chrome.
 //
 //  D-1 law: the Size control is the SAME shared brush Size as the
-//  top bar (aquarelleParams.size, clamped 1..80), never a
-//  texture-pattern scale. A release commits one `size` patch to the
-//  selected paint strokes through commitAquarelleSelectionParam —
-//  engine, masks and unselected strokes stay untouched.
+//  top bar (aquarelleParams.size, shown in px 1..512 through the one
+//  mapping in engine/aquarelleBrushSize.ts — quick 261116-inu / Task
+//  8), never a texture-pattern scale. A release commits one `size`
+//  patch to the selected paint strokes through
+//  commitAquarelleSelectionParam — engine, masks and unselected
+//  strokes stay untouched.
 //
 //  quick 261116-inu / Task 6: THIS sheet owns texture deletion.
 //  Delete/Backspace on the sheet's own container (focusable) or on a
@@ -29,12 +31,14 @@ import { Grid2x2, X } from 'lucide-preact';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { SliderStepper } from '../../shared/SliderStepper';
 import {
-  aquarelleParams,
+  aquarellePaintCanonicalFromPx,
+  aquarellePaintSizePx,
   aquarelleSelectedTextureId,
   aquarelleTextureModalOpen,
   clearAquarelleTextureSelectionIfDeleted,
   setAquarelleTextureModalOpen,
 } from './aquarelleRecordState';
+import { PAINT_SIZE_MAX_PX, PAINT_SIZE_MIN_PX } from '../engine/aquarelleBrushSize';
 import { customBrushTips, libraryRowFor } from '../../../stores/aquarelleBrushCatalog';
 import { requestPhysicPaintBrushTextureMutation } from '../../../lib/physicPaintBridge';
 import { commitAquarelleSelectionParam } from './aquarellePaintControls';
@@ -163,7 +167,8 @@ export function TextureSizeControl(props: {
   onBrushSizeChange: (value: number) => void;
   disabled?: boolean;
 }) {
-  const size = aquarelleParams.value.size;
+  // quick 261116-inu / Task 8: the SAME px mapping as the top bar — one
+  // handler, one law. This sheet is a surface, not a state owner.
   return (
     <div
       class="physics-paint-texture-size"
@@ -173,14 +178,14 @@ export function TextureSizeControl(props: {
       <SliderStepper
         id="physics-texture-size"
         label="Brush size"
-        value={size}
-        onChange={props.onBrushSizeChange}
+        value={aquarellePaintSizePx()}
+        onChange={(value) => props.onBrushSizeChange(aquarellePaintCanonicalFromPx(value))}
         onCommit={(value) => {
-          void commitAquarelleSelectionParam('size', value);
+          void commitAquarelleSelectionParam('size', aquarellePaintCanonicalFromPx(value));
         }}
         step={1}
-        min={1}
-        max={80}
+        min={PAINT_SIZE_MIN_PX}
+        max={PAINT_SIZE_MAX_PX}
         disabled={props.disabled}
         ariaLabel="Brush size — textures"
       />

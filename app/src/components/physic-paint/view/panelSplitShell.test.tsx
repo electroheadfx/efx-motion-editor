@@ -243,7 +243,11 @@ describe('panel split shell — shared block', () => {
     // top bar and in the module globals, so the Brush opacity seam left with
     // engine 1 (261027-klx).
     expect(paintTab).toContain('onBrushSizeChange');
-    expect(paintTab).toContain('aquarelleParams.value.size');
+    // quick 261116-inu / Task 8: the tab shows px and converts through the ONE
+    // mapping — no second size state and no raw canonical read.
+    expect(paintTab).toContain('aquarellePaintSizePx()');
+    expect(paintTab).toContain('aquarellePaintCanonicalFromPx');
+    expect(paintTab).not.toContain('aquarelleParams');
     expect(paintTab).not.toContain('onOpacityChange');
     // Opacity text remains for the Track tab and onion controls (I-10 homes).
     const trackTabSource = readFileSync(resolve(__dirname, 'RightPanelTrackTab.tsx'), 'utf8');

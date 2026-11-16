@@ -258,6 +258,7 @@ import {
   setAquarelleParam,
   setAquarelleScriptRecordingEnabled,
   setAquarelleStrokeDiffusionFrames,
+  setAquarelleWorkingHeight,
 } from './view/aquarelleRecordState';
 import { recoverAquarelleDurableBase } from './roto/aquarelleBaseRecovery';
 // 261031-qps (Quick B): the ONE durable-base authority every script path
@@ -1781,6 +1782,13 @@ export function PhysicsPaintStudio() {
   const workingCanvasSize = getPhysicsPaintWorkingSize(projectCanvasWidth, projectCanvasHeight);
   const canvasWidth = workingCanvasSize.width;
   const canvasHeight = workingCanvasSize.height;
+  // quick 261116-inu / Task 8: the displayed layer height is the ONE scale the
+  // px size readouts map against (aquarellePaintSizePx). The setter is
+  // compare-then-write and the dep is the numeric height, so this effect never
+  // loops.
+  useEffect(() => {
+    setAquarelleWorkingHeight(canvasHeight);
+  }, [canvasHeight]);
   const paperTextureScale = canvasWidth / projectCanvasWidth;
   const canvasKey = `${canvasWidth}x${canvasHeight}`;
   const { canvasMounted, setCanvasMounted } = usePhysicsPaintEngineLifecycle({

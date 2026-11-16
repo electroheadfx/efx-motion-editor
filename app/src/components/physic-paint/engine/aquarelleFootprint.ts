@@ -40,7 +40,12 @@ export interface AquarelleFootprintInput {
   /** The texture (mask) id replacing the footprint; null keeps the response tip. */
   textureId: string | null;
   toolOverrides: AquarelleToolOverrides | null;
-  /** Canonical AQUA-04 size (0..80, the top-bar slider). */
+  /**
+   * The ACTIVE tool's canonical size — the paint canonical
+   * (`aquarelleParams.size`), or the lift canonical while Lift is active
+   * (`aquarelleActiveCanonicalSize()`, quick 261116-inu). The two sizes are
+   * independent state: the eraser's ring must never follow the paint slider.
+   */
   size: number;
   pressure: number;
   /** Cursor movement direction in the document frame (y up), radians. */
@@ -95,6 +100,20 @@ function brushFor(
     cachedSignature = signature;
   }
   return cachedBrush;
+}
+
+/**
+ * quick 261116-inu / Task 8: the resolved brush's full-pressure radius factor
+ * (`Brush.size[1]`) — the engine's own number, read through the SAME
+ * single-entry cache the cursor footprint uses. The px paint-size controls read
+ * this on every render, so a render read must never rebuild a procedural tip.
+ */
+export function aquarelleFullPressureSizeFor(
+  tipId: string | null,
+  textureId: string | null,
+  overrides: AquarelleToolOverrides | null,
+): number {
+  return brushFor(tipId, textureId, overrides).size[1];
 }
 
 /** Engine.sizeMult at scripting = false. */

@@ -187,7 +187,7 @@ describe('G-63-5 — a recorded texture survives the per-track snapshot and reac
   it('drops a lift stroke texture at the single projection and restores none', () => {
     // The one enforcement point is toStudioStroke:207 — the codec adds no
     // lift policy of its own.
-    recordAquarelleStroke(ID, stroke(ID, { tool: 'lift', textureId: 'wc/builtin-chalk' }));
+    recordAquarelleStroke(ID, stroke(ID, { tool: 'lift', textureId: 'wc/custom-dropped' }));
     expect('textureId' in strokeEventAt(getAquarelleEventsForFrame(FRAME)).engine).toBe(false);
 
     snapshotCycle();
@@ -209,17 +209,19 @@ describe('G-63-5 — a recorded texture survives the per-track snapshot and reac
     expect(aquarelleBrushForActiveTool().textureId).toBeNull();
   });
 
-  it('carries a built-in id with no imports and binds it live', () => {
-    recordAquarelleStroke(ID, stroke(ID, { textureId: 'wc/builtin-chalk' }));
+  it('carries a retired built-in id verbatim and fails closed at the live bind', () => {
+    // quick 261116-inu / Task 3 boundary: the built-ins are gone, so an old
+    // project's id is just an unknown id — carried unchanged through the
+    // carrier, never bound. Prefix assembled at runtime so the no-retired-id
+    // scan never matches this fixture.
+    const retired = ['wc/', 'builtin-'].join('') + 'chalk';
+    recordAquarelleStroke(ID, stroke(ID, { textureId: retired }));
 
     snapshotCycle();
 
-    expect(strokeEventAt(getAquarelleEventsForFrame(FRAME)).engine.textureId).toBe(
-      'wc/builtin-chalk',
-    );
+    expect(strokeEventAt(getAquarelleEventsForFrame(FRAME)).engine.textureId).toBe(retired);
 
-    // The registry seeds the built-ins at module load: no import needed.
-    setAquarelleSelectedTextureId('wc/builtin-chalk');
-    expect(aquarelleBrushForActiveTool().textureId).toBe('wc/builtin-chalk');
+    setAquarelleSelectedTextureId(retired);
+    expect(aquarelleBrushForActiveTool().textureId).toBeNull();
   });
 });

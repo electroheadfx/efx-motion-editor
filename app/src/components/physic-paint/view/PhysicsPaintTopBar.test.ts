@@ -22,6 +22,7 @@ import {
   aquarelleBrushMenuAnchor,
   aquarelleBrushMenuOpen,
   aquarelleBrushMenuTarget,
+  aquarellePaintCanonicalFromPx,
   aquarelleScriptRecordingEnabled,
   aquarelleTextureMenuAnchor,
   aquarelleTextureMenuOpen,
@@ -642,6 +643,11 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
       // 261029-hy2: the bar reads the lift tip unconditionally now (the pill's
       // preset for the Eraser tool), exactly like aquarelleSelectedTipId.
       aquarelleLiftTipId: { value: null },
+      // quick 261116-inu / Task 8: the split size pair and the ONE px mapping.
+      aquarelleLiftSize: { value: 12 },
+      aquarellePaintSizePx: () => 96,
+      aquarellePaintCanonicalFromPx: (px: number) => px,
+      setAquarelleLiftSize: vi.fn(),
       aquarelleBrushMenuOpen: { value: false },
       // quick 261116-gcn: the bar reads the second popover's open state.
       aquarelleTextureMenuOpen: { value: false },
@@ -1160,7 +1166,11 @@ describe('quick 261111-ucf top-bar slider release commits', () => {
 
     for (const [id, key] of released) {
       (byId(id)!.props.onCommit as (value: number) => void)(37);
-      expect(calls[calls.length - 1]!.patch, `${id} forwards ${key}`).toEqual({ params: { [key]: 37 } });
+      // quick 261116-inu / Task 8: the Brush size release carries px and
+      // commits the canonical through the ONE mapping; every other slider
+      // still forwards its integer verbatim.
+      const expected = id === 'physics-brush-size' ? aquarellePaintCanonicalFromPx(37) : 37;
+      expect(calls[calls.length - 1]!.patch, `${id} forwards ${key}`).toEqual({ params: { [key]: expected } });
     }
     expect(calls, 'one patch per release').toHaveLength(5);
     expect(calls.map((call) => call.ids)).toEqual([

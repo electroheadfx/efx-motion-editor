@@ -328,7 +328,9 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // footprint law for the exact radius/aspect/angle the engine will paint,
     // tip selection and per-tool overrides included, tilt azimuth live.
     expect(layer).toContain('const footprint = aquarelleFootprintFor({');
-    expect(layer).toContain('size: params.size,');
+    // quick 261116-inu / Task 8: the ring follows the ACTIVE tool's canonical —
+    // the eraser ring must not be sized by the paint slider.
+    expect(layer).toContain('size: aquarelleActiveCanonicalSize(),');
     expect(layer).toContain('tipId: aquarelleActiveTipId(),');
     expect(layer).toContain('textureId: selection.textureId,');
     expect(layer).toContain('toolOverrides: selection.toolOverrides,');

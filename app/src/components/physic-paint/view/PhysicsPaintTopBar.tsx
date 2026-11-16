@@ -10,7 +10,10 @@ import type { PaintHistoryAvailability } from '../types/paintCore';
 import {
   aquarelleActiveTool,
   aquarelleBrushMenuOpen,
+  aquarelleLiftSize,
   aquarelleLiftTipId,
+  aquarellePaintCanonicalFromPx,
+  aquarellePaintSizePx,
   aquarelleParams,
   aquarelleRecordClock,
   aquarelleScriptRecordingEnabled,
@@ -18,10 +21,12 @@ import {
   aquarelleTextureMenuOpen,
   emitAquarelleDry,
   setAquarelleBrushMenuOpen,
+  setAquarelleLiftSize,
   setAquarelleParam,
   setAquarelleScriptRecordingEnabled,
   setAquarelleTextureMenuOpen,
 } from './aquarelleRecordState';
+import { PAINT_SIZE_MAX_PX, PAINT_SIZE_MIN_PX } from '../engine/aquarelleBrushSize';
 import { wireframeMode, wireframeSettleInFlight } from './scriptStrokeEdition';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
 import {
@@ -431,9 +436,12 @@ export function PhysicsPaintTopBar({
     const rect = event.currentTarget.getBoundingClientRect();
     setAquarelleTextureMenuOpen(true, { left: rect.left, top: rect.bottom + 6 });
   };
-  // UI checklist row 3: one shared Size slider — the displayed Brush size is
-  // the live aquarelle size (signal read bypasses the memo).
-  const liveBrushSize = aquarelleParams.value.size;
+  // quick 261116-inu / Task 8: the Brush size control is PIXEL-true — the
+  // value is the footprint the engine paints at full pressure, derived from the
+  // paint canonical through the ONE px law (never stored). The lift cluster
+  // shows its OWN canonical in the retired 1..80 unit; the two never cross.
+  const liveBrushSizePx = aquarellePaintSizePx();
+  const liveLiftSize = aquarelleLiftSize.value;
   // Water color has no opacity — its canonical Pigment `load` rides this same
   // primary control, so the bar never shows Opacity and Pigment twice.
   const liveOpacity = aquarelleParams.value.load;
@@ -536,11 +544,13 @@ export function PhysicsPaintTopBar({
         {toolOwnsSettings ? (
         activeTool === 'lift' ? (
           <div class="physics-paint-topbar-lift" data-testid="physics-lift-controls">
-            {/* 261028-k03d: the Eraser cluster keeps the shared Size (the erase
-                radius runs through the same sizeMult) + Strength + Edit.
-                The shape moved to the left slot, where the brush dropdown
-                sits for every other tool. */}
-            <TopBarSlider id="physics-lift-size" label="Size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
+            {/* 261028-k03d: the Eraser cluster keeps a Size (the erase radius
+                runs through the same sizeMult) + Strength + Edit. quick
+                261116-inu / Task 8: it is the LIFT canonical's own 1..80
+                control — never the paint size, and it never commits a paint
+                param. The shape moved to the left slot, where the brush
+                dropdown sits for every other tool. */}
+            <TopBarSlider id="physics-lift-size" label="Size" min={1} max={80} value={liveLiftSize} onChange={setAquarelleLiftSize} disabled={disabled} />
             <div
               class="physics-paint-topbar-control physics-paint-topbar-slider physics-paint-topbar-lift-strength"
               data-testid="physics-lift-strength"
@@ -562,15 +572,19 @@ export function PhysicsPaintTopBar({
           </div>
         ) : (
           <>
+            {/* quick 261116-inu / Task 8: a plain static 1..512 px range — no
+                dynamic minimum, no response-derived floor, no snap-back. The
+                emitted px maps to the paint canonical through the one law;
+                `onBrushSizeChange` is the Studio's canonical writer. */}
             <TopBarSlider
               id="physics-brush-size"
               label="Brush size"
-              min={1}
-              max={80}
-              value={liveBrushSize}
-              onChange={onBrushSizeChange}
+              min={PAINT_SIZE_MIN_PX}
+              max={PAINT_SIZE_MAX_PX}
+              value={liveBrushSizePx}
+              onChange={(value) => onBrushSizeChange(aquarellePaintCanonicalFromPx(value))}
               onCommit={(value) => {
-                void commitAquarelleSelectionParam('size', value);
+                void commitAquarelleSelectionParam('size', aquarellePaintCanonicalFromPx(value));
               }}
               disabled={disabled}
             />

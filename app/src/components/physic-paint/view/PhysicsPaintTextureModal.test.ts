@@ -4,7 +4,8 @@
 //  Laws pinned here:
 //    closed renders null; open seats the fifth step at 76px / z 54
 //    a capture-phase press raises the sheet in the shared stack
-//    the Size control is the SHARED brush Size (min 1 / max 80)
+//    the Size control is the SHARED brush Size in px (min 1 / max 512,
+//    one mapping to the canonical — quick 261116-inu / Task 8)
 //    a release commits exactly one size patch to the selection
 //    the body keeps the FULL strip, below the Size row
 //    only the front sheet consumes Escape; a close releases its seat
@@ -56,6 +57,7 @@ import {
   sheetZIndex,
 } from './floatingSheetStack';
 import {
+  aquarellePaintCanonicalFromPx,
   aquarelleParams,
   aquarelleSelectedTextureId,
   aquarelleTextureModalOpen,
@@ -234,16 +236,21 @@ describe('quick 261116-gcn Textures sheet', () => {
       expect(String(control.props?.class)).toBe('physics-paint-texture-size');
       const slider = collect(control).find((node) => node.props?.id === 'physics-texture-size');
       expect(slider, 'the Size row renders a SliderStepper').toBeTruthy();
+      // quick 261116-inu / Task 8: px range, and the displayed value is the
+      // DERIVED footprint — the default filbert response at canonical 42
+      // paints 186.624 px on a 1080-high sheet.
       expect(slider!.props?.min).toBe(1);
-      expect(slider!.props?.max).toBe(80);
+      expect(slider!.props?.max).toBe(512);
       expect(slider!.props?.step).toBe(1);
       expect(slider!.props?.label).toBe('Brush size');
       expect(slider!.props?.ariaLabel).toBe('Brush size — textures');
-      expect(slider!.props?.value, 'the live aquarelle size').toBe(42);
+      expect(slider!.props?.value, 'the derived px of the live canonical').toBeCloseTo(186.624, 3);
       expect(slider!.props?.disabled).toBeFalsy();
 
       (slider!.props?.onChange as (value: number) => void)(37);
-      expect(onBrushSizeChange, 'the continuous path forwards the top-bar handler').toHaveBeenCalledWith(37);
+      expect(onBrushSizeChange, 'the continuous path forwards the top-bar handler').toHaveBeenCalledWith(
+        aquarellePaintCanonicalFromPx(37),
+      );
       expect(aquarelleParams.value.size, 'the control never writes the live signal').toBe(42);
 
       const disabledSlider = collect(TextureSizeControl({ onBrushSizeChange, disabled: true })).find(
@@ -276,7 +283,9 @@ describe('quick 261116-gcn Textures sheet', () => {
     expect(calls).toHaveLength(0);
     (slider!.props?.onCommit as (value: number) => void)(37);
     expect(calls, 'one patch per release').toHaveLength(1);
-    expect(calls[0]!.patch).toEqual({ params: { size: 37 } });
+    // quick 261116-inu / Task 8: the release carries px; the patch carries the
+    // canonical produced by the ONE mapping.
+    expect(calls[0]!.patch).toEqual({ params: { size: aquarellePaintCanonicalFromPx(37) } });
     expect(calls[0]!.ids).toEqual([10801]);
   });
 
@@ -377,7 +386,11 @@ describe('quick 261116-gcn Textures sheet', () => {
     expect(MODAL_SOURCE).toContain('closeSheetIfFront(SHEET_ID_TEXTURES');
     expect(MODAL_SOURCE).toContain('event.stopImmediatePropagation();');
     expect(MODAL_SOURCE).toContain('releaseSheet(SHEET_ID_TEXTURES);');
-    expect(MODAL_SOURCE).toContain("commitAquarelleSelectionParam('size', value)");
+    // quick 261116-inu / Task 8: the release commits the canonical produced by
+    // the ONE px mapping, never the raw px.
+    expect(MODAL_SOURCE).toContain(
+      "commitAquarelleSelectionParam('size', aquarellePaintCanonicalFromPx(value))",
+    );
     expect(MODAL_SOURCE).not.toContain('useState');
   });
 });

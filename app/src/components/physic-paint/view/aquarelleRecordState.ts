@@ -43,6 +43,8 @@ import {
 } from '@efxlab/efx-watercolor/brushes';
 import { BRUSH_PRESETS, resolveMask } from '@efxlab/efx-watercolor';
 import { resolveCatalogTip } from '../../../stores/aquarelleBrushCatalog';
+import { canonicalFromDiameter, diameterFromCanonical } from '../engine/aquarelleBrushSize';
+import { aquarelleFullPressureSizeFor } from '../engine/aquarelleFootprint';
 import {
   buildKeyIdentityFrameMap,
   type KeyIdentityFrameRecord,
@@ -130,6 +132,51 @@ export const aquarelleLiftTipId = signal<string | null>('filbert');
  * stroke carries it on `engine.textureId`. The eraser never reads it.
  */
 export const aquarelleSelectedTextureId = signal<string | null>(null);
+
+/**
+ * quick 261116-inu / Task 8: TWO sizes, one law, no shared state. The PAINT
+ * size is `aquarelleParams.size` — the canonical the Brush paints with, shown
+ * in px by every paint-size control. The LIFT size is the eraser's own
+ * canonical (1..80, the unit the retired shared slider wrote); an eraser stroke
+ * records THIS value, so live, bake and replay erase at one footprint. A paint
+ * control never writes the lift size and the lift control never writes the
+ * paint size.
+ */
+export const aquarelleLiftSize = signal<number>(12);
+
+/** Compare-then-write (efx-preact-reactivity rule 3). */
+export function setAquarelleLiftSize(value: number): void {
+  if (!Number.isFinite(value)) return;
+  if (aquarelleLiftSize.value === value) return;
+  aquarelleLiftSize.value = value;
+}
+
+/**
+ * quick 261116-inu / Task 8: the engine's working render height — the same
+ * number `Engine.dh` uses, so the px size law and the painted footprint cannot
+ * disagree. `PhysicsPaintStudio` reports the real one; 1080 keeps the derived
+ * readouts sane before the canvas has a size.
+ */
+export const aquarelleWorkingHeight = signal<number>(1080);
+
+/** Compare-then-write; a non-positive height is never a valid sheet. */
+export function setAquarelleWorkingHeight(value: number): void {
+  if (!Number.isFinite(value) || value <= 0) return;
+  if (aquarelleWorkingHeight.value === value) return;
+  aquarelleWorkingHeight.value = value;
+}
+
+/**
+ * quick 261116-inu / Task 8: THE shared selector — the canonical the ACTIVE
+ * tool paints or erases with. Every consumer (`applyLiveConfig`, the cursor
+ * ring, `snapshotAquarelleRecord`) reads this one function; no caller
+ * re-derives the ternary.
+ */
+export function aquarelleActiveCanonicalSize(): number {
+  return aquarelleActiveTool.value === 'lift'
+    ? aquarelleLiftSize.value
+    : aquarelleParams.value.size;
+}
 
 /**
  * 261027-gh9g: the top-bar brush dropdown (open state + the trigger's viewport
@@ -408,6 +455,24 @@ export function aquarelleBrushForActiveTool(): {
       toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES },
     };
   }
+  const paint = aquarellePaintResponse();
+  return {
+    brushId: paint.brushId,
+    textureId: paint.textureId,
+    toolOverrides: { ...paint.toolOverrides },
+  };
+}
+
+/**
+ * quick 261116-inu / Task 8: the PAINT response — never the lift shape. The
+ * paint canonical belongs to the Brush response, so the px readout the paint
+ * controls show must not jump when the Eraser takes over the top bar.
+ */
+function aquarellePaintResponse(): {
+  brushId: string;
+  textureId: string | null;
+  toolOverrides: AquarelleToolOverrides;
+} {
   const textureId = aquarelleSelectedTextureId.value;
   return {
     brushId: aquarelleSelectedTipId.value ?? '',
@@ -417,8 +482,41 @@ export function aquarelleBrushForActiveTool(): {
     // project would otherwise paint the fallback while every later stroke
     // stored a dead id (and a script save then refused by that name).
     textureId: textureId !== null && resolveMask(textureId) !== null ? textureId : null,
-    toolOverrides: { ...aquarelleToolOverrides.value },
+    toolOverrides: aquarelleToolOverrides.value,
   };
+}
+
+/**
+ * quick 261116-inu / Task 8: the paint response's full-pressure radius factor —
+ * the engine's own number, through the footprint module's shared brush cache.
+ */
+export function aquarellePaintFullPressureSize(): number {
+  const paint = aquarellePaintResponse();
+  return aquarelleFullPressureSizeFor(paint.brushId, paint.textureId, paint.toolOverrides);
+}
+
+/**
+ * The px every paint-size control displays — DERIVED, never stored. Switching
+ * response recomputes it for the next stroke; the canonical stays the state.
+ */
+export function aquarellePaintSizePx(): number {
+  return diameterFromCanonical(
+    aquarelleParams.value.size,
+    aquarellePaintFullPressureSize(),
+    aquarelleWorkingHeight.value,
+  );
+}
+
+/**
+ * A px value from a paint-size control → the canonical to STORE. Unclamped (a
+ * hairline below the old floor, a fat response above the 800 track).
+ */
+export function aquarellePaintCanonicalFromPx(diameterPx: number): number {
+  return canonicalFromDiameter(
+    diameterPx,
+    aquarellePaintFullPressureSize(),
+    aquarelleWorkingHeight.value,
+  );
 }
 
 function overridesEqual(
@@ -499,6 +597,10 @@ export function snapshotAquarelleRecord(): {
   for (const key of AQUARELLE_GLOBAL_KEYS) {
     params[key] = live[key];
   }
+  // quick 261116-inu / Task 8: the recorded size is the ACTIVE tool's canonical
+  // — a lift stroke carries the lift size, a paint stroke the paint size — so
+  // live, bake and replay all erase/paint at the footprint the stroke carries.
+  params.size = aquarelleActiveCanonicalSize();
   // 261028-k03c D1: ONE law — the recorded brush is the tip the engine bound.
   const selection = aquarelleBrushForActiveTool();
   return {

@@ -17,7 +17,13 @@ import {
   NEUTRAL_TOOL_OVERRIDES,
   type AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor/brushes';
-import { buildBrushForStroke, type Brush } from '@efxlab/efx-watercolor';
+import {
+  buildBrushForStroke,
+  registerMask,
+  resetMaskRegistry,
+  TIP_MASK_BYTES,
+  type Brush,
+} from '@efxlab/efx-watercolor';
 import {
   isAquarelleDryEvent,
   parse,
@@ -38,7 +44,14 @@ import {
   snapshotAquarelleRecord,
 } from '../view/aquarelleRecordState';
 
-const TEXTURE_ID = 'wc/builtin-chalk';
+// quick 261116-inu: the machine library is the only texture source, so the
+// fixture registers its own 512 mask instead of relying on a built-in.
+const TEXTURE_ID = 'wc/custom-4a7c19';
+const TEXTURE_MASK = (() => {
+  const mask = new Uint8Array(TIP_MASK_BYTES);
+  for (let i = 0; i < mask.length; i += 1) mask[i] = (i * 31 + 7) % 256;
+  return mask;
+})();
 const RESPONSE_ID = 'chalk';
 const OVERRIDES: AquarelleToolOverrides = {
   ...NEUTRAL_TOOL_OVERRIDES,
@@ -94,6 +107,10 @@ function assertSameBrush(actual: Brush, expected: Brush, label: string): void {
 
 beforeEach(() => {
   resetAquarelleRecordState();
+  // The registry starts empty (quick 261116-inu / Task 3) — install the fixture
+  // mask so the texture axis has bytes to bind.
+  resetMaskRegistry();
+  registerMask(TEXTURE_ID, TEXTURE_MASK);
   aquarelleActiveTool.value = 'brush';
   aquarelleSelectedTipId.value = RESPONSE_ID;
   aquarelleToolOverrides.value = { ...OVERRIDES };
@@ -130,8 +147,8 @@ describe('live / bake / replay texture parity (quick-261115-oh9)', () => {
 
     assertSameBrush(baked, live, 'replay');
     // The texture actually reached the footprint: the live brush stamps the
-    // registered chalk mask, not the procedural chalk tip.
-    expect(live.tipSize).toBe(192);
+    // registered 512 mask, not the procedural chalk tip.
+    expect(live.tipSize).toBe(512);
     expect(live.aspect).toBe(0.8 * 0.8);
   })
 

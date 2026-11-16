@@ -39,6 +39,7 @@ import type {
   VectorAnchor,
 } from '@efxlab/efx-watercolor';
 import {
+  aquarelleActiveCanonicalSize,
   aquarelleActiveTipId,
   aquarelleActiveTool,
   aquarelleBrushForActiveTool,
@@ -142,18 +143,19 @@ export function AquarelleBrushCursor(): JSX.Element | null {
   void cursorStateVersion.value;
   if (!visible || x < 0) return null;
 
-  const params = aquarelleParams.value;
   const tool = aquarelleActiveTool.value;
   // 261028-k03c D6: the ring IS the engine's footprint — the same radius law,
   // the same tip/aspect, the same rotation (including the live pen-tilt
   // azimuth for a fixed-rotation tip), scaled by the displayed layer height.
+  // quick 261116-inu / Task 8: and the same ACTIVE canonical — with the split,
+  // the eraser ring follows the lift size, never the paint slider.
   const selection = aquarelleBrushForActiveTool();
   const footprint = aquarelleFootprintFor({
     tool,
     tipId: aquarelleActiveTipId(),
     textureId: selection.textureId,
     toolOverrides: selection.toolOverrides,
-    size: params.size,
+    size: aquarelleActiveCanonicalSize(),
     pressure: cursorPreviewPressure(lastPointerType, lastPointerButtons, lastPointerPressure),
     moveAngle: lastPointerMoveAngle,
     tiltX: lastPointerTiltX,
@@ -319,7 +321,14 @@ function applyLiveConfig(engine: WatercolorEngine): void {
     appliedMaskGeneration = generation;
     engine.clearTipTextures();
   }
-  engine.setParams(toEngineParams(aquarelleParams.value));
+  // quick 261116-inu / Task 8: `toEngineParams(...).size` IS the lift footprint
+  // carrier (Engine.radius('lift') reads `this.params.size` via sizeMult, never
+  // the lift brush's size). Feed it the ACTIVE tool's canonical — the paint
+  // canonical for paint strokes, the lift canonical while erasing — so the
+  // live eraser cannot keep following the paint slider after the split.
+  engine.setParams(
+    toEngineParams({ ...aquarelleParams.value, size: aquarelleActiveCanonicalSize() }),
+  );
   engine.setTool(aquarelleActiveTool.value as Tool);
   // 261028-k03c: the live brush is the SAME selection law the record uses
   // (`aquarelleBrushForActiveTool`), so a Lift stroke's live erase, its

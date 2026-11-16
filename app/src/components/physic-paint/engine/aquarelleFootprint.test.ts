@@ -26,6 +26,15 @@ import {
   type AquarelleFootprint,
   type AquarelleFootprintInput,
 } from './aquarelleFootprint';
+import { canonicalFromDiameter } from './aquarelleBrushSize';
+import {
+  aquarelleActiveCanonicalSize,
+  aquarelleLiftSize,
+  setAquarelleLiftSize,
+  setAquarelleParam,
+  setAquarelleTool,
+  aquarelleParams,
+} from '../view/aquarelleRecordState';
 
 // 63-06 / G-2: count real builds through a delegating wrapper. The footprint
 // cache is module state with no accessor, so the build count is the observable
@@ -257,10 +266,10 @@ describe('footprint texture axis (quick-261115-oh9)', () => {
     fp('brush', 'round', { textureId: null });
     expect(brushBuildState.count, 'an unchanged texture stays a cache hit').toBe(1);
 
-    fp('brush', 'round', { textureId: 'wc/builtin-chalk' });
+    fp('brush', 'round', { textureId: 'wc/custom-4a7c19' });
     expect(brushBuildState.count, 'a texture change rebuilds the brush').toBe(2);
 
-    fp('brush', 'round', { textureId: 'wc/builtin-chalk' });
+    fp('brush', 'round', { textureId: 'wc/custom-4a7c19' });
     expect(brushBuildState.count, 'the textured entry caches').toBe(2);
   });
 });
@@ -280,5 +289,77 @@ describe('footprintCssSize', () => {
     const footprint: AquarelleFootprint = { radiusDoc: 0.001, aspect: 0.1, angle: 0, rounded: true };
     // Engine.updateCursor: d = max(4, …), h = max(3, d · aspect).
     expect(footprintCssSize(footprint, 100)).toEqual({ width: 4, height: 3 });
+  });
+});
+
+// quick 261116-inu / Task 8 — the px size law and the lift split. The size
+// controls store a canonical; this law turns it into the px the engine stamps
+// at full pressure, so a displayed 512 must paint 512 px and a displayed 1
+// must stay 1 (the retired floor is gone, the footprint law adds none).
+describe('pixel-true size law (quick 261116-inu / Task 8)', () => {
+  it('Round at workingHeight 1080: canonical for 512 paints 512 +/- 1 px, canonical for 1 paints 1 +/- 0.01', () => {
+    const fullPressure = brushOf('round').size[1];
+    const ring = (size: number): AquarelleFootprint =>
+      aquarelleFootprintFor({
+        tool: 'brush',
+        tipId: 'round',
+        textureId: null,
+        toolOverrides: NEUTRAL_TOOL_OVERRIDES,
+        size,
+        // Full pressure: brushRadius collapses to brush.size[1].
+        pressure: 1,
+        moveAngle: 0,
+        tiltX: 0,
+        tiltY: 0,
+      });
+
+    const diameter512 = 2 * ring(canonicalFromDiameter(512, fullPressure, 1080)).radiusDoc * 1080;
+    expect(diameter512).toBeGreaterThanOrEqual(511);
+    expect(diameter512).toBeLessThanOrEqual(513);
+    expect(diameter512).toBeCloseTo(512, 1);
+
+    const diameter1 = 2 * ring(canonicalFromDiameter(1, fullPressure, 1080)).radiusDoc * 1080;
+    expect(diameter1).toBeGreaterThanOrEqual(0.99);
+    expect(diameter1).toBeLessThanOrEqual(1.01);
+    expect(diameter1).toBeCloseTo(1, 2);
+  });
+
+  it('lift: aquarelleActiveCanonicalSize is the lift size and sweeping the paint canonical never moves the ring', () => {
+    const previousPaintSize = aquarelleParams.value.size;
+    setAquarelleLiftSize(34);
+    setAquarelleTool('lift');
+    try {
+      expect(aquarelleActiveCanonicalSize(), 'the one selector reads the lift canonical').toBe(
+        aquarelleLiftSize.value,
+      );
+      const liftRing = (): AquarelleFootprint =>
+        aquarelleFootprintFor({
+          tool: 'lift',
+          tipId: 'filbert',
+          textureId: null,
+          toolOverrides: NEUTRAL_TOOL_OVERRIDES,
+          size: aquarelleActiveCanonicalSize(),
+          pressure: 0.4,
+          moveAngle: 0,
+          tiltX: 0,
+          tiltY: 0,
+        });
+      // Engine.radius('lift'): (0.012 + 0.03·pr) · sizeMult.
+      const expectedRadius = (0.012 + 0.03 * 0.4) * sizeMult(34);
+      const first = liftRing();
+      expect(first.radiusDoc).toBeCloseTo(expectedRadius, 12);
+
+      for (const paintSize of [1, 12, 40, 80, 200, 512, 800]) {
+        setAquarelleParam('size', paintSize);
+        expect(aquarelleActiveCanonicalSize(), `paint size ${paintSize} never leaks into the lift`).toBe(34);
+        expect(liftRing().radiusDoc).toBeCloseTo(expectedRadius, 12);
+      }
+    } finally {
+      setAquarelleTool('brush');
+      setAquarelleLiftSize(12);
+      setAquarelleParam('size', previousPaintSize);
+    }
+    // Back on Brush, the same selector returns the paint canonical.
+    expect(aquarelleActiveCanonicalSize()).toBe(aquarelleParams.value.size);
   });
 });

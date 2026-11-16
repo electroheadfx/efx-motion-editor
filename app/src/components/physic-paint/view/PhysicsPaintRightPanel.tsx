@@ -9,7 +9,12 @@ import { PhysicsPaintAudioListSection, type AudioSectionPorts } from './PhysicsP
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { SliderStepper } from '../../shared/SliderStepper';
-import { aquarelleParams } from './aquarelleRecordState';
+import {
+  aquarellePaintCanonicalFromPx,
+  aquarellePaintSizePx,
+  aquarelleParams,
+} from './aquarelleRecordState';
+import { PAINT_SIZE_MAX_PX, PAINT_SIZE_MIN_PX } from '../engine/aquarelleBrushSize';
 import { commitAquarelleSelectionParam } from './aquarellePaintControls';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { RightPanelColorTab } from './RightPanelColorTab';
@@ -452,17 +457,19 @@ export function PhysicsPaintRightPanel({
                 global opacity; its Pigment (`load`) lives on the top bar and in
                 the module globals below. */}
             <div class="paint-tab-size-opacity" data-paint-tab-size-opacity style={{ display: 'flex', flexDirection: 'column', gap: '11px', paddingBottom: '8px' }}>
+              {/* quick 261116-inu / Task 8: the SAME px mapping as the top
+                  bar — one handler, one law, no second size state. */}
               <SliderStepper
                 id="paint-tab-brush-size"
                 label="Brush size"
-                value={aquarelleParams.value.size}
+                value={aquarellePaintSizePx()}
                 step={1}
-                min={1}
-                max={80}
+                min={PAINT_SIZE_MIN_PX}
+                max={PAINT_SIZE_MAX_PX}
                 ariaLabel="Brush size"
-                onChange={onBrushSizeChange}
+                onChange={(value) => onBrushSizeChange(aquarellePaintCanonicalFromPx(value))}
                 onCommit={(value) => {
-                  void commitAquarelleSelectionParam('size', value);
+                  void commitAquarelleSelectionParam('size', aquarellePaintCanonicalFromPx(value));
                 }}
               />
             </div>

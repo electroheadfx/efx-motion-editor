@@ -8,7 +8,7 @@ import type { PhysicsPaintAudioController } from './physicsPaintAudioController'
 import { physicPaintVersion } from '../../../stores/physicPaintStore';
 import { activeModule } from '../../shared/activeModule';
 import type { ScriptMemorySnapshot } from '../performance/scriptMemorySnapshot';
-import { recordAquarelleStroke } from './aquarelleRecordState';
+import { aquarellePaintCanonicalFromPx, recordAquarelleStroke } from './aquarelleRecordState';
 import {
   setAquarelleSelectMode,
   setAquarelleSelectionEditPort,
@@ -1233,14 +1233,18 @@ describe('quick 261111-ucf Paint-tab size release commit', () => {
     const stepper = findStepper(renderPanel(props), 'paint-tab-brush-size');
     expect(typeof stepper.props.onCommit, 'the size stepper exposes onCommit').toBe('function');
 
+    // quick 261116-inu / Task 8: the tab shows px and both paths convert
+    // through the ONE mapping to the paint canonical.
     (stepper.props.onCommit as (value: number) => void)(44);
     expect(calls, 'one patch per release').toHaveLength(1);
     expect(calls[0]!.ids).toEqual([10711]);
-    expect(calls[0]!.patch).toEqual({ params: { size: 44 } });
+    expect(calls[0]!.patch).toEqual({ params: { size: aquarellePaintCanonicalFromPx(44) } });
 
-    // The continuous path is untouched: onChange still drives the Studio.
+    // The continuous path still drives the Studio, in canonical units.
     (stepper.props.onChange as (value: number) => void)(50);
-    expect(props.onBrushSizeChange, 'the live handler keeps onChange').toHaveBeenCalledWith(50);
+    expect(props.onBrushSizeChange, 'the live handler keeps onChange').toHaveBeenCalledWith(
+      aquarellePaintCanonicalFromPx(50),
+    );
   });
 });
 
