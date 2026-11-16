@@ -129,8 +129,11 @@ function aqtlMagicOffset(bytes: Uint8Array): number {
  * The container itself is valid; only the watercolor body predates the
  * texture format.
  */
-function retiredAqtlContainer(version: number): Uint8Array {
-  const bytes = encodedFixture();
+function retiredAqtlContainer(
+  version: number,
+  identity: StudioScriptSnapshotIdentity = IDENTITY,
+): Uint8Array {
+  const bytes = encodeStudioScriptSnapshot({ ...identity, watercolorEvents: fixtureEvents() });
   new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint16(
     aqtlMagicOffset(bytes) + 4,
     version,
@@ -524,8 +527,16 @@ describe('studioScriptSnapshotController — retired AQTL body (WR-12)', () => {
     expect(report.mock.calls[0]?.[0]).toBe(AQTL_RETIRED_NOTICE);
     expect(report.mock.calls[0]?.[0]).not.toContain('corrupt:');
 
-    // A track switch is a NEW binding: the notice is allowed again.
-    controller.bind({ ...IDENTITY, trackId: 'track-2' });
+    // A track switch is a NEW binding: the notice is allowed again (the
+    // container must carry the new identity, since v5 decodes the header
+    // before the body).
+    const secondIdentity = { ...IDENTITY, trackId: 'track-2' };
+    const secondBytes = retiredAqtlContainer(2, secondIdentity);
+    read.mockResolvedValue({
+      ok: true,
+      data: { bytes: secondBytes, digest: 'd', byteLength: secondBytes.byteLength },
+    });
+    controller.bind(secondIdentity);
     await controller.restore();
     expect(report).toHaveBeenCalledTimes(2);
     expect(report.mock.calls[1]?.[0]).toBe(AQTL_RETIRED_NOTICE);
