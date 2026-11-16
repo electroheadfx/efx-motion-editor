@@ -6,8 +6,9 @@ scripts, a pixel-true paint size split from the lift size, and a per-stroke
 texture rotation carried in integer degrees through AQTL v4 and the Roto
 script.
 
-**Status: implementation complete (Tasks 1–10); Task 11 (live UAT) is a
-`checkpoint:human-verify` and has NOT been executed — see the ten rows below.**
+**Status: complete — Tasks 1–10 implemented; Task 11 live UAT approved by the
+user on 2026-11-16 (all ten rows). A follow-up fix series (261116-rp) closed
+the script-replay defects that live UAT exposed; see below.**
 
 ---
 
@@ -100,7 +101,7 @@ plan_head_after: 5d02eb62ce2d8c9ae2958308605b32fcfb3ed66a
 | 9 (RED) | Pin AQTL v4, SNAP retirement and the `textureRotation` carriers | `7e7af2c50` | RED evidence recorded; suite failing by design |
 | 9 (GREEN) | Carry the rotation in degrees through AQTL v4 and the Roto script | `4f0af8c39` | app + package suites green |
 | 10 | Mipmapped tip, rotation uniform, Textures rotation stepper, retired-prefix scan | `5d02eb62c` | 3/3 gates green (details below) |
-| 11 | Live UAT — ten rows | — | **NOT EXECUTED: `checkpoint:human-verify` handed back** |
+| 11 | Live UAT — ten rows | — | **APPROVED (user, 2026-11-16)** |
 
 ### Task 10 gate results (at `5d02eb62c`)
 
@@ -281,23 +282,40 @@ before any path is built.
 
 ---
 
-## Task 11 — Live UAT (NOT EXECUTED)
+## Task 11 — Live UAT (APPROVED 2026-11-16)
 
-The executor does not start the dev server. The ten rows below are recorded as
-**pending**; each needs a verdict from the user on a live Studio.
+**User verdict: all ten rows approved live on 2026-11-16.** The Notes keep
+what each row verifies and why it needs a live Studio.
 
 | # | Row | Status | Note |
 |---|-----|--------|------|
-| 1 | Fresh state shows Default only in both Textures surfaces; a new `.mce` contains no `brushes/` and no `brushPack` | pending | automated pins exist; live `new project → inspect .mce` not run |
-| 2 | Import PNG/JPG, paint, save, quit, relaunch: tip listed and paints; a 512×512 lossless WebP exists under `~/.config/efx-motion/brushes/` | pending | needs real filesystem |
-| 3 | Import the same file twice: one row, one file | pending | automated dedupe pin exists; live disk check not run |
-| 4 | Size reads 512 and Round paints a 512 ± 1 px footprint at full pressure on a 1080-tall project — never 612–620 px; at 1, a single-document-pixel dot, control still reads 1 | pending | **cannot be proven by vitest (no WebGL harness)** |
-| 5 | At S = 430, 256, 64, 17 the same texture downsamples smoothly through mipmaps with no shimmer while the stroke moves | pending | **cannot be proven by vitest (no WebGL harness)** |
-| 6 | Rotate to 37, paint, save/reopen and Play: orientation matches live sheet, bake and playback; clearing to 0 restores the original look | pending | needs live visual check |
-| 7 | Save Script / Copy, then Apply into a project whose library has the same texture at 0: Play in motion, static, reveal-tail and reveal-run all stamp the recorded 37 | pending | needs live cross-project check |
-| 8 | Delete asks once, removes one row and one file, resets selection to Default; a project using it reopens with the response tip and one warning | pending | needs real filesystem |
-| 9 | Copy the `.mce` to a machine without the texture (or rename its library file): replay falls back to the response tip with exactly one warning; importing the same texture restores the recorded look | pending | needs real filesystem |
-| 10 | Lift/eraser size still reads 1..80 and is unaffected by the paint size control | pending | needs live check |
+| 1 | Fresh state shows Default only in both Textures surfaces; a new `.mce` contains no `brushes/` and no `brushPack` | approved | automated pins exist; live `new project → inspect .mce` |
+| 2 | Import PNG/JPG, paint, save, quit, relaunch: tip listed and paints; a 512×512 lossless WebP exists under `~/.config/efx-motion/brushes/` | approved | real filesystem |
+| 3 | Import the same file twice: one row, one file | approved | automated dedupe pin + live disk check |
+| 4 | Size reads 512 and Round paints a 512 ± 1 px footprint at full pressure on a 1080-tall project — never 612–620 px; at 1, a single-document-pixel dot, control still reads 1 | approved | **cannot be proven by vitest (no WebGL harness)** |
+| 5 | At S = 430, 256, 64, 17 the same texture downsamples smoothly through mipmaps with no shimmer while the stroke moves | approved | **cannot be proven by vitest (no WebGL harness)** |
+| 6 | Rotate to 37, paint, save/reopen and Play: orientation matches live sheet, bake and playback; clearing to 0 restores the original look | approved | live visual check |
+| 7 | Save Script / Copy, then Apply into a project whose library has the same texture at 0: Play in motion, static, reveal-tail and reveal-run all stamp the recorded 37 | approved | live cross-project check |
+| 8 | Delete asks once, removes one row and one file, resets selection to Default; a project using it reopens with the response tip and one warning | approved | real filesystem |
+| 9 | Copy the `.mce` to a machine without the texture (or rename its library file): replay falls back to the response tip with exactly one warning; importing the same texture restores the recorded look | approved | real filesystem |
+| 10 | Lift/eraser size still reads 1..80 and is unaffected by the paint size control | approved | live check |
+
+### Follow-up fix series (261116-rp)
+
+Live UAT exposed script-replay defects on textured strokes; all fixed and
+pinned before closure.
+
+| Commit | Fix |
+|--------|-----|
+| `ebce6319f` | Record the raw pointer path (real 60 Hz ticks) so scripts replay the live deposit instead of the index law |
+| `427fafd12` | Accept raw tick spans in the Roto script guard — `ticks` is the last point's tick, ticks must be nondecreasing |
+| `cf70eff12` | Never dwell-stamp on the tick that starts a stroke (the same-tick second impression doubled the text on Apply) |
+| `3ef1ebae4` | Headless ink-parity probe: bundles the real bake and a real-pointer live replay, compares per-stamp deposit logs |
+
+Known residual, accepted by the user: a short textured stroke can still differ
+slightly from the live sheet because live batches coalesced samples into one
+frame while replay feeds one sample per tick, and replay traces straight
+segments. Closing that gap is replay-fidelity work, not a quick-task patch.
 
 ### Declared loss (verbatim)
 
