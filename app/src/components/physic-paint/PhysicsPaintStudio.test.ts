@@ -6621,7 +6621,11 @@ describe('62-02 painted-curve entry and conversion admission in the Studio', () 
     );
     const armAt = enter.indexOf('const armed = await armDraftBase();');
     const rereadAt = enter.indexOf('const liveStroke = getRecordedAquarelleStroke(ids[0]!);');
-    const fitAt = enter.indexOf('const fitted = fitVectorPathAnchors(liveStroke.points);');
+    // quick 261116-r9k: the fit is followed by the shape-bounded simplifier, so
+    // the conversion mints the fewest anchors that still track the paint.
+    const fitAt = enter.indexOf('const fitted = simplifyVectorPathAnchors(');
+    expect(fitAt, 'the conversion simplifies the fitted anchors').toBeGreaterThan(-1);
+    expect(enter.indexOf('fitVectorPathAnchors(liveStroke.points)')).toBeGreaterThan(fitAt);
     const refAt = enter.indexOf('const commit = aquarellePathEditCommitRef.current;');
     const writeAt = enter.indexOf('const editId = await commit(ids[0]!, fitted);');
     const latchAt = enter.indexOf('vectorPathSession.enterPathEdit(String(ids[0]!));');

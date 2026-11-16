@@ -9,6 +9,7 @@ import {
   type AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
+import { withAquarelleReplayGrid } from './aquarelleReplayGrid';
 import type {
   CompletedPaintMutation,
   PaintStroke,
@@ -992,11 +993,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       // live payload timeline (and its in-place cuisson patches) stays mutable.
       const eventsForScript = events.map((event) => isAquarelleDryEvent(event)
         ? { ...event }
-        : {
-            ...event,
-            pts: event.pts.map((point) => ({ ...point })),
-            engine: { ...event.engine },
-          });
+        : withAquarelleReplayGrid(event));
       const script = deepFreezeScript({
         provenance: provenanceFor(source),
         sourceFrame: source.appFrame,

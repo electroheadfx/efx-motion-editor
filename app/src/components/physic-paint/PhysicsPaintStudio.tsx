@@ -113,6 +113,7 @@ import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import * as vectorPathSession from './view/vectorPathSession';
 import { registerPaintedCurveEntrance } from './view/vectorPathLatches';
 import { fitVectorPathAnchors } from './view/vectorPathFit';
+import { simplifyVectorPathAnchors } from './view/vectorPathSimplify';
 import { DEFAULT_VECTOR_PATH_CURVE_MODE, anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
@@ -10390,7 +10391,10 @@ export function PhysicsPaintStudio() {
     const liveStroke = getRecordedAquarelleStroke(ids[0]!);
     if (!liveStroke) return false;
     if (resolvePaintedCurveEligibility(liveStroke).kind !== 'painted') return false;
-    const fitted = fitVectorPathAnchors(liveStroke.points);
+    const fitted = simplifyVectorPathAnchors(
+      fitVectorPathAnchors(liveStroke.points),
+      liveStroke.points,
+    );
     if (fitted.length < 2) {
       setApplyMessage(PATH_EDIT_DEGENERATE_DISABLED_REASON);
       setApplyStatus('error');
