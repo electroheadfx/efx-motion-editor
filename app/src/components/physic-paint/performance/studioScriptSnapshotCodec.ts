@@ -14,8 +14,9 @@
 //    u32 anchorByteLength      | anchor body
 //    u32 durableBaseByteLength | durable-base body
 //
-//  The watercolor body IS the proven AQTL v3 buffer
-//  (encodeScriptTimelineBinary) — the IDs, order, playFrame,
+//  The watercolor body IS the proven AQTL v4 buffer
+//  (encodeScriptTimelineBinary; v3 bodies written before the
+//  rotation field still decode) — the IDs, order, playFrame,
 //  params, toolOverrides, cuisson and Dry events all ride there.
 //  There is deliberately no JSON fallback.
 //
@@ -620,21 +621,23 @@ export function decodeStudioScriptSnapshot(
   try {
     watercolorEvents = decodeScriptTimelineBinary(watercolorBody);
   } catch (error) {
-    // WR-12 (63-16): a pre-v4 AQTL body predates the current texture format.
+    // WR-12 (63-16): an AQTL body older than the texture format is retired.
     // There is no migration reader (no-backward-compat law), so name the
     // retirement with a pinned message of our own — never interpolate the inner
     // text, and never flatten it into `watercolor` corruption: the frame pixels
-    // are intact.
+    // are intact. v3 is NOT retired: it is the rotation-less predecessor the
+    // codec reads, so a snapshot written before quick 261116-inu restores
+    // normally and re-encodes as v4 on the next save.
     if (error instanceof ScriptTimelineCodecError && error.code === 'unsupported-version') {
       // WR-01 (63 review): the inner codec raises `unsupported-version` for
-      // EVERY version other than its current one. Retirement is versions 1-3
-      // only — a future body, a pre-format body or a bit-flipped version word
-      // must keep the generic diagnosis, or an intact-but-unknown script is
-      // reported as "older" and its user is steered away from real corruption.
+      // every version it does not read. Retirement is versions 1-2 only — a
+      // future body, a pre-format body or a bit-flipped version word must keep
+      // the generic diagnosis, or an intact-but-unknown script is reported as
+      // "older" and its user is steered away from real corruption.
       const version = watercolorBody.byteLength >= 6
         ? watercolorBody[4]! | (watercolorBody[5]! << 8)
         : -1;
-      if (version === 1 || version === 2 || version === 3) {
+      if (version === 1 || version === 2) {
         fail('aqtl-retired', 'AQTL body predates the texture format');
       }
     }

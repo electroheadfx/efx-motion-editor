@@ -11,8 +11,10 @@
 //      byte — and the presence-prefixed textureId plus its i16 hundredths
 //      rotation slot after the vector block.
 //  Every corrupt-input case must fail closed with a typed
-//  ScriptTimelineCodecError — never a raw RangeError. Versions 1, 2 and 3
-//  are REFUSED outright (no upgrade path, per the project's clean-break law).
+//  ScriptTimelineCodecError — never a raw RangeError. Versions 1 and 2 are
+//  REFUSED outright (no upgrade path, per the project's clean-break law); v3
+//  is READ because its only difference from v4 is the absent rotation byte,
+//  and snapshots written before quick 261116-inu still carry it.
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
@@ -381,8 +383,8 @@ describe('JSON baseline codec', () => {
 describe('AQTL packed binary codec', () => {
   it('pins the magic/version constants', () => {
     expect(SCRIPT_TIMELINE_BINARY_MAGIC).toBe('AQTL');
-    // quick 261116-inu: AQTL v4 is the one accepted version; v1, v2 and v3
-    // are refused below.
+    // quick 261116-inu: AQTL v4 is the one encoded version; v3 is read
+    // (rotation-less predecessor) and v1/v2 are refused below.
     expect(SCRIPT_TIMELINE_BINARY_VERSION).toBe(4);
     expect(POINT_UV_STEP).toBeCloseTo(1 / 65535, 12);
     expect(POINT_DEGREE_STEP).toBeCloseTo(0.02, 12);
@@ -1064,16 +1066,43 @@ describe('AQTL fail-closed validation', () => {
     expect(decodeScriptTimelineBinary(MINIMAL_BYTES)).toEqual(MINIMAL_EVENTS);
   });
 
+  it('reads a v3 body (no rotation presence byte) and upgrades it on re-encode', () => {
+    // quick 261116-inu: v3 is the rotation-less predecessor. The minimal
+    // fixture's rotation presence byte sits at offset 75 (no texture, no
+    // anchors), so dropping it yields a genuine v3 body.
+    const v3 = new Uint8Array(MINIMAL_BYTES.byteLength - 1);
+    v3.set(MINIMAL_BYTES.subarray(0, 75));
+    v3.set(MINIMAL_BYTES.subarray(76), 75);
+    const view = new DataView(v3.buffer, v3.byteOffset, v3.byteLength);
+    view.setUint16(4, 3, true);
+    view.setUint32(16, view.getUint32(16, true) - 1, true);
+
+    const decoded = decodeScriptTimelineBinary(v3);
+    expect(decoded).toEqual(MINIMAL_EVENTS);
+    expect(asStroke(decoded[0]!).engine).not.toHaveProperty('textureRotation');
+
+    // The encoder still writes v4: the next save upgrades the body, and a
+    // rotation-less stroke lands byte-identical to its v3 content.
+    const upgraded = encodeScriptTimelineBinary(decoded);
+    const upgradedView = new DataView(
+      upgraded.buffer,
+      upgraded.byteOffset,
+      upgraded.byteLength,
+    );
+    expect(upgradedView.getUint16(4, true)).toBe(4);
+    expect(upgraded).toEqual(MINIMAL_BYTES);
+  });
+
   it('validates the header before allocating', () => {
     const badMagic = corruptMinimal((bytes) => {
       bytes[0] = 0x00;
     });
     expect(expectedCode(() => decodeScriptTimelineBinary(badMagic))).toBe('magic-mismatch');
 
-    // 63-15 / quick 261116-inu: versions 1, 2 and 3 are refused outright —
-    // there is no upgrade path and no older reader left behind (project law:
-    // no backward compatibility). v3 is retired by the v4 rotation bump.
-    for (const version of [1, 2, 3] as const) {
+    // 63-15 / quick 261116-inu: versions 1 and 2 are refused outright — there
+    // is no upgrade path for payloads that predate the texture format. v3 is
+    // NOT refused: it differs from v4 by exactly the absent rotation byte.
+    for (const version of [1, 2] as const) {
       const retired = corruptMinimal((_bytes, view) => {
         view.setUint16(4, version, true);
       });

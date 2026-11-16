@@ -84,11 +84,13 @@
 //  BEFORE allocating or reading. Every failure is a typed
 //  ScriptTimelineCodecError — never a raw RangeError.
 //
-//  VERSION LAW: v4 is the ONE accepted version. Versions 1, 2 and 3 are
-//  refused with `unsupported-version`; there is no upgrade path and no older
-//  reader left behind (project law: no backward compatibility for old
-//  payloads). An older `.snap` written before this change refuses whole on
-//  first open and its track starts empty — accepted, no migration.
+//  VERSION LAW: v4 is the ONE encoded version. The decoder reads v3 and v4:
+//  v3 is the rotation-less predecessor whose only wire difference is the
+//  absent `engine.textureRotation` presence byte, and snapshots written
+//  before quick 261116-inu still carry it. Reading v3 is not a migration —
+//  the next save re-encodes as v4. Versions 1 and 2 remain refused with
+//  `unsupported-version`: they predate the texture format and have no
+//  reader (project law: no backward compatibility for retired payloads).
 //
 //  NOTE on the point-record size: the field list above (three u16 +
 //  three i16 + one u32) is 16 bytes; the plan's 14-byte lower bound in
@@ -108,8 +110,15 @@ import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation
 /** ASCII magic carried by every AQTL buffer. */
 export const SCRIPT_TIMELINE_BINARY_MAGIC = 'AQTL';
 
-/** The one binary version this module encodes and accepts (261116-inu: v4). */
+/** The binary version this module always encodes (261116-inu: v4). */
 export const SCRIPT_TIMELINE_BINARY_VERSION = 4;
+
+/**
+ * Versions this decoder reads. v3 differs from v4 by exactly the absent
+ * rotation presence byte, so one version-aware branch reads it; the encoder
+ * still writes v4, upgrading the body on the next save.
+ */
+const SCRIPT_TIMELINE_BINARY_READ_VERSIONS = new Set([3, 4]);
 
 /** Rotation hundredths: the AQTL body's ONLY degree→wire conversion. */
 const ROTATION_HUNDREDTHS_MAX = 18000;
@@ -977,7 +986,7 @@ function decodeVectorBlock(reader: BinaryReader): {
   return result;
 }
 
-function decodeStroke(reader: BinaryReader): {
+function decodeStroke(reader: BinaryReader, version: number): {
   stroke: StudioStroke<AquarelleStrokePayload>;
   pointCount: number;
 } {
@@ -1056,33 +1065,37 @@ function decodeStroke(reader: BinaryReader): {
 
   // quick 261116-inu: mirror of the encoder. The ONE hundredths→degrees
   // division in the feature; the value re-enters memory as degrees and the
-  // rebuild adds the key only when the presence marker carried it.
-  const hasTextureRotation = reader.presence('engine.textureRotation');
+  // rebuild adds the key only when the presence marker carried it. v3 bodies
+  // predate the field entirely — no presence byte, no rotation.
   let textureRotation: number | undefined;
-  if (hasTextureRotation) {
-    const hundredths = reader.i16();
-    if (
-      hundredths < -ROTATION_HUNDREDTHS_MAX ||
-      hundredths > ROTATION_HUNDREDTHS_MAX
-    ) {
-      fail(
-        'invalid-value',
-        'engine.textureRotation hundredths out of -18000..18000',
-        reader.offset,
-      );
+  if (version >= 4) {
+    const hasTextureRotation = reader.presence('engine.textureRotation');
+    if (hasTextureRotation) {
+      const hundredths = reader.i16();
+      if (
+        hundredths < -ROTATION_HUNDREDTHS_MAX ||
+        hundredths > ROTATION_HUNDREDTHS_MAX
+      ) {
+        fail(
+          'invalid-value',
+          'engine.textureRotation hundredths out of -18000..18000',
+          reader.offset,
+        );
+      }
+      // The unit law keeps DEGREES integral in memory. A body whose hundredths
+      // are not a whole degree (e.g. 4550) would decode to 45.5, which the
+      // encoder then refuses — bricking every later save of that timeline.
+      // Refuse it at the boundary instead, as invalid rather than silently
+      // rounded.
+      if (hundredths % 100 !== 0) {
+        fail(
+          'invalid-value',
+          'engine.textureRotation hundredths must be a whole degree',
+          reader.offset,
+        );
+      }
+      textureRotation = hundredths / 100;
     }
-    // The unit law keeps DEGREES integral in memory. A body whose hundredths are
-    // not a whole degree (e.g. 4550) would decode to 45.5, which the encoder
-    // then refuses — bricking every later save of that timeline. Refuse it at
-    // the boundary instead, as invalid rather than silently rounded.
-    if (hundredths % 100 !== 0) {
-      fail(
-        'invalid-value',
-        'engine.textureRotation hundredths must be a whole degree',
-        reader.offset,
-      );
-    }
-    textureRotation = hundredths / 100;
   }
 
   const pointCount = reader.u32();
@@ -1154,7 +1167,7 @@ export function decodeScriptTimelineBinary(input: Uint8Array): AquarellePayloadE
 
   const view = new DataView(input.buffer, input.byteOffset, input.byteLength);
   const version = view.getUint16(4, true);
-  if (version !== SCRIPT_TIMELINE_BINARY_VERSION) {
+  if (!SCRIPT_TIMELINE_BINARY_READ_VERSIONS.has(version)) {
     fail('unsupported-version', `unsupported AQTL version ${version}`, 4);
   }
   const flags = view.getUint16(6, true);
@@ -1194,7 +1207,7 @@ export function decodeScriptTimelineBinary(input: Uint8Array): AquarellePayloadE
     const kindOffset = reader.offset;
     const kind = reader.u8();
     if (kind === 1) {
-      const decoded = decodeStroke(reader);
+      const decoded = decodeStroke(reader, version);
       summedPointCount += decoded.pointCount;
       events.push(decoded.stroke);
       continue;

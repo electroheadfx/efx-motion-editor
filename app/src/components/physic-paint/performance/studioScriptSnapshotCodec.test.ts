@@ -386,10 +386,11 @@ describe('studioScriptSnapshotCodec', () => {
   });
 
   it('names a retired AQTL body instead of reporting watercolor corruption (WR-12)', () => {
-    // A pre-v4 AQTL body predates the texture-rotation format. There is no
-    // migration reader (no-backward-compat law), so the body is RETIRED — it
-    // must raise its own code with the pinned message, NOT `watercolor`, which
-    // tells the user their script is corrupt when the frame pixels are intact.
+    // An AQTL body older than the texture format is RETIRED — it must raise
+    // its own code with the pinned message, NOT `watercolor`, which tells the
+    // user their script is corrupt when the frame pixels are intact. v3 is NOT
+    // retired: the codec reads it (see scriptTimelineCodec tests), so only
+    // v1/v2 remain retirements.
     const bytes = encodeFixture();
     // The watercolor section's u32 length word sits at `sectionsOffset`; the
     // body starts four bytes later with the AQTL magic, so its u16 version
@@ -408,24 +409,30 @@ describe('studioScriptSnapshotCodec', () => {
     const retired = errorOf(() => decodeStudioScriptSnapshot(writeVersion(2), IDENTITY));
     expect(retired.code).toBe('aqtl-retired');
     expect(retired.message).toBe('AQTL body predates the texture format');
-    for (const version of [1, 3] as const) {
-      expect(
-        codeOf(() => decodeStudioScriptSnapshot(writeVersion(version), IDENTITY)),
-        `version ${version}`,
-      ).toBe('aqtl-retired');
-    }
+    expect(
+      codeOf(() => decodeStudioScriptSnapshot(writeVersion(1), IDENTITY)),
+      'version 1',
+    ).toBe('aqtl-retired');
+    // v3 is read, so it must NOT be labelled a retirement. This fixture's body
+    // is v4-shaped (it carries the rotation byte), so relabelling it v3 is
+    // genuine corruption, not a retired payload.
+    expect(
+      codeOf(() => decodeStudioScriptSnapshot(writeVersion(3), IDENTITY)),
+      'version 3',
+    ).toBe('watercolor');
 
     // The CURRENT v4 body is not retired: patching an already-v4 fixture to
     // version 4 is a no-op and decodes normally.
     const current = decodeStudioScriptSnapshot(writeVersion(4), IDENTITY);
     expect(current.watercolorEvents).toHaveLength(2);
 
-    // WR-01: retirement is versions 1, 2 and 3 ONLY. The inner codec raises
-    // `unsupported-version` for every version other than 4, so a wholesale
-    // mapping would mislabel a future body, a pre-format body and a bit-flipped
-    // version word as a deliberate retirement — and "predates the texture
-    // format" is factually backwards for a v5 body, while "the frame pixels are
-    // unchanged" steers the user away from genuine corruption.
+    // WR-01: retirement is versions 1 and 2 ONLY. The inner codec raises
+    // `unsupported-version` for every version it does not read (v1, v2 and
+    // anything above v4), so a wholesale mapping would mislabel a future body,
+    // a pre-format body and a bit-flipped version word as a deliberate
+    // retirement — and "predates the texture format" is factually backwards for
+    // a v5 body, while "the frame pixels are unchanged" steers the user away
+    // from genuine corruption.
     expect(codeOf(() => decodeStudioScriptSnapshot(writeVersion(0), IDENTITY))).toBe('watercolor');
     expect(codeOf(() => decodeStudioScriptSnapshot(writeVersion(5), IDENTITY))).toBe('watercolor');
     expect(codeOf(() => decodeStudioScriptSnapshot(writeVersion(7), IDENTITY))).toBe('watercolor');

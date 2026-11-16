@@ -31,6 +31,7 @@ import {
   encodeStudioScriptSnapshot,
   type StudioScriptSnapshotIdentity,
 } from '../performance/studioScriptSnapshotCodec';
+import { encodeScriptTimelineBinary } from '../performance/scriptTimelineCodec';
 import {
   STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE,
   STUDIO_SCRIPT_SNAPSHOT_SAVE_WITHHELD_MESSAGE,
@@ -141,6 +142,74 @@ function retiredAqtlContainer(
     true,
   );
   return bytes;
+}
+
+function u16Bytes(value: number): Uint8Array {
+  const bytes = new Uint8Array(2);
+  new DataView(bytes.buffer).setUint16(0, value, true);
+  return bytes;
+}
+
+function u32Bytes(value: number): Uint8Array {
+  const bytes = new Uint8Array(4);
+  new DataView(bytes.buffer).setUint32(0, value, true);
+  return bytes;
+}
+
+function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
+}
+
+/**
+ * A SNAP v5 container whose watercolor body is a GENUINE AQTL v3 body:
+ * the rotation presence byte is removed from a one-stroke, one-point buffer
+ * and the header version/body length are corrected. This is the shape of every
+ * snapshot written before quick 261116-inu, so the controller must restore it
+ * instead of latching the save.
+ */
+function v3AqtlContainer(stroke: StudioStroke<AquarelleStrokePayload>): Uint8Array {
+  const v4 = encodeScriptTimelineBinary([stroke]);
+  const body = v4.subarray(24);
+  // One point and no trailing event: the point record ends the body, so the
+  // v4 rotation presence byte is the 21st byte from the end (1 + 4 + 16).
+  const rotationAt = body.length - 21;
+  const v3Body = new Uint8Array(body.length - 1);
+  v3Body.set(body.subarray(0, rotationAt));
+  v3Body.set(body.subarray(rotationAt + 1), rotationAt);
+  const header = v4.slice(0, 24);
+  const headerView = new DataView(header.buffer, header.byteOffset, header.byteLength);
+  headerView.setUint16(4, 3, true);
+  headerView.setUint32(16, v3Body.length, true);
+  const watercolor = concatBytes([header, v3Body]);
+
+  const encoder = new TextEncoder();
+  const identityPart = (value: string): Uint8Array[] => {
+    const encoded = encoder.encode(value);
+    return [u16Bytes(encoded.length), encoded];
+  };
+  const anchor = concatBytes([u16Bytes(1), u16Bytes(0), u32Bytes(0)]);
+  const base = concatBytes([u16Bytes(2), u16Bytes(0), u32Bytes(0)]);
+  return concatBytes([
+    encoder.encode('SNP1'),
+    u16Bytes(5),
+    u16Bytes(0),
+    new Uint8Array([0]),
+    ...identityPart(IDENTITY.projectId),
+    ...identityPart(IDENTITY.layerId),
+    ...identityPart(IDENTITY.trackId),
+    u32Bytes(watercolor.length),
+    watercolor,
+    u32Bytes(anchor.length),
+    anchor,
+    u32Bytes(base.length),
+    base,
+  ]);
 }
 
 /** A v5 container whose inner AQTL magic is corrupt (genuine corruption). */
@@ -509,18 +578,20 @@ describe('studioScriptSnapshotController — SNAP v5 clean break (261027-klx)', 
 // ------------------------------------------------------------
 //  WR-12 (63-16) — the retired AQTL body.
 //
-//  A script written before the texture format (v1/v2) or before the
-//  texture-rotation format (v3) is retired. There is no migration
-//  reader (no-backward-compat law), so the body is retired and NAMED
-//  — never reported as watercolor corruption: the frame pixels are
-//  intact.
+//  A script written before the texture format (v1/v2) is retired.
+//  There is no migration reader (no-backward-compat law), so the body
+//  is retired and NAMED — never reported as watercolor corruption:
+//  the frame pixels are intact. v3 is read by the codec (its only
+//  difference from v4 is the absent rotation byte), so existing
+//  snapshots restore and upgrade on the next save.
 // ------------------------------------------------------------
 
 describe('studioScriptSnapshotController — retired AQTL body (WR-12)', () => {
-  it('AQTL_RETIRED: retires inner AQTL versions 1-3 and accepts the current v4 body', async () => {
-    // quick 261116-inu: v4 is the rotation format; v1, v2 and v3 have no
-    // migration reader and are named retirements, never watercolor corruption.
-    for (const version of [1, 2, 3] as const) {
+  it('AQTL_RETIRED: retires inner AQTL versions 1-2 and accepts v3 and v4', async () => {
+    // quick 261116-inu: v1/v2 predate the texture format and have no migration
+    // reader, so they are named retirements, never watercolor corruption. v3
+    // is READ (rotation-less predecessor), so it must never be called older.
+    for (const version of [1, 2] as const) {
       const bytes = retiredAqtlContainer(version);
       const { controller, read, report } = harness();
       read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
@@ -531,6 +602,20 @@ describe('studioScriptSnapshotController — retired AQTL body (WR-12)', () => {
         maxRestoredMutationId: 0,
       });
       expect(report.mock.calls[0]?.[0]).toBe(AQTL_RETIRED_NOTICE);
+    }
+
+    // This fixture's body is v4-shaped (rotation byte present), so relabelling
+    // it v3 is corruption. The point of the assertion is that the failure is
+    // NOT the AQTL retirement notice any more.
+    {
+      const bytes = retiredAqtlContainer(3);
+      const { controller, read, report } = harness();
+      read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+      controller.bind(IDENTITY);
+
+      expect(await controller.restore()).toEqual({ status: 'refused', maxRestoredMutationId: 0 });
+      expect(report.mock.calls[0]?.[0]).toContain('corrupt:watercolor');
+      expect(report.mock.calls[0]?.[0]).not.toBe(AQTL_RETIRED_NOTICE);
     }
 
     // The current version is a valid body: the same fixture restores.
@@ -544,6 +629,30 @@ describe('studioScriptSnapshotController — retired AQTL body (WR-12)', () => {
 
     expect(await controller.restore()).toEqual({ status: 'restored', maxRestoredMutationId: 102 });
     expect(report).not.toHaveBeenCalled();
+  });
+
+  it('restores a genuine v3 body and leaves the save path open', async () => {
+    const stroke: StudioStroke<AquarelleStrokePayload> = {
+      ...fixtureStroke(7, 201),
+      pts: [fixturePoint(0)],
+    };
+    const bytes = v3AqtlContainer(stroke);
+    const { controller, read, report, write, setSignature } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    expect(await controller.restore()).toEqual({
+      status: 'restored',
+      maxRestoredMutationId: 201,
+    });
+    expect(report).not.toHaveBeenCalled();
+
+    // The latch stayed clear: a later edit is written, and the encoder
+    // upgrades the body to the current v4.
+    recordAquarelleStroke(920, recordableAquarelleStroke(920, 0));
+    setSignature('sig-after-v3-restore');
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(1);
   });
 
   it('AQTL_RETIRED: shows the pinned named notice exactly once per binding', async () => {
