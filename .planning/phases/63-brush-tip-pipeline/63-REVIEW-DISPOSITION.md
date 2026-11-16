@@ -6,7 +6,31 @@ findings:
   - id: CR-01
     severity: critical
     disposition: open
-    title: "The latch silently discards every script edit made after a refused restore, and the only release is a destructive purge"
+    title: "The withheld-save disclosure is destroyed with the window — the close path still silently accepts a withheld flush"
+  - id: WR-13
+    severity: warning
+    disposition: open
+    title: "Every purge action — including single-frame and raster purges — clears the refused-restore latch and replaces the unread snapshot session-only"
+  - id: WR-14
+    severity: warning
+    disposition: open
+    title: "Impossible-state guard — the short-body fallback in the AQTL version read can never be taken"
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "The \"later successful restore\" latch release still has no production call site"
+  - id: IN-10
+    severity: info
+    disposition: open
+    title: "The anchor encoder accepts a `mutationId` above `0xffffffff` and silently truncates it"
+  - id: IN-11
+    severity: info
+    disposition: open
+    title: "`deps.getIdentity` is dead wiring"
+  - id: IN-12
+    severity: info
+    disposition: open
+    title: "The explicit foreign-base guard is untested in the only configuration where it is load-bearing"
   - id: WR-01
     severity: warning
     disposition: open
@@ -15,10 +39,6 @@ findings:
     severity: warning
     disposition: open
     title: "A foreign track's session durable base can still be written under this track's snapshot"
-  - id: IN-01
-    severity: info
-    disposition: open
-    title: "The \"later successful restore\" latch release is unreachable in production and untested"
   - id: IN-02
     severity: info
     disposition: open
@@ -95,9 +115,9 @@ findings:
     severity: info
     disposition: open
     title: "The import request mask is decoded twice"
-open: 23
-total: 23
-recorded: 2026-11-16T09:55:08.758Z
+open: 28
+total: 28
+recorded: 2026-11-16T10:08:29.161Z
 ---
 
 # Phase 63: Code Review Disposition
@@ -105,11 +125,16 @@ recorded: 2026-11-16T09:55:08.758Z
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
 | CR-01 | critical | open | - |
-| WR-01 | warning | open | - |
-| WR-02 | warning | open | - |
+| WR-13 | warning | open | - |
+| WR-14 | warning | open | - |
 | IN-01 | info | open | - |
-| IN-02 | info | open | - |
-| IN-03 | info | open | - |
+| IN-10 | info | open | - |
+| IN-11 | info | open | - |
+| IN-12 | info | open | - |
+| WR-01 | warning | open | - (not in the current review) |
+| WR-02 | warning | open | - (not in the current review) |
+| IN-02 | info | open | - (not in the current review) |
+| IN-03 | info | open | - (not in the current review) |
 | CR-02 | critical | open | - (not in the current review) |
 | WR-08 | warning | open | - (not in the current review) |
 | WR-09 | warning | open | - (not in the current review) |
