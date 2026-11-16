@@ -13,6 +13,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   ANCHOR_WIDTH_MAX,
+  evaluateAquarellePath,
   sampleVectorPath,
   toStudioStroke as aquarelleToStudioStroke,
   type AquarelleAnchor,
@@ -1210,5 +1211,113 @@ describe('62-01 D-07/D-08 — count preservation and the pressure remap', () => 
     const points = getRecordedAquarelleStroke(id)!.points;
     expect(points).toHaveLength(4);
     expect(points.map((sample) => sample.p)).toEqual([-1, -1, -1, -1]);
+  });
+});
+
+// ============================================================
+//  Quick 261116-r9k — the painted-to-vector CONVERSION seam
+//  re-stations the replay spine.
+//
+//  D-08's count preservation protects an EDIT's wet lifetime; at
+//  CONVERSION it under-samples the curve the user is about to
+//  edit, so the conversion re-stations (quick 261116-r9k). The
+//  count law is clamp(ceil(spineLength / 0.02), sourceCount,
+//  3 x sourceCount); every LATER write passes no target count.
+// ============================================================
+
+describe('quick 261116-r9k — the conversion re-stations the replay spine', () => {
+  beforeEach(() => {
+    resetAquarelleRecordState();
+    setAquarelleScriptEditInFlight(false);
+  });
+
+  it('converts an anchorless stroke at the named law — 15 stations for a 0.8 uv spine', () => {
+    const id = 62111;
+    recordAquarelleStroke(id, pressureStroke(id));
+    const index = getRecordedAquarellePayloadTimeline().length - 1;
+    const beforeEntry = timelineStrokeAt(index);
+    const revision = aquarelleStrokesRevision.value;
+    const anchors: readonly AquarelleAnchor[] = [
+      { x: 0.1, y: 0.5, kind: 'auto' },
+      { x: 0.9, y: 0.5, kind: 'auto' },
+    ];
+
+    expect(updateAquarellePathInScript(id, anchors, { curveMode: 'spline' })).toBe(1);
+
+    const after = getRecordedAquarelleStroke(id)!;
+    const evaluated = evaluateAquarellePath(anchors, 'spline').points;
+    // ceil(0.8 / 0.02) = 40, clamped to 3 x the recorded 5 samples.
+    expect(after.points).toHaveLength(15);
+    // Both ends sit on the evaluated curve's own ends.
+    expect(after.points[0]!.x).toBeCloseTo(evaluated[0]!.x, 12);
+    expect(after.points[0]!.y).toBeCloseTo(evaluated[0]!.y, 12);
+    const last = evaluated.length - 1;
+    expect(after.points[14]!.x).toBeCloseTo(evaluated[last]!.x, 12);
+    expect(after.points[14]!.y).toBeCloseTo(evaluated[last]!.y, 12);
+    // SAME timeline index, ONE new entry, ONE revision bump.
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(1);
+    const afterEntry = timelineStrokeAt(index);
+    expect(afterEntry).not.toBe(beforeEntry);
+    expect(afterEntry.pts).toHaveLength(15);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+    // The raw trace's ticks are dropped (the array no longer describes them).
+    expect(after.pointTicks).toBeUndefined();
+    // The recorded profile stays pinned at both ends; station 7 (arc
+    // fraction 0.5) reads the source station that sits at 0.5.
+    expect(after.points[0]!.p).toBe(0.2);
+    expect(after.points[7]!.p).toBeCloseTo(0.5, 9);
+    expect(after.points[14]!.p).toBe(0.9);
+  });
+
+  it('never multiplies the count again on a later drag or a real mode switch', () => {
+    const id = 62113;
+    recordAquarelleStroke(id, pressureStroke(id));
+    const anchors: readonly AquarelleAnchor[] = [
+      { x: 0.1, y: 0.5, kind: 'auto' },
+      { x: 0.9, y: 0.5, kind: 'auto' },
+    ];
+    expect(updateAquarellePathInScript(id, anchors, { curveMode: 'spline' })).toBe(1);
+    expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(15);
+    const revision = aquarelleStrokesRevision.value;
+
+    // The end anchor moves out to 1.3: a 1.2 uv spine, so an UNGATED
+    // resolve would demand clamp(ceil(60), 15, 45) = 45. The 15 the
+    // conversion minted is what proves the anchor gate exists.
+    const dragged: readonly AquarelleAnchor[] = [
+      { x: 0.1, y: 0.5, kind: 'auto' },
+      { x: 1.3, y: 0.5, kind: 'auto' },
+    ];
+    expect(updateAquarellePathInScript(id, dragged)).toBe(1);
+    const afterDrag = getRecordedAquarelleStroke(id)!;
+    expect(afterDrag.points).toHaveLength(15);
+    expect(afterDrag.points[14]!.x).toBeCloseTo(1.3, 12);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+
+    // Both switches are REAL mode changes (the conversion stored 'spline';
+    // a same-mode call early-continues without resampling).
+    expect(updateAquarelleCurveModeInScript([id], 'bezier')).toBe(1);
+    expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(15);
+    expect(updateAquarelleCurveModeInScript([id], 'spline')).toBe(1);
+    expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(15);
+  });
+
+  it('keeps an all-sentinel anchorless conversion all-sentinel across the larger count', () => {
+    const id = 62115;
+    const sentinel = (x: number): AquarellePoint => ({ x, y: 0.5, p: -1, tx: 0, ty: 0, tw: 0 });
+    recordAquarelleStroke(
+      id,
+      stroke(id, [sentinel(0.2), sentinel(0.5), sentinel(0.8)]),
+    );
+    const anchors: readonly AquarelleAnchor[] = [
+      { x: 0.4, y: 0.5, kind: 'auto' },
+      { x: 0.6, y: 0.5, kind: 'auto' },
+    ];
+
+    expect(updateAquarellePathInScript(id, anchors, { curveMode: 'spline' })).toBe(1);
+
+    // A 0.2 uv spine demands 10; clamped to 3 x the recorded 3 samples.
+    const points = getRecordedAquarelleStroke(id)!.points;
+    expect(points).toHaveLength(9);
+    expect(points.map((sample) => sample.p)).toEqual([-1, -1, -1, -1, -1, -1, -1, -1, -1]);
   });
 });
