@@ -33,6 +33,7 @@ import {
 } from '../performance/studioScriptSnapshotCodec';
 import {
   STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE,
+  STUDIO_SCRIPT_SNAPSHOT_SAVE_WITHHELD_MESSAGE,
   createStudioScriptSnapshotController,
   type StudioScriptSnapshotControllerDeps,
   type StudioScriptSnapshotOperationResult,
@@ -1022,9 +1023,11 @@ describe('studioScriptSnapshotController — CR-02 refused-restore latch', () =>
     await controller.flushNow();
 
     expect(write).not.toHaveBeenCalled();
-    // ONE report: the restore notice. A withheld save reports nothing.
-    expect(report).toHaveBeenCalledTimes(1);
+    // Two reports: the restore notice, then ONE save-paused notice (CR-01).
+    // A withheld save never reports a save FAILURE — nothing was attempted.
+    expect(report).toHaveBeenCalledTimes(2);
     expect(String(report.mock.calls[0]?.[0])).toContain('could not be restored');
+    expect(String(report.mock.calls[1]?.[0])).toBe(STUDIO_SCRIPT_SNAPSHOT_SAVE_WITHHELD_MESSAGE);
   });
 
   it('CR-02: the latch stands across repeated routine saves', async () => {
@@ -1078,8 +1081,9 @@ describe('studioScriptSnapshotController — CR-02 refused-restore latch', () =>
     await controller.saveNow();
 
     expect(write).not.toHaveBeenCalled();
-    expect(report).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledTimes(2);
     expect(String(report.mock.calls[0]?.[0])).toContain('corrupt:version');
+    expect(String(report.mock.calls[1]?.[0])).toBe(STUDIO_SCRIPT_SNAPSHOT_SAVE_WITHHELD_MESSAGE);
   });
 
   it('CR-02: a successful restore still saves the union exactly as before', async () => {
@@ -1190,6 +1194,113 @@ describe('studioScriptSnapshotController — CR-02 refused-restore latch', () =>
     expect(write).toHaveBeenCalledTimes(1);
     const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
     expect(decodeStudioScriptSnapshot(written, secondIdentity).watercolorEvents).toHaveLength(3);
+  });
+
+  it('IN-01: a later successful restore on the same binding releases the latch', async () => {
+    // The success-path release was documented but never pinned: a transient
+    // `io` refusal followed by a readable retry must clear the latch, or the
+    // only exit from a recovered binding is the destructive purge.
+    const bytes = encodedFixture();
+    const { controller, read, write, setSignature } = harness();
+    read.mockResolvedValueOnce({ ok: false, error: { kind: 'io' } });
+    controller.bind(IDENTITY);
+    expect(await controller.restore()).toEqual({ status: 'refused', maxRestoredMutationId: 0 });
+
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    expect((await controller.restore()).status).toBe('restored');
+
+    recordAquarelleStroke(927, recordableAquarelleStroke(927, 0));
+    setSignature('sig-recovered');
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ------------------------------------------------------------
+//  CR-01 (63 review) — a WITHHELD save is DISCLOSED.
+//
+//  CR-02's latch protects the unread leaf by not writing, but the
+//  refusal used to fail silently: a user who painted after a
+//  refusal got no indication that nothing was being saved, the
+//  close path accepted a no-op flush, and the only exit destroyed
+//  the session. The latch now reports ONCE per latch episode that
+//  saving is paused and names the exit.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — CR-01 save-withheld disclosure', () => {
+  it('CR-01: a withheld save reports the pause once, after the restore notice', async () => {
+    const { controller, read, write, report, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(921, recordableAquarelleStroke(921, 0));
+    setSignature('sig-withheld-1');
+    await controller.saveNow();
+
+    expect(write).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledTimes(2);
+    expect(String(report.mock.calls[0]?.[0])).toContain('could not be restored');
+    expect(String(report.mock.calls[1]?.[0])).toBe(STUDIO_SCRIPT_SNAPSHOT_SAVE_WITHHELD_MESSAGE);
+  });
+
+  it('CR-01: the pause is reported once per latch episode, not per save', async () => {
+    const { controller, read, write, report, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(922, recordableAquarelleStroke(922, 0));
+    setSignature('sig-withheld-a');
+    await controller.saveNow();
+    recordAquarelleStroke(923, recordableAquarelleStroke(923, 0));
+    setSignature('sig-withheld-b');
+    await controller.saveNow();
+    await controller.flushNow();
+
+    expect(write).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledTimes(2);
+  });
+
+  it('CR-01: a missing snapshot and a healthy binding never report a pause', async () => {
+    const missing = harness();
+    missing.controller.bind(IDENTITY);
+    await missing.controller.restore();
+    expect(missing.report).not.toHaveBeenCalled();
+
+    const healthy = harness();
+    const bytes = encodedFixture();
+    healthy.read.mockResolvedValue({
+      ok: true,
+      data: { bytes, digest: 'd', byteLength: bytes.byteLength },
+    });
+    healthy.controller.bind(IDENTITY);
+    await healthy.controller.restore();
+    recordAquarelleStroke(924, recordableAquarelleStroke(924, 0));
+    healthy.setSignature('sig-healthy');
+    await healthy.controller.saveNow();
+    expect(healthy.write).toHaveBeenCalledTimes(1);
+    expect(healthy.report).not.toHaveBeenCalled();
+  });
+
+  it('CR-01: a rebind starts a new episode — the pause is reported again', async () => {
+    const secondIdentity: StudioScriptSnapshotIdentity = { ...IDENTITY, trackId: 'track-2' };
+    const { controller, read, report, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+    recordAquarelleStroke(925, recordableAquarelleStroke(925, 0));
+    setSignature('sig-episode-a');
+    await controller.saveNow();
+    expect(report).toHaveBeenCalledTimes(2);
+
+    controller.bind(secondIdentity);
+    await controller.restore();
+    recordAquarelleStroke(926, recordableAquarelleStroke(926, 0));
+    setSignature('sig-episode-b');
+    await controller.saveNow();
+    // A fresh restore notice plus a fresh pause notice for the new binding.
+    expect(report).toHaveBeenCalledTimes(4);
   });
 });
 
@@ -1736,6 +1847,30 @@ describe('studioScriptSnapshotController — foreign-track isolation (261027 UAT
     expect(writtenSnapshot(write).durableBases).toEqual([
       { keyId: 'deleted-key', bytes: null },
     ]);
+  });
+
+  it('drops a SESSION durable base owned by another track’s live key (WR-02)', async () => {
+    // The session scope set used to be built from the PRE-foreign-filter
+    // anchors, so a foreign stroke in the session re-admitted that key and its
+    // base was written under this track.
+    const { controller, write, setSignature } = harness({
+      getLiveFrames: () => new Set([0]),
+      getLiveKeyIds: () => new Map([[0, 'own-key']]),
+      getForeignKeyIds: () => new Set(['foreign-key']),
+      getDurableBases: () => new Map<string, Uint8Array | null>([
+        ['own-key', null],
+        ['foreign-key', null],
+      ]),
+    });
+    controller.bind(IDENTITY);
+    await controller.restore(); // missing file: empty baseline
+
+    recordAquarelleStroke(721, recordableAquarelleStroke(721, 0), 'own-key');
+    recordAquarelleStroke(722, recordableAquarelleStroke(722, 0), 'foreign-key');
+    setSignature('sig-foreign-session-base');
+    await controller.saveNow();
+
+    expect(writtenSnapshot(write).durableBases).toEqual([{ keyId: 'own-key', bytes: null }]);
   });
 });
 

@@ -412,6 +412,16 @@ describe('studioScriptSnapshotCodec', () => {
       'aqtl-retired',
     );
 
+    // WR-01: retirement is versions 1 and 2 ONLY. The inner codec raises
+    // `unsupported-version` for every version other than 3, so a wholesale
+    // mapping would mislabel a future body, a pre-format body and a bit-flipped
+    // version word as a deliberate retirement — and "predates the texture
+    // format" is factually backwards for a v4 body, while "the frame pixels are
+    // unchanged" steers the user away from genuine corruption.
+    expect(codeOf(() => decodeStudioScriptSnapshot(writeVersion(0), IDENTITY))).toBe('watercolor');
+    expect(codeOf(() => decodeStudioScriptSnapshot(writeVersion(4), IDENTITY))).toBe('watercolor');
+    expect(codeOf(() => decodeStudioScriptSnapshot(writeVersion(7), IDENTITY))).toBe('watercolor');
+
     // A genuinely corrupt body keeps the watercolor tag, and the container
     // retirement stays distinct from the body retirement.
     expect(
