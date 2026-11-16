@@ -209,7 +209,48 @@ T-R9K-03 (compounding) is pinned by the non-compounding seam tests.
 ## Next Phase Readiness
 
 - Phase 64 planning is unaffected; no deferred items were created.
-- The live UAT rows above stay pending until the user reports them.
+- The live UAT rows above are CLOSED — see the outcome revision below.
+
+---
+
+## Outcome revision (UAT 2026-11-16) — the station-count approach was withdrawn
+
+The three commits above (`750d07753`, `2b3d5650d`, `9ae3d9db6`) implemented and
+recorded a D-08 amendment that re-stationed the stroke's STORED replay points at
+conversion. UAT rejected it, and it was reverted in `f0c83faa9` and `02ccdf30b`:
+
+- The added stations were document data, so the path showed up covered in
+  vertices the user then has to edit.
+- Sample count is the wet lifetime, so a longer stored list also changed the
+  wash — a rendering concern leaking into the geometry.
+
+**What shipped instead** (`72a8d6cdf`, UAT approved 2026-11-16):
+
+1. `roto/aquarelleReplayGrid.ts` — `withAquarelleReplayGrid` derives a vector
+   stroke's replay grid from its anchors at the bake seam
+   (`applyAquarelleTimeline`), through `resampleVectorPaintPoints`. The document
+   keeps its spline; the paint is tessellated where it is consumed. Pressure is
+   remapped by arc fraction; all-sentinel stays sentinel.
+2. `view/vectorPathSimplify.ts` — `simplifyVectorPathAnchors` removes an
+   interior anchor only while the evaluated spline stays within
+   `VECTOR_PATH_SIMPLIFY_BUDGET_UV` (0.006 uv) of every recorded sample.
+   18 anchors → 11 on a 24-sample hand stroke.
+
+**Rejected lever, recorded:** widening `VECTOR_PATH_FIT_TOLERANCE_UV` to 0.01
+was tried and reverted — the conversion visibly changed the user's shape. A
+chord tolerance cannot bound where the spline lands, so it cannot serve as a
+shape budget. The fit stays at 0.002 uv.
+
+**D-08 is NOT amended.** The 62 phase's wording stands unmodified.
+
+**UAT:** approved 2026-11-16 on the shipped behaviour (shape preserved, fewer
+anchors, paint following the curve).
+
+### Final gates
+
+- `pnpm --filter efx-motion-editor run typecheck` — clean.
+- 12 suites / 897 tests green, including the new `vectorPathSimplify` and
+  `aquarelleReplayGrid` suites.
 
 ---
 

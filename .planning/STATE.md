@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-16 after Phase 63)
 Phase: 64 — Medium Engine
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-16 - Completed quick task 261116-r9k: the painted-to-vector conversion re-stations its replay spine at up to 3x the recorded count (named 0.02 uv / 3x constants) so the paint follows the edited curve; later drags and curve-mode switches never multiply; D-08 amended at the conversion seam (live UAT pending).
+Last activity: 2026-11-16 - Completed quick task 261116-r9k: a converted painted stroke's paint is tessellated at render time from its anchors so the document keeps its spline, and the conversion simplifies anchors while the evaluated curve stays within 0.006 uv of the paint (UAT approved 2026-11-16).
 
 
 ## Performance Metrics
@@ -561,7 +561,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 37 | Studio Script/Pixel control: pulse dot + state label replaces the checkbox; sentence case; hover drops the blue fill, turns the text white and previews the next mode (Script ⇄ Pixel); bare S toggles recording (UAT approved 2026-11-16) | 2026-11-16 | c2123898e | — |
 | 261116-inu | Imported-only brush textures from a machine-level user library: 512 mask edge, px-true 1..512 size with the engine floor retired, per-stroke texture rotation through AQTL v4; built-ins, the .mce brush carrier and script mask bytes all removed; standing "unavailable" warning line dropped on request (UAT approved 2026-11-16) | 2026-11-16 | 50e745a65 | [261116-inu-imported-only-brush-textures-from-a-user](./quick/261116-inu-imported-only-brush-textures-from-a-user/) |
 | 261116-qhm | Painted-stroke path edit is a plain vector session from entry: the conversion commits at entry through the ONE writer (fitVectorPathAnchors -> commitAquarelleVectorPathEdit), and the path-edit latch opens only on a resolved edit id; the held fit, entry wireframe/Draft bracket, exit settle hook and original-spine ghost are deleted (UAT approved 2026-11-16) | 2026-11-16 | 8686ef88c | [261116-qhm-painted-stroke-path-edit-is-a-plain-vect](./quick/261116-qhm-painted-stroke-path-edit-is-a-plain-vect/) |
-| 261116-r9k | Studio: painted stroke -> vector path conversion re-stations its replay spine up to 3x the recorded count (named 0.02 uv / 3x constants), so the paint follows the edited curve; later drags and curve-mode switches never multiply; D-08 amended at the conversion seam (live UAT pending) | 2026-11-16 | 9ae3d9db6 | [261116-r9k-in-the-studio-canvas-make-a-painted-stro](./quick/261116-r9k-in-the-studio-canvas-make-a-painted-stro/) |
+| 261116-r9k | Studio: a converted painted stroke's paint is now tessellated at RENDER time from its anchors (paint cadence via resampleVectorPaintPoints), so the document keeps its spline; the conversion also simplifies anchors while the evaluated curve stays within 0.006 uv of every recorded sample (18 -> 11 on a hand stroke); D-08 unamended, the stored-station approach was reverted (UAT approved 2026-11-16) | 2026-11-16 | 72a8d6cdf | [261116-r9k-in-the-studio-canvas-make-a-painted-stro](./quick/261116-r9k-in-the-studio-canvas-make-a-painted-stro/) |
 
 ## Roadmap Evolution
 
