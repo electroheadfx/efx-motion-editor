@@ -58,6 +58,10 @@ Any self-rescheduling path (rAF, `setInterval`, self-`setTimeout`, signal `effec
 
 Before changing an implementation: inspect nearby components, identify how state is currently managed, reuse existing utilities, don't mix state-management approaches without a clear reason, keep changes proportional. Do not refactor unrelated code just to replace hooks with Signals; when a React-style hook is retained, it needs a clear lifecycle or locality reason.
 
+## 10. UI copy is sentence case — opt out of global caps
+
+Author labels in sentence case ("Script", "Pixel", "Open modal") and never write ALL-CAPS strings in JSX. The Studio stylesheet's base `button { text-transform: uppercase }` rule (physicsPaintStudio.css) uppercases every labeled button unless its own class sets `text-transform: none`; base heading rules can do the same. Icon-only controls are unaffected, but any control that shows words must opt out. Test question for a new labeled control: "does the visible text read exactly as authored, mixed case included?"
+
 ## Detecting a render loop (permanent tooling — no temporary probe needed)
 
 In the paint window: set `localStorage.setItem('efx.physicsPaint.profile', '1')`, reload, then read `window.__EFX_PHYSICS_PAINT_PROFILE__.snapshot().counters` twice ~10 s apart. **Any `render.*` counter climbing while idle = a render loop.** `render.studio` climbing = the loop drives the whole Studio tree; a single leaf counter climbing = a local loop.
