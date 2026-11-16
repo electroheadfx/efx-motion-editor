@@ -48,6 +48,15 @@
 //  empty session does not prove the snapshot is empty. Only
 //  persistAfterPurge (explicit, confirmed purge) may land one.
 //
+//  REFUSED-RESTORE LATCH (CR-02, 63-16): a refused read/decode leaves
+//  the file's contents UNKNOWN and the ONLY copy of a script the app
+//  could not read. The refusal LATCHES the binding: EVERY routine save
+//  is withheld before `deps.write` is reached, so the file is protected
+//  by not writing rather than by a backup. The latch is per binding; it
+//  is set on both refusal arms, never by `missing`, and is cleared only
+//  by bind / reset, a later SUCCESSFUL restore, or a SUCCESSFUL explicit
+//  purge commit (persistAfterPurge, the one destructive door).
+//
 //  SAVE DISCIPLINE: markDirty() coalesces mutations into ONE 800 ms
 //  debounced write — one timer, at most one in-flight write, at
 //  most one queued follow-up. TERMINATION LAWS (written, not
@@ -625,6 +634,15 @@ export function createStudioScriptSnapshotController(
    * script from the authoritative snapshot; an explicit purge drops it.
    */
   let retainedContent: StudioScriptSnapshotContent | null = null;
+  /**
+   * CR-02 (63-16): a refused restore leaves the file's contents UNKNOWN and
+   * the ONLY copy of a script the app could not read (Rust replaces the leaf
+   * atomically with no backup). While this stands, EVERY routine save of the
+   * binding is withheld — the empty-payload guard alone cannot, because one
+   * painted stroke makes the session non-empty. Released only by bind/reset,
+   * a later successful restore, or a SUCCESSFUL explicit purge commit.
+   */
+  let refusedRestore = false;
   /** quick-261026-odd: the file's durable rail-cleanup marker. */
   let railCleanupDone = false;
   /** One restore-failure report per bound identity. */
@@ -669,6 +687,8 @@ export function createStudioScriptSnapshotController(
     // session must never be saved under it until its own restore has run.
     restoreSettledGeneration = null;
     retainedContent = null;
+    // CR-02: the latch is per binding — the incoming identity starts clean.
+    refusedRestore = false;
     railCleanupDone = false;
     restoreFailureReported = false;
   }
@@ -703,6 +723,9 @@ export function createStudioScriptSnapshotController(
           lastSavedSignature = deps.getContentSignature();
           return { status: 'empty', maxRestoredMutationId: 0 };
         }
+        // CR-02 (63-16): the refusal arms LATCH the binding. `missing` above
+        // deliberately does not clear it — a degraded read must fail closed.
+        refusedRestore = true;
         reportRestoreFailureOnce(result.error.kind);
         return { status: 'refused', maxRestoredMutationId: 0 };
       }
@@ -714,6 +737,9 @@ export function createStudioScriptSnapshotController(
         const kind =
           error instanceof StudioScriptSnapshotCodecError ? `corrupt:${error.code}` : 'corrupt';
         retainedContent = null;
+        // CR-02 (63-16): the decode-refusal arm latches exactly like a refused
+        // read — the bytes on disk are unreadable to THIS build, not empty.
+        refusedRestore = true;
         reportRestoreFailureOnce(kind);
         return { status: 'refused', maxRestoredMutationId: 0 };
       }
@@ -767,6 +793,8 @@ export function createStudioScriptSnapshotController(
         durableBases: [...decoded.durableBases],
       };
       lastSavedSignature = deps.getContentSignature();
+      // CR-02: a successful read proves the bound file is understood again.
+      refusedRestore = false;
       return { status: 'restored', maxRestoredMutationId };
     } finally {
       restoringCount -= 1;
@@ -786,13 +814,20 @@ export function createStudioScriptSnapshotController(
     authority: string | null;
     /** Exactly what these bytes carry — the new retained baseline on success. */
     content: StudioScriptSnapshotContent;
+    /**
+     * CR-02 (63-16): true only for the explicit purge door. A successful
+     * session-only commit is the one acknowledgement that clears the latch.
+     */
+    sessionOnly: boolean;
   }
 
   /**
    * Encode the bound key NOW. Null when nothing changed (the baseline case),
-   * when the current generation's restore has not settled, when a routine
-   * save would land an EMPTY payload, or when the encode itself failed
-   * (reported here, once per attempt).
+   * when the current generation's restore has not settled, when the binding's
+   * restore was REFUSED and this is not the explicit purge (CR-02: the unread
+   * file must survive every routine save), when a routine save would land an
+   * EMPTY payload, or when the encode itself failed (reported here, once per
+   * attempt).
    */
   function prepareSave(options?: StudioScriptSnapshotSaveOptions): PreparedSave | null {
     // 261101-o2m (T-261101-o2m-10): no payload is ever prepared while the
@@ -807,6 +842,11 @@ export function createStudioScriptSnapshotController(
     if (signature === lastSavedSignature) return null;
     const sessionOnly = options?.sessionOnly === true;
     const allowEmpty = options?.allowEmpty === true;
+    // CR-02 (63-16): a refused restore latches the binding. Every routine save
+    // is withheld HERE, upstream of `deps.write`, so the IPC write and the
+    // Rust atomic replace are never reached for an unread leaf. Only the
+    // explicit purge (an existing option, no new surface) may rewrite it.
+    if (refusedRestore && !sessionOnly) return null;
     // The authority is captured WITH the identity and bytes: the prepared
     // payload is already bound to the package it was prepared for.
     const authority = deps.getAuthority();
@@ -846,7 +886,7 @@ export function createStudioScriptSnapshotController(
         durableBases: content.durableBases,
         railCleanupDone,
       });
-      return { identity, bytes, signature, generation, authority, content };
+      return { identity, bytes, signature, generation, authority, content, sessionOnly };
     } catch (error) {
       const kind =
         error instanceof StudioScriptSnapshotCodecError ? `corrupt:${error.code}` : 'io';
@@ -873,6 +913,10 @@ export function createStudioScriptSnapshotController(
     // rewrite intentionally replaces the retained set (that is the
     // destructive path); a routine save's union becomes the new baseline.
     retainedContent = prepared.content;
+    // CR-02 (63-16): only a SUCCESSFUL explicit purge acknowledges the
+    // destructive rewrite and clears the latch. A failed write returned above,
+    // leaving the latch set.
+    if (prepared.sessionOnly) refusedRestore = false;
     // Only a save that still represents the CURRENT identity and content
     // clears the dirty flag; a mutation during the write leaves it dirty.
     if (deps.getContentSignature() === prepared.signature) {
@@ -1045,6 +1089,7 @@ export function createStudioScriptSnapshotController(
     lastSavedSignature = null;
     restoreSettledGeneration = null;
     retainedContent = null;
+    refusedRestore = false;
     railCleanupDone = false;
     restoreFailureReported = false;
   }
