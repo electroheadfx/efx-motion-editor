@@ -15,19 +15,21 @@ pub trait FrameCodec: Send + Sync {
 /// WebP lossless codec using libwebp `config_exact` alpha semantics (D-01).
 pub struct WebPLosslessCodec;
 
-/// The brush-tip mask edge (`TIP_SIZE` in `packages/efx-watercolor`). A mask is
-/// exactly `BRUSH_MASK_EDGE²` alpha bytes — no width/height header rides the
-/// renderer → native leg, so this constant IS the shape contract.
-pub const BRUSH_MASK_EDGE: u32 = 192;
-/// Exactly the number of alpha bytes a brush mask carries (36,864).
+/// The IMPORTED brush-mask edge (`TIP_MASK_EDGE` in `packages/efx-watercolor`).
+/// A mask is exactly `BRUSH_MASK_EDGE²` alpha bytes — no width/height header
+/// rides the renderer → native leg, so this constant IS the shape contract.
+/// Deliberately NOT the procedural tip edge (192): imported masks are a
+/// machine-level library, procedural tips are built at 192 and never move.
+pub const BRUSH_MASK_EDGE: u32 = 512;
+/// Exactly the number of alpha bytes a brush mask carries (262,144).
 pub const BRUSH_MASK_BYTES: usize = (BRUSH_MASK_EDGE * BRUSH_MASK_EDGE) as usize;
 
-/// Named refusal: the stored WebP's DECLARED dimensions are not 192×192.
+/// Named refusal: the stored WebP's DECLARED dimensions are not 512×512.
 pub const BRUSH_MASK_WRONG_SIZE: &str = "wrong-size";
 /// Named refusal: the payload is not a decodable WebP.
 pub const BRUSH_MASK_UNREADABLE: &str = "unreadable";
 
-/// Encode one 192×192 alpha mask as a lossless WebP (D-10/D-11).
+/// Encode one 512×512 alpha mask as a lossless WebP (D-10/D-11).
 ///
 /// The mask bytes are the ALPHA channel; RGB is a constant 255 so the encoded
 /// stream is a plain white stamp and `decode_mask_webp` can read the alpha
@@ -40,7 +42,7 @@ pub const BRUSH_MASK_UNREADABLE: &str = "unreadable";
 pub fn encode_mask_webp(mask: &[u8]) -> Result<Vec<u8>, String> {
     if mask.len() != BRUSH_MASK_BYTES {
         return Err(format!(
-            "brush mask must be exactly {BRUSH_MASK_BYTES} bytes (192x192); got {}",
+            "brush mask must be exactly {BRUSH_MASK_BYTES} bytes (512x512); got {}",
             mask.len()
         ));
     }
@@ -144,7 +146,7 @@ pub fn parse_webp_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     None
 }
 
-/// Decode a stored brush-mask WebP back into its 36,864 alpha bytes.
+/// Decode a stored brush-mask WebP back into its 262,144 alpha bytes.
 ///
 /// The declared-dimension gate runs FIRST (before `decode_rgba`), so an
 /// oversize payload never allocates a decoded buffer; the post-decode size
@@ -439,14 +441,14 @@ mod tests {
     }
 
     #[test]
-    fn brush_mask_encode_refuses_a_body_that_is_not_192_squared_bytes() {
+    fn brush_mask_encode_refuses_a_body_that_is_not_512_squared_bytes() {
         assert!(encode_mask_webp(&[]).is_err());
         assert!(encode_mask_webp(&vec![0u8; BRUSH_MASK_BYTES - 1]).is_err());
         assert!(encode_mask_webp(&vec![0u8; BRUSH_MASK_BYTES + 1]).is_err());
     }
 
     #[test]
-    fn brush_mask_decode_refuses_declared_dimensions_other_than_192_before_decoding() {
+    fn brush_mask_decode_refuses_declared_dimensions_other_than_512_before_decoding() {
         // The VP8X canvas declares 20000×20000 while the payload is garbage
         // that libwebp rejects as `unreadable`. A `wrong-size` answer proves
         // the header gate ran BEFORE decode_rgba — no decoded buffer was

@@ -2999,7 +2999,7 @@ fn row_from_legacy_document(
     }
 }
 
-fn atomic_write_bytes(path: &Path, bytes: &[u8], replace: bool) -> Result<(), String> {
+pub(crate) fn atomic_write_bytes(path: &Path, bytes: &[u8], replace: bool) -> Result<(), String> {
     if !replace && path.exists() {
         return Err("Managed artifact already exists".to_string());
     }
@@ -3050,7 +3050,7 @@ fn sync_directory(path: &Path) {
         let _ = directory.sync_all();
     }
 }
-fn reject_symlink(path: &Path, label: &str) -> Result<(), String> {
+pub(crate) fn reject_symlink(path: &Path, label: &str) -> Result<(), String> {
     if path
         .symlink_metadata()
         .map(|m| m.file_type().is_symlink())

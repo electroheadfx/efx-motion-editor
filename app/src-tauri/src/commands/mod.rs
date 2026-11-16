@@ -1,3 +1,4 @@
+pub mod brush_library;
 pub mod config;
 pub mod debug_capture;
 pub mod efx_paint_media;

@@ -136,7 +136,7 @@ pub struct BrushAssetWriteResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrushMaskDecodeResponse {
-    /// Base64 of the 36,864 mask bytes, alpha channel only.
+    /// Base64 of the 262,144 mask bytes, alpha channel only.
     pub mask_base64: String,
     pub width: u32,
     pub height: u32,
@@ -151,8 +151,8 @@ fn raw_body<'a>(request: &'a Request, command: &str) -> Result<&'a [u8], EfxPain
     }
 }
 
-/// 63-02 (D-10, D-11): encodes one 36,864-byte mask into the lossless
-/// brush-asset WebP profile. The body must be exactly 192×192 alpha bytes; the
+/// 63-02 (D-10, D-11): encodes one 262,144-byte mask into the lossless
+/// brush-asset WebP profile. The body must be exactly 512×512 alpha bytes; the
 /// RGBA expansion and the one-off higher-effort encode live in `frame_codec`,
 /// never on the frame hot path.
 #[tauri::command(async)]
@@ -363,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn brush_mask_encode_command_refuses_a_body_that_is_not_192_squared_bytes() {
+    fn brush_mask_encode_command_refuses_a_body_that_is_not_512_squared_bytes() {
         assert!(encode_brush_mask_bytes(b"short").is_err());
         assert!(encode_brush_mask_bytes(&vec![0_u8; BRUSH_MASK_BYTES + 1]).is_err());
         let encoded = encode_brush_mask_bytes(&probe_mask()).expect("mask encode");

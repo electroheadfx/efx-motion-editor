@@ -24,7 +24,6 @@
 //  reaching the registry as a wrong-sized mask.
 // ============================================================
 
-import { TIP_MASK_BYTES } from './deriveMask'
 import { NEUTRAL_TOOL_OVERRIDES, type AquarelleTip } from './tips'
 import {
   BRISTLE_MASK_BASE64,
@@ -45,12 +44,24 @@ const BUILTIN_DEFS = [
   { id: 'wc/builtin-sponge', name: 'Sponge', constant: SPONGE_MASK_BASE64 },
 ] as const
 
-/** Decode one base64 constant into the exact TIP_MASK_BYTES mask, or throw. */
+/**
+ * LEGACY built-in mask edge — the shipped constants are 192×192.
+ *
+ * They predate the machine brush library and are deleted wholesale by a
+ * later task of this quick, so they keep their own edge and are length-checked
+ * against it — never against `TIP_MASK_BYTES` (the 512² imported-mask law).
+ * The built-in ids are still admitted into the registry by identity
+ * (`replaceMaskRegistry`), so this stays painting-identical until deletion.
+ */
+const BUILTIN_TIP_EDGE = 192
+const BUILTIN_TIP_BYTES = BUILTIN_TIP_EDGE * BUILTIN_TIP_EDGE
+
+/** Decode one base64 constant into the exact legacy built-in mask, or throw. */
 function decodeMask(id: string, constant: string): Uint8Array {
   const binary = atob(constant)
-  if (binary.length !== TIP_MASK_BYTES) {
+  if (binary.length !== BUILTIN_TIP_BYTES) {
     throw new Error(
-      `built-in tip ${id}: mask constant decodes to ${binary.length} bytes, expected ${TIP_MASK_BYTES}`,
+      `built-in tip ${id}: mask constant decodes to ${binary.length} bytes, expected ${BUILTIN_TIP_BYTES}`,
     )
   }
   const mask = new Uint8Array(binary.length)

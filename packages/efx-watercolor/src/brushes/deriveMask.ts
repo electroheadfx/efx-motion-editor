@@ -1,5 +1,10 @@
 // ============================================================
-//  deriveMask — decoded image → 192×192 brush-tip mask (TIP-03, amended).
+//  deriveMask — decoded image → 512×512 brush-tip mask (TIP-03, amended).
+//
+//  The IMPORTED mask edge is TIP_MASK_EDGE (512) and is deliberately NOT the
+//  procedural tip edge (`TIP_SIZE` = 192 in playground/brushes.ts). Imported
+//  masks are content-addressed files in the machine library; procedural tips
+//  are built at 192 and never move.
 //
 //  TWO BRANCHES, ONE LAW. Every path that turns a decoded image
 //  into a tip mask calls this function — the import surface and
@@ -30,16 +35,21 @@
 //  not exactly `pixelCount * 4` returns null without allocating.
 // ============================================================
 
-import { TIP_SIZE } from '../playground/brushes'
-
 /** Alpha at or above this counts as opaque; any lower alpha selects the alpha branch. */
 export const MASK_ALPHA_THRESHOLD = 250
 
 /** Mean luminance at or above this inverts the luminance branch (greater-or-equal rule). */
 export const MASK_POLARITY_MEAN_THRESHOLD = 128
 
-/** The only legal mask byte length: TIP_SIZE squared. */
-export const TIP_MASK_BYTES = TIP_SIZE * TIP_SIZE
+/**
+ * The IMPORTED brush-mask edge. Independent of `TIP_SIZE` (192), which is the
+ * PROCEDURAL tip edge — the two are different numbers on purpose and must never
+ * be conflated (spec 04 Work 1).
+ */
+export const TIP_MASK_EDGE = 512
+
+/** The only legal mask byte length: TIP_MASK_EDGE squared (262,144). */
+export const TIP_MASK_BYTES = TIP_MASK_EDGE * TIP_MASK_EDGE
 
 /** Rec. 709 luminance coefficients — the single written statement of the weights. */
 const LUM_R = 0.2126
@@ -52,7 +62,7 @@ const LUM_B = 0.0722
  */
 export function deriveMask(
   rgba: Uint8Array | Uint8ClampedArray,
-  pixelCount: number = TIP_SIZE * TIP_SIZE,
+  pixelCount: number = TIP_MASK_EDGE * TIP_MASK_EDGE,
 ): Uint8Array | null {
   if (!(rgba instanceof Uint8Array) && !(rgba instanceof Uint8ClampedArray)) return null
   if (!Number.isInteger(pixelCount) || pixelCount <= 0) return null

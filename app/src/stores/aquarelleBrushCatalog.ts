@@ -48,6 +48,7 @@ import {
   type AquarelleTip,
 } from '@efxlab/efx-watercolor';
 import type { MceBrushPackSnapshot } from '../types/project';
+import type { BrushLibraryEntry } from '../lib/ipc';
 import type {
   PhysicPaintBrushCatalogEntry,
   PhysicPaintBrushCatalogPayload,
@@ -167,10 +168,114 @@ export function resolveCatalogTip(id: string): AquarelleTip | null {
 /**
  * Append one imported tip (D-16: a re-import of identical bytes yields a
  * DISTINCT entry — no silent dedupe; ids are minted by the import path).
+ *
+ * @deprecated The machine library's content-addressed rows go through
+ * `upsertLibraryRow`; nothing mints ids any more.
  */
 export function addCustomBrushTip(entry: AquarelleTip): void {
   batch(() => {
     customBrushTipsSignal.value = [...customBrushTipsSignal.value, entry];
+    brushCatalogGenerationSignal.value += 1;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Machine library rows (quick 261116-inu / spec 04).
+//
+// The catalog stops being project data: one row per `catalog.json` entry,
+// keyed by the content-derived tip id. `digest` and `textureRotation` are the
+// library-only fields the tip record cannot carry (its wire guard has an exact
+// member set). `libraryRowToTip` is the ONLY place an `AquarelleTip` is derived
+// from a library row.
+// ---------------------------------------------------------------------------
+
+/** One library entry as this realm holds it: the tip half plus the two library-only fields. */
+export interface AquarelleLibraryRow {
+  readonly tip: AquarelleTip;
+  /** SHA-256 of the stored WebP — 64 lower-case hex. */
+  readonly digest: string;
+  /** Projected-texture orientation, integer DEGREES in -180..180. */
+  readonly textureRotation: number;
+}
+
+const libraryRowsSignal = signal<readonly AquarelleLibraryRow[]>([]);
+
+/** The machine library's rows, read-only (mutate via the setters). */
+export const libraryRows: ReadonlySignal<readonly AquarelleLibraryRow[]> = libraryRowsSignal;
+
+/**
+ * ROW → TIP MAPPING. Copies exactly the tip members (`id`, `category`, `name`
+ * and the eight multipliers) and NEVER the library-only `digest`,
+ * `textureRotation` or `createdAt`. `BrushLibraryEntry` carries no `category`,
+ * and `AquarelleTip` requires one, so imports land in `custom` — the only
+ * category a machine library entry can have.
+ */
+export function libraryRowToTip(row: BrushLibraryEntry): AquarelleTip {
+  return Object.freeze({
+    id: row.id,
+    category: 'custom' as const,
+    name: row.name,
+    tip: row.tip,
+    aspect: row.aspect,
+    rotation: row.rotation,
+    sizeCurve: row.sizeCurve,
+    scatter: row.scatter,
+    capacity: row.capacity,
+    grain: row.grain,
+    wetRound: row.wetRound,
+  });
+}
+
+/** The two library-only fields for one tip id; `null` when the id is not a library row. */
+export function libraryRowFor(id: string): { digest: string; textureRotation: number } | null {
+  for (const row of libraryRowsSignal.value) {
+    if (row.tip.id === id) return { digest: row.digest, textureRotation: row.textureRotation };
+  }
+  return null;
+}
+
+function sameLibraryRow(a: AquarelleLibraryRow, b: AquarelleLibraryRow): boolean {
+  return (
+    a.digest === b.digest
+    && a.textureRotation === b.textureRotation
+    && a.tip.id === b.tip.id
+    && a.tip.category === b.tip.category
+    && a.tip.name === b.tip.name
+    && a.tip.tip === b.tip.tip
+    && a.tip.aspect === b.tip.aspect
+    && a.tip.rotation === b.tip.rotation
+    && a.tip.sizeCurve === b.tip.sizeCurve
+    && a.tip.scatter === b.tip.scatter
+    && a.tip.capacity === b.tip.capacity
+    && a.tip.grain === b.tip.grain
+    && a.tip.wetRound === b.tip.wetRound
+  );
+}
+
+/**
+ * Upsert ONE library row keyed by its content-derived id. Re-importing the
+ * same bytes resolves to the SAME row (no duplicate append). Compare-then-
+ * write: an unchanged row bumps nothing. Bumps `brushCatalogGeneration` once
+ * for a real change.
+ */
+export function upsertLibraryRow(row: AquarelleLibraryRow): void {
+  const next: AquarelleLibraryRow[] = [];
+  let replaced = false;
+  let unchanged = false;
+  for (const current of libraryRowsSignal.value) {
+    if (current.tip.id !== row.tip.id) {
+      next.push(current);
+      continue;
+    }
+    if (!replaced && sameLibraryRow(current, row)) unchanged = true;
+    replaced = true;
+    next.push(row);
+  }
+  if (!replaced) next.push(row);
+  if (unchanged) return;
+  batch(() => {
+    libraryRowsSignal.value = next;
+    customBrushTipsSignal.value = next.map((entry) => entry.tip);
     brushCatalogGenerationSignal.value += 1;
   });
 }
@@ -212,13 +317,15 @@ export function replaceUnavailableTipIds(ids: readonly string[]): void {
   });
 }
 
-/** Close / New Project / project switch: customs and the unavailable set reset. */
+/** Reset every catalog signal to empty (tests and explicit rebuilds). */
 export function resetAquarelleBrushCatalog(): void {
   const hadCustoms = customBrushTipsSignal.value.length > 0;
   const hadUnavailable = unavailableTipIdsSignal.value.size > 0;
-  if (!hadCustoms && !hadUnavailable) return;
+  const hadRows = libraryRowsSignal.value.length > 0;
+  if (!hadCustoms && !hadUnavailable && !hadRows) return;
   batch(() => {
     customBrushTipsSignal.value = [];
+    libraryRowsSignal.value = [];
     unavailableTipIdsSignal.value = new Set();
     brushCatalogGenerationSignal.value += 1;
   });

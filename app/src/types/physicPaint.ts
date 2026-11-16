@@ -32,7 +32,7 @@ export type { PhysicPaintRotoInterpolationMode } from '../components/physic-pain
 import { isWebpBytes, isPngBytes, buildFrameBytesToken } from '../lib/webpBytes';
 export { isWebpBytes, isPngBytes, buildFrameBytesToken };
 import { parseFrameMediaReference, type FrameMediaReference } from '../lib/efxPaintPackage';
-import { asTipRecord, TIP_MASK_BYTES, TIP_SIZE, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { asTipRecord, TIP_MASK_BYTES, TIP_MASK_EDGE, type AquarelleTip } from '@efxlab/efx-watercolor';
 
 /**
  * 59-12 Task 4 (MOTN-10): session-only settlement metadata for a rail merge
@@ -2987,7 +2987,7 @@ function isCustomTipWire(value: unknown): value is AquarelleTip {
 }
 
 /**
- * The stored WebP must declare exactly the TIP_SIZE × TIP_SIZE frame.
+ * The stored WebP must declare exactly the TIP_MASK_EDGE × TIP_MASK_EDGE frame.
  * Structural and bounded — a VP8L header read, never a decode. `isWebpBytes`
  * admits lossless VP8L only (the app's one stored format), so the VP8L branch
  * is the whole surface.
@@ -2997,7 +2997,7 @@ function isTipSizedBrushWebp(bytes: Uint8Array): boolean {
   if (bytes[20] !== 0x2f) return false;
   const width = 1 + bytes[21]! + ((bytes[22]! & 0x3f) << 8);
   const height = 1 + ((bytes[22]! >> 6) | (bytes[23]! << 2) | ((bytes[24]! & 0x0f) << 10));
-  return width === TIP_SIZE && height === TIP_SIZE;
+  return width === TIP_MASK_EDGE && height === TIP_MASK_EDGE;
 }
 
 export function isPhysicPaintBrushCatalogEntry(value: unknown): value is PhysicPaintBrushCatalogEntry {
@@ -3017,7 +3017,7 @@ export function isPhysicPaintBrushCatalogEntry(value: unknown): value is PhysicP
 /**
  * Fail-closed guard for the whole catalog snapshot. Any malformed member —
  * an unknown key, a duplicate non-string id, a mask that is not exactly
- * TIP_MASK_BYTES after decode, or a non-TIP_SIZE WebP — refuses the payload
+ * TIP_MASK_BYTES after decode, or a non-TIP_MASK_EDGE WebP — refuses the payload
  * WHOLE (nothing is partially applied), and it never throws.
  */
 export function isPhysicPaintBrushCatalogPayload(value: unknown): value is PhysicPaintBrushCatalogPayload {

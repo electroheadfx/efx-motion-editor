@@ -22,10 +22,11 @@ import {
   MASK_ALPHA_THRESHOLD,
   MASK_POLARITY_MEAN_THRESHOLD,
   TIP_MASK_BYTES,
+  TIP_MASK_EDGE,
 } from './deriveMask'
+import { TIP_SIZE } from '../playground/brushes'
 
-const TIP_SIZE = 192
-const PIXELS = TIP_SIZE * TIP_SIZE
+const PIXELS = TIP_MASK_EDGE * TIP_MASK_EDGE
 
 /** A full 192×192 RGBA buffer, every pixel the same colour. */
 function uniform(r: number, g: number, b: number, a: number): Uint8Array {
@@ -60,8 +61,18 @@ describe('deriveMask — pinned constants', () => {
     expect(MASK_POLARITY_MEAN_THRESHOLD).toBe(128)
   })
 
-  it('pins the legal mask length at 192 squared', () => {
-    expect(TIP_MASK_BYTES).toBe(36_864)
+  it('pins the legal mask length at the 512 mask edge squared', () => {
+    expect(TIP_MASK_EDGE).toBe(512)
+    expect(TIP_MASK_BYTES).toBe(TIP_MASK_EDGE ** 2)
+    expect(TIP_MASK_BYTES).toBe(262_144)
+  })
+
+  it('pins the PROCEDURAL tip edge independently at 192', () => {
+    // The two edges are different numbers by law (spec 04 guardrail): the
+    // imported mask is 512², a procedural tip is 192². Nothing may quietly
+    // assume they are the same constant again.
+    expect(TIP_SIZE).toBe(192)
+    expect(TIP_SIZE).not.toBe(TIP_MASK_EDGE)
   })
 })
 

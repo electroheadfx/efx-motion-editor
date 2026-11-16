@@ -9,10 +9,10 @@
 //       BEFORE the decode; exactly 64 MP is allowed.
 //    3. A truncated PNG IHDR / a JPEG with no SOF is refused as
 //       unreadable and never throws.
-//    4. The decode port must return exactly 192×192 RGBA; any
-//       other size is unreadable.
+//    4. The decode port must return exactly 512×512 RGBA (the
+//       imported mask edge); any other size is unreadable.
 //    5. deriveMask is the ONE conversion; the mask reaches the
-//       registration port as 36,864 bytes.
+//       registration port as 262,144 bytes.
 //    6. Single-flight serializes concurrent imports and every
 //       outcome (including a rejection) is delivered.
 //
@@ -21,8 +21,7 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
-import { TIP_SIZE } from '../playground/brushes'
-import { TIP_MASK_BYTES } from './deriveMask'
+import { TIP_MASK_BYTES, TIP_MASK_EDGE } from './deriveMask'
 import { NEUTRAL_TOOL_OVERRIDES, type AquarelleTip } from './tips'
 import {
   IMPORT_TIP_MAX_BYTES,
@@ -33,7 +32,7 @@ import {
   type ImportTipPorts,
 } from './importTip'
 
-const TIP_PIXELS = TIP_SIZE * TIP_SIZE
+const TIP_PIXELS = TIP_MASK_EDGE * TIP_MASK_EDGE
 const RGBA_BYTES = TIP_PIXELS * 4
 
 // ---------------------------------------------------------------------------
@@ -232,7 +231,7 @@ describe('importTip refusals', () => {
     expect(decodeCalls()).toBe(0)
   })
 
-  it('refuses a decode port returning anything but 192×192 RGBA', async () => {
+  it('refuses a decode port returning anything but 512×512 RGBA', async () => {
     const { ports } = stubPorts({ rgbaResults: [new Uint8Array(8 * 8 * 4)] })
     const result = await importTip(fileOf(pngWithSize(64, 64), 'small.png'), ports)
     expect(result).toEqual({ ok: false, reason: 'unreadable-image' })

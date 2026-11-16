@@ -14,6 +14,7 @@ pub use services::project_io;
 #[doc(hidden)]
 pub mod script_library_test_support;
 
+use commands::brush_library;
 use commands::config;
 use commands::debug_capture;
 use commands::efx_paint_media as efx_paint_media_commands;
@@ -973,6 +974,8 @@ pub fn run() {
             efx_paint_media_commands::efx_paint_write_brush_asset,
             efx_paint_media_commands::efx_paint_decode_brush_mask,
             efx_paint_media_commands::efx_paint_read_brush_assets,
+            brush_library::brush_library_write,
+            brush_library::brush_library_decode,
             studio_script_snapshot_commands::studio_script_snapshot_write,
             studio_script_snapshot_commands::studio_script_snapshot_read,
             studio_script_snapshot_commands::studio_script_snapshot_delete,

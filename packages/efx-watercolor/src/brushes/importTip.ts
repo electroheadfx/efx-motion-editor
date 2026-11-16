@@ -10,16 +10,18 @@
 //  never reach the dimension parser.
 //
 //  Decode is a PORT: the browser createImageBitmap / Image path
-//  downscales once to 192×192 with imageSmoothingQuality 'high'
-//  and returns RGBA; deriveMask is the only conversion to a mask.
-//  Tests and other hosts inject their own decoder.
+//  downscales once to TIP_MASK_EDGE×TIP_MASK_EDGE (512×512, the
+//  IMPORTED mask edge — NOT the 192 procedural tip edge) with
+//  imageSmoothingQuality 'high' and returns RGBA; deriveMask is
+//  the only conversion to a mask. Tests and other hosts inject
+//  their own decoder.
 //
-//  Idempotency (pinned, D-16): this package no longer mints ids.
-//  Registration is a PORT too — the main-realm handler names the
-//  tip, appends it to the project catalog and mints a fresh id
-//  per import (app/src/lib/efxPaintBrushImport.ts). Two imports
-//  of identical bytes therefore stay two catalog rows while the
-//  content-addressed asset dedupes to one file.
+//  Idempotency: this package no longer mints ids. Registration is
+//  a PORT too — the main-realm handler writes the mask into the
+//  machine library and upserts the content-addressed row
+//  (app/src/lib/efxPaintBrushImport.ts). Two imports of identical
+//  bytes therefore resolve to ONE row: the id is derived from the
+//  digest.
 //
 //  Concurrency (pinned): importTip is single-flight — concurrent
 //  calls queue behind one another and never interleave mid-write.
@@ -28,8 +30,7 @@
 //  throws into the UI layer.
 // ============================================================
 
-import { TIP_SIZE } from '../playground/brushes'
-import { deriveMask } from './deriveMask'
+import { TIP_MASK_EDGE, deriveMask } from './deriveMask'
 import type { AquarelleTip } from './tips'
 
 /** 64 MB: a file larger than this is refused before its bytes are read. */
@@ -62,9 +63,9 @@ export interface ImportTipFile {
 }
 
 /**
- * Decode port: source bytes → exactly TIP_SIZE × TIP_SIZE RGBA
- * (TIP_SIZE² × 4 bytes). Null means the decode failed; any other
- * length is treated as unreadable by the caller.
+ * Decode port: source bytes → exactly TIP_MASK_EDGE × TIP_MASK_EDGE
+ * RGBA (TIP_MASK_BYTES × 4 bytes). Null means the decode failed;
+ * any other length is treated as unreadable by the caller.
  */
 export type ImportTipDecodePort = (
   bytes: Uint8Array,
@@ -183,22 +184,22 @@ function toBlobPart(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   return copy
 }
 
-const TIP_PIXELS = TIP_SIZE * TIP_SIZE
+const TIP_PIXELS = TIP_MASK_EDGE * TIP_MASK_EDGE
 
-/** Draw the decoded source once into a 192×192 canvas and read RGBA back. */
+/** Draw the decoded source once into a 512×512 canvas and read RGBA back. */
 function renderIntoMaskCanvas(source: CanvasImageSource): Uint8Array | null {
   const documentRef = (globalThis as { document?: Document }).document
   if (documentRef === undefined) return null
   const canvas = documentRef.createElement('canvas')
-  canvas.width = TIP_SIZE
-  canvas.height = TIP_SIZE
+  canvas.width = TIP_MASK_EDGE
+  canvas.height = TIP_MASK_EDGE
   const context = canvas.getContext('2d', { willReadFrequently: true })
   if (context === null) return null
   context.imageSmoothingEnabled = true
   context.imageSmoothingQuality = 'high'
-  context.clearRect(0, 0, TIP_SIZE, TIP_SIZE)
-  context.drawImage(source, 0, 0, TIP_SIZE, TIP_SIZE)
-  const data = context.getImageData(0, 0, TIP_SIZE, TIP_SIZE).data
+  context.clearRect(0, 0, TIP_MASK_EDGE, TIP_MASK_EDGE)
+  context.drawImage(source, 0, 0, TIP_MASK_EDGE, TIP_MASK_EDGE)
+  const data = context.getImageData(0, 0, TIP_MASK_EDGE, TIP_MASK_EDGE).data
   const rgba = new Uint8Array(TIP_PIXELS * 4)
   rgba.set(data)
   return rgba
@@ -207,8 +208,9 @@ function renderIntoMaskCanvas(source: CanvasImageSource): Uint8Array | null {
 /**
  * Production decode port: decode through the browser decoder only
  * (createImageBitmap, Image+decode fallback), draw once into a
- * 192×192 canvas with high-quality smoothing, and return RGBA.
- * The source image is released, never retained.
+ * 512×512 canvas with high-quality smoothing, and return RGBA.
+ * The source image is released, never retained. The decoded source
+ * is drawn ONCE per import — never in a draw loop.
  */
 export async function decodeRgbaAtTipSize(bytes: Uint8Array): Promise<Uint8Array | null> {
   const createBitmap = (globalThis as { createImageBitmap?: (blob: Blob) => Promise<ImageBitmap> })

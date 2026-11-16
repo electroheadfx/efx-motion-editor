@@ -7,7 +7,7 @@ import type {
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import { AQUARELLE_TOOLS, isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
-import { TIP_SIZE, buildBrushPackSnapshot, parseBrushPackSnapshot, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { TIP_MASK_EDGE, buildBrushPackSnapshot, parseBrushPackSnapshot, type AquarelleTip } from '@efxlab/efx-watercolor';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { isGrainScaleValue } from '../../../efx-paint/document/efxPaintDocument';
 import { aquarelleUvToEnginePixel } from '../engine/aquarelleStrokeBridge';
@@ -528,7 +528,7 @@ function isThumbnail(value: unknown): value is PersistedRotoScriptThumbnailV1 {
 /**
  * Decode ONE script-carried mask data URL back to its stored WebP bytes
  * (63-08 / TIP-14 / D-14 / T-63-07). Prefix, byte cap and canonical base64
- * only, and the RIFF header must declare exactly `TIP_SIZE × TIP_SIZE` — the
+ * only, and the RIFF header must declare exactly `TIP_MASK_EDGE × TIP_MASK_EDGE` — the
  * dimension walk runs BEFORE any native decode, so an oversize or wrong-size
  * drawing is refused without allocating its mask buffer. `null` on any other
  * value: the load leg skips that entry with a named log rather than aborting.
@@ -545,7 +545,7 @@ export function decodeScriptMaskDataUrl(value: unknown): Uint8Array | null {
   try {
     const bytes = decodeBase64(base64);
     const dimensions = parseWebpDimensions(bytes);
-    if (dimensions?.width !== TIP_SIZE || dimensions.height !== TIP_SIZE) return null;
+    if (dimensions?.width !== TIP_MASK_EDGE || dimensions.height !== TIP_MASK_EDGE) return null;
     return bytes;
   } catch {
     return null;

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { base64ToBytes } from './webpBytes';
+import { base64ToBytes, bytesToBase64 } from './webpBytes';
 import type { ProjectData, MceProject } from '../types/project';
 import type { ImageInfo, ImportResult } from '../types/image';
 import type { PersistedRotoScriptAnyV1, PersistedRotoScriptV1 } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
@@ -789,6 +789,72 @@ export async function ipcEfxPaintDecodeBrushMask(
     };
   } catch (error) {
     return { ok: false, error: efxPaintMediaFailureFrom(error) };
+  }
+}
+
+// --- Machine brush-texture library (quick 261116-inu / spec 04) ---
+
+/**
+ * One `catalog.json` row, exactly as Rust serializes it. `textureRotation` is
+ * integer DEGREES in -180..180; `rotation` is the D-08 tip multiplier — two
+ * different fields, never conflated.
+ */
+export interface BrushLibraryEntry {
+  id: string;
+  name: string;
+  digest: string;
+  textureRotation: number;
+  createdAt: string;
+  tip: number;
+  aspect: number;
+  rotation: number;
+  sizeCurve: number;
+  scatter: number;
+  capacity: number;
+  grain: number;
+  wetRound: number;
+}
+
+export interface BrushLibraryDecodeResult {
+  /** The 262,144 alpha bytes. */
+  mask: Uint8Array;
+  width: number;
+  height: number;
+}
+
+/**
+ * Write one 262,144-byte mask into the machine library. The renderer sends
+ * BYTES only — Rust derives the root, the digest, the filename and the id.
+ * Re-writing the same bytes resolves to the existing row.
+ */
+export async function ipcBrushLibraryWrite(
+  name: string,
+  mask: Uint8Array,
+): Promise<Result<BrushLibraryEntry>> {
+  return safeInvoke<BrushLibraryEntry>('brush_library_write', {
+    name,
+    maskBase64: bytesToBase64(mask),
+  });
+}
+
+/**
+ * Decode one stored library mask back to its alpha bytes. Rust validates the
+ * digest and runs the declared-dimension gate before any allocation.
+ */
+export async function ipcBrushLibraryDecode(
+  digest: string,
+): Promise<Result<BrushLibraryDecodeResult>> {
+  try {
+    const data = await invoke<{ maskBase64: string; width: number; height: number }>(
+      'brush_library_decode',
+      { digest },
+    );
+    return {
+      ok: true,
+      data: { mask: base64ToBytes(data.maskBase64), width: data.width, height: data.height },
+    };
+  } catch (error) {
+    return { ok: false, error: String(error) };
   }
 }
 
