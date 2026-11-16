@@ -1098,7 +1098,17 @@ describe('62-01 painted-stroke conversion — one write, one undo', () => {
 //  62-01 — D-07/D-08: every edit seam PRESERVES the stroke's
 //  sample count (the count IS `ticks`, so the wet lifetime never
 //  moves with path length) and REMAPS the recorded pressure along
-//  the NEW spine by arc length, both endpoints pinned.
+//  the ORIGINAL polyline by arc length, both endpoints pinned.
+//
+//  Quick 261116-r9k AMENDS D-08 at the conversion seam only: an
+//  anchorless stroke's FIRST path write re-stations at
+//  clamp(ceil(spineLength / 0.02), count, 3 x count), because the
+//  recorded count is a hand cadence, not a resolution. The three
+//  conversion pins below therefore mint 15, not 5. The long/short
+//  pin is count-EQUIVALENCE only (its second spine is short
+//  enough that the gated and ungated formulas agree); the
+//  DISCRIMINATING no-second-multiplication pin (a 1.2 uv second
+//  spine) lives in the `quick 261116-r9k` block below.
 // ============================================================
 
 /** A five-sample stroke on a straight line with a real, non-uniform profile. */
@@ -1116,7 +1126,7 @@ describe('62-01 D-07/D-08 — count preservation and the pressure remap', () => 
     resetAquarelleRecordState();
   });
 
-  it('preserves the recorded sample count through a much longer and a much shorter spine', () => {
+  it('mints the conversion count once, then preserves it through a longer and a shorter spine', () => {
     const id = 62101;
     recordAquarelleStroke(id, pressureStroke(id));
     expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(5);
@@ -1127,7 +1137,8 @@ describe('62-01 D-07/D-08 — count preservation and the pressure remap', () => 
       { x: 0.9, y: 0.2, kind: 'auto' },
     ];
     expect(updateAquarellePathInScript(id, longAnchors)).toBe(1);
-    expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(5);
+    // The CONVERSION re-stations at the 3x cap (the spine demands far more).
+    expect(getRecordedAquarelleStroke(id)!.points).toHaveLength(15);
 
     const shortAnchors: readonly AquarelleAnchor[] = [
       { x: 0.45, y: 0.5, kind: 'auto' },
@@ -1135,13 +1146,14 @@ describe('62-01 D-07/D-08 — count preservation and the pressure remap', () => 
     ];
     expect(updateAquarellePathInScript(id, shortAnchors)).toBe(1);
     const after = getRecordedAquarelleStroke(id)!;
-    expect(after.points).toHaveLength(5);
+    // Now anchored: an EDIT preserves the 15 the conversion minted.
+    expect(after.points).toHaveLength(15);
     // Endpoints pinned to the NEW spine's own endpoints.
     expect(after.points[0]!.x).toBeCloseTo(0.45, 12);
-    expect(after.points[4]!.x).toBeCloseTo(0.55, 12);
+    expect(after.points[after.points.length - 1]!.x).toBeCloseTo(0.55, 12);
   });
 
-  it('spaces the preserved samples evenly along the new spine by arc length', () => {
+  it('spaces the conversion stations evenly along the new spine by arc length', () => {
     const id = 62103;
     recordAquarelleStroke(id, pressureStroke(id));
     const anchors: readonly AquarelleAnchor[] = [
@@ -1151,7 +1163,7 @@ describe('62-01 D-07/D-08 — count preservation and the pressure remap', () => 
     expect(updateAquarellePathInScript(id, anchors)).toBe(1);
 
     const points = getRecordedAquarelleStroke(id)!.points;
-    expect(points).toHaveLength(5);
+    expect(points).toHaveLength(15);
     const steps: number[] = [];
     for (let index = 1; index < points.length; index += 1) {
       steps.push(
@@ -1162,7 +1174,7 @@ describe('62-01 D-07/D-08 — count preservation and the pressure remap', () => 
       );
     }
     const total = steps.reduce((sum, step) => sum + step, 0);
-    for (const step of steps) expect(step).toBeCloseTo(total / 4, 9);
+    for (const step of steps) expect(step).toBeCloseTo(total / 14, 9);
   });
 
   it('remaps the recorded pressure by arc length with both endpoints pinned', () => {
@@ -1176,13 +1188,12 @@ describe('62-01 D-07/D-08 — count preservation and the pressure remap', () => 
 
     const pressures = getRecordedAquarelleStroke(id)!.points.map((sample) => sample.p);
     // The source stations sit at arc fractions 0, 1/12, 1/2, 7/12 and 1; the
-    // output stations at 0, 1/4, 1/2, 3/4 and 1 take the interpolated values.
-    expect(pressures).toHaveLength(5);
+    // 15 conversion stations at j/14 take the interpolated values.
+    expect(pressures).toHaveLength(15);
     expect(pressures[0]).toBe(0.2);
-    expect(pressures[1]).toBeCloseTo(0.38, 9);
-    expect(pressures[2]).toBeCloseTo(0.5, 9);
-    expect(pressures[3]).toBeCloseTo(0.78, 9);
-    expect(pressures[4]).toBe(0.9);
+    expect(pressures[1]).toBeCloseTo(2 / 7, 9);
+    expect(pressures[7]).toBeCloseTo(0.5, 9);
+    expect(pressures[14]).toBe(0.9);
   });
 
   it('keeps an all-sentinel stroke sentinel through the reshape', () => {

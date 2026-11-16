@@ -55,6 +55,7 @@ import { reorderForStackPosition, targetIndexForStackPosition } from './stackOrd
 import {
   VECTOR_STROKE_BASE_PRESSURE,
   resampleVectorSpineWithPressureLaw,
+  resolveVectorConversionSampleCount,
 } from './vectorPathHandles';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
@@ -1316,6 +1317,14 @@ export function updateAquarelleCurveModeInScript(
  * removes both keys. The default mode is expressed by the ABSENT key (never
  * `curveMode: 'bezier'`). An invalid requested mode is refused whole — nothing
  * is written and 0 is returned.
+ *
+ * Quick 261116-r9k (D-08 amended): the conversion — the FIRST write on an
+ * anchorless stroke — re-stations the replay spine at
+ * `resolveVectorConversionSampleCount`, up to 3x the recorded count, because
+ * the recorded count is a hand cadence, not a resolution: at conversion it
+ * under-samples the curve the user is about to edit. Every LATER write (an
+ * anchor drag, a width/colour commit) and every curve-mode switch keeps the
+ * count the conversion minted, so counts never compound.
  */
 export interface AquarellePathWriteOptions {
   /** The evaluation mode to store with the new path; absent keeps the stroke's. */
@@ -1351,12 +1360,19 @@ export function updateAquarellePathInScript(
   // 61-30 (G-20): the evaluation honours the effective curve mode — the
   // stroke's own when the write carries none, the requested one otherwise.
   const { points: sampledSpine } = evaluateAquarellePath(nextAnchors, effectiveMode);
-  // 62-01 (D-07/D-08): keep the stroke's recorded sample count (it IS the wet
-  // lifetime) and remap the recorded pressure along the source polyline's arc
-  // length, both ends pinned. A conversion therefore mints no new lifetime.
+  // 62-01 (D-07/D-08): an edit keeps the stroke's recorded sample count (it IS
+  // the wet lifetime) and remaps the recorded pressure along the source
+  // polyline's arc length, both ends pinned. Quick 261116-r9k: the painted-to-
+  // vector CONVERSION is the one exception — its first write re-stations at the
+  // named count law, and only that first write.
+  const converting = (stroke.anchors?.length ?? 0) === 0;
+  const targetCount = converting
+    ? resolveVectorConversionSampleCount(sampledSpine, stroke.points.length)
+    : undefined;
   const { points: editSpine, pressures } = resampleVectorSpineWithPressureLaw(
     sampledSpine,
     stroke.points,
+    targetCount,
   );
   const nextPoints = editSpine.map((point, sampleIndex) => ({
     x: point.x,
