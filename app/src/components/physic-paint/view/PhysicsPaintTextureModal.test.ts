@@ -9,12 +9,17 @@
 //    the body keeps the FULL strip, below the Size row
 //    only the front sheet consumes Escape; a close releases its seat
 //    the header drag survives close/reopen for the session
+//    quick 261116-inu: Delete/Backspace on the sheet or a chip opens
+//    ONE confirmation; Confirm asks the bridge once, Cancel changes
+//    nothing, and inert targets never open it
 // ============================================================
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+
+const mockTextureMutation = vi.hoisted(() => vi.fn());
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -30,9 +35,17 @@ vi.mock('preact/hooks', async (importOriginal) => {
   };
 });
 
+// Only the mutation request is replaced; the rest of the bridge (and the
+// import request WatercolorBrushLibrary calls) stays real.
+vi.mock('../../../lib/physicPaintBridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../lib/physicPaintBridge')>();
+  return { ...actual, requestPhysicPaintBrushTextureMutation: mockTextureMutation };
+});
+
 import {
   PhysicsPaintTextureModal,
   TextureSizeControl,
+  resetTextureDeleteState,
   resetTextureModalLayout,
 } from './PhysicsPaintTextureModal';
 import {
@@ -44,10 +57,18 @@ import {
 } from './floatingSheetStack';
 import {
   aquarelleParams,
+  aquarelleSelectedTextureId,
   aquarelleTextureModalOpen,
   recordAquarelleStroke,
+  setAquarelleSelectedTextureId,
   setAquarelleTextureModalOpen,
 } from './aquarelleRecordState';
+import {
+  libraryRowToTip,
+  replaceLibraryEntries,
+  resetAquarelleBrushCatalog,
+} from '../../../stores/aquarelleBrushCatalog';
+import { TIP_MASK_BYTES, registerMask, resetMaskRegistry } from '@efxlab/efx-watercolor';
 import {
   setAquarelleSelectMode,
   setAquarelleSelectionEditPort,
@@ -82,9 +103,69 @@ function findByTestId(tree: unknown, testId: string): TestVNode | undefined {
 const MODAL_SOURCE = readFileSync(resolve(__dirname, 'PhysicsPaintTextureModal.tsx'), 'utf8');
 const CSS_SOURCE = readFileSync(resolve(__dirname, '..', 'physicsPaintStudio.css'), 'utf8');
 
+/** quick 261116-inu: one machine-library row for the delete surface. */
+const TEXTURE_DIGEST = 'd'.repeat(64);
+const TEXTURE_ENTRY = {
+  id: `wc/custom-${TEXTURE_DIGEST.slice(0, 12)}`,
+  name: 'fern.png',
+  digest: TEXTURE_DIGEST,
+  textureRotation: 0,
+  createdAt: '2026-11-16T10:00:00Z',
+  tip: 1,
+  aspect: 1,
+  rotation: 1,
+  sizeCurve: 1,
+  scatter: 1,
+  capacity: 1,
+  grain: 1,
+  wetRound: 1,
+};
+
+function seedTextureRow(): void {
+  replaceLibraryEntries([
+    { tip: libraryRowToTip(TEXTURE_ENTRY), digest: TEXTURE_DIGEST, textureRotation: 0 },
+  ]);
+  registerMask(TEXTURE_ENTRY.id, new Uint8Array(TIP_MASK_BYTES));
+}
+
+/** The surface's own keydown prop, invoked with a DOM-like target. */
+function fireSurfaceKey(
+  tree: TestVNode,
+  key: string,
+  target: unknown,
+): { preventDefault: ReturnType<typeof vi.fn>; stopPropagation: ReturnType<typeof vi.fn> } {
+  const preventDefault = vi.fn();
+  const stopPropagation = vi.fn();
+  const handler = tree.props?.onKeyDown as ((event: unknown) => void) | undefined;
+  handler?.({ key, target, preventDefault, stopPropagation });
+  return { preventDefault, stopPropagation };
+}
+
+/** A texture-chip button target (passes the closest('.watercolor-texture-chip') gate). */
+const CHIP_TARGET = { tagName: 'BUTTON', closest: () => ({}) };
+
+/** Concatenated text of a vnode subtree. */
+function textOf(node: unknown): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join('');
+  const children = (node as TestVNode).props?.children;
+  return children === undefined ? '' : textOf(children);
+}
+
 beforeEach(() => {
   aquarelleTextureModalOpen.value = false;
   resetTextureModalLayout();
+  resetTextureDeleteState();
+  resetAquarelleBrushCatalog();
+  resetMaskRegistry();
+  setAquarelleSelectedTextureId(null);
+  mockTextureMutation.mockReset();
+  mockTextureMutation.mockResolvedValue({
+    operationId: 'op-test',
+    ok: true,
+    digest: TEXTURE_DIGEST,
+  });
   setAquarelleSelectionEditPort(null);
   setAquarelleSelectMode(false);
   clearScriptStrokeSelection();
@@ -95,6 +176,10 @@ beforeEach(() => {
 afterEach(() => {
   aquarelleTextureModalOpen.value = false;
   resetTextureModalLayout();
+  resetTextureDeleteState();
+  resetAquarelleBrushCatalog();
+  resetMaskRegistry();
+  setAquarelleSelectedTextureId(null);
   setAquarelleSelectionEditPort(null);
   setAquarelleSelectMode(false);
   clearScriptStrokeSelection();
@@ -294,6 +379,161 @@ describe('quick 261116-gcn Textures sheet', () => {
     expect(MODAL_SOURCE).toContain('releaseSheet(SHEET_ID_TEXTURES);');
     expect(MODAL_SOURCE).toContain("commitAquarelleSelectionParam('size', value)");
     expect(MODAL_SOURCE).not.toContain('useState');
+  });
+});
+
+describe('quick 261116-inu texture delete on the Textures surface', () => {
+  it('Delete on a chip opens ONE confirmation naming the consequence — no request yet', () => {
+    seedTextureRow();
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    setAquarelleTextureModalOpen(true);
+    const tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    expect(tree.props?.tabIndex, 'the sheet container is focusable').toBe(-1);
+    expect(tree.props?.onKeyDown, 'the container owns the gesture').toBeTypeOf('function');
+
+    const { preventDefault, stopPropagation } = fireSurfaceKey(tree, 'Delete', CHIP_TARGET);
+    expect(preventDefault, 'the key never performs its default action').toHaveBeenCalled();
+    expect(stopPropagation, 'the gesture stays inside the surface').toHaveBeenCalled();
+    expect(mockTextureMutation, 'nothing is asked before confirmation').not.toHaveBeenCalled();
+
+    const next = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    const confirm = findByTestId(next, 'watercolor-texture-delete-confirm');
+    expect(confirm, 'one confirmation dialog').toBeTruthy();
+    expect(confirm!.props?.role).toBe('alertdialog');
+    const copy = collect(confirm).find(
+      (node) => String(node.props?.class ?? '') === 'physics-paint-texture-modal-confirm-copy',
+    );
+    const text = textOf(copy);
+    expect(text).toContain('fern.png');
+    expect(text, 'the copy names the machine-wide consequence').toContain('from this machine');
+    expect(text).toContain('fall back to the response tip');
+  });
+
+  it('Backspace opens the same confirmation and Cancel is a no-op', () => {
+    seedTextureRow();
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    setAquarelleTextureModalOpen(true);
+    let tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    fireSurfaceKey(tree, 'Backspace', CHIP_TARGET);
+    tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    expect(findByTestId(tree, 'watercolor-texture-delete-confirm')).toBeTruthy();
+
+    const cancel = findByTestId(tree, 'watercolor-texture-delete-cancel')!;
+    (cancel.props?.onClick as () => void)();
+
+    expect(mockTextureMutation, 'cancel never asks the bridge').not.toHaveBeenCalled();
+    expect(aquarelleSelectedTextureId.value, 'cancel changes no selection').toBe(TEXTURE_ENTRY.id);
+    const closed = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    expect(findByTestId(closed, 'watercolor-texture-delete-confirm')).toBeUndefined();
+  });
+
+  it('Confirm asks once and resets the deleted selection to Default', async () => {
+    seedTextureRow();
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    setAquarelleTextureModalOpen(true);
+    let tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    fireSurfaceKey(tree, 'Delete', CHIP_TARGET);
+    tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    const confirmButton = findByTestId(tree, 'watercolor-texture-delete-confirm-button')!;
+    (confirmButton.props?.onClick as () => void)();
+
+    await vi.waitFor(() => {
+      expect(mockTextureMutation).toHaveBeenCalledTimes(1);
+    });
+    expect(mockTextureMutation).toHaveBeenCalledWith({
+      operation: 'delete',
+      digest: TEXTURE_DIGEST,
+    });
+    await vi.waitFor(() => {
+      expect(aquarelleSelectedTextureId.value, 'the dangling selection falls back to Default').toBeNull();
+    });
+
+    const settled = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    expect(findByTestId(settled, 'watercolor-texture-delete-confirm')).toBeUndefined();
+  });
+
+  it('a refused delete leaves the selection and the dialog settles closed', async () => {
+    seedTextureRow();
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    setAquarelleTextureModalOpen(true);
+    mockTextureMutation.mockResolvedValue({
+      operationId: 'op-test',
+      ok: false,
+      digest: TEXTURE_DIGEST,
+      reason: 'mutation-failed',
+    });
+    let tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    fireSurfaceKey(tree, 'Delete', CHIP_TARGET);
+    tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+    (findByTestId(tree, 'watercolor-texture-delete-confirm-button')!.props?.onClick as () => void)();
+
+    await vi.waitFor(() => {
+      expect(mockTextureMutation).toHaveBeenCalledTimes(1);
+    });
+    // Let the request settle before asserting the post-settle state.
+    await vi.waitFor(() => {
+      const settled = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+      expect(findByTestId(settled, 'watercolor-texture-delete-confirm')).toBeUndefined();
+    });
+    expect(aquarelleSelectedTextureId.value, 'a failed delete never clears the selection').toBe(
+      TEXTURE_ENTRY.id,
+    );
+  });
+
+  it('is inert outside the surface, on text fields, on other keys and on the Default chip', () => {
+    seedTextureRow();
+    setAquarelleSelectedTextureId(TEXTURE_ENTRY.id);
+    setAquarelleTextureModalOpen(true);
+    const tree = PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }) as TestVNode;
+
+    // A target outside the sheet/chips (the window, another sheet's node).
+    const outside = fireSurfaceKey(tree, 'Delete', { tagName: 'DIV', closest: () => null });
+    expect(outside.preventDefault).not.toHaveBeenCalled();
+    // The Size row's free-entry input owns Delete/Backspace.
+    const input = fireSurfaceKey(tree, 'Delete', { tagName: 'INPUT', closest: () => ({}) });
+    expect(input.preventDefault).not.toHaveBeenCalled();
+    // Other keys are not this gesture.
+    fireSurfaceKey(tree, 'a', CHIP_TARGET);
+    expect(
+      findByTestId(PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }), 'watercolor-texture-delete-confirm'),
+      'no dialog from an inert gesture',
+    ).toBeUndefined();
+
+    // The Default chip is no deletion subject.
+    setAquarelleSelectedTextureId(null);
+    fireSurfaceKey(tree, 'Delete', CHIP_TARGET);
+    expect(
+      findByTestId(PhysicsPaintTextureModal({ onBrushSizeChange: vi.fn() }), 'watercolor-texture-delete-confirm'),
+    ).toBeUndefined();
+    expect(mockTextureMutation).not.toHaveBeenCalled();
+  });
+
+  it('source and CSS pin the container-scoped handler, sentence case and the focus ring', () => {
+    expect(MODAL_SOURCE).toContain('tabIndex={-1}');
+    expect(MODAL_SOURCE).toContain('onKeyDown={onSurfaceKeyDown}');
+    expect(MODAL_SOURCE).toContain('requestPhysicPaintBrushTextureMutation({');
+    expect(MODAL_SOURCE, 'the Escape law clears a pending confirmation first').toContain(
+      'pendingTextureDelete.value !== null',
+    );
+    expect(MODAL_SOURCE, 'a close clears the confirmation').toContain('resetTextureDeleteState();');
+    expect(MODAL_SOURCE, 'never the global paint shortcut dispatcher').not.toContain('shortcuts');
+    expect(
+      MODAL_SOURCE,
+      'Delete/Backspace is never attached to window — the only window keydown is the front-sheet Escape law',
+    ).not.toContain('window.addEventListener(\'keydown\', onSurfaceKeyDown');
+
+    const confirmAt = CSS_SOURCE.indexOf('\n.physics-paint-texture-modal-confirm {');
+    expect(confirmAt, 'the confirmation rule exists').toBeGreaterThan(-1);
+    const focusAt = CSS_SOURCE.indexOf('\n.physics-paint-texture-modal:focus-visible {');
+    expect(focusAt, 'the container focus ring exists').toBeGreaterThan(-1);
+    const focusRule = CSS_SOURCE.slice(focusAt, CSS_SOURCE.indexOf('}', focusAt));
+    expect(focusRule).toContain('outline: 2px solid var(--color-accent');
+    const buttonAt = CSS_SOURCE.indexOf('\n.physics-paint-texture-modal-confirm-button {');
+    expect(buttonAt, 'the action button rule exists').toBeGreaterThan(-1);
+    const buttonRule = CSS_SOURCE.slice(buttonAt, CSS_SOURCE.indexOf('}', buttonAt));
+    expect(buttonRule, 'sentence-case copy, never the global uppercase').toContain(
+      'text-transform: none',
+    );
   });
 });
 

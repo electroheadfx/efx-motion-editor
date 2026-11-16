@@ -11,6 +11,15 @@
 //  texture-pattern scale. A release commits one `size` patch to the
 //  selected paint strokes through commitAquarelleSelectionParam —
 //  engine, masks and unselected strokes stay untouched.
+//
+//  quick 261116-inu / Task 6: THIS sheet owns texture deletion.
+//  Delete/Backspace on the sheet's own container (focusable) or on a
+//  chip button opens ONE confirmation naming the consequence; only
+//  Confirm asks the main realm — which owns the machine library —
+//  through the bridge's mutation pair, and only an accepted delete
+//  resets a now-dangling selection to Default. The handler is
+//  container-scoped: never a window listener, never the global paint
+//  shortcut dispatcher, and inert while a text field owns the key.
 // ============================================================
 
 import { useEffect, useRef } from 'preact/hooks';
@@ -21,14 +30,19 @@ import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { SliderStepper } from '../../shared/SliderStepper';
 import {
   aquarelleParams,
+  aquarelleSelectedTextureId,
   aquarelleTextureModalOpen,
+  clearAquarelleTextureSelectionIfDeleted,
   setAquarelleTextureModalOpen,
 } from './aquarelleRecordState';
+import { customBrushTips, libraryRowFor } from '../../../stores/aquarelleBrushCatalog';
+import { requestPhysicPaintBrushTextureMutation } from '../../../lib/physicPaintBridge';
 import { commitAquarelleSelectionParam } from './aquarellePaintControls';
 import {
   SHEET_ID_TEXTURES,
   bringSheetToFront,
   closeSheetIfFront,
+  isFrontSheet,
   releaseSheet,
   sheetZIndex,
 } from './floatingSheetStack';
@@ -55,6 +69,34 @@ const textureModalResizeHeight = signal<number | null>(null);
 export function resetTextureModalLayout(): void {
   textureModalDragOffset.value = null;
   textureModalResizeHeight.value = null;
+}
+
+/**
+ * quick 261116-inu / Task 6: the ONE delete confirmation on screen, or null.
+ * Module scope — the surface handler, the Escape law and the dialog agree
+ * without a render-body write; closing the sheet clears it. `tipId` is the id
+ * this realm knew for the digest BEFORE the request: after the mutation and
+ * its catalog pull the row is gone, and only that captured id can be the
+ * selection that must fall back to Default.
+ */
+interface PendingTextureDelete {
+  readonly digest: string;
+  readonly tipId: string;
+  readonly name: string;
+}
+const pendingTextureDelete = signal<PendingTextureDelete | null>(null);
+/** One delete in flight at a time; the dialog's buttons guard on it. */
+const textureDeleteInFlight = signal(false);
+
+/** Clear the delete surface (close, cancel, settle) — compare-then-write. */
+function clearPendingTextureDelete(): void {
+  if (pendingTextureDelete.value !== null) pendingTextureDelete.value = null;
+}
+
+/** Reset both delete signals (sheet close and test hygiene). */
+export function resetTextureDeleteState(): void {
+  if (pendingTextureDelete.value !== null) pendingTextureDelete.value = null;
+  if (textureDeleteInFlight.value) textureDeleteInFlight.value = false;
 }
 
 const SURFACE_INSET_PX = 12;
@@ -160,13 +202,22 @@ export function PhysicsPaintTextureModal(props: {
       // A closed sheet must leave the order — a stale front id would make the
       // front-only Escape gate inert for every sheet that is still open.
       releaseSheet(SHEET_ID_TEXTURES);
+      // A confirmation never outlives its sheet.
+      resetTextureDeleteState();
       return undefined;
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       // Only the FRONT sheet consumes Escape. Closing stops its siblings with
-      // stopImmediatePropagation (never stopPropagation).
-      if (!closeSheetIfFront(SHEET_ID_TEXTURES, () => setAquarelleTextureModalOpen(false))) return;
+      // stopImmediatePropagation (never stopPropagation). A pending delete
+      // confirmation dismisses FIRST — one Escape never destroys the sheet and
+      // the pending confirmation together, and the sheet keeps its seat.
+      if (!isFrontSheet(SHEET_ID_TEXTURES)) return;
+      if (pendingTextureDelete.value !== null) {
+        clearPendingTextureDelete();
+      } else {
+        closeSheetIfFront(SHEET_ID_TEXTURES, () => setAquarelleTextureModalOpen(false));
+      }
       event.preventDefault();
       event.stopImmediatePropagation();
     };
@@ -176,7 +227,10 @@ export function PhysicsPaintTextureModal(props: {
 
   if (!open) return null;
 
-  const close = () => setAquarelleTextureModalOpen(false);
+  const close = () => {
+    resetTextureDeleteState();
+    setAquarelleTextureModalOpen(false);
+  };
 
   const onHeaderPointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -241,8 +295,70 @@ export function PhysicsPaintTextureModal(props: {
     resizeStartRef.current = null;
   };
 
+  /**
+   * Delete/Backspace on this sheet's OWN subtree (the container is focusable,
+   * and a chip button receives the key after a click). Acts only when the
+   * target is the sheet or a texture chip; a text field — the Size row's free
+   * entry — keeps the key. The subject is the SELECTED texture (a chip click
+   * selects it), so there is no second selection seam, and the gesture never
+   * leaves the surface: no window listener, never the global paint dispatcher.
+   */
+  const onSurfaceKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+    const target = event.target as (HTMLElement & { closest?: (selector: string) => Element | null }) | null;
+    if (target && (
+      target.tagName === 'INPUT'
+      || target.tagName === 'TEXTAREA'
+      || target.tagName === 'SELECT'
+      || target.isContentEditable
+    )) return;
+    const sheet = surfaceRef.current;
+    const chip = target?.closest?.('.watercolor-texture-chip') ?? null;
+    if (target !== sheet && chip === null) return;
+    if (pendingTextureDelete.value !== null) return;
+    const selectedId = aquarelleSelectedTextureId.value;
+    if (selectedId === null) return;
+    const row = libraryRowFor(selectedId);
+    if (row === null) return;
+    const name = customBrushTips.value.find((tip) => tip.id === selectedId)?.name ?? selectedId;
+    event.preventDefault();
+    event.stopPropagation();
+    pendingTextureDelete.value = { digest: row.digest, tipId: selectedId, name };
+  };
+
+  const cancelTextureDelete = () => {
+    if (textureDeleteInFlight.value) return;
+    clearPendingTextureDelete();
+  };
+
+  const confirmTextureDelete = () => {
+    const pending = pendingTextureDelete.value;
+    if (pending === null || textureDeleteInFlight.value) return;
+    textureDeleteInFlight.value = true;
+    void (async () => {
+      let accepted = false;
+      try {
+        const result = await requestPhysicPaintBrushTextureMutation({
+          operation: 'delete',
+          digest: pending.digest,
+        });
+        accepted = result.ok;
+      } catch (error) {
+        console.warn('[PhysicsPaintTextureModal] texture delete request failed', error);
+      } finally {
+        textureDeleteInFlight.value = false;
+        if (pendingTextureDelete.value === pending) pendingTextureDelete.value = null;
+      }
+      // Default fallback uses the id captured BEFORE the request: after the
+      // mutation and its catalog pull the row — and its id — are gone.
+      if (accepted) clearAquarelleTextureSelectionIfDeleted(pending.tipId);
+    })();
+  };
+
   const applied = textureModalDragOffset.value;
   const resizedHeight = textureModalResizeHeight.value;
+  const pendingDelete = pendingTextureDelete.value;
+  const deleteInFlight = textureDeleteInFlight.value;
 
   return (
     <div
@@ -251,6 +367,11 @@ export function PhysicsPaintTextureModal(props: {
       data-testid="watercolor-texture-modal"
       role="dialog"
       aria-label="Textures"
+      // quick 261116-inu: focusable so the container itself can own the
+      // Delete/Backspace gesture; -1 keeps it out of the Tab order (chips and
+      // the Size row stay the tab stops).
+      tabIndex={-1}
+      onKeyDown={onSurfaceKeyDown}
       // Capture phase: the Close button stops pointerdown propagation, and a
       // press on it must still raise the sheet.
       onPointerDownCapture={() => bringSheetToFront(SHEET_ID_TEXTURES)}
@@ -308,6 +429,40 @@ export function PhysicsPaintTextureModal(props: {
           <WatercolorTextureStrip />
         </div>
       </SidebarScrollArea>
+
+      {pendingDelete !== null ? (
+        <div
+          class="physics-paint-texture-modal-confirm"
+          data-testid="watercolor-texture-delete-confirm"
+          role="alertdialog"
+          aria-label="Remove texture"
+        >
+          <div class="physics-paint-texture-modal-confirm-copy">
+            Remove “{pendingDelete.name}” from this machine? Projects and scripts
+            that use this texture fall back to the response tip.
+          </div>
+          <div class="physics-paint-texture-modal-confirm-actions">
+            <button
+              type="button"
+              class="physics-paint-texture-modal-confirm-button"
+              data-testid="watercolor-texture-delete-cancel"
+              disabled={deleteInFlight}
+              onClick={cancelTextureDelete}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="physics-paint-texture-modal-confirm-button physics-paint-texture-modal-confirm-remove"
+              data-testid="watercolor-texture-delete-confirm-button"
+              disabled={deleteInFlight}
+              onClick={confirmTextureDelete}
+            >
+              {deleteInFlight ? 'Removing…' : 'Remove'}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div
         data-testid="watercolor-texture-modal-resize"

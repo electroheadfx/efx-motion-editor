@@ -353,6 +353,46 @@ fn encode_base64(bytes: &[u8]) -> String {
     crate::commands::frame_codec::encode_base64(bytes)
 }
 
+/// Delete one library entry: remove `<root>/<digest>.webp` (a missing file is
+/// fine — the row must still leave) and the matching `catalog.json` row, then
+/// rewrite the catalog atomically.
+///
+/// The digest is validated BEFORE any path is built (T-01), a symlinked target
+/// is refused (the file is never followed outside the root), and a failed
+/// catalog rewrite leaves the previous `catalog.json` intact and reports the
+/// failure — the row stays listed (and the next scan marks it unavailable).
+fn delete_library_entry_at(root: &Path, digest: &str) -> Result<(), String> {
+    if !valid_digest(digest) {
+        return Err("invalid-digest".to_string());
+    }
+    let target = mask_path(root, digest);
+    reject_symlink(&target, "brush library file")?;
+    match fs::remove_file(&target) {
+        Ok(()) => {}
+        // A missing file still removes the row: the delete is idempotent.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("could not remove brush library file: {error}")),
+    }
+    let mut catalog = read_catalog(root);
+    let before = catalog.entries.len();
+    catalog.entries.retain(|entry| entry.digest != digest);
+    if catalog.entries.len() != before {
+        write_catalog(root, &catalog)?;
+    }
+    Ok(())
+}
+
+/// Remove one texture from the machine library by content address.
+///
+/// The renderer names a DIGEST only (64 lower-case hex) — never a path. Holds
+/// the same single-flight mutex as write/decode/scan so a delete can never
+/// interleave a catalog rewrite with an import.
+#[tauri::command(async)]
+pub fn brush_library_delete(digest: String) -> Result<(), String> {
+    let _guard = lock_library();
+    delete_library_entry_at(&library_root(), &digest)
+}
+
 /// Encode + store one imported mask and answer with its catalog row.
 #[tauri::command(async)]
 pub fn brush_library_write(request: Request) -> Result<BrushLibraryEntry, String> {
@@ -610,6 +650,109 @@ mod tests {
         let scan = scan_library_at(&root);
         assert_eq!(scan.entries, vec![entry.clone()]);
         assert_eq!(scan.unavailable, vec![entry.id]);
+    }
+
+    #[test]
+    fn delete_removes_one_row_and_one_file_and_keeps_the_siblings() {
+        let root = scratch_root();
+        let kept = write_library_entry_at(&root, "keep.png", &probe_mask(0x1111_2222))
+            .expect("keep write");
+        let gone = write_library_entry_at(&root, "gone.png", &probe_mask(0x3333_4444))
+            .expect("gone write");
+
+        delete_library_entry_at(&root, &gone.digest).expect("delete");
+
+        assert!(!mask_path(&root, &gone.digest).exists());
+        assert!(mask_path(&root, &kept.digest).exists());
+        let catalog = read_catalog(&root);
+        assert_eq!(catalog.entries, vec![kept]);
+    }
+
+    #[test]
+    fn delete_removes_the_row_even_when_the_file_is_already_missing() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "lost.png", &probe_mask(0x5555_6666))
+            .expect("write");
+        fs::remove_file(mask_path(&root, &entry.digest)).expect("remove file behind the row");
+
+        delete_library_entry_at(&root, &entry.digest).expect("delete");
+        assert!(read_catalog(&root).entries.is_empty());
+    }
+
+    #[test]
+    fn delete_of_an_absent_digest_is_an_idempotent_no_op() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "once.png", &probe_mask(0x7777_8888))
+            .expect("write");
+        delete_library_entry_at(&root, &entry.digest).expect("first delete");
+        let catalog_after_first = fs::read(catalog_path(&root)).expect("catalog");
+        delete_library_entry_at(&root, &entry.digest).expect("second delete");
+        assert_eq!(
+            fs::read(catalog_path(&root)).expect("catalog"),
+            catalog_after_first
+        );
+    }
+
+    #[test]
+    fn delete_refuses_a_digest_that_is_not_64_lower_case_hex_before_any_path_is_built() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "safe.png", &probe_mask(0x9999_aaaa))
+            .expect("write");
+        for bad in [
+            "",
+            "abc",
+            "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789",
+            "../0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd",
+        ] {
+            assert_eq!(
+                delete_library_entry_at(&root, bad),
+                Err("invalid-digest".to_string())
+            );
+        }
+        // Nothing was touched by a refused digest.
+        assert!(mask_path(&root, &entry.digest).exists());
+        assert_eq!(read_catalog(&root).entries, vec![entry]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_refuses_a_symlinked_target_and_keeps_the_row() {
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "linked.png", &probe_mask(0xbbbb_cccc))
+            .expect("write");
+        let target = mask_path(&root, &entry.digest);
+        let elsewhere = scratch_root().join("real.webp");
+        fs::rename(&target, &elsewhere).expect("move real file");
+        std::os::unix::fs::symlink(&elsewhere, &target).expect("symlink stored file");
+
+        let error = delete_library_entry_at(&root, &entry.digest).unwrap_err();
+        assert!(error.contains("Symlinked"), "unexpected error: {error}");
+        assert!(elsewhere.exists(), "the symlink target survives");
+        assert_eq!(read_catalog(&root).entries, vec![entry]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_reports_a_catalog_rewrite_failure_and_keeps_the_previous_catalog() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = scratch_root();
+        let entry = write_library_entry_at(&root, "frozen.png", &probe_mask(0xdddd_eeee))
+            .expect("write");
+        let catalog_before = fs::read(catalog_path(&root)).expect("catalog before");
+        // The file is already gone, so the delete's unlink is a no-op; the
+        // catalog rewrite into a read-only root then fails.
+        fs::remove_file(mask_path(&root, &entry.digest)).expect("remove file first");
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o555)).expect("freeze root");
+
+        let result = delete_library_entry_at(&root, &entry.digest);
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).expect("thaw root");
+
+        assert!(result.is_err(), "a failed rewrite must report, not silently pass");
+        assert_eq!(
+            fs::read(catalog_path(&root)).expect("catalog after"),
+            catalog_before,
+            "the previous catalog survives a failed rewrite"
+        );
     }
 
     #[test]

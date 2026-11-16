@@ -18,21 +18,34 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockScan = vi.hoisted(() => vi.fn());
 const mockDecode = vi.hoisted(() => vi.fn());
+const mockDelete = vi.hoisted(() => vi.fn());
 
 vi.mock('./ipc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./ipc')>();
-  return { ...actual, ipcBrushLibraryScan: mockScan, ipcBrushLibraryDecode: mockDecode };
+  return {
+    ...actual,
+    ipcBrushLibraryScan: mockScan,
+    ipcBrushLibraryDecode: mockDecode,
+    ipcBrushLibraryDelete: mockDelete,
+  };
 });
 
-import { TIP_MASK_BYTES, resetMaskRegistry, resolveMask } from '@efxlab/efx-watercolor';
-import { loadBrushLibrary } from './brushLibrary';
+import {
+  TIP_MASK_BYTES,
+  registerMask,
+  resetMaskRegistry,
+  resolveMask,
+} from '@efxlab/efx-watercolor';
+import { deleteBrushTexture, loadBrushLibrary } from './brushLibrary';
 import {
   _setBrushCatalogPublisher,
   customBrushTips,
   libraryRevision,
+  libraryRowToTip,
   libraryRows,
   resetAquarelleBrushCatalog,
   unavailableTipIds,
+  upsertLibraryRow,
 } from '../stores/aquarelleBrushCatalog';
 import type { BrushLibraryEntry } from './ipc';
 
@@ -77,11 +90,13 @@ beforeEach(() => {
   resetMaskRegistry();
   mockScan.mockReset();
   mockDecode.mockReset();
+  mockDelete.mockReset();
   mockScan.mockResolvedValue({ ok: true, data: { entries: [ENTRY_A, ENTRY_B], unavailable: [] } });
   mockDecode.mockImplementation(async (digest: string) => ({
     ok: true as const,
     data: { mask: makeMask(digest === DIGEST_A ? 7 : 11), width: 512, height: 512 },
   }));
+  mockDelete.mockResolvedValue({ ok: true, data: null });
 });
 
 afterEach(() => {
@@ -172,5 +187,100 @@ describe('loadBrushLibrary — the boot replacement', () => {
     await loadBrushLibrary();
     expect(libraryRevision.value).toBe(revisionAfterFirst);
     expect(libraryRows.value).toBe(generationAfterFirst);
+  });
+});
+
+describe('deleteBrushTexture — one row and one file, never a project', () => {
+  it('removes exactly one row, drops its mask, flags its id and publishes once', async () => {
+    await loadBrushLibrary();
+    const published = vi.fn();
+    _setBrushCatalogPublisher(published);
+    const revisionBefore = libraryRevision.value;
+    expect(libraryRows.value).toHaveLength(2);
+
+    await expect(deleteBrushTexture(DIGEST_A)).resolves.toBe(true);
+
+    expect(mockDelete).toHaveBeenCalledWith(DIGEST_A);
+    expect(libraryRows.value.map((row) => row.tip.id)).toEqual([ENTRY_B.id]);
+    expect(customBrushTips.value.map((tip) => tip.id)).toEqual([ENTRY_B.id]);
+    // The deleted id's registration is the only one dropped.
+    expect(resolveMask(ENTRY_A.id)).toBeNull();
+    expect(resolveMask(ENTRY_B.id)).toEqual(makeMask(11));
+    // A project or script saved elsewhere may still name the deleted texture:
+    // it stays LISTED-but-unavailable so no surface presents it as usable.
+    expect(unavailableTipIds.value.has(ENTRY_A.id)).toBe(true);
+    expect(unavailableTipIds.value.has(ENTRY_B.id)).toBe(false);
+    expect(libraryRevision.value, 'one bump, never two').toBe(revisionBefore + 1);
+    expect(published, 'one publish, never two').toHaveBeenCalledTimes(1);
+  });
+
+  it('deleting an already-absent digest is an idempotent success that touches nothing', async () => {
+    await loadBrushLibrary();
+    const rowsBefore = libraryRows.value;
+    const revisionBefore = libraryRevision.value;
+    const published = vi.fn();
+    _setBrushCatalogPublisher(published);
+
+    await expect(deleteBrushTexture('f'.repeat(64))).resolves.toBe(true);
+
+    // The native command still runs (its delete is idempotent too)…
+    expect(mockDelete).toHaveBeenCalledWith('f'.repeat(64));
+    // …but a digest this realm never listed is not a library change.
+    expect(libraryRows.value).toBe(rowsBefore);
+    expect(libraryRevision.value).toBe(revisionBefore);
+    expect(published).not.toHaveBeenCalled();
+  });
+
+  it('a failed native delete answers false and leaves the catalog untouched', async () => {
+    await loadBrushLibrary();
+    mockDelete.mockResolvedValue({ ok: false, error: 'locked' });
+    const rowsBefore = libraryRows.value;
+    const revisionBefore = libraryRevision.value;
+    const published = vi.fn();
+    _setBrushCatalogPublisher(published);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(deleteBrushTexture(DIGEST_A)).resolves.toBe(false);
+      expect(libraryRows.value).toBe(rowsBefore);
+      expect(libraryRevision.value).toBe(revisionBefore);
+      expect(resolveMask(ENTRY_A.id)).toEqual(makeMask(7));
+      expect(unavailableTipIds.value.has(ENTRY_A.id)).toBe(false);
+      expect(published).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a rejected delete answers false and never rejects', async () => {
+    await loadBrushLibrary();
+    mockDelete.mockRejectedValue(new Error('ipc exploded'));
+    const rowsBefore = libraryRows.value;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(deleteBrushTexture(DIGEST_A)).resolves.toBe(false);
+      expect(libraryRows.value).toBe(rowsBefore);
+      expect(resolveMask(ENTRY_A.id)).toEqual(makeMask(7));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('re-importing the deleted bytes clears the unavailable flag again', async () => {
+    await loadBrushLibrary();
+    await deleteBrushTexture(DIGEST_A);
+    expect(unavailableTipIds.value.has(ENTRY_A.id)).toBe(true);
+
+    // The import path registers the mask then upserts the row: a row arriving
+    // WITH a resolvable mask re-enables the chip (deleting it again would
+    // otherwise leave it disabled for the whole session).
+    registerMask(ENTRY_A.id, makeMask(7));
+    upsertLibraryRow({
+      tip: libraryRowToTip(ENTRY_A),
+      digest: DIGEST_A,
+      textureRotation: ENTRY_A.textureRotation,
+    });
+
+    expect(unavailableTipIds.value.has(ENTRY_A.id)).toBe(false);
+    expect(libraryRows.value.map((row) => row.tip.id)).toEqual([ENTRY_B.id, ENTRY_A.id]);
   });
 });

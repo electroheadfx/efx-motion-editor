@@ -854,6 +854,15 @@ export async function ipcBrushLibraryScan(): Promise<Result<BrushLibraryScanResu
 }
 
 /**
+ * Remove one machine-library texture by content address. Rust validates the
+ * digest before any path is built, refuses a symlinked target and rewrites the
+ * catalog atomically; a missing file still removes the row.
+ */
+export async function ipcBrushLibraryDelete(digest: string): Promise<Result<null>> {
+  return safeInvoke<null>('brush_library_delete', { digest });
+}
+
+/**
  * Decode one stored library mask back to its alpha bytes. Rust validates the
  * digest and runs the declared-dimension gate before any allocation.
  */

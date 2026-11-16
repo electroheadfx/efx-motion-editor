@@ -222,6 +222,19 @@ export function libraryRowFor(id: string): { digest: string; textureRotation: nu
   return null;
 }
 
+/**
+ * The reverse lookup: the tip id one digest belongs to, `null` when no row
+ * carries it. quick 261116-inu / Task 6: the child resolves the digest's id
+ * BEFORE asking for a delete — after the mutation and its catalog pull the row
+ * is gone, and the post-delete selection law needs the id the child knew.
+ */
+export function tipIdForDigest(digest: string): string | null {
+  for (const row of libraryRowsSignal.value) {
+    if (row.digest === digest) return row.tip.id;
+  }
+  return null;
+}
+
 function sameLibraryRow(a: AquarelleLibraryRow, b: AquarelleLibraryRow): boolean {
   return (
     a.digest === b.digest
@@ -260,12 +273,25 @@ export function upsertLibraryRow(row: AquarelleLibraryRow): void {
     next.push(row);
   }
   if (!replaced) next.push(row);
-  if (unchanged) return;
+  // quick 261116-inu / Task 6: a row arriving WITH a resolvable mask is usable
+  // again — re-importing bytes that were previously deleted must clear the id
+  // from `unavailable` (a delete flags it; the flag would otherwise disable a
+  // perfectly good chip for the rest of the session).
+  const unavailable = unavailableTipIdsSignal.value;
+  const clearing = unavailable.has(row.tip.id) && resolveMask(row.tip.id) !== null;
+  if (unchanged && !clearing) return;
   batch(() => {
-    libraryRowsSignal.value = next;
-    customBrushTipsSignal.value = next.map((entry) => entry.tip);
-    brushCatalogGenerationSignal.value += 1;
-    libraryRevisionSignal.value += 1;
+    if (!unchanged) {
+      libraryRowsSignal.value = next;
+      customBrushTipsSignal.value = next.map((entry) => entry.tip);
+      brushCatalogGenerationSignal.value += 1;
+      libraryRevisionSignal.value += 1;
+    }
+    if (clearing) {
+      const nextUnavailable = new Set(unavailable);
+      nextUnavailable.delete(row.tip.id);
+      unavailableTipIdsSignal.value = nextUnavailable;
+    }
   });
 }
 

@@ -15,18 +15,27 @@
  *   paint. It never rejects: a failed scan or a per-entry decode failure
  *   degrades to an empty (or partially unavailable) catalog and logs.
  *
- * LATER TASKS
- *   `deleteBrushTexture` and `setBrushTextureRotation` join this module in the
- *   tasks that introduce their Rust commands; each runs through one
- *   single-flight chain and bumps `libraryRevision` exactly once.
+ * MUTATIONS
+ *   `deleteBrushTexture` (and Task 10's `setBrushTextureRotation`) replace the
+ *   catalog through `replaceLibraryEntries` (compare-then-write, so a no-op
+ *   touches nothing), bump `libraryRevision` exactly once and publish once.
+ *   The Rust commands serialise on one native mutex; the renderer serialises
+ *   nothing itself because every mutation is a single await → single replace.
  */
 
-import { TIP_MASK_BYTES, registerMask } from '@efxlab/efx-watercolor';
-import { ipcBrushLibraryDecode, ipcBrushLibraryScan } from './ipc';
+import {
+  TIP_MASK_BYTES,
+  registerMask,
+  replaceMaskRegistry,
+  resolveMask,
+} from '@efxlab/efx-watercolor';
+import { ipcBrushLibraryDecode, ipcBrushLibraryDelete, ipcBrushLibraryScan } from './ipc';
 import {
   libraryRowToTip,
+  libraryRows,
   publishBrushCatalog,
   replaceLibraryEntries,
+  unavailableTipIds,
   type AquarelleLibraryRow,
 } from '../stores/aquarelleBrushCatalog';
 
@@ -75,5 +84,55 @@ export async function loadBrushLibrary(): Promise<BrushLibraryLoadResult> {
     // The boot path may never reject: rendering must not wait on the library.
     console.warn('[brushLibrary] library load failed — continuing with an empty catalog', error);
     return { loaded: 0, unavailable: [] };
+  }
+}
+
+/**
+ * Delete ONE texture from the machine library (quick 261116-inu / Task 6).
+ *
+ * Order: native delete → one compare-then-write catalog replacement (rows,
+ * unavailable set, ONE `libraryRevision` bump) → the deleted id's mask leaves
+ * the engine registry → ONE publish. An already-absent digest returns true
+ * WITHOUT touching the store or the revision (idempotent).
+ *
+ * The just-deleted id stays flagged unavailable: a project or script saved
+ * elsewhere may still reference it, so the surfaces must not present it as
+ * usable. Re-importing the same bytes clears the flag again
+ * (`upsertLibraryRow` drops it once a row resolves a mask).
+ *
+ * Never rejects: a transport or native failure logs and answers false.
+ */
+export async function deleteBrushTexture(digest: string): Promise<boolean> {
+  try {
+    const deleted = await ipcBrushLibraryDelete(digest);
+    if (!deleted.ok) {
+      console.warn('[brushLibrary] library delete failed — the catalog is unchanged', deleted.error);
+      return false;
+    }
+    const rows = libraryRows.peek();
+    const row = rows.find((entry) => entry.digest === digest);
+    // Idempotent: a repeated delete is not a library change.
+    if (!row) return true;
+
+    const nextRows = rows.filter((entry) => entry.digest !== digest);
+    const nextUnavailable = [...unavailableTipIds.peek()];
+    if (!nextUnavailable.includes(row.tip.id)) nextUnavailable.push(row.tip.id);
+
+    replaceLibraryEntries(nextRows, nextUnavailable);
+
+    // Every surviving mask is kept by identity; the deleted id's registration
+    // is the only one dropped.
+    const remainingMasks: { id: string; mask: Uint8Array }[] = [];
+    for (const entry of nextRows) {
+      const mask = resolveMask(entry.tip.id);
+      if (mask !== null) remainingMasks.push({ id: entry.tip.id, mask });
+    }
+    replaceMaskRegistry(remainingMasks);
+
+    publishBrushCatalog();
+    return true;
+  } catch (error) {
+    console.warn('[brushLibrary] library delete failed — the catalog is unchanged', error);
+    return false;
   }
 }

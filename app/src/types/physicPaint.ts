@@ -2549,6 +2549,49 @@ export interface PhysicPaintBrushCatalogRequest {
   operationId: string;
 }
 
+/**
+ * quick 261116-inu / Task 6: ONE child→main library mutation request.
+ *
+ * The Textures surfaces mount only in the Studio child realm while the machine
+ * library, its store and its publisher live in the main realm. A delete (and
+ * Task 10's rotation) therefore travels as a request the owner applies. The
+ * renderer names a DIGEST only — never a path — and `textureRotation` is
+ * integer DEGREES in -180..180 (never hundredths: `3700` exists only inside
+ * the AQTL byte body).
+ */
+export type PhysicPaintBrushTextureMutation =
+  | { operation: 'delete'; digest: string }
+  | { operation: 'set-rotation'; digest: string; textureRotation: number };
+
+export interface PhysicPaintBrushTextureMutationRequest {
+  operationId: string;
+  mutation: PhysicPaintBrushTextureMutation;
+}
+
+/**
+ * Why one mutation was refused on the wire. `invalid-request` is the
+ * fail-closed answer to a request the guard refused whole; `mutation-failed`
+ * is the owner's native/IPC refusal; the last two are synthesized by the
+ * child's request when the bridge is unavailable or the bounded wait expires.
+ */
+export type PhysicPaintBrushTextureMutationFailureReason =
+  | 'invalid-request'
+  | 'mutation-failed'
+  | 'bridge-unavailable'
+  | 'timed-out';
+
+/**
+ * The mutation answer — correlation id, status and the digest it named. The
+ * digest is echoed as a bounded string (not re-validated as 64-hex) so a
+ * refused request can still answer with whatever it sent.
+ */
+export interface PhysicPaintBrushTextureMutationResult {
+  operationId: string;
+  ok: boolean;
+  digest: string;
+  reason?: PhysicPaintBrushTextureMutationFailureReason;
+}
+
 export interface PhysicPaintReadinessState {
   ready: boolean;
   engineReady: boolean;
@@ -3072,6 +3115,67 @@ export function isPhysicPaintBrushCatalogRequest(value: unknown): value is Physi
       hasOnlyKeys(value, ['operationId']) &&
       isBoundedOperationId(value.operationId),
   );
+}
+
+/** Bounded digest echo on the result: never used as a path, only correlated. */
+const PHYSIC_PAINT_BRUSH_DIGEST_ECHO_MAX_LENGTH = 128;
+
+const BRUSH_TEXTURE_MUTATION_FAILURE_REASONS: ReadonlySet<string> =
+  new Set<PhysicPaintBrushTextureMutationFailureReason>([
+    'invalid-request',
+    'mutation-failed',
+    'bridge-unavailable',
+    'timed-out',
+  ]);
+
+/**
+ * quick 261116-inu / Task 6: the mutation guard trio. Total and fail-closed —
+ * a digest that is not 64 lower-case hex, a rotation that is not an integer in
+ * -180..180, or an unknown member refuses the value before anything reaches a
+ * store. The result guard refuses unknown keys and an unbounded reason.
+ */
+export function isPhysicPaintBrushTextureMutation(
+  value: unknown,
+): value is PhysicPaintBrushTextureMutation {
+  if (!isRecord(value) || !isBrushLibraryDigest(value.digest)) return false;
+  if (value.operation === 'delete') {
+    return hasOnlyKeys(value, ['operation', 'digest']);
+  }
+  if (value.operation === 'set-rotation') {
+    return (
+      hasOnlyKeys(value, ['operation', 'digest', 'textureRotation'])
+      && isTextureRotationDegrees(value.textureRotation)
+    );
+  }
+  return false;
+}
+
+export function isPhysicPaintBrushTextureMutationRequest(
+  value: unknown,
+): value is PhysicPaintBrushTextureMutationRequest {
+  return Boolean(
+    isRecord(value)
+    && hasOnlyKeys(value, ['operationId', 'mutation'])
+    && isBoundedOperationId(value.operationId)
+    && isPhysicPaintBrushTextureMutation(value.mutation),
+  );
+}
+
+export function isPhysicPaintBrushTextureMutationResult(
+  value: unknown,
+): value is PhysicPaintBrushTextureMutationResult {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'digest', 'reason'])) {
+    return false;
+  }
+  if (!isBoundedOperationId(value.operationId) || typeof value.ok !== 'boolean') return false;
+  if (
+    typeof value.digest !== 'string'
+    || value.digest.length > PHYSIC_PAINT_BRUSH_DIGEST_ECHO_MAX_LENGTH
+  ) {
+    return false;
+  }
+  if (value.ok) return value.reason === undefined;
+  return typeof value.reason === 'string' && BRUSH_TEXTURE_MUTATION_FAILURE_REASONS.has(value.reason);
 }
 
 export function isPhysicPaintProjectContextLayer(value: unknown): value is PhysicPaintProjectContextLayer {

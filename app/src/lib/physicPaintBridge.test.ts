@@ -50,6 +50,8 @@ import {
   isPhysicPaintBrushCatalogRequest,
   isPhysicPaintBrushImportRequest,
   isPhysicPaintBrushImportResult,
+  isPhysicPaintBrushTextureMutationRequest,
+  isPhysicPaintBrushTextureMutationResult,
   isPhysicPaintRotoPhysicalEditApplyPayload,
   isPhysicPaintRotoPhysicalEditIntent,
 } from '../types/physicPaint';
@@ -8754,6 +8756,310 @@ describe('63-05 brush-tip realm channels', () => {
     });
   });
 
+  describe('texture mutation pair (quick 261116-inu / Task 6)', () => {
+    it('pins the mutation request totality guard', () => {
+      const deleteRequest = { operationId: 'op-del', mutation: { operation: 'delete', digest: BRUSH_DIGEST } };
+      const rotationRequest = {
+        operationId: 'op-rot',
+        mutation: { operation: 'set-rotation', digest: BRUSH_DIGEST, textureRotation: -180 },
+      };
+      expect(isPhysicPaintBrushTextureMutationRequest(deleteRequest)).toBe(true);
+      expect(isPhysicPaintBrushTextureMutationRequest(rotationRequest)).toBe(true);
+      expect(isPhysicPaintBrushTextureMutationRequest({
+        ...rotationRequest,
+        mutation: { ...rotationRequest.mutation, textureRotation: 180 },
+      })).toBe(true);
+
+      // The digest is exactly 64 lower-case hex — no path, no upper case.
+      expect(isPhysicPaintBrushTextureMutationRequest({
+        ...deleteRequest,
+        mutation: { operation: 'delete', digest: 'D'.repeat(64) },
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest({
+        ...deleteRequest,
+        mutation: { operation: 'delete', digest: '../' },
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest({
+        ...deleteRequest,
+        mutation: { operation: 'delete', digest: BRUSH_DIGEST.slice(1) },
+      })).toBe(false);
+      // The rotation is integer DEGREES: the AQTL byte unit (3700) is refused.
+      expect(isPhysicPaintBrushTextureMutationRequest({
+        ...rotationRequest,
+        mutation: { ...rotationRequest.mutation, textureRotation: 3700 },
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest({
+        ...rotationRequest,
+        mutation: { ...rotationRequest.mutation, textureRotation: 1.5 },
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest({
+        ...rotationRequest,
+        mutation: { operation: 'set-rotation', digest: BRUSH_DIGEST },
+      })).toBe(false);
+      // Exact member sets, a known operation and a bounded printable id.
+      expect(isPhysicPaintBrushTextureMutationRequest({
+        ...deleteRequest,
+        mutation: { operation: 'delete', digest: BRUSH_DIGEST, textureRotation: 0 },
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest({
+        ...rotationRequest,
+        mutation: { ...rotationRequest.mutation, extra: 1 },
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest({
+        ...deleteRequest,
+        mutation: { operation: 'purge', digest: BRUSH_DIGEST },
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest({ ...deleteRequest, operationId: '' })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest({ ...deleteRequest, operationId: 'a'.repeat(257) })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest({ ...deleteRequest, operationId: 'bad\nid' })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest({ ...deleteRequest, projectDir: '/tmp' })).toBe(false);
+      expect(() => isPhysicPaintBrushTextureMutationRequest(null)).not.toThrow();
+      expect(isPhysicPaintBrushTextureMutationRequest(null)).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest('garbage')).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationRequest([])).toBe(false);
+    });
+
+    it('pins the result guard: ok carries no reason, a refusal carries a bounded one', () => {
+      expect(isPhysicPaintBrushTextureMutationResult({
+        operationId: 'op-1',
+        ok: true,
+        digest: BRUSH_DIGEST,
+      })).toBe(true);
+      expect(isPhysicPaintBrushTextureMutationResult({
+        operationId: 'op-1',
+        ok: false,
+        digest: BRUSH_DIGEST,
+        reason: 'mutation-failed',
+      })).toBe(true);
+      expect(isPhysicPaintBrushTextureMutationResult({
+        operationId: 'op-1',
+        ok: false,
+        digest: BRUSH_DIGEST,
+        reason: 'invalid-request',
+      })).toBe(true);
+      // ok:true may not carry a failure reason, and ok:false requires one.
+      expect(isPhysicPaintBrushTextureMutationResult({
+        operationId: 'op-1',
+        ok: true,
+        digest: BRUSH_DIGEST,
+        reason: 'mutation-failed',
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationResult({
+        operationId: 'op-1',
+        ok: false,
+        digest: BRUSH_DIGEST,
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationResult({
+        operationId: 'op-1',
+        ok: false,
+        digest: BRUSH_DIGEST,
+        reason: 'not-a-reason',
+      })).toBe(false);
+      // The digest is a bounded echo (a refusal may echo a refused digest).
+      expect(isPhysicPaintBrushTextureMutationResult({
+        operationId: 'op-1',
+        ok: false,
+        digest: 'x'.repeat(129),
+        reason: 'invalid-request',
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationResult({
+        operationId: 'op-1',
+        ok: true,
+        digest: BRUSH_DIGEST,
+        extra: true,
+      })).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationResult(null)).toBe(false);
+      expect(isPhysicPaintBrushTextureMutationResult('garbage')).toBe(false);
+    });
+
+    // Only the module re-import is real time here; the transport is mocked.
+    it('performs a Studio delete in the main realm and publishes before the answer', async () => {
+      vi.resetModules();
+      const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
+      const emits: Array<{ target: string; event: string; payload: unknown }> = [];
+      const emitTo = vi.fn(async (target: string, event: string, payload: unknown) => {
+        emits.push({ target, event, payload });
+        await handlers.get(event)?.({ payload });
+      });
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async (event: string, cb: (event: { payload: unknown }) => unknown) => {
+          handlers.set(event, cb);
+          return () => { handlers.delete(event); };
+        }),
+        emitTo,
+      }));
+      const ipcDelete = vi.fn(async () => ({ ok: true, data: null }));
+      vi.doMock('./ipc', async (importOriginal) => {
+        const actual = await importOriginal<Record<string, unknown>>();
+        return { ...actual, ipcBrushLibraryDelete: ipcDelete };
+      });
+      installBridgeWindow();
+      markTauriRuntime();
+
+      const bridge = await import('./physicPaintBridge');
+      const catalog = await import('../stores/aquarelleBrushCatalog');
+      const cleanupMutation = await bridge.installPhysicPaintBrushTextureMutationListener();
+      // The production main window installs BOTH; the catalog installer also
+      // answers the child's post-mutation pull.
+      const cleanupCatalog = await bridge.installPhysicPaintBrushCatalogRequestListener();
+      try {
+        catalog.replaceLibraryEntries([{
+          tip: catalog.libraryRowToTip(BRUSH_LIBRARY_ROW),
+          digest: BRUSH_DIGEST,
+          textureRotation: 0,
+        }]);
+        expect(catalog.libraryRows.peek()).toHaveLength(1);
+
+        const result = await bridge.requestPhysicPaintBrushTextureMutation({
+          operation: 'delete',
+          digest: BRUSH_DIGEST,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.digest).toBe(BRUSH_DIGEST);
+        expect(result.operationId.startsWith('physics-paint-brush-texture-mutation-')).toBe(true);
+        // The mutation ran in the MAIN realm through the registered command.
+        expect(ipcDelete).toHaveBeenCalledWith(BRUSH_DIGEST);
+        // And the child's catalog already reflects it before the request
+        // resolves (the pull ran after the answer).
+        expect(catalog.libraryRows.peek()).toHaveLength(0);
+        expect(catalog.unavailableTipIds.peek().has(BRUSH_LIBRARY_ROW.id)).toBe(true);
+
+        const brushEmits = emits.filter((entry) => entry.event.startsWith('physic-paint:brush-'));
+        const request = brushEmits.find(
+          (entry) => entry.event === bridge.PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_EVENT,
+        );
+        expect(request?.target).toBe('main');
+        expect((request!.payload as { operationId: string }).operationId).toBe(result.operationId);
+        const catalogAt = brushEmits.findIndex(
+          (entry) => entry.event === bridge.PHYSIC_PAINT_BRUSH_CATALOG_EVENT,
+        );
+        const resultAt = brushEmits.findIndex(
+          (entry) => entry.event === bridge.PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT,
+        );
+        expect(catalogAt, 'the republished snapshot rides ahead of the answer').toBeGreaterThan(-1);
+        expect(resultAt).toBeGreaterThan(catalogAt);
+      } finally {
+        cleanupMutation();
+        cleanupCatalog();
+      }
+    }, 20_000);
+
+    it('answers an invalid-request refusal and mutates nothing', async () => {
+      vi.resetModules();
+      const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
+      const emits: Array<{ target: string; event: string; payload: unknown }> = [];
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async (event: string, cb: (event: { payload: unknown }) => unknown) => {
+          handlers.set(event, cb);
+          return () => { handlers.delete(event); };
+        }),
+        emitTo: vi.fn(async (target: string, event: string, payload: unknown) => {
+          emits.push({ target, event, payload });
+          await handlers.get(event)?.({ payload });
+        }),
+      }));
+      const ipcDelete = vi.fn(async () => ({ ok: true, data: null }));
+      vi.doMock('./ipc', async (importOriginal) => {
+        const actual = await importOriginal<Record<string, unknown>>();
+        return { ...actual, ipcBrushLibraryDelete: ipcDelete };
+      });
+      installBridgeWindow();
+      markTauriRuntime();
+
+      const bridge = await import('./physicPaintBridge');
+      const catalog = await import('../stores/aquarelleBrushCatalog');
+      const cleanup = await bridge.installPhysicPaintBrushTextureMutationListener();
+      try {
+        catalog.replaceLibraryEntries([{
+          tip: catalog.libraryRowToTip(BRUSH_LIBRARY_ROW),
+          digest: BRUSH_DIGEST,
+          textureRotation: 0,
+        }]);
+        const rowsBefore = catalog.libraryRows.peek();
+
+        await handlers.get(bridge.PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_EVENT)!({
+          payload: {
+            operationId: 'op-bad',
+            mutation: { operation: 'delete', digest: '../../outside' },
+          },
+        });
+
+        const result = emits.find(
+          (entry) => entry.event === bridge.PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT,
+        );
+        expect(result, 'a correlated malformed request still gets an answer').toBeTruthy();
+        expect(result!.payload).toMatchObject({
+          operationId: 'op-bad',
+          ok: false,
+          digest: '../../outside',
+          reason: 'invalid-request',
+        });
+        expect(ipcDelete, 'nothing reaches the native command').not.toHaveBeenCalled();
+        expect(catalog.libraryRows.peek()).toBe(rowsBefore);
+        expect(
+          emits.some((entry) => entry.event === bridge.PHYSIC_PAINT_BRUSH_CATALOG_EVENT),
+          'a refusal publishes nothing',
+        ).toBe(false);
+      } finally {
+        cleanup();
+      }
+    });
+
+    it('drops a result carrying a foreign operationId and accepts the correlated one', async () => {
+      vi.resetModules();
+      const handlers = new Map<string, (event: { payload: unknown }) => unknown>();
+      const emitted: unknown[] = [];
+      vi.doMock('@tauri-apps/api/event', () => ({
+        listen: vi.fn(async (event: string, cb: (event: { payload: unknown }) => unknown) => {
+          handlers.set(event, cb);
+          return () => { handlers.delete(event); };
+        }),
+        emitTo: vi.fn(async (_target: string, event: string, payload: unknown) => {
+          if (event === 'physic-paint:brush-texture-mutation-request') emitted.push(payload);
+        }),
+      }));
+      installBridgeWindow();
+      markTauriRuntime();
+
+      const bridge = await import('./physicPaintBridge');
+      let resolved = false;
+      const pending = bridge.requestPhysicPaintBrushTextureMutation({
+        operation: 'delete',
+        digest: BRUSH_DIGEST,
+      });
+      void pending.then(() => { resolved = true; });
+
+      await vi.waitFor(() => {
+        expect(
+          handlers.get(bridge.PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT),
+          'the request is listening for its answer',
+        ).toBeTruthy();
+      });
+      const answer = handlers.get(bridge.PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT)!;
+      // A forged/torn answer carrying another operationId is ignored.
+      answer({ payload: { operationId: 'somebody-else', ok: true, digest: BRUSH_DIGEST } });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(resolved, 'the foreign operationId never resolves the request').toBe(false);
+
+      // The correlated answer IS accepted. A refusal keeps the post-ok
+      // catalog pull out of this transport test.
+      const request = emitted[0] as { operationId: string };
+      answer({
+        payload: {
+          operationId: request.operationId,
+          ok: false,
+          digest: BRUSH_DIGEST,
+          reason: 'mutation-failed',
+        },
+      });
+      const result = await pending;
+      expect(result.ok).toBe(false);
+      expect(result.reason).toBe('mutation-failed');
+      expect(result.operationId).toBe(request.operationId);
+    }, 20_000);
+  });
+
   it('wires the receiver hook and both main-realm installs in their production mount points', () => {
     const launch = readFileSync(fileURLToPath(new URL('../components/physic-paint/hooks/usePhysicsPaintLaunchIntegration.ts', import.meta.url)), 'utf8');
     const hook = readFileSync(fileURLToPath(new URL('../components/physic-paint/bridge/usePhysicsPaintParentBridge.ts', import.meta.url)), 'utf8');
@@ -8763,6 +9069,7 @@ describe('63-05 brush-tip realm channels', () => {
     expect(hook).toContain('applyBrushCatalogPayload(value)');
     expect(main).toContain('installPhysicPaintBrushImportListener()');
     expect(main).toContain('installPhysicPaintBrushCatalogRequestListener()');
+    expect(main).toContain('installPhysicPaintBrushTextureMutationListener()');
     // quick 261116-inu: the machine library is scanned and decoded ONCE,
     // before the first render, so any project open can replay a stroke.
     const loadAt = main.indexOf('await loadBrushLibrary();');

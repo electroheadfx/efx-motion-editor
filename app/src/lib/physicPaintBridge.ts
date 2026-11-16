@@ -1,8 +1,9 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintBrushImportResult, PhysicPaintDocumentAudioClipRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRailMotionMergeNotice, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintBrushCatalogPayload, isPhysicPaintBrushCatalogRequest, isPhysicPaintBrushImportRequest, isPhysicPaintBrushImportResult, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintBrushImportResult, PhysicPaintBrushTextureMutation, PhysicPaintBrushTextureMutationResult, PhysicPaintDocumentAudioClipRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRailMotionMergeNotice, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintBrushCatalogPayload, isPhysicPaintBrushCatalogRequest, isPhysicPaintBrushImportRequest, isPhysicPaintBrushImportResult, isPhysicPaintBrushTextureMutationRequest, isPhysicPaintBrushTextureMutationResult, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import { deleteBrushTexture } from './brushLibrary';
 import { base64ToWebpBytes, decodeBridgeBase64, encodeBridgeBase64, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
 import { buildBytesPayload } from './efxPaintMediaMaterialize';
 import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
@@ -166,9 +167,19 @@ export const PHYSIC_PAINT_BRUSH_IMPORT_RESULT_EVENT = 'physic-paint:brush-import
  */
 export const PHYSIC_PAINT_BRUSH_CATALOG_EVENT = 'physic-paint:brush-catalog';
 export const PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT = 'physic-paint:brush-catalog-request';
+/**
+ * quick 261116-inu / Task 6: child→main machine-library MUTATION pair (delete;
+ * Task 10 adds set-rotation to the same pair). The Textures surfaces mount in
+ * the Studio child realm while the library, its store and its publisher live
+ * in the main realm, so a mutation travels as a request the owner applies and
+ * answers — after publishing the republished snapshot ahead of the result.
+ */
+export const PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_EVENT = 'physic-paint:brush-texture-mutation-request';
+export const PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT = 'physic-paint:brush-texture-mutation-result';
 /** Bounded waits: a missing receiver never hangs a Studio request. */
 const PHYSIC_PAINT_BRUSH_IMPORT_REQUEST_TIMEOUT_MS = 15_000;
 const PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_TIMEOUT_MS = 5_000;
+const PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_TIMEOUT_MS = 15_000;
 /**
  * 52.2-10 (D-12): main→Studio frame-media request. With the document crossing
  * reference-shaped, the main window is the receiving side of the digest-keyed
@@ -3341,6 +3352,177 @@ export async function installPhysicPaintBrushCatalogRequestListener(): Promise<(
     window.removeEventListener(PHYSIC_PAINT_BRUSH_CATALOG_REQUEST_EVENT, custom);
     window.removeEventListener('message', message);
     restorePublisher();
+  };
+}
+
+/**
+ * quick 261116-inu / Task 6: STUDIO-side request half of the machine-library
+ * mutation pair. Self-contained in the import-request shape (listen → 15 s
+ * bounded wait → emitTo('main') → await), validating the answer with the wire
+ * guard AND correlating on operationId so a forged/foreign result is dropped.
+ * On `ok` it awaits the existing catalog pull, so the caller's next read of
+ * `libraryRowFor` / `customBrushTips` already reflects the mutation.
+ */
+export async function requestPhysicPaintBrushTextureMutation(
+  mutation: PhysicPaintBrushTextureMutation,
+): Promise<PhysicPaintBrushTextureMutationResult> {
+  const eventApi = await import('@tauri-apps/api/event');
+  const operationId = `physics-paint-brush-texture-mutation-${Date.now()}-${crypto.randomUUID()}`;
+  if (typeof eventApi.emitTo !== 'function' || typeof eventApi.listen !== 'function') {
+    return { operationId, ok: false, digest: mutation.digest, reason: 'bridge-unavailable' };
+  }
+  let timeout = 0;
+  let unlisten: (() => void) | undefined;
+  try {
+    let resolveResult: (result: PhysicPaintBrushTextureMutationResult) => void = () => {};
+    const resultPromise = new Promise<PhysicPaintBrushTextureMutationResult>((resolve) => {
+      resolveResult = resolve;
+    });
+    unlisten = await eventApi.listen(PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT, (event) => {
+      if (!isPhysicPaintBrushTextureMutationResult(event.payload)) return;
+      if (event.payload.operationId !== operationId) return;
+      resolveResult(event.payload);
+    });
+    timeout = window.setTimeout(
+      () => resolveResult({ operationId, ok: false, digest: mutation.digest, reason: 'timed-out' }),
+      PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_TIMEOUT_MS,
+    );
+    await eventApi.emitTo('main', PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_EVENT, {
+      operationId,
+      mutation,
+    });
+    const result = await resultPromise;
+    // Freshness before resolution: the owner published the snapshot ahead of
+    // its answer, and this pull guarantees the child APPLIED it.
+    if (result.ok) await requestPhysicPaintBrushCatalog();
+    return result;
+  } finally {
+    if (timeout) window.clearTimeout(timeout);
+    unlisten?.();
+  }
+}
+
+/**
+ * Answer a correlated but malformed mutation request with a fail-closed
+ * refusal. The request guard refuses it whole (nothing mutates); the caller
+ * still gets an answer instead of waiting out the bounded timer. An
+ * uncorrelated payload (no usable operationId) is dropped silently.
+ */
+function refusalForMalformedMutationRequest(
+  value: unknown,
+): PhysicPaintBrushTextureMutationResult | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const operationId = record.operationId;
+  if (
+    typeof operationId !== 'string'
+    || operationId.length === 0
+    || operationId.length > 256
+    || /[^\x20-\x7e]/.test(operationId)
+  ) {
+    return null;
+  }
+  const mutation = record.mutation;
+  const digest = mutation !== null && typeof mutation === 'object'
+    ? (mutation as Record<string, unknown>).digest
+    : undefined;
+  return {
+    operationId,
+    ok: false,
+    digest: typeof digest === 'string' ? digest.slice(0, 128) : '',
+    reason: 'invalid-request',
+  };
+}
+
+/**
+ * quick 261116-inu / Task 6: MAIN-realm installer for the Studio's machine-
+ * library mutation requests (delete now; Task 10 adds set-rotation to the same
+ * pair). Same triple transport as the sibling installers, a fail-closed wire
+ * guard that still answers a correlated refusal, and the publish-then-answer
+ * law: a landed mutation is republished BEFORE the result event so the child's
+ * pull can never race a stale snapshot.
+ */
+export async function installPhysicPaintBrushTextureMutationListener(): Promise<() => void> {
+  const applyRequest = async (
+    value: unknown,
+  ): Promise<PhysicPaintBrushTextureMutationResult | null> => {
+    if (!isPhysicPaintBrushTextureMutationRequest(value)) {
+      return refusalForMalformedMutationRequest(value);
+    }
+    const { operationId, mutation } = value;
+    let ok = false;
+    try {
+      switch (mutation.operation) {
+        case 'delete':
+          ok = await deleteBrushTexture(mutation.digest);
+          break;
+        case 'set-rotation':
+          // Task 10 owns the rotation arm in the SAME pair.
+          ok = false;
+          break;
+      }
+    } catch (error) {
+      // A throw on the mutation path is a refusal, never a hung request.
+      console.warn('[physicPaintBridge] Brush texture mutation failed', error);
+      ok = false;
+    }
+    if (ok) {
+      try {
+        await publishPhysicPaintBrushCatalog();
+      } catch (error) {
+        // The mutation already landed (non-undoable, like an import): a failed
+        // notification must not turn it into a Studio-visible timeout.
+        console.warn('[physicPaintBridge] Brush catalog publish failed', error);
+      }
+    }
+    return {
+      operationId,
+      ok,
+      digest: mutation.digest,
+      ...(ok ? {} : { reason: 'mutation-failed' as const }),
+    };
+  };
+  const emitResult = async (
+    result: PhysicPaintBrushTextureMutationResult,
+    source?: Pick<Window, 'postMessage'> | null,
+  ) => {
+    if (isTauriRuntime()) {
+      try {
+        const eventApi = await import('@tauri-apps/api/event');
+        await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT, result);
+      } catch (error) {
+        console.warn('[physicPaintBridge] Brush texture mutation result emit failed', error);
+      }
+    }
+    if (typeof window !== 'undefined') {
+      const message = { type: PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT, payload: result };
+      window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_RESULT_EVENT, { detail: result }));
+      source?.postMessage?.(message, window.location.origin);
+      window.opener?.postMessage?.(message, window.location.origin);
+    }
+  };
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    const unlisten = await eventApi.listen?.(PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_EVENT, async (event) => {
+      const result = await applyRequest(event.payload);
+      if (result) await emitResult(result);
+    });
+    if (unlisten) return unlisten;
+  }
+  if (typeof window === 'undefined') return () => {};
+  const custom = (event: Event) => {
+    void applyRequest((event as CustomEvent).detail).then((result) => { if (result) void emitResult(result); });
+  };
+  const message = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || !event.data || event.data.type !== PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_EVENT) return;
+    const source = event.source && 'postMessage' in event.source ? event.source as Pick<Window, 'postMessage'> : undefined;
+    void applyRequest(event.data.payload).then((result) => { if (result) void emitResult(result, source); });
+  };
+  window.addEventListener(PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_EVENT, custom);
+  window.addEventListener('message', message);
+  return () => {
+    window.removeEventListener(PHYSIC_PAINT_BRUSH_TEXTURE_MUTATION_REQUEST_EVENT, custom);
+    window.removeEventListener('message', message);
   };
 }
 

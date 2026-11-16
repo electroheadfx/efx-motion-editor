@@ -18,7 +18,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintBrushCatalogRequestListener, installPhysicPaintBrushImportListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageImportListener, installPhysicPaintImageLibraryListener, installPhysicPaintProjectContextRequestListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintBrushCatalogRequestListener, installPhysicPaintBrushImportListener, installPhysicPaintBrushTextureMutationListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageImportListener, installPhysicPaintImageLibraryListener, installPhysicPaintProjectContextRequestListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
 import {installPhysicPaintDraftModeListener} from './lib/physicPaintDraftMode';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
 import {shouldReloadPaintWindow} from './lib/paintWindowWatchdog';
@@ -159,6 +159,13 @@ if (window.location.pathname === '/physics-paint') {
     // snapshot after every mount; this installer republishes one. A pull is
     // read-only in this realm. Main window only; app-lifetime install.
     await installPhysicPaintBrushCatalogRequestListener();
+    // quick 261116-inu (Task 6): the main webview PERFORMS the Studio's machine-
+    // library mutations (texture delete now; rotation in Task 10) and republishes
+    // the catalog BEFORE answering, so the child's pull can never race a stale
+    // snapshot. The library, its store and its publisher live only in this realm;
+    // the Textures surfaces mount only in the Studio child. Main window only;
+    // app-lifetime install like the siblings.
+    await installPhysicPaintBrushTextureMutationListener();
     // Route physic-paint:seek-frame navigation events from the standalone
     // Physics Paint window to the editor timeline. Awaited install like the
     // sibling bridge installs above; the discarded cleanup handle matches the

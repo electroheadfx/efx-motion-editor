@@ -292,6 +292,20 @@ export function setAquarelleSelectedTextureId(textureId: string | null): void {
 }
 
 /**
+ * quick 261116-inu / Task 6: the post-delete selection law. After an accepted
+ * texture delete, the selection falls back to Default when it pointed at the
+ * deleted row. The caller passes the id this realm knew for the deleted digest
+ * BEFORE the catalog pull (after the pull the row — and its id — are gone).
+ * Compare-then-write: deleting some other texture never rewrites the
+ * selection, and a null argument (the row was already gone) changes nothing.
+ */
+export function clearAquarelleTextureSelectionIfDeleted(deletedTipId: string | null): void {
+  if (deletedTipId === null) return;
+  if (aquarelleSelectedTextureId.value !== deletedTipId) return;
+  aquarelleSelectedTextureId.value = null;
+}
+
+/**
  * Select a tip and load its per-brush multipliers into the Brush
  * response surface (D-07 / R1.7). A null id clears the selection
  * and resets multipliers to neutral.
