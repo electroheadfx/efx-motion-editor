@@ -1,20 +1,14 @@
 ---
-status: diagnosed
+status: complete
 phase: 63-brush-tip-pipeline
 source: [63-VERIFICATION.md]
 started: 2026-11-15T17:05:00Z
-updated: 2026-11-16T11:30:00.000Z
+updated: 2026-11-16T10:40:13.421Z
 ---
 
 ## Current Test
 
-number: 7
-name: G-63-5 live retest (UAT test 5)
-expected: |
-  Save Script/Copy from a textured project, apply it in a project that never
-  imported the tip, and Play in motion, static, reveal-tail and reveal-run —
-  every stroke paints its own recorded tip, with no neutral round fallback.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -46,18 +40,18 @@ result: pass
 
 ### 7. G-63-5 live retest (UAT test 5)
 expected: Save Script/Copy from a textured project, apply it in a project that never imported the tip, then Play in motion, static, reveal-tail and reveal-run — every stroke paints its own recorded tip, with no neutral round fallback. The SNP1/AQTL carrier is unit-pinned; the rendered footprint is not.
-result: [pending]
+result: pass
 
 ### 8. CR-01 close refusal on a latched track
 expected: With a project whose track snapshot cannot be read (refused/io, corrupt leaf, or a retired AQTL body), paint a stroke, then close the Studio. The first close stays open and shows the withheld-save notice, writing nothing; the second close proceeds.
-result: [pending]
+result: pass
 
 ## Summary
 
 total: 8
-passed: 5
+passed: 7
 issues: 1
-pending: 2
+pending: 0
 skipped: 0
 blocked: 0
 
@@ -65,7 +59,9 @@ blocked: 0
 
 - gap_id: G-63-5
   truth: "A script saved from a project with an imported tip carries that tip's texture when applied in a project that never imported it — no neutral round fallback."
-  status: failed
+  status: resolved
+  resolved_by: 63-15-PLAN.md
+  resolved_at: 2026-11-16
   reason: "User reported: No work, apply script and play script with motion/static/reveal draw to neutral round fallback. The saved or copied script doesn't not store texture choice for each strokes."
   severity: major
   test: 5
