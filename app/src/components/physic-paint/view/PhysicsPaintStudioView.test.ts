@@ -3,6 +3,8 @@ import { signal } from '@preact/signals';
 import { PhysicsPaintStudioView, type PhysicsPaintStudioViewProps } from './PhysicsPaintStudioView';
 import { PhysicsPaintSettingsModal } from './PhysicsPaintSettingsModal';
 import { PhysicsPaintRailMotionModal } from './PhysicsPaintRailMotionModal';
+import { PhysicsPaintTextureMenu } from './PhysicsPaintTextureMenu';
+import { PhysicsPaintTextureModal } from './PhysicsPaintTextureModal';
 import type { RailMotionDialogBundle } from './physicsPaintKeyRailPresentation';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
@@ -135,6 +137,9 @@ function expectNoParentModals(tree: unknown): void {
   expect(countOfType(tree, PhysicsPaintScriptPickerDialog)).toBe(0);
   expect(countOfType(tree, PhysicsPaintSettingsModal)).toBe(0);
   expect(countOfType(tree, PhysicsPaintRailMotionModal)).toBe(0);
+  // quick 261116-gcn: both new Textures surfaces ride the same step-aside.
+  expect(countOfType(tree, PhysicsPaintTextureMenu)).toBe(0);
+  expect(countOfType(tree, PhysicsPaintTextureModal)).toBe(0);
 }
 
 function expectAllParentModals(tree: unknown): void {
@@ -143,6 +148,8 @@ function expectAllParentModals(tree: unknown): void {
   expect(countOfType(tree, PhysicsPaintScriptPickerDialog)).toBe(1);
   expect(countOfType(tree, PhysicsPaintSettingsModal)).toBe(1);
   expect(countOfType(tree, PhysicsPaintRailMotionModal)).toBe(1);
+  expect(countOfType(tree, PhysicsPaintTextureMenu)).toBe(1);
+  expect(countOfType(tree, PhysicsPaintTextureModal)).toBe(1);
 }
 
 describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () => {

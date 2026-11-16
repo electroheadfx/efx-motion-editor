@@ -158,15 +158,13 @@ describe('261029-hy2 WR-03 front-only Escape dismissal', () => {
     expect(brushesClosed).toBe(true);
   });
 
-  // The fifth entry (PhysicsPaintTextureModal.tsx, SHEET_ID_TEXTURES) arrives
-  // with the Textures sheet in quick 261116-gcn task 4 — the file does not
-  // exist yet, and readFileSync would throw.
-  it('all four sheet handlers gate on the front sheet and stop their siblings', () => {
+  it('all five sheet handlers gate on the front sheet and stop their siblings', () => {
     const handlers = [
       ['PhysicsPaintBrushModal.tsx', 'SHEET_ID_BRUSHES'],
       ['PhysicsPaintSettingsModal.tsx', 'SHEET_ID_SETTINGS'],
       ['PhysicsPaintStrokeSettingsDialog.tsx', 'SHEET_ID_STROKE_SETTINGS'],
       ['PhysicsPaintRailMotionModal.tsx', 'SHEET_ID_RAIL_MOTION'],
+      ['PhysicsPaintTextureModal.tsx', 'SHEET_ID_TEXTURES'],
     ] as const;
     for (const [file, id] of handlers) {
       const source = readFileSync(resolve(__dirname, file), 'utf8');

@@ -12,6 +12,7 @@ import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlay
 import { PhysicsPaintBrushMenu } from './PhysicsPaintBrushMenu';
 import { PhysicsPaintBrushModal } from './PhysicsPaintBrushModal';
 import { PhysicsPaintTextureMenu } from './PhysicsPaintTextureMenu';
+import { PhysicsPaintTextureModal } from './PhysicsPaintTextureModal';
 import { PhysicsPaintSettingsModal } from './PhysicsPaintSettingsModal';
 import { PhysicsPaintShortcutsModal } from './PhysicsPaintShortcutsModal';
 import { PhysicsPaintRailMotionModal } from './PhysicsPaintRailMotionModal';
@@ -606,6 +607,15 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
               mechanics and seats inside the canvas region (no clip, so it can
               be dragged over the side panels). */}
           {!pickerOpen ? <PhysicsPaintBrushModal /> : null}
+          {/* quick 261116-gcn: the floating Textures sheet shares the same
+              canvas-region seat, the shared sheet-stack z-order and the same
+              picker step-aside. It threads the top bar's Size seam (D-1). */}
+          {!pickerOpen ? (
+            <PhysicsPaintTextureModal
+              onBrushSizeChange={topBar.onBrushSizeChange}
+              disabled={topBar.disabled}
+            />
+          ) : null}
           {/* 261029-hy2: the floating Settings sheet (the retired Settings
               tab's content) shares the same canvas-region seat and picker
               step-aside. */}
