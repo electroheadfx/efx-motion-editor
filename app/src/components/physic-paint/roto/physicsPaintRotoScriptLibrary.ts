@@ -14,7 +14,6 @@ import { buildPhysicPaintRotoProjectEquality, type PhysicPaintRotoPhysicalDocume
 import { getCarriedRotoPhysical } from './rotoLaunchHydration';
 import { proposePhysicPaintRotoActionGroupLifecycle, type PhysicPaintRotoActionGroupLifecycleImpact } from './physicsPaintRotoGroupLifecycle';
 import {
-  ROTO_SCRIPT_WEBP_PREFIX,
   decodeScriptMaskDataUrl,
   isRefusedRotoScriptRow,
   normalizeRotoScriptName,
@@ -26,8 +25,6 @@ import {
 } from './physicsPaintRotoScriptSchema';
 import { brushCatalogSynced, customBrushTips, registerScriptMask, unavailableTipIds } from '../../../stores/aquarelleBrushCatalog';
 import { isAquarelleDryEvent, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
-import { brushAssetBytes, brushAssetDigestFromPath } from '../../../lib/efxPaintBrushAssets';
-import { encodeBridgeBase64 } from '../../../lib/webpBytes';
 import {
   ipcEfxPaintDecodeBrushMask,
   type EfxPaintBrushMaskDecodeResult,
@@ -334,38 +331,27 @@ export type ScriptBrushEntryBuild =
   | { readonly ok: false; readonly reason: string };
 
 /**
- * Build the script carrier's `brushPack` entries from the open project's
- * CUSTOM tips and THIS realm's stored WebP bytes. `saveActiveFrame` runs in
- * the Studio child webview, and the only writer of its asset cache is
- * `applyBrushCatalogPayload` (63-05/63-07) — reading the main realm's cache is
- * not an option here, so an absent body means the catalog push never arrived.
+ * Build the script carrier's `brushPack` entries from the machine library
+ * rows. quick 261116-inu: the cross-realm payload no longer carries stored
+ * WebP bodies (the library owns the files), so this realm has no inline mask
+ * bytes to stamp. Until the next task makes the carrier metadata-only, the
+ * row keeps its tip metadata with an empty carrier — the schema's own guard
+ * then refuses to persist a maskless entry rather than writing a script that
+ * silently paints fallbacks elsewhere.
  *
- * WR-02 / T-63-29: a tip the OPEN already reported unavailable degrades alone —
- * it is skipped and its id returned in `unavailableSkipped` so the caller can
- * log it, because that tip's mask cannot travel no matter what this realm does.
- * Only a tip this realm believes healthy refuses (its mask may have been
- * dropped by the push itself). Built-ins are never written — both realms
- * derive them from constants.
+ * WR-02 / T-63-29: a tip the library already reported unavailable degrades
+ * alone — it is skipped and its id returned in `unavailableSkipped` so the
+ * caller can log it.
  */
 export function buildScriptBrushEntries(): ScriptBrushEntryBuild {
   const entries: ScriptBrushTipEntry[] = [];
   const unavailableSkipped: string[] = [];
   for (const tip of customBrushTips.value) {
-    const digest = brushAssetDigestFromPath(tip.asset);
-    const webp = digest === null ? undefined : brushAssetBytes(digest);
-    if (webp === undefined) {
-      if (unavailableTipIds.value.has(tip.id)) {
-        unavailableSkipped.push(tip.id);
-        continue;
-      }
-      return {
-        ok: false,
-        reason: `Save refused — custom tip "${tip.id}" has no stored mask bytes in this realm; the catalog push never arrived.`,
-      };
+    if (unavailableTipIds.value.has(tip.id)) {
+      unavailableSkipped.push(tip.id);
+      continue;
     }
-    // The script carrier refuses `asset`: the mask is inline, the ref is gone.
-    const { asset: _asset, ...record } = tip;
-    entries.push({ ...record, maskDataUrl: `${ROTO_SCRIPT_WEBP_PREFIX}${encodeBridgeBase64(webp)}` });
+    entries.push({ ...tip, maskDataUrl: '' });
   }
   return { ok: true, entries, unavailableSkipped };
 }
@@ -432,7 +418,7 @@ export async function registerScriptBrushMasks(
   if (!parsed.ok) return 0;
   let registered = 0;
   for (const raw of parsed.document.brushPack.entries) {
-    const tip = asTipRecord(raw, 'script');
+    const tip = asTipRecord(raw);
     if (tip === null) {
       ports.log('Script brush entry is malformed — skipped.', true);
       continue;

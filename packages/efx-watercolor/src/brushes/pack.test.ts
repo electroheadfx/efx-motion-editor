@@ -401,15 +401,15 @@ describe('brush pack snapshot', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Carrier modes (63-04 / D-10 / D-11 / T-63-06 / T-63-15)
+// The ONE carrier (quick 261116-inu / T-63-06)
 //
-// One entry shape per carrier: the PACKAGE carrier allows a package-relative
-// `asset` ref and refuses inline bytes; the SCRIPT carrier allows the inline
-// `maskDataUrl` and refuses an `asset` ref. A member literally named `mask`
-// is the retired D-23 shape and is refused in both.
+// The project (`.mce`) carrier is gone: a tip record is metadata plus the
+// script carrier's inline `maskDataUrl` (trimmed by the next task). An `asset`
+// ref is refused outright, and a member literally named `mask` is the retired
+// D-23 shape.
 // ---------------------------------------------------------------------------
 
-describe('brush pack carrier modes (63-04)', () => {
+describe('brush pack carrier (quick 261116-inu: script only)', () => {
   const DIGEST = 'a'.repeat(64)
   const ASSET = `brushes/${DIGEST}.webp`
 
@@ -417,85 +417,58 @@ describe('brush pack carrier modes (63-04)', () => {
     return { ...makeTip(id, 'custom', 'Custom'), ...extra } as AquarelleTip
   }
 
-  function parseEntries(entries: unknown[], mode?: 'package' | 'script'): unknown {
-    return mode === undefined
-      ? parseBrushPackSnapshot({ kind: 'efx-watercolor', entries })
-      : parseBrushPackSnapshot({ kind: 'efx-watercolor', entries }, mode)
+  function parseEntries(entries: unknown[]): unknown {
+    return parseBrushPackSnapshot({ kind: 'efx-watercolor', entries })
   }
 
-  it('round-trips a package entry carrying an asset ref unchanged', () => {
-    const tip = customTip('wc/custom-1234abcd', { asset: ASSET })
-    const built = buildBrushPackSnapshot([tip])
-    expect(built === null).toBe(false)
-    if (built === null) return
-    expect((built.entries[0] as AquarelleTip).asset).toBe(ASSET)
-    const parsed = parseBrushPackSnapshot(built)
-    expect(parsed === null).toBe(false)
-    if (parsed === null) return
-    expect((parsed.entries[0] as AquarelleTip).asset).toBe(ASSET)
-    expect(deepEqual(parsed.entries, built.entries)).toBe(true)
-  })
-
-  it('refuses a package entry carrying an inline mask or maskDataUrl', () => {
-    const withMask = customTip('wc/custom-mask', { mask: 'AAAA' })
-    const withDataUrl = customTip('wc/custom-url', { maskDataUrl: 'data:image/png;base64,AA' })
-    expect(buildBrushPackSnapshot([withMask]) === null).toBe(true)
-    expect(buildBrushPackSnapshot([withDataUrl]) === null).toBe(true)
-    expect(parseEntries([withMask]) === null).toBe(true)
-    expect(parseEntries([withDataUrl]) === null).toBe(true)
-  })
-
-  it('refuses a package entry whose asset ref is not exactly brushes/<64 hex>.webp', () => {
+  it('refuses an entry carrying a package asset ref, whatever its shape', () => {
     const badRefs = [
+      ASSET,
       `brushes/${DIGEST}.png`,
       `frames/${DIGEST}.webp`,
       `brushes/${DIGEST.toUpperCase()}.webp`,
-      `brushes/${DIGEST.slice(1)}.webp`,
-      `brushes/nested/${DIGEST}.webp`,
       `../brushes/${DIGEST}.webp`,
-      `/brushes/${DIGEST}.webp`,
       '',
     ]
     const allRejected = badRefs.every(
       (asset) => buildBrushPackSnapshot([customTip('wc/custom-bad', { asset })]) === null,
     )
     expect(allRejected).toBe(true)
+    expect(parseEntries([customTip('wc/custom-bad', { asset: ASSET })]) === null).toBe(true)
   })
 
-  it('accepts the script carrier with maskDataUrl and refuses one carrying asset', () => {
+  it('accepts and round-trips an entry carrying the script maskDataUrl', () => {
     const scriptTip = customTip('wc/custom-script', {
       maskDataUrl: 'data:image/png;base64,AA',
     })
-    const built = buildBrushPackSnapshot([scriptTip], 'script')
+    const built = buildBrushPackSnapshot([scriptTip])
     expect(built === null).toBe(false)
     if (built !== null) {
       const entry = built.entries[0] as Record<string, unknown>
       expect(entry.maskDataUrl ?? null).toBe('data:image/png;base64,AA')
     }
-    const parsed = parseEntries([scriptTip], 'script')
+    const parsed = parseBrushPackSnapshot(built)
     expect(parsed === null).toBe(false)
-    const withAsset = customTip('wc/custom-asset', { asset: ASSET })
-    expect(buildBrushPackSnapshot([withAsset], 'script') === null).toBe(true)
-    expect(parseEntries([withAsset], 'script') === null).toBe(true)
-    // The same asset entry is legal in its own carrier.
-    expect(parseEntries([withAsset], 'package') === null).toBe(false)
+    if (parsed === null || built === null) return
+    expect(deepEqual(parsed.entries, built.entries)).toBe(true)
   })
 
-  it('refuses the retired inline mask member in both carriers', () => {
-    const withMask = customTip('wc/custom-mask2', { mask: 'AAAA' })
-    expect(parseEntries([withMask], 'package') === null).toBe(true)
-    expect(parseEntries([withMask], 'script') === null).toBe(true)
+  it('refuses the retired inline mask member', () => {
+    expect(parseEntries([customTip('wc/custom-mask2', { mask: 'AAAA' })]) === null).toBe(true)
+    expect(buildBrushPackSnapshot([customTip('wc/custom-mask3', { mask: 'AAAA' })]) === null).toBe(
+      true,
+    )
   })
 
-  it('refuses a non-string maskDataUrl in the script carrier', () => {
+  it('refuses a non-string maskDataUrl', () => {
     const bad = customTip('wc/custom-bad-url', { maskDataUrl: 42 })
-    expect(buildBrushPackSnapshot([bad], 'script') === null).toBe(true)
-    expect(parseEntries([bad], 'script') === null).toBe(true)
+    expect(buildBrushPackSnapshot([bad]) === null).toBe(true)
+    expect(parseEntries([bad]) === null).toBe(true)
   })
 
-  it('asTipRecord applies the selected carrier law', () => {
-    const assetTip = customTip('wc/custom-as', { asset: ASSET })
-    expect(asTipRecord(assetTip, 'package') === null).toBe(false)
-    expect(asTipRecord(assetTip, 'script') === null).toBe(true)
+  it('asTipRecord refuses an asset member and accepts a maskDataUrl entry', () => {
+    expect(asTipRecord(customTip('wc/custom-as', { asset: ASSET })) === null).toBe(true)
+    const scriptTip = customTip('wc/custom-as-script', { maskDataUrl: 'data:image/png;base64,AA' })
+    expect(asTipRecord(scriptTip) === null).toBe(false)
   })
 })

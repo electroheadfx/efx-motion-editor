@@ -208,9 +208,9 @@ export function usePhysicsPaintProjectContextBridge(handleProject: (project: Phy
  * snapshot — same triple-transport + disposed-guard idiom as
  * `usePhysicsPaintProjectContextBridge`. Every accepted payload is applied
  * through `applyBrushCatalogPayload` into THIS realm's module instances
- * (`aquarelleBrushCatalog`, `maskRegistry`, `efxPaintBrushAssets`), which is
- * what makes the painted tips, the engine masks and the stored WebP bytes
- * exist in the Studio webview. The mount pull is load-bearing: the child is
+ * (`aquarelleBrushCatalog`, `maskRegistry`), which is what makes the library
+ * rows and their engine masks exist in the Studio webview. The mount pull is
+ * load-bearing: the child is
  * navigated on every layer switch, so without it a Studio opened after the
  * project bind (and after earlier imports) renders an empty catalog. NO
  * handler argument — the application path is fixed, never caller-shaped.

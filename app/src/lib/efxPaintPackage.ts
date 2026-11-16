@@ -4,10 +4,9 @@
  * This module is the SINGLE source of the package's on-disk shape: the
  * format version literal the writer (plan 07) and the refusal gate (plan 08)
  * both import, the package-relative path rules, the `frames/<layerId>/<keyId>.webp`
- * media reference (D-02), the content-addressed `brushes/<sha256>.webp`
- * brush-asset reference (63-02, D-10), and the machine-relative derived-frame
- * cache reference that keeps machine-local absolute paths out of the package
- * (D-05).
+ * media reference (D-02), and the machine-relative derived-frame cache
+ * reference that keeps machine-local absolute paths out of the package (D-05).
+ * (The package no longer carries brush assets — quick 261116-inu.)
  *
  * It is deliberately dependency-free — no module pulls anything in — so a
  * rescue script can load the format contract standalone, and no parse path in
@@ -135,48 +134,6 @@ export function buildLayerFileRelativePath(layerId: string): string {
  */
 export function buildFrameMediaRelativePath(layerId: string, keyId: string): string {
   return `${EFX_PAINT_FRAMES_DIR}/${assertSafePackageId(layerId)}/${assertSafePackageId(keyId)}.webp`;
-}
-
-/**
- * 63-02 (D-10): the content-addressed brush-asset tree, a SIBLING of `frames/`
- * at the package root — never inside the frames MEDIA lock (D-12).
- */
-export const BRUSH_ASSETS_DIR = 'brushes';
-
-/**
- * A brush asset's stem is the SHA-256 of its own bytes, full-width lower-case
- * hex. The same rule as a frame media digest, restated as its own exported
- * constant because the brush accept-set is a separate contract.
- */
-export const BRUSH_ASSET_DIGEST_PATTERN = /^[0-9a-f]{64}$/;
-
-/**
- * `brushes/<sha256>.webp` — the ONE disk shape a brush mask may have (D-10,
- * T-63-01). An invalid digest throws before any path is built, mirroring
- * `buildFrameMediaRelativePath`: a refusal never leaves a partial path behind.
- */
-export function buildBrushAssetRelativePath(digest: string): string {
-  if (typeof digest !== 'string' || !BRUSH_ASSET_DIGEST_PATTERN.test(digest)) {
-    throw new Error('brush asset digest must be 64 lower-case hex characters.');
-  }
-  return `${BRUSH_ASSETS_DIR}/${digest}.webp`;
-}
-
-/**
- * Fail-closed parser for a brush-asset package-relative path (T-63-01).
- * Returns the asset digest when the value is exactly
- * `brushes/<64 lower-case hex>.webp` and null for anything else: a wrong root,
- * a nested or extra segment, a foreign extension, an unsafe relative path, or
- * a mis-sized/upper-case stem. No filesystem call is ever made here.
- */
-export function parseBrushAssetRelativePath(value: unknown): string | null {
-  if (!isSafePackageRelativePath(value)) return null;
-  const segments = value.split('/');
-  if (segments.length !== 2 || segments[0] !== BRUSH_ASSETS_DIR) return null;
-  const fileName = segments[1];
-  if (!fileName.endsWith('.webp')) return null;
-  const digest = fileName.slice(0, -'.webp'.length);
-  return BRUSH_ASSET_DIGEST_PATTERN.test(digest) ? digest : null;
 }
 
 /**

@@ -50,9 +50,6 @@ import {
 } from './efxPaintStore';
 import {readAudioSourceBytes} from '../lib/mainAppAudioSources';
 import {readMceAudioSourcePath, readMceVideoLayerPath} from '../lib/mceAudioSourcePath';
-import {applyProjectBrushSet, buildProjectBrushPack} from './aquarelleBrushCatalog';
-import {pendingBrushAssets} from '../lib/efxPaintBrushAssets';
-import {loadProjectBrushSet} from '../lib/efxPaintBrushSet';
 
 // --- Signals ---
 
@@ -256,9 +253,8 @@ async function savePackageWithTelemetry(
     documents,
     projectId: projectId.value,
     cacheRoot: await resolveCacheRoot(),
-    // 63-04 (D-11): the save copies the stored mask bytes this root still
-    // owes. The producer is the remembered-asset state, never an encoder.
-    brushAssets: pendingBrushAssets(packageDir),
+    // quick 261116-inu: a save carries no brush assets — the machine library
+    // owns every texture file and the `.mce` stores no brush pack.
   });
   recordSaveStage('persist.media', result.metrics.mediaMs, branch);
   recordSaveStage('persist.layers', result.metrics.layersMs, branch);
@@ -448,11 +444,6 @@ function buildMceProject(): RuntimeMceProject {
     }),
   );
 
-  // 63-04 / TIP-11 / D-10: the project-scoped brush pack rides the manifest as
-  // refs only. A project with no imported tips omits the key entirely (never
-  // an empty pack), so a built-ins-only project writes no `brushPack`.
-  const brushPack = buildProjectBrushPack();
-
   return {
     version: 16,
     name: name.value,
@@ -498,10 +489,6 @@ function buildMceProject(): RuntimeMceProject {
       preview_quality: motionBlurStore.previewQuality.peek(),
       export_sub_frames: exportStore.motionBlurSubFrames.peek(),
     },
-    // 63-04 / D-10: omit the key (never an empty pack) when there are no
-    // imported tips — a built-ins-only project stays byte-identical to a
-    // pre-63 manifest.
-    ...(brushPack ? {brushPack} : {}),
     // v1.0: EFX Paint documents are persisted by the package save funnel
     // (savePackage), never by this builder — buildMceProject emits only the
     // main-editor fields the manifest is built from (D-04, one save path only).
@@ -1157,17 +1144,8 @@ export const projectStore = {
         `[efxPaintPersistence] reopen: frame media "${failure.relativePath}" (layer ${failure.layerId}, track ${failure.trackId}, ${failure.collection} ${failure.keyId}) is unreadable — ${failure.reason}. The key stays reference-only until its file is restored.`,
       );
     }
-    // 63-07 (D-17): the brush set joins this same pre-reset read leg. ONE
-    // native call reads, digest-verifies and decodes every stored mask, so the
-    // registry can be filled after the close/reset and before the first
-    // replay; a failing tip degrades alone and never aborts the open (D-18).
-    const brushSet = await loadProjectBrushSet(projectRoot, result.data.brushPack);
-    if (openRequest !== openRequestSeq) return;
-    for (const failure of brushSet.failures) {
-      console.error(
-        `[efxPaintBrushSet] open: brush tip "${failure.tipId}" could not be resolved — ${failure.reason}. The rest of the project opens normally.`,
-      );
-    }
+    // quick 261116-inu: an open no longer reads brush assets — textures are a
+    // machine resource loaded once at app start (`loadBrushLibrary`).
     const runtimeProject: RuntimeMceProject = {
       ...result.data,
     };
@@ -1183,10 +1161,6 @@ export const projectStore = {
       projectId.value = nextProjectId;
     });
 
-    // Registration completes AFTER the reset and BEFORE hydrate/replay, which
-    // is exactly what makes painting from a half-registered state impossible
-    // by construction (TIP-12 / D-17).
-    applyProjectBrushSet(brushSet, projectRoot);
     hydrateFromMce(runtimeProject, projectRoot, loadedDocuments, materialized.runtimeDocuments);
     await bindScriptLibraryAuthority(openFilePath);
     if (currentRequest !== openRequestSeq) return;

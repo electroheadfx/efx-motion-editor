@@ -403,7 +403,6 @@ mod tests {
                 preview_quality: "medium".into(),
                 export_sub_frames: 8,
             }),
-            brush_pack: None,
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -601,7 +600,6 @@ mod tests {
             project_id: None,
             efx_paint: std::collections::HashMap::new(),
             motion_blur: None,
-            brush_pack: None,
         };
 
         let mce_path = test_dir.join("empty_keys.mce");
@@ -649,7 +647,6 @@ mod tests {
             project_id: None,
             efx_paint: std::collections::HashMap::new(),
             motion_blur: None,
-            brush_pack: None,
         };
 
         // A package save hands the manifest its STAGING path, and the renderer
@@ -705,7 +702,6 @@ mod tests {
             project_id: None,
             efx_paint: std::collections::HashMap::new(),
             motion_blur: None,
-            brush_pack: None,
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -921,7 +917,6 @@ mod tests {
             project_id: None,
             efx_paint: std::collections::HashMap::new(),
             motion_blur: None,
-            brush_pack: None,
         };
 
         // Save

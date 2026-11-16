@@ -45,8 +45,6 @@ const harness = vi.hoisted(() => ({
 }));
 
 vi.mock('@efxlab/efx-watercolor', () => ({
-  // Read at module scope by efxPaintBrushSet.ts, which aquarelleBrushCatalog pulls in.
-  BUILTIN_TIPS: [],
   createAquarelleEngineAdapter: (options: Record<string, unknown>) => {
     harness.adapterOptions.push(options);
     return {

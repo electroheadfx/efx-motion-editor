@@ -899,7 +899,6 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
         digest: 'f'.repeat(64),
         textureRotation: 0,
         maskBase64: Buffer.from(mask).toString('base64'),
-        webpBase64: Buffer.from(webpBytes).toString('base64'),
       }],
       unavailableTipIds: [],
     });
@@ -954,7 +953,6 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
           tip: tipWithDigest('wc/custom-healthy', 'b') as never,
           digest: 'b'.repeat(64),
           textureRotation: 0,
-          webpBase64: Buffer.from(brushWebp(192, 192)).toString('base64'),
         },
         { tip: tipWithDigest('wc/custom-unavailable', 'c') as never, digest: 'c'.repeat(64), textureRotation: 0 },
       ],
@@ -994,7 +992,7 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
 
     catalog.applyBrushCatalogPayload({
       libraryRevision: 0,
-      entries: [{ tip: scriptCustomTip('wc/custom-other') as never, digest: 'a'.repeat(64), textureRotation: 0, webpBase64: Buffer.from(brushWebp(192, 192)).toString('base64') }],
+      entries: [{ tip: scriptCustomTip('wc/custom-other') as never, digest: 'a'.repeat(64), textureRotation: 0 }],
       unavailableTipIds: [],
     });
 

@@ -80,7 +80,6 @@ import {
   discardPhysicPaintCacheStaging,
   hardlinkPhysicPaintCacheFrames,
   ipcEfxPaintReadPackageLayerFile,
-  ipcEfxPaintWriteBrushAsset,
   ipcEfxPaintWriteFrameMedia,
   ipcEfxPaintWritePackageLayerFile,
   preparePhysicPaintCacheGeneration,
@@ -103,14 +102,11 @@ import {
   EFX_PAINT_MACHINE_CACHE_DIR,
   isSafeMachineCacheRelativePath,
   isSafePackageRelativePath,
-  parseBrushAssetRelativePath,
   resolveMachineCachePath,
   type EfxPaintLayerIndexEntry,
   type EfxPaintPackageManifest,
   type FrameMediaReference,
 } from './efxPaintPackage';
-// 63-04 (D-11): the remembered brush bytes and their per-root write marks.
-import { markBrushAssetsWritten, type EfxPaintBrushAssetWrite } from './efxPaintBrushAssets';
 
 export const EFX_PAINT_STAGING_PREFIX = '.efx-paint-staging-';
 
@@ -178,35 +174,24 @@ const savedFrameTokens = new Map<string, string>();
 
 // --- 52.2-07 Task 1 (D-11): the file-keyed change-token model -------------
 
-/** The four kinds of authoritative file a package save can rewrite. */
-export type PackageFileTokenKind = 'manifest' | 'layer' | 'frame' | 'brush';
+/** The three kinds of authoritative file a package save can rewrite. */
+export type PackageFileTokenKind = 'manifest' | 'layer' | 'frame';
 
 /**
  * The file-identity token for one authoritative package file:
  * `frame:<layerId>:<keyId>` (one media file per key identity, D-09),
- * `layer:<layerId>` (one sub-file per layer, D-09), `brush:<relativePath>`
- * (one content-addressed mask asset, 63-04 / D-10) or `manifest` (the one
+ * `layer:<layerId>` (one sub-file per layer, D-09) or `manifest` (the one
  * `project.mce`). Identity is the keyId — never the appFrame and never a
  * collection marker: keyIds are unique across `realKeyRecords` and
  * `groupOverrideRecords`, and one keyId placed at several frames owns exactly
- * one media file. A brush asset's identity is its canonical
- * `brushes/<sha256>.webp` path, whose stem IS its content, so an imported tip
- * forces its own change entry even when no layer changed.
+ * one media file. (The project brush-asset token is retired with the `.mce`
+ * brush carrier — quick 261116-inu.)
  */
 export function packageFileToken(kind: 'manifest'): string;
 export function packageFileToken(kind: 'layer', layerId: string): string;
 export function packageFileToken(kind: 'frame', layerId: string, keyId: string): string;
-export function packageFileToken(kind: 'brush', relativePath: string): string;
 export function packageFileToken(kind: PackageFileTokenKind, layerId?: string, keyId?: string): string {
   if (kind === 'manifest') return 'manifest';
-  if (kind === 'brush') {
-    // Fail-closed: a token is minted only for the ONE disk shape a mask may
-    // have (63-02). A malformed path can never enter the change-token space.
-    if (parseBrushAssetRelativePath(layerId) === null) {
-      throw new Error('packageFileToken: a brush token needs a canonical brushes/<sha256>.webp path.');
-    }
-    return `brush:${layerId}`;
-  }
   if (kind === 'layer') {
     if (typeof layerId !== 'string' || layerId.length === 0) {
       throw new Error('packageFileToken: a layer token needs its layerId.');
@@ -435,18 +420,6 @@ interface PreparedPackageLayer {
   /** The `layer:<layerId>` change token. */
   readonly layerToken: string;
   readonly frames: readonly PreparedPackageFrame[];
-}
-
-/**
- * One brush asset's write plan (63-04 / D-10): the canonical package path, its
- * content-addressing digest, its `brush:<relativePath>` change token, and the
- * exact stored bytes to copy. Computed in intake, before any disk write.
- */
-interface PreparedBrushAsset {
-  readonly relativePath: string;
-  readonly digest: string;
-  readonly token: string;
-  readonly bytes: Uint8Array;
 }
 
 /**
@@ -1030,15 +1003,6 @@ export interface EfxPaintPackageSaveInput {
    * (D-14): a missing root skips it and the authoritative save still commits.
    */
   readonly cacheRoot?: string | null;
-  /**
-   * 63-04 (D-11): the brush assets this save must copy into the package —
-   * already-stored WebP bodies, never a re-encode. `pendingBrushAssets(root)`
-   * is the one producer; an empty/absent list stages nothing. Every
-   * `relativePath` must be exactly `brushes/<sha256>.webp` and its stem must
-   * be the digest the native write reports, or the save refuses before
-   * publishing anything.
-   */
-  readonly brushAssets?: readonly EfxPaintBrushAssetWrite[];
 }
 
 /**
@@ -1174,30 +1138,6 @@ export async function savePackage(
     );
     for (const frame of layer.frames) nextTokens.set(frame.token, frame.contentToken);
   }
-  // 63-04 (D-10/D-11): the brush leg is intake-only — every asset's path and
-  // body are validated BEFORE the first disk write, and its change token
-  // carries the digest, so a newly imported tip forces a change set even when
-  // no layer moved. Save copies remembered bytes; it never encodes.
-  const brushAssets: PreparedBrushAsset[] = [];
-  const seenBrushPaths = new Set<string>();
-  for (const asset of input.brushAssets ?? []) {
-    const digest = parseBrushAssetRelativePath(asset.relativePath);
-    if (digest === null) {
-      throw new Error(
-        `EFX Paint brush asset "${String(asset.relativePath)}" is not a canonical brushes/<sha256>.webp package path.`,
-      );
-    }
-    if (seenBrushPaths.has(asset.relativePath)) {
-      throw new Error(`EFX Paint brush asset "${asset.relativePath}" appears twice in one save.`);
-    }
-    if (!(asset.bytes instanceof Uint8Array) || asset.bytes.length === 0) {
-      throw new Error(`EFX Paint brush asset "${asset.relativePath}" carries no bytes.`);
-    }
-    seenBrushPaths.add(asset.relativePath);
-    const token = packageFileToken('brush', asset.relativePath);
-    brushAssets.push(Object.freeze({ relativePath: asset.relativePath, digest, token, bytes: asset.bytes }));
-    nextTokens.set(token, digest);
-  }
   const layerIndex: Record<string, EfxPaintLayerIndexEntry> = {};
   for (const layer of layers) {
     layerIndex[layer.layerId] = Object.freeze({
@@ -1301,27 +1241,6 @@ export async function savePackage(
       metrics.layersMs += performance.now() - layersStartedAtMs;
     }
 
-    // 4b. Brush assets (63-04 / D-11): content-addressed masks are IMMUTABLE,
-    // so the changed set is exactly the pending ones and each is a byte copy
-    // of the remembered body into the same staging generation. The native
-    // write is the content-addressing authority — a digest that disagrees with
-    // the path is refused rather than published under a misleading name.
-    const brushStartedAtMs = performance.now();
-    for (const asset of brushAssets) {
-      if (!changedTokens.has(asset.token)) continue;
-      const write = await ipcEfxPaintWriteBrushAsset(packageDir, asset.relativePath, asset.bytes, stagingBasename);
-      if (!write.ok) {
-        throw new Error(`EFX Paint brush asset "${asset.relativePath}" could not be staged (${write.error.kind}).`);
-      }
-      if (write.data.digest !== asset.digest) {
-        throw new Error(
-          `EFX Paint brush asset "${asset.relativePath}" staged under digest "${write.data.digest}".`,
-        );
-      }
-      stagedPaths.push(asset.relativePath);
-    }
-    metrics.mediaMs += performance.now() - brushStartedAtMs;
-
     if (changedTokens.has(packageFileToken('manifest'))) {
       const manifestStartedAtMs = performance.now();
       // The manifest write takes the path it is handed (plan 05 made that
@@ -1359,9 +1278,6 @@ export async function savePackage(
   // exactly what the failed one had staged (fail-safe direction).
   packageBaselineRoot = packageDir;
   settlePackageFileTokens('commit', nextTokens);
-  // 63-04 (T-63-12): an asset is written only once the transaction committed.
-  // A rollback leaves every digest pending, so the next save re-stages it.
-  markBrushAssetsWritten(packageDir, brushAssets.map((asset) => asset.digest));
   // Keep only the committed keys' references: a removed key's entry can never
   // be reused, and the map must not grow with every edit of a session.
   const committedKeys = new Set<string>();

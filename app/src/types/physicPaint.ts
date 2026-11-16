@@ -32,7 +32,7 @@ export type { PhysicPaintRotoInterpolationMode } from '../components/physic-pain
 import { isWebpBytes, isPngBytes, buildFrameBytesToken } from '../lib/webpBytes';
 export { isWebpBytes, isPngBytes, buildFrameBytesToken };
 import { parseFrameMediaReference, type FrameMediaReference } from '../lib/efxPaintPackage';
-import { asTipRecord, TIP_MASK_BYTES, TIP_MASK_EDGE, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { asTipRecord, TIP_MASK_BYTES, type AquarelleTip } from '@efxlab/efx-watercolor';
 
 /**
  * 59-12 Task 4 (MOTN-10): session-only settlement metadata for a rail merge
@@ -2484,13 +2484,12 @@ export interface PhysicPaintImageImportResultMessage {
  * because `emitTo` JSON-serializes `Uint8Array` into an index object.
  *
  * The catalog pair is the project-context pattern applied to the brush state:
- * the main realm publishes ONE full snapshot of its custom tips (each with its
- * mask and its stored WebP bytes when it has them), the Studio applies that
+ * the main realm publishes ONE full snapshot of the machine library's rows
+ * (each with its mask when the registry holds one), the Studio applies that
  * snapshot into its OWN module instances (`aquarelleBrushCatalog`,
- * `maskRegistry`, `efxPaintBrushAssets`), and pulls once on mount so a Studio
- * re-booted by a layer switch lists and paints the project's tips without a
- * new import. Built-ins never travel — both realms derive them from the
- * compile-time constants.
+ * `maskRegistry`), and pulls once on mount so a Studio re-booted by a layer
+ * switch lists and paints the library's textures without a new import. The
+ * library owns the WebP files on disk, so no stored-WebP leg travels.
  */
 export interface PhysicPaintBrushImportRequest {
   operationId: string;
@@ -2526,16 +2525,16 @@ export interface PhysicPaintBrushImportResult {
  * One machine-library row in the catalog snapshot. `digest` is the row's
  * content address (64 lower-case hex) and `textureRotation` is integer DEGREES
  * in -180..180 — both REQUIRED: they are the only way the Studio child realm
- * ever learns a row's digest and rotation. The byte legs are OPTIONAL so an
- * unavailable tip travels with neither — its id also appears in
- * `unavailableTipIds`.
+ * ever learns a row's digest and rotation. `maskBase64` is OPTIONAL so an
+ * unavailable tip travels with no mask leg — its id also appears in
+ * `unavailableTipIds`. quick 261116-inu: no WebP byte leg — the library owns
+ * every stored file.
  */
 export interface PhysicPaintBrushCatalogEntry {
   tip: AquarelleTip;
   digest: string;
   textureRotation: number;
   maskBase64?: string;
-  webpBase64?: string;
 }
 
 /** The ONE cross-realm machine-library snapshot; the revision is the staleness key. */
@@ -2976,7 +2975,7 @@ function isLibraryRevision(value: unknown): value is number {
 /** The exact custom-tip member set — anything else is an unknown member shape. */
 const AQUARELLE_TIP_MEMBER_KEYS = [
   'id', 'category', 'name', 'tip', 'aspect', 'rotation', 'sizeCurve',
-  'scatter', 'capacity', 'grain', 'wetRound', 'asset',
+  'scatter', 'capacity', 'grain', 'wetRound',
 ] as const;
 
 const BRUSH_IMPORT_FAILURE_REASONS: ReadonlySet<string> = new Set<PhysicPaintBrushImportFailureReason>([
@@ -3005,34 +3004,20 @@ function decodeBase64OrNull(value: unknown): Uint8Array | null {
 
 /**
  * The wire shape of one custom tip: the exact member set plus the pack-side
- * field law (`asTipRecord`, package carrier — inline carriers and foreign
- * asset refs are refused). Category is pinned to `custom`: built-ins already
- * exist in both realms from the compile-time constants and never travel.
+ * field law (`asTipRecord`, single carrier — the retired inline `mask` member
+ * and any `asset` ref are refused). Category is pinned to `custom`: a machine
+ * library row is always a custom texture and never a response.
  */
 function isCustomTipWire(value: unknown): value is AquarelleTip {
   if (!isRecord(value) || !hasOnlyKeys(value, AQUARELLE_TIP_MEMBER_KEYS)) return false;
-  const tip = asTipRecord(value, 'package');
+  const tip = asTipRecord(value);
   return tip !== null && tip.category === 'custom';
-}
-
-/**
- * The stored WebP must declare exactly the TIP_MASK_EDGE × TIP_MASK_EDGE frame.
- * Structural and bounded — a VP8L header read, never a decode. `isWebpBytes`
- * admits lossless VP8L only (the app's one stored format), so the VP8L branch
- * is the whole surface.
- */
-function isTipSizedBrushWebp(bytes: Uint8Array): boolean {
-  if (!isWebpBytes(bytes) || bytes.length < 25) return false;
-  if (bytes[20] !== 0x2f) return false;
-  const width = 1 + bytes[21]! + ((bytes[22]! & 0x3f) << 8);
-  const height = 1 + ((bytes[22]! >> 6) | (bytes[23]! << 2) | ((bytes[24]! & 0x0f) << 10));
-  return width === TIP_MASK_EDGE && height === TIP_MASK_EDGE;
 }
 
 export function isPhysicPaintBrushCatalogEntry(value: unknown): value is PhysicPaintBrushCatalogEntry {
   if (
     !isRecord(value)
-    || !hasOnlyKeys(value, ['tip', 'digest', 'textureRotation', 'maskBase64', 'webpBase64'])
+    || !hasOnlyKeys(value, ['tip', 'digest', 'textureRotation', 'maskBase64'])
   ) return false;
   if (!isCustomTipWire(value.tip)) return false;
   if (!isBrushLibraryDigest(value.digest)) return false;
@@ -3041,18 +3026,14 @@ export function isPhysicPaintBrushCatalogEntry(value: unknown): value is PhysicP
     const mask = decodeBase64OrNull(value.maskBase64);
     if (mask === null || mask.length !== TIP_MASK_BYTES) return false;
   }
-  if (value.webpBase64 !== undefined) {
-    const webp = decodeBase64OrNull(value.webpBase64);
-    if (webp === null || !isTipSizedBrushWebp(webp)) return false;
-  }
   return true;
 }
 
 /**
  * Fail-closed guard for the whole catalog snapshot. Any malformed member —
- * an unknown key, a duplicate non-string id, a mask that is not exactly
- * TIP_MASK_BYTES after decode, or a non-TIP_MASK_EDGE WebP — refuses the payload
- * WHOLE (nothing is partially applied), and it never throws.
+ * an unknown key, a duplicate id, or a mask that is not exactly TIP_MASK_BYTES
+ * after decode — refuses the payload WHOLE (nothing is partially applied), and
+ * it never throws.
  */
 export function isPhysicPaintBrushCatalogPayload(value: unknown): value is PhysicPaintBrushCatalogPayload {
   if (!isRecord(value) || !hasOnlyKeys(value, ['libraryRevision', 'entries', 'unavailableTipIds'])) return false;

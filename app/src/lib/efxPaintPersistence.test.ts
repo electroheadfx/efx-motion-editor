@@ -25,19 +25,12 @@ import {
   stageEfxPaintPackageSave,
 } from './efxPaintPersistence';
 import {
-  buildBrushAssetRelativePath,
   buildFrameMediaRelativePath,
   buildLayerFileRelativePath,
   buildMachineCacheRelativePath,
   isSafeMachineCacheRelativePath,
-  parseBrushAssetRelativePath,
   resolveMachineCachePath,
 } from './efxPaintPackage';
-import {
-  pendingBrushAssets,
-  rememberBrushAsset,
-  resetBrushAssets,
-} from './efxPaintBrushAssets';
 import type { MceProject } from '../types/project';
 
 /**
@@ -59,9 +52,6 @@ const recoverEfxPaintPackageTransaction = vi.hoisted(() => vi.fn());
 // The native per-key media writer (D-02/D-13): the staging-generation
 // `frames/<layerId>/<keyId>.webp` write behind the save's step 4.
 const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
-// 63-04: the native brush-asset writer — the save's brush leg stages the
-// remembered WebP bytes through it, under the same package staging basename.
-const ipcEfxPaintWriteBrushAsset = vi.hoisted(() => vi.fn());
 // quick-260913-05k: the package-IO boundary. The layer sub-file write/read and
 // the staging discard travel through app commands, which carry no capability
 // scope, in place of the fs plugin's appdata-only scope.
@@ -152,7 +142,6 @@ async function saveIntoPackage(
     readonly packageDir?: string;
     readonly project?: MceProject;
     readonly projectId?: string;
-    readonly brushAssets?: EfxPaintPackageSaveInput['brushAssets'];
   },
 ): Promise<EfxPaintPackageSaveResult> {
   const input: EfxPaintPackageSaveInput = {
@@ -160,7 +149,6 @@ async function saveIntoPackage(
     documents,
     projectId: options?.projectId ?? TEST_PROJECT_ID,
     cacheRoot: options?.cacheRoot === undefined ? CACHE_ROOT : options.cacheRoot,
-    brushAssets: options?.brushAssets,
   };
   return savePackage(options?.packageDir ?? PACKAGE_DIR, input);
 }
@@ -192,7 +180,6 @@ function installPackageTransactionMocks(): void {
   // AND the one-shot queue, so a `mockResolvedValueOnce` from a previous case
   // would leak into this one. Reset first, then install.
   ipcEfxPaintWriteFrameMedia.mockReset();
-  ipcEfxPaintWriteBrushAsset.mockReset();
   ipcProjectSave.mockReset();
   bindEfxPaintPackageTransaction.mockReset();
   publishEfxPaintPackageTransaction.mockReset();
@@ -217,20 +204,6 @@ function installPackageTransactionMocks(): void {
           byteLength: bytes.length,
         },
       };
-    },
-  );
-  // 63-04: the brush-asset writer stages `brushes/<sha256>.webp` under the
-  // package staging root and reports the digest Rust would compute. The
-  // path/digest agreement is enforced exactly as the Rust command does.
-  ipcEfxPaintWriteBrushAsset.mockImplementation(
-    async (packageDir: string, relativePath: string, bytes: Uint8Array, stagingBasename?: string) => {
-      const digest = parseBrushAssetRelativePath(relativePath);
-      if (digest === null) return { ok: false, error: { kind: 'refused' } };
-      const root = stagingBasename === undefined ? packageDir : `${packageDir}/${stagingBasename}`;
-      const path = `${root}/${relativePath}`;
-      writeJournal.push({ path, bytes });
-      files.set(path, bytes);
-      return { ok: true, data: { relativePath, digest, byteLength: bytes.length } };
     },
   );
   // The Rust command wrappers, simulated over the same in-memory filesystem:
@@ -402,7 +375,6 @@ vi.mock('./ipc', () => ({
   settleEfxPaintPackageTransaction,
   recoverEfxPaintPackageTransaction,
   ipcEfxPaintWriteFrameMedia,
-  ipcEfxPaintWriteBrushAsset,
   ipcEfxPaintWritePackageLayerFile,
   ipcEfxPaintReadPackageLayerFile,
   discardEfxPaintPackageStaging,
@@ -420,8 +392,6 @@ describe('savePackage / loadEfxPaintPackage', () => {
     // stale token map from the previous case would make this case's save look
     // unchanged and skip its writes.
     settlePackageFileTokens('commit', new Map());
-    // 63-04: the remembered-asset state is process state too.
-    resetBrushAssets();
     installPackageTransactionMocks();
     const activeTransactions = new Map<string, string>();
     publishPhysicPaintCacheGeneration.mockImplementation(async (cacheRoot: string, stagingBasename: string) => {
@@ -1326,104 +1296,6 @@ describe('savePackage / loadEfxPaintPackage', () => {
         expect(audioExtensions.test(path)).toBe(false);
       }
     });
-  // --- 63-04 Task 2: the brush-asset leg of the same transaction ----------
-
-  describe('63-04: brush assets ride the save transaction (D-11, T-63-12)', () => {
-    // A real content-addressed pair: the stem is the SHA-256 of the bytes.
-    const BRUSH_BYTES = Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8]);
-    const BRUSH_DIGEST = createHash('sha256').update(BRUSH_BYTES).digest('hex');
-    const BRUSH_PATH = buildBrushAssetRelativePath(BRUSH_DIGEST);
-
-    it('stages a pending asset in the same transaction and publishes it byte-identically', async () => {
-      rememberBrushAsset(BRUSH_DIGEST, BRUSH_BYTES);
-
-      const result = await saveIntoPackage(undefined, {
-        brushAssets: pendingBrushAssets(PACKAGE_DIR),
-      });
-
-      const brushCalls = ipcEfxPaintWriteBrushAsset.mock.calls as unknown as [
-        string,
-        string,
-        Uint8Array,
-        string?,
-      ][];
-      expect(brushCalls).toHaveLength(1);
-      expect(brushCalls[0][0]).toBe(PACKAGE_DIR);
-      expect(brushCalls[0][1]).toBe(BRUSH_PATH);
-      // The staged bytes ARE the remembered bytes — the save ran no encoder.
-      expect(brushCalls[0][2]).toEqual(BRUSH_BYTES);
-      expect(brushCalls[0][3]).toMatch(/^\.efx-paint-package-staging-[0-9a-f-]{36}$/);
-
-      // The staged brush path joined the bind set, atomically with the manifest.
-      const boundPaths = bindEfxPaintPackageTransaction.mock.calls[0][2] as string[];
-      expect(boundPaths.includes(BRUSH_PATH)).toBe(true);
-      expect(boundPaths.includes('project.mce')).toBe(true);
-
-      // Published at its canonical path, byte-identical, stem = sha256(bytes).
-      const canonical = files.get(`${PACKAGE_DIR}/${BRUSH_PATH}`);
-      expect(canonical).toEqual(BRUSH_BYTES);
-      expect(createHash('sha256').update(canonical!).digest('hex')).toBe(BRUSH_DIGEST);
-
-      expect(result.changedFiles).toContain(BRUSH_PATH);
-      // Marked written for this root only after the commit.
-      expect(pendingBrushAssets(PACKAGE_DIR)).toHaveLength(0);
-    });
-
-    it('a second identical save opens no transaction and reports zero changed files', async () => {
-      rememberBrushAsset(BRUSH_DIGEST, BRUSH_BYTES);
-      await saveIntoPackage(undefined, { brushAssets: pendingBrushAssets(PACKAGE_DIR) });
-      expect(pendingBrushAssets(PACKAGE_DIR)).toHaveLength(0);
-
-      ipcEfxPaintWriteBrushAsset.mockClear();
-      ipcProjectSave.mockClear();
-      bindEfxPaintPackageTransaction.mockClear();
-      publishEfxPaintPackageTransaction.mockClear();
-      settleEfxPaintPackageTransaction.mockClear();
-
-      const second = await saveIntoPackage(undefined, {
-        brushAssets: pendingBrushAssets(PACKAGE_DIR),
-      });
-
-      expect(second.changedFiles).toEqual([]);
-      expect(ipcEfxPaintWriteBrushAsset).not.toHaveBeenCalled();
-      expect(ipcProjectSave).not.toHaveBeenCalled();
-      expect(bindEfxPaintPackageTransaction).not.toHaveBeenCalled();
-      expect(publishEfxPaintPackageTransaction).not.toHaveBeenCalled();
-      expect(settleEfxPaintPackageTransaction).not.toHaveBeenCalled();
-    });
-
-    it('a second package root re-stages the same asset — pending is per root', async () => {
-      const COPY_DIR = '/project-copy';
-      rememberBrushAsset(BRUSH_DIGEST, BRUSH_BYTES);
-      await saveIntoPackage(undefined, { brushAssets: pendingBrushAssets(PACKAGE_DIR) });
-      expect(pendingBrushAssets(PACKAGE_DIR)).toHaveLength(0);
-
-      const pendingForCopy = pendingBrushAssets(COPY_DIR);
-      expect(pendingForCopy).toHaveLength(1);
-      ipcEfxPaintWriteBrushAsset.mockClear();
-
-      const copied = await saveIntoPackage(undefined, {
-        packageDir: COPY_DIR,
-        brushAssets: pendingForCopy,
-      });
-
-      expect(ipcEfxPaintWriteBrushAsset).toHaveBeenCalledOnce();
-      expect(copied.changedFiles).toContain(BRUSH_PATH);
-      expect(files.get(`${COPY_DIR}/${BRUSH_PATH}`)).toEqual(BRUSH_BYTES);
-      expect(pendingBrushAssets(COPY_DIR)).toHaveLength(0);
-    });
-
-    it('refuses a non-canonical asset path before any staging', async () => {
-      await expect(
-        saveIntoPackage(undefined, {
-          brushAssets: [{ relativePath: `frames/${'a'.repeat(64)}.webp`, bytes: BRUSH_BYTES }],
-        }),
-      ).rejects.toThrow(/brush asset/);
-      expect(ipcEfxPaintWriteBrushAsset).not.toHaveBeenCalled();
-      expect(bindEfxPaintPackageTransaction).not.toHaveBeenCalled();
-      expect(ipcProjectSave).not.toHaveBeenCalled();
-    });
-  });
   });
 });
 

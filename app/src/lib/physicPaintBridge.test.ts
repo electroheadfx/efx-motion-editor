@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TIP_MASK_BYTES, TIP_MASK_EDGE } from '@efxlab/efx-watercolor';
+import { TIP_MASK_BYTES } from '@efxlab/efx-watercolor';
 import { fromTransportPayload, toTransportPayload } from './webpBytes';
 
 vi.mock('./webpFrameCodec', () => ({
@@ -8156,11 +8156,11 @@ describe('importAudio never-copy law (261009-ofk)', () => {
 // 63-05 (D-15 / D-20 / T-63-04): the brush-tip realm channels.
 //
 // Laws pinned here:
-//   1. The catalog payload guard is total and fail-closed: an unknown member,
-//      a non-string id, a mask that is not exactly TIP_MASK_BYTES after
-//      decode, a non-TIP_MASK_EDGE WebP, a missing library `digest` or
-//      `textureRotation`, or a built-in-category entry refuses the WHOLE
-//      payload, and it never throws.
+//   1. The catalog payload guard is total and fail-closed: an unknown member
+//      (including the retired `webpBase64` and `asset` legs), a non-string id,
+//      a mask that is not exactly TIP_MASK_BYTES after decode, a missing
+//      library `digest` or `textureRotation`, or a built-in-category entry
+//      refuses the WHOLE payload, and it never throws.
 //   2. A Studio import request reaches the main realm's MACHINE LIBRARY and
 //      the answer echoes the SAME operationId, with the catalog push emitted
 //      BEFORE the answer.
@@ -8171,7 +8171,6 @@ describe('importAudio never-copy law (261009-ofk)', () => {
 // ---------------------------------------------------------------------------
 
 const BRUSH_DIGEST = 'd'.repeat(64);
-const BRUSH_ASSET = `brushes/${BRUSH_DIGEST}.webp`;
 
 /** One machine-library row as `brush_library_write` returns it. */
 const BRUSH_LIBRARY_ROW = {
@@ -8190,23 +8189,6 @@ const BRUSH_LIBRARY_ROW = {
   wetRound: 1,
 };
 
-/** Minimal well-formed lossless VP8L header declaring the given frame size. */
-function brushWebp(width: number, height: number): Uint8Array {
-  const bytes = new Uint8Array(25);
-  bytes.set([0x52, 0x49, 0x46, 0x46], 0);
-  bytes.set([0x57, 0x45, 0x42, 0x50], 8);
-  bytes.set([0x56, 0x50, 0x38, 0x4c], 12);
-  bytes[16] = 5;
-  bytes[20] = 0x2f;
-  const w = width - 1;
-  const h = height - 1;
-  bytes[21] = w & 0xff;
-  bytes[22] = ((w >> 8) & 0x3f) | ((h & 0x03) << 6);
-  bytes[23] = (h >> 2) & 0xff;
-  bytes[24] = (h >> 10) & 0x0f;
-  return bytes;
-}
-
 function brushWireTip(id: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id,
@@ -8220,7 +8202,6 @@ function brushWireTip(id: string, overrides: Record<string, unknown> = {}): Reco
     capacity: 1,
     grain: 1,
     wetRound: 1,
-    asset: BRUSH_ASSET,
     ...overrides,
   };
 }
@@ -8241,7 +8222,6 @@ function brushCatalogPayload(overrides: Record<string, unknown> = {}): Record<st
     entries: [{
       ...brushWireEntry(),
       maskBase64: bytesToBase64(new Uint8Array(TIP_MASK_BYTES).fill(4)),
-      webpBase64: bytesToBase64(brushWebp(TIP_MASK_EDGE, TIP_MASK_EDGE)),
     }],
     unavailableTipIds: ['wc/custom-gone'],
     ...overrides,
@@ -8299,7 +8279,7 @@ describe('63-05 brush-tip realm channels', () => {
     it('accepts a well-formed custom snapshot and an unavailable entry with neither byte field', () => {
       const payload = brushCatalogPayload({
         entries: [
-          { ...brushWireEntry(), maskBase64: bytesToBase64(new Uint8Array(TIP_MASK_BYTES)), webpBase64: bytesToBase64(brushWebp(TIP_MASK_EDGE, TIP_MASK_EDGE)) },
+          { ...brushWireEntry(), maskBase64: bytesToBase64(new Uint8Array(TIP_MASK_BYTES)) },
           brushWireEntry({ tip: brushWireTip('wc/custom-wire-2'), digest: 'e'.repeat(64), textureRotation: -180 }),
         ],
       });
@@ -8341,10 +8321,12 @@ describe('63-05 brush-tip realm channels', () => {
       })).toBe(false);
     });
 
-    it('refuses a non-TIP_MASK_EDGE WebP', () => {
+    // quick 261116-inu: the payload carries no WebP bytes leg any more — the
+    // machine library owns the files, so the member is refused outright.
+    it('refuses a webpBase64 member (the library owns the files)', () => {
       expect(isPhysicPaintBrushCatalogPayload({
         libraryRevision: 0,
-        entries: [brushWireEntry({ webpBase64: bytesToBase64(brushWebp(100, TIP_MASK_EDGE)) })],
+        entries: [brushWireEntry({ webpBase64: bytesToBase64(new Uint8Array(25)) })],
         unavailableTipIds: [],
       })).toBe(false);
     });
@@ -8409,12 +8391,6 @@ describe('63-05 brush-tip realm channels', () => {
       });
       expect(() => isPhysicPaintBrushCatalogPayload(badMaskPayload)).not.toThrow();
       expect(isPhysicPaintBrushCatalogPayload(badMaskPayload)).toBe(false);
-
-      const badWebpPayload = brushCatalogPayload({
-        entries: [{ tip: brushWireTip('wc/custom-wire-1'), webpBase64: '!!!!' }],
-      });
-      expect(() => isPhysicPaintBrushCatalogPayload(badWebpPayload)).not.toThrow();
-      expect(isPhysicPaintBrushCatalogPayload(badWebpPayload)).toBe(false);
 
       const badImport = { operationId: 'op-1', fileName: 'stamp.png', maskBase64: '!!!!' };
       expect(() => isPhysicPaintBrushImportRequest(badImport)).not.toThrow();
@@ -8504,11 +8480,10 @@ describe('63-05 brush-tip realm channels', () => {
       const pushed = brushEmits[1]!.payload as {
         libraryRevision: number;
         entries: Array<{
-          tip: { id: string; category: string; asset?: string };
+          tip: { id: string; category: string };
           digest: string;
           textureRotation: number;
           maskBase64?: string;
-          webpBase64?: string;
         }>;
         unavailableTipIds: string[];
       };
@@ -8517,11 +8492,9 @@ describe('63-05 brush-tip realm channels', () => {
       expect(pushed.entries).toHaveLength(1);
       expect(pushed.entries[0]!.tip.id).toBe(result.entry!.id);
       expect(pushed.entries[0]!.tip.category).toBe('custom');
-      expect(pushed.entries[0]!.tip.asset).toBeUndefined();
       expect(pushed.entries[0]!.digest).toBe(BRUSH_DIGEST);
       expect(pushed.entries[0]!.textureRotation).toBe(0);
       expect(pushed.entries[0]!.maskBase64!.length > 0).toBe(true);
-      expect(pushed.entries[0]!.webpBase64).toBeUndefined();
       // The main realm's MACHINE LIBRARY mutated too: one row, one mask.
       expect(catalog.libraryRows.peek()).toHaveLength(1);
       expect(catalog.libraryRevision.peek()).toBe(1);

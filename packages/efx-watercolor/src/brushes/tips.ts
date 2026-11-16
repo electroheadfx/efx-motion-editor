@@ -43,18 +43,12 @@ export interface AquarelleToolOverrides {
  * per-brush multipliers (AQUA-03 / R1.7).
  */
 export interface AquarelleTip extends AquarelleToolOverrides {
-  /** Stable id — referenced by strokes, travels in the .mce brush-pack snapshot. */
+  /** Stable content-derived id — referenced by strokes and scripts. */
   id: string
   category: AquarelleTipCategory
   name: string
-  /**
-   * Package-relative asset reference — exactly `brushes/<64 lower-case
-   * hex>.webp` inside the project package (63-04 / D-10). This is where the
-   * tip's mask lives; it is never mask bytes and never a path outside the
-   * package. Absent on the compile-time base/built-in tips, whose masks ship
-   * with the app, and on script-carried entries (`maskDataUrl` instead).
-   */
-  asset?: string
+  // quick 261116-inu: no `asset` member. Textures live in the machine brush
+  // library; a tip record is metadata only and never names a file.
 }
 
 /** Neutral multipliers (global value × 1 = global value). */

@@ -193,7 +193,7 @@ export function serializeAquarelleRotoScript(input: {
       engine: { ...event.engine },
     });
   }
-  const brushPack = buildBrushPackSnapshot(input.brushEntries ?? [], 'script');
+  const brushPack = buildBrushPackSnapshot(input.brushEntries ?? []);
   if (brushPack === null) throw new Error('Captured Roto script brush entries are not persistable');
   const document: PersistedRotoScriptAquarelleV1 = {
     kind: ROTO_SCRIPT_KIND,
@@ -405,15 +405,17 @@ export function isPersistedRotoScriptAquarelleV1(value: unknown): value is Persi
 }
 
 /**
- * The script carrier's pack law (63-08 / T-63-07). The package's own script-mode
- * parser is the single shape authority — kind, entry fields, the retired `mask`
- * member refused in both carriers, and the `asset` ref refused in a script. On
- * top of it, EVERY entry must carry an inline mask that passes the cap,
- * canonical-base64 and exact-192×192 walk: a script entry without a mask would
- * paint the neutral fallback on another machine, so it refuses the document.
+ * The script carrier's pack law (63-08 / T-63-07; quick 261116-inu removes the
+ * package carrier). The package's single-carrier parser is the shape authority
+ * — kind, entry fields, the retired `mask` member and any `asset` ref refused.
+ * On top of it, EVERY entry must carry an inline mask that passes the cap,
+ * canonical-base64 and exact-TIP_MASK_EDGE-square walk: a script entry without
+ * a mask would paint the fallback on another machine, so it refuses the
+ * document. (The next task in this quick makes the mask optional and then
+ * removes it.)
  */
 function isBrushPack(value: unknown): value is BrushPackSnapshot {
-  const parsed = parseBrushPackSnapshot(value, 'script');
+  const parsed = parseBrushPackSnapshot(value);
   if (parsed === null) return false;
   return parsed.entries.every((entry) =>
     decodeScriptMaskDataUrl(isRecord(entry) ? entry.maskDataUrl : undefined) !== null);

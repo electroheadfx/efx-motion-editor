@@ -76,9 +76,6 @@ pub fn project_create(
         project_id: None,
         efx_paint: std::collections::HashMap::new(),
         motion_blur: None,
-        // A brand-new project has no imported brush tips: the key is omitted
-        // on write until the first import populates the pack (63-04 / D-10).
-        brush_pack: None,
     })
 }
 

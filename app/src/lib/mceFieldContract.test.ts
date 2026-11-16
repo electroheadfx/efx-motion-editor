@@ -220,7 +220,7 @@ describe('TS ↔ Rust .mce field-diff contract', () => {
 //   1. paper display state on the fond (id, strength, scale) — PAPER-03 / D-22
 //   2. aquarelle brush properties (the 8-field per-brush surface) — AQUA-03 / R1.7
 //   3. per-engine stroke payload in the envelope (opaque engine slot) — HOST-02
-//   4. brush-pack snapshot (D-23 inline .mce data) — NOT a one-language field
+//   4. (retired) the project brush-pack snapshot — quick 261116-inu removed it
 //
 // Each group is a named Mce* member in BOTH languages. The generic wire-key
 // diff above covers key-set equality; these rows pin the member names and the
@@ -246,9 +246,10 @@ describe('Phase 56 .mce field set (DATA-04 / D-27)', () => {
     expectMemberKeys('MceEngineStrokePayload', ['engine']);
   });
 
-  it('declares the brush-pack snapshot in both languages (D-23 inline .mce data)', () => {
-    // MOD-04 / D-23: kind + entries travel IN the .mce as inline data.
-    expectMemberKeys('MceBrushPackSnapshot', ['kind', 'entries']);
+  it('declares no brush-pack snapshot member (retired by quick 261116-inu)', () => {
+    // The `.mce` brush carrier is gone: no struct in either language.
+    expect(ts.has('MceBrushPackSnapshot')).toBe(false);
+    expect(rust.has('MceBrushPackSnapshot')).toBe(false);
   });
 
   it('brushPack is NOT an ALLOWED_ONE_LANGUAGE entry (D-23 two-language by design)', () => {
@@ -408,39 +409,29 @@ describe('Phase 61 envelope round trip (REL-02)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Phase 63 brush-tip carrier (TIP-11 / D-10 / T-63-15)
+// Phase 63 brush-tip carrier — RETIRED by quick 261116-inu
 //
-// The `.mce` root gains ONE optional key, `brushPack`, whose entries carry
-// package-relative asset refs (`brushes/<64 hex>.webp`). Two things must never
-// drift:
-//   1. the key is declared in BOTH languages — serde drops an undeclared key,
-//      so a one-language `brushPack` silently erases every imported tip on the
-//      next save;
-//   2. the entry carrier shape (`kind` + `entries`) stays two-language and no
-//      one-language exception is claimed for it. The retired D-23 inline
-//      carrier is NOT an allowlist entry: the migration is a field rewrite,
-//      not an exception (T-63-06).
+// The `.mce` no longer carries a brush pack: textures are machine resources in
+// `~/.config/efx-motion/brushes/`. serde does not deny unknown fields, so an
+// old manifest's `brushPack` key parses and is dropped instead of failing the
+// open. What this block pins now is the ABSENCE, so a stray re-declaration in
+// either language fails here.
 // ---------------------------------------------------------------------------
 
-describe('Phase 63 brush-tip carrier (TIP-11 / D-10)', () => {
-  it('declares the optional .mce root brushPack in both languages', () => {
+describe('Phase 63 brush-tip carrier — retired with the project pack (quick 261116-inu)', () => {
+  it('declares no .mce root brushPack in either language', () => {
     expectMemberKeys('MceProject', [
       'version', 'name', 'fps', 'width', 'height', 'created_at', 'modified_at',
       'sequences', 'images', 'audio_assets', 'video_assets', 'audio_tracks',
       'motion_blur', 'efx_paint_documents', 'formatVersion', 'projectId', 'efxPaint',
-      'brushPack',
     ]);
+    expect(ts.get('MceProject')!.has('brushPack')).toBe(false);
+    expect(rust.get('MceProject')!.has('brush_pack')).toBe(false);
   });
 
-  it('wires brush_pack to the camelCase brushPack key in Rust', () => {
-    // The field-diff parser reads `pub <ident>:`; a Rust field without the
-    // rename would be invisible to the wire and the key would never be emitted.
-    expect(rust.get('MceProject')!.get('brush_pack')).toBe('brushPack');
-    expect(ts.get('MceProject')!.has('brushPack')).toBe(true);
-  });
-
-  it('keeps the brushPack entry shape two-language (kind, entries)', () => {
-    expectMemberKeys('MceBrushPackSnapshot', ['kind', 'entries']);
+  it('declares no MceBrushPackSnapshot member in either language', () => {
+    expect(ts.has('MceBrushPackSnapshot')).toBe(false);
+    expect(rust.has('MceBrushPackSnapshot')).toBe(false);
   });
 
   it('did not claim a one-language exception for the brush carrier', () => {

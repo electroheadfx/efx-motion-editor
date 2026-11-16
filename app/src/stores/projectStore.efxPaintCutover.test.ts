@@ -20,8 +20,7 @@ import { createHash } from 'node:crypto';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TIP_MASK_BYTES, resetMaskRegistry, resolveMask, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -36,12 +35,6 @@ import * as efxPaintStoreModule from './efxPaintStore';
 import { mountTrackRuntime, physicPaintStore } from './physicPaintStore';
 import { projectStore } from './projectStore';
 import { sequenceStore } from './sequenceStore';
-import { brushAssetBytes, pendingBrushAssets, resetBrushAssets } from '../lib/efxPaintBrushAssets';
-import {
-  _setBrushCatalogPublisher,
-  customBrushTips,
-  resetAquarelleBrushCatalog,
-} from './aquarelleBrushCatalog';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
 const TRACK_A = 'track-a';
@@ -87,9 +80,6 @@ const ipcEfxPaintWriteFrameMedia = vi.hoisted(() => vi.fn());
 // quick-260913-52r (G): the open leg materializes roto media references by
 // reading each frame file through this command.
 const ipcEfxPaintReadFrameMedia = vi.hoisted(() => vi.fn());
-// 63-07: the open leg reads and decodes the whole project brush set in ONE call
-// through this command.
-const ipcEfxPaintReadBrushAssets = vi.hoisted(() => vi.fn());
 // quick-260913-05k: the package-IO boundary — the layer sub-file write/read
 // and the staging discard are app commands, not fs-plugin calls.
 const ipcEfxPaintWritePackageLayerFile = vi.hoisted(() => vi.fn());
@@ -139,7 +129,6 @@ vi.mock('../lib/ipc', () => ({
   resolvePhysicPaintCacheRoot: ipcResolvePhysicPaintCacheRoot,
   ipcEfxPaintWriteFrameMedia,
   ipcEfxPaintReadFrameMedia,
-  ipcEfxPaintReadBrushAssets,
   ipcEfxPaintWritePackageLayerFile,
   ipcEfxPaintReadPackageLayerFile,
   discardEfxPaintPackageStaging,
@@ -1374,186 +1363,3 @@ describe('quick-260913-05k round 3: a created project owns its chosen package pa
   });
 });
 
-describe('63-07: project-open brush set', () => {
-  const BRUSH_DIGEST_A = 'a'.repeat(64);
-  const BRUSH_DIGEST_B = 'b'.repeat(64);
-
-  function brushTip(id: string, digest: string): AquarelleTip {
-    return {
-      id,
-      category: 'custom',
-      name: `Custom ${id}`,
-      tip: 1,
-      aspect: 1,
-      rotation: 1,
-      sizeCurve: 1,
-      scatter: 1,
-      capacity: 1,
-      grain: 1,
-      wetRound: 1,
-      asset: `brushes/${digest}.webp`,
-    };
-  }
-
-  function maskBytes(): Uint8Array {
-    return new Uint8Array(TIP_MASK_BYTES).fill(4);
-  }
-
-  function webpBytes(): Uint8Array {
-    return new Uint8Array([82, 73, 70, 70, 7, 7]);
-  }
-
-  function brushProject(name: string, tip: AquarelleTip): MceProject {
-    return {
-      ...makeCleanProject(),
-      name,
-      brushPack: { kind: 'efx-watercolor', entries: [tip] },
-    };
-  }
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    projectStore.reset();
-    sequenceStore.reset();
-    physicPaintStore.reset();
-    resetAquarelleBrushCatalog();
-    resetBrushAssets();
-    resetMaskRegistry();
-    clearPackageDisk();
-    ipcProjectOpen.mockResolvedValue({ ok: true, data: makeCleanProject() });
-    ipcScriptLibraryBindSavedProject.mockResolvedValue({ ok: true, data: 'authority' });
-    ipcScriptLibraryClearActiveProject.mockResolvedValue({ ok: true, data: null });
-    addRecentProject.mockResolvedValue(undefined);
-    setLastProjectPath.mockResolvedValue(undefined);
-    loadPhysicPaintData.mockResolvedValue([]);
-    prepareRotoPhysicalDocumentPngs.mockImplementation(async (value: unknown) => value);
-    ipcEfxPaintReadBrushAssets.mockImplementation(
-      async (_packageDir: string, entries: readonly { id: string; relativePath: string }[]) => ({
-        ok: true,
-        data: entries.map((entry) => ({
-          id: entry.id,
-          ok: true,
-          digest: entry.relativePath.slice('brushes/'.length, -'.webp'.length),
-          mask: maskBytes(),
-          webp: webpBytes(),
-        })),
-      }),
-    );
-    fsReadFile.mockImplementation(async (path: string) => {
-      const bytes = files.get(String(path));
-      if (bytes === undefined) throw new Error(`missing file: ${String(path)}`);
-      return bytes;
-    });
-  });
-
-  afterEach(() => {
-    _setBrushCatalogPublisher(() => {});
-    resetAquarelleBrushCatalog();
-    resetBrushAssets();
-    resetMaskRegistry();
-  });
-
-  it('a superseded open never applies its stale brush set over the newer project', async () => {
-    const tipA = brushTip('wc/custom-a', BRUSH_DIGEST_A);
-    const tipB = brushTip('wc/custom-b', BRUSH_DIGEST_B);
-    ipcProjectOpen.mockReset();
-    ipcProjectOpen
-      .mockResolvedValueOnce({ ok: true, data: brushProject('Project A', tipA) })
-      .mockResolvedValueOnce({ ok: true, data: brushProject('Project B', tipB) });
-
-    let releaseFirstRead: () => void = () => {};
-    let markStarted: () => void = () => {};
-    const firstReadStarted = new Promise<void>((resolve) => {
-      markStarted = resolve;
-    });
-    ipcEfxPaintReadBrushAssets.mockImplementationOnce(
-      async (_packageDir: string, entries: readonly { id: string; relativePath: string }[]) => {
-        markStarted();
-        return await new Promise((resolve) => {
-          releaseFirstRead = () =>
-            resolve({
-              ok: true,
-              data: entries.map((entry) => ({
-                id: entry.id,
-                ok: true,
-                digest: entry.relativePath.slice('brushes/'.length, -'.webp'.length),
-                mask: maskBytes(),
-                webp: webpBytes(),
-              })),
-            });
-        });
-      },
-    );
-
-    const firstOpen = projectStore.openProject('/project/a.mce');
-    await firstReadStarted;
-    await projectStore.openProject('/project/b.mce');
-
-    expect(customBrushTips.value.map((tip) => tip.id).join(',')).toBe('wc/custom-b');
-    expect(resolveMask('wc/custom-a')).toBe(null);
-
-    releaseFirstRead();
-    await firstOpen;
-
-    // The stale open ran its read to completion but never applied or reset:
-    // the catalog is still B's, and A's id resolves neither as a tip nor a mask.
-    expect(customBrushTips.value.map((tip) => tip.id).join(',')).toBe('wc/custom-b');
-    expect(resolveMask('wc/custom-a')).toBe(null);
-    expect(resolveMask('wc/custom-b')?.length).toBe(TIP_MASK_BYTES);
-    expect(brushAssetBytes(BRUSH_DIGEST_A)).toBeUndefined();
-    expect(brushAssetBytes(BRUSH_DIGEST_B)?.length).toBe(webpBytes().length);
-    expect(pendingBrushAssets('/project')).toHaveLength(0);
-  });
-
-  it('a superseded open never emits a catalog snapshot', async () => {
-    const published: number[] = [];
-    _setBrushCatalogPublisher(() => {
-      published.push(published.length + 1);
-    });
-    const tipA = brushTip('wc/custom-a', BRUSH_DIGEST_A);
-    const tipB = brushTip('wc/custom-b', BRUSH_DIGEST_B);
-    ipcProjectOpen.mockReset();
-    ipcProjectOpen
-      .mockResolvedValueOnce({ ok: true, data: brushProject('Project A', tipA) })
-      .mockResolvedValueOnce({ ok: true, data: brushProject('Project B', tipB) });
-
-    let releaseFirstRead: () => void = () => {};
-    let markStarted: () => void = () => {};
-    const firstReadStarted = new Promise<void>((resolve) => {
-      markStarted = resolve;
-    });
-    ipcEfxPaintReadBrushAssets.mockImplementationOnce(
-      async (_packageDir: string, entries: readonly { id: string; relativePath: string }[]) => {
-        markStarted();
-        return await new Promise((resolve) => {
-          releaseFirstRead = () =>
-            resolve({
-              ok: true,
-              data: entries.map((entry) => ({
-                id: entry.id,
-                ok: true,
-                digest: entry.relativePath.slice('brushes/'.length, -'.webp'.length),
-                mask: maskBytes(),
-                webp: webpBytes(),
-              })),
-            });
-        });
-      },
-    );
-
-    const firstOpen = projectStore.openProject('/project/a.mce');
-    await firstReadStarted;
-    await projectStore.openProject('/project/b.mce');
-
-    // B's open publishes once for its reset and once for its apply; A is
-    // already superseded and contributed nothing.
-    expect(published).toHaveLength(2);
-
-    releaseFirstRead();
-    await firstOpen;
-
-    // The stale open ran its read to completion but never reached apply or
-    // reset, so it emitted no catalog snapshot over B's.
-    expect(published).toHaveLength(2);
-  });
-});

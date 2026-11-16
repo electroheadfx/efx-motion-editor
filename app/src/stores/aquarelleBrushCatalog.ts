@@ -31,26 +31,17 @@
 import { batch, computed, signal, type ReadonlySignal } from '@preact/signals';
 import {
   TIP_MASK_BYTES,
-  buildBrushPackSnapshot,
   registerMask,
   replaceMaskRegistry,
   resolveMask,
   type AquarelleTip,
 } from '@efxlab/efx-watercolor';
-import type { MceBrushPackSnapshot } from '../types/project';
 import type { BrushLibraryEntry } from '../lib/ipc';
 import type {
   PhysicPaintBrushCatalogEntry,
   PhysicPaintBrushCatalogPayload,
 } from '../types/physicPaint';
-import {
-  brushAssetBytes,
-  brushAssetDigestFromPath,
-  markBrushAssetsWritten,
-  rememberBrushAsset,
-} from '../lib/efxPaintBrushAssets';
 import { decodeBridgeBase64, encodeBridgeBase64 } from '../lib/webpBytes';
-import { normalizeProjectBrushTip, type ProjectBrushSet } from '../lib/efxPaintBrushSet';
 
 /** The imported tips of the open project (empty on a project with no imports). */
 const customBrushTipsSignal = signal<readonly AquarelleTip[]>([]);
@@ -131,10 +122,10 @@ export function listAquarelleBrushTips(): readonly AquarelleTip[] {
  * Register ONE mask a loaded Roto script carries (63-08 / TIP-14 / D-14 /
  * T-63-23). REGISTRY ONLY — never a catalog row, never an unavailable id,
  * never a stored asset: a script's tips paint for this session but must not
- * become project data. The next project open replaces the whole registry and
- * a close resets it to the three built-ins, so nothing a script registered
- * survives a project switch. Returns false (and writes nothing) unless the
- * mask is exactly `TIP_MASK_BYTES` long — the engine's own fail-closed law.
+ * become library data. A library replacement swaps the registry wholesale, so
+ * nothing a script registered survives one. Returns false (and writes nothing)
+ * unless the mask is exactly `TIP_MASK_BYTES` long — the engine's own
+ * fail-closed law.
  */
 export function registerScriptMask(id: string, mask: Uint8Array): boolean {
   return registerMask(id, mask);
@@ -368,138 +359,57 @@ export function resetAquarelleBrushCatalog(): void {
 }
 
 // ---------------------------------------------------------------------------
-// 63-07 (D-17 / D-18 / D-20 / TIP-07): apply ONE open's brush set.
-//
-// The main realm is the only realm that reads package assets; this function
-// installs what `loadProjectBrushSet` decoded. It is REPLACE-ONLY by
-// construction — the set IS the project's state, so opening B overwrites A's
-// customs, registry rows and unavailable set in one batch, and an empty set
-// leaves an empty registry (no compile-time built-ins remain).
-// ---------------------------------------------------------------------------
-
-/**
- * Apply the open project's decoded brush set: replace the customs, replace the
- * mask registry (built-ins first, then this set's masks), replace the
- * unavailable set, and remember every stored WebP body so a later save copies
- * it verbatim (D-11 / TIP-07). The bytes are also marked written for THIS
- * package root: the open read them from the package, so a save without an
- * import stages nothing.
- *
- * A body the content-addressed cache refuses (a different payload under an
- * already-remembered digest) is logged, never thrown: the tip's mask is still
- * live for painting, and a subsequent save cannot copy that asset.
- */
-export function applyProjectBrushSet(set: ProjectBrushSet, packageRoot: string): void {
-  const masks: { id: string; mask: Uint8Array }[] = [];
-  for (const entry of set.masks) masks.push({ id: entry.id, mask: entry.mask });
-  batch(() => {
-    replaceCustomBrushTips(set.entries.map((entry) => entry.tip));
-    replaceMaskRegistry(masks);
-    replaceUnavailableTipIds(set.unavailableTipIds);
-  });
-  const written: string[] = [];
-  for (const asset of set.assets) {
-    try {
-      rememberBrushAsset(asset.digest, asset.webp);
-      written.push(asset.digest);
-    } catch (error) {
-      console.error(
-        `[aquarelleBrushCatalog] open: stored brush asset "${asset.digest}" was refused by the asset cache — ${String(error)}. The tip's mask stays registered, but a later save cannot copy its stored bytes.`,
-      );
-    }
-  }
-  markBrushAssetsWritten(packageRoot, written);
-  // The Studio paints and saves from THIS snapshot: one push per applied open.
-  brushCatalogPublisher();
-}
-
-/**
- * The `.mce` root `brushPack` value: entries over CUSTOM tips only, each with
- * its package-relative `asset` ref (validated by the pack builder). Returns
- * `null` when there are no customs — the caller must then omit the key
- * entirely rather than emit an empty pack (D-10). Built-in ids can never
- * appear here: they are not part of the custom list and are never persisted.
- *
- * WR-07 / T-63-27 (D-18): the whole-list fast path is unchanged, but a
- * refusal no longer erases the pack. When `buildBrushPackSnapshot` refuses the
- * list, each tip is retried ALONE in insertion order — the first entry for an
- * id wins — so a validation failure costs exactly the offending tip and every
- * other imported tip still persists. Each dropped tip is logged by id with its
- * class (invalid record / duplicate id); `null` is returned only when nothing
- * survives (the project then omits the key, as today).
- */
-export function buildProjectBrushPack(): MceBrushPackSnapshot | null {
-  const customs = customBrushTipsSignal.value;
-  if (customs.length === 0) return null;
-  const snapshot = buildBrushPackSnapshot(customs);
-  if (snapshot !== null) return { kind: snapshot.kind, entries: [...snapshot.entries] };
-
-  // Per-entry fallback (D-18): one bad entry degrades alone, never the set.
-  const seen = new Set<string>();
-  const entries: unknown[] = [];
-  let kind: string | null = null;
-  for (const tip of customs) {
-    const single = buildBrushPackSnapshot([tip]);
-    if (single === null) {
-      console.error(
-        `[aquarelleBrushCatalog] save: dropping brush tip "${tip.id}" — the record fails the package carrier law (invalid record).`,
-      );
-      continue;
-    }
-    if (seen.has(tip.id)) {
-      console.error(
-        `[aquarelleBrushCatalog] save: dropping duplicate brush tip "${tip.id}" — the first inserted entry is kept.`,
-      );
-      continue;
-    }
-    seen.add(tip.id);
-    if (kind === null) kind = single.kind;
-    entries.push(...single.entries);
-  }
-  if (entries.length === 0) return null;
-  return { kind: kind as string, entries };
-}
-
-// ---------------------------------------------------------------------------
 // 63-05 (D-20 / T-63-04): the cross-realm catalog snapshot.
 //
 // The Studio webview is a separate JS context whose module instances start
 // empty and are re-created on every layer switch, so a push to the window
 // cannot update its stores. The catalog therefore travels as ONE full
 // snapshot: the main realm builds it here, and the Studio applies it into its
-// OWN `aquarelleBrushCatalog`, `maskRegistry` and `efxPaintBrushAssets`
-// instances with `applyBrushCatalogPayload`. Building and applying live next
-// to the store they read/write so the two halves cannot drift; the payload
-// type itself is a leaf type import (erased at build time), never a cycle.
+// OWN `aquarelleBrushCatalog` and `maskRegistry` instances with
+// `applyBrushCatalogPayload`. Building and applying live next to the store
+// they read/write so the two halves cannot drift; the payload type itself is
+// a leaf type import (erased at build time), never a cycle.
 // ---------------------------------------------------------------------------
+
+/**
+ * Project a tip onto exactly the wire member set (`AQUARELLE_TIP_MEMBER_KEYS`
+ * in `types/physicPaint.ts`). The library owns the row shape, so this is the
+ * ONE sender-side projection: a machine library row is ALWAYS a custom
+ * texture (never a response), so `category` is pinned to `custom` exactly as
+ * the wire guard requires.
+ */
+function wireTip(tip: AquarelleTip): AquarelleTip {
+  return {
+    id: tip.id,
+    category: 'custom',
+    name: tip.name,
+    tip: tip.tip,
+    aspect: tip.aspect,
+    rotation: tip.rotation,
+    sizeCurve: tip.sizeCurve,
+    scatter: tip.scatter,
+    capacity: tip.capacity,
+    grain: tip.grain,
+    wetRound: tip.wetRound,
+  };
+}
 
 /**
  * The MAIN realm's snapshot of the machine library. Each entry carries its
  * content address (`digest`), its integer-degree `textureRotation`, and its
- * decoded mask; the stored WebP bytes ride along while this realm still has
- * them (the project-asset leg is removed by a later task). An unavailable tip
- * travels with neither byte leg — its id also rides `unavailableTipIds`.
- *
- * CR-01 / T-63-25: every tip is projected through `normalizeProjectBrushTip`,
- * the same admission law the old open loader applied. A tip the store somehow
- * holds in a shape the strict wire guard refuses (foreign category, stray
- * member) is normalized, or dropped, HERE — so one such tip can never refuse
- * the Studio's snapshot whole.
+ * decoded mask. A row whose mask is missing from the registry travels with no
+ * mask leg — its id also rides `unavailableTipIds`.
  */
 export function buildBrushCatalogPayload(libraryRevision: number): PhysicPaintBrushCatalogPayload {
   const entries: PhysicPaintBrushCatalogEntry[] = [];
   for (const row of libraryRowsSignal.value) {
-    const normalized = normalizeProjectBrushTip(row.tip);
-    if (normalized === null) continue;
-    const mask = resolveMask(normalized.id);
-    const assetDigest = brushAssetDigestFromPath(normalized.asset);
-    const webp = assetDigest === null ? undefined : brushAssetBytes(assetDigest);
+    const tip = wireTip(row.tip);
+    const mask = resolveMask(tip.id);
     entries.push({
-      tip: normalized,
+      tip,
       digest: row.digest,
       textureRotation: row.textureRotation,
       ...(mask === null ? {} : { maskBase64: encodeBridgeBase64(mask) }),
-      ...(webp === undefined ? {} : { webpBase64: encodeBridgeBase64(webp) }),
     });
   }
   return {
@@ -520,8 +430,7 @@ function decodeBase64OrNull(value: string): Uint8Array | null {
 /**
  * The STUDIO realm's one application path: replace this realm's customs, mask
  * registry (exactly the payload's decoded masks; there are no compile-time
- * built-ins left), unavailable set and remembered asset bytes, then let the
- * setters bump
+ * built-ins left) and unavailable set, then let the setters bump
  * `brushCatalogGeneration` for every real change. Replace-only by
  * construction — a second payload without a prior id leaves that id
  * unresolvable and unlisted. Never appends, never throws on one bad entry
@@ -541,18 +450,6 @@ export function applyBrushCatalogPayload(payload: PhysicPaintBrushCatalogPayload
         masks.push({ id: tip.id, mask });
       } else {
         unavailable.add(tip.id);
-      }
-    }
-    if (entry.webpBase64 !== undefined) {
-      const digest = brushAssetDigestFromPath(tip.asset);
-      const webp = decodeBase64OrNull(entry.webpBase64);
-      if (digest !== null && webp !== null) {
-        try {
-          rememberBrushAsset(digest, webp);
-        } catch {
-          // A conflicting body under the same digest is refused loudly by the
-          // asset cache; the already-remembered bytes stay authoritative.
-        }
       }
     }
   }

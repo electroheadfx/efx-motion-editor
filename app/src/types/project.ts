@@ -60,13 +60,10 @@ export interface MceProject {
    * Carried opaquely here — `efxPaintPackage.ts` owns the schema.
    */
   efxPaint?: Record<string, unknown>;
-  /**
-   * The project-scoped brush pack (63-04 / TIP-11 / D-10), co-change with Rust
-   * `MceProject::brush_pack`. REFS ONLY: every entry carries a package-relative
-   * asset ref (`brushes/<64 hex>.webp`) — never mask bytes, never an external
-   * path. Omitted entirely when the project has no imported tips.
-   */
-  brushPack?: MceBrushPackSnapshot;
+  // quick 261116-inu: the `.mce` no longer carries a brush pack. The machine
+  // library owns the textures; an old manifest's `brushPack` key is ignored
+  // (serde does not deny unknown fields) and its `brushes/` files stay on
+  // disk, untouched.
 }
 
 /** Runtime project shape: identical to the persisted MceProject (v1.0). */
@@ -325,21 +322,6 @@ export interface MceEngineStrokePayload {
   engine: Record<string, unknown> | null;
 }
 
-/**
- * Brush-pack snapshot travelling in `.mce` (MOD-04 / D-23, carried by 63-04 /
- * TIP-11). Two-language by design — NOT an ALLOWED_ONE_LANGUAGE entry.
- *
- * CARRIER LAW (63-04 / D-10, D-11): in the PACKAGE carrier each entry carries a
- * package-relative `asset` ref of the form `brushes/<64 lower-case hex>.webp`
- * — the mask lives in that content-addressed file, never inline in the
- * manifest and never at a path outside the project package. The retired D-23
- * inline shape (`mask`, `maskDataUrl`) is REFUSED by `pack.ts` in this
- * carrier; the script carrier is the one that carries `maskDataUrl`.
- */
-export interface MceBrushPackSnapshot {
-  kind: string;
-  entries: unknown[];
-}
 
 /**
  * One anchor of a persisted vector path (VEC-06 / 61-06). Mirrors the AQTL v2
