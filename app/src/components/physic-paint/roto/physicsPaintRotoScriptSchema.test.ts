@@ -269,6 +269,44 @@ describe('capture sample normalization (quick 261116-inu save refusal)', () => {
   });
 });
 
+describe('raw-path tick spans (quick 261116-rp)', () => {
+  const rawEvent = () => aquarelleStrokeEvent({
+    pts: [
+      { x: 0.25, y: 0.75, p: 0.8, tx: 0, ty: 0, tw: 0, tick: 0 },
+      { x: 0.26, y: 0.74, p: 0.8, tx: 0, ty: 0, tw: 0, tick: 0 },
+      { x: 0.3, y: 0.7, p: 0.9, tx: 0, ty: 0, tw: 0, tick: 3 },
+      { x: 0.35, y: 0.65, p: 0.7, tx: 0, ty: 0, tw: 0, tick: 9 },
+    ],
+    ticks: 9,
+  });
+
+  it('saves a raw trace whose points share and skip ticks — the span is the LAST tick, not the point count', async () => {
+    const schema = await loadSchema();
+    // The pre-fix guard demanded ticks === pts.length - 1 and refused every
+    // live capture with "stroke N: ticks vs pts".
+    const doc = schema.serializeAquarelleRotoScript!(aquarelleInput({ events: [rawEvent()] }));
+    expect(schema.describePersistedRotoScriptRefusal!(doc)).toBeNull();
+    expect(doc.strokes[0].ticks).toBe(9);
+    expect(doc.strokes[0].pts.map((point: any) => point.tick)).toEqual([0, 0, 3, 9]);
+  });
+
+  it('still refuses a span that disagrees with the last point tick', async () => {
+    const schema = await loadSchema();
+    const doc = schema.serializeAquarelleRotoScript!(aquarelleInput({ events: [rawEvent()] }));
+    const bad = structuredClone(doc);
+    bad.strokes[0].ticks = 3;
+    expect(schema.describePersistedRotoScriptRefusal!(bad)).toBe('stroke 0: ticks vs pts');
+  });
+
+  it('refuses a trace whose ticks go backwards, naming the point', async () => {
+    const schema = await loadSchema();
+    const doc = schema.serializeAquarelleRotoScript!(aquarelleInput({ events: [rawEvent()] }));
+    const bad = structuredClone(doc);
+    bad.strokes[0].pts[1].tick = 5;
+    expect(schema.describePersistedRotoScriptRefusal!(bad)).toBe('stroke 0: pts[2].tick order');
+  });
+});
+
 describe('aquarelle script codec (261018-odm ODM-01)', () => {
   it('serializeAquarelleRotoScript emits engineId efx-watercolor with UV pts and an AquarelleStrokePayload engine slot', async () => {
     const schema = await loadSchema();

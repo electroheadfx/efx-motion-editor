@@ -444,7 +444,14 @@ function describeStrokeRefusal(value: unknown): string {
     if (pointRefusal !== null) return `pts[${index}].${pointRefusal}`;
   }
   if (!nonNegativeInteger(value.ticks)) return 'ticks';
-  if (value.pts.length > 1 && value.ticks !== Math.max(1, value.pts.length - 1)) return 'ticks vs pts';
+  const tickRegression = firstTickRegression(value.pts);
+  if (tickRegression !== null) return `pts[${tickRegression}].tick order`;
+  // quick 261116-rp: `ticks` is the stroke's SPAN — the last point's 60 Hz
+  // tick, floored at 1. The raw-path recorder keeps real pointer timing, so
+  // points may share a tick (fast pointer) or skip ticks (slow one) and the
+  // point COUNT is no longer the span. A one-point stroke keeps the old
+  // unconstrained span so every file the previous guard accepted still loads.
+  if (value.pts.length > 1 && value.ticks !== Math.max(1, value.pts[value.pts.length - 1].tick)) return 'ticks vs pts';
   if (value.cuisson !== 0) return 'cuisson';
   if (value.motion !== null) return 'motion';
   if (value.brushId !== ROTO_SCRIPT_ENGINE_ID_AQUARELLE) return 'brushId';
@@ -494,6 +501,18 @@ function describePointRefusal(value: unknown): string | null {
   if (!finiteRange(value.ty, -90, 90)) return 'ty';
   if (!finiteRange(value.tw, -360, 360)) return 'tw';
   if (!nonNegativeInteger(value.tick)) return 'tick';
+  return null;
+}
+
+/**
+ * Index of the first point whose tick goes BACKWARDS, or null. The bake walks
+ * points forward through time, so a raw trace must never step back. Runs after
+ * the per-point guards, so every `tick` here is a validated integer.
+ */
+function firstTickRegression(pts: readonly StudioPoint[]): number | null {
+  for (let index = 1; index < pts.length; index++) {
+    if (pts[index]!.tick < pts[index - 1]!.tick) return index;
+  }
   return null;
 }
 
@@ -559,7 +578,11 @@ function isEnvelopeStrokeAquarelle(value: unknown): value is StudioStroke<Aquare
   }
   if (value.pts.length < 1 || value.pts.length > ROTO_SCRIPT_LIMITS.pointsPerBrush) return false;
   if (!value.pts.every(isEnvelopePointAquarelle)) return false;
-  if (!nonNegativeInteger(value.ticks) || (value.pts.length > 1 && value.ticks !== Math.max(1, value.pts.length - 1))) return false;
+  if (!nonNegativeInteger(value.ticks)) return false;
+  if (firstTickRegression(value.pts) !== null) return false;
+  // Same span law as describeStrokeRefusal: the LAST point's tick, floored at
+  // 1; a one-point stroke keeps any non-negative span (legacy files load).
+  if (value.pts.length > 1 && value.ticks !== Math.max(1, value.pts[value.pts.length - 1].tick)) return false;
   if (value.cuisson !== 0) return false;
   if (value.motion !== null) return false;
   if (value.brushId !== ROTO_SCRIPT_ENGINE_ID_AQUARELLE) return false;
