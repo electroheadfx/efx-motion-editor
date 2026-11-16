@@ -111,8 +111,8 @@ import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import * as vectorPathSession from './view/vectorPathSession';
-import { registerPaintedCurveEntrance, registerPathEditExitHook } from './view/vectorPathLatches';
-import { beginCurveWireframeBracket, beginPaintedCurveSession, endCurveBracket } from './view/vectorPathCurveBracket';
+import { registerPaintedCurveEntrance } from './view/vectorPathLatches';
+import { fitVectorPathAnchors } from './view/vectorPathFit';
 import { DEFAULT_VECTOR_PATH_CURVE_MODE, anchorColorCommitIsNoOp, buildAnchorColorCommit, buildAnchorCornerCommit, buildAnchorWidthCommit } from './view/vectorPathHandles';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
@@ -333,6 +333,7 @@ import {
 } from './view/aquarelleVectorPathCommit';
 import {
   ANCHOR_COLOR_COMMIT_REFUSED_MESSAGE,
+  PATH_EDIT_DEGENERATE_DISABLED_REASON,
   admitsPathEditWrite,
   resolveAnchorWidthTarget,
   resolvePaintedCurveEligibility,
@@ -10362,12 +10363,13 @@ export function PhysicsPaintStudio() {
     if (!stroke) return null;
     return resolvePaintedCurveEligibility(stroke);
   }, []);
-  // `enterPaintedCurve` is the ONE painted entrance: arm the durable base
-  // FIRST (a refused arm fails closed and publishes the shipped fixed copy),
-  // then fit the stroke's OWN samples and hold them, bracket the wireframe
-  // (capturing the pre-entry view state) and open the shipped path-edit
-  // latch. Nothing is written to the document, the revision or the ledger
-  // here — the first committed gesture performs the ONE conversion write.
+  // `enterPaintedCurve` is the ONE painted entrance, and entering path edit on
+  // an anchorless painted stroke IS a vector edit session from entry: arm the
+  // durable base FIRST (a refused arm fails closed and publishes the shipped
+  // fixed copy), fit the stroke's OWN recorded samples, then hand them to the
+  // shipped ONE writer — the exact conversion a vertex drag performs. The
+  // shipped path-edit latch opens ONLY when that write resolves an edit id;
+  // every other outcome publishes the existing copy and opens nothing.
   const enterPaintedCurve = useCallback(async (ids: readonly number[]): Promise<boolean> => {
     if (ids.length !== 1) return false;
     const stroke = getRecordedAquarelleStroke(ids[0]!);
@@ -10377,17 +10379,40 @@ export function PhysicsPaintStudio() {
     if (!armed) {
       // The awaited arm already published this fixed line; restating it keeps
       // the entry's refusal on the shipped capsule even if that changes.
-      // Fail closed: no fit held, no bracket, no latch.
+      // Fail closed: nothing fitted, nothing converted, no latch.
       setApplyMessage(DRAFT_ARM_REFUSAL_MESSAGE);
       setApplyStatus('error');
       return false;
     }
-    const session = beginPaintedCurveSession(stroke);
-    if (session === null) return false;
-    beginCurveWireframeBracket();
+    // WR-03: re-read the record after the durable-base await. A concurrent
+    // entry or another edit that already converted this stroke owns it now;
+    // this entry ends silently, with no refusal copy.
+    const liveStroke = getRecordedAquarelleStroke(ids[0]!);
+    if (!liveStroke) return false;
+    if (resolvePaintedCurveEligibility(liveStroke).kind !== 'painted') return false;
+    const fitted = fitVectorPathAnchors(liveStroke.points);
+    if (fitted.length < 2) {
+      setApplyMessage(PATH_EDIT_DEGENERATE_DISABLED_REASON);
+      setApplyStatus('error');
+      setLastError(PATH_EDIT_DEGENERATE_DISABLED_REASON);
+      return false;
+    }
+    const commit = aquarellePathEditCommitRef.current;
+    if (commit === null) return false;
+    const editId = await commit(ids[0]!, fitted);
+    if (editId === null) {
+      // The writer owns its own, more specific failure copy — never overwrite
+      // it. Fail closed: no latch, no session.
+      if (!scriptApplyRefusalOwnedRef.current) {
+        setApplyMessage(VECTOR_PATH_REJECTION_MESSAGE);
+        setApplyStatus('error');
+        setLastError(VECTOR_PATH_REJECTION_MESSAGE);
+      }
+      return false;
+    }
     vectorPathSession.enterPathEdit(String(ids[0]!));
     return true;
-  }, [armDraftBase, setApplyMessage, setApplyStatus]);
+  }, [armDraftBase, setApplyMessage, setApplyStatus, setLastError]);
 
   // 61-15 (G-1/G-2): the ONE writer AND the ONE bake for a user path edit.
   // Guard order and the post-await Draft read mirror `handleAquarelleMoveStrokes`
@@ -10423,7 +10448,6 @@ export function PhysicsPaintStudio() {
     // appear, never whether the gesture is undoable. This is the seam's SECOND
     // and last record site (the other is the re-bake onSuccess tail).
     if (draft || wireframe) {
-      console.debug('[261116-qhm] path-edit deferred route', { mutationId, draft, wireframe });
       rotoMoveHistory.recordAquarelleScriptEdit(editId);
       setDraftPixelsDirty(true);
       setLastError(null);
@@ -11563,27 +11587,10 @@ export function PhysicsPaintStudio() {
   useEffect(() => {
     vectorPathSession.resetForStudioOpen();
   }, []);
-  // 62-04 (D-06/D-13): the ONE production registration of 62-02's exit funnel.
-  // Every shipped path-edit exit now runs the curve bracket in-app: the held fit
-  // is dropped and the pre-entry wireframe / Draft are restored. Registered
-  // beside — never inside — the mount reset above, which must keep its `[]`
-  // deps so the reset runs only on mount. `[settleDraftScript]` re-registers
-  // only if the shipped single-flight settle's identity changes, and the
-  // cleanup detaches the hook so a remount never leaves a stale one behind.
-  useEffect(() => {
-    registerPathEditExitHook(() => {
-      // WR-01: the teardown completes in its own `finally`; a rejected settle
-      // must not surface as an unhandled rejection on this `void` call.
-      void endCurveBracket({ settle: settleDraftScript }).catch((error) => {
-        console.error('[PhysicsPaintStudio] curve bracket teardown failed:', error);
-      });
-    });
-    return () => registerPathEditExitHook(null);
-  }, [settleDraftScript]);
   // 62-UAT: the canvas double-click adapter cannot reach this Studio's
-  // durable-base arm, so the ONE painted entrance is registered here beside the
-  // exit funnel. The cleanup detaches it on remount; an unregistered slot
-  // fails closed (the double-click selects nothing and enters nothing).
+  // durable-base arm, so the ONE painted entrance is registered here. The
+  // cleanup detaches it on remount; an unregistered slot fails closed (the
+  // double-click selects nothing and enters nothing).
   useEffect(() => {
     registerPaintedCurveEntrance(enterPaintedCurve);
     return () => registerPaintedCurveEntrance(null);

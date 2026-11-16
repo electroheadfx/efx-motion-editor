@@ -88,21 +88,6 @@ export function exitVectorPen(): void {
 }
 
 /**
- * 62-02 (D-06): the ONE path-edit exit hook. `exitPathEdit` fires it only when
- * the latch ACTUALLY transitions open -> null, so every shipped exit route
- * reaches the curve-bracket teardown through this module without a per-site
- * change. The slot holds no state and reads no signal (compare-then-write
- * belongs to the latch, not the hook). Its ONLY production registration is
- * 62-04 T2's Studio mount effect; register null to detach.
- */
-let pathEditExitHook: (() => void) | null = null;
-
-/** Register the ONE path-edit exit hook, or clear it with null. */
-export function registerPathEditExitHook(hook: (() => void) | null): void {
-  pathEditExitHook = hook;
-}
-
-/**
  * 62-UAT: the ONE painted-curve entrance slot. The double-click adapter lives
  * in a canvas leaf that cannot reach the Studio's durable-base arm, so the
  * Studio registers its `enterPaintedCurve` action here. A null slot fails
@@ -138,11 +123,9 @@ export function requestPaintedCurveEntrance(ids: readonly number[]): boolean {
 
 /**
  * Close path edit. Re-arms nothing and drops the anchor selection with the
- * edit. The exit hook runs only on a real open -> closed transition: a
- * repeated call is not an exit and notifies nobody.
+ * edit. Compare-then-write: a repeated call notifies nobody.
  */
 export function exitPathEdit(): void {
-  const transitioned = writeIfChanged(pathEditMutationId, null);
+  writeIfChanged(pathEditMutationId, null);
   clearVectorAnchorSelection();
-  if (transitioned && pathEditExitHook !== null) pathEditExitHook();
 }

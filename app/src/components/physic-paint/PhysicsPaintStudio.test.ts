@@ -6589,18 +6589,16 @@ describe('62-02 painted-curve entry and conversion admission in the Studio', () 
     const commitAt = studio.indexOf(COMMIT_START);
     expect(readAt, 'readCurveEntry exists').toBeGreaterThan(-1);
     expect(enterAt, 'enterPaintedCurve exists').toBeGreaterThan(readAt);
-    expect(commitAt).toBeGreaterThan(enterAt);
+    expect(commitAt, 'the shared commit stays after both').toBeGreaterThan(enterAt);
     // The imports the two callbacks need are the model's pure predicates and
-    // the 62-01 bracket module — no record, engine or save seam is added.
+    // the KEPT fitter — no record, engine or save seam is added.
     expect(studio).toContain('  admitsPathEditWrite,');
     expect(studio).toContain('  resolvePaintedCurveEligibility,');
     expect(studio).toContain('  type CurveEntryState,');
-    // 62-04 T2: `endCurveBracket` joins the same import — the ONE production
-    // registration of the exit hook is exactly what the bracket module needs;
-    // no record, engine or save seam is added.
-    expect(studio).toContain(
-      "import { beginCurveWireframeBracket, beginPaintedCurveSession, endCurveBracket } from './view/vectorPathCurveBracket';",
-    );
+    expect(studio).toContain("import { fitVectorPathAnchors } from './view/vectorPathFit';");
+    // quick 261116-qhm: the painted-curve bracket module is deleted, so no
+    // import of it may survive.
+    expect(studio).not.toContain('vectorPathCurveBracket');
   });
 
   it('classifies ONE recorded stroke on the render-body read and never fits there', () => {
@@ -6615,30 +6613,73 @@ describe('62-02 painted-curve entry and conversion admission in the Studio', () 
     expect(read).not.toContain('.value');
   });
 
-  it('fits lazily on entry: arm FIRST, then hold the fit, bracket the view and open the latch', () => {
+  it('converts on entry: arm, re-read, fit, await the ONE writer, then open the latch', () => {
     const enter = regionOf(studio, ENTER_START, COMMIT_START);
     // The entry refuses a missing or non-painted stroke before any work.
     expect(enter).toContain(
       "if (resolvePaintedCurveEligibility(stroke).kind !== 'painted') return false;",
     );
     const armAt = enter.indexOf('const armed = await armDraftBase();');
-    const fitAt = enter.indexOf('const session = beginPaintedCurveSession(stroke);');
-    const bracketAt = enter.indexOf('beginCurveWireframeBracket();');
+    const rereadAt = enter.indexOf('const liveStroke = getRecordedAquarelleStroke(ids[0]!);');
+    const fitAt = enter.indexOf('const fitted = fitVectorPathAnchors(liveStroke.points);');
+    const refAt = enter.indexOf('const commit = aquarellePathEditCommitRef.current;');
+    const writeAt = enter.indexOf('const editId = await commit(ids[0]!, fitted);');
     const latchAt = enter.indexOf('vectorPathSession.enterPathEdit(String(ids[0]!));');
-    expect(armAt, 'the base arm is awaited').toBeGreaterThan(-1);
-    expect(fitAt, 'the fit runs on entry').toBeGreaterThan(armAt);
-    expect(bracketAt).toBeGreaterThan(fitAt);
-    expect(latchAt).toBeGreaterThan(bracketAt);
-    expect(enter).toContain('if (session === null) return false;');
+    expect(armAt, 'the base arm is awaited FIRST').toBeGreaterThan(-1);
+    expect(rereadAt, 'the record is re-read after the await (WR-03)').toBeGreaterThan(armAt);
+    expect(fitAt, 'the fit reads the RE-READ stroke samples').toBeGreaterThan(rereadAt);
+    expect(refAt, 'the writer is reached through the shipped ref').toBeGreaterThan(fitAt);
+    expect(writeAt, 'the ONE conversion write is awaited').toBeGreaterThan(refAt);
+    expect(latchAt, 'the latch opens ONLY after the write resolves').toBeGreaterThan(writeAt);
     expect(enter).toContain('return true;');
-    // A refused arm fails closed: fixed copy through the shipped capsule, no
-    // fit held, no bracket, no latch.
-    const refusal = enter.slice(enter.indexOf('if (!armed) {'), fitAt);
+    // A refused arm fails closed: fixed copy through the shipped capsule and
+    // nothing fitted, converted or opened.
+    const refusal = enter.slice(enter.indexOf('if (!armed) {'), rereadAt);
     expect(refusal).toContain('setApplyMessage(DRAFT_ARM_REFUSAL_MESSAGE);');
     expect(refusal).toContain("setApplyStatus('error');");
     expect(refusal).toContain('return false;');
-    expect(refusal).not.toContain('beginPaintedCurveSession');
-    expect(refusal).not.toContain('beginCurveWireframeBracket');
+    expect(refusal).not.toContain('fitVectorPathAnchors');
+    expect(refusal).not.toContain('enterPathEdit');
+    // A concurrent conversion ends this entry silently: the re-read verdict
+    // must still be `painted` before anything is fitted.
+    expect(enter).toContain(
+      "if (resolvePaintedCurveEligibility(liveStroke).kind !== 'painted') return false;",
+    );
+  });
+
+  it('fails closed on the shipped copy and opens no latch when the conversion does not resolve', () => {
+    const enter = regionOf(studio, ENTER_START, COMMIT_START);
+    // Fewer than two fitted anchors: the shipped disabled reason, never an
+    // invented line.
+    const degenerate = regionOf(
+      enter,
+      'if (fitted.length < 2) {',
+      'const commit = aquarellePathEditCommitRef.current;',
+    );
+    expect(degenerate).toContain('setApplyMessage(PATH_EDIT_DEGENERATE_DISABLED_REASON);');
+    expect(degenerate).toContain("setApplyStatus('error');");
+    expect(degenerate).toContain('setLastError(PATH_EDIT_DEGENERATE_DISABLED_REASON);');
+    expect(degenerate).toContain('return false;');
+    expect(degenerate).not.toContain('enterPathEdit');
+    // A not-yet-assigned writer opens nothing and publishes nothing.
+    expect(enter).toContain('if (commit === null) return false;');
+    // A null edit id publishes the shipped rejection ONLY when the writer does
+    // not own a more specific failure copy — and never opens the latch.
+    const nullId = regionOf(enter, 'if (editId === null) {', 'return true;');
+    expect(nullId).toContain('if (!scriptApplyRefusalOwnedRef.current) {');
+    expect(nullId).toContain('setApplyMessage(VECTOR_PATH_REJECTION_MESSAGE);');
+    expect(nullId).toContain("setApplyStatus('error');");
+    expect(nullId).toContain('setLastError(VECTOR_PATH_REJECTION_MESSAGE);');
+    expect(nullId).toContain('return false;');
+    // The ONE latch write sits AFTER the null-id refusal.
+    expect(enter.split('vectorPathSession.enterPathEdit(').length - 1).toBe(1);
+    expect(enter.indexOf('vectorPathSession.enterPathEdit(')).toBeGreaterThan(
+      enter.indexOf('if (editId === null) {'),
+    );
+    // The deps list names the stable arm and the three catalog writers.
+    expect(enter).toContain(
+      '}, [armDraftBase, setApplyMessage, setApplyStatus, setLastError]);',
+    );
   });
 
   it('wires both members into the bundle body and its memo dependency list', () => {
@@ -6672,41 +6713,26 @@ describe('62-02 painted-curve entry and conversion admission in the Studio', () 
     expect(admitsPathEditWrite({ ...anchorlessBrushFixture, points: [] })).toBe(false);
   });
 
-  // quick 261116-qhm — Step 1 reproduction (TEMPORARY; Task 3 replaces it with
-  // the post-fix pins). The FIRST path-edit session of a painted stroke never
-  // shows pigment while a vertex is dragged because the entry bracket forces
-  // the construction latches: `beginCurveWireframeBracket` calls
-  // `setWireframeMode(true)`, which forces Draft on, so every following commit
-  // takes the `if (draft || wireframe)` deferred branch — record + dirty
-  // pixels, NO bake — and only the exit settle ever renders. The chain is
-  // closed at HEAD; the live confirmation is UAT row 2, which the user runs.
-  it('quick 261116-qhm — the entry bracket forces the deferred commit that only the exit settle renders', () => {
+  // quick 261116-qhm: the entry is a plain vector session. The removed bracket
+  // used to force wireframe (and therefore Draft) on, which routed every
+  // following commit through the deferred branch so only the exit settle ever
+  // rendered. The entry now writes no view latch at all — the deferred route
+  // stays reachable ONLY through the user's own manual wireframe/Draft.
+  it('writes no wireframe or Draft latch from the entry', () => {
     const enter = regionOf(studio, ENTER_START, COMMIT_START);
-    const bracketAt = enter.indexOf('beginCurveWireframeBracket();');
-    const latchAt = enter.indexOf('vectorPathSession.enterPathEdit(');
-    expect(bracketAt, 'the entry opens the wireframe bracket').toBeGreaterThan(-1);
-    expect(latchAt, 'the bracket precedes the latch').toBeGreaterThan(bracketAt);
-
-    const bracket = readFileSync(
-      fileURLToPath(new URL('./view/vectorPathCurveBracket.ts', import.meta.url)),
-      'utf8',
-    );
-    const captureAt = bracket.indexOf('const held = curveEntrySnapshot.peek();');
-    const wireframeAt = bracket.indexOf('setWireframeMode(true);');
-    expect(captureAt, 'the bracket captures the pre-entry view FIRST').toBeGreaterThan(-1);
-    expect(wireframeAt, 'the bracket then forces the wireframe on').toBeGreaterThan(captureAt);
-
+    expect(enter).not.toContain('setWireframeMode');
+    expect(enter).not.toContain('setDraftMode');
+    expect(enter).not.toContain('beginCurveWireframeBracket');
+    // The shipped manual deferred route is untouched.
     const commit = regionOf(
       studio,
       COMMIT_START,
       'const handleAquarelleVectorPathEdit = useCallback(',
     );
     const deferredAt = commit.indexOf('if (draft || wireframe) {');
-    expect(deferredAt, 'the commit reads the forced latches').toBeGreaterThan(-1);
+    expect(deferredAt).toBeGreaterThan(-1);
     const applyAt = commit.indexOf('beginPathEditApply(', deferredAt);
-    expect(applyAt, 'the immediate bake follows the deferred branch').toBeGreaterThan(deferredAt);
-    // The deduction: the deferred branch records and returns BEFORE the arm,
-    // so every vertex commit defers and only the exit settle renders.
+    expect(applyAt).toBeGreaterThan(deferredAt);
     expect(commit.slice(deferredAt, applyAt)).toContain('return editId;');
   });
 
@@ -8090,7 +8116,7 @@ describe('quick 261111-t74 — the selection brush patch stays one edit', () => 
 // arms nothing, and the Studio installs the ONE production exit-hook
 // registration beside the shipped mount reset so every exit restores the
 // pre-entry wireframe and Draft in-app.
-describe('62-04 the pending path-edit apply epoch and the ONE exit-hook registration', () => {
+describe('62-04 the pending path-edit apply epoch', () => {
   function regionOf(source: string, startMarker: string, endMarker: string): string {
     const start = source.indexOf(startMarker);
     expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
@@ -8163,23 +8189,22 @@ describe('62-04 the pending path-edit apply epoch and the ONE exit-hook registra
     expect(commit.indexOf('return editId;', deferredAt)).toBeLessThan(commit.indexOf('beginPathEditApply('));
   });
 
-  it('installs the ONE production exit-hook registration beside the mount reset', () => {
-    // ONE registration call site ...
-    expect(studio.split('registerPathEditExitHook(() =>').length - 1).toBe(1);
-    // ... and ONE detach in the cleanup, so `registerPathEditExitHook(`
-    // occurs exactly twice: the registration and its `(null)` cleanup.
-    expect(studio.split('registerPathEditExitHook(').length - 1).toBe(2);
-    expect(studio.split('registerPathEditExitHook(null)').length - 1).toBe(1);
+  it('holds no exit-hook registration and keeps the ONE painted entrance registration', () => {
+    // quick 261116-qhm: the exit funnel left with the held fit and the ghost —
+    // no exit hook, no bracket teardown survives in the Studio.
+    expect(studio).not.toContain('registerPathEditExitHook');
+    expect(studio).not.toContain('endCurveBracket');
+    // ONE registration call site and ONE `(null)` detach in the cleanup.
+    expect(studio.split('registerPaintedCurveEntrance(enterPaintedCurve)').length - 1).toBe(1);
+    expect(studio.split('registerPaintedCurveEntrance(null)').length - 1).toBe(1);
     // Registered from a DEDICATED effect beside the mount reset — never inside
     // it: the mount reset keeps `[]` deps so `resetForStudioOpen` runs only on
-    // mount. The bracket is the shipped single-flight settle, adopted, and its
-    // promise carries a handler so a rejected settle never becomes an unhandled
-    // rejection on the `void` call (WR-01).
+    // mount.
     expect(studio).toMatch(
-      /useEffect\(\(\) => \{\s*registerPathEditExitHook\(\(\) => \{[\s\S]*?void endCurveBracket\(\{ settle: settleDraftScript \}\)\.catch\(\(error\) => \{[\s\S]*?\}\);\s*\}\);\s*return \(\) => registerPathEditExitHook\(null\);\s*\}, \[settleDraftScript\]\);/,
+      /useEffect\(\(\) => \{\s*registerPaintedCurveEntrance\(enterPaintedCurve\);\s*return \(\) => registerPaintedCurveEntrance\(null\);\s*\}, \[enterPaintedCurve\]\);/,
     );
     const resetAt = studio.indexOf('vectorPathSession.resetForStudioOpen();');
-    const registerAt = studio.indexOf('registerPathEditExitHook(() =>');
+    const registerAt = studio.indexOf('registerPaintedCurveEntrance(enterPaintedCurve);');
     expect(resetAt).toBeGreaterThan(-1);
     expect(registerAt).toBeGreaterThan(resetAt);
   });

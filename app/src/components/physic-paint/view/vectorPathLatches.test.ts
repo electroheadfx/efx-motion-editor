@@ -8,6 +8,8 @@
  *   - `exitVectorPen` / `exitPathEdit` are compare-then-write — 1000 identical
  *     calls notify once (`efx-preact-reactivity` rule 3)
  *   - `exitPathEdit` drops the anchor selection with the edit
+ *   - quick 261116-qhm: the path-edit exit hook is gone — `exitPathEdit` only
+ *     writes the latch and the selection
  */
 import { describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
@@ -18,6 +20,7 @@ import {
   vectorAnchorSelection,
   vectorPenActive,
 } from './vectorPathLatches';
+import * as vectorPathLatchesSurface from './vectorPathLatches';
 import {
   pathEditMutationId as sessionPathEditMutationId,
   vectorAnchorSelection as sessionVectorAnchorSelection,
@@ -64,6 +67,12 @@ describe('vectorPathLatches — one copy of each latch (61-17)', () => {
       exitVectorPen();
       exitPathEdit();
     }
+  });
+
+  it('exposes no path-edit exit hook (removed with the held fit and the ghost)', () => {
+    expect(
+      (vectorPathLatchesSurface as Record<string, unknown>)['registerPathEditExitHook'],
+    ).toBeUndefined();
   });
 
   it('exitPathEdit drops the anchor selection with the edit', () => {

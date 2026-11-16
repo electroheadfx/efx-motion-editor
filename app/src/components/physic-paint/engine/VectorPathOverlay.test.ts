@@ -66,11 +66,6 @@ import {
   vectorPenActive,
   type VectorDraftAnchor,
 } from '../view/vectorPathSession';
-import {
-  beginPaintedCurveSession,
-  clearCurveFitSession,
-  curveFitSession,
-} from '../view/vectorPathCurveBracket';
 import { registerPaintedCurveEntrance } from '../view/vectorPathLatches';
 import {
   DEFAULT_VECTOR_PATH_CURVE_MODE,
@@ -1781,11 +1776,11 @@ describe('61-22 G-11 — the selected-anchor ring', () => {
     expect(block).toContain('fill="none"');
     expect(block).toContain('strokeWidth={1.5}');
     expect(block).toContain('stroke={OUTLINE_DARK}');
-    // The palette is the shipped five literals plus 62-03's documented ghost
-    // slate (D-06) — the chrome introduces none else.
+    // The palette is the shipped five literals — quick 261116-qhm removed the
+    // ghost slate with the ghost itself, so the chrome introduces none else.
     const hexes = [...source.matchAll(/'#[0-9a-fA-F]{3,6}'/g)].map((match) => match[0]);
     expect(new Set(hexes)).toEqual(
-      new Set(["'#38bdf8'", "'#111111'", "'#ffffff'", "'#f59e0b'", "'#f97316'", "'#94a3b8'"]),
+      new Set(["'#38bdf8'", "'#111111'", "'#ffffff'", "'#f59e0b'", "'#f97316'"]),
     );
   });
 
@@ -2502,18 +2497,18 @@ describe('61-31 G-20 - the overlay draws and edits through each path curve mode'
     expect(source).toContain(
       'let editTargetCurveMode: AquarelleCurveMode = DEFAULT_AQUARELLE_CURVE_MODE;',
     );
-    const resolutionAt = source.indexOf('if (String(mutationId) !== editMutationId) continue;');
+    const resolutionAt = source.indexOf('let editTargetMutationId: number | null = null;');
     expect(resolutionAt).toBeGreaterThan(-1);
     const resolutionBlock = source.slice(
       resolutionAt,
       source.indexOf('useEffect(() => {', resolutionAt),
     );
-    // 62-UAT: a record that owns anchors reads its own mode; a pre-conversion
-    // fit reads the vector-edit default the first commit stores.
+    // quick 261116-qhm: the record is the only anchor source (the conversion
+    // commits at entry), so the target reads its OWN stored mode directly.
     expect(resolutionBlock).toContain(
-      'editTargetCurveMode = candidateAnchors !== undefined && candidateAnchors.length > 0',
+      'editTargetCurveMode = resolveAquarelleCurveMode(candidate.curveMode);',
     );
-    expect(resolutionBlock).toContain(': DEFAULT_VECTOR_PATH_CURVE_MODE;');
+    expect(resolutionBlock).not.toContain('DEFAULT_VECTOR_PATH_CURVE_MODE');
 
     // The recorded loop: each stroke's OWN mode, never the edit target's — a
     // spline path reads as a spline while another stroke is being edited.
@@ -2523,7 +2518,7 @@ describe('61-31 G-20 - the overlay draws and edits through each path curve mode'
     expect(recordedAt).toBeGreaterThan(-1);
     const recordedBlock = source.slice(recordedAt, source.indexOf('recorded.push(drawn);', recordedAt));
     expect(recordedBlock).toContain('resolveAquarelleCurveMode(stroke.curveMode)');
-    expect(recordedBlock).toContain('DEFAULT_VECTOR_PATH_CURVE_MODE');
+    expect(recordedBlock).not.toContain('DEFAULT_VECTOR_PATH_CURVE_MODE');
     expect(recordedBlock).not.toContain('editTargetCurveMode');
 
     // The draft: the DRAW default, because a new path is recorded spline.
@@ -2944,37 +2939,15 @@ describe('261112-i6d — Alt+click a vertex toggles its corner', () => {
   });
 });
 
-// 62-03 — the armed held fit becomes the pre-conversion edit target of the ONE
-// Phase 61 overlay (D-01, D-03, D-06). The session holds the fitted anchors;
-// the record still carries none until the first committed gesture, so the
-// overlay resolves the fit exactly like record anchors and writes nothing.
-describe('62-03 — the armed held fit in the ONE overlay', () => {
+// 62-03 — the construction-view envelope of the ONE Phase 61 overlay (D-09).
+// quick 261116-qhm removed the held fit and the ghost with the entry bracket:
+// the record is now the ONLY anchor source, so only the envelope laws remain.
+describe('62-03 — the construction-view envelope in the ONE overlay', () => {
   const EDIT_ID = 62003;
 
   /** An anchorless painted stroke: two recorded samples, no anchors. */
   function paintedStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
     return vectorStroke({ mutationId: EDIT_ID, anchors: undefined, ...overrides });
-  }
-
-  /** The exact `x,y x,y` spine string `renderPath` draws for one mode. */
-  function spineOf(anchors: readonly VectorAnchor[], mode: 'bezier' | 'spline'): string {
-    return evaluateAquarellePath(normaliseVectorAnchors(anchors), mode)
-      .points.map((point) => {
-        const at = uvToScreen(point, WIDTH, HEIGHT);
-        return `${at.x},${at.y}`;
-      })
-      .join(' ');
-  }
-
-  function dragHandlers(root: TestVNode): {
-    move: (event: unknown) => void;
-    up: (event: unknown) => void;
-  } {
-    const move = root.props['onPointerMove'] as ((e: unknown) => void) | undefined;
-    const up = root.props['onPointerUp'] as ((e: unknown) => void) | undefined;
-    expect(move, 'overlay root has no pointer-move handler').toBeTypeOf('function');
-    expect(up, 'overlay root has no pointer-up handler').toBeTypeOf('function');
-    return { move: move!, up: up! };
   }
 
   beforeEach(() => {
@@ -2984,257 +2957,13 @@ describe('62-03 — the armed held fit in the ONE overlay', () => {
 
   afterEach(() => {
     exitPathEdit();
-    clearCurveFitSession();
     resetAquarelleRecordState();
     resetForStudioOpen();
   });
 
-  it('draws one spine and one marker per fitted anchor for an armed held fit, and turns the surface on', () => {
-    const stroke = paintedStroke();
-    const fit = beginPaintedCurveSession(stroke);
-    expect(fit).not.toBeNull();
-    const anchors = fit!.anchors;
-    expect(anchors.length).toBeGreaterThanOrEqual(2);
-    enterPathEdit(String(EDIT_ID));
-
-    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]])));
-    expect(root).not.toBeNull();
-    // The armed fit owns the surface exactly like a record-anchored target.
-    expect(root!.props['style']).toMatchObject({ pointerEvents: 'auto' });
-    expect(root!.props['onPointerDown']).toBeTypeOf('function');
-
-    const spines = nodesWithTestId(root, 'vector-path-spine');
-    expect(spines).toHaveLength(1);
-    // 62-UAT: the held fit previews in the mode its first commit stores.
-    expect(String(spines[0]!.props['points'])).toBe(spineOf(anchors, 'spline'));
-    expect(nodesWithTestId(root, 'vector-path-anchor')).toHaveLength(anchors.length);
-  });
-
-  it('leaves an anchorless painted stroke undrawn and inert without an armed fit', () => {
+  it('draws nothing for an anchorless painted stroke — the record is the only anchor source', () => {
     enterPathEdit(String(EDIT_ID));
     expect(VectorPathOverlay(propsWith([[EDIT_ID, paintedStroke()]]))).toBeNull();
-  });
-
-  it('commits ONE onPathEdit for a fitted-anchor drag and writes no record state', () => {
-    const stroke = paintedStroke();
-    const fit = beginPaintedCurveSession(stroke)!;
-    enterPathEdit(String(EDIT_ID));
-    const revisionBefore = aquarelleStrokesRevision.value;
-    const onPathEdit = vi.fn();
-    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
-    const { move, up } = dragHandlers(root);
-
-    // 62-UAT: the first press selects; the second starts the drag.
-    press(root, clickAt(0.2, 0.5));
-    press(root, clickAt(0.2, 0.5));
-    move(clickAt(0.26, 0.55));
-    up(clickAt(0.26, 0.55));
-
-    expect(onPathEdit).toHaveBeenCalledTimes(1);
-    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
-    expect(mutationId).toBe(EDIT_ID);
-    expect(anchors).toHaveLength(fit.anchors.length);
-    expect(anchors[0]!.x).toBeCloseTo(0.26, 9);
-    expect(anchors[0]!.y).toBeCloseTo(0.55, 9);
-    expect(anchors[1]).toEqual(fit.anchors[1]);
-    // The overlay owns gesture only: drawing and dragging write no record.
-    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
-  });
-
-  it('inserts on a fitted spine click and commits nothing on empty space', () => {
-    const stroke = paintedStroke();
-    const fit = beginPaintedCurveSession(stroke)!;
-    enterPathEdit(String(EDIT_ID));
-    const onPathEdit = vi.fn();
-    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
-
-    // Halfway between the two fitted anchors, on the chord — no anchor wins.
-    press(root, clickAt(0.5, 0.5));
-    expect(onPathEdit).toHaveBeenCalledTimes(1);
-    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
-    expect(mutationId).toBe(EDIT_ID);
-    expect(anchors).toHaveLength(fit.anchors.length + 1);
-    expect(vectorAnchorSelection.peek()).toEqual([1]);
-
-    press(root, clickAt(0.2, 0.9));
-    expect(onPathEdit).toHaveBeenCalledTimes(1);
-  });
-
-  it('deletes a fitted anchor through the getHeldFit seam in ONE onPathEdit', () => {
-    const stroke = paintedStroke();
-    const fit = beginPaintedCurveSession(stroke)!;
-    enterPathEdit(String(EDIT_ID));
-    setVectorAnchorSelection([0]);
-    const onPathEdit = vi.fn();
-    const event = { key: 'Delete', preventDefault: vi.fn(), stopPropagation: vi.fn() };
-    handleVectorPathEditKey(event, {
-      getRecordedStrokes: () => new Map([[EDIT_ID, stroke]]),
-      onPathEdit,
-      getHeldFit: (id) => (String(fit.mutationId) === id
-        ? { mutationId: fit.mutationId, anchors: fit.anchors }
-        : null),
-    });
-
-    expect(onPathEdit).toHaveBeenCalledTimes(1);
-    const [mutationId, anchors] = onPathEdit.mock.calls[0] as [number, readonly VectorAnchor[]];
-    expect(mutationId).toBe(EDIT_ID);
-    expect(anchors).toHaveLength(fit.anchors.length - 1);
-    expect(anchors[0]).toEqual(fit.anchors[1]);
-    expect(event.preventDefault).toHaveBeenCalledTimes(1);
-    expect(vectorAnchorSelection.peek()).toEqual([]);
-
-    // Without the seam the pre-conversion Delete stays the shipped no-op.
-    setVectorAnchorSelection([0]);
-    const withoutSeam = vi.fn();
-    handleVectorPathEditKey(event, {
-      getRecordedStrokes: () => new Map([[EDIT_ID, stroke]]),
-      onPathEdit: withoutSeam,
-    });
-    expect(withoutSeam).not.toHaveBeenCalled();
-  });
-
-  it('resolves the held fit again on a re-render while the record still carries no anchors', () => {
-    const stroke = paintedStroke();
-    const fit = beginPaintedCurveSession(stroke)!;
-    enterPathEdit(String(EDIT_ID));
-    const onPathEdit = vi.fn();
-    const first = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
-    press(first, clickAt(0.5, 0.5));
-    expect(onPathEdit).toHaveBeenCalledTimes(1);
-
-    // The commit-shaped call never writes the record (the overlay owns gesture
-    // only), so the next render must still resolve the held fit.
-    const second = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
-    const spines = nodesWithTestId(second, 'vector-path-spine');
-    expect(spines).toHaveLength(1);
-    // 62-UAT: the held fit reads the mode its first commit will store.
-    expect(String(spines[0]!.props['points'])).toBe(spineOf(fit.anchors, 'spline'));
-  });
-
-  it('draws the held fit in the vector-edit default (Spline), never the record’s absent mode', () => {
-    // All-auto fitted anchors evaluate identically in both modes, so the
-    // session carries one authored-handle anchor here: a wrong mode is then
-    // visible in the drawn spine itself.
-    const MODE_ANCHORS: readonly VectorAnchor[] = [
-      { x: 0.2, y: 0.2, kind: 'bezier', in: { x: 0.1, y: 0.2 }, out: { x: 0.35, y: 0.9 } },
-      auto(0.8, 0.2),
-    ];
-    const stroke = paintedStroke();
-    // 62-UAT: the first commit on an anchorless painted stroke mints the
-    // vector-edit default (Spline), so the pre-conversion preview must read
-    // that SAME mode — never the painted stroke's absent (Bézier) key.
-    expect(DEFAULT_VECTOR_PATH_CURVE_MODE).toBe('spline');
-    curveFitSession.value = {
-      mutationId: EDIT_ID,
-      anchors: MODE_ANCHORS,
-      sourcePoints: stroke.points,
-    };
-    enterPathEdit(String(EDIT_ID));
-
-    const splineTree = render(
-      VectorPathOverlay(propsWith([[EDIT_ID, paintedStroke({ curveMode: 'spline' })]])),
-    );
-    const splineSpines = nodesWithTestId(splineTree, 'vector-path-spine');
-    expect(splineSpines).toHaveLength(1);
-    expect(String(splineSpines[0]!.props['points'])).toBe(spineOf(MODE_ANCHORS, 'spline'));
-
-    // A painted stroke with NO stored mode still previews Spline — the mode
-    // the conversion writes, not the record's current Bézier default.
-    const absentModeTree = render(VectorPathOverlay(propsWith([[EDIT_ID, paintedStroke()]])));
-    const absentModeSpines = nodesWithTestId(absentModeTree, 'vector-path-spine');
-    expect(absentModeSpines).toHaveLength(1);
-    expect(String(absentModeSpines[0]!.props['points'])).toBe(spineOf(MODE_ANCHORS, 'spline'));
-    // The two evaluations genuinely differ, so the assertions above have teeth.
-    expect(spineOf(MODE_ANCHORS, 'spline')).not.toBe(spineOf(MODE_ANCHORS, 'bezier'));
-  });
-
-  // --- Task 2: the ghost of the original recorded spine (D-06) ------------
-
-  function recordedSpineOf(points: AquarelleStroke['points']): string {
-    return points!
-      .map((point) => {
-        const at = uvToScreen(point, WIDTH, HEIGHT);
-        return `${at.x},${at.y}`;
-      })
-      .join(' ');
-  }
-
-  it('draws the original recorded spine as a ghost beneath the fitted path for the session', () => {
-    const stroke = paintedStroke();
-    beginPaintedCurveSession(stroke);
-    enterPathEdit(String(EDIT_ID));
-
-    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]])))!;
-    const ghosts = nodesWithTestId(root, 'vector-path-curve-ghost');
-    expect(ghosts).toHaveLength(1);
-    const ghost = ghosts[0]!;
-    expect(String(ghost.props['points'])).toBe(recordedSpineOf(stroke.points));
-    expect(ghost.type).toBe('polyline');
-    expect(ghost.props['fill']).toBe('none');
-    expect(ghost.props['stroke']).toBe('#94a3b8');
-    expect(ghost.props['strokeOpacity']).toBe(0.45);
-    expect(ghost.props['strokeWidth']).toBe(1);
-    expect(ghost.props['strokeDasharray']).toBe('3 3');
-    expect(ghost.props['vectorEffect']).toBe('non-scaling-stroke');
-  });
-
-  it('removes the ghost the moment the curve session clears', () => {
-    const stroke = paintedStroke();
-    beginPaintedCurveSession(stroke);
-    enterPathEdit(String(EDIT_ID));
-    expect(
-      nodesWithTestId(render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]]))), 'vector-path-curve-ghost'),
-    ).toHaveLength(1);
-
-    clearCurveFitSession();
-    const after = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]])));
-    expect(nodesWithTestId(after, 'vector-path-curve-ghost')).toHaveLength(0);
-    // The record still has no anchors, so the fitted path is gone too.
-    expect(after).toBeNull();
-  });
-
-  it('draws no ghost for a Phase 61 vector stroke edited with no session', () => {
-    const stroke = vectorStroke({ mutationId: EDIT_ID, anchors: [auto(0.2, 0.5), auto(0.8, 0.5)] });
-    enterPathEdit(String(EDIT_ID));
-    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]])));
-    expect(nodesWithTestId(root, 'vector-path-spine')).toHaveLength(1);
-    expect(nodesWithTestId(root, 'vector-path-curve-ghost')).toHaveLength(0);
-  });
-
-  it('keeps the frozen original ghost after a commit-shaped gesture inside the session', () => {
-    const stroke = paintedStroke();
-    beginPaintedCurveSession(stroke);
-    enterPathEdit(String(EDIT_ID));
-    const onPathEdit = vi.fn();
-    const first = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
-    press(first, clickAt(0.5, 0.5));
-    expect(onPathEdit).toHaveBeenCalledTimes(1);
-
-    // The session snapshot is never rewritten by a commit, so the ghost still
-    // shows where the hand painted — not the edited spine.
-    const second = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]], { onPathEdit })))!;
-    const ghosts = nodesWithTestId(second, 'vector-path-curve-ghost');
-    expect(ghosts).toHaveLength(1);
-    expect(String(ghosts[0]!.props['points'])).toBe(recordedSpineOf(stroke.points));
-  });
-
-  it('drops a ghost whose every sample projects to a non-finite value', () => {
-    const stroke = paintedStroke();
-    const fit = beginPaintedCurveSession(stroke)!;
-    curveFitSession.value = {
-      mutationId: EDIT_ID,
-      anchors: fit.anchors,
-      sourcePoints: [
-        { x: Number.NaN, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0 },
-        { x: 0.8, y: Number.NaN, p: 1, tx: 0, ty: 0, tw: 0 },
-      ],
-    };
-    enterPathEdit(String(EDIT_ID));
-
-    const root = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]])))!;
-    // The fitted path still draws; only the malformed ghost is dropped.
-    expect(nodesWithTestId(root, 'vector-path-spine')).toHaveLength(1);
-    expect(nodesWithTestId(root, 'vector-path-curve-ghost')).toHaveLength(0);
   });
 
   // --- D-09: the construction-view envelope is the recorded pressure band ---
@@ -3303,24 +3032,16 @@ describe('62-03 — the armed held fit in the ONE overlay', () => {
 
   it('draws the recorded pressure band as the construction-view envelope', () => {
     wireframeMode.value = true;
-    const before = pressureStroke(EDIT_ID);
-    beginPaintedCurveSession(before);
-    enterPathEdit(String(EDIT_ID));
-
-    // Before the first commit the held fit supplies the anchors; the envelope
-    // is still the stroke's OWN recorded footprint.
-    const heldFit = render(VectorPathOverlay(propsWith([[EDIT_ID, before]])));
-    expect(envelopeDOf(heldFit)).toBe(bandRingOf(before));
-
-    // After the first commit the record carries anchors; the same samples keep
-    // the same band, so converting a stroke never changes its drawn footprint.
-    const after = pressureStroke(EDIT_ID, {
+    // quick 261116-qhm: the conversion commits at entry, so the overlay only
+    // ever sees a record-anchored stroke. Its OWN recorded samples still drive
+    // the construction-view footprint.
+    const stroke = pressureStroke(EDIT_ID, {
       anchors: [auto(0.2, 0.5), auto(0.5, 0.5), auto(0.8, 0.5)],
     });
-    const converted = render(VectorPathOverlay(propsWith([[EDIT_ID, after]])));
-    expect(envelopeDOf(converted)).toBe(bandRingOf(after));
+    const tree = render(VectorPathOverlay(propsWith([[EDIT_ID, stroke]])));
+    expect(envelopeDOf(tree)).toBe(bandRingOf(stroke));
     // The pin has teeth: the band ring is NOT the anchor-width ring.
-    expect(bandRingOf(after)).not.toBe(anchorRingOf(after));
+    expect(bandRingOf(stroke)).not.toBe(anchorRingOf(stroke));
   });
 
   it('keeps the shipped anchor-width envelope for the all-sentinel mouse profile', () => {

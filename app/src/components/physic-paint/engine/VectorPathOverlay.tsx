@@ -20,13 +20,10 @@
 //  as ONE `onPathEdit(mutationId, anchors)` call; the Studio owns
 //  the history entry and the refusal (61-10).
 //
-//  62-03 (D-06): an armed curve-bracket fit is the PRE-CONVERSION
-//  edit target — an anchorless painted stroke draws and edits
-//  through the held anchors until a committed gesture writes them
-//  to the record. The session is read-only here: ONE render-body
-//  read of `curveFitSession`, `.peek()` in the Delete seam. The
-//  target's mode is `resolveAquarelleCurveMode(stroke.curveMode)`
-//  for BOTH anchor sources — never the draw-time mint.
+//  quick 261116-qhm: the record is the ONLY edit-target anchor
+//  source. A painted stroke converts at entry (the Studio's ONE
+//  writer), so an anchorless stroke draws nothing here and no
+//  held-fit or ghost display state exists.
 //
 //  GEOMETRY: every curve, handle and width factor comes from the
 //  61-02 spine module through `vectorPathHandles`; every chrome
@@ -99,7 +96,6 @@ import {
   type VectorDrawDraft,
   type VectorDraftAnchor,
 } from '../view/vectorPathSession';
-import { curveFitSession, type PaintedCurveSession } from '../view/vectorPathCurveBracket';
 import {
   buildStrokeBandCached,
   hasRecordedPressureProfile,
@@ -122,15 +118,6 @@ const SELECTED_ANCHOR_COLOR = '#f97316';
 /** The handle CONNECTOR's opacity — the dot itself stays solid (§6 item 5). */
 const HANDLE_OPACITY = 0.6;
 const SPINE_STROKE_PX = 1.5;
-/**
- * 62-03 (D-06): the ghost of the ORIGINAL recorded spine, drawn beneath the
- * fitted path for the whole curve session. A neutral slate that must read over
- * both paper and paint — never the selected accent, never the owned-control
- * amber, never the selection orange.
- */
-const CURVE_GHOST_SPINE_COLOR = '#94a3b8';
-const CURVE_GHOST_SPINE_OPACITY = 0.45;
-const CURVE_GHOST_STROKE_PX = 1;
 
 /** Immediately above the stroke overlay (40), below the brush cursor (50). */
 const VECTOR_PATH_Z_INDEX = 41;
@@ -342,15 +329,6 @@ export interface VectorPathEditKeyHandlers {
   readonly getRecordedStrokes: () => ReadonlyMap<number, AquarelleStroke>;
   readonly onPathEdit: (mutationId: number, anchors: readonly VectorAnchor[]) => void;
   /**
-   * 62-03 (D-06): the held fit is the anchor source while the record still
-   * carries none — a pre-conversion painted stroke. The host answers with the
-   * curve session's fit for the open edit's id, or null. Read at event time,
-   * so this seam never subscribes to the session signal.
-   */
-  readonly getHeldFit?: (
-    editMutationId: string,
-  ) => { readonly mutationId: number; readonly anchors: readonly VectorAnchor[] } | null;
-  /**
    * 61 CR-01 (residual): end any in-flight drag BEFORE this key's write lands.
    * A drag commits `anchorsAtStart` on release, so a Delete that arrives
    * mid-gesture would otherwise be undone by the pointerup.
@@ -381,18 +359,11 @@ export function handleVectorPathEditKey(
     if (String(mutationId) !== editMutationId) continue;
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     const recordAnchors = stroke.anchors;
-    if (recordAnchors !== undefined && recordAnchors.length > 0) {
-      targetMutationId = mutationId;
-      targetAnchors = recordAnchors;
-      break;
-    }
-    // 62-03 (D-06): a pre-conversion painted stroke has no record anchors
-    // until the first committed gesture; the held fit is the Delete source.
-    const held = handlers.getHeldFit?.(editMutationId) ?? null;
-    if (held !== null && held.mutationId === mutationId && held.anchors.length > 0) {
-      targetMutationId = mutationId;
-      targetAnchors = held.anchors;
-    }
+    // quick 261116-qhm: the record is the ONLY anchor source. A stroke with no
+    // record anchors ends the loop — there is nothing display-only to delete.
+    if (recordAnchors === undefined || recordAnchors.length === 0) break;
+    targetMutationId = mutationId;
+    targetAnchors = recordAnchors;
     break;
   }
   if (targetMutationId === null || targetAnchors === null) return;
@@ -493,28 +464,6 @@ function draftPreviewPointsOf(
       return `${at.x},${at.y}`;
     })
     .join(' ');
-}
-
-/**
- * 62-03 (D-06): the ghost polyline of the ORIGINAL recorded spine — the
- * session's recorded-points snapshot projected into layer pixels. Display-only:
- * a non-finite projection is dropped and fewer than two survivors draw nothing
- * (T-62-11), so a malformed sample can never break the render or reach the
- * document.
- */
-function curveGhostPointsOf(
-  curveFit: PaintedCurveSession | null,
-  width: number,
-  height: number,
-): string | null {
-  if (curveFit === null) return null;
-  const projected: string[] = [];
-  for (const point of curveFit.sourcePoints) {
-    const at = uvToScreen(point, width, height);
-    if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) continue;
-    projected.push(`${at.x},${at.y}`);
-  }
-  return projected.length < 2 ? null : projected.join(' ');
 }
 
 /**
@@ -917,14 +866,6 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   const editKeyHandlersRef = useRef<VectorPathEditKeyHandlers>({
     getRecordedStrokes: props.getRecordedStrokes,
     onPathEdit: props.onPathEdit,
-    // 62-03 (D-06): `.peek()` because this seam reads at event time — the
-    // held fit never becomes a subscription of the key handler.
-    getHeldFit: (id) => {
-      const fit = curveFitSession.peek();
-      return fit !== null && String(fit.mutationId) === id
-        ? { mutationId: fit.mutationId, anchors: fit.anchors }
-        : null;
-    },
   });
   // The in-flight anchor / handle drag (path edit). A ref so the pointer
   // handlers never re-render the surface mid-gesture; the visual preview
@@ -945,10 +886,6 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   const scale = finiteScale(physicsPaintCanvasZoom.effectiveScale.value);
   const draft = vectorDrawDraft.value;
   const editDrag = vectorPathEditDrag.value;
-  // 62-03 (D-06): the armed held fit — read ONCE here, this leaf being the
-  // narrow subscriber. It is the pre-conversion edit target while the record
-  // still carries no anchors for the painted stroke.
-  const curveFit = curveFitSession.value;
   // 61-13 (D-16): the session-only wireframe latch. This leaf is the narrow
   // subscriber; the Studio never reads it in its own render body.
   const wireframe = wireframeMode.value;
@@ -975,26 +912,13 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       if (String(mutationId) !== editMutationId) continue;
       if (isAquarelleStrokeDeleted(mutationId)) continue;
       const candidateAnchors = candidate.anchors;
-      // 62-03 (D-06): record anchors first, held fit second. An anchorless
-      // painted stroke resolves through its armed fit until a committed
-      // gesture writes anchors; the record always wins once it has them.
-      const heldAnchors = curveFit !== null && curveFit.mutationId === mutationId
-        ? curveFit.anchors
-        : null;
-      const resolutionAnchors = candidateAnchors !== undefined && candidateAnchors.length > 0
-        ? candidateAnchors
-        : heldAnchors;
-      if (resolutionAnchors === null || resolutionAnchors.length === 0) continue;
+      // quick 261116-qhm: the record is the ONLY edit-target anchor source —
+      // the conversion commits at entry, so an anchorless stroke never opens
+      // a session here. The stroke's OWN mode feeds the helpers (61-31 G-20).
+      if (candidateAnchors === undefined || candidateAnchors.length === 0) continue;
       editTargetMutationId = mutationId;
-      editTargetAnchors = resolutionAnchors;
-      // 61-31 (G-20) / 62-03 (D-01): ONE mode expression for both anchor
-      // sources. 62-UAT: a pre-conversion painted stroke has no stored mode;
-      // it previews and edits in the vector-edit default (Spline), the exact
-      // mode the first commit stores. A record that already owns anchors keeps
-      // its own mode — the Curve row owns that value.
-      editTargetCurveMode = candidateAnchors !== undefined && candidateAnchors.length > 0
-        ? resolveAquarelleCurveMode(candidate.curveMode)
-        : DEFAULT_VECTOR_PATH_CURVE_MODE;
+      editTargetAnchors = candidateAnchors;
+      editTargetCurveMode = resolveAquarelleCurveMode(candidate.curveMode);
       break;
     }
   }
@@ -1047,22 +971,16 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
     // The vector-ness law: no anchors = a hand-painted stroke, nothing drawn.
-    // The live drag preview replaces the edited stroke's own anchors; 62-03
-    // (D-06) draws an anchorless painted stroke through its armed held fit
-    // until a committed gesture writes anchors into the record.
+    // The live drag preview replaces the edited stroke's own anchors. quick
+    // 261116-qhm: the record is the ONLY anchor source — the conversion
+    // commits at entry, so an anchorless stroke draws nothing here.
     const recordAnchors = stroke.anchors !== undefined && stroke.anchors.length > 0
       ? stroke.anchors
       : null;
-    const heldFitAnchors = curveFit !== null && curveFit.mutationId === mutationId
-      ? curveFit.anchors
-      : null;
     const anchors = editDrag !== null && editDrag.mutationId === mutationId
       ? editDrag.anchors
-      : (recordAnchors ?? heldFitAnchors);
+      : recordAnchors;
     if (anchors === null || anchors.length === 0) continue;
-    // 62-UAT: a pre-conversion fit draws in the vector-edit default — the mode
-    // the first commit stores — never the absent-key Bézier.
-    const converting = recordAnchors === null && heldFitAnchors !== null;
     // 62-03 (D-09): a stroke whose record carries a real pressure profile shows
     // its painted footprint in the construction view. The band is display chrome
     // over the LAST COMMITTED samples — a live anchor drag previews anchors, not
@@ -1087,11 +1005,8 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
       // The open path edit is the live target and wears the louder chrome.
       selected: editMutationId !== null && String(mutationId) === editMutationId,
       // 61-31 (G-20): the stroke's OWN mode — a spline path reads as a spline
-      // even while another stroke is the edit target. A held pre-conversion
-      // fit instead reads the mode its first commit will store (62-UAT).
-      curveMode: converting
-        ? DEFAULT_VECTOR_PATH_CURVE_MODE
-        : resolveAquarelleCurveMode(stroke.curveMode),
+      // even while another stroke is the edit target.
+      curveMode: resolveAquarelleCurveMode(stroke.curveMode),
     });
     if (drawn === null) continue;
     recorded.push(drawn);
@@ -1107,15 +1022,6 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
     });
   // 61-21 (IN-01): the live rubber band to the cursor — display-only.
   const draftPreviewPoints = draftPreviewPointsOf(draft, props.width, props.height);
-  // 62-03 (D-06): the ghost is session chrome — it draws only while the fit
-  // targets the OPEN edit, and it disappears with `curveFitSession` itself
-  // (no separate teardown). It survives every commit made inside the session
-  // because the entry snapshot is never rewritten.
-  const curveGhostPoints = editMutationId !== null
-    && curveFit !== null
-    && String(curveFit.mutationId) === editMutationId
-    ? curveGhostPointsOf(curveFit, props.width, props.height)
-    : null;
 
   if (recorded.length === 0 && draftPath === null && !penActive && editTargetMutationId === null) {
     return null;
@@ -1432,14 +1338,6 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
   editKeyHandlersRef.current = {
     getRecordedStrokes: props.getRecordedStrokes,
     onPathEdit: props.onPathEdit,
-    // 62-03 (D-06): the held fit answers the pre-conversion Delete — read at
-    // event time through `.peek()`, exactly like the ref's other seams.
-    getHeldFit: (id) => {
-      const fit = curveFitSession.peek();
-      return fit !== null && String(fit.mutationId) === id
-        ? { mutationId: fit.mutationId, anchors: fit.anchors }
-        : null;
-    },
     cancelActiveDrag: () => cancelEditDrag(),
   };
 
@@ -1480,20 +1378,6 @@ export function VectorPathOverlay(props: VectorPathOverlayProps): JSX.Element | 
           pointerEvents: 'none',
         }}
       >
-        {/* 62-03 (D-06): the faint original spine, FIRST — every skeleton path
-            and the fitted skeleton itself draw over it. Display-only. */}
-        {curveGhostPoints === null ? null : (
-          <polyline
-            data-testid="vector-path-curve-ghost"
-            points={curveGhostPoints}
-            fill="none"
-            stroke={CURVE_GHOST_SPINE_COLOR}
-            strokeOpacity={CURVE_GHOST_SPINE_OPACITY}
-            strokeWidth={CURVE_GHOST_STROKE_PX}
-            strokeDasharray="3 3"
-            vectorEffect="non-scaling-stroke"
-          />
-        )}
         {recorded.map((drawn) => renderPath(
           drawn,
           scale,

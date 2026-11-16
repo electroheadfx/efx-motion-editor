@@ -837,7 +837,7 @@ describe('61-30 G-20 — the curve-mode switch re-samples the path', () => {
 //  `fitVectorPathAnchors` emits — `auto` anchors ON recorded
 //  samples — so the conversion seam is pinned without importing
 //  the session module this plan also adds (that module's own pins
-//  live in `vectorPathCurveBracket.test.ts`).
+//  live in `vectorPathFit.test.ts`).
 // ============================================================
 
 /** The fitted anchor shape: `auto` anchors placed ON recorded samples. */
