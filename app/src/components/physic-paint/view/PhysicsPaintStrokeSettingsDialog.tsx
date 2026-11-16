@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
-import { Eye, EyeOff, SlidersHorizontal, Spline, SplinePointer, Trash2, X } from 'lucide-preact';
+import { CopyPlus, Eye, EyeOff, SlidersHorizontal, Spline, SplinePointer, Trash2, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import {
@@ -627,6 +627,7 @@ export function PhysicsPaintStrokeSettingsDialog({
   // 261101-jmm: the bundle's delete path — present on watercolor (the Studio
   // passes the SAME handler as Backspace/Delete). Absent hides both trashes.
   const deleteStrokes = bundle.deleteStrokes;
+  const duplicateStrokes = bundle.duplicateStrokes;
   const requestedSettingsTab = settingsTabRef.current.value;
   const strokes = bundle.listStrokes(bundle.playFrame, bundle.canvasSize);
   // 261031-euf: the Studio lists the WHOLE frame (default 'all'), so the
@@ -940,6 +941,24 @@ export function PhysicsPaintStrokeSettingsDialog({
         />
         <strong>Stroke settings</strong>
         <span class="physics-paint-photo-reference-header-spacer" aria-hidden="true" />
+        {engineModule === 'watercolor' && duplicateStrokes ? (
+          <button
+            type="button"
+            data-testid="stroke-settings-duplicate-selection"
+            class="physics-paint-stroke-settings-header-button"
+            aria-label="Duplicate selected strokes"
+            title="Duplicate selected strokes"
+            // A per-row duplicate owns the single-stroke case.
+            disabled={selection.size < 2}
+            // The header is the drag handle (see Close below).
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              void duplicateStrokes([...selection]);
+            }}
+          >
+            <CopyPlus size={12} aria-hidden="true" />
+          </button>
+        ) : null}
         {engineModule === 'watercolor' && deleteStrokes ? (
           <button
             type="button"
@@ -1291,6 +1310,26 @@ export function PhysicsPaintStrokeSettingsDialog({
                         ) : null}
                       </span>
                     </button>
+                    {duplicateStrokes ? (
+                      <button
+                        type="button"
+                        data-testid={`stroke-settings-row-duplicate-${stroke.mutationId}`}
+                        class="physics-paint-stroke-settings-list-row-duplicate"
+                        aria-label={`Duplicate stroke #${stroke.serial}`}
+                        title={`Duplicate stroke #${stroke.serial}`}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          // Sibling of the row button: never let the press
+                          // reach the selectable row, and run NO selection
+                          // setter — the duplicate handler selects the clones
+                          // only on success.
+                          event.stopPropagation();
+                          void duplicateStrokes([stroke.mutationId]);
+                        }}
+                      >
+                        <CopyPlus size={15} aria-hidden="true" />
+                      </button>
+                    ) : null}
                     {deleteStrokes ? (
                       <button
                         type="button"

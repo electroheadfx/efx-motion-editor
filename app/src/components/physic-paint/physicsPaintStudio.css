@@ -1991,12 +1991,13 @@ button.destructive {
   color: #9aa5b1;
 }
 
-/* 261101-jmm UAT: the card is a 3-column grid — the selectable button, the
-   per-row trash, then the serial flush right. The case lives on the item so
-   the trash can never sit in a gutter outside the row. */
+/* 261101-jmm UAT: the card is a grid — the selectable button, then the per-row
+   actions and the serial flush right. quick 261116-u63 makes it four columns:
+   content, duplicate, trash, serial. The case lives on the item so an action
+   can never sit in a gutter outside the row. */
 .physics-paint-stroke-settings-list-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: start;
   column-gap: 6px;
   width: 100%;
@@ -2035,8 +2036,10 @@ button.destructive {
 
 /* Same reveal law as the scripts list (261022-o2a): hidden until the row is
    hovered, focused or selected. Never `display: none` — the button must stay
-   focusable so `:focus-within` can reveal it after a delete round-trip. */
-.physics-paint-stroke-settings-list-row-delete {
+   focusable so `:focus-within` can reveal it after a delete round-trip.
+   quick 261116-u63: the duplicate shares this exact 26x26 chrome and reveal. */
+.physics-paint-stroke-settings-list-row-delete,
+.physics-paint-stroke-settings-list-row-duplicate {
   align-self: center;
   justify-self: center;
   display: inline-flex;
@@ -2057,7 +2060,10 @@ button.destructive {
 
 .physics-paint-stroke-settings-list-item:hover .physics-paint-stroke-settings-list-row-delete,
 .physics-paint-stroke-settings-list-item:focus-within .physics-paint-stroke-settings-list-row-delete,
-.physics-paint-stroke-settings-list-item.is-selected .physics-paint-stroke-settings-list-row-delete {
+.physics-paint-stroke-settings-list-item.is-selected .physics-paint-stroke-settings-list-row-delete,
+.physics-paint-stroke-settings-list-item:hover .physics-paint-stroke-settings-list-row-duplicate,
+.physics-paint-stroke-settings-list-item:focus-within .physics-paint-stroke-settings-list-row-duplicate,
+.physics-paint-stroke-settings-list-item.is-selected .physics-paint-stroke-settings-list-row-duplicate {
   opacity: 1;
   pointer-events: auto;
 }
@@ -2068,7 +2074,16 @@ button.destructive {
   color: #ff9b94;
 }
 
-.physics-paint-stroke-settings-list-row-delete:focus-visible {
+/* quick 261116-u63: the duplicate owns the header focus-blue family,
+   deliberately distinct from the trash's destructive red. */
+.physics-paint-stroke-settings-list-row-duplicate:hover {
+  border-color: #5a87ff;
+  background: rgba(90, 135, 255, 0.16);
+  color: #a8c0ff;
+}
+
+.physics-paint-stroke-settings-list-row-delete:focus-visible,
+.physics-paint-stroke-settings-list-row-duplicate:focus-visible {
   outline: 2px solid var(--color-accent, #2d5be3);
   outline-offset: 2px;
   opacity: 1;

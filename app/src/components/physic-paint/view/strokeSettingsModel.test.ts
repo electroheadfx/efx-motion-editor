@@ -3025,6 +3025,90 @@ describe('261112-lq4 four-tab stroke settings sheet', () => {
     expect(deleteStrokes).toHaveBeenCalledWith([9, 7]);
   });
 
+  // ── quick 261116-u63: duplicate affordances ─────────────────────
+
+  function duplicateStub(): ReturnType<typeof vi.fn> {
+    return vi.fn();
+  }
+
+  it('a row duplicate clones only its own stroke and never touches the selection', () => {
+    const duplicateStrokes = duplicateStub();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9]);
+    const { bundle } = sheetBundle({ duplicateStrokes });
+    const tree = renderDialog(bundle);
+
+    const duplicate = findByTestId(tree, 'stroke-settings-row-duplicate-7')!;
+    expect(duplicate).toBeDefined();
+    expect(duplicate.props['aria-label']).toBe('Duplicate stroke #7');
+    expect(duplicate.props.title).toBe('Duplicate stroke #7');
+    expect(duplicate.props.disabled).toBeUndefined();
+
+    const stopPointerDown = vi.fn();
+    (duplicate.props.onPointerDown as (event: unknown) => void)({
+      stopPropagation: stopPointerDown,
+    });
+    expect(stopPointerDown).toHaveBeenCalledTimes(1);
+
+    const stopClick = vi.fn();
+    (duplicate.props.onClick as (event: unknown) => void)({ stopPropagation: stopClick });
+    expect(stopClick).toHaveBeenCalledTimes(1);
+    expect(duplicateStrokes).toHaveBeenCalledWith([7]);
+    // No selection setter ran: the other row stays exactly as selected.
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([9]));
+
+    // One button per row.
+    expect(findByTestId(tree, 'stroke-settings-row-duplicate-9')).toBeDefined();
+  });
+
+  it('the header duplicate is gated on the member, disabled below two and clones the whole selection', () => {
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9]);
+    const absent = renderDialog(sheetBundle().bundle);
+    expect(findByTestId(absent, 'stroke-settings-duplicate-selection')).toBeUndefined();
+
+    const duplicateStrokes = duplicateStub();
+    const { bundle } = sheetBundle({ duplicateStrokes });
+
+    const one = renderDialog(bundle);
+    expect(findByTestId(one, 'stroke-settings-duplicate-selection')!.props.disabled).toBe(true);
+
+    setScriptStrokeSelection([9, 7]);
+    const two = renderDialog(bundle);
+    const headerDuplicate = findByTestId(two, 'stroke-settings-duplicate-selection')!;
+    expect(headerDuplicate.props.disabled).toBe(false);
+    expect(headerDuplicate.props['aria-label']).toBe('Duplicate selected strokes');
+    expect(headerDuplicate.props.title).toBe('Duplicate selected strokes');
+
+    const stopPointerDown = vi.fn();
+    (headerDuplicate.props.onPointerDown as (event: unknown) => void)({
+      stopPropagation: stopPointerDown,
+    });
+    expect(stopPointerDown).toHaveBeenCalledTimes(1);
+
+    (headerDuplicate.props.onClick as () => void)();
+    expect(duplicateStrokes).toHaveBeenCalledWith([9, 7]);
+  });
+
+  it('hides both duplicate affordances without the bundle member', () => {
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9, 7]);
+    const tree = renderDialog(sheetBundle().bundle);
+    expect(findByTestId(tree, 'stroke-settings-row-duplicate-7')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-row-duplicate-9')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-duplicate-selection')).toBeUndefined();
+  });
+
+  it('renders no duplicate affordance for the brush module', () => {
+    const duplicateStrokes = duplicateStub();
+    const { bundle } = createBundle({ duplicateStrokes });
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+    expect(findByTestId(tree, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-duplicate-selection')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-row-duplicate-7')).toBeUndefined();
+  });
+
   it('a delete that empties the selection keeps the requested tab', () => {
     const deleteStrokes = vi.fn(() => {
       setScriptStrokeSelection([]);
