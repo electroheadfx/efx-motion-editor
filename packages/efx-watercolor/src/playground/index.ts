@@ -19,7 +19,14 @@ export type { PaperPreset } from './papers'
 export { StrokeWriter, penSpeed } from './StrokeWriter'
 export type { Polyline, WriteOptions, WriteCallbacks } from './StrokeWriter'
 export { ghostPath, setGhost, hideGhost } from './ghost'
-export { toEngineParams, DEFAULT_CANONICAL_PARAMS } from './params'
+export {
+  toEngineParams,
+  DEFAULT_CANONICAL_PARAMS,
+  sizeToEngineScale,
+  LEGACY_SIZE_MAX_PX,
+  SIZE_MAX_PX,
+  SIZE_SCALE_AT_MAX,
+} from './params'
 export type { AquarelleCanonicalParams } from './params'
 export { buildBrushForStroke, strokeTipData } from './brushBridge'
 export type { BrushMultiplierOverrides, BrushStrokeOptions } from './brushBridge'

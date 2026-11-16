@@ -2,12 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_CANONICAL_PARAMS, toEngineParams } from './params';
 
 describe('toEngineParams', () => {
-  it('keeps every legacy size (1..80 px) byte-identical, including the flat 33..80 band', () => {
-    expect(toEngineParams({ size: 1 }).size).toBeCloseTo(1 / 32, 12);
-    expect(toEngineParams({ size: 12 }).size).toBeCloseTo(12 / 32, 12);
+  // quick 261116-inu / Task 7: every step of this table is the HEAD OUTPUT
+  // written as a literal, never recomputed from the constants — it is the
+  // proof that every recorded non-negative canonical replays byte-identically.
+  it('keeps every non-negative legacy canonical byte-identical at HEAD', () => {
+    expect(toEngineParams({ size: 1 }).size).toBe(1 / 32);
+    expect(toEngineParams({ size: 12 }).size).toBe(3 / 8);
     expect(toEngineParams({ size: 32 }).size).toBe(1);
     expect(toEngineParams({ size: 33 }).size).toBe(1);
     expect(toEngineParams({ size: 80 }).size).toBe(1);
+    // 1 + (1/720) * 1.04795 — the HEAD literal for 81.
+    expect(toEngineParams({ size: 81 }).size).toBeCloseTo(1.00145549, 8);
+    expect(toEngineParams({ size: 800 }).size).toBeCloseTo(2.04795, 12);
+  });
+
+  // quick 261116-inu / Task 7: the retired `Math.max(0, ...)` floor. Below
+  // zero the branch is the plain linear map — no saturation, no clamp.
+  it('maps the negative canonical region linearly (the old 0 floor is retired)', () => {
+    expect(toEngineParams({ size: -1 }).size).toBe(-1 / 32);
+    expect(toEngineParams({ size: -5 }).size).toBe(-5 / 32);
+    expect(toEngineParams({ size: -32 }).size).toBe(-1);
+    expect(toEngineParams({ size: -0.5 }).size).toBe(-0.5 / 32);
   });
 
   it('extends the footprint scale monotonically through the 80..800 track band', () => {
@@ -25,7 +40,12 @@ describe('toEngineParams', () => {
       DEFAULT_CANONICAL_PARAMS.size / 32,
       12,
     );
-    expect(toEngineParams({ size: -5 }).size).toBe(0);
+    expect(toEngineParams({ size: Number.POSITIVE_INFINITY }).size).toBeCloseTo(
+      DEFAULT_CANONICAL_PARAMS.size / 32,
+      12,
+    );
+    // A NEGATIVE finite value is not a guard case: it maps linearly (Task 7).
+    expect(toEngineParams({ size: -5 }).size).toBe(-5 / 32);
   });
 
   it('maps the seven canonical globals onto 0..1', () => {

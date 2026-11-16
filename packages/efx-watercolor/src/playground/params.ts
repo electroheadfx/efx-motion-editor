@@ -48,17 +48,28 @@ function num(v: number | undefined, fallback: number): number {
  * pre-400 mapping so recorded strokes render unchanged; the former
  * 33..80 band was already flat at the 1.0 vendor ceiling.
  */
-const LEGACY_SIZE_MAX_PX = 80
+export const LEGACY_SIZE_MAX_PX = 80
 /** Largest size the Stroke Settings track shows. */
-const SIZE_MAX_PX = 800
+export const SIZE_MAX_PX = 800
 /** Vendor footprint scale at 800 px: ~10x the footprint of an 80 px stroke. */
-const SIZE_SCALE_AT_MAX = 2.04795
+export const SIZE_SCALE_AT_MAX = 2.04795
 /** Typed values may exceed the 800 px track; this safety ceiling keeps the
  *  vendor's exponential footprint finite (≈30k px) for absurd entries. */
 const SIZE_SCALE_HARD_MAX = 4
 
-function sizeToEngineScale(sizePx: number): number {
-  if (sizePx <= 32) return Math.max(0, sizePx / 32)
+/**
+ * Canonical px → vendor footprint scale. Exported for the app's pixel-true
+ * size helper (quick 261116-inu), whose inverse must mirror this law exactly.
+ *
+ * quick 261116-inu / Task 7: the former `Math.max(0, ...)` floor on the
+ * sub-32 branch is REMOVED per the locked decision "The engine's size floor is
+ * removed" — a negative canonical now maps linearly, so a real 1 px footprint
+ * is reachable (Round at 1080 needs canonical ≈ −48.9). No recorded stroke can
+ * hold a negative canonical, so every non-negative value maps byte-identically
+ * to HEAD; the 32..80 flat band and the 80..800 band are untouched.
+ */
+export function sizeToEngineScale(sizePx: number): number {
+  if (sizePx <= 32) return sizePx / 32
   if (sizePx <= LEGACY_SIZE_MAX_PX) return 1
   const t = (sizePx - LEGACY_SIZE_MAX_PX) / (SIZE_MAX_PX - LEGACY_SIZE_MAX_PX)
   return Math.min(SIZE_SCALE_HARD_MAX, 1 + t * (SIZE_SCALE_AT_MAX - 1))
