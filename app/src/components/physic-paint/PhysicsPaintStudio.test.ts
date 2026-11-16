@@ -4021,7 +4021,9 @@ describe('261023-l35 studio script snapshot seams', () => {
   });
 
   it('bounds the close-path save and keeps a dirty script pending', () => {
-    expect(studio).toContain('() => workflowMode === \'roto\' || studioScriptSnapshot.isDirty(),');
+    // CR-01: withheld (latched) content must also keep the close path running.
+    expect(studio).toContain('|| studioScriptSnapshot.isDirty()');
+    expect(studio).toContain('|| studioScriptSnapshot.hasWithheldContent(),');
     expect(studio).toContain('const STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS = 2000;');
     expect(studio).toContain('studioScriptSnapshot.flushNow(),');
     expect(studio).toContain('window.setTimeout(resolve, STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS);');

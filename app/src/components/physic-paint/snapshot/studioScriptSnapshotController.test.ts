@@ -1122,7 +1122,8 @@ describe('studioScriptSnapshotController — CR-02 refused-restore latch', () =>
 
     recordAquarelleStroke(907, recordableAquarelleStroke(907, 0));
     setSignature('sig-purge');
-    await controller.persistAfterPurge();
+    // WR-13: only a WHOLE-TRACK clear acknowledges a refused restore.
+    await controller.persistAfterPurge({ acknowledgeRefusedRestore: true });
 
     expect(write).toHaveBeenCalledTimes(1);
     // Session-only: the unread file's retained content is dropped.
@@ -1145,7 +1146,7 @@ describe('studioScriptSnapshotController — CR-02 refused-restore latch', () =>
     recordAquarelleStroke(909, recordableAquarelleStroke(909, 0));
     setSignature('sig-failed-purge');
     write.mockResolvedValueOnce({ ok: false, error: { kind: 'io' } });
-    await controller.persistAfterPurge();
+    await controller.persistAfterPurge({ acknowledgeRefusedRestore: true });
 
     // The write failed, so it is NOT the acknowledgement: the file stays
     // protected and the latch stays set.
@@ -1157,7 +1158,7 @@ describe('studioScriptSnapshotController — CR-02 refused-restore latch', () =>
 
     // A retried purge that SUCCEEDS clears the latch. The default mock
     // implementation (success) resumes after the queued failure.
-    await controller.persistAfterPurge();
+    await controller.persistAfterPurge({ acknowledgeRefusedRestore: true });
     expect(write).toHaveBeenCalledTimes(2);
     setSignature('sig-recovered');
     await controller.saveNow();
@@ -1301,6 +1302,68 @@ describe('studioScriptSnapshotController — CR-01 save-withheld disclosure', ()
     await controller.saveNow();
     // A fresh restore notice plus a fresh pause notice for the new binding.
     expect(report).toHaveBeenCalledTimes(4);
+  });
+
+  it('CR-01: hasWithheldContent is true only while latched AND holding content', async () => {
+    const { controller, read, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    expect(controller.hasWithheldContent()).toBe(false);
+    await controller.restore();
+    // Latched, but nothing painted yet: closing loses nothing.
+    expect(controller.hasWithheldContent()).toBe(false);
+
+    recordAquarelleStroke(932, recordableAquarelleStroke(932, 0));
+    setSignature('sig-withheld-content');
+    expect(controller.hasWithheldContent()).toBe(true);
+  });
+});
+
+// ------------------------------------------------------------
+//  WR-13 (63 re-review) — a PARTIAL purge is not an acknowledgement.
+//
+//  persistAfterPurge's session-only flush was the latch's bypass,
+//  so purging one frame (or a rail subset, or a raster settle)
+//  replaced the unread snapshot with the session. Only the
+//  whole-track clear — the one action whose intent is "this
+//  track's script is gone" — may do that.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — WR-13 partial purge', () => {
+  it('WR-13: a partial purge neither bypasses nor clears the latch', async () => {
+    const { controller, read, write, report, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(931, recordableAquarelleStroke(931, 0));
+    setSignature('sig-partial-purge');
+    await controller.persistAfterPurge();
+
+    expect(write).not.toHaveBeenCalled();
+    // The latch is intact: a routine save afterwards is still withheld.
+    setSignature('sig-partial-purge-2');
+    await controller.saveNow();
+    expect(write).not.toHaveBeenCalled();
+    // Restore notice + ONE pause notice; the refused purge adds no report.
+    expect(report).toHaveBeenCalledTimes(2);
+  });
+
+  it('WR-13: the acknowledged whole-track clear still replaces the snapshot', async () => {
+    const { controller, read, write, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(933, recordableAquarelleStroke(933, 0));
+    setSignature('sig-whole-clear');
+    await controller.persistAfterPurge({ acknowledgeRefusedRestore: true });
+    expect(write).toHaveBeenCalledTimes(1);
+
+    recordAquarelleStroke(934, recordableAquarelleStroke(934, 0));
+    setSignature('sig-after-whole-clear');
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(2);
   });
 });
 
