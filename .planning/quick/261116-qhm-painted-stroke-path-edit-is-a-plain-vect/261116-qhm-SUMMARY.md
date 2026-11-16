@@ -8,9 +8,8 @@ painted-curve machinery behind the old differing path — the entry
 wireframe/Draft bracket, the held fit, the original-spine ghost, the path-edit
 exit hook — is deleted.
 
-**Status: complete — Tasks 1–3 implemented; automated gates green. Live UAT
-(7 rows) is PENDING user execution; the executor never launched the app or the
-server. No live behaviour is claimed verified here.**
+**Status: complete — Tasks 1–3 implemented; automated gates green; the seven
+live UAT rows APPROVED by the user on 2026-11-16.**
 
 ---
 
@@ -118,7 +117,8 @@ Deduction pinned: the entry itself forced both latches, so every vertex commit
 on a FIRST session deferred and nothing repainted while dragging; only the exit
 settle rendered.
 
-**The live confirmation is UAT row 2, which the user runs.** Nobody launched
+**The live confirmation is UAT row 2, run and approved by the user on
+2026-11-16.** Nobody launched
 the app in this run (constraint), so this summary claims automated/source
 evidence only — never live behaviour.
 
@@ -242,17 +242,17 @@ second entry ends with the shipped rejection copy.
 
 ---
 
-## Live UAT — PENDING user execution (executor never launched the app)
+## Live UAT — APPROVED (user, 2026-11-16)
 
 | # | Row | Status | Why live |
 |---|-----|--------|----------|
-| 1 | Entering path edit on a painted stroke converts it (one undo entry) and shows anchors with no ghost and no wireframe | pending | live Studio visual |
-| 2 | The FIRST vertex drag updates the paint immediately; later drags live — **this is the Step-1 chain's live confirmation** | pending | live repaint timing |
-| 3 | Entering and leaving path edit with no drags keeps the conversion (anchors stay; no rollback, no second entry) | pending | live undo/session check |
-| 4 | A re-entered session is unchanged | pending | live re-entry check |
-| 5 | One undo restores the painted stroke | pending | live undo check |
-| 6 | Manual wireframe ON still defers (record + dirty, no bake) | pending | live latch check |
-| 7 | Lift strokes and degenerate strokes are still refused with their shipped copy | pending | live refusal copy |
+| 1 | Entering path edit on a painted stroke converts it (one undo entry) and shows anchors with no ghost and no wireframe | **APPROVED** | live Studio visual |
+| 2 | The FIRST vertex drag updates the paint immediately; later drags live — **this is the Step-1 chain's live confirmation** | **APPROVED** | live repaint timing |
+| 3 | Entering and leaving path edit with no drags keeps the conversion (anchors stay; no rollback, no second entry) | **APPROVED** | live undo/session check |
+| 4 | A re-entered session is unchanged | **APPROVED** | live re-entry check |
+| 5 | One undo restores the painted stroke | **APPROVED** | live undo check |
+| 6 | Manual wireframe ON still defers (record + dirty, no bake) | **APPROVED** | live latch check |
+| 7 | Lift strokes and degenerate strokes are still refused with their shipped copy | **APPROVED** | live refusal copy |
 
 ---
 
