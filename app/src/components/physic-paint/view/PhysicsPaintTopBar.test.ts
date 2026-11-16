@@ -871,10 +871,16 @@ describe('261027-k6j Script switch', () => {
       ) as AnyVNode | undefined;
       expect(dot, 'the dot mark renders').toBeDefined();
       expect(dot!.props?.['aria-hidden']).toBe('true');
-      const label = childrenOf(tree).find(
-        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-dot-label',
+      const idle = childrenOf(tree).find(
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-dot-label-idle',
       ) as AnyVNode | undefined;
-      expect(label?.props?.children).toBe('Script');
+      expect(idle?.props?.children).toBe('Script');
+      // Hover previews the mode a click switches to.
+      const next = childrenOf(tree).find(
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-dot-label-hover',
+      ) as AnyVNode | undefined;
+      expect(next?.props?.children).toBe('Pixel');
+      expect(next!.props?.['aria-hidden']).toBe('true');
 
       setAquarelleScriptRecordingEnabled(false);
       const offTree = renderSwitch();
@@ -884,10 +890,14 @@ describe('261027-k6j Script switch', () => {
       expect(offTree.props?.['aria-label']).toBe('Script recording');
       expect(offTree.props?.['data-testid']).toBe('physics-script-mode');
       expect(String(offTree.props?.title)).toContain('Pixel mode');
-      const offLabel = childrenOf(offTree).find(
-        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-dot-label',
+      const offIdle = childrenOf(offTree).find(
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-dot-label-idle',
       ) as AnyVNode | undefined;
-      expect(offLabel?.props?.children).toBe('Pixel');
+      expect(offIdle?.props?.children).toBe('Pixel');
+      const offNext = childrenOf(offTree).find(
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-dot-label-hover',
+      ) as AnyVNode | undefined;
+      expect(offNext?.props?.children).toBe('Script');
 
       // Toggling flips through the session setter.
       (offTree.props?.onClick as () => void)();
@@ -961,6 +971,16 @@ describe('261027-k6j Script switch', () => {
     expect(dotLabel).toContain('text-align: left');
     const onLabel = getCssRuleBlock(styles, '.physics-paint-script-dot.is-on .physics-paint-script-dot-label {');
     expect(onLabel).toContain('#e8edf4');
+    // Hover: no blue button fill — white text and a Script ⇄ Pixel preview.
+    const hoverButton = getCssRuleBlock(styles, '.physics-paint-script-dot:hover:not(:disabled) {');
+    expect(hoverButton).toContain('background: transparent');
+    expect(hoverButton).toContain('color: #fff');
+    const hoverLabel = getCssRuleBlock(styles, '.physics-paint-script-dot:hover .physics-paint-script-dot-label {');
+    expect(hoverLabel).toContain('color: #fff');
+    const hoverIdle = getCssRuleBlock(styles, '.physics-paint-script-dot:hover .physics-paint-script-dot-label-idle {');
+    expect(hoverIdle).toContain('opacity: 0');
+    const hoverNext = getCssRuleBlock(styles, '.physics-paint-script-dot:hover .physics-paint-script-dot-label-hover {');
+    expect(hoverNext).toContain('opacity: 1');
     const reducedMotion = styles.slice(styles.indexOf('@media (prefers-reduced-motion: reduce)'));
     expect(reducedMotion).toContain('animation: none');
     expect(reducedMotion).toContain('opacity: 0.8');

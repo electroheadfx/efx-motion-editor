@@ -203,7 +203,14 @@ export function ScriptRecordingSwitch() {
       onClick={() => setAquarelleScriptRecordingEnabled(!aquarelleScriptRecordingEnabled.peek())}
     >
       <span class="physics-paint-script-dot-mark" aria-hidden="true" />
-      <span class="physics-paint-script-dot-label">{enabled ? 'Script' : 'Pixel'}</span>
+      {/* The hover label previews what a click switches to; the idle label
+          keeps naming the active mode. aria-label carries the accessible name. */}
+      <span class="physics-paint-script-dot-label">
+        <span class="physics-paint-script-dot-label-idle">{enabled ? 'Script' : 'Pixel'}</span>
+        <span class="physics-paint-script-dot-label-hover" aria-hidden="true">
+          {enabled ? 'Pixel' : 'Script'}
+        </span>
+      </span>
     </button>
   );
 }

@@ -1003,6 +1003,7 @@ button.destructive {
 }
 
 .physics-paint-script-dot-label {
+  display: inline-grid;
   min-width: 36px;
   font-size: 11px;
   font-weight: 700;
@@ -1011,8 +1012,36 @@ button.destructive {
   color: #9aa5b1;
 }
 
+/* Both labels share one grid cell, so the hover swap never shifts layout. */
+.physics-paint-script-dot-label > span {
+  grid-area: 1 / 1;
+}
+
+.physics-paint-script-dot-label-hover {
+  opacity: 0;
+}
+
 .physics-paint-script-dot.is-on .physics-paint-script-dot-label {
   color: #e8edf4;
+}
+
+/* Hover: no blue button fill — white text, and the label previews the mode a
+   click switches to (Script ⇄ Pixel). */
+.physics-paint-script-dot:hover:not(:disabled) {
+  background: transparent;
+  color: #fff;
+}
+
+.physics-paint-script-dot:hover .physics-paint-script-dot-label {
+  color: #fff;
+}
+
+.physics-paint-script-dot:hover .physics-paint-script-dot-label-idle {
+  opacity: 0;
+}
+
+.physics-paint-script-dot:hover .physics-paint-script-dot-label-hover {
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
