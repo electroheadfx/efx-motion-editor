@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-16 after Phase 63)
 Phase: 64 — Medium Engine
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-16 — Quick task 261116-inu implemented and reviewed (machine-level 512 texture library, px-true size, per-stroke rotation); LIVE UAT PENDING — 10 rows await the user, Phase 64 still blocked until it passes
+Last activity: 2026-11-16 — Quick task 261116-inu COMPLETE and UAT approved (machine-level 512 texture library, px-true size, per-stroke rotation; aggregate unavailable-warning line removed). Phase 64 (Medium Engine) unblocked and ready to plan.
 
 
 ## Performance Metrics
@@ -559,7 +559,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261115-oh9 | Texture is a setting of the brush response (response owns physics, texture replaces the footprint; Default = no texture); real-mask chips, both UI surfaces, payload carrier | 2026-11-15 | 314209671 | [261115-oh9-fix-texture-becomes-a-setting-of-the-bru](./quick/261115-oh9-fix-texture-becomes-a-setting-of-the-bru/) |
 | 261116-gcn | Studio Textures axis: a 2nd trigger inside the brush pill opens a Textures popover (Open modal first, then the relocated compact strip); Open modal raises a floating Textures sheet with Import tip leading the list, 72px chips and the shared brush Size (fifth seat at z 54 / top 76px) (UAT approved 2026-11-16) | 2026-11-16 | dd37f5e48 | [261116-gcn-in-studio-head-top-bar-add-a-2nd-dropdow](./quick/261116-gcn-in-studio-head-top-bar-add-a-2nd-dropdow/) |
 | 37 | Studio Script/Pixel control: pulse dot + state label replaces the checkbox; sentence case; hover drops the blue fill, turns the text white and previews the next mode (Script ⇄ Pixel); bare S toggles recording (UAT approved 2026-11-16) | 2026-11-16 | c2123898e | — |
-| 261116-inu | Imported-only brush textures from a machine-level user library: 512 mask edge, px-true 1..512 size with the engine floor retired, per-stroke texture rotation through AQTL v4; built-ins, the .mce brush carrier and script mask bytes all removed (implementation complete + code-review fixes; UAT pending) | 2026-11-16 | 678e04d64 | [261116-inu-imported-only-brush-textures-from-a-user](./quick/261116-inu-imported-only-brush-textures-from-a-user/) |
+| 261116-inu | Imported-only brush textures from a machine-level user library: 512 mask edge, px-true 1..512 size with the engine floor retired, per-stroke texture rotation through AQTL v4; built-ins, the .mce brush carrier and script mask bytes all removed; standing "unavailable" warning line dropped on request (UAT approved 2026-11-16) | 2026-11-16 | 50e745a65 | [261116-inu-imported-only-brush-textures-from-a-user](./quick/261116-inu-imported-only-brush-textures-from-a-user/) |
 
 ## Roadmap Evolution
 
