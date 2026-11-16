@@ -174,7 +174,7 @@ export function serializeAquarelleRotoScript(input: {
       continue;
     }
     strokes.push({
-      pts: event.pts.map((point) => ({ ...point })),
+      pts: event.pts.map(normalizeCapturedPoint),
       ticks: event.ticks,
       cuisson: 0,
       motion: null,
@@ -439,7 +439,10 @@ function describeStrokeRefusal(value: unknown): string {
     return 'dry engine';
   }
   if (value.pts.length < 1 || value.pts.length > ROTO_SCRIPT_LIMITS.pointsPerBrush) return 'pts count';
-  if (!value.pts.every(isEnvelopePointAquarelle)) return 'pts point shape';
+  for (let index = 0; index < value.pts.length; index++) {
+    const pointRefusal = describePointRefusal(value.pts[index]);
+    if (pointRefusal !== null) return `pts[${index}].${pointRefusal}`;
+  }
   if (!nonNegativeInteger(value.ticks)) return 'ticks';
   if (value.pts.length > 1 && value.ticks !== Math.max(1, value.pts.length - 1)) return 'ticks vs pts';
   if (value.cuisson !== 0) return 'cuisson';
@@ -451,6 +454,47 @@ function describeStrokeRefusal(value: unknown): string {
   if (value.playFrame !== null && !nonNegativeInteger(value.playFrame)) return 'playFrame';
   if (value.color !== null && (typeof value.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(value.color))) return 'color';
   return describeEngineRefusal(value.engine);
+}
+
+/**
+ * Clamp the CAPTURED hint channels into the envelope's legal range.
+ *
+ * A live sample can carry a pressure the device reports raw (some tablets send
+ * more than 1) or a tilt/twist the pointer layer did not bound — the AQTL codec
+ * deliberately admits tilt up to ±655.34°, five times what this envelope
+ * accepts. None of those channels is load-bearing enough to lose an artist's
+ * entire script over one stray sample, and the strict guard below exists to
+ * bound an untrusted FILE, not to police live capture.
+ *
+ * `x`, `y` and `tick` stay strict: those are geometry, and a bad value there is
+ * a real defect the named refusal must surface.
+ */
+function normalizeCapturedPoint(point: StudioPoint): StudioPoint {
+  const clamp = (value: unknown, min: number, max: number, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? Math.min(max, Math.max(min, value))
+      : fallback;
+  return {
+    ...point,
+    // -1 is the live "no pen pressure" sentinel; keep it as-is.
+    p: point.p === -1 ? -1 : clamp(point.p, 0, 1, 0.5),
+    tx: clamp(point.tx, -90, 90, 0),
+    ty: clamp(point.ty, -90, 90, 0),
+    tw: clamp(point.tw, -360, 360, 0),
+  };
+}
+
+/** The point member a refusal came from — mirrors `isEnvelopePointAquarelle`. */
+function describePointRefusal(value: unknown): string | null {
+  if (!isRecord(value)) return 'shape';
+  if (!finiteRange(value.x, -1_000_000, 1_000_000)) return 'x';
+  if (!finiteRange(value.y, -1_000_000, 1_000_000)) return 'y';
+  if (!(finiteRange(value.p, 0, 1) || value.p === -1)) return 'p';
+  if (!finiteRange(value.tx, -90, 90)) return 'tx';
+  if (!finiteRange(value.ty, -90, 90)) return 'ty';
+  if (!finiteRange(value.tw, -360, 360)) return 'tw';
+  if (!nonNegativeInteger(value.tick)) return 'tick';
+  return null;
 }
 
 /** The engine-slot member a paint-stroke refusal came from. */

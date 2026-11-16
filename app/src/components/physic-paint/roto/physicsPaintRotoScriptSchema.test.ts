@@ -239,6 +239,36 @@ describe('capture-refusal diagnostics (quick 261116-inu regression)', () => {
   });
 });
 
+describe('capture sample normalization (quick 261116-inu save refusal)', () => {
+  it('clamps a stray capture sample instead of losing the whole script', async () => {
+    const schema = await loadSchema();
+    const wild = aquarelleStrokeEvent({
+      pts: [
+        { x: 0.5, y: 0.5, p: 4.2, tx: 143, ty: -200, tw: 900, tick: 0 },
+        { x: 0.6, y: 0.4, p: -1, tx: 0, ty: 0, tw: 0, tick: 1 },
+      ],
+      ticks: 1,
+    });
+    const doc = schema.serializeAquarelleRotoScript!(aquarelleInput({ events: [wild] }));
+    expect(doc.strokes[0].pts[0], 'hint channels land inside the envelope').toMatchObject({
+      p: 1,
+      tx: 90,
+      ty: -90,
+      tw: 360,
+    });
+    expect(doc.strokes[0].pts[1], 'the -1 no-pressure sentinel survives').toMatchObject({ p: -1 });
+    expect(schema.isPersistedRotoScriptAquarelleV1!(doc), 'the script saves').toBe(true);
+  });
+
+  it('still refuses bad geometry and names the exact point member', async () => {
+    const schema = await loadSchema();
+    const good = schema.serializeAquarelleRotoScript!(aquarelleInput({ events: [aquarelleStrokeEvent()] }));
+    const bad = structuredClone(good);
+    bad.strokes[0].pts[1].x = Number.NaN;
+    expect(schema.describePersistedRotoScriptRefusal!(bad)).toBe('stroke 0: pts[1].x');
+  });
+});
+
 describe('aquarelle script codec (261018-odm ODM-01)', () => {
   it('serializeAquarelleRotoScript emits engineId efx-watercolor with UV pts and an AquarelleStrokePayload engine slot', async () => {
     const schema = await loadSchema();

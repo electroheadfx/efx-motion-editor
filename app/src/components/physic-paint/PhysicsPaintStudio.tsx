@@ -6430,22 +6430,44 @@ export function PhysicsPaintStudio() {
   // the Studio's onKeyDown never sees them. Listen for those events and route to
   // the Studio's own undo/redo, gated on document.hasFocus() so the main window's
   // listener (which also receives the broadcast) never double-fires.
+  // The handlers are read through refs so the listeners install ONCE. Keying
+  // the effect on [undo, redo] tore them down and rebuilt them on every stroke
+  // (both callbacks change identity on each history revision), which is churn
+  // at best and left Tauri unlistening ids it no longer held — the repeated
+  // "undefined is not an object (evaluating 'listeners[eventId].handlerId')".
+  const menuUndoRef = useRef(undo);
+  const menuRedoRef = useRef(redo);
+  useEffect(() => {
+    menuUndoRef.current = undo;
+    menuRedoRef.current = redo;
+  }, [undo, redo]);
+
   useEffect(() => {
     let disposed = false;
-    let unlistenUndo: (() => void) | undefined;
-    let unlistenRedo: (() => void) | undefined;
+    const pending: Array<() => void> = [];
+    // Idempotent and rejection-safe: Tauri throws when asked to remove an id it
+    // no longer holds, and an unlisten can already be queued when the Studio
+    // unmounts.
     const cleanup = () => {
-      unlistenUndo?.();
-      unlistenRedo?.();
-      unlistenUndo = undefined;
-      unlistenRedo = undefined;
+      for (const un of pending.splice(0, pending.length)) {
+        try {
+          const result: unknown = un();
+          if (result instanceof Promise) result.catch(() => {});
+        } catch {
+          // The listener is already gone; nothing to unregister.
+        }
+      }
     };
     const install = async () => {
       try {
         const eventApi = await import('@tauri-apps/api/event');
         if (typeof eventApi.listen !== 'function') return;
-        unlistenUndo = await eventApi.listen('menu:undo', () => { if (document.hasFocus()) void undo(); });
-        unlistenRedo = await eventApi.listen('menu:redo', () => { if (document.hasFocus()) void redo(); });
+        pending.push(await eventApi.listen('menu:undo', () => {
+          if (document.hasFocus()) void menuUndoRef.current();
+        }));
+        pending.push(await eventApi.listen('menu:redo', () => {
+          if (document.hasFocus()) void menuRedoRef.current();
+        }));
         if (disposed) cleanup();
       } catch {
         // menu events are macOS-only; ignore elsewhere
@@ -6456,7 +6478,7 @@ export function PhysicsPaintStudio() {
       disposed = true;
       cleanup();
     };
-  }, [undo, redo]);
+  }, []);
 
   const requestRotoFrameNavigation = rotoNavigation.requestNavigation;
   usePhysicsPaintLaunchIntegration({
