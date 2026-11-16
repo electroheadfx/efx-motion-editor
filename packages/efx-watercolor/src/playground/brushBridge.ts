@@ -65,6 +65,12 @@ export interface BrushMultiplierOverrides {
 export interface BrushStrokeOptions {
   /** Mask id replacing the footprint; absent/null keeps the response tip. */
   textureId?: string | null
+  /**
+   * quick 261116-inu: projected-texture orientation in integer DEGREES
+   * (-180..180). The STROKE snapshot is the authority at replay; absent means
+   * the library row's default. Ignored when no mask supplied the bytes.
+   */
+  textureRotation?: number | null
   /** D-08 multiplier bag snapshot at record time. */
   overrides?: BrushMultiplierOverrides | null
   /** Tip-noise seed; the bake path must pass the same seed as the live path. */
@@ -84,13 +90,25 @@ function presetFor(brushId: string): BrushPreset {
  * The ONE resolution both public readers share: response preset base,
  * texture mask as the footprint when it resolves, `buildBrush` seed.
  */
-function resolveStrokeBrush(brushId: string, textureId: string | null, seed: number): Brush {
+function resolveStrokeBrush(
+  brushId: string,
+  textureId: string | null,
+  seed: number,
+  textureRotation: number | null = null,
+): Brush {
   const base = presetFor(brushId)
   const mask = textureId ? resolveMask(textureId) : null
   // `textureId` rides the brush ONLY when the mask supplied the bytes: the
   // engine's GPU tip cache keys on (id, textureId), so an unknown texture must
   // resolve to the same key as no texture at all.
-  return { ...buildBrush({ ...base, tip: mask ?? base.tip }, seed), textureId: mask ? textureId : null }
+  return {
+    ...buildBrush({ ...base, tip: mask ?? base.tip }, seed),
+    textureId: mask ? textureId : null,
+    // quick 261116-inu: same law for the rotation — it only means something
+    // on a textured tip. A textured rotationless stroke carries 0 degrees
+    // (the library default); an untextured/unknown one carries null.
+    textureRotation: mask ? textureRotation ?? 0 : null,
+  }
 }
 
 /**
@@ -100,7 +118,12 @@ function resolveStrokeBrush(brushId: string, textureId: string | null, seed: num
  * and the bake path.
  */
 export function buildBrushForStroke(brushId: string, options?: BrushStrokeOptions | null): Brush {
-  const base = resolveStrokeBrush(brushId, options?.textureId ?? null, options?.seed ?? 7)
+  const base = resolveStrokeBrush(
+    brushId,
+    options?.textureId ?? null,
+    options?.seed ?? 7,
+    options?.textureRotation ?? null,
+  )
   const overrides = options?.overrides
   if (!overrides) return base
   return {

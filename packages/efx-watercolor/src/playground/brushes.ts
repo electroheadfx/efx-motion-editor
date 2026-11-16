@@ -72,6 +72,16 @@ export interface Brush extends Omit<BrushPreset, 'tip'> {
    * response can be stamped through several textures.
    */
   textureId?: string | null;
+  /**
+   * quick 261116-inu: the projected-texture orientation in integer DEGREES
+   * (-180..180), present only when a texture supplied the tip (null/absent
+   * otherwise). UNIT LAW: degrees end to end — the AQTL byte body is the ONE
+   * hundredths boundary. The STROKE snapshot is the authority at replay; the
+   * library row only supplies the default for the NEXT stroke. It is a shader
+   * uniform, so it is NOT part of `brushTipCacheKey` (one upload serves every
+   * rotation of the same (id, textureId)).
+   */
+  textureRotation?: number | null;
 }
 
 /**

@@ -9,12 +9,13 @@
 //  1. JSON baseline — JSON.stringify / JSON.parse, UTF-8.
 //     Exact and simple; repeats keys and writes decimal numbers.
 //
-//  2. AQTL v3 packed binary (61-05; textureId in 63-15) — little-endian,
-//     24-byte fixed header, packed stroke metadata, quantized point
-//     records, the vector path block and the texture axis.
+//  2. AQTL v4 packed binary (61-05; textureId in 63-15; textureRotation in
+//     quick 261116-inu) — little-endian, 24-byte fixed header, packed stroke
+//     metadata, quantized point records, the vector path block and the
+//     texture axis.
 //
 //  HEADER (24 bytes):
-//    magic 'AQTL' (4) | u16 version=3 | u16 flags=0 | u32 eventCount |
+//    magic 'AQTL' (4) | u16 version=4 | u16 flags=0 | u32 eventCount |
 //    u32 totalPointCount | u32 bodyByteLength | u32 reserved=0
 //  bodyByteLength counts the bytes AFTER the header, so
 //  bodyByteLength + 24 must equal the buffer length (no trailing bytes).
@@ -34,7 +35,10 @@
 //      values; u8 mutationId presence + u32; u8 diffusionFrames
 //      presence + u32; f64 timestamp; u8 playFrame presence + i32; and —
 //      written AFTER the vector block and BEFORE pointCount — u8 textureId
-//      presence + u16-length UTF-8 textureId (63-15).
+//      presence + u16-length UTF-8 textureId (63-15), then u8 textureRotation
+//      presence + i16 hundredths of a degree (quick 261116-inu). The AQTL body
+//      is the ONE hundredths boundary in the feature: `Math.round(degrees*100)`
+//      here, `value/100` on read; every JSON carrier stays in integer DEGREES.
 //    Vector block (61-05 / 61-30 / 261111-wd6 / 62-UAT), AFTER the engine
 //      block's playFrame presence and BEFORE the texture presence byte and
 //      pointCount: u8 vectorFlags
@@ -80,11 +84,11 @@
 //  BEFORE allocating or reading. Every failure is a typed
 //  ScriptTimelineCodecError — never a raw RangeError.
 //
-//  VERSION LAW: v3 is the ONE accepted version. Versions 1 and 2 are refused
-//  with `unsupported-version`; there is no upgrade path and no older reader
-//  left behind (project law: no backward compatibility for old payloads). An
-//  AQTL v2 `.snap` written before this change refuses whole on first open and
-//  its track starts empty — accepted, no migration.
+//  VERSION LAW: v4 is the ONE accepted version. Versions 1, 2 and 3 are
+//  refused with `unsupported-version`; there is no upgrade path and no older
+//  reader left behind (project law: no backward compatibility for old
+//  payloads). An older `.snap` written before this change refuses whole on
+//  first open and its track starts empty — accepted, no migration.
 //
 //  NOTE on the point-record size: the field list above (three u16 +
 //  three i16 + one u32) is 16 bytes; the plan's 14-byte lower bound in
@@ -104,8 +108,11 @@ import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation
 /** ASCII magic carried by every AQTL buffer. */
 export const SCRIPT_TIMELINE_BINARY_MAGIC = 'AQTL';
 
-/** The one binary version this module encodes and accepts (63-15: v3). */
-export const SCRIPT_TIMELINE_BINARY_VERSION = 3;
+/** The one binary version this module encodes and accepts (261116-inu: v4). */
+export const SCRIPT_TIMELINE_BINARY_VERSION = 4;
+
+/** Rotation hundredths: the AQTL body's ONLY degree→wire conversion. */
+const ROTATION_HUNDREDTHS_MAX = 18000;
 
 /** UV/pressure quantization step (u16 over [0,1]). */
 export const POINT_UV_STEP = 1 / 65535;
@@ -746,6 +753,34 @@ function encodeStroke(writer: BinaryWriter, stroke: StudioStroke<AquarelleStroke
     writer.string(textureId, 'engine.textureId');
   }
 
+  // quick 261116-inu: the projected-texture orientation. Integer DEGREES in
+  // memory and in every JSON carrier; this i16 of hundredths is the ONE
+  // conversion boundary in the feature. Refused before any `* 100` when the
+  // value is not an integer in -180..180.
+  const textureRotation = engine.textureRotation;
+  if (textureRotation === undefined) {
+    writer.u8(0);
+  } else {
+    if (
+      typeof textureRotation !== 'number' ||
+      !Number.isInteger(textureRotation) ||
+      textureRotation < -180 ||
+      textureRotation > 180
+    ) {
+      fail('invalid-value', 'engine.textureRotation must be an integer in -180..180');
+    }
+    const hundredths = textureRotation * 100;
+    if (
+      !Number.isInteger(hundredths) ||
+      hundredths < -ROTATION_HUNDREDTHS_MAX ||
+      hundredths > ROTATION_HUNDREDTHS_MAX
+    ) {
+      fail('invalid-value', 'engine.textureRotation hundredths out of -18000..18000');
+    }
+    writer.u8(1);
+    writer.i16(hundredths);
+  }
+
   const pts = stroke.pts;
   if (!Array.isArray(pts)) fail('invalid-value', 'stroke.pts must be an array');
   writer.u32(assertUint(pts.length, 'stroke.pts length'));
@@ -1019,6 +1054,26 @@ function decodeStroke(reader: BinaryReader): {
     }
   }
 
+  // quick 261116-inu: mirror of the encoder. The ONE hundredths→degrees
+  // division in the feature; the value re-enters memory as degrees and the
+  // rebuild adds the key only when the presence marker carried it.
+  const hasTextureRotation = reader.presence('engine.textureRotation');
+  let textureRotation: number | undefined;
+  if (hasTextureRotation) {
+    const hundredths = reader.i16();
+    if (
+      hundredths < -ROTATION_HUNDREDTHS_MAX ||
+      hundredths > ROTATION_HUNDREDTHS_MAX
+    ) {
+      fail(
+        'invalid-value',
+        'engine.textureRotation hundredths out of -18000..18000',
+        reader.offset,
+      );
+    }
+    textureRotation = hundredths / 100;
+  }
+
   const pointCount = reader.u32();
   if (pointCount * POINT_RECORD_BYTE_LENGTH > reader.remaining) {
     fail('invalid-count', 'point count exceeds the remaining body bytes', reader.offset);
@@ -1042,6 +1097,7 @@ function decodeStroke(reader: BinaryReader): {
     timestamp,
     playFrame: enginePlayFrame,
     ...(textureId !== undefined ? { textureId } : {}),
+    ...(textureRotation !== undefined ? { textureRotation } : {}),
     ...(vector.anchors !== undefined ? { anchors: vector.anchors } : {}),
     ...(vector.curveMode !== undefined ? { curveMode: vector.curveMode } : {}),
     ...(vector.vectorDrawn === true ? { vectorDrawn: true as const } : {}),

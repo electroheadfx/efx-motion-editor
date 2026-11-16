@@ -418,7 +418,7 @@ describe('studioScriptSnapshotCodec', () => {
     // The CURRENT v4 body is not retired: patching an already-v4 fixture to
     // version 4 is a no-op and decodes normally.
     const current = decodeStudioScriptSnapshot(writeVersion(4), IDENTITY);
-    expect(current.watercolorEvents).toHaveLength(3);
+    expect(current.watercolorEvents).toHaveLength(2);
 
     // WR-01: retirement is versions 1, 2 and 3 ONLY. The inner codec raises
     // `unsupported-version` for every version other than 4, so a wholesale

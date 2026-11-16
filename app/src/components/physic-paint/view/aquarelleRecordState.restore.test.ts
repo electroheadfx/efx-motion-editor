@@ -17,7 +17,12 @@ import type {
 } from '@efxlab/efx-watercolor/payload';
 import { PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
 import type { AquarelleTip } from '@efxlab/efx-watercolor/brushes';
-import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
+import {
+  NEUTRAL_TOOL_OVERRIDES,
+  registerMask,
+  resetMaskRegistry,
+  TIP_MASK_BYTES,
+} from '@efxlab/efx-watercolor/brushes';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import {
   aquarelleRecordClock,
@@ -36,6 +41,7 @@ import {
   resetAquarelleRecordState,
   restoreAquarelleRecordTimeline,
   selectAquarelleTip,
+  setAquarelleSelectedTextureId,
   snapshotAquarelleRecord,
   translateAquarelleStrokeInScript,
 } from './aquarelleRecordState';
@@ -209,8 +215,13 @@ describe('quick 261116-inu textureRotation carrier (degrees)', () => {
       name: 'Rotated texture',
       ...NEUTRAL_TOOL_OVERRIDES,
     };
+    // The live selection only reports a texture whose mask resolves.
+    expect(registerMask(tip.id, new Uint8Array(TIP_MASK_BYTES).fill(19))).toBe(true);
     replaceLibraryEntries([{ tip, digest: 'a'.repeat(64), textureRotation: 37 }]);
     try {
+      // The strip's texture pick AND a library-tip brush pick, as the live
+      // Textures surface does.
+      setAquarelleSelectedTextureId(tip.id);
       selectAquarelleTip(tip.id);
 
       const snap = snapshotAquarelleRecord();
@@ -221,11 +232,14 @@ describe('quick 261116-inu textureRotation carrier (degrees)', () => {
       expect(payload.textureId).toBe(tip.id);
       expect(payload.textureRotation).toBe(37);
     } finally {
+      setAquarelleSelectedTextureId(null);
       resetAquarelleBrushCatalog();
+      resetMaskRegistry();
     }
   });
 
   it('records no rotation key for the Default chip or a procedural tip', () => {
+    setAquarelleSelectedTextureId(null);
     replaceLibraryEntries([]);
     selectAquarelleTip(null);
 

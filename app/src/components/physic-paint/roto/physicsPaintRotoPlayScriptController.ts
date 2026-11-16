@@ -4396,6 +4396,11 @@ function aquarelleEventsFromScript(script: RotoPaintScript): AquarellePayloadEve
       // it must carry the texture too, or a bake on this branch paints the
       // response tip while the live sheet painted the mask.
       ...(stored?.textureId !== undefined ? { textureId: stored.textureId } : {}),
+      // quick 261116-inu: the recorded rotation is copied verbatim, beside the
+      // texture — the library row is NEVER consulted at replay.
+      ...(stored?.textureRotation !== undefined
+        ? { textureRotation: stored.textureRotation }
+        : {}),
       // 56-11: prefer the recorded aquarelle stroke's own points (the live
       // surface is the record source of truth). Fall back to the script's
       // points only when no aquarelle stroke was recorded for this id.

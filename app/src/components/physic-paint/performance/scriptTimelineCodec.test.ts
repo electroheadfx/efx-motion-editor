@@ -921,10 +921,11 @@ describe('AQTL v4 textureRotation (quick 261116-inu)', () => {
         engine: { ...minimalStroke().engine, textureId: ROTATION_ID },
       },
     ]);
-    // The rotation presence byte is paid by every stroke (0 above); a carried
-    // rotation adds the presence marker plus the i16 hundredths slot.
+    // The rotation presence byte is paid by every stroke (0 in `absent`); a
+    // carried rotation flips that marker to 1 and adds the i16 hundredths
+    // slot — so the incremental cost is exactly 2 bytes.
     expect(rotated[ROTATION_PRESENCE_OFFSET]).toBe(1);
-    expect(rotated.byteLength).toBe(absent.byteLength + 3);
+    expect(rotated.byteLength).toBe(absent.byteLength + 2);
   });
 
   it('anti-mixup: the i16 slot holds 3700 while the decoded field is exactly 37', () => {

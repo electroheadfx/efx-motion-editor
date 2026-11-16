@@ -211,6 +211,10 @@ export function aquarelleStrokeFromScriptEvent(
     // quick-261115-oh9: the texture axis rides the same conditional-spread
     // law — a copied stroke must stamp the texture it was painted with.
     ...(engine.textureId !== undefined ? { textureId: engine.textureId } : {}),
+    // quick 261116-inu: the rotation rides beside its texture, verbatim.
+    ...(engine.textureRotation !== undefined
+      ? { textureRotation: engine.textureRotation }
+      : {}),
   };
 }
 

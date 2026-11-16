@@ -49,6 +49,7 @@ import {
   onAquarelleDry,
   snapshotAquarelleRecord,
 } from '../view/aquarelleRecordState';
+import { libraryRowFor } from '../../../stores/aquarelleBrushCatalog';
 import { aquarelleSelectMode } from '../view/aquarelleStrokeSelection';
 import { aquarellePickerActive } from '../view/aquarelleColorPicker';
 import { clearAquarelleWetPaint, setAquarelleHasWetPaint } from '../view/aquarelleWetPaintGate';
@@ -339,6 +340,12 @@ function applyLiveConfig(engine: WatercolorEngine): void {
     // quick-261115-oh9: the live brush binds the same (response, texture)
     // pair the record stores. The eraser selection reports null here.
     textureId: selection.textureId,
+    // quick 261116-inu: the library row supplies the default rotation for the
+    // NEXT stroke; the live tip must preview the same orientation it stamps.
+    textureRotation:
+      selection.textureId !== null
+        ? libraryRowFor(selection.textureId)?.textureRotation ?? 0
+        : null,
     overrides: selection.toolOverrides,
   }));
   // quick-261115-oh9: a pen's ERASER END lifts while the Brush tool — and its
@@ -542,6 +549,11 @@ export function AquarelleCanvasLayer(props: {
       // quick-261115-oh9: the texture axis rides the same conditional-spread
       // law the stroke-end literal uses.
       ...(snap.textureId !== null ? { textureId: snap.textureId } : {}),
+      // quick 261116-inu: the vector stroke records the same library-default
+      // rotation the hand-painted literal records.
+      ...(snap.textureRotation !== undefined
+        ? { textureRotation: snap.textureRotation }
+        : {}),
       toolOverrides: { ...snap.toolOverrides },
       tool: toolForSelection(),
       diffusionFrames: aquarelleVisibleSettleTicks(snap.params['dry'] ?? 50),
@@ -637,6 +649,11 @@ export function AquarelleCanvasLayer(props: {
               // the punch/bake would ignore it while a replay would not.
               ...(recordedTool !== 'lift' && snap.textureId !== null
                 ? { textureId: snap.textureId }
+                : {}),
+              // quick 261116-inu: the recorded rotation rides the same
+              // lift-gated conditional spread as its texture.
+              ...(recordedTool !== 'lift' && snap.textureRotation !== undefined
+                ? { textureRotation: snap.textureRotation }
                 : {}),
               toolOverrides: { ...snap.toolOverrides },
               // Visible settle window (D-19, cap 600) — the SAME cap the live

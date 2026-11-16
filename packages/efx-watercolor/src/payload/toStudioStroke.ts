@@ -76,6 +76,13 @@ export interface AquarelleStrokePayload {
    * ABSENT means the response's own tip; `brushId` is never a texture id.
    */
   textureId?: string
+  /**
+   * quick 261116-inu: the projected-texture orientation in integer DEGREES
+   * (-180..180). Present only when a texture supplied the tip. The ONE
+   * hundredths boundary is the AQTL byte body; every JSON carrier stays in
+   * degrees.
+   */
+  textureRotation?: number
   mutationId?: number
   diffusionFrames?: number
   timestamp: number
@@ -146,6 +153,8 @@ export interface AquarelleStroke {
   toolOverrides?: AquarelleToolOverrides
   /** quick-261115-oh9: texture (mask) id; absent keeps the response tip. */
   textureId?: string
+  /** quick 261116-inu: projected-texture orientation, integer DEGREES. */
+  textureRotation?: number
   mutationId?: number
   diffusionFrames?: number
   timestamp: number
@@ -205,6 +214,12 @@ export function toStudioStroke(
       // where that law is enforced for every producer (record, restore,
       // duplicate, script copy).
       ...(s.textureId !== undefined && s.tool !== 'lift' ? { textureId: s.textureId } : {}),
+      // quick 261116-inu: the rotation is a texture-side property — written
+      // only when the stroke carries one, never as a `textureRotation:
+      // undefined` residue (the textureId precedent above).
+      ...(s.textureRotation !== undefined && s.tool !== 'lift'
+        ? { textureRotation: s.textureRotation }
+        : {}),
       mutationId: s.mutationId,
       diffusionFrames: s.diffusionFrames,
       timestamp: s.timestamp,

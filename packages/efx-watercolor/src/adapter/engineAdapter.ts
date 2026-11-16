@@ -302,6 +302,11 @@ export function createAquarelleEngineAdapter(
         // wrote them — replays as the response tip instead of erasing a
         // silhouette the punch never removed.
         textureId: tool === 'lift' ? null : payload.textureId ?? null,
+        // quick 261116-inu: the STROKE snapshot is the rotation authority at
+        // replay — never the library row (which the bake cannot read). A
+        // textureless or lift stroke carries no rotation; a textured stroke
+        // with no recorded value stamps the 0-degree default.
+        textureRotation: tool === 'lift' ? null : payload.textureRotation ?? null,
         overrides: payload.toolOverrides ?? stroke.toolOverrides,
       }),
     )

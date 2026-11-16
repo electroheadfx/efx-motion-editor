@@ -469,6 +469,16 @@ function isEnginePayloadAquarelleStroke(value: unknown): value is AquarelleStrok
   // Duplicated deliberately — a saved Roto script can reach this guard
   // without ever calling the codec.
   if (value.textureId !== undefined && (typeof value.textureId !== 'string' || value.textureId.length === 0)) return false;
+  // quick 261116-inu: the projected-texture orientation is integer DEGREES in
+  // -180..180 on the JSON carrier. Hundredths (e.g. 3700) exist ONLY inside
+  // the AQTL byte body and are refused here as out of range.
+  if (
+    value.textureRotation !== undefined
+    && (typeof value.textureRotation !== 'number'
+      || !Number.isInteger(value.textureRotation)
+      || value.textureRotation < -180
+      || value.textureRotation > 180)
+  ) return false;
   return true;
 }
 

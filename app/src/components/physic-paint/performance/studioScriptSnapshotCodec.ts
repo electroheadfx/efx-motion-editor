@@ -620,20 +620,21 @@ export function decodeStudioScriptSnapshot(
   try {
     watercolorEvents = decodeScriptTimelineBinary(watercolorBody);
   } catch (error) {
-    // WR-12 (63-16): a pre-v3 AQTL body predates the texture format. There is
-    // no migration reader (no-backward-compat law), so name the retirement with
-    // a pinned message of our own — never interpolate the inner text, and never
-    // flatten it into `watercolor` corruption: the frame pixels are intact.
+    // WR-12 (63-16): a pre-v4 AQTL body predates the current texture format.
+    // There is no migration reader (no-backward-compat law), so name the
+    // retirement with a pinned message of our own — never interpolate the inner
+    // text, and never flatten it into `watercolor` corruption: the frame pixels
+    // are intact.
     if (error instanceof ScriptTimelineCodecError && error.code === 'unsupported-version') {
       // WR-01 (63 review): the inner codec raises `unsupported-version` for
-      // EVERY version other than 3. Retirement is versions 1-2 only — a future
-      // body, a pre-format body or a bit-flipped version word must keep the
-      // generic diagnosis, or an intact-but-unknown script is reported as
-      // "older" and its user is steered away from real corruption.
+      // EVERY version other than its current one. Retirement is versions 1-3
+      // only — a future body, a pre-format body or a bit-flipped version word
+      // must keep the generic diagnosis, or an intact-but-unknown script is
+      // reported as "older" and its user is steered away from real corruption.
       const version = watercolorBody.byteLength >= 6
         ? watercolorBody[4]! | (watercolorBody[5]! << 8)
         : -1;
-      if (version === 1 || version === 2) {
+      if (version === 1 || version === 2 || version === 3) {
         fail('aqtl-retired', 'AQTL body predates the texture format');
       }
     }

@@ -42,7 +42,7 @@ import {
   type AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor/brushes';
 import { BRUSH_PRESETS, resolveMask } from '@efxlab/efx-watercolor';
-import { resolveCatalogTip } from '../../../stores/aquarelleBrushCatalog';
+import { libraryRowFor, resolveCatalogTip } from '../../../stores/aquarelleBrushCatalog';
 import { canonicalFromDiameter, diameterFromCanonical } from '../engine/aquarelleBrushSize';
 import { aquarelleFullPressureSizeFor } from '../engine/aquarelleFootprint';
 import {
@@ -590,6 +590,8 @@ export function snapshotAquarelleRecord(): {
   toolOverrides: AquarelleToolOverrides;
   brushId: string;
   textureId: string | null;
+  /** quick 261116-inu: integer DEGREES from the selected library row. */
+  textureRotation?: number;
   tool: AquarelleTool;
 } {
   const live = aquarelleParams.value;
@@ -603,11 +605,19 @@ export function snapshotAquarelleRecord(): {
   params.size = aquarelleActiveCanonicalSize();
   // 261028-k03c D1: ONE law — the recorded brush is the tip the engine bound.
   const selection = aquarelleBrushForActiveTool();
+  // quick 261116-inu: the library row's rotation is only the default for the
+  // NEXT stroke; it is recorded HERE, in DEGREES. A procedural tip records
+  // nothing (absent means 0 everywhere downstream).
+  const textureRotation =
+    selection.textureId !== null
+      ? libraryRowFor(selection.textureId)?.textureRotation ?? 0
+      : undefined;
   return {
     params,
     toolOverrides: selection.toolOverrides,
     brushId: selection.brushId,
     textureId: selection.textureId,
+    ...(textureRotation !== undefined ? { textureRotation } : {}),
     tool: aquarelleActiveTool.value,
   };
 }
@@ -626,6 +636,10 @@ export function buildAquarelleStrokePayload(
     // quick-261115-oh9: written ONLY when a texture is selected, so an
     // untextured stroke keeps its exact pre-texture payload shape.
     ...(snap.textureId !== null ? { textureId: snap.textureId } : {}),
+    // quick 261116-inu: same conditional law for the recorded rotation.
+    ...(snap.textureRotation !== undefined
+      ? { textureRotation: snap.textureRotation }
+      : {}),
     timestamp: 0,
     ...extra,
   };
@@ -1961,6 +1975,9 @@ export function restoreAquarelleRecordTimeline(
     // quick-261115-oh9: the texture axis. Absent stays absent; a present id
     // rides the stroke so a reopen replays the footprint the user painted.
     const textureId = engine.textureId;
+    // quick 261116-inu: the rotation rides the same conditional law, in
+    // integer DEGREES — the AQTL body already divided its hundredths.
+    const textureRotation = engine.textureRotation;
     const stroke: AquarelleStroke = {
       tool: engine.tool,
       color: engine.color,
@@ -1983,6 +2000,7 @@ export function restoreAquarelleRecordTimeline(
       ...(curveMode !== undefined ? { curveMode } : {}),
       ...(vectorDrawn !== undefined ? { vectorDrawn } : {}),
       ...(textureId !== undefined ? { textureId } : {}),
+      ...(textureRotation !== undefined ? { textureRotation } : {}),
     };
     const entry = toStudioStroke(stroke);
     payloadTimeline.push(entry);
@@ -2229,6 +2247,9 @@ export function getRecordedAquarellePayload(
     // quick-261115-oh9: conditional — a stroke recorded without a texture
     // keeps its exact pre-texture key set.
     ...(stroke.textureId !== undefined ? { textureId: stroke.textureId } : {}),
+    ...(stroke.textureRotation !== undefined
+      ? { textureRotation: stroke.textureRotation }
+      : {}),
     mutationId: stroke.mutationId,
     diffusionFrames: stroke.diffusionFrames,
     timestamp: stroke.timestamp,
