@@ -141,18 +141,17 @@ Both phases are **plan-backed**: `/gsd-plan-phase` produces the plans from these
 **Plans:** 15/15 plans executed
 
 Plans:
+**Wave 1**
 - [x] 63-10-PLAN.md
-- [x] 63-11-PLAN.md
-- [x] 63-12-PLAN.md
 - [x] 63-13-PLAN.md
 - [x] 63-14-PLAN.md
 - [x] 63-15-PLAN.md — Gap closure G-63-5: AQTL v3 carries engine.textureId through the per-track snapshot
-
-**Wave 1**
 - [x] 63-01-PLAN.md — Mask derivation law, registry and the one live/bake mapping
 - [x] 63-02-PLAN.md — Rust brush-asset branch: encode, write, bound guard, batch read
 
 **Wave 2** *(blocked on Wave 1 completion)*
+- [x] 63-11-PLAN.md
+- [x] 63-12-PLAN.md
 - [x] 63-03-PLAN.md — Three compile-time textured tips baked from the supplied art
 - [x] 63-09-PLAN.md — Fresh-profile copy and project provisioning (runs in wave 2)
 
