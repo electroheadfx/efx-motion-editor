@@ -3,12 +3,18 @@ status: diagnosed
 phase: 63-brush-tip-pipeline
 source: [63-VERIFICATION.md]
 started: 2026-11-15T17:05:00Z
-updated: 2026-11-15T20:43:52.433Z
+updated: 2026-11-16T11:30:00.000Z
 ---
 
 ## Current Test
 
-[testing complete]
+number: 7
+name: G-63-5 live retest (UAT test 5)
+expected: |
+  Save Script/Copy from a textured project, apply it in a project that never
+  imported the tip, and Play in motion, static, reveal-tail and reveal-run —
+  every stroke paints its own recorded tip, with no neutral round fallback.
+awaiting: user response
 
 ## Tests
 
@@ -38,12 +44,20 @@ severity: major
 expected: Import a tip in project A, open project B, then close the project and start a New Project — in project B the A tip is neither listed nor resolvable; after close/New Project the library and registry hold exactly the three built-ins.
 result: pass
 
+### 7. G-63-5 live retest (UAT test 5)
+expected: Save Script/Copy from a textured project, apply it in a project that never imported the tip, then Play in motion, static, reveal-tail and reveal-run — every stroke paints its own recorded tip, with no neutral round fallback. The SNP1/AQTL carrier is unit-pinned; the rendered footprint is not.
+result: [pending]
+
+### 8. CR-01 close refusal on a latched track
+expected: With a project whose track snapshot cannot be read (refused/io, corrupt leaf, or a retired AQTL body), paint a stroke, then close the Studio. The first close stays open and shows the withheld-save notice, writing nothing; the second close proceeds.
+result: [pending]
+
 ## Summary
 
-total: 6
+total: 8
 passed: 5
 issues: 1
-pending: 0
+pending: 2
 skipped: 0
 blocked: 0
 
