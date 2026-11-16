@@ -17,6 +17,7 @@ import {
 import type { AquarelleBakeOptions, AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 import type { StudioStroke } from '@efxlab/efx-paint-host';
 import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke, type AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
+import { recordAquarelleStroke, resetAquarelleRecordState } from '../view/aquarelleRecordState';
 
 // Preact hook shims for the REAL useRotoPhysicalEditHistory hook driven by the
 // HOLD-03 one-history-command case below (same idiom as the hook's own spec).
@@ -194,7 +195,10 @@ const authority = (overrides: Partial<PhysicPaintRotoAuthorityResult> = {}): Phy
 
 const script = (x = 10): RotoPaintScript => ({ provenance: { sessionId: 'session', layerId: 'layer-1', sourceFrame: 2 }, sourceFrame: 2, sourceDisplayFrame: 2, sourceRevision: 1, brushes: [{ primary: { tool: 'paint', points: [{ x, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#123456', params: { size: 5, opacity: 80, pressure: 70, waterAmount: 20, dryAmount: 30, edgeDetail: 4, pickup: 2, eraseStrength: 10, antiAlias: 1 }, timestamp: 1 }, continuations: [] }] });
 
-/** 63-15 (G-63-5): the persisted timeline a saved textured script carries. */
+/**
+ * 63-15 (G-63-5) / quick 261116-inu: the persisted timeline a saved textured
+ * script carries — integer DEGREES in the engine slot, never hundredths.
+ */
 const texturedAquarelleTimeline = (): AquarellePayloadEvent[] => [
   {
     pts: [{ x: 0.5, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0, tick: 0 }],
@@ -212,7 +216,8 @@ const texturedAquarelleTimeline = (): AquarellePayloadEvent[] => [
       color: '#224466',
       params: { size: 12 },
       brushId: 'wc/round-medium',
-      textureId: 'wc/builtin-chalk',
+      textureId: 'wc/custom-chalk',
+      textureRotation: 37,
       timestamp: 10,
     },
   },
@@ -5636,7 +5641,10 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     const call = (test.bakeRevealStackTail.mock.calls as unknown as Array<[{
       scriptEvents: readonly unknown[];
     }]>) [0]![0];
-    expect((call.scriptEvents[0] as StudioStroke<AquarelleStrokePayload>).engine.textureId).toBe('wc/builtin-chalk');
+    expect((call.scriptEvents[0] as StudioStroke<AquarelleStrokePayload>).engine.textureId).toBe('wc/custom-chalk');
+    // quick 261116-inu: the stored DEGREES are copied verbatim — never the
+    // encoded hundredths, and never a library lookup.
+    expect((call.scriptEvents[0] as StudioStroke<AquarelleStrokePayload>).engine.textureRotation).toBe(37);
   });
 
   it('reloads the extended Reveal rail with the same rendered frames and repeat resolution (Quick B)', async () => {
@@ -6882,7 +6890,56 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     const runCall = (test.bakeRevealStackRun.mock.calls as unknown as Array<[{
       scriptEvents: readonly unknown[];
     }]>) [0]![0];
-    expect((runCall.scriptEvents[0] as StudioStroke<AquarelleStrokePayload>).engine.textureId).toBe('wc/builtin-chalk');
+    expect((runCall.scriptEvents[0] as StudioStroke<AquarelleStrokePayload>).engine.textureId).toBe('wc/custom-chalk');
+    expect((runCall.scriptEvents[0] as StudioStroke<AquarelleStrokePayload>).engine.textureRotation).toBe(37);
+  });
+
+  it('texture carrier: the fallback projection copies the recorded rotation, not the library', async () => {
+    // quick 261116-inu / Task 9: when the snapshot carries no persisted
+    // `aquarelleEvents`, the controller rebuilds the stroke from the record.
+    // The recorded DEGREES ride along — the library row is never consulted.
+    recordAquarelleStroke(77, {
+      tool: 'brush',
+      color: '#123456',
+      params: { size: 5 },
+      brushId: 'wc/round-medium',
+      points: [{ x: 10, y: 2, p: 1, tx: 0, ty: 0, tw: 0 }],
+      textureId: 'wc/custom-rotation',
+      textureRotation: 37,
+      mutationId: 77,
+      timestamp: 1,
+    });
+    try {
+      const target = stackClip(2, { mode: 'progressive' });
+      const test = stackHarness(
+        [target],
+        { canonicalStart: 11 },
+        { hasPhotoReference: () => true },
+        { kind: 'empty', keyId: null, appFrame: 11 },
+      );
+      const baseScript = script(99);
+      vi.mocked(test.library.loadSnapshot).mockResolvedValue({
+        ...baseScript,
+        brushes: [{
+          ...baseScript.brushes[0]!,
+          primary: { ...baseScript.brushes[0]!.primary, mutationId: 77 },
+        }],
+      } as RotoPaintScript);
+      await test.controller.openConfirmation();
+      test.controller.setStackRunKind('reveal-static');
+      test.controller.countText.value = '2';
+      expect(await test.controller.confirm()).toBe(true);
+
+      expect(test.bakeRevealStackRun).toHaveBeenCalledTimes(1);
+      const runCall = (test.bakeRevealStackRun.mock.calls as unknown as Array<[{
+        scriptEvents: readonly unknown[];
+      }]>) [0]![0];
+      const projected = runCall.scriptEvents[0] as StudioStroke<AquarelleStrokePayload>;
+      expect(projected.engine.textureId).toBe('wc/custom-rotation');
+      expect(projected.engine.textureRotation).toBe(37);
+    } finally {
+      resetAquarelleRecordState();
+    }
   });
 
   it('flattens a Reveal run when the union port is absent, recording nothing (Quick C2)', async () => {

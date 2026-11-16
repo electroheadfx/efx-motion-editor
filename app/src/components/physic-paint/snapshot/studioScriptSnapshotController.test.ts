@@ -509,13 +509,43 @@ describe('studioScriptSnapshotController — SNAP v5 clean break (261027-klx)', 
 // ------------------------------------------------------------
 //  WR-12 (63-16) — the retired AQTL body.
 //
-//  A script written before the texture format carries an AQTL
-//  v1/v2 body. There is no migration reader (no-backward-compat
-//  law), so the body is retired and NAMED — never reported as
-//  watercolor corruption: the frame pixels are intact.
+//  A script written before the texture format (v1/v2) or before the
+//  texture-rotation format (v3) is retired. There is no migration
+//  reader (no-backward-compat law), so the body is retired and NAMED
+//  — never reported as watercolor corruption: the frame pixels are
+//  intact.
 // ------------------------------------------------------------
 
 describe('studioScriptSnapshotController — retired AQTL body (WR-12)', () => {
+  it('AQTL_RETIRED: retires inner AQTL versions 1-3 and accepts the current v4 body', async () => {
+    // quick 261116-inu: v4 is the rotation format; v1, v2 and v3 have no
+    // migration reader and are named retirements, never watercolor corruption.
+    for (const version of [1, 2, 3] as const) {
+      const bytes = retiredAqtlContainer(version);
+      const { controller, read, report } = harness();
+      read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+      controller.bind(IDENTITY);
+
+      expect(await controller.restore(), `AQTL version ${version}`).toEqual({
+        status: 'refused',
+        maxRestoredMutationId: 0,
+      });
+      expect(report.mock.calls[0]?.[0]).toBe(AQTL_RETIRED_NOTICE);
+    }
+
+    // The current version is a valid body: the same fixture restores.
+    const currentBytes = retiredAqtlContainer(4);
+    const { controller, read, report } = harness();
+    read.mockResolvedValue({
+      ok: true,
+      data: { bytes: currentBytes, digest: 'd', byteLength: currentBytes.byteLength },
+    });
+    controller.bind(IDENTITY);
+
+    expect(await controller.restore()).toEqual({ status: 'restored', maxRestoredMutationId: 102 });
+    expect(report).not.toHaveBeenCalled();
+  });
+
   it('AQTL_RETIRED: shows the pinned named notice exactly once per binding', async () => {
     const bytes = retiredAqtlContainer(2);
     const { controller, read, report } = harness();

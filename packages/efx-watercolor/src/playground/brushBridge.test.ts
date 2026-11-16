@@ -294,3 +294,58 @@ describe('multipliers (D-21 / D-22)', () => {
     expect(brush.grain).toBe(chalk.grain)
   })
 })
+
+// ---------------------------------------------------------------------------
+// quick 261116-inu — textureRotation rides the brush in integer DEGREES
+// ---------------------------------------------------------------------------
+
+describe('textureRotation (degrees, texture-gated)', () => {
+  it('carries the requested integer degrees when a registered mask resolves', () => {
+    expect(registerMask('wc/custom-rotated', solidMask(19))).toBe(true)
+    const brush = buildBrushForStroke('chalk', {
+      textureId: 'wc/custom-rotated',
+      textureRotation: 37,
+    })
+    expect(brush.textureId).toBe('wc/custom-rotated')
+    expect(brush.textureRotation).toBe(37)
+  })
+
+  it('defaults a textured, rotationless stroke to 0 degrees (absent is not undefined)', () => {
+    expect(registerMask('wc/custom-flat', solidMask(19))).toBe(true)
+    const brush = buildBrushForStroke('chalk', { textureId: 'wc/custom-flat' })
+    expect(brush.textureRotation).toBe(0)
+  })
+
+  it('keeps textureRotation null whenever no mask supplied the bytes', () => {
+    const plain = buildBrushForStroke('round')
+    expect(plain.textureRotation).toBe(null)
+    const explicitNull = buildBrushForStroke('round', { textureId: null, textureRotation: 37 })
+    expect(explicitNull.textureRotation).toBe(null)
+    const unknown = buildBrushForStroke('round', {
+      textureId: 'wc/custom-missing',
+      textureRotation: 37,
+    })
+    expect(unknown.textureRotation).toBe(null)
+  })
+
+  it('does not fork the GPU tip cache: rotation is a uniform, not a second upload', () => {
+    expect(registerMask('wc/custom-uniform', solidMask(19))).toBe(true)
+    const flat = buildBrushForStroke('chalk', { textureId: 'wc/custom-uniform' })
+    const rotated = buildBrushForStroke('chalk', {
+      textureId: 'wc/custom-uniform',
+      textureRotation: 90,
+    })
+    expect(brushTipCacheKey(rotated)).toBe(brushTipCacheKey(flat))
+  })
+
+  it('leaves strokeTipData byte-identical for any rotation', () => {
+    expect(registerMask('wc/custom-tip-rot', solidMask(19))).toBe(true)
+    const upright = buildBrushForStroke('chalk', { textureId: 'wc/custom-tip-rot' })
+    const turned = buildBrushForStroke('chalk', {
+      textureId: 'wc/custom-tip-rot',
+      textureRotation: 120,
+    })
+    expect(sameBytes(turned.tipData, upright.tipData)).toBe(true)
+    expect(sameBytes(strokeTipData('chalk', 'wc/custom-tip-rot'), upright.tipData)).toBe(true)
+  })
+})

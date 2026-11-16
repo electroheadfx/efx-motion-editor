@@ -375,16 +375,16 @@ describe('textureId on the script engine slot (quick-261115-oh9)', () => {
     return event;
   }
 
-  it('a valid built-in texture id parses', async () => {
+  it('a valid machine-library texture id parses', async () => {
     const schema = await loadSchema();
     const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
-      events: [texturedEvent('wc/builtin-chalk')],
+      events: [texturedEvent('wc/custom-chalk')],
     }));
     const parsed = schema.parseRotoScript!(value);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
-    expect(runtime.aquarelleEvents![0].engine.textureId).toBe('wc/builtin-chalk');
+    expect(runtime.aquarelleEvents![0].engine.textureId).toBe('wc/custom-chalk');
   });
 
   it('absence still parses and stays absent', async () => {
@@ -405,13 +405,75 @@ describe('textureId on the script engine slot (quick-261115-oh9)', () => {
     // parse leg from disk. Serialize a valid stroke, then tamper its engine
     // slot exactly as a hand-edited or foreign script would.
     const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
-      events: [texturedEvent('wc/builtin-chalk')],
+      events: [texturedEvent('wc/custom-chalk')],
     }));
     for (const bad of [7, '', null]) {
       const tampered = structuredClone(value);
       tampered.strokes[0].engine.textureId = bad;
       const parsed = schema.parseRotoScript!(tampered);
       expect(parsed.ok).toBe(false);
+      if (!parsed.ok) expect(parsed.refusal.code).toBe('malformed-engine-payload');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// quick 261116-inu / Task 9: the rotation rides the same opaque engine slot as
+// integer DEGREES in -180..180. The JSON carrier NEVER holds hundredths —
+// those exist only inside the AQTL i16 byte body — so a 3700 reaching a saved
+// script is out of range and refused. This is the Roto half of the anti-mixup
+// law pinned in scriptTimelineCodec.test.ts (37 degrees <-> 3700 hundredths).
+// ---------------------------------------------------------------------------
+
+describe('textureRotation on the script engine slot (quick 261116-inu)', () => {
+  function rotatedEvent(textureRotation: unknown): any {
+    const event = aquarelleStrokeEvent();
+    event.engine = {
+      ...event.engine,
+      textureId: 'wc/custom-chalk',
+      textureRotation,
+    };
+    return event;
+  }
+
+  it('accepts integer degrees across the full -180..180 range and round-trips them', async () => {
+    const schema = await loadSchema();
+    for (const degrees of [-180, -120, 0, 37, 180]) {
+      const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
+        events: [rotatedEvent(degrees)],
+      }));
+      const parsed = schema.parseRotoScript!(value);
+      expect(parsed.ok, `degrees ${degrees}`).toBe(true);
+      if (!parsed.ok) continue;
+      const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
+      expect(runtime.aquarelleEvents![0].engine.textureRotation).toBe(degrees);
+    }
+  });
+
+  it('absence still parses and stays absent', async () => {
+    const schema = await loadSchema();
+    const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
+      events: [aquarelleStrokeEvent()],
+    }));
+    const parsed = schema.parseRotoScript!(value);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
+    expect('textureRotation' in runtime.aquarelleEvents![0].engine).toBe(false);
+  });
+
+  it('anti-mixup: refuses 3700 hundredths and every non-integer or out-of-range value', async () => {
+    const schema = await loadSchema();
+    // 3700 is the encoded i16 for 37 degrees INSIDE the AQTL body — it must
+    // never survive as a JSON-carrier degree value.
+    for (const bad of [3700, 37.5, 181, -181, '37', null]) {
+      const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
+        events: [rotatedEvent(37)],
+      }));
+      const tampered = structuredClone(value);
+      tampered.strokes[0].engine.textureRotation = bad;
+      const parsed = schema.parseRotoScript!(tampered);
+      expect(parsed.ok, `rotation ${String(bad)}`).toBe(false);
       if (!parsed.ok) expect(parsed.refusal.code).toBe('malformed-engine-payload');
     }
   });

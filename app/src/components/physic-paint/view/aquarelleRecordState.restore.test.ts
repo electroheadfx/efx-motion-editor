@@ -16,10 +16,13 @@ import type {
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import { PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
+import type { AquarelleTip } from '@efxlab/efx-watercolor/brushes';
+import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import {
   aquarelleRecordClock,
   aquarelleStrokesRevision,
+  buildAquarelleStrokePayload,
   getAquarelleEventsForFrame,
   getAquarelleStrokeKeyAnchors,
   getRecordedAquarelleDryEvents,
@@ -32,8 +35,14 @@ import {
   remapAquarelleScriptsForRecords,
   resetAquarelleRecordState,
   restoreAquarelleRecordTimeline,
+  selectAquarelleTip,
+  snapshotAquarelleRecord,
   translateAquarelleStrokeInScript,
 } from './aquarelleRecordState';
+import {
+  replaceLibraryEntries,
+  resetAquarelleBrushCatalog,
+} from '../../../stores/aquarelleBrushCatalog';
 
 function fixturePoint(index: number): StudioPoint {
   return { x: 0.1 + index * 0.1, y: 0.2 + index * 0.1, p: 0.5, tx: 0, ty: 0, tw: 0, tick: index };
@@ -139,17 +148,90 @@ describe('quick-261115-oh9 restored textureId carrier', () => {
   }
 
   it('preserves a recorded engine.textureId through restore and getRecordedAquarellePayload', () => {
-    restoreAquarelleRecordTimeline([texturedFixture(7, 42, 'wc/builtin-chalk')]);
+    restoreAquarelleRecordTimeline([texturedFixture(7, 42, 'wc/custom-restored')]);
     const entry = getRecordedAquarellePayloadTimeline()[0] as StudioStroke<AquarelleStrokePayload>;
-    expect(entry.engine.textureId).toBe('wc/builtin-chalk');
-    expect(getRecordedAquarelleStroke(42)!.textureId).toBe('wc/builtin-chalk');
-    expect(getRecordedAquarellePayload(42)!.textureId).toBe('wc/builtin-chalk');
+    expect(entry.engine.textureId).toBe('wc/custom-restored');
+    expect(getRecordedAquarelleStroke(42)!.textureId).toBe('wc/custom-restored');
+    expect(getRecordedAquarellePayload(42)!.textureId).toBe('wc/custom-restored');
   });
 
   it('keeps an untextured restore free of the key', () => {
     restoreAquarelleRecordTimeline([fixtureStroke(7, 43)]);
     expect('textureId' in getRecordedAquarelleStroke(43)!).toBe(false);
     expect('textureId' in getRecordedAquarellePayload(43)!).toBe(false);
+  });
+});
+
+// ============================================================
+//  quick 261116-inu / Task 9 — the rotation carrier survives restore.
+//
+//  The unit is integer DEGREES in memory and on every JSON carrier.
+//  A recorded 37 must reopen as 37 — never 3700 (the AQTL body's
+//  hundredths, which exists only inside those two wire bytes) and
+//  never 0.37. Absent stays absent.
+// ============================================================
+describe('quick 261116-inu textureRotation carrier (degrees)', () => {
+  function rotatedFixture(
+    playFrame: number,
+    mutationId: number,
+    textureId: string,
+    textureRotation: number,
+  ): StudioStroke<AquarelleStrokePayload> {
+    const base = fixtureStroke(playFrame, mutationId);
+    return { ...base, engine: { ...base.engine, textureId, textureRotation } };
+  }
+
+  it('preserves integer DEGREES through restore and getRecordedAquarellePayload', () => {
+    restoreAquarelleRecordTimeline([rotatedFixture(7, 42, 'wc/custom-rotated', 37)]);
+    const entry = getRecordedAquarellePayloadTimeline()[0] as StudioStroke<AquarelleStrokePayload>;
+    expect(entry.engine.textureId).toBe('wc/custom-rotated');
+    expect(entry.engine.textureRotation).toBe(37);
+    expect(getRecordedAquarelleStroke(42)!.textureRotation).toBe(37);
+    expect(getRecordedAquarellePayload(42)!.textureRotation).toBe(37);
+  });
+
+  it('keeps an untextured or rotationless restore free of the key', () => {
+    restoreAquarelleRecordTimeline([fixtureStroke(7, 43)]);
+    expect('textureRotation' in getRecordedAquarelleStroke(43)!).toBe(false);
+    expect('textureRotation' in getRecordedAquarellePayload(43)!).toBe(false);
+
+    restoreAquarelleRecordTimeline([
+      { ...fixtureStroke(7, 44), engine: { ...fixtureStroke(7, 44).engine, textureId: 'wc/custom-flat' } },
+    ]);
+    expect(getRecordedAquarelleStroke(44)!.textureRotation).toBeUndefined();
+    expect('textureRotation' in getRecordedAquarellePayload(44)!).toBe(false);
+  });
+
+  it('snapshots the selected library row rotation in DEGREES for the NEXT stroke', () => {
+    const tip: AquarelleTip = {
+      id: 'wc/custom-snapshot-rotation',
+      category: 'custom',
+      name: 'Rotated texture',
+      ...NEUTRAL_TOOL_OVERRIDES,
+    };
+    replaceLibraryEntries([{ tip, digest: 'a'.repeat(64), textureRotation: 37 }]);
+    try {
+      selectAquarelleTip(tip.id);
+
+      const snap = snapshotAquarelleRecord();
+      expect(snap.textureId).toBe(tip.id);
+      expect(snap.textureRotation).toBe(37);
+
+      const payload = buildAquarelleStrokePayload();
+      expect(payload.textureId).toBe(tip.id);
+      expect(payload.textureRotation).toBe(37);
+    } finally {
+      resetAquarelleBrushCatalog();
+    }
+  });
+
+  it('records no rotation key for the Default chip or a procedural tip', () => {
+    replaceLibraryEntries([]);
+    selectAquarelleTip(null);
+
+    const snap = snapshotAquarelleRecord();
+    expect(snap.textureRotation).toBeUndefined();
+    expect('textureRotation' in buildAquarelleStrokePayload()).toBe(false);
   });
 });
 

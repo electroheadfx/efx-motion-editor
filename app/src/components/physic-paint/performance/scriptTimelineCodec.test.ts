@@ -4,14 +4,15 @@
 //
 //  Two formats over the SAME in-memory timeline:
 //    - JSON baseline: exact JSON.stringify / JSON.parse round-trip.
-//    - AQTL v3 packed binary (61-05; textureId in 63-15): versioned header,
-//      packed stroke metadata, quantized point records (documented
-//      tolerances), the vector path inside the engine block — anchor block
-//      plus the optional render-mode byte — and the presence-prefixed
-//      textureId after the vector block.
+//    - AQTL v4 packed binary (61-05; textureId in 63-15; textureRotation in
+//      quick 261116-inu): versioned header, packed stroke metadata,
+//      quantized point records (documented tolerances), the vector path
+//      inside the engine block — anchor block plus the optional render-mode
+//      byte — and the presence-prefixed textureId plus its i16 hundredths
+//      rotation slot after the vector block.
 //  Every corrupt-input case must fail closed with a typed
-//  ScriptTimelineCodecError — never a raw RangeError. Versions 1 and 2 are
-//  REFUSED outright (no upgrade path, per the project's clean-break law).
+//  ScriptTimelineCodecError — never a raw RangeError. Versions 1, 2 and 3
+//  are REFUSED outright (no upgrade path, per the project's clean-break law).
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
@@ -206,8 +207,10 @@ const TOTAL_POINTS = 3 + 17 + 64 + 100 + 1;
 // 61-05: the watercolor binary grew by one vector-flags byte per stroke
 // (5 strokes in FIXTURE): the measured v1 length was 3737.
 // 63-15: AQTL v3 adds one textureId presence byte per stroke (5 in FIXTURE).
+// quick 261116-inu: AQTL v4 adds one textureRotation presence byte per stroke
+// (5 in FIXTURE): 3747 + 5 = 3752.
 const JSON_BYTE_LENGTH = 18068;
-const BINARY_BYTE_LENGTH = 3747;
+const BINARY_BYTE_LENGTH = 3752;
 const MEASURED_RATIO = 4.82;
 
 const asStroke = (event: AquarellePayloadEvent): StudioStroke<AquarelleStrokePayload> =>
@@ -228,26 +231,28 @@ function expectedCode(run: () => unknown): ScriptTimelineCodecErrorCode | 'no-th
 
 // ---------------------------------------------------------------------------
 // Minimal one-stroke buffer: a documented fixed layout so corrupt-byte tests
-// can address exact fields. Header 24 bytes, then (AQTL v3):
+// can address exact fields. Header 24 bytes, then (AQTL v4):
 //   24 kind | 25 mutation presence | 26 play presence | 27 ticks | 31 cuisson
 //   35 traceSeed | 39 recordedOrder(f64) | 47 brushId len | 49 brushId
 //   50 color presence | 51 overrides mask | 52 engine tool
 //   53 engine color presence | 54 engine brushId len | 56 engine brushId
 //   57 params count | 61 engine overrides mask | 62 engine mutation presence
 //   63 engine diffusion presence | 64 timestamp(f64) | 72 engine play presence
-//   73 vectorFlags | 74 texture presence | 75 pointCount | 79 point record
+//   73 vectorFlags | 74 texture presence | 75 rotation presence
+//   76 pointCount | 80 point record
 // ---------------------------------------------------------------------------
 
 const MINIMAL_RECORDED_ORDER_OFFSET = 39;
 const MINIMAL_BRUSH_ID_LENGTH_OFFSET = 47;
 const MINIMAL_TOOL_OFFSET = 52;
 // 63-15: the texture presence byte sits between the vector block and the
-// point count, so pointCount now starts at 75.
-const MINIMAL_POINT_COUNT_OFFSET = 75;
+// point count; quick 261116-inu adds the rotation presence byte beside it, so
+// pointCount now starts at 76.
+const MINIMAL_POINT_COUNT_OFFSET = 76;
 // 61-30: when a curve mode is present it is written AFTER the render-mode byte
 // (which is itself absent here), so the code byte sits directly after the
-// vectorFlags byte at 73; the texture presence byte follows it and pointCount
-// shifts one byte later.
+// vectorFlags byte at 73; the texture and rotation presence bytes follow it
+// and pointCount shifts two bytes later.
 const MINIMAL_CURVE_MODE_OFFSET = 74;
 
 // ---------------------------------------------------------------------------
@@ -255,9 +260,9 @@ const MINIMAL_CURVE_MODE_OFFSET = 74;
 //   73 vectorFlags (bit 0 anchors, bit 1 render mode) | 74 anchorCount(u16)
 //   per anchor: x(f32) y(f32) kind(u8) handleFlags(u8)
 //               [in.xy(f32 pair)] [out.xy(f32 pair)] widthPresent(u8) [width(f32)]
-//   118 texture presence | 119 pointCount | 123 point record (16 bytes each)
-// The texture presence byte is written after the WHOLE vector block, so every
-// offset inside the anchor block above is unchanged by 63-15.
+//   118 texture presence | 119 rotation presence | 120 pointCount | 124 point
+// The texture/rotation presence bytes are written after the WHOLE vector
+// block, so every offset inside the anchor block above is unchanged.
 // Anchor scalars are f32 on the wire, so every value below is exactly
 // representable in binary32 — including the 1.8 factor, stored through
 // Math.fround so the whole-stroke deep equality is exact rather than a
@@ -376,8 +381,9 @@ describe('JSON baseline codec', () => {
 describe('AQTL packed binary codec', () => {
   it('pins the magic/version constants', () => {
     expect(SCRIPT_TIMELINE_BINARY_MAGIC).toBe('AQTL');
-    // 63-15: AQTL v3 is the one accepted version; v1 and v2 are refused below.
-    expect(SCRIPT_TIMELINE_BINARY_VERSION).toBe(3);
+    // quick 261116-inu: AQTL v4 is the one accepted version; v1, v2 and v3
+    // are refused below.
+    expect(SCRIPT_TIMELINE_BINARY_VERSION).toBe(4);
     expect(POINT_UV_STEP).toBeCloseTo(1 / 65535, 12);
     expect(POINT_DEGREE_STEP).toBeCloseTo(0.02, 12);
   });
@@ -542,12 +548,13 @@ describe('AQTL v2 vector payload (61-05)', () => {
   it('costs a hand-painted stroke one vector-flags byte', () => {
     // The version field keeps its u16 width, so bumping it costs nothing. A
     // v2 hand-painted stroke pays the vector-flags byte alone; v3 adds the
-    // textureId presence byte on every stroke (63-15).
+    // textureId presence byte (63-15) and v4 the textureRotation presence
+    // byte (quick 261116-inu) on EVERY stroke.
     const V1_MINIMAL_BYTE_LENGTH = 93;
     const V2_MINIMAL_BYTE_LENGTH = V1_MINIMAL_BYTE_LENGTH + 1;
     const handPainted = minimalStroke();
     expect(encodeScriptTimelineBinary([handPainted]).byteLength).toBe(
-      V2_MINIMAL_BYTE_LENGTH + 1,
+      V2_MINIMAL_BYTE_LENGTH + 2,
     );
   });
 
@@ -652,14 +659,14 @@ describe('AQTL v2 per-vertex colour (261111-wd6)', () => {
 
   it('leaves an anchor-colourless path byte-identical (bit 3 clear)', () => {
     const plain = encodeScriptTimelineBinary([minimalStroke()]);
-    expect(plain.byteLength).toBe(95);
+    expect(plain.byteLength).toBe(96);
     expect(plain[VECTOR_FLAG_OFFSET]).toBe(0);
 
     const colourless = encodeScriptTimelineBinary([coloredVectorStroke()]);
     expect(colourless[VECTOR_FLAG_OFFSET] & VECTOR_FLAG_ANCHOR_COLOR).toBe(0);
     // No colour block at all: the colourless path pays only the v3 texture
-    // presence byte over the v2 118 bytes.
-    expect(colourless.byteLength).toBe(119);
+    // presence byte and the v4 rotation presence byte over the v2 118 bytes.
+    expect(colourless.byteLength).toBe(120);
   });
 
   it('costs one presence byte per anchor plus 1 + 2 + UTF-8 bytes for a colour', () => {
@@ -790,8 +797,8 @@ describe('AQTL v3 textureId (63-15 G-63-5)', () => {
     expect(encodeScriptTimelineBinary(decoded)).toEqual(first);
   });
 
-  it('round-trips the built-in id with no imports and re-encodes byte-identically', () => {
-    const textured = texturedStroke('wc/builtin-chalk');
+  it('round-trips a machine-library id and re-encodes byte-identically', () => {
+    const textured = texturedStroke('wc/custom-chalk');
 
     const first = encodeScriptTimelineBinary([textured]);
     const decoded = decodeScriptTimelineBinary(first);
@@ -807,7 +814,7 @@ describe('AQTL v3 textureId (63-15 G-63-5)', () => {
     const plain = encodeScriptTimelineBinary([minimalStroke()]);
     expect(plain[74]).toBe(0);
 
-    const id = 'wc/builtin-chalk';
+    const id = 'wc/custom-chalk';
     const bytes = encodeScriptTimelineBinary([texturedStroke(id)]);
     expect(bytes[74]).toBe(1);
     expect(bytes.byteLength).toBe(
@@ -820,19 +827,19 @@ describe('AQTL v3 textureId (63-15 G-63-5)', () => {
       'invalid-string',
     );
 
-    const nonString = texturedStroke('wc/builtin-chalk');
+    const nonString = texturedStroke('wc/custom-chalk');
     (asStroke(nonString).engine as { textureId?: unknown }).textureId = 42;
     expect(expectedCode(() => encodeScriptTimelineBinary([nonString]))).toBe('invalid-string');
   });
 
   it('refuses a texture presence marker that is not 0 or 1', () => {
-    const bytes = encodeScriptTimelineBinary([texturedStroke('wc/builtin-chalk')]);
+    const bytes = encodeScriptTimelineBinary([texturedStroke('wc/custom-chalk')]);
     new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(74, 2);
     expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
   });
 
   it('fails closed when the texture id length runs past the body', () => {
-    const bytes = encodeScriptTimelineBinary([texturedStroke('wc/builtin-chalk')]);
+    const bytes = encodeScriptTimelineBinary([texturedStroke('wc/custom-chalk')]);
     // No anchors: flags at 73, presence at 74, u16 length at 75.
     new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint16(75, 0xffff, true);
     expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('truncated');
@@ -846,11 +853,146 @@ describe('AQTL v3 textureId (63-15 G-63-5)', () => {
     };
 
     const bytes = encodeScriptTimelineBinary([lift]);
-    // Same size as any textureless stroke: presence 0 is the one added byte.
+    // Same size as any textureless stroke: the presence bytes are the only
+    // additions.
     expect(bytes.byteLength).toBe(MINIMAL_BYTES.byteLength);
 
     const [decoded] = decodeScriptTimelineBinary(bytes);
     expect('textureId' in asStroke(decoded).engine).toBe(false);
+    expect('textureRotation' in asStroke(decoded).engine).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// quick 261116-inu — the texture rotation axis.
+//
+//  ONE unit crosses every carrier and it is integer DEGREES. The only
+//  hundredths boundary in the feature is this byte body: the encoder writes
+//  `presence + i16(Math.round(degrees * 100))` right after the textureId block
+//  and the decoder divides by 100 exactly once. The anti-mixup test pins both
+//  halves: the raw slot reads 3700 while the decoded field is exactly 37.
+// ---------------------------------------------------------------------------
+
+describe('AQTL v4 textureRotation (quick 261116-inu)', () => {
+  function rotatedStroke(
+    textureId: string | undefined,
+    textureRotation: number,
+  ): StudioStroke<AquarelleStrokePayload> {
+    const base = minimalStroke();
+    return {
+      ...base,
+      engine: {
+        ...base.engine,
+        ...(textureId !== undefined ? { textureId } : {}),
+        textureRotation,
+      },
+    };
+  }
+
+  const ROTATION_ID = 'wc/custom-rot';
+  // No anchors: flags 73, texture presence 74, u16 length 75-76, id bytes,
+  // rotation presence, i16 hundredths.
+  const ROTATION_PRESENCE_OFFSET = 75 + 2 + new TextEncoder().encode(ROTATION_ID).byteLength;
+  const ROTATION_HUNDREDTHS_OFFSET = ROTATION_PRESENCE_OFFSET + 1;
+
+  it('round-trips a rotated stroke deep-equal and re-encodes byte-identically', () => {
+    const rotated = rotatedStroke(ROTATION_ID, 37);
+
+    const first = encodeScriptTimelineBinary([rotated]);
+    const decoded = decodeScriptTimelineBinary(first);
+
+    expect(decoded).toEqual([rotated]);
+    expect(encodeScriptTimelineBinary(decoded)).toEqual(first);
+  });
+
+  it('leaves an absent rotation absent and pays the one presence byte', () => {
+    const plain = encodeScriptTimelineBinary([minimalStroke()]);
+    expect(plain[75]).toBe(0);
+
+    const [decoded] = decodeScriptTimelineBinary(plain);
+    expect('textureRotation' in asStroke(decoded).engine).toBe(false);
+  });
+
+  it('costs one presence byte every stroke plus 2 bytes when a rotation is carried', () => {
+    const rotated = encodeScriptTimelineBinary([rotatedStroke(ROTATION_ID, 0)]);
+    const absent = encodeScriptTimelineBinary([
+      {
+        ...minimalStroke(),
+        engine: { ...minimalStroke().engine, textureId: ROTATION_ID },
+      },
+    ]);
+    // The rotation presence byte is paid by every stroke (0 above); a carried
+    // rotation adds the presence marker plus the i16 hundredths slot.
+    expect(rotated[ROTATION_PRESENCE_OFFSET]).toBe(1);
+    expect(rotated.byteLength).toBe(absent.byteLength + 3);
+  });
+
+  it('anti-mixup: the i16 slot holds 3700 while the decoded field is exactly 37', () => {
+    // One unit everywhere in memory and in every JSON carrier — degrees. The
+    // ONLY thousand-fold representation lives inside these two wire bytes, so
+    // a future degree/hundredths mix-up on either side breaks here.
+    const bytes = encodeScriptTimelineBinary([rotatedStroke(ROTATION_ID, 37)]);
+    expect(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getInt16(
+      ROTATION_HUNDREDTHS_OFFSET,
+      true,
+    )).toBe(3700);
+
+    const [decoded] = decodeScriptTimelineBinary(bytes);
+    expect(asStroke(decoded).engine.textureRotation).toBe(37);
+    expect(asStroke(decoded).engine.textureRotation).not.toBe(3700);
+    expect(asStroke(decoded).engine.textureRotation).not.toBe(0.37);
+  });
+
+  it('round-trips the range boundaries -180 and 180', () => {
+    for (const degrees of [-180, 180]) {
+      const [decoded] = decodeScriptTimelineBinary(
+        encodeScriptTimelineBinary([rotatedStroke(ROTATION_ID, degrees)]),
+      );
+      expect(asStroke(decoded).engine.textureRotation, `degrees ${degrees}`).toBe(degrees);
+    }
+  });
+
+  it('refuses a non-integer or out-of-range rotation at encode (fail closed)', () => {
+    for (const bad of [37.5, 181, -181, 3700, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(
+        expectedCode(() => encodeScriptTimelineBinary([rotatedStroke(ROTATION_ID, bad)])),
+        `rotation ${bad}`,
+      ).toBe('invalid-value');
+    }
+  });
+
+  it('refuses a rotation presence marker that is not 0 or 1', () => {
+    const bytes = encodeScriptTimelineBinary([rotatedStroke(ROTATION_ID, 37)]);
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setUint8(
+      ROTATION_PRESENCE_OFFSET,
+      2,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(bytes))).toBe('invalid-value');
+  });
+
+  it('rejects decoded hundredths outside -18000..18000', () => {
+    const tooFar = encodeScriptTimelineBinary([rotatedStroke(ROTATION_ID, 37)]);
+    new DataView(tooFar.buffer, tooFar.byteOffset, tooFar.byteLength).setInt16(
+      ROTATION_HUNDREDTHS_OFFSET,
+      18001,
+      true,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(tooFar))).toBe('invalid-value');
+
+    const tooNegative = encodeScriptTimelineBinary([rotatedStroke(ROTATION_ID, 37)]);
+    new DataView(tooNegative.buffer, tooNegative.byteOffset, tooNegative.byteLength).setInt16(
+      ROTATION_HUNDREDTHS_OFFSET,
+      -18001,
+      true,
+    );
+    expect(expectedCode(() => decodeScriptTimelineBinary(tooNegative))).toBe('invalid-value');
+  });
+
+  it('decodes negative hundredths back to negative degrees', () => {
+    const [decoded] = decodeScriptTimelineBinary(
+      encodeScriptTimelineBinary([rotatedStroke(ROTATION_ID, -120)]),
+    );
+    expect(asStroke(decoded).engine.textureRotation).toBe(-120);
   });
 });
 
@@ -902,8 +1044,9 @@ describe('AQTL fail-closed validation', () => {
   it('pins the minimal one-stroke layout used by the corrupt-byte helpers', () => {
     // v1 measured 93 bytes; v2 adds the one vector-flags byte (the version
     // field keeps its u16 width, so its bump costs nothing); v3 adds the
-    // textureId presence byte (63-15).
-    expect(MINIMAL_BYTES.byteLength).toBe(95);
+    // textureId presence byte (63-15); v4 adds the textureRotation presence
+    // byte (quick 261116-inu): 95 + 1 = 96.
+    expect(MINIMAL_BYTES.byteLength).toBe(96);
     expect(decodeScriptTimelineBinary(MINIMAL_BYTES)).toEqual(MINIMAL_EVENTS);
   });
 
@@ -913,17 +1056,18 @@ describe('AQTL fail-closed validation', () => {
     });
     expect(expectedCode(() => decodeScriptTimelineBinary(badMagic))).toBe('magic-mismatch');
 
-    // 63-15: versions 1 and 2 are refused outright — there is no upgrade path
-    // and no older reader left behind (project law: no backward compatibility).
-    const v1 = corruptMinimal((_bytes, view) => {
-      view.setUint16(4, 1, true);
-    });
-    expect(expectedCode(() => decodeScriptTimelineBinary(v1))).toBe('unsupported-version');
-
-    const v2 = corruptMinimal((_bytes, view) => {
-      view.setUint16(4, 2, true);
-    });
-    expect(expectedCode(() => decodeScriptTimelineBinary(v2))).toBe('unsupported-version');
+    // 63-15 / quick 261116-inu: versions 1, 2 and 3 are refused outright —
+    // there is no upgrade path and no older reader left behind (project law:
+    // no backward compatibility). v3 is retired by the v4 rotation bump.
+    for (const version of [1, 2, 3] as const) {
+      const retired = corruptMinimal((_bytes, view) => {
+        view.setUint16(4, version, true);
+      });
+      expect(
+        expectedCode(() => decodeScriptTimelineBinary(retired)),
+        `version ${version}`,
+      ).toBe('unsupported-version');
+    }
 
     expect(expectedCode(() => decodeScriptTimelineBinary(MINIMAL_BYTES.slice(0, 12)))).toBe('truncated');
 
