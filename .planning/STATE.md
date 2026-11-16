@@ -6,10 +6,10 @@ current_phase: 64
 current_phase_name: Medium Engine
 status: planning
 stopped_at: Phase 63 complete, ready to plan Phase 64
-last_updated: "2026-11-16T10:41:50.767Z"
+last_updated: "2026-11-16T11:40:15.000Z"
 last_activity: 2026-11-16
 last_activity_desc: Phase 63 complete, transitioned to Phase 64
-state_head: 1ab4866518d1761565cb3569dc02cc3c928f7e5b
+state_head: a8c6ac7ef75ebabd477837a75beafdb600265e0e
 progress:
   total_phases: 1
   completed_phases: 1
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-16 after Phase 63)
 Phase: 64 — Medium Engine
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-11-16 — Phase 63 complete, transitioned to Phase 64
+Last activity: 2026-11-16 — Completed quick task 261116-gcn (Studio Textures popover + floating Textures sheet); Phase 64 still ready to plan
 
 
 ## Performance Metrics
@@ -557,6 +557,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261113-o26 | Free canvas pan on both surfaces (Studio Hand / Shift+Space, main editor Space- and middle-drag push past any edge at Fit or 1:1; Fit restores) + a hover-revealed liquid-glass zoom pill seated bottom-right on both canvases, with Hand, FIT and 1:1 in the editor row (UAT approved 2026-11-13) | 2026-11-13 | b655ba3bb | [261113-o26-allow-to-move-canvas-out-with-hand-same-](./milestones/v2.1.0-quick/261113-o26-allow-to-move-canvas-out-with-hand-same-/) |
 | 261113-qjd | Context-aware Shift+? help: the overlay opens on the Paint Mode tab in stroke editing, Timeline/Canvas on hover, Sections elsewhere, with a Detected label; all 9 groups reachable via number keys 1-9; documented keys verified against real bindings; the editor and Studio share one shortcuts modal (Studio global button styles isolated, stacked key symbols spaced) (UAT approved 2026-11-13) | 2026-11-13 | f8b265b32 | [261113-qjd-i-want-a-shift-shortcut-for-show-all-key](./milestones/v2.1.0-quick/261113-qjd-i-want-a-shift-shortcut-for-show-all-key/) |
 | 261115-oh9 | Texture is a setting of the brush response (response owns physics, texture replaces the footprint; Default = no texture); real-mask chips, both UI surfaces, payload carrier | 2026-11-15 | 314209671 | [261115-oh9-fix-texture-becomes-a-setting-of-the-bru](./quick/261115-oh9-fix-texture-becomes-a-setting-of-the-bru/) |
+| 261116-gcn | Studio Textures axis: a 2nd trigger inside the brush pill opens a Textures popover (Open modal first, then the relocated compact strip); Open modal raises a floating Textures sheet with the full strip and the shared brush Size (fifth seat at z 54 / top 76px); automated-ready, live UAT pending | 2026-11-16 | a8c6ac7ef | [261116-gcn-in-studio-head-top-bar-add-a-2nd-dropdow](./quick/261116-gcn-in-studio-head-top-bar-add-a-2nd-dropdow/) |
 
 ## Roadmap Evolution
 
