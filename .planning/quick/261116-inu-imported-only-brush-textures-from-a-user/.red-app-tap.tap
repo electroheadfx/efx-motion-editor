@@ -1,0 +1,280 @@
+TAP version 13
+1..1
+not ok 1 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts # time=28.61ms {
+    1..9
+    ok 1 - JSON baseline codec # time=2.37ms {
+        1..4
+        ok 1 - round-trips the fixture exactly # time=1.64ms
+        ok 2 - encodes an empty timeline as "[]" (2 bytes) # time=0.14ms
+        ok 3 - rejects malformed JSON with a typed error # time=0.24ms
+        ok 4 - rejects structurally invalid parsed events # time=0.10ms
+    }
+    not ok 2 - AQTL packed binary codec # time=17.27ms {
+        1..7
+        not ok 1 - pins the magic/version constants # time=3.34ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected 3 to be 4 // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:386:44"
+            actual: "3"
+            expected: "4"
+            ...
+        ok 2 - round-trips every metadata field exactly and points within tolerance # time=8.17ms
+        ok 3 - preserves playFrame 0 versus null # time=0.37ms
+        ok 4 - decodes an empty timeline from the 24-byte header # time=0.07ms
+        not ok 5 - is byte-deterministic and reports real encoded sizes # time=4.93ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected 3747 to be 3752 // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:460:31"
+            actual: "3747"
+            expected: "3752"
+            ...
+        ok 6 - clamps out-of-range point fields on decode (documented lossy policy) # time=0.20ms
+        ok 7 - keeps the live no-pressure sentinel -1 across the wire (261027 UAT round 10) # time=0.10ms
+    }
+    not ok 3 - AQTL v2 vector payload (61-05) # time=1.11ms {
+        1..6
+        ok 1 - round-trips a two-anchor vector stroke deep-equal, order preserved # time=0.37ms
+        ok 2 - skips the legacy optional byte and decodes the same stroke # time=0.12ms
+        not ok 3 - costs a hand-painted stroke one vector-flags byte # time=0.24ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected 95 to be 96 // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:556:66"
+            actual: "95"
+            expected: "96"
+            ...
+        ok 4 - decodes the same bytes twice to deep-equal objects (idempotence) # time=0.15ms
+        ok 5 - fails closed when the stream is cut inside the anchor block # time=0.11ms
+        ok 6 - rejects a hostile anchor count before reading any anchor # time=0.08ms
+    }
+    ok 4 - AQTL v2 curve mode (61-30 G-20) # time=0.27ms {
+        1..3
+        ok 1 - round-trips curveMode 'spline' and leaves an absent mode absent # time=0.12ms
+        ok 2 - costs exactly one byte for a curve mode and nothing when absent # time=0.05ms
+        ok 3 - refuses an unmapped curve-mode code (fail closed, never defaults) # time=0.06ms
+    }
+    not ok 5 - AQTL v2 per-vertex colour (261111-wd6) # time=1.06ms {
+        1..9
+        not ok 1 - leaves an anchor-colourless path byte-identical (bit 3 clear) # time=0.18ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected 95 to be 96 // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:662:30"
+            actual: "95"
+            expected: "96"
+            ...
+        ok 2 - costs one presence byte per anchor plus 1 + 2 + UTF-8 bytes for a colour # time=0.11ms
+        ok 3 - round-trips the colour verbatim and materialises no key on a colourless anchor # time=0.11ms
+        ok 4 - is byte-identical when a decoded coloured stroke is re-encoded # time=0.23ms
+        ok 5 - fails closed when the stream is cut inside the colour string # time=0.07ms
+        ok 6 - refuses a colour presence marker that is not 0 or 1 # time=0.07ms
+        ok 7 - refuses a non-string anchor colour at encode (fail closed) # time=0.06ms
+        ok 8 - still refuses an unknown vector flag bit # time=0.07ms
+        ok 9 - round-trips the drawn provenance bit with no extra payload byte (62-UAT) # time=0.11ms
+    }
+    ok 6 - AQTL v3 textureId (63-15 G-63-5) # time=0.81ms {
+        1..7
+        ok 1 - round-trips a textured stroke deep-equal and re-encodes byte-identically # time=0.24ms
+        ok 2 - round-trips a machine-library id and re-encodes byte-identically # time=0.22ms
+        ok 3 - costs one presence byte for absence and 1 + 2 + UTF-8 bytes for an id # time=0.07ms
+        ok 4 - refuses an empty or non-string textureId at encode (fail closed) # time=0.08ms
+        ok 5 - refuses a texture presence marker that is not 0 or 1 # time=0.05ms
+        ok 6 - fails closed when the texture id length runs past the body # time=0.05ms
+        ok 7 - writes one presence byte for a textureless lift stroke and invents no key # time=0.06ms
+    }
+    not ok 7 - AQTL v4 textureRotation (quick 261116-inu) # time=3.27ms {
+        1..9
+        not ok 1 - round-trips a rotated stroke deep-equal and re-encodes byte-identically # time=1.35ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected [ { …(11) } ] to deeply equal [ { …(11) } ]"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:904:21"
+            actual: "Array [
+  Object {
+    \"brushId\": \"b\",
+    \"color\": null,
+    \"cuisson\": 0,
+    \"engine\": Object {
+      \"brushId\": \"b\",
+      \"color\": null,
+      \"diffusionFrames\": undefined,
+      \"mutationId\": undefined,
+      \"params\": Object {},
+      \"playFrame\": undefined,
+      \"textureId\": \"wc/custom-rot\",
+      \"timestamp\": 1,
+      \"tool\": \"brush\",
+      \"toolOverrides\": undefined,
+    },
+    \"motion\": null,
+    \"playFrame\": null,
+    \"pts\": Array [
+      Object {
+        \"p\": -1,
+        \"tick\": 0,
+        \"tw\": 0,
+        \"tx\": 0,
+        \"ty\": 0,
+        \"x\": 1,
+        \"y\": 0,
+      },
+    ],
+    \"recordedOrder\": 1,
+    \"ticks\": 1,
+    \"toolOverrides\": Object {},
+    \"traceSeed\": 7,
+  },
+]"
+            expected: "Array [
+  Object {
+    \"brushId\": \"b\",
+    \"color\": null,
+    \"cuisson\": 0,
+    \"engine\": Object {
+      \"brushId\": \"b\",
+      \"color\": null,
+      \"diffusionFrames\": undefined,
+      \"mutationId\": undefined,
+      \"params\": Object {},
+      \"playFrame\": undefined,
+      \"textureId\": \"wc/custom-rot\",
+      \"textureRotation\": 37,
+      \"timestamp\": 1,
+      \"tool\": \"brush\",
+      \"toolOverrides\": undefined,
+    },
+    \"motion\": null,
+    \"playFrame\": null,
+    \"pts\": Array [
+      Object {
+        \"p\": -1,
+        \"tick\": 0,
+        \"tw\": 0,
+        \"tx\": 0,
+        \"ty\": 0,
+        \"x\": 1,
+        \"y\": 0,
+      },
+    ],
+    \"recordedOrder\": 1,
+    \"ticks\": 1,
+    \"toolOverrides\": Object {},
+    \"traceSeed\": 7,
+  },
+]"
+            ...
+        not ok 2 - leaves an absent rotation absent and pays the one presence byte # time=0.17ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected 1 to be +0 // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:910:23"
+            actual: "1"
+            expected: "0"
+            ...
+        not ok 3 - costs one presence byte every stroke plus 2 bytes when a rotation is carried # time=0.17ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected 110 to be 113 // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:927:32"
+            actual: "110"
+            expected: "113"
+            ...
+        not ok 4 - anti-mixup: the i16 slot holds 3700 while the decoded field is exactly 37 # time=0.17ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected +0 to be 3700 // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:938:8"
+            actual: "0"
+            expected: "3700"
+            ...
+        not ok 5 - round-trips the range boundaries -180 and 180 # time=0.18ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "degrees -180: expected undefined to be -180 // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:951:78"
+            actual: "undefined"
+            expected: "-180"
+            ...
+        not ok 6 - refuses a non-integer or out-of-range rotation at encode (fail closed) # time=0.70ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "rotation 37.5: expected 'no-throw' to be 'invalid-value' // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:960:9"
+            actual: "no-throw"
+            expected: "invalid-value"
+            ...
+        not ok 7 - refuses a rotation presence marker that is not 0 or 1 # time=0.19ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected 'invalid-count' to be 'invalid-value' // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:970:67"
+            actual: "invalid-count"
+            expected: "invalid-value"
+            ...
+        not ok 8 - rejects decoded hundredths outside -18000..18000 # time=0.16ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected 'invalid-count' to be 'invalid-value' // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:980:68"
+            actual: "invalid-count"
+            expected: "invalid-value"
+            ...
+        not ok 9 - decodes negative hundredths back to negative degrees # time=0.14ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected undefined to be -120 // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:995:54"
+            actual: "undefined"
+            expected: "-120"
+            ...
+    }
+    ok 8 - AQTL v2 encode/decode fixed point (61-05) # time=1.05ms {
+        1..3
+        ok 1 - is byte-identical when a decoded vector stroke is re-encoded # time=0.31ms
+        ok 2 - leaves no width residue on a uniform path # time=0.25ms
+        ok 3 - is byte-stable across three passes and decodes idempotently # time=0.47ms
+    }
+    not ok 9 - AQTL fail-closed validation # time=1.20ms {
+        1..9
+        not ok 1 - pins the minimal one-stroke layout used by the corrupt-byte helpers # time=0.13ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected 95 to be 96 // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:1049:38"
+            actual: "95"
+            expected: "96"
+            ...
+        not ok 2 - validates the header before allocating # time=0.25ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "version 3: expected 'no-throw' to be 'unsupported-version' // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:1069:9"
+            actual: "no-throw"
+            expected: "unsupported-version"
+            ...
+        ok 3 - rejects trailing bytes # time=0.05ms
+        ok 4 - fails closed on truncated strings # time=0.05ms
+        ok 5 - rejects a point count that cannot fit before reading points # time=0.05ms
+        ok 6 - rejects a totalPointCount that disagrees with the event bodies # time=0.04ms
+        ok 7 - rejects unknown tags and non-finite metadata # time=0.11ms
+        ok 8 - refuses unsupported motion, unknown tools, and bad override entries on encode # time=0.13ms
+        ok 9 - refuses non-finite numeric state and oversized strings on encode # time=0.38ms
+    }
+}

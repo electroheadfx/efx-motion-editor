@@ -1,0 +1,49 @@
+TAP version 13
+1..23
+ok 1 - src/playground/brushBridge.test.ts > deriveMask (declared extent) > yields exactly TIP_MASK_BYTES for a TIP_MASK_EDGE-square RGBA image # time=6.55ms
+ok 2 - src/playground/brushBridge.test.ts > deriveMask (declared extent) > returns null for any buffer whose length is not exactly TIP_MASK_EDGE²×4 # time=0.13ms
+ok 3 - src/playground/brushBridge.test.ts > deriveMask (declared extent) > alpha branch: any alpha below 250 carries the alpha channel verbatim # time=2.79ms
+ok 4 - src/playground/brushBridge.test.ts > buildBrushForStroke (texture-axis law) > LAW 1: chalk keeps the chalk response when a texture is applied # time=11.44ms
+ok 5 - src/playground/brushBridge.test.ts > buildBrushForStroke (texture-axis law) > LAW 2: round with a library texture stamps the registered bytes # time=0.34ms
+ok 6 - src/playground/brushBridge.test.ts > buildBrushForStroke (texture-axis law) > LAW 2: the texture changes tipData only — response scalars stay the preset # time=7.55ms
+ok 7 - src/playground/brushBridge.test.ts > buildBrushForStroke (texture-axis law) > LAW 3: an unknown texture id falls back to the response tip — no throw # time=7.93ms
+ok 8 - src/playground/brushBridge.test.ts > buildBrushForStroke (texture-axis law) > GPU identity: the texture rides the brush so its tip cache cannot collide # time=6.59ms
+ok 9 - src/playground/brushBridge.test.ts > buildBrushForStroke (texture-axis law) > GPU identity: an unknown texture keeps the response tip key # time=6.54ms
+ok 10 - src/playground/brushBridge.test.ts > buildBrushForStroke (texture-axis law) > LAW 3: a texture id absent from the replaced registry falls back the same way # time=12.23ms
+ok 11 - src/playground/brushBridge.test.ts > buildBrushForStroke (texture-axis law) > no texture and an explicit null texture are byte-identical to buildBrush(preset) # time=9.92ms
+ok 12 - src/playground/brushBridge.test.ts > buildBrushForStroke (texture-axis law) > an empty options bag keeps the response brush untouched # time=8.45ms
+ok 13 - src/playground/brushBridge.test.ts > strokeTipData (one resolution) > is byte-equal to the builder tip for every preset × texture case # time=341.35ms
+ok 14 - src/playground/brushBridge.test.ts > strokeTipData (one resolution) > resolves a registered custom texture through the same law # time=0.47ms
+ok 15 - src/playground/brushBridge.test.ts > strokeTipData (one resolution) > honours an explicit seed on both paths # time=14.47ms
+ok 16 - src/playground/brushBridge.test.ts > multipliers (D-21 / D-22) > applies the eight multipliers on the preset base with a texture present # time=6.20ms
+ok 17 - src/playground/brushBridge.test.ts > multipliers (D-21 / D-22) > applies every multiplier to a textured brush exactly as to an untextured one # time=6.27ms
+ok 18 - src/playground/brushBridge.test.ts > multipliers (D-21 / D-22) > a non-positive or non-finite multiplier keeps its base value # time=6.24ms
+not ok 19 - src/playground/brushBridge.test.ts > textureRotation (degrees, texture-gated) > carries the requested integer degrees when a registered mask resolves # time=3.19ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected undefined to be 37 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor/src/playground/brushBridge.test.ts:310:35"
+    actual: "undefined"
+    expected: "37"
+    ...
+not ok 20 - src/playground/brushBridge.test.ts > textureRotation (degrees, texture-gated) > defaults a textured, rotationless stroke to 0 degrees (absent is not undefined) # time=0.47ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected undefined to be +0 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor/src/playground/brushBridge.test.ts:316:35"
+    actual: "undefined"
+    expected: "0"
+    ...
+not ok 21 - src/playground/brushBridge.test.ts > textureRotation (degrees, texture-gated) > keeps textureRotation null whenever no mask supplied the bytes # time=3.59ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected undefined to be null // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor/src/playground/brushBridge.test.ts:321:35"
+    actual: "undefined"
+    expected: "null"
+    ...
+ok 22 - src/playground/brushBridge.test.ts > textureRotation (degrees, texture-gated) > does not fork the GPU tip cache: rotation is a uniform, not a second upload # time=0.41ms
+ok 23 - src/playground/brushBridge.test.ts > textureRotation (degrees, texture-gated) > leaves strokeTipData byte-identical for any rotation # time=0.92ms

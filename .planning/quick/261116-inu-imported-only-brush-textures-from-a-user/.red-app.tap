@@ -1,0 +1,751 @@
+TAP version 13
+1..506
+ok 1 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > JSON baseline codec > round-trips the fixture exactly # time=1.69ms
+ok 2 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > JSON baseline codec > encodes an empty timeline as "[]" (2 bytes) # time=0.16ms
+ok 3 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > JSON baseline codec > rejects malformed JSON with a typed error # time=0.26ms
+ok 4 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > JSON baseline codec > rejects structurally invalid parsed events # time=0.11ms
+not ok 5 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL packed binary codec > pins the magic/version constants # time=3.61ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected 3 to be 4 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:386:44"
+    actual: "3"
+    expected: "4"
+    ...
+ok 6 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL packed binary codec > round-trips every metadata field exactly and points within tolerance # time=8.41ms
+ok 7 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL packed binary codec > preserves playFrame 0 versus null # time=0.41ms
+ok 8 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL packed binary codec > decodes an empty timeline from the 24-byte header # time=0.08ms
+not ok 9 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL packed binary codec > is byte-deterministic and reports real encoded sizes # time=5.09ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected 3747 to be 3752 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:460:31"
+    actual: "3747"
+    expected: "3752"
+    ...
+ok 10 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL packed binary codec > clamps out-of-range point fields on decode (documented lossy policy) # time=0.19ms
+ok 11 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL packed binary codec > keeps the live no-pressure sentinel -1 across the wire (261027 UAT round 10) # time=0.10ms
+ok 12 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 vector payload (61-05) > round-trips a two-anchor vector stroke deep-equal, order preserved # time=0.34ms
+ok 13 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 vector payload (61-05) > skips the legacy optional byte and decodes the same stroke # time=0.11ms
+not ok 14 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 vector payload (61-05) > costs a hand-painted stroke one vector-flags byte # time=0.25ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected 95 to be 96 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:556:66"
+    actual: "95"
+    expected: "96"
+    ...
+ok 15 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 vector payload (61-05) > decodes the same bytes twice to deep-equal objects (idempotence) # time=0.16ms
+ok 16 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 vector payload (61-05) > fails closed when the stream is cut inside the anchor block # time=0.10ms
+ok 17 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 vector payload (61-05) > rejects a hostile anchor count before reading any anchor # time=0.08ms
+ok 18 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 curve mode (61-30 G-20) > round-trips curveMode 'spline' and leaves an absent mode absent # time=0.12ms
+ok 19 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 curve mode (61-30 G-20) > costs exactly one byte for a curve mode and nothing when absent # time=0.05ms
+ok 20 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 curve mode (61-30 G-20) > refuses an unmapped curve-mode code (fail closed, never defaults) # time=0.07ms
+not ok 21 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 per-vertex colour (261111-wd6) > leaves an anchor-colourless path byte-identical (bit 3 clear) # time=0.19ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected 95 to be 96 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:662:30"
+    actual: "95"
+    expected: "96"
+    ...
+ok 22 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 per-vertex colour (261111-wd6) > costs one presence byte per anchor plus 1 + 2 + UTF-8 bytes for a colour # time=0.12ms
+ok 23 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 per-vertex colour (261111-wd6) > round-trips the colour verbatim and materialises no key on a colourless anchor # time=0.11ms
+ok 24 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 per-vertex colour (261111-wd6) > is byte-identical when a decoded coloured stroke is re-encoded # time=0.25ms
+ok 25 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 per-vertex colour (261111-wd6) > fails closed when the stream is cut inside the colour string # time=0.08ms
+ok 26 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 per-vertex colour (261111-wd6) > refuses a colour presence marker that is not 0 or 1 # time=0.07ms
+ok 27 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 per-vertex colour (261111-wd6) > refuses a non-string anchor colour at encode (fail closed) # time=0.06ms
+ok 28 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 per-vertex colour (261111-wd6) > still refuses an unknown vector flag bit # time=0.06ms
+ok 29 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 per-vertex colour (261111-wd6) > round-trips the drawn provenance bit with no extra payload byte (62-UAT) # time=0.12ms
+ok 30 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v3 textureId (63-15 G-63-5) > round-trips a textured stroke deep-equal and re-encodes byte-identically # time=0.24ms
+ok 31 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v3 textureId (63-15 G-63-5) > round-trips a machine-library id and re-encodes byte-identically # time=0.22ms
+ok 32 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v3 textureId (63-15 G-63-5) > costs one presence byte for absence and 1 + 2 + UTF-8 bytes for an id # time=0.07ms
+ok 33 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v3 textureId (63-15 G-63-5) > refuses an empty or non-string textureId at encode (fail closed) # time=0.08ms
+ok 34 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v3 textureId (63-15 G-63-5) > refuses a texture presence marker that is not 0 or 1 # time=0.06ms
+ok 35 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v3 textureId (63-15 G-63-5) > fails closed when the texture id length runs past the body # time=0.05ms
+ok 36 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v3 textureId (63-15 G-63-5) > writes one presence byte for a textureless lift stroke and invents no key # time=0.06ms
+not ok 37 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v4 textureRotation (quick 261116-inu) > round-trips a rotated stroke deep-equal and re-encodes byte-identically # time=1.39ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected [ { …(11) } ] to deeply equal [ { …(11) } ]"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:904:21"
+    actual: "Array [
+  Object {
+    \"brushId\": \"b\",
+    \"color\": null,
+    \"cuisson\": 0,
+    \"engine\": Object {
+      \"brushId\": \"b\",
+      \"color\": null,
+      \"diffusionFrames\": undefined,
+      \"mutationId\": undefined,
+      \"params\": Object {},
+      \"playFrame\": undefined,
+      \"textureId\": \"wc/custom-rot\",
+      \"timestamp\": 1,
+      \"tool\": \"brush\",
+      \"toolOverrides\": undefined,
+    },
+    \"motion\": null,
+    \"playFrame\": null,
+    \"pts\": Array [
+      Object {
+        \"p\": -1,
+        \"tick\": 0,
+        \"tw\": 0,
+        \"tx\": 0,
+        \"ty\": 0,
+        \"x\": 1,
+        \"y\": 0,
+      },
+    ],
+    \"recordedOrder\": 1,
+    \"ticks\": 1,
+    \"toolOverrides\": Object {},
+    \"traceSeed\": 7,
+  },
+]"
+    expected: "Array [
+  Object {
+    \"brushId\": \"b\",
+    \"color\": null,
+    \"cuisson\": 0,
+    \"engine\": Object {
+      \"brushId\": \"b\",
+      \"color\": null,
+      \"diffusionFrames\": undefined,
+      \"mutationId\": undefined,
+      \"params\": Object {},
+      \"playFrame\": undefined,
+      \"textureId\": \"wc/custom-rot\",
+      \"textureRotation\": 37,
+      \"timestamp\": 1,
+      \"tool\": \"brush\",
+      \"toolOverrides\": undefined,
+    },
+    \"motion\": null,
+    \"playFrame\": null,
+    \"pts\": Array [
+      Object {
+        \"p\": -1,
+        \"tick\": 0,
+        \"tw\": 0,
+        \"tx\": 0,
+        \"ty\": 0,
+        \"x\": 1,
+        \"y\": 0,
+      },
+    ],
+    \"recordedOrder\": 1,
+    \"ticks\": 1,
+    \"toolOverrides\": Object {},
+    \"traceSeed\": 7,
+  },
+]"
+    ...
+not ok 38 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v4 textureRotation (quick 261116-inu) > leaves an absent rotation absent and pays the one presence byte # time=0.18ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected 1 to be +0 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:910:23"
+    actual: "1"
+    expected: "0"
+    ...
+not ok 39 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v4 textureRotation (quick 261116-inu) > costs one presence byte every stroke plus 2 bytes when a rotation is carried # time=0.17ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected 110 to be 113 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:927:32"
+    actual: "110"
+    expected: "113"
+    ...
+not ok 40 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v4 textureRotation (quick 261116-inu) > anti-mixup: the i16 slot holds 3700 while the decoded field is exactly 37 # time=0.17ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected +0 to be 3700 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:938:8"
+    actual: "0"
+    expected: "3700"
+    ...
+not ok 41 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v4 textureRotation (quick 261116-inu) > round-trips the range boundaries -180 and 180 # time=0.18ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "degrees -180: expected undefined to be -180 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:951:78"
+    actual: "undefined"
+    expected: "-180"
+    ...
+not ok 42 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v4 textureRotation (quick 261116-inu) > refuses a non-integer or out-of-range rotation at encode (fail closed) # time=0.74ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "rotation 37.5: expected 'no-throw' to be 'invalid-value' // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:960:9"
+    actual: "no-throw"
+    expected: "invalid-value"
+    ...
+not ok 43 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v4 textureRotation (quick 261116-inu) > refuses a rotation presence marker that is not 0 or 1 # time=0.20ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected 'invalid-count' to be 'invalid-value' // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:970:67"
+    actual: "invalid-count"
+    expected: "invalid-value"
+    ...
+not ok 44 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v4 textureRotation (quick 261116-inu) > rejects decoded hundredths outside -18000..18000 # time=0.16ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected 'invalid-count' to be 'invalid-value' // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:980:68"
+    actual: "invalid-count"
+    expected: "invalid-value"
+    ...
+not ok 45 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v4 textureRotation (quick 261116-inu) > decodes negative hundredths back to negative degrees # time=0.14ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected undefined to be -120 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:995:54"
+    actual: "undefined"
+    expected: "-120"
+    ...
+ok 46 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 encode/decode fixed point (61-05) > is byte-identical when a decoded vector stroke is re-encoded # time=0.33ms
+ok 47 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 encode/decode fixed point (61-05) > leaves no width residue on a uniform path # time=0.26ms
+ok 48 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL v2 encode/decode fixed point (61-05) > is byte-stable across three passes and decodes idempotently # time=0.48ms
+not ok 49 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL fail-closed validation > pins the minimal one-stroke layout used by the corrupt-byte helpers # time=0.14ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected 95 to be 96 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:1049:38"
+    actual: "95"
+    expected: "96"
+    ...
+not ok 50 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL fail-closed validation > validates the header before allocating # time=0.27ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "version 3: expected 'no-throw' to be 'unsupported-version' // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/scriptTimelineCodec.test.ts:1069:9"
+    actual: "no-throw"
+    expected: "unsupported-version"
+    ...
+ok 51 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL fail-closed validation > rejects trailing bytes # time=0.05ms
+ok 52 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL fail-closed validation > fails closed on truncated strings # time=0.05ms
+ok 53 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL fail-closed validation > rejects a point count that cannot fit before reading points # time=0.05ms
+ok 54 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL fail-closed validation > rejects a totalPointCount that disagrees with the event bodies # time=0.05ms
+ok 55 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL fail-closed validation > rejects unknown tags and non-finite metadata # time=0.11ms
+ok 56 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL fail-closed validation > refuses unsupported motion, unknown tools, and bad override entries on encode # time=0.13ms
+ok 57 - src/components/physic-paint/performance/scriptTimelineCodec.test.ts > AQTL fail-closed validation > refuses non-finite numeric state and oversized strings on encode # time=0.50ms
+ok 58 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > round-trips a watercolor stroke and a Dry event by value # time=3.40ms
+ok 59 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > carries no brush body: the decoded result is exactly the watercolor container # time=0.22ms
+ok 60 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > rejects a magic mismatch with the magic code # time=0.21ms
+ok 61 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > round-trips the rail-cleanup marker # time=0.26ms
+ok 62 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > rejects an unknown container version with the version code # time=0.18ms
+ok 63 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > names the clean break for every retired container version (1-4) # time=0.22ms
+ok 64 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > rejects a non-zero flags word # time=0.09ms
+ok 65 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > rejects a rail-cleanup byte outside 0/1 # time=0.09ms
+ok 66 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > rejects an identity mismatch on any of project, layer or track # time=0.16ms
+ok 67 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > rejects a buffer shorter than the container header as truncated # time=0.09ms
+ok 68 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > rejects a section that claims more bytes than remain # time=0.09ms
+ok 69 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > rejects trailing bytes after the declared sections # time=0.09ms
+ok 70 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > tags a corrupt watercolor section instead of leaking a raw RangeError # time=0.12ms
+not ok 71 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec > names a retired AQTL body instead of reporting watercolor corruption (WR-12) # time=2.46ms
+    ---
+    error:
+        name: "Error"
+        message: "expected a StudioScriptSnapshotCodecError"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts:110:9"
+    ...
+ok 72 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — watercolor key anchors (261027) > round-trips the anchors and stays byte-stable # time=0.60ms
+ok 73 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — watercolor key anchors (261027) > decodes an empty anchor section as unanchored # time=0.18ms
+ok 74 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — watercolor key anchors (261027) > refuses two anchors for the same stroke # time=0.20ms
+ok 75 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — watercolor key anchors (261027) > refuses an empty anchor key id # time=0.12ms
+ok 76 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — watercolor key anchors (261027) > refuses an over-declared anchor count before allocating # time=0.11ms
+ok 77 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — watercolor key anchors (261027) > refuses trailing bytes inside the anchor section # time=0.10ms
+ok 78 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > round-trips durable base bytes and known-empty entries, byte-stable # time=0.81ms
+ok 79 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > k03i: a version-1 byte base is PROVISIONAL — dropped on decode, empty kept # time=0.21ms
+ok 80 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > sorts durable bases by key id regardless of input order # time=0.51ms
+ok 81 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > returns durable base bytes as copies, not views into the source buffer # time=0.09ms
+ok 82 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > decodes an empty durable-base section as carrying no bases # time=0.09ms
+ok 83 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > refuses two durable bases for the same key # time=0.13ms
+ok 84 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > refuses an empty durable-base key id # time=0.11ms
+ok 85 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > refuses a durable base entry with zero bytes # time=0.10ms
+ok 86 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > refuses an unknown durable-base state byte # time=0.10ms
+ok 87 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > refuses an over-declared durable-base count before allocating # time=0.12ms
+ok 88 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > refuses trailing bytes inside the durable-base section # time=0.10ms
+ok 89 - src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts > studioScriptSnapshotCodec — durable bases (261027 UAT round 4) > refuses a duplicate, empty or zero-byte entry at encode time # time=0.15ms
+ok 90 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > treats a missing snapshot as a silent no-op # time=2.07ms
+ok 91 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > restores the pruned timeline and reports the highest mutation id # time=1.75ms
+ok 92 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > does not prune when the live-frame set is unknown # time=0.35ms
+ok 93 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > dropRetainedForFrames removes only the purged frames from the saved union # time=0.69ms
+ok 94 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > restores the durable rail-cleanup marker from the file # time=0.24ms
+ok 95 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > writes the rail-cleanup marker once marked # time=0.27ms
+ok 96 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > reports a corrupt snapshot ONCE and never mutates the store # time=0.33ms
+ok 97 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > never rejects when the write fails, and reports the failure # time=0.37ms
+ok 98 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > never rejects when the write throws # time=0.20ms
+ok 99 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > saves the bound key and clears the dirty flag # time=0.27ms
+ok 100 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController > saveNow is a no-op without a bound identity # time=0.13ms
+ok 101 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — SNAP v5 clean break (261027-klx) > refuses every retired container version with the pinned notice # time=0.32ms
+ok 102 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — SNAP v5 clean break (261027-klx) > pins the exact clean-break wording and never shows the generic message # time=0.11ms
+ok 103 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — SNAP v5 clean break (261027-klx) > reports exactly once per binding and re-arms on a new bind # time=0.11ms
+ok 104 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — SNAP v5 clean break (261027-klx) > seeds nothing from a retired container — no rows, no anchors, no bases # time=0.15ms
+ok 105 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — SNAP v5 clean break (261027-klx) > keeps the generic message for a genuinely unknown container version # time=0.15ms
+not ok 106 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — retired AQTL body (WR-12) > AQTL_RETIRED: retires inner AQTL versions 1-3 and accepts the current v4 body # time=4.03ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "AQTL version 3: expected { status: 'restored', …(1) } to deeply equal { status: 'refused', …(1) }"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts:529:69"
+    actual: "Object {
+  \"maxRestoredMutationId\": 102,
+  \"status\": \"restored\",
+}"
+    expected: "Object {
+  \"maxRestoredMutationId\": 0,
+  \"status\": \"refused\",
+}"
+    ...
+ok 107 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — retired AQTL body (WR-12) > AQTL_RETIRED: shows the pinned named notice exactly once per binding # time=0.30ms
+ok 108 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — retired AQTL body (WR-12) > AQTL_RETIRED: keeps the generic corrupt message for a broken AQTL body # time=0.17ms
+ok 109 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — retired AQTL body (WR-12) > AQTL_RETIRED: the refusal latches — no routine save replaces the snapshot # time=0.24ms
+ok 110 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — live package authority > reads the authority at restore time and follows a change after bind # time=0.14ms
+ok 111 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — live package authority > passes null through on both legs for an unsaved project # time=0.18ms
+ok 112 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — live package authority > captures the authority at prepare time and never retargets a prepared payload # time=0.12ms
+ok 113 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — save discipline > coalesces two revision bumps inside the window into ONE write # time=1.17ms
+ok 114 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — save discipline > arms exactly one timer when markDirty is called twice # time=0.41ms
+ok 115 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — save discipline > allows ONE queued follow-up for a bump during an in-flight write # time=0.41ms
+ok 116 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — save discipline > stops after a failed write instead of re-arming itself # time=0.31ms
+ok 117 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — save discipline > does not re-report a save failure after a successful retry # time=0.31ms
+ok 118 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — save discipline > clears the timer on dispose and on reset — no later write occurs # time=0.30ms
+ok 119 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — save discipline > bind clears a pending debounce from the outgoing key # time=0.17ms
+ok 120 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — save discipline > flushNow clears the timer and writes once # time=0.26ms
+ok 121 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — save discipline > discards an older in-flight restore when a newer key is bound # time=0.42ms
+ok 122 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — empty-save guard (studio-snapshot-empty-save) > never prepares a save while the bound key’s restore is in flight # time=0.36ms
+ok 123 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — empty-save guard (studio-snapshot-empty-save) > never writes an empty payload over a refused snapshot # time=0.16ms
+ok 124 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — empty-save guard (studio-snapshot-empty-save) > never writes an empty payload after a missing snapshot # time=0.17ms
+ok 125 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — empty-save guard (studio-snapshot-empty-save) > keeps deleted-key entries in the snapshot (no save-time prune) # time=0.40ms
+ok 126 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — empty-save guard (studio-snapshot-empty-save) > does not drop restore-pruned entries from the authoritative snapshot # time=0.37ms
+ok 127 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — empty-save guard (studio-snapshot-empty-save) > k03i: drops a stroke the user deleted from a live key, keeps a deleted key’s # time=0.51ms
+ok 128 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — empty-save guard (studio-snapshot-empty-save) > lets an explicit purge replace the snapshot with the purged session # time=0.30ms
+ok 129 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-02 refused-restore latch > CR-02: withholds saveNow and flushNow after a refused read with a non-empty session # time=0.21ms
+ok 130 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-02 refused-restore latch > CR-02: the latch stands across repeated routine saves # time=0.12ms
+ok 131 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-02 refused-restore latch > CR-02: the debounced drain writes nothing while latched # time=3.09ms
+ok 132 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-02 refused-restore latch > CR-02: withholds the decode-refused arm too # time=0.26ms
+ok 133 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-02 refused-restore latch > CR-02: a successful restore still saves the union exactly as before # time=0.43ms
+ok 134 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-02 refused-restore latch > CR-02: a missing snapshot never latches # time=0.21ms
+ok 135 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-02 refused-restore latch > CR-02: the explicit purge writes once, clears the latch, and routine saves resume # time=0.24ms
+ok 136 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-02 refused-restore latch > CR-02: a FAILED purge write leaves the latch set; a later successful purge clears it # time=0.26ms
+ok 137 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-02 refused-restore latch > CR-02: the latch is binding-scoped — a rebind whose restore succeeds saves # time=0.31ms
+ok 138 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-02 refused-restore latch > IN-01: a later successful restore on the same binding releases the latch # time=0.19ms
+ok 139 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-01 save-withheld disclosure > CR-01: a withheld save reports the pause once, after the restore notice # time=0.10ms
+ok 140 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-01 save-withheld disclosure > CR-01: the pause is reported once per latch episode, not per save # time=0.08ms
+ok 141 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-01 save-withheld disclosure > CR-01: a missing snapshot and a healthy binding never report a pause # time=0.20ms
+ok 142 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-01 save-withheld disclosure > CR-01: a rebind starts a new episode — the pause is reported again # time=0.08ms
+ok 143 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — CR-01 save-withheld disclosure > CR-01: hasWithheldContent is true only while latched AND holding content # time=0.10ms
+ok 144 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — WR-13 partial purge > WR-13: a partial purge neither bypasses nor clears the latch # time=0.09ms
+ok 145 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — WR-13 partial purge > WR-13: the acknowledged whole-track clear still replaces the snapshot # time=0.13ms
+ok 146 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — persistAfterPurge > is a no-op without a bound identity # time=0.12ms
+ok 147 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — persistAfterPurge > rewrites the authoritative leg, then deletes the cache leg when bound # time=0.19ms
+ok 148 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — persistAfterPurge > never deletes the cache leg without an authority (the cache IS the authority) # time=0.09ms
+ok 149 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — persistAfterPurge > keeps the fallback when the rewrite failed (still dirty) # time=0.12ms
+ok 150 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — persistAfterPurge > reports a failed cache delete ONCE and never rejects # time=0.12ms
+ok 151 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — persistAfterPurge > absorbs a rejecting cache delete as an io failure report # time=0.11ms
+ok 152 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — persistAfterPurge > abandons the cleanup when the key is rebound before the rewrite completes # time=0.07ms
+ok 153 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — watercolor key anchors (261027 UAT round 2) > seeds only the stroke anchored to the live key at its frame # time=0.25ms
+ok 154 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — watercolor key anchors (261027 UAT round 2) > never seeds an unanchored stroke into a live key # time=0.14ms
+ok 155 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — watercolor key anchors (261027 UAT round 2) > seeds nothing when every key was deleted (known-empty live key map) # time=0.12ms
+ok 156 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — watercolor key anchors (261027 UAT round 2) > saves the seeded anchor and the anchor of a newly recorded stroke # time=0.20ms
+ok 157 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — watercolor key anchors (261027 UAT round 2) > backfills an unanchored session stroke from the live key at its frame on save # time=0.11ms
+ok 158 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — watercolor key anchors (261027 UAT round 2) > never backfills an unanchored stroke on a frame without a live key # time=0.09ms
+ok 159 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — durable bases (261027 UAT round 4) > seeds every restored durable base into the launch map # time=0.27ms
+ok 160 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — durable bases (261027 UAT round 4) > writes the restored base together with a newly pinned base # time=0.21ms
+ok 161 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — durable bases (261027 UAT round 4) > lets the session base win over the retained base for the same key # time=0.17ms
+ok 162 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — durable bases (261027 UAT round 4) > drops a retained base for a live key the session no longer holds (raster clear) # time=0.14ms
+ok 163 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — durable bases (261027 UAT round 4) > keeps a deleted key’s durable base in the file for undo # time=0.16ms
+ok 164 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — durable bases (261027 UAT round 4) > never writes another track’s session base (and a base-only save is allowed) # time=0.13ms
+ok 165 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — durable bases (261027 UAT round 4) > seeds no durable bases from a container without a durable-base section # time=0.11ms
+ok 166 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — durable bases (261027 UAT round 4) > never seeds durable bases from a corrupt snapshot # time=0.10ms
+ok 167 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — foreign-track isolation (261027 UAT round 8) > never writes a session stroke anchored to another track’s live key # time=0.16ms
+ok 168 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — foreign-track isolation (261027 UAT round 8) > cleans foreign rows already in the file on the next save, while keeping deleted-key rows for undo # time=0.23ms
+ok 169 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — foreign-track isolation (261027 UAT round 8) > drops a retained durable base owned by another track’s live key # time=0.18ms
+ok 170 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — foreign-track isolation (261027 UAT round 8) > drops a SESSION durable base owned by another track’s live key (WR-02) # time=0.13ms
+ok 171 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — 261101-o2m Draft deferral > arms no timer and writes nothing while the pixels are dirty # time=0.21ms
+ok 172 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — 261101-o2m Draft deferral > saveNow and flushNow prepare nothing while dirty, then the released markDirty writes exactly once # time=0.31ms
+ok 173 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — 261101-o2m Draft deferral > flushNow writes immediately once the deferral is released # time=0.23ms
+ok 174 - src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts > studioScriptSnapshotController — 261101-o2m Draft deferral > a controller built without the port writes exactly as before # time=0.29ms
+ok 175 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > requires a durable row but permits an empty canonical start and rejects generated starts # time=2.32ms
+ok 176 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > strictly rejects count "" without clamping # time=1.14ms
+ok 177 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > strictly rejects count "0" without clamping # time=0.35ms
+ok 178 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > strictly rejects count "-1" without clamping # time=0.34ms
+ok 179 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > strictly rejects count "1.5" without clamping # time=0.30ms
+ok 180 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > strictly rejects count "1x" without clamping # time=0.27ms
+ok 181 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > strictly rejects count "Max" without clamping # time=0.28ms
+ok 182 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > strictly rejects count "5" without clamping # time=0.27ms
+ok 183 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > opens every fresh Create Group at the available timeline span, independent of remembered Group Type # time=0.49ms
+ok 184 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > 261101: re-evaluates the Frames timing at every open from the frames the timeline allows at the playhead # time=0.37ms
+ok 185 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > uses current capacity through parsed count, destination, readout, and confirm when Max is checked # time=2.31ms
+ok 186 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > preserves the last valid finite Frames value across Max and ignores invalid disabled drafts # time=0.28ms
+ok 187 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > commits one complete additive real-key set, then validates the parent acknowledgement and stops playback # time=0.78ms
+ok 188 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > registers the new-cycle first key as a leading incoming-interpolation break — no generated cells bridge the gap from a prior rail (AM-4) # time=0.75ms
+ok 189 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > revalidates authority and selection before commit without partial publication # time=52.56ms
+ok 190 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > does not publish a failed commit or cancelled render # time=52.78ms
+ok 191 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > resolves the override color from the getBrushColor port AT CONFIRM TIME — two confirms snapshot different overrides # time=8.79ms
+ok 192 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > 261030-ey9: a rotation-only static motion runs the rigid pass once per output frame and skips the band deform # time=3.97ms
+ok 193 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > 261030-ey9: a combined static motion runs the band deform first, then the rigid pass per frame # time=3.85ms
+ok 194 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > passes progressive defaults and a null override color when options are untouched or the override is disabled (Original colors) # time=0.55ms
+ok 195 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > exposes no dialog-side overrideColor signal — the getBrushColor port is the only resolution path # time=0.27ms
+ok 196 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > falls back to no override (Original-colors behavior) when the port returns a malformed color (T-42-05-01) # time=0.25ms
+ok 197 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > never invokes script-library write ports during confirm and leaves the snapshot deeply unchanged # time=0.48ms
+ok 198 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > rejects repeat "" with the format error and blocks confirm # time=0.19ms
+ok 199 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > rejects repeat "0" with the format error and blocks confirm # time=0.17ms
+ok 200 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > rejects repeat "-2" with the format error and blocks confirm # time=0.17ms
+ok 201 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > rejects repeat "1.5" with the format error and blocks confirm # time=0.16ms
+ok 202 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > rejects repeat "abc" with the format error and blocks confirm # time=0.16ms
+ok 203 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > bounds repeat by the safe product floor(Number.MAX_SAFE_INTEGER / cycle) derived before multiplication # time=0.23ms
+ok 204 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > derives requested/effective/truncation from retained authority signals with locked copy # time=0.27ms
+ok 205 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > infinity skips repeat validation, preserves the last valid finite repeat, and renders the literal cycle form # time=0.22ms
+ok 206 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > applies first-time Static / Hold defaults (cycle 3, repeat 1, Max and Infinity off) only once # time=0.19ms
+ok 207 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > keeps loop and option signals across dialog close/reopen within the session # time=0.18ms
+ok 208 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > 261101-cd5: seeds the creation form from persisted defaults (except the location-derived count) and saves them on close # time=0.29ms
+ok 209 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > generates exactly the cycle value regardless of repeat or infinity # time=0.47ms
+ok 210 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > clamps a finite Repeat that runs past the parent end into the created Group lifecycle # time=1.72ms
+ok 211 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > dialog Motion edits trigger zero port writes; only getMotion reads may occur # time=0.20ms
+ok 212 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > resetDialogMotion re-reads the CURRENT Motion defaults port at call time and writes nowhere # time=0.19ms
+ok 213 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > clears a stale generation error when a new generation starts, and retry succeeds from a clean error state # time=51.56ms
+ok 214 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > drives the generation-error lifecycle on bake failure: failed phase, error set, progress hidden, dialog open, inputs enabled, zero mutations # time=0.41ms
+ok 215 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > normal user cancellation returns phase cancelled with a null error channel and zero mutations # time=52.45ms
+ok 216 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > composes the applied summary from the committed generation (static + override, layer-end boundary exact) # time=5.45ms
+ok 217 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > keeps the confirm-time snapshot hex in the applied summary even when the port value changes afterwards (D-08R no-retroactive) # time=1.07ms
+ok 218 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > composes the first-open summary line 1 from the CURRENT port value when the override is enabled # time=0.72ms
+ok 219 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > shows locked first-time defaults before the first successful Generate # time=0.63ms
+ok 220 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > keeps both summary lines byte-identical across unsaved edits, dialog cancel, generation cancellation, and failure # time=53.66ms
+ok 221 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController > a second successful Generate replaces both summary lines atomically from the newly committed options # time=8.21ms
+ok 222 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController HOLD-03 atomic commit > mid-generation cancellation of a static/hold generation commits zero destination keys — the document is byte-identical to before the attempt # time=53.29ms
+ok 223 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController HOLD-03 atomic commit > a static/hold bake failure mid-generation commits zero destination keys and surfaces the inline error # time=0.42ms
+ok 224 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController HOLD-03 atomic commit > a completed static/hold generation is exactly one history command — one Undo removes every generated key, one Redo restores them # time=5.70ms
+ok 225 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController HOLD-03 atomic commit > re-applying the same static/hold generation to the same inputs produces a byte-identical publication (idempotent commit path) # time=7.53ms
+ok 226 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController D-06 loop-shorten preflight > surfaces the locked preflight line with N and F when the destination range intersects a loop # time=0.91ms
+ok 227 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController D-06 loop-shorten preflight > reports every affected loop and the earliest truncation frame # time=0.26ms
+ok 228 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController D-06 loop-shorten preflight > shows no preflight line when no loop is affected # time=0.34ms
+ok 229 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController D-06 loop-shorten preflight > regenerating over the loop’s own source cycle shows no preflight (D-24 self-exclusion) # time=0.18ms
+ok 230 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController D-06 loop-shorten preflight > the preflight is advisory — confirm proceeds and commits with the warning visible # time=0.29ms
+ok 231 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController D-06 loop-shorten preflight > the accepted commit and the derived loop shrink are ONE history command — one Undo re-expands, one Redo re-applies # time=1.64ms
+ok 232 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openLoopEdit (D-01) > opens the dialog in loop-edit mode prefilled from the canonical record — never blank # time=0.47ms
+ok 233 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openLoopEdit (D-01) > prefills the infinity state without clearing the last valid finite repeat # time=0.25ms
+ok 234 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openLoopEdit (D-01) > derives the Requested/Effective readout from the shared 43-02 derivation — a real-key boundary truncates (Pitfall 4) # time=0.49ms
+ok 235 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openLoopEdit (D-01) > splits physical cycle duration from source frame count after source keys are spaced # time=0.22ms
+ok 236 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openLoopEdit (D-01) > derives the infinity readout from the shared derivation bounded by the child document capacity (43.4 defect 1) # time=0.16ms
+ok 237 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openLoopEdit (D-01) > rejects an unknown loopId with a reason and never opens the dialog # time=0.19ms
+ok 238 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openLoopEdit (D-01) > fails immediately when the accepted local physical document is unavailable # time=0.22ms
+ok 239 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > commits ONE atomic loop-only operation — records byte-identical, loop repeat replaced # time=0.65ms
+ok 240 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps loop-only Group selection null when the rail cursor is on a source key # time=0.55ms
+ok 241 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > rebuilds complete lifecycle authority at F+0 for Repeat 1 → 3 and restores it through Undo/Redo # time=1.79ms
+ok 242 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > rebuilds complete lifecycle authority at F+0 for Repeat 3 → 1 and restores it through Undo/Redo # time=1.35ms
+ok 243 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > rebuilds complete lifecycle authority at F10 for Repeat 1 → 3 and restores it through Undo/Redo # time=1.22ms
+ok 244 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > rebuilds complete lifecycle authority at F10 for Repeat 3 → 1 and restores it through Undo/Redo # time=1.21ms
+ok 245 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > preserves accepted Delete Frame gaps when a Modified Group changes to Repeat 4 # time=0.30ms
+ok 246 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > preserves accepted Delete Frame gaps when a Modified Group changes to Repeat 2 # time=0.23ms
+ok 247 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > rebuilds lifecycle authority through the accepted boundary when a finite Modified Group changes to Infinity # time=0.60ms
+ok 248 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > preserves a genuine deleted tail when a finite Modified Group changes to Infinity # time=1.67ms
+ok 249 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps 'Motion' Key Spacing as source timing through 'spacing-before-infinity', finite rebuild, and both Group move directions # time=5.00ms
+ok 250 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps 'Static' Key Spacing as source timing through 'spacing-before-infinity', finite rebuild, and both Group move directions # time=2.78ms
+ok 251 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps 'Motion' Key Spacing as source timing through 'spacing-during-infinity', finite rebuild, and both Group move directions # time=2.47ms
+ok 252 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps 'Static' Key Spacing as source timing through 'spacing-during-infinity', finite rebuild, and both Group move directions # time=2.63ms
+ok 253 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps all 1 Key Spacing in-betweens generated when spacing runs 'before' Infinity, then finite, through both Group Rail move directions # time=2.66ms
+ok 254 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps all 2 Key Spacing in-betweens generated when spacing runs 'before' Infinity, then finite, through both Group Rail move directions # time=1.08ms
+ok 255 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps all 3 Key Spacing in-betweens generated when spacing runs 'before' Infinity, then finite, through both Group Rail move directions # time=1.05ms
+ok 256 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps all 1 Key Spacing in-betweens generated when spacing runs 'during' Infinity, then finite, through both Group Rail move directions # time=1.02ms
+ok 257 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps all 2 Key Spacing in-betweens generated when spacing runs 'during' Infinity, then finite, through both Group Rail move directions # time=1.07ms
+ok 258 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps all 3 Key Spacing in-betweens generated when spacing runs 'during' Infinity, then finite, through both Group Rail move directions # time=0.85ms
+ok 259 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps a finite no-spacing control contiguous through Infinity and both move directions # time=0.57ms
+ok 260 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps a genuine Delete Frame hole at its relative source phase through move to 12 # time=0.14ms
+ok 261 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > keeps a genuine Delete Frame hole at its relative source phase through move to 8 # time=0.10ms
+ok 262 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > rejects Repeat contraction before commit when it would discard a locally painted override # time=0.33ms
+ok 263 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > drops stale out-of-extent overrides on Repeat contraction and keeps overrides inside the new end # time=0.43ms
+ok 264 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > supports repeated decrease through 1 and increase again when no real key is selected # time=3.47ms
+ok 265 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > an unchanged repeat closes without a commit (no phantom history entry) # time=0.38ms
+ok 266 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > updateLoop (D-10) > proves the full initial → operation → Undo → Redo cycle with source keys byte-identical in every state # time=1.00ms
+ok 267 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > unlinkLoop (D-03/D-10) > removes only the loop record; source keys remain ordinary real keys; Undo restores the record byte-identically # time=0.83ms
+ok 268 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > unlinkLoop (D-03/D-10) > rejects an unknown loopId and commits nothing # time=0.23ms
+ok 269 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > duplicateLinkedLoop (D-05/D-14) > creates a loop at the destination sharing the source cycle with NO regeneration — one atomic commit # time=0.92ms
+ok 270 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > duplicateLinkedLoop (D-05/D-14) > rejects a same-start collision compared on placementStart # time=0.17ms
+ok 271 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > duplicateLinkedLoop (D-05/D-14) > rejects a destination inside another loop's effective range (D-14 overlap) # time=0.22ms
+ok 272 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > duplicateLinkedLoop (D-05/D-14) > rejects a malformed destination -1 # time=0.15ms
+ok 273 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > duplicateLinkedLoop (D-05/D-14) > rejects a malformed destination 2.5 # time=0.15ms
+ok 274 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > duplicateLinkedLoop (D-05/D-14) > rejects a malformed destination NaN # time=0.13ms
+ok 275 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > repairLoop (D-31) > opens the prefilled source-edit repair flow targeting the placement start # time=0.32ms
+ok 276 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > repairLoop (D-31) > rejects when the destination range overlaps real keys not owned by the loop — the unresolved record stays verbatim # time=0.25ms
+ok 277 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > repairLoop (D-31) > rejects when the record carries no source-cycle provenance # time=0.22ms
+ok 278 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > repairLoop (D-31) > confirm regenerates the source at the placement start AND retargets sourceKeyIds in ONE atomic commit — Undo restores the unresolved record byte-identically # time=7.00ms
+ok 279 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > repairLoop (D-31) > 261030-ey9: the repair write persists rotation only when nonzero — Object.keys proves the compaction # time=6.12ms
+ok 280 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > repairLoop (D-31) > 261030-ey9: an all-zero repair persists exactly deformation and position # time=5.98ms
+ok 281 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > repairLoop (D-31) > 261030-ig0 (WR-01): a repair re-bake keeps the opt-in # time=6.06ms
+ok 282 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > relinkLoop (D-31) > retargets sourceKeyIds to an existing source cycle in one atomic commit — Undo restores the prior references verbatim # time=1.11ms
+ok 283 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > relinkLoop (D-31) > rejects an empty target with a reason and leaves the record verbatim # time=0.23ms
+ok 284 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > relinkLoop (D-31) > rejects dangling or non-real target keyIds (including keys of another authority) # time=0.28ms
+ok 285 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > matches on (scriptId, mode, cycleLength, motion, overrideColor) and reports the linked loop count # time=0.22ms
+ok 286 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > returns null when scriptId differs # time=0.17ms
+ok 287 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > returns null when mode differs # time=0.14ms
+ok 288 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > returns null when cycleLength differs # time=0.42ms
+ok 289 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > returns null when motion differs # time=0.15ms
+ok 290 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > returns null when overrideColor differs # time=0.14ms
+ok 291 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > includes the source start when Motion is nonzero — a cycle at a different start does NOT match # time=0.20ms
+ok 292 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > excludes the start when Motion is 0/0 — the held-pose transform is identity # time=0.25ms
+ok 293 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > 261030-ey9: a rotation-only cycle does NOT match at a different start, and a different rotation never matches # time=0.27ms
+ok 294 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > never offers a link to an unresolved source cycle # time=0.22ms
+ok 295 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > findIdenticalSourceCycle (D-05, Q2) > 261030-v1t: a salted cycle never links to an unsalted draft (different texture = different content) # time=0.25ms
+ok 296 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > persists one Loop Clip record with the committed cycle keyIds when repeat > 1 — generation plus loop creation is ONE commit # time=7.24ms
+ok 297 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > persists an infinity loop with the explicit infinity state # time=6.30ms
+ok 298 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > persists a repeat-1 Progressive cycle as a Loop Clip so its 15-frame purple rail is visible # time=0.46ms
+ok 299 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > persists a repeat-1 Static / Hold cycle as a Loop Clip so its 10-frame capsule is visible # time=12.60ms
+ok 300 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > reports an identical Static / Hold source cycle at repeat 1 because Hold always has loop intent # time=0.44ms
+ok 301 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > Link to existing cycle: ONE loop-only commit, NO render, the new loop shares the existing sourceKeyIds # time=0.43ms
+ok 302 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > 261031-dm1: a lean authority fails the link-to-existing-cycle path closed # time=0.40ms
+ok 303 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > 261030-ig0: writes keyScriptEdits on a NEW-loop Apply only when the toggle is on # time=7.95ms
+ok 304 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > 261030-ig0: writes keyScriptEdits on the Link-to-existing-cycle branch too # time=0.52ms
+ok 305 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > 261030-v1t: bakes count from-scratch replays and writes the flag on a NEW-loop Apply only when on # time=9.67ms
+ok 306 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > 261030-v1t: writes the flag on the Link-to-existing-cycle branch too # time=7.80ms
+ok 307 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > 261030-v1t: resets the paint-seed variation on every open — never sticky across rails # time=0.86ms
+ok 308 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > 261030-np9: records each key's slice from the bake anchors only for an opted-in cycle # time=4.50ms
+ok 309 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > 261030-ig0: openConfirmation resets the opt-in so it is never sticky across rails # time=2.11ms
+ok 310 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > Create new cycle: generation proceeds and the new loop references the NEW committed keyIds # time=10.01ms
+ok 311 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > rejects the commit when the parent acknowledgement echoes mismatched loopClips # time=0.84ms
+ok 312 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > rejects the commit when the acknowledgement drops a clip rotation/scale channel # time=0.74ms
+ok 313 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > apply-time loop persistence + S4 Link/Create (D-05/D-09) > rejects the commit when the acknowledgement drops photoWiggle # time=0.61ms
+ok 314 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Repeat validation in loop-edit (S2) > keeps Update loop disabled for malformed repeat "0" # time=0.60ms
+ok 315 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Repeat validation in loop-edit (S2) > keeps Update loop disabled for malformed repeat "-1" # time=0.54ms
+ok 316 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Repeat validation in loop-edit (S2) > keeps Update loop disabled for malformed repeat "2.5" # time=0.48ms
+ok 317 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Repeat validation in loop-edit (S2) > keeps Update loop disabled for malformed repeat "abc" # time=0.43ms
+ok 318 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Repeat validation in loop-edit (S2) > keeps Update loop disabled for malformed repeat "" # time=0.43ms
+ok 319 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Repeat validation in loop-edit (S2) > rejects an unsafe cycle × repeat product against the fixed cycle length # time=0.55ms
+ok 320 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Repeat validation in loop-edit (S2) > Infinity toggling preserves and restores the last valid finite value; an invalid draft never overwrites it # time=0.54ms
+ok 321 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openSourceEdit (D-02) > opens the source-edit mode prefilled from the source cycle provenance with the affected-loop count # time=0.89ms
+ok 322 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openSourceEdit (D-02) > rejects an unresolved loop — repair is the recovery flow (D-31) # time=0.47ms
+ok 323 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openSourceEdit (D-02) > preserves physically spaced source positions and stable IDs for same-count Source Edit across every shared loop # time=4.86ms
+ok 324 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openSourceEdit (D-02) > regenerates via the existing staged commit and retargets EVERY linked loop when the cycle length changes # time=4.51ms
+ok 325 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openSourceEdit (D-02) > regeneration is one history command — Undo restores keys AND loop references, Redo re-applies # time=5.59ms
+ok 326 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openSourceEdit (D-02) > 261030-ig0 (WR-01): a legacy Source Edit re-bake keeps the opt-in # time=6.61ms
+ok 327 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > openSourceEdit (D-02) > 261030-v1t: a legacy Source Edit re-bakes with the TARGET flag and keeps it # time=13.98ms
+ok 328 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Group Regenerate preparation and settlement (43.2-09) > gates Regenerate with exact lifecycle reasons and prepares one immutable disclosed impact # time=4.31ms
+ok 329 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Group Regenerate preparation and settlement (43.2-09) > refuses Regenerate on a merged Standard Rail with the merged reason and zero writes (261031-vbo) # time=1.44ms
+ok 330 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Group Regenerate preparation and settlement (43.2-09) > prepares Group Regenerate against the parent end rather than physical capacity # time=0.86ms
+ok 331 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Group Regenerate preparation and settlement (43.2-09) > rejects ambiguous sharing and stale Action authority without publishing # time=1.46ms
+ok 332 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Group Regenerate preparation and settlement (43.2-09) > restores every truly shared Group, removes local overrides, and preserves cursor selection in one commit # time=12.59ms
+ok 333 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Group Regenerate preparation and settlement (43.2-09) > 261030-v1t: Regenerate restores the Group paint-seed flag and re-bakes with it # time=4.06ms
+ok 334 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > opens the create dialog from a gapped segment with Cycle 1, Infinity off, and zero writes # time=0.46ms
+ok 335 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > converts the segment into ONE provenance-free Standard loop-only commit # time=0.53ms
+ok 336 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > records the conversion as exactly one undoable command and restores the Key Rail # time=0.66ms
+ok 337 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > cancel after open writes nothing and leaves the history availability at {0,0} # time=0.34ms
+ok 338 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > in-flight cancel before authority commits nothing and keeps the target # time=0.48ms
+ok 339 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > busy-phase cancel preserves the target and the retry commits # time=52.23ms
+ok 340 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > refuses a STALE target at confirm with zero commits and no history entry (T-58-02) # time=1.33ms
+ok 341 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > refuses keys already owned through a loop source cycle at open and at confirm # time=1.62ms
+ok 342 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > refuses keys already owned through a loop frame override at open # time=0.72ms
+ok 343 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > two confirm calls in the same tick produce exactly ONE commit (T-58-04) # time=0.68ms
+ok 344 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController loop modes and loop ops (43-06) > Key Rail cycle conversion (58-02) > a Standard clip opened later keeps the span-based extent through updateLoop # time=0.96ms
+ok 345 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Create Group modal availability (43.4 regression) > stays available and opens its modal on a real key past the stale display outFrame (pre-33f4beeb behavior) # time=9.24ms
+ok 346 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > opens on the Reveal tab with the span defaulted to the script natural duration (D-20) # time=0.51ms
+ok 347 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > defaults the reveal span to 3 when the natural duration is unknown # time=0.39ms
+ok 348 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > setRailTab keeps the user span and runs the reference guard proactively (D-12) # time=0.47ms
+ok 349 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > 261030-fas: switching to Reveal keeps the Paint opt-in but the bake never records it # time=0.70ms
+ok 350 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > confirmReveal routes through the create-reveal port with the shared repeat/motion law (D-08/D-09/D-11) # time=0.56ms
+ok 351 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > confirmReveal passes the Infinity repeat through as endless (D-08) # time=0.44ms
+ok 352 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > 261029-vbp: the Reveal tab defaults to colorize off with mix 100 and resets on every apply-mode open # time=0.52ms
+ok 353 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > 261029-vbp: enabling colorize writes the locked mix 100; disabling keeps the stored mix # time=0.37ms
+ok 354 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > 261029-vbp: setColorizeMix clamps every write to an integer 0-100 # time=0.38ms
+ok 355 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > 261029-vbp: confirmReveal carries the colorize pair in the create-reveal port object # time=0.43ms
+ok 356 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > 261030-ey9: Photo wiggle defaults off, threads into the create-reveal port, and resets on every apply-mode open # time=0.29ms
+ok 357 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > confirmReveal without a reference opens the Photo Reference modal and never creates (D-12 guard) # time=0.21ms
+ok 358 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > cancelling mid-bake writes nothing and lands in the cancelled phase (D-11) # time=0.35ms
+ok 359 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > rejects an invalid reveal span before calling the mutation (G-52-2c validation) # time=0.19ms
+ok 360 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > drives the Requested/Effective summary from the reveal span on the Reveal tab # time=0.17ms
+ok 361 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > resets to the Paint tab on every plain open and on loop-edit prefill # time=0.16ms
+ok 362 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > WR-03: a reveal entry closed by Cancel leaves the next plain open on the Paint tab # time=0.18ms
+ok 363 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > WR-03: a COMPLETED reveal flow leaves nothing sticky for the next plain open # time=0.19ms
+ok 364 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > WR-03: the D-12 guard path (no reference → photo dialog) does not change the next plain open # time=0.19ms
+ok 365 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3) > WR-03: a plain photo-reference request after a reveal open opens the photo dialog once and never reopens the Create Rail dialog # time=0.18ms
+ok 366 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController identity-only authority (261031-dm1) > asks for identities only when the Create Rail dialog opens # time=0.17ms
+ok 367 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController identity-only publication guards (261031-dm1) > fails the standard apply path closed before any commit # time=0.30ms
+ok 368 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController identity-only publication guards (261031-dm1) > keeps confirm and commit-check on the full two-argument request # time=0.26ms
+ok 369 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > 261101-cd5: never persists a stack session as creation defaults # time=0.49ms
+ok 370 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > 261101: a stack opens its Frames at the rest of the rail from the playhead, re-evaluated on every open # time=0.55ms
+ok 371 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > resolves the stack destination from live ports before open and re-resolves on the availability revision # time=0.21ms
+ok 372 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > keeps the generated-interpolation refusal outside every rail and degrades a malformed derivation to it # time=0.29ms
+ok 373 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > stacks a repeated occurrence at its source-cycle frame with no new Loop Clip and no materialized occurrence # time=6.06ms
+ok 374 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > keeps the create path when the playhead is outside every rail # time=0.34ms
+ok 375 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > resolves Max and the dialog bound to the free span before the collision boundary # time=58.01ms
+ok 376 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > parses a typed count above the free span so confirm raises the collision prompt instead of clamping # time=26.84ms
+ok 377 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > composites a flag-on rail with Keep OFF over its current picture and never records or purges (261031-vbo UAT) # time=7.22ms
+ok 378 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > exposes an enabled Keep script switch on every stack destination and seeds it ON (Quick B 2x2) # time=3.38ms
+ok 379 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > merges the run sheets over each touched key and appends the records on a flag-on rail # time=7.11ms
+ok 380 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > aborts the whole stack run with zero writes when the union re-bake refuses # time=4.87ms
+ok 381 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > aborts a Dry-only pixel-only stack run with zero writes on Keep ON (CR-01) # time=5.06ms
+ok 382 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > aborts a Dry-only pixel-only stack run with zero writes on Keep OFF (CR-01) # time=4.02ms
+ok 383 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > pixel-only Keep ON: unions over the authority base and appends, without flipping keyScriptEdits (Quick B) # time=7.32ms
+ok 384 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > pixel-only Keep OFF: composites over the existing frames and records nothing (UAT 261031-i54) # time=5.75ms
+ok 385 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > fails a stack run closed before commit when the recording port is absent (WR-02) # time=5.85ms
+ok 386 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > allows a pixel-only Keep-OFF stack run without a recording port (WR-02) # time=5.25ms
+ok 387 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > fails a pixel-only stack run closed when the composite refuses # time=5.19ms
+ok 388 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > reports the post-bake composite phase before the commit (UAT 261031-i54) # time=52.49ms
+ok 389 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > clears the previous progress when the dialog opens (UAT 261031-i54) # time=3.98ms
+ok 390 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > does not re-derive rail ranges on availability ticks while the dialog is closed (UAT 261031-i54) # time=1.43ms
+ok 391 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > offers overwrite only across another rail and removes the victim clip in the same commit # time=23.22ms
+ok 392 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > offers truncate and cancel only at the parent end and caps the lifecycle on explicit truncate # time=7.27ms
+ok 393 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > applies a run whose span contains a frame override with zero overrides on the record path # time=5.72ms
+ok 394 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > stacks onto a Reveal rail, exposes stackRailKind and seeds its four knobs (Quick B) # time=3.22ms
+ok 395 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > refuses a Reveal stack run with no placed photo reference and writes nothing # time=1.51ms
+ok 396 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > renders through the photo reference, adopts the knobs and appends on Keep ON (Quick B) # time=9.06ms
+ok 397 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > texture carrier: the reveal tail hands its bake port the stroke textureId # time=4.33ms
+ok 398 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > reloads the extended Reveal rail with the same rendered frames and repeat resolution (Quick B) # time=10.75ms
+ok 399 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > Keep OFF on a Reveal rail records nothing and still renders the revealed union # time=6.70ms
+ok 400 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > aborts a Reveal stack run with zero writes when the tail render misses a frame (T-261031-QPS-03) # time=5.86ms
+ok 401 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > aborts a Reveal stack run with zero writes when the tail render refuses # time=5.60ms
+ok 402 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > never stacks a Reveal rail when this build has no render-only tail port # time=1.56ms
+ok 403 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > never offers the creation Source cycle choice on a stack destination # time=7.91ms
+ok 404 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rejects a commit when the playhead leaves the target rail during the bake # time=2.95ms
+ok 405 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > pins the stack session while the dialog is open and refuses a moved playhead (WR-01/WR-02) # time=1.66ms
+ok 406 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > treats gaps between fragments as outside the rail (CR-03) # time=1.40ms
+ok 407 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > refuses a stale Overwrite when the run no longer reaches the other rail (CR-04) # time=1.52ms
+ok 408 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > filters Overwrite out when the victim rail carries frame overrides (CR-05) # time=1.19ms
+ok 409 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > bounds at the run start when another rail covers it, with Truncate aborting (CR-06) # time=1.49ms
+ok 410 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > adopts the rail color by default and the brush color only on request (UAT 261031-i54) # time=3.83ms
+ok 411 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > clears the rail color when the stack switches back to Original colors (UAT 261031-i54) # time=4.01ms
+ok 412 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > seeds the run from the rail settings and bakes the dialog settings (UAT 261031-i54) # time=6.43ms
+ok 413 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > commitStack publishes ONE Standard Rail for a Motion run on a Static destination (Quick C1) # time=6.17ms
+ok 414 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > keeps the destination lifecycle members when the lifecycle plan is null (Quick C1) # time=5.92ms
+ok 415 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > never routes a stack confirm to the Reveal tab (WR-06) # time=6.01ms
+ok 416 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > ignores a second confirm while a bake is in flight (WR-10) # time=53.95ms
+ok 417 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > refuses to extend a cycle another rail links to, then allows a fitting run (WR-08) # time=6.82ms
+ok 418 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rejects a mismatched acknowledgement that rewrites phaseOrigin (WR-07) # time=0.49ms
+ok 419 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rejects a mismatched acknowledgement that rewrites originalEndExclusive (WR-07) # time=0.30ms
+ok 420 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rejects a mismatched acknowledgement that rewrites visibleRanges (WR-07) # time=0.25ms
+ok 421 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rejects a mismatched acknowledgement that rewrites frameOverrides (WR-07) # time=0.24ms
+ok 422 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rejects a mismatched acknowledgement that rewrites syncState (WR-07) # time=0.26ms
+ok 423 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rejects a mismatched acknowledgement that rewrites provenanceState (WR-07) # time=0.23ms
+ok 424 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rejects a mismatched acknowledgement that rewrites railKind (WR-07) # time=0.27ms
+ok 425 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > reports a lifecycle-only overflow as the rail capping, never a run truncation (WR-03/WR-05) # time=0.23ms
+ok 426 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > accepts a coordinator-normalized ack for a lifecycle-less infinity clip (CR-07) # time=3.82ms
+ok 427 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rejects a normalized ack whose synthesized lifecycle differs from the canonical publication (CR-07) # time=2.62ms
+ok 428 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > compares the kept merged-rail fields in the acknowledgement (WR-12) # time=8.96ms
+ok 429 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > refuses when the target source cycle changes while the dialog is open (WR-02) # time=0.30ms
+ok 430 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > refuses when the target phase origin changes while the dialog is open (WR-02) # time=0.29ms
+ok 431 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > reads a frame override added inside the span on the live rail as legal (WR-02) # time=4.90ms
+ok 432 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > keeps the stack session pinned when a bake is cancelled, clearing it only on close (WR-14) # time=52.77ms
+ok 433 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > caps an explicit Truncate at the run boundary and grows the rail only to it (WR-05) # time=7.63ms
+ok 434 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > preserves a longer stored rail end through an explicit Truncate (WR-05) # time=7.37ms
+ok 435 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > exposes the four stack run kinds and derives the bake mode compare-then-write (Quick C2) # time=1.18ms
+ok 436 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > seeds the stack run kind from the destination mode and leaves a creation open at its default (Quick C2) # time=2.22ms
+ok 437 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > commits ONE Standard Rail for a Reveal Motion run on a Static destination (Quick C2) # time=4.21ms
+ok 438 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > runs a Reveal Static run in static mode while storing the destination mode (Quick C2) # time=5.51ms
+ok 439 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > texture carrier: the reveal run hands its bake port the stroke textureId # time=4.74ms
+not ok 440 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > texture carrier: the fallback projection copies the recorded rotation, not the library # time=26.30ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected undefined to be 37 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts:6939:48"
+    actual: "undefined"
+    expected: "37"
+    ...
+ok 441 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > flattens a Reveal run when the union port is absent, recording nothing (Quick C2) # time=0.69ms
+ok 442 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > refuses a Reveal run when this build has no run-only port, writing nothing (Quick C2) # time=0.32ms
+ok 443 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > refuses a Reveal run with no document photo reference, writing nothing (Quick C2) # time=0.29ms
+ok 444 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > surfaces the accurate reference copy when the reveal run render refuses with "missing reference source", writing nothing (Quick C2 WR-02) # time=0.37ms
+ok 445 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > surfaces the accurate reference copy when the reveal run render refuses with "no photo reference", writing nothing (Quick C2 WR-02) # time=0.25ms
+ok 446 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > keeps the internal prefix for a non-reference reveal run refusal (Quick C2 WR-02) # time=0.31ms
+ok 447 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > aborts a Reveal run with zero writes when the run render does not cover the span exactly (Quick C2) # time=0.32ms
+ok 448 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > re-validates the document reference at confirm: removing it while the dialog is open refuses with zero writes (Quick C2) # time=0.27ms
+ok 449 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > aborts a Reveal run with zero writes on duplicate and missing run frames (Quick C2) # time=0.68ms
+ok 450 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > flattens a Reveal run over the picture and records nothing with Keep OFF (Quick C2) # time=0.53ms
+ok 451 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > publishes a Reveal run as ONE Standard Rail that survives undo and reload (Quick C2) # time=1.99ms
+ok 452 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > leaves the Quick B Reveal-destination path untouched when both render ports are supplied (Quick C2) # time=3.85ms
+ok 453 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rail-on-rail rewrite law (2026-11-05) > a run over a scripted Motion rail publishes ONE Standard clip # time=1.48ms
+ok 454 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rail-on-rail rewrite law (2026-11-05) > a run over a scripted Static rail publishes ONE Standard clip # time=3.75ms
+ok 455 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rail-on-rail rewrite law (2026-11-05) > a run over an in-hand Standard rail merges keys only — never a second rail # time=1.78ms
+ok 456 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rail-on-rail rewrite law (2026-11-05) > opens the default span at the whole segment when the playhead is its first key # time=0.18ms
+ok 457 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rail-on-rail rewrite law (2026-11-05) > treats an empty frame inside the segment span as the same in-hand rail # time=0.19ms
+ok 458 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rail-on-rail rewrite law (2026-11-05) > splits at an incoming interpolation break like the timeline does # time=0.35ms
+ok 459 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rail-on-rail rewrite law (2026-11-05) > keeps the create path for a frame outside every rail # time=0.13ms
+ok 460 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rail-on-rail rewrite law (2026-11-05) > never lets a clip destination fall through to the hand-rail merge # time=0.13ms
+ok 461 - src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts > createRotoPlayScriptController run-script stacking (261031-i54) > rail-on-rail rewrite law (2026-11-05) > bounds an over-long Standard merge with Cancel/Truncate only — Overwrite is never offered # time=1.49ms
+ok 462 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > watercolor-only script identity (261027-klx) > exports the watercolor identity, ONE legacy literal for classification, and no engine-1 builder # time=249.57ms
+ok 463 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > watercolor-only script identity (261027-klx) > parse of a legacy-kind fixture returns the clean-break refusal and never a script # time=0.21ms
+ok 464 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > watercolor-only script identity (261027-klx) > parse of an old Brush envelope refuses as engine-mismatch naming script engine first, target second # time=0.16ms
+ok 465 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > watercolor-only script identity (261027-klx) > parse refuses an unknown engine id and garbage with named codes # time=0.76ms
+ok 466 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > watercolor-only script identity (261027-klx) > never accepts a legacy Brush body relabelled with the watercolor engine id # time=0.13ms
+ok 467 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > aquarelle script codec (261018-odm ODM-01) > serializeAquarelleRotoScript emits engineId efx-watercolor with UV pts and an AquarelleStrokePayload engine slot # time=0.56ms
+ok 468 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > aquarelle script codec (261018-odm ODM-01) > a Dry event round-trips as a distinguished stroke entry and reconstructs to AquarelleDryEvent # time=0.62ms
+ok 469 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > aquarelle script codec (261018-odm ODM-01) > parseRotoScript accepts the watercolor envelope and no other engine # time=0.13ms
+ok 470 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > aquarelle script codec (261018-odm ODM-01) > the watercolor guard rejects an engine-1 tool id inside an aquarelle document # time=0.21ms
+ok 471 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > aquarelle script codec (261018-odm ODM-01) > keeps the watercolor brushPack validation # time=0.18ms
+ok 472 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > aquarelle script codec (261018-odm ODM-01) > persistedRotoScriptToRuntime sets engineId and aquarelleEvents from the aquarelle document # time=0.41ms
+ok 473 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > aquarelle script codec (261018-odm ODM-01) > creates fresh runtime and row objects without aliasing persisted input # time=0.27ms
+ok 474 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > aquarelle script codec (261018-odm ODM-01) > rotoScriptLibraryRow brushCount skips Dry markers on an aquarelle document # time=0.08ms
+ok 475 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > aquarelle script codec (261018-odm ODM-01) > the aquarelle round-trip keeps counts # time=0.21ms
+ok 476 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > aquarelle script codec (261018-odm ODM-01) > a malformed aquarelle payload refuses with malformed-engine-payload # time=0.10ms
+ok 477 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > textureId on the script engine slot (quick-261115-oh9) > a valid machine-library texture id parses # time=0.12ms
+ok 478 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > textureId on the script engine slot (quick-261115-oh9) > absence still parses and stays absent # time=0.10ms
+ok 479 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > textureId on the script engine slot (quick-261115-oh9) > a number or a present empty string refuses as malformed-engine-payload # time=0.16ms
+ok 480 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > textureRotation on the script engine slot (quick 261116-inu) > accepts integer degrees across the full -180..180 range and round-trips them # time=0.30ms
+ok 481 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > textureRotation on the script engine slot (quick 261116-inu) > absence still parses and stays absent # time=0.08ms
+not ok 482 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > textureRotation on the script engine slot (quick 261116-inu) > anti-mixup: refuses 3700 hundredths and every non-integer or out-of-range value # time=2.17ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "rotation 3700: expected true to be false // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts:476:52"
+    actual: "true"
+    expected: "false"
+    ...
+ok 483 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > script brush carrier (63-08 / TIP-14 / quick 261116-inu) > serializes custom brush entries as METADATA: no mask carrier, no package asset ref # time=0.23ms
+ok 484 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > script brush carrier (63-08 / TIP-14 / quick 261116-inu) > a referenced texture absent from this machine still loads — the script carries metadata only # time=0.10ms
+ok 485 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > script brush carrier (63-08 / TIP-14 / quick 261116-inu) > the parser refuses every malformed script carrier entry with a named reason # time=0.17ms
+ok 486 - src/components/physic-paint/roto/physicsPaintRotoScriptSchema.test.ts > script brush carrier (63-08 / TIP-14 / quick 261116-inu) > refuses to serialize a script entry carrying a package asset ref # time=0.28ms
+ok 487 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > restoreAquarelleRecordTimeline > replaces the timeline wholesale and returns the highest mutation id # time=1.38ms
+ok 488 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > restoreAquarelleRecordTimeline > returns 0 for an empty restore # time=0.15ms
+ok 489 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > restoreAquarelleRecordTimeline > advances the record clock past the highest restored tick # time=0.12ms
+ok 490 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > restoreAquarelleRecordTimeline > keeps the projected entry queryable as the frame replay source # time=0.44ms
+ok 491 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > restoreAquarelleRecordTimeline > resetAquarelleRecordState clears content and restarts the clock # time=0.30ms
+ok 492 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > quick-261115-oh9 restored textureId carrier > preserves a recorded engine.textureId through restore and getRecordedAquarellePayload # time=0.16ms
+ok 493 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > quick-261115-oh9 restored textureId carrier > keeps an untextured restore free of the key # time=0.08ms
+not ok 494 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > quick 261116-inu textureRotation carrier (degrees) > preserves integer DEGREES through restore and getRecordedAquarellePayload # time=1.82ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected undefined to be 37 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/aquarelleRecordState.restore.test.ts:188:42"
+    actual: "undefined"
+    expected: "37"
+    ...
+ok 495 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > quick 261116-inu textureRotation carrier (degrees) > keeps an untextured or rotationless restore free of the key # time=0.11ms
+not ok 496 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > quick 261116-inu textureRotation carrier (degrees) > snapshots the selected library row rotation in DEGREES for the NEXT stroke # time=0.56ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected null to be 'wc/custom-snapshot-rotation' // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/aquarelleRecordState.restore.test.ts:217:30"
+    actual: "null"
+    expected: "wc/custom-snapshot-rotation"
+    ...
+ok 497 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > quick 261116-inu textureRotation carrier (degrees) > records no rotation key for the Default chip or a procedural tip # time=0.09ms
+ok 498 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > 261024-m20 restored-session key-identity remap > remaps restored strokes onto their new frames with the Dry untouched # time=0.69ms
+ok 499 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > 261024-m20 restored-session key-identity remap > drops a restored stroke whose key disappeared while the Dry survives # time=0.14ms
+ok 500 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > 261027 watercolor key anchors > stamps the owning key on record and drops it on a frame purge # time=0.12ms
+ok 501 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > 261027 watercolor key anchors > seeds anchors on restore and keeps them across a key move # time=0.09ms
+ok 502 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > 261027 watercolor key anchors > drops the anchor when the remap drops its key, and on clear-all # time=0.13ms
+ok 503 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > 261027 watercolor key anchors > clears anchors on reset and on a wholesale restore # time=0.07ms
+ok 504 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > 261027 watercolor key anchors > never stamps an anchor for a stroke recorded without a key id # time=0.05ms
+ok 505 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > 261031-cf9 restored paint seed salt > rebuilds the salted traceSeed from engine.params on restore # time=0.10ms
+ok 506 - src/components/physic-paint/view/aquarelleRecordState.restore.test.ts > 261031-cf9 restored paint seed salt > keeps an unsalted restore byte-identical to hashMutationId # time=0.05ms
