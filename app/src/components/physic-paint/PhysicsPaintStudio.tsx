@@ -4174,6 +4174,9 @@ export function PhysicsPaintStudio() {
     });
   }
   const flushPipeline = flushPipelineRef.current;
+  // CR-01: one close-time refusal per window, so a latched binding cannot be
+  // dismissed in silence but also cannot trap the user in an unclosable window.
+  const closeWithheldAcknowledgedRef = useRef(false);
   // The pipeline never rejects (a failed drain is an outcome), so the shared
   // runner rethrows for the callers whose contract is a rejection: the facade's
   // fail-closed catch and the close hook's error path both depend on it.
@@ -4190,7 +4193,9 @@ export function PhysicsPaintStudio() {
     // quick-261023-l35: a dirty script snapshot must also keep the window open
     // long enough to save — otherwise a close that has no pixel work destroys
     // the realm with the script never written.
-    () => workflowMode === 'roto' || studioScriptSnapshot.isDirty(),
+    () => workflowMode === 'roto'
+      || studioScriptSnapshot.isDirty()
+      || studioScriptSnapshot.hasWithheldContent(),
     async () => {
       // The steps and their order are unchanged; the pipeline owns the drain
       // they run inside and the outcome-to-rejection translation. Per-step
@@ -4208,6 +4213,17 @@ export function PhysicsPaintStudio() {
         // until the user turns Draft off (a settle).
         () => {
           if (draftPixelsDirty.peek()) throw new Error('Draft recompute pending — turn Draft off before closing the Studio.');
+        },
+        // CR-01: a latched binding holds script the paused save will never
+        // write, so the close must not destroy the realm silently — the notice
+        // is re-reported at the moment it matters and the window stays open.
+        // One refusal only: a second close is the user's explicit choice.
+        () => {
+          if (!studioScriptSnapshot.hasWithheldContent()) return;
+          if (closeWithheldAcknowledgedRef.current) return;
+          closeWithheldAcknowledgedRef.current = true;
+          studioScriptSnapshot.reportSaveWithheld();
+          throw new Error('Studio script saving is paused for this track — clear its script to resume saving.');
         },
         () => {
           if (workflowMode !== 'roto') return;
@@ -7499,7 +7515,9 @@ export function PhysicsPaintStudio() {
     // quick-261025-awl: clear-all touches every frame, including the live one.
     const liveFrame = launchContextRef.current?.startFrame;
     if (liveFrame !== undefined) applyFrameModuleState(liveFrame);
-    void studioScriptSnapshot.persistAfterPurge();
+    // WR-13: the whole-track clear is the ONE purge that may replace a refused
+    // (unreadable) snapshot. The partial purges above must not.
+    void studioScriptSnapshot.persistAfterPurge({ acknowledgeRefusedRestore: true });
     return true;
   }
   // 261024-p5q UAT: the sidebar Color tab is the ONE picker. Its commit

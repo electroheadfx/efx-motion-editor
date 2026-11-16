@@ -232,6 +232,14 @@ export interface StudioScriptSnapshotSaveOptions {
   allowEmpty?: boolean;
   /** Explicit purge: write the session alone, dropping retained entries. */
   sessionOnly?: boolean;
+  /**
+   * WR-13 (63 review): a refused restore leaves the file's contents UNKNOWN.
+   * Only a WHOLE-TRACK clear may replace it — that is the one action whose
+   * intent is "this track's script is gone". A partial purge (one frame, a rail
+   * subset, a raster settle) must not, or it destroys the unread script with
+   * the session while the notice promises otherwise.
+   */
+  acknowledgeRefusedRestore?: boolean;
 }
 
 export interface StudioScriptSnapshotController {
@@ -250,6 +258,13 @@ export interface StudioScriptSnapshotController {
   saveNow(): Promise<void>;
   /** True when the content changed since the last successful save / restore. */
   isDirty(): boolean;
+  /**
+   * CR-01 (63 review): the binding is latched AND holds script the paused save
+   * will never write. The close path must not destroy the window silently.
+   */
+  hasWithheldContent(): boolean;
+  /** CR-01: re-report the pause unconditionally (the close moment). */
+  reportSaveWithheld(): void;
   /** Drop the binding and every internal baseline (Studio disposal). */
   reset(): void;
   /** Clear the pending debounce timer; performs no write (effect cleanup). */
@@ -258,7 +273,9 @@ export interface StudioScriptSnapshotController {
    * quick-261023-ors: rewrite the authoritative leg with the pruned payload,
    * then delete the stale fallback cache leg. Never rejects.
    */
-  persistAfterPurge(): Promise<void>;
+  persistAfterPurge(
+    options?: Pick<StudioScriptSnapshotSaveOptions, 'acknowledgeRefusedRestore'>,
+  ): Promise<void>;
   /**
    * quick-261026-odd: drop RETAINED content for specific frames (the one-time
    * rail-script cleanup). The session stores are the caller's responsibility;
@@ -914,7 +931,8 @@ export function createStudioScriptSnapshotController(
       // Placed AFTER the empty-payload guard so CR-01's disclosure fires only
       // when there is real content being withheld (an empty session loses
       // nothing, and the guard above already withholds it on its own).
-      if (refusedRestore && !sessionOnly) {
+      const acknowledgesRefusal = options?.acknowledgeRefusedRestore === true;
+      if (refusedRestore && !(sessionOnly && acknowledgesRefusal)) {
         // CR-01: disclose the withholding ONCE per latch episode. Nothing was
         // attempted, so this is not a save failure — it is the pause itself,
         // with the only non-destructive exit named.
@@ -1058,13 +1076,21 @@ export function createStudioScriptSnapshotController(
    * belonged to the outgoing key and must not delete the incoming key's cache.
    * Never rejects; a failed delete reports once through the capsule.
    */
-  async function persistAfterPurge(): Promise<void> {
+  async function persistAfterPurge(
+    options?: Pick<StudioScriptSnapshotSaveOptions, 'acknowledgeRefusedRestore'>,
+  ): Promise<void> {
     if (!boundIdentity) return;
     const generationBefore = generation;
     // The EXPLICIT destructive path: the session is the whole truth, so the
     // purged entries cannot be resurrected from the retained baseline, and an
-    // empty result (purge everything) is allowed to land.
-    await flushNow({ allowEmpty: true, sessionOnly: true });
+    // empty result (purge everything) is allowed to land. WR-13: bypassing a
+    // refused-restore latch additionally requires the caller to declare that it
+    // cleared the WHOLE track — a partial purge is withheld.
+    await flushNow({
+      allowEmpty: true,
+      sessionOnly: true,
+      acknowledgeRefusedRestore: options?.acknowledgeRefusedRestore === true,
+    });
     if (generationBefore !== generation) return;
     const identity = boundIdentity;
     if (!identity) return;
@@ -1124,6 +1150,22 @@ export function createStudioScriptSnapshotController(
     return deps.getContentSignature() !== lastSavedSignature;
   }
 
+  function hasWithheldContent(): boolean {
+    if (!boundIdentity || !refusedRestore) return false;
+    // NOT isDirty(): the refused arm deliberately leaves the saved baseline
+    // unset, so a refused-but-empty session reads dirty and closing it would
+    // lose nothing. Gate on actual session content instead — deliberately
+    // conservative (a stroke that the merge would drop still counts), because
+    // a false positive costs one extra close refusal, never a silent loss.
+    if (deps.getWatercolorEvents().length > 0) return true;
+    const bases = deps.getDurableBases?.();
+    return (bases?.size ?? 0) > 0;
+  }
+
+  function reportSaveWithheld(): void {
+    deps.report(STUDIO_SCRIPT_SNAPSHOT_SAVE_WITHHELD_MESSAGE);
+  }
+
   function dispose(): void {
     clearSaveTimer();
     followUpRequested = false;
@@ -1150,6 +1192,8 @@ export function createStudioScriptSnapshotController(
     flushNow,
     saveNow,
     isDirty,
+    hasWithheldContent,
+    reportSaveWithheld,
     reset,
     dispose,
     persistAfterPurge,
