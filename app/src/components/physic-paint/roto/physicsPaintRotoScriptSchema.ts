@@ -7,7 +7,7 @@ import type {
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import { AQUARELLE_TOOLS, isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
-import { TIP_MASK_EDGE, buildBrushPackSnapshot, parseBrushPackSnapshot, type AquarelleTip } from '@efxlab/efx-watercolor';
+import { buildBrushPackSnapshot, parseBrushPackSnapshot, type AquarelleTip } from '@efxlab/efx-watercolor';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { isGrainScaleValue } from '../../../efx-paint/document/efxPaintDocument';
 import { aquarelleUvToEnginePixel } from '../engine/aquarelleStrokeBridge';
@@ -35,12 +35,6 @@ export const ROTO_SCRIPT_LIMITS = {
   thumbnailBytes: 512 * 1024,
   thumbnailWidth: 96,
   thumbnailHeight: 64,
-  /**
-   * 63-08 / T-63-07: the inline mask carrier's ceiling, matching the thumbnail
-   * carrier. A 192×192 WebP tip is far under it; anything over is refused
-   * before its bytes are allocated.
-   */
-  maskDataUrlBytes: 512 * 1024,
 } as const;
 
 /** Watercolor diffusion cap policy (D-20) — stays in the codec, never in host time/. */
@@ -110,9 +104,9 @@ export type RotoScriptParseResult =
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 /**
- * The ONE inline image carrier of a script (D-14): the thumbnail and each
- * custom tip's mask both travel as a WebP data URL, because a script cannot
- * reference another project's package asset.
+ * The ONE inline image carrier of a script (D-14): the thumbnail. A custom
+ * tip travels as METADATA only (quick 261116-inu) — its mask lives in the
+ * machine brush library, never in the script file.
  */
 export const ROTO_SCRIPT_WEBP_PREFIX = 'data:image/webp;base64,';
 
@@ -153,11 +147,11 @@ export function serializeAquarelleRotoScript(input: {
   thumbnail: PersistedRotoScriptThumbnailV1;
   events: readonly AquarellePayloadEvent[];
   /**
-   * The script carrier's brush entries (63-08 / TIP-14 / D-14): each CUSTOM
-   * tip the project paints with, carrying its mask inline as a WebP data URL
-   * (`maskDataUrl`) and NEVER a package `asset` ref. Omitted for a script
-   * painted with built-ins only. The pack law validates the entries — an
-   * entry carrying an `asset` or the retired `mask` member refuses the save.
+   * The script carrier's brush entries (63-08 / TIP-14 / quick 261116-inu):
+   * each CUSTOM tip the script references, as METADATA only (id, name,
+   * multipliers) — no mask bytes, no `asset` ref. The library owns the
+   * textures; a missing one falls back to the response tip at replay. The
+   * pack law validates the entry shape.
    */
   brushEntries?: readonly AquarelleTip[];
 }): PersistedRotoScriptAquarelleV1 {
@@ -406,19 +400,14 @@ export function isPersistedRotoScriptAquarelleV1(value: unknown): value is Persi
 
 /**
  * The script carrier's pack law (63-08 / T-63-07; quick 261116-inu removes the
- * package carrier). The package's single-carrier parser is the shape authority
- * — kind, entry fields, the retired `mask` member and any `asset` ref refused.
- * On top of it, EVERY entry must carry an inline mask that passes the cap,
- * canonical-base64 and exact-TIP_MASK_EDGE-square walk: a script entry without
- * a mask would paint the fallback on another machine, so it refuses the
- * document. (The next task in this quick makes the mask optional and then
- * removes it.)
+ * mask carrier). The package's single-carrier parser is the shape authority —
+ * kind, entry fields, the retired `mask` member and any `asset` ref refused.
+ * Entries are metadata only: a mask the script does not carry can never make
+ * it unreadable, and a referenced texture missing on this machine falls back
+ * to the response tip at replay.
  */
 function isBrushPack(value: unknown): value is BrushPackSnapshot {
-  const parsed = parseBrushPackSnapshot(value);
-  if (parsed === null) return false;
-  return parsed.entries.every((entry) =>
-    decodeScriptMaskDataUrl(isRecord(entry) ? entry.maskDataUrl : undefined) !== null);
+  return parseBrushPackSnapshot(value) !== null;
 }
 
 /** Distinguish the Dry marker engine slot from a paint payload. */
@@ -524,33 +513,6 @@ function isThumbnail(value: unknown): value is PersistedRotoScriptThumbnailV1 {
       && dimensions?.width === value.width && dimensions.height === value.height;
   } catch {
     return false;
-  }
-}
-
-/**
- * Decode ONE script-carried mask data URL back to its stored WebP bytes
- * (63-08 / TIP-14 / D-14 / T-63-07). Prefix, byte cap and canonical base64
- * only, and the RIFF header must declare exactly `TIP_MASK_EDGE × TIP_MASK_EDGE` — the
- * dimension walk runs BEFORE any native decode, so an oversize or wrong-size
- * drawing is refused without allocating its mask buffer. `null` on any other
- * value: the load leg skips that entry with a named log rather than aborting.
- */
-export function decodeScriptMaskDataUrl(value: unknown): Uint8Array | null {
-  if (typeof value !== 'string' || !value.startsWith(ROTO_SCRIPT_WEBP_PREFIX)) return null;
-  const base64 = value.slice(ROTO_SCRIPT_WEBP_PREFIX.length);
-  // Bound the payload before decoding: canonical base64 decodes to 3/4 its
-  // length minus padding, so the cap is checked with arithmetic, never by
-  // allocating the bytes first.
-  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
-  const decodedBytes = (base64.length / 4) * 3 - padding;
-  if (!Number.isSafeInteger(decodedBytes) || decodedBytes > ROTO_SCRIPT_LIMITS.maskDataUrlBytes) return null;
-  try {
-    const bytes = decodeBase64(base64);
-    const dimensions = parseWebpDimensions(bytes);
-    if (dimensions?.width !== TIP_MASK_EDGE || dimensions.height !== TIP_MASK_EDGE) return null;
-    return bytes;
-  } catch {
-    return null;
   }
 }
 

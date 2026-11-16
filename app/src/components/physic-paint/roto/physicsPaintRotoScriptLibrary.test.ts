@@ -838,72 +838,37 @@ describe('quick-260922-al1 child-realm scope state and its hydration hop', () =>
 });
 
 // ---------------------------------------------------------------------------
-// 63-08 / TIP-14: the script carrier. A script cannot reference another
-// project's package asset, so each custom tip travels with its mask inline as
-// a WebP data URL (D-14) — the save leg copies the STUDIO realm's stored WebP
-// bytes, whose only writer is `applyBrushCatalogPayload`, and the load leg
-// registers the decoded mask in the engine registry ONLY (never a catalog row).
-//
-// The save-leg tests rebuild the module graph on purpose: the main realm's
-// `efxPaintBrushAssets` instance is NOT the Studio's, so a one-instance test
-// would pass while the real app refuses every save.
+// 63-08 / TIP-14 (quick 261116-inu): the script carrier is METADATA only. The
+// machine library owns the textures; a script records WHICH custom tips its
+// strokes reference (id, name, multipliers) and never any mask bytes. A
+// referenced texture absent on this machine still loads and plays with the
+// response tip, and a load never writes the mask registry.
 // ---------------------------------------------------------------------------
 
 const SCRIPT_WEBP_PREFIX = 'data:image/webp;base64,';
 
-/** Minimal well-formed 25-byte lossless VP8L header declaring the frame size. */
-function brushWebp(width: number, height: number): Uint8Array {
-  const bytes = new Uint8Array(26);
-  bytes.set([0x52, 0x49, 0x46, 0x46], 0);
-  bytes[4] = 18; // RIFF size = total − 8 (the walker requires full-length containers)
-  bytes.set([0x57, 0x45, 0x42, 0x50], 8);
-  bytes.set([0x56, 0x50, 0x38, 0x4c], 12);
-  bytes[16] = 5;
-  bytes[20] = 0x2f;
-  const w = width - 1;
-  const h = height - 1;
-  bytes[21] = w & 0xff;
-  bytes[22] = ((w >> 8) & 0x3f) | ((h & 0x03) << 6);
-  bytes[23] = (h >> 2) & 0xff;
-  bytes[24] = (h >> 10) & 0x0f;
-  return bytes;
-}
-
-/** A project CUSTOM tip record as the package carrier shapes it. */
+/** A machine library row's tip record: metadata only, no texture bytes. */
 function scriptCustomTip(id: string): Record<string, unknown> {
   return {
     id,
     category: 'custom',
     name: `Custom ${id}`,
     tip: 1, aspect: 1, rotation: 1, sizeCurve: 1, scatter: 1, capacity: 1, grain: 1, wetRound: 1,
-    asset: `brushes/${'a'.repeat(64)}.webp`,
   };
 }
 
-describe('script brush carrier (63-08 / TIP-14)', () => {
-  it('save leg: each custom tip mask travels as an inline data URL read from the Studio realm cache', async () => {
+describe('script brush carrier (63-08 / TIP-14, metadata only)', () => {
+  it('save leg: a painted custom tip travels as metadata — no mask bytes anywhere', async () => {
     vi.resetModules();
     const catalog = await import('../../../stores/aquarelleBrushCatalog');
-    const watercolor = await import('@efxlab/efx-watercolor');
     const library = await import('./physicsPaintRotoScriptLibrary');
 
-    const webpBytes = brushWebp(192, 192);
-    const mask = new Uint8Array(watercolor.TIP_MASK_BYTES).fill(6);
-    // The two-realm shape: this payload is the ONLY writer of the Studio
-    // realm's stored bytes. Nothing below calls rememberBrushAsset directly.
-    catalog.applyBrushCatalogPayload({
-      libraryRevision: 0,
-      entries: [{
-        tip: scriptCustomTip('wc/custom-script-save') as never,
-        // Task 2's required row fields; Task 5 owns this file's full retarget.
-        digest: 'f'.repeat(64),
-        textureRotation: 0,
-        maskBase64: Buffer.from(mask).toString('base64'),
-      }],
-      unavailableTipIds: [],
-    });
+    catalog.replaceLibraryEntries([
+      { tip: scriptCustomTip('wc/custom-script-save') as never, digest: 'f'.repeat(64), textureRotation: 0 },
+    ]);
 
     const test = harness(true, {}, library.createRotoScriptLibraryController);
+    test.capture.script.aquarelleEvents = captureWithEngineBrushId('wc/custom-script-save');
     await expect(test.controller.saveActiveFrame()).resolves.toBe(true);
 
     const saveRequest = test.requests.find((request) => request.kind === 'save') as { script?: any } | undefined;
@@ -911,24 +876,15 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
     const entries = saveRequest!.script.brushPack.entries as any[];
     expect(entries).toHaveLength(1);
     expect(entries[0].id).toBe('wc/custom-script-save');
-    expect(entries[0].maskDataUrl).toBe(`${SCRIPT_WEBP_PREFIX}${Buffer.from(webpBytes).toString('base64')}`);
+    expect('maskDataUrl' in entries[0]).toBe(false);
     expect('asset' in entries[0]).toBe(false);
-  });
-
-  it('save leg: refuses when a custom tip has no stored bytes in this realm', async () => {
-    vi.resetModules();
-    const catalog = await import('../../../stores/aquarelleBrushCatalog');
-    const library = await import('./physicsPaintRotoScriptLibrary');
-
-    // No catalog payload was ever applied here: the tip row exists, its bytes
-    // do not — exactly what the real Studio sees when the push never arrived.
-    catalog.addCustomBrushTip(scriptCustomTip('wc/custom-no-bytes') as never);
-
-    const test = harness(true, {}, library.createRotoScriptLibraryController);
-    await expect(test.controller.saveActiveFrame()).resolves.toBe(false);
-    expect(test.controller.status.value).toContain('no stored mask bytes');
-    expect(test.log).toHaveBeenCalledWith(expect.stringContaining('no stored mask bytes'), true);
-    expect(test.requests.filter((request) => request.kind === 'save')).toHaveLength(0);
+    // The whole script carries no base64 beyond its thumbnail.
+    expect(saveRequest!.script.thumbnail.dataUrl.startsWith(SCRIPT_WEBP_PREFIX)).toBe(true);
+    const withoutThumbnail = {
+      ...saveRequest!.script,
+      thumbnail: { ...saveRequest!.script.thumbnail, dataUrl: '' },
+    };
+    expect(JSON.stringify(withoutThumbnail)).not.toContain('base64');
   });
 
   /** Replace ONLY the non-dry events' engine brush id; dry ticks pass through. */
@@ -938,77 +894,43 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
     ));
   }
 
-  it('save leg: an unavailable tip is skipped with a log instead of refusing the whole save (WR-02)', async () => {
+  it('save leg: an unavailable texture still travels as metadata — the mask is not needed', async () => {
     vi.resetModules();
     const catalog = await import('../../../stores/aquarelleBrushCatalog');
     const library = await import('./physicsPaintRotoScriptLibrary');
 
-    // Distinct digests per tip: the shared `scriptCustomTip` asset would let
-    // the healthy tip's remembered bytes satisfy the unavailable one.
-    const tipWithDigest = (id: string, fill: string) => ({ ...scriptCustomTip(id), asset: `brushes/${fill.repeat(64)}.webp` });
-    catalog.applyBrushCatalogPayload({
-      libraryRevision: 0,
-      entries: [
-        {
-          tip: tipWithDigest('wc/custom-healthy', 'b') as never,
-          digest: 'b'.repeat(64),
-          textureRotation: 0,
-        },
-        { tip: tipWithDigest('wc/custom-unavailable', 'c') as never, digest: 'c'.repeat(64), textureRotation: 0 },
-      ],
-      unavailableTipIds: ['wc/custom-unavailable'],
-    });
+    catalog.replaceLibraryEntries([
+      { tip: scriptCustomTip('wc/custom-healthy') as never, digest: 'b'.repeat(64), textureRotation: 0 },
+      { tip: scriptCustomTip('wc/custom-unavailable') as never, digest: 'c'.repeat(64), textureRotation: 0 },
+    ], ['wc/custom-unavailable']);
 
-    // The capture paints a built-in id: only the catalog's own state can refuse.
     const test = harness(true, {}, library.createRotoScriptLibraryController);
+    test.capture.script.aquarelleEvents = captureWithEngineBrushId('wc/custom-unavailable');
     await expect(test.controller.saveActiveFrame()).resolves.toBe(true);
 
     const saveRequest = test.requests.find((request) => request.kind === 'save') as { script?: any } | undefined;
     expect(saveRequest === undefined).toBe(false);
     const entries = saveRequest!.script.brushPack.entries as any[];
-    expect(entries.map((entry: { id: string }) => entry.id)).toEqual(['wc/custom-healthy']);
-    expect(test.log).toHaveBeenCalledWith(expect.stringContaining('wc/custom-unavailable'), true);
+    expect(entries.map((entry: { id: string }) => entry.id)).toEqual(['wc/custom-unavailable']);
   });
 
-  it('save leg: refuses a custom-brush capture when this realm never received a catalog (WR-03)', async () => {
+  it('save leg: a painted custom id absent from this library saves with a log, never a refusal', async () => {
     vi.resetModules();
     const library = await import('./physicsPaintRotoScriptLibrary');
 
-    // Fresh modules: no payload was applied, so the catalog is UNKNOWN — not
-    // known-empty. The capture still paints a custom tip.
     const test = harness(true, {}, library.createRotoScriptLibraryController);
-    test.capture.script.aquarelleEvents = captureWithEngineBrushId('wc/custom-painted');
+    test.capture.script.aquarelleEvents = captureWithEngineBrushId('wc/custom-not-local');
 
-    await expect(test.controller.saveActiveFrame()).resolves.toBe(false);
-    expect(test.controller.status.value).toContain('brush catalog');
-    expect(test.controller.status.value).toContain('wc/custom-painted');
-    expect(test.requests.filter((request) => request.kind === 'save')).toHaveLength(0);
-  });
-
-  it('save leg: refuses by name when a painted custom tip is not in the synced catalog (WR-03)', async () => {
-    vi.resetModules();
-    const catalog = await import('../../../stores/aquarelleBrushCatalog');
-    const library = await import('./physicsPaintRotoScriptLibrary');
-
-    catalog.applyBrushCatalogPayload({
-      libraryRevision: 0,
-      entries: [{ tip: scriptCustomTip('wc/custom-other') as never, digest: 'a'.repeat(64), textureRotation: 0 }],
-      unavailableTipIds: [],
-    });
-
-    // Painted from ANOTHER script's registry: the id resolves for painting but
-    // this project catalog carries no entry for it.
-    const test = harness(true, {}, library.createRotoScriptLibraryController);
-    test.capture.script.aquarelleEvents = captureWithEngineBrushId('wc/custom-script-only');
-
-    await expect(test.controller.saveActiveFrame()).resolves.toBe(false);
-    expect(test.controller.status.value).toContain('wc/custom-script-only');
-    expect(test.requests.filter((request) => request.kind === 'save')).toHaveLength(0);
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(true);
+    const saveRequest = test.requests.find((request) => request.kind === 'save') as { script?: any } | undefined;
+    expect(saveRequest?.script.brushPack.entries).toEqual([]);
+    expect(test.log).toHaveBeenCalledWith(expect.stringContaining('wc/custom-not-local'));
   });
 
   // quick-261115-oh9: a texture is a SETTING of the response. The save law
-  // reads BOTH ids from the capture; a custom texture must travel or the save
-  // refuses by name, while a built-in travels with the app and never blocks.
+  // reads BOTH ids from the capture; a custom texture travels as metadata when
+  // the library knows it, and a built-in travels with the app — neither ever
+  // blocks the save.
   it('references custom texture ids beside response ids, first-seen and unique', () => {
     const withEngine = (brushId: string, textureId?: string): AquarellePayloadEvent => {
       const [event] = aquarelleEvents();
@@ -1045,7 +967,7 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
     expect(referencedCustomBrushIds(events)).toEqual([]);
   });
 
-  it('save leg: refuses by name when a painted custom TEXTURE cannot travel', async () => {
+  it('save leg: a painted custom TEXTURE absent from this library saves with a log', async () => {
     vi.resetModules();
     const library = await import('./physicsPaintRotoScriptLibrary');
     const test = harness(true, {}, library.createRotoScriptLibraryController);
@@ -1055,9 +977,8 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
         : { ...event, engine: { ...event.engine, textureId: 'wc/custom-texture-missing' } },
     );
 
-    await expect(test.controller.saveActiveFrame()).resolves.toBe(false);
-    expect(test.controller.status.value).toContain('wc/custom-texture-missing');
-    expect(test.requests.filter((request) => request.kind === 'save')).toHaveLength(0);
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(true);
+    expect(test.log).toHaveBeenCalledWith(expect.stringContaining('wc/custom-texture-missing'));
   });
 
   it('save leg: a built-in texture travels with the app and never blocks the save', async () => {
@@ -1093,16 +1014,12 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
     expect(engine.textureId).toBe('wc/builtin-chalk');
   });
 
-  it('load leg: registers the carried mask in the registry only and paints with it', async () => {
+  it('load leg: a script whose texture is absent locally still loads and paints with the response tip', async () => {
     vi.resetModules();
-    const catalog = await import('../../../stores/aquarelleBrushCatalog');
     const watercolor = await import('@efxlab/efx-watercolor');
-    const library = await import('./physicsPaintRotoScriptLibrary');
     const schema = await import('./physicsPaintRotoScriptSchema');
 
-    const webpBytes = brushWebp(192, 192);
-    const { asset: _asset, ...tip } = scriptCustomTip('wc/custom-script-load');
-    const script = schema.serializeAquarelleRotoScript({
+    const carried = schema.serializeAquarelleRotoScript({
       id: scriptIds.a,
       name: 'Carried',
       createdAt: '2026-07-16T12:00:00Z',
@@ -1110,85 +1027,20 @@ describe('script brush carrier (63-08 / TIP-14)', () => {
       source: row('a', 'Carried').source,
       thumbnail: { ...row('a', 'Carried').thumbnail, dataUrl: webp },
       events: aquarelleEvents(),
-      brushEntries: [{ ...tip, maskDataUrl: `${SCRIPT_WEBP_PREFIX}${Buffer.from(webpBytes).toString('base64')}` } as never],
+      brushEntries: [scriptCustomTip('wc/custom-script-load') as never],
     });
 
-    const decodedMask = new Uint8Array(watercolor.TIP_MASK_BYTES).fill(9);
-    const registered = await library.registerScriptBrushMasks(script, {
-      decode: async () => ({ ok: true, data: { mask: decodedMask, width: 192, height: 192 } }),
-    });
-
-    expect(registered).toBe(1);
-    expect(watercolor.resolveMask('wc/custom-script-load')).toBe(decodedMask);
-    // quick-261115-oh9: a texture id is not a response id. With no options the
-    // builder resolves the round response; the registered mask is stamped only
-    // when the stroke names it as the texture.
-    expect(watercolor.buildBrushForStroke('wc/custom-script-load').id).toBe('round');
-    expect(
-      watercolor.buildBrushForStroke('wc/custom-script-load', {
-        textureId: 'wc/custom-script-load',
-      }).tipData,
-    ).toBe(decodedMask);
-    // Registry only: the project catalog never learns a script's tips.
-    expect(catalog.customBrushTips.value).toHaveLength(0);
-    expect(catalog.listAquarelleBrushTips()).toHaveLength(3);
-    expect(catalog.resolveCatalogTip('wc/custom-script-load')).toBe(null);
-  });
-
-  it('load leg: one bad mask degrades alone and never aborts the script', async () => {
-    vi.resetModules();
-    const catalog = await import('../../../stores/aquarelleBrushCatalog');
-    const watercolor = await import('@efxlab/efx-watercolor');
-    const library = await import('./physicsPaintRotoScriptLibrary');
-    const schema = await import('./physicsPaintRotoScriptSchema');
-
-    const carriedUrl = `${SCRIPT_WEBP_PREFIX}${Buffer.from(brushWebp(192, 192)).toString('base64')}`;
-    const entryFor = (id: string) => {
-      const { asset: _asset, ...tip } = scriptCustomTip(id);
-      return { ...tip, maskDataUrl: carriedUrl } as never;
-    };
-    const script = schema.serializeAquarelleRotoScript({
-      id: scriptIds.a,
-      name: 'Mixed',
-      createdAt: '2026-07-16T12:00:00Z',
-      updatedAt: '2026-07-16T12:00:00Z',
-      source: row('a', 'Mixed').source,
-      thumbnail: { ...row('a', 'Mixed').thumbnail, dataUrl: webp },
-      events: aquarelleEvents(),
-      brushEntries: [entryFor('wc/custom-good'), entryFor('wc/custom-bad')],
-    });
-
-    const goodMask = new Uint8Array(watercolor.TIP_MASK_BYTES).fill(4);
-    let decodeCalls = 0;
-    const log = vi.fn();
-    const registered = await library.registerScriptBrushMasks(script, {
-      decode: async () => {
-        decodeCalls += 1;
-        if (decodeCalls === 1) return { ok: true, data: { mask: goodMask, width: 192, height: 192 } };
-        // The harsher failure: the native seam THROWS instead of returning a Result.
-        throw new Error('native decode exploded');
-      },
-      log,
-    });
-
-    expect(registered).toBe(1);
-    expect(watercolor.resolveMask('wc/custom-good')).toBe(goodMask);
-    expect(watercolor.resolveMask('wc/custom-bad')).toBe(null);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('could not be decoded'), true);
-    // Registry only, still: no catalog row for a script's tips.
-    expect(catalog.customBrushTips.value).toHaveLength(0);
-  });
-
-  it('activation registers the loaded script masks through the controller port', async () => {
-    const registerScriptMasks = vi.fn(async () => {});
-    const test = harness(true, { registerScriptMasks });
+    const test = harness(true);
     await test.controller.refresh();
     test.request.mockImplementation(async (input) => result(input, [row('b', 'B'), row('a', 'A')], {
-      script: input.kind === 'load' ? loadedScript(input.scriptId as 'a' | 'b', 'A') : undefined,
+      script: input.kind === 'load' ? carried : undefined,
     }));
 
     await expect(test.controller.activateAndLoad('a')).resolves.toBe(true);
 
-    expect(registerScriptMasks).toHaveBeenCalledWith(expect.objectContaining({ id: scriptIds.a }));
+    // A load never writes the mask registry — the library owns every texture.
+    expect(watercolor.resolveMask('wc/custom-script-load')).toBe(null);
+    // Absent locally: the response tip paints, never a partial mask.
+    expect(watercolor.buildBrushForStroke('wc/custom-script-load').id).toBe('round');
   });
 });

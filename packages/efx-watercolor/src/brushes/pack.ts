@@ -4,11 +4,12 @@
 //  quick 261116-inu removes the PROJECT (`.mce` root `brushPack`) carrier:
 //  textures are a machine library, so a project no longer travels tip
 //  records. ONE carrier remains — the Roto script's `brushPack`, whose
-//  entries are metadata plus (until the next task trims it) the inline
-//  `maskDataUrl`. An `asset` ref is REFUSED (a script must not point into a
-//  package, and the package carrier no longer exists). A member literally
-//  named `mask` is the retired D-23 inline carrier and is refused too
-//  (T-63-06).
+//  entries are METADATA only (id, name, multipliers). A string
+//  `maskDataUrl` is TOLERATED on read so a script saved by an older build
+//  still loads; new saves never write one. An `asset` ref is REFUSED (a
+//  script must not point into a package, and the package carrier no longer
+//  exists). A member literally named `mask` is the retired D-23 inline
+//  carrier and is refused too (T-63-06).
 //
 //  Entries are opaque to the host (HOST-02:
 //  BrushPackSnapshot.entries: readonly unknown[]). This module is
