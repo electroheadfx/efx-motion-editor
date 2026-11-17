@@ -401,17 +401,17 @@ describe('the composition of order and opacity (MED-36)', () => {
   })
 
   it('erodes the scattering beside the pigment it erodes', () => {
-    const lift = sliceBetween(SHADERS_SOURCE, 'export const liftFS', 'export const paperFieldFS')
+    const lift = sliceBetween(SHADERS_SOURCE, 'export const liftFS', 'const FOOTPRINT_MASK')
     expect((lift.match(/o0 = vec4\(f\);/g) ?? []).length, 'the pale output').toBe(1)
     expect((lift.match(/o1 = vec4\(f\);/g) ?? []).length, 'the scattering output').toBe(1)
     // Both attachments receive the same factor: no second expression writes o1.
     expect((lift.match(/= vec4\(f\);/g) ?? []).length, 'one factor, two outputs').toBe(2)
     const cover = sliceBetween(ENGINE_SOURCE, 'private coverPass(', 'private brushWet(')
-    expectContains(cover, 'const p = this.programs.lift;')
+    expectContains(cover, 'const p = this.programs.bodyCover;')
     expectContains(cover, 'g.draw(this.fixed, rect);')
     expectContains(cover, 'g.draw(this.relief, rect);')
     // The fixed target carries the settled scattering in its second attachment's
-    // alpha, so one lift draw erodes both.
+    // alpha, so one two-output cover draw erodes both.
     expectContains(
       ENGINE_SOURCE,
       'this.fixed = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);',

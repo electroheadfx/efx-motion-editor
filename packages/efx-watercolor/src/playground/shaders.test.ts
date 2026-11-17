@@ -36,11 +36,14 @@ describe('tip rotation uniform (quick 261116-inu / Task 10)', () => {
     expect(liftFS).not.toContain('dot(tq, tq)')
   })
 
-  it('liftFS keeps the tip-shaped erase for Lift and offers the solid-core cover profile', () => {
-    // uCover = 0 (Lift's own erase) is the original soft, tip-shaped profile.
-    expect(liftFS).toContain('uniform float uAspect, uRadius, uAmount, uTipAspect, uRound, uCover;')
-    expect(liftFS).toContain('float soft = exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);')
-    expect(liftFS).toContain('float core = 1.0 - smoothstep(0.35, 1.0, dot(q, q));')
-    expect(liftFS).toContain('float f = uAmount * mix(soft, core, uCover);')
+  it('liftFS keeps THE tip-shaped erase for Lift, with no cover profile of its own', () => {
+    expect(liftFS).toContain('uniform float uAspect, uRadius, uAmount, uTipAspect, uRound;')
+    expect(liftFS).toContain(
+      'float f = uAmount * exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);',
+    )
+    // The Body cover has its own program (bodyCoverFS); Lift must not grow a
+    // second mask branch again.
+    expect(liftFS).not.toContain('uCover')
+    expect(liftFS).not.toContain('smoothstep(0.35')
   })
 })

@@ -416,7 +416,7 @@ export function AquarelleCanvasLayer(props: {
   /**
    * quick 261117-tq7: every Body cover dab the ENGINE applied, with the same
    * five arguments as onLiftDab. The Studio previews it on a cooked frame's
-   * cached base with the solid-core profile so the cover replaces the visible
+   * cached base with the deposit-footprint profile so the cover replaces the visible
    * paint while the user draws. Engine emits unconditionally; the display
    * decision (cooked-frame authority) stays in the Studio.
    */
@@ -645,7 +645,7 @@ export function AquarelleCanvasLayer(props: {
             onLiftDabRef.current?.(x, y, r, amount, angle);
           },
           // quick 261117-tq7: the same forwarding for the cover dab, so the
-          // cached-base preview can punch the solid core live.
+          // cached-base preview can punch the deposit footprint live.
           onCoverDab(x, y, r, amount, angle) {
             onCoverDabRef.current?.(x, y, r, amount, angle);
           },

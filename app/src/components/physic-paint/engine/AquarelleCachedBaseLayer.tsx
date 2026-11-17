@@ -57,7 +57,7 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
    * the bus (a Lift begin carries no profile and stays `tip`). A ref, never a
    * second effect or decode: the punch reads it in `flushPreview`.
    */
-  const profileRef = useRef<'tip' | 'core'>('tip');
+  const profileRef = useRef<'tip' | 'deposit'>('tip');
   const pendingRef = useRef<AquarelleLiftPreviewDab[]>([]);
   const previewFrameRef = useRef<number | null>(null);
   const rafRef = useRef(0);
@@ -99,8 +99,8 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
     begin(frame, profile) {
       previewFrameRef.current = frame;
       pendingRef.current = [];
-      // quick 261117-tq7: the cover gesture arms the solid-core profile; a
-      // Lift begin passes none and keeps the tip law.
+      // quick 261117-tq7: the cover gesture arms the deposit-footprint profile;
+      // a Lift begin passes none and keeps the tip law.
       profileRef.current = profile ?? 'tip';
       // THE shape seam: one resolution per gesture (Task 2 item 13).
       shapeRef.current = liftShapeForStroke(aquarelleBrushForActiveTool());

@@ -8042,8 +8042,8 @@ export function PhysicsPaintStudio() {
   // quick 261117-tq7: the cover dab's mirror. The engine emits it
   // unconditionally; THIS sink decides whether a display layer may punch —
   // only a cooked frame with an ordinary current key has paint outside the
-  // live sheet. The begin carries `core` so the cached base erases the same
-  // solid-core footprint the engine's pre-ink cover subtracted.
+  // live sheet. The begin carries `deposit` so the cached base erases the same
+  // tip-footprint fraction the engine's pre-ink cover subtracted.
   const aquarelleCoverPreviewPlanRef = useRef<{ frame: number; active: boolean } | null>(null);
   const aquarelleCoverGestureDabsRef = useRef<LiftDab[]>([]);
   const handleAquarelleCoverDab = useCallback(
@@ -8057,7 +8057,7 @@ export function PhysicsPaintStudio() {
       } else {
         active = planAquarelleCoverErase(frame).kind === 'erase';
         aquarelleCoverPreviewPlanRef.current = { frame, active };
-        if (active) beginAquarelleLiftPreview(frame, 'core');
+        if (active) beginAquarelleLiftPreview(frame, 'deposit');
       }
       if (!active) return;
       pushAquarelleLiftPreviewDab({ x, y, r, amount, angle });
@@ -8381,8 +8381,8 @@ export function PhysicsPaintStudio() {
         // quick 261117-tq7: the cover's transaction. The engine already
         // subtracted the pre-stroke ink from the LIVE sheet; on a cooked frame
         // the visible paint is the committed base, so the SAME dabs must be
-        // punched into it with the solid-core profile and the merged result
-        // committed. The recorded stroke sheet carries this stroke's own
+        // punched into it with the deposit-footprint profile and the merged
+        // result committed. The recorded stroke sheet carries this stroke's own
         // pigment, which is why it is always captured and always merged;
         // `baseCanvas` wins over `cachedBase`, so the recorded bytes are the
         // punched ones while the pre-punch payload satisfies the required
@@ -8426,7 +8426,7 @@ export function PhysicsPaintStudio() {
         const punchedCover = await punchTransmittanceBytes(coverBase.bytes, size, dabs, {
           appFrame: plan.frame,
           shape,
-          profile: 'core',
+          profile: 'deposit',
         });
         if (!punchedCover) {
           revertAquarelleLiftPreview();
@@ -8466,7 +8466,7 @@ export function PhysicsPaintStudio() {
               const coverDurablePunch = await punchTransmittanceBytes(coverDurableSource, size, dabs, {
                 appFrame: plan.frame,
                 shape,
-                profile: 'core',
+                profile: 'deposit',
               });
               if (!coverDurablePunch) {
                 revertAquarelleLiftPreview();

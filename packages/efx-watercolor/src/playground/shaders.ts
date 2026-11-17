@@ -308,7 +308,7 @@ export const liftFS = `${HEADER}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
 uniform sampler2D uTip;
-uniform float uAspect, uRadius, uAmount, uTipAspect, uRound, uCover;
+uniform float uAspect, uRadius, uAmount, uTipAspect, uRound;
 uniform float uTipRotation;
 uniform vec2 uPoint, uAxis;
 void main(){
@@ -321,14 +321,54 @@ void main(){
   vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
   if (abs(q.x) > 1.0 || abs(q.y) > 1.0) discard;
   float t = texture(uTip, clamp(tq * 0.5 + 0.5, 0.0, 1.0)).r;
-  // uCover = 0: Lift's own erase (tip-shaped). uCover = 1: the Body cover pass
-  // uses a SOLID core at the pressure point — the bristle gaps must not let the
-  // paint underneath survive — falling off to zero over the outer rim so the
-  // edge still mixes instead of cutting. The hard core ends at 59% of the
-  // radius; the outer 41% is the mixing band.
-  float soft = exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);
-  float core = 1.0 - smoothstep(0.35, 1.0, dot(q, q));
-  float f = uAmount * mix(soft, core, uCover);
+  float f = uAmount * exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);
+  o0 = vec4(f);
+  o1 = vec4(f);
+}`;
+
+// quick 261117-tq7 (spec 09 law 3): the deposit's own footprint mask, shared by
+// the two Body-cover shaders. It is stampFS's mask law VERBATIM — the tip
+// texture sampled in rotated tip space, the dry re-threshold, the per-dab
+// jitter slice and the paper-tooth gate — so the erase can never cover more or
+// less than the paint the same dab lands. Outside the tip square it returns 0
+// (no discard: the ink cover's full-document ping-pong relies on the identity
+// value there).
+const FOOTPRINT_MASK = `
+uniform sampler2D uTip, uPaper;
+uniform float uAspect, uRadius, uTipAspect, uRound, uGrain, uGrainThr;
+uniform float uRough, uJitter, uTipRotation;
+uniform vec2 uPoint, uAxis;
+float footprintMask(){
+  vec2 p = vUv - uPoint; p.x *= uAspect;
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  q.y /= uTipAspect;
+  float a = uTipRotation;
+  vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
+  if (abs(q.x) > 1.0 || abs(q.y) > 1.0) return 0.0;
+  float e0 = fract(sin(dot(uPoint, vec2(12.9898, 78.233))) * 43758.5453);
+  float e1 = fract(e0 * 63.7264 + 0.37);
+  vec2 uv = clamp(tq * 0.5 + 0.5 + (vec2(e0, e1) - 0.5) * uJitter, 0.0, 1.0);
+  float t = texture(uTip, uv).r;
+  float th = uRough * 0.45;
+  float dry = smoothstep(th, th + 0.02, t);
+  float sharp = mix(t, dry, step(0.0001, uRough));
+  float d = dot(q, q);
+  float round = 1.0 - smoothstep(0.15, 1.0, d);
+  float f = mix(sharp, round, uRound);
+  float h = texture(uPaper, vUv).g;
+  return f * mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);
+}`;
+
+// The Body cover's multiplicative factor: the deposit mask scaled by the dab's
+// own erase amount. Drawn with ZERO / ONE_MINUS_SRC_COLOR into `fixed`, into
+// `relief` (at RELIEF_ERODE) and into the pre-stroke snapshot, so settled,
+// mobile and cached paint all lose the same fraction the dab's paint adds.
+export const bodyCoverFS = `${HEADER}${FOOTPRINT_MASK}
+layout(location=0) out vec4 o0;
+layout(location=1) out vec4 o1;
+uniform float uAmount;
+void main(){
+  float f = uAmount * footprintMask();
   o0 = vec4(f);
   o1 = vec4(f);
 }`;
@@ -338,11 +378,11 @@ void main(){
 // (it collapses for ink_c < 0 and inverts bands) nor a uniform scale of the
 // whole texel (it also erases the covering stroke's own ink, punching white
 // holes through a textured deposit) can produce order. The cover therefore
-// removes ONLY the snapshot's CURRENT amount, under the same solid core
-// liftFS's uCover = 1 law uses (core = 1 - smoothstep(0.35, 1.0, q.q)):
+// removes ONLY the snapshot's CURRENT amount, under the SAME footprint mask the
+// dab deposits with:
 //
 //   ink_new = ink - f * pre        (this shader)
-//   pre_new = pre * (1 - f)        (the caller's liftFS decay, right after)
+//   pre_new = pre * (1 - f)        (the caller's bodyCoverFS decay, right after)
 //
 // The pair is exactly the spec's subtraction, composed geometrically across
 // overlapping dabs instead of overshooting: the first dab removes f*P, the
@@ -351,22 +391,24 @@ void main(){
 // its hue. Both operands are valid pigment coefficient vectors, so the result
 // is valid too; no channel can be zeroed independently (no inversion).
 //
+// f follows the DEPOSIT, not a separate core: the caller passes the per-dab
+// deposit strength (body cover x ink amount), so the underlayer is replaced
+// exactly as far as the paint is opaque and survives (mixing, never paper
+// white) in the bristle gaps and on the tip's alpha rim. A core mask erased
+// texture that the deposit never covered — the white edges this law removes.
+//
 // The stroke-start preInk snapshot is released with the stroke.
 //
-// Full-document draw, no scissor, no discard: core is exactly 0 outside the
-// footprint (q.q >= 1), so the shader emits the sampled texel unchanged there —
-// and vUv sits on texel centres, so the LINEAR sample is exact.
-export const inkCoverFS = `${HEADER}
+// Full-document draw, no scissor, no discard: the mask is exactly 0 outside the
+// footprint, so the shader emits the sampled texel unchanged there — and vUv
+// sits on texel centres, so the LINEAR sample is exact.
+export const inkCoverFS = `${HEADER}${FOOTPRINT_MASK}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
 uniform sampler2D uPreA, uPreB, uInkA, uInkB;
-uniform float uAspect, uRadius, uAmount, uTipAspect;
-uniform vec2 uPoint, uAxis;
+uniform float uAmount;
 void main(){
-  vec2 p = vUv - uPoint; p.x *= uAspect;
-  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
-  q.y /= uTipAspect;
-  float f = uAmount * (1.0 - smoothstep(0.35, 1.0, dot(q, q)));
+  float f = uAmount * footprintMask();
   vec4 preA = texture(uPreA, vUv);
   vec4 preB = texture(uPreB, vUv);
   vec4 inkA = texture(uInkA, vUv);

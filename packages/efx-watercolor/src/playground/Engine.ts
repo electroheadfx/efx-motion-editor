@@ -183,6 +183,14 @@ const RELIEF_BUMP = 1.0;
 // from 3.0 to 2.3, so even a full press stays under the earlier, too-strong
 // look, and existing relief bytes need no repaint.
 const COVER_GAIN = 2;
+// quick 261117-tq7 (rev 2): the per-dab cover erases the PRE-STROKE paint in
+// proportion to what the dab deposits — its own tip mask times `amount` — so
+// the erase can never outrun the paint (that was the paper-white through the
+// bristle gaps). `amount` is a coefficient scale, not an alpha: the KM
+// transmittance of one acrylic dab at ~0.25 already reads as opaque paint, so
+// the cover saturates at 4x the coefficient and the underlayer disappears
+// wherever the paint looks solid while a thin rim still mixes.
+const COVER_DEPOSIT_GAIN = 4;
 const RELIEF_GAIN = 1.5;
 const RELIEF_ERODE = 0.5;
 /** The emboss thickness a feather touch still lays, as a share of full press. */
@@ -451,6 +459,7 @@ export class WatercolorEngine {
     // quick 261117-tq7: outside the literal on purpose — scattering.test.ts pins
     // that literal's program count, and `programs` is a Record.
     this.programs.inkCover = this.g.program(S.inkCoverFS);
+    this.programs.bodyCover = this.g.program(S.bodyCoverFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
     this.attachInput();
@@ -2107,11 +2116,19 @@ export class WatercolorEngine {
         // colours do not move; 0 is inert by construction, so the neutral gate
         // stays byte-identical.
         const coverAmount = Math.min(1, bodyCurve(P.body) * COVER_GAIN);
+        // quick 261117-tq7 (rev 2): the erase tracks THIS dab's own deposit.
+        // `amount` is the pigment this dab lands, so the underlayer is removed
+        // as far as that paint is OPAQUE: full replacement under the brush
+        // body, a genuine mix on the tip's alpha rim and in the bristle gaps
+        // (where the deposit is thin, the old paint survives — never the paper
+        // white the old core mask punched there). See COVER_DEPOSIT_GAIN for why a
+        // coefficient scale saturates the cover at 4x.
+        const coverDab = Math.min(1, coverAmount * amount * COVER_DEPOSIT_GAIN);
         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
         const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount)];
-        if (coverAmount > 0) {
+        if (coverDab > 0) {
           // Ordering hazard (spec 06): the cover pass runs BEFORE brushInk, so
           // the deposit's own touch() comes too late to restore a relief this
           // pass already eroded. These two protections are the ONLY undo
@@ -2130,11 +2147,11 @@ export class WatercolorEngine {
         }
         this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
           // spec 06: the cover pass draws here, before this dab's deposit
-          if (coverAmount > 0) this.coverPass(dx, dy, dr, angle, coverAmount, dryness, grainThr);
+          if (coverDab > 0) this.coverPass(dx, dy, dr, angle, coverDab, dryness, grainThr);
           // quick 261117-tq7: the same Body order must reach MOBILE ink too.
           // Unguarded: inkCover's own early return guards Body 0 and a snapshot
           // that was never armed, and the deposit below must survive the erase.
-          this.inkCover(dx, dy, dr, angle, coverAmount);
+          this.inkCover(dx, dy, dr, angle, coverDab, dryness, grainThr);
           this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
           if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
           // soft brushes wet a little beyond the tip; textured ones keep their
@@ -2283,40 +2300,29 @@ export class WatercolorEngine {
   /**
    * Phase 64 (MED-19..MED-22, spec 06): the cover pass — per dab, erode the
    * SETTLED pigment and the paint thickness under the dab's own tip, before
-   * the dab deposits. It is exactly Lift's multiplicative draw with the stroke
-   * brush's footprint and no tissue-water step: Body is order, not water.
+   * the dab deposits. One multiplicative draw, no tissue-water step: Body is
+   * order, not water.
    *
-   * Spec 06's four design questions, settled once and for all:
-   *  - Falloff: liftFS's exp(-(q·q)²) profile is kept and deliberately NOT
-   *    equalised with stampFS's hardness profile. The erase's shape IS the
-   *    cover's shape, its support is bounded by the same unconditional discard
-   *    at |q| > 1 and the same tip square the deposit uses, and the guardrail
-   *    against a halo or lip is the shared footprint binding below.
-   *  - Paper tooth: NO gate. liftFS declares none, and giving it one would
-   *    change the Lift tool's own erase; Body is order, and the deposit's own
-   *    uGrain gate (and, later, scattering) owns appearance.
-   *  - Lightening: not here. The cover pass only replaces; spec 08's
-   *    scattering composes on top through the SAME curve in scattering.ts.
-   *  - Placement: the Body row sits between Viscosity and Emboss (D-07).
+   * quick 261117-tq7 (rev 2): the erase mask IS the deposit footprint —
+   * `bodyCoverFS` runs stampFS's exact tip / rotation / jitter / dry-tooth law
+   * — and its strength is the caller's per-dab deposit amount. That is the
+   * whole order law: the underlayer loses exactly the fraction of paint this
+   * dab adds, so the brush body replaces it, the tip's alpha rim and the
+   * bristle gaps keep a genuine mix, and no mask can erase paper-white where
+   * the brush never painted. The Body row sits between Viscosity and Emboss
+   * (D-07); spec 08's scattering composes on top through the same curve.
    *
    * ONE extra multiplicative draw per dab into two targets that already
-   * exist: no new program, no new target, no new uniform, no allocation. The
-   * grain uniforms are inert here — liftFS declares no uPaper, uGrain,
-   * uGrainThr, uRough or uJitter, and WebGL2 silently ignores a uniform whose
-   * location is absent — so one bindFootprint serves both programs and the
-   * footprint can never diverge. Undo is NOT taken here: the caller protects
-   * both pools once per stamp, before the first call, because the deposit's
-   * own undo protection comes too late to save a relief this draw has
-   * already eroded.
+   * exist: no new target, no allocation. Undo is NOT taken here: the caller
+   * protects both pools once per stamp, before the first call, because the
+   * deposit's own undo protection comes too late to save a relief this draw
+   * has already eroded.
    */
   private coverPass(x: number, y: number, r: number, angle: number, amount: number, grain: number, grainThr: number) {
     const { gl, g } = this;
-    const p = this.programs.lift;
+    const p = this.programs.bodyCover;
     p.bind();
-    this.bindFootprint(this.programs.lift, x, y, r, angle, 0, grain, grainThr);
-    // Solid core at the pressure point, mixing rim: the cover must replace what
-    // is under the brush body, not leak through the bristle gaps.
-    gl.uniform1f(p.u.uCover, 1);
+    this.bindFootprint(this.programs.bodyCover, x, y, r, angle, 0, grain, grainThr);
     gl.uniform1f(p.u.uAmount, amount);
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
     gl.enable(gl.BLEND);
@@ -2329,7 +2335,7 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uAmount, amount * RELIEF_ERODE);
     g.draw(this.relief, rect);
     // quick 261117-tq7: the cached-base seam mirrors onLiftDab — the Studio
-    // punches the same core profile into a reopened frame's base as it draws.
+    // punches the same deposit footprint into a reopened frame's base.
     this.callbacks.onCoverDab?.(x, y, r, amount, angle);
     gl.disable(gl.BLEND);
   }
@@ -2360,23 +2366,21 @@ export class WatercolorEngine {
   }
 
   /**
-   * quick 261117-tq7 (spec 09 law 3): cover the stroke-start snapshot under the
-   * SAME solid core the settled cover uses, so the covering body removes the
-   * wet underlayer instead of letting it survive in the bristle gaps. The law
-   * is multiplicative and per channel of BOTH attachments (the scattering
-   * alpha included):
+   * quick 261117-tq7 (spec 09 law 3): remove the stroke-start snapshot from the
+   * MOBILE ink under the same deposit footprint the settled cover uses, so the
+   * underlayer is replaced while it is still wet instead of surviving in the
+   * bristle gaps. Only the snapshot's current amount is removed:
    *
-   *   src_c = amount * core * clamp(preInk_c / max(ink_c, 1e-6), 0, 1)
-   *   out_c = ink_c * (1 - src_c)                      (= dst * (1 - src))
+   *   ink_new = ink - f * pre        (inkCoverFS, full-document ping-pong)
+   *   pre_new = pre * (1 - f)        (bodyCoverFS into preInk, right after)
    *
-   * With preInk_c <= ink_c that is exactly ink - amount * core * preInk (the
-   * spec's subtraction), bounded: the underlayer can never go negative and the
-   * covering stroke's own pigment — deposited after this draw — is untouched.
-   * Repeated overlapping dabs keep eroding the remaining pre-stroke share
-   * (prod of 1 - f), matching coverPass and the cached-base punch; where
-   * advection makes preInk_c exceed ink_c the share clamps at 1 — full erase
-   * for that channel, and the excess does not also cancel the stroke's own
-   * pigment (recorded limitation).
+   * f = amount * footprintMask, with `amount` the caller's per-dab deposit
+   * strength — the same number coverPass erases the settled pool with and the
+   * same one emitted to the cached-base punch. The pair is exactly the spec's
+   * subtraction, composed geometrically across overlapping dabs instead of
+   * overshooting: the first dab removes f*P, the next f*(1-f)*P, and so on.
+   * The covering stroke's own pigment is deposited after this draw and is never
+   * part of the snapshot, so it keeps its density and its hue.
    *
    * The draw is a FULL-DOCUMENT ping-pong: ink.read is bound as the sampler
    * input and ink.write is the render target, with NO rect — a scissor would
@@ -2384,23 +2388,22 @@ export class WatercolorEngine {
    * live read after the swap. Blending is OFF for the same reason: the
    * destination here is the OTHER half of the pair, not a copy of the sampled
    * ink, so blending against it would resurrect last frame's values; the
-   * multiply above is the dst * (1 - src) algebra coverPass applies through
-   * ZERO / ONE_MINUS_SRC_COLOR, evaluated against the sampled ink instead.
-   * Outside the footprint f is exactly 0, so the shader emits the sampled texel
+   * subtraction is evaluated against the sampled ink instead. Outside the
+   * footprint the mask is exactly 0, so the shader emits the sampled texel
    * unchanged — the identity copy the swap relies on.
    *
    * An unarmed snapshot or a non-positive amount draws nothing — that is the
    * guard the call site relies on. No touch()/protect here: the stamp's
    * coverRect already covers this draw and brushes pool 0 in the same stamp.
    */
-  private inkCover(x: number, y: number, r: number, angle: number, amount: number) {
+  private inkCover(x: number, y: number, r: number, angle: number, amount: number, grain: number, grainThr: number) {
     if (this.preInk === null || !(amount > 0)) return;
     const { gl, g } = this;
     const p = this.programs.inkCover;
     p.bind();
     // Units 0/1 are the shared footprint's tip and paper; the snapshot and the
     // live ink take 2..5 so bindFootprint can never shadow them.
-    this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, 0, 0);
+    this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, grain, grainThr);
     gl.uniform1i(p.u.uPreA, g.bindTex(2, this.preInk.tex[0]));
     gl.uniform1i(p.u.uPreB, g.bindTex(3, this.preInk.tex[1]));
     gl.uniform1i(p.u.uInkA, g.bindTex(4, this.ink.read.tex[0]));
@@ -2409,15 +2412,14 @@ export class WatercolorEngine {
     gl.disable(gl.BLEND);
     g.draw(this.ink.write);
     this.ink.swap();
-    // Decay the snapshot by (1 - f) with the SAME solid core: the next dab
-    // removes only what remains, so overlapping dabs compose geometrically
-    // instead of subtracting the whole snapshot again. The stroke's own ink is
-    // never part of this decay.
-    const l = this.programs.lift;
-    l.bind();
-    this.bindFootprint(this.programs.lift, x, y, r, angle, 0, 0, 0);
-    gl.uniform1f(l.u.uCover, 1);
-    gl.uniform1f(l.u.uAmount, amount);
+    // Decay the snapshot by (1 - f) with the SAME mask: the next dab removes
+    // only what remains, so overlapping dabs compose geometrically instead of
+    // subtracting the whole snapshot again. The stroke's own ink is never part
+    // of this decay.
+    const c = this.programs.bodyCover;
+    c.bind();
+    this.bindFootprint(this.programs.bodyCover, x, y, r, angle, 0, grain, grainThr);
+    gl.uniform1f(c.u.uAmount, amount);
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
@@ -2545,9 +2547,6 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uTipRotation, (b.textureRotation ?? 0) * DEG);
     gl.uniform2f(p.u.uAxis, Math.cos(angle), Math.sin(angle));
     gl.uniform1f(p.u.uRound, 0);
-    // Lift's own erase keeps the tip-shaped profile (uCover = 0); only the
-    // Body cover pass uses the solid-core profile.
-    gl.uniform1f(p.u.uCover, 0);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);

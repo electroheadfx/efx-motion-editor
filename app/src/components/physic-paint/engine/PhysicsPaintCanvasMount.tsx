@@ -59,7 +59,7 @@ export function PhysicsPaintCanvasMount(props: {
    *  261028-k03c: `angle` (radians, y up — the engine's uAxis) is forwarded
    *  unchanged; the preview shape is resolved in AquarelleCachedBaseLayer. */
   onAquarelleLiftDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;
-  /** quick 261117-tq7: the cover pass's solid-core dab, forwarded unchanged.
+  /** quick 261117-tq7: the cover pass's deposit-footprint dab, forwarded unchanged.
    *  The cached-base live preview punches the same footprint the engine's
    *  pre-ink cover bound, so a Brush stamp over wet paint hides the old ink
    *  while the gesture runs. */

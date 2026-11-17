@@ -10,10 +10,10 @@
 //
 //    engine onCoverDab -> AquarelleCanvasLayer -> PhysicsPaintCanvasMount
 //      -> Studio handleAquarelleCoverDab -> beginAquarelleLiftPreview(frame,
-//      'core') -> flushPreview(profile) -> buildLiftCoverage(..., 'core')
+//      'deposit') -> flushPreview(profile) -> buildLiftCoverage(..., 'deposit')
 //    stroke end -> planAquarelleCoverErase (mode: 'cover') -> the SAME
 //      3-argument runAquarelleLiftErase -> punchTransmittanceBytes(...,
-//      { profile: 'core' }) -> captureLivePixels (one ledger entry)
+//      { profile: 'deposit' }) -> captureLivePixels (one ledger entry)
 //
 //  The cover is purely ADDITIVE: every Lift literal the two existing
 //  contract suites count stays byte-identical, and the cover's durable
@@ -120,8 +120,8 @@ describe('the cover forwarding chain (engine -> layer -> mount -> Studio)', () =
     expect(window).toContain('const handleAquarelleCoverDab = useCallback(');
     expect(window).toContain('aquarelleCoverGestureDabsRef.current.push({ x, y, r, amount, angle });');
     expect(window).toContain("active = planAquarelleCoverErase(frame).kind === 'erase';");
-    // The core profile rides the SAME bus; a Lift begin stays a one-arg call.
-    expect(window).toContain("if (active) beginAquarelleLiftPreview(frame, 'core');");
+    // The deposit profile rides the SAME bus; a Lift begin stays a one-arg call.
+    expect(window).toContain("if (active) beginAquarelleLiftPreview(frame, 'deposit');");
     expect(window).toContain('pushAquarelleLiftPreviewDab({ x, y, r, amount, angle });');
     // Cover plumbing lands AFTER the lift handler it mirrors.
     expect(window.indexOf('const handleAquarelleCoverDab')).toBeGreaterThan(
@@ -223,7 +223,7 @@ describe('the cover transaction (runAquarelleLiftErase keeps its 3-argument sign
     expect(transaction).toContain('}, pendingStroke, pendingDabs);');
   });
 
-  it('punches the visible base with the core profile and commits the sheet over it', () => {
+  it('punches the visible base with the deposit profile and commits the sheet over it', () => {
     const cover = coverBranch();
     // The punch source resolves key-payload first, then the display base.
     expect(cover).toContain('const pinnedCoverBase = mergeBase && mergeBase.appFrame === plan.frame');
@@ -232,9 +232,9 @@ describe('the cover transaction (runAquarelleLiftErase keeps its 3-argument sign
     expect(cover).toContain(
       'displayCoverBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES',
     );
-    // Visible + durable punches both carry the solid-core profile.
+    // Visible + durable punches both carry the deposit-footprint profile.
     expect(cover).toContain('punchTransmittanceBytes(coverBase.bytes, size, dabs, {');
-    expect(countOccurrences(cover, "profile: 'core',")).toBe(2);
+    expect(countOccurrences(cover, "profile: 'deposit',")).toBe(2);
     // The commit is the raster Lift's physical-edit transaction: baseCanvas
     // WINS over cachedBase, so the recorded bytes are the punched ones.
     expect(cover).toContain('const commitCover = async () => rotoPersistenceRef.current.captureLivePixels({');
@@ -385,15 +385,15 @@ describe('the cover transaction (runAquarelleLiftErase keeps its 3-argument sign
 });
 
 describe('the cover profile plumbing (punch library -> bus -> cached base)', () => {
-  it('adds the core profile to buildLiftCoverage and the punch options', () => {
-    expect(punchLib).toContain("export type LiftCoverageProfile = 'tip' | 'core';");
+  it('adds the deposit profile to buildLiftCoverage and the punch options', () => {
+    expect(punchLib).toContain("export type LiftCoverageProfile = 'tip' | 'deposit';");
     const signature = slice(punchLib, 'export function buildLiftCoverage(', '): LiftCoverage {');
     expect(signature).toContain('shape?: LiftFootprintShape,');
     expect(signature).toContain("profile: LiftCoverageProfile = 'tip',");
-    // The core law is liftFS's `uCover = 1` profile, spelled in coverage space.
-    expect(punchLib).toContain('if (profile === \'core\') {');
-    expect(punchLib).toContain('const t = Math.min(1, Math.max(0, (d - 0.35) / (1 - 0.35)));');
-    expect(punchLib).toContain('f = one.amount * (1 - t * t * (3 - 2 * t));');
+    // The deposit law is the tip mask the engine deposits with, no envelope.
+    expect(punchLib).toContain('if (profile === \'deposit\') {');
+    expect(punchLib).toContain('? sampleTipBilinear(shape.tipData, shape.tipSize, along, across)');
+    expect(punchLib).toContain('f = one.amount * mask;');
     // The options object carries it and every punch leg passes it through.
     expect(punchLib).toContain('profile?: LiftCoverageProfile;');
     expect(punchLib).toContain('buildLiftCoverage(dabs, width, height, shape, profile);');
@@ -408,19 +408,19 @@ describe('the cover profile plumbing (punch library -> bus -> cached base)', () 
   it('threads the profile from begin to the cached-base flush, keeping Lift one-arg', () => {
     // The bus: a default (tip) begin reaches the sink with the frame ALONE —
     // aquarelleLiftPreview.test.ts asserts begin was called with (42) exactly.
-    expect(bus).toContain('begin(frame: number, profile?: \'tip\' | \'core\'): void;');
+    expect(bus).toContain('begin(frame: number, profile?: \'tip\' | \'deposit\'): void;');
     expect(bus).toContain(
-      "export function beginAquarelleLiftPreview(frame: number, profile: 'tip' | 'core' = 'tip'): void {",
+      "export function beginAquarelleLiftPreview(frame: number, profile: 'tip' | 'deposit' = 'tip'): void {",
     );
-    expect(bus).toContain('if (profile === \'core\') {');
-    expect(bus).toContain("previewSink?.begin(frame, 'core');");
+    expect(bus).toContain('if (profile === \'deposit\') {');
+    expect(bus).toContain("previewSink?.begin(frame, 'deposit');");
     expect(bus).toContain('previewSink?.begin(frame);');
     // The dab/end/revert contract is untouched.
     expect(bus).toContain('export function pushAquarelleLiftPreviewDab(dab: AquarelleLiftPreviewDab): void {');
     expect(bus).toContain('export function revertAquarelleLiftPreview(): void {');
 
     // The cached base stores the gesture's profile and flushes with it.
-    expect(baseLayer).toContain("const profileRef = useRef<'tip' | 'core'>('tip');");
+    expect(baseLayer).toContain("const profileRef = useRef<'tip' | 'deposit'>('tip');");
     expect(baseLayer).toContain('begin(frame, profile) {');
     expect(baseLayer).toContain("profileRef.current = profile ?? 'tip';");
     expect(baseLayer).toContain('shapeRef.current ?? undefined,');

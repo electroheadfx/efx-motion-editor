@@ -157,8 +157,8 @@ export interface LiftErasePunchOptions {
   shape?: LiftFootprintShape;
   /**
    * quick 261117-tq7: the coverage profile. `tip` (default) is Lift's own
-   * erase; `core` is the Body cover's solid core — the same law the engine's
-   * `uCover = 1` shader profile uses, so cache and engine erase one shape.
+   * erase; `deposit` is the Body cover's law — the same tip-mask footprint the
+   * engine erases and deposits with, so cache and engine remove one fraction.
    */
   profile?: LiftCoverageProfile;
   /** Injected legs for tests; production uses DEFAULT_LIFT_ERASE_CODEC. */
@@ -346,10 +346,12 @@ function sampleTipBilinear(
 
 /**
  * quick 261117-tq7: which erase law the coverage map spells. `tip` is Lift's
- * own tip-shaped erase (the pre-tq7 law, byte-identical); `core` is the Body
- * cover's solid core — liftFS's `uCover = 1` profile in coverage space.
+ * own tip-shaped erase (the pre-tq7 law, byte-identical); `deposit` is the
+ * Body cover's law — the dab's strength times the SAME tip mask the engine
+ * deposits with, and no extra radial envelope, so the cached base loses exactly
+ * the fraction the covering dab paints.
  */
-export type LiftCoverageProfile = 'tip' | 'core';
+export type LiftCoverageProfile = 'tip' | 'deposit';
 
 /**
  * The per-pixel K map, allocated ONLY over the union bbox of the dabs so the
@@ -439,13 +441,17 @@ export function buildLiftCoverage(
           d = (dx * dx + dyUp * dyUp) / r2;
         }
         let f: number;
-        if (profile === 'core') {
-          // quick 261117-tq7: the engine's `uCover = 1` law, spelled in
-          // coverage space — solid to dot(q,q) = 0.35, smoothstep to 1, zero
-          // from there out. Same square cull and aspect squeeze as above.
-          // Never reads the tip mask, so the bilinear sample is skipped here.
-          const t = Math.min(1, Math.max(0, (d - 0.35) / (1 - 0.35)));
-          f = one.amount * (1 - t * t * (3 - 2 * t));
+        if (profile === 'deposit') {
+          // quick 261117-tq7: the Body cover's law. The engine's mask IS the
+          // deposit footprint (the tip texture, no extra radial envelope), so
+          // the cached base loses exactly the fraction the covering dab
+          // paints — never more, which is what punched paper-white into the
+          // brush's texture gaps. Without a recorded shape the tip square is
+          // unknown; the unit disc is the conservative stand-in.
+          const mask = shape
+            ? sampleTipBilinear(shape.tipData, shape.tipSize, along, across)
+            : (d <= 1 ? 1 : 0);
+          f = one.amount * mask;
         } else if (shape) {
           const mask = sampleTipBilinear(shape.tipData, shape.tipSize, along, across);
           f = one.amount * Math.exp(-(d * d)) * (mask * (1 - LIFT_TIP_ROUND) + LIFT_TIP_ROUND);
