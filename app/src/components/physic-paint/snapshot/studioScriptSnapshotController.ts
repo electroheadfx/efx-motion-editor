@@ -1181,6 +1181,17 @@ export function createStudioScriptSnapshotController(
     return deps.getContentSignature() !== lastSavedSignature;
   }
 
+  /**
+   * CR-01 (63 review): the binding is latched AND holds script the paused save
+   * will never write. The close path must not destroy the window silently.
+   *
+   * WR-15 (63 review): the durable-bases port is launch-scoped and spans
+   * tracks, so the base arm counts only keys this binding can own — the same
+   * live-key-plus-anchor scope mergeStudioScriptSnapshotContent applies at
+   * save. A latched binding always has retainedContent null, so this is
+   * exactly the set of bases a save would write. An unknown (null) live key
+   * map stays conservative rather than under-counting.
+   */
   function hasWithheldContent(): boolean {
     if (!boundIdentity || !refusedRestore) return false;
     // NOT isDirty(): the refused arm deliberately leaves the saved baseline
@@ -1190,7 +1201,25 @@ export function createStudioScriptSnapshotController(
     // a false positive costs one extra close refusal, never a silent loss.
     if (deps.getWatercolorEvents().length > 0) return true;
     const bases = deps.getDurableBases?.();
-    return (bases?.size ?? 0) > 0;
+    if (!bases || bases.size === 0) return false;
+    const liveKeyIds = deps.getLiveKeyIds?.();
+    if (liveKeyIds === null || liveKeyIds === undefined) {
+      // Identity is UNKNOWN: scoping is disabled rather than dropping a base
+      // this binding may own.
+      return true;
+    }
+    const ownIds = new Set<string>();
+    for (const keyId of liveKeyIds.values()) ownIds.add(keyId);
+    const anchors = deps.getWatercolorKeyAnchors?.();
+    if (anchors) {
+      // The anchors map is mutationId → keyId: iterate its VALUES, never its
+      // entries — a deleted key's session anchor still proves ownership.
+      for (const keyId of anchors.values()) ownIds.add(keyId);
+    }
+    for (const keyId of bases.keys()) {
+      if (ownIds.has(keyId)) return true;
+    }
+    return false;
   }
 
   function withheldEpisode(): number {
