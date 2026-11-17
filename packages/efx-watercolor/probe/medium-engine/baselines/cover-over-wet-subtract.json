@@ -1,0 +1,21 @@
+{
+  "gate": "cover-over-wet-subtract",
+  "scenario": "cover-over-wet",
+  "emboss": null,
+  "body": 100,
+  "light": null,
+  "bakeMs": 68,
+  "renderMs": 17,
+  "width": 256,
+  "height": 256,
+  "digestPaper": "a3957ebd",
+  "digestTransparent": "9bcdf005",
+  "digestWhite": "297c3a01",
+  "byteLength": 262144,
+  "coverCrossPigment": 30.74,
+  "coverOwnPigment": 3.47,
+  "underBandPigment": 55.36,
+  "paperBandPigment": 0,
+  "renderer": "WebKit WebGL",
+  "verdict": "MEDIUM-ENGINE CAPTURED"
+}

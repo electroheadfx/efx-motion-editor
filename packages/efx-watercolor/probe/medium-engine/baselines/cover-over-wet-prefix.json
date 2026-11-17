@@ -4,7 +4,7 @@
   "emboss": null,
   "body": 100,
   "light": null,
-  "bakeMs": 126,
+  "bakeMs": 65,
   "renderMs": 17,
   "width": 256,
   "height": 256,
@@ -12,6 +12,10 @@
   "digestTransparent": "756b0e4b",
   "digestWhite": "d52408c9",
   "byteLength": 262144,
+  "coverCrossPigment": 34.05,
+  "coverOwnPigment": 3.47,
+  "underBandPigment": 55.36,
+  "paperBandPigment": 0,
   "renderer": "WebKit WebGL",
   "verdict": "MEDIUM-ENGINE CAPTURED"
 }

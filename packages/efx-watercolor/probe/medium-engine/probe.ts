@@ -45,10 +45,29 @@
 //  quick-261117-tq7 adds `--scenario cover-over-wet`: the SAME dark-across /
 //  light-crossing geometry as `cover`, but the dark entry skips its fix
 //  (`fixAfter: false`), so the underlayer is still MOBILE in `ink` when the
-//  covering stroke runs — the engine's preInk subtraction must replace it
-//  there, exactly as the cover pass replaces settled `fixed` pigment. The
-//  pre-fix capture (cover-over-wet-prefix) is the committed baseline; the
-//  post-fix capture must differ in all three digests.
+//  covering stroke runs — the engine's preInk cover must replace it there,
+//  exactly as the cover pass replaces settled `fixed` pigment. The pre-fix
+//  capture (cover-over-wet-prefix) is the committed baseline; the post-fix
+//  capture must differ in all three digests.
+//
+//  WR-01 (same quick): a digest-differs check cannot tell "underlayer erased,
+//  covering pigment intact" from "covering stroke erased" or "colors
+//  inverted", so the cover-over-wet report also carries four bounded region
+//  means (doc uv boxes, full-resolution samples, mean pigment 255 − luma on
+//  the TRANSPARENT export: 0 is bare paper):
+//    coverCrossPigment  the intersection neighbourhood. The fixed engine
+//                       leaves ≈1.1 MORE pigment here than the pre-fix
+//                       clamped subtract (the covering stroke stops erasing
+//                       its own deposit), so the gate can assert a direction,
+//                       not just inequality.
+//    coverOwnPigment    the covering diagonal clear of the dark band: proof
+//                       the covering stroke deposited pigment at all.
+//    underBandPigment   the dark band clear of the diagonal: control the
+//                       crossing must read well below (the underlayer is
+//                       erased where the stroke crossed).
+//    paperBandPigment   bare paper: the zero control.
+//  compare.mjs asserts these for every cover-over-wet capture. Only that
+//  scenario emits them, so every other scenario's report shape is unchanged.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -192,6 +211,63 @@ function digestCanvas(canvas: HTMLCanvasElement): Digest {
   if (!ctx) throw new Error('digest: exported canvas has no 2D context')
   const buffer = new Uint8ClampedArray(ctx.getImageData(0, 0, canvas.width, canvas.height).data)
   return { digest: hashPixels(buffer), byteLength: buffer.length }
+}
+
+// --- WR-01 region statistics -------------------------------------------------
+
+/** One axis-aligned sample box in doc uv (y up, like the stroke scripts). */
+interface BandBox {
+  readonly x0: number
+  readonly y0: number
+  readonly x1: number
+  readonly y1: number
+}
+
+/**
+ * The four boxes the cover-over-wet gate asserts on. The script is fixed: a
+ * dark band across y≈0.35 and a light diagonal from (0.22, 0.74) to
+ * (0.82, 0.20), crossing at ≈(0.66, 0.36). Every box is clear of the other
+ * stroke except `crossing`; the measured separation is documented in
+ * compare.mjs beside the margins.
+ */
+const COVER_BOXES: Readonly<Record<'crossing' | 'own' | 'under' | 'paper', BandBox>> = {
+  // The intersection neighbourhood: the cover's erasure happens inside it.
+  crossing: { x0: 0.62, y0: 0.3, x1: 0.72, y1: 0.4 },
+  // The covering diagonal between its first two knots, clear of the band.
+  own: { x0: 0.26, y0: 0.6, x1: 0.36, y1: 0.7 },
+  // The dark band between its first two knots, clear of the diagonal.
+  under: { x0: 0.24, y0: 0.32, x1: 0.34, y1: 0.4 },
+  // Bare paper above the whole script: the zero control.
+  paper: { x0: 0.45, y0: 0.82, x1: 0.55, y1: 0.92 },
+}
+
+/**
+ * Mean pigment (255 − mean RGB luma) over a box, 0..255, measured on an
+ * opaque-transmittance export: 0 is bare paper and larger is denser medium.
+ * Export rows are top-first while doc uv is y-up, so the row span flips.
+ */
+function bandPigment(canvas: HTMLCanvasElement, box: BandBox): number {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('band pigment: exported canvas has no 2D context')
+  const w = canvas.width
+  const h = canvas.height
+  const x0 = Math.max(0, Math.min(w - 1, Math.round(box.x0 * w)))
+  const x1 = Math.max(x0 + 1, Math.min(w, Math.round(box.x1 * w)))
+  const y0 = Math.max(0, Math.min(h - 1, Math.round((1 - box.y1) * h)))
+  const y1 = Math.max(y0 + 1, Math.min(h, Math.round((1 - box.y0) * h)))
+  const data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data
+  let sum = 0
+  let n = 0
+  for (let i = 0; i < data.length; i += 4) {
+    sum += 255 - (data[i]! + data[i + 1]! + data[i + 2]!) / 3
+    n += 1
+  }
+  return n > 0 ? sum / n : 0
+}
+
+/** Fixed two decimals: stable JSON, and printing stays readable. */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100
 }
 
 // --- the fixed scenarios ----------------------------------------------------
@@ -357,10 +433,27 @@ function run(
     // a body pair reports both halves of the cost (bake + render). Durations
     // are reported, never tuned into the law.
     const renderStart = performance.now()
-    const paper = digestCanvas(engine.exportCanvas('paper'))
-    const transparent = digestCanvas(engine.exportCanvas('transparent'))
-    const white = digestCanvas(engine.exportCanvas('white'))
+    const paperCanvas = engine.exportCanvas('paper')
+    const transparentCanvas = engine.exportCanvas('transparent')
+    const whiteCanvas = engine.exportCanvas('white')
+    const paper = digestCanvas(paperCanvas)
+    const transparent = digestCanvas(transparentCanvas)
+    const white = digestCanvas(whiteCanvas)
     const renderMs = Math.round(performance.now() - renderStart)
+
+    // WR-01: the four region means that make the cover gate's PASS mean
+    // something. Measured after renderMs so the cost number keeps its meaning.
+    // Only cover-over-wet reports them, so every other scenario's report shape
+    // (and its six compare fields) is unchanged.
+    const coverRegions =
+      scenario === 'cover-over-wet'
+        ? {
+            coverCrossPigment: round2(bandPigment(transparentCanvas, COVER_BOXES.crossing)),
+            coverOwnPigment: round2(bandPigment(transparentCanvas, COVER_BOXES.own)),
+            underBandPigment: round2(bandPigment(transparentCanvas, COVER_BOXES.under)),
+            paperBandPigment: round2(bandPigment(transparentCanvas, COVER_BOXES.paper)),
+          }
+        : {}
 
     writeResult({
       gate,
@@ -376,6 +469,7 @@ function run(
       digestTransparent: transparent.digest,
       digestWhite: white.digest,
       byteLength: paper.byteLength,
+      ...coverRegions,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
     })

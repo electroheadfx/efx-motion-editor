@@ -36,9 +36,18 @@
 //
 //  quick-261117-tq7 adds `--scenario cover-over-wet`: the cover geometry with
 //  the dark entry left MOBILE (no fix), so the covering stroke meets wet `ink`
-//  instead of settled pigment. Its pre-fix capture is committed as
-//  baselines/cover-over-wet-prefix.json; the post-fix capture must differ in
-//  all three digests.
+//  instead of settled pigment. Two regression references are committed:
+//    baselines/cover-over-wet-prefix.json    the engine BEFORE the cover
+//                                            feature (no erasure at all)
+//    baselines/cover-over-wet-subtract.json  the pre-CR-01 clamped subtract
+//                                            (erases the covering stroke's
+//                                            own deposit: the bug)
+//  and baselines/cover-over-wet.json is the standing post-fix capture. The
+//  report carries four region means, and compare.mjs asserts the outcome on
+//  them: the crossing keeps more pigment than the covering stroke alone,
+//  less than the untouched dark band, gains ≥0.5 over the clamped subtract
+//  and reads ≥0.5 below the no-cover prefix; bare paper stays the empty
+//  control. The digest-differs check stays as the change detector.
 //
 //  Final flag contract (later phases inherit it, do not retype it):
 //    run.mjs --gate <name>            required; [A-Za-z0-9._-]+, names the JSON

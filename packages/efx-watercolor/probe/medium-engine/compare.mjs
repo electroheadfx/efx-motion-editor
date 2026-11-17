@@ -30,6 +30,25 @@
 //      Both captures are the same scenario, so the dimensions must AGREE;
 //      only the three digests are required to differ.
 //
+//  WR-01 (quick-261117-tq7): a cover-over-wet capture also carries four region
+//  means (crossing, covering stroke, dark band, bare paper), and EVERY mode
+//  asserts the self-contained outcome invariants on them — the crossing keeps
+//  more pigment than the covering stroke alone and less than the untouched
+//  dark band, the covering stroke deposited pigment, and bare paper is the
+//  empty control. Mode 3 adds ONE directional claim against a known reference,
+//  keyed on the reference's `gate`:
+//    --differs-from cover-over-wet-prefix    (engine before the cover
+//      feature): the crossing must read at least 0.5 BELOW it, i.e. the
+//      underlayer really is erased where the stroke crossed;
+//    --differs-from cover-over-wet-subtract  (pre-CR-01 clamped subtract):
+//      the crossing must read at least 0.5 ABOVE it, i.e. the covering
+//      stroke no longer erases its own deposit. This is the pair that makes
+//      the gate distinguish the fixed engine from the CR-01 regression —
+//      a digest-differs check alone passes for every engine against the
+//      no-cover prefix. Measured on the 256 sheet: prefix 34.05, fixed
+//      32.31, subtract 30.74 mean crossing pigment.
+//  Non-cover scenarios carry no region fields and are unaffected.
+//
 //  64-10: every report carries `bakeMs` (script + settle) and `renderMs`
 //  (the render phase: the three exports and their readbacks). When two gates
 //  are compared this script prints both captures' durations beside the field
@@ -52,6 +71,122 @@ const tmpDir = '/tmp/medium-engine'
 
 const DIGESTS = ['digestPaper', 'digestTransparent', 'digestWhite']
 const FIELDS = [...DIGESTS, 'byteLength', 'width', 'height']
+
+// WR-01: the cover-over-wet gate asserts the rendered OUTCOME, not only that
+// the bytes changed. The probe reports four full-resolution region means
+// (mean pigment, 0..255, transparent export) and this comparator enforces:
+//   - coverOwnPigment > 0: the covering stroke deposited pigment at all;
+//   - coverCrossPigment > coverOwnPigment: the crossing is not blanker than
+//     the covering stroke alone (an over-erasing cover fails here);
+//   - coverCrossPigment < underBandPigment: the underlayer IS erased where
+//     the covering stroke crossed, well below the untouched dark band;
+//   - paperBandPigment < coverCrossPigment: bare paper is the empty control,
+//     so a globally tinted or inverted render fails.
+// In --differs-from mode against another cover-over-wet capture the gate adds
+// ONE directional claim, keyed on the reference's own `gate`:
+//   'cover-over-wet-prefix'   the engine BEFORE the cover feature existed
+//                             (no erasure at all): the crossing must read at
+//                             least 0.5 below it — the underlayer IS erased.
+//   'cover-over-wet-subtract' the pre-CR-01 clamped `dst - src` engine: the
+//                             crossing must read at least 0.5 above it — the
+//                             covering stroke no longer erases its OWN deposit
+//                             (CR-01's regression).
+// Measured mean crossing pigment on the 256 sheet:
+//   prefix 34.05 | fixed 32.31 | subtract 30.74
+// Both deltas are ≈1.6-1.7, so a 0.5 margin sits well inside them while a
+// reversion (fixed == subtract, delta 0) fails cleanly. Any other reference
+// carries no directional claim.
+const COVER_REGION_FIELDS = [
+  'coverCrossPigment',
+  'coverOwnPigment',
+  'underBandPigment',
+  'paperBandPigment',
+]
+const COVER_CROSS_MARGIN = 0.5
+const COVER_CROSS_DIRECTION = {
+  'cover-over-wet-prefix': 'erased',
+  'cover-over-wet-subtract': 'survives',
+}
+
+/**
+ * WR-01: cover-over-wet region invariants. Returns the failure lines — an
+ * empty array means the capture satisfies them. Non-cover captures have no
+ * region fields and no invariants. `requireGain` is true only for
+ * --differs-from, where a directional claim against the reference is legal:
+ * an equality comparison against the SAME capture cannot claim gain.
+ */
+function coverRegionFailures(actualData, refData, requireGain) {
+  if (actualData.scenario !== 'cover-over-wet') return []
+  const missing = COVER_REGION_FIELDS.filter((field) => typeof actualData[field] !== 'number')
+  if (missing.length > 0) {
+    return [`capture is missing ${missing.join(', ')}; re-run the cover-over-wet probe`]
+  }
+  const cross = actualData.coverCrossPigment
+  const own = actualData.coverOwnPigment
+  const under = actualData.underBandPigment
+  const paper = actualData.paperBandPigment
+  const failures = []
+  if (!(own > 0)) {
+    failures.push(`coverOwnPigment ${own} is not above 0 (the covering stroke deposited no pigment)`)
+  }
+  if (!(cross > own)) {
+    failures.push(
+      `coverCrossPigment ${cross} is not above coverOwnPigment ${own} ` +
+        '(the crossing is blanker than the covering stroke alone: the cover over-erased)',
+    )
+  }
+  if (!(cross < under)) {
+    failures.push(
+      `coverCrossPigment ${cross} is not below underBandPigment ${under} ` +
+        '(the underlayer was not erased where the covering stroke crossed)',
+    )
+  }
+  if (!(paper < cross)) {
+    failures.push(
+      `paperBandPigment ${paper} is not below coverCrossPigment ${cross} ` +
+        '(bare paper is not the empty control: the render is tinted or inverted)',
+    )
+  }
+  if (requireGain && refData.scenario === 'cover-over-wet') {
+    const refMissing = COVER_REGION_FIELDS.filter((field) => typeof refData[field] !== 'number')
+    if (refMissing.length > 0) {
+      failures.push(
+        `reference is missing ${refMissing.join(', ')}; re-capture it with a build that reports the region statistics`,
+      )
+    } else {
+      const direction = COVER_CROSS_DIRECTION[refData.gate]
+      const ref = refData.coverCrossPigment
+      if (direction === 'erased' && !(cross <= ref - COVER_CROSS_MARGIN)) {
+        failures.push(
+          `coverCrossPigment ${cross} is not at least ${COVER_CROSS_MARGIN} below the no-cover ` +
+            `reference's ${ref}: the covering stroke did not erase the underlayer`,
+        )
+      }
+      if (direction === 'survives' && !(cross >= ref + COVER_CROSS_MARGIN)) {
+        failures.push(
+          `coverCrossPigment ${cross} is not at least ${COVER_CROSS_MARGIN} above the clamped-subtract ` +
+            `reference's ${ref}: the covering stroke is erasing its own deposit again (CR-01)`,
+        )
+      }
+    }
+  }
+  return failures
+}
+
+/** Print one capture's region means beside the reference's when it has them. */
+function printCoverRegions(actualData, refData) {
+  if (actualData.scenario !== 'cover-over-wet') return
+  if (COVER_REGION_FIELDS.some((field) => typeof actualData[field] !== 'number')) return
+  const ref =
+    refData.scenario === 'cover-over-wet' && typeof refData.coverCrossPigment === 'number'
+      ? ` (reference ${refData.coverCrossPigment})`
+      : ''
+  console.log(
+    `region    : crossing ${actualData.coverCrossPigment}${ref} | own ${actualData.coverOwnPigment}` +
+      ` | under ${actualData.underBandPigment} | paper ${actualData.paperBandPigment}`,
+  )
+  console.log('')
+}
 
 function usage(message) {
   console.error(`compare: ${message}`)
@@ -204,16 +339,27 @@ if (mode === 'differs') {
     console.log('=========================================================')
     process.exit(1)
   }
-  if (missing > 0 || equal > 0) {
+  // WR-01: the outcome invariants, measured on the crossing, the covering
+  // stroke, the untouched dark band and bare paper. Checked BEFORE the verdict
+  // so a digest change with a broken medium cannot pass.
+  const regionFailures = coverRegionFailures(actual, refData, true)
+  printCoverRegions(actual, refData)
+  if (missing > 0 || equal > 0 || regionFailures.length > 0) {
+    for (const line of regionFailures) console.log(`REGION    ${line}`)
     console.log(
-      `RESULT: FAIL — ${equal} digest(s) did not differ, ${missing} missing ` +
+      `RESULT: FAIL — ${equal} digest(s) did not differ, ${missing} missing, ` +
+        `${regionFailures.length} cover region invariant(s) failed ` +
         `(${gate} vs ${operand})`,
     )
     console.log('=========================================================')
     process.exit(1)
   }
+  const regionNote =
+    actual.scenario === 'cover-over-wet'
+      ? ` and the ${COVER_REGION_FIELDS.length} cover region invariants hold`
+      : ''
   console.log(
-    `RESULT: PASS — all ${DIGESTS.length} digests differ (${gate} vs ${operand}, ${dims})`,
+    `RESULT: PASS — all ${DIGESTS.length} digests differ${regionNote} (${gate} vs ${operand}, ${dims})`,
   )
   console.log('=========================================================')
   process.exit(0)
@@ -239,11 +385,20 @@ for (const field of FIELDS) {
   }
 }
 
+// WR-01: the standing gate (capture vs its own post-fix baseline, or a
+// same-session pair) still asserts the self-contained outcome invariants. The
+// directional gain claim belongs to --differs-from only — an equality
+// comparison against the same capture cannot be required to gain on itself.
+const regionFailures = coverRegionFailures(actual, refData, false)
+printCoverRegions(actual, refData)
+
 console.log('')
 const counterpart = mode === 'other' ? operand : 'baseline'
-if (missing > 0 || differing > 0) {
+if (missing > 0 || differing > 0 || regionFailures.length > 0) {
+  for (const line of regionFailures) console.log(`REGION    ${line}`)
   console.log(
-    `RESULT: FAIL — ${differing} differing field(s), ${missing} missing field(s) ` +
+    `RESULT: FAIL — ${differing} differing field(s), ${missing} missing field(s), ` +
+      `${regionFailures.length} cover region invariant(s) failed ` +
       `(${gate} vs ${counterpart})`,
   )
   console.log('=========================================================')
