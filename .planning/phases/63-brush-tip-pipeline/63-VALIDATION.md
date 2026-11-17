@@ -75,6 +75,8 @@ created: "2026-11-15"
 | 63-15.1 | 15 | 1 | TIP-14 | T-63-33 | AQTL v3 carries `engine.textureId`; v1/v2 refused `unsupported-version` | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/view/aquarelleRecordState.reopenTexture.test.ts src/components/physic-paint/performance/scriptTimelineCodec.test.ts` | ✅ | ✅ green |
 | 63-15.2 | 15 | 1 | TIP-14 | T-63-33 | Lift/absence/unknown-id/built-in boundaries; hostile marker and length refused | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/view/aquarelleRecordState.reopenTexture.test.ts src/components/physic-paint/performance/scriptTimelineCodec.test.ts` | ✅ | ✅ green |
 | 63-15.3 | 15 | 1 | TIP-14 | T-63-34 | Every play-routing leg hands its bake port the stroke's own textureId | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.bake.test.ts src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts -t "texture carrier"` | ✅ | ✅ green |
+| 63-16.1 | 16 | 2 (gap) | TIP-14 | T-63-35 | A refused restore latches its binding; `prepareSave` writes nothing while latched, and only a successful explicit purge clears it | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts` | ✅ | ✅ green |
+| 63-16.2 | 16 | 2 (gap) | TIP-14 | T-63-36, T-63-37 | A retired AQTL body is named `aqtl-retired`; genuine corruption still reads as corruption; the latch clear sites are pinned | unit | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -116,4 +118,12 @@ created: "2026-11-15"
 |---|---|
 | Gaps found | 0 |
 | Resolved | 0 |
+| Escalated | 0 |
+
+## Validation Audit 2026-11-17
+
+| Metric | Count |
+|---|---|
+| Gaps found | 1 |
+| Resolved | 1 |
 | Escalated | 0 |
