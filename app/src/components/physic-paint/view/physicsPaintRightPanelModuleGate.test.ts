@@ -238,7 +238,9 @@ describe('single-engine right panel (261027-klx)', () => {
     expect(panelSource, 'Color label stays').toContain("color: 'Color'");
     expect(panelSource, 'Brush label is back').toContain("brush: 'Brush'");
     expect(panelSource, 'the settings tab id is gone').not.toContain("settings: 'Settings'");
-    expect(panelSource, 'Paper label stays').toContain("paper: 'Paper'");
+    // 64-09 (D-06): the Paper tab is now `Paper & Light` — the label pin is
+    // REPOINTED, never deleted; the tab id and order stay untouched.
+    expect(panelSource, 'Paper & Light label').toContain("paper: 'Paper & Light'");
     expect(panelSource, 'Memory label').toContain("memory: 'Memory'");
     // Top-pane Actions routing is gone (the bottom-pane scripts tab keeps its label).
     expect(panelSource, 'no RightPanelActionsTab mount').not.toMatch(/<RightPanelActionsTab\b/);

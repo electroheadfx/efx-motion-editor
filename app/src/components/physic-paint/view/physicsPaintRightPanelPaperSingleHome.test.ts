@@ -193,3 +193,71 @@ describe('261017-vcn I-04 remainder paper-tab single home', () => {
     expect(studioSource.indexOf('const handlePaperScaleChange'), 'paper-only scale handler must leave').toBe(-1);
   });
 });
+
+// Phase 64 (64-09 / MED-17 / D-06) — the Paper & Light tab. Source-scan pins
+// over the files this suite already reads (the node vitest env never mounts
+// the panel): three controlled rows BELOW the grain pair, fed by the document
+// light, writing through the one Studio handler and never touching the store.
+describe('64-09 Paper & Light tab', () => {
+  it('renders the three light rows below the paper picker, in one Light group', () => {
+    const body = stripComments(paperTabSource);
+    const pickerAt = body.indexOf('<PaperPicker');
+    const groupAt = body.indexOf('data-testid="right-panel-light-group"');
+    expect(pickerAt, 'the paper picker mount must stay').toBeGreaterThan(-1);
+    expect(groupAt, 'the Light option group must exist').toBeGreaterThan(pickerAt);
+    // One option group labelled Light (D-06) — no second panel, no sheet.
+    expect(body, 'the group carries the Light label').toContain('>Light</span>');
+    for (const label of ['Azimuth', 'Elevation', 'Intensity']) {
+      expect(
+        body.indexOf(`label="${label}"`),
+        `${label} row must sit below the paper picker`,
+      ).toBeGreaterThan(groupAt);
+    }
+    expect(body.match(/<SliderStepper\b/g) ?? [], 'exactly the three light rows').toHaveLength(3);
+    expect(body.match(/physics-paint-option-group/g) ?? [], 'one light option group').toHaveLength(1);
+  });
+
+  it('reads the document light with the package default — never a retyped triple', () => {
+    const body = stripComments(paperTabSource);
+    expect(paperTabSource, 'the default comes from the package').toContain(
+      "import { DEFAULT_LIGHT } from '@efxlab/efx-watercolor';",
+    );
+    expect(body, 'the row value falls back to the package default').toContain(
+      'props.light ?? DEFAULT_LIGHT',
+    );
+    // The triple is never retyped in the app (D-09).
+    expect(paperTabSource, 'azimuth default is never retyped').not.toContain('129.8');
+    expect(paperTabSource, 'elevation default is never retyped').not.toContain('38.45');
+  });
+
+  it('emits one-field patches and never writes the document from the view', () => {
+    const body = stripComments(paperTabSource);
+    for (const field of ['azimuth', 'elevation', 'intensity']) {
+      expect(body, `${field} emits its own one-field patch`).toContain(`{ ${field}: value }`);
+    }
+    expect(body, 'the change handler is the one write port').toContain('props.onLightChange?.(');
+    // The write belongs to the Studio handler; the view never owns persistence.
+    expect(body, 'the tab never calls the store mutation').not.toContain('setDocumentLight');
+    expect(stripComments(panelSource), 'the panel never calls the store mutation').not.toContain('setDocumentLight');
+    // No local light state in the presentational tab (the document is the state).
+    expect(body, 'no local state').not.toContain('useState');
+    expect(body, 'no signal mirror').not.toContain('signal(');
+  });
+
+  it('threads light and onLightChange through the panel into the single tab mount', () => {
+    const body = stripComments(panelSource);
+    // Both optional props sit beside the paper/grain pair.
+    expect(body, 'the panel declares the light prop').toContain('light?: LightSettings;');
+    expect(body, 'the panel declares the change port').toContain(
+      'onLightChange?: (patch: Partial<LightSettings>) => void;',
+    );
+    const mountAt = body.indexOf('<RightPanelPaperTab');
+    expect(mountAt, 'the single tab mount must stay').toBeGreaterThan(-1);
+    const mountEnd = body.indexOf('/>', mountAt);
+    expect(mountEnd).toBeGreaterThan(mountAt);
+    const mount = body.slice(mountAt, mountEnd);
+    expect(mount, 'the tab mount carries the document light').toContain('light={light}');
+    expect(mount, 'the tab mount carries the one handler').toContain('onLightChange={onLightChange}');
+    expect(body.match(/<RightPanelPaperTab\b/g) ?? [], 'one tab mount only').toHaveLength(1);
+  });
+});

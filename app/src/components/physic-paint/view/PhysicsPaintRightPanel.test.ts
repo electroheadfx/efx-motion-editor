@@ -918,7 +918,9 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     // Memory still closes the row (quick-261023-ors).
     // 261029-hy2: the Settings tab is retired — its content lives in the
     // floating Settings sheet opened from the Brush tab.
-    expect(topPaneTabLabels(tree)).toEqual(['Color', 'Brush', 'Paper', 'Memory']);
+    // 64-09 (D-06): the Paper tab's label is repointed to `Paper & Light`; the
+    // id, the tab order and the panel aria-label stay untouched.
+    expect(topPaneTabLabels(tree)).toEqual(['Color', 'Brush', 'Paper & Light', 'Memory']);
   });
 
   it('renders the gauge only on the Memory tab: contextual scripts, the selected frame, then frame caches', () => {

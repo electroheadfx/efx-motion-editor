@@ -25,6 +25,7 @@ import { RightPanelTrackTab } from './RightPanelTrackTab';
 import type { StudioScriptMemorySection } from '../performance/studioScriptMemoryGauge';
 import { RightPanelOnionTab, RightPanelMotionTab } from './RightPanelOnionMotionTabs';
 import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
+import type { LightSettings } from '@efxlab/efx-watercolor';
 
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;
@@ -98,6 +99,14 @@ export interface PhysicsPaintRightPanelProps {
   onGrainStrengthChange?: (value: number) => void;
   onGrainScaleChange?: (scale: number) => void;
   /**
+   * 64-09 (MED-17 / D-06): the paint-layer document's emboss light and its ONE
+   * change handler, beside the paper/grain pair — the same per-document record
+   * the paper rides (D-08). Optional so every existing caller keeps compiling;
+   * an absent light renders the package default in the Paper & Light tab.
+   */
+  light?: LightSettings;
+  onLightChange?: (patch: Partial<LightSettings>) => void;
+  /**
    * quick-261023-ors: the LAST top-pane tab — the read-only script-memory gauge
    * plus the confirmed purge actions. Identity-stable ref from the Studio (the
    * backgroundClipSectionPortsRef precedent): the ports read live stores and
@@ -127,7 +136,9 @@ const TOP_PANE_TAB_LABELS: Readonly<
   // 261029-hy2: the Settings TAB is retired — its content moved into the
   // floating Settings sheet opened from the top of this tab.
   brush: 'Brush',
-  paper: 'Paper',
+  // 64-09 (D-06): the Paper tab becomes `Paper & Light` — the three light rows
+  // live below the paper-grain pair. The tab id and order stay untouched.
+  paper: 'Paper & Light',
   // quick-261023-ors: the LAST tab — read-only script-memory gauge + purge.
   memory: 'Memory',
 });
@@ -201,6 +212,8 @@ export function PhysicsPaintRightPanel({
   onBackgroundChange,
   onGrainStrengthChange,
   onGrainScaleChange,
+  light,
+  onLightChange,
   memorySection,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
@@ -343,6 +356,8 @@ export function PhysicsPaintRightPanel({
                 onBackgroundChange={onBackgroundChange}
                 onGrainStrengthChange={onGrainStrengthChange}
                 onGrainScaleChange={onGrainScaleChange}
+                light={light}
+                onLightChange={onLightChange}
                 disabled={engineControlsDisabled}
               />
             </div>
