@@ -1,17 +1,18 @@
 // ============================================================
-//  AquarelleGlobalsPanel — the medium dropdown, the 8 watercolor
+//  AquarelleGlobalsPanel — the medium dropdown, the 9 watercolor
 //  globals + Reset. This is the Paint-tab content.
 //
 //  Phase 64 (D-01/D-07): the panel LEADS with the five-item
-//  medium dropdown, then the eight slider rows below it. A pick
+//  medium dropdown, then the nine slider rows below it. A pick
 //  applies the whole record in one move (applyAquarelleMedium)
 //  and closes; the selected name is shown truthfully, with no
 //  "edited" marker.
 //
 //  Labels and row order follow the playground SettingsPanel
 //  (Water, Pigment, Flow, Bleed, Edges, Grain, Dry speed), with
-//  Phase 64's Viscosity appended LAST. Param keys stay
-//  water/load/flow/bleed/edge/granulation/dry/viscosity.
+//  Phase 64's Viscosity and Emboss appended (64-04); 64-06
+//  slots Body between them. Param keys stay
+//  water/load/flow/bleed/edge/granulation/dry/viscosity/emboss.
 //  `size` is NOT here — the shared Size slider owns it (D-05).
 //
 //  Reset restores playground DEFAULT_PARAMS (0..1) ×100 onto the
@@ -41,9 +42,9 @@ import {
   commitAquarelleSelectionParams,
 } from './aquarellePaintControls';
 
-/** Module-only global rows (D-05 / I-01 playground order + Phase 64 Viscosity).
- *  `size` is NOT here — shared Size owns it. Viscosity is appended LAST: 64-04
- *  appends Emboss after it and 64-06 inserts Body between the two. */
+/** Module-only global rows (D-05 / I-01 playground order + Phase 64 Viscosity
+ *  and Emboss). `size` is NOT here — shared Size owns it. 64-06 inserts Body
+ *  between Viscosity and Emboss. */
 const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string }> = Object.freeze([
   { key: 'water', label: 'Water' },
   { key: 'load', label: 'Pigment' },
@@ -53,6 +54,7 @@ const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string }> = O
   { key: 'granulation', label: 'Grain' },
   { key: 'dry', label: 'Dry speed' },
   { key: 'viscosity', label: 'Viscosity' },
+  { key: 'emboss', label: 'Emboss' },
 ]);
 
 const GLOBAL_MIN = 0;

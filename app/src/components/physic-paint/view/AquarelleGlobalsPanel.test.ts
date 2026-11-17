@@ -5,9 +5,10 @@
  *   Phase 64 (D-01/D-07): the medium dropdown is the FIRST child row and names
  *   the selected medium; five items render in the fixed D-18 order
  *   (Watercolor, Gouache, Chalk, Graphite, Acrylic)
- *   8 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
- *   Dry speed, Viscosity (keys stay
- *   water/load/flow/bleed/edge/granulation/dry/viscosity)
+ *   9 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
+ *   Dry speed, Viscosity, Emboss (keys stay
+ *   water/load/flow/bleed/edge/granulation/dry/viscosity/emboss; 64-06 inserts
+ *   Body between Viscosity and Emboss)
  *   no Size control (top-bar owns it, Q1a) and no Hand row
  *   Reset writes playground DEFAULT_PARAMS ×100 for every non-size row via
  *   setAquarelleParam and never writes size or lift (T-261017-WMW-01)
@@ -154,7 +155,7 @@ function collectOrderedLabels(tree: TestVNode): string[] {
 }
 
 /** I-01/I-02 playground order (SettingsPanel SLIDERS minus Size and Hand),
- *  with Phase 64's Viscosity appended LAST. */
+ *  with Phase 64's Viscosity and Emboss appended (64-04). */
 const GLOBAL_LABELS = [
   'Water',
   'Pigment',
@@ -164,13 +165,14 @@ const GLOBAL_LABELS = [
   'Grain',
   'Dry speed',
   'Viscosity',
+  'Emboss',
 ] as const;
 
 /** D-18 display names in the fixed MEDIUM_IDS order. `pastel` displays
  *  "Chalk" deliberately — the id is not the label. */
 const MEDIUM_NAMES = ['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic'] as const;
 
-/** Playground DEFAULT_PARAMS ×100 for the 8 non-size rows. */
+/** Playground DEFAULT_PARAMS ×100 for the 9 non-size rows. */
 const RESET_EXPECTED = {
   water: 60,
   load: 50,
@@ -180,6 +182,7 @@ const RESET_EXPECTED = {
   granulation: 45,
   dry: 40,
   viscosity: 0,
+  emboss: 0,
 } as const;
 
 beforeEach(() => {
@@ -194,7 +197,7 @@ function findTestId(tree: TestVNode, testId: string): TestVNode | undefined {
 }
 
 describe('AquarelleGlobalsPanel sliders (I-02)', () => {
-  it('renders the 8 named global slider labels in playground order', () => {
+  it('renders the 9 named global slider labels in playground order', () => {
     const tree = renderPanel();
     const ordered = collectOrderedLabels(tree).filter((l) =>
       (GLOBAL_LABELS as readonly string[]).includes(l),
@@ -216,7 +219,7 @@ describe('AquarelleGlobalsPanel sliders (I-02)', () => {
     expect(/\bsize\b/i.test(text), 'found size text in panel').toBe(false);
   });
 
-  it('renders nothing but the 8 sliders + Reset (no response chrome)', () => {
+  it('renders nothing but the 9 sliders + Reset (no response chrome)', () => {
     const tree = renderPanel();
     const text = textContent(tree);
     expect(text).not.toContain('Brush response');
@@ -245,6 +248,7 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     setAquarelleParam('granulation', 6);
     setAquarelleParam('dry', 7);
     setAquarelleParam('viscosity', 55);
+    setAquarelleParam('emboss', 55);
     setAquarelleParam('lift', 33);
 
     const tree = renderPanel();
@@ -265,6 +269,7 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(params.granulation, 'granulation → 45').toBe(RESET_EXPECTED.granulation);
     expect(params.dry, 'dry → 40').toBe(RESET_EXPECTED.dry);
     expect(params.viscosity, 'viscosity → 0').toBe(RESET_EXPECTED.viscosity);
+    expect(params.emboss, 'emboss → 0').toBe(RESET_EXPECTED.emboss);
     // T-261017-WMW-01: Reset must never write size (top-bar Brush size owns it)
     // and never touches the eraser strength.
     expect(params.size, 'size is untouched by Reset').toBe(77);
@@ -289,17 +294,17 @@ describe('Phase 64 medium dropdown', () => {
     expect(text, 'the row names the selected medium').toContain('Watercolor');
   });
 
-  it('renders eight slider rows below the dropdown, Viscosity last', () => {
+  it('renders nine slider rows below the dropdown, Emboss last', () => {
     const tree = renderPanel();
     const sliders = [...walk(tree)].filter(
       (node) => node.props?.['data-testid'] === 'slider-stepper',
     );
-    expect(sliders, 'eight slider rows at this wave').toHaveLength(GLOBAL_LABELS.length);
+    expect(sliders, 'nine slider rows at this wave').toHaveLength(GLOBAL_LABELS.length);
     const ordered = collectOrderedLabels(tree).filter((label) =>
       (GLOBAL_LABELS as readonly string[]).includes(label),
     );
     expect(ordered).toEqual([...GLOBAL_LABELS]);
-    expect(ordered[ordered.length - 1]).toBe('Viscosity');
+    expect(ordered[ordered.length - 1]).toBe('Emboss');
   });
 
   it('renders no menu until the popover state opens', () => {
@@ -419,7 +424,7 @@ describe('261018-gqo spacing rhythm', () => {
 });
 
 // quick 261111-ucf — each global row commits at its release boundary and
-// Reset sends ONE eight-key batch after its eight live writes. Id band
+// Reset sends ONE nine-key batch after its nine live writes. Id band
 // 10721+.
 describe('quick 261111-ucf globals release commits + Reset batch', () => {
   afterEach(() => {
@@ -428,7 +433,7 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     clearScriptStrokeSelection();
   });
 
-  it('Reset commits ONE eight-key params patch after the eight live writes', () => {
+  it('Reset commits ONE nine-key params patch after the nine live writes', () => {
     recordAquarelleStroke(10721, stroke10721([point10721(0.5, 0.5)]));
     const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
     const promise = Promise.resolve(true);
