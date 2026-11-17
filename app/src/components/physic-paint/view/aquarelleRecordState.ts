@@ -41,7 +41,7 @@ import {
   toolOverridesFromTip,
   type AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor/brushes';
-import { BRUSH_PRESETS, resolveMask } from '@efxlab/efx-watercolor';
+import { BRUSH_PRESETS, DEFAULT_MEDIUM_ID, resolveMask, type MediumId } from '@efxlab/efx-watercolor';
 import { libraryRowFor, resolveCatalogTip } from '../../../stores/aquarelleBrushCatalog';
 import { canonicalFromDiameter, diameterFromCanonical } from '../engine/aquarelleBrushSize';
 import { aquarelleFullPressureSizeFor } from '../engine/aquarelleFootprint';
@@ -132,6 +132,22 @@ export const aquarelleLiftTipId = signal<string | null>('filbert');
  * stroke carries it on `engine.textureId`. The eraser never reads it.
  */
 export const aquarelleSelectedTextureId = signal<string | null>(null);
+/**
+ * Phase 64 (D-01/D-03): the selected built-in medium. It is a LABEL over the
+ * live bag, never a second parameter store — a manual global tweak leaves it
+ * selected (no "edited" marker), and re-picking re-applies the full record.
+ * Compare-then-write, like every other selection signal.
+ */
+export const aquarelleSelectedMediumId = signal<MediumId | null>(DEFAULT_MEDIUM_ID);
+
+/**
+ * Phase 64 (D-04): apply a whole medium record to the live bag in ONE spread
+ * write, with the id written in the same handler. Never a per-key setter
+ * cascade, never the stroke-selection edit path, never `size` or `lift`.
+ */
+export function applyAquarelleMedium(_id: string): void {
+  // RED skeleton — GREEN fills the one-spread-write handler.
+}
 
 /**
  * quick 261116-inu / Task 8: TWO sizes, one law, no shared state. The PAINT
