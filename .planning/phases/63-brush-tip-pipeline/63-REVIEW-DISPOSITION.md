@@ -13,7 +13,7 @@ findings:
     title: "The Studio CR-03 pin checks strings anywhere in the file, so the load-bearing order inside the close step is unpinned"
   - id: CR-03
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "Close refusal is acknowledged once per Studio window, not once per latch episode — a later refused track closes silently and destroys its withheld script"
   - id: WR-14
     severity: warning
@@ -21,7 +21,7 @@ findings:
     title: "Dead fallback — the short-body branch in the AQTL version read can never be taken"
   - id: WR-15
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "`hasWithheldContent()` counts another track's durable bases — a latched but empty binding refuses the close and names a destructive remedy"
   - id: IN-10
     severity: info
@@ -139,7 +139,7 @@ findings:
     severity: info
     disposition: open
     title: "The import request mask is decoded twice"
-open: 34
+open: 32
 total: 34
 recorded: 2026-11-17T12:07:28.050Z
 ---
@@ -150,9 +150,9 @@ recorded: 2026-11-17T12:07:28.050Z
 |---------|----------|-------------|--------|
 | IN-01 | info | open | - |
 | IN-02 | info | open | - |
-| CR-03 | critical | open | - (not in the current review) |
+| CR-03 | critical | fixed | 63-REVIEW.md re-review (2026-11-17) — per-episode acknowledgement verified closed |
 | WR-14 | warning | open | - (not in the current review) |
-| WR-15 | warning | open | - (not in the current review) |
+| WR-15 | warning | fixed | 63-REVIEW.md re-review (2026-11-17) — own-key base scope verified closed |
 | IN-10 | info | open | - (not in the current review) |
 | IN-11 | info | open | - (not in the current review) |
 | IN-12 | info | open | - (not in the current review) |
