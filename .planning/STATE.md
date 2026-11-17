@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-08-PLAN.md
-last_updated: "2026-11-17T16:36:57.429Z"
+stopped_at: Completed 64-07-PLAN.md
+last_updated: "2026-11-17T16:55:16.001Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 64 execution started
-state_head: 0edfa49e247188c39156086f4ce6981227fe5f01
+state_head: a4931014358bcd9bd7dcbd21a370c908c0c7a7cd
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 29
-  completed_plans: 26
+  completed_plans: 27
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 10 of 12
+Plan: 11 of 12
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 64 execution started
 
@@ -153,6 +153,7 @@ Last activity: 2026-11-17 — Phase 64 execution started
 | Phase 64 P12 | 7 | 2 tasks | 2 files |
 | Phase 64 P05 | 6 | 3 tasks | 8 files |
 | Phase 64 P08 | 7m | 2 tasks | 9 files |
+| Phase 64 P07 | ~2h10m | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -495,6 +496,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: scatteringDeposit guards the amount before multiplying (zero, negative or non-finite -> exactly 0), so 0 x Infinity can never become NaN; the body side is finite through bodyCurve (T-64-22)
 - [Phase 64]: S = SCATTERING_MAX x bodyCurve(body) x amount is written into the pre-existing inkB.a at the three deposit sites and carried by settleFS into fixedB.a; no render target, texture or pass is added
 - [Phase 64]: The white-gouache channel is retired outright (Pigment.white, WHITE_GOUACHE, bleachFS, settle keep, composite coverage), never flag-hidden; MED-37 audit is pinned as a test and recorded in 64-08-SUMMARY
+- [Phase 64]: 64-07: lightSignature lives exported in engine/physicsPaintStudioSettings.ts (not a Studio local) so the behavioral signature row can import it — the Studio is source-pinned text only in the node vitest env
+- [Phase 64]: 64-07: absent light and explicit DEFAULT_LIGHT both canonicalize to the 'default' signature token, so identical pixels never alternate between two signatures
+- [Phase 64]: 64-07: handleDocumentLightChange is declared with a temporary void marker until 64-09 threads it into rightPanelProps (plan forbids the early panel key; noUnusedLocals would fail)
 
 ### Pending Todos
 
@@ -621,8 +625,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-17T16:36:56.534Z
-Stopped at: Completed 64-08-PLAN.md
+Last session: 2026-11-17T16:55:15.196Z
+Stopped at: Completed 64-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

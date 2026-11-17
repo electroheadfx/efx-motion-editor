@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 14
+open_count: 15
 waived_count: 18
 fixed_count: 92
-total_count: 124
-last_updated: 2026-11-15T17:40:07.809Z
+total_count: 125
+last_updated: 2026-11-17T16:54:50.677Z
 ---
 
 # Broken Windows Ledger
@@ -139,6 +139,7 @@ last_updated: 2026-11-15T17:40:07.809Z
 | 122 | 61 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | 61-27 Task 2 GREEN repointed the shipped 61-13 scriptStrokeEdition import pin to start at DRAFT_SETTLE_BUSY_MESSAGE, keeping every symbol assertion (Rule 3 - Blocking). | open |  | 2026-11-11T11:50:07.489Z |  |
 | 123 | 61 | deviation | app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts |  | 61-27 Task 3 GREEN repointed two shipped commit-call pins (61-19 live and 61-22 G-11 identifiers) from the bare 'void bundle.applyAnchorWidths?.' to its consuming form, preserving every other assertion (Rule 3 - Blocking). | open |  | 2026-11-11T11:50:07.646Z |  |
 | 124 | quick/261115-oh9 | deviation | app/src/components/physic-paint/view/WatercolorBrushLibrary.test.ts |  | CSS pin re-anchored after the full app suite exposed a substring collision with the menu's compound 34px rule | fixed |  | 2026-11-15T17:39:56.666Z | 2026-11-15T17:40:07.809Z |
+| 125 | 64 | unmet-truth | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts | 2700 | 64-07: bakeAquarelleScript builds its adapter via ports.createAquarelleAdapter(size, paper) and never applies the document light; every enumerated 64-07 bake path is wired, this Play-Script bake is not (needs a port signature + staged-cache key change) | open |  | 2026-11-17T16:54:50.677Z |  |
 
 ````json
 [
@@ -1680,6 +1681,19 @@ last_updated: 2026-11-15T17:40:07.809Z
     "reason": "",
     "recorded_at": "2026-11-15T17:39:56.666Z",
     "resolved_at": "2026-11-15T17:40:07.809Z",
+    "milestone": "v2.2.0"
+  },
+  {
+    "id": 125,
+    "kind": "unmet-truth",
+    "phase": "64",
+    "file": "app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts",
+    "line": 2700,
+    "description": "64-07: bakeAquarelleScript builds its adapter via ports.createAquarelleAdapter(size, paper) and never applies the document light; every enumerated 64-07 bake path is wired, this Play-Script bake is not (needs a port signature + staged-cache key change)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-17T16:54:50.677Z",
+    "resolved_at": null,
     "milestone": "v2.2.0"
   }
 ]
