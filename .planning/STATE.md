@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
-current_phase: 64
-current_phase_name: Medium Engine
-status: planning
-stopped_at: Phase 63 complete, ready to plan Phase 64
-last_updated: "2026-11-17T09:38:40.894Z"
+current_phase: 63
+current_phase_name: Brush Tip Pipeline
+status: verifying
+stopped_at: Completed 63-17-PLAN.md
+last_updated: "2026-11-17T11:55:24.674Z"
 last_activity: 2026-11-17
-last_activity_desc: Quick task 261117-e6j complete (Studio delete settlement release)
-state_head: 9caf1a1160f695ce68f69c8ccfea7dedbe6251da
+last_activity_desc: Phase 63 execution started
+state_head: 6aff782e94958b5d751fce478a42bc8adb814ecd
 progress:
   total_phases: 1
   completed_phases: 1
-  total_plans: 16
-  completed_plans: 16
+  total_plans: 17
+  completed_plans: 17
   percent: 100
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-16 after Phase 63)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 64 — Medium Engine
+**Current focus:** Phase 63 — Brush Tip Pipeline
 
 ## Current Position
 
-Phase: 64 — Medium Engine
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-17 - Completed quick task 261117-e6j: Studio rail delete no longer wedges the window — a drifted post-publication settlement now releases its lease instead of transferring it to recovery ownership, and the diagnostic names the failing drift sub-check (UAT approved 2026-11-17).
+Phase: 63 (Brush Tip Pipeline) — EXECUTING
+Plan: 17 of 17
+Status: Phase complete — ready for verification
+Last activity: 2026-11-17 — Phase 63 execution started
 
 
 ## Performance Metrics
@@ -143,6 +143,7 @@ Last activity: 2026-11-17 - Completed quick task 261117-e6j: Studio rail delete 
 | Phase 63 P12 | 8min | 2 tasks | 4 files |
 | Phase 63 P15 | 9min | 3 tasks | 6 files |
 | Phase 63 P63-16 | 11 | 2 tasks | 4 files |
+| Phase 63 P17 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -450,6 +451,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: CR-02 closed with a binding-scoped refusedRestore latch read in prepareSave before deps.write, not a backup artifact.
 - [Phase 63]: Latch set by both refusal arms and never by missing; cleared only by bind/reset, a successful restore, or a successful sessionOnly purge commit.
 - [Phase 63]: WR-12: inner unsupported-version AQTL becomes container code aqtl-retired with a pinned named notice; no migration reader (no-backward-compat law).
+- [Phase 63]: CR-03: the close refusal is keyed on a controller latch episode (bind-incremented withheldEpisode + pure admitsWithheldClose gate) instead of a per-window boolean; the Studio compares closeWithheldAcknowledgedEpisodeRef and the refusal states that closing again discards the unsaved script.
+- [Phase 63]: WR-15: hasWithheldContent()'s durable-base arm is scoped to live key ids plus session anchor VALUES; an unknown (null/absent) live key map stays conservative so no base this track owns is under-counted.
+- [Phase 63]: Kept the 52.2-15 close-order source pin meaningful by widening its fixed slice 3600→4200 after the planned close-step expansion pushed the last pinned step out of range.
 
 ### Pending Todos
 
@@ -572,15 +576,15 @@ Items acknowledged and carried forward from previous milestone close:
 - Phase 61: Vector painting tool (spike-gated on per-vertex watercolour feasibility)
 - Phase 62: Painted-stroke curve editing (depends on Phase 61's editing surface)
 - Phase 63: Brush Tip Pipeline (v2.2.0, plan-backed from specs 01-02 — real tip mask, embedded `brushPack`, three built-in tips)
-- Phase 64: Medium Engine (v2.2.0, plan-backed from specs 03-05 — Viscosity, Medium profiles, pigment relief)
+- Phase 64: Medium Engine (v2.2.0, plan-backed from specs 03-06 — Viscosity, Medium profiles, pigment relief, Coverage)
 
 ## Session Continuity
 
-Last session: 2026-11-16T10:45:00.000Z
-Stopped at: Phase 63 complete, ready to plan Phase 64
+Last session: 2026-11-17T11:55:24.640Z
+Stopped at: Completed 63-17-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
 
-- Plan Phase 64 with /gsd-plan-phase 64 (quicks 03-05: Viscosity, Medium profiles, pigment relief)
+- Plan Phase 64 with /gsd-plan-phase 64 (quicks 03-06: Viscosity, Medium profiles, pigment relief, Coverage)

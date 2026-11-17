@@ -138,11 +138,11 @@ Both phases are **plan-backed**: `/gsd-plan-phase` produces the plans from these
   4. A library texture that is missing, corrupt or not exactly 512×512 degrades to an unavailable tip with the neutral round fallback — never a crash and never blank paint; the standing aggregate warning line was dropped on request (2026-11-16). Deleting a library texture is confirm-gated and container-scoped.
   5. A roto script saved with an imported tip carries only the texture id and its per-stroke rotation (metadata-only), so applying it into a project paints that texture when the machine library has it; every recorded stroke snapshots its own rotation. The catalog is machine-scoped, not per-project, so no project-scoped ghost mask survives.
 
-**Plans:** 16/17 plans executed
+**Plans:** 17/17 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 63-17-PLAN.md — Gap closure CR-03/WR-15: per-episode close acknowledgement and own-track withheld-content scope
+- [x] 63-17-PLAN.md — Gap closure CR-03/WR-15: per-episode close acknowledgement and own-track withheld-content scope
 - [x] 63-10-PLAN.md
 - [x] 63-13-PLAN.md
 - [x] 63-14-PLAN.md
@@ -212,7 +212,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 63. Brush Tip Pipeline | 16/16 | In Progress | - |
+| 63. Brush Tip Pipeline | 17/17 | In Progress | - |
 | 64. Medium Engine | 0 plans | Not started | - |
 
 ---
