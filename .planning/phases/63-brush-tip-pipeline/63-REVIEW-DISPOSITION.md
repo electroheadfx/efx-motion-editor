@@ -3,18 +3,18 @@ phase: 63
 review: 63-REVIEW.md
 titles: json
 findings:
-  - id: CR-01
+  - id: CR-03
     severity: critical
     disposition: open
-    title: "The withheld-save disclosure is destroyed with the window — the close path still silently accepts a withheld flush"
-  - id: WR-13
-    severity: warning
-    disposition: open
-    title: "Every purge action — including single-frame and raster purges — clears the refused-restore latch and replaces the unread snapshot session-only"
+    title: "Close refusal is acknowledged once per Studio window, not once per latch episode — a later refused track closes silently and destroys its withheld script"
   - id: WR-14
     severity: warning
     disposition: open
-    title: "Impossible-state guard — the short-body fallback in the AQTL version read can never be taken"
+    title: "Dead fallback — the short-body branch in the AQTL version read can never be taken"
+  - id: WR-15
+    severity: warning
+    disposition: open
+    title: "`hasWithheldContent()` counts another track's durable bases — a latched but empty binding refuses the close and names a destructive remedy"
   - id: IN-01
     severity: info
     disposition: open
@@ -31,6 +31,30 @@ findings:
     severity: info
     disposition: open
     title: "The explicit foreign-base guard is untested in the only configuration where it is load-bearing"
+  - id: IN-13
+    severity: info
+    disposition: open
+    title: "`persistAfterPurge`'s cache delete relies on an implicit `isDirty()` invariant instead of the latch"
+  - id: IN-14
+    severity: info
+    disposition: open
+    title: "Dead second-stage validation in the rotation encoder"
+  - id: IN-15
+    severity: info
+    disposition: open
+    title: "The AQTL header's rotation unit law describes code that does not exist"
+  - id: IN-16
+    severity: info
+    disposition: open
+    title: "An AQTL encode refusal is reported as an IO failure, and the catalog field that can trigger it is not range-validated on read"
+  - id: CR-01
+    severity: critical
+    disposition: open
+    title: "The withheld-save disclosure is destroyed with the window — the close path still silently accepts a withheld flush"
+  - id: WR-13
+    severity: warning
+    disposition: open
+    title: "Every purge action — including single-frame and raster purges — clears the refused-restore latch and replaces the unread snapshot session-only"
   - id: WR-01
     severity: warning
     disposition: open
@@ -115,22 +139,28 @@ findings:
     severity: info
     disposition: open
     title: "The import request mask is decoded twice"
-open: 28
-total: 28
-recorded: 2026-11-16T10:08:29.161Z
+open: 34
+total: 34
+recorded: 2026-11-17T10:22:08.146Z
 ---
 
 # Phase 63: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
-| WR-13 | warning | open | - |
+| CR-03 | critical | open | - |
 | WR-14 | warning | open | - |
+| WR-15 | warning | open | - |
 | IN-01 | info | open | - |
 | IN-10 | info | open | - |
 | IN-11 | info | open | - |
 | IN-12 | info | open | - |
+| IN-13 | info | open | - |
+| IN-14 | info | open | - |
+| IN-15 | info | open | - |
+| IN-16 | info | open | - |
+| CR-01 | critical | open | - (not in the current review) |
+| WR-13 | warning | open | - (not in the current review) |
 | WR-01 | warning | open | - (not in the current review) |
 | WR-02 | warning | open | - (not in the current review) |
 | IN-02 | info | open | - (not in the current review) |
