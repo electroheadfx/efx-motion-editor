@@ -213,8 +213,9 @@ if (this.everPainted) {
 }
 for (const t of this.docTargets()) if (t !== this.paper) g.clearTarget(t);
 ```
-`body = 0` takes **no** cover pass at all (bit-identity gate). `uAmount = min(1, P.body)` —
-not the Lift tool's own `0.9` clamp (spec 06 §3).
+`body = 0` takes **no** cover pass at all (bit-identity gate). `uAmount = bodyCurve(P.body)` —
+the shared `clamp01(body)^6` curve from `scattering.ts`, not the Lift tool's own `0.9` clamp and
+not spec 06 §3's inline `min(1, P.body)`, which D-14 supersedes.
 
 **(e) Whole-document snapshot — thickness lives with the paint** (64–70, 524–550):
 ```ts
@@ -771,7 +772,7 @@ One entry; reuse `lift` for the cover pass; no second program for the same maths
 |---|---|
 | `aquarelleStrokeSelection.ts:735–753` `commitAquarelleSelectionAppearance` | Returns `null` with no active selection — it cannot set the **next** stroke's values. D-04 supersedes spec 07 §2's parenthetical: a medium switch is never a selection edit. |
 | `aquarellePaintControls.ts:54–70` `commitAquarelleSelectionParam(s)` | Selection-only, same reason. |
-| `Engine.ts:1987` `Math.min(0.9, P.lift * dwell)` | The Lift tool's own clamp. The cover pass must use `Math.min(1, P.body)` so full Body reaches a true zero (spec 06 §3). |
+| `Engine.ts:1987` `Math.min(0.9, P.lift * dwell)` | The Lift tool's own clamp. The cover pass uses `bodyCurve(P.body)` — the shared `clamp01(body)^6` curve from `scattering.ts`: Body 50 yields 0.015625 (a glaze) and Body 100 still reaches 1 at the tip core. D-14 supersedes spec 06 §3's inline `min(1, P.body)` clamp. |
 | `shaders.ts:70–71` grain re-threshold | `stampFS`'s paper-tooth gate is correct for the **thickness deposit** (spec 05) but must NOT be added to the cover pass (D-11). |
 | `shaders.ts:683–685, 696, 709, 729` `cov`/gouache channel | Reassigned to scattering in spec 08; do not extend it for coverage. |
 | `Engine.ts:1394` `if (t !== this.paper) g.clearTarget(t)` | Correct for `clear()`, but remember `relief` must be in `docTargets()` for this loop to reach it. |
