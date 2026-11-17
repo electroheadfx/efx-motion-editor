@@ -4058,7 +4058,10 @@ describe('261023-l35 studio script snapshot seams', () => {
 // controller no longer accepts a brush frame source.
 describe('261023-l35 watercolor-only Studio script snapshot', () => {
   it('feeds the watercolor revision fingerprint and no brush frame source', () => {
-    expect(studio).toContain('getContentSignature: () => `${aquarelleStrokesRevision.peek()}`,');
+    // 64-07 (MED-17): the same fingerprint now carries the light term — a
+    // render-setting change must rotate it, or a cached artifact could serve
+    // pixels lit by a superseded light.
+    expect(studio).toContain('getContentSignature: () => `${aquarelleStrokesRevision.peek()}|${lightSignature(documentLight())}`,');
     expect(studio).not.toContain('getBrushFrames');
   });
 });
@@ -6554,7 +6557,7 @@ describe('61-10 vector path edit wiring in the Studio', () => {
   });
 
   it('threads the mount prop into the layer seam through one ref', () => {
-    expect(canvasMount).toContain("import type { AquarelleStroke, VectorAnchor } from '@efxlab/efx-watercolor';");
+    expect(canvasMount).toContain("import type { AquarelleStroke, LightSettings, VectorAnchor } from '@efxlab/efx-watercolor';");
     expect(canvasMount).toContain('onAquarelleVectorPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => Promise<number | null>;');
     expect(canvasMount).toContain('const onAquarelleVectorPathEditRef = useRef(props.onAquarelleVectorPathEdit);');
     expect(canvasMount).toContain('onAquarelleVectorPathEditRef.current = props.onAquarelleVectorPathEdit;');

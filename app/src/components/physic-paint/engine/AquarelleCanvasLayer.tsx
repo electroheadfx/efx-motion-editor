@@ -37,6 +37,7 @@ import type {
   AquarellePoint,
   AquarelleStroke,
   AquarelleTool,
+  LightSettings,
   VectorAnchor,
 } from '@efxlab/efx-watercolor';
 import {
@@ -308,7 +309,10 @@ function toolForSelection(): AquarelleTool {
  */
 let appliedMaskGeneration = -1;
 
-function applyLiveConfig(engine: WatercolorEngine): void {
+function applyLiveConfig(
+  engine: WatercolorEngine,
+  getLight?: () => LightSettings | undefined,
+): void {
   const generation = maskGeneration();
   if (generation !== appliedMaskGeneration) {
     appliedMaskGeneration = generation;
@@ -353,6 +357,12 @@ function applyLiveConfig(engine: WatercolorEngine): void {
       textureId: null,
       overrides: selection.toolOverrides,
     }));
+  // 64-07 (MED-17): the layer document's emboss light is render state, read
+  // live through the getter on every frame. Absent leaves the engine default
+  // in force; `setLight` is compare-then-write (64-04), so an unchanged triple
+  // costs three numeric comparisons and nothing else.
+  const light = getLight?.();
+  if (light) engine.setLight(light);
 }
 
 export function AquarelleCanvasLayer(props: {
@@ -374,6 +384,13 @@ export function AquarelleCanvasLayer(props: {
    * different tooth and lose density after Move/Apply.
    */
   getPaperGrainStrength?: () => number;
+  /**
+   * 64-07 (MED-17): the paint-layer document's emboss light — a getter so the
+   * per-frame applyLiveConfig reads the LIVE document without a second signal
+   * and without invalidating the canvas-mount memo. Absent leaves the engine
+   * default in force.
+   */
+  getLight?: () => LightSettings | undefined;
   disabled?: boolean;
   onStrokeEnd?: (stroke: AquarelleStroke) => void;
   /**
@@ -483,6 +500,7 @@ export function AquarelleCanvasLayer(props: {
   const getPlayFrameRef = useRef(props.getPlayFrame);
   const getPaperIdRef = useRef(props.getPaperId);
   const getPaperGrainStrengthRef = useRef(props.getPaperGrainStrength);
+  const getLightRef = useRef(props.getLight);
   const onStrokeEndRef = useRef(props.onStrokeEnd);
   const getLiftBlockedRef = useRef(props.getLiftBlocked);
   const onLiftBlockedRef = useRef(props.onLiftBlocked);
@@ -505,6 +523,7 @@ export function AquarelleCanvasLayer(props: {
   getPlayFrameRef.current = props.getPlayFrame;
   getPaperIdRef.current = props.getPaperId;
   getPaperGrainStrengthRef.current = props.getPaperGrainStrength;
+  getLightRef.current = props.getLight;
   onStrokeEndRef.current = props.onStrokeEnd;
   getLiftBlockedRef.current = props.getLiftBlocked;
   onLiftBlockedRef.current = props.onLiftBlocked;
@@ -713,7 +732,7 @@ export function AquarelleCanvasLayer(props: {
     // display on transparent (the document fond is the compositor's — v1.0).
     engine.setCompositorLayer(true);
 
-    applyLiveConfig(engine);
+    applyLiveConfig(engine, getLightRef.current);
     engine.setPigment(pigmentFromHex(colorRef.current));
     // F3: deposit grain follows the Studio paper (R2.3) — never the vendor
     // default. 261027 UAT round 9: the STRENGTH is half of that law; the bake
@@ -947,7 +966,7 @@ export function AquarelleCanvasLayer(props: {
       if (wasAwake && !awake) stampPendingSettle();
       wasAwake = awake;
       if (!disabledRef.current) {
-        applyLiveConfig(engine);
+        applyLiveConfig(engine, getLightRef.current);
         engine.setPigment(pigmentFromHex(colorRef.current));
         applyPaper();
       }

@@ -2483,6 +2483,9 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       size,
       reference: { bytesByAppFrame, transform: track.transform, zoom: referenceZoom },
       aquarellePaper: input.aquarellePaper,
+      // 64-07 (MED-17): the layer document's emboss light, read at render time
+      // from the record already loaded above — never a copied input.
+      light: document.light,
       onStrokeFrameAnchors: input.onStrokeFrameAnchors,
       signal: input.signal,
       onProgress: input.onProgress,
@@ -2683,6 +2686,9 @@ export async function renderRevealTailFrames(input: RevealTailRenderInput): Prom
       size,
       reference: { bytesByAppFrame, transform: track.transform, zoom: referenceZoom },
       aquarellePaper: input.aquarellePaper,
+      // 64-07 (MED-17): the layer document's emboss light, read at render time
+      // from the record already loaded above — never a copied input.
+      light: document.light,
       onStrokeFrameAnchors: (next) => { anchors = next; },
       signal: input.signal,
       onProgress: input.onProgress,

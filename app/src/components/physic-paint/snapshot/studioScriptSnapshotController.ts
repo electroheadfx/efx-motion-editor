@@ -123,7 +123,12 @@ export interface StudioScriptSnapshotControllerDeps {
   /** The current launch identity, or null while none is known. */
   getIdentity: () => StudioScriptSnapshotIdentity | null;
   getWatercolorEvents: () => readonly AquarellePayloadEvent[];
-  /** Opaque content fingerprint; any script mutation must change it. */
+  /**
+   * Opaque content fingerprint; any script mutation must change it — and so
+   * must a render-setting change (64-07, MED-17: the document light joins the
+   * signature, so a cached artifact can never serve pixels lit by a superseded
+   * light), while a same-value write leaves it identical.
+   */
   getContentSignature: () => string;
   /**
    * 261101-o2m: true while the Studio's watercolor pixels are dirty (Draft).

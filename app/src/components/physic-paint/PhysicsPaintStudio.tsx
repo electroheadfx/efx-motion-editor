@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { CompletedPaintMutation, PaintHistoryAvailability, RotoEditableState } from './types/paintCore';
-import type { BlendMode, DocumentSoundClip, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
+import type { BlendMode, DocumentSoundClip, FrameLoopClipRepeat, FrameLoopClipScale, PaintDocumentLight } from '../../efx-paint/document/efxPaintDocument';
 import type { SoundBandGesturePatch } from './view/soundBandGeometry';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../types/physicPaint';
 import type { PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
@@ -27,6 +27,7 @@ import {
   setBackgroundClipScale,
   setBackgroundClipSource,
   setBackgroundFallback,
+  setDocumentLight,
   setPhotoReferenceSource,
   setPhotoReferenceVisible,
   setPhotoReferenceOpacity,
@@ -147,7 +148,7 @@ import { deriveKeyRailSegments, projectSelectedKeyRailInspector } from './view/p
 // the 58-05 authority pin's exact import line intact (no test outside this
 // plan's file list is modified).
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
-import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings, type StudioBackgroundMode } from './engine/physicsPaintStudioSettings';
+import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, lightSignature, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings, type StudioBackgroundMode } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage, writeEfxPaintSessionDocumentCheckpoint } from './bridge/physicsPaintBridgeTransport';
 import { createDocumentSyncPushDecision, createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
@@ -1356,6 +1357,13 @@ export function PhysicsPaintStudio() {
   // still holds the PREVIOUS context at that moment) and refreshed by every
   // project-context republish, so a save-as rebind is followed live.
   const studioScriptSnapshotAuthorityRef = useRef<string | null>(null);
+  // 64-07 (MED-17): the ACTIVE paint-layer document's emboss light, resolved
+  // at CALL time — a getter, never a copied prop, so the live sheet's per-frame
+  // read, every bake and the content signature all see the current document.
+  const documentLight = (): PaintDocumentLight | undefined => {
+    const layerId = launchContextRef.current?.layerId;
+    return layerId ? getEfxPaintDocument(layerId)?.light : undefined;
+  };
   const studioScriptSnapshotControllerRef = useRef<StudioScriptSnapshotController | null>(null);
   if (studioScriptSnapshotControllerRef.current === null) {
     studioScriptSnapshotControllerRef.current = createStudioScriptSnapshotController({
@@ -1365,7 +1373,11 @@ export function PhysicsPaintStudio() {
       // every record/capture/restore/delete, so a save can never miss a
       // mutation — and a stroke that completes without a bump is the one
       // silent-loss case this signature is chosen to rule out.
-      getContentSignature: () => `${aquarelleStrokesRevision.peek()}`,
+      // 64-07 (MED-17): the light is a render setting too — its triple joins
+      // the fingerprint (`lightSignature` normalizes absence and the explicit
+      // default to one string), so a light change can never serve pixels lit
+      // by a superseded light, and a same-value write leaves it identical.
+      getContentSignature: () => `${aquarelleStrokesRevision.peek()}|${lightSignature(documentLight())}`,
       // 261101-o2m (D-05, T-261101-o2m-10): the Draft deferral — the script is
       // committed but the pixels are frozen, so every snapshot write waits for
       // the settle's `markDirty()` (a `.peek()` read: no subscription).
@@ -2196,6 +2208,9 @@ export function PhysicsPaintStudio() {
           grainStrength: bgMeta.grainStrength,
           grainScale: bgMeta.grainScale ?? 1,
         },
+        // 64-07 (MED-17): the bake renders with the ACTIVE layer document's
+        // current light — resolved at render time, never a copied prop.
+        light: documentLight(),
         publish: async (frame) => {
           // 261026 axis 2 (watercolor-loop-render-split): the baked sheet is the
           // SCRIPT layer only. On a group frame the rail's cached paint is the
@@ -2851,6 +2866,22 @@ export function PhysicsPaintStudio() {
     }
     recordPaperDisplayEdit(paperEdit, fallbackEdit);
   };
+  // 64-07 (MED-17): the ONE light writer. The store owns the mutation, the
+  // engine band clamp and the unified-ledger descriptor; the Studio only
+  // records the returned entry — the same one-line contract the paper pair
+  // uses above. A same-value patch returns a null descriptor and writes
+  // nothing, so no ledger entry and no signature change.
+  const handleDocumentLightChange = (patch: Partial<PaintDocumentLight>): void => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return;
+    const result = setDocumentLight(layerId, patch);
+    if (result.ok && result.descriptor) {
+      rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+    }
+  };
+  // 64-09 threads this handler into `rightPanelProps` (`onLightChange`); the
+  // reference keeps the noUnusedLocals gate green until those controls land.
+  void handleDocumentLightChange;
   // 56-05 (PAPER-03 / D-10): the shared-panel Paper section's paper-id port —
   // display-class edit through the store's paper-id setter (fond + change
   // token). Transparent / White route through handleBackgroundChange.
@@ -8038,6 +8069,7 @@ export function PhysicsPaintStudio() {
         events: aquarelleRecoveryEvents(appFrame),
         size,
         paper: aquarelleLiftPaperRef.current,
+        light: documentLight(),
         onDiagnostics: (diagnostics) => {
           recoveryDiagnostics = diagnostics;
         },
@@ -8378,6 +8410,7 @@ export function PhysicsPaintStudio() {
               events,
               size,
               paper: aquarelleLiftPaperRef.current,
+              light: documentLight(),
               onDiagnostics: (diagnostics) => {
                 recoveryDiagnostics = diagnostics;
               },
@@ -10711,6 +10744,9 @@ export function PhysicsPaintStudio() {
       getAquarellePlayFrame,
       getAquarellePaperId,
       getAquarellePaperGrainStrength,
+      // 64-07 (MED-17): a getter, not a value — the live sheet reads the
+      // document light every frame and the canvas-mount memo stays stable.
+      getAquarelleLight: documentLight,
       // 261028-k03 D3: the pointerdown gate's two legs.
       getAquarelleLiftBlocked,
       onAquarelleLiftBlocked: handleAquarelleLiftBlocked,

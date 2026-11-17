@@ -1,6 +1,7 @@
 import type { BgMode, ToolType } from '../types/paintCore';
-import type { BackgroundFallback, PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundFallback, PaintDocumentLight, PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
+import { DEFAULT_LIGHT } from '@efxlab/efx-watercolor';
 
 /**
  * 56-05 (PAPER-01): the Studio's background field spans the selector's BgMode
@@ -133,5 +134,24 @@ export function applyBackgroundFallbackToSettings(fallback: BackgroundFallback):
     };
   }
   return { ...initial, background };
+}
+
+/**
+ * 64-07 (MED-17): the content-signature term for the per-document emboss light.
+ * Canonical: the same triple always yields the same string. An absent light
+ * and the explicit engine `DEFAULT_LIGHT` render the SAME pixels, so both
+ * yield `default` — a cached artifact keyed on the signature can never
+ * alternate between two strings for one picture.
+ */
+export function lightSignature(light: PaintDocumentLight | undefined): string {
+  if (!light) return 'default';
+  if (
+    light.azimuth === DEFAULT_LIGHT.azimuth
+    && light.elevation === DEFAULT_LIGHT.elevation
+    && light.intensity === DEFAULT_LIGHT.intensity
+  ) {
+    return 'default';
+  }
+  return `${light.azimuth}|${light.elevation}|${light.intensity}`;
 }
 

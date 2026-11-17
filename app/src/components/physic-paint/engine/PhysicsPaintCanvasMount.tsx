@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { AquarelleStroke, VectorAnchor } from '@efxlab/efx-watercolor';
+import type { AquarelleStroke, LightSettings, VectorAnchor } from '@efxlab/efx-watercolor';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { physicsPaintCanvasZoom } from '../view/physicsPaintCanvasZoom';
@@ -46,6 +46,9 @@ export function PhysicsPaintCanvasMount(props: {
   getAquarellePlayFrame?: () => number;
   getAquarellePaperId?: () => string;
   getAquarellePaperGrainStrength?: () => number;
+  /** 64-07 (MED-17): the ACTIVE layer document's emboss light, forwarded to
+   *  the live sheet as a getter — the per-frame apply reads it live. */
+  getAquarelleLight?: () => LightSettings | undefined;
   /** 261028-k03 D3/D2: a Lift gesture is refused at pointerdown for every
    *  fail-closed state (Script OFF with a script, group frame, unknown base,
    *  no displayable paint). Returns the copy to publish, or null to proceed. */
@@ -93,6 +96,7 @@ export function PhysicsPaintCanvasMount(props: {
   const getAquarellePlayFrameRef = useRef(props.getAquarellePlayFrame);
   const getAquarellePaperIdRef = useRef(props.getAquarellePaperId);
   const getAquarellePaperGrainStrengthRef = useRef(props.getAquarellePaperGrainStrength);
+  const getAquarelleLightRef = useRef(props.getAquarelleLight);
   const getAquarelleLiftBlockedRef = useRef(props.getAquarelleLiftBlocked);
   const onAquarelleLiftBlockedRef = useRef(props.onAquarelleLiftBlocked);
   const onAquarelleLiftDabRef = useRef(props.onAquarelleLiftDab);
@@ -113,6 +117,7 @@ export function PhysicsPaintCanvasMount(props: {
   getAquarellePlayFrameRef.current = props.getAquarellePlayFrame;
   getAquarellePaperIdRef.current = props.getAquarellePaperId;
   getAquarellePaperGrainStrengthRef.current = props.getAquarellePaperGrainStrength;
+  getAquarelleLightRef.current = props.getAquarelleLight;
   getAquarelleLiftBlockedRef.current = props.getAquarelleLiftBlocked;
   onAquarelleLiftBlockedRef.current = props.onAquarelleLiftBlocked;
   onAquarelleLiftDabRef.current = props.onAquarelleLiftDab;
@@ -218,6 +223,7 @@ export function PhysicsPaintCanvasMount(props: {
         getPlayFrame={() => getAquarellePlayFrameRef.current?.() ?? 0}
         getPaperId={() => getAquarellePaperIdRef.current?.() ?? 'paper/cold-press'}
         getPaperGrainStrength={() => getAquarellePaperGrainStrengthRef.current?.() ?? 1}
+        getLight={() => getAquarelleLightRef.current?.()}
         disabled={false}
         getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}
         onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}
