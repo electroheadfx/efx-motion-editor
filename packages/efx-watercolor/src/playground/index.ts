@@ -28,6 +28,8 @@ export {
   SIZE_SCALE_AT_MAX,
 } from './params'
 export type { AquarelleCanonicalParams } from './params'
+export { MEDIUMS, MEDIUM_IDS, DEFAULT_MEDIUM_ID, mediumById } from './mediums'
+export type { MediumId, MediumParamKey, MediumRecord } from './mediums'
 export { buildBrushForStroke, strokeTipData } from './brushBridge'
 export type { BrushMultiplierOverrides, BrushStrokeOptions } from './brushBridge'
 export { pigmentFromHex, hexToRgb, rgbToHex } from './spectral'

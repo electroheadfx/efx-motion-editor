@@ -45,12 +45,16 @@ export interface Params {
   granulation: number; // pigment settling into the paper grain
   lift: number;        // Lift per-dab erase amount (0..0.9)
   viscosity: number;   // Phase 64: medium thickness — raises dissipation, lowers spread (0..1)
+  body: number;        // Phase 64: cover strength — declared here, consumed by its own plan (0..1)
+  emboss: number;      // Phase 64: relief lighting — declared here, consumed by its own plan (0..1)
 }
 
 export const DEFAULT_PARAMS: Params = {
   size: 0.5, water: 0.6, load: 0.5, flow: 0.45, bleed: 0.5, dry: 0.4, edge: 0.5, granulation: 0.45,
   lift: 0.22,
   viscosity: 0,
+  body: 0,
+  emboss: 0,
 };
 
 export interface EngineCallbacks {

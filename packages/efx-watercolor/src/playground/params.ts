@@ -9,7 +9,10 @@
 
 import type { Params } from './Engine'
 
-/** The 8 AQUA-04 globals as the UI records them, plus the Lift strength. */
+/**
+ * The 8 AQUA-04 globals as the UI records them, plus the Lift strength and
+ * the Phase 64 medium keys (viscosity, body, emboss).
+ */
 export interface AquarelleCanonicalParams {
   size: number
   water: number
@@ -32,6 +35,18 @@ export interface AquarelleCanonicalParams {
    * lowers its diffusion floor from this one value.
    */
   viscosity: number
+  /**
+   * Phase 64 (v2.2.0): how much a covering stroke replaces the settled paint
+   * under it, 0..100. 0 is neutral (no cover pass) — declared here, consumed
+   * by its own plan.
+   */
+  body: number
+  /**
+   * Phase 64 (v2.2.0): how strongly the paint thickness is lit as relief,
+   * 0..100. 0 is neutral (flat paint) — declared here, consumed by its own
+   * plan.
+   */
+  emboss: number
 }
 
 export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Object.freeze({
@@ -45,6 +60,8 @@ export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Obje
   granulation: 50,
   lift: 22,
   viscosity: 0,
+  body: 0,
+  emboss: 0,
 })
 
 function num(v: number | undefined, fallback: number): number {
@@ -115,5 +132,7 @@ export function toEngineParams(
     granulation: num(p.granulation, d.granulation) / 100,
     lift: num(p.lift, d.lift) / 100,
     viscosity: clamp01(num(p.viscosity, d.viscosity) / 100),
+    body: clamp01(num(p.body, d.body) / 100),
+    emboss: clamp01(num(p.emboss, d.emboss) / 100),
   }
 }
