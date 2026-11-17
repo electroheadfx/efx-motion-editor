@@ -52,6 +52,29 @@ function expectNotContains(source: string, needle: string): void {
   expect(source.includes(needle), `unexpected source text: ${needle}`).toBe(false)
 }
 
+/** Zero-based indexes of every source line containing the literal. */
+function lineIndexesOf(source: string, needle: string): number[] {
+  return source
+    .split('\n')
+    .flatMap((line, index) => (line.includes(needle) ? [index] : []))
+}
+
+// Engine members are two-space class-body declarations; statements inside a
+// method sit deeper. Control-flow keywords are filtered so a block opener can
+// never be read as a method header.
+const METHOD_HEADER =
+  /^ {2}(?:(?:private|public|protected|static|async|override|readonly|get|set)\s+)*([A-Za-z_$][\w$]*)\s*(?:<[^>]*>)?\s*\(/
+const NOT_A_METHOD = new Set(['if', 'for', 'while', 'switch', 'catch', 'return', 'do', 'else'])
+
+/** The method enclosing a line, derived by scanning back to its header. */
+function enclosingMethod(lines: readonly string[], lineIndex: number): { name: string; header: number } {
+  for (let i = lineIndex; i >= 0; i -= 1) {
+    const match = lines[i]!.match(METHOD_HEADER)
+    if (match && !NOT_A_METHOD.has(match[1]!)) return { name: match[1]!, header: i }
+  }
+  return { name: '(none)', header: -1 }
+}
+
 const BRUSH_CASE = () =>
   sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
 const CALLBACK = () =>
@@ -325,40 +348,43 @@ describe('the cover seam', () => {
     )
   })
 
-  it('releases the snapshot at every lifecycle site', () => {
-    expect((ENGINE_SOURCE.match(/this\.dropPreInk\(\);/g) ?? []).length, 'nine release sites').toBe(9)
-    const sites: Array<[string, string, string]> = [
-      ['stroke end', 'if (s.ending) {', 'this.stroke = null;'],
-      ['clear', 'clear() {', 'resetSheet() {'],
-      ['resetSheet', 'resetSheet() {', 'abortStroke() {'],
-      ['abortStroke', 'abortStroke() {', 'undo() {'],
-      ['restore', 'restore(s: DocumentSnapshot) {', 'this.queue = [];'],
-      ['travel', 'private travel(', 'private notifyHistory()'],
-      [
-        'resizeDocument',
-        'resizeDocument(w: number, h: number) {',
-        '/* ------------------------------------------------- whole-document state */',
-      ],
-      ['createDocument', 'private createDocument(', 'private resetPaintState()'],
-      ['destroy', 'destroy() {', '/* ------------------------------------------------------------------ input */'],
-    ]
-    for (const [name, start, end] of sites) {
-      expectContains(sliceBetween(ENGINE_SOURCE, start, end), 'this.dropPreInk();')
-      expect(name.length).toBeGreaterThan(0)
+  it('releases the snapshot wherever a lifecycle teardown runs', () => {
+    // WR-02: the sites are DERIVED from the source, never hand-listed. Each
+    // release line is mapped to its enclosing method by scanning backwards for
+    // the nearest two-space class-member header, so a release that is added,
+    // removed, or moved out of a lifecycle method changes this SET and fails.
+    const lines = ENGINE_SOURCE.split('\n')
+    const releases = lineIndexesOf(ENGINE_SOURCE, 'this.dropPreInk();')
+    const disposes = lineIndexesOf(ENGINE_SOURCE, 'this.g.disposeTargets();')
+    const releaseSites = [...new Set(releases.map((line) => enclosingMethod(lines, line).name))].sort()
+    expect(releaseSites, 'the derived lifecycle release set').toEqual([
+      'abortStroke',
+      'clear',
+      'createDocument', // allocation site
+      'destroy',
+      'processInput', // the stroke-end branch
+      'resetSheet',
+      'resizeDocument',
+      'restore',
+      'travel',
+    ])
+    expect(releases.length, 'one release per site').toBe(releaseSites.length)
+    // The structural law: every disposeTargets() caller releases preInk in the
+    // SAME method and BEFORE the bulk teardown, so a new dispose site cannot
+    // ship without a release (the CR-02 gap this pin missed).
+    const disposeSites = [...new Set(disposes.map((line) => enclosingMethod(lines, line).name))].sort()
+    expect(disposeSites, 'the dispose callers').toEqual(['createDocument', 'destroy', 'restore'])
+    for (const name of disposeSites) {
+      expect(releaseSites, `dispose caller ${name} also releases preInk`).toContain(name)
     }
-    // Never a dangling field: the release precedes the bulk teardown.
-    const create = sliceBetween(ENGINE_SOURCE, 'private createDocument(', 'private resetPaintState()')
-    expect(create.indexOf('this.dropPreInk();')).toBeLessThan(create.indexOf('this.g.disposeTargets();'))
-    const destroy = sliceBetween(
-      ENGINE_SOURCE,
-      'destroy() {',
-      '/* ------------------------------------------------------------------ input */',
-    )
-    expect(destroy.indexOf('this.dropPreInk();')).toBeLessThan(destroy.indexOf('this.g.disposeTargets();'))
-    // restore() is the third disposeTargets caller and releases preInk too.
-    const restore = sliceBetween(ENGINE_SOURCE, 'restore(s: DocumentSnapshot) {', 'this.uploadWhole(s.whole);')
-    expect(restore.indexOf('this.dropPreInk();')).toBeGreaterThanOrEqual(0)
-    expect(restore.indexOf('this.dropPreInk();')).toBeLessThan(restore.indexOf('this.g.disposeTargets();'))
+    for (const disposeLine of disposes) {
+      const owner = enclosingMethod(lines, disposeLine)
+      const releasesFirst = releases.some((releaseLine) => {
+        const release = enclosingMethod(lines, releaseLine)
+        return release.header === owner.header && releaseLine < disposeLine
+      })
+      expect(releasesFirst, `preInk release precedes disposeTargets in ${owner.name}`).toBe(true)
+    }
   })
 
   it('Body 0 allocates nothing, draws nothing and emits nothing', () => {
