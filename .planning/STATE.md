@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-02-PLAN.md
-last_updated: "2026-11-17T15:12:34.377Z"
+stopped_at: Completed 64-03-PLAN.md
+last_updated: "2026-11-17T15:27:39.760Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 64 execution started
-state_head: cdcf04e8bb3bf1ca6093e89ce6546f9ab3207a8a
+state_head: b9a5c2e7d6a8d7dd2248b036564f918941620ddf
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 29
-  completed_plans: 19
+  completed_plans: 20
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 3 of 12
+Plan: 4 of 12
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 64 execution started
 
@@ -146,6 +146,7 @@ Last activity: 2026-11-17 — Phase 64 execution started
 | Phase 63 P17 | 4min | 2 tasks | 4 files |
 | Phase 64 P01 | 7min | 3 tasks | 11 files |
 | Phase 64 P02 | 14min | 3 tasks | 10 files |
+| Phase 64 P03 | 11 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -464,6 +465,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: The watercolor medium record derives from DEFAULT_CANONICAL_PARAMS for all ten keys, so the neutral medium can never drift from the canonical defaults.
 - [Phase 64]: pastel displays as Chalk per D-18: the id stays the serialized identity queryable by mediumById; the name is the user-facing label.
 - [Phase 64]: MED-19 deferred to 64-06: 64-02 lands Body's canonical-set membership (all four bags, default 0) but the Body globals row ships in 64-06.
+- [Phase 64]: Thickness is one document-resolution HALF_FLOAT_R target, not a ping-pong pair: nothing advects it, and History.swap reads fbs[0] and writes every framebuffer, so travel() pairs it as a one-element entry.
+- [Phase 64]: bindFootprint is shared by drawStamp and drawRelief so the relief footprint cannot drift; drawRelief takes an optional brush/rect/rough/jitter so Lift reuses the lift brush and rect with grain zeroed for liftFS mask parity.
+- [Phase 64]: The deposit is structurally guarded at emboss 0 (no GL call at all), and resizeDocument forward-copies the thickness so a resized sheet keeps its relief (Rule 2 completion of the plan's must_have).
 
 ### Pending Todos
 
@@ -590,8 +594,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-17T15:12:33.576Z
-Stopped at: Completed 64-02-PLAN.md
+Last session: 2026-11-17T15:27:38.982Z
+Stopped at: Completed 64-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
