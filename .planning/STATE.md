@@ -4,17 +4,17 @@ milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
-status: executing
-stopped_at: Completed 64-10-PLAN.md
-last_updated: "2026-11-17T17:10:40.379Z"
+status: verifying
+stopped_at: Completed 64-09-PLAN.md
+last_updated: "2026-11-17T17:18:58.303Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 64 execution started
-state_head: d991b2cce7cbdb7d2e7ef465788d264d87ed1937
+state_head: 93b205f49bc312af7d50cc203326599db1d89009
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 29
-  completed_plans: 28
+  completed_plans: 29
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 
 Phase: 64 (Medium Engine) — EXECUTING
 Plan: 12 of 12
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-17 — Phase 64 execution started
 
 
@@ -155,6 +155,7 @@ Last activity: 2026-11-17 — Phase 64 execution started
 | Phase 64 P08 | 7m | 2 tasks | 9 files |
 | Phase 64 P07 | ~2h10m | 2 tasks | 13 files |
 | Phase 64 P10 | 6min14s | 3 tasks | 9 files |
+| Phase 64 P09 | 1h 49m | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -504,6 +505,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: The raw sinh/cosh KM denominator is replaced by its exp(-arg)-normalized twin and the reflectance complement is emitted in closed form, so every band stays finite and inside [0,1] for any deposit a stroke can reach (overflow at arg ~ 88 -> NaN)
 - [Phase 64]: The display shader reads one broadband scattering scalar (iB.a + fB.a), scales it by the same granulation factor as the coefficients (D-16), and keeps the paper term as the final multiply (D-15); the epsilon branch emits the 16 legacy band line-pairs character for character
 - [Phase 64]: The probe's high-definition sheet is 1024 square (no phase constant exists) and reports bakeMs + renderMs; durations are printed by the comparator and never compared, so cost cannot fail a byte-identity gate
+- [Phase 64]: 64-09: the light rows fall back to props.light ?? DEFAULT_LIGHT from the package — the triple is never retyped in the app
+- [Phase 64]: 64-09: row geometry mirrors the store bands (Azimuth 0..360 step 1, Elevation 0..90 step 1, Intensity 0..4 step 0.1); setDocumentLight stays the only wrap/clamp authority
+- [Phase 64]: 64-09: label change scoped to TOP_PANE_TAB_LABELS.paper = 'Paper & Light'; tab id, order and aria-label untouched, label pins repointed never deleted
+- [Phase 64]: 64-09: no new memo dep — efxPaintVersion.value already refreshes rightPanelProps on every document edit, setDocumentLight included
+- [Phase 64]: 64-09: Task 2 behavioural row drives the deps surface against the real store (node env cannot import the Studio); the Studio wiring is source-pinned (64-07 precedent)
 
 ### Pending Todos
 
@@ -630,8 +636,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-17T17:10:39.591Z
-Stopped at: Completed 64-10-PLAN.md
+Last session: 2026-11-17T17:18:57.504Z
+Stopped at: Completed 64-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
