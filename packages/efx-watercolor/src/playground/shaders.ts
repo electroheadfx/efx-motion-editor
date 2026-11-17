@@ -7,6 +7,7 @@ import { displayBasisGLSL } from './spectral';
 //                                      B.rgb = coeffs 4..6, B.a = white gouache
 //   fixed     2 × RGBA16F (document)   pigment settled into the paper (no white)
 //   paper     RGBA8  (document)        r = lit relief, g = height, b = mottle, a = fleck
+//   relief    R16F   (document)        paint thickness, lit by displayFS's emboss term
 
 const HEADER = `#version 300 es
 precision highp float;
@@ -656,10 +657,24 @@ void main(){
   o1 = uColor1 * w;
 }`;
 
-/** Final composite: spectral reconstruction of pigment on paper. */
+/**
+ * Final composite: spectral reconstruction of pigment on paper.
+ *
+ * Phase 64 (MED-15) — the paint thickness field shades as a lit relief:
+ *   normal     one document texel of central difference, the same law
+ *              paperLightFS uses (uReliefBump = 1.0, fixed, never zoom-scaled)
+ *   lit delta  uLightIntensity * (dot(n, L) - L.z) * uReliefBump * EMBOSS_GAIN
+ *              EMBOSS_GAIN = 2.0, EMBOSS_SHADE_MAX = 1.5
+ *   shade      clamp(1.0 + litDelta * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX)
+ * At a zero gradient dot(n, L) == L.z and the lit delta is exactly 0, so the
+ * shade is 1.0 at any intensity (D-09: never a flat multiply). uFlat gates the
+ * lit delta only, so a region pick reads the unshaded sheet. The light angles
+ * arrive in radians; only Engine.drawDisplay converts degrees.
+ */
 export const displayFS = `${HEADER}
 out vec4 o;
 uniform sampler2D uInkA, uInkB, uFixedA, uFixedB, uWet, uPaper;
+uniform sampler2D uRelief; // Phase 64: paint thickness field (one channel)
 uniform vec4 uView;       // canvas px -> document uv: uv = (fragCoord - xy) / zw
 uniform vec2 uTexel;      // document texel size
 uniform float uGranulation, uEdgeDarken;
@@ -671,6 +686,9 @@ uniform vec4 uRefRect;    // its placement in document uv: xy origin, zw size
 uniform float uRefOpacity;
 uniform float uShadow;    // screen only: size of the sheet's shadow on the desk (canvas px), 0 for exports
 uniform float uDpr;
+uniform float uLightAzimuth, uLightElevation, uLightIntensity, uReliefBump; // Phase 64: radians, radians, 0..4, fixed bump
+const float EMBOSS_GAIN = 2.0;
+const float EMBOSS_SHADE_MAX = 1.5;
 ${PAPER_COLOUR}
 ${TO_SRGB}
 float density(vec2 uv){ return texture(uInkA, uv).x + texture(uFixedA, uv).x; }
@@ -719,10 +737,53 @@ void main(){
   float tr;
 ${displayBasisGLSL()}
 
+  // Phase 64 (MED-15): light the paint thickness field. One document texel of
+  // central difference — the same law paperLightFS uses — so the gradient is
+  // fixed in document space and cannot crawl under zoom or pan. A texel with
+  // no thickness casts no shade. A flat field tilts the normal to (0, 0, 1),
+  // where dot(n, L) - L.z is exactly 0 at any intensity: the emboss is a
+  // gradient term, never a flat multiply.
+  float shade = 1.0;
+  {
+    float c = texture(uRelief, uv).x;
+    if (c > 0.0){
+      float l = texture(uRelief, uv - vec2(uTexel.x, 0.0)).x, r = texture(uRelief, uv + vec2(uTexel.x, 0.0)).x;
+      float b = texture(uRelief, uv - vec2(0.0, uTexel.y)).x, t = texture(uRelief, uv + vec2(0.0, uTexel.y)).x;
+      vec3 n = normalize(vec3((l - r) * uReliefBump, (b - t) * uReliefBump, 1.0));
+      vec3 L = normalize(vec3(
+        cos(uLightElevation) * cos(uLightAzimuth),
+        cos(uLightElevation) * sin(uLightAzimuth),
+        sin(uLightElevation)));
+      float litDelta = uLightIntensity * (dot(n, L) - L.z) * uReliefBump * EMBOSS_GAIN;
+      shade = clamp(1.0 + litDelta * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX);
+    }
+  }
+
   // White gouache sits on top as an opaque layer, a little patchy on the tooth.
   float cov = 1.0 - exp(-2.2 * iB.a);
   cov = clamp(cov * (1.0 + (paper.g - 0.5) * 0.5), 0.0, 1.0);
   vec3 gouache = vec3(0.96, 0.955, 0.94) * (1.0 + 0.1 * (paper.r - 0.5) * uTexture);
+
+  if (uMode == 4){
+    // PIGMENT ALPHA (compositor display, 2026-10-26 round 2). The same
+    // transmittance as mode 2, re-expressed as straight-alpha pigment so the
+    // live sheet stacks with REAL layer alpha: alpha = 1 - min(r,g,b),
+    // colour = (t - min) / alpha. Light washes stay translucent, dense pigment
+    // masks. displayFS writes PREMULTIPLIED pixels (F1 contract), so scale the
+    // colour by alpha. Storage/export keeps mode 2's opaque sheet.
+    // Phase 64: the emboss scales only the premultiplied colour; the alpha is
+    // derived from the UNSHADED reconstruction and stays byte-for-byte
+    // untouched, so a lit stroke never changes its coverage.
+    vec3 t = toSRGB(rgb);
+    t = mix(t, vec3(1.0), cov);
+    float mn = min(min(t.r, t.g), t.b);
+    float alpha = 1.0 - mn;
+    vec3 pigment = alpha > 0.0 ? (t - vec3(mn)) / alpha : vec3(0.0);
+    o = vec4(pigment * alpha * shade, alpha);
+    return;
+  }
+
+  rgb *= shade;
 
   if (uMode == 2){
     // TRANSMITTANCE, opaque (R2.2 paper-agnostic multiply seam). rgb is how
@@ -735,22 +796,6 @@ ${displayBasisGLSL()}
     // it as a pale veil (the pigment underneath still tints).
     t = mix(t, vec3(1.0), cov);
     o = vec4(t, 1.0);
-    return;
-  }
-
-  if (uMode == 4){
-    // PIGMENT ALPHA (compositor display, 2026-10-26 round 2). The same
-    // transmittance as mode 2, re-expressed as straight-alpha pigment so the
-    // live sheet stacks with REAL layer alpha: alpha = 1 - min(r,g,b),
-    // colour = (t - min) / alpha. Light washes stay translucent, dense pigment
-    // masks. displayFS writes PREMULTIPLIED pixels (F1 contract), so scale the
-    // colour by alpha. Storage/export keeps mode 2's opaque sheet.
-    vec3 t = toSRGB(rgb);
-    t = mix(t, vec3(1.0), cov);
-    float mn = min(min(t.r, t.g), t.b);
-    float alpha = 1.0 - mn;
-    vec3 pigment = alpha > 0.0 ? (t - vec3(mn)) / alpha : vec3(0.0);
-    o = vec4(pigment * alpha, alpha);
     return;
   }
 

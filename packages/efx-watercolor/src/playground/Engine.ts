@@ -78,6 +78,21 @@ export const DEFAULT_PARAMS: Params = {
   emboss: 0,
 };
 
+/**
+ * Phase 64 (MED-15) — emboss light state. Angles are DEGREES; the engine
+ * converts them once at the drawDisplay boundary. Render-only: the light never
+ * enters a stroke payload, a params snapshot or the painted pixels (D-08).
+ */
+export interface LightSettings { azimuth: number; elevation: number; intensity: number }
+
+/**
+ * The shipped light reconstructs the unit vector `paperLightFS` lights the
+ * paper with — normalize(vec3(-0.5, 0.6, 0.62)) — within a rounding tolerance,
+ * at full intensity (D-09), so a heavy medium reads raised the moment it is
+ * picked: elevation 38.45 lifts it, azimuth 129.8 puts it upper-left.
+ */
+export const DEFAULT_LIGHT: LightSettings = { azimuth: 129.8, elevation: 38.45, intensity: 1 };
+
 export interface EngineCallbacks {
   /** The undo history changed: every step (oldest first) and how many of them are applied. */
   onHistoryChange?(steps: StepInfo[], index: number): void;
@@ -139,6 +154,9 @@ export interface DocumentSnapshot {
 // `pigment` is the compositor DISPLAY mode (straight-alpha pigment, round 2).
 const MODE = { screen: 0, paper: 1, transparent: 2, white: 3, pigment: 4 } as const;
 const MAX_REF_SIDE = 4096;
+// Phase 64: the emboss gradient is one document texel wide with this fixed
+// bump scale — a document-space constant, never a function of zoom (D-13).
+const RELIEF_BUMP = 1.0;
 
 // 61-04: `w` is the per-sample width factor (VEC-03). It rides the queued
 // sample — never a mutable engine field — so a sample can only ever be
@@ -290,6 +308,8 @@ export class WatercolorEngine {
   private paperStrength = 1;
   private paperScale = 1;                           // paper units per texel, fixed when the sheet is made
   private paperOrigin: [number, number] = [0, 0];   // where the sheet sits in the paper's field (texels)
+  // Phase 64: the emboss light, in degrees (converted at drawDisplay). Render-only.
+  private light: LightSettings = { ...DEFAULT_LIGHT };
   // reference image: shown under the paint on screen only, never exported
   private ref: { tex: WebGLTexture; aspect: number; src: HTMLCanvasElement } | null = null;
   private refRect: RefRect = { x: 0, y: 0, w: 1, h: 1 };
@@ -1077,6 +1097,31 @@ export class WatercolorEngine {
     this.paperStrength = v;
     this.redraw();
   }
+
+  /**
+   * Set the emboss light (Phase 64, MED-15). Angles are degrees. Azimuth wraps
+   * into 0..360, elevation clamps into 0..90 and intensity into 0..4; a
+   * non-finite value falls back to the default, and a field the caller omits is
+   * left alone. An unchanged value writes nothing and redraws nothing.
+   * Render-only: params, the pigment and the thickness field are never
+   * touched, and the sheet is never marked dirty for undo (T-64-10).
+   */
+  setLight(next: Partial<LightSettings>) {
+    const azimuth = next.azimuth === undefined ? this.light.azimuth : Number.isFinite(next.azimuth) ? next.azimuth : DEFAULT_LIGHT.azimuth;
+    const elevation = next.elevation === undefined ? this.light.elevation : Number.isFinite(next.elevation) ? next.elevation : DEFAULT_LIGHT.elevation;
+    const intensity = next.intensity === undefined ? this.light.intensity : Number.isFinite(next.intensity) ? next.intensity : DEFAULT_LIGHT.intensity;
+    const resolved: LightSettings = {
+      azimuth: ((azimuth % 360) + 360) % 360,
+      elevation: clamp(elevation, 0, 90),
+      intensity: clamp(intensity, 0, 4),
+    };
+    if (resolved.azimuth === this.light.azimuth && resolved.elevation === this.light.elevation && resolved.intensity === this.light.intensity) return;
+    this.light = resolved;
+    this.redraw();
+  }
+
+  /** The current emboss light state (Phase 64). A copy: callers cannot mutate the engine. */
+  getLight(): LightSettings { return { ...this.light }; }
 
   /**
    * Swap the sheet under the painting. Only the paper changes: the paint stays, and
@@ -2513,6 +2558,13 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uRefOpacity, ref ? this.refOpacity : 0);
     // the sampler needs a texture bound either way; the paper stands in when there is none
     gl.uniform1i(p.u.uRef, g.bindTex(6, ref ? ref.tex : this.paper.tex[0]));
+    // Phase 64: the paint thickness field takes texture unit 7 (0-6 are taken).
+    gl.uniform1i(p.u.uRelief, g.bindTex(7, this.relief.tex[0]));
+    // Degrees become radians once, at this boundary — the shader reads radians.
+    gl.uniform1f(p.u.uLightAzimuth, (this.light.azimuth * Math.PI) / 180);
+    gl.uniform1f(p.u.uLightElevation, (this.light.elevation * Math.PI) / 180);
+    gl.uniform1f(p.u.uLightIntensity, this.light.intensity);
+    gl.uniform1f(p.u.uReliefBump, RELIEF_BUMP);
     const r = this.refRect;
     gl.uniform4f(p.u.uRefRect, r.x, r.y, r.w, r.h);
     // the shadow grows with the sheet on screen, within a range that always reads as paper on a desk
