@@ -88,9 +88,10 @@ describe('aquarelle light render paths (64-07, MED-17)', () => {
     expect(has(studio, 'return layerId ? getEfxPaintDocument(layerId)?.light : undefined;')).toBe(true);
     // The canvas mount receives the getter …
     expect(has(studio, 'getAquarelleLight: documentLight,')).toBe(true);
-    // … and all three bake call sites receive the resolved value: the Apply
-    // bake and the two lift-erase recovery bakes.
-    expect(count(studio, /light: documentLight\(\),/g)).toBe(3);
+    // … and every consumer receives the resolved value: the Apply bake, the two
+    // lift-erase recovery bakes, plus the 64-09 right-panel prop (which sits
+    // beside `onLightChange` and is not a bake).
+    expect(count(studio, /light: documentLight\(\),/g)).toBe(4);
   });
 
   it('RESOLVE: the Studio owns the ONE light write and its one ledger entry', () => {
