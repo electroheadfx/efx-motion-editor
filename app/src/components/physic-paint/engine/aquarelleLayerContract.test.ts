@@ -49,7 +49,9 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(engine).toContain('pigment: 4');
     expect(shaders).toContain('float mn = min(min(t.r, t.g), t.b)');
     expect(shaders).toContain('float alpha = 1.0 - mn');
-    expect(shaders).toContain('o = vec4(pigment * alpha, alpha)');
+    // 64-04: the emboss shade multiplies the already-premultiplied colour only;
+    // alpha is untouched, so the premultiplied contract still holds.
+    expect(shaders).toContain('o = vec4(pigment * alpha * shade, alpha)');
   });
 
   it('CACHED BASE: the committed sheet converts to pigment alpha at DISPLAY only', () => {
