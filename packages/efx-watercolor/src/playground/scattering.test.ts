@@ -36,8 +36,8 @@
 //      retirement audit MED-37 asks for, recorded as a test, not assumed.
 // ============================================================
 
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
@@ -317,5 +317,162 @@ describe('the scattering transport and the white-channel retirement (MED-32 / ME
     // shipped project file can hold the retired channel.
     expectNotContains(PAYLOAD_SOURCE, 'Pigment')
     expectNotContains(PAYLOAD_SOURCE, 'coeffs')
+  })
+})
+
+// ============================================================
+//  64-10 (MED-36 / MED-38) — the composition of order and opacity, the
+//  erode coupling, and the no-cost pins.
+//
+//  Laws pinned here:
+//   1. One curve, two consumers: the cover pass calls bodyCurve(P.body) and
+//      the deposit law calls bodyCurve(body); no file in the package declares
+//      a second curve, a second exponent, or re-derives the power.
+//   2. The lift shader writes its erosion factor to both outputs, and the
+//      cover pass draws the lift program into the two-attachment fixed target
+//      and into the relief, so the settled scattering (fixed B.a) is eroded
+//      beside the pigment it sits in.
+//   3. Scattering adds no render target, no program and no history layer: the
+//      allocation region, the programs registry and the recorded layer list
+//      keep their pre-scattering counts.
+//   4. One scattering scalar in the display shader and no per-pigment
+//      scattering anywhere: the law module carries no pigment record.
+//   5. `body` rides the recorded global params key list, is absent from the
+//      brush / tool-override shape (whose `scatter` is the AQUA-03 tip
+//      multiplier, not the optical S), and reaches the engine through the one
+//      canonical mapping.
+//   6. No scattering value is written into a stroke payload: the recorded
+//      params bag is its only carrier.
+// ============================================================
+
+const RECORD_STATE_SOURCE = readFileSync(
+  resolve(HERE, '../../../../app/src/components/physic-paint/view/aquarelleRecordState.ts'),
+  'utf8',
+)
+const TIPS_SOURCE = readFileSync(resolve(HERE, '../brushes/tips.ts'), 'utf8')
+const PARAMS_SOURCE = readFileSync(resolve(HERE, 'params.ts'), 'utf8')
+
+const SRC_ROOT = resolve(HERE, '..')
+
+function packageSourceFiles(dir: string): string[] {
+  const out: string[] = []
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry)
+    if (statSync(full).isDirectory()) out.push(...packageSourceFiles(full))
+    else if (entry.endsWith('.ts') && !entry.endsWith('.test.ts')) out.push(full)
+  }
+  return out
+}
+
+const PACKAGE_SOURCES = packageSourceFiles(SRC_ROOT).map(file => ({
+  file: file.slice(SRC_ROOT.length + 1),
+  text: readFileSync(file, 'utf8'),
+}))
+
+function filesMatching(pattern: RegExp): string[] {
+  return PACKAGE_SOURCES.filter(({ text }) => pattern.test(text)).map(({ file }) => file)
+}
+
+describe('the composition of order and opacity (MED-36)', () => {
+  it('reads the one curve in the cover pass and in the deposit law', () => {
+    expect((SOURCE.match(/export function bodyCurve/g) ?? []).length, 'one curve declaration').toBe(1)
+    expectContains(SOURCE, 'SCATTERING_MAX * bodyCurve(body) * amount')
+    const deposit = sliceBetween(SOURCE, 'export function scatteringDeposit', '\n}')
+    expectContains(deposit, 'bodyCurve(body)')
+    expectNotContains(deposit, 'Math.pow(')
+    expectNotContains(deposit, 'Math.min(')
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expectContains(brush, 'const coverAmount = bodyCurve(P.body);')
+    expectNotContains(brush, 'Math.pow(')
+  })
+
+  it('declares no second curve anywhere in the package', () => {
+    expect(filesMatching(/function bodyCurve\s*\(/), 'one curve declaration').toEqual([
+      'playground/scattering.ts',
+    ])
+    expect(filesMatching(/BODY_CURVE_EXPONENT\s*=/), 'one exponent declaration').toEqual([
+      'playground/scattering.ts',
+    ])
+    // No consumer re-derives the curve as a power of a body value.
+    expect(filesMatching(/Math\.pow\([^)]*body/), 'no re-derived curve').toEqual([
+      'playground/scattering.ts',
+    ])
+  })
+
+  it('erodes the scattering beside the pigment it erodes', () => {
+    const lift = sliceBetween(SHADERS_SOURCE, 'export const liftFS', 'export const paperFieldFS')
+    expect((lift.match(/o0 = vec4\(f\);/g) ?? []).length, 'the pale output').toBe(1)
+    expect((lift.match(/o1 = vec4\(f\);/g) ?? []).length, 'the scattering output').toBe(1)
+    // Both attachments receive the same factor: no second expression writes o1.
+    expect((lift.match(/= vec4\(f\);/g) ?? []).length, 'one factor, two outputs').toBe(2)
+    const cover = sliceBetween(ENGINE_SOURCE, 'private coverPass(', 'private brushWet(')
+    expectContains(cover, 'const p = this.programs.lift;')
+    expectContains(cover, 'g.draw(this.fixed, rect);')
+    expectContains(cover, 'g.draw(this.relief, rect);')
+    // The fixed target carries the settled scattering in its second attachment's
+    // alpha, so one lift draw erodes both.
+    expectContains(
+      ENGINE_SOURCE,
+      'this.fixed = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);',
+    )
+  })
+
+  it('declares no additional render target, program or history layer', () => {
+    const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
+    expect(
+      (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
+      'ten target allocations, unchanged by scattering',
+    ).toBe(10)
+    expectContains(alloc, 'this.relief = g.target(')
+    const programs = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
+    expect(
+      (programs.match(/this\.g\.program\(/g) ?? []).length,
+      'twenty-one programs, unchanged by scattering',
+    ).toBe(21)
+    expectContains(programs, 'relief: this.g.program(S.reliefFS)')
+    expectContains(programs, 'lift: this.g.program(S.liftFS)')
+    const history = sliceBetween(ENGINE_SOURCE, 'private allocateHistory()', 'private docTargets()')
+    expectContains(
+      history,
+      '{ formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R], documents: 2 }',
+    )
+    expectContains(history, '{ formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], documents: 1 }')
+    const snapshot = sliceBetween(ENGINE_SOURCE, 'private snapshotLayers()', 'private drawSplat(')
+    expectContains(
+      snapshot,
+      'return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0]];',
+    )
+  })
+
+  it('declares one scattering scalar and no per-pigment scattering', () => {
+    expect(
+      (SHADERS_SOURCE.match(/float scatter\b/g) ?? []).length,
+      'one display scattering scalar',
+    ).toBe(1)
+    expectContains(SHADERS_SOURCE, 'float scatter = iB.a + fB.a;')
+    expectNotContains(SOURCE, 'Pigment')
+    expectNotContains(SOURCE, 'coeffs')
+  })
+
+  it('carries body in the recorded params key list and not in the brush shapes', () => {
+    expectContains(RECORD_STATE_SOURCE, 'body: number;')
+    const keys = sliceBetween(RECORD_STATE_SOURCE, 'export const AQUARELLE_GLOBAL_KEYS', '] as const);')
+    expectContains(keys, "'body',")
+    expectContains(RECORD_STATE_SOURCE, 'body: 0,')
+    // The brush / tool-override shape is the eight AQUA-03 multipliers; its
+    // `scatter` is the tip multiplier, never the optical scattering scalar.
+    const overrides = sliceBetween(TIPS_SOURCE, 'export interface AquarelleToolOverrides {', '\n}')
+    expectNotContains(overrides, 'body')
+    expectContains(PARAMS_SOURCE, 'body: number')
+    expectContains(PARAMS_SOURCE, 'body: clamp01(num(p.body, d.body) / 100),')
+  })
+
+  it('writes no scattering value into a stroke payload', () => {
+    expectNotContains(PAYLOAD_SOURCE, 'scattering')
+    expectNotContains(PAYLOAD_SOURCE, 'scatteringDeposit')
+    const payload = sliceBetween(PAYLOAD_SOURCE, 'export interface AquarelleStrokePayload {', '\n}')
+    expect(/\bbody\s*[?:]/.test(payload), 'a body member on the payload').toBe(false)
+    expect(/\bscatter\w*\s*[?:]/.test(payload), 'a scattering member on the payload').toBe(false)
+    expectContains(payload, 'params: Record<string, number>')
   })
 })

@@ -211,8 +211,10 @@ function makeMockCanvas(width: number, height: number): {
  * pre-existing rows still replay the pre-milestone script.
  * 64-03: `emboss` (0..100) joins the optional medium keys — the thickness
  * deposit is driven by it, and its determinism row turns it on.
+ * 64-10: `body` (0..100) is the scattering key. Omitting it is the neutral
+ * zero, so a pre-milestone bag replays the pre-milestone script.
  */
-function makeStroke(viscosity?: number, emboss?: number): StudioStroke<AquarelleStrokePayload> {
+function makeStroke(viscosity?: number, emboss?: number, body?: number): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color: '#2244aa',
@@ -220,6 +222,7 @@ function makeStroke(viscosity?: number, emboss?: number): StudioStroke<Aquarelle
       size: 12, water: 50, flow: 50,
       ...(viscosity === undefined ? {} : { viscosity }),
       ...(emboss === undefined ? {} : { emboss }),
+      ...(body === undefined ? {} : { body }),
     },
     brushId: 'wc/round-medium',
     points: [
@@ -390,6 +393,43 @@ describe('determinism contract', () => {
     // The light never enters the recorded script, so both intensity arms
     // record byte-identical bags — a per-frame light cannot fork a replay.
     expect(recordedBags[1]).toBe(recordedBags[0])
+  })
+
+  // 64-10 (MED-38): the scattering key must not perturb replay identity at
+  // either extreme, and the recorded bag must carry the value that was used —
+  // the deposit law reads it on the live pass, the bake and every replay.
+  it('replays identically within each body arm and carries the value', () => {
+    for (const canonical of [0, 100] as const) {
+      const first = replayRun(makeStroke(undefined, undefined, canonical))
+      const second = replayRun(makeStroke(undefined, undefined, canonical))
+
+      expect(first.bytes.length, `body ${canonical}: byte length`).toBe(second.bytes.length)
+      expect(
+        Buffer.from(first.bytes).equals(Buffer.from(second.bytes)),
+        `body ${canonical}: replay bytes`,
+      ).toBe(true)
+
+      expect(first.recorded.engine.params.body).toBe(canonical)
+      expect(second.recorded.engine.params.body).toBe(canonical)
+      // The ONE mapping turns the canonical 0..100 value into the engine's 0..1 S driver.
+      expect(toEngineParams(first.recorded.engine.params).body).toBe(canonical / 100)
+    }
+  })
+
+  // 64-10 (MED-38 / D-17): a pre-milestone bag without the key replays with
+  // zero scattering. The recorded absent bag gains no body key, and its bytes
+  // equal the same script recorded with an explicit zero.
+  it('replays an absent body key exactly like an explicit zero', () => {
+    const absent = replayRun(makeStroke())
+    const zero = replayRun(makeStroke(undefined, undefined, 0))
+
+    expect('body' in absent.recorded.engine.params, 'the absent bag gains no body key').toBe(false)
+    expect(zero.recorded.engine.params.body).toBe(0)
+    expect(toEngineParams(absent.recorded.engine.params).body).toBe(0)
+    expect(
+      Buffer.from(absent.bytes).equals(Buffer.from(zero.bytes)),
+      'absent body replays like an explicit zero',
+    ).toBe(true)
   })
 })
 
