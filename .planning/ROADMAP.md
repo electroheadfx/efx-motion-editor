@@ -197,7 +197,7 @@ Plans:
   6. The brush library groups the responses by medium in five sections; picking a brush applies its group's medium in one store write only when the group changes; the 15 existing responses are classified and the eight new ones ship.
   7. Export matches the screen on every `uMode` path, zooming produces no shimmer or crawl, and undo restores the eroded pigment and the eroded thickness exactly.
 
-**Plans:** 9/12 plans executed
+**Plans:** 11/12 plans executed
 
 Plans:
 **Wave 1**
@@ -217,12 +217,12 @@ Plans:
 - [x] 64-06-PLAN.md — The Body cover pass: the single shared `bodyCurve` law, settle protection, tip-footprint erosion, the Body row and the Body 0 gate
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 64-07-PLAN.md — The light on every render path — live, Play bake, Apply bake — the content-signature term and the snapshot-controller contract
+- [x] 64-07-PLAN.md — The light on every render path — live, Play bake, Apply bake — the content-signature term and the snapshot-controller contract
 - [x] 64-08-PLAN.md — Scattering transport: `S` through `inkB.a`/`fixedB.a`, the settle carry and the white-gouache retirement
 
 **Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 64-09-PLAN.md — The Paper & Light tab: three controlled rows below the paper grain pair, the renamed label and the panel wiring from the Studio's document read
-- [ ] 64-10-PLAN.md — The Kubelka-Munk composite, the scattering-free early-out, the calibration pins and the probe gate matrix
+- [x] 64-10-PLAN.md — The Kubelka-Munk composite, the scattering-free early-out, the calibration pins and the probe gate matrix
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [x] 64-11-PLAN.md — Brush groups: the compile-time group tag, the classification, eight new responses and five always-expanded sections
@@ -245,7 +245,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 9/12 | In Progress | - |
+| 64. Medium Engine | 11/12 | In Progress | - |
 
 ---
 
