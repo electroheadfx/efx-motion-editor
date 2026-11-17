@@ -263,6 +263,13 @@ export interface StudioScriptSnapshotController {
    * will never write. The close path must not destroy the window silently.
    */
   hasWithheldContent(): boolean;
+  /**
+   * CR-03 (63 review): identity of the current latch episode. A bind starts a
+   * new episode, so the close path acknowledges one refusal per EPISODE rather
+   * than once per window — a later refused track must refuse again instead of
+   * closing silently with its withheld script.
+   */
+  withheldEpisode(): number;
   /** CR-01: re-report the pause unconditionally (the close moment). */
   reportSaveWithheld(): void;
   /** Drop the binding and every internal baseline (Studio disposal). */
@@ -657,6 +664,20 @@ export function studioScriptSnapshotPurgeFailureMessage(kind: string): string {
   return `Studio script snapshot could not be cleaned after the purge (${kind}). The script is purged in this session; painting is unaffected.`;
 }
 
+/**
+ * CR-03 (63 review): the close path's once-per-episode law. The first close of
+ * a latch episode is refused; the SAME episode's second close is the user's
+ * explicit choice and is admitted. A rebind advances the episode, so a previous
+ * acknowledgement never authorizes a different latched binding. Pure, so the
+ * gate is behaviourally testable without rendering the Studio.
+ */
+export function admitsWithheldClose(
+  acknowledgedEpisode: number,
+  currentEpisode: number,
+): boolean {
+  return acknowledgedEpisode !== currentEpisode;
+}
+
 export function createStudioScriptSnapshotController(
   deps: StudioScriptSnapshotControllerDeps,
 ): StudioScriptSnapshotController {
@@ -685,6 +706,13 @@ export function createStudioScriptSnapshotController(
    * a later successful restore, or a SUCCESSFUL explicit purge commit.
    */
   let refusedRestore = false;
+  /**
+   * CR-03 (63 review): the latch episode's identity for the close-path
+   * disclosure. A bind starts a new episode, so an acknowledgement recorded for
+   * one refused track can never authorize closing a different one. Disclosure
+   * only — never a save gate.
+   */
+  let latchEpisode = 0;
   /**
    * CR-01 (63 review): one save-paused notice per latch episode. Without it the
    * withholding is silent — the user keeps painting, the close flush no-ops, and
@@ -724,6 +752,9 @@ export function createStudioScriptSnapshotController(
   }
 
   function bind(identity: StudioScriptSnapshotIdentity | null): void {
+    // CR-03: every bind starts a new latch episode, so a close acknowledgement
+    // recorded for the outgoing binding never authorizes the incoming one.
+    latchEpisode += 1;
     generation += 1;
     // A pending debounce belongs to the OUTGOING key: a track switch must
     // never let it fire against the incoming identity.
@@ -1162,6 +1193,10 @@ export function createStudioScriptSnapshotController(
     return (bases?.size ?? 0) > 0;
   }
 
+  function withheldEpisode(): number {
+    return latchEpisode;
+  }
+
   function reportSaveWithheld(): void {
     deps.report(STUDIO_SCRIPT_SNAPSHOT_SAVE_WITHHELD_MESSAGE);
   }
@@ -1193,6 +1228,7 @@ export function createStudioScriptSnapshotController(
     saveNow,
     isDirty,
     hasWithheldContent,
+    withheldEpisode,
     reportSaveWithheld,
     reset,
     dispose,

@@ -199,6 +199,7 @@ import { useBackgroundAssetPickerController } from './view/BackgroundAssetPicker
 import { buildDuplicatedSoundClip, usePhysicsPaintAudioController, type PhysicsPaintAudioController } from './view/physicsPaintAudioController';
 import { getTimelineViewportFrames, resolveRailIdentityForSelectedKey } from './view/PhysicsPaintWorkflowStrip';
 import {
+  admitsWithheldClose,
   createStudioScriptSnapshotController,
   type StudioScriptSnapshotController,
 } from './snapshot/studioScriptSnapshotController';
@@ -4187,9 +4188,11 @@ export function PhysicsPaintStudio() {
     });
   }
   const flushPipeline = flushPipelineRef.current;
-  // CR-01: one close-time refusal per window, so a latched binding cannot be
-  // dismissed in silence but also cannot trap the user in an unclosable window.
-  const closeWithheldAcknowledgedRef = useRef(false);
+  // CR-03: one close-time refusal per LATCH EPISODE, so a latched binding
+  // cannot be dismissed in silence but also cannot trap the user in an
+  // unclosable window. A rebind starts a new episode and must refuse again —
+  // a per-window acknowledgement closed a later refused track silently.
+  const closeWithheldAcknowledgedEpisodeRef = useRef(-1);
   // The pipeline never rejects (a failed drain is an outcome), so the shared
   // runner rethrows for the callers whose contract is a rejection: the facade's
   // fail-closed catch and the close hook's error path both depend on it.
@@ -4227,16 +4230,19 @@ export function PhysicsPaintStudio() {
         () => {
           if (draftPixelsDirty.peek()) throw new Error('Draft recompute pending — turn Draft off before closing the Studio.');
         },
-        // CR-01: a latched binding holds script the paused save will never
+        // CR-01/CR-03: a latched binding holds script the paused save will never
         // write, so the close must not destroy the realm silently — the notice
         // is re-reported at the moment it matters and the window stays open.
-        // One refusal only: a second close is the user's explicit choice.
+        // One refusal per latch episode: the SAME episode's second close is the
+        // user's explicit choice, but a rebind starts a fresh episode and must
+        // refuse again rather than close that track with its script unsaved.
         () => {
           if (!studioScriptSnapshot.hasWithheldContent()) return;
-          if (closeWithheldAcknowledgedRef.current) return;
-          closeWithheldAcknowledgedRef.current = true;
+          const episode = studioScriptSnapshot.withheldEpisode();
+          if (!admitsWithheldClose(closeWithheldAcknowledgedEpisodeRef.current, episode)) return;
+          closeWithheldAcknowledgedEpisodeRef.current = episode;
           studioScriptSnapshot.reportSaveWithheld();
-          throw new Error('Studio script saving is paused for this track — clear its script to resume saving.');
+          throw new Error("Studio script saving is paused for this track — closing again will discard the unsaved script. Clear this track's script to resume saving.");
         },
         () => {
           if (workflowMode !== 'roto') return;

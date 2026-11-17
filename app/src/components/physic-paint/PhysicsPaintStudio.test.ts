@@ -2262,7 +2262,9 @@ describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
   })();
   const closeFlush = (() => {
     const start = studio.indexOf('usePhysicsPaintCloseFlush(');
-    return start === -1 ? '' : studio.slice(start, start + 3600);
+    // CR-03 widened the withheld-close step; keep the window past the last
+    // pinned step (`flushDocumentSyncRef.current()`).
+    return start === -1 ? '' : studio.slice(start, start + 4200);
   })();
 
   it('creates exactly one pipeline instance and routes both flush paths through it', () => {
@@ -4029,6 +4031,16 @@ describe('261023-l35 studio script snapshot seams', () => {
     expect(studio).toContain('const STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS = 2000;');
     expect(studio).toContain('studioScriptSnapshot.flushNow(),');
     expect(studio).toContain('window.setTimeout(resolve, STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS);');
+  });
+
+  it('CR-03: the close refusal acknowledges once per latch episode', () => {
+    // CR-03: the acknowledgement is keyed on the controller's latch episode,
+    // not a per-window boolean — a rebind to a second refused track must
+    // refuse again instead of closing with its withheld script destroyed.
+    // The gate itself is behaviourally pinned in the controller suite.
+    expect(studio).toContain('const episode = studioScriptSnapshot.withheldEpisode();');
+    expect(studio).toContain('admitsWithheldClose(closeWithheldAcknowledgedEpisodeRef.current, episode)');
+    expect(studio).toContain('closing again will discard the unsaved script');
   });
 
   it('drops the binding on Studio disposal', () => {
