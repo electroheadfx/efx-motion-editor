@@ -42,3 +42,10 @@ export { buildBrushForStroke, strokeTipData } from './brushBridge'
 export type { BrushMultiplierOverrides, BrushStrokeOptions } from './brushBridge'
 export { pigmentFromHex, hexToRgb, rgbToHex } from './spectral'
 export type { Pigment } from './spectral'
+export {
+  bodyCurve,
+  BODY_CURVE_EXPONENT,
+  scatteringDeposit,
+  SCATTERING_MAX,
+  SCATTER_EPSILON,
+} from './scattering'

@@ -20,17 +20,25 @@
 //  lightens without erasing; the dark still tints it") true. D-14 supersedes
 //  spec 06 §3's inline min-of-one clamp on `P.body`.
 //
-//  Pure function with no engine import: the curve is a law, not render state.
+//  Scattering transport (64-08): the deposit law turns Body into the one
+//  broadband scalar S the engine transports. `SCATTERING_MAX` is the S of a
+//  fully body-saturated medium at unit amount. `SCATTER_EPSILON` is the
+//  render-side switch below which 64-09 runs the legacy exponential verbatim,
+//  so it stays many orders below any real deposit — Body 50 at unit amount
+//  deposits 0.125, 125x the epsilon — and no visible paint takes the cheap
+//  branch.
+//
+//  Pure functions with no engine import: the laws are laws, not render state.
 // ============================================================
 
 /** D-14's exponent: low-mid Body stays a glaze; 1.0 still reaches a true cover. */
 export const BODY_CURVE_EXPONENT = 6;
 
-/** RED skeleton (64-08): the saturated deposit is not implemented yet. */
-export const SCATTERING_MAX = 0;
+/** The S of a fully body-saturated medium at unit amount (MED-32). */
+export const SCATTERING_MAX = 8;
 
-/** RED skeleton (64-08): the render-side switch is not implemented yet. */
-export const SCATTER_EPSILON = 0;
+/** Below this S, 64-09's render path runs the legacy exponential verbatim. */
+export const SCATTER_EPSILON = 1e-3;
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
@@ -47,7 +55,15 @@ export function bodyCurve(body: number): number {
   return Math.pow(clamp01(body), BODY_CURVE_EXPONENT);
 }
 
-/** RED skeleton (64-08): the deposit law is not implemented yet. */
-export function scatteringDeposit(_body: number, _amount: number): number {
-  return Number.NaN;
+/**
+ * The deposit law (MED-32): `SCATTERING_MAX * bodyCurve(body) * amount`.
+ * `amount` is the dab's own pigment amount, so the channel accumulates in
+ * proportion to the paint: a faint dab deposits a tiny S and stays
+ * translucent, a heavy one deposits a large S and covers. The guard maps a
+ * zero, negative or non-finite amount to exactly 0 and keeps `0 × Infinity`
+ * from becoming NaN (T-64-22).
+ */
+export function scatteringDeposit(body: number, amount: number): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return SCATTERING_MAX * bodyCurve(body) * amount;
 }
