@@ -241,6 +241,15 @@ function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): str
   const clipsTerm = document.background.clips.length > 0
     ? `clips:${encodeCanonicalLoopClips(document.background.clips)}`
     : '';
+  // Phase 64-05 (MED-17): the document light is a render setting that belongs
+  // to the content identity — a light change must rotate the revision (and
+  // every cache key derived from it). Absent contributes NO term (D-29
+  // empty-additive idiom), so a document without a light encodes exactly as it
+  // did before the member existed. The sync fingerprint includes this revision,
+  // so it inherits the rotation with no second hand-written light term.
+  const lightTerm = document.light === undefined
+    ? ''
+    : `light:${encodeCanonicalNumber(document.light.azimuth)}:${encodeCanonicalNumber(document.light.elevation)}:${encodeCanonicalNumber(document.light.intensity)}`;
   return [
     `version:${encodeCanonicalNumber(document.version)}`,
     `parent:${encodeCanonicalString(document.parentLayerId)}`,
@@ -252,6 +261,7 @@ function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): str
     `fallback:${encodeCanonicalBackgroundFallback(document.background.fallback)}`,
     `bgvisible:${validatedBoolean(document.background.visible)}`,
     `bgrevision:${encodeCanonicalNumber(document.background.revision)}`,
+    lightTerm,
     `photo:${encodeCanonicalPhotoReference(document.photoReference)}`,
     `composite:${encodeCanonicalNumber(document.compositeRevision)}`,
   ].join('');

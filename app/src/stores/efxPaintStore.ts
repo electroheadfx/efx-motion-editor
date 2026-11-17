@@ -14,7 +14,8 @@
  */
 
 import { signal } from '@preact/signals';
-import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, DocumentSoundClip, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale, InternalPaintTrack, PhotoReferenceTrack, PhotoReferenceTransform } from '../efx-paint/document/efxPaintDocument';
+import { DEFAULT_LIGHT } from '@efxlab/efx-watercolor';
+import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, DocumentSoundClip, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale, InternalPaintTrack, PaintDocumentLight, PhotoReferenceTrack, PhotoReferenceTransform } from '../efx-paint/document/efxPaintDocument';
 import { isGrainScaleValue } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxPaintBackgroundResolution';
@@ -590,6 +591,9 @@ export type BackgroundEditOperationKind =
   | 'set-background-clip-source'
   | 'delete-background-clip'
   | 'set-background-fallback'
+  // Phase 64-05 (MED-17): the per-document render light — one undo-ledger
+  // entry per real change, by reference.
+  | 'set-document-light'
   | 'set-photo-reference-source'
   | 'clear-photo-reference'
   // 52-01 (RVL-06): the reveal rail mutations — each committed reveal op is one
@@ -1062,6 +1066,66 @@ export function setBackgroundFallback(
     descriptor: {
       operationId: crypto.randomUUID(),
       operationKind: 'set-background-fallback',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/** The engine's clamp bands for the document light (mirrors `Engine.setLight`). */
+const LIGHT_AZIMUTH_MAX = 360;
+const LIGHT_ELEVATION_MAX = 90;
+const LIGHT_INTENSITY_MAX = 4;
+
+function _clampLightNumber(value: number, max: number): number {
+  return Math.min(max, Math.max(0, value));
+}
+
+/**
+ * Set the per-document emboss light (Phase 64-05, MED-17). The ONE writer —
+ * `setBackgroundFallback`'s shape exactly: read the document, immutable
+ * spread, canonical-revision idempotence compare, single `documentRevision`
+ * bump, single `_notifyChange` and one unified-ledger descriptor carrying
+ * `before`/`after` by reference. The patch resolves over the current light
+ * (`document.light ?? DEFAULT_LIGHT`) with exactly the engine setter's law:
+ * azimuth wraps into 0..360, elevation clamps into 0..90, intensity into 0..4,
+ * and a non-finite value falls back to `DEFAULT_LIGHT`'s field (never NaN). A
+ * patch that declares no field, or one that resolves to the same content,
+ * writes nothing and returns a null descriptor — a default light is never
+ * injected into a document that had none. Rejects fail-closed on an absent
+ * document.
+ */
+export function setDocumentLight(
+  layerId: string,
+  patch: Partial<PaintDocumentLight>,
+): BackgroundFallbackMutationResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'clip-not-found' };
+  if (patch.azimuth === undefined && patch.elevation === undefined && patch.intensity === undefined) {
+    return { ok: true, descriptor: null };
+  }
+  const current = document.light ?? DEFAULT_LIGHT;
+  const resolve = (key: keyof PaintDocumentLight): number => {
+    const next = patch[key];
+    return next === undefined ? current[key] : Number.isFinite(next) ? next : DEFAULT_LIGHT[key];
+  };
+  const light: PaintDocumentLight = Object.freeze({
+    azimuth: ((resolve('azimuth') % LIGHT_AZIMUTH_MAX) + LIGHT_AZIMUTH_MAX) % LIGHT_AZIMUTH_MAX,
+    elevation: _clampLightNumber(resolve('elevation'), LIGHT_ELEVATION_MAX),
+    intensity: _clampLightNumber(resolve('intensity'), LIGHT_INTENSITY_MAX),
+  });
+  const candidate: EfxPaintDocument = { ...document, light };
+  if (buildEfxPaintDocumentRevision(candidate) === buildEfxPaintDocumentRevision(document)) {
+    return { ok: true, descriptor: null };
+  }
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'set-document-light',
       before: document,
       after: next,
     },
