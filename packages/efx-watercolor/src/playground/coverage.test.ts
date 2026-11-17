@@ -199,12 +199,13 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
 //  The spec-06 pass above erases SETTLED pigment only. A cover must also
 //  replace what it crosses while that paint is still mobile in `ink` and
 //  while it lives in a reopened frame's cached base. This block pins the
-//  engine half: a PRE-STROKE ink snapshot (`preInk`), a reverse-subtract
-//  draw that removes it under the same solid core, an `onCoverDab`
-//  emission for the cached-base seam, and Body 0's neutrality.
+//  engine half: a PRE-STROKE ink snapshot (`preInk`), a multiplicative
+//  cover draw that removes its per-channel share under the same solid
+//  core, an `onCoverDab` emission for the cached-base seam, and Body 0's
+//  neutrality.
 //
 //  Written RED by design (task 1 of the quick plan): every pin below names
-//  a symbol task 2 adds. COVER_METHOD() must NOT grow — the subtract lives
+//  a symbol task 2 adds. COVER_METHOD() must NOT grow — the cover lives
 //  in a sibling method because the spec-06 pins pin the cover pass body.
 // ============================================================
 
@@ -262,30 +263,36 @@ describe('the cover seam', () => {
     )
   })
 
-  it('subtracts the snapshot from the mobile ink with reverse-subtract blending', () => {
+  it('covers the snapshot with the multiplicative per-channel share', () => {
     const body = sliceBetween(ENGINE_SOURCE, 'private inkCover(', 'private dropPreInk(')
     // An unarmed snapshot or a non-positive amount draws nothing: the call
     // site is unguarded (the brush case keeps its two `coverAmount > 0`).
     expectContains(body, 'if (this.preInk === null || !(amount > 0)) return;')
     expectContains(body, 'const p = this.programs.inkCover;')
+    expectContains(body, 'this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, 0, 0);')
     expectContains(body, 'gl.uniform1i(p.u.uPreA, g.bindTex(2, this.preInk.tex[0]));')
     expectContains(body, 'gl.uniform1i(p.u.uPreB, g.bindTex(3, this.preInk.tex[1]));')
+    expectContains(body, 'gl.uniform1i(p.u.uInkA, g.bindTex(4, this.ink.read.tex[0]));')
+    expectContains(body, 'gl.uniform1i(p.u.uInkB, g.bindTex(5, this.ink.read.tex[1]));')
     expect((body.match(/this\.bindFootprint\(/g) ?? []).length, 'one footprint binding').toBe(1)
-    expectContains(body, 'this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, 0, 0);')
     expectContains(body, 'gl.uniform1f(p.u.uAmount, amount);')
-    expectContains(body, 'gl.enable(gl.BLEND);')
-    expectContains(body, 'gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);')
-    expectContains(body, 'gl.blendFunc(gl.ONE, gl.ONE);')
-    // Both attachments: the draw into ink.read fans out through its MRT views.
-    expectContains(body, 'g.draw(this.ink.read, rect);')
-    expectContains(body, 'gl.blendEquation(gl.FUNC_ADD);')
+    // Law 2 is multiplicative: no reverse subtract survives anywhere, and the
+    // settled cover keeps the ZERO / ONE_MINUS_SRC_COLOR pair the ink pass
+    // mirrors as dst * (1 - src) in-shader.
+    expectNotContains(ENGINE_SOURCE, 'FUNC_REVERSE_SUBTRACT')
+    expectContains(COVER_METHOD(), 'gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
+    // The draw is a full-document ping-pong: ink.read feeds the samplers,
+    // ink.write is the target with NO rect (a scissor would leave the write
+    // half stale and the swap would expose it), then the halves swap.
+    expectContains(body, 'g.draw(this.ink.write);')
+    expectContains(body, 'this.ink.swap();')
+    expectNotContains(body, 'g.draw(this.ink.read')
+    expectNotContains(body, 'stampRect')
+    // Blending against the other half would resurrect last frame's values.
+    expectNotContains(body, 'gl.enable(gl.BLEND);')
     expectContains(body, 'gl.disable(gl.BLEND);')
-    expectContains(
-      body,
-      'const rect = this.stampRect(x, y, r * (1 + b.sizeJitter + b.scatter), this.dw, this.dh, 2);',
-    )
     // Undo and wake are the caller's: the pinned coverRect + protect already
-    // cover this stamp, and the subtract writes the pool brushInk touches.
+    // cover this stamp, and the cover writes the pool brushInk touches.
     expectNotContains(body, 'this.touch')
     expectNotContains(body, '.protect(')
     // A hand-bound tip uniform would move engineTipIdentity's whole-file count.
@@ -371,16 +378,25 @@ describe('the cover seam', () => {
     )
   })
 
-  it('gives the subtract its own program with the same solid-core law', () => {
+  it('gives the cover its own program with the same solid-core law and the share', () => {
     expectContains(SHADER_SOURCE, 'export const inkCoverFS')
     const program = sliceBetween(SHADER_SOURCE, 'export const inkCoverFS', 'export const paperFieldFS')
-    expectContains(program, 'uniform sampler2D uPreA, uPreB;')
+    expectContains(program, 'uniform sampler2D uPreA, uPreB, uInkA, uInkB;')
     expectContains(program, 'vec2 p = vUv - uPoint; p.x *= uAspect;')
     expectContains(program, 'q.y /= uTipAspect;')
-    expectContains(program, 'if (abs(q.x) > 1.0 || abs(q.y) > 1.0) discard;')
+    // Same core as liftFS's uCover = 1 law, zero outside the footprint.
     expectContains(program, 'float f = uAmount * (1.0 - smoothstep(0.35, 1.0, dot(q, q)));')
-    expectContains(program, 'o0 = texture(uPreA, vUv) * f;')
-    expectContains(program, 'o1 = texture(uPreB, vUv) * f;')
+    // The share is per channel, bounded at 1 (advection can outrun the ink).
+    expectContains(
+      program,
+      'vec4 share(vec4 pre, vec4 ink) { return clamp(pre / max(ink, vec4(1e-6)), 0.0, 1.0); }',
+    )
+    expectContains(program, 'vec4 inkA = texture(uInkA, vUv);')
+    expectContains(program, 'vec4 inkB = texture(uInkB, vUv);')
+    expectContains(program, 'o0 = inkA * (1.0 - f * share(texture(uPreA, vUv), inkA));')
+    expectContains(program, 'o1 = inkB * (1.0 - f * share(texture(uPreB, vUv), inkB));')
+    // Full-document draw: a discard would leave the write half stale.
+    expectNotContains(program, 'discard')
     // The Lift program keeps its tip-shaped law and its own uniforms.
     const lift = sliceBetween(SHADER_SOURCE, 'export const liftFS', 'export const inkCoverFS')
     expectContains(lift, 'float soft = exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);')

@@ -2355,33 +2355,55 @@ export class WatercolorEngine {
   }
 
   /**
-   * quick 261117-tq7 (spec 09 law 3): subtract the stroke-start snapshot from
-   * the mobile ink under the SAME solid core the settled cover uses, so the
-   * covering body removes the wet underlayer instead of letting it survive in
-   * the bristle gaps. Reverse subtract with ONE/ONE coefficients writes
-   * dst - preInk * f into BOTH ink attachments. The stroke's own pigment is
-   * deposited after this draw, so it survives. An unarmed snapshot or a
-   * non-positive amount draws nothing — that is the guard the call site relies
-   * on. No touch()/protect here: the stamp's coverRect already covers this
-   * draw and brushes pool 0 in the same stamp.
+   * quick 261117-tq7 (spec 09 law 3): cover the stroke-start snapshot under the
+   * SAME solid core the settled cover uses, so the covering body removes the
+   * wet underlayer instead of letting it survive in the bristle gaps. The law
+   * is multiplicative and per channel of BOTH attachments (the scattering
+   * alpha included):
+   *
+   *   src_c = amount * core * clamp(preInk_c / max(ink_c, 1e-6), 0, 1)
+   *   out_c = ink_c * (1 - src_c)                      (= dst * (1 - src))
+   *
+   * With preInk_c <= ink_c that is exactly ink - amount * core * preInk (the
+   * spec's subtraction), bounded: the underlayer can never go negative and the
+   * covering stroke's own pigment — deposited after this draw — is untouched.
+   * Repeated overlapping dabs keep eroding the remaining pre-stroke share
+   * (prod of 1 - f), matching coverPass and the cached-base punch; where
+   * advection makes preInk_c exceed ink_c the share clamps at 1 — full erase
+   * for that channel, and the excess does not also cancel the stroke's own
+   * pigment (recorded limitation).
+   *
+   * The draw is a FULL-DOCUMENT ping-pong: ink.read is bound as the sampler
+   * input and ink.write is the render target, with NO rect — a scissor would
+   * leave the untouched part of the write half stale, and that half becomes the
+   * live read after the swap. Blending is OFF for the same reason: the
+   * destination here is the OTHER half of the pair, not a copy of the sampled
+   * ink, so blending against it would resurrect last frame's values; the
+   * multiply above is the dst * (1 - src) algebra coverPass applies through
+   * ZERO / ONE_MINUS_SRC_COLOR, evaluated against the sampled ink instead.
+   * Outside the footprint f is exactly 0, so the shader emits the sampled texel
+   * unchanged — the identity copy the swap relies on.
+   *
+   * An unarmed snapshot or a non-positive amount draws nothing — that is the
+   * guard the call site relies on. No touch()/protect here: the stamp's
+   * coverRect already covers this draw and brushes pool 0 in the same stamp.
    */
   private inkCover(x: number, y: number, r: number, angle: number, amount: number) {
     if (this.preInk === null || !(amount > 0)) return;
     const { gl, g } = this;
-    const b = this.brush;
     const p = this.programs.inkCover;
     p.bind();
+    // Units 0/1 are the shared footprint's tip and paper; the snapshot and the
+    // live ink take 2..5 so bindFootprint can never shadow them.
+    this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, 0, 0);
     gl.uniform1i(p.u.uPreA, g.bindTex(2, this.preInk.tex[0]));
     gl.uniform1i(p.u.uPreB, g.bindTex(3, this.preInk.tex[1]));
-    this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, 0, 0);
+    gl.uniform1i(p.u.uInkA, g.bindTex(4, this.ink.read.tex[0]));
+    gl.uniform1i(p.u.uInkB, g.bindTex(5, this.ink.read.tex[1]));
     gl.uniform1f(p.u.uAmount, amount);
-    const rect = this.stampRect(x, y, r * (1 + b.sizeJitter + b.scatter), this.dw, this.dh, 2);
-    gl.enable(gl.BLEND);
-    gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
-    gl.blendFunc(gl.ONE, gl.ONE);
-    g.draw(this.ink.read, rect);
-    gl.blendEquation(gl.FUNC_ADD);
     gl.disable(gl.BLEND);
+    g.draw(this.ink.write);
+    this.ink.swap();
   }
 
   /** quick 261117-tq7: release the pre-stroke snapshot — a transient, never undo state. */
