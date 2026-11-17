@@ -3,16 +3,12 @@ status: complete
 phase: 63-brush-tip-pipeline
 source: [63-VERIFICATION.md]
 started: 2026-11-15T17:05:00Z
-updated: 2026-11-17T12:20:00.000Z
+updated: 2026-11-17T12:36:21.578Z
 ---
 
 ## Current Test
 
-number: 9
-name: SC2 warning wording vs. the dropped aggregate line
-expected: |
-  A decision, not a code check — either confirm the silent response-tip fallback is the final intent and amend ROADMAP SC2's 'and a warning' clause, or specify the notice that must render.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -52,18 +48,18 @@ result: pass
 
 ### 9. SC2 warning wording vs. the dropped aggregate line
 expected: A decision, not a code check — either confirm the silent response-tip fallback is the final intent and amend ROADMAP SC2's 'and a warning' clause, or specify the notice that must render.
-result: [pending]
+result: pass
 
 ### 10. 4K import responsiveness
 expected: The import resolves promptly (SC1 '4K responsive') with no multi-second UI freeze.
-result: [pending]
+result: pass
 
 ## Summary
 
 total: 10
-passed: 7
+passed: 9
 issues: 1
-pending: 2
+pending: 0
 skipped: 0
 blocked: 0
 
