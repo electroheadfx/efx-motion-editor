@@ -41,7 +41,14 @@ import {
   toolOverridesFromTip,
   type AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor/brushes';
-import { BRUSH_PRESETS, DEFAULT_MEDIUM_ID, resolveMask, type MediumId } from '@efxlab/efx-watercolor';
+import {
+  BRUSH_PRESETS,
+  DEFAULT_MEDIUM_ID,
+  mediumById,
+  resolveMask,
+  type MediumId,
+  type MediumParamKey,
+} from '@efxlab/efx-watercolor';
 import { libraryRowFor, resolveCatalogTip } from '../../../stores/aquarelleBrushCatalog';
 import { canonicalFromDiameter, diameterFromCanonical } from '../engine/aquarelleBrushSize';
 import { aquarelleFullPressureSizeFor } from '../engine/aquarelleFootprint';
@@ -73,6 +80,15 @@ export interface AquarelleGlobalParams {
    * the pre-strength hardcoded amount; strokes without the key keep it.
    */
   lift: number;
+  /**
+   * Phase 64 (v2.2.0): the medium keys. 0 is neutral — a pre-milestone
+   * recorded bag without them replays byte-identically. They ride the one
+   * key list below, so the record loop and the selection write allowlist
+   * both carry them; the engine mapping clamps their 0..1 projection.
+   */
+  viscosity: number;
+  body: number;
+  emboss: number;
 }
 
 export type AquarelleGlobalKey = keyof AquarelleGlobalParams;
@@ -87,6 +103,9 @@ export const AQUARELLE_GLOBAL_KEYS: readonly AquarelleGlobalKey[] = Object.freez
   'edge',
   'granulation',
   'lift',
+  'viscosity',
+  'body',
+  'emboss',
 ] as const);
 
 export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.freeze({
@@ -99,6 +118,9 @@ export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.
   edge: 50,
   granulation: 50,
   lift: 22,
+  viscosity: 0,
+  body: 0,
+  emboss: 0,
 });
 
 /** D-08 multiplier band. */
@@ -143,10 +165,28 @@ export const aquarelleSelectedMediumId = signal<MediumId | null>(DEFAULT_MEDIUM_
 /**
  * Phase 64 (D-04): apply a whole medium record to the live bag in ONE spread
  * write, with the id written in the same handler. Never a per-key setter
- * cascade, never the stroke-selection edit path, never `size` or `lift`.
+ * cascade, never the stroke-selection edit path, never `size` or `lift` —
+ * the record typeset is exactly the ten medium keys.
+ *
+ * D-03: re-picking the selected medium re-applies its record (the "get back
+ * to pure acrylic" path), so the id write is independent of the bag write:
+ * an unchanged id stays compare-then-write, while drifted params still land.
+ * An unknown id is a total no-op.
  */
-export function applyAquarelleMedium(_id: string): void {
-  // RED skeleton — GREEN fills the one-spread-write handler.
+export function applyAquarelleMedium(id: string): void {
+  const record = mediumById(id);
+  if (record === null) return;
+  const current = aquarelleParams.value;
+  const params = record.params;
+  const differs = (Object.keys(params) as MediumParamKey[]).some(
+    (key) => current[key] !== params[key],
+  );
+  if (differs) {
+    aquarelleParams.value = { ...current, ...params };
+  }
+  if (aquarelleSelectedMediumId.value !== record.id) {
+    aquarelleSelectedMediumId.value = record.id;
+  }
 }
 
 /**
