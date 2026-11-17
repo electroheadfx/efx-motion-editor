@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-03-PLAN.md
-last_updated: "2026-11-17T15:27:39.760Z"
+stopped_at: Completed 64-11-PLAN.md
+last_updated: "2026-11-17T15:38:06.493Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 64 execution started
-state_head: b9a5c2e7d6a8d7dd2248b036564f918941620ddf
+state_head: 6098d9557eb0acdf20c1f37a234af5e5f6964882
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 29
-  completed_plans: 20
+  completed_plans: 21
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 4 of 12
+Plan: 5 of 12
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 64 execution started
 
@@ -147,6 +147,7 @@ Last activity: 2026-11-17 — Phase 64 execution started
 | Phase 64 P01 | 7min | 3 tasks | 11 files |
 | Phase 64 P02 | 14min | 3 tasks | 10 files |
 | Phase 64 P03 | 11 | 3 tasks | 6 files |
+| Phase 64 P11 | 9 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -468,6 +469,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: Thickness is one document-resolution HALF_FLOAT_R target, not a ping-pong pair: nothing advects it, and History.swap reads fbs[0] and writes every framebuffer, so travel() pairs it as a one-element entry.
 - [Phase 64]: bindFootprint is shared by drawStamp and drawRelief so the relief footprint cannot drift; drawRelief takes an optional brush/rect/rough/jitter so Lift reuses the lift brush and rect with grain zeroed for liftFS mask parity.
 - [Phase 64]: The deposit is structurally guarded at emboss 0 (no GL call at all), and resizeDocument forward-copies the thickness so a resized sheet keeps its relief (Rule 2 completion of the plan's must_have).
+- [Phase 64]: The brush group tag is compile-time only: no serializer, no .mce field, no Rust mirror; an absent tag reads the default medium and the response id stays the only persisted brush reference.
+- [Phase 64]: Acrylic bristle striation is a shared procedural tip built on the existing hair-segment helper (16.0/15.8 ms vs the 15.1 ms fan baseline), not a machine-scoped texture.
+- [Phase 64]: brushSections is a pure package export mapped by the library, so the empty-group omission is tested directly instead of being a component branch.
+- [Phase 64]: The chalk dry-media stamp law was rescoped to an explicit dry list plus a complement smooth-path assertion because seven of the eight new responses carry non-zero roughness per the spec table.
+- [Phase 64]: The pastel group keeps the pastel id but displays as Chalk (D-18) in both the section header and the medium dropdown.
 
 ### Pending Todos
 
@@ -594,8 +600,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-17T15:27:38.982Z
-Stopped at: Completed 64-03-PLAN.md
+Last session: 2026-11-17T15:38:05.710Z
+Stopped at: Completed 64-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

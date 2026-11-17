@@ -56,12 +56,12 @@
 - [ ] **MED-23**: A stroke snapshots its `Body` with its params the way `lift` and `viscosity` are snapshotted; live pass, bake and replay read the same value and produce the same raster, and the medium record carries the value (`watercolor` 0, `pastel` low, `graphite` 0, `gouache` mid, `acrylic` high)
 - [ ] **MED-24**: Undo and redo restore both the settled-layer region and the thickness a covering stamp eroded — both pools protected before the cover pass's first draw, verified rather than assumed
 - [ ] **MED-25**: `Body` adds no render target, no texture allocation and no shader program beyond the thickness channel of MED-14 (the cover pass reuses the Lift program), and export matches the screen on both `uMode` paths
-- [ ] **MED-26**: `BrushPreset` carries a compile-time `group` with five values (`watercolor`, `gouache`, `pastel`, `graphite`, `acrylic`); absent reads `watercolor`, nothing is persisted and there is no Rust or format change
-- [ ] **MED-27**: The brush library renders one section per group in the fixed order Watercolor · Gouache · Chalk/pastel · Graphite · Acrylic/oil, with no filter and no search; a group with no reachable response is not rendered
+- [x] **MED-26**: `BrushPreset` carries a compile-time `group` with five values (`watercolor`, `gouache`, `pastel`, `graphite`, `acrylic`); absent reads `watercolor`, nothing is persisted and there is no Rust or format change
+- [x] **MED-27**: The brush library renders one section per group in the fixed order Watercolor · Gouache · Chalk/pastel · Graphite · Acrylic/oil, with no filter and no search; a group with no reachable response is not rendered
 - [ ] **MED-28**: Selecting a response applies its group's medium params in exactly one store write, only when the group changes; switching brushes inside the same group keeps the user's manual global tweaks
-- [ ] **MED-29**: The 15 existing responses are classified per the spec table (watercolour 11, chalk/pastel 4, the other groups shipping only new responses)
-- [ ] **MED-30**: Eight new responses ship with the recorded parameters (`gouache-round`, `gouache-flat`, `pastel-soft`, `conte-hard`, `graphite-pencil`, `graphite-6b`, `bristle-flat`, `bristle-round`); adding is safe and renaming or removing an existing preset id is forbidden
-- [ ] **MED-31**: The texture axis is unchanged — a texture replaces the selected response's footprint and applies to every group; a texture never selects a group and a group never selects a texture
+- [x] **MED-29**: The 15 existing responses are classified per the spec table (watercolour 11, chalk/pastel 4, the other groups shipping only new responses)
+- [x] **MED-30**: Eight new responses ship with the recorded parameters (`gouache-round`, `gouache-flat`, `pastel-soft`, `conte-hard`, `graphite-pencil`, `graphite-6b`, `bristle-flat`, `bristle-round`); adding is safe and renaming or removing an existing preset id is forbidden
+- [x] **MED-31**: The texture axis is unchanged — a texture replaces the selected response's footprint and applies to every group; a texture never selects a group and a group never selects a texture
 - [ ] **MED-32**: The scattering coefficient `S` rides the existing `inkB.a` (mobile) and `fixedB.a` (settled) channels — no new render target, no texture allocation, no new pass
 - [ ] **MED-33**: `Body` derives `S`; the existing ink advection transports it and the settle pass carries it into the settled layer
 - [ ] **MED-34**: The composite reconstructs each band with the Kubelka-Munk layer-over-background form; scattering is broadband (one scalar), with no per-band `S`
@@ -152,12 +152,12 @@ Which phases cover which requirements.
 | MED-23 | Phase 64 | Pending |
 | MED-24 | Phase 64 | Pending |
 | MED-25 | Phase 64 | Pending |
-| MED-26 | Phase 64 | Pending |
-| MED-27 | Phase 64 | Pending |
+| MED-26 | Phase 64 | Complete |
+| MED-27 | Phase 64 | Complete |
 | MED-28 | Phase 64 | Pending |
-| MED-29 | Phase 64 | Pending |
-| MED-30 | Phase 64 | Pending |
-| MED-31 | Phase 64 | Pending |
+| MED-29 | Phase 64 | Complete |
+| MED-30 | Phase 64 | Complete |
+| MED-31 | Phase 64 | Complete |
 | MED-32 | Phase 64 | Pending |
 | MED-33 | Phase 64 | Pending |
 | MED-34 | Phase 64 | Pending |
