@@ -426,26 +426,31 @@ export function buildLiftCoverage(
       const dyUp = one.cy - y;
       for (let x = x0; x <= x1; x += 1) {
         const dx = x - one.cx;
-        let f: number;
         let d: number;
+        let along = 0;
+        let across = 0;
         if (shape) {
-          const along = (dx * cos + dyUp * sin) / one.rPx;
-          const across = ((-dx * sin + dyUp * cos) / one.rPx) / shape.aspect;
+          along = (dx * cos + dyUp * sin) / one.rPx;
+          across = ((-dx * sin + dyUp * cos) / one.rPx) / shape.aspect;
           // liftFS: outside the tip square the dab is discarded.
           if (Math.abs(along) > 1 || Math.abs(across) > 1) continue;
           d = along * along + across * across;
-          const mask = sampleTipBilinear(shape.tipData, shape.tipSize, along, across);
-          f = one.amount * Math.exp(-(d * d)) * (mask * (1 - LIFT_TIP_ROUND) + LIFT_TIP_ROUND);
         } else {
           d = (dx * dx + dyUp * dyUp) / r2;
-          f = one.amount * Math.exp(-(d * d));
         }
+        let f: number;
         if (profile === 'core') {
           // quick 261117-tq7: the engine's `uCover = 1` law, spelled in
           // coverage space — solid to dot(q,q) = 0.35, smoothstep to 1, zero
           // from there out. Same square cull and aspect squeeze as above.
+          // Never reads the tip mask, so the bilinear sample is skipped here.
           const t = Math.min(1, Math.max(0, (d - 0.35) / (1 - 0.35)));
           f = one.amount * (1 - t * t * (3 - 2 * t));
+        } else if (shape) {
+          const mask = sampleTipBilinear(shape.tipData, shape.tipSize, along, across);
+          f = one.amount * Math.exp(-(d * d)) * (mask * (1 - LIFT_TIP_ROUND) + LIFT_TIP_ROUND);
+        } else {
+          f = one.amount * Math.exp(-(d * d));
         }
         const index = (y - coverageRect.y) * coverageRect.width + (x - coverageRect.x);
         coverage[index] *= 1 - f;
