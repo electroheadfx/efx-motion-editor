@@ -18,7 +18,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { mixSpectral } from '@efxlab/efx-spectral'
@@ -798,5 +798,123 @@ describe('configure() forwards the texture axis to buildBrushForStroke (source p
     // build wrote them — must replay as the response tip, the silhouette the
     // punch actually erased.
     expect(configure).toContain("tool === 'lift' ? null : payload.textureId")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 64-07 (MED-17) — the optional bake light.
+//
+//  64-04 added the engine's light state and `setLight`'s clamp/idempotence
+//  law; 64-05 made the light durable on the paint-layer document. This plan
+//  carries it into every bake: the adapter applies the light ONCE, before the
+//  first stroke, and never clamps it by hand — `setLight` owns the bands.
+//
+//  The wiring is proven against a stubbed engine because vitest has no WebGL2
+//  (project law feedback_live_evidence_over_unit_probes: the GPU pixels are
+//  the probe matrix's, the WIRING is pinned here). The stub is installed with
+//  a per-test doMock + resetModules so the file's other describes keep the
+//  real WatercolorEngine module — their GPU pins construct it for real on a
+//  WebGL2 machine.
+// ---------------------------------------------------------------------------
+
+describe('adapter light option (64-07, MED-17)', () => {
+  /** Every engine method call in order — the ordering IS the law. */
+  const calls: Array<{ method: string; args: readonly unknown[] }> = []
+
+  function record(method: string, args: readonly unknown[] = []): void {
+    calls.push({ method, args })
+  }
+
+  class StubWatercolorEngine {
+    paperTexture = 1
+    isAwake = false
+    constructor() {
+      record('constructor')
+    }
+    setManual(): void { record('setManual') }
+    setClock(): void { record('setClock') }
+    setRandom(): void { record('setRandom') }
+    setPaper(): void { record('setPaper') }
+    setParams(): void { record('setParams') }
+    setBrush(): void { record('setBrush') }
+    setLiftBrush(): void { record('setLiftBrush') }
+    setPigment(): void { record('setPigment') }
+    setTool(): void { record('setTool') }
+    setLight(next: { azimuth?: number; elevation?: number; intensity?: number }): void {
+      record('setLight', [next])
+    }
+    fix(): void { record('fix') }
+    scriptBegin(): boolean { record('scriptBegin'); return true }
+    scriptMove(): void { record('scriptMove') }
+    scriptEnd(): void { record('scriptEnd') }
+    tick(): void { record('tick') }
+    destroy(): void { record('destroy') }
+  }
+
+  async function adapterWithStubEngine(options: {
+    canvas: HTMLCanvasElement
+    width: number
+    height: number
+    light?: { azimuth: number; elevation: number; intensity: number }
+  }) {
+    vi.resetModules()
+    vi.doMock('../playground/Engine', () => ({ WatercolorEngine: StubWatercolorEngine }))
+    const module = await import('./engineAdapter')
+    return module.createAquarelleEngineAdapter(options)
+  }
+
+  afterEach(() => {
+    vi.doUnmock('../playground/Engine')
+    vi.resetModules()
+    calls.length = 0
+  })
+
+  const STROKE: StudioStroke<AquarelleStrokePayload> = toStudioStroke(makeStrokePayload())
+
+  it('applies a provided light exactly once, before the first stroke', async () => {
+    const { canvas } = makeMockCanvas(8, 8)
+    const adapter = await adapterWithStubEngine({
+      canvas,
+      width: 8,
+      height: 8,
+      light: { azimuth: 200, elevation: 30, intensity: 2 },
+    })
+
+    adapter.applyStroke(STROKE)
+
+    const lightCalls = calls.filter((call) => call.method === 'setLight')
+    expect(lightCalls).toHaveLength(1)
+    expect(lightCalls[0]!.args[0]).toEqual({ azimuth: 200, elevation: 30, intensity: 2 })
+    // The light lands BEFORE the first dab: the stroke's very first pixel is lit.
+    const lightIndex = calls.findIndex((call) => call.method === 'setLight')
+    const beginIndex = calls.findIndex((call) => call.method === 'scriptBegin')
+    expect(beginIndex).toBeGreaterThan(-1)
+    expect(lightIndex).toBeLessThan(beginIndex)
+    adapter.dispose()
+  })
+
+  it('never calls setLight when no light is provided', async () => {
+    const { canvas } = makeMockCanvas(8, 8)
+    const adapter = await adapterWithStubEngine({ canvas, width: 8, height: 8 })
+    adapter.applyStroke(STROKE)
+    // The engine's own default stays in force — the adapter never manufactures one.
+    expect(calls.filter((call) => call.method === 'setLight')).toHaveLength(0)
+    adapter.dispose()
+  })
+
+  it('passes an out-of-band light through unmodified (the engine setter owns the clamp)', async () => {
+    const { canvas } = makeMockCanvas(8, 8)
+    const adapter = await adapterWithStubEngine({
+      canvas,
+      width: 8,
+      height: 8,
+      light: { azimuth: 725, elevation: -5, intensity: 99 },
+    })
+    // One construction, one apply — no second light write on any later path.
+    const lightCalls = calls.filter((call) => call.method === 'setLight')
+    expect(lightCalls).toHaveLength(1)
+    // UNMODIFIED: the adapter is a pass-through; `setLight` wraps/clamps.
+    expect(lightCalls[0]!.args[0]).toEqual({ azimuth: 725, elevation: -5, intensity: 99 })
+    adapter.dispose()
   })
 })
