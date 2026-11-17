@@ -442,3 +442,33 @@ describe('Phase 63 brush-tip carrier — retired with the project pack (quick 26
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 64 document light (MED-17)
+//
+// The per-paint-layer-document emboss light is a declaration-only pin, exactly
+// like `McePaperDisplayState`: the two declarations are the contract anchor the
+// field-diff reads, not a second serialization path. The light crosses the
+// native Studio handoff nested inside the launch envelope's opaque `document`
+// member — `PhysicPaintLaunchContext.document` is typed as the document in TS,
+// the Rust launch struct carries it as `Option<Value>`, and
+// `isPhysicPaintLaunchContext` delegates validation to `parseEfxPaintDocument`.
+// The envelope therefore needs no `light` key and neither launch struct needs a
+// `light` field; the declaration is two-language by design, so it must never
+// join `ALLOWED_ONE_LANGUAGE`.
+// ---------------------------------------------------------------------------
+
+describe('Phase 64 document light (MED-17)', () => {
+  it('declares the document light shape in both languages', () => {
+    // MED-17 / D-08: azimuth, elevation and intensity ride the document.
+    expectMemberKeys('MceDocumentLight', ['azimuth', 'elevation', 'intensity']);
+  });
+
+  it('did not claim a one-language exception for the document light', () => {
+    for (const entry of ALLOWED_ONE_LANGUAGE) {
+      expect(entry.toLowerCase()).not.toContain('documentlight');
+      expect(entry.toLowerCase()).not.toContain('document_light');
+      expect(entry.toLowerCase()).not.toContain('light');
+    }
+  });
+});

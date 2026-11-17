@@ -430,6 +430,22 @@ pub struct McePaperDisplayState {
     pub scale: f64,
 }
 
+/// Phase 64-05 (MED-17): the per-paint-layer-document emboss light.
+/// Declaration-class pin only (DATA-04 / D-27 pattern): the light crosses the
+/// native Studio handoff nested inside the launch envelope's opaque
+/// `document` member (`PhysicsPaintLaunchContext.document`), and the layer
+/// sub-file is itself opaque (`HashMap<String, Value>`), so neither that
+/// launch struct nor the package carrier grows a `light` field — a launch
+/// field would be a second, unread copy of a value the document already
+/// carries end to end.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceDocumentLight {
+    pub azimuth: f64,
+    pub elevation: f64,
+    pub intensity: f64,
+}
+
 /// Aquarelle per-brush property surface (AQUA-03 / R1.7 / D-08). The 8
 /// numeric multipliers snapshotted onto a stroke at record time; the same
 /// flat surface rides every brush-pack snapshot entry.

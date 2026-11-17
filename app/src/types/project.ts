@@ -297,6 +297,22 @@ export interface McePaperDisplayState {
 }
 
 /**
+ * Phase 64-05 (MED-17): the per-paint-layer-document emboss light — the
+ * engine's `LightSettings` wire shape (azimuth, elevation, intensity) under the
+ * dual-language field-diff pin. Declaration-class only, exactly like
+ * `McePaperDisplayState` above: the light crosses the native Studio handoff
+ * nested inside the launch envelope's opaque `document` member, so
+ * `PhysicPaintLaunchContext` gains no `light` key and `isPhysicPaintLaunchContext`
+ * validates it through `parseEfxPaintDocument` — never a second serialization
+ * path.
+ */
+export interface MceDocumentLight {
+  azimuth: number;
+  elevation: number;
+  intensity: number;
+}
+
+/**
  * Aquarelle per-brush property surface (AQUA-03 / R1.7 / D-08). The 8 numeric
  * multipliers snapshotted onto a stroke at record time; the same flat surface
  * rides every brush-pack snapshot entry.
