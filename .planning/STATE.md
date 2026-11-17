@@ -2,14 +2,14 @@
 gsd_state_version: "1.0"
 milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
-current_phase: 63
-current_phase_name: Brush Tip Pipeline
-status: verifying
-stopped_at: Completed 63-17-PLAN.md
-last_updated: "2026-11-17T11:55:24.674Z"
+current_phase: 64
+current_phase_name: Medium Engine
+status: planning
+stopped_at: Phase 63 complete, ready to plan Phase 64
+last_updated: "2026-11-17T12:43:10.125Z"
 last_activity: 2026-11-17
-last_activity_desc: Phase 63 execution started
-state_head: 6aff782e94958b5d751fce478a42bc8adb814ecd
+last_activity_desc: Phase 63 complete, transitioned to Phase 64
+state_head: 7ff349db408b35b09876636f1058ebe248b31723
 progress:
   total_phases: 1
   completed_phases: 1
@@ -22,17 +22,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-16 after Phase 63)
+See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 63 — Brush Tip Pipeline
+**Current focus:** Phase 64 — Medium Engine
 
 ## Current Position
 
-Phase: 63 (Brush Tip Pipeline) — EXECUTING
-Plan: 17 of 17
-Status: Phase complete — ready for verification
-Last activity: 2026-11-17 — Phase 63 execution started
+Phase: 64 — Medium Engine
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-17 — Phase 63 complete, transitioned to Phase 64
 
 
 ## Performance Metrics
@@ -53,7 +53,7 @@ Last activity: 2026-11-17 — Phase 63 execution started
 | 60 | 6 | - | - |
 | 61 | 31 | - | - |
 | 62 | 5 | - | - |
-| 63 | 16 | - | - |
+| 63 | 17 | - | - |
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -576,15 +576,15 @@ Items acknowledged and carried forward from previous milestone close:
 - Phase 61: Vector painting tool (spike-gated on per-vertex watercolour feasibility)
 - Phase 62: Painted-stroke curve editing (depends on Phase 61's editing surface)
 - Phase 63: Brush Tip Pipeline (v2.2.0, plan-backed from specs 01-02 — real tip mask, embedded `brushPack`, three built-in tips)
-- Phase 64: Medium Engine (v2.2.0, plan-backed from specs 03-06 — Viscosity, Medium profiles, pigment relief, Coverage)
+- Phase 64: Medium Engine (v2.2.0, plan-backed from specs 03-08 — Viscosity, five Medium profiles, thickness/emboss, Body order, brush groups, scattering)
 
 ## Session Continuity
 
-Last session: 2026-11-17T11:55:24.640Z
-Stopped at: Completed 63-17-PLAN.md
+Last session: 2026-11-17T12:43:10.125Z
+Stopped at: Phase 63 complete (UAT 10/10 resolved, verification 27/27 passed), ready to plan Phase 64
 Resume file: None
 
 ## Operator Next Steps
 
 
-- Plan Phase 64 with /gsd-plan-phase 64 (quicks 03-06: Viscosity, Medium profiles, pigment relief, Coverage)
+- Plan Phase 64 with /gsd-plan-phase 64 (specs 03-08: Viscosity, five Medium profiles, thickness/emboss, Body order, brush groups, scattering — all plan inputs, no quick dispatch)
