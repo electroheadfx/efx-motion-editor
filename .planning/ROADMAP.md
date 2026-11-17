@@ -197,7 +197,37 @@ Plans:
   6. The brush library groups the responses by medium in five sections; picking a brush applies its group's medium in one store write only when the group changes; the 15 existing responses are classified and the eight new ones ship.
   7. Export matches the screen on every `uMode` path, zooming produces no shimmer or crawl, and undo restores the eroded pigment and the eroded thickness exactly.
 
-**Plans**: TBD
+**Plans:** 11 plans
+
+Plans:
+**Wave 1**
+- [ ] 64-01-PLAN.md — Tracer: the Viscosity global end to end, its two engine sites, the per-stroke snapshot and the committed neutral pixel baseline
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 64-02-PLAN.md — Five frozen medium records over the canonical set, the one-write medium application and the Paint-tab dropdown
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 64-03-PLAN.md — The thickness field: relief target, footprint deposit, Lift erosion and the positional undo pairing
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 64-04-PLAN.md — The emboss composite, engine light state, the Emboss row and the two byte-identity gates
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 64-05-PLAN.md — The document light: optional additive member, fail-closed parser, one store mutation and the dual-language Studio handoff
+- [ ] 64-06-PLAN.md — The Body cover pass: settle protection, tip-footprint erosion, the Body row and the Body 0 gate
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 64-07-PLAN.md — The light on every render path — live, Play bake, Apply bake — the content-signature term and the Paper & Light tab
+- [ ] 64-08-PLAN.md — Scattering transport: `S` through `inkB.a`/`fixedB.a`, the settle carry and the white-gouache retirement
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 64-09-PLAN.md — The Kubelka-Munk composite, the scattering-free early-out, the calibration pins and the probe gate matrix
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 64-10-PLAN.md — Brush groups: the compile-time group tag, the classification, eight new responses and five always-expanded sections
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [ ] 64-11-PLAN.md — The group-to-medium pick seam: one live-bag write only when the group changes, and the source audit that keeps every response surface on it
 
 **Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-07-brush-groups.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-08-scattering.md`
 
@@ -214,7 +244,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 0 plans | Not started | - |
+| 64. Medium Engine | 11 plans | Planned | - |
 
 ---
 
