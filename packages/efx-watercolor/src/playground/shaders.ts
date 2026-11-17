@@ -73,6 +73,46 @@ void main(){
   o1 = uColor1 * f;
 }`;
 
+// Phase 64 (MED-14): the paint-thickness deposit. Mirrors the footprint HALF of
+// stampFS exactly — the same uniforms, tip-space mapping, rotation, dry
+// re-threshold and paper-tooth gate — and writes ONE output: the footprint mask
+// scaled by the deposit amount. The engine's test compares the two uniform
+// sets, so a tip change can never diverge between the pigment stamp and the
+// thickness deposit. Nothing but the per-dab deposit and Lift's erosion draw it.
+export const reliefFS = `${HEADER}
+layout(location=0) out vec4 o0;
+uniform sampler2D uTip, uPaper;
+uniform float uAspect, uRadius, uTipAspect, uRound, uGrain, uGrainThr;
+uniform float uRough, uJitter;
+uniform float uTipRotation;
+uniform vec2 uPoint, uAxis;
+uniform float uAmount;
+void main(){
+  vec2 p = vUv - uPoint; p.x *= uAspect;
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  q.y /= uTipAspect;
+  // Rotate the TIP-SPACE sampling coordinates only: the discard and the
+  // footprint value keep the unrotated q, exactly as stampFS does.
+  float a = uTipRotation;
+  vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
+  if (abs(q.x) > 1.0 || abs(q.y) > 1.0) discard;
+  // Dry media reads a different slice of the tip per dab (same law as stampFS).
+  float e0 = fract(sin(dot(uPoint, vec2(12.9898, 78.233))) * 43758.5453);
+  float e1 = fract(e0 * 63.7264 + 0.37);
+  vec2 uv = clamp(tq * 0.5 + 0.5 + (vec2(e0, e1) - 0.5) * uJitter, 0.0, 1.0);
+  float t = texture(uTip, uv).r;
+  // Re-threshold the tip into the same hard, crumbly mask stampFS builds.
+  float th = uRough * 0.45;
+  float dry = smoothstep(th, th + 0.02, t);
+  float sharp = mix(t, dry, step(0.0001, uRough));
+  float d = dot(q, q);
+  float round = 1.0 - smoothstep(0.15, 1.0, d);
+  float f = mix(sharp, round, uRound);
+  float h = texture(uPaper, vUv).g;
+  f *= mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);
+  o0 = vec4(uAmount * f);
+}`;
+
 // Water flow: self-advect, damp, and confine to wet paper.
 export const advectVelocityFS = `${HEADER}
 out vec4 o;

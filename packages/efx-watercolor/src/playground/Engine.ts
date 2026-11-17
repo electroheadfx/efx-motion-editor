@@ -378,6 +378,7 @@ export class WatercolorEngine {
     this.programs = {
       splat: this.g.program(S.splatFS),
       stamp: this.g.program(S.stampFS),
+      relief: this.g.program(S.reliefFS),
       fill: this.g.program(S.fillFS),
       advectVelocity: this.g.program(S.advectVelocityFS),
       divergence: this.g.program(S.divergenceFS),
@@ -1994,12 +1995,20 @@ export class WatercolorEngine {
         // spacing / profile integral -> ~conc in the stroke, normalised for sparse tips
         const norm = clamp(Math.sqrt(0.5 / b.tipMean), 0.7, 2.2);
         const amount = conc * Math.min(b.spacing, 1) / 1.8 * norm * dwell;
+        // Phase 64 (MED-14, the deposit law): thickness is deposited in
+        // proportion to the dab's OWN ink amount, scaled by the stroke's emboss.
+        // 0 draws nothing at all — no program bind, no blend change, no draw —
+        // so the render and the undo history stay untouched at the neutral
+        // default (the bit-identity law).
+        const reliefAmount = P.emboss * amount;
         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
         const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, this.pigment.white * amount * 1.6];
         this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
+          // spec 06: the cover pass draws here, before this dab's deposit
           this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
+          if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
           // soft brushes wet a little beyond the tip; textured ones keep their
           // edges. A waterless brush never wakes the fluid sim at all.
           if (wet > 0) this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, dryness, grainThr);
@@ -2070,14 +2079,19 @@ export class WatercolorEngine {
     }
   }
 
-  private drawStamp(t: Target, x: number, y: number, r: number, angle: number, c0: number[], c1: number[], round: number, grain: number, grainThr: number) {
+  /**
+   * Phase 64 (MED-14): every footprint uniform a stamp-family program reads,
+   * bound from ONE place. drawStamp (pigment / water) and drawRelief (the
+   * thickness deposit) share it, so a tip change can never diverge between the
+   * two draws. `b` defaults to the active brush; Lift's erosion passes its own
+   * brush and disables roughness / jitter so the mask is exactly the one
+   * liftFS erodes pigment with.
+   */
+  private bindFootprint(p: Program, x: number, y: number, r: number, angle: number, round: number, grain: number, grainThr: number, b: Brush = this.brush, rough: number = b.roughness ?? 0, jitter: number = b.stampJitter ?? 0) {
     const { gl, g } = this;
-    const b = this.brush;
-    const p = this.programs.stamp;
-    p.bind();
     gl.uniform1i(p.u.uTip, g.bindTex(0, this.tipTexture(b)));
     gl.uniform1i(p.u.uPaper, g.bindTex(1, this.paper.tex[0]));
-    gl.uniform1f(p.u.uAspect, t.w / t.h);
+    gl.uniform1f(p.u.uAspect, this.dw / this.dh);
     gl.uniform2f(p.u.uPoint, x, y);
     gl.uniform1f(p.u.uRadius, r);
     gl.uniform1f(p.u.uTipAspect, b.aspect);
@@ -2088,11 +2102,44 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uRound, round);
     gl.uniform1f(p.u.uGrain, grain);
     gl.uniform1f(p.u.uGrainThr, grainThr);
-    gl.uniform1f(p.u.uRough, b.roughness ?? 0);
-    gl.uniform1f(p.u.uJitter, b.stampJitter ?? 0);
+    gl.uniform1f(p.u.uRough, rough);
+    gl.uniform1f(p.u.uJitter, jitter);
+  }
+
+  private drawStamp(t: Target, x: number, y: number, r: number, angle: number, c0: number[], c1: number[], round: number, grain: number, grainThr: number) {
+    const { gl, g } = this;
+    const b = this.brush;
+    const p = this.programs.stamp;
+    p.bind();
+    this.bindFootprint(p, x, y, r, angle, round, grain, grainThr);
     gl.uniform4fv(p.u.uColor0, c0);
     gl.uniform4fv(p.u.uColor1, c1);
     g.draw(t, this.stampRect(x, y, r, t.w, t.h, Math.sqrt(1 + b.aspect * b.aspect) * 1.02));
+  }
+
+  /**
+   * Phase 64 (MED-14): draw the thickness deposit (or Lift's erosion) into the
+   * relief target with the same footprint the pigment stamp uses. `rect`
+   * defaults to the ink dab's rect; Lift passes its own rect with 0/0 grain and
+   * 0 roughness / jitter, so the eroded mask matches liftFS exactly.
+   */
+  private drawRelief(amount: number, x: number, y: number, r: number, angle: number, grain: number, grainThr: number, b: Brush = this.brush, rect = this.stampRect(x, y, r, this.dw, this.dh, 1.5), rough: number = b.roughness ?? 0, jitter: number = b.stampJitter ?? 0) {
+    const { gl, g } = this;
+    const p = this.programs.relief;
+    p.bind();
+    this.bindFootprint(p, x, y, r, angle, 0, grain, grainThr, b, rough, jitter);
+    gl.uniform1f(p.u.uAmount, amount);
+    g.draw(this.relief, rect);
+  }
+
+  /** Phase 64 (MED-14): additive per-dab thickness deposit. */
+  private brushRelief(x: number, y: number, r: number, angle: number, amount: number, grain: number, grainThr: number) {
+    const { gl } = this;
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    this.drawRelief(amount, x, y, r, angle, grain, grainThr);
+    gl.disable(gl.BLEND);
   }
 
   private brushInk(x: number, y: number, r: number, angle: number, c0: number[], c1: number[], grain: number, grainThr: number) {
@@ -2240,6 +2287,12 @@ export class WatercolorEngine {
     g.draw(this.fixed, rect);
     // fixed pigment is dry by definition — no tissue water factor, the full amount.
     // Declared consequence: an explicit Dry is permanent for every tool except Lift.
+    // Phase 64 (MED-14): thickness is destroyed by Lift like paint — the same
+    // rect and the same amount under the ZERO / ONE_MINUS_SRC_COLOR pair still
+    // bound here. Grain, roughness and jitter are off, so the eroded mask is
+    // exactly the one liftFS erodes pigment with. Spec 06's cover pass reuses
+    // this same draw with its own footprint.
+    this.drawRelief(amount, x, y, r, angle, 0, 0, b, rect, 0, 0);
     gl.disable(gl.BLEND);
     // After the draw, so the preview observes exactly the dab the engine applied.
     this.callbacks.onLiftDab?.(x, y, r, amount, angle);
