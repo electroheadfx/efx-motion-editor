@@ -33,6 +33,27 @@ export type Tool = 'brush' | 'water' | 'pen' | 'lift';
  * already-settled pigment.
  */
 
+/**
+ * Phase 64 (v2.2.0) — paint thickness (`relief`):
+ *
+ * One document-resolution HALF_FLOAT_R target beside `wet` holds how thick the
+ * paint lies on the sheet. Each brush dab deposits its own tip footprint scaled
+ * by that dab's ink amount times the stroke's `emboss` (MED-14, the deposit law),
+ * Lift erodes thickness with the same footprint and the same amount it erodes
+ * pigment with, and the cover pass of spec 06 will draw at the same per-dab seam.
+ * Thickness never flows: no advect, settle, dry, bleed or fill pass reads or
+ * writes this target.
+ *
+ * Engine-internal state: thickness is rebuilt from the stroke script on replay
+ * and is NEVER persisted — do not add a field for it to any project format, any
+ * app persistence module or any Rust model.
+ *
+ * Undo carries it positionally in pool 0: allocateHistory()'s format list,
+ * snapshotLayers() and travel()'s layer map list the thickness view as the same
+ * last entry. Edit all three together; if they disagree the atlas copy writes
+ * one layer into another layer's target.
+ */
+
 /** All sliders are normalised 0..1. */
 export interface Params {
   size: number;
@@ -89,7 +110,7 @@ export interface ExportOptions { format: ExportFormat; background: ExportBackgro
 /** Placement of the reference image in document uv (y up): origin and size. */
 export interface RefRect { x: number; y: number; w: number; h: number }
 
-export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet';
+export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief';
 
 /**
  * The paint layers as half floats (RGBA for ink and fixed, one channel for wet), cropped
@@ -299,6 +320,7 @@ export class WatercolorEngine {
   private ink!: DoubleTarget;
   private fixed!: Target;
   private wet!: DoubleTarget;
+  private relief!: Target;                     // Phase 64: paint thickness, one channel, engine-only
   private paper!: Target;
   private wetMask!: Target;                    // coarse "is there water here" map, read back to bound the sim
   private maskPixels = new Uint8Array(0);
@@ -440,22 +462,28 @@ export class WatercolorEngine {
     this.ink = g.double(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);
     this.fixed = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);
     this.wet = g.double(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
+    // Phase 64: the thickness field — one channel on the document grid, the same
+    // shape `wet` uses. Not a ping-pong pair: nothing advects it.
+    this.relief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
     this.paper = g.target(this.dw, this.dh, [RGBA8], gl.LINEAR);
     this.wetMask = g.target(Math.ceil(this.dw / MASK_BLOCK), Math.ceil(this.dh / MASK_BLOCK), [RGBA8], gl.NEAREST);
     this.maskPixels = new Uint8Array(this.wetMask.w * this.wetMask.h * 4);
   }
 
   private allocateHistory() {
+    // Pool 0 is positionally paired with snapshotLayers() and travel()'s layer
+    // map: mobile pigment (A, B), water, then Phase 64's paint thickness (R16F).
+    // Grow all three lists together or the atlas copies the wrong layer.
     this.history = new History(this.g, this.dw, this.dh, [
-      { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R], documents: 2 }, // mobile pigment + water
-      { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], documents: 1 },               // fixed pigment
+      { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R], documents: 2 }, // mobile pigment + water + thickness
+      { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], documents: 1 },                              // fixed pigment
     ]);
   }
 
   /** The targets that hold the sheet (not the sim grids, not the history atlases). */
   private docTargets(): Target[] {
     return [this.velocity.read, this.velocity.write, this.pressure.read, this.pressure.write, this.divergence, this.curl,
-      this.ink.read, this.ink.write, this.fixed, this.wet.read, this.wet.write, this.paper, this.wetMask];
+      this.ink.read, this.ink.write, this.fixed, this.wet.read, this.wet.write, this.paper, this.wetMask, this.relief];
   }
 
   /** (Re)create a blank `w`×`h` sheet. Discards the painting. */
@@ -509,7 +537,7 @@ export class WatercolorEngine {
     const { g } = this;
     const ox = Math.round((w - ow) / 2), oy = Math.round((h - oh) / 2);
     const meta: StepMeta = { ...this.currentMeta(), whole: this.captureWhole(), paperOrigin: [...this.paperOrigin] };
-    const old = { targets: this.docTargets(), ink: this.ink.read, fixed: this.fixed, wet: this.wet.read };
+    const old = { targets: this.docTargets(), ink: this.ink.read, fixed: this.fixed, wet: this.wet.read, relief: this.relief };
     this.dw = w; this.dh = h;
     this.allocateTargets();
     this.history.beginBoundary({ kind: 'resize', label: `Resize ${w} × ${h}` }, meta, w, h);
@@ -523,6 +551,7 @@ export class WatercolorEngine {
     copy(old.ink, [this.ink.read, this.ink.write]);
     copy(old.wet, [this.wet.read, this.wet.write]);
     copy(old.fixed, [this.fixed]);
+    copy(old.relief, [this.relief]);   // Phase 64: a resized sheet keeps its relief
     old.targets.forEach(t => g.disposeTarget(t));
 
     this.paperOrigin = [this.paperOrigin[0] - ox, this.paperOrigin[1] - oy];
@@ -559,6 +588,7 @@ export class WatercolorEngine {
         inkA: read(this.ink.read.views[0], 4), inkB: read(this.ink.read.views[1], 4),
         fixedA: read(this.fixed.views[0], 4), fixedB: read(this.fixed.views[1], 4),
         wet: read(this.wet.read.views[0], 1),
+        relief: read(this.relief.views[0], 1),
       },
     };
   }
@@ -574,6 +604,7 @@ export class WatercolorEngine {
     up(this.fixed.tex[0], gl.RGBA, whole.layers.fixedA);
     up(this.fixed.tex[1], gl.RGBA, whole.layers.fixedB);
     for (const t of [this.wet.read, this.wet.write]) up(t.tex[0], gl.RED, whole.layers.wet);
+    up(this.relief.tex[0], gl.RED, whole.layers.relief);
     this.everPainted = { ...r };
   }
 
@@ -1485,8 +1516,11 @@ export class WatercolorEngine {
     if (next?.boundary) { metaNow.whole = this.captureWhole(); metaNow.paperOrigin = [...this.paperOrigin]; }
     this.sleep();
     const ink = this.ink, wet = this.wet;
+    // Pool 0 must mirror allocateHistory()'s formats and snapshotLayers() entry
+    // for entry: mobile pigment (A, B), water, then Phase 64's thickness — one
+    // framebuffer, since History.swap reads fbs[0] and writes back to each one.
     const layers = [
-      [[ink.read.views[0], ink.write.views[0]], [ink.read.views[1], ink.write.views[1]], [wet.read.views[0], wet.write.views[0]]],
+      [[ink.read.views[0], ink.write.views[0]], [ink.read.views[1], ink.write.views[1]], [wet.read.views[0], wet.write.views[0]], [this.relief.views[0]]],
       [[this.fixed.views[0]], [this.fixed.views[1]]],
     ];
     const res = dir === 'undo' ? this.history.undo(layers, metaNow) : this.history.redo(layers, metaNow);
@@ -2111,7 +2145,9 @@ export class WatercolorEngine {
   }
 
   private snapshotLayers() {
-    return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0]];
+    // Positionally paired with allocateHistory()'s pool-0 formats and travel()'s
+    // layer map (Phase 64 adds paint thickness last).
+    return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0]];
   }
 
   private drawSplat(t: Target, x: number, y: number, r: number, c0: number[], c1: number[], hardness: number, extent: number) {

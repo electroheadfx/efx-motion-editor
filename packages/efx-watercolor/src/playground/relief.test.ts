@@ -93,7 +93,7 @@ describe('thickness target allocation (MED-14)', () => {
     const body = sliceBetween(ENGINE_SOURCE, 'private allocateTargets() {', 'private allocateHistory()')
     const allocations = body.match(/this\.relief\s*=\s*g\.target\([^\n]*/g) ?? []
     expect(allocations).toHaveLength(1)
-    expect(allocations[0]).toBe('this.relief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR)')
+    expect(allocations[0]).toBe('this.relief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);')
     // One target and no second thickness-like allocation anywhere in the file.
     const all = ENGINE_SOURCE.match(/this\.relief\s*=/g) ?? []
     expect(all).toHaveLength(1)
