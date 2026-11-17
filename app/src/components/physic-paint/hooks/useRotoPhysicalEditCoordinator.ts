@@ -1658,16 +1658,33 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         return 'accepted';
       }
       const currentDocument = portsRef.current.records.getDocument(pending.layerId);
-      if (!currentDocument
-        || currentDocument.revision !== pending.stagedRevision
-        || currentDocument.selectedKeyId !== pending.selectedKeyId
-        || currentDocument.cursorAppFrame !== pending.cursorAppFrame) {
+      // 261117-e6j: name the failing sub-check (and both values) so a live
+      // recurrence identifies its own residual trigger from the console line.
+      const driftedCheck = !currentDocument
+        ? `no document for layer ${pending.layerId} (track ${pending.trackId})`
+        : currentDocument.revision !== pending.stagedRevision
+          ? `revision ${currentDocument.revision} != ${pending.stagedRevision}`
+          : currentDocument.selectedKeyId !== pending.selectedKeyId
+            ? `selectedKeyId ${currentDocument.selectedKeyId} != ${pending.selectedKeyId}`
+            : currentDocument.cursorAppFrame !== pending.cursorAppFrame
+              ? `cursorAppFrame ${currentDocument.cursorAppFrame} != ${pending.cursorAppFrame}`
+              : null;
+      if (driftedCheck) {
+        // 261117-e6j: release, never transfer. This drift runs AFTER a
+        // successful publication — the child holds a complete document and the
+        // parent committed — so there is no ambiguous commit for a recovery
+        // lease to guard. A recovery lease gates
+        // isRotoPhysicalOperationAvailable, which the Studio's
+        // physicalMutationAvailable turns into a total mutation lock while this
+        // hook's own release is unreachable behind it; only the unmount effect
+        // escapes, which is why closing and reopening the Studio restored
+        // every surface. clearPendingOnce frees the exclusive token and the
+        // next edit re-stages from the published document.
         finalizeFailed(
           pending,
           before,
           'settlement-mismatch',
-          'Published physical document drifted before settlement.',
-          { transferLeaseToRecovery: true },
+          `Published physical document drifted before settlement (${driftedCheck}).`,
         );
         return 'accepted';
       }
