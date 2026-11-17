@@ -3,6 +3,14 @@ phase: 63
 review: 63-REVIEW.md
 titles: json
 findings:
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "WR-15's new contract text claims the gate is \"exactly the set of bases a save would write\"; it is a deliberate superset"
+  - id: IN-02
+    severity: info
+    disposition: open
+    title: "The Studio CR-03 pin checks strings anywhere in the file, so the load-bearing order inside the close step is unpinned"
   - id: CR-03
     severity: critical
     disposition: open
@@ -15,10 +23,6 @@ findings:
     severity: warning
     disposition: open
     title: "`hasWithheldContent()` counts another track's durable bases — a latched but empty binding refuses the close and names a destructive remedy"
-  - id: IN-01
-    severity: info
-    disposition: open
-    title: "The \"later successful restore\" latch release still has no production call site"
   - id: IN-10
     severity: info
     disposition: open
@@ -63,10 +67,6 @@ findings:
     severity: warning
     disposition: open
     title: "A foreign track's session durable base can still be written under this track's snapshot"
-  - id: IN-02
-    severity: info
-    disposition: open
-    title: "The rail-cleanup surface is dead code; the durable marker can never become true"
   - id: IN-03
     severity: info
     disposition: open
@@ -141,29 +141,29 @@ findings:
     title: "The import request mask is decoded twice"
 open: 34
 total: 34
-recorded: 2026-11-17T10:22:08.146Z
+recorded: 2026-11-17T12:07:28.050Z
 ---
 
 # Phase 63: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-03 | critical | open | - |
-| WR-14 | warning | open | - |
-| WR-15 | warning | open | - |
 | IN-01 | info | open | - |
-| IN-10 | info | open | - |
-| IN-11 | info | open | - |
-| IN-12 | info | open | - |
-| IN-13 | info | open | - |
-| IN-14 | info | open | - |
-| IN-15 | info | open | - |
-| IN-16 | info | open | - |
+| IN-02 | info | open | - |
+| CR-03 | critical | open | - (not in the current review) |
+| WR-14 | warning | open | - (not in the current review) |
+| WR-15 | warning | open | - (not in the current review) |
+| IN-10 | info | open | - (not in the current review) |
+| IN-11 | info | open | - (not in the current review) |
+| IN-12 | info | open | - (not in the current review) |
+| IN-13 | info | open | - (not in the current review) |
+| IN-14 | info | open | - (not in the current review) |
+| IN-15 | info | open | - (not in the current review) |
+| IN-16 | info | open | - (not in the current review) |
 | CR-01 | critical | open | - (not in the current review) |
 | WR-13 | warning | open | - (not in the current review) |
 | WR-01 | warning | open | - (not in the current review) |
 | WR-02 | warning | open | - (not in the current review) |
-| IN-02 | info | open | - (not in the current review) |
 | IN-03 | info | open | - (not in the current review) |
 | CR-02 | critical | open | - (not in the current review) |
 | WR-08 | warning | open | - (not in the current review) |
