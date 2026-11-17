@@ -4,7 +4,7 @@
 //  These four functions are the ONLY selection-edit entry points
 //  for a brush pick and for every paint-control release. The live
 //  setters are the caller's job on `onChange` and are never called
-//  here (except the live tip inside the pick).
+//  here (except the live tip and the group's medium inside the pick).
 //
 //  Every commit rides `commitAquarelleSelectionAppearance` with
 //  filter 'paint', so a lift (eraser) stroke is never addressed by
@@ -15,8 +15,16 @@
 
 import type { AquarelleToolOverrides } from '@efxlab/efx-watercolor/brushes';
 import {
+  BRUSH_PRESETS,
+  DEFAULT_MEDIUM_ID,
+  brushGroupOf,
+  type MediumId,
+} from '@efxlab/efx-watercolor';
+import {
   MULTIPLIER_MAX,
   MULTIPLIER_MIN,
+  applyAquarelleMedium,
+  aquarelleSelectedTipId,
   aquarelleToolOverrides,
   selectAquarelleTip,
   type AquarelleGlobalKey,
@@ -28,6 +36,18 @@ import type { AquarelleSelectionEditOptions } from './aquarelleStrokeSelection';
 const PAINT_ONLY: AquarelleSelectionEditOptions = { filter: 'paint' };
 
 /**
+ * The group of a response id, resolved from the ONE preset table (64-11's
+ * `brushGroupOf`). The group value IS the medium id — no second mapping
+ * table — and an id the table does not contain (a catalog or unknown tip)
+ * has no group, so it can never acquire a medium (T-64-32).
+ */
+function groupOfPreset(presetId: string | null): MediumId | null {
+  if (presetId === null) return null;
+  const preset = BRUSH_PRESETS.find((candidate) => candidate.id === presetId);
+  return preset ? brushGroupOf(preset) : null;
+}
+
+/**
  * Pick a brush: the LIVE tip changes first, then the selection commit
  * forwards the bag the live brush NOW carries.
  *
@@ -36,11 +56,27 @@ const PAINT_ONLY: AquarelleSelectionEditOptions = { filter: 'paint' };
  * the pick would stamp the OUTGOING bag onto the strokes. The bag is spread
  * into a snapshot: a later live write can never rewrite the patch in flight.
  *
+ * MED-28: the response group IS the medium. The outgoing group is read BEFORE
+ * the live pick, because the pick rewrites `aquarelleSelectedTipId`; a
+ * no-preset selection reads as the neutral medium (the same law that makes an
+ * untagged preset watercolor). A pick whose group differs applies that
+ * group's record through the SAME `applyAquarelleMedium` the Paint-tab
+ * dropdown uses — one spread write plus the id, never `size`/`lift`, never
+ * the selection-edit path. A pick inside the same group writes nothing, so
+ * the artist's manual global tweaks survive (MED-13). The committed patch
+ * stays `{ brushId, toolOverrides }`: a card pick never edits an
+ * already-recorded stroke's params (MED-11).
+ *
  * An unknown id still updates the live surface exactly as today — the record
  * door refuses the patch, and this returns its refusal.
  */
 export function pickAquarelleBrush(presetId: string): Promise<boolean> | null {
+  const outgoingGroup = groupOfPreset(aquarelleSelectedTipId.peek()) ?? DEFAULT_MEDIUM_ID;
   selectAquarelleTip(presetId);
+  const incomingGroup = groupOfPreset(presetId);
+  if (incomingGroup !== null && incomingGroup !== outgoingGroup) {
+    applyAquarelleMedium(incomingGroup);
+  }
   return commitAquarelleSelectionAppearance(
     {
       brushId: presetId,
