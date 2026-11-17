@@ -150,7 +150,7 @@ _Plan metadata (SUMMARY.md/PLAN.md/STATE.md) is committed by the orchestrator, n
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- Automated gates are green; the live Studio UAT rows below remain PENDING user evidence. Do not claim the regression closed before row 1 is reported.
+- Automated gates are green and the live Studio UAT rows below are CLOSED — see the UAT outcome.
 
 ### Live UAT rows (Studio, Roto physical layer)
 1. Select a rail and delete it. The rail disappears and the Studio REMAINS USABLE on the next press — add a key, paint a stroke, add a rail, all without closing and reopening the Studio.
@@ -159,6 +159,19 @@ None - no external service configuration required.
 4. If the console logs `Roto physical edit failed (settlement-mismatch): Published physical document drifted before settlement (...)`, report the parenthesized text verbatim — it names the residual live-only sub-check (revision / selectedKeyId / cursorAppFrame / no document) for a follow-up quick.
 
 No coordinator refactor, no apply-pipeline change, no `'exception'`-branch change, no installs, no dev-server run.
+
+---
+
+## UAT outcome (2026-11-17) — approved
+
+Approved as shipped on the live rows (Studio, Roto physical layer):
+
+1. Deleting a selected rail no longer wedges the window — Add key, paint, and Add rail all work on the next press without closing and reopening the Studio.
+2. Rows 2 and 3 (rail containing the selected key, rail carrying a rail motion; undo/redo after a delete) behave the same.
+
+The drift branch now releases its lease instead of transferring it to recovery, so a
+mismatch can no longer gate `physicalMutationAvailable` off. The culprit-naming
+diagnostic stays in place for any future live-only recurrence.
 
 ## Known Stubs
 None.
