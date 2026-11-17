@@ -2132,6 +2132,76 @@ describe('studioScriptSnapshotController — foreign-track isolation (261027 UAT
   });
 });
 
+// ------------------------------------------------------------
+//  WR-15 (63 re-review) — the withheld gate counts THIS
+//  binding's bases, not the launch-scoped map's whole size.
+//
+//  The durable-base map deliberately spans tracks. Counting its
+//  raw size made a latched-but-empty binding refuse the close
+//  and name the destructive whole-track clear for content it
+//  does not hold. Ownership is the same live-key-plus-anchor
+//  scope a save applies; an UNKNOWN live key map stays
+//  conservative (every base counts).
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — WR-15 own-track durable bases', () => {
+  it('WR-15: a base owned by this track’s live key counts', async () => {
+    const { controller, read, durableBaseMap } = harness({
+      getLiveKeyIds: () => new Map([[0, 'own-key']]),
+      getWatercolorKeyAnchors: () => null,
+    });
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    durableBaseMap.set('own-key', null);
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    expect(controller.hasWithheldContent()).toBe(true);
+  });
+
+  it('WR-15: a foreign track’s base alone does not refuse the close', async () => {
+    const { controller, read } = harness({
+      getLiveKeyIds: () => new Map([[0, 'track-a-key']]),
+      getWatercolorKeyAnchors: () => null,
+      getDurableBases: () => new Map<string, Uint8Array | null>([['track-b-key', null]]),
+    });
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    // Latched but holding nothing of its own: closing loses nothing, so the
+    // destructive clear remedy must never be presented.
+    expect(controller.hasWithheldContent()).toBe(false);
+  });
+
+  it('WR-15: an unknown live key map stays conservative', async () => {
+    const { controller, read } = harness({
+      getLiveKeyIds: () => null,
+      getWatercolorKeyAnchors: () => null,
+      getDurableBases: () => new Map<string, Uint8Array | null>([['someone-elses-key', null]]),
+    });
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    // Identity is UNKNOWN — scoping is disabled rather than under-counting.
+    expect(controller.hasWithheldContent()).toBe(true);
+  });
+
+  it('WR-15: a base owned by a session anchor counts', async () => {
+    const { controller, read } = harness({
+      getLiveKeyIds: () => new Map<number, string>(),
+      getWatercolorKeyAnchors: () => new Map([[7, 'anchored-key']]),
+      getDurableBases: () => new Map<string, Uint8Array | null>([['anchored-key', null]]),
+    });
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    // A deleted key's session anchor still proves ownership (kept for undo).
+    expect(controller.hasWithheldContent()).toBe(true);
+  });
+});
+
 // 261101-o2m (T-261101-o2m-10): while the Studio's watercolor pixels are dirty
 // (Draft), EVERY script-snapshot write is deferred at the controller's two
 // chokepoints — markDirty arms no timer and prepareSave prepares no payload —
