@@ -2879,9 +2879,6 @@ export function PhysicsPaintStudio() {
       rotoMoveHistory.recordBackgroundEdit(result.descriptor);
     }
   };
-  // 64-09 threads this handler into `rightPanelProps` (`onLightChange`); the
-  // reference keeps the noUnusedLocals gate green until those controls land.
-  void handleDocumentLightChange;
   // 56-05 (PAPER-03 / D-10): the shared-panel Paper section's paper-id port —
   // display-class edit through the store's paper-id setter (fond + change
   // token). Transparent / White route through handleBackgroundChange.
@@ -7701,6 +7698,12 @@ export function PhysicsPaintStudio() {
     onBackgroundChange: handleBackgroundChange,
     onGrainStrengthChange: handleGrainStrengthChange,
     onGrainScaleChange: handleGrainScaleChange,
+    // 64-09 (MED-17 / D-06): the paint-layer document's emboss light — the
+    // getter read 64-07 built (resolved at call time) and the ONE handler
+    // above. `efxPaintVersion.value` is already a memo dep, so the factory
+    // re-runs on every document edit without a second dep entry.
+    light: documentLight(),
+    onLightChange: handleDocumentLightChange,
     onColorChange: (color: string) => {
       handleActiveColorChanged(color);
       paintStore.setForeground(color);

@@ -13,7 +13,16 @@ import {
   wireframeSettleInFlight,
 } from './view/scriptStrokeEdition';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import { DEFAULT_LIGHT } from '@efxlab/efx-watercolor';
 import { admitsPathEditWrite } from './view/strokeSettingsModel';
+import { createEfxPaintDocument } from '../../efx-paint/document/efxPaintDocument';
+import {
+  efxPaintVersion,
+  getDocument as getEfxPaintDocument,
+  registerDocument,
+  reset as resetEfxPaintStore,
+  setDocumentLight,
+} from '../../stores/efxPaintStore';
 
 // 261027-klx: the G2 census gate forbids the contiguous retired Brush-script
 // tokens in app/src. These negative pins still scan for the real identifiers at
@@ -8362,5 +8371,101 @@ describe('62-04 the undo router: cancel THIS apply, never the previous history e
     expect(redo).toContain(
       '}, [rotoMoveHistoryRedo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument]);',
     );
+  });
+});
+
+// ============================================================
+// Phase 64 (64-09 / MED-17 / D-06/D-08/D-09) — the right panel is
+// fed from the Studio's document read, and the one handler is the
+// only writer.
+//
+// `PhysicsPaintStudio.tsx` is source-pinned text in this suite: the
+// node vitest env never imports the 12k-line component. The
+// behavioural row drives the SAME deps surface the Studio uses —
+// the paint-layer document record plus the version signal that
+// re-resolves the right-panel memo — against the real store.
+// ============================================================
+describe('64-09 — the right panel is fed by the document light', () => {
+  const PROPS_START = 'const rightPanel = rightPanelPropsMemo.resolve(';
+  const PROPS_END = 'const viewModel = usePhysicsPaintStudioViewModel';
+  const HANDLER_START = 'const handleDocumentLightChange';
+  const HANDLER_END = '// 56-05 (PAPER-03 / D-10)';
+
+  function lightRegion(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  afterEach(() => {
+    // The store is a module singleton shared across this file.
+    resetEfxPaintStore();
+  });
+
+  it('carries the light read and the ONE handler in rightPanelProps, with no new memo entry', () => {
+    const block = lightRegion(studio, PROPS_START, PROPS_END);
+    expect(block, 'the document read feeds the panel').toContain('light: documentLight(),');
+    expect(block, 'the one handler feeds the panel').toContain('onLightChange: handleDocumentLightChange,');
+    // `setDocumentLight` bumps efxPaintVersion through `_notifyChange`, and that
+    // dependency is already in the list — so no new entry, no new signal.
+    const deps = block.slice(0, block.indexOf('], () => {'));
+    expect(deps, 'the version signal is the existing light invalidator').toContain('efxPaintVersion.value');
+    expect(deps, 'no light getter in the deps list').not.toContain('documentLight');
+  });
+
+  it('declares no second light state — no signal, no useState, no copied object', () => {
+    expect(studio.split('const documentLight = ').length - 1, 'one light read').toBe(1);
+    expect(studio, 'no light signal').not.toMatch(/lightSignal/);
+    expect(studio, 'no light state').not.toMatch(/useState<[^>]*LightSettings|useState<[^>]*PaintDocumentLight/);
+    expect(studio, 'no light ref mirror').not.toMatch(/useRef<[^>]*LightSettings|useRef<[^>]*PaintDocumentLight/);
+    // A retyped default would let the panel disagree with the engine (D-09).
+    expect(studio, 'the default is never retyped in the Studio').not.toContain('129.8');
+    expect(studio, 'the default is never retyped in the Studio').not.toContain('38.45');
+  });
+
+  it('drops the 64-07 placeholder so the handler is genuinely wired', () => {
+    expect(studio, 'the void marker must leave').not.toContain('void handleDocumentLightChange;');
+  });
+
+  it('forwards the one-field patch to the ONE mutation — never a whole-object write', () => {
+    const handler = lightRegion(studio, HANDLER_START, HANDLER_END);
+    expect(handler, 'the store mutation owns the write').toContain('setDocumentLight(layerId, patch)');
+    // The descriptor is recorded once, through the unified ledger.
+    expect(handler).toContain('rotoMoveHistory.recordBackgroundEdit(result.descriptor)');
+    // No whole-object literal: the patch itself is what travels.
+    expect(handler, 'no rebuilt triple').not.toContain('azimuth:');
+    expect(handler, 'no rebuilt triple').not.toContain('elevation:');
+    expect(handler, 'no rebuilt triple').not.toContain('intensity:');
+    // ONE writer in the whole Studio — no second mutation call site.
+    expect(studio.split('setDocumentLight(').length - 1, 'one setDocumentLight call site').toBe(1);
+  });
+
+  it('BEHAVIOUR: the deps surface delivers the document light and one-field writes', () => {
+    const layerId = 'layer-64-09-right-panel';
+    registerDocument(createEfxPaintDocument(layerId));
+    // A fake document read mirrors `documentLight()`: an untouched document has
+    // no light, so the panel would fall back to the package default.
+    expect(getEfxPaintDocument(layerId)?.light).toBeUndefined();
+    const versionBefore = efxPaintVersion.value;
+    // The exact call shape the handler makes: the ONE-FIELD patch is forwarded.
+    const first = setDocumentLight(layerId, { azimuth: 210 });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error('expected the light write to be accepted');
+    expect(first.descriptor?.operationKind).toBe('set-document-light');
+    const light = getEfxPaintDocument(layerId)?.light;
+    // Exactly one field changed; the other two keep the package default.
+    expect(light).toEqual({
+      azimuth: 210,
+      elevation: DEFAULT_LIGHT.elevation,
+      intensity: DEFAULT_LIGHT.intensity,
+    });
+    // The panel's memo re-resolves through the EXISTING version signal.
+    expect(efxPaintVersion.value).toBe(versionBefore + 1);
+    // A same-value gesture is a genuine no-op: no descriptor, no bump.
+    const same = setDocumentLight(layerId, { azimuth: 210 });
+    expect(same).toEqual({ ok: true, descriptor: null });
+    expect(efxPaintVersion.value).toBe(versionBefore + 1);
   });
 });
