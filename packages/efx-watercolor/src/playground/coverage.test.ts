@@ -20,7 +20,7 @@
 //      `this.relief`, and takes no `touch()` of its own.
 //   5. The water, pen and lift branches contain no cover call, and `lift()`'s
 //      four draw lines are unchanged.
-//   6. The package barrel is untouched until 64-08 owns the entry.
+//   6. The package barrel re-exports the law module now that 64-08 owns it.
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -183,7 +183,7 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
     expectContains(liftBody, 'this.drawRelief(amount, x, y, r, angle, 0, 0, b, rect, 0, 0);')
   })
 
-  it('keeps the package barrel untouched until 64-08 owns the entry', () => {
-    expectNotContains(INDEX_SOURCE, 'scattering')
+  it('re-exports the law module from the package barrel now that 64-08 owns the entry', () => {
+    expectContains(INDEX_SOURCE, "from './scattering'")
   })
 })

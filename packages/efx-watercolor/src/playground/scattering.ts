@@ -26,6 +26,12 @@
 /** D-14's exponent: low-mid Body stays a glaze; 1.0 still reaches a true cover. */
 export const BODY_CURVE_EXPONENT = 6;
 
+/** RED skeleton (64-08): the saturated deposit is not implemented yet. */
+export const SCATTERING_MAX = 0;
+
+/** RED skeleton (64-08): the render-side switch is not implemented yet. */
+export const SCATTER_EPSILON = 0;
+
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
@@ -39,4 +45,9 @@ function clamp01(v: number): number {
 export function bodyCurve(body: number): number {
   if (!Number.isFinite(body)) return 0;
   return Math.pow(clamp01(body), BODY_CURVE_EXPONENT);
+}
+
+/** RED skeleton (64-08): the deposit law is not implemented yet. */
+export function scatteringDeposit(_body: number, _amount: number): number {
+  return Number.NaN;
 }
