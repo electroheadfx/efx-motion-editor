@@ -9,10 +9,13 @@
 //  Laws pinned here:
 //   1. The cover amount is `bodyCurve(P.body)` — the one curve declared in
 //      scattering.ts, lifted by COVER_GAIN for the order pass only, never an
-//      inline clamp on P.body — and the per-dab `coverDab` (that amount times
-//      the dab's own deposit, saturated by COVER_DEPOSIT_GAIN) guards BOTH the
-//      per-stamp protections and the per-dab call, so Body 0 draws nothing and
-//      protects nothing. The relief erodes at RELIEF_ERODE of that amount.
+//      inline clamp on P.body — and it guards BOTH the per-stamp protections
+//      and the per-dab call, so Body 0 draws nothing and protects nothing.
+//      The per-dab fraction is the dab's own LAYER ALPHA (rev 4):
+//      `f = 1 - exp(-coverDensity * mask)` with coverDensity the pigment-scaled
+//      optical density of this dab's deposit, so overlapping dabs erase
+//      exactly the absorbance the paint adds. The relief erodes at
+//      RELIEF_ERODE of the cover amount, linear in the mask.
 //   2. Both pools are protected ONCE per stamp, before the first cover draw:
 //      pool 0 through `this.touch(coverRect)`, pool 1 through
 //      `this.history.protect(1, …)`, on a stamp-wide rect.
@@ -91,26 +94,25 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
     const brush = BRUSH_CASE()
     expectContains(ENGINE_SOURCE, "import { bodyCurve, scatteringDeposit } from './scattering';")
     expectContains(brush, 'const coverAmount = Math.min(1, bodyCurve(P.body) * COVER_GAIN);')
-    // quick 261117-tq7 (rev 2): the erase tracks the dab's own deposit. The
-    // underlayer loses the fraction of paint this dab adds — saturated by
-    // COVER_DEPOSIT_GAIN because `amount` is a coefficient, not an alpha — so
-    // a thin tip (or a texture gap) keeps the old paint instead of paper-white.
-    expectContains(
-      brush,
-      'const coverDab = Math.min(1, coverAmount * amount * COVER_DEPOSIT_GAIN);',
-    )
-    expectContains(ENGINE_SOURCE, 'const COVER_DEPOSIT_GAIN = 4;')
+    // quick 261117-tq7 (rev 4): the erase tracks the dab's own OPACITY. The
+    // density is the pigment-scaled optical density of this dab's deposit and
+    // is computed only when Body is active, so a thin tip (or a texture gap)
+    // keeps the old paint instead of paper-white.
+    expectContains(brush, 'const coverDensity = coverAmount > 0 ? this.coverDensity(amount) : 0;')
+    expectContains(ENGINE_SOURCE, 'private coverDensity(amount: number): number {')
+    expectContains(ENGINE_SOURCE, 'return -Math.log(Math.max(1e-6, 1 - opacity));')
+    expectNotContains(ENGINE_SOURCE, 'COVER_DEPOSIT_GAIN')
     expectContains(ENGINE_SOURCE, 'const COVER_GAIN = 2;')
     expectContains(ENGINE_SOURCE, 'const RELIEF_ERODE = 0.5;')
     // D-14 forbids an inline second curve or clamp on P.body at this site.
     expectNotContains(brush, 'Math.min(1, P.body)')
     expectNotContains(brush, 'Math.max(0, Math.min(1, P.body))')
     expect(
-      (brush.match(/coverDab > 0/g) ?? []).length,
-      'two guards: one for the protections, one for the per-dab call',
-    ).toBe(2)
+      (brush.match(/coverAmount > 0/g) ?? []).length,
+      'three guards: the density, the protections, the per-dab call',
+    ).toBe(3)
     // The protection block itself is inside the first guard.
-    const guarded = sliceBetween(brush, 'if (coverDab > 0) {', 'this.eachDab(')
+    const guarded = sliceBetween(brush, 'if (coverAmount > 0) {', 'this.eachDab(')
     expectContains(guarded, 'this.touch(coverRect);')
     expectContains(guarded, 'this.history.protect(1,')
   })
@@ -119,7 +121,7 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
     const brush = BRUSH_CASE()
     const block = sliceBetween(
       brush,
-      'if (coverDab > 0) {',
+      'if (coverAmount > 0) {',
       'this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {',
     )
     expectContains(
@@ -147,7 +149,7 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
     const callback = CALLBACK()
     expectContains(
       callback,
-      'if (coverDab > 0) this.coverPass(dx, dy, dr, angle, coverDab, coverRelief, dryness, grainThr);',
+      'if (coverAmount > 0) this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);',
     )
     expectContains(callback, 'this.brushInk(')
     expect(callback.indexOf('this.coverPass(')).toBeLessThan(callback.indexOf('this.brushInk('))
@@ -173,7 +175,12 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
     )
     expectNotContains(body, 'uCover')
     expectContains(body, 'gl.uniform1f(p.u.uAmount, amount);')
+    // The settled erase is alpha-shaped; the relief draw below switches the
+    // same uniform back to the LINEAR delivered law.
+    expectContains(body, 'gl.uniform1f(p.u.uDensity, density);')
+    expectContains(body, 'gl.uniform1f(p.u.uShape, 1);')
     expectContains(body, 'gl.uniform1f(p.u.uAmount, reliefAmount);')
+    expectContains(body, 'gl.uniform1f(p.u.uShape, 0);')
     // The relief keeps the DELIVERED erode law: coverAmount x RELIEF_ERODE.
     expectContains(
       BRUSH_CASE(),
@@ -308,7 +315,7 @@ describe('the cover seam', () => {
   it('removes the snapshot’s current amount and decays it geometrically', () => {
     const body = sliceBetween(ENGINE_SOURCE, 'private inkCover(', 'private dropPreInk(')
     // An unarmed snapshot or a non-positive amount draws nothing: the call
-    // site is unguarded (the brush case keeps its two `coverDab > 0`).
+    // site is unguarded (the brush case keeps its `coverAmount > 0` guards).
     expectContains(body, 'if (this.preInk === null || !(amount > 0)) return;')
     expectContains(body, 'const p = this.programs.inkCover;')
     // The erase binds the SAME grain gate the deposit uses: a dotted or
@@ -324,6 +331,7 @@ describe('the cover seam', () => {
     // One bind for the removal, one for the decay: both use the same footprint.
     expect((body.match(/this\.bindFootprint\(/g) ?? []).length, 'two footprint bindings').toBe(2)
     expectContains(body, 'gl.uniform1f(p.u.uAmount, amount);')
+    expectContains(body, 'gl.uniform1f(p.u.uDensity, density);')
     // Only the snapshot is subtracted in-shader; no reverse-subtract blend.
     expectNotContains(ENGINE_SOURCE, 'FUNC_REVERSE_SUBTRACT')
     expectContains(COVER_METHOD(), 'gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
@@ -346,6 +354,8 @@ describe('the cover seam', () => {
       'this.bindFootprint(this.programs.bodyCover, x, y, r, angle, 0, grain, grainThr);',
     )
     expectContains(body, 'gl.uniform1f(c.u.uAmount, amount);')
+    expectContains(body, 'gl.uniform1f(c.u.uDensity, density);')
+    expectContains(body, 'gl.uniform1f(c.u.uShape, 1);')
     expectNotContains(body, 'uCover')
     expectContains(body, 'gl.enable(gl.BLEND);')
     expectContains(body, 'gl.disable(gl.BLEND);')
@@ -362,24 +372,24 @@ describe('the cover seam', () => {
   it('keeps the subtract out of coverPass and deposits after it', () => {
     expectNotContains(COVER_METHOD(), 'inkCover')
     const callback = CALLBACK()
-    expectContains(callback, 'this.inkCover(dx, dy, dr, angle, coverDab, dryness, grainThr);')
+    expectContains(callback, 'this.inkCover(dx, dy, dr, angle, coverAmount, coverDensity, dryness, grainThr);')
     expect(callback.indexOf('this.coverPass(')).toBeLessThan(callback.indexOf('this.inkCover('))
     expect(callback.indexOf('this.inkCover(')).toBeLessThan(callback.indexOf('this.brushInk('))
     // The call site stays UNGUARDED — inkCover's own early return is the guard.
-    expect((BRUSH_CASE().match(/coverDab > 0/g) ?? []).length, 'the two spec-06 guards').toBe(2)
+    expect((BRUSH_CASE().match(/coverAmount > 0/g) ?? []).length, 'the density read and the two spec-06 guards').toBe(3)
     expect((ENGINE_SOURCE.match(/this\.inkCover\(/g) ?? []).length, 'one inkCover call site').toBe(1)
   })
 
   it('declares and emits onCoverDab, mirroring onLiftDab', () => {
     expectContains(
       ENGINE_SOURCE,
-      'onCoverDab?(x: number, y: number, r: number, amount: number, angle: number): void;',
+      'onCoverDab?(x: number, y: number, r: number, amount: number, angle: number, density: number): void;',
     )
     expect(ENGINE_SOURCE.indexOf('onCoverDab?(')).toBeGreaterThan(ENGINE_SOURCE.indexOf('onLiftDab?('))
     const cover = COVER_METHOD()
-    expectContains(cover, 'this.callbacks.onCoverDab?.(x, y, r, amount, angle);')
+    expectContains(cover, 'this.callbacks.onCoverDab?.(x, y, r, amount, angle, density);')
     expect(cover.indexOf('g.draw(this.relief, rect);')).toBeLessThan(
-      cover.indexOf('this.callbacks.onCoverDab?.(x, y, r, amount, angle);'),
+      cover.indexOf('this.callbacks.onCoverDab?.(x, y, r, amount, angle, density);'),
     )
   })
 
@@ -440,7 +450,7 @@ describe('the cover seam', () => {
     // Emission: coverPass is only reached under the spec-06 guard.
     expectContains(
       CALLBACK(),
-      'if (coverDab > 0) this.coverPass(dx, dy, dr, angle, coverDab, coverRelief, dryness, grainThr);',
+      'if (coverAmount > 0) this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);',
     )
   })
 
@@ -451,8 +461,10 @@ describe('the cover seam', () => {
     expectContains(program, 'export const inkCoverFS = `${HEADER}${FOOTPRINT_MASK}')
     expectContains(SHADER_SOURCE, 'export const bodyCoverFS = `${HEADER}${FOOTPRINT_MASK}')
     expectContains(program, 'uniform sampler2D uPreA, uPreB, uInkA, uInkB;')
-    // f is the SAME deposit mask bodyCoverFS erases with — not a core.
-    expectContains(program, 'float f = uAmount * footprintMask();')
+    // f is the SAME alpha-shaped deposit fraction bodyCoverFS erases with.
+    expectContains(program, 'uniform float uAmount, uDensity, uShape;')
+    expectContains(program, 'float m = footprintMask();')
+    expectContains(program, 'float f = uAmount * mix(m, 1.0 - exp(-uDensity * m), uShape);')
     expectNotContains(program, 'smoothstep(0.35')
     // Only the snapshot's current amount is removed; the stroke's own ink is
     // never scaled (a share inverted bands, a uniform scale punched holes).
@@ -464,9 +476,10 @@ describe('the cover seam', () => {
     expectContains(program, 'o1 = inkB - f * preB;')
     // Full-document draw: a discard would leave the write half stale.
     expectNotContains(program, 'discard')
-    // bodyCoverFS (settled erase and snapshot decay) runs the same law.
+    // bodyCoverFS (settled erase, relief erode and snapshot decay) runs the
+    // same law, with uShape switching the relief draw back to LINEAR.
     const cover = sliceBetween(SHADER_SOURCE, 'export const bodyCoverFS', 'export const inkCoverFS')
-    expectContains(cover, 'float f = uAmount * footprintMask();')
+    expectContains(cover, 'float f = uAmount * mix(m, 1.0 - exp(-uDensity * m), uShape);')
     expectContains(cover, 'o0 = vec4(f);')
     expectContains(cover, 'o1 = vec4(f);')
     // The shared mask is stampFS's footprint law, verbatim.

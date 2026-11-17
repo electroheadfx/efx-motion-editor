@@ -3,7 +3,7 @@ import { GL, type DoubleTarget, type Format, type Program, type Rect, type Targe
 import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
 import * as S from './shaders';
-import { COEFFS, pigmentFromHex, type Pigment } from './spectral';
+import { COEFFS, coeffsOpacity, pigmentFromHex, type Pigment } from './spectral';
 // 61-04: the published width-factor range lives in the pure spine module —
 // one authority for the bound, shared by the profile law and this channel.
 import { ANCHOR_WIDTH_MAX, ANCHOR_WIDTH_MIN } from '../vector/spine';
@@ -124,7 +124,7 @@ export interface EngineCallbacks {
    * a cooked frame's cached base so the cover replaces the base's pigment while
    * the user draws; `angle` is the same tip angle onLiftDab carries.
    */
-  onCoverDab?(x: number, y: number, r: number, amount: number, angle: number): void;
+  onCoverDab?(x: number, y: number, r: number, amount: number, angle: number, density: number): void;
 }
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp';
@@ -183,18 +183,21 @@ const RELIEF_BUMP = 1.0;
 // from 3.0 to 2.3, so even a full press stays under the earlier, too-strong
 // look, and existing relief bytes need no repaint.
 const COVER_GAIN = 2;
-// quick 261117-tq7 (rev 2): the per-dab cover erases the PRE-STROKE paint in
-// proportion to what the dab deposits — its own tip mask times `amount` — so
-// the erase can never outrun the paint (that was the paper-white through the
-// bristle gaps). `amount` is a coefficient scale, not an alpha: the KM
-// transmittance of one acrylic dab at ~0.25 already reads as opaque paint, so
-// the cover saturates at 4x the coefficient and the underlayer disappears
-// wherever the paint looks solid while a thin rim still mixes.
-const COVER_DEPOSIT_GAIN = 4;
+// quick 261117-tq7 (rev 4): the per-dab erase is the dab's own LAYER ALPHA —
+// `1 - exp(-density * mask)`, where `density` is the optical density of this
+// dab's deposit at full tip mask (pigment-scaled, see coverDensity) — never a
+// coefficient scale times an arbitrary gain. Multiplied across the stroke's
+// overlapping dabs the erase is exactly the deposit's accumulated absorbance,
+// so it can never outrun the paint. A raw coefficient scale saturated on dense
+// pigments and erased the underlayer through textured tips: each dab reads a
+// different tip slice, so the linear erase compounded as a UNION of masks
+// while the deposit only ever summed to its own texture — paper-white streaks.
 const RELIEF_GAIN = 1.5;
 const RELIEF_ERODE = 0.5;
 /** The emboss thickness a feather touch still lays, as a share of full press. */
 const EMBOSS_PRESS_FLOOR = 0.15;
+/** Per-stamp scratch for the dab deposit's coefficient vector (no allocation). */
+const DEPOSIT_COEFFS = new Float32Array(COEFFS);
 
 // 61-04: `w` is the per-sample width factor (VEC-03). It rides the queued
 // sample — never a mutable engine field — so a sample can only ever be
@@ -2116,16 +2119,17 @@ export class WatercolorEngine {
         // colours do not move; 0 is inert by construction, so the neutral gate
         // stays byte-identical.
         const coverAmount = Math.min(1, bodyCurve(P.body) * COVER_GAIN);
-        // quick 261117-tq7 (rev 2): the erase tracks THIS dab's own deposit.
-        // `amount` is the pigment this dab lands, so the underlayer is removed
-        // as far as that paint is OPAQUE: full replacement under the brush
-        // body, a genuine mix on the tip's alpha rim and in the bristle gaps
-        // (where the deposit is thin, the old paint survives — never the paper
-        // white the old core mask punched there). See COVER_DEPOSIT_GAIN for why a
-        // coefficient scale saturates the cover at 4x.
-        const coverDab = Math.min(1, coverAmount * amount * COVER_DEPOSIT_GAIN);
+        // quick 261117-tq7 (rev 4): the erase tracks THIS dab's own OPACITY.
+        // `coverDensity` is the optical density of the deposit at full mask, so
+        // the shader's `1 - exp(-density * mask)` composes across overlapping
+        // dabs to exactly the accumulated absorbance the paint adds: full
+        // replacement under an opaque body, and a genuine old/new mix on the
+        // tip's alpha rim and in the bristle gaps, where the deposit is thin
+        // (never the paper white a mask-union erase punched through textured
+        // tips). Body 0 never computes it: the neutral path stays byte-exact.
+        const coverDensity = coverAmount > 0 ? this.coverDensity(amount) : 0;
         // The thickness keeps the DELIVERED erode law — the un-gained cover
-        // amount times RELIEF_ERODE — never the x4 paint fraction. The erode
+        // amount times RELIEF_ERODE — never the paint opacity. The erode
         // exists to drop the UNDERLAYER's impasto; scaling it with the paint
         // saturates the stroke's own relief away under its overlapping dabs
         // (measured on probe at Body 85: the relief field doubled).
@@ -2134,7 +2138,7 @@ export class WatercolorEngine {
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
         const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount)];
-        if (coverDab > 0) {
+        if (coverAmount > 0) {
           // Ordering hazard (spec 06): the cover pass runs BEFORE brushInk, so
           // the deposit's own touch() comes too late to restore a relief this
           // pass already eroded. These two protections are the ONLY undo
@@ -2153,11 +2157,11 @@ export class WatercolorEngine {
         }
         this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
           // spec 06: the cover pass draws here, before this dab's deposit
-          if (coverDab > 0) this.coverPass(dx, dy, dr, angle, coverDab, coverRelief, dryness, grainThr);
+          if (coverAmount > 0) this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
           // quick 261117-tq7: the same Body order must reach MOBILE ink too.
           // Unguarded: inkCover's own early return guards Body 0 and a snapshot
           // that was never armed, and the deposit below must survive the erase.
-          this.inkCover(dx, dy, dr, angle, coverDab, dryness, grainThr);
+          this.inkCover(dx, dy, dr, angle, coverAmount, coverDensity, dryness, grainThr);
           this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
           if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
           // soft brushes wet a little beyond the tip; textured ones keep their
@@ -2309,14 +2313,16 @@ export class WatercolorEngine {
    * the dab deposits. One multiplicative draw, no tissue-water step: Body is
    * order, not water.
    *
-   * quick 261117-tq7 (rev 3): the erase mask is the deposit's own tip-space
+   * quick 261117-tq7 (rev 4): the erase mask is the deposit's own tip-space
    * footprint (rotation, jitter, paper tooth) with the deposit's LOW cut but a
    * WIDE inward ramp, softened before the tip square's cull, and its strength
-   * is the caller's per-dab deposit amount. Starting at the cut means the
-   * cover never erases where the brush paints nothing (an erase there compounds
-   * to paper-white), while the ramp and the cull fade leave the underlayer
-   * partially alive at the rim — the transition the edge needs. A hard
-   * threshold on this mask carved the dab contours as scalloped steps.
+   * is the dab's own LAYER ALPHA at that mask — `1 - exp(-density * mask)`.
+   * Compounded across overlapping dabs this is exactly `exp(-density * SUM
+   * mask)`, the accumulated absorbance the deposit adds, so the erase can
+   * never outrun the paint: the body replaces, the tip's alpha rim and the
+   * bristle gaps keep a partial underlayer (the old/new mix the edge needs),
+   * and a textured tip's per-dab texture slices cannot union the erasure past
+   * the sum of the paint.
    * The Body row sits between Viscosity and Emboss (D-07); spec 08's
    * scattering composes on top through the same curve.
    *
@@ -2326,27 +2332,47 @@ export class WatercolorEngine {
    * deposit's own undo protection comes too late to save a relief this draw
    * has already eroded.
    */
-  private coverPass(x: number, y: number, r: number, angle: number, amount: number, reliefAmount: number, grain: number, grainThr: number) {
+  private coverPass(x: number, y: number, r: number, angle: number, amount: number, density: number, reliefAmount: number, grain: number, grainThr: number) {
     const { gl, g } = this;
     const p = this.programs.bodyCover;
     p.bind();
     this.bindFootprint(this.programs.bodyCover, x, y, r, angle, 0, grain, grainThr);
     gl.uniform1f(p.u.uAmount, amount);
+    gl.uniform1f(p.u.uDensity, density);
+    gl.uniform1f(p.u.uShape, 1);
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
     g.draw(this.fixed, rect);
     // The thickness erodes at the caller's `reliefAmount` — the DELIVERED law,
-    // coverAmount x RELIEF_ERODE. Scaling it with the paint fraction would erase
-    // the stroke's own earlier dabs' relief and flatten the emboss the same
-    // Body value is meant to raise.
+    // coverAmount x RELIEF_ERODE, LINEAR in the mask (uShape = 0). Scaling it
+    // with the paint opacity would erase the stroke's own earlier dabs' relief
+    // and flatten the emboss the same Body value is meant to raise.
     gl.uniform1f(p.u.uAmount, reliefAmount);
+    gl.uniform1f(p.u.uShape, 0);
     g.draw(this.relief, rect);
     // quick 261117-tq7: the cached-base seam mirrors onLiftDab — the Studio
-    // punches the same deposit footprint into a reopened frame's base.
-    this.callbacks.onCoverDab?.(x, y, r, amount, angle);
+    // punches the same deposit footprint and the same alpha-shaped fraction
+    // into a reopened frame's base.
+    this.callbacks.onCoverDab?.(x, y, r, amount, angle, density);
     gl.disable(gl.BLEND);
+  }
+
+  /**
+   * quick 261117-tq7 (rev 4): the optical density of ONE this-dab deposit at
+   * full tip mask, from the same pigment coefficients the dab stamps. The
+   * cover's `1 - exp(-density * mask)` is the deposit's own layer alpha, so
+   * overlapping dabs compose to exactly the absorbance the paint accumulates.
+   * `coeffsOpacity` is displayFS mode 4's alpha — the compositor's own opacity,
+   * in sRGB — not a coefficient scale masquerading as one.
+   */
+  private coverDensity(amount: number): number {
+    const c = this.pigment.coeffs;
+    for (let k = 0; k < COEFFS; k++) DEPOSIT_COEFFS[k] = c[k] * amount;
+    const opacity = coeffsOpacity(DEPOSIT_COEFFS);
+    if (!(opacity > 0)) return 0;
+    return -Math.log(Math.max(1e-6, 1 - opacity));
   }
 
   private brushWet(x: number, y: number, r: number, angle: number, amount: number, round: number, grain: number, grainThr: number) {
@@ -2383,9 +2409,9 @@ export class WatercolorEngine {
    *   ink_new = ink - f * pre        (inkCoverFS, full-document ping-pong)
    *   pre_new = pre * (1 - f)        (bodyCoverFS into preInk, right after)
    *
-   * f = amount * footprintMask, with `amount` the caller's per-dab deposit
-   * strength — the same number coverPass erases the settled pool with and the
-   * same one emitted to the cached-base punch. The pair is exactly the spec's
+   * f = amount * (1 - exp(-density * footprintMask)), the dab's own layer
+   * alpha — the same fraction coverPass erases the settled pool with and the
+   * same pair emitted to the cached-base punch. The pair is exactly the spec's
    * subtraction, composed geometrically across overlapping dabs instead of
    * overshooting: the first dab removes f*P, the next f*(1-f)*P, and so on.
    * The covering stroke's own pigment is deposited after this draw and is never
@@ -2405,7 +2431,7 @@ export class WatercolorEngine {
    * guard the call site relies on. No touch()/protect here: the stamp's
    * coverRect already covers this draw and brushes pool 0 in the same stamp.
    */
-  private inkCover(x: number, y: number, r: number, angle: number, amount: number, grain: number, grainThr: number) {
+  private inkCover(x: number, y: number, r: number, angle: number, amount: number, density: number, grain: number, grainThr: number) {
     if (this.preInk === null || !(amount > 0)) return;
     const { gl, g } = this;
     const p = this.programs.inkCover;
@@ -2418,6 +2444,8 @@ export class WatercolorEngine {
     gl.uniform1i(p.u.uInkA, g.bindTex(4, this.ink.read.tex[0]));
     gl.uniform1i(p.u.uInkB, g.bindTex(5, this.ink.read.tex[1]));
     gl.uniform1f(p.u.uAmount, amount);
+    gl.uniform1f(p.u.uDensity, density);
+    gl.uniform1f(p.u.uShape, 1);
     gl.disable(gl.BLEND);
     g.draw(this.ink.write);
     this.ink.swap();
@@ -2429,6 +2457,8 @@ export class WatercolorEngine {
     c.bind();
     this.bindFootprint(this.programs.bodyCover, x, y, r, angle, 0, grain, grainThr);
     gl.uniform1f(c.u.uAmount, amount);
+    gl.uniform1f(c.u.uDensity, density);
+    gl.uniform1f(c.u.uShape, 1);
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);

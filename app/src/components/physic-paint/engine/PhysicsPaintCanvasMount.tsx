@@ -59,11 +59,12 @@ export function PhysicsPaintCanvasMount(props: {
    *  261028-k03c: `angle` (radians, y up — the engine's uAxis) is forwarded
    *  unchanged; the preview shape is resolved in AquarelleCachedBaseLayer. */
   onAquarelleLiftDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;
-  /** quick 261117-tq7: the cover pass's deposit-footprint dab, forwarded unchanged.
-   *  The cached-base live preview punches the same footprint the engine's
-   *  pre-ink cover bound, so a Brush stamp over wet paint hides the old ink
-   *  while the gesture runs. */
-  onAquarelleCoverDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;
+  /** quick 261117-tq7: the cover pass's deposit-footprint dab, forwarded unchanged
+   *  with its per-dab optical density. The cached-base live preview punches the
+   *  same footprint and the same alpha-shaped fraction the engine's pre-ink
+   *  cover bound, so a Brush stamp over wet paint hides the old ink while the
+   *  gesture runs. */
+  onAquarelleCoverDab?: (x: number, y: number, r: number, amount: number, angle: number, density: number) => void;
   onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void;
   onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void;
   onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => void;
@@ -235,7 +236,7 @@ export function PhysicsPaintCanvasMount(props: {
         getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}
         onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}
         onLiftDab={(x, y, r, amount, angle) => onAquarelleLiftDabRef.current?.(x, y, r, amount, angle)}
-        onCoverDab={(x, y, r, amount, angle) => onAquarelleCoverDabRef.current?.(x, y, r, amount, angle)}
+        onCoverDab={(x, y, r, amount, angle, density) => onAquarelleCoverDabRef.current?.(x, y, r, amount, angle, density)}
         onStrokeEnd={(stroke) => onAquarelleStrokeEndRef.current?.(stroke)}
         onStrokeSettled={(stroke, ticks) => onAquarelleStrokeSettledRef.current?.(stroke, ticks)}
         onCaptureFrame={(playFrame, snapshot, captureTrackId) => onAquarelleCaptureFrameRef.current?.(playFrame, snapshot, captureTrackId)}

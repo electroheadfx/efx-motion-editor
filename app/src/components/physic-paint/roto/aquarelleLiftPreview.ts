@@ -35,6 +35,12 @@ export interface AquarelleLiftPreviewDab {
    * `onLiftDab` delivered and never re-derives it.
    */
   angle?: number;
+  /**
+   * quick 261117-tq7 (rev 4): the Body cover's per-dab optical density, only
+   * on cover dabs. Absent means the legacy linear deposit law — Lift never
+   * carries it.
+   */
+  density?: number;
 }
 
 export interface AquarelleLiftPreviewSink {

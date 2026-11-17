@@ -72,6 +72,22 @@ export function coeffsToHex(coeffs: ArrayLike<number>): string {
   return rgbToHex(coeffsToLinear(coeffs).map(v => compand(clamp01(v))));
 }
 
+/**
+ * The compositor layer's own opacity for `coeffs` over white — displayFS mode
+ * 4's `alpha = 1 - min(r, g, b)` expressed in sRGB, exactly as the live sheet
+ * stacks over the document fond.
+ *
+ * The Body cover attenuates the underlayer by THIS number: a dab may only
+ * remove as much of the pre-stroke paint as its own paint actually hides. A
+ * coefficient scale is not an opacity (the KM transmittance of one acrylic dab
+ * at ~0.25 already reads as opaque), which is why the cover used to be
+ * calibrated with an arbitrary gain.
+ */
+export function coeffsOpacity(coeffs: ArrayLike<number>): number {
+  const lin = coeffsToLinear(coeffs);
+  return 1 - compand(clamp01(Math.min(lin[0], lin[1], lin[2])));
+}
+
 /** Pigments mixed (or glazed) at the given concentrations, as a CSS colour. */
 export function mixToHex(parts: { pigment: Pigment; amount: number }[]): string {
   const sum = new Float32Array(COEFFS);

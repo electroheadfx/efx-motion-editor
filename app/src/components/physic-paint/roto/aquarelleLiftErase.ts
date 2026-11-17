@@ -114,6 +114,13 @@ export interface LiftDab {
   amount: number;
   /** 261028-k03c: tip angle in radians (y up — the engine's uAxis angle). */
   angle?: number;
+  /**
+   * quick 261117-tq7 (rev 4): the Body cover's per-dab optical density. With
+   * it the deposit profile erases `amount * (1 - exp(-density * mask))` — the
+   * dab's own layer alpha, the law the engine binds. Absent keeps the legacy
+   * linear `amount * mask` (Lift dabs never carry it).
+   */
+  density?: number;
 }
 
 export interface LiftEraseSize {
@@ -383,6 +390,9 @@ export function buildLiftCoverage(
     rPx: Math.max(1, one.r * height),
     amount: one.amount,
     angle: one.angle ?? 0,
+    // rev 4: the cover's optical density rides the dab into the loop — a
+    // placement that dropped it would silently fall back to the linear law.
+    density: one.density,
   }));
   // The discard square's corners sit at r * sqrt(1 + aspect²) from the centre;
   // the old radial law's reach was r (+1 px of anti-alias slack).
@@ -443,15 +453,19 @@ export function buildLiftCoverage(
         let f: number;
         if (profile === 'deposit') {
           // quick 261117-tq7: the Body cover's law. The engine's mask IS the
-          // deposit footprint (the tip texture, no extra radial envelope), so
-          // the cached base loses exactly the fraction the covering dab
-          // paints — never more, which is what punched paper-white into the
-          // brush's texture gaps. Without a recorded shape the tip square is
-          // unknown; the unit disc is the conservative stand-in.
+          // deposit footprint (the tip texture, no extra radial envelope).
+          // rev 4: with a recorded density the fraction is the dab's own LAYER
+          // ALPHA — `amount * (1 - exp(-density * mask))` — so overlapping
+          // dabs compose to exactly the accumulated absorbance the paint adds
+          // and a textured tip cannot erase past its own deposit. Without a
+          // shape the tip square is unknown; the unit disc is the conservative
+          // stand-in.
           const mask = shape
             ? sampleTipBilinear(shape.tipData, shape.tipSize, along, across)
             : (d <= 1 ? 1 : 0);
-          f = one.amount * mask;
+          f = one.density !== undefined && one.density > 0
+            ? one.amount * (1 - Math.exp(-one.density * mask))
+            : one.amount * mask;
         } else if (shape) {
           const mask = sampleTipBilinear(shape.tipData, shape.tipSize, along, across);
           f = one.amount * Math.exp(-(d * d)) * (mask * (1 - LIFT_TIP_ROUND) + LIFT_TIP_ROUND);

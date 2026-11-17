@@ -182,3 +182,62 @@ describe('the deposit coverage profile', () => {
     expect(rgba[centre]).toBeGreaterThan(before[centre]);
   });
 });
+
+// ============================================================
+//  rev 4 — the per-dab density
+//
+//  The engine's cover erases the dab's own LAYER ALPHA,
+//  `amount * (1 - exp(-density * mask))`, with `density` the pigment-scaled
+//  optical density of that dab's deposit at full mask. Across overlapping
+//  dabs the product composes to the deposit's accumulated absorbance, so a
+//  textured tip can never erase past the paint it lays. The cache punch must
+//  walk the same law or a reopened frame diverges from the live sheet.
+// ============================================================
+
+describe('the deposit profile with a per-dab density (rev 4)', () => {
+  const DENSITY = 0.7;
+  const shaped = (mask: number) => AMOUNT * (1 - Math.exp(-DENSITY * mask));
+
+  it('erases the dab layer alpha, not the raw mask', () => {
+    const { coverage, coverageRect } = buildLiftCoverage(
+      [{ ...DAB, density: DENSITY }],
+      WIDTH,
+      HEIGHT,
+      fullMaskShape(1),
+      'deposit',
+    );
+    expect(coverageAt(coverage, coverageRect, 50, 50)).toBeCloseTo(1 - shaped(1), 6);
+    // The tip square still culls: nothing outside is touched.
+    expect(coverageAt(coverage, coverageRect, 71, 50)).toBe(1);
+  });
+
+  it('composes overlapping dabs geometrically, one layer alpha each', () => {
+    const dabs = [
+      { ...DAB, density: DENSITY },
+      { ...DAB, density: DENSITY },
+    ];
+    const { coverage, coverageRect } = depositCoverage(dabs, fullMaskShape(1));
+    expect(coverageAt(coverage, coverageRect, 50, 50)).toBeCloseTo((1 - shaped(1)) ** 2, 6);
+  });
+
+  it('follows the bilinear tip mask through the exponential', () => {
+    // A 2×2 tip whose right column is empty: the centre samples mask 0.5.
+    const gapShape: LiftFootprintShape = {
+      tipData: new Uint8Array([255, 0, 255, 0]),
+      tipSize: 2,
+      aspect: 1,
+      angle: 0,
+      rotation: 'fixed',
+    };
+    const { coverage, coverageRect } = buildLiftCoverage(
+      [{ ...DAB, density: DENSITY }],
+      WIDTH,
+      HEIGHT,
+      gapShape,
+      'deposit',
+    );
+    expect(coverageAt(coverage, coverageRect, 50, 50)).toBeCloseTo(1 - shaped(0.5), 6);
+    // The empty texel column deposits nothing, so it must erase nothing.
+    expect(coverageAt(coverage, coverageRect, 60, 50)).toBe(1);
+  });
+});

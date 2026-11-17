@@ -82,12 +82,12 @@ describe('the cover forwarding chain (engine -> layer -> mount -> Studio)', () =
   it('declares and forwards onCoverDab through the layer and the mount', () => {
     // The layer mirrors onLiftDab exactly: prop -> ref -> engine callback.
     expect(layer).toContain(
-      'onCoverDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;',
+      'onCoverDab?: (x: number, y: number, r: number, amount: number, angle: number, density: number) => void;',
     );
     expect(layer).toContain('const onCoverDabRef = useRef(props.onCoverDab);');
     expect(layer).toContain('onCoverDabRef.current = props.onCoverDab;');
-    expect(layer).toContain('onCoverDab(x, y, r, amount, angle) {');
-    expect(layer).toContain('onCoverDabRef.current?.(x, y, r, amount, angle);');
+    expect(layer).toContain('onCoverDab(x, y, r, amount, angle, density) {');
+    expect(layer).toContain('onCoverDabRef.current?.(x, y, r, amount, angle, density);');
     expect(layer.indexOf('onCoverDab?:')).toBeGreaterThan(layer.indexOf('onLiftDab?:'));
     // The Lift wiring is untouched.
     expect(layer).toContain('onLiftDab(x, y, r, amount, angle)');
@@ -95,12 +95,12 @@ describe('the cover forwarding chain (engine -> layer -> mount -> Studio)', () =
 
     // The mount forwards it to the Studio prop, mirroring the lift literal.
     expect(mount).toContain(
-      'onAquarelleCoverDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;',
+      'onAquarelleCoverDab?: (x: number, y: number, r: number, amount: number, angle: number, density: number) => void;',
     );
     expect(mount).toContain('const onAquarelleCoverDabRef = useRef(props.onAquarelleCoverDab);');
     expect(mount).toContain('onAquarelleCoverDabRef.current = props.onAquarelleCoverDab;');
     expect(mount).toContain(
-      'onCoverDab={(x, y, r, amount, angle) => onAquarelleCoverDabRef.current?.(x, y, r, amount, angle)}',
+      'onCoverDab={(x, y, r, amount, angle, density) => onAquarelleCoverDabRef.current?.(x, y, r, amount, angle, density)}',
     );
     expect(mount).toContain(
       'onLiftDab={(x, y, r, amount, angle) => onAquarelleLiftDabRef.current?.(x, y, r, amount, angle)}',
@@ -118,11 +118,11 @@ describe('the cover forwarding chain (engine -> layer -> mount -> Studio)', () =
     );
     expect(window).toContain('const aquarelleCoverGestureDabsRef = useRef<LiftDab[]>([]);');
     expect(window).toContain('const handleAquarelleCoverDab = useCallback(');
-    expect(window).toContain('aquarelleCoverGestureDabsRef.current.push({ x, y, r, amount, angle });');
+    expect(window).toContain('aquarelleCoverGestureDabsRef.current.push({ x, y, r, amount, angle, density });');
     expect(window).toContain("active = planAquarelleCoverErase(frame).kind === 'erase';");
     // The deposit profile rides the SAME bus; a Lift begin stays a one-arg call.
     expect(window).toContain("if (active) beginAquarelleLiftPreview(frame, 'deposit');");
-    expect(window).toContain('pushAquarelleLiftPreviewDab({ x, y, r, amount, angle });');
+    expect(window).toContain('pushAquarelleLiftPreviewDab({ x, y, r, amount, angle, density });');
     // Cover plumbing lands AFTER the lift handler it mirrors.
     expect(window.indexOf('const handleAquarelleCoverDab')).toBeGreaterThan(
       window.indexOf('const handleAquarelleLiftDab'),
@@ -390,10 +390,13 @@ describe('the cover profile plumbing (punch library -> bus -> cached base)', () 
     const signature = slice(punchLib, 'export function buildLiftCoverage(', '): LiftCoverage {');
     expect(signature).toContain('shape?: LiftFootprintShape,');
     expect(signature).toContain("profile: LiftCoverageProfile = 'tip',");
-    // The deposit law is the tip mask the engine deposits with, no envelope.
+    // The deposit law is the tip mask the engine deposits with, no envelope,
+    // alpha-shaped by the per-dab density exactly as the engine binds it.
     expect(punchLib).toContain('if (profile === \'deposit\') {');
     expect(punchLib).toContain('? sampleTipBilinear(shape.tipData, shape.tipSize, along, across)');
-    expect(punchLib).toContain('f = one.amount * mask;');
+    expect(punchLib).toContain('one.amount * (1 - Math.exp(-one.density * mask))');
+    // The no-density fallback keeps the legacy linear law for old literals.
+    expect(punchLib).toContain(': one.amount * mask;');
     // The options object carries it and every punch leg passes it through.
     expect(punchLib).toContain('profile?: LiftCoverageProfile;');
     expect(punchLib).toContain('buildLiftCoverage(dabs, width, height, shape, profile);');

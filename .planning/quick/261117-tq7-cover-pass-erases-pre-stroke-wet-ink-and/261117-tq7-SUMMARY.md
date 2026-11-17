@@ -295,3 +295,18 @@ None beyond the plan's `<threat_model>` (the cover seam's trust boundaries and t
 - SUMMARY on disk: FOUND
 - Task commits as ancestors of HEAD: 73cb2cb16, 4af7e7eff, 6f26446b3 all FOUND
 - Probe baselines and both new test files on disk: FOUND
+
+## Live UAT revisions (2026-11-18)
+
+The live visual pass drove four revisions of the cover law; the last one is the shipped one.
+
+| Rev | Change | Drive |
+|-----|--------|-------|
+| 2 | The erase follows the deposit's tip mask (no solid core) | Paper-white edges and white blocks under a textured tip |
+| 3 | Shared mask: deposit's low cut, wide inward ramp, softened square cull | Scalloped dab contours, white specks (`d67db6cda`) |
+| 4 | Erase = the dab's own LAYER ALPHA: `f = 1 - exp(-density * mask)`, `density` = pigment-scaled optical density of the per-dab deposit (displayFS mode-4 opacity). `COVER_DEPOSIT_GAIN` retired | Textured tips went unstable (white streaks, over-saturated colour): per-dab jitter made the linear erase a UNION of masks while the deposit only sums its own texture; and the edge mix was too narrow |
+
+Rev 4 consequences recorded deliberately:
+- `cover-over-wet` baseline re-captured: crossing 32.31 → 33.99 at Body 100 (small, the core still replaces); the region invariants still pass at Body 100/85/70/50, and `neutral-identity` stays 6/6 byte-equal.
+- The cached-base punch walks the same law: `LiftDab.density` rides `onCoverDab` through the layer, the mount and the Studio; a dab without it keeps the legacy linear law (Lift is unchanged).
+- The relief erode keeps the delivered `coverAmount x RELIEF_ERODE` LINEAR law (`uShape = 0`), so the emboss amplitude does not move.

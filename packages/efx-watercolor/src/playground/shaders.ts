@@ -369,17 +369,30 @@ float footprintMask(){
   return f * mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);
 }`;
 
-// The Body cover's multiplicative factor: the footprint mask above scaled by
-// the dab's own erase amount. Drawn with ZERO / ONE_MINUS_SRC_COLOR into
-// `fixed`, into `relief` (at the delivered coverAmount x RELIEF_ERODE) and
-// into the pre-stroke snapshot, so settled, mobile and cached paint all lose
-// the fraction the dab's paint adds.
+// The Body cover's multiplicative factor. Drawn with ZERO / ONE_MINUS_SRC_COLOR
+// into `fixed`, into `relief` (uShape = 0, the delivered coverAmount x
+// RELIEF_ERODE law) and into the pre-stroke snapshot (uShape = 1), so settled,
+// mobile and cached paint all lose exactly the fraction the dab's paint hides.
+//
+// quick 261117-tq7 (rev 4): with uShape = 1 the erase is ALPHA-shaped —
+// `1 - exp(-uDensity * m)`, where uDensity is the optical density of this
+// dab's own deposit at full mask (`-ln(1 - layer opacity)`, pigment-scaled).
+// Across overlapping dabs the product of (1 - f) is exp(-uDensity * SUM m),
+// i.e. the underlayer is attenuated by exactly the accumulated absorbance the
+// deposit adds — additive in density, never a union of masks. A textured tip
+// reads a different tip slice per dab (the same jitter stampFS uses), so the
+// old linear law's union erased every pixel SOME dab covered while the
+// deposit's sum left the other dabs' texture gaps bare: paper-white streaks
+// through dry-brush paint. The alpha law cannot outrun the sum of the paint,
+// and on the tip's semi-transparent rim the underlayer survives in proportion
+// — the old/new mix the edge needs.
 export const bodyCoverFS = `${HEADER}${FOOTPRINT_MASK}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
-uniform float uAmount;
+uniform float uAmount, uDensity, uShape;
 void main(){
-  float f = uAmount * footprintMask();
+  float m = footprintMask();
+  float f = uAmount * mix(m, 1.0 - exp(-uDensity * m), uShape);
   o0 = vec4(f);
   o1 = vec4(f);
 }`;
@@ -402,11 +415,14 @@ void main(){
 // its hue. Both operands are valid pigment coefficient vectors, so the result
 // is valid too; no channel can be zeroed independently (no inversion).
 //
-// f follows the DEPOSIT, not a separate core: the caller passes the per-dab
-// deposit strength (body cover x ink amount), so the underlayer is replaced
-// exactly as far as the paint is opaque and survives (mixing, never paper
-// white) in the bristle gaps and on the tip's alpha rim. A core mask erased
-// texture that the deposit never covered — the white edges this law removes.
+// f follows the DEPOSIT's own OPACITY, not a separate core or a raw
+// coefficient scale: the caller passes the per-dab optical density uDensity
+// (pigment-scaled) and f = 1 - exp(-uDensity * mask). The product of (1 - f)
+// over overlapping dabs is exp(-uDensity * SUM mask), exactly the accumulated
+// absorbance the deposit adds, so the underlayer is replaced as far as the
+// paint is opaque and survives in proportion on the tip's alpha rim and in
+// the bristle gaps (mixing, never paper white). Only the pre-stroke pigment
+// is touched, so the stroke's own density and hue are untouched.
 //
 // The stroke-start preInk snapshot is released with the stroke.
 //
@@ -417,9 +433,10 @@ export const inkCoverFS = `${HEADER}${FOOTPRINT_MASK}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
 uniform sampler2D uPreA, uPreB, uInkA, uInkB;
-uniform float uAmount;
+uniform float uAmount, uDensity, uShape;
 void main(){
-  float f = uAmount * footprintMask();
+  float m = footprintMask();
+  float f = uAmount * mix(m, 1.0 - exp(-uDensity * m), uShape);
   vec4 preA = texture(uPreA, vUv);
   vec4 preB = texture(uPreB, vUv);
   vec4 inkA = texture(uInkA, vUv);

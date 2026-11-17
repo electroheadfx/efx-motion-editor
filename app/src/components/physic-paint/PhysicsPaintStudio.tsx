@@ -8047,8 +8047,8 @@ export function PhysicsPaintStudio() {
   const aquarelleCoverPreviewPlanRef = useRef<{ frame: number; active: boolean } | null>(null);
   const aquarelleCoverGestureDabsRef = useRef<LiftDab[]>([]);
   const handleAquarelleCoverDab = useCallback(
-    (x: number, y: number, r: number, amount: number, angle: number) => {
-      aquarelleCoverGestureDabsRef.current.push({ x, y, r, amount, angle });
+    (x: number, y: number, r: number, amount: number, angle: number, density: number) => {
+      aquarelleCoverGestureDabsRef.current.push({ x, y, r, amount, angle, density });
       const frame = launchContextRef.current?.startFrame ?? 0;
       const cached = aquarelleCoverPreviewPlanRef.current;
       let active: boolean;
@@ -8060,7 +8060,7 @@ export function PhysicsPaintStudio() {
         if (active) beginAquarelleLiftPreview(frame, 'deposit');
       }
       if (!active) return;
-      pushAquarelleLiftPreviewDab({ x, y, r, amount, angle });
+      pushAquarelleLiftPreviewDab({ x, y, r, amount, angle, density });
     },
     [planAquarelleCoverErase],
   );
