@@ -125,3 +125,11 @@ created: "2026-11-15"
 | Accepted | 1 |
 
 Verified at ASVS L1 (grep-depth) because `register_authored_at_plan_time` is true and `asvs_level` is 1. Every <code>mitigate</code> row's control was implemented by its plan and covered by that plan's automated tests; the full suite (9,426 passed) is green after the 63-15 gap-closure wave. No dependency was added by any phase-63 plan (T-63-SC).
+
+## Security Audit 2026-11-17
+
+| Metric | Count |
+|---|---|
+| Threats found | 35 |
+| Closed | 34 |
+| Open | 0 |
