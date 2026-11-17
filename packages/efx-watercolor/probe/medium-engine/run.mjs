@@ -4,7 +4,8 @@
 //  headless Chrome (real WebGL2).
 //
 //  Scratch harness only: nothing here is imported by the package.
-//  Usage: node packages/efx-watercolor/probe/medium-engine/run.mjs --gate <name> [--emboss <0..100>] [--light <0..4>]
+//  Usage: node packages/efx-watercolor/probe/medium-engine/run.mjs --gate <name>
+//           [--scenario cover] [--emboss <0..100>] [--body <0..100>] [--light <0..4>]
 //
 //  64-03: `--emboss` folds a thickness value into the fixed stroke's
 //  params bag (probe.ts does the folding); the gate name is unchanged,
@@ -15,6 +16,14 @@
 //  64-04: `--light` sets the emboss light intensity (0..4, the engine's
 //  clamp band) before the three exports. Omitted leaves DEFAULT_LIGHT
 //  (intensity 1); 0 is the unlit identity gate for a lit stroke.
+//
+//  64-06: `--body` folds the canonical Body value into EVERY stroke's
+//  params bag, and `--scenario cover` renders the two-stroke cover script
+//  (dark across, fix, light crossing at an angle, fix) instead of the
+//  plan-01 single stroke. Omitted keeps the neutral script, so a plain
+//  `--gate neutral-identity` run still reproduces the committed baseline.
+//  The probe report also carries `bakeMs` (script + settle, exports
+//  excluded) for the cover-on / cover-off cost comparison.
 //
 //  Writes /tmp/medium-engine/<name>.json. The committed reference lives
 //  at probe/medium-engine/baselines/<name>.json and is NEVER written by
@@ -35,7 +44,9 @@ const args = process.argv.slice(2)
 const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
-  console.error('usage: node run.mjs --gate <name> [--emboss <0..100>] [--light <0..4>]   (e.g. neutral-identity)')
+  console.error(
+    'usage: node run.mjs --gate <name> [--scenario cover] [--emboss <0..100>] [--body <0..100>] [--light <0..4>]   (e.g. neutral-identity)',
+  )
   process.exit(1)
 }
 if (!/^[A-Za-z0-9._-]+$/.test(gate)) {
@@ -68,9 +79,35 @@ if (lightRaw !== undefined) {
   }
 }
 
+// 64-06: optional Body knob (0..100). Omitted keeps the neutral bag.
+const bodyFlag = args.indexOf('--body')
+const bodyRaw = bodyFlag >= 0 ? args[bodyFlag + 1] : undefined
+let body
+if (bodyRaw !== undefined) {
+  body = Number(bodyRaw)
+  if (!Number.isFinite(body) || body < 0 || body > 100) {
+    console.error(`invalid --body "${bodyRaw}" (expected 0..100)`)
+    process.exit(1)
+  }
+}
+
+// 64-06: optional scenario. Omitted keeps the plan-01 single stroke.
+const scenarioFlag = args.indexOf('--scenario')
+const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
+let scenario
+if (scenarioRaw !== undefined) {
+  if (scenarioRaw !== 'cover') {
+    console.error(`invalid --scenario "${scenarioRaw}" (expected "cover")`)
+    process.exit(1)
+  }
+  scenario = scenarioRaw
+}
+
 const pageQuery =
   `gate=${encodeURIComponent(gate)}` +
+  (scenario === undefined ? '' : `&scenario=${scenario}`) +
   (emboss === undefined ? '' : `&emboss=${emboss}`) +
+  (body === undefined ? '' : `&body=${body}`) +
   (light === undefined ? '' : `&light=${light}`)
 const resultPath = join(outDir, `${gate}.json`)
 
@@ -191,8 +228,11 @@ writeFileSync(resultPath, JSON.stringify(result, null, 2) + '\n')
 console.log('')
 console.log('================ medium-engine pixel gate ================')
 console.log(`gate      : ${result.gate}`)
+console.log(`scenario  : ${result.scenario ?? '(neutral)'}`)
 console.log(`emboss    : ${result.emboss === null ? '(absent)' : result.emboss}`)
+console.log(`body      : ${result.body === null ? '(absent)' : result.body}`)
 console.log(`light     : ${result.light === null ? '(default)' : result.light}`)
+console.log(`bake      : ${result.bakeMs ?? 'n/a'} ms (script + settle, exports excluded)`)
 console.log(`sheet     : ${result.width}x${result.height} (${result.byteLength} bytes/export)`)
 console.log(`renderer  : ${result.renderer ?? 'n/a'}`)
 console.log(`paper     : ${result.digestPaper}`)

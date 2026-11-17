@@ -22,6 +22,16 @@
 //  probe/medium-engine/baselines/<gate>.json (or a sibling capture).
 //  The report digests all three exported backgrounds (paper, transparent,
 //  white) and echoes the 64-04 `--light <0..4>` intensity it was shaded with.
+//
+//  64-06 adds the Body matrix: `--body <0..100>` folds the canonical key into
+//  EVERY stroke's params bag, and `--scenario cover` swaps the fixed
+//  single-stroke script for a two-stroke script (dark across, fix, light
+//  crossing at an angle, fix) so Body 0 and Body 100 can be compared on the
+//  same scene. The neutral scenario is byte-for-byte the plan-01 script, so
+//  the no-body neutral gate still reproduces the committed baseline. Every
+//  run also reports `bakeMs` (the script + settle, exports excluded) so the
+//  cover pass's cost can be measured as the cover-on / cover-off median
+//  delta.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -71,6 +81,27 @@ const STROKE_POINTS: readonly AquarellePoint[] = [
   { x: 0.42, y: 0.4, p: 0.7, tx: 0, ty: 0, tw: 0 },
   { x: 0.56, y: 0.52, p: 0.62, tx: 0, ty: 0, tw: 0 },
   { x: 0.7, y: 0.62, p: 0.45, tx: 0, ty: 0, tw: 0 },
+]
+
+// --- 64-06 cover scenario -------------------------------------------------
+// Two strokes with identical params, so the ONLY difference between the
+// cover-off (body 0) and cover-on (body 100) gates is the Body value.
+// Stroke A lays a dark band across the sheet and is fixed dry; stroke B
+// crosses it at an angle in a light pigment, so Body 0 reads dark-through
+// and Body 100 replaces the settled dark under B's own tip.
+const COVER_DARK = '#111111'
+const COVER_LIGHT = '#dddddd'
+const COVER_DARK_POINTS: readonly AquarellePoint[] = [
+  { x: 0.16, y: 0.36, p: 0.7, tx: 0, ty: 0, tw: 0 },
+  { x: 0.38, y: 0.34, p: 0.7, tx: 0, ty: 0, tw: 0 },
+  { x: 0.6, y: 0.37, p: 0.7, tx: 0, ty: 0, tw: 0 },
+  { x: 0.84, y: 0.35, p: 0.7, tx: 0, ty: 0, tw: 0 },
+]
+const COVER_LIGHT_POINTS: readonly AquarellePoint[] = [
+  { x: 0.22, y: 0.74, p: 0.7, tx: 0, ty: 0, tw: 0 },
+  { x: 0.42, y: 0.57, p: 0.7, tx: 0, ty: 0, tw: 0 },
+  { x: 0.62, y: 0.4, p: 0.7, tx: 0, ty: 0, tw: 0 },
+  { x: 0.82, y: 0.2, p: 0.7, tx: 0, ty: 0, tw: 0 },
 ]
 
 const COLD: PaperPreset | undefined = PAPERS.find((preset) => preset.id === 'cold')
@@ -140,18 +171,54 @@ function digestCanvas(canvas: HTMLCanvasElement): Digest {
   return { digest: hashPixels(buffer), byteLength: buffer.length }
 }
 
-// --- the fixed scenario -----------------------------------------------------
+// --- the fixed scenarios ----------------------------------------------------
 
-function makeStroke(emboss?: number): StudioStroke<AquarelleStrokePayload> {
+// One script entry: a color + a point list + a mutationId. The knobs
+// (`--emboss`, `--body`) fold into EVERY entry's params bag, so a cover run
+// applies the same value to both strokes and the ONLY difference between the
+// body-0 and body-100 gates is the Body value.
+interface ScriptEntry {
+  readonly color: string
+  readonly points: readonly AquarellePoint[]
+  readonly mutationId: number
+  readonly emboss?: number
+  readonly body?: number
+}
+
+/** The canonical bag as the app records it (0..100). A knob adds its key;
+ *  absent knobs add nothing — the neutral gate must send the plan-01 bag. */
+function paramsBag(entry: ScriptEntry): Record<string, number> {
+  const bag: Record<string, number> = { ...STROKE_PARAMS }
+  if (entry.emboss !== undefined) bag['emboss'] = entry.emboss
+  if (entry.body !== undefined) bag['body'] = entry.body
+  return bag
+}
+
+function makeStroke(entry: ScriptEntry): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
-    color: STROKE_COLOR,
-    params: emboss === undefined ? { ...STROKE_PARAMS } : { ...STROKE_PARAMS, emboss },
+    color: entry.color,
+    params: paramsBag(entry),
     brushId: BRUSH_ID,
-    points: STROKE_POINTS.map((point) => ({ ...point })),
-    mutationId: MUTATION_ID,
+    points: entry.points.map((point) => ({ ...point })),
+    mutationId: entry.mutationId,
     timestamp: 0,
   })
+}
+
+/** The plan-01 single stroke — byte-for-byte the pre-64 script with no knob. */
+function neutralScript(emboss?: number, body?: number): readonly ScriptEntry[] {
+  return [{ color: STROKE_COLOR, points: STROKE_POINTS, mutationId: MUTATION_ID, emboss, body }]
+}
+
+/** 64-06: a dark band across the sheet, fixed dry, then a light diagonal
+ *  crossing it. Body 0 reads dark-through; Body 100 replaces the settled
+ *  dark under B's own tip. */
+function coverScript(emboss?: number, body?: number): readonly ScriptEntry[] {
+  return [
+    { color: COVER_DARK, points: COVER_DARK_POINTS, mutationId: MUTATION_ID, emboss, body },
+    { color: COVER_LIGHT, points: COVER_LIGHT_POINTS, mutationId: MUTATION_ID + 1, emboss, body },
+  ]
 }
 
 // --- WebGL2 canary ----------------------------------------------------------
@@ -188,8 +255,16 @@ function writeResult(report: Record<string, unknown>): void {
 
 // --- main -------------------------------------------------------------------
 
-function run(gate: string, renderer: string, emboss?: number, light?: number): void {
+function run(
+  gate: string,
+  renderer: string,
+  scenario: string,
+  emboss?: number,
+  body?: number,
+  light?: number,
+): void {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
+  const script = scenario === 'cover' ? coverScript(emboss, body) : neutralScript(emboss, body)
 
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
@@ -204,10 +279,16 @@ function run(gate: string, renderer: string, emboss?: number, light?: number): v
   )
 
   try {
-    adapter.applyStroke(makeStroke(emboss))
-    // Plan 64-01: stepTick for ticks 0 through 8, then fix().
-    for (let tick = 0; tick <= SETTLE_TICKS; tick += 1) adapter.stepTick(tick)
-    adapter.fix()
+    // 64-06: bakeMs covers the script + settle only — the exports below are
+    // the capture, not the medium, so they never inflate the cost number.
+    const bakeStart = performance.now()
+    for (const entry of script) {
+      adapter.applyStroke(makeStroke(entry))
+      // Plan 64-01: stepTick for ticks 0 through 8, then fix().
+      for (let tick = 0; tick <= SETTLE_TICKS; tick += 1) adapter.stepTick(tick)
+      adapter.fix()
+    }
+    const bakeMs = Math.round(performance.now() - bakeStart)
 
     const engine = capturedEngine
     if (engine === null) throw new Error('probe never captured the adapter engine (setManual tap missed)')
@@ -224,8 +305,11 @@ function run(gate: string, renderer: string, emboss?: number, light?: number): v
 
     writeResult({
       gate,
+      scenario,
       emboss: emboss ?? null,
+      body: body ?? null,
       light: light ?? null,
+      bakeMs,
       width: SHEET,
       height: SHEET,
       digestPaper: paper.digest,
@@ -262,22 +346,48 @@ function readLight(): number | undefined {
   return value
 }
 
+/** 64-06: the Body knob — absent keeps the neutral (pre-milestone) bag. */
+function readBody(): number | undefined {
+  const raw = new URLSearchParams(location.search).get('body')
+  if (raw === null || raw === '') return undefined
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 0 || value > 100) {
+    throw new Error(`invalid body "${raw}" (expected 0..100)`)
+  }
+  return value
+}
+
+/** 64-06: the scenario selector — absent renders the plan-01 single stroke. */
+function readScenario(): string {
+  const raw = new URLSearchParams(location.search).get('scenario')
+  if (raw === null || raw === '') return 'neutral'
+  if (raw !== 'cover') throw new Error(`invalid scenario "${raw}" (expected "cover")`)
+  return raw
+}
+
 function main(): void {
   const gate = new URLSearchParams(location.search).get('gate') ?? 'neutral-identity'
   let renderer = '(unknown)'
+  let scenario = 'neutral'
   let emboss: number | undefined
+  let body: number | undefined
   let light: number | undefined
   try {
+    scenario = readScenario()
     emboss = readEmboss()
+    body = readBody()
     light = readLight()
     renderer = probeRenderer()
-    run(gate, renderer, emboss, light)
+    run(gate, renderer, scenario, emboss, body, light)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     writeResult({
       gate,
+      scenario,
       emboss: emboss ?? null,
+      body: body ?? null,
       light: light ?? null,
+      bakeMs: null,
       width: SHEET,
       height: SHEET,
       digestPaper: null,
