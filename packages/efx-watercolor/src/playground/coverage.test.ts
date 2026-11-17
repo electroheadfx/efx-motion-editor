@@ -326,12 +326,13 @@ describe('the cover seam', () => {
   })
 
   it('releases the snapshot at every lifecycle site', () => {
-    expect((ENGINE_SOURCE.match(/this\.dropPreInk\(\);/g) ?? []).length, 'eight release sites').toBe(8)
+    expect((ENGINE_SOURCE.match(/this\.dropPreInk\(\);/g) ?? []).length, 'nine release sites').toBe(9)
     const sites: Array<[string, string, string]> = [
       ['stroke end', 'if (s.ending) {', 'this.stroke = null;'],
       ['clear', 'clear() {', 'resetSheet() {'],
       ['resetSheet', 'resetSheet() {', 'abortStroke() {'],
       ['abortStroke', 'abortStroke() {', 'undo() {'],
+      ['restore', 'restore(s: DocumentSnapshot) {', 'this.queue = [];'],
       ['travel', 'private travel(', 'private notifyHistory()'],
       [
         'resizeDocument',
@@ -354,6 +355,10 @@ describe('the cover seam', () => {
       '/* ------------------------------------------------------------------ input */',
     )
     expect(destroy.indexOf('this.dropPreInk();')).toBeLessThan(destroy.indexOf('this.g.disposeTargets();'))
+    // restore() is the third disposeTargets caller and releases preInk too.
+    const restore = sliceBetween(ENGINE_SOURCE, 'restore(s: DocumentSnapshot) {', 'this.uploadWhole(s.whole);')
+    expect(restore.indexOf('this.dropPreInk();')).toBeGreaterThanOrEqual(0)
+    expect(restore.indexOf('this.dropPreInk();')).toBeLessThan(restore.indexOf('this.g.disposeTargets();'))
   })
 
   it('Body 0 allocates nothing, draws nothing and emits nothing', () => {

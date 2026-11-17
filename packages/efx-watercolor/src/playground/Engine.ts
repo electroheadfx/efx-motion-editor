@@ -733,6 +733,11 @@ export class WatercolorEngine {
     this.stroke = null;
     this.restoreStrokePigment();
     this.dropFill();
+    // quick 261117-tq7: preInk is NOT in the disposeTargets registry, so a
+    // stale snapshot would outlive the sweep with deleted textures — and
+    // armInkCover would then early-return on the dangling field, silently
+    // corrupting the first post-restore stroke. Release it with the rest.
+    this.dropPreInk();
     this.queue = [];
     if (this.ref) { this.gl.deleteTexture(this.ref.tex); this.ref = null; }
     this.g.disposeTargets();
