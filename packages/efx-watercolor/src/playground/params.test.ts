@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_PARAMS } from './Engine';
 import { DEFAULT_CANONICAL_PARAMS, toEngineParams } from './params';
 
 describe('toEngineParams', () => {
@@ -50,7 +51,40 @@ describe('toEngineParams', () => {
 
   it('maps the seven canonical globals onto 0..1', () => {
     expect(toEngineParams({ water: 50, load: 25, flow: 100, bleed: 0, dry: 75, edge: 60, granulation: 40 }))
-      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0 });
+      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0 });
+  });
+
+  // Phase 64 (v2.2.0): Body and Emboss join the medium bag. 0 is neutral —
+  // a pre-milestone stroke must replay byte-identically.
+  it('maps the Body and Emboss globals 0..100 onto the 0..1 medium bag', () => {
+    expect(toEngineParams({ body: 0 }).body).toBe(0);
+    expect(toEngineParams({ body: 50 }).body).toBe(0.5);
+    expect(toEngineParams({ body: 100 }).body).toBe(1);
+    // T-64-01: out-of-track values are clamped in the ONE mapping.
+    expect(toEngineParams({ body: 250 }).body).toBe(1);
+    expect(toEngineParams({ body: -40 }).body).toBe(0);
+    expect(toEngineParams({ emboss: 0 }).emboss).toBe(0);
+    expect(toEngineParams({ emboss: 50 }).emboss).toBe(0.5);
+    expect(toEngineParams({ emboss: 100 }).emboss).toBe(1);
+    expect(toEngineParams({ emboss: 250 }).emboss).toBe(1);
+    expect(toEngineParams({ emboss: -40 }).emboss).toBe(0);
+  });
+
+  it('replays a stroke without the Body or Emboss key at the neutral default', () => {
+    expect(toEngineParams({ water: 50 }).body).toBe(0);
+    expect(toEngineParams(undefined).body).toBe(0);
+    expect(toEngineParams({ body: Number.NaN }).body).toBe(0);
+    expect(toEngineParams({ body: Number.POSITIVE_INFINITY }).body).toBe(0);
+    expect(toEngineParams({}).emboss).toBe(0);
+    expect(toEngineParams({ emboss: Number.NaN }).emboss).toBe(0);
+    expect(toEngineParams({ emboss: Number.NEGATIVE_INFINITY }).emboss).toBe(0);
+  });
+
+  it('declares Body and Emboss at 0 in the canonical and engine bags', () => {
+    expect(DEFAULT_CANONICAL_PARAMS.body).toBe(0);
+    expect(DEFAULT_CANONICAL_PARAMS.emboss).toBe(0);
+    expect(DEFAULT_PARAMS.body).toBe(0);
+    expect(DEFAULT_PARAMS.emboss).toBe(0);
   });
 
   // Phase 64 (v2.2.0): the medium bag's first key. 0 is neutral — an absent

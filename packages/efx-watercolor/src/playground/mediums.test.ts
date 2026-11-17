@@ -1,0 +1,169 @@
+// ============================================================
+//  Medium records (Phase 64, MED-07 / MED-08 / MED-09).
+//
+//  The five built-ins are plain frozen data over exactly the ten
+//  medium keys. Everything here is restated as literals — the
+//  amendment table, the key list, the display names — so a dropped
+//  key or a drifted number fails the pin instead of moving it.
+// ============================================================
+
+import { describe, expect, it } from 'vitest'
+import { DEFAULT_CANONICAL_PARAMS } from './params'
+import { DEFAULT_MEDIUM_ID, MEDIUM_IDS, MEDIUMS, mediumById } from './mediums'
+
+// The ten medium keys, in the amendment table's column order.
+const MEDIUM_KEYS = [
+  'water',
+  'load',
+  'flow',
+  'bleed',
+  'dry',
+  'edge',
+  'granulation',
+  'viscosity',
+  'body',
+  'emboss',
+] as const
+
+/** Resolve a record and fail as an assertion (never a load error) when absent. */
+function recordOf(id: string) {
+  const record = mediumById(id)
+  expect(record, `mediumById('${id}') must return a record`).not.toBeNull()
+  return record!
+}
+
+describe('medium records', () => {
+  it('ships the five ids in the recorded order', () => {
+    expect(MEDIUM_IDS).toHaveLength(5)
+    expect([...MEDIUM_IDS]).toEqual(['watercolor', 'gouache', 'pastel', 'graphite', 'acrylic'])
+    expect(MEDIUMS.map((medium) => medium.id)).toEqual([...MEDIUM_IDS])
+    expect(DEFAULT_MEDIUM_ID).toBe('watercolor')
+  })
+
+  it('names each medium with the D-18 short label', () => {
+    // D-18 note: the `pastel` id deliberately displays as "Chalk", so the
+    // brush-library section header and the dropdown name are the same word.
+    expect(MEDIUMS.map((medium) => medium.name)).toEqual([
+      'Watercolor',
+      'Gouache',
+      'Chalk',
+      'Graphite',
+      'Acrylic',
+    ])
+  })
+
+  it('carries exactly the ten medium keys and never size or lift', () => {
+    expect(MEDIUMS).toHaveLength(5)
+    for (const medium of MEDIUMS) {
+      expect(Object.keys(medium.params).sort(), `${medium.id} keys`).toEqual(
+        [...MEDIUM_KEYS].sort(),
+      )
+      expect(medium.params, `${medium.id} must not write size`).not.toHaveProperty('size')
+      expect(medium.params, `${medium.id} must not write lift`).not.toHaveProperty('lift')
+    }
+  })
+
+  it('matches the amendment table numbers', () => {
+    expect(recordOf('watercolor').params).toEqual({
+      water: 50,
+      load: 50,
+      flow: 50,
+      bleed: 50,
+      dry: 50,
+      edge: 50,
+      granulation: 50,
+      viscosity: 0,
+      body: 0,
+      emboss: 0,
+    })
+    expect(recordOf('gouache').params).toEqual({
+      water: 35,
+      load: 70,
+      flow: 55,
+      bleed: 25,
+      dry: 60,
+      edge: 60,
+      granulation: 40,
+      viscosity: 55,
+      body: 55,
+      emboss: 20,
+    })
+    expect(recordOf('pastel').params).toEqual({
+      water: 0,
+      load: 65,
+      flow: 30,
+      bleed: 0,
+      dry: 80,
+      edge: 70,
+      granulation: 60,
+      viscosity: 85,
+      body: 25,
+      emboss: 0,
+    })
+    expect(recordOf('graphite').params).toEqual({
+      water: 0,
+      load: 45,
+      flow: 25,
+      bleed: 0,
+      dry: 85,
+      edge: 75,
+      granulation: 100,
+      viscosity: 90,
+      body: 0,
+      emboss: 0,
+    })
+    expect(recordOf('acrylic').params).toEqual({
+      water: 8,
+      load: 85,
+      flow: 50,
+      bleed: 10,
+      dry: 70,
+      edge: 65,
+      granulation: 25,
+      viscosity: 90,
+      body: 90,
+      emboss: 75,
+    })
+  })
+
+  it('derives the watercolor record from the canonical defaults', () => {
+    // The neutral medium must never drift from the neutral defaults: a fresh
+    // session's first stroke and a pre-milestone replay paint the same paint.
+    const expected = Object.fromEntries(
+      MEDIUM_KEYS.map((key) => [key, DEFAULT_CANONICAL_PARAMS[key]]),
+    )
+    expect(recordOf('watercolor').params).toEqual(expected)
+    expect(recordOf('watercolor').params.viscosity).toBe(0)
+    expect(recordOf('watercolor').params.body).toBe(0)
+    expect(recordOf('watercolor').params.emboss).toBe(0)
+  })
+
+  it('keeps every record frozen plain serializable data', () => {
+    expect(MEDIUMS).toHaveLength(5)
+    expect(Object.isFrozen(MEDIUMS)).toBe(true)
+    expect(Object.isFrozen(MEDIUM_IDS)).toBe(true)
+    for (const medium of MEDIUMS) {
+      expect(Object.isFrozen(medium), `${medium.id} record must be frozen`).toBe(true)
+      expect(Object.isFrozen(medium.params), `${medium.id} params must be frozen`).toBe(true)
+      // No function, no class instance, no hidden behaviour: a JSON round trip
+      // reproduces the record exactly (MED-07.encoding).
+      expect(JSON.parse(JSON.stringify(medium))).toEqual(medium)
+      expect(typeof medium.name).toBe('string')
+      for (const value of Object.values(medium.params)) {
+        expect(Number.isFinite(value), `${medium.id} params must be finite numbers`).toBe(true)
+      }
+    }
+  })
+
+  it('resolves a known id and returns null for anything else', () => {
+    expect(MEDIUM_IDS).toHaveLength(5)
+    for (const id of MEDIUM_IDS) {
+      expect(mediumById(id)?.id, `mediumById('${id}')`).toBe(id)
+    }
+    expect(mediumById('oil')).toBeNull()
+    expect(mediumById('')).toBeNull()
+    // The display name is not an id: resolution is exact and lowercase.
+    expect(mediumById('Watercolor')).toBeNull()
+    expect(mediumById('pastel ')).toBeNull()
+  })
+})
