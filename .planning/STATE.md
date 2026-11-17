@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Phase 64 context gathered
-last_updated: "2026-11-17T14:36:32.028Z"
+stopped_at: Completed 64-01-PLAN.md
+last_updated: "2026-11-17T14:53:57.394Z"
 last_activity: 2026-11-17
-last_activity_desc: Phase 63 complete, transitioned to Phase 64
-state_head: 04eb9a0888c7451d2ac6e8b85ceadb2429ffdffb
+last_activity_desc: Phase 64 execution started
+state_head: e0b0d83e6e3f575f4b06ae46f26792459aa15880
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 29
-  completed_plans: 17
+  completed_plans: 18
   percent: 50
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 
 ## Current Position
 
-Phase: 64 (Medium Engine) — READY TO EXECUTE
-Plan: Not started
+Phase: 64 (Medium Engine) — EXECUTING
+Plan: 2 of 12
 Status: Ready to execute
-Last activity: 2026-11-17 — Phase 63 complete, transitioned to Phase 64
+Last activity: 2026-11-17 — Phase 64 execution started
 
 
 ## Performance Metrics
@@ -144,6 +144,7 @@ Last activity: 2026-11-17 — Phase 63 complete, transitioned to Phase 64
 | Phase 63 P15 | 9min | 3 tasks | 6 files |
 | Phase 63 P63-16 | 11 | 2 tasks | 4 files |
 | Phase 63 P17 | 4min | 2 tasks | 4 files |
+| Phase 64 P01 | 7min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -454,6 +455,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 63]: CR-03: the close refusal is keyed on a controller latch episode (bind-incremented withheldEpisode + pure admitsWithheldClose gate) instead of a per-window boolean; the Studio compares closeWithheldAcknowledgedEpisodeRef and the refusal states that closing again discards the unsaved script.
 - [Phase 63]: WR-15: hasWithheldContent()'s durable-base arm is scoped to live key ids plus session anchor VALUES; an unknown (null/absent) live key map stays conservative so no base this track owns is under-counted.
 - [Phase 63]: Kept the 52.2-15 close-order source pin meaningful by widening its fixed slice 3600→4200 after the planned close-step expansion pushed the last pinned step out of range.
+- [Phase 64]: viscosity law applied as two exact literals in Engine.step() with the constants (12.0 dissipation gain, 0.012 spread floor) recorded in a module comment, not as unused code constants
+- [Phase 64]: the probe captures the adapter's private engine via a prototype tap on setManual so the gate can digest paper, transparent and white exports without widening the adapter API
+- [Phase 64]: the spread boundary at viscosity 1 is pinned with 12-decimal closeness — 0.12*(1-0.9) is 0.011999999999999997 in binary64; 0 and 0.5 boundaries are decimal-exact and pinned with toBe
+- [Phase 64]: 64-01 task 2 landed test-only with no RED (63-09 precedent — the tracer already shipped every behavior bullet; no RED was fabricated). Pre-milestone pixel baseline committed from d1fd7ea3c before the first source edit
 
 ### Pending Todos
 
@@ -580,9 +585,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-17T13:24:49.067Z
-Stopped at: Phase 64 context gathered
-Resume file: .planning/phases/64-medium-engine/64-CONTEXT.md
+Last session: 2026-11-17T14:53:56.612Z
+Stopped at: Completed 64-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

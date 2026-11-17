@@ -32,11 +32,11 @@
 ### Medium Engine (Phase 64)
 
 - [ ] **MED-01**: User has a `Viscosity` global on the app's 0..100 slider scale (normalized 0..1 internally) that reduces water motion and suppresses spread, exposed as a row in the existing globals panel
-- [ ] **MED-02**: At its neutral default, a project painted before this milestone renders bit-identically after it
-- [ ] **MED-03**: Viscosity only ever raises the dissipation coefficient — it never lowers the existing floor and never replaces `flow` — and is applied at exactly those two engine sites and nowhere else
-- [ ] **MED-04**: Spread becomes `0.12 × (1 − viscosity × 0.9)`, landing near `0.012` at maximum viscosity
-- [ ] **MED-05**: A stroke snapshots its viscosity the way it already snapshots `lift`; strokes without the key keep the default, and live pass, bake and replay read the same value
-- [ ] **MED-06**: Changing Viscosity after a stroke has settled does not re-process the settled pigment
+- [x] **MED-02**: At its neutral default, a project painted before this milestone renders bit-identically after it
+- [x] **MED-03**: Viscosity only ever raises the dissipation coefficient — it never lowers the existing floor and never replaces `flow` — and is applied at exactly those two engine sites and nowhere else
+- [x] **MED-04**: Spread becomes `0.12 × (1 − viscosity × 0.9)`, landing near `0.012` at maximum viscosity
+- [x] **MED-05**: A stroke snapshots its viscosity the way it already snapshots `lift`; strokes without the key keep the default, and live pass, bake and replay read the same value
+- [x] **MED-06**: Changing Viscosity after a stroke has settled does not re-process the settled pigment
 - [ ] **MED-07**: A medium record `{ id, name, params }` exists as plain serializable data — no functions, no class
 - [ ] **MED-08**: `watercolor` ships as today's `DEFAULT_AQUARELLE_PARAMS`, unchanged, and remains the selected medium on a fresh session
 - [ ] **MED-09**: Five built-ins ship — `watercolor`, `gouache`, `pastel`, `graphite`, `acrylic` — each a plain record over the canonical global set (the nine existing globals plus `viscosity`, `body` and `emboss`), with their tuned numbers recorded explicitly and no other globals invented
@@ -128,11 +128,11 @@ Which phases cover which requirements.
 | TIP-16 | Phase 63 | Complete |
 | TIP-17 | Phase 63 | Complete |
 | MED-01 | Phase 64 | Pending |
-| MED-02 | Phase 64 | Pending |
-| MED-03 | Phase 64 | Pending |
-| MED-04 | Phase 64 | Pending |
-| MED-05 | Phase 64 | Pending |
-| MED-06 | Phase 64 | Pending |
+| MED-02 | Phase 64 | Complete |
+| MED-03 | Phase 64 | Complete |
+| MED-04 | Phase 64 | Complete |
+| MED-05 | Phase 64 | Complete |
+| MED-06 | Phase 64 | Complete |
 | MED-07 | Phase 64 | Pending |
 | MED-08 | Phase 64 | Pending |
 | MED-09 | Phase 64 | Pending |
