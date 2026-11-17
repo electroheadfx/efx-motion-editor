@@ -35,6 +35,7 @@ import { encodeScriptTimelineBinary } from '../performance/scriptTimelineCodec';
 import {
   STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE,
   STUDIO_SCRIPT_SNAPSHOT_SAVE_WITHHELD_MESSAGE,
+  admitsWithheldClose,
   createStudioScriptSnapshotController,
   type StudioScriptSnapshotControllerDeps,
   type StudioScriptSnapshotOperationResult,
@@ -1455,6 +1456,61 @@ describe('studioScriptSnapshotController — CR-01 save-withheld disclosure', ()
     recordAquarelleStroke(932, recordableAquarelleStroke(932, 0));
     setSignature('sig-withheld-content');
     expect(controller.hasWithheldContent()).toBe(true);
+  });
+});
+
+// ------------------------------------------------------------
+//  CR-03 (63 re-review) — the close refusal is acknowledged once
+//  per LATCH EPISODE, never once per Studio window.
+//
+//  A per-window boolean acknowledged the first refused track and
+//  then admitted every later one: a second refused track in the
+//  same window closed silently, withheld its save and destroyed
+//  its script. A bind starts a new latch episode, so the close
+//  gate must refuse again for it.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — CR-03 per-episode close acknowledgement', () => {
+  it('CR-03: a rebind to a second latched track refuses its first close again', async () => {
+    const { controller, read, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+    recordAquarelleStroke(940, recordableAquarelleStroke(940, 0));
+    setSignature('sig-cr03-a');
+    const episodeA = controller.withheldEpisode();
+
+    // The first close of a latch is always refused.
+    expect(admitsWithheldClose(-1, episodeA)).toBe(true);
+    // The same episode's second close is the user's explicit choice.
+    expect(admitsWithheldClose(episodeA, episodeA)).toBe(false);
+
+    controller.bind({ ...IDENTITY, trackId: 'track-2' });
+    await controller.restore();
+    recordAquarelleStroke(941, recordableAquarelleStroke(941, 0));
+    setSignature('sig-cr03-b');
+    const episodeB = controller.withheldEpisode();
+
+    // A fresh episode is never authorized by the previous acknowledgement.
+    expect(episodeB).not.toBe(episodeA);
+    expect(admitsWithheldClose(episodeA, episodeB)).toBe(true);
+    expect(admitsWithheldClose(episodeB, episodeB)).toBe(false);
+  });
+
+  it('CR-03: the episode is stable inside one binding', async () => {
+    const { controller, read, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+    const episode = controller.withheldEpisode();
+    expect(controller.withheldEpisode()).toBe(episode);
+
+    recordAquarelleStroke(942, recordableAquarelleStroke(942, 0));
+    setSignature('sig-cr03-stable');
+    await controller.saveNow();
+    expect(controller.withheldEpisode()).toBe(episode);
+    await controller.flushNow();
+    expect(controller.withheldEpisode()).toBe(episode);
   });
 });
 
