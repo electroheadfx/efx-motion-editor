@@ -100,14 +100,14 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
 
 ### ⏳ v2.2.0 Brush Tips & Medium Engine (Planned)
 
-**Milestone Goal:** Make the brush tip a real stamp — an imported image becomes the 192×192 mask, travels inside the `.mce`, and survives reopen with three textured tips shipped by default — then give paint a named Medium so it can read denser and heavier than a wash.
+**Milestone Goal:** Make the brush tip a real stamp — an imported image becomes the 192×192 mask, travels inside the `.mce`, and survives reopen with three textured tips shipped by default — then give paint a named Medium so it can read denser and heavier than a wash, and let a light pigment cover a dark one.
 
-**Source of truth:** `SPECS/v2.2.0-brush-tips/` (specs 01-02) and `SPECS/v2.2.0-medium-engine/` (specs 03-05). No research phase: the five specs carry the exact file anchors, laws and UAT rows.
+**Source of truth:** `SPECS/v2.2.0-brush-tips/` (specs 01-02) and `SPECS/v2.2.0-medium-engine/` (specs 03-06). No research phase: the six specs carry the exact file anchors, laws and UAT rows.
 
 - [x] **Phase 63: Brush Tip Pipeline** - An imported PNG/JPG becomes the real 512×512 tip mask in the machine-level user texture library, rebuilt on open; the `.mce` carrier and shipped built-ins were superseded by quick 261116-inu (completed 2026-11-16)
-- [ ] **Phase 64: Medium Engine** - A Viscosity global and named Medium profiles make paint read denser and heavier, with heavy pigment gaining visible body from its own density
+- [ ] **Phase 64: Medium Engine** - A Viscosity global and named Medium profiles make paint read denser and heavier, with heavy pigment gaining visible body from its own density, and a Coverage parameter lets a light pigment cover a dark one
 
-**Spec provenance** (planner input, not an execution unit): `GSD-QUICK-PROMPT-01-mask-wiring.md` → Phase 63 (TIP-01..06, TIP-10 import caps) · `GSD-QUICK-PROMPT-02-embedded-tips.md` → Phase 63 (TIP-07..09, TIP-11..17, TIP-10 stored-mask caps) · `GSD-QUICK-PROMPT-03-viscosity.md` → Phase 64 (MED-01..06) · `GSD-QUICK-PROMPT-04-medium-profile.md` → Phase 64 (MED-07..13) · `GSD-QUICK-PROMPT-05-pigment-relief.md` → Phase 64 (MED-14..18).
+**Spec provenance** (planner input, not an execution unit): `GSD-QUICK-PROMPT-01-mask-wiring.md` → Phase 63 (TIP-01..06, TIP-10 import caps) · `GSD-QUICK-PROMPT-02-embedded-tips.md` → Phase 63 (TIP-07..09, TIP-11..17, TIP-10 stored-mask caps) · `GSD-QUICK-PROMPT-03-viscosity.md` → Phase 64 (MED-01..06) · `GSD-QUICK-PROMPT-04-medium-profile.md` → Phase 64 (MED-07..13) · `GSD-QUICK-PROMPT-05-pigment-relief.md` → Phase 64 (MED-14..18) · `GSD-QUICK-PROMPT-06-coverage.md` → Phase 64 (MED-19..25).
 
 Both phases are **plan-backed**: `/gsd-plan-phase` produces the plans from these specs and `/gsd-execute-phase` runs them. The specs are not dispatched through `/gsd-quick` — a phase with zero plans fails `execute-phase`, and quicks never update this roadmap.
 
@@ -138,9 +138,10 @@ Both phases are **plan-backed**: `/gsd-plan-phase` produces the plans from these
   4. A library texture that is missing, corrupt or not exactly 512×512 degrades to an unavailable tip with the neutral round fallback — never a crash and never blank paint; the standing aggregate warning line was dropped on request (2026-11-16). Deleting a library texture is confirm-gated and container-scoped.
   5. A roto script saved with an imported tip carries only the texture id and its per-stroke rotation (metadata-only), so applying it into a project paints that texture when the machine library has it; every recorded stroke snapshots its own rotation. The catalog is machine-scoped, not per-project, so no project-scoped ghost mask survives.
 
-**Plans:** 16/16 plans executed
+**Plans:** 16/17 plans executed
 
 Plans:
+- [ ] 63-17-PLAN.md — Gap closure CR-03/WR-15: per-episode close acknowledgement and own-track withheld-content scope
 - [x] 63-16-PLAN.md
 
 **Wave 1**
@@ -182,26 +183,27 @@ Plans:
 
 ### Phase 64: Medium Engine
 
-**Goal**: Paint gains weight — one Viscosity global, three named Mediums and a pigment-relief term let a stroke read denser and heavier than a wash, while a neutral watercolor stroke renders exactly as it did before.
+**Goal**: Paint gains weight — one Viscosity global, three named Mediums, a pigment-relief term and a Coverage parameter let a stroke read denser and heavier than a wash, and let a light pigment cover a dark one, while a neutral watercolor stroke renders exactly as it did before.
 
-**Depends on**: Phase 63 (milestone execution order; no shared file is a prerequisite — spec order chains internally: Viscosity → Medium records → relief strength)
+**Depends on**: Phase 63 (milestone execution order; no shared file is a prerequisite — spec order chains internally: Viscosity → Medium records → relief strength → coverage value)
 
-**Requirements**: MED-01, MED-02, MED-03, MED-04, MED-05, MED-06, MED-07, MED-08, MED-09, MED-10, MED-11, MED-12, MED-13, MED-14, MED-15, MED-16, MED-17, MED-18
+**Requirements**: MED-01, MED-02, MED-03, MED-04, MED-05, MED-06, MED-07, MED-08, MED-09, MED-10, MED-11, MED-12, MED-13, MED-14, MED-15, MED-16, MED-17, MED-18, MED-19, MED-20, MED-21, MED-22, MED-23, MED-24, MED-25
 
 **Success Criteria** (what must be TRUE):
   1. A Viscosity row joins the existing globals panel; at its neutral default an existing project's paint renders bit-identically after the milestone, and at maximum viscosity the stroke visibly hardens — paint stops moving almost immediately and the deposit reads denser — without redefining `flow`.
   2. The same stroke rasters identically live, on bake and on replay with the same viscosity value, and lowering Viscosity after a stroke has settled does not change the settled pigment.
   3. A fresh session selects `watercolor` with today's defaults; switching to `dry` or `opaque` applies its whole parameter set in one move and changes the next stroke only — three strokes painted in three mediums replay with their own looks, a machine with different medium defaults replays a project identically, and a manual global tweak keeps the medium selected and reaches the next stroke.
-  4. Heavy pigment reads with visible body: `opaque` shows a lit relief instead of a flat stain, overpainting a wet area follows the merged density rather than stamping a hard edge, and `watercolor` at relief strength 0 renders byte-identically — additive relief only, with no new slider.
-  5. Export matches the screen on both `uMode` paths, and zooming in or out produces no shimmer or crawl.
+  4. Heavy pigment reads with visible body: `opaque` shows a lit relief instead of a flat stain, overpainting a wet area follows the merged density rather than stamping a hard edge, and `watercolor` at relief strength 0 renders byte-identically — additive relief only, with no relief slider of its own.
+  5. A light pigment covers a dark one: `opaque` at full Coverage erodes the settled dark under each dab and leaves its own tint, so the stroke reads light and keeps its own colour; at Coverage 0 no cover pass runs and an existing project renders bit-identically; a partial Coverage reads as a glaze; and undo restores the eroded pigment exactly.
+  6. Export matches the screen on both `uMode` paths, and zooming in or out produces no shimmer or crawl.
 
 **Plans**: TBD
 
-**Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`
+**Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`
 
-**Spec provenance** (planner input, not an execution unit): spec 03 — Viscosity global (dissipation raises only, spread `0.12 × (1 − v·0.9)`, per-stroke snapshot like `lift`); spec 04 — medium records (`watercolor` / `dry` / `opaque` derived from the existing nine globals, one store write per switch); spec 05 — density-gradient relief carried as a per-medium scalar, additive to the paper relief.
+**Spec provenance** (planner input, not an execution unit): spec 03 — Viscosity global (dissipation raises only, spread `0.12 × (1 − v·0.9)`, per-stroke snapshot like `lift`); spec 04 — medium records (`watercolor` / `dry` / `opaque` derived from the canonical globals, one store write per switch); spec 05 — density-gradient relief carried as a per-medium scalar, additive to the paper relief; spec 06 — Coverage parameter (a covering brush dab erodes the settled layer with the Lift program under its own tip footprint, then deposits its own pigment; per-stroke snapshot, medium-carried, default 0).
 
-**Delivery law**: Viscosity is additive to the existing globals — never a redefinition of `flow`, `water`, `load`, `bleed` or any deposit math — and is applied at exactly the two named engine sites; replay determinism (same stroke ⇒ same raster live, bake and replay) is the acceptance bar; the only persisted change is the additive per-stroke `viscosity` key, declared in BOTH TS and Rust; medium records are plain serializable data and the per-stroke params snapshot stays authoritative over the advisory medium id; relief is additive to the existing paper relief — no paint height field, no extra render target, no new texture allocation, no new global slider — and `watercolor` at strength 0 stays byte-identical; no package/type/signal/`BRUSH_PACK_KIND` rename and no format break.
+**Delivery law**: Viscosity is additive to the existing globals — never a redefinition of `flow`, `water`, `load`, `bleed` or any deposit math — and is applied at exactly the two named engine sites; replay determinism (same stroke ⇒ same raster live, bake and replay) is the acceptance bar; the persisted changes are the additive per-stroke `viscosity` and `coverage` keys inside the canonical params bag the engine slot carries (Rust holds that slot as an opaque `Value`, so both keys round-trip without a Rust mirror — the field-diff pin governs named struct fields, not params-map keys); medium records are plain serializable data and the per-stroke params snapshot stays authoritative over the advisory medium id; relief is additive to the existing paper relief and touches no absorbance, hue or alpha — no paint height field, no extra render target, no new texture allocation, no relief slider — and `watercolor` at strength 0 stays byte-identical; Coverage adds no render target, no texture allocation and no shader program (the cover pass reuses the Lift program), never touches water or mobile pigment, and at 0 runs no cover pass at all so every pre-milestone project stays byte-identical; the white-gouache channel (`inkB.a`) stays untouched and unreachable; no package/type/signal/`BRUSH_PACK_KIND` rename and no format break.
 
 **UI hint**: yes
 
