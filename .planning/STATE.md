@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-12-PLAN.md
-last_updated: "2026-11-17T16:17:38.641Z"
+stopped_at: Completed 64-05-PLAN.md
+last_updated: "2026-11-17T16:27:20.300Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 64 execution started
-state_head: 05e05ba73a01722a072a7d708f33b04a54a9698b
+state_head: cd170b083cd0f6f4e0bd3dee838dd669a8add1de
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 29
-  completed_plans: 24
+  completed_plans: 25
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 8 of 12
+Plan: 9 of 12
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 64 execution started
 
@@ -151,6 +151,7 @@ Last activity: 2026-11-17 — Phase 64 execution started
 | Phase 64 P04 | ~1h 12m | 3 tasks | 10 files |
 | Phase 64 P06 | ~11m | 3 tasks | 11 files |
 | Phase 64 P12 | 7 | 2 tasks | 2 files |
+| Phase 64 P05 | 6 | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -486,6 +487,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: Body row is the ninth of ten globals between Viscosity and Emboss; probe gained --body, --scenario cover and bakeMs (median 33 -> 38 ms on 256x256)
 - [Phase 64]: The pick seam reads the outgoing group before selectAquarelleTip (peek) and applies the incoming group's medium only on a real change; a non-preset id has no group and writes no medium.
 - [Phase 64]: The committed selection patch stays { brushId, toolOverrides } with no params key; the medium moves the live bag only, so a card pick never rewrites a recorded stroke.
+- [Phase 64]: 64-05: PaintDocumentLight IS the engine's LightSettings; absent resolves to DEFAULT_LIGHT from the package barrel, never retyped
+- [Phase 64]: 64-05: the light is optional-additive — absent contributes no revision term and the parser never manufactures a default, so untouched projects save byte-identically
+- [Phase 64]: 64-05: setDocumentLight is the sole writer — patch over current light, engine clamp bands, canonical-revision no-op, one bump and one ledger descriptor
+- [Phase 64]: 64-05: launch envelope unchanged — the light rides the opaque document member end to end; no launch key/field added to TS or Rust
 
 ### Pending Todos
 
@@ -612,8 +617,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-17T16:17:37.820Z
-Stopped at: Completed 64-12-PLAN.md
+Last session: 2026-11-17T16:27:19.512Z
+Stopped at: Completed 64-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

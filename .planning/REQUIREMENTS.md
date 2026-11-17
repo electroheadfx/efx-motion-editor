@@ -47,7 +47,7 @@
 - [x] **MED-14**: A document-resolution half-float paint-**thickness** channel receives a thickness deposit through each dab's own tip footprint, and deposits accumulate so successive strokes superpose into layered relief
 - [x] **MED-15**: The composite lights the thickness gradient with the same normal-and-light maths the paper relief uses and multiplies the paint colour; at emboss 0 and light intensity 0 the render is byte-identical
 - [x] **MED-16**: Emboss strength is a canonical param carried by the medium and snapshotted with the stroke — no fluid transport of thickness and no height texture asset
-- [ ] **MED-17**: Light (azimuth, elevation, intensity) is a document setting and a render parameter — never stored in paint, applied anew on every render (live paint, stroke re-render, Play motion, Apply Script, stroke/vector edit), persisted as an optional additive field, and part of the cache content fingerprint
+- [x] **MED-17**: Light (azimuth, elevation, intensity) is a document setting and a render parameter — never stored in paint, applied anew on every render (live paint, stroke re-render, Play motion, Apply Script, stroke/vector edit), persisted as an optional additive field, and part of the cache content fingerprint
 - [x] **MED-18**: Thickness is captured in the engine snapshot, protected for undo alongside the pigment it sits on, and export matches the screen on every `uMode` path with no shimmer on zoom
 - [x] **MED-19**: User has a `Body` global on the app's 0..100 slider scale (normalized 0..1 internally), part of the canonical global set (`AquarelleGlobalParams` / `AQUARELLE_GLOBAL_KEYS` / `DEFAULT_AQUARELLE_PARAMS` / `AquarelleCanonicalParams`), exposed as a row in the existing globals panel, defaulting to 0
 - [x] **MED-20**: At `Body` 0 the engine takes no cover pass at all — a project painted before this milestone renders bit-identically, and a recorded stroke without the key keeps 0
@@ -143,7 +143,7 @@ Which phases cover which requirements.
 | MED-14 | Phase 64 | Complete |
 | MED-15 | Phase 64 | Complete |
 | MED-16 | Phase 64 | Complete |
-| MED-17 | Phase 64 | Pending |
+| MED-17 | Phase 64 | Complete |
 | MED-18 | Phase 64 | Complete |
 | MED-19 | Phase 64 | Complete |
 | MED-20 | Phase 64 | Complete |
