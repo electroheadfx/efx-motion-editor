@@ -308,7 +308,7 @@ export const liftFS = `${HEADER}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
 uniform sampler2D uTip;
-uniform float uAspect, uRadius, uAmount, uTipAspect, uRound;
+uniform float uAspect, uRadius, uAmount, uTipAspect, uRound, uCover;
 uniform float uTipRotation;
 uniform vec2 uPoint, uAxis;
 void main(){
@@ -321,7 +321,14 @@ void main(){
   vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
   if (abs(q.x) > 1.0 || abs(q.y) > 1.0) discard;
   float t = texture(uTip, clamp(tq * 0.5 + 0.5, 0.0, 1.0)).r;
-  float f = uAmount * exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);
+  // uCover = 0: Lift's own erase (tip-shaped). uCover = 1: the Body cover pass
+  // uses a SOLID core at the pressure point — the bristle gaps must not let the
+  // paint underneath survive — falling off to zero over the outer rim so the
+  // edge still mixes instead of cutting. The hard core ends at 59% of the
+  // radius; the outer 41% is the mixing band.
+  float soft = exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);
+  float core = 1.0 - smoothstep(0.35, 1.0, dot(q, q));
+  float f = uAmount * mix(soft, core, uCover);
   o0 = vec4(f);
   o1 = vec4(f);
 }`;
@@ -583,6 +590,9 @@ const TO_SRGB = `
 vec3 toSRGB(vec3 c){
   c = clamp(c, 0.0, 1.0);
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+vec3 fromSRGB(vec3 c){
+  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }`;
 
 /** A paper preview: the sheet with a granulating ultramarine wash across one corner. */
@@ -657,8 +667,17 @@ void main(){
  *   normal     one document texel of central difference, the same law
  *              paperLightFS uses (uReliefBump = 1.0, fixed, never zoom-scaled)
  *   lit delta  uLightIntensity * (dot(n, L) - L.z) * uReliefBump * EMBOSS_GAIN
- *              EMBOSS_GAIN = 2.0, EMBOSS_SHADE_MAX = 1.5
+ *              EMBOSS_GAIN = 2.3, EMBOSS_SHADE_MAX = 1.5
+ *              (post-UAT 2026-11-17: 3.0 read too strong once the colours
+ *              stopped being veiled; the pen pressure now drives the
+ *              thickness deposit instead — see EMBOSS_PRESS_FLOOR)
  *   shade      clamp(1.0 + litDelta * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX)
+ *   applied    in PIGMENT space on every mode: the transmittance becomes
+ *              mn + (t - mn) * shade (mn = min(t)), which is exactly the live
+ *              compositor layer's composite. The alpha never carries the light,
+ *              so the stored sheet's cached-base round-trip is exact and the
+ *              darkest bands never darken into an outline. shade == 1 emits the
+ *              legacy lines byte-for-byte.
  * At a zero gradient dot(n, L) == L.z and the lit delta is exactly 0, so the
  * shade is 1.0 at any intensity (D-09: never a flat multiply). uFlat gates the
  * lit delta only, so a region pick reads the unshaded sheet. The light angles
@@ -680,7 +699,7 @@ uniform float uRefOpacity;
 uniform float uShadow;    // screen only: size of the sheet's shadow on the desk (canvas px), 0 for exports
 uniform float uDpr;
 uniform float uLightAzimuth, uLightElevation, uLightIntensity, uReliefBump; // Phase 64: radians, radians, 0..4, fixed bump
-const float EMBOSS_GAIN = 2.0;
+const float EMBOSS_GAIN = 2.3;
 const float EMBOSS_SHADE_MAX = 1.5;
 ${PAPER_COLOUR}
 ${TO_SRGB}
@@ -757,6 +776,18 @@ ${displayBasisGLSL()}
     }
   }
 
+  // Phase 64: ONE shading law for every mode. The live compositor layer
+  // (mode 4) shades in PIGMENT space — the pigment colour scales, the alpha
+  // does not. Scaling the linear transmittance instead (the first cut) darkened
+  // the darkest bands, so the emboss gradient read as a dark outline, and it
+  // made the mode-2 sheet's cached-base alpha differ from the live layer.
+  // Emitting the shaded transmittance as mn + (t - mn) * shade makes mode 2,
+  // mode 4 and the cached-base round-trip the SAME law by construction. At
+  // shade == 1 every legacy line below is byte-identical.
+  vec3 tSrgb = toSRGB(rgb);
+  float tMin = min(min(tSrgb.r, tSrgb.g), tSrgb.b);
+  vec3 lit = vec3(tMin) + (tSrgb - vec3(tMin)) * shade;
+
   if (uMode == 4){
     // PIGMENT ALPHA (compositor display, 2026-10-26 round 2). The same
     // transmittance as mode 2, re-expressed as straight-alpha pigment so the
@@ -767,24 +798,19 @@ ${displayBasisGLSL()}
     // Phase 64: the emboss scales only the premultiplied colour; the alpha is
     // derived from the UNSHADED reconstruction and stays byte-for-byte
     // untouched, so a lit stroke never changes its opacity.
-    vec3 t = toSRGB(rgb);
-    float mn = min(min(t.r, t.g), t.b);
-    float alpha = 1.0 - mn;
-    vec3 pigment = alpha > 0.0 ? (t - vec3(mn)) / alpha : vec3(0.0);
+    float alpha = 1.0 - tMin;
+    vec3 pigment = alpha > 0.0 ? (tSrgb - vec3(tMin)) / alpha : vec3(0.0);
     o = vec4(pigment * alpha * shade, alpha);
     return;
   }
 
-  rgb *= shade;
-
   if (uMode == 2){
-    // TRANSMITTANCE, opaque (R2.2 paper-agnostic multiply seam). rgb is how
+    // TRANSMITTANCE, opaque (R2.2 paper-agnostic multiply seam). lit is how
     // much paper light gets through the pigment. Composited with
-    // mix-blend-mode: multiply over ANY fond: result = fond x transmittance,
-    // exactly MODE.paper's rgb * paperCol. No alpha to misread (F1 neon /
-    // fringe) and no un-mix round-trip to lose thin strokes (F2 fade).
-    vec3 t = toSRGB(rgb);
-    o = vec4(t, 1.0);
+    // mix-blend-mode: multiply over ANY fond: result = fond x lit, exactly the
+    // live mode-4 layer's composite. No alpha to misread (F1 neon / fringe)
+    // and no un-mix round-trip to lose thin strokes (F2 fade).
+    o = vec4(lit, 1.0);
     return;
   }
 
@@ -799,7 +825,10 @@ ${displayBasisGLSL()}
       paperCol = mix(paperCol, lin, r.a * uRefOpacity);
     }
   }
-  vec3 col = rgb * paperCol;
+  // Back to linear for the paper multiply. shade == 1 keeps the legacy linear
+  // transmittance exactly, so a relief-free sheet stays byte-identical.
+  vec3 litLinear = shade == 1.0 ? rgb : fromSRGB(lit);
+  vec3 col = litLinear * paperCol;
 
   // Wet paper reads darker and slightly cool.
   float ws = uMode == 3 ? 0.0 : smoothstep(0.02, 0.7, texture(uWet, uv).x) * (1.0 - uFlat);

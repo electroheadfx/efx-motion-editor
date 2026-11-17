@@ -17,7 +17,7 @@
 //   4. The module declares the curve exactly once, imports nothing from the
 //      engine, and its header records D-14 (superseding spec 06 §3's inline
 //      clamp) and that 64-08 extends this module.
-//   5. SCATTERING_MAX is exactly 8 and SCATTER_EPSILON exactly 1e-3, both
+//   5. SCATTERING_MAX is exactly 1 and SCATTER_EPSILON exactly 1e-3, both
 //      exported as positive finite numbers, the epsilon far below any real
 //      deposit the engine produces.
 //   6. scatteringDeposit(body, amount) = SCATTERING_MAX × bodyCurve(body) ×
@@ -126,8 +126,8 @@ describe('the one Body curve (D-14 / MED-21)', () => {
 })
 
 describe('the scattering deposit law (D-14 / MED-32)', () => {
-  it('exports SCATTERING_MAX = 8 and SCATTER_EPSILON = 1e-3', () => {
-    expect(SCATTERING_MAX, 'the saturated deposit at unit amount is 8').toBe(8)
+  it('exports SCATTERING_MAX = 1 and SCATTER_EPSILON = 1e-3', () => {
+    expect(SCATTERING_MAX, 'the saturated deposit at unit amount is 1').toBe(1)
     expect(SCATTER_EPSILON, 'the render-side cheap-branch switch is 1e-3').toBe(1e-3)
     expect(Number.isFinite(SCATTERING_MAX) && SCATTERING_MAX > 0, 'SCATTERING_MAX is positive and finite').toBe(true)
     expect(Number.isFinite(SCATTER_EPSILON) && SCATTER_EPSILON > 0, 'SCATTER_EPSILON is positive and finite').toBe(true)
@@ -147,9 +147,9 @@ describe('the scattering deposit law (D-14 / MED-32)', () => {
         )
       }
     }
-    expect(scatteringDeposit(0.5, 1), 'Body 50, unit amount').toBe(0.125)
-    expect(scatteringDeposit(1, 1), 'Body 100, unit amount').toBe(8)
-    expect(scatteringDeposit(1, 0.5), 'Body 100, half amount').toBe(4)
+    expect(scatteringDeposit(0.5, 1), 'Body 50, unit amount').toBe(0.015625)
+    expect(scatteringDeposit(1, 1), 'Body 100, unit amount').toBe(1)
+    expect(scatteringDeposit(1, 0.5), 'Body 100, half amount').toBe(0.5)
   })
 
   it('is monotone in body for a fixed amount', () => {
@@ -188,8 +188,8 @@ describe('the scattering deposit law (D-14 / MED-32)', () => {
       'one deposit declaration',
     ).toBe(1)
     expect(
-      (SOURCE.match(/SCATTERING_MAX = 8/g) ?? []).length,
-      'one SCATTERING_MAX declaration, at 8',
+      (SOURCE.match(/SCATTERING_MAX = 1/g) ?? []).length,
+      'one SCATTERING_MAX declaration, at 1',
     ).toBe(1)
     expect(
       (SOURCE.match(/SCATTER_EPSILON = 1e-3/g) ?? []).length,
@@ -244,7 +244,7 @@ describe('the scattering transport and the white-channel retirement (MED-32 / ME
 
   it('keeps the cover pass on the same curve and declares no second one', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
-    expectContains(brush, 'const coverAmount = bodyCurve(P.body);')
+    expectContains(brush, 'const coverAmount = Math.min(1, bodyCurve(P.body) * COVER_GAIN);')
     expect(
       (ENGINE_SOURCE.match(/bodyCurve\(/g) ?? []).length,
       'one call site: the cover pass reads the shared curve',
@@ -274,7 +274,8 @@ describe('the scattering transport and the white-channel retirement (MED-32 / ME
     expectContains(display, 'if (uMode == 4){')
     expectContains(display, 'if (uMode == 2){')
     expectContains(display, 'vec3 paperCol = paperColour(paper, uMode == 3 ? vec3(1.0) : uPaperTint);')
-    expectContains(display, 'vec3 col = rgb * paperCol;')
+    expectContains(display, 'vec3 litLinear = shade == 1.0 ? rgb : fromSRGB(lit);')
+    expectContains(display, 'vec3 col = litLinear * paperCol;')
     expectContains(display, 'o = vec4(toSRGB(col), 1.0);')
     expectContains(SHADERS_SOURCE, 'B.a = scattering')
     expectNotContains(SHADERS_SOURCE, 'gouache')
@@ -382,7 +383,7 @@ describe('the composition of order and opacity (MED-36)', () => {
     expectNotContains(deposit, 'Math.pow(')
     expectNotContains(deposit, 'Math.min(')
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
-    expectContains(brush, 'const coverAmount = bodyCurve(P.body);')
+    expectContains(brush, 'const coverAmount = Math.min(1, bodyCurve(P.body) * COVER_GAIN);')
     expectNotContains(brush, 'Math.pow(')
   })
 

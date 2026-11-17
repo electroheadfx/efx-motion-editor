@@ -24,7 +24,8 @@
 //      uAmount, with the same paper-tooth gate and tip-rotation law.
 //   6. The deposit is one per dab, inside the brush callback, after the
 //      ink and before the wet branch, additive and guarded at emboss 0;
-//      Lift erodes with the same rect and amount.
+//      its depth follows the pen pressure between EMBOSS_PRESS_FLOOR
+//      and 1; Lift erodes with the same rect and amount.
 //   7. No step, fill, pen or vector path reads or writes the target.
 // ============================================================
 
@@ -307,7 +308,14 @@ describe('relief deposit (MED-14)', () => {
 
   it('deposits once per dab inside the brush callback, after the ink and before the wet branch', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
-    expect(brush).toContain('const reliefAmount = P.emboss * amount;')
+    // Post-UAT: a light touch lays a thin film, full pressure the delivered
+    // depth; the factor never exceeds 1, so the emboss cannot exceed the
+    // (reduced) full-press look.
+    expect(ENGINE_SOURCE).toContain('const EMBOSS_PRESS_FLOOR = 0.15;')
+    expect(brush).toContain(
+      'const embossPress = EMBOSS_PRESS_FLOOR + (1 - EMBOSS_PRESS_FLOOR) * clamp(pr, 0, 1);',
+    )
+    expect(brush).toContain('const reliefAmount = P.emboss * amount * RELIEF_GAIN * embossPress;')
     const seam = brush.indexOf("// spec 06: the cover pass draws here, before this dab's deposit")
     const inkAt = brush.indexOf('this.brushInk(')
     const reliefAt = brush.indexOf('this.brushRelief(')

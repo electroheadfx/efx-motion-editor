@@ -25,8 +25,16 @@
 //  fully body-saturated medium at unit amount. `SCATTER_EPSILON` is the
 //  render-side switch below which 64-09 runs the legacy exponential verbatim,
 //  so it stays many orders below any real deposit — Body 50 at unit amount
-//  deposits 0.125, 125x the epsilon — and no visible paint takes the cheap
+//  deposits 0.015625, 16x the epsilon — and no visible paint takes the cheap
 //  branch.
+//
+//  Post-UAT tuning (2026-11-17): SCATTERING_MAX was 8. The KM block turns S
+//  into a white reflection added to every band, so at Body 90 (acrylic) the
+//  delivered value lifted a vivid orange to a salmon pastel — measured
+//  #ebb6a6 against the same pigment's #f8946b at S = 0. Body's order job
+//  (the cover pass) is unchanged; only the white veil is scaled down, by 8x.
+//  At S = 1 the same one-pass orange reads #f4a176, the aquarelle's own tone,
+//  while the acrylic keeps its relief, edges and ordering.
 //
 //  Pure functions with no engine import: the laws are laws, not render state.
 // ============================================================
@@ -35,7 +43,7 @@
 export const BODY_CURVE_EXPONENT = 6;
 
 /** The S of a fully body-saturated medium at unit amount (MED-32). */
-export const SCATTERING_MAX = 8;
+export const SCATTERING_MAX = 1;
 
 /** Below this S, 64-09's render path runs the legacy exponential verbatim. */
 export const SCATTER_EPSILON = 1e-3;

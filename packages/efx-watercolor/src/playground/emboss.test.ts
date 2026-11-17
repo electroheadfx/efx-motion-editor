@@ -136,6 +136,19 @@ describe('displayFS emboss block (MED-15)', () => {
     expectContains(ENGINE_SOURCE, 'gl.uniform2f(p.u.uTexel, 1 / this.dw, 1 / this.dh);')
   })
 
+  it('applies the shade in pigment space on every mode and keeps the alpha unlit', () => {
+    const source = shaderSource('displayFS')
+    expectContains(source, 'vec3 tSrgb = toSRGB(rgb);')
+    expectContains(source, 'float tMin = min(min(tSrgb.r, tSrgb.g), tSrgb.b);')
+    expectContains(source, 'vec3 lit = vec3(tMin) + (tSrgb - vec3(tMin)) * shade;')
+    expectContains(source, 'o = vec4(lit, 1.0);')
+    expectContains(source, 'float alpha = 1.0 - tMin;')
+    expectContains(source, 'vec3 litLinear = shade == 1.0 ? rgb : fromSRGB(lit);')
+    // Scaling the linear transmittance darkened the darkest bands into an
+    // outline and gave the stored sheet's cached base a lit alpha.
+    expectNotContains(source, 'rgb *= shade;')
+  })
+
   it('keeps the - L.z zero-gradient term and makes the intensity a multiplier only', () => {
     const source = shaderSource('displayFS')
     expectContains(source, 'float litDelta = uLightIntensity * (dot(n, L) - L.z) * uReliefBump * EMBOSS_GAIN;')
@@ -143,7 +156,7 @@ describe('displayFS emboss block (MED-15)', () => {
     expect(/litDelta\s*=\s*uLightIntensity\s*\+/.test(source), 'litDelta must multiply, never offset').toBe(false)
     // The unlit fallback is exactly 1.0, and the clamp ceiling is a named constant.
     expectContains(source, 'float shade = 1.0;')
-    expectContains(source, 'const float EMBOSS_GAIN = 2.0;')
+    expectContains(source, 'const float EMBOSS_GAIN = 2.3;')
     expectContains(source, 'const float EMBOSS_SHADE_MAX = 1.5;')
     expectContains(source, 'shade = clamp(1.0 + litDelta * (1.0 - uFlat), 0.0, EMBOSS_SHADE_MAX);')
     // The shade is computed AFTER the granulation gate, so k never sees it.
@@ -160,27 +173,29 @@ describe('displayFS emboss block (MED-15)', () => {
     expectNotContains(source, 'radians(')
   })
 
-  it('shades rgb once before the transmittance early return, and mode 4 derives alpha from the unshaded reconstruction', () => {
+  it('shades once in pigment space before the early returns, and mode 4 derives alpha from the unshaded reconstruction', () => {
     const source = shaderSource('displayFS')
-    expectContains(source, 'rgb *= shade;')
-    const shadeAt = source.indexOf('rgb *= shade;')
-    expect(shadeAt).toBeGreaterThan(source.indexOf('${displayBasisGLSL()}'))
-    // 64-08 retired the gouache mix; the shade still lands on rgb exactly once,
-    // after the reconstruction and before every consumer that reads it.
-    expect(shadeAt).toBeLessThan(source.indexOf('if (uMode == 2){'))
-    expect(source.match(/rgb \*= shade;/g) ?? []).toHaveLength(1)
+    expectContains(source, 'vec3 lit = vec3(tMin) + (tSrgb - vec3(tMin)) * shade;')
+    const litAt = source.indexOf('vec3 lit = vec3(tMin)')
+    expect(litAt).toBeGreaterThan(source.indexOf('${displayBasisGLSL()}'))
+    // The shade lands on the transmittance exactly once, after the
+    // reconstruction and before every consumer that reads it.
+    expect(litAt).toBeLessThan(source.indexOf('if (uMode == 4){'))
+    expect(source.match(/vec3 lit = vec3\(tMin\)/g) ?? []).toHaveLength(1)
 
-    // Mode 4's early return reads the unshaded rgb and scales only the
-    // premultiplied colour; alpha is byte-for-byte untouched.
-    expect(source.indexOf('if (uMode == 4){')).toBeLessThan(shadeAt)
-    const mode4 = sliceBetween(source, 'if (uMode == 4){', 'rgb *= shade;')
-    expectContains(mode4, 'vec3 t = toSRGB(rgb);')
-    expectNotContains(mode4, 'toSRGB(rgb * shade)')
+    // Mode 4's early return reads the unshaded reconstruction and scales only
+    // the premultiplied colour; alpha is byte-for-byte untouched.
+    const mode4 = sliceBetween(source, 'if (uMode == 4){', 'if (uMode == 2){')
+    expectContains(mode4, 'vec3 pigment = alpha > 0.0 ? (tSrgb - vec3(tMin)) / alpha : vec3(0.0);')
     expectContains(mode4, 'o = vec4(pigment * alpha * shade, alpha);')
     expect(/alpha\s*\*=\s*shade/.test(mode4), 'alpha must never be scaled by the shade').toBe(false)
 
-    // Mode 2 keeps its early return, on the shaded rgb.
-    expect(source.indexOf('if (uMode == 2){')).toBeGreaterThan(shadeAt)
+    // Mode 2 keeps its early return, on the SAME lit transmittance — the
+    // cached-base round-trip then reads an unshaded alpha.
+    expect(source.indexOf('if (uMode == 2){')).toBeGreaterThan(litAt)
+    expectContains(sliceBetween(source, 'if (uMode == 2){', '// Paper:'), 'o = vec4(lit, 1.0);')
+    // The linear transmittance is never scaled directly.
+    expectNotContains(source, 'rgb *= shade;')
   })
 })
 

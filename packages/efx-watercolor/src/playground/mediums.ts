@@ -127,15 +127,15 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
     name: 'Acrylic',
     params: Object.freeze({
       water: 8,
-      load: 85,
+      load: 100,
       flow: 50,
       bleed: 10,
       dry: 70,
       edge: 65,
       granulation: 25,
       viscosity: 90,
-      body: 90,
-      emboss: 75,
+      body: 85,
+      emboss: 40,
     }),
   }),
 ])

@@ -90,7 +90,7 @@ const KM_SPLIT_TOLERANCE = 1e-12
 
 /** The emitted literals, formatted by the generator's own helper. */
 const KM_EPSILON_LITERAL = '0.001000000'
-const KM_MAX_LITERAL = '8.0'
+const KM_MAX_LITERAL = '1.0'
 
 // ------------------------------------------------------------
 //  CPU reference: a line-by-line mirror of the generated true branch.
@@ -331,7 +331,7 @@ describe('the generator and the display shader wiring (MED-34 / MED-35 / D-16)',
   it('imports the epsilon and the maximum from ./scattering and retypes neither', () => {
     expectContains(SOURCE, "import { SCATTER_EPSILON, SCATTERING_MAX } from './scattering';")
     expectContains(SCATTERING_SOURCE, 'export const SCATTER_EPSILON = 1e-3')
-    expectContains(SCATTERING_SOURCE, 'export const SCATTERING_MAX = 8')
+    expectContains(SCATTERING_SOURCE, 'export const SCATTERING_MAX = 1')
     const generator = SOURCE.slice(SOURCE.indexOf('export function displayBasisGLSL'))
     expectContains(generator, 'SCATTER_EPSILON')
     expectContains(generator, 'SCATTERING_MAX')

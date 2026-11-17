@@ -7,10 +7,11 @@
 //  lives in probe/medium-engine. What a source scan CAN prove is pinned below.
 //
 //  Laws pinned here:
-//   1. The cover amount is `bodyCurve(P.body)`, the one curve declared in
-//      scattering.ts — never an inline clamp — and a `coverAmount > 0` guard
-//      wraps BOTH the per-stamp protections and the per-dab call, so Body 0
-//      draws nothing and protects nothing.
+//   1. The cover amount is `bodyCurve(P.body)` — the one curve declared in
+//      scattering.ts, lifted by COVER_GAIN for the order pass only, never an
+//      inline clamp on P.body — and a `coverAmount > 0` guard wraps BOTH the
+//      per-stamp protections and the per-dab call, so Body 0 draws nothing and
+//      protects nothing. The relief erodes at RELIEF_ERODE of that amount.
 //   2. Both pools are protected ONCE per stamp, before the first cover draw:
 //      pool 0 through `this.touch(coverRect)`, pool 1 through
 //      `this.history.protect(1, …)`, on a stamp-wide rect.
@@ -65,7 +66,9 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
   it('guards both the protections and the per-dab draw behind bodyCurve(P.body)', () => {
     const brush = BRUSH_CASE()
     expectContains(ENGINE_SOURCE, "import { bodyCurve, scatteringDeposit } from './scattering';")
-    expectContains(brush, 'const coverAmount = bodyCurve(P.body);')
+    expectContains(brush, 'const coverAmount = Math.min(1, bodyCurve(P.body) * COVER_GAIN);')
+    expectContains(ENGINE_SOURCE, 'const COVER_GAIN = 2;')
+    expectContains(ENGINE_SOURCE, 'const RELIEF_ERODE = 0.5;')
     // D-14 forbids an inline second curve or clamp on P.body at this site.
     expectNotContains(brush, 'Math.min(1, P.body)')
     expectNotContains(brush, 'Math.max(0, Math.min(1, P.body))')
@@ -131,7 +134,9 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
     expectContains(body, 'this.programs.lift')
     expect((body.match(/this\.bindFootprint\(/g) ?? []).length, 'one footprint binding').toBe(1)
     expectContains(body, 'this.bindFootprint(this.programs.lift, x, y, r, angle, 0, grain, grainThr);')
+    expectContains(body, 'gl.uniform1f(p.u.uCover, 1);')
     expectContains(body, 'gl.uniform1f(p.u.uAmount, amount);')
+    expectContains(body, 'gl.uniform1f(p.u.uAmount, amount * RELIEF_ERODE);')
     expectContains(body, 'const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);')
   })
 

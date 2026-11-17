@@ -160,6 +160,26 @@ const MAX_REF_SIDE = 4096;
 // Phase 64: the emboss gradient is one document texel wide with this fixed
 // bump scale — a document-space constant, never a function of zoom (D-13).
 const RELIEF_BUMP = 1.0;
+// Phase 64 post-delivery tuning (UAT): Body must read as a true cover and the
+// emboss as a relief the user can see, without touching the delivered colours.
+// Three separate multipliers, never a change to the shared curve:
+//   COVER_GAIN     lifts the ORDER pass only; the scattering deposit keeps the
+//                  un-gained curve, so the delivered colour reconstruction is
+//                  bit-for-bit unchanged.
+//   RELIEF_GAIN    deepens the thickness a dab deposits.
+//   RELIEF_ERODE   the share of that thickness the stronger cover erodes: at
+//                  the full cover amount a stroke would erase its own previous
+//                  dabs' relief, flattening the emboss it is meant to raise.
+//
+// Post-UAT (2026-11-17): the emboss follows the stylus. A light touch lays a
+// thin film and a hard press the delivered depth; displayFS's gain is lowered
+// from 3.0 to 2.3, so even a full press stays under the earlier, too-strong
+// look, and existing relief bytes need no repaint.
+const COVER_GAIN = 2;
+const RELIEF_GAIN = 1.5;
+const RELIEF_ERODE = 0.5;
+/** The emboss thickness a feather touch still lays, as a share of full press. */
+const EMBOSS_PRESS_FLOOR = 0.15;
 
 // 61-04: `w` is the per-sample width factor (VEC-03). It rides the queued
 // sample — never a mutable engine field — so a sample can only ever be
@@ -2045,13 +2065,18 @@ export class WatercolorEngine {
         // 0 draws nothing at all — no program bind, no blend change, no draw —
         // so the render and the undo history stay untouched at the neutral
         // default (the bit-identity law).
-        const reliefAmount = P.emboss * amount;
+        // Post-UAT: pressure drives the emboss. The floor keeps a light touch
+        // readable; full pressure reaches the delivered thickness.
+        const embossPress = EMBOSS_PRESS_FLOOR + (1 - EMBOSS_PRESS_FLOOR) * clamp(pr, 0, 1);
+        const reliefAmount = P.emboss * amount * RELIEF_GAIN * embossPress;
         // Phase 64 (MED-19..MED-22, spec 06): Body is ORDER. Before a dab
         // deposits, it erodes the settled pigment and the thickness under its
         // own tip. The amount is D-14's one perceptual curve declared in
-        // scattering.ts (shared with spec 08's scattering); 0 is inert by
-        // construction, so the neutral gate stays byte-identical.
-        const coverAmount = bodyCurve(P.body);
+        // scattering.ts, lifted by COVER_GAIN for the order pass only — the
+        // scattering deposit keeps the un-gained curve, so the delivered
+        // colours do not move; 0 is inert by construction, so the neutral gate
+        // stays byte-identical.
+        const coverAmount = Math.min(1, bodyCurve(P.body) * COVER_GAIN);
         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
@@ -2255,12 +2280,19 @@ export class WatercolorEngine {
     const p = this.programs.lift;
     p.bind();
     this.bindFootprint(this.programs.lift, x, y, r, angle, 0, grain, grainThr);
+    // Solid core at the pressure point, mixing rim: the cover must replace what
+    // is under the brush body, not leak through the bristle gaps.
+    gl.uniform1f(p.u.uCover, 1);
     gl.uniform1f(p.u.uAmount, amount);
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
     g.draw(this.fixed, rect);
+    // The thickness erodes at RELIEF_ERODE of the pigment amount: a full cover
+    // would otherwise erase the stroke's own earlier dabs' relief and flatten
+    // the emboss the same Body value is meant to raise.
+    gl.uniform1f(p.u.uAmount, amount * RELIEF_ERODE);
     g.draw(this.relief, rect);
     gl.disable(gl.BLEND);
   }
@@ -2389,6 +2421,9 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uTipRotation, (b.textureRotation ?? 0) * DEG);
     gl.uniform2f(p.u.uAxis, Math.cos(angle), Math.sin(angle));
     gl.uniform1f(p.u.uRound, 0);
+    // Lift's own erase keeps the tip-shaped profile (uCover = 0); only the
+    // Body cover pass uses the solid-core profile.
+    gl.uniform1f(p.u.uCover, 0);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
