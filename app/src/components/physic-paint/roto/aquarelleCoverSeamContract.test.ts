@@ -54,10 +54,16 @@ const strokeEnd = () => slice(
   'const handleAquarelleStrokeEnd = useCallback(',
   'const handleAquarelleStrokeSettled',
 );
+// The lift plan's OWN body, ending where BOTH existing pinning suites end
+// their `plan`/`preflight` windows (`aquarelleLiftEraseContract.test.ts:72`,
+// `PhysicsPaintStudio.test.ts` `plan`). Ending at `runAquarelleLiftErase`
+// instead would swallow the whole preview block — and the cover handler that
+// the same suite requires INSIDE that block — making the two pins
+// contradictory.
 const preflight = () => slice(
   studio,
   'const planAquarelleLiftErase = useCallback(',
-  'const runAquarelleLiftErase = useCallback(',
+  'const aquarelleLiftPreviewPlanRef',
 );
 const erase = () => slice(
   studio,

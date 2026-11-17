@@ -52,6 +52,12 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
    * only the 5-argument dab.
    */
   const shapeRef = useRef<LiftFootprintShape | null>(null);
+  /**
+   * quick 261117-tq7: the gesture's coverage profile, resolved in `begin` from
+   * the bus (a Lift begin carries no profile and stays `tip`). A ref, never a
+   * second effect or decode: the punch reads it in `flushPreview`.
+   */
+  const profileRef = useRef<'tip' | 'core'>('tip');
   const pendingRef = useRef<AquarelleLiftPreviewDab[]>([]);
   const previewFrameRef = useRef<number | null>(null);
   const rafRef = useRef(0);
@@ -68,6 +74,7 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
       decoded.width,
       decoded.height,
       shapeRef.current ?? undefined,
+      profileRef.current,
     );
     if (coverageRect.width <= 0 || coverageRect.height <= 0) return;
     punchTransmittanceRgba(decoded.image.data, coverage, decoded.width, decoded.height, coverageRect);
@@ -89,9 +96,12 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
   };
 
   useEffect(() => registerAquarelleLiftPreviewSink({
-    begin(frame) {
+    begin(frame, profile) {
       previewFrameRef.current = frame;
       pendingRef.current = [];
+      // quick 261117-tq7: the cover gesture arms the solid-core profile; a
+      // Lift begin passes none and keeps the tip law.
+      profileRef.current = profile ?? 'tip';
       // THE shape seam: one resolution per gesture (Task 2 item 13).
       shapeRef.current = liftShapeForStroke(aquarelleBrushForActiveTool());
       const decoded = decodedRef.current;

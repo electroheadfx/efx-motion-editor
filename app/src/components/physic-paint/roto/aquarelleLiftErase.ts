@@ -155,6 +155,12 @@ export interface LiftErasePunchOptions {
   appFrame: number;
   /** 261028-k03c: the recorded brush's tip footprint (live/punch parity). */
   shape?: LiftFootprintShape;
+  /**
+   * quick 261117-tq7: the coverage profile. `tip` (default) is Lift's own
+   * erase; `core` is the Body cover's solid core — the same law the engine's
+   * `uCover = 1` shader profile uses, so cache and engine erase one shape.
+   */
+  profile?: LiftCoverageProfile;
   /** Injected legs for tests; production uses DEFAULT_LIFT_ERASE_CODEC. */
   codec?: Partial<LiftEraseCodec>;
 }
@@ -339,6 +345,13 @@ function sampleTipBilinear(
 }
 
 /**
+ * quick 261117-tq7: which erase law the coverage map spells. `tip` is Lift's
+ * own tip-shaped erase (the pre-tq7 law, byte-identical); `core` is the Body
+ * cover's solid core — liftFS's `uCover = 1` profile in coverage space.
+ */
+export type LiftCoverageProfile = 'tip' | 'core';
+
+/**
  * The per-pixel K map, allocated ONLY over the union bbox of the dabs so the
  * punch leaves every other pixel byte-identical. UV is y-up, the canvas is
  * top-down, and the radius converts as r * height on BOTH axes (the shader
@@ -354,6 +367,7 @@ export function buildLiftCoverage(
   width: number,
   height: number,
   shape?: LiftFootprintShape,
+  profile: LiftCoverageProfile = 'tip',
 ): LiftCoverage {
   const empty: LiftCoverage = {
     coverage: new Float32Array(1).fill(1),
@@ -413,17 +427,25 @@ export function buildLiftCoverage(
       for (let x = x0; x <= x1; x += 1) {
         const dx = x - one.cx;
         let f: number;
+        let d: number;
         if (shape) {
           const along = (dx * cos + dyUp * sin) / one.rPx;
           const across = ((-dx * sin + dyUp * cos) / one.rPx) / shape.aspect;
           // liftFS: outside the tip square the dab is discarded.
           if (Math.abs(along) > 1 || Math.abs(across) > 1) continue;
-          const d = along * along + across * across;
+          d = along * along + across * across;
           const mask = sampleTipBilinear(shape.tipData, shape.tipSize, along, across);
           f = one.amount * Math.exp(-(d * d)) * (mask * (1 - LIFT_TIP_ROUND) + LIFT_TIP_ROUND);
         } else {
-          const q = (dx * dx + dyUp * dyUp) / r2;
-          f = one.amount * Math.exp(-(q * q));
+          d = (dx * dx + dyUp * dyUp) / r2;
+          f = one.amount * Math.exp(-(d * d));
+        }
+        if (profile === 'core') {
+          // quick 261117-tq7: the engine's `uCover = 1` law, spelled in
+          // coverage space — solid to dot(q,q) = 0.35, smoothstep to 1, zero
+          // from there out. Same square cull and aspect squeeze as above.
+          const t = Math.min(1, Math.max(0, (d - 0.35) / (1 - 0.35)));
+          f = one.amount * (1 - t * t * (3 - 2 * t));
         }
         const index = (y - coverageRect.y) * coverageRect.width + (x - coverageRect.x);
         coverage[index] *= 1 - f;
@@ -500,6 +522,7 @@ export function punchTransmittanceCanvas(
   dabs: readonly LiftDab[],
   shape?: LiftFootprintShape,
   stats?: { changed?: number },
+  profile: LiftCoverageProfile = 'tip',
 ): HTMLCanvasElement | null {
   const width = Math.max(0, Math.round(source.width));
   const height = Math.max(0, Math.round(source.height));
@@ -522,7 +545,7 @@ export function punchTransmittanceCanvas(
   const targetContext = target.getContext('2d', { willReadFrequently: true });
   if (!targetContext) return null;
 
-  const { coverage, coverageRect } = buildLiftCoverage(dabs, width, height, shape);
+  const { coverage, coverageRect } = buildLiftCoverage(dabs, width, height, shape, profile);
   const changedChannels = punchTransmittanceRgba(image.data, coverage, width, height, coverageRect);
   if (stats) stats.changed = changedChannels;
   targetContext.putImageData(image, 0, 0);
@@ -591,7 +614,7 @@ export async function punchTransmittanceBytes(
       return encoded && encoded.length > 0 ? { bytes: encoded, canvas: source, changed: false } : null;
     }
     const stats: { changed?: number } = {};
-    const punched = punchTransmittanceCanvas(source, dabs, options.shape, stats);
+    const punched = punchTransmittanceCanvas(source, dabs, options.shape, stats, options.profile);
     if (!punched) return null;
     const encoded = await encode(punched, size, options.appFrame);
     if (!encoded || encoded.length === 0) return null;

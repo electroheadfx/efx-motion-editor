@@ -38,8 +38,12 @@ export interface AquarelleLiftPreviewDab {
 }
 
 export interface AquarelleLiftPreviewSink {
-  /** A lift gesture began on `frame`; the layer arms its preview. */
-  begin(frame: number): void;
+  /**
+   * A gesture began on `frame`; the layer arms its preview. quick
+   * 261117-tq7: `profile` is optional so a Lift begin stays a one-argument
+   * call; `'core'` arms the Body cover's solid-core punch instead.
+   */
+  begin(frame: number, profile?: 'tip' | 'core'): void;
   /** One applied engine dab. The layer batches per animation frame. */
   dab(dab: AquarelleLiftPreviewDab): void;
   /**
@@ -60,7 +64,13 @@ export function registerAquarelleLiftPreviewSink(sink: AquarelleLiftPreviewSink)
   };
 }
 
-export function beginAquarelleLiftPreview(frame: number): void {
+export function beginAquarelleLiftPreview(frame: number, profile: 'tip' | 'core' = 'tip'): void {
+  // quick 261117-tq7: the default must reach the sink as a ONE-argument call
+  // (aquarelleLiftPreview.test.ts asserts begin(42) exactly).
+  if (profile === 'core') {
+    previewSink?.begin(frame, 'core');
+    return;
+  }
   previewSink?.begin(frame);
 }
 

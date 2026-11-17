@@ -414,6 +414,14 @@ export function AquarelleCanvasLayer(props: {
    */
   onLiftDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;
   /**
+   * quick 261117-tq7: every Body cover dab the ENGINE applied, with the same
+   * five arguments as onLiftDab. The Studio previews it on a cooked frame's
+   * cached base with the solid-core profile so the cover replaces the visible
+   * paint while the user draws. Engine emits unconditionally; the display
+   * decision (cooked-frame authority) stays in the Studio.
+   */
+  onCoverDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;
+  /**
    * PLAY FIDELITY (play-vs-paint): the sheet went to sleep and the last
    * recorded stroke diffused for `ticks` host-grid ticks since it ended.
    * The record path stamps that measured window as the stroke's cuisson so
@@ -505,6 +513,7 @@ export function AquarelleCanvasLayer(props: {
   const getLiftBlockedRef = useRef(props.getLiftBlocked);
   const onLiftBlockedRef = useRef(props.onLiftBlocked);
   const onLiftDabRef = useRef(props.onLiftDab);
+  const onCoverDabRef = useRef(props.onCoverDab);
   const onStrokeSettledRef = useRef(props.onStrokeSettled);
   const onCaptureFrameRef = useRef(props.onCaptureFrame);
   const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
@@ -528,6 +537,7 @@ export function AquarelleCanvasLayer(props: {
   getLiftBlockedRef.current = props.getLiftBlocked;
   onLiftBlockedRef.current = props.onLiftBlocked;
   onLiftDabRef.current = props.onLiftDab;
+  onCoverDabRef.current = props.onCoverDab;
   onStrokeSettledRef.current = props.onStrokeSettled;
   onCaptureFrameRef.current = props.onCaptureFrame;
   onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
@@ -624,6 +634,11 @@ export function AquarelleCanvasLayer(props: {
           // during the stroke is what the live pass applied.
           onLiftDab(x, y, r, amount, angle) {
             onLiftDabRef.current?.(x, y, r, amount, angle);
+          },
+          // quick 261117-tq7: the same forwarding for the cover dab, so the
+          // cached-base preview can punch the solid core live.
+          onCoverDab(x, y, r, amount, angle) {
+            onCoverDabRef.current?.(x, y, r, amount, angle);
           },
           onStrokeEnd(tool) {
             painting = false;
