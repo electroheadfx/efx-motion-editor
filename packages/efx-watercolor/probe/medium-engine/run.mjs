@@ -6,6 +6,7 @@
 //  Scratch harness only: nothing here is imported by the package.
 //  Usage: node packages/efx-watercolor/probe/medium-engine/run.mjs --gate <name>
 //           [--scenario cover] [--emboss <0..100>] [--body <0..100>] [--light <0..4>]
+//           [--size <32..4096>]
 //
 //  64-03: `--emboss` folds a thickness value into the fixed stroke's
 //  params bag (probe.ts does the folding); the gate name is unchanged,
@@ -24,6 +25,29 @@
 //  `--gate neutral-identity` run still reproduces the committed baseline.
 //  The probe report also carries `bakeMs` (script + settle, exports
 //  excluded) for the cover-on / cover-off cost comparison.
+//
+//  64-10 adds `--size <32..4096>`, the square sheet side (absent keeps the
+//  phase-default 256). `--size 1024` is the high-definition sheet the
+//  composite-cost matrix measures — no HD constant exists in the phase docs,
+//  so the probe fixes its own and later plans reuse it. Every report also
+//  carries `renderMs`, the render phase's wall clock (the three exports and
+//  their readbacks), printed beside `bakeMs`; compare.mjs prints both
+//  durations when two gates are compared.
+//
+//  Final flag contract (later phases inherit it, do not retype it):
+//    run.mjs --gate <name>            required; [A-Za-z0-9._-]+, names the JSON
+//             [--scenario cover]      omitted renders the plan-01 single stroke
+//             [--emboss <0..100>]     omitted writes no emboss key
+//             [--body <0..100>]       omitted writes no body key
+//             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
+//             [--size <32..4096>]     omitted keeps the 256 square
+//    compare.mjs <gate>               committed-baseline equality (6 fields)
+//    compare.mjs <gate> --other <g>   same-session equality; never a baseline
+//    compare.mjs <gate> --differs-from <n>
+//                                     committed baseline <n> when it exists,
+//                                     else the same-session capture; all
+//                                     three exported-background digests must
+//                                     differ and the dimensions must agree
 //
 //  Writes /tmp/medium-engine/<name>.json. The committed reference lives
 //  at probe/medium-engine/baselines/<name>.json and is NEVER written by
@@ -45,7 +69,10 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover] [--emboss <0..100>] [--body <0..100>] [--light <0..4>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>]   (e.g. neutral-identity)',
+  )
+  console.error(
+    '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
   )
   process.exit(1)
 }
@@ -103,12 +130,26 @@ if (scenarioRaw !== undefined) {
   scenario = scenarioRaw
 }
 
+// 64-10: optional square-sheet size. Omitted keeps the phase-default sheet,
+// so the neutral gate still reproduces the committed 256x256 baseline.
+const sizeFlag = args.indexOf('--size')
+const sizeRaw = sizeFlag >= 0 ? args[sizeFlag + 1] : undefined
+let size
+if (sizeRaw !== undefined) {
+  size = Number(sizeRaw)
+  if (!Number.isInteger(size) || size < 32 || size > 4096) {
+    console.error(`invalid --size "${sizeRaw}" (expected an integer 32..4096)`)
+    process.exit(1)
+  }
+}
+
 const pageQuery =
   `gate=${encodeURIComponent(gate)}` +
   (scenario === undefined ? '' : `&scenario=${scenario}`) +
   (emboss === undefined ? '' : `&emboss=${emboss}`) +
   (body === undefined ? '' : `&body=${body}`) +
-  (light === undefined ? '' : `&light=${light}`)
+  (light === undefined ? '' : `&light=${light}`) +
+  (size === undefined ? '' : `&size=${size}`)
 const resultPath = join(outDir, `${gate}.json`)
 
 const esbuildCandidates = [
@@ -233,6 +274,7 @@ console.log(`emboss    : ${result.emboss === null ? '(absent)' : result.emboss}`
 console.log(`body      : ${result.body === null ? '(absent)' : result.body}`)
 console.log(`light     : ${result.light === null ? '(default)' : result.light}`)
 console.log(`bake      : ${result.bakeMs ?? 'n/a'} ms (script + settle, exports excluded)`)
+console.log(`render    : ${result.renderMs ?? 'n/a'} ms (three exports + readbacks)`)
 console.log(`sheet     : ${result.width}x${result.height} (${result.byteLength} bytes/export)`)
 console.log(`renderer  : ${result.renderer ?? 'n/a'}`)
 console.log(`paper     : ${result.digestPaper}`)

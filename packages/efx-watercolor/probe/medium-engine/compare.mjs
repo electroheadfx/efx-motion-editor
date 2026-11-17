@@ -30,6 +30,14 @@
 //      Both captures are the same scenario, so the dimensions must AGREE;
 //      only the three digests are required to differ.
 //
+//  64-10: every report carries `bakeMs` (script + settle) and `renderMs`
+//  (the render phase: the three exports and their readbacks). When two gates
+//  are compared this script prints both captures' durations beside the field
+//  verdicts; against a committed baseline it prints whatever the capture and
+//  the baseline recorded. Durations are printed, NEVER compared — cost is
+//  reported, not gated, so a duration delta can never fail a byte-identity
+//  check. The operand contract above is unchanged: 64-10 only reads it.
+//
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
 //  teach this parser about it rather than have it silently misparse.
@@ -77,6 +85,14 @@ function readJson(path, label) {
     console.error(`compare: ${label} is not valid JSON (${error.message})`)
     process.exit(1)
   }
+}
+
+/** 64-10: print one capture's recorded durations. Printed, never compared. */
+function printDurations(label, data) {
+  const parts = []
+  if (typeof data.bakeMs === 'number') parts.push(`bake ${data.bakeMs} ms`)
+  if (typeof data.renderMs === 'number') parts.push(`render ${data.renderMs} ms`)
+  console.log(`${label.padEnd(9)} : ${parts.length > 0 ? parts.join(' | ') : '(none recorded)'}`)
 }
 
 /** Resolve the reference path per the three documented modes. */
@@ -130,6 +146,18 @@ console.log(`capture   : ${actualPath}`)
 console.log(`reference : ${referencePath}`)
 if (mode !== 'other' && typeof refData.capturedFromCommit === 'string') {
   console.log(`baseline  : captured from commit ${refData.capturedFromCommit}`)
+}
+console.log('')
+
+// 64-10: both durations when two gates are compared; a committed baseline
+// that predates the duration fields prints only what it recorded.
+printDurations('capture', actual)
+if (
+  mode !== 'baseline' ||
+  typeof refData.bakeMs === 'number' ||
+  typeof refData.renderMs === 'number'
+) {
+  printDurations(mode === 'baseline' ? 'baseline' : 'reference', refData)
 }
 console.log('')
 

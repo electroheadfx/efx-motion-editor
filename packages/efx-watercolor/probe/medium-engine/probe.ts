@@ -32,6 +32,15 @@
 //  run also reports `bakeMs` (the script + settle, exports excluded) so the
 //  cover pass's cost can be measured as the cover-on / cover-off median
 //  delta.
+//
+//  64-10 adds the size and duration operands: `--size <32..4096>` renders the
+//  same scenario on a square sheet of that side (absent keeps the 256 default),
+//  so the scattering composite can be measured at high definition, and every
+//  report carries `renderMs` beside `bakeMs` — the wall clock of the render
+//  phase proper, the three exports and their readbacks. All three exported
+//  backgrounds (paper, transparent, white) have been digested since 64-01;
+//  this plan exercises them on the scattered render rather than adding a
+//  digest.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -44,10 +53,16 @@ import {
 } from '../../src/payload/toStudioStroke'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 
-// The sheet the gate always renders. Small enough for a fast headless
-// run, large enough that one stroke of the fixed script is well above
-// the paper-grain noise floor.
-const SHEET = 256
+// The sheet the gate renders unless `--size` says otherwise. Small enough
+// for a fast headless run, large enough that one stroke of the fixed script
+// is well above the paper-grain noise floor.
+const DEFAULT_SHEET = 256
+// 64-10: the square-sheet knob's band. The cost matrix's high-definition
+// sheet is 1024 (16x the default's pixels) — no HD constant exists in the
+// phase docs, so the probe fixes one here and later plans reuse it rather
+// than retype it.
+const MIN_SHEET = 32
+const MAX_SHEET = 4096
 // Pinned constructor draw: the engine's `paperSeed` comes from
 // Math.random before the adapter installs its own RNG, so an unpinned
 // constructor makes every digest meaningless.
@@ -259,6 +274,7 @@ function run(
   gate: string,
   renderer: string,
   scenario: string,
+  sheet: number,
   emboss?: number,
   body?: number,
   light?: number,
@@ -271,8 +287,8 @@ function run(
   capturedEngine = null
   const adapter = withSeededMathRandom(PAPER_SEED, () =>
     createAquarelleEngineAdapter({
-      width: SHEET,
-      height: SHEET,
+      width: sheet,
+      height: sheet,
       paperPreset: COLD,
       paperStrength: PAPER_STRENGTH,
     }),
@@ -299,9 +315,15 @@ function run(
     // reproduce the unlit baseline. Omitted leaves DEFAULT_LIGHT (intensity 1).
     if (light !== undefined) engine.setLight({ intensity: light })
 
+    // 64-10: renderMs is the render phase proper — the three exports through
+    // the display shader plus their readbacks — recorded beside the digests so
+    // a body pair reports both halves of the cost (bake + render). Durations
+    // are reported, never tuned into the law.
+    const renderStart = performance.now()
     const paper = digestCanvas(engine.exportCanvas('paper'))
     const transparent = digestCanvas(engine.exportCanvas('transparent'))
     const white = digestCanvas(engine.exportCanvas('white'))
+    const renderMs = Math.round(performance.now() - renderStart)
 
     writeResult({
       gate,
@@ -310,8 +332,9 @@ function run(
       body: body ?? null,
       light: light ?? null,
       bakeMs,
-      width: SHEET,
-      height: SHEET,
+      renderMs,
+      width: sheet,
+      height: sheet,
       digestPaper: paper.digest,
       digestTransparent: transparent.digest,
       digestWhite: white.digest,
@@ -365,20 +388,33 @@ function readScenario(): string {
   return raw
 }
 
+/** 64-10: the square-sheet knob — absent keeps the phase-default 256 sheet. */
+function readSize(): number {
+  const raw = new URLSearchParams(location.search).get('size')
+  if (raw === null || raw === '') return DEFAULT_SHEET
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < MIN_SHEET || value > MAX_SHEET) {
+    throw new Error(`invalid size "${raw}" (expected an integer ${MIN_SHEET}..${MAX_SHEET})`)
+  }
+  return value
+}
+
 function main(): void {
   const gate = new URLSearchParams(location.search).get('gate') ?? 'neutral-identity'
   let renderer = '(unknown)'
   let scenario = 'neutral'
+  let sheet = DEFAULT_SHEET
   let emboss: number | undefined
   let body: number | undefined
   let light: number | undefined
   try {
     scenario = readScenario()
+    sheet = readSize()
     emboss = readEmboss()
     body = readBody()
     light = readLight()
     renderer = probeRenderer()
-    run(gate, renderer, scenario, emboss, body, light)
+    run(gate, renderer, scenario, sheet, emboss, body, light)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     writeResult({
@@ -388,8 +424,9 @@ function main(): void {
       body: body ?? null,
       light: light ?? null,
       bakeMs: null,
-      width: SHEET,
-      height: SHEET,
+      renderMs: null,
+      width: sheet,
+      height: sheet,
       digestPaper: null,
       digestTransparent: null,
       digestWhite: null,
