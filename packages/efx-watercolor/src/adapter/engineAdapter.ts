@@ -43,7 +43,7 @@ import {
   type AquarellePayloadEvent,
 } from '../payload/dryEvent'
 import { payloadCodec } from '../payload/codec'
-import { WatercolorEngine, type Tool } from '../playground/Engine'
+import { WatercolorEngine, type LightSettings, type Tool } from '../playground/Engine'
 import { toEngineParams } from '../playground/params'
 import { buildBrushForStroke } from '../playground/brushBridge'
 import { pigmentFromHex, type Pigment } from '../playground/spectral'
@@ -67,6 +67,15 @@ export interface AquarelleAdapterOptions {
   paperPreset?: PaperPreset
   /** Paper strength 0..1 — engine.paperTexture (deposit grain visibility). */
   paperStrength?: number
+  /**
+   * 64-07 (MED-17): the paint-layer document's emboss light, applied ONCE
+   * before the first `applyStroke` so the bake's very first dab is lit. Feed
+   * the document value unchanged: `Engine.setLight` owns every band (azimuth
+   * wraps 0..360, elevation 0..90, intensity 0..4, a non-finite field falls
+   * back to `DEFAULT_LIGHT`) and redraws only on a real change. Absent leaves
+   * the engine's own default in force — the adapter never manufactures one.
+   */
+  light?: LightSettings
 }
 
 /**
@@ -258,6 +267,12 @@ export function createAquarelleEngineAdapter(
   applyPaper(undefined, options.paperPreset)
   if (typeof options.paperStrength === 'number' && engine) {
     engine.paperTexture = options.paperStrength < 0 ? 0 : options.paperStrength > 1 ? 1 : options.paperStrength
+  }
+  // 64-07 (MED-17): the light is render state and must be in place before the
+  // first applyStroke — one pass-through write, never a clamp or a default on
+  // this path (the engine setter owns the bands, see AquarelleAdapterOptions).
+  if (options.light && engine) {
+    engine.setLight({ ...options.light })
   }
 
   /** Pending stroke being walked on the tick grid. */

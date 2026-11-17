@@ -4,6 +4,8 @@ import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 import { transmittanceToAlpha } from '../../../lib/rasterAlpha';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
+// 64-07 (MED-17): type-only — the runtime package import stays lazy below.
+import type { LightSettings } from '@efxlab/efx-watercolor';
 
 const MAX_FRAME_COUNT = 10_000;
 const MAX_AGGREGATE_RGBA_BYTES = 512 * 1024 * 1024;
@@ -60,6 +62,13 @@ export interface RotoRevealRenderInput {
    * the edges.
    */
   aquarellePaper?: Readonly<{ paperId: string; grainStrength: number; grainScale: number }>;
+  /**
+   * 64-07 (MED-17): the paint-layer document's emboss light, read by the
+   * caller AT RENDER TIME. Applied at adapter creation so the reveal bake's
+   * first stroke is lit; absent keeps the engine default. A plain
+   * pass-through — never resolved, defaulted or copied here.
+   */
+  light?: LightSettings;
   /**
    * The frame-aligned reference plus the display transform (D-14).
    *
@@ -147,6 +156,9 @@ async function renderRotoRevealFramesAquarelle(
     height: input.size.height,
     paperPreset: paper ? paperPresetForStudioId(paper.paperId) : undefined,
     paperStrength: paper?.grainStrength,
+    // 64-07 (MED-17): render state beside the paper — in place before the
+    // reveal bake's first stroke.
+    light: input.light,
   });
   const isStatic = (input.mode ?? 'progressive') === 'static';
   // 261030-v1t: ON re-bakes every output frame (static included) with its own

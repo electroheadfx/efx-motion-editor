@@ -34,6 +34,9 @@ import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
 import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
 import type { PlayScriptDialogDefaults } from '../../../lib/playScriptDialogDefaults';
 import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
+// 64-07 (MED-17): type-only — the package root stays out of the UI chunk; the
+// runtime module is still imported lazily inside createDefaultAquarelleAdapter.
+import type { LightSettings } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import { getRecordedAquarelleDryEvents, getRecordedAquarellePayload, getRecordedAquarelleStroke, isAquarelleStrokeDeleted } from '../view/aquarelleRecordState';
@@ -4242,6 +4245,12 @@ export async function bakeAquarelleEventsToFrame(input: {
   events: readonly AquarellePayloadEvent[];
   size: { width: number; height: number };
   paper: AquarelleBakePaper;
+  /**
+   * 64-07 (MED-17): the paint-layer document's light, read by the caller AT
+   * RENDER TIME and handed to the adapter before the first stroke. A plain
+   * pass-through — no resolution, no default, no second copy.
+   */
+  light?: LightSettings;
   /** 261022 Apply parity: per-fully-fed-stroke progress (Dry excluded). */
   onStrokeFed?: (completed: number, total: number) => void;
   /**
@@ -4252,7 +4261,7 @@ export async function bakeAquarelleEventsToFrame(input: {
   onDiagnostics?: (d: AquarelleApplyDiagnostics) => void;
 }): Promise<{ bytes: Uint8Array; width: number; height: number } | null> {
   const createStartedAt = readNow();
-  const adapter = await createDefaultAquarelleAdapter(input.size, input.paper);
+  const adapter = await createDefaultAquarelleAdapter(input.size, input.paper, input.light);
   // Creation span: the dynamic import + engine construction. The teardown
   // span is added in the finally — the field is the adapter's lifecycle cost,
   // never the whole bake.
@@ -4317,6 +4326,8 @@ export async function applyAquarelleEventsToKey(input: {
   target: { keyId: string; appFrame: number };
   size: { width: number; height: number };
   paper: AquarelleBakePaper;
+  /** 64-07 (MED-17): the document light, forwarded unchanged to the bake. */
+  light?: LightSettings;
   /** 261022 Apply parity: per-fully-fed-stroke progress (Dry excluded). */
   onStrokeFed?: (completed: number, total: number) => void;
   /** 261029-bks: forwarded unchanged to `bakeAquarelleEventsToFrame`. */
@@ -4327,6 +4338,7 @@ export async function applyAquarelleEventsToKey(input: {
     events: input.events,
     size: input.size,
     paper: input.paper,
+    light: input.light,
     onStrokeFed: input.onStrokeFed,
     onDiagnostics: input.onDiagnostics,
   });
@@ -4344,6 +4356,7 @@ export async function applyAquarelleEventsToKey(input: {
 async function createDefaultAquarelleAdapter(
   size: { width: number; height: number },
   paper?: AquarelleBakePaper,
+  light?: LightSettings,
 ): Promise<EngineAdapter<AquarelleStrokePayload> & { isAwake?: () => boolean }> {
   const { createAquarelleEngineAdapter } = await import('@efxlab/efx-watercolor');
   return createAquarelleEngineAdapter({
@@ -4351,6 +4364,9 @@ async function createDefaultAquarelleAdapter(
     height: size.height,
     paperPreset: paper ? paperPresetForStudioId(paper.paperId) : undefined,
     paperStrength: paper?.grainStrength,
+    // 64-07 (MED-17): render state beside the paper — the adapter applies it
+    // before the first stroke; absent keeps the engine default.
+    light,
   });
 }
 
