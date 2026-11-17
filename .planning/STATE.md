@@ -6,10 +6,10 @@ current_phase: 64
 current_phase_name: Medium Engine
 status: verifying
 stopped_at: Completed 64-09-PLAN.md
-last_updated: "2026-11-17T17:18:58.303Z"
+last_updated: "2026-11-17T22:30:14.361Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 64 execution started
-state_head: 93b205f49bc312af7d50cc203326599db1d89009
+state_head: 4dbe9f6d76a4ad0cfbd667dc06cca0eeb47022e0
 progress:
   total_phases: 2
   completed_phases: 1
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 Phase: 64 (Medium Engine) — EXECUTING
 Plan: 12 of 12
 Status: Phase complete — ready for verification
-Last activity: 2026-11-17 — Phase 64 execution started
+Last activity: 2026-11-17 — Completed quick task 261117-tq7: Cover pass erases pre-stroke wet ink and the cached base (UAT rows 1-7 pending)
 
 
 ## Performance Metrics
@@ -624,6 +624,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261116-r9k | Studio: a converted painted stroke's paint is now tessellated at RENDER time from its anchors (paint cadence via resampleVectorPaintPoints), so the document keeps its spline; the conversion also simplifies anchors while the evaluated curve stays within 0.006 uv of every recorded sample (18 -> 11 on a hand stroke); D-08 unamended, the stored-station approach was reverted (UAT approved 2026-11-16) | 2026-11-16 | 72a8d6cdf | [261116-r9k-in-the-studio-canvas-make-a-painted-stro](./quick/261116-r9k-in-the-studio-canvas-make-a-painted-stro/) |
 | 261116-u63 | Studio Stroke Settings list: Duplicate button on each stroke/vector row beside the trash and in the header — clones the recorded stroke (anchors, curve mode, vector flag, texture, key anchors) directly above its source as one undoable edit (UAT approved 2026-11-16) | 2026-11-16 | 4c021d178 | [261116-u63-in-studio-when-i-select-vector-or-stroke](./quick/261116-u63-in-studio-when-i-select-vector-or-stroke/) |
 | 261117-e6j | Studio rail delete no longer wedges the window: a drifted post-publication settlement releases its lease instead of transferring it to recovery ownership (the recovery lease gated physicalMutationAvailable, so every later Add key/rail was refused); the diagnostic now names the failing drift sub-check; pinned by a store-level delete-settlement test (UAT approved 2026-11-17) | 2026-11-17 | 9caf1a116 | [261117-e6j-regression-with-studio-on-deleting-after](./quick/261117-e6j-regression-with-studio-on-deleting-after/) |
+| 261117-tq7 | Cover pass erases pre-stroke wet ink and the cached base: a Body>0 Brush stamp subtracts the stroke-start ink snapshot under its solid core (bounded share law) and punches a cooked frame's cached base through the Lift preview/punch seam with a new core profile; Body 0 stays byte-identical 6/6 | 2026-11-17 | 4dbe9f6d7 | [261117-tq7-cover-pass-erases-pre-stroke-wet-ink-and](./quick/261117-tq7-cover-pass-erases-pre-stroke-wet-ink-and/) |
 
 ## Roadmap Evolution
 
