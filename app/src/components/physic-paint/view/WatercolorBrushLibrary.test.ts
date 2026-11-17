@@ -2,15 +2,16 @@
  * 261017-xa0 I-03 — Brush tab; quick-261115-oh9 splits the two axes.
  *
  * Laws pinned here:
- *   ONE response section ("Brushes") over BRUSH_PRESETS — a response card
- *   is never a texture and never a project import
+ *   FIVE response sections over BRUSH_PRESETS in the fixed order Watercolor,
+ *   Gouache, Chalk, Graphite, Acrylic (64-11 MED-27) — a response card is
+ *   never a texture and never a project import
  *   a texture row (watercolor-texture-strip) above the grid: Default first,
  *   then the machine library's rows in catalog order (no compile-time
  *   built-ins — quick 261116-inu)
  *   chips render the engine's real grayscale mask (watercolorMaskChip)
  *   every response card = 150x44 stroke thumb canvas + mixed-case name + tooltip
  *   testids: root watercolor-brush-library, cards watercolor-brush-card-${id},
- *            section watercolor-brush-section-responses,
+ *            sections watercolor-brush-section-${group} (five medium ids),
  *            texture row watercolor-texture-strip,
  *            chips watercolor-texture-chip-${textureId ?? 'default'}
  *   no category filter / search field / wc/ size-variant rows
@@ -30,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BRUSH_PRESETS,
   TIP_MASK_BYTES,
+  brushSections,
   buildBrush,
 } from '@efxlab/efx-watercolor';
 import {
@@ -216,6 +218,11 @@ function libraryRoot(tree: TestVNode): TestVNode | undefined {
 }
 
 const PRESET_IDS = BRUSH_PRESETS.map((p) => p.id);
+
+/** Table order regrouped by the section helper — the visual card order. */
+const GROUPED_IDS = brushSections(BRUSH_PRESETS).flatMap((section) =>
+  section.presets.map((preset) => preset.id),
+);
 
 /** A library mask fixture: exactly TIP_MASK_BYTES, so registerMask accepts it. */
 function libraryMask(value: number): Uint8Array {
@@ -420,14 +427,21 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
     Object.assign(globalThis, { document: originalDocument });
   });
 
-  it('renders one response section over BRUSH_PRESETS — no texture or custom card', () => {
+  it('renders five grouped sections over BRUSH_PRESETS — no texture or custom card', () => {
     addCustomBrushTip(CUSTOM_TIP);
     try {
       const tree = renderLibrary();
       expect(sectionNodes(tree).map((n) => n.props?.['data-testid'])).toEqual([
-        'watercolor-brush-section-responses',
+        'watercolor-brush-section-watercolor',
+        'watercolor-brush-section-gouache',
+        'watercolor-brush-section-pastel',
+        'watercolor-brush-section-graphite',
+        'watercolor-brush-section-acrylic',
       ]);
-      expect(cardNodes(tree).map(cardIdOf), 'one response card per preset').toEqual(PRESET_IDS);
+      expect(cardNodes(tree).map(cardIdOf), 'one response card per preset, grouped').toEqual(
+        GROUPED_IDS,
+      );
+      expect(cardNodes(tree).length, 'every preset still renders once').toBe(PRESET_IDS.length);
       const testIds = [...walk(tree)].map((n) => n.props?.['data-testid']);
       const textureCards = testIds.filter(
         (id): id is string => typeof id === 'string' && id.startsWith('watercolor-brush-card-wc/'),
@@ -441,9 +455,11 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
     }
   });
 
-  it('names the single response section "Brushes"', () => {
-    const section = sectionNodes(renderLibrary())[0]!;
-    expect(textContent(section)).toContain('Brushes');
+  it('names the five sections with the D-18 short names', () => {
+    const titles = sectionNodes(renderLibrary()).map((section) =>
+      textContent(childrenOf(section)[0]),
+    );
+    expect(titles).toEqual(['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic']);
   });
 
   it('exposes the library root testid on a 2-column grid', () => {
@@ -597,7 +613,7 @@ describe('WatercolorBrushLibrary texture strip (quick-261115-oh9)', () => {
         (n) => n.props?.['data-testid'] === 'watercolor-texture-strip',
       );
       const sectionIndex = nodes.findIndex(
-        (n) => n.props?.['data-testid'] === 'watercolor-brush-section-responses',
+        (n) => n.props?.['data-testid'] === 'watercolor-brush-section-watercolor',
       );
       expect(stripIndex, 'texture row renders').toBeGreaterThanOrEqual(0);
       expect(stripIndex, 'texture row sits above the grid').toBeLessThan(sectionIndex);
@@ -798,7 +814,7 @@ describe('WatercolorBrushLibrary import row and unavailable tips (63-06)', () =>
       (n) => n.props?.['data-testid'] === 'watercolor-brush-import-row',
     );
     const sectionIndex = nodes.findIndex(
-      (n) => n.props?.['data-testid'] === 'watercolor-brush-section-responses',
+      (n) => n.props?.['data-testid'] === 'watercolor-brush-section-watercolor',
     );
     expect(rowIndex, 'import row renders').toBeGreaterThanOrEqual(0);
     expect(rowIndex, 'import row sits above the grid').toBeLessThan(sectionIndex);
