@@ -11,15 +11,18 @@
 // ============================================================
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { toEngineParams } from '@efxlab/efx-watercolor';
 import type {
   AquarelleAnchor,
   AquarelleDryEvent,
+  AquarelleStroke,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import {
   aquarelleActiveTool,
   aquarelleLiftTipId,
+  aquarelleParams,
   aquarelleRecordClock,
   aquarelleSelectedTipId,
   aquarelleStrokeSerial,
@@ -28,11 +31,15 @@ import {
   getRecordedAquarelleDryEvents,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
+  recordAquarelleStroke,
   resetAquarelleRecordState,
   restoreAquarelleRecordTimeline,
   selectAquarelleTip,
   setAquarelleLiftTipId,
+  setAquarelleParam,
   setAquarelleTool,
+  snapshotAquarelleRecord,
+  updateAquarelleStrokesInScript,
 } from './aquarelleRecordState';
 import {
   NEUTRAL_TOOL_OVERRIDES,
@@ -258,6 +265,49 @@ describe('63-06 catalog tip selection', () => {
     expect(aquarelleSelectedTipId.value).toBeNull();
   });
 });
+
+// Phase 64 (MED-23 / D-14) — the Body key rides the ONE record path: the
+// snapshot carries it, an absent or non-finite value maps to the neutral
+// engine 0, and the selection-edit allowlist accepts a body patch. 64-02
+// declared the key; 64-06 proves the path end to end.
+describe('Phase 64 Body record path (MED-23)', () => {
+  it('snapshots the live body into the recorded bag', () => {
+    const previous = aquarelleParams.value.body;
+    try {
+      expect(previous, 'the neutral default is 0').toBe(0);
+      setAquarelleParam('body', 40);
+      expect(snapshotAquarelleRecord().params.body, 'the snapshot carries body').toBe(40);
+    } finally {
+      setAquarelleParam('body', previous);
+    }
+  });
+
+  it('maps an absent, non-finite or overshooting body through the one canonical mapping', () => {
+    expect(toEngineParams({ size: 12 }).body, 'absent body maps to engine 0').toBe(0);
+    expect(toEngineParams({ body: Number.NaN }).body, 'NaN maps to engine 0').toBe(0);
+    expect(toEngineParams({ body: Number.POSITIVE_INFINITY }).body, 'Infinity maps to engine 0').toBe(0);
+    expect(toEngineParams({ body: 150 }).body, 'an overshoot clamps to 1').toBe(1);
+  });
+
+  it('accepts a body patch through the selection write allowlist', () => {
+    recordAquarelleStroke(20601, bodyStrokeFixture(20601));
+    const changed = updateAquarelleStrokesInScript([20601], { params: { body: 40 } });
+    expect(changed, 'the batch is accepted, not refused').toBe(1);
+    expect(getRecordedAquarelleStroke(20601)!.params.body, 'the stroke carries body').toBe(40);
+  });
+});
+
+function bodyStrokeFixture(mutationId: number): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#103c65',
+    params: { size: 12 },
+    brushId: 'round',
+    points: [{ x: 0.5, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0 }],
+    timestamp: 0,
+    playFrame: 811,
+  };
+}
 
 describe('quick 261116-rp — a reopen keeps the raw pointer timing', () => {
   it('projects the real per-point ticks, repeats and gaps included', () => {

@@ -5,10 +5,10 @@
  *   Phase 64 (D-01/D-07): the medium dropdown is the FIRST child row and names
  *   the selected medium; five items render in the fixed D-18 order
  *   (Watercolor, Gouache, Chalk, Graphite, Acrylic)
- *   9 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
- *   Dry speed, Viscosity, Emboss (keys stay
- *   water/load/flow/bleed/edge/granulation/dry/viscosity/emboss; 64-06 inserts
- *   Body between Viscosity and Emboss)
+ *   10 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
+ *   Dry speed, Viscosity, Body, Emboss (keys stay
+ *   water/load/flow/bleed/edge/granulation/dry/viscosity/body/emboss; 64-06
+ *   inserted Body between Viscosity and Emboss — D-07's ten-row order)
  *   no Size control (top-bar owns it, Q1a) and no Hand row
  *   Reset writes playground DEFAULT_PARAMS ×100 for every non-size row via
  *   setAquarelleParam and never writes size or lift (T-261017-WMW-01)
@@ -144,6 +144,14 @@ function collectLabels(tree: TestVNode): string[] {
   return labels;
 }
 
+/** One-line order assertion: a raw toEqual on arrays dumps a multi-line diff
+ *  into the TAP diagnostic and breaks the RED evidence parser. */
+function expectGlobalOrder(order: readonly string[]): void {
+  expect(order.join('|'), 'the global labels in playground order').toBe(
+    GLOBAL_LABELS.join('|'),
+  );
+}
+
 /** First-seen label names in walk order (playground order pin). */
 function collectOrderedLabels(tree: TestVNode): string[] {
   const seen = new Set<string>();
@@ -155,7 +163,7 @@ function collectOrderedLabels(tree: TestVNode): string[] {
 }
 
 /** I-01/I-02 playground order (SettingsPanel SLIDERS minus Size and Hand),
- *  with Phase 64's Viscosity and Emboss appended (64-04). */
+ *  with Phase 64's Viscosity, Body and Emboss (D-07's ten-row order). */
 const GLOBAL_LABELS = [
   'Water',
   'Pigment',
@@ -165,6 +173,7 @@ const GLOBAL_LABELS = [
   'Grain',
   'Dry speed',
   'Viscosity',
+  'Body',
   'Emboss',
 ] as const;
 
@@ -172,7 +181,7 @@ const GLOBAL_LABELS = [
  *  "Chalk" deliberately — the id is not the label. */
 const MEDIUM_NAMES = ['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic'] as const;
 
-/** Playground DEFAULT_PARAMS ×100 for the 9 non-size rows. */
+/** Playground DEFAULT_PARAMS ×100 for the 10 non-size rows. */
 const RESET_EXPECTED = {
   water: 60,
   load: 50,
@@ -182,6 +191,7 @@ const RESET_EXPECTED = {
   granulation: 45,
   dry: 40,
   viscosity: 0,
+  body: 0,
   emboss: 0,
 } as const;
 
@@ -197,12 +207,12 @@ function findTestId(tree: TestVNode, testId: string): TestVNode | undefined {
 }
 
 describe('AquarelleGlobalsPanel sliders (I-02)', () => {
-  it('renders the 9 named global slider labels in playground order', () => {
+  it('renders the 10 named global slider labels in playground order', () => {
     const tree = renderPanel();
     const ordered = collectOrderedLabels(tree).filter((l) =>
       (GLOBAL_LABELS as readonly string[]).includes(l),
     );
-    expect(ordered).toEqual([...GLOBAL_LABELS]);
+    expectGlobalOrder(ordered);
     const labels = collectLabels(tree);
     for (const name of GLOBAL_LABELS) {
       expect(labels.some((l) => l === name), `missing global label ${name}`).toBe(true);
@@ -219,7 +229,7 @@ describe('AquarelleGlobalsPanel sliders (I-02)', () => {
     expect(/\bsize\b/i.test(text), 'found size text in panel').toBe(false);
   });
 
-  it('renders nothing but the 9 sliders + Reset (no response chrome)', () => {
+  it('renders nothing but the 10 sliders + Reset (no response chrome)', () => {
     const tree = renderPanel();
     const text = textContent(tree);
     expect(text).not.toContain('Brush response');
@@ -248,6 +258,7 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     setAquarelleParam('granulation', 6);
     setAquarelleParam('dry', 7);
     setAquarelleParam('viscosity', 55);
+    setAquarelleParam('body', 55);
     setAquarelleParam('emboss', 55);
     setAquarelleParam('lift', 33);
 
@@ -269,6 +280,7 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(params.granulation, 'granulation → 45').toBe(RESET_EXPECTED.granulation);
     expect(params.dry, 'dry → 40').toBe(RESET_EXPECTED.dry);
     expect(params.viscosity, 'viscosity → 0').toBe(RESET_EXPECTED.viscosity);
+    expect(params.body, 'body → 0').toBe(RESET_EXPECTED.body);
     expect(params.emboss, 'emboss → 0').toBe(RESET_EXPECTED.emboss);
     // T-261017-WMW-01: Reset must never write size (top-bar Brush size owns it)
     // and never touches the eraser strength.
@@ -294,17 +306,32 @@ describe('Phase 64 medium dropdown', () => {
     expect(text, 'the row names the selected medium').toContain('Watercolor');
   });
 
-  it('renders nine slider rows below the dropdown, Emboss last', () => {
+  it('renders ten slider rows below the dropdown, Body ninth and Emboss last', () => {
     const tree = renderPanel();
     const sliders = [...walk(tree)].filter(
       (node) => node.props?.['data-testid'] === 'slider-stepper',
     );
-    expect(sliders, 'nine slider rows at this wave').toHaveLength(GLOBAL_LABELS.length);
+    expect(sliders, 'ten slider rows at this wave').toHaveLength(GLOBAL_LABELS.length);
     const ordered = collectOrderedLabels(tree).filter((label) =>
       (GLOBAL_LABELS as readonly string[]).includes(label),
     );
-    expect(ordered).toEqual([...GLOBAL_LABELS]);
+    expectGlobalOrder(ordered);
+    expect(ordered[ordered.length - 2]).toBe('Body');
     expect(ordered[ordered.length - 1]).toBe('Emboss');
+  });
+
+  it('moves the canonical body key through the one seam on change and release', () => {
+    // The RAW vnode tree keeps GlobalSlider's own props (materialize invokes
+    // the function component), so the row's onChange/onCommit are reachable.
+    const bodyRow = [...walk(AquarelleGlobalsPanel())].find(
+      (node) => node.props?.['label'] === 'Body' && typeof node.props?.['onChange'] === 'function',
+    );
+    expect(bodyRow, 'the Body row must render').toBeTruthy();
+    (bodyRow!.props['onChange'] as (value: number) => void)(42);
+    expect(aquarelleParams.value.body, 'Body writes the canonical body key').toBe(42);
+    expect(typeof bodyRow!.props['onCommit'], 'the release path is wired like every row').toBe(
+      'function',
+    );
   });
 
   it('renders no menu until the popover state opens', () => {
@@ -424,7 +451,7 @@ describe('261018-gqo spacing rhythm', () => {
 });
 
 // quick 261111-ucf — each global row commits at its release boundary and
-// Reset sends ONE nine-key batch after its nine live writes. Id band
+// Reset sends ONE ten-key batch after its ten live writes. Id band
 // 10721+.
 describe('quick 261111-ucf globals release commits + Reset batch', () => {
   afterEach(() => {
@@ -433,7 +460,7 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     clearScriptStrokeSelection();
   });
 
-  it('Reset commits ONE nine-key params patch after the nine live writes', () => {
+  it('Reset commits ONE ten-key params patch after the ten live writes', () => {
     recordAquarelleStroke(10721, stroke10721([point10721(0.5, 0.5)]));
     const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
     const promise = Promise.resolve(true);
@@ -454,8 +481,13 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     (reset!.props as { onClick?: () => void }).onClick!();
 
     expect(calls, 'the batch is ONE call').toHaveLength(1);
-    expect(calls[0]!.ids).toEqual([10721]);
-    expect(calls[0]!.patch).toEqual({ params: RESET_EXPECTED });
+    expect(calls[0]!.ids.join(','), 'the selected ids').toBe('10721');
+    // One-line JSON comparison: a raw object toEqual dumps a multi-line diff
+    // into the TAP diagnostic and breaks the RED evidence parser.
+    expect(
+      JSON.stringify(calls[0]!.patch),
+      'the batch is the full ten-key patch',
+    ).toBe(JSON.stringify({ params: RESET_EXPECTED }));
     expect(Object.keys(calls[0]!.patch.params ?? {}), 'size is never committed').not.toContain('size');
   });
 
