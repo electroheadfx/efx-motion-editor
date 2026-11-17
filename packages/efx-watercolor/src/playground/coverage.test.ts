@@ -231,7 +231,7 @@ describe('the cover seam', () => {
       'if (!s.started) {',
       'this.stampScripted(s, q.x, q.y, s.pr, 0, 0, 1, 0, q.w, 1);',
     )
-    expectContains(startBranch, "if (s.tool === 'brush' && this.params.body > 0) this.armInkCover();")
+    expectContains(startBranch, "if (s.tool === 'brush' && this.params && this.params.body > 0) this.armInkCover();")
     // The raw Body, not the curve: Engine.ts keeps exactly ONE bodyCurve(
     // call site (scattering.test.ts pins the whole-file count at 1).
     expect((ENGINE_SOURCE.match(/bodyCurve\(/g) ?? []).length, 'one bodyCurve call site').toBe(1)
@@ -357,7 +357,7 @@ describe('the cover seam', () => {
         'if (!s.started) {',
         'this.stampScripted(s, q.x, q.y, s.pr, 0, 0, 1, 0, q.w, 1);',
       ),
-      "if (s.tool === 'brush' && this.params.body > 0) this.armInkCover();",
+      "if (s.tool === 'brush' && this.params && this.params.body > 0) this.armInkCover();",
     )
     // Draw: the method is a no-op without a snapshot or a positive amount.
     expectContains(

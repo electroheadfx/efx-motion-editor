@@ -1,0 +1,17 @@
+{
+  "gate": "cover-over-wet",
+  "scenario": "cover-over-wet",
+  "emboss": null,
+  "body": 100,
+  "light": null,
+  "bakeMs": 85,
+  "renderMs": 17,
+  "width": 256,
+  "height": 256,
+  "digestPaper": "a3957ebd",
+  "digestTransparent": "9bcdf005",
+  "digestWhite": "297c3a01",
+  "byteLength": 262144,
+  "renderer": "WebKit WebGL",
+  "verdict": "MEDIUM-ENGINE CAPTURED"
+}

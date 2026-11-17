@@ -333,6 +333,30 @@ void main(){
   o1 = vec4(f);
 }`;
 
+// quick 261117-tq7: the pre-stroke ink subtract. Samples the snapshot taken at
+// stroke start (uPreA/uPreB, the two mobile-pigment attachments) and writes
+// preInk * f with the SAME solid core the settled cover pass uses (liftFS's
+// uCover = 1 law). Drawn with blendEquation(FUNC_REVERSE_SUBTRACT) and
+// blendFunc(ONE, ONE), so dst becomes dst - preInk * f: the covering stroke
+// replaces the still-wet underlayer exactly as it replaces settled pigment.
+// No tip texture: the core law needs no mask, and the unconditional square
+// cull matches the footprint's support.
+export const inkCoverFS = `${HEADER}
+layout(location=0) out vec4 o0;
+layout(location=1) out vec4 o1;
+uniform sampler2D uPreA, uPreB;
+uniform float uAspect, uRadius, uAmount, uTipAspect;
+uniform vec2 uPoint, uAxis;
+void main(){
+  vec2 p = vUv - uPoint; p.x *= uAspect;
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  q.y /= uTipAspect;
+  if (abs(q.x) > 1.0 || abs(q.y) > 1.0) discard;
+  float f = uAmount * (1.0 - smoothstep(0.35, 1.0, dot(q, q)));
+  o0 = texture(uPreA, vUv) * f;
+  o1 = texture(uPreB, vUv) * f;
+}`;
+
 // Paper, generated per document and whenever the paper is changed, in two passes.
 // paperFieldFS builds the sheet's procedural field into a half-float target:
 //   x = height 0..1 (mean ~0.5), y = mottle 0..1 (fibre clumping, 0.5 neutral),

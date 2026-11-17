@@ -118,6 +118,13 @@ export interface EngineCallbacks {
    * preview can reproduce the erased shape.
    */
   onLiftDab?(x: number, y: number, r: number, amount: number, angle: number): void;
+  /**
+   * quick 261117-tq7: one applied cover dab (doc uv y up, radius in document
+   * heights, amount = the effective per-dab cover). The Studio previews it on
+   * a cooked frame's cached base so the cover replaces the base's pigment while
+   * the user draws; `angle` is the same tip angle onLiftDab carries.
+   */
+  onCoverDab?(x: number, y: number, r: number, amount: number, angle: number): void;
 }
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp';
@@ -363,6 +370,7 @@ export class WatercolorEngine {
   private fixed!: Target;
   private wet!: DoubleTarget;
   private relief!: Target;                     // Phase 64: paint thickness, one channel, engine-only
+  private preInk: Target | null = null;        // quick 261117-tq7: stroke-start mobile-ink snapshot (cover subtract), never undo state
   private paper!: Target;
   private wetMask!: Target;                    // coarse "is there water here" map, read back to bound the sim
   private maskPixels = new Uint8Array(0);
@@ -440,6 +448,9 @@ export class WatercolorEngine {
       paperSheet: this.g.program(S.paperSheetFS),
       display: this.g.program(S.displayFS),
     };
+    // quick 261117-tq7: outside the literal on purpose — scattering.test.ts pins
+    // that literal's program count, and `programs` is a Record.
+    this.programs.inkCover = this.g.program(S.inkCoverFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
     this.attachInput();
@@ -530,6 +541,7 @@ export class WatercolorEngine {
 
   /** (Re)create a blank `w`×`h` sheet. Discards the painting. */
   private createDocument([w, h]: [number, number]) {
+    this.dropPreInk();
     const oldAspect = this.aspect;
     [this.dw, this.dh] = clampDocSize(w, h, this.maxSide);
     // a reference placed on paper of another shape would be stretched; fit it afresh
@@ -571,6 +583,7 @@ export class WatercolorEngine {
     [w, h] = clampDocSize(w, h, this.maxSide);
     const ow = this.dw, oh = this.dh;
     if (w === ow && h === oh) return;
+    this.dropPreInk();
     this.stroke = null;
     this.restoreStrokePigment();
     this.dropFill();
@@ -1508,6 +1521,7 @@ export class WatercolorEngine {
 
   /** Wipe the paint as one undo step. The sheet (and its grain) stays. */
   clear() {
+    this.dropPreInk();
     this.stroke = null;
     this.restoreStrokePigment();
     this.queue = [];
@@ -1534,6 +1548,7 @@ export class WatercolorEngine {
    * re-arms the virtual clock and the RNG stream.
    */
   resetSheet() {
+    this.dropPreInk();
     this.stroke = null;
     this.restoreStrokePigment();
     this.queue = [];
@@ -1547,6 +1562,7 @@ export class WatercolorEngine {
   abortStroke() {
     const s = this.stroke;
     if (!s) return;
+    this.dropPreInk();
     this.stroke = null;
     this.restoreStrokePigment();
     this.queue = [];
@@ -1573,6 +1589,7 @@ export class WatercolorEngine {
   /** Step through history in either direction. */
   private travel(dir: 'undo' | 'redo', notify = true) {
     this.autoFix = false;   // the last step is no longer the settle-cap fix
+    this.dropPreInk();
     this.stroke = null;
     this.restoreStrokePigment();
     this.dropFill();
@@ -1677,6 +1694,7 @@ export class WatercolorEngine {
     this.tipTextures.clear();
     if (this.ref) this.gl.deleteTexture(this.ref.tex);
     this.ref = null;
+    this.dropPreInk();
     this.g.disposeTargets();
   }
 
@@ -1937,6 +1955,12 @@ export class WatercolorEngine {
         // the pigment, so the first dab carries its own vertex colour.
         s.widthFrom = s.widthTo = q.w;
         s.pigFrom = s.pigTo = q.pig ?? null;
+        // quick 261117-tq7: a cover can only replace wet ink if the stroke
+        // knows what the sheet held before its first dab. Raw Body on purpose:
+        // the curve is spent at the dab site, and 0 / non-brush arm nothing.
+        // The params guard keeps a bare prototype harness (Object.create, no
+        // field initializers) honest: no params means no Body, so no snapshot.
+        if (s.tool === 'brush' && this.params && this.params.body > 0) this.armInkCover();
         this.stampScripted(s, q.x, q.y, s.pr, 0, 0, 1, 0, q.w, 1);
         continue;
       }
@@ -1977,6 +2001,7 @@ export class WatercolorEngine {
     // resting in place: pigment keeps soaking in, water keeps pooling
     if (!s.moved && s.started && !s.ending && !startedThisTick) this.stampScripted(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1), 1);
     if (s.ending) {
+      this.dropPreInk();
       this.stroke = null;
       this.restoreStrokePigment();
       if (s.pointerId !== SCRIPT_POINTER) {
@@ -2101,6 +2126,10 @@ export class WatercolorEngine {
         this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
           // spec 06: the cover pass draws here, before this dab's deposit
           if (coverAmount > 0) this.coverPass(dx, dy, dr, angle, coverAmount, dryness, grainThr);
+          // quick 261117-tq7: the same Body order must reach MOBILE ink too.
+          // Unguarded: inkCover's own early return guards Body 0 and a snapshot
+          // that was never armed, and the deposit below must survive the erase.
+          this.inkCover(dx, dy, dr, angle, coverAmount);
           this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
           if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
           // soft brushes wet a little beyond the tip; textured ones keep their
@@ -2294,6 +2323,9 @@ export class WatercolorEngine {
     // the emboss the same Body value is meant to raise.
     gl.uniform1f(p.u.uAmount, amount * RELIEF_ERODE);
     g.draw(this.relief, rect);
+    // quick 261117-tq7: the cached-base seam mirrors onLiftDab — the Studio
+    // punches the same core profile into a reopened frame's base as it draws.
+    this.callbacks.onCoverDab?.(x, y, r, amount, angle);
     gl.disable(gl.BLEND);
   }
 
@@ -2307,6 +2339,56 @@ export class WatercolorEngine {
     gl.disable(gl.BLEND);
     this.wetPeak = Math.max(this.wetPeak * this.wetDecay(), amount);
     this.lastWet = this.clock();
+  }
+
+  /**
+   * quick 261117-tq7 (spec 09 law 3): snapshot the MOBILE pigment at stroke
+   * start so the cover pass can subtract what it crosses while that paint is
+   * still wet. One snapshot per stroke — a second call is a no-op — and the
+   * two attachments are copied POSITIONALLY so attachment roles never cross.
+   */
+  private armInkCover() {
+    if (this.preInk !== null) return;
+    const { gl, g } = this;
+    this.preInk = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);
+    this.ink.read.views.forEach((v, i) => g.blit(v, 0, 0, this.preInk!.views[i], 0, 0, this.dw, this.dh));
+  }
+
+  /**
+   * quick 261117-tq7 (spec 09 law 3): subtract the stroke-start snapshot from
+   * the mobile ink under the SAME solid core the settled cover uses, so the
+   * covering body removes the wet underlayer instead of letting it survive in
+   * the bristle gaps. Reverse subtract with ONE/ONE coefficients writes
+   * dst - preInk * f into BOTH ink attachments. The stroke's own pigment is
+   * deposited after this draw, so it survives. An unarmed snapshot or a
+   * non-positive amount draws nothing — that is the guard the call site relies
+   * on. No touch()/protect here: the stamp's coverRect already covers this
+   * draw and brushes pool 0 in the same stamp.
+   */
+  private inkCover(x: number, y: number, r: number, angle: number, amount: number) {
+    if (this.preInk === null || !(amount > 0)) return;
+    const { gl, g } = this;
+    const b = this.brush;
+    const p = this.programs.inkCover;
+    p.bind();
+    gl.uniform1i(p.u.uPreA, g.bindTex(2, this.preInk.tex[0]));
+    gl.uniform1i(p.u.uPreB, g.bindTex(3, this.preInk.tex[1]));
+    this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, 0, 0);
+    gl.uniform1f(p.u.uAmount, amount);
+    const rect = this.stampRect(x, y, r * (1 + b.sizeJitter + b.scatter), this.dw, this.dh, 2);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    g.draw(this.ink.read, rect);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.disable(gl.BLEND);
+  }
+
+  /** quick 261117-tq7: release the pre-stroke snapshot — a transient, never undo state. */
+  private dropPreInk() {
+    if (this.preInk === null) return;
+    this.g.disposeTarget(this.preInk);
+    this.preInk = null;
   }
 
   /** Rect (in texels of a w×h grid) covered by a stamp of radius r (doc heights). */
