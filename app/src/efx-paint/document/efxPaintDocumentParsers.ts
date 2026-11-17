@@ -27,6 +27,7 @@ import {
   type FrameLoopClipScale,
   type InternalPaintTrack,
   normalizeGrainScale,
+  type PaintDocumentLight,
   type PaperTexture,
   type PhotoReferenceTrack,
   type PhotoReferenceTransform,
@@ -60,7 +61,7 @@ function isFinitePositiveNumber(value: unknown): value is number {
 // below (Pitfall 5 — never one without the other). The retired singular
 // `sound` member is gone: an old document carrying it throws — no shim, no
 // migration (project law).
-const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'photoReference', 'audios', 'compositeRevision']);
+const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'light', 'photoReference', 'audios', 'compositeRevision']);
 // 261008-ig1 (D-05): the audio CONTAINER allowlist — the document is the
 // container, so this set names the only audio-family member a document may
 // carry. Defense-in-depth: DOCUMENT_KEYS above is the primary gate; this trip-
@@ -77,6 +78,15 @@ const FALLBACK_SOLID_KEYS = new Set(['mode', 'color']);
 // absent/invalid) — the required-members check below owns presence, the
 // allowlist owns shape.
 const FALLBACK_PAPER_KEYS = new Set(['mode', 'texture', 'grainStrength', 'grainScale']);
+// Phase 64-05 (MED-17): the document light — OPTIONAL (absent stays absent so
+// a pre-milestone project re-encodes byte-identically), present is an
+// exact-member, fail-closed record. The bands mirror Engine.setLight's clamps
+// (azimuth 0..360, elevation 0..90, intensity 0..4), so a persisted value can
+// never disagree with the setter's law.
+const LIGHT_KEYS = new Set(['azimuth', 'elevation', 'intensity']);
+const LIGHT_AZIMUTH_MAX = 360;
+const LIGHT_ELEVATION_MAX = 90;
+const LIGHT_INTENSITY_MAX = 4;
 // 56-05 (PAPER-01): legacy canvas aliases + the 13-paper library ids (`paper/…`).
 const PAPER_TEXTURES = new Set(['canvas1', 'canvas2', 'canvas3']);
 function isPaperTextureValue(value: unknown): value is PaperTexture {
@@ -547,6 +557,51 @@ function parseDocumentAudios(value: unknown): readonly DocumentSoundClip[] {
 }
 
 /**
+ * Phase 64-05 (MED-17): normalize the OPTIONAL document light. Absent returns
+ * `undefined` — never a manufactured default (the reader resolves the engine's
+ * `DEFAULT_LIGHT`), so an absent member stays truly absent through parse and
+ * re-encode. Present is a fail-closed exact-member record: `null` is NOT
+ * absence, an unknown member throws, a missing member throws, and every number
+ * must be finite and inside the engine setter's clamp bands. Returns a frozen
+ * record.
+ */
+export function normalizeDocumentLight(value: unknown): PaintDocumentLight | undefined {
+  if (value === undefined) return undefined;
+  if (!isPlainRecord(value)) {
+    throw new Error('EfxPaintDocument: light must be a record of azimuth, elevation and intensity.');
+  }
+  const unknown = Object.keys(value).filter((key) => !LIGHT_KEYS.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`EfxPaintDocument: light has unknown members (${unknown.join(', ')}); expected exactly azimuth, elevation, intensity.`);
+  }
+  for (const key of LIGHT_KEYS) {
+    if (!(key in value)) {
+      throw new Error(`EfxPaintDocument: light is missing member "${key}".`);
+    }
+  }
+  const { azimuth, elevation, intensity } = value;
+  if (typeof azimuth !== 'number' || !Number.isFinite(azimuth)) {
+    throw new Error('EfxPaintDocument: light.azimuth must be a finite number.');
+  }
+  if (typeof elevation !== 'number' || !Number.isFinite(elevation)) {
+    throw new Error('EfxPaintDocument: light.elevation must be a finite number.');
+  }
+  if (typeof intensity !== 'number' || !Number.isFinite(intensity)) {
+    throw new Error('EfxPaintDocument: light.intensity must be a finite number.');
+  }
+  if (azimuth < 0 || azimuth > LIGHT_AZIMUTH_MAX) {
+    throw new Error(`EfxPaintDocument: light.azimuth must be within 0..${LIGHT_AZIMUTH_MAX} degrees.`);
+  }
+  if (elevation < 0 || elevation > LIGHT_ELEVATION_MAX) {
+    throw new Error(`EfxPaintDocument: light.elevation must be within 0..${LIGHT_ELEVATION_MAX} degrees.`);
+  }
+  if (intensity < 0 || intensity > LIGHT_INTENSITY_MAX) {
+    throw new Error(`EfxPaintDocument: light.intensity must be within 0..${LIGHT_INTENSITY_MAX}.`);
+  }
+  return Object.freeze({ azimuth, elevation, intensity });
+}
+
+/**
  * Reconstruct a validated {@link EfxPaintDocument} from untrusted input.
  *
  * Throws a closed validation failure on any invalid input; caller-owned
@@ -568,7 +623,7 @@ export function parseEfxPaintDocument(
     throw new Error('EfxPaintDocument: expected a record.');
   }
   if (!hasOnlyKeys(value, DOCUMENT_KEYS)) {
-    throw new Error('EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, audios, compositeRevision.');
+    throw new Error('EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, light, photoReference, audios, compositeRevision.');
   }
   // 261008-ig1 (D-05) container tripwire: any audio-family member present must
   // be inside AUDIO_LIST_KEYS. DOCUMENT_KEYS already rejects the retired
@@ -607,6 +662,10 @@ export function parseEfxPaintDocument(
   if (!tracks.some((track) => track.id === value.activeTrackId)) {
     throw new Error(`EfxPaintDocument: activeTrackId "${value.activeTrackId}" does not match any track id.`);
   }
+  // Phase 64-05 (MED-17): the OPTIONAL light. The spread keeps an absent
+  // member TRULY absent — an explicit `undefined` key would break the
+  // byte-identity law for untouched pre-milestone projects.
+  const light = normalizeDocumentLight(value.light);
   return Object.freeze({
     version: EFX_PAINT_DOCUMENT_VERSION,
     parentLayerId: value.parentLayerId,
@@ -614,6 +673,7 @@ export function parseEfxPaintDocument(
     activeTrackId: value.activeTrackId,
     tracks,
     background: parseBackgroundTrack(value.background),
+    ...(light === undefined ? {} : { light }),
     photoReference: value.photoReference === null ? null : parsePhotoReferenceTrack(value.photoReference),
     // 261008-ig1 (D-01, A2): optional member — absent normalizes to []. A
     // non-array (including null) throws — fail-closed, never coerced.

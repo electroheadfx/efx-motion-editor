@@ -8,10 +8,19 @@
  * (pure) vs `physicPaintStore.ts` (reactive).
  */
 
+import type { LightSettings } from '@efxlab/efx-watercolor';
 import type { PhysicPaintRotoPhysicalDocument } from '../../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 /** Single version discriminator for the v1.0 EFX Physic Paint document. */
 export const EFX_PAINT_DOCUMENT_VERSION = 1;
+
+/**
+ * Phase 64-05 (MED-17): the paint-layer document's emboss light — a frozen
+ * plain record of exactly azimuth, elevation and intensity. The type IS the
+ * engine's `LightSettings` re-exported through the package barrel, so the app
+ * never retypes the shape; absent resolves to the engine's `DEFAULT_LIGHT`.
+ */
+export type PaintDocumentLight = LightSettings;
 
 /** Main-editor blend mode union (mirrors `app/src/types/layer.ts`). */
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add';
@@ -242,6 +251,15 @@ export interface EfxPaintDocument {
   readonly activeTrackId: string;
   readonly tracks: readonly InternalPaintTrack[];
   readonly background: BackgroundTrack;
+  /**
+   * Phase 64-05 (MED-17): OPTIONAL-ADDITIVE law — the per-document emboss
+   * light, stored next to the paper's `background` member. Absent means "this
+   * project renders with today's light" and the reader resolves the engine's
+   * `DEFAULT_LIGHT`; the factory NEVER writes it, so an untouched
+   * pre-milestone project saves byte-identically. When present the parser
+   * admits exactly the three members, fail-closed.
+   */
+  readonly light?: PaintDocumentLight;
   readonly photoReference: PhotoReferenceTrack | null;
   /** The document's placed sound clips (261008-ig1, D-01); empty when none. */
   readonly audios: readonly DocumentSoundClip[];
