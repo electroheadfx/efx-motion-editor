@@ -104,7 +104,7 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
 
 **Source of truth:** `SPECS/v2.2.0-brush-tips/` (specs 01-02) and `SPECS/v2.2.0-medium-engine/` (specs 03-05). No research phase: the five specs carry the exact file anchors, laws and UAT rows.
 
-- [x] **Phase 63: Brush Tip Pipeline** - An imported PNG/JPG becomes the real 192×192 tip mask, stored inside the project and rebuilt on open, with three textured tips shipped by default (completed 2026-11-16)
+- [x] **Phase 63: Brush Tip Pipeline** - An imported PNG/JPG becomes the real 512×512 tip mask in the machine-level user texture library, rebuilt on open; the `.mce` carrier and shipped built-ins were superseded by quick 261116-inu (completed 2026-11-16)
 - [ ] **Phase 64: Medium Engine** - A Viscosity global and named Medium profiles make paint read denser and heavier, with heavy pigment gaining visible body from its own density
 
 **Spec provenance** (planner input, not an execution unit): `GSD-QUICK-PROMPT-01-mask-wiring.md` → Phase 63 (TIP-01..06, TIP-10 import caps) · `GSD-QUICK-PROMPT-02-embedded-tips.md` → Phase 63 (TIP-07..09, TIP-11..17, TIP-10 stored-mask caps) · `GSD-QUICK-PROMPT-03-viscosity.md` → Phase 64 (MED-01..06) · `GSD-QUICK-PROMPT-04-medium-profile.md` → Phase 64 (MED-07..13) · `GSD-QUICK-PROMPT-05-pigment-relief.md` → Phase 64 (MED-14..18).
@@ -125,7 +125,7 @@ Both phases are **plan-backed**: `/gsd-plan-phase` produces the plans from these
 
 ### Phase 63: Brush Tip Pipeline
 
-**Goal**: An imported PNG or JPG becomes the actual brush tip — a real 192×192 mask that travels inside the `.mce`, rebuilds on open, and paints the same footprint live, baked and replayed, with three textured tips available on every install.
+**Goal**: An imported PNG or JPG becomes the actual brush tip — a real 512×512 mask in the machine-level user texture library that rebuilds on open and paints the same footprint live, baked and replayed. The `.mce` brush carrier, per-project mask assets and the three shipped built-ins were superseded by quick 261116-inu (UAT-approved 2026-11-16); the supersession is recorded in REQUIREMENTS.md.
 
 **Depends on**: Nothing (first phase of v2.2.0; plan order follows spec order 01 → 02, with the second spec building on the first's decode path)
 
@@ -133,10 +133,10 @@ Both phases are **plan-backed**: `/gsd-plan-phase` produces the plans from these
 
 **Success Criteria** (what must be TRUE):
   1. Importing a grayscale or transparent PNG/JPG visibly changes the stroke footprint to that image's texture instead of a round blob — alpha when the image carries meaningful transparency, otherwise luminance with polarity from mean luminance — a 4K import stays responsive, and a corrupt file with a valid PNG header is refused with the existing copy and no crash.
-  2. A stroke painted with an imported tip survives save → quit → relaunch → open and replays with its texture from the `.mce` alone: the baked frame shows the footprint the live stroke did, moving then renaming then deleting the original source image changes nothing, copying the project alone to a fresh profile reproduces identical strokes and an identical brush library listing, and an untouched save/reopen is byte-identical.
-  3. A fresh install with no import already lists and paints three textured tips — Bristle fan, Chalk grain, Sponge — which are app-owned and never written into a project.
-  4. A stored mask that is missing, corrupt or not exactly 192×192 degrades to an unavailable tip with the neutral round fallback and exactly one aggregate named warning — never a crash, never blank paint, never an aborted open — and closing the project or starting a New Project resets the catalog and mask registry so no ghost mask survives.
-  5. A roto script saved with an imported tip paints that texture when applied into a project that never imported it, and opening a project replaces — never appends to — the tip catalog and mask registry with that project's entries plus the three built-ins, so a tip imported in project A does not exist in project B.
+  2. A stroke painted with an imported tip survives save → quit → relaunch → open and replays with its texture from the machine-level library: the baked frame shows the footprint the live stroke did, and moving then renaming then deleting the original source image changes nothing. On a machine without that texture the stroke replays with the response tip and a warning (declared loss, approved 2026-11-16); importing the same texture there restores the look.
+  3. Imported textures are the only source: a fresh install ships no built-in textures and the machine library is scanned at app start (supersedes the original three-built-ins criterion).
+  4. A library texture that is missing, corrupt or not exactly 512×512 degrades to an unavailable tip with the neutral round fallback — never a crash and never blank paint; the standing aggregate warning line was dropped on request (2026-11-16). Deleting a library texture is confirm-gated and container-scoped.
+  5. A roto script saved with an imported tip carries only the texture id and its per-stroke rotation (metadata-only), so applying it into a project paints that texture when the machine library has it; every recorded stroke snapshots its own rotation. The catalog is machine-scoped, not per-project, so no project-scoped ghost mask survives.
 
 **Plans:** 16/16 plans executed
 
