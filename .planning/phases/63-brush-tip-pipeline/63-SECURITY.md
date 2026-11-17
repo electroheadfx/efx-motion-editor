@@ -99,6 +99,11 @@ created: "2026-11-15"
 | T-63-32 | Denial of service | `read_brush_asset` | high | mitigate | A metadata length check refuses an over-cap asset before any allocation; the refusal maps to the existing `unreadable` per-entry reason, so a hostile package cannot exhaust memory and cannot abort the open. Tests pin the exact boundary and the batch degradation. | closed |
 | T-63-33 | Tampering | AQTL `decodeStroke` / every reader of `engine.textureId` | medium | mitigate | The presence marker is validated as exactly 0 or 1 (`BinaryReader.presence`), the string is length-checked against the declared body before allocation, an empty value is refused, and the id is used only as a mask-registry map key — never a file path — so a crafted snapshot or script cannot reach package or cache IO. Pins cover the corrupt marker, the empty value and the truncated string. | closed |
 | T-63-34 | Denial of service | AQTL version gate on a stale or crafted `.snap` | low | accept | An AQTL v1/v2 body is refused whole with `unsupported-version`; the controller reports one restore failure and leaves a known-empty timeline instead of a partial decode, so a stale cache degrades to one notice, never a crash or half-restored strokes. Accepted because the project law forbids migration readers. | accepted |
+| T-63-35 | Tampering | `prepareSave` routine-save union over a refused snapshot (controller save gate) | high | mitigate | CR-02 latch: `refusedRestore` is set on both refusal arms and read by `prepareSave`, which returns null before `deps.write`; the IPC write and `write_snapshot_at` are never reached, so the refused leaf cannot be replaced by a session-only payload. Only the explicit `sessionOnly` purge may write, and it clears the latch only after a successful commit. Pins cover read-refused + real stroke, decode-refused + real stroke, repeated saves, failed purge, successful restore, missing snapshot and rebind. | closed |
+| T-63-36 | Repudiation | inner AQTL version gate → user-facing restore message | medium | mitigate | The inner `unsupported-version` code is preserved as `aqtl-retired` and mapped to a named notice that says the script was not loaded; genuinely corrupt bodies keep the generic corrupt report, and retired container versions 1-4 keep their existing notice. The user is not led to treat a deliberate retirement as corruption. | closed |
+| T-63-37 | Tampering | latch clear path | low | mitigate | The latch is cleared only in `bind`/`reset`, on a later successful restore, and on a successful `sessionOnly` commit — no routine save, failed write, report or `missing` outcome touches it, so a degraded read fails closed; the gate reads only the existing `sessionOnly` option (no new option surface). Pinned by the standing-latch and failed-purge tests; the `missing` arm adds no clear site (verification grep). | closed |
+| T-63-38 | Repudiation | `PhysicsPaintStudio.tsx` close step — withheld-close acknowledgement | high | mitigate | The acknowledgement is a per-episode value: the controller bumps `latchEpisode` on every `bind()` and exposes `withheldEpisode()`; the Studio compares it with `closeWithheldAcknowledgedEpisodeRef` through the pure `admitsWithheldClose` gate. A rebind to a second latched track refuses again instead of closing silently, and the refusal states that closing again will discard the unsaved script. Pinned by the refused-A → admitted-same-episode → refused-B sequence and the Studio source pins (`CR-03:` ×2, Studio ×1; 525 tests green). | closed |
+| T-63-39 | Tampering | `hasWithheldContent()` durable-base arm over the launch-scoped cross-track map | medium | mitigate | The base arm is scoped to keys this binding owns — `getLiveKeyIds()` values plus `getWatercolorKeyAnchors()` key ids, the same scope the save's base merge applies — so a foreign track's base can no longer refuse the close and steer the user toward the destructive whole-track clear. An unknown live key map returns true (conservative) so the fix cannot silently admit a close that loses this track's base. Pinned by the own / foreign-only / unknown-identity / anchor-owned quartet (`WR-15:` ×4). | closed |
 | T-63-SC | Tampering | npm/pip/cargo installs | high | mitigate | Package-legitimacy gate: this plan adds no dependency; a blocking human checkpoint is required for any [ASSUMED]/[SUS] package. | closed |
 
 *Status: open · closed · open — below `high` threshold (non-blocking)*
@@ -126,10 +131,13 @@ created: "2026-11-15"
 
 Verified at ASVS L1 (grep-depth) because `register_authored_at_plan_time` is true and `asvs_level` is 1. Every <code>mitigate</code> row's control was implemented by its plan and covered by that plan's automated tests; the full suite (9,426 passed) is green after the 63-15 gap-closure wave. No dependency was added by any phase-63 plan (T-63-SC).
 
-## Security Audit 2026-11-17
+## Security Audit 2026-11-17 (63-16 and 63-17 gap closures)
 
 | Metric | Count |
 |---|---|
-| Threats found | 35 |
-| Closed | 34 |
+| Threats found | 40 |
+| Closed | 39 |
 | Open | 0 |
+| Accepted | 1 |
+
+Verified at ASVS L1 (grep-depth) because `register_authored_at_plan_time` is true and `asvs_level` is 1. The register now folds in T-63-35..37 (plan 63-16) and T-63-38..39 (plan 63-17), which the earlier audit blocks did not carry. Every `mitigate` row's control is implemented and covered by that plan's automated tests; both 63-17 target suites are green (525 tests) and the app typecheck passes. No dependency was added by any phase-63 plan (T-63-SC).
