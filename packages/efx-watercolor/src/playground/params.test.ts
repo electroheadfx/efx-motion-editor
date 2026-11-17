@@ -64,6 +64,18 @@ describe('toEngineParams', () => {
     expect(toEngineParams({ viscosity: -40 }).viscosity).toBe(0);
   });
 
+  // Phase 64 / MED-04: a recorded stroke that predates the key carries no
+  // `viscosity`; it must replay at the neutral default, and a non-finite value
+  // must normalize to 0 at the engine boundary instead of reaching a uniform
+  // as NaN.
+  it('replays a stroke without the viscosity key at the neutral default', () => {
+    expect(toEngineParams({ water: 50 }).viscosity).toBe(0);
+    expect(toEngineParams(undefined).viscosity).toBe(0);
+    expect(toEngineParams({ viscosity: Number.NaN }).viscosity).toBe(0);
+    expect(toEngineParams({ viscosity: Number.POSITIVE_INFINITY }).viscosity).toBe(0);
+    expect(toEngineParams({ viscosity: Number.NEGATIVE_INFINITY }).viscosity).toBe(0);
+  });
+
   it('maps Lift strength 0..100 onto the 0..0.9 erase amount', () => {
     // 22 is the pre-strength hardcoded amount: old recorded strokes (no key)
     // must keep their exact erase.
