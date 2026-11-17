@@ -8434,7 +8434,17 @@ export function PhysicsPaintStudio() {
         // pins it or a surviving entry must be rewritten. A legacy scripted
         // key without an entry still covers the display — the diagnostic
         // names the degradation and the next Apply re-bakes the stroke.
+        //
+        // The map's three states are load-bearing: a present entry is KNOWN,
+        // a proven-empty `null` is KNOWN-EMPTY, and a missing key is UNKNOWN.
+        // planAquarelleLiftErase's recovery arm keys on `has()`, so writing
+        // `null` for an UNKNOWN source would convert it to KNOWN-EMPTY and the
+        // next Lift would composite over a base it believes empty, silently
+        // dropping the key's pre-script paint. The post-ack write is therefore
+        // gated on the source having been DEFINED: a defined `null` may be
+        // written back as `null`, an absent entry is left absent.
         let punchedDurableBytes: Uint8Array | null = null;
+        let coverDurableDefined = false;
         if (plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)) {
           const coverDurableSource = aquarelleDurableBaseByKeyRef.current.get(plan.keyId);
           if (coverDurableSource === undefined) {
@@ -8446,18 +8456,21 @@ export function PhysicsPaintStudio() {
               willPinBase: plan.willPinBase,
               stage: 'cover-durable-base-unavailable',
             });
-          } else if (coverDurableSource !== null) {
-            const coverDurablePunch = await punchTransmittanceBytes(coverDurableSource, size, dabs, {
-              appFrame: plan.frame,
-              shape,
-              profile: 'core',
-            });
-            if (!coverDurablePunch) {
-              revertAquarelleLiftPreview();
-              publish(AQUARELLE_COVER_FAILURE_MESSAGE);
-              return;
+          } else {
+            coverDurableDefined = true;
+            if (coverDurableSource !== null) {
+              const coverDurablePunch = await punchTransmittanceBytes(coverDurableSource, size, dabs, {
+                appFrame: plan.frame,
+                shape,
+                profile: 'core',
+              });
+              if (!coverDurablePunch) {
+                revertAquarelleLiftPreview();
+                publish(AQUARELLE_COVER_FAILURE_MESSAGE);
+                return;
+              }
+              punchedDurableBytes = coverDurablePunch.bytes;
             }
-            punchedDurableBytes = coverDurablePunch.bytes;
           }
         }
         // Pin the session base BEFORE the commit await: a settle capture
@@ -8505,8 +8518,9 @@ export function PhysicsPaintStudio() {
         // Post-acknowledgement: the durable bytes, then the sheet reset (the
         // stroke's pigment now lives in the committed payload), then the
         // display. The map write goes through a local alias so the file keeps
-        // ONE spelling of the durable store.
-        if (plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)) {
+        // ONE spelling of the durable store, and it only runs when the source
+        // was DEFINED — UNKNOWN must never be rewritten as KNOWN-EMPTY.
+        if (coverDurableDefined) {
           const coverDurableBase = aquarelleDurableBaseByKeyRef.current;
           coverDurableBase.set(plan.keyId, punchedDurableBytes);
           bumpAquarelleStrokesRevision();

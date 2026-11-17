@@ -284,6 +284,37 @@ describe('the cover transaction (runAquarelleLiftErase keeps its 3-argument sign
     expect(cover).not.toContain('// RASTER-ONLY:');
   });
 
+  it('never rewrites an UNKNOWN durable entry as KNOWN-EMPTY', () => {
+    const cover = coverBranch();
+    const punch = cover.slice(
+      cover.indexOf('let punchedDurableBytes: Uint8Array | null = null;'),
+      cover.indexOf('// Pin the session base BEFORE the commit await'),
+    );
+    // The definedness flag starts false and only the DEFINED arm raises it.
+    expect(punch).toContain('let coverDurableDefined = false;');
+    const unavailable = punch.indexOf('stage: \'cover-durable-base-unavailable\',');
+    expect(unavailable).toBeGreaterThanOrEqual(0);
+    expect(unavailable).toBeLessThan(punch.indexOf('coverDurableDefined = true;'));
+    // A defined `null` (known-empty) is still written back; absence is not.
+    expect(punch.indexOf('coverDurableDefined = true;')).toBeLessThan(
+      punch.indexOf('if (coverDurableSource !== null) {'),
+    );
+    // The post-ack write is gated on the flag, not on the old has() test —
+    // one durable `has()` guard remains, on the punch-resolution side only.
+    expect(cover).toContain('if (coverDurableDefined) {');
+    expect(
+      countOccurrences(
+        cover,
+        'if (plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)) {',
+      ),
+    ).toBe(1);
+    // The lift-recovery arm that keys on has() proves the distinction matters:
+    // a forged KNOWN-EMPTY entry would skip the recovery and drop the paint.
+    expect(studio).toContain(
+      'if (scripted && !aquarelleDurableBaseByKeyRef.current.has(target.keyId)) {',
+    );
+  });
+
   it('keeps every pinned Lift arm and whole-Studio count intact', () => {
     const transaction = erase();
     const scripted = transaction.slice(
