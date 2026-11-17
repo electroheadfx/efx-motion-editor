@@ -223,9 +223,9 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
 //  replace what it crosses while that paint is still mobile in `ink` and
 //  while it lives in a reopened frame's cached base. This block pins the
 //  engine half: a PRE-STROKE ink snapshot (`preInk`), a multiplicative
-//  cover draw that removes its per-channel share under the same solid
-//  core, an `onCoverDab` emission for the cached-base seam, and Body 0's
-//  neutrality.
+//  cover draw with ONE uniform factor under the same solid core (the
+//  coefficients are signed, so a per-channel share would invert bands), an
+//  `onCoverDab` emission for the cached-base seam, and Body 0's neutrality.
 //
 //  Written RED by design (task 1 of the quick plan): every pin below names
 //  a symbol task 2 adds. COVER_METHOD() must NOT grow — the cover lives
@@ -286,13 +286,15 @@ describe('the cover seam', () => {
     )
   })
 
-  it('covers the snapshot with the multiplicative per-channel share', () => {
+  it('covers the snapshot with the multiplicative uniform factor', () => {
     const body = sliceBetween(ENGINE_SOURCE, 'private inkCover(', 'private dropPreInk(')
     // An unarmed snapshot or a non-positive amount draws nothing: the call
     // site is unguarded (the brush case keeps its two `coverAmount > 0`).
     expectContains(body, 'if (this.preInk === null || !(amount > 0)) return;')
     expectContains(body, 'const p = this.programs.inkCover;')
     expectContains(body, 'this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, 0, 0);')
+    // The snapshot doubles as the presence gate: the cover only acts where
+    // paint existed before this stroke.
     expectContains(body, 'gl.uniform1i(p.u.uPreA, g.bindTex(2, this.preInk.tex[0]));')
     expectContains(body, 'gl.uniform1i(p.u.uPreB, g.bindTex(3, this.preInk.tex[1]));')
     expectContains(body, 'gl.uniform1i(p.u.uInkA, g.bindTex(4, this.ink.read.tex[0]));')
@@ -409,7 +411,7 @@ describe('the cover seam', () => {
     )
   })
 
-  it('gives the cover its own program with the same solid-core law and the share', () => {
+  it('gives the cover its own program with the same solid-core law and a uniform factor', () => {
     expectContains(SHADER_SOURCE, 'export const inkCoverFS')
     const program = sliceBetween(SHADER_SOURCE, 'export const inkCoverFS', 'export const paperFieldFS')
     expectContains(program, 'uniform sampler2D uPreA, uPreB, uInkA, uInkB;')
@@ -417,15 +419,17 @@ describe('the cover seam', () => {
     expectContains(program, 'q.y /= uTipAspect;')
     // Same core as liftFS's uCover = 1 law, zero outside the footprint.
     expectContains(program, 'float f = uAmount * (1.0 - smoothstep(0.35, 1.0, dot(q, q)));')
-    // The share is per channel, bounded at 1 (advection can outrun the ink).
-    expectContains(
-      program,
-      'vec4 share(vec4 pre, vec4 ink) { return clamp(pre / max(ink, vec4(1e-6)), 0.0, 1.0); }',
-    )
+    // The snapshot gates the cover to texels that already held paint; the L1
+    // norms are sign-safe (the coefficients are signed projections).
+    expectContains(program, 'float present = max(dot(abs(preA), vec4(1.0)), dot(abs(preB), vec4(1.0)));')
+    expectContains(program, 'f *= smoothstep(1e-4, 1e-3, present);')
+    // The coefficients are SIGNED, so the cover is one uniform factor: a
+    // per-channel preInk/ink share degenerates for ink_c < 0 and inverts bands.
+    expectNotContains(program, 'share(')
     expectContains(program, 'vec4 inkA = texture(uInkA, vUv);')
     expectContains(program, 'vec4 inkB = texture(uInkB, vUv);')
-    expectContains(program, 'o0 = inkA * (1.0 - f * share(texture(uPreA, vUv), inkA));')
-    expectContains(program, 'o1 = inkB * (1.0 - f * share(texture(uPreB, vUv), inkB));')
+    expectContains(program, 'o0 = inkA * (1.0 - f);')
+    expectContains(program, 'o1 = inkB * (1.0 - f);')
     // Full-document draw: a discard would leave the write half stale.
     expectNotContains(program, 'discard')
     // The Lift program keeps its tip-shaped law and its own uniforms.

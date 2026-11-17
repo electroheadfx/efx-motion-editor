@@ -333,21 +333,20 @@ void main(){
   o1 = vec4(f);
 }`;
 
-// quick 261117-tq7 (spec 09 law 3): the pre-stroke ink cover. Samples BOTH the
-// stroke-start snapshot (uPreA/uPreB) and the live mobile ink (uInkA/uInkB) and
-// multiplies the ink by 1 - src, with the same solid core the settled cover
-// pass uses (liftFS's uCover = 1 law: core = 1 - smoothstep(0.35, 1.0, q.q)):
+// quick 261117-tq7 (spec 09 law 3): the pre-stroke ink cover. The seven stored
+// coefficients are SIGNED spectral projections, so a per-channel preInk/ink
+// share is not a fraction: with ink_c < 0 the max(ink_c, 1e-6) denominator
+// collapses and the share degenerates to 0 or 1 channel by channel — the
+// display bands then invert (white patches and CMY at the crossings). The cover
+// is therefore ONE uniform factor, exactly like the settled draw: every channel
+// is scaled by the same 1 - f, with the same solid core liftFS's uCover = 1 law
+// uses (core = 1 - smoothstep(0.35, 1.0, q.q)). A uniform scale preserves the
+// hue and can never invert a band; repeated dabs compose as prod(1 - f),
+// matching coverPass and the cached-base punch.
 //
-//   src_c = f * clamp(pre_c / max(ink_c, 1e-6), 0, 1)      (per channel)
-//   out_c = ink_c * (1 - src_c)                            (= dst * (1 - src))
-//
-// Where pre <= ink this removes exactly f * pre — the spec's subtraction — and
-// can never take the ink negative; the covering stroke's own pigment is
-// deposited after this draw and is never touched. Repeated overlapping dabs
-// keep eroding the remaining pre-stroke share (prod of 1 - f), matching
-// coverPass and the cached-base punch. Where advection makes pre exceed ink the
-// share clamps at 1: full erase for that channel, and the excess does not also
-// cancel the stroke's own pigment (recorded limitation).
+// The stroke-start preInk snapshot is also the presence gate: the cover acts
+// only where paint existed before this stroke, so blank paper keeps the
+// stroke's full accumulated density. It is released with the stroke.
 //
 // Full-document draw, no scissor, no discard: core is exactly 0 outside the
 // footprint (q.q >= 1), so the shader emits the sampled texel unchanged there —
@@ -358,16 +357,24 @@ layout(location=1) out vec4 o1;
 uniform sampler2D uPreA, uPreB, uInkA, uInkB;
 uniform float uAspect, uRadius, uAmount, uTipAspect;
 uniform vec2 uPoint, uAxis;
-vec4 share(vec4 pre, vec4 ink) { return clamp(pre / max(ink, vec4(1e-6)), 0.0, 1.0); }
 void main(){
   vec2 p = vUv - uPoint; p.x *= uAspect;
   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
   q.y /= uTipAspect;
   float f = uAmount * (1.0 - smoothstep(0.35, 1.0, dot(q, q)));
+  // The gate is the stroke-start snapshot's presence: the cover only acts
+  // where paint existed before this stroke, so a stroke over blank paper keeps
+  // its full accumulated density. The L1 norms are sign-safe.
+  vec4 preA = texture(uPreA, vUv);
+  vec4 preB = texture(uPreB, vUv);
+  float present = max(dot(abs(preA), vec4(1.0)), dot(abs(preB), vec4(1.0)));
+  f *= smoothstep(1e-4, 1e-3, present);
   vec4 inkA = texture(uInkA, vUv);
   vec4 inkB = texture(uInkB, vUv);
-  o0 = inkA * (1.0 - f * share(texture(uPreA, vUv), inkA));
-  o1 = inkB * (1.0 - f * share(texture(uPreB, vUv), inkB));
+  // One factor for every channel: the coefficients are signed, and scaling the
+  // whole texel uniformly is the only law that cannot invert a band.
+  o0 = inkA * (1.0 - f);
+  o1 = inkB * (1.0 - f);
 }`;
 
 // Paper, generated per document and whenever the paper is changed, in two passes.
