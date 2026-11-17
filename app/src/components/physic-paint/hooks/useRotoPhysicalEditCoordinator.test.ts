@@ -297,6 +297,7 @@ function harness(options: {
   let canonicalCursorAppFrame = 0;
   let canonicalSelectedKeyId: string | null = null;
   let failNextDocumentReplace = options.failFirstLoopReplace ?? false;
+  let driftNextPublication = false;
   let payload: PhysicPaintRotoPhysicalEditApplyPayload | null = null;
   let structuralPublicationCount = 0;
   const leaseOrder: string[] = [];
@@ -426,6 +427,13 @@ function harness(options: {
     canonicalSelectedKeyId = document.selectedKeyId;
     canonicalCursorAppFrame = document.cursorAppFrame;
     capacity = document.capacity;
+    // 261117-e6j: a canonically valid but revision-divergent store read-back.
+    // Interpolation is a revision term, so flipping it makes the settlement's
+    // post-publication drift check compare two different revisions.
+    if (driftNextPublication) {
+      driftNextPublication = false;
+      interpolation = { ...document.interpolation, enabled: !document.interpolation.enabled };
+    }
     structuralPublicationCount += 1;
     return { ok: true as const, document };
   });
@@ -948,6 +956,7 @@ function harness(options: {
     replaceRecords,
     replaceLoopClips,
     replaceDocument,
+    driftNextPublication: () => { driftNextPublication = true; },
     raiseCapacity,
     getCapacity: () => capacity,
     sendPhysicalEditPayload,
@@ -3884,6 +3893,46 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
     expect(test.releaseLease).toHaveBeenCalled();
     expect(test.coordinator.pendingOperationId.value).toBeNull();
     expect(test.reconcileCurrentFrame).not.toHaveBeenCalled();
+  });
+
+  // 261117-e6j: the reported regression. A drifted publication runs AFTER the
+  // child published a complete document and the parent committed, so the
+  // failure must RELEASE the exclusive lease instead of transferring it to
+  // recovery ownership — a recovery lease keeps the store's availability gate
+  // false, which locks every Studio mutation surface until the window closes.
+  it('releases a drifted publication so the next Delete Rails can start and names the failing sub-check', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({ sharedSourceOwner: true });
+    test.seedGroupDocument(before);
+    test.driftNextPublication();
+
+    expect(await test.executeDeleteRails([{ kind: 'loop', loopId: 'group-1' }])).toBe(true);
+    expect(test.accept()).toBe('accepted');
+
+    const failure = test.coordinator.failureOutput.value;
+    expect(failure?.reason).toBe('settlement-mismatch');
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+    expect(test.clearPendingSettlement).toHaveBeenCalled();
+    const stagedRevision = test.makeResult().stagedRevision;
+    const driftedRevision = test.getCanonicalDocument().revision;
+    expect(driftedRevision).not.toBe(stagedRevision);
+    const detail = String(failure?.error);
+    expect(detail.startsWith('Published physical document drifted before settlement')).toBe(true);
+    expect(detail).toContain('revision');
+    expect(detail).toContain(stagedRevision);
+    expect(detail).toContain(driftedRevision);
+
+    // The wedge is gone: no recovery ownership survives the failed settlement.
+    expect(test.transferLeaseToRecovery).not.toHaveBeenCalled();
+    expect(test.releaseLease).toHaveBeenCalledWith(test.leaseToken);
+    expect(test.coordinator.recoveryLease.value).toBeNull();
+    expect(test.coordinator.pendingOperationId.value).toBeNull();
+
+    test.setConciseMessage.mockClear();
+    test.sendPhysicalEditPayload.mockClear();
+    expect(await test.executeDeleteRails([{ kind: 'loop', loopId: 'group-shared' }])).toBe(true);
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(1);
+    expect(test.setConciseMessage).not.toHaveBeenCalledWith('A Roto physical edit is already in flight.');
   });
 
   it('deletes one repeated source phase only after acknowledgement and holds the lease through settlement', async () => {
