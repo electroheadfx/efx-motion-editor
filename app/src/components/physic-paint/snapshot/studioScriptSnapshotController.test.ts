@@ -480,6 +480,32 @@ describe('studioScriptSnapshotController', () => {
     expect(controller.isDirty()).toBe(true);
   });
 
+  // 64-07 (MED-17): the signature's contract now names render settings too. A
+  // light change (signature A → B) is a content change; the SAME signature
+  // twice — a same-value light write — is identical content and never rewrites.
+  it('64-07: a render-setting change rotates the signature; the same signature twice does not', async () => {
+    const { controller, write, setSignature } = harness({ getLiveFrames: () => new Set([7]) });
+    controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
+
+    // Signature A (store revision + the light triple) → dirty, then saved clean.
+    setSignature('3|12|34|1');
+    expect(controller.isDirty()).toBe(true);
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(controller.isDirty()).toBe(false);
+
+    // The same signature twice: identical content, no second write.
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(controller.isDirty()).toBe(false);
+
+    // Signature B — a light change — is a content change again.
+    setSignature('3|200|30|2');
+    expect(controller.isDirty()).toBe(true);
+  });
+
   it('saveNow is a no-op without a bound identity', async () => {
     const { controller, write, report } = harness();
     await expect(controller.saveNow()).resolves.toBeUndefined();
