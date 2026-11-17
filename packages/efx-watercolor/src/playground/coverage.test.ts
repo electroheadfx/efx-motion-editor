@@ -64,7 +64,7 @@ const COVER_METHOD = () => sliceBetween(ENGINE_SOURCE, 'private coverPass(', 'pr
 describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
   it('guards both the protections and the per-dab draw behind bodyCurve(P.body)', () => {
     const brush = BRUSH_CASE()
-    expectContains(ENGINE_SOURCE, "import { bodyCurve } from './scattering';")
+    expectContains(ENGINE_SOURCE, "import { bodyCurve, scatteringDeposit } from './scattering';")
     expectContains(brush, 'const coverAmount = bodyCurve(P.body);')
     // D-14 forbids an inline second curve or clamp on P.body at this site.
     expectNotContains(brush, 'Math.min(1, P.body)')

@@ -9,8 +9,8 @@ import { COEFFS, pigmentFromHex, type Pigment } from './spectral';
 import { ANCHOR_WIDTH_MAX, ANCHOR_WIDTH_MIN } from '../vector/spine';
 import { WET_THRESHOLD, isSheetWet } from './wetState';
 // Phase 64 (D-14): the ONE perceptual Body curve, shared by the cover pass
-// here and spec 08's scattering deposit — never a second inline curve.
-import { bodyCurve } from './scattering';
+// here and the scattering deposit — never a second inline curve.
+import { bodyCurve, scatteringDeposit } from './scattering';
 
 export type Tool = 'brush' | 'water' | 'pen' | 'lift';
 
@@ -32,7 +32,7 @@ export type Tool = 'brush' | 'water' | 'pen' | 'lift';
  * `viscosity` is 0..1, normalised by params.ts (the ONE canonical mapping);
  * 0 is neutral, so a project painted before the key existed renders
  * byte-identically. The value is consumed only while stepping fluid — never
- * in a settle, bleach or display pass — so a later change cannot re-process
+ * in a settle or display pass — so a later change cannot re-process
  * already-settled pigment.
  */
 
@@ -293,9 +293,8 @@ export class WatercolorEngine {
   // stroke, a bucket fill, or the live path.
   private strokeBasePigment: Pigment | null = null;
   /** Reused interpolation target — a per-sample pigment allocates nothing. */
-  private readonly scratchPigment: { coeffs: Float32Array; white: number } = {
+  private readonly scratchPigment: { coeffs: Float32Array } = {
     coeffs: new Float32Array(COEFFS),
-    white: 0,
   };
   private nav = false;
   /** Deterministic bake seam: seeded RNG (A2). Defaults to Math.random for live. */
@@ -414,7 +413,6 @@ export class WatercolorEngine {
       wetMask: this.g.program(S.wetMaskFS),
       advectInk: this.g.program(S.advectInkFS),
       settle: this.g.program(S.settleFS),
-      bleach: this.g.program(S.bleachFS),
       lift: this.g.program(S.liftFS),
       paperField: this.g.program(S.paperFieldFS),
       paperLight: this.g.program(S.paperLightFS),
@@ -909,7 +907,7 @@ export class WatercolorEngine {
       gl.uniform1f(p.u.uTo, to);
       gl.uniform1f(p.u.uGrain, 0.12);
       gl.uniform4f(p.u.uColor0, c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount);
-      gl.uniform4f(p.u.uColor1, c[4] * amount, c[5] * amount, c[6] * amount, this.pigment.white * amount * 1.6);
+      gl.uniform4f(p.u.uColor1, c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount));
       gl.blendEquation(gl.FUNC_ADD);
       gl.blendFunc(gl.ONE, gl.ONE);
       g.draw(this.ink.read, f.bbox);
@@ -1826,7 +1824,6 @@ export class WatercolorEngine {
     for (let k = 0; k < COEFFS; k++) {
       coeffs[k] = from.coeffs[k]! + (to.coeffs[k]! - from.coeffs[k]!) * u;
     }
-    this.scratchPigment.white = from.white + (to.white - from.white) * u;
     return this.scratchPigment;
   }
 
@@ -2058,7 +2055,7 @@ export class WatercolorEngine {
         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
-        const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, this.pigment.white * amount * 1.6];
+        const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount)];
         if (coverAmount > 0) {
           // Ordering hazard (spec 06): the cover pass runs BEFORE brushInk, so
           // the deposit's own touch() comes too late to restore a relief this
@@ -2113,7 +2110,7 @@ export class WatercolorEngine {
         const amount = dens * 0.5 / 1.8 * dwell;
         const c = this.pigment.coeffs;
         this.splatInk(x, y, r, [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount],
-          [c[4] * amount, c[5] * amount, c[6] * amount, this.pigment.white * amount * 3], 2);
+          [c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount)], 2);
         this.splatWet(x, y, r * 2.6, 0.13, 1);   // fresh ink is faintly wet, so it feathers a little
         break;
       }
@@ -2509,16 +2506,11 @@ export class WatercolorEngine {
     gl.uniform1f(P.advectWet.u.uSpread, 0.12 * (1 - viscosity * 0.9));
     g.draw(this.wet.write, rect); this.wet.swap();
 
-    // fixing: bleach under white gouache, then settle mobile pigment into the paper
+    // fixing: mobile pigment (and its scattering) settles into the paper
     const settle = fixing ? 1 - Math.exp(-dt * 5) : 0;
     if (fixing) {
       gl.enable(gl.BLEND);
       gl.blendEquation(gl.FUNC_ADD);
-      gl.blendFunc(gl.ZERO, gl.SRC_COLOR);
-      P.bleach.bind();
-      gl.uniform1i(P.bleach.u.uInkB, g.bindTex(0, this.ink.read.tex[1]));
-      gl.uniform1f(P.bleach.u.uSettle, settle);
-      g.draw(this.fixed, rect);
       gl.blendFunc(gl.ONE, gl.ONE);
       P.settle.bind();
       gl.uniform1i(P.settle.u.uInkA, g.bindTex(0, this.ink.read.tex[0]));

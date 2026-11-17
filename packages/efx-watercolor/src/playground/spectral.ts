@@ -4,12 +4,13 @@ import { BASIS, DISPLAY_BANDS, DISPLAY_RGB_WEIGHTS, PRIMARIES, SPECTRAL_EPSILON 
 export const COEFFS = 7;
 
 /**
- * A pigment: 7 absorbance coefficients for its masstone at concentration 1,
- * plus white-gouache coverage (opaque, sits on top rather than absorbing).
+ * A pigment: 7 absorbance coefficients for its masstone at concentration 1.
+ * Scattering is not a pigment property — the engine derives it from Body at
+ * the deposit site (64-08) — so the record carries the absorbance basis only,
+ * and no project file can hold a retired channel.
  */
 export interface Pigment {
   coeffs: Float32Array;
-  white: number;
 }
 
 const uncompand = (x: number) => (x < 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4));
@@ -48,10 +49,8 @@ export function pigmentFromHex(hex: string): Pigment {
     for (let i = 0; i < absorbance.length; i++) s += BASIS[k][i] * absorbance[i];
     coeffs[k] = s;
   }
-  return { coeffs, white: 0 };
+  return { coeffs };
 }
-
-export const WHITE_GOUACHE: Pigment = { coeffs: new Float32Array(COEFFS), white: 1 };
 
 /**
  * CPU mirror of the display shader's colour reconstruction (without paper texture):

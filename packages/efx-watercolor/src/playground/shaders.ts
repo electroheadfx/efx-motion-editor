@@ -4,8 +4,8 @@ import { displayBasisGLSL } from './spectral';
 //   velocity  RG16F  (sim grid)       water flow, in sim texels / second
 //   wet       R16F   (document grid)  standing water on the paper
 //   ink       2 × RGBA16F (document)   mobile pigment: A = absorbance coeffs 0..3,
-//                                      B.rgb = coeffs 4..6, B.a = white gouache
-//   fixed     2 × RGBA16F (document)   pigment settled into the paper (no white)
+//                                      B.rgb = coeffs 4..6, B.a = scattering (S)
+//   fixed     2 × RGBA16F (document)   pigment settled into the paper (B.a = settled S)
 //   paper     RGBA8  (document)        r = lit relief, g = height, b = mottle, a = fleck
 //   relief    R16F   (document)        paint thickness, lit by displayFS's emboss term
 
@@ -284,8 +284,8 @@ void main(){
   oB = vec4((b + dB).rgb, max(b.a + dB.a, 0.0)) * uKeep;
 }`;
 
-// "Fix": mobile pigment settles into the paper. Drawn with additive blending into
-// the fixed layer, after bleachFS has faded what lies under white gouache.
+// "Fix": mobile pigment, and the scattering it carries, settles into the paper.
+// Drawn with additive blending into the fixed layer.
 export const settleFS = `${HEADER}
 layout(location=0) out vec4 oA;
 layout(location=1) out vec4 oB;
@@ -293,22 +293,8 @@ uniform sampler2D uInkA, uInkB;
 uniform float uSettle;
 void main(){
   vec4 A = texture(uInkA, vUv), B = texture(uInkB, vUv);
-  float keep = 1.0 - (1.0 - exp(-2.2 * B.a)) * uSettle;
-  oA = A * uSettle * keep;
-  oB = vec4(B.rgb * uSettle * keep, 0.0);
-}`;
-
-// Multiplicative pass (blend ZERO, SRC_COLOR): white gouache bleaches the fixed
-// pigment beneath it, so after fixing it reads as paper and can be painted over.
-export const bleachFS = `${HEADER}
-layout(location=0) out vec4 oA;
-layout(location=1) out vec4 oB;
-uniform sampler2D uInkB;
-uniform float uSettle;
-void main(){
-  float keep = 1.0 - (1.0 - exp(-2.2 * texture(uInkB, vUv).a)) * uSettle;
-  oA = vec4(keep);
-  oB = vec4(keep);
+  oA = A * uSettle;
+  oB = vec4(B.rgb * uSettle, B.a * uSettle);
 }`;
 
 // Multiplicative stamp (blend ZERO, ONE_MINUS_SRC_COLOR): blotting with a tissue.
@@ -759,11 +745,6 @@ ${displayBasisGLSL()}
     }
   }
 
-  // White gouache sits on top as an opaque layer, a little patchy on the tooth.
-  float cov = 1.0 - exp(-2.2 * iB.a);
-  cov = clamp(cov * (1.0 + (paper.g - 0.5) * 0.5), 0.0, 1.0);
-  vec3 gouache = vec3(0.96, 0.955, 0.94) * (1.0 + 0.1 * (paper.r - 0.5) * uTexture);
-
   if (uMode == 4){
     // PIGMENT ALPHA (compositor display, 2026-10-26 round 2). The same
     // transmittance as mode 2, re-expressed as straight-alpha pigment so the
@@ -773,9 +754,8 @@ ${displayBasisGLSL()}
     // colour by alpha. Storage/export keeps mode 2's opaque sheet.
     // Phase 64: the emboss scales only the premultiplied colour; the alpha is
     // derived from the UNSHADED reconstruction and stays byte-for-byte
-    // untouched, so a lit stroke never changes its coverage.
+    // untouched, so a lit stroke never changes its opacity.
     vec3 t = toSRGB(rgb);
-    t = mix(t, vec3(1.0), cov);
     float mn = min(min(t.r, t.g), t.b);
     float alpha = 1.0 - mn;
     vec3 pigment = alpha > 0.0 ? (t - vec3(mn)) / alpha : vec3(0.0);
@@ -792,9 +772,6 @@ ${displayBasisGLSL()}
     // exactly MODE.paper's rgb * paperCol. No alpha to misread (F1 neon /
     // fringe) and no un-mix round-trip to lose thin strokes (F2 fade).
     vec3 t = toSRGB(rgb);
-    // White gouache is a cover layer — lift transmittance so multiply shows
-    // it as a pale veil (the pigment underneath still tints).
-    t = mix(t, vec3(1.0), cov);
     o = vec4(t, 1.0);
     return;
   }
@@ -811,7 +788,6 @@ ${displayBasisGLSL()}
     }
   }
   vec3 col = rgb * paperCol;
-  col = mix(col, uMode == 3 ? vec3(1.0) : gouache, cov);
 
   // Wet paper reads darker and slightly cool.
   float ws = uMode == 3 ? 0.0 : smoothstep(0.02, 0.7, texture(uWet, uv).x) * (1.0 - uFlat);
