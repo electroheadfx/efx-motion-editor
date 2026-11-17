@@ -3,6 +3,9 @@
 // a square from -1..1 where x is the brush's long axis and y its short axis; the
 // engine maps that square onto a rotated ellipse of the brush's aspect ratio.
 
+import type { MediumId } from './mediums';
+import { DEFAULT_MEDIUM_ID } from './mediums';
+
 export type Rotation =
   | 'follow'   // long axis follows the stroke direction (+ angle)
   | 'fixed'    // held at a fixed angle, or at the pen's tilt azimuth when available
@@ -56,6 +59,14 @@ export interface BrushPreset {
    * instead of repeating one contour.
    */
   stampJitter: number;
+  /**
+   * Phase 64 (MED-26): the medium this response belongs to. COMPILE-TIME
+   * ONLY — no serializer, no `.mce` field, no Rust mirror: a stroke persists
+   * the response id, and the group is derived from this table at read time.
+   * An absent tag reads as the default medium (`watercolor`), so every preset
+   * recorded before the taxonomy keeps its exact behaviour.
+   */
+  group?: MediumId;
   custom?: boolean;
 }
 
@@ -208,6 +219,28 @@ function hairs(segments: [number, number, number, number][], width: number, u: n
   return sum;
 }
 
+/**
+ * Shared acrylic bristle tip (Phase 64, MED-29): a fan of parallel hairs
+ * across the tip square, deterministic from the build's noise source. It is
+ * the procedural choice the spec settles — the striation travels with the
+ * build instead of depending on a machine-scoped texture. Kept in the
+ * existing `fan` tip's cost class: fourteen segments through `hairs`, no
+ * cellular pass.
+ */
+function bristleTip(n: number, N: Noise): Float32Array {
+  const segs: [number, number, number, number][] = [];
+  const count = 14;
+  for (let i = 0; i < count; i++) {
+    const x = -0.92 + (1.84 * i) / (count - 1) + (N.rnd() - 0.5) * 0.06;
+    segs.push([x * 0.35, -0.95, x, 0.95]);
+  }
+  return tip((u, v) => {
+    const edge = 1 - smoothstep(0.86, 1, Math.abs(v));
+    const taper = 1 - 0.25 * smoothstep(0.7, 1, Math.abs(v));
+    return Math.min(1, hairs(segs, 0.052, u, v)) * edge * taper;
+  })(n);
+}
+
 /* --------------------------------------------------------------- presets */
 
 const BASE: Omit<BrushPreset, 'id' | 'name' | 'hint' | 'tip'> = {
@@ -219,6 +252,57 @@ const BASE: Omit<BrushPreset, 'id' | 'name' | 'hint' | 'tip'> = {
 };
 
 const define = (p: Partial<BrushPreset> & Pick<BrushPreset, 'id' | 'name' | 'hint' | 'tip'>): BrushPreset => ({ ...BASE, ...p });
+
+/* ---------------------------------------------------------- grouping (64) */
+
+/** One rendered brush section: a group and its members in table order. */
+export interface BrushGroupSection {
+  group: MediumId;
+  presets: BrushPreset[];
+}
+
+/**
+ * Fixed display order of the five sections (Phase 64, MED-27). A group with
+ * no member is skipped by `brushSections`, never rendered empty.
+ */
+export const brushGroupOrder: readonly MediumId[] = Object.freeze([
+  'watercolor',
+  'gouache',
+  'pastel',
+  'graphite',
+  'acrylic',
+] as const);
+
+/**
+ * Short section header names, D-18: the `pastel` id deliberately displays as
+ * "Chalk" so the brush-library section and the medium dropdown share one word.
+ */
+export const brushGroupLabels: Readonly<Record<MediumId, string>> = Object.freeze({
+  watercolor: 'Watercolor',
+  gouache: 'Gouache',
+  pastel: 'Chalk',
+  graphite: 'Graphite',
+  acrylic: 'Acrylic',
+});
+
+/** The preset's medium tag; an absent tag reads as the default medium. */
+export function brushGroupOf(preset: BrushPreset): MediumId {
+  return preset.group ?? DEFAULT_MEDIUM_ID;
+}
+
+/**
+ * Group presets for the library: one entry per NON-EMPTY group, in the fixed
+ * order, members kept in table order. Pure — the component maps this instead
+ * of branching inline, so the empty-group rule is testable on its own.
+ */
+export function brushSections(presets: readonly BrushPreset[]): BrushGroupSection[] {
+  const sections: BrushGroupSection[] = [];
+  for (const group of brushGroupOrder) {
+    const members = presets.filter((preset) => brushGroupOf(preset) === group);
+    if (members.length > 0) sections.push({ group, presets: members });
+  }
+  return sections;
+}
 
 export const BRUSH_PRESETS: BrushPreset[] = [
   // 261027-gh9f: dry media and the FIRST card in the Brush tab grid. The
@@ -232,6 +316,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   // like a wet medium.
   define({
     id: 'chalk', name: 'Chalk', hint: 'Dry chalk stick: grainy core, crumbling edges, no wet bloom',
+    group: 'pastel',
     aspect: 0.8, rotation: 'follow', angle: 0, angleJitter: 12,
     size: [0.003, 0.012], pressureSize: 1.15, speedThin: 0.02,
     spacing: 0.2, scatter: 0.14, dabs: 1, sizeJitter: 0.28,
@@ -262,6 +347,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'round', name: 'Round', hint: 'A pointed round #8: the everyday brush',
+    group: 'watercolor',
     tip: (n, N) => tip((u, v, r, ang) => {
       const rr = r * (1 + 0.08 * (N.fbm(ang * 0.8 + 3, r * 2.5) * 2 - 1));
       return soft(rr, 0.3) * (1 - 0.12 * N.fbm(u * 5, v * 5));
@@ -269,16 +355,19 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'detail', name: 'Detail', hint: 'A small round #2 for fine work',
+    group: 'watercolor',
     size: [0.0025, 0.014], pressureSize: 0.9, water: 0.7, load: 1.15, capacity: 0.6, spacing: 0.28, wetRound: 0.8,
     tip: n => tip((_u, _v, r) => soft(r, 0.55))(n),
   }),
   define({
     id: 'rigger', name: 'Rigger', hint: 'Long thin liner: holds a lot of paint for continuous lines',
+    group: 'watercolor',
     size: [0.0015, 0.0065], pressureSize: 0.7, speedThin: 0.08, water: 0.55, load: 1.3, capacity: 1.8, spacing: 0.25, wetRound: 0.9,
     tip: n => tip((_u, _v, r) => soft(r, 0.65))(n),
   }),
   define({
     id: 'flat', name: 'Flat', hint: 'A ½" flat: thick or thin depending on direction; tilt the pen to turn it',
+    group: 'watercolor',
     aspect: 0.26, rotation: 'fixed', angle: 40, angleJitter: 1.5,
     size: [0.02, 0.038], pressureSize: 1.4, spacing: 0.14, water: 0.8, wetRound: 0.25,
     tip: (n, N) => tip((u, v) => {
@@ -291,6 +380,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'hake', name: 'Hake', hint: 'Wide soft goat-hair wash brush; streaky, carries lots of water',
+    group: 'watercolor',
     aspect: 0.2, rotation: 'follow', angle: 90, angleJitter: 2,
     size: [0.05, 0.08], pressureSize: 1.6, spacing: 0.1, water: 1.6, load: 0.75, flow: 1.2, capacity: 2.2, wetRound: 0.5,
     tip: (n, N) => tip((u, v) => {
@@ -303,12 +393,14 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'filbert', name: 'Filbert', hint: 'Oval tip: soft rounded marks that change with direction',
+    group: 'watercolor',
     aspect: 0.55, rotation: 'fixed', angle: 25, angleJitter: 2,
     size: [0.012, 0.036], spacing: 0.18, wetRound: 0.5,
     tip: (n, N) => tip((u, _v, r) => soft(r, 0.45) * (1 - 0.25 * N.fbm(u * 8, 0.7, 3)))(n),
   }),
   define({
     id: 'mop', name: 'Mop', hint: 'Big squirrel mop: floods the paper for washes',
+    group: 'watercolor',
     size: [0.03, 0.075], pressureSize: 0.8, spacing: 0.25, water: 1.8, load: 0.8, flow: 1.3, capacity: 2.6, wetRound: 0.7,
     tip: (n, N) => tip((u, v, r, ang) => {
       const rr = r * (1 + 0.22 * (N.fbm(ang * 1.2, 1.7, 3) * 2 - 1));
@@ -317,6 +409,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'dry', name: 'Dry Brush', hint: 'Scruffy bristles with little water: skips over the paper tooth',
+    group: 'pastel',
     aspect: 0.75, rotation: 'follow', angle: 0, angleJitter: 8,
     size: [0.012, 0.036], spacing: 0.12, water: 0.2, load: 1.1, capacity: 0.6, grain: 0.9, wetRound: 0,
     tip: (n, N) => tip((u, v, r) => {
@@ -327,6 +420,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'fan', name: 'Fan', hint: 'Splayed hairs: grass, fur and fine parallel texture',
+    group: 'pastel',
     aspect: 0.5, rotation: 'follow', angle: 90, angleJitter: 3,
     size: [0.02, 0.045], pressureSize: 1.2, spacing: 0.1, water: 0.3, load: 1.0, capacity: 0.8, grain: 0.5, wetRound: 0,
     tip: (n, N) => {
@@ -340,6 +434,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'sponge', name: 'Sponge', hint: 'Natural sponge: dabbed cellular texture for foliage and stone',
+    group: 'watercolor',
     rotation: 'random', size: [0.025, 0.05], pressureSize: 0.7, spacing: 0.55, scatter: 0.3, sizeJitter: 0.3,
     water: 0.5, load: 0.9, capacity: 1.2, grain: 0.45, wetRound: 0.1,
     tip: (n, N) => tip((u, v, r) => {
@@ -349,12 +444,14 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'spatter', name: 'Spatter', hint: 'Flicked droplets: sparse at a light touch, dense when pressing',
+    group: 'watercolor',
     rotation: 'random', size: [0.003, 0.008], pressureSize: 0.8, spacing: 4.5, scatter: 10, dabs: 5, sizeJitter: 0.75,
     water: 1.3, load: 1.1, capacity: 1.5, wetRound: 0,
     tip: n => tip((_u, _v, r) => soft(r, 0.72))(n),
   }),
   define({
     id: 'sumi', name: 'Sumi', hint: 'Oriental brush: hairline to broad with pressure, fibrous edges',
+    group: 'watercolor',
     size: [0.002, 0.052], pressureSize: 1.3, speedThin: 0.12, spacing: 0.22, water: 0.8, load: 1.3, capacity: 1.2, wetRound: 0.75,
     tip: (n, N) => tip((_u, _v, r, ang) => {
       const rr = r * (1 + 0.35 * (N.fbm(ang * 2.5 + r * 2, 1, 3) * 2 - 1));
@@ -363,6 +460,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'dagger', name: 'Dagger', hint: 'Sword liner: calligraphic strokes from a tapered blade',
+    group: 'watercolor',
     aspect: 0.38, rotation: 'fixed', angle: 55, angleJitter: 1,
     size: [0.006, 0.03], pressureSize: 1.1, speedThin: 0.06, spacing: 0.15, load: 1.1, capacity: 1.4, wetRound: 0.3,
     tip: n => tip((u, v) => {
@@ -373,6 +471,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'stipple', name: 'Stipple', hint: 'A cluster of hard dots: pointillist texture',
+    group: 'pastel',
     rotation: 'random', size: [0.015, 0.035], pressureSize: 0.8, spacing: 0.7, scatter: 0.2, sizeJitter: 0.2,
     water: 0.35, load: 1.1, grain: 0.3, wetRound: 0,
     tip: (n, N) => {
@@ -387,6 +486,76 @@ export const BRUSH_PRESETS: BrushPreset[] = [
         return m;
       })(n);
     },
+  }),
+  /* ---------------------------------------------------------------------
+   * Phase 64 (MED-29): the eight responses the medium taxonomy needs. They
+   * APPEND after the legacy fifteen — never rename or reorder an existing id,
+   * because a stroke persists the response id and an unknown id replays as
+   * the round. Every field the spec table does not name inherits `BASE`.
+   * ------------------------------------------------------------------- */
+  define({
+    id: 'gouache-round', name: 'Gouache Round', hint: 'Opaque body colour: soft edge, dense flat deposit',
+    group: 'gouache',
+    size: [0.004, 0.02], spacing: 0.2, water: 0.35, load: 1.4, flow: 0.6,
+    capacity: 1.4, grain: 0.2, wetRound: 0.2, roughness: 0.25,
+    tip: n => tip((_u, _v, r) => soft(r, 0.42))(n),
+  }),
+  define({
+    id: 'gouache-flat', name: 'Gouache Flat', hint: 'Flat body stroke: crisp chisel edge with opaque load',
+    group: 'gouache',
+    aspect: 0.45, rotation: 'follow',
+    size: [0.01, 0.03], spacing: 0.16, water: 0.3, load: 1.5, flow: 0.55,
+    capacity: 1.6, grain: 0.25, wetRound: 0.15, roughness: 0.3,
+    tip: (n, N) => tip((u, v) => {
+      const ex = 1 - smoothstep(0.82, 0.98, Math.abs(u));
+      const ey = 1 - smoothstep(0.7, 1, Math.abs(v));
+      return ex * ey * (0.85 + 0.15 * N.fbm(u * 12, v * 3, 2));
+    })(n),
+  }),
+  define({
+    id: 'pastel-soft', name: 'Soft Pastel', hint: 'Soft pastel stick: powdery core, broad crumbly edge',
+    group: 'pastel',
+    aspect: 0.75, water: 0, load: 1.3, capacity: 1.3, grain: 0.55,
+    roughness: 0.5, stampJitter: 0.15, spacing: 0.18,
+    tip: (n, N) => tip((u, v, r) => soft(r, 0.5) * (0.75 + 0.25 * N.fbm(u * 9, v * 9, 2)))(n),
+  }),
+  define({
+    id: 'conte-hard', name: 'Conté Hard', hint: 'Hard crayon: narrow dark core, crumbling edges',
+    group: 'pastel',
+    aspect: 0.6, water: 0, load: 1.5, capacity: 0.9, grain: 0.35,
+    roughness: 0.8, stampJitter: 0.08,
+    tip: (n, N) => tip((u, v, r) =>
+      (1 - smoothstep(0.55, 0.72, r)) * (0.7 + 0.3 * N.fbm(u * 16 + 3, v * 16 + 7, 3)))(n),
+  }),
+  define({
+    id: 'graphite-pencil', name: 'Graphite Pencil', hint: 'Fine graphite: tooth-gated, thin and dark',
+    group: 'graphite',
+    size: [0.0008, 0.0045], pressureSize: 1.35, spacing: 0.15, scatter: 0.05,
+    water: 0, load: 0.75, flow: 0.3, capacity: 0.5, grain: 1, roughness: 0.3,
+    tip: n => tip((_u, _v, r) => soft(r, 0.6))(n),
+  }),
+  define({
+    id: 'graphite-6b', name: 'Graphite 6B', hint: 'Broad soft graphite: dark shoulder, dusty edge',
+    group: 'graphite',
+    size: [0.002, 0.012], aspect: 0.85, load: 1.4, grain: 0.85,
+    scatter: 0.18, spacing: 0.2,
+    tip: (n, N) => tip((u, v, r) => soft(r, 0.5) * (0.8 + 0.2 * N.fbm(u * 11, v * 11, 2)))(n),
+  }),
+  define({
+    id: 'bristle-flat', name: 'Bristle Flat', hint: 'Thick acrylic flat: directional hair marks, hard body',
+    group: 'acrylic',
+    aspect: 0.28, rotation: 'follow',
+    water: 0.05, load: 1.5, flow: 0.5, capacity: 1.8, grain: 0.15,
+    spacing: 0.1, roughness: 0.55, stampJitter: 0.06,
+    tip: bristleTip,
+  }),
+  define({
+    id: 'bristle-round', name: 'Bristle Round', hint: 'Round acrylic brush with body: springy, loaded hairs',
+    group: 'acrylic',
+    aspect: 0.7, rotation: 'follow',
+    water: 0.06, load: 1.4, capacity: 1.6, grain: 0.15,
+    roughness: 0.4, spacing: 0.14,
+    tip: bristleTip,
   }),
 ];
 

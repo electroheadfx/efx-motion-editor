@@ -70,6 +70,16 @@ describe('I-03 playground preset ids on the tip seam', () => {
       'dagger',
       'stipple',
       // 61-07 (D-12): the clean-sweep preset ships last.
+      // 64-11 (MED-29): the eight medium responses append after the legacy
+      // fifteen; no existing id is renamed, removed or reordered.
+      'gouache-round',
+      'gouache-flat',
+      'pastel-soft',
+      'conte-hard',
+      'graphite-pencil',
+      'graphite-6b',
+      'bristle-flat',
+      'bristle-round',
     ]);
   });
 

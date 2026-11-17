@@ -12,8 +12,16 @@
 
 export { WatercolorEngine, DEFAULT_PARAMS, clampDocSize, MIN_DOC_SIDE, MIN_ZOOM, MAX_ZOOM } from './Engine'
 export type { Params, Tool, EngineCallbacks, ExportOptions, DocumentSnapshot, DocState, WholeDoc, LayerId } from './Engine'
-export { BRUSH_PRESETS, buildBrush, TIP_SIZE } from './brushes'
-export type { Brush, BrushPreset, Rotation } from './brushes'
+export {
+  BRUSH_PRESETS,
+  buildBrush,
+  TIP_SIZE,
+  brushGroupOrder,
+  brushGroupLabels,
+  brushGroupOf,
+  brushSections,
+} from './brushes'
+export type { Brush, BrushPreset, BrushGroupSection, Rotation } from './brushes'
 export { PAPERS, DEFAULT_PAPER } from './papers'
 export type { PaperPreset } from './papers'
 export { StrokeWriter, penSpeed } from './StrokeWriter'
