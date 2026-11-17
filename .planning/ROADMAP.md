@@ -141,10 +141,8 @@ Both phases are **plan-backed**: `/gsd-plan-phase` produces the plans from these
 **Plans:** 16/17 plans executed
 
 Plans:
-- [ ] 63-17-PLAN.md — Gap closure CR-03/WR-15: per-episode close acknowledgement and own-track withheld-content scope
-- [x] 63-16-PLAN.md
-
 **Wave 1**
+- [ ] 63-17-PLAN.md — Gap closure CR-03/WR-15: per-episode close acknowledgement and own-track withheld-content scope
 - [x] 63-10-PLAN.md
 - [x] 63-13-PLAN.md
 - [x] 63-14-PLAN.md
@@ -153,6 +151,7 @@ Plans:
 - [x] 63-02-PLAN.md — Rust brush-asset branch: encode, write, bound guard, batch read
 
 **Wave 2** *(blocked on Wave 1 completion)*
+- [x] 63-16-PLAN.md
 - [x] 63-11-PLAN.md
 - [x] 63-12-PLAN.md
 - [x] 63-03-PLAN.md — Three compile-time textured tips baked from the supplied art
