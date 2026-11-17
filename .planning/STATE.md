@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-07-PLAN.md
-last_updated: "2026-11-17T16:55:16.001Z"
+stopped_at: Completed 64-10-PLAN.md
+last_updated: "2026-11-17T17:10:40.379Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 64 execution started
-state_head: a4931014358bcd9bd7dcbd21a370c908c0c7a7cd
+state_head: d991b2cce7cbdb7d2e7ef465788d264d87ed1937
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 29
-  completed_plans: 27
+  completed_plans: 28
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 11 of 12
+Plan: 12 of 12
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 64 execution started
 
@@ -154,6 +154,7 @@ Last activity: 2026-11-17 — Phase 64 execution started
 | Phase 64 P05 | 6 | 3 tasks | 8 files |
 | Phase 64 P08 | 7m | 2 tasks | 9 files |
 | Phase 64 P07 | ~2h10m | 2 tasks | 13 files |
+| Phase 64 P10 | 6min14s | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -499,6 +500,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: 64-07: lightSignature lives exported in engine/physicsPaintStudioSettings.ts (not a Studio local) so the behavioral signature row can import it — the Studio is source-pinned text only in the node vitest env
 - [Phase 64]: 64-07: absent light and explicit DEFAULT_LIGHT both canonicalize to the 'default' signature token, so identical pixels never alternate between two signatures
 - [Phase 64]: 64-07: handleDocumentLightChange is declared with a temporary void marker until 64-09 threads it into rightPanelProps (plan forbids the early panel key; noUnusedLocals would fail)
+- [Phase 64]: Each display band reconstructs through the two-constant Kubelka-Munk layer-over-white form calibrated by half the absorption exponent, so the S=0 limit is the exact legacy exponential rather than an approximation (MED-34 / MED-35)
+- [Phase 64]: The raw sinh/cosh KM denominator is replaced by its exp(-arg)-normalized twin and the reflectance complement is emitted in closed form, so every band stays finite and inside [0,1] for any deposit a stroke can reach (overflow at arg ~ 88 -> NaN)
+- [Phase 64]: The display shader reads one broadband scattering scalar (iB.a + fB.a), scales it by the same granulation factor as the coefficients (D-16), and keeps the paper term as the final multiply (D-15); the epsilon branch emits the 16 legacy band line-pairs character for character
+- [Phase 64]: The probe's high-definition sheet is 1024 square (no phase constant exists) and reports bakeMs + renderMs; durations are printed by the comparator and never compared, so cost cannot fail a byte-identity gate
 
 ### Pending Todos
 
@@ -625,8 +630,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-17T16:55:15.196Z
-Stopped at: Completed 64-07-PLAN.md
+Last session: 2026-11-17T17:10:39.591Z
+Stopped at: Completed 64-10-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

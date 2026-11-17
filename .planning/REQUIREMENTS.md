@@ -64,11 +64,11 @@
 - [x] **MED-31**: The texture axis is unchanged — a texture replaces the selected response's footprint and applies to every group; a texture never selects a group and a group never selects a texture
 - [x] **MED-32**: The scattering coefficient `S` rides the existing `inkB.a` (mobile) and `fixedB.a` (settled) channels — no new render target, no texture allocation, no new pass
 - [x] **MED-33**: `Body` derives `S`; the existing ink advection transports it and the settle pass carries it into the settled layer
-- [ ] **MED-34**: The composite reconstructs each band with the Kubelka-Munk layer-over-background form; scattering is broadband (one scalar), with no per-band `S`
-- [ ] **MED-35**: At `S = 0` the render is bit-identical, verified by a pixel-buffer comparison, with a numerically stable small-argument branch and a recorded epsilon
-- [ ] **MED-36**: Scattering and order compose — high `Body` both scatters and erases; low `Body` scatters without erasing, so a semi-opaque glaze lightens without destroying the pigment underneath
+- [x] **MED-34**: The composite reconstructs each band with the Kubelka-Munk layer-over-background form; scattering is broadband (one scalar), with no per-band `S`
+- [x] **MED-35**: At `S = 0` the render is bit-identical, verified by a pixel-buffer comparison, with a numerically stable small-argument branch and a recorded epsilon
+- [x] **MED-36**: Scattering and order compose — high `Body` both scatters and erases; low `Body` scatters without erasing, so a semi-opaque glaze lightens without destroying the pigment underneath
 - [x] **MED-37**: The white-gouache channel is retired from the deposit, settle and composite paths, and a check confirms no shipped project writes it
-- [ ] **MED-38**: Replay determinism holds for `S` (live = bake = replay) and export matches the screen on every `uMode` path
+- [x] **MED-38**: Replay determinism holds for `S` (live = bake = replay) and export matches the screen on every `uMode` path
 
 ## v2 Requirements
 
@@ -160,11 +160,11 @@ Which phases cover which requirements.
 | MED-31 | Phase 64 | Complete |
 | MED-32 | Phase 64 | Complete |
 | MED-33 | Phase 64 | Complete |
-| MED-34 | Phase 64 | Pending |
-| MED-35 | Phase 64 | Pending |
-| MED-36 | Phase 64 | Pending |
+| MED-34 | Phase 64 | Complete |
+| MED-35 | Phase 64 | Complete |
+| MED-36 | Phase 64 | Complete |
 | MED-37 | Phase 64 | Complete |
-| MED-38 | Phase 64 | Pending |
+| MED-38 | Phase 64 | Complete |
 
 **Coverage:**
 - v1 requirements: 55 total (17 TIP + 38 MED)
