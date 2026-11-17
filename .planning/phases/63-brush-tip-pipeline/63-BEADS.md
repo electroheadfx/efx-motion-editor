@@ -6,7 +6,7 @@ closed: 39
 blocking_open: 0
 diverged: 0
 generated_from: "bd list --parent efx-motion-editor-mhz --all --json -n 0"
-generated_at: 2026-11-16T10:43:31Z
+generated_at: 2026-11-17T11:56:44Z
 ---
 
 # BEADS.md: 63-brush-tip-pipeline
