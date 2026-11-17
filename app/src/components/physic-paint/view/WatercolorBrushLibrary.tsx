@@ -5,8 +5,11 @@
 //  A brush has TWO independent axes:
 //   · the RESPONSE — a preset id that owns every Brush field
 //     (physics, size, spacing, rotation, grain…). The grid below is
-//     the response axis: ONE section, "Brushes", over BRUSH_PRESETS.
-//     A response card is never a texture and never a project import.
+//     the response axis: FIVE sections over BRUSH_PRESETS, one per
+//     medium group in the fixed order Watercolor, Gouache, Chalk,
+//     Graphite, Acrylic (64-11 MED-27), always expanded. A group
+//     with no member renders nothing. A response card is never a
+//     texture and never a project import.
 //   · the TEXTURE — an optional mask that replaces the footprint and
 //     nothing else. The WatercolorTextureStrip texture row above the
 //     grid is that axis: Default first (the response's own tip), then
@@ -27,7 +30,7 @@
 //  line per tip.
 //
 //  Still absent by design: no category filter, no search field, no
-//  wc/ size-variant rows.
+//  collapse state, no wc/ size-variant rows.
 //
 //  The import row mutates nothing here. It decodes the picked file
 //  into one 192×192 mask (importTip), then asks the MAIN realm via
@@ -56,7 +59,12 @@ import type { ComponentChildren } from 'preact';
 import { useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { FolderOpen } from 'lucide-preact';
-import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
+import {
+  BRUSH_PRESETS,
+  brushGroupLabels,
+  brushSections,
+} from '@efxlab/efx-watercolor'
+import type { MediumId } from '@efxlab/efx-watercolor';
 import {
   IMPORT_TIP_FAILURE_COPY,
   decodeRgbaAtTipSize,
@@ -282,11 +290,12 @@ function BrushCard(props: {
 }
 
 /**
- * One section (63-06 D-03). The section spans both library columns and lays
- * its own 2-column card grid, so section order is the visual order.
+ * One section (63-06 D-03, widened by 64-11 MED-27). The section spans both
+ * library columns and lays its own 2-column card grid, so section order is the
+ * visual order. `id` is the medium group and doubles as the testid suffix.
  */
 function BrushSection(props: {
-  id: 'responses';
+  id: MediumId;
   title: string;
   children?: ComponentChildren;
 }) {
@@ -358,17 +367,23 @@ export function WatercolorBrushLibrary() {
         <WatercolorTextureStrip />
         <WatercolorTextureImport />
       </div>
-      <BrushSection id="responses" title="Brushes">
-        {BRUSH_PRESETS.map((preset) => (
-          <BrushCard
-            key={preset.id}
-            id={preset.id}
-            name={preset.name}
-            title={preset.hint}
-            selected={preset.id === selectedTipId}
-          />
-        ))}
-      </BrushSection>
+      {brushSections(BRUSH_PRESETS).map((section) => (
+        <BrushSection
+          key={section.group}
+          id={section.group}
+          title={brushGroupLabels[section.group]}
+        >
+          {section.presets.map((preset) => (
+            <BrushCard
+              key={preset.id}
+              id={preset.id}
+              name={preset.name}
+              title={preset.hint}
+              selected={preset.id === selectedTipId}
+            />
+          ))}
+        </BrushSection>
+      ))}
     </div>
   );
 }

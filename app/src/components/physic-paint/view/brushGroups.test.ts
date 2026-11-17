@@ -35,7 +35,7 @@ import {
   aquarelleToolOverrides,
   setAquarelleSelectedTextureId,
 } from './aquarelleRecordState'
-import { aquarelleSelectMode, setAquarelleSelectMode } from './aquarelleStrokeSelection'
+import { setAquarelleSelectMode } from './aquarelleStrokeSelection'
 import { clearStrokeThumbCache } from './watercolorStrokeThumb'
 import {
   WatercolorBrushLibrary,
