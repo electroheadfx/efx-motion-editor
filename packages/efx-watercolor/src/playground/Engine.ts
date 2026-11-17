@@ -2124,6 +2124,12 @@ export class WatercolorEngine {
         // white the old core mask punched there). See COVER_DEPOSIT_GAIN for why a
         // coefficient scale saturates the cover at 4x.
         const coverDab = Math.min(1, coverAmount * amount * COVER_DEPOSIT_GAIN);
+        // The thickness keeps the DELIVERED erode law — the un-gained cover
+        // amount times RELIEF_ERODE — never the x4 paint fraction. The erode
+        // exists to drop the UNDERLAYER's impasto; scaling it with the paint
+        // saturates the stroke's own relief away under its overlapping dabs
+        // (measured on probe at Body 85: the relief field doubled).
+        const coverRelief = coverAmount * RELIEF_ERODE;
         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
@@ -2147,7 +2153,7 @@ export class WatercolorEngine {
         }
         this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
           // spec 06: the cover pass draws here, before this dab's deposit
-          if (coverDab > 0) this.coverPass(dx, dy, dr, angle, coverDab, dryness, grainThr);
+          if (coverDab > 0) this.coverPass(dx, dy, dr, angle, coverDab, coverRelief, dryness, grainThr);
           // quick 261117-tq7: the same Body order must reach MOBILE ink too.
           // Unguarded: inkCover's own early return guards Body 0 and a snapshot
           // that was never armed, and the deposit below must survive the erase.
@@ -2303,14 +2309,16 @@ export class WatercolorEngine {
    * the dab deposits. One multiplicative draw, no tissue-water step: Body is
    * order, not water.
    *
-   * quick 261117-tq7 (rev 2): the erase mask IS the deposit footprint —
-   * `bodyCoverFS` runs stampFS's exact tip / rotation / jitter / dry-tooth law
-   * — and its strength is the caller's per-dab deposit amount. That is the
-   * whole order law: the underlayer loses exactly the fraction of paint this
-   * dab adds, so the brush body replaces it, the tip's alpha rim and the
-   * bristle gaps keep a genuine mix, and no mask can erase paper-white where
-   * the brush never painted. The Body row sits between Viscosity and Emboss
-   * (D-07); spec 08's scattering composes on top through the same curve.
+   * quick 261117-tq7 (rev 3): the erase mask is the deposit's own tip-space
+   * footprint (rotation, jitter, paper tooth) with the deposit's LOW cut but a
+   * WIDE inward ramp, softened before the tip square's cull, and its strength
+   * is the caller's per-dab deposit amount. Starting at the cut means the
+   * cover never erases where the brush paints nothing (an erase there compounds
+   * to paper-white), while the ramp and the cull fade leave the underlayer
+   * partially alive at the rim — the transition the edge needs. A hard
+   * threshold on this mask carved the dab contours as scalloped steps.
+   * The Body row sits between Viscosity and Emboss (D-07); spec 08's
+   * scattering composes on top through the same curve.
    *
    * ONE extra multiplicative draw per dab into two targets that already
    * exist: no new target, no allocation. Undo is NOT taken here: the caller
@@ -2318,7 +2326,7 @@ export class WatercolorEngine {
    * deposit's own undo protection comes too late to save a relief this draw
    * has already eroded.
    */
-  private coverPass(x: number, y: number, r: number, angle: number, amount: number, grain: number, grainThr: number) {
+  private coverPass(x: number, y: number, r: number, angle: number, amount: number, reliefAmount: number, grain: number, grainThr: number) {
     const { gl, g } = this;
     const p = this.programs.bodyCover;
     p.bind();
@@ -2329,10 +2337,11 @@ export class WatercolorEngine {
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
     g.draw(this.fixed, rect);
-    // The thickness erodes at RELIEF_ERODE of the pigment amount: a full cover
-    // would otherwise erase the stroke's own earlier dabs' relief and flatten
-    // the emboss the same Body value is meant to raise.
-    gl.uniform1f(p.u.uAmount, amount * RELIEF_ERODE);
+    // The thickness erodes at the caller's `reliefAmount` — the DELIVERED law,
+    // coverAmount x RELIEF_ERODE. Scaling it with the paint fraction would erase
+    // the stroke's own earlier dabs' relief and flatten the emboss the same
+    // Body value is meant to raise.
+    gl.uniform1f(p.u.uAmount, reliefAmount);
     g.draw(this.relief, rect);
     // quick 261117-tq7: the cached-base seam mirrors onLiftDab — the Studio
     // punches the same deposit footprint into a reopened frame's base.

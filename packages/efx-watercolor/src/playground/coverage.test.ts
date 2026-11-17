@@ -147,7 +147,7 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
     const callback = CALLBACK()
     expectContains(
       callback,
-      'if (coverDab > 0) this.coverPass(dx, dy, dr, angle, coverDab, dryness, grainThr);',
+      'if (coverDab > 0) this.coverPass(dx, dy, dr, angle, coverDab, coverRelief, dryness, grainThr);',
     )
     expectContains(callback, 'this.brushInk(')
     expect(callback.indexOf('this.coverPass(')).toBeLessThan(callback.indexOf('this.brushInk('))
@@ -173,7 +173,12 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
     )
     expectNotContains(body, 'uCover')
     expectContains(body, 'gl.uniform1f(p.u.uAmount, amount);')
-    expectContains(body, 'gl.uniform1f(p.u.uAmount, amount * RELIEF_ERODE);')
+    expectContains(body, 'gl.uniform1f(p.u.uAmount, reliefAmount);')
+    // The relief keeps the DELIVERED erode law: coverAmount x RELIEF_ERODE.
+    expectContains(
+      BRUSH_CASE(),
+      'const coverRelief = coverAmount * RELIEF_ERODE;',
+    )
     expectContains(body, 'const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);')
   })
 
@@ -435,7 +440,7 @@ describe('the cover seam', () => {
     // Emission: coverPass is only reached under the spec-06 guard.
     expectContains(
       CALLBACK(),
-      'if (coverDab > 0) this.coverPass(dx, dy, dr, angle, coverDab, dryness, grainThr);',
+      'if (coverDab > 0) this.coverPass(dx, dy, dr, angle, coverDab, coverRelief, dryness, grainThr);',
     )
   })
 
@@ -466,6 +471,11 @@ describe('the cover seam', () => {
     expectContains(cover, 'o1 = vec4(f);')
     // The shared mask is stampFS's footprint law, verbatim.
     expectContains(SHADER_SOURCE, 'float sharp = mix(t, dry, step(0.0001, uRough));')
+    // The cover mask starts at the SAME low cut the deposit uses, then ramps
+    // WIDE inward: erasing below the cut compounds to paper-white, and a hard
+    // 1-in-1-out threshold carved the scalloped dab contours.
+    expectContains(SHADER_SOURCE, 'float ramp = smoothstep(th, th + 0.5, t);')
+    expectContains(SHADER_SOURCE, 'f *= 1.0 - smoothstep(0.82, 1.0, max(abs(q.x), abs(q.y)));')
     expectContains(SHADER_SOURCE, 'float round = 1.0 - smoothstep(0.15, 1.0, d);')
     expectContains(SHADER_SOURCE, 'smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h)')
     // Lift keeps its own tip-shaped law and has no cover profile.

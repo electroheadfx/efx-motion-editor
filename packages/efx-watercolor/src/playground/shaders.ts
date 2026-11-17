@@ -349,20 +349,31 @@ float footprintMask(){
   float e1 = fract(e0 * 63.7264 + 0.37);
   vec2 uv = clamp(tq * 0.5 + 0.5 + (vec2(e0, e1) - 0.5) * uJitter, 0.0, 1.0);
   float t = texture(uTip, uv).r;
+  // The deposit's LOW cut without its hard edge: a dry brush thresholds the tip
+  // at roughness * 0.45 with a 0.02 ramp, and a cover must start erasing at
+  // the same alpha (never below it: that is where the paint is absent, and an
+  // erase there compounds to paper-white over a stroke's overlapping dabs).
+  // The ramp is WIDE on purpose: the underlayer survives partway up the tip's
+  // alpha, which is the transition the rim needs, instead of a hard cut at the
+  // dab's contour. A 1-in-1-out threshold here is what carved the scalloped
+  // dab edges and the white specks through textured tips.
   float th = uRough * 0.45;
-  float dry = smoothstep(th, th + 0.02, t);
-  float sharp = mix(t, dry, step(0.0001, uRough));
-  float d = dot(q, q);
-  float round = 1.0 - smoothstep(0.15, 1.0, d);
-  float f = mix(sharp, round, uRound);
+  float ramp = smoothstep(th, th + 0.5, t);
+  float round = 1.0 - smoothstep(0.15, 1.0, dot(q, q));
+  float f = mix(ramp, round, uRound);
+  // Soften the tip square's cull: the deposit may stop at |q| = 1, but an erase
+  // that stops on the same hard line draws the dab's contour. Fading the cover
+  // out before the cull leaves the underlayer mixing at the outermost rim.
+  f *= 1.0 - smoothstep(0.82, 1.0, max(abs(q.x), abs(q.y)));
   float h = texture(uPaper, vUv).g;
   return f * mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);
 }`;
 
-// The Body cover's multiplicative factor: the deposit mask scaled by the dab's
-// own erase amount. Drawn with ZERO / ONE_MINUS_SRC_COLOR into `fixed`, into
-// `relief` (at RELIEF_ERODE) and into the pre-stroke snapshot, so settled,
-// mobile and cached paint all lose the same fraction the dab's paint adds.
+// The Body cover's multiplicative factor: the footprint mask above scaled by
+// the dab's own erase amount. Drawn with ZERO / ONE_MINUS_SRC_COLOR into
+// `fixed`, into `relief` (at the delivered coverAmount x RELIEF_ERODE) and
+// into the pre-stroke snapshot, so settled, mobile and cached paint all lose
+// the fraction the dab's paint adds.
 export const bodyCoverFS = `${HEADER}${FOOTPRINT_MASK}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
