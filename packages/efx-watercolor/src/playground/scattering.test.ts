@@ -25,6 +25,15 @@
 //      zero, negative or non-finite amount deposits exactly 0 — never NaN.
 //   7. The package barrel re-exports the law module, so the app and later
 //      plans import the law from one place.
+//   8. The brush dab, the pen splat and the bucket fill each write
+//      `scatteringDeposit(P.body, amount)` into their second colour vector's
+//      alpha, and no deposit site reads a retired pigment white member.
+//   9. `settleFS` carries the mobile scattering into the fixed layer
+//      (`oB = vec4(B.rgb * uSettle, B.a * uSettle)`), with no `keep` factor.
+//  10. The bleach program, the composite coverage term and the gouache colour
+//      are gone; the display mode structure and the final paper multiply stay.
+//  11. `Pigment` has one member and only `pigmentFromHex` constructs one: the
+//      retirement audit MED-37 asks for, recorded as a test, not assumed.
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -42,11 +51,33 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SOURCE = readFileSync(resolve(HERE, 'scattering.ts'), 'utf8')
 const INDEX_SOURCE = readFileSync(resolve(HERE, 'index.ts'), 'utf8')
+const ENGINE_SOURCE = readFileSync(resolve(HERE, 'Engine.ts'), 'utf8')
+const SHADERS_SOURCE = readFileSync(resolve(HERE, 'shaders.ts'), 'utf8')
+const SPECTRAL_SOURCE = readFileSync(resolve(HERE, 'spectral.ts'), 'utf8')
+const ADAPTER_SOURCE = readFileSync(resolve(HERE, '../adapter/engineAdapter.ts'), 'utf8')
+const PAYLOAD_SOURCE = readFileSync(resolve(HERE, '../payload/toStudioStroke.ts'), 'utf8')
+const APP_LAYER_SOURCE = readFileSync(
+  resolve(HERE, '../../../../app/src/components/physic-paint/engine/AquarelleCanvasLayer.tsx'),
+  'utf8',
+)
 
 // Source pins report the missing LITERAL, never the whole source: a raw
 // `toContain` would dump the module into the RED report and break its format.
 function expectContains(source: string, needle: string): void {
   expect(source.includes(needle), `missing source text: ${needle}`).toBe(true)
+}
+
+function expectNotContains(source: string, needle: string): void {
+  expect(source.includes(needle), `unexpected source text: ${needle}`).toBe(false)
+}
+
+/** Slice the source between two literal anchors; throws when absent. */
+function sliceBetween(source: string, startAnchor: string, endAnchor: string): string {
+  const start = source.indexOf(startAnchor)
+  expect(start, `anchor not found: ${startAnchor}`).toBeGreaterThanOrEqual(0)
+  const end = source.indexOf(endAnchor, start + startAnchor.length)
+  expect(end, `anchor not found after start: ${endAnchor}`).toBeGreaterThan(start)
+  return source.slice(start, end)
 }
 
 describe('the one Body curve (D-14 / MED-21)', () => {
@@ -188,5 +219,103 @@ describe('the scattering deposit law (D-14 / MED-32)', () => {
     ]) {
       expectContains(INDEX_SOURCE, name)
     }
+  })
+})
+
+describe('the scattering transport and the white-channel retirement (MED-32 / MED-33 / MED-37)', () => {
+  it('writes scatteringDeposit(P.body, amount) at the three deposit sites and nowhere else', () => {
+    expectContains(ENGINE_SOURCE, "import { bodyCurve, scatteringDeposit } from './scattering';")
+    expect(
+      (ENGINE_SOURCE.match(/scatteringDeposit\(P\.body, amount\)/g) ?? []).length,
+      'exactly three deposit sites: bucket fill, brush dab, pen splat',
+    ).toBe(3)
+    expectContains(
+      ENGINE_SOURCE,
+      'gl.uniform4f(p.u.uColor1, c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount));',
+    )
+    expectContains(
+      ENGINE_SOURCE,
+      'const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount)];',
+    )
+    expectContains(ENGINE_SOURCE, 'scatteringDeposit(P.body, amount)], 2);')
+    // No deposit site may read the retired pigment member.
+    expectNotContains(ENGINE_SOURCE, '.white')
+  })
+
+  it('keeps the cover pass on the same curve and declares no second one', () => {
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expectContains(brush, 'const coverAmount = bodyCurve(P.body);')
+    expect(
+      (ENGINE_SOURCE.match(/bodyCurve\(/g) ?? []).length,
+      'one call site: the cover pass reads the shared curve',
+    ).toBe(1)
+    expect(
+      (SOURCE.match(/export function bodyCurve/g) ?? []).length,
+      'the curve stays declared once, in scattering.ts',
+    ).toBe(1)
+  })
+
+  it('carries the mobile scattering into the settled layer through settleFS', () => {
+    const settle = sliceBetween(SHADERS_SOURCE, 'export const settleFS', 'export const liftFS')
+    expectContains(settle, 'oA = A * uSettle;')
+    expectContains(settle, 'oB = vec4(B.rgb * uSettle, B.a * uSettle);')
+    expectNotContains(settle, 'keep')
+    // The bleach program is gone from the shader module and from the registry.
+    expectNotContains(SHADERS_SOURCE, 'bleach')
+    expectNotContains(ENGINE_SOURCE, 'bleach')
+  })
+
+  it('has no gouache coverage term left in the composite or the layout comment', () => {
+    const display = SHADERS_SOURCE.slice(SHADERS_SOURCE.indexOf('export const displayFS'))
+    expect(display.length, 'displayFS is present').toBeGreaterThan(0)
+    expectNotContains(display, 'cov')
+    expectNotContains(display, 'gouache')
+    // The mode structure, the paper multiply and every remaining uniform stay.
+    expectContains(display, 'if (uMode == 4){')
+    expectContains(display, 'if (uMode == 2){')
+    expectContains(display, 'vec3 paperCol = paperColour(paper, uMode == 3 ? vec3(1.0) : uPaperTint);')
+    expectContains(display, 'vec3 col = rgb * paperCol;')
+    expectContains(display, 'o = vec4(toSRGB(col), 1.0);')
+    expectContains(SHADERS_SOURCE, 'B.a = scattering')
+    expectNotContains(SHADERS_SOURCE, 'gouache')
+  })
+
+  it('retires the white member from the pigment record and its factory', () => {
+    expectNotContains(SPECTRAL_SOURCE, 'WHITE_GOUACHE')
+    expectNotContains(SPECTRAL_SOURCE, 'white:')
+    expectContains(SPECTRAL_SOURCE, 'return { coeffs };')
+    const pigment = sliceBetween(SPECTRAL_SOURCE, 'export interface Pigment {', '}')
+    expectContains(pigment, 'coeffs: Float32Array;')
+    expectNotContains(pigment, 'white')
+  })
+
+  it('constructs a pigment only through pigmentFromHex (MED-37 retirement audit)', () => {
+    // The shipped consumers wrap the factory: two app sites, one adapter site.
+    for (const [name, source] of [
+      ['app AquarelleCanvasLayer.tsx', APP_LAYER_SOURCE],
+      ['adapter engineAdapter.ts', ADAPTER_SOURCE],
+    ] as const) {
+      const calls = source.match(/setPigment\(/g) ?? []
+      const factoryCalls = source.match(/setPigment\(pigmentFromHex\(/g) ?? []
+      expect(calls.length, `${name} calls setPigment`).toBeGreaterThan(0)
+      expect(factoryCalls.length, `${name} builds pigments only through pigmentFromHex`).toBe(
+        calls.length,
+      )
+      expectNotContains(source, 'coeffs:')
+    }
+    // The engine's ONE Pigment-shaped literal is the per-dab interpolation
+    // scratch, and it carries coeffs only.
+    const scratch = sliceBetween(ENGINE_SOURCE, 'private readonly scratchPigment', 'private nav = false;')
+    expectContains(scratch, 'coeffs: Float32Array')
+    expectContains(scratch, 'coeffs: new Float32Array(COEFFS)')
+    expectNotContains(scratch, 'white')
+    expect(
+      (ENGINE_SOURCE.match(/coeffs:/g) ?? []).length,
+      'two coeffs tokens, both in the scratch declaration',
+    ).toBe(2)
+    // The stroke payload the app records never carries a pigment record, so no
+    // shipped project file can hold the retired channel.
+    expectNotContains(PAYLOAD_SOURCE, 'Pigment')
+    expectNotContains(PAYLOAD_SOURCE, 'coeffs')
   })
 })
