@@ -45,6 +45,7 @@ const harness = vi.hoisted(() => ({
 }));
 
 vi.mock('@efxlab/efx-watercolor', () => ({
+  DEFAULT_MEDIUM_ID: 'watercolor',
   createAquarelleEngineAdapter: (options: Record<string, unknown>) => {
     harness.adapterOptions.push(options);
     return {
