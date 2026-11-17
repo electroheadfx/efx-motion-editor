@@ -1684,6 +1684,10 @@ export function PhysicsPaintStudio() {
   // timeline/coordinator seam and surface it as the LOG diagnostic.
   const lastRotoStatusMessageRef = useRef<string | null>(null);
   const aquarelleResetSheetRef = useRef<(() => void) | null>(null);
+  // quick 261117-tq7 (CR-04): the layer's stroke generation getter, registered
+  // beside the reset. The cover commit is async, so the post-ack reset must be
+  // skipped when a newer stroke started while the ack was in flight.
+  const aquarelleStrokeGenerationRef = useRef<(() => number) | null>(null);
   // 261029-lsr: the SAME capture a settled stroke runs. A tile-history undo/redo
   // leaves the sheet holding exactly the post-command image, so it is snapshotted
   // into the frame cache instead of being re-derived by a re-bake.
@@ -8483,6 +8487,14 @@ export function PhysicsPaintStudio() {
           trackId: plan.trackId,
           base: { frameIndex: 0, appFrame: plan.frame, bytes: punchedCover.bytes, width: size.width, height: size.height },
         };
+        // CR-04: the commit is async (plus one retry), so the user can start
+        // the NEXT stroke while the ack is in flight. Capture the layer's
+        // stroke generation now; if it advanced by the time the ack lands, the
+        // sheet's live pixels belong to a newer stroke and resetSheet() would
+        // null that stroke's engine state — its pointerup then returns early
+        // (Engine's `this.stroke` is gone) and the stroke is neither recorded
+        // nor captured. Skip the reset and the display swap in that case.
+        const coverStrokeGeneration = aquarelleStrokeGenerationRef.current?.() ?? 0;
         const commitCover = async () => rotoPersistenceRef.current.captureLivePixels({
           layerId: launch.layerId,
           trackId: plan.trackId,
@@ -8526,21 +8538,24 @@ export function PhysicsPaintStudio() {
           bumpAquarelleStrokesRevision();
           studioScriptSnapshot.markDirty();
         }
-        aquarelleResetSheetRef.current?.();
-        if (launchContextRef.current?.startFrame === plan.frame) {
-          const generation = Math.max(
-            rotoPreviewBaseContentToken(),
-            previewBasePort.getAppliedPreviewBaseContentToken() ?? 0,
-          );
-          loadCachedRotoReferenceFrame(
-            plan.frame,
-            previewBasePort,
-            undefined,
-            true,
-            generation,
-            punchedCover.bytes,
-          );
-          physicPaintVersion.value++;
+        const coverStrokeLive = (aquarelleStrokeGenerationRef.current?.() ?? 0) !== coverStrokeGeneration;
+        if (!coverStrokeLive) {
+          aquarelleResetSheetRef.current?.();
+          if (launchContextRef.current?.startFrame === plan.frame) {
+            const generation = Math.max(
+              rotoPreviewBaseContentToken(),
+              previewBasePort.getAppliedPreviewBaseContentToken() ?? 0,
+            );
+            loadCachedRotoReferenceFrame(
+              plan.frame,
+              previewBasePort,
+              undefined,
+              true,
+              generation,
+              punchedCover.bytes,
+            );
+            physicPaintVersion.value++;
+          }
         }
         setApplyMessage(null);
         setApplyStatus('idle');
@@ -8553,6 +8568,7 @@ export function PhysicsPaintStudio() {
           willPinBase: plan.willPinBase,
           stage: 'cover-committed',
           attempts: coverAttempts,
+          resetSkipped: coverStrokeLive,
         });
         return;
       }
@@ -10734,8 +10750,12 @@ export function PhysicsPaintStudio() {
 
   // Quick 261019-mj2 Task 3: same-frame sheet reset registration for the
   // generated-cell self-promotion (the Studio calls it synchronously).
-  const handleAquarelleResetSheetReady = useCallback((resetSheet: () => void) => {
+  const handleAquarelleResetSheetReady = useCallback((
+    resetSheet: () => void,
+    strokeGeneration: () => number,
+  ) => {
     aquarelleResetSheetRef.current = resetSheet;
+    aquarelleStrokeGenerationRef.current = strokeGeneration;
     aquarelleMergeBaseRef.current = null;
     aquarelleSheetHasPaintRef.current = false;
   }, []);

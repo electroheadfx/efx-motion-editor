@@ -315,6 +315,45 @@ describe('the cover transaction (runAquarelleLiftErase keeps its 3-argument sign
     );
   });
 
+  it('never resets the sheet under a stroke that started during the commit', () => {
+    // The layer owns the generation: it advances on every stroke start.
+    expect(layer).toContain('let strokeGeneration = 0;');
+    expect(layer).toContain('if (!painting) strokeGeneration++;');
+    // Both the getter and the reset ride the one registration.
+    expect(layer).toContain('onResetSheetReadyRef.current?.(resetSheet, () => strokeGeneration);');
+    expect(layer).toContain(
+      'onResetSheetReady?: (resetSheet: () => void, strokeGeneration: () => number) => void;',
+    );
+    expect(mount).toContain(
+      'onAquarelleResetSheetReady?: (resetSheet: () => void, strokeGeneration: () => number) => void;',
+    );
+    expect(studio).toContain(
+      'const aquarelleStrokeGenerationRef = useRef<(() => number) | null>(null);',
+    );
+    expect(studio).toContain('aquarelleStrokeGenerationRef.current = strokeGeneration;');
+    const cover = coverBranch();
+    // Captured BEFORE the async commit...
+    const captured = cover.indexOf('const coverStrokeGeneration = aquarelleStrokeGenerationRef.current?.() ?? 0;');
+    expect(captured).toBeGreaterThanOrEqual(0);
+    expect(captured).toBeLessThan(cover.indexOf('let coverOk = await commitCover();'));
+    // ...and compared after the ack; a changed generation skips the reset
+    // (and the display swap that depends on it) instead of wiping the stroke.
+    const drift = cover.indexOf("if (abandonIfDrifted('cover-commit-ack')) return;");
+    const gate = cover.indexOf(
+      'const coverStrokeLive = (aquarelleStrokeGenerationRef.current?.() ?? 0) !== coverStrokeGeneration;',
+    );
+    expect(gate).toBeGreaterThan(drift);
+    expect(cover.indexOf('if (!coverStrokeLive) {')).toBeGreaterThan(gate);
+    expect(cover.indexOf('if (!coverStrokeLive) {')).toBeLessThan(
+      cover.indexOf('aquarelleResetSheetRef.current?.();'),
+    );
+    expect(cover.indexOf('aquarelleResetSheetRef.current?.();')).toBeLessThan(
+      cover.indexOf('loadCachedRotoReferenceFrame('),
+    );
+    // The diagnostic records whether the reset was skipped.
+    expect(cover).toContain('resetSkipped: coverStrokeLive,');
+  });
+
   it('keeps every pinned Lift arm and whole-Studio count intact', () => {
     const transaction = erase();
     const scripted = transaction.slice(

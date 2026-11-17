@@ -2906,12 +2906,12 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(beginBlock).toContain('clearGeneratedRotoDisplayForPaint()');
     // Reset registration flows AquarelleCanvasLayer → CanvasMount → Studio.
     const aquarelleLayer = readFileSync(fileURLToPath(new URL('./engine/AquarelleCanvasLayer.tsx', import.meta.url)), 'utf8');
-    expect(aquarelleLayer).toContain('onResetSheetReady?: (resetSheet: () => void) => void;');
+    expect(aquarelleLayer).toContain('onResetSheetReady?: (resetSheet: () => void, strokeGeneration: () => number) => void;');
     expect(aquarelleLayer).toContain('const onResetSheetReadyRef = useRef(props.onResetSheetReady);');
-    expect(aquarelleLayer).toContain('onResetSheetReadyRef.current?.(resetSheet);');
-    expect(canvasMount).toContain('onAquarelleResetSheetReady?: (resetSheet: () => void) => void;');
-    expect(canvasMount).toContain('onResetSheetReady={(resetSheet) => onAquarelleResetSheetReadyRef.current?.(resetSheet)}');
-    expect(studio).toContain('const handleAquarelleResetSheetReady = useCallback((resetSheet: () => void) => {');
+    expect(aquarelleLayer).toContain('onResetSheetReadyRef.current?.(resetSheet, () => strokeGeneration);');
+    expect(canvasMount).toContain('onAquarelleResetSheetReady?: (resetSheet: () => void, strokeGeneration: () => number) => void;');
+    expect(canvasMount).toContain('onResetSheetReady={(resetSheet, strokeGeneration) => onAquarelleResetSheetReadyRef.current?.(resetSheet, strokeGeneration)}');
+    expect(studio).toContain('const handleAquarelleResetSheetReady = useCallback((');
   });
 
   it('awaits the created key before the aquarelle capture path writes pixels', () => {

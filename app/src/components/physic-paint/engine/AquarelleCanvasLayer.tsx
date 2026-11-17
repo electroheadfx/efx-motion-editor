@@ -464,8 +464,12 @@ export function AquarelleCanvasLayer(props: {
    * generated-cell self-promotion calls it synchronously before dispatching
    * the blank key, so the old generated display never leaks into the stroke.
    * Mirrors the frame-change branch minus the lastPlayFrame update.
+   * quick 261117-tq7 (CR-04): the second argument reports the stroke
+   * generation — it advances every time a stroke starts — so an async caller
+   * (the cover commit ack) can skip a reset that would wipe a stroke begun
+   * while it was waiting.
    */
-  onResetSheetReady?: (resetSheet: () => void) => void;
+  onResetSheetReady?: (resetSheet: () => void, strokeGeneration: () => number) => void;
   /**
    * 261022-pim / 261024-mz5: Alt+click on an outlined stroke (or the whole
    * selected set). The Studio deletes them from the recorded script and
@@ -613,6 +617,10 @@ export function AquarelleCanvasLayer(props: {
     // and the Play end key keep the denser look instead of cooking to the
     // engine's washed-out full awake state.
     let painting = false;
+    // quick 261117-tq7 (CR-04): advances on every stroke start so an async
+    // caller can tell whether the sheet's live pixels still belong to the
+    // stroke it committed, or to a newer one.
+    let strokeGeneration = 0;
     let lastWetAt = 0;
     let settleCapArmed = false;
 
@@ -623,6 +631,7 @@ export function AquarelleCanvasLayer(props: {
         null,
         {
           onStrokeSample(sample) {
+            if (!painting) strokeGeneration++;
             painting = true;
             lastWetAt = performance.now();
             settleCapArmed = false;
@@ -912,7 +921,7 @@ export function AquarelleCanvasLayer(props: {
       settleCapArmed = false;
       wasAwake = false;
     };
-    onResetSheetReadyRef.current?.(resetSheet);
+    onResetSheetReadyRef.current?.(resetSheet, () => strokeGeneration);
     const tick = () => {
       const playFrame = getPlayFrameRef.current();
       if (lastPlayFrameRef.current !== playFrame) {
