@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-05-PLAN.md
-last_updated: "2026-11-17T16:27:20.300Z"
+stopped_at: Completed 64-08-PLAN.md
+last_updated: "2026-11-17T16:36:57.429Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 64 execution started
-state_head: cd170b083cd0f6f4e0bd3dee838dd669a8add1de
+state_head: 0edfa49e247188c39156086f4ce6981227fe5f01
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 29
-  completed_plans: 25
+  completed_plans: 26
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 9 of 12
+Plan: 10 of 12
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 64 execution started
 
@@ -152,6 +152,7 @@ Last activity: 2026-11-17 — Phase 64 execution started
 | Phase 64 P06 | ~11m | 3 tasks | 11 files |
 | Phase 64 P12 | 7 | 2 tasks | 2 files |
 | Phase 64 P05 | 6 | 3 tasks | 8 files |
+| Phase 64 P08 | 7m | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -491,6 +492,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: 64-05: the light is optional-additive — absent contributes no revision term and the parser never manufactures a default, so untouched projects save byte-identically
 - [Phase 64]: 64-05: setDocumentLight is the sole writer — patch over current light, engine clamp bands, canonical-revision no-op, one bump and one ledger descriptor
 - [Phase 64]: 64-05: launch envelope unchanged — the light rides the opaque document member end to end; no launch key/field added to TS or Rust
+- [Phase 64]: scatteringDeposit guards the amount before multiplying (zero, negative or non-finite -> exactly 0), so 0 x Infinity can never become NaN; the body side is finite through bodyCurve (T-64-22)
+- [Phase 64]: S = SCATTERING_MAX x bodyCurve(body) x amount is written into the pre-existing inkB.a at the three deposit sites and carried by settleFS into fixedB.a; no render target, texture or pass is added
+- [Phase 64]: The white-gouache channel is retired outright (Pigment.white, WHITE_GOUACHE, bleachFS, settle keep, composite coverage), never flag-hidden; MED-37 audit is pinned as a test and recorded in 64-08-SUMMARY
 
 ### Pending Todos
 
@@ -617,8 +621,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-17T16:27:19.512Z
-Stopped at: Completed 64-05-PLAN.md
+Last session: 2026-11-17T16:36:56.534Z
+Stopped at: Completed 64-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
