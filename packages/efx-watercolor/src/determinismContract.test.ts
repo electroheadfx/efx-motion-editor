@@ -20,6 +20,7 @@ import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { createAquarelleEngineAdapter } from './adapter/engineAdapter'
 import type { AquarelleStrokePayload } from './payload/toStudioStroke'
 import { toStudioStroke } from './payload/toStudioStroke'
+import { toEngineParams } from './playground/params'
 
 // ---------------------------------------------------------------------------
 // Deterministic engine stand-in for the replay arm (61-07)
@@ -204,11 +205,16 @@ function makeMockCanvas(width: number, height: number): {
   return { canvas: canvasRef as unknown as HTMLCanvasElement, pixels }
 }
 
-function makeStroke(): StudioStroke<AquarelleStrokePayload> {
+/**
+ * 64-01: the optional `viscosity` canonical value (0..100) is the phase's
+ * medium key. Omitting it keeps the recorded bag exactly as before, so the
+ * pre-existing rows still replay the pre-milestone script.
+ */
+function makeStroke(viscosity?: number): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color: '#2244aa',
-    params: { size: 12, water: 50, flow: 50 },
+    params: { size: 12, water: 50, flow: 50, ...(viscosity === undefined ? {} : { viscosity }) },
     brushId: 'wc/round-medium',
     points: [
       { x: 20, y: 32, p: 0.5, tx: 0, ty: 0, tw: 0 },
@@ -265,6 +271,31 @@ function replayBytes(): Uint8ClampedArray {
   return copy
 }
 
+/**
+ * 64-01: replay one recorded stroke and also return the payload the live
+ * surface stored (`getStrokes`), so the viscosity row can prove the value
+ * survives into the recorded bag on every replay arm — not just that two
+ * runs happen to agree.
+ */
+function replayRun(stroke: StudioStroke<AquarelleStrokePayload>): {
+  bytes: Uint8ClampedArray
+  recorded: StudioStroke<AquarelleStrokePayload>
+} {
+  const width = 64
+  const height = 64
+  const { canvas, pixels } = makeMockCanvas(width, height)
+  const adapter = withSeededMathRandom(PAPER_SEED, () =>
+    createAquarelleEngineAdapter({ width, height, canvas }),
+  )
+  adapter.applyStroke(stroke)
+  for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
+  adapter.captureFrame()
+  const bytes = pixels.slice()
+  const recorded = adapter.getStrokes()[0]!
+  adapter.dispose()
+  return { bytes, recorded }
+}
+
 // ---------------------------------------------------------------------------
 // 1. Double-replay byte-equality (R1.5 / D-20)
 // ---------------------------------------------------------------------------
@@ -282,6 +313,25 @@ describe('determinism contract', () => {
     expect(stroke.traceSeed).toBe(hashMutationId(42))
     const again = makeStroke()
     expect(again.traceSeed).toBe(stroke.traceSeed)
+  })
+
+  // 64-01 (MED-04 / MED-06): the medium key must not perturb replay identity
+  // at either extreme, and the recorded bag must carry the value that was
+  // used — live pass, bake and replay all read the same recorded number.
+  it('replays identically within each viscosity arm and carries the value', () => {
+    for (const canonical of [0, 100] as const) {
+      const first = replayRun(makeStroke(canonical))
+      const second = replayRun(makeStroke(canonical))
+
+      expect(first.bytes.length).toBe(second.bytes.length)
+      expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(true)
+
+      // The recorded canonical bag keeps the value across the replay...
+      expect(first.recorded.engine.params.viscosity).toBe(canonical)
+      expect(second.recorded.engine.params.viscosity).toBe(canonical)
+      // ...and the ONE mapping turns it into the engine's 0..1 medium value.
+      expect(toEngineParams(first.recorded.engine.params).viscosity).toBe(canonical / 100)
+    }
   })
 })
 
