@@ -1,0 +1,15 @@
+{
+  "capturedFromCommit": "d1fd7ea3c890b8684f8160cf90fb5e904ab5e5ad",
+  "capturedAt": "2026-11-17T14:49:34Z",
+  "note": "Pre-milestone neutral-identity baseline for Phase 64 (v2.2.0 medium engine). Captured BEFORE any viscosity source edit; never regenerate after the change lands. The scenario is one fixed brush stroke on a 256x256 cold sheet at paperTexture 1, driven through createAquarelleEngineAdapter for stepTick 0..8 then fix(), exported on all three backgrounds. compare.mjs reads only gate, width, height, the three digests and byteLength.",
+  "kind": "pixel-buffer-baseline",
+  "gate": "neutral-identity",
+  "width": 256,
+  "height": 256,
+  "digestPaper": "d2bd637a",
+  "digestTransparent": "291d4a11",
+  "digestWhite": "6ba88334",
+  "byteLength": 262144,
+  "renderer": "WebKit WebGL",
+  "verdict": "MEDIUM-ENGINE CAPTURED"
+}

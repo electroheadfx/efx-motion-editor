@@ -25,6 +25,13 @@ export interface AquarelleCanonicalParams {
    * key keeps its exact old erase on replay.
    */
   lift: number
+  /**
+   * Phase 64 (v2.2.0): how thick the medium is, 0..100. 0 is the neutral
+   * default — a project painted before the key existed renders
+   * byte-identically. The engine raises water-motion dissipation and
+   * lowers its diffusion floor from this one value.
+   */
+  viscosity: number
 }
 
 export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Object.freeze({
@@ -37,10 +44,21 @@ export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Obje
   edge: 50,
   granulation: 50,
   lift: 22,
+  viscosity: 0,
 })
 
 function num(v: number | undefined, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
+}
+
+/**
+ * Phase 64: the medium keys this milestone adds (viscosity first) are the
+ * only clamped ones. A typed canonical value can overshoot its slider
+ * track; the engine uniforms must never see an out-of-range number
+ * (T-64-01). Clamping lives here, in the ONE mapping, and nowhere else.
+ */
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v
 }
 
 /**
@@ -96,5 +114,6 @@ export function toEngineParams(
     edge: num(p.edge, d.edge) / 100,
     granulation: num(p.granulation, d.granulation) / 100,
     lift: num(p.lift, d.lift) / 100,
+    viscosity: clamp01(num(p.viscosity, d.viscosity) / 100),
   }
 }

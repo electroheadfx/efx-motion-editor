@@ -11,6 +11,28 @@ import { WET_THRESHOLD, isSheetWet } from './wetState';
 
 export type Tool = 'brush' | 'water' | 'pen' | 'lift';
 
+/**
+ * Phase 64 (v2.2.0) — the Viscosity law, recorded once here and applied at
+ * exactly two sites inside `step()`:
+ *
+ *   VISCOSITY_DISSIPATION_GAIN = 12.0
+ *     dissipation = exp(-dt * (3.0 - flow * 2.4 + viscosity * 12.0))
+ *     The gain is ADDITIVE inside the exponent: viscosity can only raise the
+ *     decay rate, never lower the pre-milestone floor, and never stands in
+ *     for `flow` (which still drives deposition).
+ *
+ *   VISCOSITY_SPREAD_FLOOR = 0.012
+ *     spread = 0.12 * (1 - viscosity * 0.9)   → 0.12 at 0, 0.012 at 1
+ *     The diffusion floor is scaled, never crossed: a bounded 0..1 value can
+ *     never make it negative.
+ *
+ * `viscosity` is 0..1, normalised by params.ts (the ONE canonical mapping);
+ * 0 is neutral, so a project painted before the key existed renders
+ * byte-identically. The value is consumed only while stepping fluid — never
+ * in a settle, bleach or display pass — so a later change cannot re-process
+ * already-settled pigment.
+ */
+
 /** All sliders are normalised 0..1. */
 export interface Params {
   size: number;
@@ -22,11 +44,13 @@ export interface Params {
   edge: number;        // tide-line darkening at drying edges
   granulation: number; // pigment settling into the paper grain
   lift: number;        // Lift per-dab erase amount (0..0.9)
+  viscosity: number;   // Phase 64: medium thickness — raises dissipation, lowers spread (0..1)
 }
 
 export const DEFAULT_PARAMS: Params = {
   size: 0.5, water: 0.6, load: 0.5, flow: 0.45, bleed: 0.5, dry: 0.4, edge: 0.5, granulation: 0.45,
   lift: 0.22,
+  viscosity: 0,
 };
 
 export interface EngineCallbacks {
@@ -2217,6 +2241,7 @@ export class WatercolorEngine {
     const simTexel = [1 / vel.w, 1 / vel.h];
     const texel = [1 / this.dw, 1 / this.dh];
     const flow = this.params.flow;
+    const viscosity = this.params.viscosity;
     const rect = this.active!;
 
     P.advectVelocity.bind();
@@ -2224,7 +2249,7 @@ export class WatercolorEngine {
     gl.uniform1i(P.advectVelocity.u.uWet, g.bindTex(1, this.wet.read.tex[0]));
     gl.uniform2fv(P.advectVelocity.u.uTexel, simTexel);
     gl.uniform1f(P.advectVelocity.u.uDt, dt);
-    gl.uniform1f(P.advectVelocity.u.uDissipation, Math.exp(-dt * (3.0 - flow * 2.4)) * (fixing ? Math.exp(-dt * 7) : 1));
+    gl.uniform1f(P.advectVelocity.u.uDissipation, Math.exp(-dt * (3.0 - flow * 2.4 + viscosity * 12.0)) * (fixing ? Math.exp(-dt * 7) : 1));
     g.draw(vel.write); vel.swap();
 
     P.curl.bind();
@@ -2272,7 +2297,7 @@ export class WatercolorEngine {
     gl.uniform2fv(P.advectWet.u.uTexel, texel);
     gl.uniform1f(P.advectWet.u.uDt, dt);
     gl.uniform1f(P.advectWet.u.uDecay, Math.exp(-dt / this.dryTau()));
-    gl.uniform1f(P.advectWet.u.uSpread, 0.12);
+    gl.uniform1f(P.advectWet.u.uSpread, 0.12 * (1 - viscosity * 0.9));
     g.draw(this.wet.write, rect); this.wet.swap();
 
     // fixing: bleach under white gouache, then settle mobile pigment into the paper

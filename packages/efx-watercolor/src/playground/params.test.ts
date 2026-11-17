@@ -50,7 +50,18 @@ describe('toEngineParams', () => {
 
   it('maps the seven canonical globals onto 0..1', () => {
     expect(toEngineParams({ water: 50, load: 25, flow: 100, bleed: 0, dry: 75, edge: 60, granulation: 40 }))
-      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22 });
+      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0 });
+  });
+
+  // Phase 64 (v2.2.0): the medium bag's first key. 0 is neutral — an absent
+  // key must replay a pre-milestone stroke byte-identically.
+  it('maps the Viscosity global 0..100 onto the 0..1 medium bag', () => {
+    expect(toEngineParams({ viscosity: 0 }).viscosity).toBe(0);
+    expect(toEngineParams({ viscosity: 100 }).viscosity).toBe(1);
+    expect(toEngineParams({ viscosity: 37 }).viscosity).toBe(0.37);
+    // T-64-01: an out-of-track value is clamped in the ONE mapping.
+    expect(toEngineParams({ viscosity: 250 }).viscosity).toBe(1);
+    expect(toEngineParams({ viscosity: -40 }).viscosity).toBe(0);
   });
 
   it('maps Lift strength 0..100 onto the 0..0.9 erase amount', () => {
