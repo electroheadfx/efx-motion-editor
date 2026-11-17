@@ -190,6 +190,34 @@ export function applyAquarelleMedium(id: string): void {
 }
 
 /**
+ * Phase 64 (D-01): the Paint-tab medium dropdown popover. Studio UI state
+ * only, never persisted — the selected medium itself stays on
+ * aquarelleSelectedMediumId. `anchor` is the trigger row's viewport rect
+ * corner; the menu renders viewport-fixed under it.
+ */
+export const aquarelleMediumMenuOpen = signal(false);
+export const aquarelleMediumMenuAnchor = signal<{ left: number; top: number } | null>(null);
+
+/**
+ * Compare-then-write (efx-preact-reactivity rule 3). The anchor is only
+ * meaningful while opening, and a plain close never rewrites it — the mirror
+ * of setAquarelleTextureMenuOpen. Event handlers only, never a render body.
+ */
+export function setAquarelleMediumMenuOpen(
+  open: boolean,
+  anchor?: { left: number; top: number },
+): void {
+  if (open && anchor) {
+    const current = aquarelleMediumMenuAnchor.value;
+    if (!current || current.left !== anchor.left || current.top !== anchor.top) {
+      aquarelleMediumMenuAnchor.value = { ...anchor };
+    }
+  }
+  if (aquarelleMediumMenuOpen.value === open) return;
+  aquarelleMediumMenuOpen.value = open;
+}
+
+/**
  * quick 261116-inu / Task 8: TWO sizes, one law, no shared state. The PAINT
  * size is `aquarelleParams.size` — the canonical the Brush paints with, shown
  * in px by every paint-size control. The LIFT size is the eraser's own

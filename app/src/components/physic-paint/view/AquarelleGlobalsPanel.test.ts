@@ -2,24 +2,34 @@
  * 261017-wmw I-02 — AquarelleGlobalsPanel contract pins.
  *
  * Laws pinned here (one file per visual unit):
- *   7 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
- *   Dry speed (keys stay water/load/flow/bleed/edge/granulation/dry)
+ *   Phase 64 (D-01/D-07): the medium dropdown is the FIRST child row and names
+ *   the selected medium; five items render in the fixed D-18 order
+ *   (Watercolor, Gouache, Chalk, Graphite, Acrylic)
+ *   8 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
+ *   Dry speed, Viscosity (keys stay
+ *   water/load/flow/bleed/edge/granulation/dry/viscosity)
  *   no Size control (top-bar owns it, Q1a) and no Hand row
- *   Reset writes playground DEFAULT_PARAMS ×100 for the 7 non-size keys via
- *   setAquarelleParam and never writes size (T-261017-WMW-01)
+ *   Reset writes playground DEFAULT_PARAMS ×100 for every non-size row via
+ *   setAquarelleParam and never writes size or lift (T-261017-WMW-01)
  *   no Brush response chrome in this panel (I-02 puts it in BrushResponsePanel)
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
  * Render tests materialize the vnode tree (no DOM environment).
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_MEDIUM_ID } from '@efxlab/efx-watercolor';
 import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
+  DEFAULT_AQUARELLE_PARAMS,
+  aquarelleMediumMenuAnchor,
+  aquarelleMediumMenuOpen,
   aquarelleParams,
+  aquarelleSelectedMediumId,
   recordAquarelleStroke,
+  setAquarelleMediumMenuOpen,
   setAquarelleParam,
 } from './aquarelleRecordState';
 import {
@@ -143,7 +153,8 @@ function collectOrderedLabels(tree: TestVNode): string[] {
   return [...seen];
 }
 
-/** I-01/I-02 playground order (SettingsPanel SLIDERS minus Size and Hand). */
+/** I-01/I-02 playground order (SettingsPanel SLIDERS minus Size and Hand),
+ *  with Phase 64's Viscosity appended LAST. */
 const GLOBAL_LABELS = [
   'Water',
   'Pigment',
@@ -152,9 +163,14 @@ const GLOBAL_LABELS = [
   'Edges',
   'Grain',
   'Dry speed',
+  'Viscosity',
 ] as const;
 
-/** Playground DEFAULT_PARAMS ×100 for the 7 non-size keys. */
+/** D-18 display names in the fixed MEDIUM_IDS order. `pastel` displays
+ *  "Chalk" deliberately — the id is not the label. */
+const MEDIUM_NAMES = ['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic'] as const;
+
+/** Playground DEFAULT_PARAMS ×100 for the 8 non-size rows. */
 const RESET_EXPECTED = {
   water: 60,
   load: 50,
@@ -163,10 +179,22 @@ const RESET_EXPECTED = {
   edge: 50,
   granulation: 45,
   dry: 40,
+  viscosity: 0,
 } as const;
 
+beforeEach(() => {
+  aquarelleParams.value = { ...DEFAULT_AQUARELLE_PARAMS };
+  aquarelleSelectedMediumId.value = DEFAULT_MEDIUM_ID;
+  aquarelleMediumMenuOpen.value = false;
+  aquarelleMediumMenuAnchor.value = null;
+});
+
+function findTestId(tree: TestVNode, testId: string): TestVNode | undefined {
+  return [...walk(tree)].find((node) => node.props?.['data-testid'] === testId);
+}
+
 describe('AquarelleGlobalsPanel sliders (I-02)', () => {
-  it('renders the 7 named global slider labels in playground order', () => {
+  it('renders the 8 named global slider labels in playground order', () => {
     const tree = renderPanel();
     const ordered = collectOrderedLabels(tree).filter((l) =>
       (GLOBAL_LABELS as readonly string[]).includes(l),
@@ -188,7 +216,7 @@ describe('AquarelleGlobalsPanel sliders (I-02)', () => {
     expect(/\bsize\b/i.test(text), 'found size text in panel').toBe(false);
   });
 
-  it('renders nothing but the 7 sliders + Reset (no response chrome)', () => {
+  it('renders nothing but the 8 sliders + Reset (no response chrome)', () => {
     const tree = renderPanel();
     const text = textContent(tree);
     expect(text).not.toContain('Brush response');
@@ -207,7 +235,7 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(textContent(reset).trim()).toBe('Reset');
   });
 
-  it('Reset writes the ×100 playground defaults through setAquarelleParam and never writes size', () => {
+  it('Reset writes the ×100 playground defaults through setAquarelleParam and never writes size or lift', () => {
     setAquarelleParam('size', 77);
     setAquarelleParam('water', 1);
     setAquarelleParam('load', 2);
@@ -216,6 +244,8 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     setAquarelleParam('edge', 5);
     setAquarelleParam('granulation', 6);
     setAquarelleParam('dry', 7);
+    setAquarelleParam('viscosity', 55);
+    setAquarelleParam('lift', 33);
 
     const tree = renderPanel();
     const reset = [...walk(tree)].find(
@@ -234,13 +264,138 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(params.edge, 'edge → 50').toBe(RESET_EXPECTED.edge);
     expect(params.granulation, 'granulation → 45').toBe(RESET_EXPECTED.granulation);
     expect(params.dry, 'dry → 40').toBe(RESET_EXPECTED.dry);
-    // T-261017-WMW-01: Reset must never write size (top-bar Brush size owns it).
+    expect(params.viscosity, 'viscosity → 0').toBe(RESET_EXPECTED.viscosity);
+    // T-261017-WMW-01: Reset must never write size (top-bar Brush size owns it)
+    // and never touches the eraser strength.
     expect(params.size, 'size is untouched by Reset').toBe(77);
+    expect(params.lift, 'lift is untouched by Reset').toBe(33);
+  });
+});
+
+// Phase 64 (D-01/D-03/D-07) — the medium dropdown leads the Paint tab.
+describe('Phase 64 medium dropdown', () => {
+  it('leads the panel with the dropdown row and names the selected medium', () => {
+    const tree = renderPanel();
+    const root = findTestId(tree, 'aquarelle-globals-panel');
+    expect(root, 'panel root must render').toBeTruthy();
+    const firstChild = childrenOf(root!)[0] as TestVNode | undefined;
+    expect(firstChild?.props?.['data-testid'], 'the medium row is first').toBe(
+      'aquarelle-medium-row',
+    );
+    const trigger = findTestId(tree, 'aquarelle-medium-trigger');
+    expect(trigger, 'the trigger must render').toBeTruthy();
+    const text = textContent(trigger);
+    expect(text, 'the row names the control').toContain('Medium');
+    expect(text, 'the row names the selected medium').toContain('Watercolor');
+  });
+
+  it('renders eight slider rows below the dropdown, Viscosity last', () => {
+    const tree = renderPanel();
+    const sliders = [...walk(tree)].filter(
+      (node) => node.props?.['data-testid'] === 'slider-stepper',
+    );
+    expect(sliders, 'eight slider rows at this wave').toHaveLength(GLOBAL_LABELS.length);
+    const ordered = collectOrderedLabels(tree).filter((label) =>
+      (GLOBAL_LABELS as readonly string[]).includes(label),
+    );
+    expect(ordered).toEqual([...GLOBAL_LABELS]);
+    expect(ordered[ordered.length - 1]).toBe('Viscosity');
+  });
+
+  it('renders no menu until the popover state opens', () => {
+    expect(findTestId(renderPanel(), 'aquarelle-medium-menu')).toBeUndefined();
+  });
+
+  it('lists the five D-18 names in the fixed order and marks the selection', () => {
+    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
+    const tree = renderPanel();
+    const menu = findTestId(tree, 'aquarelle-medium-menu');
+    expect(menu, 'an open popover must render').toBeTruthy();
+    expect(menu!.props?.['role']).toBe('menu');
+    expect(menu!.props?.['aria-label']).toBe('Medium');
+    const items = [...walk(menu!)].filter((node) => {
+      const id = node.props?.['data-testid'];
+      return typeof id === 'string' && id.startsWith('aquarelle-medium-item-');
+    });
+    expect(items, 'one item per medium').toHaveLength(5);
+    expect(items.map((item) => textContent(item).trim())).toEqual([...MEDIUM_NAMES]);
+    expect(items[0]!.props?.['aria-checked'], 'Watercolor is selected').toBe(true);
+    expect(items[1]!.props?.['aria-checked'], 'Gouache is not').toBe(false);
+    const active = items.filter((item) => String(item.props?.['class'] ?? '').includes('active'));
+    expect(active, 'exactly one active row').toHaveLength(1);
+  });
+
+  it('opens from the trigger with the row anchor and closes on a second press', () => {
+    const trigger = findTestId(renderPanel(), 'aquarelle-medium-trigger');
+    expect(trigger, 'the trigger must render').toBeTruthy();
+    (trigger!.props?.['onClick'] as (event: unknown) => void)({
+      currentTarget: { getBoundingClientRect: () => ({ left: 24, bottom: 96 }) },
+    });
+    expect(aquarelleMediumMenuOpen.value).toBe(true);
+    expect(aquarelleMediumMenuAnchor.value).toEqual({ left: 24, top: 102 });
+    const reopened = findTestId(renderPanel(), 'aquarelle-medium-trigger');
+    (reopened!.props?.['onClick'] as (event?: unknown) => void)();
+    expect(aquarelleMediumMenuOpen.value).toBe(false);
+  });
+
+  it('applies the picked record in one bag write and closes the menu', () => {
+    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-medium-item-acrylic');
+    expect(item, 'the acrylic item must render').toBeTruthy();
+    let writes = 0;
+    const stop = aquarelleParams.subscribe(() => {
+      writes += 1;
+    });
+    writes = 0;
+    (item!.props?.['onClick'] as () => void)();
+    stop();
+    expect(writes, 'one spread assignment, not a per-key cascade').toBe(1);
+    expect(aquarelleParams.value.water, 'acrylic water').toBe(8);
+    expect(aquarelleParams.value.body, 'acrylic body').toBe(90);
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
+    expect(aquarelleMediumMenuOpen.value).toBe(false);
+  });
+
+  it('re-picking the selected medium restores a drifted neutral record', () => {
+    setAquarelleParam('water', 91);
+    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-medium-item-watercolor');
+    (item!.props?.['onClick'] as () => void)();
+    expect(aquarelleParams.value.water, 'the neutral record land back').toBe(50);
+    expect(aquarelleParams.value.load).toBe(50);
+    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+  });
+
+  it('draws no edited marker after a manual global tweak', () => {
+    setAquarelleParam('water', 91);
+    expect(/\bedited\b/i.test(textContent(renderPanel())), 'no edited marker').toBe(false);
+    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+  });
+
+  it('source pins: captured close listeners, Escape, signals only', () => {
+    const body = stripComments(
+      readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'AquarelleGlobalsPanel.tsx'), 'utf8'),
+    );
+    expect(body).toContain("window.addEventListener('pointerdown', onPointerDown, true);");
+    expect(body).toContain("window.addEventListener('keydown', onKeyDown, true);");
+    expect(body).toContain("window.removeEventListener('pointerdown', onPointerDown, true);");
+    expect(body).toContain("window.removeEventListener('keydown', onKeyDown, true);");
+    expect(body).toContain("event.key !== 'Escape'");
+    expect(body).toContain('event.preventDefault();');
+    expect(body).toContain('event.stopPropagation();');
+    expect(body).toContain('}, [menuOpen]);');
+    expect(body, 'signals only — never useState').not.toContain('useState');
+    expect(body).toContain('data-aquarelle-medium-trigger');
+    expect(body).toContain('applyAquarelleMedium(medium.id);');
+    expect(body.split('MEDIUMS.map(').length - 1, 'one item list').toBe(1);
+    expect(body).toContain('role="menuitemradio"');
+    expect(body).toContain('aria-checked={active}');
+    expect(body).toContain('data-testid="aquarelle-medium-menu"');
   });
 });
 
 // 261018-gqo move 2: vertical breathing room — the shared option-group gap
-// stacks the seven rows, and RuleSectionHeader carries the section margin.
+// stacks the rows, and RuleSectionHeader carries the section margin.
 describe('261018-gqo spacing rhythm', () => {
   it('globals panel rides the shared option-group row gap', () => {
     const tree = renderPanel() as TestVNode;
@@ -264,7 +419,7 @@ describe('261018-gqo spacing rhythm', () => {
 });
 
 // quick 261111-ucf — each global row commits at its release boundary and
-// Reset sends ONE seven-key batch after its seven live writes. Id band
+// Reset sends ONE eight-key batch after its eight live writes. Id band
 // 10721+.
 describe('quick 261111-ucf globals release commits + Reset batch', () => {
   afterEach(() => {
@@ -273,7 +428,7 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     clearScriptStrokeSelection();
   });
 
-  it('Reset commits ONE seven-key params patch after the seven live writes', () => {
+  it('Reset commits ONE eight-key params patch after the eight live writes', () => {
     recordAquarelleStroke(10721, stroke10721([point10721(0.5, 0.5)]));
     const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
     const promise = Promise.resolve(true);
