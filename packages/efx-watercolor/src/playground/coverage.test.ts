@@ -59,7 +59,7 @@ const CALLBACK = () =>
     'this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {',
     '});',
   )
-const COVER_METHOD = () => sliceBetween(ENGINE_SOURCE, 'private coverPass(', 'private brushInk(')
+const COVER_METHOD = () => sliceBetween(ENGINE_SOURCE, 'private coverPass(', 'private brushWet(')
 
 describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
   it('guards both the protections and the per-dab draw behind bodyCurve(P.body)', () => {

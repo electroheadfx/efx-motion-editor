@@ -8,6 +8,9 @@ import { COEFFS, pigmentFromHex, type Pigment } from './spectral';
 // one authority for the bound, shared by the profile law and this channel.
 import { ANCHOR_WIDTH_MAX, ANCHOR_WIDTH_MIN } from '../vector/spine';
 import { WET_THRESHOLD, isSheetWet } from './wetState';
+// Phase 64 (D-14): the ONE perceptual Body curve, shared by the cover pass
+// here and spec 08's scattering deposit — never a second inline curve.
+import { bodyCurve } from './scattering';
 
 export type Tool = 'brush' | 'water' | 'pen' | 'lift';
 
@@ -2046,12 +2049,36 @@ export class WatercolorEngine {
         // so the render and the undo history stay untouched at the neutral
         // default (the bit-identity law).
         const reliefAmount = P.emboss * amount;
+        // Phase 64 (MED-19..MED-22, spec 06): Body is ORDER. Before a dab
+        // deposits, it erodes the settled pigment and the thickness under its
+        // own tip. The amount is D-14's one perceptual curve declared in
+        // scattering.ts (shared with spec 08's scattering); 0 is inert by
+        // construction, so the neutral gate stays byte-identical.
+        const coverAmount = bodyCurve(P.body);
         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
         const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, this.pigment.white * amount * 1.6];
+        if (coverAmount > 0) {
+          // Ordering hazard (spec 06): the cover pass runs BEFORE brushInk, so
+          // the deposit's own touch() comes too late to restore a relief this
+          // pass already eroded. These two protections are the ONLY undo
+          // coverage the eroded region gets: they are taken ONCE per stamp,
+          // before the first cover draw, on a rect that covers every dab
+          // eachDab can produce — the dab radius grown by the largest size
+          // jitter and the largest scatter displacement, with the extent the
+          // cover draw itself uses.
+          const coverRect = this.stampRect(x, y, r * (1 + b.sizeJitter + b.scatter), this.dw, this.dh, 2);
+          this.touch(coverRect);
+          // 261028-k03 D1 / MED-22: the settled pool is saved the same way
+          // lift() saves it — the cover pass is the second (and only other)
+          // path that reaches dry, settled pigment.
+          const m = PROTECT_MARGIN;
+          this.history.protect(1, { x0: Math.max(0, coverRect.x0 - m), y0: Math.max(0, coverRect.y0 - m), x1: Math.min(this.dw, coverRect.x1 + m), y1: Math.min(this.dh, coverRect.y1 + m) }, this.fixed.views);
+        }
         this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
           // spec 06: the cover pass draws here, before this dab's deposit
+          if (coverAmount > 0) this.coverPass(dx, dy, dr, angle, coverAmount, dryness, grainThr);
           this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
           if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
           // soft brushes wet a little beyond the tip; textured ones keep their
@@ -2194,6 +2221,50 @@ export class WatercolorEngine {
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE);
     this.drawStamp(this.ink.read, x, y, r, angle, c0, c1, 0, grain, grainThr);
+    gl.disable(gl.BLEND);
+  }
+
+  /**
+   * Phase 64 (MED-19..MED-22, spec 06): the cover pass — per dab, erode the
+   * SETTLED pigment and the paint thickness under the dab's own tip, before
+   * the dab deposits. It is exactly Lift's multiplicative draw with the stroke
+   * brush's footprint and no tissue-water step: Body is order, not water.
+   *
+   * Spec 06's four design questions, settled once and for all:
+   *  - Falloff: liftFS's exp(-(q·q)²) profile is kept and deliberately NOT
+   *    equalised with stampFS's hardness profile. The erase's shape IS the
+   *    cover's shape, its support is bounded by the same unconditional discard
+   *    at |q| > 1 and the same tip square the deposit uses, and the guardrail
+   *    against a halo or lip is the shared footprint binding below.
+   *  - Paper tooth: NO gate. liftFS declares none, and giving it one would
+   *    change the Lift tool's own erase; Body is order, and the deposit's own
+   *    uGrain gate (and, later, scattering) owns appearance.
+   *  - Lightening: not here. The cover pass only replaces; spec 08's
+   *    scattering composes on top through the SAME curve in scattering.ts.
+   *  - Placement: the Body row sits between Viscosity and Emboss (D-07).
+   *
+   * ONE extra multiplicative draw per dab into two targets that already
+   * exist: no new program, no new target, no new uniform, no allocation. The
+   * grain uniforms are inert here — liftFS declares no uPaper, uGrain,
+   * uGrainThr, uRough or uJitter, and WebGL2 silently ignores a uniform whose
+   * location is absent — so one bindFootprint serves both programs and the
+   * footprint can never diverge. Undo is NOT taken here: the caller protects
+   * both pools once per stamp, before the first call, because the deposit's
+   * own undo protection comes too late to save a relief this draw has
+   * already eroded.
+   */
+  private coverPass(x: number, y: number, r: number, angle: number, amount: number, grain: number, grainThr: number) {
+    const { gl, g } = this;
+    const p = this.programs.lift;
+    p.bind();
+    this.bindFootprint(this.programs.lift, x, y, r, angle, 0, grain, grainThr);
+    gl.uniform1f(p.u.uAmount, amount);
+    const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+    g.draw(this.fixed, rect);
+    g.draw(this.relief, rect);
     gl.disable(gl.BLEND);
   }
 

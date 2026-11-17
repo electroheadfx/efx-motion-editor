@@ -24,9 +24,19 @@
 // ============================================================
 
 /** D-14's exponent: low-mid Body stays a glaze; 1.0 still reaches a true cover. */
-export const BODY_CURVE_EXPONENT = 0;
+export const BODY_CURVE_EXPONENT = 6;
 
-/** RED skeleton: GREEN replaces this with `clamp01(body) ^ BODY_CURVE_EXPONENT`. */
-export function bodyCurve(_body: number): number {
-  return Number.NaN;
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * The one perceptual Body curve (D-14): `clamp01(body) ^ BODY_CURVE_EXPONENT`.
+ * The input is the canonical 0..1 `P.body`; a non-finite value maps to the
+ * neutral 0. Exact values the phase pins: 0 → 0, 0.5 → 0.015625 (a glaze),
+ * 1 → 1 (a true cover at the tip core).
+ */
+export function bodyCurve(body: number): number {
+  if (!Number.isFinite(body)) return 0;
+  return Math.pow(clamp01(body), BODY_CURVE_EXPONENT);
 }
