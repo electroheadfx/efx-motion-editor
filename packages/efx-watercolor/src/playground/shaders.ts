@@ -646,6 +646,13 @@ void main(){
 /**
  * Final composite: spectral reconstruction of pigment on paper.
  *
+ * Phase 64 (MED-34 / MED-35) — each display band reconstructs through the
+ * two-constant Kubelka-Munk layer-over-white form from the settled scattering
+ * scalar (the mobile plus the fixed alpha), calibrated by half the absorption
+ * exponent so a scattering-free fragment evaluates the legacy exponential
+ * verbatim. The scalar is scaled by the granulation factor beside the
+ * coefficients (D-16), and the paper term stays the final multiply (D-15).
+ *
  * Phase 64 (MED-15) — the paint thickness field shades as a lit relief:
  *   normal     one document texel of central difference, the same law
  *              paperLightFS uses (uReliefBump = 1.0, fixed, never zoom-scaled)
@@ -706,8 +713,13 @@ void main(){
 
   vec4 paper = mix(texture(uPaper, uv), vec4(0.5), uFlat);
   vec4 iB = texture(uInkB, uv);
+  vec4 fB = texture(uFixedB, uv);
   vec4 a = texture(uInkA, uv) + texture(uFixedA, uv);
-  vec3 b = iB.rgb + texture(uFixedB, uv).rgb;
+  vec3 b = iB.rgb + fB.rgb;
+  // Phase 64 (MED-34): the settled scattering scalar, one broadband value for
+  // every band. It is scaled with the coefficients below, so the grainiest
+  // paint is also the most variable in opacity (D-16).
+  float scatter = iB.a + fB.a;
 
   // Granulation: pigment settles into the valleys of the paper.
   float d0 = a.x;
@@ -717,7 +729,7 @@ void main(){
   float bt = density(uv - vec2(0.0, uTexel.y)), t = density(uv + vec2(0.0, uTexel.y));
   float edge = min(length(vec2(r - l, t - bt)) / (d0 + 1.0), 1.0);
   float k = mix(gran * (1.0 + uEdgeDarken * edge), 1.0, uFlat);
-  a *= k; b *= k;
+  a *= k; b *= k; scatter *= k;
 
   vec3 rgb = vec3(0.0);
   float tr;

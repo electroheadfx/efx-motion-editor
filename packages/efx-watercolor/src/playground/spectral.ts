@@ -1,3 +1,4 @@
+import { SCATTER_EPSILON, SCATTERING_MAX } from './scattering';
 import { BASIS, DISPLAY_BANDS, DISPLAY_RGB_WEIGHTS, PRIMARIES, SPECTRAL_EPSILON } from './spectralData';
 
 /** Number of absorbance coefficients stored per texel. */
@@ -80,15 +81,86 @@ export function mixToHex(parts: { pigment: Pigment; amount: number }[]): string 
 }
 
 /** Basis value at the display bands, laid out for the shader: vec4 + vec3 per band. */
+/**
+ * Kubelka-Munk display band block (64-10, MED-34 / MED-35).
+ *
+ * Each display band reconstructs with the two-constant Kubelka-Munk form for a
+ * layer over a white background. For a band with clamped absorption exponent A
+ * and settled scattering S:
+ *
+ *   k    = 0.5 A                       the half-exponent calibration: at S = 0
+ *                                      the squared transmittance is exactly
+ *                                      exp(-A), the expression the shader has
+ *                                      always evaluated
+ *   arg  = sqrt(k (2S + k))
+ *   R    = S sinh(arg) / den           the reflectance of the layer over black
+ *   T    = arg / den                   its transmittance
+ *   den  = (k + S) sinh(arg) + arg cosh(arg)
+ *   band = R + T^2 / (1 - R)           its reflectance over a white background
+ *
+ * A band with no absorption (k = 0) returns 1: the continuous limit of that
+ * form, and the physical reflectance of a non-absorbing scatterer over white.
+ * No division can reach zero. For k > 0 the reflectance of the finite layer is
+ * always strictly below one, so 1 - R has a positive lower bound, and the
+ * emitted block evaluates that complement directly — (k sinh + arg cosh) / den
+ * — so it never rounds to zero either.
+ *
+ * The raw sinh/cosh denominator is not emitted: it overflows float32 once the
+ * argument passes about 88, which a few dozen overlapping Body-100 dabs reach,
+ * and an overflowed denominator turns the band into NaN. The block therefore
+ * emits the algebraically identical form normalized by exp(-arg), where
+ * exp(-arg) sinh(arg) = (1 - e)/2 and exp(-arg) cosh(arg) = (1 + e)/2 with
+ * e = exp(-2 arg) in (0, 1], and the transmittance carries exp(-arg) = sqrt(e).
+ * Every term is then bounded for any finite absorption and scattering.
+ *
+ * The block branches on the scattering scalar S. At or below SCATTER_EPSILON it
+ * emits the legacy exponential lines character for character, so a
+ * scattering-free render stays byte-identical to the committed baseline (D-17).
+ * The epsilon and the one-dab deposit maximum are interpolated from
+ * ./scattering — never retyped below.
+ */
 export function displayBasisGLSL(): string {
   const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : v.toPrecision(7));
-  const lines: string[] = [];
+  const scattered: string[] = [];
+  const legacy: string[] = [];
   DISPLAY_BANDS.forEach((band, i) => {
     const b = BASIS.map(v => v[band]);
     const w = DISPLAY_RGB_WEIGHTS[i];
-    lines.push(
-      `  tr = exp(-max(dot(a, vec4(${b.slice(0, 4).map(f).join(',')})) + dot(b, vec3(${b.slice(4, 7).map(f).join(',')})), 0.0));\n` +
+    const basis = `dot(a, vec4(${b.slice(0, 4).map(f).join(',')})) + dot(b, vec3(${b.slice(4, 7).map(f).join(',')}))`;
+    legacy.push(
+      `  tr = exp(-max(${basis}, 0.0));\n` +
       `  rgb += tr * vec3(${w.map(f).join(',')});`);
+    scattered.push(
+      `    float kmK${i} = 0.5 * max(${basis}, 0.0);\n` +
+      `    float kmBand${i};\n` +
+      `    if (kmK${i} <= 0.0){\n` +
+      `      kmBand${i} = 1.0;\n` +
+      `    } else {\n` +
+      `      float kmArg${i} = sqrt(kmK${i} * (2.0 * scatter + kmK${i}));\n` +
+      `      float kmE${i} = exp(-2.0 * kmArg${i});\n` +
+      `      float kmSh${i} = 0.5 * (1.0 - kmE${i});\n` +
+      `      float kmCh${i} = 0.5 * (1.0 + kmE${i});\n` +
+      `      float kmDen${i} = (kmK${i} + scatter) * kmSh${i} + kmArg${i} * kmCh${i};\n` +
+      `      float kmR${i} = scatter * kmSh${i} / kmDen${i};\n` +
+      `      float kmT${i} = kmArg${i} * sqrt(kmE${i}) / kmDen${i};\n` +
+      `      float kmOm${i} = (kmK${i} * kmSh${i} + kmArg${i} * kmCh${i}) / kmDen${i};\n` +
+      `      kmBand${i} = kmR${i} + kmT${i} * kmT${i} / kmOm${i};\n` +
+      `    }\n` +
+      `    rgb += kmBand${i} * vec3(${w.map(f).join(',')});`);
   });
-  return lines.join('\n');
+  return [
+    '  // Kubelka-Munk layer over white (64-10, MED-34 / MED-35): each band is the',
+    "  // layer's reflectance over black plus its squared transmittance over one",
+    '  // minus that reflectance. S = scatter; one unit-amount Body-100 dab peaks at',
+    `  // SCATTERING_MAX = ${f(SCATTERING_MAX)}, and the settled channel accumulates past it.`,
+    '  // Each term is normalized by exp(-arg), so the hyperbolic forms stay',
+    '  // bounded for any finite absorption and scattering. At or below the epsilon',
+    '  // the legacy lines run verbatim, so a scattering-free render is',
+    '  // byte-identical to the committed baseline.',
+    `  if (scatter > ${f(SCATTER_EPSILON)}){`,
+    scattered.join('\n'),
+    '  } else {',
+    legacy.join('\n'),
+    '  }',
+  ].join('\n');
 }
