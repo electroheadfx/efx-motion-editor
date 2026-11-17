@@ -20,6 +20,12 @@
 //      upload), and a resize copies the overlapping thickness.
 //   4. Thickness is engine-internal state: no persistence module and
 //      no Rust file names it.
+//   5. reliefFS declares exactly the stamp footprint uniforms plus
+//      uAmount, with the same paper-tooth gate and tip-rotation law.
+//   6. The deposit is one per dab, inside the brush callback, after the
+//      ink and before the wet branch, additive and guarded at emboss 0;
+//      Lift erodes with the same rect and amount.
+//   7. No step, fill, pen or vector path reads or writes the target.
 // ============================================================
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -29,6 +35,7 @@ import { describe, expect, it } from 'vitest'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ENGINE_SOURCE = readFileSync(resolve(HERE, 'Engine.ts'), 'utf8')
+const SHADERS_SOURCE = readFileSync(resolve(HERE, 'shaders.ts'), 'utf8')
 const REPO_ROOT = resolve(HERE, '..', '..', '..', '..')
 
 /** Slice the engine source between two literal anchors; throws when absent. */
@@ -71,6 +78,28 @@ function splitTopLevel(inner: string): string[] {
   }
   if (current.trim().length > 0) out.push(current.trim())
   return out
+}
+
+/** The template-literal body of one exported shader in shaders.ts. */
+function shaderSource(name: string): string {
+  const decl = SHADERS_SOURCE.indexOf(`export const ${name} = `)
+  expect(decl, `shader ${name} not declared`).toBeGreaterThanOrEqual(0)
+  const open = SHADERS_SOURCE.indexOf('`', decl)
+  const close = SHADERS_SOURCE.indexOf('`;', open + 1)
+  expect(open, `shader ${name} template literal not opened`).toBeGreaterThan(decl)
+  expect(close, `shader ${name} template literal not closed`).toBeGreaterThan(open)
+  return SHADERS_SOURCE.slice(open + 1, close)
+}
+
+/** Every uniform name a shader source declares, sorted (grouped declarations split). */
+function uniformNames(source: string): string[] {
+  const names: string[] = []
+  const re = /uniform\s+(?:sampler2D|float|vec2|vec3|vec4|int)\s+([^;]+);/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(source)) !== null) {
+    for (const name of match[1]!.split(',')) names.push(name.trim())
+  }
+  return names.sort()
 }
 
 /** Walk every file under `dir` whose name ends with one of `exts`. */
@@ -218,5 +247,127 @@ describe('engine-only state (MED-14 prohibitions)', () => {
       )
     })
     expect(offenders).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 5. The relief shader mirrors stampFS's footprint
+// ---------------------------------------------------------------------------
+
+// The footprint half of stampFS — one source both programs must declare, so a
+// tip change can never diverge between the pigment stamp and the deposit.
+const FOOTPRINT_UNIFORMS = [
+  'uAspect', 'uAxis', 'uGrain', 'uGrainThr', 'uJitter', 'uPaper', 'uPoint',
+  'uRadius', 'uRough', 'uRound', 'uTip', 'uTipAspect', 'uTipRotation',
+].sort()
+const PAPER_GATE = 'f *= mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);'
+const ROTATION_FORMULA = 'vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));'
+
+describe('reliefFS (MED-14)', () => {
+  it('declares exactly the stamp footprint uniforms plus uAmount, and one output', () => {
+    const stamp = uniformNames(shaderSource('stampFS'))
+    const relief = uniformNames(shaderSource('reliefFS'))
+    // stampFS = the footprint + the two colour outputs.
+    expect(stamp).toEqual([...FOOTPRINT_UNIFORMS, 'uColor0', 'uColor1'].sort())
+    // reliefFS = the same footprint + the deposit amount, nothing else.
+    expect(relief).toEqual([...FOOTPRINT_UNIFORMS, 'uAmount'].sort())
+    expect(shaderSource('reliefFS')).not.toContain('layout(location=1)')
+    expect(shaderSource('reliefFS')).toContain('o0 = vec4(uAmount * f);')
+  })
+
+  it('applies the same paper-tooth gate, rotation and dry re-threshold as stampFS', () => {
+    const stamp = shaderSource('stampFS')
+    const relief = shaderSource('reliefFS')
+    expect(stamp).toContain(PAPER_GATE)
+    expect(relief).toContain(PAPER_GATE)
+    expect(relief).toContain(ROTATION_FORMULA)
+    expect(relief).toContain('float th = uRough * 0.45;')
+    expect(relief).toContain('float dry = smoothstep(th, th + 0.02, t);')
+    expect(relief).toContain('float sharp = mix(t, dry, step(0.0001, uRough));')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 6. The per-dab deposit and the Lift erosion
+// ---------------------------------------------------------------------------
+
+describe('relief deposit (MED-14)', () => {
+  it('binds the footprint from one private helper shared by the stamp and the relief draw', () => {
+    expect(ENGINE_SOURCE.match(/private bindFootprint\(/g) ?? []).toHaveLength(1)
+    expect(ENGINE_SOURCE).toContain('relief: this.g.program(S.reliefFS),')
+    const drawStamp = sliceBetween(ENGINE_SOURCE, 'private drawStamp(', 'private drawRelief(')
+    expect(drawStamp).toContain('this.bindFootprint(')
+    // The stamp no longer binds the footprint uniforms itself.
+    expect(drawStamp).not.toContain('gl.uniform1f(p.u.uTipAspect')
+    const drawRelief = sliceBetween(ENGINE_SOURCE, 'private drawRelief(', 'private brushRelief(')
+    expect(drawRelief).toContain('this.bindFootprint(')
+    expect(drawRelief).toContain('gl.uniform1f(p.u.uAmount, amount);')
+    expect(drawRelief).toContain('g.draw(this.relief, rect)')
+  })
+
+  it('deposits once per dab inside the brush callback, after the ink and before the wet branch', () => {
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expect(brush).toContain('const reliefAmount = P.emboss * amount;')
+    const seam = brush.indexOf("// spec 06: the cover pass draws here, before this dab's deposit")
+    const inkAt = brush.indexOf('this.brushInk(')
+    const reliefAt = brush.indexOf('this.brushRelief(')
+    const wetAt = brush.indexOf('if (wet > 0) this.brushWet(')
+    expect(seam, 'the spec-06 seam comment is missing').toBeGreaterThanOrEqual(0)
+    expect(inkAt).toBeGreaterThan(seam)
+    expect(reliefAt).toBeGreaterThan(inkAt)
+    expect(wetAt).toBeGreaterThan(reliefAt)
+    expect(brush).toContain(
+      'if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);',
+    )
+  })
+
+  it('blends the deposit additively and draws only into the thickness target', () => {
+    const brushRelief = sliceBetween(ENGINE_SOURCE, 'private brushRelief(', 'private brushInk(')
+    expect(brushRelief).toContain('gl.enable(gl.BLEND);')
+    expect(brushRelief).toContain('gl.blendEquation(gl.FUNC_ADD);')
+    expect(brushRelief).toContain('gl.blendFunc(gl.ONE, gl.ONE);')
+    expect(brushRelief).toContain('this.drawRelief(')
+    expect(brushRelief).not.toContain('this.ink')
+    // brushInk already protected the identical rect in this same callback.
+    expect(brushRelief).not.toContain('touch(')
+  })
+
+  it('Lift erodes thickness with the same rect and amount under ZERO / ONE_MINUS_SRC_COLOR', () => {
+    const lift = sliceBetween(ENGINE_SOURCE, 'private lift(', 'private dryTau()')
+    expect(lift).toContain('gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
+    const fixedAt = lift.indexOf('g.draw(this.fixed, rect)')
+    const reliefAt = lift.indexOf('this.drawRelief(')
+    const offAt = lift.indexOf('gl.disable(gl.BLEND);')
+    expect(fixedAt).toBeGreaterThanOrEqual(0)
+    expect(reliefAt).toBeGreaterThan(fixedAt)
+    expect(offAt).toBeGreaterThan(reliefAt)
+    expect(lift).toContain('this.drawRelief(amount, x, y, r, angle, 0, 0, b, rect, 0, 0);')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 7. Thickness never flows, and no other tool deposits it
+// ---------------------------------------------------------------------------
+
+describe('thickness never flows (MED-14 prohibitions)', () => {
+  it('no step, fill or pen path reads or writes the thickness target', () => {
+    const step = sliceBetween(ENGINE_SOURCE, 'private step(dt: number) {', 'private drawDisplay(')
+    expect(step, 'the fluid step must not touch thickness').not.toContain('this.relief')
+    const fill = sliceBetween(ENGINE_SOURCE, 'fillStep(from: number', 'fillEnd()')
+    expect(fill, 'the bucket fill must not touch thickness').not.toContain('this.relief')
+    const pen = sliceBetween(ENGINE_SOURCE, "case 'pen': {", "case 'lift': {")
+    expect(pen.toLowerCase(), 'a pen stroke deposits no thickness').not.toContain('relief')
+    const vector = collectFiles(join(REPO_ROOT, 'packages', 'efx-watercolor', 'src', 'vector'), ['.ts'])
+      .filter((file) => !file.endsWith('.test.ts'))
+      .map((file) => readFileSync(file, 'utf8'))
+      .join('\n')
+    expect(vector, 'a vector stroke deposits no thickness').not.toContain('relief')
+  })
+
+  it('draws relief from exactly two call sites: the guarded deposit and the Lift erosion', () => {
+    expect(ENGINE_SOURCE.match(/this\.brushRelief\(/g) ?? []).toHaveLength(1)
+    expect(ENGINE_SOURCE.match(/this\.drawRelief\(/g) ?? []).toHaveLength(2)
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expect(brush.match(/this\.brushRelief\(/g) ?? []).toHaveLength(1)
   })
 })
