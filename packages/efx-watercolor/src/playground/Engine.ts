@@ -2409,6 +2409,21 @@ export class WatercolorEngine {
     gl.disable(gl.BLEND);
     g.draw(this.ink.write);
     this.ink.swap();
+    // Decay the snapshot by (1 - f) with the SAME solid core: the next dab
+    // removes only what remains, so overlapping dabs compose geometrically
+    // instead of subtracting the whole snapshot again. The stroke's own ink is
+    // never part of this decay.
+    const l = this.programs.lift;
+    l.bind();
+    this.bindFootprint(this.programs.lift, x, y, r, angle, 0, 0, 0);
+    gl.uniform1f(l.u.uCover, 1);
+    gl.uniform1f(l.u.uAmount, amount);
+    const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+    g.draw(this.preInk, rect);
+    gl.disable(gl.BLEND);
   }
 
   /** quick 261117-tq7: release the pre-stroke snapshot — a transient, never undo state. */

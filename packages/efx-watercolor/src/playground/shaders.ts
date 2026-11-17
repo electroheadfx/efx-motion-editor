@@ -334,19 +334,24 @@ void main(){
 }`;
 
 // quick 261117-tq7 (spec 09 law 3): the pre-stroke ink cover. The seven stored
-// coefficients are SIGNED spectral projections, so a per-channel preInk/ink
-// share is not a fraction: with ink_c < 0 the max(ink_c, 1e-6) denominator
-// collapses and the share degenerates to 0 or 1 channel by channel — the
-// display bands then invert (white patches and CMY at the crossings). The cover
-// is therefore ONE uniform factor, exactly like the settled draw: every channel
-// is scaled by the same 1 - f, with the same solid core liftFS's uCover = 1 law
-// uses (core = 1 - smoothstep(0.35, 1.0, q.q)). A uniform scale preserves the
-// hue and can never invert a band; repeated dabs compose as prod(1 - f),
-// matching coverPass and the cached-base punch.
+// coefficients are SIGNED spectral projections, so neither a per-channel share
+// (it collapses for ink_c < 0 and inverts bands) nor a uniform scale of the
+// whole texel (it also erases the covering stroke's own ink, punching white
+// holes through a textured deposit) can produce order. The cover therefore
+// removes ONLY the snapshot's CURRENT amount, under the same solid core
+// liftFS's uCover = 1 law uses (core = 1 - smoothstep(0.35, 1.0, q.q)):
 //
-// The stroke-start preInk snapshot is also the presence gate: the cover acts
-// only where paint existed before this stroke, so blank paper keeps the
-// stroke's full accumulated density. It is released with the stroke.
+//   ink_new = ink - f * pre        (this shader)
+//   pre_new = pre * (1 - f)        (the caller's liftFS decay, right after)
+//
+// The pair is exactly the spec's subtraction, composed geometrically across
+// overlapping dabs instead of overshooting: the first dab removes f*P, the
+// next f*(1-f)*P, and so on. Only the pre-stroke pigment is touched — the
+// stroke's own deposit is never scaled, so the centre keeps its density and
+// its hue. Both operands are valid pigment coefficient vectors, so the result
+// is valid too; no channel can be zeroed independently (no inversion).
+//
+// The stroke-start preInk snapshot is released with the stroke.
 //
 // Full-document draw, no scissor, no discard: core is exactly 0 outside the
 // footprint (q.q >= 1), so the shader emits the sampled texel unchanged there —
@@ -362,19 +367,13 @@ void main(){
   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
   q.y /= uTipAspect;
   float f = uAmount * (1.0 - smoothstep(0.35, 1.0, dot(q, q)));
-  // The gate is the stroke-start snapshot's presence: the cover only acts
-  // where paint existed before this stroke, so a stroke over blank paper keeps
-  // its full accumulated density. The L1 norms are sign-safe.
   vec4 preA = texture(uPreA, vUv);
   vec4 preB = texture(uPreB, vUv);
-  float present = max(dot(abs(preA), vec4(1.0)), dot(abs(preB), vec4(1.0)));
-  f *= smoothstep(1e-4, 1e-3, present);
   vec4 inkA = texture(uInkA, vUv);
   vec4 inkB = texture(uInkB, vUv);
-  // One factor for every channel: the coefficients are signed, and scaling the
-  // whole texel uniformly is the only law that cannot invert a band.
-  o0 = inkA * (1.0 - f);
-  o1 = inkB * (1.0 - f);
+  // Subtract only the snapshot's current contribution: own ink is untouched.
+  o0 = inkA - f * preA;
+  o1 = inkB - f * preB;
 }`;
 
 // Paper, generated per document and whenever the paper is changed, in two passes.

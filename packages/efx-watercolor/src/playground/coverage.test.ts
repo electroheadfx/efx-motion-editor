@@ -222,9 +222,9 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
 //  The spec-06 pass above erases SETTLED pigment only. A cover must also
 //  replace what it crosses while that paint is still mobile in `ink` and
 //  while it lives in a reopened frame's cached base. This block pins the
-//  engine half: a PRE-STROKE ink snapshot (`preInk`), a multiplicative
-//  cover draw with ONE uniform factor under the same solid core (the
-//  coefficients are signed, so a per-channel share would invert bands), an
+//  engine half: a PRE-STROKE ink snapshot (`preInk`), a cover draw that
+//  subtracts ONLY the snapshot's current amount under the same solid core and
+//  then decays it by (1 - f), so the stroke's own ink is never scaled, an
 //  `onCoverDab` emission for the cached-base seam, and Body 0's neutrality.
 //
 //  Written RED by design (task 1 of the quick plan): every pin below names
@@ -286,35 +286,37 @@ describe('the cover seam', () => {
     )
   })
 
-  it('covers the snapshot with the multiplicative uniform factor', () => {
+  it('removes the snapshot’s current amount and decays it geometrically', () => {
     const body = sliceBetween(ENGINE_SOURCE, 'private inkCover(', 'private dropPreInk(')
     // An unarmed snapshot or a non-positive amount draws nothing: the call
     // site is unguarded (the brush case keeps its two `coverAmount > 0`).
     expectContains(body, 'if (this.preInk === null || !(amount > 0)) return;')
     expectContains(body, 'const p = this.programs.inkCover;')
     expectContains(body, 'this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, 0, 0);')
-    // The snapshot doubles as the presence gate: the cover only acts where
-    // paint existed before this stroke.
     expectContains(body, 'gl.uniform1i(p.u.uPreA, g.bindTex(2, this.preInk.tex[0]));')
     expectContains(body, 'gl.uniform1i(p.u.uPreB, g.bindTex(3, this.preInk.tex[1]));')
     expectContains(body, 'gl.uniform1i(p.u.uInkA, g.bindTex(4, this.ink.read.tex[0]));')
     expectContains(body, 'gl.uniform1i(p.u.uInkB, g.bindTex(5, this.ink.read.tex[1]));')
-    expect((body.match(/this\.bindFootprint\(/g) ?? []).length, 'one footprint binding').toBe(1)
+    // One bind for the removal, one for the decay: both use the same footprint.
+    expect((body.match(/this\.bindFootprint\(/g) ?? []).length, 'two footprint bindings').toBe(2)
     expectContains(body, 'gl.uniform1f(p.u.uAmount, amount);')
-    // Law 2 is multiplicative: no reverse subtract survives anywhere, and the
-    // settled cover keeps the ZERO / ONE_MINUS_SRC_COLOR pair the ink pass
-    // mirrors as dst * (1 - src) in-shader.
+    // Only the snapshot is subtracted in-shader; no reverse-subtract blend.
     expectNotContains(ENGINE_SOURCE, 'FUNC_REVERSE_SUBTRACT')
     expectContains(COVER_METHOD(), 'gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
-    // The draw is a full-document ping-pong: ink.read feeds the samplers,
-    // ink.write is the target with NO rect (a scissor would leave the write
-    // half stale and the swap would expose it), then the halves swap.
+    // The removal is a full-document ping-pong: ink.read feeds the samplers,
+    // ink.write is the target with NO rect, then the halves swap.
     expectContains(body, 'g.draw(this.ink.write);')
     expectContains(body, 'this.ink.swap();')
     expectNotContains(body, 'g.draw(this.ink.read')
-    expectNotContains(body, 'stampRect')
-    // Blending against the other half would resurrect last frame's values.
-    expectNotContains(body, 'gl.enable(gl.BLEND);')
+    // The snapshot decay is the only scissored draw, and it runs AFTER the
+    // removal so this dab removes the pre-decay amount.
+    expectContains(body, 'const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);')
+    expect(body.indexOf('g.draw(this.preInk, rect);')).toBeGreaterThan(
+      body.indexOf('this.ink.swap();'),
+    )
+    expectContains(body, 'gl.uniform1f(l.u.uCover, 1);')
+    expectContains(body, 'gl.uniform1f(l.u.uAmount, amount);')
+    expectContains(body, 'gl.enable(gl.BLEND);')
     expectContains(body, 'gl.disable(gl.BLEND);')
     // Undo and wake are the caller's: the pinned coverRect + protect already
     // cover this stamp, and the cover writes the pool brushInk touches.
@@ -411,7 +413,7 @@ describe('the cover seam', () => {
     )
   })
 
-  it('gives the cover its own program with the same solid-core law and a uniform factor', () => {
+  it('gives the cover its own program with the same solid-core law and a snapshot-only subtraction', () => {
     expectContains(SHADER_SOURCE, 'export const inkCoverFS')
     const program = sliceBetween(SHADER_SOURCE, 'export const inkCoverFS', 'export const paperFieldFS')
     expectContains(program, 'uniform sampler2D uPreA, uPreB, uInkA, uInkB;')
@@ -419,17 +421,14 @@ describe('the cover seam', () => {
     expectContains(program, 'q.y /= uTipAspect;')
     // Same core as liftFS's uCover = 1 law, zero outside the footprint.
     expectContains(program, 'float f = uAmount * (1.0 - smoothstep(0.35, 1.0, dot(q, q)));')
-    // The snapshot gates the cover to texels that already held paint; the L1
-    // norms are sign-safe (the coefficients are signed projections).
-    expectContains(program, 'float present = max(dot(abs(preA), vec4(1.0)), dot(abs(preB), vec4(1.0)));')
-    expectContains(program, 'f *= smoothstep(1e-4, 1e-3, present);')
-    // The coefficients are SIGNED, so the cover is one uniform factor: a
-    // per-channel preInk/ink share degenerates for ink_c < 0 and inverts bands.
+    // Only the snapshot's current amount is removed; the stroke's own ink is
+    // never scaled (a share inverted bands, a uniform scale punched holes).
     expectNotContains(program, 'share(')
-    expectContains(program, 'vec4 inkA = texture(uInkA, vUv);')
-    expectContains(program, 'vec4 inkB = texture(uInkB, vUv);')
-    expectContains(program, 'o0 = inkA * (1.0 - f);')
-    expectContains(program, 'o1 = inkB * (1.0 - f);')
+    expectNotContains(program, 'inkA * (1.0 - f)')
+    expectContains(program, 'vec4 preA = texture(uPreA, vUv);')
+    expectContains(program, 'vec4 preB = texture(uPreB, vUv);')
+    expectContains(program, 'o0 = inkA - f * preA;')
+    expectContains(program, 'o1 = inkB - f * preB;')
     // Full-document draw: a discard would leave the write half stale.
     expectNotContains(program, 'discard')
     // The Lift program keeps its tip-shaped law and its own uniforms.
