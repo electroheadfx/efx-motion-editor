@@ -4,13 +4,17 @@
 //  headless Chrome (real WebGL2).
 //
 //  Scratch harness only: nothing here is imported by the package.
-//  Usage: node packages/efx-watercolor/probe/medium-engine/run.mjs --gate <name> [--emboss <0..100>]
+//  Usage: node packages/efx-watercolor/probe/medium-engine/run.mjs --gate <name> [--emboss <0..100>] [--light <0..4>]
 //
 //  64-03: `--emboss` folds a thickness value into the fixed stroke's
 //  params bag (probe.ts does the folding); the gate name is unchanged,
 //  so the emboss-100 capture compares against the SAME plan-01 baseline.
 //  The value is echoed by the probe report, never baked into the JSON
 //  shape the compare step reads.
+//
+//  64-04: `--light` sets the emboss light intensity (0..4, the engine's
+//  clamp band) before the three exports. Omitted leaves DEFAULT_LIGHT
+//  (intensity 1); 0 is the unlit identity gate for a lit stroke.
 //
 //  Writes /tmp/medium-engine/<name>.json. The committed reference lives
 //  at probe/medium-engine/baselines/<name>.json and is NEVER written by
@@ -31,7 +35,7 @@ const args = process.argv.slice(2)
 const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
-  console.error('usage: node run.mjs --gate <name> [--emboss <0..100>]   (e.g. neutral-identity)')
+  console.error('usage: node run.mjs --gate <name> [--emboss <0..100>] [--light <0..4>]   (e.g. neutral-identity)')
   process.exit(1)
 }
 if (!/^[A-Za-z0-9._-]+$/.test(gate)) {
@@ -52,7 +56,22 @@ if (embossRaw !== undefined) {
   }
 }
 
-const pageQuery = `gate=${encodeURIComponent(gate)}` + (emboss === undefined ? '' : `&emboss=${emboss}`)
+// 64-04: optional light-intensity knob (0..4). Omitted keeps the default.
+const lightFlag = args.indexOf('--light')
+const lightRaw = lightFlag >= 0 ? args[lightFlag + 1] : undefined
+let light
+if (lightRaw !== undefined) {
+  light = Number(lightRaw)
+  if (!Number.isFinite(light) || light < 0 || light > 4) {
+    console.error(`invalid --light "${lightRaw}" (expected 0..4)`)
+    process.exit(1)
+  }
+}
+
+const pageQuery =
+  `gate=${encodeURIComponent(gate)}` +
+  (emboss === undefined ? '' : `&emboss=${emboss}`) +
+  (light === undefined ? '' : `&light=${light}`)
 const resultPath = join(outDir, `${gate}.json`)
 
 const esbuildCandidates = [
@@ -173,6 +192,7 @@ console.log('')
 console.log('================ medium-engine pixel gate ================')
 console.log(`gate      : ${result.gate}`)
 console.log(`emboss    : ${result.emboss === null ? '(absent)' : result.emboss}`)
+console.log(`light     : ${result.light === null ? '(default)' : result.light}`)
 console.log(`sheet     : ${result.width}x${result.height} (${result.byteLength} bytes/export)`)
 console.log(`renderer  : ${result.renderer ?? 'n/a'}`)
 console.log(`paper     : ${result.digestPaper}`)

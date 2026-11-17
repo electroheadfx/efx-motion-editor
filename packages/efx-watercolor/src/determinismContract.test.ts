@@ -356,6 +356,41 @@ describe('determinism contract', () => {
     expect(second.recorded.engine.params.emboss).toBe(100)
     expect(toEngineParams(first.recorded.engine.params).emboss).toBe(1)
   })
+
+  // 64-04 (MED-15 / MED-18): the emboss light is DOCUMENT render state, never
+  // a recorded stroke property. The mock has no GPU, so an intensity cannot
+  // change its bytes here; what this row pins is that the light stays OUT of
+  // the deterministic replay INPUT — both intensity arms replay the same
+  // recorded embossed script to identical bytes, and the recorded bags carry
+  // the emboss and nothing light-shaped. The real lit-vs-unlit pixel proof is
+  // the probe matrix (emboss-lit differs from the baseline at intensity 1,
+  // equals it at intensity 0).
+  it('replays a lit embossed stroke identically at intensity 0 and at the default intensity', async () => {
+    const engineModule = await vi.importActual<typeof import('./playground/Engine')>('./playground/Engine')
+    const { DEFAULT_LIGHT } = engineModule
+    expect(DEFAULT_LIGHT.intensity).toBe(1)
+
+    const recordedBags: string[] = []
+    for (const intensity of [0, DEFAULT_LIGHT.intensity] as const) {
+      const first = replayRun(makeStroke(undefined, 100))
+      const second = replayRun(makeStroke(undefined, 100))
+
+      expect(first.bytes.length, `intensity ${intensity}: byte length`).toBe(second.bytes.length)
+      expect(
+        Buffer.from(first.bytes).equals(Buffer.from(second.bytes)),
+        `intensity ${intensity}: replay bytes`,
+      ).toBe(true)
+
+      expect(first.recorded.engine.params.emboss).toBe(100)
+      expect('light' in first.recorded.engine.params, `intensity ${intensity}: light in the stroke bag`).toBe(false)
+      expect('light' in first.recorded.engine, `intensity ${intensity}: light in the engine bag`).toBe(false)
+      recordedBags.push(JSON.stringify(first.recorded))
+    }
+
+    // The light never enters the recorded script, so both intensity arms
+    // record byte-identical bags — a per-frame light cannot fork a replay.
+    expect(recordedBags[1]).toBe(recordedBags[0])
+  })
 })
 
 // ---------------------------------------------------------------------------

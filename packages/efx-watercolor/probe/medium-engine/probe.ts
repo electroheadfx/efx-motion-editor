@@ -20,6 +20,8 @@
 //  Output: one JSON report in <pre id="result">; run.mjs writes it to
 //  /tmp/medium-engine/<gate>.json and compare.mjs diffs it against
 //  probe/medium-engine/baselines/<gate>.json (or a sibling capture).
+//  The report digests all three exported backgrounds (paper, transparent,
+//  white) and echoes the 64-04 `--light <0..4>` intensity it was shaded with.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -186,7 +188,7 @@ function writeResult(report: Record<string, unknown>): void {
 
 // --- main -------------------------------------------------------------------
 
-function run(gate: string, renderer: string, emboss?: number): void {
+function run(gate: string, renderer: string, emboss?: number, light?: number): void {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
 
   // The tap must see the adapter's engine and only the adapter's engine:
@@ -210,6 +212,12 @@ function run(gate: string, renderer: string, emboss?: number): void {
     const engine = capturedEngine
     if (engine === null) throw new Error('probe never captured the adapter engine (setManual tap missed)')
 
+    // 64-04: the light is render state, so it is applied after the script
+    // settles and before any export. Intensity 0 is the second identity gate:
+    // the lit delta is an intensity multiple, so a lit embossed stroke must
+    // reproduce the unlit baseline. Omitted leaves DEFAULT_LIGHT (intensity 1).
+    if (light !== undefined) engine.setLight({ intensity: light })
+
     const paper = digestCanvas(engine.exportCanvas('paper'))
     const transparent = digestCanvas(engine.exportCanvas('transparent'))
     const white = digestCanvas(engine.exportCanvas('white'))
@@ -217,6 +225,7 @@ function run(gate: string, renderer: string, emboss?: number): void {
     writeResult({
       gate,
       emboss: emboss ?? null,
+      light: light ?? null,
       width: SHEET,
       height: SHEET,
       digestPaper: paper.digest,
@@ -242,19 +251,33 @@ function readEmboss(): number | undefined {
   return value
 }
 
+/** 64-04: the light-intensity knob (0..4, the engine's clamp band); absent keeps DEFAULT_LIGHT. */
+function readLight(): number | undefined {
+  const raw = new URLSearchParams(location.search).get('light')
+  if (raw === null || raw === '') return undefined
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 0 || value > 4) {
+    throw new Error(`invalid light "${raw}" (expected 0..4)`)
+  }
+  return value
+}
+
 function main(): void {
   const gate = new URLSearchParams(location.search).get('gate') ?? 'neutral-identity'
   let renderer = '(unknown)'
   let emboss: number | undefined
+  let light: number | undefined
   try {
     emboss = readEmboss()
+    light = readLight()
     renderer = probeRenderer()
-    run(gate, renderer, emboss)
+    run(gate, renderer, emboss, light)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     writeResult({
       gate,
       emboss: emboss ?? null,
+      light: light ?? null,
       width: SHEET,
       height: SHEET,
       digestPaper: null,

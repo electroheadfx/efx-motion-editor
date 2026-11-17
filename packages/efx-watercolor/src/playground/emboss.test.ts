@@ -113,6 +113,29 @@ describe('displayFS emboss block (MED-15)', () => {
     expectContains(shaderSource('paperLightFS'), 'vec3 n = normalize(vec3((l - r) * uBump, (b - t) * uBump, 1.0));')
   })
 
+  it('samples the gradient in document space, so zoom and pan cannot move the shade', () => {
+    const source = shaderSource('displayFS')
+    // Canvas pixels reach the shading only through ONE document-uv mapping...
+    expectContains(source, 'vec2 uv = (gl_FragCoord.xy - uView.xy) / uView.zw;')
+    const block = sliceBetween(source, 'float shade = 1.0;', '// White gouache sits on top')
+    // ...and the four neighbours are one DOCUMENT texel away, never one canvas
+    // pixel, so a zoom or pan changes the sampling footprint but not the
+    // document-space gradient it measures (no shimmer, no crawl).
+    expectNotContains(block, 'uView')
+    expectNotContains(block, 'uDpr')
+    for (const offset of [
+      'uv - vec2(uTexel.x, 0.0)',
+      'uv + vec2(uTexel.x, 0.0)',
+      'uv - vec2(0.0, uTexel.y)',
+      'uv + vec2(0.0, uTexel.y)',
+    ]) {
+      expectContains(block, `texture(uRelief, ${offset}).x`)
+    }
+    // uTexel is the document texel (1/dw, 1/dh), set at the one display
+    // boundary — never a zoom- or dpr-derived step.
+    expectContains(ENGINE_SOURCE, 'gl.uniform2f(p.u.uTexel, 1 / this.dw, 1 / this.dh);')
+  })
+
   it('keeps the - L.z zero-gradient term and makes the intensity a multiplier only', () => {
     const source = shaderSource('displayFS')
     expectContains(source, 'float litDelta = uLightIntensity * (dot(n, L) - L.z) * uReliefBump * EMBOSS_GAIN;')
