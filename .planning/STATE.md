@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-01-PLAN.md
-last_updated: "2026-11-17T14:53:57.394Z"
+stopped_at: Completed 64-02-PLAN.md
+last_updated: "2026-11-17T15:12:34.377Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 64 execution started
-state_head: e0b0d83e6e3f575f4b06ae46f26792459aa15880
+state_head: cdcf04e8bb3bf1ca6093e89ce6546f9ab3207a8a
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 29
-  completed_plans: 18
+  completed_plans: 19
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 64 execution started
 
@@ -145,6 +145,7 @@ Last activity: 2026-11-17 — Phase 64 execution started
 | Phase 63 P63-16 | 11 | 2 tasks | 4 files |
 | Phase 63 P17 | 4min | 2 tasks | 4 files |
 | Phase 64 P01 | 7min | 3 tasks | 11 files |
+| Phase 64 P02 | 14min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -459,6 +460,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: the probe captures the adapter's private engine via a prototype tap on setManual so the gate can digest paper, transparent and white exports without widening the adapter API
 - [Phase 64]: the spread boundary at viscosity 1 is pinned with 12-decimal closeness — 0.12*(1-0.9) is 0.011999999999999997 in binary64; 0 and 0.5 boundaries are decimal-exact and pinned with toBe
 - [Phase 64]: 64-01 task 2 landed test-only with no RED (63-09 precedent — the tracer already shipped every behavior bullet; no RED was fabricated). Pre-milestone pixel baseline committed from d1fd7ea3c before the first source edit
+- [Phase 64]: Medium popover state lives in the existing store (aquarelleMediumMenuOpen / aquarelleMediumMenuAnchor) because the app's vnode test harness mocks preact/hooks, making component-local signals unobservable; mirrors aquarelleBrushMenuOpen and aquarelleTextureMenuOpen.
+- [Phase 64]: The watercolor medium record derives from DEFAULT_CANONICAL_PARAMS for all ten keys, so the neutral medium can never drift from the canonical defaults.
+- [Phase 64]: pastel displays as Chalk per D-18: the id stays the serialized identity queryable by mediumById; the name is the user-facing label.
+- [Phase 64]: MED-19 deferred to 64-06: 64-02 lands Body's canonical-set membership (all four bags, default 0) but the Body globals row ships in 64-06.
 
 ### Pending Todos
 
@@ -585,8 +590,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-17T14:53:56.612Z
-Stopped at: Completed 64-01-PLAN.md
+Last session: 2026-11-17T15:12:33.576Z
+Stopped at: Completed 64-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -31,19 +31,19 @@
 
 ### Medium Engine (Phase 64)
 
-- [ ] **MED-01**: User has a `Viscosity` global on the app's 0..100 slider scale (normalized 0..1 internally) that reduces water motion and suppresses spread, exposed as a row in the existing globals panel
+- [x] **MED-01**: User has a `Viscosity` global on the app's 0..100 slider scale (normalized 0..1 internally) that reduces water motion and suppresses spread, exposed as a row in the existing globals panel
 - [x] **MED-02**: At its neutral default, a project painted before this milestone renders bit-identically after it
 - [x] **MED-03**: Viscosity only ever raises the dissipation coefficient — it never lowers the existing floor and never replaces `flow` — and is applied at exactly those two engine sites and nowhere else
 - [x] **MED-04**: Spread becomes `0.12 × (1 − viscosity × 0.9)`, landing near `0.012` at maximum viscosity
 - [x] **MED-05**: A stroke snapshots its viscosity the way it already snapshots `lift`; strokes without the key keep the default, and live pass, bake and replay read the same value
 - [x] **MED-06**: Changing Viscosity after a stroke has settled does not re-process the settled pigment
-- [ ] **MED-07**: A medium record `{ id, name, params }` exists as plain serializable data — no functions, no class
-- [ ] **MED-08**: `watercolor` ships as today's `DEFAULT_AQUARELLE_PARAMS`, unchanged, and remains the selected medium on a fresh session
-- [ ] **MED-09**: Five built-ins ship — `watercolor`, `gouache`, `pastel`, `graphite`, `acrylic` — each a plain record over the canonical global set (the nine existing globals plus `viscosity`, `body` and `emboss`), with their tuned numbers recorded explicitly and no other globals invented
-- [ ] **MED-10**: Selecting a medium applies its params to `aquarelleParams` in exactly one store write, with no cascade of per-key setters
-- [ ] **MED-11**: Selecting a medium never alters already-recorded strokes — each keeps the values it was painted with; the medium sets values for the next stroke only
-- [ ] **MED-12**: A project opened on a machine with different medium defaults replays identically, because the per-stroke params snapshot stays authoritative and the medium id is advisory
-- [ ] **MED-13**: The medium selection is surfaced in the existing Studio UI without adding a second parameter panel — the globals panel stays the fine-tuning surface, and a manual global tweak keeps the medium selected
+- [x] **MED-07**: A medium record `{ id, name, params }` exists as plain serializable data — no functions, no class
+- [x] **MED-08**: `watercolor` ships as today's `DEFAULT_AQUARELLE_PARAMS`, unchanged, and remains the selected medium on a fresh session
+- [x] **MED-09**: Five built-ins ship — `watercolor`, `gouache`, `pastel`, `graphite`, `acrylic` — each a plain record over the canonical global set (the nine existing globals plus `viscosity`, `body` and `emboss`), with their tuned numbers recorded explicitly and no other globals invented
+- [x] **MED-10**: Selecting a medium applies its params to `aquarelleParams` in exactly one store write, with no cascade of per-key setters
+- [x] **MED-11**: Selecting a medium never alters already-recorded strokes — each keeps the values it was painted with; the medium sets values for the next stroke only
+- [x] **MED-12**: A project opened on a machine with different medium defaults replays identically, because the per-stroke params snapshot stays authoritative and the medium id is advisory
+- [x] **MED-13**: The medium selection is surfaced in the existing Studio UI without adding a second parameter panel — the globals panel stays the fine-tuning surface, and a manual global tweak keeps the medium selected
 - [ ] **MED-14**: A document-resolution half-float paint-**thickness** channel receives a thickness deposit through each dab's own tip footprint, and deposits accumulate so successive strokes superpose into layered relief
 - [ ] **MED-15**: The composite lights the thickness gradient with the same normal-and-light maths the paper relief uses and multiplies the paint colour; at emboss 0 and light intensity 0 the render is byte-identical
 - [ ] **MED-16**: Emboss strength is a canonical param carried by the medium and snapshotted with the stroke — no fluid transport of thickness and no height texture asset
@@ -127,19 +127,19 @@ Which phases cover which requirements.
 | TIP-15 | Phase 63 | Complete |
 | TIP-16 | Phase 63 | Complete |
 | TIP-17 | Phase 63 | Complete |
-| MED-01 | Phase 64 | Pending |
+| MED-01 | Phase 64 | Complete |
 | MED-02 | Phase 64 | Complete |
 | MED-03 | Phase 64 | Complete |
 | MED-04 | Phase 64 | Complete |
 | MED-05 | Phase 64 | Complete |
 | MED-06 | Phase 64 | Complete |
-| MED-07 | Phase 64 | Pending |
-| MED-08 | Phase 64 | Pending |
-| MED-09 | Phase 64 | Pending |
-| MED-10 | Phase 64 | Pending |
-| MED-11 | Phase 64 | Pending |
-| MED-12 | Phase 64 | Pending |
-| MED-13 | Phase 64 | Pending |
+| MED-07 | Phase 64 | Complete |
+| MED-08 | Phase 64 | Complete |
+| MED-09 | Phase 64 | Complete |
+| MED-10 | Phase 64 | Complete |
+| MED-11 | Phase 64 | Complete |
+| MED-12 | Phase 64 | Complete |
+| MED-13 | Phase 64 | Complete |
 | MED-14 | Phase 64 | Pending |
 | MED-15 | Phase 64 | Pending |
 | MED-16 | Phase 64 | Pending |
