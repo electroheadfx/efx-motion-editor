@@ -1,18 +1,18 @@
 // ============================================================
-//  AquarelleGlobalsPanel — the medium dropdown, the 9 watercolor
+//  AquarelleGlobalsPanel — the medium dropdown, the 10 watercolor
 //  globals + Reset. This is the Paint-tab content.
 //
 //  Phase 64 (D-01/D-07): the panel LEADS with the five-item
-//  medium dropdown, then the nine slider rows below it. A pick
+//  medium dropdown, then the ten slider rows below it. A pick
 //  applies the whole record in one move (applyAquarelleMedium)
 //  and closes; the selected name is shown truthfully, with no
 //  "edited" marker.
 //
 //  Labels and row order follow the playground SettingsPanel
 //  (Water, Pigment, Flow, Bleed, Edges, Grain, Dry speed), with
-//  Phase 64's Viscosity and Emboss appended (64-04); 64-06
-//  slots Body between them. Param keys stay
-//  water/load/flow/bleed/edge/granulation/dry/viscosity/emboss.
+//  Phase 64's Viscosity, Body (64-06) and Emboss (64-04)
+//  appended in D-07's order. Param keys stay
+//  water/load/flow/bleed/edge/granulation/dry/viscosity/body/emboss.
 //  `size` is NOT here — the shared Size slider owns it (D-05).
 //
 //  Reset restores playground DEFAULT_PARAMS (0..1) ×100 onto the
@@ -42,9 +42,9 @@ import {
   commitAquarelleSelectionParams,
 } from './aquarellePaintControls';
 
-/** Module-only global rows (D-05 / I-01 playground order + Phase 64 Viscosity
- *  and Emboss). `size` is NOT here — shared Size owns it. 64-06 inserts Body
- *  between Viscosity and Emboss. */
+/** Module-only global rows (D-05 / I-01 playground order + Phase 64's
+ *  Viscosity, Body and Emboss in D-07's ten-row order). `size` is NOT here —
+ *  shared Size owns it. */
 const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string }> = Object.freeze([
   { key: 'water', label: 'Water' },
   { key: 'load', label: 'Pigment' },
@@ -54,6 +54,7 @@ const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string }> = O
   { key: 'granulation', label: 'Grain' },
   { key: 'dry', label: 'Dry speed' },
   { key: 'viscosity', label: 'Viscosity' },
+  { key: 'body', label: 'Body' },
   { key: 'emboss', label: 'Emboss' },
 ]);
 

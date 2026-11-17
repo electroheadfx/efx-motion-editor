@@ -290,14 +290,14 @@ describe('Phase 64 Body record path (MED-23)', () => {
   });
 
   it('accepts a body patch through the selection write allowlist', () => {
-    recordAquarelleStroke(20601, bodyStrokeFixture(20601));
+    recordAquarelleStroke(20601, bodyStrokeFixture());
     const changed = updateAquarelleStrokesInScript([20601], { params: { body: 40 } });
     expect(changed, 'the batch is accepted, not refused').toBe(1);
     expect(getRecordedAquarelleStroke(20601)!.params.body, 'the stroke carries body').toBe(40);
   });
 });
 
-function bodyStrokeFixture(mutationId: number): AquarelleStroke {
+function bodyStrokeFixture(): AquarelleStroke {
   return {
     tool: 'brush',
     color: '#103c65',
