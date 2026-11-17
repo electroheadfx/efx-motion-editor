@@ -79,8 +79,9 @@ describe('Engine viscosity sites', () => {
 
   it('never consumes viscosity in a settle, bleach, advect-ink or display pass', () => {
     const regions: ReadonlyArray<[string, string]> = [
-      // The settle and bleach blocks are one contiguous region in step().
-      ['settle/bleach', sliceBetween('// fixing: bleach under white gouache', 'gl.disable(gl.BLEND);')],
+      // The settle block is one contiguous region in step() (64-08 retired
+      // bleachFS, so it is the fix block's only draw).
+      ['settle', sliceBetween('// fixing: mobile pigment (and its scattering) settles into the paper', 'gl.disable(gl.BLEND);')],
       ['advect-ink', sliceBetween('// pigment: flows, bleeds and gathers at drying edges', 'this.dirty = union(this.dirty, rect);')],
       ['display', sliceBetween('private drawDisplay(', 'private render() {')],
     ]

@@ -117,7 +117,7 @@ describe('displayFS emboss block (MED-15)', () => {
     const source = shaderSource('displayFS')
     // Canvas pixels reach the shading only through ONE document-uv mapping...
     expectContains(source, 'vec2 uv = (gl_FragCoord.xy - uView.xy) / uView.zw;')
-    const block = sliceBetween(source, 'float shade = 1.0;', '// White gouache sits on top')
+    const block = sliceBetween(source, 'float shade = 1.0;', 'if (uMode == 4){')
     // ...and the four neighbours are one DOCUMENT texel away, never one canvas
     // pixel, so a zoom or pan changes the sampling footprint but not the
     // document-space gradient it measures (no shimmer, no crawl).
@@ -160,12 +160,15 @@ describe('displayFS emboss block (MED-15)', () => {
     expectNotContains(source, 'radians(')
   })
 
-  it('shades rgb once before the gouache mix, and mode 4 derives alpha from the unshaded reconstruction', () => {
+  it('shades rgb once before the transmittance early return, and mode 4 derives alpha from the unshaded reconstruction', () => {
     const source = shaderSource('displayFS')
     expectContains(source, 'rgb *= shade;')
     const shadeAt = source.indexOf('rgb *= shade;')
     expect(shadeAt).toBeGreaterThan(source.indexOf('${displayBasisGLSL()}'))
-    expect(shadeAt).toBeLessThan(source.indexOf('col = mix(col, uMode == 3 ? vec3(1.0) : gouache, cov);'))
+    // 64-08 retired the gouache mix; the shade still lands on rgb exactly once,
+    // after the reconstruction and before every consumer that reads it.
+    expect(shadeAt).toBeLessThan(source.indexOf('if (uMode == 2){'))
+    expect(source.match(/rgb \*= shade;/g) ?? []).toHaveLength(1)
 
     // Mode 4's early return reads the unshaded rgb and scales only the
     // premultiplied colour; alpha is byte-for-byte untouched.
