@@ -310,6 +310,8 @@ describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
   it('moves the selected medium id and the ten globals with the group', async () => {
     setAquarelleParam('size', 55);
     setAquarelleParam('lift', 27);
+    const sizeBefore = aquarelleParams.value.size;
+    const liftBefore = aquarelleParams.value.lift;
     const group = presetGroup('graphite-pencil');
     expect(group, 'graphite-pencil is tagged').not.toBeNull();
 
@@ -317,11 +319,20 @@ describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
 
     expect(aquarelleSelectedMediumId.value, 'the dropdown renders this id').toBe(group);
     const record = mediumById(group!)!;
-    for (const key of MEDIUM_KEYS) {
-      expect(aquarelleParams.value[key], `${key} equals the record`).toBe(record.params[key]);
-    }
-    expect(aquarelleParams.value.size, 'size untouched').toBe(55);
-    expect(aquarelleParams.value.lift, 'lift untouched').toBe(27);
+    const globals = Object.fromEntries(
+      MEDIUM_KEYS.map((key) => [key, aquarelleParams.value[key]]),
+    );
+    expect(Object.keys(globals), 'exactly the ten keys D-02 names').toHaveLength(10);
+    expect(globals, 'the ten globals equal the record').toEqual(record.params);
+    expect(Object.keys(aquarelleParams.value).sort(), 'the bag keeps its twelve keys').toEqual(
+      [...MEDIUM_KEYS, 'size', 'lift'].sort(),
+    );
+    expect(aquarelleParams.value.size, 'size is reference-equal to its prior value').toBe(
+      sizeBefore,
+    );
+    expect(aquarelleParams.value.lift, 'lift is reference-equal to its prior value').toBe(
+      liftBefore,
+    );
   });
 
   it('changes neither the medium id nor the bag when a texture is selected', async () => {
@@ -384,6 +395,12 @@ describe('the seam audit (64-12 MED-28)', () => {
       .sort();
   }
 
+  function countOf(sources: Map<string, string>, file: string, needle: string): number {
+    const source = sources.get(file);
+    expect(source, `${file} is a view source`).toBeDefined();
+    return source!.split(needle).length - 1;
+  }
+
   it('keeps one tip-pick caller and two medium-handler callers', () => {
     const sources = viewSources();
     expect(filesMatching(sources, 'selectAquarelleTip('), 'the definition and the one seam').toEqual([
@@ -402,6 +419,13 @@ describe('the seam audit (64-12 MED-28)', () => {
       'PhysicsPaintTopBar.tsx',
       'aquarelleRecordState.ts',
     ]);
+    // "Each beside its definition": one definition, one seam call, one
+    // dropdown call — never a second pathway.
+    expect(countOf(sources, 'aquarelleRecordState.ts', 'selectAquarelleTip(')).toBe(1);
+    expect(countOf(sources, 'aquarellePaintControls.ts', 'selectAquarelleTip(')).toBe(1);
+    expect(countOf(sources, 'aquarelleRecordState.ts', 'applyAquarelleMedium(')).toBe(1);
+    expect(countOf(sources, 'aquarellePaintControls.ts', 'applyAquarelleMedium(')).toBe(1);
+    expect(countOf(sources, 'AquarelleGlobalsPanel.tsx', 'applyAquarelleMedium(')).toBe(1);
   });
 
   it('routes every response surface through the one pick seam', () => {
