@@ -41,6 +41,14 @@
 //  backgrounds (paper, transparent, white) have been digested since 64-01;
 //  this plan exercises them on the scattered render rather than adding a
 //  digest.
+//
+//  quick-261117-tq7 adds `--scenario cover-over-wet`: the SAME dark-across /
+//  light-crossing geometry as `cover`, but the dark entry skips its fix
+//  (`fixAfter: false`), so the underlayer is still MOBILE in `ink` when the
+//  covering stroke runs — the engine's preInk subtraction must replace it
+//  there, exactly as the cover pass replaces settled `fixed` pigment. The
+//  pre-fix capture (cover-over-wet-prefix) is the committed baseline; the
+//  post-fix capture must differ in all three digests.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -198,6 +206,10 @@ interface ScriptEntry {
   readonly mutationId: number
   readonly emboss?: number
   readonly body?: number
+  /** quick-261117-tq7: `false` leaves the stroke MOBILE (no fix) so the
+   *  next stroke's cover pass meets wet `ink` instead of settled pigment.
+   *  Omitted fixes after the settle, exactly as before. */
+  readonly fixAfter?: boolean
 }
 
 /** The canonical bag as the app records it (0..100). A knob adds its key;
@@ -232,6 +244,24 @@ function neutralScript(emboss?: number, body?: number): readonly ScriptEntry[] {
 function coverScript(emboss?: number, body?: number): readonly ScriptEntry[] {
   return [
     { color: COVER_DARK, points: COVER_DARK_POINTS, mutationId: MUTATION_ID, emboss, body },
+    { color: COVER_LIGHT, points: COVER_LIGHT_POINTS, mutationId: MUTATION_ID + 1, emboss, body },
+  ]
+}
+
+/** quick-261117-tq7: the SAME geometry as `cover`, except the dark band is
+ *  left MOBILE — no fix after its settle. The light diagonal then crosses
+ *  still-wet ink, so the cover pass must reach it through preInk rather
+ *  than through the settled `fixed` buffers. */
+function coverOverWetScript(emboss?: number, body?: number): readonly ScriptEntry[] {
+  return [
+    {
+      color: COVER_DARK,
+      points: COVER_DARK_POINTS,
+      mutationId: MUTATION_ID,
+      emboss,
+      body,
+      fixAfter: false,
+    },
     { color: COVER_LIGHT, points: COVER_LIGHT_POINTS, mutationId: MUTATION_ID + 1, emboss, body },
   ]
 }
@@ -280,7 +310,12 @@ function run(
   light?: number,
 ): void {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
-  const script = scenario === 'cover' ? coverScript(emboss, body) : neutralScript(emboss, body)
+  const script =
+    scenario === 'cover'
+      ? coverScript(emboss, body)
+      : scenario === 'cover-over-wet'
+        ? coverOverWetScript(emboss, body)
+        : neutralScript(emboss, body)
 
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
@@ -302,7 +337,9 @@ function run(
       adapter.applyStroke(makeStroke(entry))
       // Plan 64-01: stepTick for ticks 0 through 8, then fix().
       for (let tick = 0; tick <= SETTLE_TICKS; tick += 1) adapter.stepTick(tick)
-      adapter.fix()
+      // quick-261117-tq7: `fixAfter: false` skips the settle so the stroke
+      // stays mobile `ink`, the cover-over-wet underlayer.
+      if (entry.fixAfter !== false) adapter.fix()
     }
     const bakeMs = Math.round(performance.now() - bakeStart)
 
@@ -384,7 +421,9 @@ function readBody(): number | undefined {
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover') throw new Error(`invalid scenario "${raw}" (expected "cover")`)
+  if (raw !== 'cover' && raw !== 'cover-over-wet') {
+    throw new Error(`invalid scenario "${raw}" (expected "cover" or "cover-over-wet")`)
+  }
   return raw
 }
 

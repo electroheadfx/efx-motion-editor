@@ -192,3 +192,198 @@ describe('the Body cover pass (spec 06 / MED-19..MED-22)', () => {
     expectContains(INDEX_SOURCE, "from './scattering'")
   })
 })
+
+// ============================================================
+//  Quick 261117-tq7 — the cover seam (spec 09).
+//
+//  The spec-06 pass above erases SETTLED pigment only. A cover must also
+//  replace what it crosses while that paint is still mobile in `ink` and
+//  while it lives in a reopened frame's cached base. This block pins the
+//  engine half: a PRE-STROKE ink snapshot (`preInk`), a reverse-subtract
+//  draw that removes it under the same solid core, an `onCoverDab`
+//  emission for the cached-base seam, and Body 0's neutrality.
+//
+//  Written RED by design (task 1 of the quick plan): every pin below names
+//  a symbol task 2 adds. COVER_METHOD() must NOT grow — the subtract lives
+//  in a sibling method because the spec-06 pins pin the cover pass body.
+// ============================================================
+
+const SHADER_SOURCE = readFileSync(resolve(HERE, 'shaders.ts'), 'utf8')
+
+describe('the cover seam', () => {
+  it('declares the transient preInk snapshot beside the document targets, outside undo state', () => {
+    const fields = sliceBetween(ENGINE_SOURCE, 'private relief!: Target;', 'private paper!: Target;')
+    expectContains(fields, 'private preInk: Target | null = null;')
+    // A transient, never a document target and never an undo layer.
+    expectNotContains(
+      sliceBetween(ENGINE_SOURCE, 'private docTargets(): Target[] {', 'private createDocument('),
+      'preInk',
+    )
+    expectNotContains(
+      sliceBetween(ENGINE_SOURCE, 'private snapshotLayers() {', 'private drawSplat('),
+      'preInk',
+    )
+  })
+
+  it('arms the snapshot lazily at stroke start from the raw Body, only for a Brush', () => {
+    const startBranch = sliceBetween(
+      ENGINE_SOURCE,
+      'if (!s.started) {',
+      'this.stampScripted(s, q.x, q.y, s.pr, 0, 0, 1, 0, q.w, 1);',
+    )
+    expectContains(startBranch, "if (s.tool === 'brush' && this.params.body > 0) this.armInkCover();")
+    // The raw Body, not the curve: Engine.ts keeps exactly ONE bodyCurve(
+    // call site (scattering.test.ts pins the whole-file count at 1).
+    expect((ENGINE_SOURCE.match(/bodyCurve\(/g) ?? []).length, 'one bodyCurve call site').toBe(1)
+  })
+
+  it('allocates the snapshot once per stroke and copies both ink attachments positionally', () => {
+    const arm = sliceBetween(ENGINE_SOURCE, 'private armInkCover() {', 'private inkCover(')
+    expectContains(arm, 'if (this.preInk !== null) return;')
+    expectContains(
+      arm,
+      'this.preInk = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);',
+    )
+    expectContains(
+      arm,
+      'this.ink.read.views.forEach((v, i) => g.blit(v, 0, 0, this.preInk!.views[i], 0, 0, this.dw, this.dh));',
+    )
+    expect((arm.match(/g\.blit\(/g) ?? []).length, 'one positional blit per index').toBe(1)
+  })
+
+  it('registers the subtract program after the fixed program literal', () => {
+    const literal = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
+    expectContains(literal, 'display: this.g.program(S.displayFS),')
+    // Outside the literal: scattering.test.ts pins its program count at 21.
+    expectNotContains(literal, 'inkCover')
+    expectContains(ENGINE_SOURCE, 'this.programs.inkCover = this.g.program(S.inkCoverFS);')
+    expect(ENGINE_SOURCE.indexOf('this.programs.inkCover = this.g.program(S.inkCoverFS);')).toBeGreaterThan(
+      ENGINE_SOURCE.indexOf('display: this.g.program(S.displayFS),'),
+    )
+  })
+
+  it('subtracts the snapshot from the mobile ink with reverse-subtract blending', () => {
+    const body = sliceBetween(ENGINE_SOURCE, 'private inkCover(', 'private dropPreInk(')
+    // An unarmed snapshot or a non-positive amount draws nothing: the call
+    // site is unguarded (the brush case keeps its two `coverAmount > 0`).
+    expectContains(body, 'if (this.preInk === null || !(amount > 0)) return;')
+    expectContains(body, 'const p = this.programs.inkCover;')
+    expectContains(body, 'gl.uniform1i(p.u.uPreA, g.bindTex(2, this.preInk.tex[0]));')
+    expectContains(body, 'gl.uniform1i(p.u.uPreB, g.bindTex(3, this.preInk.tex[1]));')
+    expect((body.match(/this\.bindFootprint\(/g) ?? []).length, 'one footprint binding').toBe(1)
+    expectContains(body, 'this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, 0, 0);')
+    expectContains(body, 'gl.uniform1f(p.u.uAmount, amount);')
+    expectContains(body, 'gl.enable(gl.BLEND);')
+    expectContains(body, 'gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);')
+    expectContains(body, 'gl.blendFunc(gl.ONE, gl.ONE);')
+    // Both attachments: the draw into ink.read fans out through its MRT views.
+    expectContains(body, 'g.draw(this.ink.read, rect);')
+    expectContains(body, 'gl.blendEquation(gl.FUNC_ADD);')
+    expectContains(body, 'gl.disable(gl.BLEND);')
+    expectContains(
+      body,
+      'const rect = this.stampRect(x, y, r * (1 + b.sizeJitter + b.scatter), this.dw, this.dh, 2);',
+    )
+    // Undo and wake are the caller's: the pinned coverRect + protect already
+    // cover this stamp, and the subtract writes the pool brushInk touches.
+    expectNotContains(body, 'this.touch')
+    expectNotContains(body, '.protect(')
+    // A hand-bound tip uniform would move engineTipIdentity's whole-file count.
+    expectNotContains(body, 'uTipRotation')
+    expectNotContains(body, 'g.program(')
+    expectNotContains(body, 'g.target(')
+  })
+
+  it('keeps the subtract out of coverPass and deposits after it', () => {
+    expectNotContains(COVER_METHOD(), 'inkCover')
+    const callback = CALLBACK()
+    expectContains(callback, 'this.inkCover(dx, dy, dr, angle, coverAmount);')
+    expect(callback.indexOf('this.coverPass(')).toBeLessThan(callback.indexOf('this.inkCover('))
+    expect(callback.indexOf('this.inkCover(')).toBeLessThan(callback.indexOf('this.brushInk('))
+    // The call site stays UNGUARDED — inkCover's own early return is the guard.
+    expect((BRUSH_CASE().match(/coverAmount > 0/g) ?? []).length, 'the two spec-06 guards').toBe(2)
+    expect((ENGINE_SOURCE.match(/this\.inkCover\(/g) ?? []).length, 'one inkCover call site').toBe(1)
+  })
+
+  it('declares and emits onCoverDab, mirroring onLiftDab', () => {
+    expectContains(
+      ENGINE_SOURCE,
+      'onCoverDab?(x: number, y: number, r: number, amount: number, angle: number): void;',
+    )
+    expect(ENGINE_SOURCE.indexOf('onCoverDab?(')).toBeGreaterThan(ENGINE_SOURCE.indexOf('onLiftDab?('))
+    const cover = COVER_METHOD()
+    expectContains(cover, 'this.callbacks.onCoverDab?.(x, y, r, amount, angle);')
+    expect(cover.indexOf('g.draw(this.relief, rect);')).toBeLessThan(
+      cover.indexOf('this.callbacks.onCoverDab?.(x, y, r, amount, angle);'),
+    )
+  })
+
+  it('releases the snapshot at every lifecycle site', () => {
+    expect((ENGINE_SOURCE.match(/this\.dropPreInk\(\);/g) ?? []).length, 'eight release sites').toBe(8)
+    const sites: Array<[string, string, string]> = [
+      ['stroke end', 'if (s.ending) {', 'this.stroke = null;'],
+      ['clear', 'clear() {', 'resetSheet() {'],
+      ['resetSheet', 'resetSheet() {', 'abortStroke() {'],
+      ['abortStroke', 'abortStroke() {', 'undo() {'],
+      ['travel', 'private travel(', 'private notifyHistory()'],
+      [
+        'resizeDocument',
+        'resizeDocument(w: number, h: number) {',
+        '/* ------------------------------------------------- whole-document state */',
+      ],
+      ['createDocument', 'private createDocument(', 'private resetPaintState()'],
+      ['destroy', 'destroy() {', '/* ------------------------------------------------------------------ input */'],
+    ]
+    for (const [name, start, end] of sites) {
+      expectContains(sliceBetween(ENGINE_SOURCE, start, end), 'this.dropPreInk();')
+      expect(name.length).toBeGreaterThan(0)
+    }
+    // Never a dangling field: the release precedes the bulk teardown.
+    const create = sliceBetween(ENGINE_SOURCE, 'private createDocument(', 'private resetPaintState()')
+    expect(create.indexOf('this.dropPreInk();')).toBeLessThan(create.indexOf('this.g.disposeTargets();'))
+    const destroy = sliceBetween(
+      ENGINE_SOURCE,
+      'destroy() {',
+      '/* ------------------------------------------------------------------ input */',
+    )
+    expect(destroy.indexOf('this.dropPreInk();')).toBeLessThan(destroy.indexOf('this.g.disposeTargets();'))
+  })
+
+  it('Body 0 allocates nothing, draws nothing and emits nothing', () => {
+    // Allocation: armed only for a Brush stroke with a positive raw Body.
+    expectContains(
+      sliceBetween(
+        ENGINE_SOURCE,
+        'if (!s.started) {',
+        'this.stampScripted(s, q.x, q.y, s.pr, 0, 0, 1, 0, q.w, 1);',
+      ),
+      "if (s.tool === 'brush' && this.params.body > 0) this.armInkCover();",
+    )
+    // Draw: the method is a no-op without a snapshot or a positive amount.
+    expectContains(
+      sliceBetween(ENGINE_SOURCE, 'private inkCover(', 'private dropPreInk('),
+      'if (this.preInk === null || !(amount > 0)) return;',
+    )
+    // Emission: coverPass is only reached under the spec-06 guard.
+    expectContains(
+      CALLBACK(),
+      'if (coverAmount > 0) this.coverPass(dx, dy, dr, angle, coverAmount, dryness, grainThr);',
+    )
+  })
+
+  it('gives the subtract its own program with the same solid-core law', () => {
+    expectContains(SHADER_SOURCE, 'export const inkCoverFS')
+    const program = sliceBetween(SHADER_SOURCE, 'export const inkCoverFS', 'export const paperFieldFS')
+    expectContains(program, 'uniform sampler2D uPreA, uPreB;')
+    expectContains(program, 'vec2 p = vUv - uPoint; p.x *= uAspect;')
+    expectContains(program, 'q.y /= uTipAspect;')
+    expectContains(program, 'if (abs(q.x) > 1.0 || abs(q.y) > 1.0) discard;')
+    expectContains(program, 'float f = uAmount * (1.0 - smoothstep(0.35, 1.0, dot(q, q)));')
+    expectContains(program, 'o0 = texture(uPreA, vUv) * f;')
+    expectContains(program, 'o1 = texture(uPreB, vUv) * f;')
+    // The Lift program keeps its tip-shaped law and its own uniforms.
+    const lift = sliceBetween(SHADER_SOURCE, 'export const liftFS', 'export const inkCoverFS')
+    expectContains(lift, 'float soft = exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);')
+    expectContains(lift, 'float f = uAmount * mix(soft, core, uCover);')
+  })
+})

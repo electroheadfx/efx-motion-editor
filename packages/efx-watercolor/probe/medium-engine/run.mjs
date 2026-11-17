@@ -34,9 +34,17 @@
 //  their readbacks), printed beside `bakeMs`; compare.mjs prints both
 //  durations when two gates are compared.
 //
+//  quick-261117-tq7 adds `--scenario cover-over-wet`: the cover geometry with
+//  the dark entry left MOBILE (no fix), so the covering stroke meets wet `ink`
+//  instead of settled pigment. Its pre-fix capture is committed as
+//  baselines/cover-over-wet-prefix.json; the post-fix capture must differ in
+//  all three digests.
+//
 //  Final flag contract (later phases inherit it, do not retype it):
 //    run.mjs --gate <name>            required; [A-Za-z0-9._-]+, names the JSON
 //             [--scenario cover]      omitted renders the plan-01 single stroke
+//             [--scenario cover-over-wet]
+//                                     cover geometry, dark entry left mobile
 //             [--emboss <0..100>]     omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
 //             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
@@ -69,7 +77,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -119,12 +127,13 @@ if (bodyRaw !== undefined) {
 }
 
 // 64-06: optional scenario. Omitted keeps the plan-01 single stroke.
+// quick-261117-tq7 adds `cover-over-wet` (cover geometry, dark entry mobile).
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover') {
-    console.error(`invalid --scenario "${scenarioRaw}" (expected "cover")`)
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet') {
+    console.error(`invalid --scenario "${scenarioRaw}" (expected "cover" or "cover-over-wet")`)
     process.exit(1)
   }
   scenario = scenarioRaw
