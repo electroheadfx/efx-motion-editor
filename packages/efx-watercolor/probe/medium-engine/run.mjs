@@ -4,7 +4,13 @@
 //  headless Chrome (real WebGL2).
 //
 //  Scratch harness only: nothing here is imported by the package.
-//  Usage: node packages/efx-watercolor/probe/medium-engine/run.mjs --gate <name>
+//  Usage: node packages/efx-watercolor/probe/medium-engine/run.mjs --gate <name> [--emboss <0..100>]
+//
+//  64-03: `--emboss` folds a thickness value into the fixed stroke's
+//  params bag (probe.ts does the folding); the gate name is unchanged,
+//  so the emboss-100 capture compares against the SAME plan-01 baseline.
+//  The value is echoed by the probe report, never baked into the JSON
+//  shape the compare step reads.
 //
 //  Writes /tmp/medium-engine/<name>.json. The committed reference lives
 //  at probe/medium-engine/baselines/<name>.json and is NEVER written by
@@ -25,13 +31,28 @@ const args = process.argv.slice(2)
 const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
-  console.error('usage: node run.mjs --gate <name>   (e.g. neutral-identity)')
+  console.error('usage: node run.mjs --gate <name> [--emboss <0..100>]   (e.g. neutral-identity)')
   process.exit(1)
 }
 if (!/^[A-Za-z0-9._-]+$/.test(gate)) {
   console.error(`invalid --gate "${gate}" (letters, digits, dot, underscore, hyphen only)`)
   process.exit(1)
 }
+
+// 64-03: optional thickness knob. Omitted means the neutral (absent-key)
+// script — the exact pre-milestone stroke the baseline captured.
+const embossFlag = args.indexOf('--emboss')
+const embossRaw = embossFlag >= 0 ? args[embossFlag + 1] : undefined
+let emboss
+if (embossRaw !== undefined) {
+  emboss = Number(embossRaw)
+  if (!Number.isFinite(emboss) || emboss < 0 || emboss > 100) {
+    console.error(`invalid --emboss "${embossRaw}" (expected 0..100)`)
+    process.exit(1)
+  }
+}
+
+const pageQuery = `gate=${encodeURIComponent(gate)}` + (emboss === undefined ? '' : `&emboss=${emboss}`)
 const resultPath = join(outDir, `${gate}.json`)
 
 const esbuildCandidates = [
@@ -89,7 +110,7 @@ const run = spawnSync(
     '--window-size=512,512',
     '--allow-file-access-from-files',
     '--dump-dom',
-    `file://${join(here, 'index.html')}?gate=${encodeURIComponent(gate)}`,
+    `file://${join(here, 'index.html')}?${pageQuery}`,
   ],
   { encoding: 'utf8', timeout: 600000, maxBuffer: 64 * 1024 * 1024 },
 )
@@ -151,6 +172,7 @@ writeFileSync(resultPath, JSON.stringify(result, null, 2) + '\n')
 console.log('')
 console.log('================ medium-engine pixel gate ================')
 console.log(`gate      : ${result.gate}`)
+console.log(`emboss    : ${result.emboss === null ? '(absent)' : result.emboss}`)
 console.log(`sheet     : ${result.width}x${result.height} (${result.byteLength} bytes/export)`)
 console.log(`renderer  : ${result.renderer ?? 'n/a'}`)
 console.log(`paper     : ${result.digestPaper}`)

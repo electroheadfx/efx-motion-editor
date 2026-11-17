@@ -47,8 +47,10 @@ const BRUSH_ID = 'round'
 const SETTLE_TICKS = 8
 
 // The canonical bag exactly as the app records it (0..100), one key per
-// global. No `viscosity` key: this gate proves the ABSENT key keeps the
-// pre-milestone render — that is the neutral-default contract.
+// global. No `viscosity` / `emboss` key: this gate proves the ABSENT key
+// keeps the pre-milestone render — that is the neutral-default contract.
+// 64-03: `--emboss <0..100>` folds the value into this bag; the scenario is
+// otherwise identical, so any digest change would be a deposit leak.
 const STROKE_PARAMS: Readonly<Record<string, number>> = {
   size: 12,
   water: 50,
@@ -138,11 +140,11 @@ function digestCanvas(canvas: HTMLCanvasElement): Digest {
 
 // --- the fixed scenario -----------------------------------------------------
 
-function makeStroke(): StudioStroke<AquarelleStrokePayload> {
+function makeStroke(emboss?: number): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color: STROKE_COLOR,
-    params: { ...STROKE_PARAMS },
+    params: emboss === undefined ? { ...STROKE_PARAMS } : { ...STROKE_PARAMS, emboss },
     brushId: BRUSH_ID,
     points: STROKE_POINTS.map((point) => ({ ...point })),
     mutationId: MUTATION_ID,
@@ -184,7 +186,7 @@ function writeResult(report: Record<string, unknown>): void {
 
 // --- main -------------------------------------------------------------------
 
-function run(gate: string, renderer: string): void {
+function run(gate: string, renderer: string, emboss?: number): void {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
 
   // The tap must see the adapter's engine and only the adapter's engine:
@@ -200,7 +202,7 @@ function run(gate: string, renderer: string): void {
   )
 
   try {
-    adapter.applyStroke(makeStroke())
+    adapter.applyStroke(makeStroke(emboss))
     // Plan 64-01: stepTick for ticks 0 through 8, then fix().
     for (let tick = 0; tick <= SETTLE_TICKS; tick += 1) adapter.stepTick(tick)
     adapter.fix()
@@ -214,6 +216,7 @@ function run(gate: string, renderer: string): void {
 
     writeResult({
       gate,
+      emboss: emboss ?? null,
       width: SHEET,
       height: SHEET,
       digestPaper: paper.digest,
@@ -228,16 +231,30 @@ function run(gate: string, renderer: string): void {
   }
 }
 
+/** 64-03: the emboss knob — absent keeps the neutral (pre-milestone) script. */
+function readEmboss(): number | undefined {
+  const raw = new URLSearchParams(location.search).get('emboss')
+  if (raw === null || raw === '') return undefined
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 0 || value > 100) {
+    throw new Error(`invalid emboss "${raw}" (expected 0..100)`)
+  }
+  return value
+}
+
 function main(): void {
   const gate = new URLSearchParams(location.search).get('gate') ?? 'neutral-identity'
   let renderer = '(unknown)'
+  let emboss: number | undefined
   try {
+    emboss = readEmboss()
     renderer = probeRenderer()
-    run(gate, renderer)
+    run(gate, renderer, emboss)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     writeResult({
       gate,
+      emboss: emboss ?? null,
       width: SHEET,
       height: SHEET,
       digestPaper: null,

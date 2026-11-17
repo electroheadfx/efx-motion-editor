@@ -209,12 +209,18 @@ function makeMockCanvas(width: number, height: number): {
  * 64-01: the optional `viscosity` canonical value (0..100) is the phase's
  * medium key. Omitting it keeps the recorded bag exactly as before, so the
  * pre-existing rows still replay the pre-milestone script.
+ * 64-03: `emboss` (0..100) joins the optional medium keys — the thickness
+ * deposit is driven by it, and its determinism row turns it on.
  */
-function makeStroke(viscosity?: number): StudioStroke<AquarelleStrokePayload> {
+function makeStroke(viscosity?: number, emboss?: number): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color: '#2244aa',
-    params: { size: 12, water: 50, flow: 50, ...(viscosity === undefined ? {} : { viscosity }) },
+    params: {
+      size: 12, water: 50, flow: 50,
+      ...(viscosity === undefined ? {} : { viscosity }),
+      ...(emboss === undefined ? {} : { emboss }),
+    },
     brushId: 'wc/round-medium',
     points: [
       { x: 20, y: 32, p: 0.5, tx: 0, ty: 0, tw: 0 },
@@ -332,6 +338,23 @@ describe('determinism contract', () => {
       // ...and the ONE mapping turns it into the engine's 0..1 medium value.
       expect(toEngineParams(first.recorded.engine.params).viscosity).toBe(canonical / 100)
     }
+  })
+
+  // 64-03 (MED-14 / MED-16): the thickness deposit must not perturb replay
+  // identity. The channel is deposited by the real engine on every dab, but
+  // nothing reads it yet (64-04 lights it), so the exported bytes are the
+  // same as the neutral script; the recorded bag must carry the emboss that
+  // drove the deposit.
+  it('replays identically with emboss 100 and carries the value', () => {
+    const first = replayRun(makeStroke(undefined, 100))
+    const second = replayRun(makeStroke(undefined, 100))
+
+    expect(first.bytes.length).toBe(second.bytes.length)
+    expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(true)
+
+    expect(first.recorded.engine.params.emboss).toBe(100)
+    expect(second.recorded.engine.params.emboss).toBe(100)
+    expect(toEngineParams(first.recorded.engine.params).emboss).toBe(1)
   })
 })
 
