@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-11-PLAN.md
-last_updated: "2026-11-17T15:38:06.493Z"
+stopped_at: Completed 64-04-PLAN.md
+last_updated: "2026-11-17T15:55:53.786Z"
 last_activity: 2026-11-17
 last_activity_desc: Phase 64 execution started
-state_head: 6098d9557eb0acdf20c1f37a234af5e5f6964882
+state_head: 3f185b28bff8bfeb3d5045d9e0969333789a30e9
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 29
-  completed_plans: 21
+  completed_plans: 22
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 5 of 12
+Plan: 6 of 12
 Status: Ready to execute
 Last activity: 2026-11-17 — Phase 64 execution started
 
@@ -148,6 +148,7 @@ Last activity: 2026-11-17 — Phase 64 execution started
 | Phase 64 P02 | 14min | 3 tasks | 10 files |
 | Phase 64 P03 | 11 | 3 tasks | 6 files |
 | Phase 64 P11 | 9 | 2 tasks | 8 files |
+| Phase 64 P04 | ~1h 12m | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -474,6 +475,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: brushSections is a pure package export mapped by the library, so the empty-group omission is tested directly instead of being a component branch.
 - [Phase 64]: The chalk dry-media stamp law was rescoped to an explicit dry list plus a complement smooth-path assertion because seven of the eight new responses carry non-zero roughness per the spec table.
 - [Phase 64]: The pastel group keeps the pastel id but displays as Chalk (D-18) in both the section header and the medium dropdown.
+- [Phase 64]: 64-04: the emboss shades via dot(n, L) - L.z, so a zero gradient and a zero intensity both yield exactly 1.0; mode 4 derives alpha from the unshaded reconstruction and scales only the premultiplied pigment
+- [Phase 64]: 64-04: DEFAULT_LIGHT stores degrees (129.8/38.45/1) reconstructing normalize(vec3(-0.5, 0.6, 0.62)); drawDisplay is the only degrees-to-radians boundary and the relief sampler binds at unit 7
+- [Phase 64]: 64-04: compare.mjs --differs-from prefers the committed baseline, then the same-session /tmp capture, then a named error; all three digest must differ and dimensions must agree
 
 ### Pending Todos
 
@@ -600,8 +604,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-17T15:38:05.710Z
-Stopped at: Completed 64-11-PLAN.md
+Last session: 2026-11-17T15:55:52.999Z
+Stopped at: Completed 64-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

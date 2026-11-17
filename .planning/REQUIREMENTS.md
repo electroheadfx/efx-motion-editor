@@ -45,7 +45,7 @@
 - [x] **MED-12**: A project opened on a machine with different medium defaults replays identically, because the per-stroke params snapshot stays authoritative and the medium id is advisory
 - [x] **MED-13**: The medium selection is surfaced in the existing Studio UI without adding a second parameter panel — the globals panel stays the fine-tuning surface, and a manual global tweak keeps the medium selected
 - [x] **MED-14**: A document-resolution half-float paint-**thickness** channel receives a thickness deposit through each dab's own tip footprint, and deposits accumulate so successive strokes superpose into layered relief
-- [ ] **MED-15**: The composite lights the thickness gradient with the same normal-and-light maths the paper relief uses and multiplies the paint colour; at emboss 0 and light intensity 0 the render is byte-identical
+- [x] **MED-15**: The composite lights the thickness gradient with the same normal-and-light maths the paper relief uses and multiplies the paint colour; at emboss 0 and light intensity 0 the render is byte-identical
 - [x] **MED-16**: Emboss strength is a canonical param carried by the medium and snapshotted with the stroke — no fluid transport of thickness and no height texture asset
 - [ ] **MED-17**: Light (azimuth, elevation, intensity) is a document setting and a render parameter — never stored in paint, applied anew on every render (live paint, stroke re-render, Play motion, Apply Script, stroke/vector edit), persisted as an optional additive field, and part of the cache content fingerprint
 - [x] **MED-18**: Thickness is captured in the engine snapshot, protected for undo alongside the pigment it sits on, and export matches the screen on every `uMode` path with no shimmer on zoom
@@ -141,7 +141,7 @@ Which phases cover which requirements.
 | MED-12 | Phase 64 | Complete |
 | MED-13 | Phase 64 | Complete |
 | MED-14 | Phase 64 | Complete |
-| MED-15 | Phase 64 | Pending |
+| MED-15 | Phase 64 | Complete |
 | MED-16 | Phase 64 | Complete |
 | MED-17 | Phase 64 | Pending |
 | MED-18 | Phase 64 | Complete |
