@@ -58,7 +58,7 @@
 - [x] **MED-25**: `Body` adds no render target, no texture allocation and no shader program beyond the thickness channel of MED-14 (the cover pass reuses the Lift program), and export matches the screen on both `uMode` paths
 - [x] **MED-26**: `BrushPreset` carries a compile-time `group` with five values (`watercolor`, `gouache`, `pastel`, `graphite`, `acrylic`); absent reads `watercolor`, nothing is persisted and there is no Rust or format change
 - [x] **MED-27**: The brush library renders one section per group in the fixed order Watercolor · Gouache · Chalk/pastel · Graphite · Acrylic/oil, with no filter and no search; a group with no reachable response is not rendered
-- [ ] **MED-28**: Selecting a response applies its group's medium params in exactly one store write, only when the group changes; switching brushes inside the same group keeps the user's manual global tweaks
+- [x] **MED-28**: Selecting a response applies its group's medium params in exactly one store write, only when the group changes; switching brushes inside the same group keeps the user's manual global tweaks
 - [x] **MED-29**: The 15 existing responses are classified per the spec table (watercolour 11, chalk/pastel 4, the other groups shipping only new responses)
 - [x] **MED-30**: Eight new responses ship with the recorded parameters (`gouache-round`, `gouache-flat`, `pastel-soft`, `conte-hard`, `graphite-pencil`, `graphite-6b`, `bristle-flat`, `bristle-round`); adding is safe and renaming or removing an existing preset id is forbidden
 - [x] **MED-31**: The texture axis is unchanged — a texture replaces the selected response's footprint and applies to every group; a texture never selects a group and a group never selects a texture
@@ -154,7 +154,7 @@ Which phases cover which requirements.
 | MED-25 | Phase 64 | Complete |
 | MED-26 | Phase 64 | Complete |
 | MED-27 | Phase 64 | Complete |
-| MED-28 | Phase 64 | Pending |
+| MED-28 | Phase 64 | Complete |
 | MED-29 | Phase 64 | Complete |
 | MED-30 | Phase 64 | Complete |
 | MED-31 | Phase 64 | Complete |
