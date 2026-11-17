@@ -49,13 +49,13 @@
 - [x] **MED-16**: Emboss strength is a canonical param carried by the medium and snapshotted with the stroke — no fluid transport of thickness and no height texture asset
 - [ ] **MED-17**: Light (azimuth, elevation, intensity) is a document setting and a render parameter — never stored in paint, applied anew on every render (live paint, stroke re-render, Play motion, Apply Script, stroke/vector edit), persisted as an optional additive field, and part of the cache content fingerprint
 - [x] **MED-18**: Thickness is captured in the engine snapshot, protected for undo alongside the pigment it sits on, and export matches the screen on every `uMode` path with no shimmer on zoom
-- [ ] **MED-19**: User has a `Body` global on the app's 0..100 slider scale (normalized 0..1 internally), part of the canonical global set (`AquarelleGlobalParams` / `AQUARELLE_GLOBAL_KEYS` / `DEFAULT_AQUARELLE_PARAMS` / `AquarelleCanonicalParams`), exposed as a row in the existing globals panel, defaulting to 0
-- [ ] **MED-20**: At `Body` 0 the engine takes no cover pass at all — a project painted before this milestone renders bit-identically, and a recorded stroke without the key keeps 0
-- [ ] **MED-21**: A brush stroke with `Body` above 0 erodes the settled pigment under each dab with the Lift program and the stroke's own tip footprint (aspect, rotation, texture rotation, round), scaled by `Body` and therefore full at the core and partial at the edges, **before** that dab deposits its own pigment
-- [ ] **MED-22**: The cover pass touches the settled layer and the thickness only — standing water and mobile pigment are untouched, so a light stroke over a still-wet dark area mixes with it (declared behaviour, not a defect), and covering is destructive to the settled sheet while hide/show and undo stay consistent
-- [ ] **MED-23**: A stroke snapshots its `Body` with its params the way `lift` and `viscosity` are snapshotted; live pass, bake and replay read the same value and produce the same raster, and the medium record carries the value (`watercolor` 0, `pastel` low, `graphite` 0, `gouache` mid, `acrylic` high)
-- [ ] **MED-24**: Undo and redo restore both the settled-layer region and the thickness a covering stamp eroded — both pools protected before the cover pass's first draw, verified rather than assumed
-- [ ] **MED-25**: `Body` adds no render target, no texture allocation and no shader program beyond the thickness channel of MED-14 (the cover pass reuses the Lift program), and export matches the screen on both `uMode` paths
+- [x] **MED-19**: User has a `Body` global on the app's 0..100 slider scale (normalized 0..1 internally), part of the canonical global set (`AquarelleGlobalParams` / `AQUARELLE_GLOBAL_KEYS` / `DEFAULT_AQUARELLE_PARAMS` / `AquarelleCanonicalParams`), exposed as a row in the existing globals panel, defaulting to 0
+- [x] **MED-20**: At `Body` 0 the engine takes no cover pass at all — a project painted before this milestone renders bit-identically, and a recorded stroke without the key keeps 0
+- [x] **MED-21**: A brush stroke with `Body` above 0 erodes the settled pigment under each dab with the Lift program and the stroke's own tip footprint (aspect, rotation, texture rotation, round), scaled by `Body` and therefore full at the core and partial at the edges, **before** that dab deposits its own pigment
+- [x] **MED-22**: The cover pass touches the settled layer and the thickness only — standing water and mobile pigment are untouched, so a light stroke over a still-wet dark area mixes with it (declared behaviour, not a defect), and covering is destructive to the settled sheet while hide/show and undo stay consistent
+- [x] **MED-23**: A stroke snapshots its `Body` with its params the way `lift` and `viscosity` are snapshotted; live pass, bake and replay read the same value and produce the same raster, and the medium record carries the value (`watercolor` 0, `pastel` low, `graphite` 0, `gouache` mid, `acrylic` high)
+- [x] **MED-24**: Undo and redo restore both the settled-layer region and the thickness a covering stamp eroded — both pools protected before the cover pass's first draw, verified rather than assumed
+- [x] **MED-25**: `Body` adds no render target, no texture allocation and no shader program beyond the thickness channel of MED-14 (the cover pass reuses the Lift program), and export matches the screen on both `uMode` paths
 - [x] **MED-26**: `BrushPreset` carries a compile-time `group` with five values (`watercolor`, `gouache`, `pastel`, `graphite`, `acrylic`); absent reads `watercolor`, nothing is persisted and there is no Rust or format change
 - [x] **MED-27**: The brush library renders one section per group in the fixed order Watercolor · Gouache · Chalk/pastel · Graphite · Acrylic/oil, with no filter and no search; a group with no reachable response is not rendered
 - [ ] **MED-28**: Selecting a response applies its group's medium params in exactly one store write, only when the group changes; switching brushes inside the same group keeps the user's manual global tweaks
@@ -145,13 +145,13 @@ Which phases cover which requirements.
 | MED-16 | Phase 64 | Complete |
 | MED-17 | Phase 64 | Pending |
 | MED-18 | Phase 64 | Complete |
-| MED-19 | Phase 64 | Pending |
-| MED-20 | Phase 64 | Pending |
-| MED-21 | Phase 64 | Pending |
-| MED-22 | Phase 64 | Pending |
-| MED-23 | Phase 64 | Pending |
-| MED-24 | Phase 64 | Pending |
-| MED-25 | Phase 64 | Pending |
+| MED-19 | Phase 64 | Complete |
+| MED-20 | Phase 64 | Complete |
+| MED-21 | Phase 64 | Complete |
+| MED-22 | Phase 64 | Complete |
+| MED-23 | Phase 64 | Complete |
+| MED-24 | Phase 64 | Complete |
+| MED-25 | Phase 64 | Complete |
 | MED-26 | Phase 64 | Complete |
 | MED-27 | Phase 64 | Complete |
 | MED-28 | Phase 64 | Pending |
