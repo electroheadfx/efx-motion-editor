@@ -39,6 +39,14 @@
 //      as two derived constants. No second basis, no keep, no edge term; a
 //      texel whose film leaves paper-white transports nothing and keeps its
 //      value exactly.
+//   9. The DEPOSIT is gated by the same snippet: `coverMaskFS` includes the
+//      one `FILM_PRESENCE` definition and writes `a * p`, so a dab claims
+//      coverage only where its own film (the ink its two deposit draws above
+//      just painted, with the fixed layer already eroded) leaves paper-white.
+//      One definition, exactly two inclusions.
+//   10. `filmPresence` measures its luma on the scan's OWN 8-bit grid: the
+//      reconstructed sRGB channels are quantized to bytes before the mean, so
+//      the gate's line and the scan's "byte mean >= 250" are one test.
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -79,9 +87,22 @@ function expectNotContains(source: string, needle: string): void {
   expect(source.includes(needle), `unexpected source text: ${needle}`).toBe(false)
 }
 
+/** Count non-overlapping occurrences, so "one definition" is arithmetic. */
+function countOccurrences(source: string, needle: string): number {
+  let count = 0
+  let from = source.indexOf(needle)
+  while (from >= 0) {
+    count += 1
+    from = source.indexOf(needle, from + needle.length)
+  }
+  return count
+}
+
 const ADVECT_COVER = () => sliceBetween(SHADERS, 'export const advectCoverFS', '`;')
 const ADVECT_INK = () => sliceBetween(SHADERS, 'export const advectInkFS', '`;')
 const DISPLAY = () => sliceBetween(SHADERS, 'export const displayFS', '`;')
+const FILM_PRESENCE = () => sliceBetween(SHADERS, 'const FILM_PRESENCE =', '`;')
+const COVER_MASK = () => sliceBetween(SHADERS, 'export const coverMaskFS', '`;')
 const STEP = () => sliceBetween(ENGINE, 'private step(dt: number)', 'private trimActive()')
 const LIFT = () =>
   sliceBetween(
@@ -89,6 +110,7 @@ const LIFT = () =>
     'private lift(x: number, y: number, r: number, angle: number, amount: number)',
     'private dryTau()',
   )
+const DEPOSIT = () => sliceBetween(ENGINE, 'private coverageDeposit(', 'private brushWet(')
 
 /** Index of the first occurrence of `needle` at or after `from`; throws when absent. */
 function firstIndexAfter(source: string, needle: string, from = 0): number {
@@ -123,13 +145,16 @@ describe('the coverage advect program (64-14 task 1)', () => {
   it('declares only the uniforms it reads, with a single clamped output', () => {
     const cover = ADVECT_COVER()
     expectContains(cover, 'layout(location=0) out vec4 o0;')
-    // 64-20: the combined film (mobile + fixed) and the paper, so the gate can
-    // reconstruct what the display reconstructs.
-    expectContains(cover, 'uniform sampler2D uVelocity, uCover, uWet, uInkA, uInkB, uFixedA, uFixedB, uPaper;')
+    // 64-20: the paper stays declared here; the combined film's four channels
+    // and the display's granulation moved into the shared FILM_PRESENCE
+    // snippet, so the transport and the deposit read one declaration.
+    expectContains(cover, 'uniform sampler2D uVelocity, uCover, uWet, uPaper;')
     expectContains(cover, 'uniform vec2 uSimTexel, uTexel;')
     expectContains(cover, 'uniform float uDt, uBleed, uEdge, uAspect;')
-    expectContains(cover, 'uniform float uGranulation;')
     expectContains(cover, 'uniform vec3 uBrush;')
+    const film = FILM_PRESENCE()
+    expectContains(film, 'uniform sampler2D uInkA, uInkB, uFixedA, uFixedB;')
+    expectContains(film, 'uniform float uGranulation;')
     // T-64-41 / the no-decay prohibition: no keep factor, no settle term.
     expectNotContains(cover, 'uKeep')
     expectNotContains(cover, 'uSettle')
@@ -166,21 +191,26 @@ describe('the coverage advect program (64-14 task 1)', () => {
 
   it("gates transport on the display's own film reconstruction (64-20)", () => {
     const cover = ADVECT_COVER()
+    const film = FILM_PRESENCE()
     const display = DISPLAY()
+    expectContains(cover, '${FILM_PRESENCE}')
     // The scan's own line and its margin, derived once from 250 of 255 luma.
-    expectContains(cover, 'const float PAPER_WHITE = 250.0 / 255.0;')
-    expectContains(cover, 'const float PAPER_WHITE_RAMP = 5.0 / 255.0;')
-    expectContains(cover, 'float filmPresence(vec2 uv){')
+    expectContains(film, 'const float PAPER_WHITE = 250.0 / 255.0;')
+    expectContains(film, 'const float PAPER_WHITE_RAMP = 5.0 / 255.0;')
+    expectContains(film, 'float filmPresence(vec2 uv){')
     // Main computes the presence after the near-zero guard and scales with it.
     expectContains(cover, 'float p = filmPresence(vUv);')
-    // ONE granulation literal: the display's own expression, in both programs.
-    for (const source of [cover, display]) {
+    // ONE granulation literal: the display's own expression, in the snippet
+    // the display and both coverage programs share.
+    for (const source of [film, display]) {
       expectContains(source, '1.0 + uGranulation * (0.5 - paper.g) * 2.2')
     }
     // ONE reconstruction: the display's own Kubelka-Munk basis block.
-    expectContains(cover, '${displayBasisGLSL()}')
+    expectContains(film, '${displayBasisGLSL()}')
     // The gate ignores the display's edge darkening on purpose: its k is
-    // gran * (1 + uEdgeDarken * edge) >= gran, so the gate is an upper bound.
+    // gran * (1 + uEdgeDarken * edge) >= gran, so the gate is no darker than
+    // the display, and a texel it lets transport cannot read paper-white.
+    expectNotContains(film, 'uEdgeDarken')
     expectNotContains(cover, 'uEdgeDarken')
   })
 
@@ -329,5 +359,55 @@ describe('Lift destroys coverage (64-14 task 3)', () => {
     expectContains(preamble, 'this.touch(rect);')
     // Lift reaches fixed pigment, so the fixed pool is saved before its draw.
     expectContains(preamble, 'this.history.protect(1,')
+  })
+})
+
+describe('the deposit gate shares the one reconstruction (64-20 decision A)', () => {
+  it('includes the one FILM_PRESENCE definition from exactly two programs', () => {
+    expectContains(ADVECT_COVER(), '${FILM_PRESENCE}')
+    expectContains(COVER_MASK(), '${FILM_PRESENCE}')
+    // A second, divergent criterion would have to declare itself here: one
+    // definition, two inclusions, and the basis/granulation counts below.
+    expect(countOccurrences(SHADERS, 'const FILM_PRESENCE =')).toBe(1)
+    expect(countOccurrences(SHADERS, '${FILM_PRESENCE}')).toBe(2)
+    expect(countOccurrences(SHADERS, '${displayBasisGLSL()}')).toBe(2)
+    expect(countOccurrences(SHADERS, '1.0 + uGranulation * (0.5 - paper.g) * 2.2')).toBe(2)
+  })
+
+  it('scales the deposited coverage by the presence and keeps the union blend', () => {
+    const mask = COVER_MASK()
+    expectContains(mask, 'float m = footprintMask();')
+    expectContains(mask, 'float a = uAmount * (1.0 - exp(-uDensity * m));')
+    expectContains(mask, 'float p = filmPresence(vUv);')
+    expectContains(mask, 'o0 = vec4(a * p);')
+    // The ungated write is what let a dab claim a texel its own film leaves
+    // paper-white; with p = 0 the union draw is the identity and the texel
+    // keeps its value exactly.
+    expectNotContains(mask, 'o0 = vec4(uAmount * (1.0 - exp(-uDensity * m)));')
+  })
+
+  it('binds the film the two deposit draws just painted, and the display granulation', () => {
+    const deposit = DEPOSIT()
+    const block = sliceBetween(deposit, 'const m = this.programs.coverMask;', 'gl.disable(gl.BLEND);')
+    expectContains(block, 'g.bindTex(2, this.ink.read.tex[0])')
+    expectContains(block, 'g.bindTex(3, this.ink.read.tex[1])')
+    expectContains(block, 'g.bindTex(4, this.fixed.tex[0])')
+    expectContains(block, 'g.bindTex(5, this.fixed.tex[1])')
+    expectContains(block, 'gl.uniform1f(m.u.uGranulation, this.params.granulation * 0.55);')
+    // uPaper is unit 1 already: bindFootprint bound the very paper the
+    // display granulates on, so the gate samples the same sheet.
+    expectNotContains(block, 'uPaper')
+  })
+})
+
+describe("the gate runs on the scan's own 8-bit grid (64-20 decision B)", () => {
+  it('quantizes the reconstructed sRGB channels to bytes before the mean', () => {
+    const film = FILM_PRESENCE()
+    expectContains(film, 'vec3 q = floor(s * 255.0 + 0.5) / 255.0;')
+    expectContains(film, 'float luma = (q.r + q.g + q.b) / 3.0;')
+    expectContains(film, 'return 1.0 - smoothstep(PAPER_WHITE - PAPER_WHITE_RAMP, PAPER_WHITE, luma);')
+    // The continuous mean is the form the scan's byte comparison disagreed
+    // with: a texel at 249.6/255 kept a nonzero trickle while reading byte 250.
+    expectNotContains(film, '(s.r + s.g + s.b) / 3.0')
   })
 })
