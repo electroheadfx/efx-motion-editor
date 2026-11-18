@@ -1,5 +1,5 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Body cover rev 4 leaves the canvas in an inconsistent state after sustained painting (Phase 64 / quick 261117-tq7)"
 created: 2026-11-18
 updated: 2026-11-18
@@ -108,6 +108,7 @@ updated: 2026-11-18
 - root_cause (ROUND 4 — CONFIRMED IN CODE, awaiting live UAT): the round-3 deferral hung the WHOLE reset on a decode that is not guaranteed. `getFrameBlobUrl` content-memoizes bytes → same URL for the same bytes → the layer's URL effect never re-runs → `onApplied` never fires → the live sheet is never cleared, and because the session bookkeeping rode the same deferred reset, the merge base / sheet-has-paint gate stayed stale; the settle capture then re-merged an uncleared sheet into the cache. Paint stopped persisting.
 - fix (ROUND 4): the layer registers the reset's halves separately (`resetSheet` = `endSheetSession` + `clearSheetPaint`; mount + Studio forward both). The cover now runs `aquarelleEndSheetSessionRef` SYNCHRONOUSLY at the ack (pre-round-3 timing), resolves the display URL with `getFrameBlobUrl(coverProduced.bytes)` and compares it to `previewBasePort.getAppliedPreviewBaseDataUrl()`: only a genuinely changing URL arms the deferred `clearSheetPaint`; the same-URL and no-display cases clear immediately (the base already shows those bytes). The generation guard on the armed hook is kept.
 - verification (ROUND 4, automated): updated seam/mount/Studio pins; `aquarelleCoverSeamContract` 12/12, mount suites 16/16, `PhysicsPaintStudio.test.ts` 438/438; app physic-paint 6945 passed with only the same 5 documented pre-existing failures; app tsc clean. Live UAT pending (status awaiting_human_verify).
+- closure (2026-11-18 — SUPERSEDED, not UAT-verified): Spike 001 (`.planning/spikes/001-coverage-composite/VERDICT.md`) returned **GO** on replacing the rev-4 erase/punch model with a per-dab coverage composite composited source-over. All four root causes above are artifacts of the punch/erase architecture: there is no punched base to publish, no punch/decode ordering to coordinate, and no pre-stroke snapshot to go stale. The round-1..4 fixes (`c1fdd45e0` .. `406d1ead1`) stay in the tree until the coverage plans land, then the machinery they patch is deleted. The Phase 64 UAT rows that encode erase behavior (`64-UAT.md` rows 2 and 7, plus quick 261117-tq7 rows 1–7) are re-specified against the coverage model rather than answered.
 
 
 - files_changed (ROUND 1):

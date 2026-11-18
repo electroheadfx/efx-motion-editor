@@ -1,0 +1,710 @@
+// ============================================================
+//  codec.test.ts — aquarelle script codec + Dry ordering (56-06).
+//
+//  Standing pins for AQUA-05 / AQUA-06:
+//    · serialize → parse round-trip deep-equals (strokes + Dry)
+//    · Dry is a distinguished union member (D-16) — no pts, no
+//      brush, no second events array
+//    · tick quantisation (integers, never raw ms)
+//    · DIFFUSION_CAP = 600 at serialize
+//    · parse is total and fail-closed (malformed / unknown
+//      schemaVersion → null, never throw)
+//    · mixed stroke/dry replay order on (tick, recordedOrder)
+//    · record → serialize → parse → replay is byte-identical
+//
+//  Family: determinismContract / engineAdapter / hostGenericity —
+//  normal vitest .test.ts on the existing setup, no new config.
+// ============================================================
+
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+import { classifyEnvelopeParseFailure, hashMutationId } from '@efxlab/efx-paint-host'
+import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
+import {
+  AQUARELLE_SCHEMA_VERSION,
+  buildEngineMismatchRefusal,
+  classifyAquarellePayloadFailure,
+  parse,
+  payloadCodec,
+  serialize,
+} from './codec'
+import {
+  comparePayloadEvents,
+  isAquarelleDryEvent,
+  type AquarelleDryEvent,
+  type AquarellePayloadEvent,
+} from './dryEvent'
+import {
+  DIFFUSION_CAP,
+  toStudioStroke,
+  type AquarelleStroke,
+  type AquarelleStrokePayload,
+} from './toStudioStroke'
+import { createAquarelleEngineAdapter } from '../adapter/engineAdapter'
+import { ANCHOR_WIDTH_MAX } from '../vector/spine'
+import type { AquarelleAnchor } from './vectorPath'
+
+const PAYLOAD_DIR = resolve(dirname(fileURLToPath(import.meta.url)))
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+function makeRuntimeStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#2244aa',
+    params: { size: 12, water: 50, flow: 50 },
+    brushId: 'wc/round-medium',
+    points: [
+      { x: 20, y: 32, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      { x: 28, y: 32, p: 0.6, tx: 0, ty: 0, tw: 0 },
+      { x: 36, y: 32, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      { x: 44, y: 32, p: 0.4, tx: 0, ty: 0, tw: 0 },
+    ],
+    toolOverrides: {
+      tip: 1.2,
+      aspect: 1,
+      rotation: 1,
+      sizeCurve: 1,
+      scatter: 0.8,
+      capacity: 1.1,
+      grain: 1,
+      wetRound: 0.9,
+    },
+    mutationId: 42,
+    timestamp: 1000,
+    ...overrides,
+  }
+}
+
+function makeStrokeEvent(overrides: Partial<AquarelleStroke> = {}): StudioStroke<AquarelleStrokePayload> {
+  return toStudioStroke(makeRuntimeStroke(overrides))
+}
+
+function makeDryEvent(tick: number, recordedOrder: number): AquarelleDryEvent {
+  return { kind: 'dry', tick, recordedOrder }
+}
+
+/** Build a stroke whose ordering `ticks` equals `orderTick` (duration proxy). */
+function makeStrokeWithOrderTick(orderTick: number, recordedOrder: number): StudioStroke<AquarelleStrokePayload> {
+  const pointCount = orderTick + 1
+  const points = Array.from({ length: pointCount }, (_, i) => ({
+    x: 10 + i * 4,
+    y: 32,
+    p: 0.5,
+    tx: 0,
+    ty: 0,
+    tw: 0,
+  }))
+  return toStudioStroke(makeRuntimeStroke({ points, timestamp: recordedOrder }))
+}
+
+function collectPayloadSources(): string {
+  return readdirSync(PAYLOAD_DIR)
+    .filter((entry) => entry.endsWith('.ts') && !entry.endsWith('.test.ts'))
+    .map((entry) => readFileSync(join(PAYLOAD_DIR, entry), 'utf8'))
+    .join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// 1. toStudioStroke — tick quantisation + diffusionFrames cap (D-19)
+// ---------------------------------------------------------------------------
+
+describe('toStudioStroke tick quantisation and cap', () => {
+  it('diffusionFrames=1000 clamps cuisson to DIFFUSION_CAP 600', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ diffusionFrames: 1000 }))
+    expect(stroke.cuisson).toBe(600)
+    expect(stroke.cuisson).toBe(DIFFUSION_CAP)
+  })
+
+  it('diffusionFrames=0 or undefined yields cuisson === 0', () => {
+    expect(toStudioStroke(makeRuntimeStroke({ diffusionFrames: 0 })).cuisson).toBe(0)
+    expect(toStudioStroke(makeRuntimeStroke({ diffusionFrames: undefined })).cuisson).toBe(0)
+  })
+
+  it('pts ticks are integers (sample index), never floats or raw ms', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke())
+    for (const [i, pt] of stroke.pts.entries()) {
+      expect(Number.isInteger(pt.tick)).toBe(true)
+      expect(pt.tick).toBe(i)
+    }
+    expect(Number.isInteger(stroke.ticks)).toBe(true)
+    expect(Number.isInteger(stroke.cuisson)).toBe(true)
+    expect(stroke.traceSeed).toBe(hashMutationId(42))
+  })
+
+  it('diffusionFrames > 600 clamps to 600 at serialize (engine bag + cuisson)', () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ diffusionFrames: 900 }))
+    const wire = serialize(stroke)
+    const parsed = parse(wire)
+    expect(parsed).not.toBeNull()
+    const round = parsed as StudioStroke<AquarelleStrokePayload>
+    expect(round.cuisson).toBe(600)
+    expect(round.engine.diffusionFrames ?? 0).toBeLessThanOrEqual(600)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2. Round-trip — parse(serialize(x)) deep-equals x (AQUA-05)
+// ---------------------------------------------------------------------------
+
+describe('serialize → parse round-trip', () => {
+  it('round-trips a stroke including toolOverrides and engine fields', () => {
+    const stroke = makeStrokeEvent()
+    const reparsed = parse(serialize(stroke))
+    expect(reparsed).not.toBeNull()
+    expect(reparsed).toEqual(stroke)
+    const round = reparsed as StudioStroke<AquarelleStrokePayload>
+    expect(round.toolOverrides).toEqual(stroke.toolOverrides)
+    expect(round.engine.tool).toBe('brush')
+    expect(round.engine.brushId).toBe('wc/round-medium')
+    expect(round.engine.toolOverrides).toEqual(stroke.engine.toolOverrides)
+    expect(round.traceSeed).toBe(hashMutationId(42))
+  })
+
+  it('round-trips a Dry event', () => {
+    const dry = makeDryEvent(5, 2)
+    const reparsed = parse(serialize(dry))
+    expect(reparsed).not.toBeNull()
+    expect(reparsed).toEqual(dry)
+  })
+
+  it('preserves stroke order and Dry-event order exactly (no sort, no dedupe)', () => {
+    const events: AquarellePayloadEvent[] = [
+      makeStrokeWithOrderTick(3, 10),
+      makeDryEvent(5, 15),
+      makeStrokeWithOrderTick(5, 20),
+    ]
+    const wireList = events.map((event) => serialize(event))
+    const parsedList = wireList.map((wire) => parse(wire))
+    expect(parsedList).toEqual(events)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2b. textureId — the texture axis rides the opaque engine slot (quick-oh9)
+//
+// The response owns the physics; `engine.textureId` names the footprint the
+// response stencils through. Absent is the documented default (no texture),
+// so schemaVersion stays 1 — the anchors / curveMode precedent. A present
+// non-string or an empty string is malformed and refuses the event.
+// ---------------------------------------------------------------------------
+
+describe('textureId carrier (quick-261115-oh9)', () => {
+  it('round-trips a stroke whose engine.textureId names a built-in texture', () => {
+    const stroke = makeStrokeEvent({ textureId: 'wc/custom-chalk' })
+    expect(stroke.engine.textureId).toBe('wc/custom-chalk')
+    const reparsed = parse(serialize(stroke))
+    expect(reparsed).not.toBeNull()
+    const round = reparsed as StudioStroke<AquarelleStrokePayload>
+    expect(round.engine.textureId).toBe('wc/custom-chalk')
+    expect(round).toEqual(stroke)
+  })
+
+  it('a LIFT stroke never carries a texture through the projection (CR-01)', () => {
+    // The eraser has no texture. Every producer (record, restore, duplicate,
+    // script copy) projects through toStudioStroke, so the law holds once here.
+    const lift = makeStrokeEvent({ tool: 'lift', textureId: 'wc/custom-chalk' })
+    expect('textureId' in lift.engine).toBe(false)
+    const round = parse(serialize(lift)) as StudioStroke<AquarelleStrokePayload>
+    expect('textureId' in round.engine).toBe(false)
+  })
+
+  it('absent stays absent: no textureId key is invented and schemaVersion is still 1', () => {
+    const stroke = makeStrokeEvent()
+    const wire = serialize(stroke)
+    expect(wire.schemaVersion).toBe(AQUARELLE_SCHEMA_VERSION)
+    expect(AQUARELLE_SCHEMA_VERSION).toBe(1)
+    const round = parse(wire) as StudioStroke<AquarelleStrokePayload>
+    expect('textureId' in round.engine).toBe(false)
+  })
+
+  it('refuses a present empty string, a number and null', () => {
+    const stroke = makeStrokeEvent({ textureId: 'wc/custom-chalk' })
+    const wire = serialize(stroke) as {
+      schemaVersion: number
+      event: StudioStroke<AquarelleStrokePayload>
+    }
+    for (const bad of ['', 42, null]) {
+      const tampered = {
+        schemaVersion: wire.schemaVersion,
+        event: { ...wire.event, engine: { ...wire.event.engine, textureId: bad } },
+      }
+      expect(parse(tampered) === null).toBe(true)
+    }
+  })
+
+  it('keeps an unrelated unknown engine key allowed (the allowance is not tightened)', () => {
+    const stroke = makeStrokeEvent()
+    const wire = serialize(stroke) as {
+      schemaVersion: number
+      event: StudioStroke<AquarelleStrokePayload>
+    }
+    const withExtra = {
+      schemaVersion: wire.schemaVersion,
+      event: { ...wire.event, engine: { ...wire.event.engine, futureAxis: 1 } },
+    }
+    expect(parse(withExtra) === null).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 3. Dry event shape (D-16) — distinguished union member, one payload union
+// ---------------------------------------------------------------------------
+
+describe('Dry event is a distinguished payload union member (D-16)', () => {
+  it("Dry event { kind: 'dry', tick } has no pts and no brush fields", () => {
+    const dry = makeDryEvent(5, 2)
+    expect(dry.kind).toBe('dry')
+    expect(dry.tick).toBe(5)
+    expect('pts' in dry).toBe(false)
+    expect('brushId' in dry).toBe(false)
+    expect('brush' in dry).toBe(false)
+    expect('tool' in dry).toBe(false)
+    expect(isAquarelleDryEvent(dry)).toBe(true)
+    expect(isAquarelleDryEvent(makeStrokeEvent())).toBe(false)
+  })
+
+  it('Dry is a member of the same payload union as strokes (not a separate events array)', () => {
+    const events: AquarellePayloadEvent[] = [makeDryEvent(1, 1), makeStrokeEvent()]
+    expect(events).toHaveLength(2)
+    expect(isAquarelleDryEvent(events[0])).toBe(true)
+    expect(isAquarelleDryEvent(events[1])).toBe(false)
+  })
+
+  it('payload source has zero "events:" second-array markers (D-16)', () => {
+    const source = collectPayloadSources()
+    expect(/^\s*events\s*:/m.test(source)).toBe(false)
+    // Word-boundary scan so prose like "unseeded RNG" never trips the pin.
+    expect(/\bMath\.random\b/.test(source)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 4. Ordering law — total order on (tick, recordedOrder) (AQUA-05)
+// ---------------------------------------------------------------------------
+
+describe('Dry ordering (tick, recordedOrder)', () => {
+  it('mixed [stroke(tick=3), dry(tick=5), stroke(tick=5)] replays stroke, dry, stroke', () => {
+    const stroke3 = makeStrokeWithOrderTick(3, 10)
+    const dry5 = makeDryEvent(5, 15)
+    const stroke5 = makeStrokeWithOrderTick(5, 20)
+
+    // Shuffle so a no-op comparator cannot pass by preserving input order.
+    const shuffled: AquarellePayloadEvent[] = [stroke5, dry5, stroke3]
+    const sorted = [...shuffled].sort(comparePayloadEvents)
+
+    expect(sorted).toEqual([stroke3, dry5, stroke5])
+  })
+
+  it('equal ticks keep recordedOrder (total order, no unstable swap)', () => {
+    const dryEarly = makeDryEvent(5, 10)
+    const dryLate = makeDryEvent(5, 30)
+    const strokeMid = makeStrokeWithOrderTick(5, 20)
+
+    const shuffled: AquarellePayloadEvent[] = [dryLate, strokeMid, dryEarly]
+    const sorted = [...shuffled].sort(comparePayloadEvents)
+    expect(sorted).toEqual([dryEarly, strokeMid, dryLate])
+  })
+
+  it('a Dry at tick T applies after strokes with tick < T and before strokes with tick > T', () => {
+    const before = makeStrokeWithOrderTick(4, 100)
+    const dry = makeDryEvent(5, 200)
+    const after = makeStrokeWithOrderTick(6, 300)
+    const sorted = [after, dry, before].sort(comparePayloadEvents)
+    expect(sorted).toEqual([before, dry, after])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 5. Fail-closed parse (T-56-17 / P5 / DATA-01)
+// ---------------------------------------------------------------------------
+
+describe('parse is total and fail-closed', () => {
+  it('parse(malformed) returns null and never throws', () => {
+    const malformed: unknown[] = [
+      null,
+      undefined,
+      0,
+      'not-json',
+      [],
+      {},
+      { kind: 'dry' },
+      { kind: 'dry', tick: 'nope', recordedOrder: 1 },
+      { kind: 'dry', tick: 1.5, recordedOrder: 1 },
+      { pts: 'nope' },
+      { pts: [], ticks: 0, cuisson: -1 },
+      { schemaVersion: AQUARELLE_SCHEMA_VERSION },
+    ]
+    for (const raw of malformed) {
+      expect(() => parse(raw)).not.toThrow()
+      expect(parse(raw)).toBeNull()
+    }
+  })
+
+  it('parse(unknown schemaVersion) returns null (no dual-format reader)', () => {
+    const stroke = makeStrokeEvent()
+    const unknownVersion = { schemaVersion: 2, event: stroke }
+    const missingVersion = { event: stroke }
+    const zeroVersion = { schemaVersion: 0, event: stroke }
+    expect(parse(unknownVersion)).toBeNull()
+    expect(parse(missingVersion)).toBeNull()
+    expect(parse(zeroVersion)).toBeNull()
+  })
+
+  it('parse accepts the exact AQUARELLE_SCHEMA_VERSION', () => {
+    expect(AQUARELLE_SCHEMA_VERSION).toBe(1)
+    const dry = makeDryEvent(3, 1)
+    const parsed = parse({ schemaVersion: AQUARELLE_SCHEMA_VERSION, event: dry })
+    expect(parsed).toEqual(dry)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 6. Determinism — record → serialize → parse → replay (AQUA-06)
+// ---------------------------------------------------------------------------
+
+function replayBytesFromParsed(): Uint8ClampedArray {
+  const width = 64
+  const height = 64
+  const pixels = new Uint8ClampedArray(width * height * 4)
+  const canvasRef: Record<string, unknown> = {
+    width,
+    height,
+    getContext: (id: string) => {
+      if (id !== '2d') return null
+      return {
+        canvas: canvasRef,
+        createImageData: (w: number, h: number) => ({
+          width: w,
+          height: h,
+          data: new Uint8ClampedArray(w * h * 4),
+        }),
+        getImageData: (_x: number, _y: number, w: number, h: number) => ({
+          width: w,
+          height: h,
+          data: pixels.slice(0, w * h * 4),
+        }),
+        putImageData: (imageData: { data: Uint8ClampedArray }) => {
+          pixels.set(imageData.data.subarray(0, pixels.length))
+        },
+      }
+    },
+  }
+  const adapter = createAquarelleEngineAdapter({
+    width,
+    height,
+    canvas: canvasRef as unknown as HTMLCanvasElement,
+  })
+
+  const recorded = makeStrokeEvent()
+  const wire = serialize(recorded)
+  const parsed = parse(wire)
+  expect(parsed).not.toBeNull()
+  adapter.applyStroke(parsed as StudioStroke<AquarelleStrokePayload>)
+  for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
+  adapter.captureFrame()
+  const copy = pixels.slice()
+  adapter.dispose()
+  return copy
+}
+
+describe('record → serialize → parse → replay determinism (AQUA-06)', () => {
+  it('same script survives the codec and replays byte-identical pixels', () => {
+    const a = replayBytesFromParsed()
+    const b = replayBytesFromParsed()
+    expect(a.length).toBe(b.length)
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 7. payloadCodec seam (host never reads P)
+// ---------------------------------------------------------------------------
+
+describe('payloadCodec seam', () => {
+  it('exposes serialize/parse matching the EngineAdapter contract', () => {
+    expect(typeof payloadCodec.serialize).toBe('function')
+    expect(typeof payloadCodec.parse).toBe('function')
+  })
+
+  it('serialize is total over the union (stroke and Dry) without throwing', () => {
+    expect(() => serialize(makeStrokeEvent())).not.toThrow()
+    expect(() => serialize(makeDryEvent(1, 1))).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 8. Cross-engine Apply refusal + unreadable-script named failures (MOD-05 / D-25)
+//
+//  Host yields CODES; the Studio names them on the owned-refusal surface
+//  (55-06). These pins prove the codec's fail-closed signals are exactly the
+//  two codes the named lines hang off:
+//    · unreadable aquarelle wire (bad shape / unknown schemaVersion)
+//      → parse null → `malformed-engine-payload`
+//    · a foreign-engine script at the envelope
+//      → `engine-mismatch` with the package-id pair in `detail`
+//  Never half-apply, never silent drop (DATA-02 / 53.1 law).
+// ---------------------------------------------------------------------------
+
+describe('cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25)', () => {
+  it('unreadable aquarelle wire (unknown schemaVersion) fails parse and classifies as malformed-engine-payload', () => {
+    const stroke = makeStrokeEvent()
+    const unreadable = { schemaVersion: 999, event: stroke }
+    expect(parse(unreadable)).toBeNull()
+    // The envelope carrying it still has the right kind/engineId, so the host
+    // does not call it a legacy script or an unknown engine — the payload is
+    // simply unreadable (D-14 ordering: legacy first, then unknown engine,
+    // then malformed).
+    const envelope = {
+      kind: 'efx-studio-paint-script',
+      schemaVersion: 1,
+      engineId: 'efx-watercolor',
+      id: '2f6c0a1e-4b3d-4c2a-9e8f-0a1b2c3d4e5f',
+      name: 'unreadable',
+      createdAt: '2026-10-16T00:00:00.000Z',
+      updatedAt: '2026-10-16T00:00:00.000Z',
+      source: { projectName: 'p', layerId: 'l', layerName: 'L', sourceFrame: 0, displayFrame: 0, width: 64, height: 64 },
+      thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.5, dataUrl: 'data:image/webp;base64,' },
+      brushPack: { kind: 'efx-watercolor', entries: [] },
+      strokes: [unreadable],
+    }
+    const classified = classifyEnvelopeParseFailure(envelope)
+    // Envelope shape itself is well-formed, so the host parse succeeds and the
+    // payload-level refusal is the codec's own null — which the Apply path maps
+    // to `malformed-engine-payload` (the named "could not be read" line).
+    expect(classified).toBeNull()
+    // Every stroke in the envelope must survive codec.parse; any null is a
+    // named refusal, never a silent drop.
+    for (const raw of envelope.strokes) {
+      expect(parse(raw)).toBeNull()
+    }
+  })
+
+  it('malformed aquarelle wire (bad shape) fails parse and never throws', () => {
+    const malformed: unknown[] = [
+      { schemaVersion: AQUARELLE_SCHEMA_VERSION, event: { pts: 'nope' } },
+      { schemaVersion: AQUARELLE_SCHEMA_VERSION, event: { kind: 'dry', tick: -1, recordedOrder: 1 } },
+      { schemaVersion: AQUARELLE_SCHEMA_VERSION, event: null },
+      'not-json',
+    ]
+    for (const raw of malformed) {
+      expect(() => parse(raw)).not.toThrow()
+      expect(parse(raw)).toBeNull()
+    }
+  })
+
+  it('a foreign-engine script at the envelope classifies as engine-mismatch, not malformed', () => {
+    // Cross-engine Apply (MOD-05): a Brush script offered to a Water color
+    // layer (and the reverse) must refuse with the engine-mismatch code so the
+    // Studio can name BOTH engines. The package-id pair rides `detail`.
+    const envelope = {
+      kind: 'efx-studio-paint-script',
+      schemaVersion: 1,
+      engineId: 'efx-physic-paint',
+      id: '2f6c0a1e-4b3d-4c2a-9e8f-0a1b2c3d4e5f',
+      name: 'brush-script',
+      createdAt: '2026-10-16T00:00:00.000Z',
+      updatedAt: '2026-10-16T00:00:00.000Z',
+      source: { projectName: 'p', layerId: 'l', layerName: 'L', sourceFrame: 0, displayFrame: 0, width: 64, height: 64 },
+      thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.5, dataUrl: 'data:image/webp;base64,' },
+      brushPack: { kind: 'efx-physic-paint', entries: [] },
+      strokes: [],
+    }
+    const classified = classifyEnvelopeParseFailure(envelope)
+    // The envelope is structurally valid (known engine id), so the host parse
+    // does not fail — the Apply path is what discriminates the engine id and
+    // yields `engine-mismatch` with detail `efx-physic-paint:efx-watercolor`.
+    expect(classified).toBeNull()
+    // The aquarelle codec itself must NOT accept a foreign payload as its own.
+    const foreignPayload = {
+      tool: 'paint',
+      color: '#000000',
+      params: { size: 1, opacity: 100 },
+      timestamp: 0,
+    }
+    expect(parse({ schemaVersion: AQUARELLE_SCHEMA_VERSION, event: foreignPayload })).toBeNull()
+  })
+
+  it('an unknown engine id classifies as unknown-engine-id (named "unknown paint module" line)', () => {
+    const envelope = {
+      kind: 'efx-studio-paint-script',
+      schemaVersion: 1,
+      engineId: 'efx-not-a-real-engine',
+      id: '2f6c0a1e-4b3d-4c2a-9e8f-0a1b2c3d4e5f',
+      name: 'mystery',
+      createdAt: '2026-10-16T00:00:00.000Z',
+      updatedAt: '2026-10-16T00:00:00.000Z',
+      source: { projectName: 'p', layerId: 'l', layerName: 'L', sourceFrame: 0, displayFrame: 0, width: 64, height: 64 },
+      thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.5, dataUrl: 'data:image/webp;base64,' },
+      brushPack: { kind: 'x', entries: [] },
+      strokes: [],
+    }
+    expect(classifyEnvelopeParseFailure(envelope)).toBe('unknown-engine-id')
+  })
+
+  it('a legacy pre-envelope kind classifies as unreadable-legacy-script (clean break, no reader)', () => {
+    expect(classifyEnvelopeParseFailure({ kind: 'efx-physics-paint-roto-script', version: 2 })).toBe(
+      'unreadable-legacy-script',
+    )
+  })
+
+  it('PIN: a refused parse writes nothing — parse is total, pure, and side-effect free', () => {
+    // The codec is the refuse-before-write door: it never mutates engine state,
+    // never touches a store, and never half-applies. A null return IS the
+    // refusal; the named line is the Studio's job (D-09/D-25).
+    const before = collectPayloadSources()
+    const unreadable = { schemaVersion: 99, event: makeStrokeEvent() }
+    parse(unreadable)
+    parse({ schemaVersion: AQUARELLE_SCHEMA_VERSION, event: { pts: [] } })
+    const after = collectPayloadSources()
+    expect(after).toBe(before)
+    // And the codec source itself carries no store/signal mutation surface.
+    expect(before).not.toContain('physicPaintVersion')
+    expect(before).not.toContain('efxPaintVersion')
+    expect(before).not.toContain('paintVersion')
+    expect(before).not.toContain('bumpTrackRevision')
+    expect(before).not.toContain('bumpDocumentRevision')
+  })
+
+  it('classifyAquarellePayloadFailure maps parse-null to malformed-engine-payload and parse-ok to null', () => {
+    const good = serialize(makeStrokeEvent())
+    expect(classifyAquarellePayloadFailure(good)).toBeNull()
+    expect(classifyAquarellePayloadFailure({ schemaVersion: 99, event: makeStrokeEvent() })).toBe('malformed-engine-payload')
+    expect(classifyAquarellePayloadFailure({ schemaVersion: AQUARELLE_SCHEMA_VERSION, event: { pts: 'nope' } })).toBe('malformed-engine-payload')
+    expect(classifyAquarellePayloadFailure(null)).toBe('malformed-engine-payload')
+    expect(classifyAquarellePayloadFailure('not-json')).toBe('malformed-engine-payload')
+  })
+
+  it('buildEngineMismatchRefusal carries the package-id pair in detail for the named line', () => {
+    const refusal = buildEngineMismatchRefusal('efx-physic-paint', 'efx-watercolor')
+    expect(refusal.code).toBe('engine-mismatch')
+    expect(refusal.detail).toBe('efx-physic-paint:efx-watercolor')
+    const reverse = buildEngineMismatchRefusal('efx-watercolor', 'efx-physic-paint')
+    expect(reverse.detail).toBe('efx-watercolor:efx-physic-paint')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 9. Vector path wire validation (61-03 T-61-08)
+//
+//  The optional engine fields are VALIDATED, not passed through blind: a
+//  malformed anchor list or an unknown curve mode makes the whole event
+//  unreadable (null), never a repaired event. An event with neither field
+//  round-trips exactly as it did before this plan. A legacy `renderMode`
+//  key is inert data: it is neither validated nor interpreted.
+// ---------------------------------------------------------------------------
+
+const WIRE_ANCHORS: readonly AquarelleAnchor[] = [
+  { x: 20, y: 32, kind: 'auto' },
+  { x: 44, y: 32, kind: 'bezier', in: { x: 40, y: 30 }, out: { x: 48, y: 34 }, width: 1.8 },
+  { x: 60, y: 32, kind: 'auto' },
+]
+
+function wrapStroke(stroke: StudioStroke<AquarelleStrokePayload>): unknown {
+  return { schemaVersion: AQUARELLE_SCHEMA_VERSION, event: stroke }
+}
+
+describe('wire validation of the vector fields (61-03 T-61-08)', () => {
+  it('round-trips a vector event deep-equal including its single 1.8 width factor', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    const parsed = parse(serialize(stroke))
+    expect(parsed).not.toBeNull()
+    const round = parsed as StudioStroke<AquarelleStrokePayload>
+    expect(round.engine.anchors).toEqual(WIRE_ANCHORS)
+    expect(round.engine.anchors?.filter((anchor) => 'width' in anchor)).toHaveLength(1)
+    expect(round.engine.anchors?.[1]?.width).toBe(1.8)
+    expect(round.toolOverrides).toEqual(stroke.toolOverrides)
+    expect(round.engine.brushId).toBe('wc/round-medium')
+  })
+
+  it('parses to null when an anchor list is malformed', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    const malformed: AquarelleAnchor[][] = [
+      [{ x: NaN, y: 0, kind: 'auto' }],
+      [{ x: 0, y: 0, kind: 'spline' as unknown as 'auto' }],
+      [{ x: 0, y: 0, kind: 'bezier', in: { x: Infinity, y: 0 }, out: { x: 1, y: 1 } }],
+      [{ x: 0, y: 0, kind: 'auto', width: ANCHOR_WIDTH_MAX + 1 }],
+      [],
+    ]
+    for (const anchors of malformed) {
+      const raw = { ...stroke, engine: { ...stroke.engine, anchors } }
+      expect(() => parse(wrapStroke(raw as StudioStroke<AquarelleStrokePayload>))).not.toThrow()
+      expect(parse(wrapStroke(raw as StudioStroke<AquarelleStrokePayload>))).toBeNull()
+    }
+  })
+
+  it('accepts a legacy renderMode key as inert data', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    const raw = {
+      ...stroke,
+      engine: { ...stroke.engine, renderMode: 'simple-ribbon' },
+    } as unknown as StudioStroke<AquarelleStrokePayload>
+    expect(parse(wrapStroke(raw))).not.toBeNull()
+  })
+
+  it('re-serialises a parsed vector event deep-equal (faithful pass-through)', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    const parsed = parse(serialize(stroke))
+    expect(parsed).not.toBeNull()
+    expect(serialize(parsed!)).toEqual(serialize(stroke))
+  })
+
+  it('still round-trips an event with no vector field exactly as today', () => {
+    const stroke = makeStrokeEvent()
+    expect(parse(serialize(stroke))).toEqual(stroke)
+    expect('anchors' in stroke.engine).toBe(false)
+  })
+
+  it('round-trips a curveMode and keeps an absent key absent (61-30 G-20)', () => {
+    const spline = makeStrokeEvent({ curveMode: 'spline' })
+    const parsed = parse(serialize(spline))
+    expect(parsed).not.toBeNull()
+    expect((parsed as StudioStroke<AquarelleStrokePayload>).engine.curveMode).toBe('spline')
+
+    const absent = makeStrokeEvent()
+    const absentParsed = parse(serialize(absent)) as StudioStroke<AquarelleStrokePayload>
+    expect('curveMode' in absentParsed.engine).toBe(false)
+  })
+
+  it('round-trips the drawn provenance and refuses a non-true marker (62-UAT)', () => {
+    const drawn = makeStrokeEvent({ anchors: WIRE_ANCHORS, vectorDrawn: true })
+    const parsed = parse(serialize(drawn)) as StudioStroke<AquarelleStrokePayload>
+    expect(parsed).not.toBeNull()
+    expect(parsed.engine.vectorDrawn).toBe(true)
+
+    const absent = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    const absentParsed = parse(serialize(absent)) as StudioStroke<AquarelleStrokePayload>
+    expect('vectorDrawn' in absentParsed.engine).toBe(false)
+
+    const raw = {
+      ...absent,
+      engine: { ...absent.engine, vectorDrawn: false },
+    } as unknown as StudioStroke<AquarelleStrokePayload>
+    expect(classifyAquarellePayloadFailure(wrapStroke(raw))).toBe('malformed-engine-payload')
+  })
+
+  it('parses to null when curveMode is not a member of the closed union (fail closed)', () => {
+    const stroke = makeStrokeEvent()
+    const raw = {
+      ...stroke,
+      engine: { ...stroke.engine, curveMode: 'linear' },
+    } as unknown as StudioStroke<AquarelleStrokePayload>
+    expect(() => parse(wrapStroke(raw))).not.toThrow()
+    expect(parse(wrapStroke(raw))).toBeNull()
+    expect(classifyAquarellePayloadFailure(wrapStroke(raw))).toBe('malformed-engine-payload')
+  })
+
+  it('classifyAquarellePayloadFailure still names a malformed engine block', () => {
+    const stroke = makeStrokeEvent({ anchors: WIRE_ANCHORS })
+    expect(classifyAquarellePayloadFailure(serialize(stroke))).toBeNull()
+    const malformed = {
+      ...stroke,
+      engine: { ...stroke.engine, anchors: [{ x: 0, y: 0, kind: 'auto', width: ANCHOR_WIDTH_MAX + 1 }] },
+    } as unknown as StudioStroke<AquarelleStrokePayload>
+    expect(classifyAquarellePayloadFailure(wrapStroke(malformed))).toBe('malformed-engine-payload')
+  })
+})
