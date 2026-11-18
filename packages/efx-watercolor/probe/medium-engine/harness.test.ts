@@ -134,3 +134,89 @@ describe('the medium-engine probe harness (64-17)', () => {
     })
   })
 })
+
+// Laws pinned here (task 2 of 64-17):
+//   6. The white-over-blue scenario is Spike 001's geometry verbatim — the
+//      blue band at Body 0, the white diagonal at the body knob (default 100).
+//   7. The seven metrics are measured on the SPIKE's boxes: the crossing at
+//      (0.5, 0.5), and alpha on the pigment export against the transparent
+//      export's darkness conversion.
+//   8. compare.mjs dispatches scenario invariants in every mode, switches the
+//      bars on the capture's own body, and fails an unlisted body loudly.
+describe('the white-over-blue matrix (64-17 task 2)', () => {
+  describe('the scenario is the spike geometry verbatim', () => {
+    it('paints #0044dd at body 0 then #f0f0f0 at the body knob', () => {
+      expectContains(PROBE, 'function whiteOverBlueScript(body: number): readonly ScriptEntry[] {')
+      expectContains(PROBE, 'const BLUE_BAND: readonly AquarellePoint[] = [')
+      expectContains(PROBE, 'const WHITE_DIAGONAL: readonly AquarellePoint[] = [')
+      expectContains(PROBE, "color: '#0044dd'")
+      expectContains(PROBE, "color: '#f0f0f0'")
+      expectContains(PROBE, 'mutationId: 0x51a7e1')
+      expectContains(PROBE, 'mutationId: 0x51a7e2')
+      expectContains(PROBE, 'whiteOverBlueScript(body ?? 100)')
+    })
+
+    it('measures the spike boxes with the crossing at (0.5, 0.5)', () => {
+      expectContains(PROBE, 'const WHITE_OVER_BLUE_BOXES')
+      expectContains(PROBE, 'crossing: { x0: 0.49, y0: 0.49, x1: 0.51, y1: 0.51 },')
+      expectContains(PROBE, 'coverOwn: { x0: 0.276, y0: 0.688, x1: 0.304, y1: 0.712 },')
+      expectContains(PROBE, 'underOwn: { x0: 0.24, y0: 0.488, x1: 0.3, y1: 0.512 },')
+      expectContains(PROBE, 'paper: { x0: 0.45, y0: 0.86, x1: 0.55, y1: 0.94 },')
+    })
+
+    it('reports the seven metrics for this scenario only', () => {
+      for (const key of [
+        'crossR:',
+        'crossG:',
+        'crossB:',
+        'crossBlueExcess:',
+        'crossCoverAlpha:',
+        'crossDarkAlpha:',
+        'coveredPaperWhitePct:',
+      ]) {
+        expectContains(PROBE, key)
+      }
+      expectContains(PROBE, "scenario === 'white-over-blue'")
+    })
+
+    it('accepts white-over-blue in both closed scenario lists', () => {
+      expectContains(
+        PROBE,
+        "raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue'",
+      )
+      expectContains(
+        RUN,
+        "scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue'",
+      )
+    })
+  })
+
+  describe('the comparator dispatches scenario invariants in every mode', () => {
+    it('maps white-over-blue to its failure function', () => {
+      expectContains(COMPARE, 'const SCENARIO_INVARIANTS = {')
+      expectContains(COMPARE, "'white-over-blue': whiteOverBlueFailures,")
+      expectContains(COMPARE, 'function whiteOverBlueFailures(data) {')
+    })
+
+    it('switches the bars on the capture body and fails an unlisted one', () => {
+      expectContains(COMPARE, 'if (data.body === 100) {')
+      expectContains(COMPARE, '} else if (data.body === 60) {')
+      expectContains(COMPARE, '} else if (data.body === 30) {')
+      expectContains(COMPARE, 'gap >= 0.6')
+      expectContains(COMPARE, 'data.crossCoverAlpha >= 0.9')
+      expectContains(COMPARE, 'data.crossBlueExcess <= 5')
+      expectContains(COMPARE, 'data.crossCoverAlpha < 0.5')
+      expectContains(COMPARE, 'gap >= 0.04')
+      expectContains(COMPARE, 'data.crossBlueExcess >= 15 && data.crossBlueExcess <= 38')
+      expectContains(COMPARE, 'data.crossBlueExcess >= 38')
+      expectContains(COMPARE, 'gap <= 0.03')
+      expectContains(COMPARE, 'data.coveredPaperWhitePct !== 0')
+      expectContains(COMPARE, 'has no white-over-blue bar set')
+    })
+
+    it('prints every failure with the INVARIANT prefix before the verdict', () => {
+      expectContains(COMPARE, '`INVARIANT ${line}`')
+      expectContains(COMPARE, 'scenarioInvariantFailures(actual)')
+    })
+  })
+})
