@@ -320,14 +320,13 @@ describe('the cover transaction (runAquarelleLiftErase keeps its 3-argument sign
     // The layer owns the generation: it advances on every stroke start.
     expect(layer).toContain('let strokeGeneration = 0;');
     expect(layer).toContain('if (!painting) strokeGeneration++;');
-    // Both the getter and the reset ride the one registration.
-    expect(layer).toContain('onResetSheetReadyRef.current?.(resetSheet, () => strokeGeneration);');
-    expect(layer).toContain(
-      'onResetSheetReady?: (resetSheet: () => void, strokeGeneration: () => number) => void;',
-    );
-    expect(mount).toContain(
-      'onAquarelleResetSheetReady?: (resetSheet: () => void, strokeGeneration: () => number) => void;',
-    );
+    // The getter, the whole reset and its two halves ride the one registration
+    // (quick 261117-tq7, rev 4, UAT round 4: the cover defers only the wipe).
+    expect(layer).toContain('onResetSheetReadyRef.current?.(resetSheet, () => strokeGeneration, clearSheetPaint, endSheetSession);');
+    expect(layer).toContain('clearSheetPaint: () => void,');
+    expect(layer).toContain('endSheetSession: () => void,');
+    expect(mount).toContain('clearSheetPaint: () => void,');
+    expect(mount).toContain('endSheetSession: () => void,');
     expect(studio).toContain(
       'const aquarelleStrokeGenerationRef = useRef<(() => number) | null>(null);',
     );
@@ -345,21 +344,39 @@ describe('the cover transaction (runAquarelleLiftErase keeps its 3-argument sign
     );
     expect(gate).toBeGreaterThan(drift);
     expect(cover.indexOf('if (!coverStrokeLive) {')).toBeGreaterThan(gate);
-    expect(cover.indexOf('if (!coverStrokeLive) {')).toBeLessThan(
-      cover.indexOf('aquarelleResetSheetRef.current?.();'),
+    // quick 261117-tq7 (rev 4, UAT round 4): the SESSION bookkeeping runs
+    // synchronously at the ack — the merge base and the sheet-has-paint gate
+    // drive the settle capture, and deferring them left a stale session that
+    // re-merged an uncleared sheet into the cache (paint not persisting).
+    expect(cover.indexOf('aquarelleEndSheetSessionRef.current?.();')).toBeGreaterThan(
+      cover.indexOf('if (!coverStrokeLive) {'),
     );
-    // quick 261117-tq7 (rev 4, UAT round 3): the reset is DEFERRED to the
-    // cached base's applied hook, not run at URL-set time. The layer keeps
-    // the preview-punched pixels until the decode lands, so clearing the
-    // sheet first flashed the punched base alone for the decode gap (the
-    // reported paper-white flash). The hook is armed BEFORE the load; the
-    // synchronous reset survives only as the no-display fallback.
+    expect(cover.indexOf('aquarelleEndSheetSessionRef.current?.();')).toBeLessThan(
+      cover.indexOf('loadCachedRotoReferenceFrame('),
+    );
+    // quick 261117-tq7 (rev 4, UAT round 3): the PIXEL wipe is DEFERRED to the
+    // cached base's applied hook, not run at URL-set time — the layer keeps
+    // the preview-punched pixels until the decode lands, so clearing first
+    // flashed the punched base alone for the decode gap (the paper-white
+    // flash). The hook is armed BEFORE the load.
+    // UAT round 4: only when the URL actually changes — getFrameBlobUrl is
+    // content-memoized, so identical committed bytes resolve to the URL
+    // already on screen and no decode (no onApplied) would ever come; that
+    // case must clear NOW.
     const armed = cover.indexOf('aquarelleCachedBaseAppliedRef.current = () => {');
     expect(armed).toBeGreaterThanOrEqual(0);
     expect(armed).toBeLessThan(cover.indexOf('loadCachedRotoReferenceFrame('));
-    expect(cover.slice(armed)).toContain('aquarelleResetSheetRef.current?.();');
+    expect(cover.slice(armed)).toContain('aquarelleClearSheetPaintRef.current?.();');
+    expect(cover).toContain('nextDisplayUrl !== previewBasePort.getAppliedPreviewBaseDataUrl()');
+    expect(cover).toContain('if (!loaded || !displayWillChange) {');
     expect(studio).toContain(
       'const aquarelleCachedBaseAppliedRef = useRef<(() => void) | null>(null);',
+    );
+    expect(studio).toContain(
+      'const aquarelleClearSheetPaintRef = useRef<(() => void) | null>(null);',
+    );
+    expect(studio).toContain(
+      'const aquarelleEndSheetSessionRef = useRef<(() => void) | null>(null);',
     );
     expect(studio).toContain('onAquarelleCachedBaseApplied: handleAquarelleCachedBaseApplied,');
     expect(mount).toContain('onAquarelleCachedBaseApplied?: () => void;');

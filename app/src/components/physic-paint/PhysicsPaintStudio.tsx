@@ -1684,10 +1684,16 @@ export function PhysicsPaintStudio() {
   // timeline/coordinator seam and surface it as the LOG diagnostic.
   const lastRotoStatusMessageRef = useRef<string | null>(null);
   const aquarelleResetSheetRef = useRef<(() => void) | null>(null);
+  // quick 261117-tq7 (rev 4, UAT round 4): the reset's two halves, registered
+  // beside the whole. The SESSION bookkeeping must stay synchronous at the
+  // commit ack (merge base / sheet-has-paint gate the settle capture); only
+  // the PIXEL wipe is deferred until the committed base is on screen.
+  const aquarelleClearSheetPaintRef = useRef<(() => void) | null>(null);
+  const aquarelleEndSheetSessionRef = useRef<(() => void) | null>(null);
   // quick 261117-tq7 (rev 4, UAT round 3): a one-shot armed by the cover's
   // post-ack swap. The cached base keeps its old (preview-punched) pixels
   // until the new URL decodes, so clearing the live sheet at URL-set time
-  // showed one frame of punched base alone — a paper-white flash. The reset
+  // showed one frame of punched base alone — a paper-white flash. The wipe
   // rides this hook instead, which the layer fires in the same task as the
   // decode's clear+draw.
   const aquarelleCachedBaseAppliedRef = useRef<(() => void) | null>(null);
@@ -8585,26 +8591,46 @@ export function PhysicsPaintStudio() {
         }
         const coverStrokeLive = (aquarelleStrokeGenerationRef.current?.() ?? 0) !== coverStrokeGeneration;
         if (!coverStrokeLive) {
+          // quick 261117-tq7 (rev 4, UAT round 4): the SESSION bookkeeping is
+          // synchronous, exactly as before this round. The merge base and the
+          // sheet-has-paint gate drive the settle capture; deferring them left
+          // a stale session that re-merged an uncleared sheet into the cache
+          // (paint not persisting). Only the PIXEL wipe below is deferred.
+          aquarelleEndSheetSessionRef.current?.();
           if (launchContextRef.current?.startFrame === plan.frame) {
             const generation = Math.max(
               rotoPreviewBaseContentToken(),
               previewBasePort.getAppliedPreviewBaseContentToken() ?? 0,
             );
-            // quick 261117-tq7 (rev 4, UAT round 3): HOLD the live sheet until
-            // the new base bytes are on screen. The cached-base layer keeps
-            // its old (preview-punched) pixels until the decode lands, and the
-            // sheet is the stroke's only remaining pigment at this instant —
-            // clearing it at URL-set time flashed the punched base alone
-            // (paper-white) for the decode gap. The layer fires this hook in
-            // the decode's own clear+draw task.
-            const armedGeneration = aquarelleStrokeGenerationRef.current?.() ?? 0;
-            aquarelleCachedBaseAppliedRef.current = () => {
-              // A newer stroke started while the decode was pending — its
-              // pigment now lives on the sheet, and the coverStrokeLive law
-              // already says that stroke owns the display. Never clear it.
-              if ((aquarelleStrokeGenerationRef.current?.() ?? 0) !== armedGeneration) return;
-              aquarelleResetSheetRef.current?.();
-            };
+            // quick 261117-tq7 (rev 4, UAT round 3): HOLD the live sheet's
+            // pixels until the new base bytes are on screen. The cached-base
+            // layer keeps its old (preview-punched) pixels until the decode
+            // lands, and the sheet is the stroke's only remaining pigment at
+            // this instant — clearing it at URL-set time flashed the punched
+            // base alone (paper-white) for the decode gap. The layer fires the
+            // hook in the decode's own clear+draw task.
+            //
+            // UAT round 4: ONLY when the URL will actually change.
+            // `getFrameBlobUrl` is content-memoized, so the same committed
+            // bytes resolve to the URL already on screen and NO decode (and
+            // no onApplied) would ever come — the sheet would never be
+            // cleared. In that case the display already shows these bytes:
+            // clear now, flash-free.
+            const nextDisplayUrl = coverProduced.bytes !== null
+              ? getFrameBlobUrl(coverProduced.bytes)
+              : '';
+            const displayWillChange = nextDisplayUrl !== ''
+              && nextDisplayUrl !== previewBasePort.getAppliedPreviewBaseDataUrl();
+            if (displayWillChange) {
+              const armedGeneration = aquarelleStrokeGenerationRef.current?.() ?? 0;
+              aquarelleCachedBaseAppliedRef.current = () => {
+                // A newer stroke started while the decode was pending — its
+                // pigment now lives on the sheet, and the coverStrokeLive law
+                // already says that stroke owns the display. Never clear it.
+                if ((aquarelleStrokeGenerationRef.current?.() ?? 0) !== armedGeneration) return;
+                aquarelleClearSheetPaintRef.current?.();
+              };
+            }
             const loaded = loadCachedRotoReferenceFrame(
               plan.frame,
               previewBasePort,
@@ -8615,14 +8641,15 @@ export function PhysicsPaintStudio() {
               // just-committed payload; never the underlayer-only punch.
               coverProduced.bytes,
             );
-            if (!loaded) {
-              // Nothing to display: no apply will come, so clear now.
+            if (!loaded || !displayWillChange) {
+              // No apply will come (nothing to display, or the display already
+              // shows these bytes): clear the pixels now.
               aquarelleCachedBaseAppliedRef.current = null;
-              aquarelleResetSheetRef.current?.();
+              aquarelleClearSheetPaintRef.current?.();
             }
             physicPaintVersion.value++;
           } else {
-            aquarelleResetSheetRef.current?.();
+            aquarelleClearSheetPaintRef.current?.();
           }
         }
         setApplyMessage(null);
@@ -10821,9 +10848,13 @@ export function PhysicsPaintStudio() {
   const handleAquarelleResetSheetReady = useCallback((
     resetSheet: () => void,
     strokeGeneration: () => number,
+    clearSheetPaint: () => void,
+    endSheetSession: () => void,
   ) => {
     aquarelleResetSheetRef.current = resetSheet;
     aquarelleStrokeGenerationRef.current = strokeGeneration;
+    aquarelleClearSheetPaintRef.current = clearSheetPaint;
+    aquarelleEndSheetSessionRef.current = endSheetSession;
     aquarelleMergeBaseRef.current = null;
     aquarelleSheetHasPaintRef.current = false;
   }, []);
