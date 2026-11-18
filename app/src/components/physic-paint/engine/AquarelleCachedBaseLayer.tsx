@@ -5,7 +5,6 @@ import {
 } from '../../../lib/rasterAlpha';
 import {
   buildLiftCoverage,
-  coverShapeForBrush,
   liftShapeForStroke,
   punchTransmittanceRgba,
   type LiftFootprintShape,
@@ -37,7 +36,7 @@ import { frozenCacheVisible } from '../view/scriptStrokeEdition';
  * visual until it arrives. URL swaps are double-buffered (decode first, then
  * clear+draw in one task) so a refresh never blanks the canvas.
  */
-export function AquarelleCachedBaseLayer(props: { url: string; onApplied?: () => void }) {
+export function AquarelleCachedBaseLayer(props: { url: string }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** Decoded transmittance + its punchable pixel buffer. Null on legacy
    *  real-alpha frames (never punched) and until the first decode lands. */
@@ -53,12 +52,6 @@ export function AquarelleCachedBaseLayer(props: { url: string; onApplied?: () =>
    * only the 5-argument dab.
    */
   const shapeRef = useRef<LiftFootprintShape | null>(null);
-  /**
-   * quick 261117-tq7: the gesture's coverage profile, resolved in `begin` from
-   * the bus (a Lift begin carries no profile and stays `tip`). A ref, never a
-   * second effect or decode: the punch reads it in `flushPreview`.
-   */
-  const profileRef = useRef<'tip' | 'deposit'>('tip');
   const pendingRef = useRef<AquarelleLiftPreviewDab[]>([]);
   const previewFrameRef = useRef<number | null>(null);
   const rafRef = useRef(0);
@@ -75,7 +68,6 @@ export function AquarelleCachedBaseLayer(props: { url: string; onApplied?: () =>
       decoded.width,
       decoded.height,
       shapeRef.current ?? undefined,
-      profileRef.current,
     );
     if (coverageRect.width <= 0 || coverageRect.height <= 0) return;
     punchTransmittanceRgba(decoded.image.data, coverage, decoded.width, decoded.height, coverageRect);
@@ -97,22 +89,13 @@ export function AquarelleCachedBaseLayer(props: { url: string; onApplied?: () =>
   };
 
   useEffect(() => registerAquarelleLiftPreviewSink({
-    begin(frame, profile) {
+    begin(frame) {
       previewFrameRef.current = frame;
       pendingRef.current = [];
-      // quick 261117-tq7: the cover gesture arms the deposit-footprint profile;
-      // a Lift begin passes none and keeps the tip law.
-      profileRef.current = profile ?? 'tip';
-      // THE shape seam: one resolution per gesture (Task 2 item 13).
-      // quick 261117-tq7 (rev 4, UAT round 3): the profile picks the
-      // resolution law. A cover previews the DEPOSIT footprint (the active
-      // brush's texture, rotation and dry/jitter knobs — the same
-      // coverShapeForBrush the stroke-end commit binds); a Lift keeps its
-      // neutral-tip law.
+      // THE shape seam: one resolution per gesture (Task 2 item 13) — the
+      // Lift's neutral-tip law, the same law the record and the bake resolve.
       const selection = aquarelleBrushForActiveTool();
-      shapeRef.current = profileRef.current === 'deposit'
-        ? coverShapeForBrush(selection)
-        : liftShapeForStroke(selection);
+      shapeRef.current = liftShapeForStroke(selection);
       const decoded = decodedRef.current;
       snapshotRef.current = decoded
         ? new ImageData(new Uint8ClampedArray(decoded.image.data), decoded.width, decoded.height)
@@ -198,11 +181,6 @@ export function AquarelleCachedBaseLayer(props: { url: string; onApplied?: () =>
       decodedRef.current = pigment && transmittance
         ? { width, height, image: transmittance }
         : null;
-      // quick 261117-tq7 (rev 4, UAT round 3): the new bytes ARE on the
-      // canvas now. Tell the owner in the SAME task so a deferred live-sheet
-      // reset lands before the browser paints — never a frame of punched
-      // base alone after the sheet is cleared ahead of the decode.
-      props.onApplied?.();
     };
     image.src = props.url;
     return () => {

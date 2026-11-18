@@ -42,12 +42,6 @@ export function PhysicsPaintCanvasMount(props: {
   trackOpacity?: number;
   trackBlendMode?: BlendMode;
   aquarelleCachedBaseUrl?: string | null;
-  /** quick 261117-tq7 (rev 4, UAT round 3): fires after the cached base's new
-   *  bytes have been decoded AND drawn in the same task. A caller that must
-   *  clear the live sheet only once the base shows the committed composite
-   *  (the cover's post-ack swap) arms its reset here — clearing it at URL-set
-   *  time left one frame of punched base alone (paper-white flash). */
-  onAquarelleCachedBaseApplied?: () => void;
   color?: string;
   getAquarellePlayFrame?: () => number;
   getAquarellePaperId?: () => string;
@@ -65,24 +59,13 @@ export function PhysicsPaintCanvasMount(props: {
    *  261028-k03c: `angle` (radians, y up — the engine's uAxis) is forwarded
    *  unchanged; the preview shape is resolved in AquarelleCachedBaseLayer. */
   onAquarelleLiftDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;
-  /** quick 261117-tq7: the cover pass's deposit-footprint dab, forwarded unchanged
-   *  with its per-dab optical density. The cached-base live preview punches the
-   *  same footprint and the same alpha-shaped fraction the engine's pre-ink
-   *  cover bound, so a Brush stamp over wet paint hides the old ink while the
-   *  gesture runs. */
-  onAquarelleCoverDab?: (x: number, y: number, r: number, amount: number, angle: number, density: number) => void;
   onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void;
   onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void;
   onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => void;
   onAquarelleFlushCaptureReady?: (flushCapture: ((captureTrackId?: string) => void) | null) => void;
   onAquarelleSnapshotReady?: (snapshot: (() => HTMLCanvasElement | null) | null) => void;
   onAquarelleSheetSessionEnd?: () => void;
-  onAquarelleResetSheetReady?: (
-    resetSheet: () => void,
-    strokeGeneration: () => number,
-    clearSheetPaint: () => void,
-    endSheetSession: () => void,
-  ) => void;
+  onAquarelleResetSheetReady?: (resetSheet: () => void) => void;
   onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void;
   onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
   onAquarelleTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
@@ -117,8 +100,6 @@ export function PhysicsPaintCanvasMount(props: {
   const getAquarelleLiftBlockedRef = useRef(props.getAquarelleLiftBlocked);
   const onAquarelleLiftBlockedRef = useRef(props.onAquarelleLiftBlocked);
   const onAquarelleLiftDabRef = useRef(props.onAquarelleLiftDab);
-  const onAquarelleCoverDabRef = useRef(props.onAquarelleCoverDab);
-  const onAquarelleCachedBaseAppliedRef = useRef(props.onAquarelleCachedBaseApplied);
   const colorRef = useRef(props.color ?? '#103c65');
   onCanvasMountedRef.current = props.onCanvasMounted;
   onAquarelleStrokeEndRef.current = props.onAquarelleStrokeEnd;
@@ -140,8 +121,6 @@ export function PhysicsPaintCanvasMount(props: {
   getAquarelleLiftBlockedRef.current = props.getAquarelleLiftBlocked;
   onAquarelleLiftBlockedRef.current = props.onAquarelleLiftBlocked;
   onAquarelleLiftDabRef.current = props.onAquarelleLiftDab;
-  onAquarelleCoverDabRef.current = props.onAquarelleCoverDab;
-  onAquarelleCachedBaseAppliedRef.current = props.onAquarelleCachedBaseApplied;
   colorRef.current = props.color ?? '#103c65';
 
   useEffect(() => {
@@ -235,10 +214,7 @@ export function PhysicsPaintCanvasMount(props: {
           multiply over the fond stays the paper pass. Without it a cached key
           shows bare paper after return. */}
       {props.aquarelleCachedBaseUrl ? (
-        <AquarelleCachedBaseLayer
-          url={props.aquarelleCachedBaseUrl}
-          onApplied={() => onAquarelleCachedBaseAppliedRef.current?.()}
-        />
+        <AquarelleCachedBaseLayer url={props.aquarelleCachedBaseUrl} />
       ) : null}
       <AquarelleCanvasLayer
         width={props.width}
@@ -252,14 +228,13 @@ export function PhysicsPaintCanvasMount(props: {
         getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}
         onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}
         onLiftDab={(x, y, r, amount, angle) => onAquarelleLiftDabRef.current?.(x, y, r, amount, angle)}
-        onCoverDab={(x, y, r, amount, angle, density) => onAquarelleCoverDabRef.current?.(x, y, r, amount, angle, density)}
         onStrokeEnd={(stroke) => onAquarelleStrokeEndRef.current?.(stroke)}
         onStrokeSettled={(stroke, ticks) => onAquarelleStrokeSettledRef.current?.(stroke, ticks)}
         onCaptureFrame={(playFrame, snapshot, captureTrackId) => onAquarelleCaptureFrameRef.current?.(playFrame, snapshot, captureTrackId)}
         onFlushCaptureReady={(flushCapture) => onAquarelleFlushCaptureReadyRef.current?.(flushCapture)}
         onSnapshotReady={(snapshot) => onAquarelleSnapshotReadyRef.current?.(snapshot)}
         onSheetSessionEnd={() => onAquarelleSheetSessionEndRef.current?.()}
-        onResetSheetReady={(resetSheet, strokeGeneration, clearSheetPaint, endSheetSession) => onAquarelleResetSheetReadyRef.current?.(resetSheet, strokeGeneration, clearSheetPaint, endSheetSession)}
+        onResetSheetReady={(resetSheet) => onAquarelleResetSheetReadyRef.current?.(resetSheet)}
         onDeleteStrokes={(mutationIds) => onAquarelleDeleteStrokesRef.current?.(mutationIds)}
         onMoveStrokes={(mutationIds, dxPx, dyPx) => onAquarelleMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}
         onTransformStrokes={(mutationIds, transform) => onAquarelleTransformStrokesRef.current?.(mutationIds, transform)}

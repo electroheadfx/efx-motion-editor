@@ -2917,15 +2917,16 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(clearBlock.indexOf('clearPreviewBaseImage()')).toBeLessThan(clearBlock.indexOf('aquarelleResetSheetRef.current?.()'));
     expect(beginBlock).toContain('clearGeneratedRotoDisplayForPaint()');
     // Reset registration flows AquarelleCanvasLayer → CanvasMount → Studio.
+    // 64-15: the split registration (stroke generation + deferred pixel wipe)
+    // was cover-only; a reset is one function again, both halves.
     const aquarelleLayer = readFileSync(fileURLToPath(new URL('./engine/AquarelleCanvasLayer.tsx', import.meta.url)), 'utf8');
-    expect(aquarelleLayer).toContain('clearSheetPaint: () => void,');
-    expect(aquarelleLayer).toContain('endSheetSession: () => void,');
+    expect(aquarelleLayer).toContain('const clearSheetPaint = () => {');
+    expect(aquarelleLayer).toContain('const endSheetSession = () => {');
     expect(aquarelleLayer).toContain('const onResetSheetReadyRef = useRef(props.onResetSheetReady);');
-    expect(aquarelleLayer).toContain('onResetSheetReadyRef.current?.(resetSheet, () => strokeGeneration, clearSheetPaint, endSheetSession);');
-    expect(canvasMount).toContain('clearSheetPaint: () => void,');
-    expect(canvasMount).toContain('endSheetSession: () => void,');
-    expect(canvasMount).toContain('onResetSheetReady={(resetSheet, strokeGeneration, clearSheetPaint, endSheetSession) => onAquarelleResetSheetReadyRef.current?.(resetSheet, strokeGeneration, clearSheetPaint, endSheetSession)}');
-    expect(studio).toContain('const handleAquarelleResetSheetReady = useCallback((');
+    expect(aquarelleLayer).toContain('onResetSheetReadyRef.current?.(resetSheet);');
+    expect(canvasMount).toContain('onAquarelleResetSheetReady?: (resetSheet: () => void) => void;');
+    expect(canvasMount).toContain('onResetSheetReady={(resetSheet) => onAquarelleResetSheetReadyRef.current?.(resetSheet)}');
+    expect(studio).toContain('const handleAquarelleResetSheetReady = useCallback((resetSheet: () => void) => {');
   });
 
   it('awaits the created key before the aquarelle capture path writes pixels', () => {

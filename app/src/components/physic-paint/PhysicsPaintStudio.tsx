@@ -1675,23 +1675,6 @@ export function PhysicsPaintStudio() {
   // timeline/coordinator seam and surface it as the LOG diagnostic.
   const lastRotoStatusMessageRef = useRef<string | null>(null);
   const aquarelleResetSheetRef = useRef<(() => void) | null>(null);
-  // quick 261117-tq7 (rev 4, UAT round 4): the reset's two halves, registered
-  // beside the whole. The SESSION bookkeeping must stay synchronous at the
-  // commit ack (merge base / sheet-has-paint gate the settle capture); only
-  // the PIXEL wipe is deferred until the committed base is on screen.
-  const aquarelleClearSheetPaintRef = useRef<(() => void) | null>(null);
-  const aquarelleEndSheetSessionRef = useRef<(() => void) | null>(null);
-  // quick 261117-tq7 (rev 4, UAT round 3): a one-shot armed by the cover's
-  // post-ack swap. The cached base keeps its old (preview-punched) pixels
-  // until the new URL decodes, so clearing the live sheet at URL-set time
-  // showed one frame of punched base alone — a paper-white flash. The wipe
-  // rides this hook instead, which the layer fires in the same task as the
-  // decode's clear+draw.
-  const aquarelleCachedBaseAppliedRef = useRef<(() => void) | null>(null);
-  // quick 261117-tq7 (CR-04): the layer's stroke generation getter, registered
-  // beside the reset. The cover commit is async, so the post-ack reset must be
-  // skipped when a newer stroke started while the ack was in flight.
-  const aquarelleStrokeGenerationRef = useRef<(() => number) | null>(null);
   // 261029-lsr: the SAME capture a settled stroke runs. A tile-history undo/redo
   // leaves the sheet holding exactly the post-command image, so it is snapshotted
   // into the frame cache instead of being re-derived by a re-bake.
@@ -10495,28 +10478,13 @@ export function PhysicsPaintStudio() {
 
   // Quick 261019-mj2 Task 3: same-frame sheet reset registration for the
   // generated-cell self-promotion (the Studio calls it synchronously).
-  const handleAquarelleResetSheetReady = useCallback((
-    resetSheet: () => void,
-    strokeGeneration: () => number,
-    clearSheetPaint: () => void,
-    endSheetSession: () => void,
-  ) => {
+  // 64-15: the reset is ONE function again — its session bookkeeping and its
+  // pixel wipe. The split registration and the stroke-generation getter were
+  // cover-only (the deferred post-ack wipe), gone with the punch architecture.
+  const handleAquarelleResetSheetReady = useCallback((resetSheet: () => void) => {
     aquarelleResetSheetRef.current = resetSheet;
-    aquarelleStrokeGenerationRef.current = strokeGeneration;
-    aquarelleClearSheetPaintRef.current = clearSheetPaint;
-    aquarelleEndSheetSessionRef.current = endSheetSession;
     aquarelleMergeBaseRef.current = null;
     aquarelleSheetHasPaintRef.current = false;
-  }, []);
-
-  // quick 261117-tq7 (rev 4, UAT round 3): the cached base's decode+draw
-  // landed. Drain the armed one-shot — the caller that deferred its reset
-  // until the committed composite was actually on screen.
-  const handleAquarelleCachedBaseApplied = useCallback(() => {
-    const apply = aquarelleCachedBaseAppliedRef.current;
-    if (apply === null) return;
-    aquarelleCachedBaseAppliedRef.current = null;
-    apply();
   }, []);
 
   // FRAME SCOPE: identity-stable getter so the canvas-mount memo never
@@ -10817,8 +10785,6 @@ export function PhysicsPaintStudio() {
       onAquarelleLiftBlocked: handleAquarelleLiftBlocked,
       // 261028-k03b: the live erase preview source (exact engine dabs).
       onAquarelleLiftDab: handleAquarelleLiftDab,
-      // quick 261117-tq7: the cover's live core punch source (same seam).
-      onAquarelleCachedBaseApplied: handleAquarelleCachedBaseApplied,
       onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
       onAquarelleStrokeSettled: handleAquarelleStrokeSettled,
       onAquarelleCaptureFrame: handleAquarelleCaptureFrame,

@@ -414,15 +414,6 @@ export function AquarelleCanvasLayer(props: {
    */
   onLiftDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;
   /**
-   * quick 261117-tq7: every Body cover dab the ENGINE applied, with the same
-   * five arguments as onLiftDab plus the per-dab optical `density` the cover's
-   * alpha law reads. The Studio previews it on a cooked frame's cached base
-   * with the deposit-footprint profile so the cover replaces the visible paint
-   * while the user draws. Engine emits unconditionally; the display decision
-   * (cooked-frame authority) stays in the Studio.
-   */
-  onCoverDab?: (x: number, y: number, r: number, amount: number, angle: number, density: number) => void;
-  /**
    * PLAY FIDELITY (play-vs-paint): the sheet went to sleep and the last
    * recorded stroke diffused for `ticks` host-grid ticks since it ended.
    * The record path stamps that measured window as the stroke's cuisson so
@@ -465,21 +456,12 @@ export function AquarelleCanvasLayer(props: {
    * generated-cell self-promotion calls it synchronously before dispatching
    * the blank key, so the old generated display never leaks into the stroke.
    * Mirrors the frame-change branch minus the lastPlayFrame update.
-   * quick 261117-tq7 (CR-04): the second argument reports the stroke
-   * generation — it advances every time a stroke starts — so an async caller
-   * (the cover commit ack) can skip a reset that would wipe a stroke begun
-   * while it was waiting.
+   * 64-15: a reset is both halves again — the session bookkeeping AND the
+   * pixel wipe. The split registration and the stroke-generation getter were
+   * cover-only (the deferred-wipe seam) and retired with the punch
+   * architecture.
    */
-  onResetSheetReady?: (
-    resetSheet: () => void,
-    strokeGeneration: () => number,
-    /** quick 261117-tq7 (rev 4, UAT round 4): ONLY the pixel wipe + engine
-     *  flags. The cover defers this until the committed base is on screen;
-     *  every other reset site calls `resetSheet` (both halves). */
-    clearSheetPaint: () => void,
-    /** The session bookkeeping alone (settle stamp + session end). */
-    endSheetSession: () => void,
-  ) => void;
+  onResetSheetReady?: (resetSheet: () => void) => void;
   /**
    * 261022-pim / 261024-mz5: Alt+click on an outlined stroke (or the whole
    * selected set). The Studio deletes them from the recorded script and
@@ -527,7 +509,6 @@ export function AquarelleCanvasLayer(props: {
   const getLiftBlockedRef = useRef(props.getLiftBlocked);
   const onLiftBlockedRef = useRef(props.onLiftBlocked);
   const onLiftDabRef = useRef(props.onLiftDab);
-  const onCoverDabRef = useRef(props.onCoverDab);
   const onStrokeSettledRef = useRef(props.onStrokeSettled);
   const onCaptureFrameRef = useRef(props.onCaptureFrame);
   const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
@@ -551,7 +532,6 @@ export function AquarelleCanvasLayer(props: {
   getLiftBlockedRef.current = props.getLiftBlocked;
   onLiftBlockedRef.current = props.onLiftBlocked;
   onLiftDabRef.current = props.onLiftDab;
-  onCoverDabRef.current = props.onCoverDab;
   onStrokeSettledRef.current = props.onStrokeSettled;
   onCaptureFrameRef.current = props.onCaptureFrame;
   onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
@@ -627,10 +607,6 @@ export function AquarelleCanvasLayer(props: {
     // and the Play end key keep the denser look instead of cooking to the
     // engine's washed-out full awake state.
     let painting = false;
-    // quick 261117-tq7 (CR-04): advances on every stroke start so an async
-    // caller can tell whether the sheet's live pixels still belong to the
-    // stroke it committed, or to a newer one.
-    let strokeGeneration = 0;
     let lastWetAt = 0;
     let settleCapArmed = false;
 
@@ -641,7 +617,6 @@ export function AquarelleCanvasLayer(props: {
         null,
         {
           onStrokeSample(sample) {
-            if (!painting) strokeGeneration++;
             painting = true;
             lastWetAt = performance.now();
             settleCapArmed = false;
@@ -654,9 +629,6 @@ export function AquarelleCanvasLayer(props: {
           onLiftDab(x, y, r, amount, angle) {
             onLiftDabRef.current?.(x, y, r, amount, angle);
           },
-          // 64-13: the engine composites the cover itself (coverage channel),
-          // so it no longer emits a cover dab; the app-side seam is retired in
-          // 64-15.
           onStrokeEnd(tool) {
             painting = false;
             lastWetAt = performance.now();
@@ -938,7 +910,7 @@ export function AquarelleCanvasLayer(props: {
       endSheetSession();
       clearSheetPaint();
     };
-    onResetSheetReadyRef.current?.(resetSheet, () => strokeGeneration, clearSheetPaint, endSheetSession);
+    onResetSheetReadyRef.current?.(resetSheet);
     const tick = () => {
       const playFrame = getPlayFrameRef.current();
       if (lastPlayFrameRef.current !== playFrame) {
