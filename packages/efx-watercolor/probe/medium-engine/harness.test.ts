@@ -316,3 +316,60 @@ describe('the textured-tip gate (64-16 task 1)', () => {
     })
   })
 })
+
+// Laws pinned here (64-16 task 2):
+//  13. `red-over-blue-50` ports the spike's criterion-2 script verbatim: three
+//      blue field lines at Body 0 (mutationIds 0x7ed001+), 50 rapid red
+//      strokes at the body knob with settle 1 and no per-entry fix
+//      (0x7ed100+), then one red reference stroke (0x7ed200) painting on
+//      clean paper ON THE SAME SHEET, so the ratio cancels paper and light.
+//  14. The report measures finalLuma / referenceLuma / lumaRatio / deltaHue
+//      from the PIGMENT export's rgb through the spike's own hue formula,
+//      plus 64-17's paper-white scan.
+//  15. compare.mjs gates the criterion-2 numbers in every mode:
+//      coveredPaperWhitePct === 0, lumaRatio >= 0.95, |deltaHue| <= 3.
+describe('the red-over-blue-50 criterion-2 gate (64-16 task 2)', () => {
+  describe('the scenario is the spike criterion-2 script verbatim', () => {
+    it('paints three blue field lines at Body 0 then 50 rapid red strokes', () => {
+      expectContains(PROBE, "const BLUE_FIELD = '#0044dd'")
+      expectContains(PROBE, "const RED = '#cc2222'")
+      expectContains(PROBE, 'const BLUE_FIELD_LINES: readonly number[] = [0.42, 0.5, 0.58]')
+      expectContains(PROBE, 'function redOverBlueScript(')
+      expectContains(PROBE, 'mutationId: 0x7ed001 + i')
+      expectContains(PROBE, 'mutationId: 0x7ed100 + i')
+      expectContains(PROBE, 'mutationId: 0x7ed200')
+      expectContains(PROBE, 'body: redBody,')
+    })
+
+    it('paints the reference stroke on clean paper on the same sheet', () => {
+      expectContains(PROBE, 'const RED_REF_POINTS: readonly AquarellePoint[] = [')
+      expectContains(PROBE, 'const RED_FIELD_BOX: BandBox = { x0: 0.42, y0: 0.492, x1: 0.58, y1: 0.508 }')
+      expectContains(PROBE, 'const RED_REFERENCE_BOX: BandBox = { x0: 0.42, y0: 0.848, x1: 0.58, y1: 0.872 }')
+      expectContains(PROBE, 'redOverBlueScript(body ?? 100)')
+    })
+  })
+
+  describe('the report measures luma and hue on the pigment export', () => {
+    it('ports the spike hue formula and reports the five metrics', () => {
+      expectContains(PROBE, 'function rgbToHsv(')
+      expectContains(PROBE, 'function redOverBlueMetrics(')
+      expectContains(PROBE, 'finalLuma: round2(finalLuma),')
+      expectContains(PROBE, 'referenceLuma: round2(referenceLuma),')
+      expectContains(PROBE, 'lumaRatio: round2(finalLuma / referenceLuma),')
+      expectContains(PROBE, 'deltaHue: round2(deltaHue),')
+      expectContains(PROBE, 'coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),')
+      expectContains(PROBE, 'if (deltaHue > 180) deltaHue -= 360')
+      expectContains(PROBE, "scenario === 'red-over-blue-50'")
+    })
+  })
+
+  describe('the comparator gates the criterion-2 numbers in every mode', () => {
+    it('maps red-over-blue-50 to its failure function and its three bars', () => {
+      expectContains(COMPARE, "'red-over-blue-50': redOverBlueFailures,")
+      expectContains(COMPARE, 'function redOverBlueFailures(data) {')
+      expectContains(COMPARE, 'data.lumaRatio >= 0.95')
+      expectContains(COMPARE, 'Math.abs(data.deltaHue) <= 3')
+      expectContains(COMPARE, 'data.coveredPaperWhitePct !== 0')
+    })
+  })
+})
