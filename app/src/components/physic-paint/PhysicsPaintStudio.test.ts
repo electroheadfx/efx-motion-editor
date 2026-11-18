@@ -1286,8 +1286,7 @@ describe('Canvas navigation render localization', () => {
     // converts the stored transmittance sheet to pigment alpha at display (its
     // own module, so the mount stays plain).
     expect(canvasMount).toContain('props.aquarelleCachedBaseUrl ? (');
-    expect(canvasMount).toContain('url={props.aquarelleCachedBaseUrl}');
-    expect(canvasMount).toContain('onApplied={() => onAquarelleCachedBaseAppliedRef.current?.()}');
+    expect(canvasMount).toContain('<AquarelleCachedBaseLayer url={props.aquarelleCachedBaseUrl} />');
     expect(studioView).toContain('const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);');
     expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount');
     expect(studioView).toContain('aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}');
