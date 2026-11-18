@@ -230,9 +230,10 @@ describe('the cover transaction (runAquarelleLiftErase keeps its 3-argument sign
     expect(cover).toContain('const pinnedCoverBase = mergeBase && mergeBase.appFrame === plan.frame');
     expect(cover).toContain('aquarelleKeyPayloadRef.current(plan.frame)');
     expect(cover).toContain('findCachedRotoDisplayFrameRef.current(plan.frame)');
-    expect(cover).toContain(
-      'displayCoverBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES',
-    );
+    // UAT 2026-11-18: a reference-only record (bytes UNDEFINED) must be
+    // refused as a base, never read as one.
+    expect(cover).toContain('hasUsableFrameBytes(displayCoverBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)');
+    expect(cover).toContain('hasUsableFrameBytes(pinnedCoverBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)');
     // Visible + durable punches both carry the deposit-footprint profile.
     expect(cover).toContain('punchTransmittanceBytes(coverBase.bytes, size, dabs, {');
     expect(countOccurrences(cover, "profile: 'deposit',")).toBe(2);

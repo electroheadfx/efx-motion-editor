@@ -352,6 +352,7 @@ import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type Aq
 import { anchorsEqual } from '@efxlab/efx-watercolor/payload';
 import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, coverShapeForBrush, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
+import { hasUsableFrameBytes } from './roto/aquarelleFrameBytes';
 import {
   beginAquarelleLiftPreview,
   endAquarelleLiftPreview,
@@ -8437,23 +8438,28 @@ export function PhysicsPaintStudio() {
         const pinnedCoverBase = mergeBase && mergeBase.appFrame === plan.frame && mergeBase.trackId === plan.trackId
           ? mergeBase.base
           : null;
-        const pinnedCoverUsable = pinnedCoverBase !== null
-          && pinnedCoverBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES
+        // UAT 2026-11-18: a REFERENCE-ONLY record (bytes undefined) is not a
+        // base and must never be read as one — the old `.bytes.length` guard
+        // threw here and aborted the cover commit.
+        const pinnedCoverUsable = hasUsableFrameBytes(pinnedCoverBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)
           ? pinnedCoverBase
           : null;
         // Preference: this session's pin, then the key's committed payload,
-        // then the display cache. A placeholder carries no pixels anywhere.
+        // then the display cache. A placeholder — or a reference-only record
+        // with no bytes — carries no pixels anywhere.
         const payloadCover = aquarelleKeyPayloadRef.current(plan.frame);
         const payloadCoverBase: RenderedFramePayload | null = payloadCover === null
           ? null
           : { frameIndex: 0, appFrame: plan.frame, ...payloadCover };
-        const displayCoverBase = pinnedCoverUsable === null && payloadCoverBase === null
+        const payloadCoverUsable = hasUsableFrameBytes(payloadCoverBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)
+          ? payloadCoverBase
+          : null;
+        const displayCoverBase = pinnedCoverUsable === null && payloadCoverUsable === null
           ? findCachedRotoDisplayFrameRef.current(plan.frame)
           : null;
         const coverBase: RenderedFramePayload | null = pinnedCoverUsable
-          ?? payloadCoverBase
-          ?? (displayCoverBase !== null
-            && displayCoverBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES
+          ?? payloadCoverUsable
+          ?? (hasUsableFrameBytes(displayCoverBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)
             ? displayCoverBase
             : null);
         if (!coverBase) {
@@ -9068,16 +9074,15 @@ export function PhysicsPaintStudio() {
       // punch source. The key payload is the last committed cache — but only a
       // FRESH session's sheet is empty, so the payload is the session base
       // exactly when no real pin exists.
-      const sessionBase = pinnedBase !== null
-        && pinnedBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES
+      const sessionBase = hasUsableFrameBytes(pinnedBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)
         ? pinnedBase
         : null;
       const payloadBase = sessionBase === null ? aquarelleKeyPayloadRef.current(plan.frame) : null;
       const displayBase = sessionBase === null && payloadBase === null
         ? findCachedRotoDisplayFrameRef.current(plan.frame)
         : null;
-      const displayUsable = displayBase !== null
-        && displayBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES;
+      // UAT 2026-11-18: bytes may be UNDEFINED on a reference-only record.
+      const displayUsable = hasUsableFrameBytes(displayBase, AQUARELLE_PLACEHOLDER_MAX_BYTES);
       // 261028-k03d: the key payload is authoritative; the display frame can be
       // a stale placeholder right after a settle commit.
       const base = sessionBase
@@ -10490,9 +10495,12 @@ export function PhysicsPaintStudio() {
           // re-render). Prefer the committed payload whenever the display
           // cannot prove pixels.
           const displayBase = findCachedRotoDisplayFrameRef.current(playFrame);
-          const displayUsable = displayBase !== null
-            && displayBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES;
-          const payloadBase = displayUsable ? null : aquarelleKeyPayloadRef.current(playFrame);
+          // UAT 2026-11-18: a reference-only frame (bytes UNDEFINED) is not a
+          // base. This exact `.bytes.length` read threw TypeError and aborted
+          // EVERY cache capture on such a frame — no cache, no paint.
+          const displayUsable = hasUsableFrameBytes(displayBase, AQUARELLE_PLACEHOLDER_MAX_BYTES);
+          const payloadCandidate = displayUsable ? null : aquarelleKeyPayloadRef.current(playFrame);
+          const payloadBase = hasUsableFrameBytes(payloadCandidate) ? payloadCandidate : null;
           aquarelleMergeBaseRef.current = {
             appFrame: playFrame,
             trackId: targetTrackId,

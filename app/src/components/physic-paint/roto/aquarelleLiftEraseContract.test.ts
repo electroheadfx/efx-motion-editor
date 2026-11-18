@@ -455,11 +455,13 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
     const pin = studio.slice(start, studio.indexOf('const currentLaunch = launchContextRef.current;', start));
     expect(start).toBeGreaterThan(-1);
     expect(pin.length).toBeGreaterThan(0);
-    expect(pin).toContain('displayBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES');
+    // UAT 2026-11-18: bytes may be UNDEFINED on a reference-only record; the
+    // guard must answer through the shared predicate, never `.bytes.length`.
+    expect(pin).toContain('hasUsableFrameBytes(displayBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)');
     expect(pin).toContain('aquarelleKeyPayloadRef.current(playFrame)');
     // The raster punch refuses a placeholder pin too.
     const raster = erase.slice(erase.indexOf('// RASTER-ONLY:'));
-    expect(raster).toContain('pinnedBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES');
+    expect(raster).toContain('hasUsableFrameBytes(pinnedBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)');
     expect(raster).toContain('aquarelleKeyPayloadRef.current(plan.frame)');
   });
 
