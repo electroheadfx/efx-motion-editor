@@ -461,11 +461,14 @@ describe('the composition of order and opacity (MED-36)', () => {
     )
   })
 
-  it('declares one scattering scalar and no per-pigment scattering', () => {
+  it('declares one scattering scalar per film reconstruction and no per-pigment scattering', () => {
+    // 64-20: the FILM_PRESENCE snippet repeats the display's OWN expression
+    // (`float scatter = iB.a + fB.a;`) because it rebuilds the same film. Two
+    // sites, one literal — still no per-pigment scattering channel.
     expect(
       (SHADERS_SOURCE.match(/float scatter\b/g) ?? []).length,
-      'one display scattering scalar',
-    ).toBe(1)
+      'the one scattering scalar per film reconstruction (display + FILM_PRESENCE)',
+    ).toBe(2)
     expectContains(SHADERS_SOURCE, 'float scatter = iB.a + fB.a;')
     expectNotContains(SOURCE, 'Pigment')
     expectNotContains(SOURCE, 'coeffs')

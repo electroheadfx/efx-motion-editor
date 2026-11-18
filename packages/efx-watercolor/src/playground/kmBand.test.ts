@@ -370,10 +370,14 @@ describe('the generator and the display shader wiring (MED-34 / MED-35 / D-16)',
     )
     expectContains(reads, 'float scatter = iB.a + fB.a;')
     expectContains(reads, 'vec3 b = iB.rgb + fB.rgb;')
+    // 64-20: TWO sites carry this one literal — displayFS's own film and the
+    // FILM_PRESENCE reconstruction the coverage gates share (the same display
+    // expression, not a per-pigment scalar). The invariant this pin protects
+    // is the expression, never a per-pigment scattering channel.
     expect(
       (SHADERS_SOURCE.match(/float scatter =/g) ?? []).length,
-      'one scattering scalar in the shader module',
-    ).toBe(1)
+      'the one scattering scalar per film reconstruction (display + FILM_PRESENCE)',
+    ).toBe(2)
   })
 
   it('scales the scattering scalar exactly as it scales the coefficients', () => {
