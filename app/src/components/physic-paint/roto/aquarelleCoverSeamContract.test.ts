@@ -42,6 +42,12 @@
 //
 //  Every absence assertion runs on a comment-stripped copy: a deleted
 //  symbol's name may still be explained in prose, never in code.
+//
+//  Task 3 closes the cross-file loop this plan owns: a brush records and
+//  captures like any other stroke, the Lift stays the ONE punch caller, the
+//  four punch-architecture root causes are unreachable, the medium record
+//  still carries its per-stroke params bag (including `body`), and the mode-4
+//  program is the single screen/commit renderer (MED-38, narrowed).
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
@@ -55,6 +61,8 @@ const mount = readFileSync(resolve(__dirname, '../engine/PhysicsPaintCanvasMount
 const baseLayer = readFileSync(resolve(__dirname, '../engine/AquarelleCachedBaseLayer.tsx'), 'utf8');
 const bus = readFileSync(resolve(__dirname, './aquarelleLiftPreview.ts'), 'utf8');
 const punchLib = readFileSync(resolve(__dirname, './aquarelleLiftErase.ts'), 'utf8');
+const record = readFileSync(resolve(__dirname, '../view/aquarelleRecordState.ts'), 'utf8');
+const merge = readFileSync(resolve(__dirname, './physicsPaintRotoAlphaMerge.ts'), 'utf8');
 
 /** Strip `//` line comments and block comments; keep code and strings. */
 function stripComments(source: string): string {
@@ -70,6 +78,8 @@ const mountCode = stripComments(mount);
 const baseLayerCode = stripComments(baseLayer);
 const busCode = stripComments(bus);
 const punchLibCode = stripComments(punchLib);
+const recordCode = stripComments(record);
+const mergeCode = stripComments(merge);
 
 function slice(source: string, startMarker: string, endMarker: string): string {
   const start = source.indexOf(startMarker);
@@ -291,5 +301,96 @@ describe('the cover preview and footprint plumbing is gone from the canvas stack
     expect(punchLibCode).toContain('f = one.amount * Math.exp(-(d * d));');
     expect(punchLibCode).toContain('buildLiftCoverage(dabs, width, height, shape);');
     expect(punchLibCode).toContain('punchTransmittanceCanvas(source, dabs, options.shape, stats)');
+  });
+});
+
+describe('the brush path records then captures and never punches', () => {
+  it('orders the ledger allocation, the record and the Lift-only dispatch', () => {
+    const handler = strokeEnd();
+    const allocate = handler.indexOf('paintMutationLedger.allocateStrokeMutation(');
+    const recorded = handler.indexOf(
+      'recordAquarelleStrokeWhenEnabled(recordsScript, mutationId, { ...stroke, mutationId }, capturedKeyId);',
+    );
+    const dispatch = handler.indexOf(
+      "if (liftPlan?.kind === 'erase') void runAquarelleLiftErase(liftPlan, stroke, liftGestureDabs);",
+    );
+    expect(allocate).toBeGreaterThanOrEqual(0);
+    expect(recorded).toBeGreaterThan(allocate);
+    expect(dispatch).toBeGreaterThan(recorded);
+    // A Lift plan exists only for a lift stroke — a brush can never enter a
+    // transaction of its own.
+    expect(handler).toContain("const liftPlan = stroke.tool === 'lift'");
+    // The brush's pixels commit through the ordinary capture, never an inline
+    // enqueue at stroke end.
+    expect(handler).not.toContain('captureLivePixels(');
+    // The record precedes the ordinary capture's enqueue in the source.
+    const enqueue = studioCode.indexOf('const work = rotoPersistenceRef.current.captureLivePixels({');
+    expect(enqueue).toBeGreaterThan(studioCode.indexOf(
+      'recordAquarelleStrokeWhenEnabled(recordsScript, mutationId, { ...stroke, mutationId }, capturedKeyId);',
+    ));
+  });
+
+  it('pins the punch call sites to the Lift transaction', () => {
+    // Five punch calls: the Lift's recover / durable / composite / base /
+    // durable re-read legs — every one inside runAquarelleLiftErase.
+    expect(countOccurrences(studioCode, 'punchTransmittanceBytes(')).toBe(5);
+    expect(countOccurrences(erase(), 'punchTransmittanceBytes(')).toBe(5);
+    expect(countOccurrences(punchLibCode, 'export async function punchTransmittanceBytes(')).toBe(1);
+  });
+
+  it('keeps every baseCanvas and pigment-alpha argument on the Lift/capture paths', () => {
+    // The only `baseCanvas:` arguments in the Studio are the Lift's two
+    // commits; the ordinary capture passes none — its sheet is the coverage
+    // export, never a punched canvas.
+    expect(countOccurrences(studioCode, 'baseCanvas:')).toBe(2);
+    expect(countOccurrences(erase(), 'baseCanvas:')).toBe(2);
+    expect(captureCall()).not.toContain('baseCanvas');
+    expect(countOccurrences(studioCode, "mergeBlend: 'pigment-alpha'")).toBe(4);
+    expect(countOccurrences(erase(), "mergeBlend: 'pigment-alpha'")).toBe(2);
+    // The post-ack display swap that punched the cached base is unreachable.
+    for (const gone of [
+      'aquarelleCachedBaseAppliedRef',
+      'handleAquarelleCachedBaseApplied',
+      'onAquarelleCachedBaseApplied',
+    ]) {
+      expect(studioCode, `post-ack swap channel survives: ${gone}`).not.toContain(gone);
+    }
+  });
+});
+
+describe('the medium record is unchanged', () => {
+  it('records the per-stroke params bag and body like any other param', () => {
+    expect(recordCode).toContain('export function snapshotAquarelleRecord(): {');
+    expect(recordCode).toContain('params: Record<string, number>;');
+    expect(recordCode).toContain('for (const key of AQUARELLE_GLOBAL_KEYS) {');
+    expect(recordCode).toContain('params[key] = live[key];');
+    // `body` rides the ONE global key list — no special case anywhere.
+    const keys = slice(recordCode, 'export const AQUARELLE_GLOBAL_KEYS', '] as const);');
+    expect(keys).toContain("'body',");
+    expect(recordCode).not.toContain('params.body');
+    // The Studio reaches the record through the ordinary stroke-end call.
+    expect(studioCode).toContain(
+      'recordAquarelleStrokeWhenEnabled(recordsScript, mutationId, { ...stroke, mutationId }, capturedKeyId);',
+    );
+  });
+});
+
+describe('MED-38 (narrowed): one mode-4 program serves screen and commit', () => {
+  it('keeps exactly one pigment export call site, in the capture handler', () => {
+    expect(countOccurrences(studioCode, "exportCanvas('pigment')")).toBe(1);
+    expect(coverageExport()).toContain("exportCanvas('pigment')");
+  });
+
+  it("keeps the merge module's pigment-alpha branch as the only conversion", () => {
+    expect(mergeCode).toContain("export type RotoAlphaMergeBlend = 'source-over' | 'pigment-alpha';");
+    expect(mergeCode).toContain("if (blend === 'pigment-alpha') {");
+    expect(mergeCode).toContain(
+      'transmittanceSourceToPigmentAlpha(scriptAlphaCanvas) ?? scriptAlphaCanvas',
+    );
+    expect(countOccurrences(mergeCode, 'transmittanceSourceToPigmentAlpha(')).toBe(1);
+  });
+
+  it('carries no second transmittance-to-pigment conversion in the Studio', () => {
+    expect(studioCode).not.toContain('transmittanceSourceToPigmentAlpha');
   });
 });
