@@ -22,3 +22,13 @@ Out-of-scope discoveries logged during plan execution. Not fixed in phase 64.
 - **Impact:** none on the pixel gates or on this plan's acceptance — `probe/medium-engine/harness.test.ts` and every other file passed in the same runs.
 - **Suggested follow-up:** capture the unhandled rejection with a verbose/serial run and fix the cross-file interaction; check for unawaited timers or shared module state between tests.
 - **Wave 7/9 observations (orchestrator):** the flaking test varies run to run — "removes its one-shot listener when no receiver answers (bounded wait)" (20 s) in waves 7 and 9, "answers with the same operationId and publishes the catalog before the answer" (15.2 s) in wave 9's re-run. Both pass in isolation. The common shape is a bounded-wait assertion whose budget is exhausted under full-suite load; no bridge code changed in 64-13/64-14/64-17 (64-13 touched engine shaders; 64-14 the engine and probe). Classified as a pre-existing load-sensitive flake, not a wave regression.
+
+## 64-14 — `white-over-blue` criterion-1 invariant fails on covered paper-white
+
+- **Found during:** the post-UAT verification fix (the unmasked cover-deposit scattering square), while re-capturing the Body>0 probe baselines
+- **File:** `packages/efx-watercolor/probe/medium-engine/baselines/white-over-blue.json` (stale) and the `coveredPaperWhitePct` invariant in `compare.mjs`
+- **Issue:** at 1080² Body 100 the capture now reports `coveredPaperWhitePct` 0.88 (bar 0) — 0.88% of texels the pigment layer claims to cover still read as bare paper (transparent-export luma ≥ 250). The committed baseline records 0 at commit `4a54aa411` (64-17 task 2).
+- **Not caused by the scattering fix:** an A/B with the previous unmasked law measures 0.95% for the same run, so the drift predates the fix. It is not reproducible from the committed baseline either: 64-14's three commits (`f396bcba5`, `12f9c1e1b`, `2720ab282`) changed the render path after the baseline was captured, and no later plan re-ran `white-over-blue`.
+- **Likely mechanism:** 64-14 advects the coverage channel with the wet ink; coverage can reach a texel whose paint film is thinner, so the mode-4 alpha claims coverage where the transmittance sheet still reads paper.
+- **Impact:** the phase's Spike 001 criterion-1 gate is red at its 0 bar. It does not block the phase's own must-haves (which cite criterion 2 and the region invariants) but it is a real model-consistency question.
+- **Suggested follow-up:** a focused quick or a 64.x plan: measure whether coverage and the paint film advect coherently, and either tighten the advection or justify a non-zero bar with a calibrated baseline note.
