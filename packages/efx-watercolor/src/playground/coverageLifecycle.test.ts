@@ -26,6 +26,11 @@
 //      entry (a parsed length check, so a sixth channel cannot drift).
 //   6. `captureWhole` reads the cover field at one channel and `uploadWhole`
 //      writes it into BOTH halves.
+//
+//   task 3 — Lift
+//   7. `lift()` draws `this.cover.read` after the fixed draw and before
+//      `drawRelief`, inside the already-enabled blend pair, with no new
+//      uniform and the touch / pool-1 protection still ahead of every draw.
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -69,6 +74,12 @@ function expectNotContains(source: string, needle: string): void {
 const ADVECT_COVER = () => sliceBetween(SHADERS, 'export const advectCoverFS', '`;')
 const ADVECT_INK = () => sliceBetween(SHADERS, 'export const advectInkFS', '`;')
 const STEP = () => sliceBetween(ENGINE, 'private step(dt: number)', 'private trimActive()')
+const LIFT = () =>
+  sliceBetween(
+    ENGINE,
+    'private lift(x: number, y: number, r: number, angle: number, amount: number)',
+    'private dryTau()',
+  )
 
 /** Index of the first occurrence of `needle` at or after `from`; throws when absent. */
 function firstIndexAfter(source: string, needle: string, from = 0): number {
@@ -238,5 +249,43 @@ describe('coverage rides the document lifecycle (64-14 task 2)', () => {
     // channel added to only some of the lists fails here.
     expect(formats).toBe(snapshot)
     expect(snapshot).toBe(travelPool0)
+  })
+})
+
+describe('Lift destroys coverage (64-14 task 3)', () => {
+  it('draws the cover field after fixed and before relief, under the bound program', () => {
+    const lift = LIFT()
+    const fixedDraw = firstIndexAfter(lift, 'g.draw(this.fixed, rect);')
+    const coverDraw = firstIndexAfter(lift, 'g.draw(this.cover.read, rect);')
+    const reliefDraw = firstIndexAfter(lift, 'this.drawRelief(')
+    expect(coverDraw, 'the cover draw follows the fixed draw').toBeGreaterThan(fixedDraw)
+    expect(reliefDraw, 'drawRelief follows the cover draw').toBeGreaterThan(coverDraw)
+  })
+
+  it('sits inside the blend pair and adds no uniform after the fixed draw', () => {
+    const lift = LIFT()
+    const blendOn = firstIndexAfter(lift, 'gl.enable(gl.BLEND);')
+    const fixedDraw = firstIndexAfter(lift, 'g.draw(this.fixed, rect);')
+    const coverDraw = firstIndexAfter(lift, 'g.draw(this.cover.read, rect);')
+    const reliefDraw = firstIndexAfter(lift, 'this.drawRelief(')
+    const blendOff = firstIndexAfter(lift, 'gl.disable(gl.BLEND);')
+    expect(fixedDraw).toBeGreaterThan(blendOn)
+    expect(coverDraw).toBeGreaterThan(fixedDraw)
+    expect(reliefDraw).toBeGreaterThan(coverDraw)
+    expect(blendOff).toBeGreaterThan(reliefDraw)
+    // The uAmount last written before the fixed draw is the paint amount —
+    // exactly what coverage must lose. A uniform here would re-scale it.
+    const between = lift.slice(fixedDraw, reliefDraw)
+    expectNotContains(between, 'uniform')
+  })
+
+  it('touches and protects pool 1 before the first draw', () => {
+    const lift = LIFT()
+    const firstDraw = lift.indexOf('g.draw(this.ink.read, rect);')
+    expect(firstDraw, 'the first lift draw').toBeGreaterThanOrEqual(0)
+    const preamble = lift.slice(0, firstDraw)
+    expectContains(preamble, 'this.touch(rect);')
+    // Lift reaches fixed pigment, so the fixed pool is saved before its draw.
+    expectContains(preamble, 'this.history.protect(1,')
   })
 })
