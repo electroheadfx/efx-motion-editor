@@ -31,6 +31,14 @@
 //   7. `lift()` draws `this.cover.read` after the fixed draw and before
 //      `drawRelief`, inside the already-enabled blend pair, with no new
 //      uniform and the touch / pool-1 protection still ahead of every draw.
+//
+//   64-20 — the film-presence gate
+//   8. Coverage transport is scaled by the display's OWN reconstruction of the
+//      combined film: `filmPresence` inlines `displayBasisGLSL()` and the
+//      display's granulation literal, with the paper-white scan's 250/255 line
+//      as two derived constants. No second basis, no keep, no edge term; a
+//      texel whose film leaves paper-white transports nothing and keeps its
+//      value exactly.
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -73,6 +81,7 @@ function expectNotContains(source: string, needle: string): void {
 
 const ADVECT_COVER = () => sliceBetween(SHADERS, 'export const advectCoverFS', '`;')
 const ADVECT_INK = () => sliceBetween(SHADERS, 'export const advectInkFS', '`;')
+const DISPLAY = () => sliceBetween(SHADERS, 'export const displayFS', '`;')
 const STEP = () => sliceBetween(ENGINE, 'private step(dt: number)', 'private trimActive()')
 const LIFT = () =>
   sliceBetween(
@@ -114,15 +123,19 @@ describe('the coverage advect program (64-14 task 1)', () => {
   it('declares only the uniforms it reads, with a single clamped output', () => {
     const cover = ADVECT_COVER()
     expectContains(cover, 'layout(location=0) out vec4 o0;')
-    expectContains(cover, 'uniform sampler2D uVelocity, uCover, uWet;')
+    // 64-20: the combined film (mobile + fixed) and the paper, so the gate can
+    // reconstruct what the display reconstructs.
+    expectContains(cover, 'uniform sampler2D uVelocity, uCover, uWet, uInkA, uInkB, uFixedA, uFixedB, uPaper;')
     expectContains(cover, 'uniform vec2 uSimTexel, uTexel;')
     expectContains(cover, 'uniform float uDt, uBleed, uEdge, uAspect;')
+    expectContains(cover, 'uniform float uGranulation;')
     expectContains(cover, 'uniform vec3 uBrush;')
     // T-64-41 / the no-decay prohibition: no keep factor, no settle term.
     expectNotContains(cover, 'uKeep')
     expectNotContains(cover, 'uSettle')
-    // Coverage is a committed alpha in [0, 1]: the transported sum is clamped.
-    expectContains(cover, 'clamp(c + dC, 0.0, 1.0)')
+    // Coverage is a committed alpha in [0, 1]: the transported sum is clamped,
+    // scaled per texel by the film's presence.
+    expectContains(cover, 'clamp(c + dC * p, 0.0, 1.0)')
   })
 
   it('shares the ink law literals: mobility, near-zero guard, back-trace, fluxes', () => {
@@ -144,10 +157,31 @@ describe('the coverage advect program (64-14 task 1)', () => {
       }
     }
     // The single channel's own expressions: the unchanged early return, the
-    // semi-Lagrangian mix, and the face accumulation on one scalar.
+    // semi-Lagrangian mix gated by the film's presence, and the face
+    // accumulation on one scalar.
     expectContains(cover, 'if (m < 0.002){ o0 = vec4(C); return; }')
-    expectContains(cover, 'float c = mix(C, texture(uCover, coord).x, m);')
+    expectContains(cover, 'float c = mix(C, texture(uCover, coord).x, m * p);')
     expectContains(cover, 'dC += d * (Cn - C) - (e > 0.0 ? e * C : e * Cn);')
+  })
+
+  it("gates transport on the display's own film reconstruction (64-20)", () => {
+    const cover = ADVECT_COVER()
+    const display = DISPLAY()
+    // The scan's own line and its margin, derived once from 250 of 255 luma.
+    expectContains(cover, 'const float PAPER_WHITE = 250.0 / 255.0;')
+    expectContains(cover, 'const float PAPER_WHITE_RAMP = 5.0 / 255.0;')
+    expectContains(cover, 'float filmPresence(vec2 uv){')
+    // Main computes the presence after the near-zero guard and scales with it.
+    expectContains(cover, 'float p = filmPresence(vUv);')
+    // ONE granulation literal: the display's own expression, in both programs.
+    for (const source of [cover, display]) {
+      expectContains(source, '1.0 + uGranulation * (0.5 - paper.g) * 2.2')
+    }
+    // ONE reconstruction: the display's own Kubelka-Munk basis block.
+    expectContains(cover, '${displayBasisGLSL()}')
+    // The gate ignores the display's edge darkening on purpose: its k is
+    // gran * (1 + uEdgeDarken * edge) >= gran, so the gate is an upper bound.
+    expectNotContains(cover, 'uEdgeDarken')
   })
 
   it('registers the program outside the pinned 23-entry literal', () => {
@@ -178,6 +212,14 @@ describe('the cover pass in step() (64-14 task 1)', () => {
     expectContains(block, 'g.bindTex(0, vel.read.tex[0])')
     expectContains(block, 'g.bindTex(1, this.cover.read.tex[0])')
     expectContains(block, 'g.bindTex(2, this.wet.read.tex[0])')
+    // 64-20: the combined film — the mobile ink AFTER its swap (post-advect)
+    // plus the single fixed target — and the paper the display granulates on.
+    expectContains(block, 'g.bindTex(3, this.ink.read.tex[0])')
+    expectContains(block, 'g.bindTex(4, this.ink.read.tex[1])')
+    expectContains(block, 'g.bindTex(5, this.fixed.tex[0])')
+    expectContains(block, 'g.bindTex(6, this.fixed.tex[1])')
+    expectContains(block, 'g.bindTex(7, this.paper.tex[0])')
+    expectContains(block, 'gl.uniform1f(P.advectCover.u.uGranulation, this.params.granulation * 0.55);')
     expectContains(block, 'gl.uniform2fv(P.advectCover.u.uSimTexel, simTexel);')
     expectContains(block, 'gl.uniform2fv(P.advectCover.u.uTexel, texel);')
     expectContains(block, 'gl.uniform1f(P.advectCover.u.uDt, dt);')
