@@ -47,6 +47,12 @@
 //   10. `filmPresence` measures its luma on the scan's OWN 8-bit grid: the
 //      reconstructed sRGB channels are quantized to bytes before the mean, so
 //      the gate's line and the scan's "byte mean >= 250" are one test.
+//   11. The CAPTURE-TIME CLEARANCE (64-20 decision A) is the third inclusion:
+//      at the export boundary only — never displayFS's interactive output —
+//      the pigment capture's coverage alpha is zeroed exactly where the final
+//      film's presence is exactly 0; every kept texel passes through
+//      byte-identical (a binary step, never a scale, and the display's own
+//      RGB is never re-derived).
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -103,6 +109,9 @@ const ADVECT_INK = () => sliceBetween(SHADERS, 'export const advectInkFS', '`;')
 const DISPLAY = () => sliceBetween(SHADERS, 'export const displayFS', '`;')
 const FILM_PRESENCE = () => sliceBetween(SHADERS, 'const FILM_PRESENCE =', '`;')
 const COVER_MASK = () => sliceBetween(SHADERS, 'export const coverMaskFS', '`;')
+const COVER_CLEAR = () => sliceBetween(SHADERS, 'export const coverClearFS', '`;')
+const READBACK = () => sliceBetween(ENGINE, 'private readback(', 'resize()')
+const CLEAR_PASS = () => sliceBetween(ENGINE, 'private clearPaperWhiteCoverage(', 'private readback(')
 const STEP = () => sliceBetween(ENGINE, 'private step(dt: number)', 'private trimActive()')
 const LIFT = () =>
   sliceBetween(
@@ -363,13 +372,16 @@ describe('Lift destroys coverage (64-14 task 3)', () => {
 })
 
 describe('the deposit gate shares the one reconstruction (64-20 decision A)', () => {
-  it('includes the one FILM_PRESENCE definition from exactly two programs', () => {
+  it('includes the one FILM_PRESENCE definition from every gate program', () => {
     expectContains(ADVECT_COVER(), '${FILM_PRESENCE}')
     expectContains(COVER_MASK(), '${FILM_PRESENCE}')
-    // A second, divergent criterion would have to declare itself here: one
-    // definition, two inclusions, and the basis/granulation counts below.
+    // 64-20 decision A: the capture-time clearance is the third inclusion —
+    // still ONE definition, so transport, deposit and clearance share a single
+    // criterion. The basis and granulation counts stay at two because the
+    // snippet carries each once, beside displayFS's own copy.
+    expectContains(COVER_CLEAR(), '${FILM_PRESENCE}')
     expect(countOccurrences(SHADERS, 'const FILM_PRESENCE =')).toBe(1)
-    expect(countOccurrences(SHADERS, '${FILM_PRESENCE}')).toBe(2)
+    expect(countOccurrences(SHADERS, '${FILM_PRESENCE}')).toBe(3)
     expect(countOccurrences(SHADERS, '${displayBasisGLSL()}')).toBe(2)
     expect(countOccurrences(SHADERS, '1.0 + uGranulation * (0.5 - paper.g) * 2.2')).toBe(2)
   })
@@ -409,5 +421,53 @@ describe("the gate runs on the scan's own 8-bit grid (64-20 decision B)", () => 
     // The continuous mean is the form the scan's byte comparison disagreed
     // with: a texel at 249.6/255 kept a nonzero trickle while reading byte 250.
     expectNotContains(film, '(s.r + s.g + s.b) / 3.0')
+  })
+})
+
+describe('the capture-time clearance closes the census (64-20 decision A)', () => {
+  it('defines ONE clearance program on the shared FILM_PRESENCE snippet', () => {
+    const clear = COVER_CLEAR()
+    // The same criterion the transport and the deposit use — one definition,
+    // three inclusions (the arithmetic lives in the gate-shape test above).
+    expectContains(clear, '${FILM_PRESENCE}')
+    expectContains(clear, 'uniform sampler2D uSrc, uPaper;')
+    expectContains(clear, 'float p = filmPresence(vUv);')
+    // A BINARY clear: the alpha is zeroed exactly where the presence is
+    // exactly 0 and passes through untouched everywhere else. A partial scale
+    // would have let the export's un-premultiply re-derive (and inflate) the
+    // pigment at every cleared texel.
+    expectContains(clear, 'o0 = vec4(src.rgb, src.a * step(0.0001, p));')
+    // The display's own RGBA is the only colour source: the clearance never
+    // reconstructs the film's colour or repaints the pigment.
+    expectContains(clear, 'vec4 src = texture(uSrc, vUv);')
+  })
+
+  it('runs at the capture boundary only, never on the interactive compositor', () => {
+    expectContains(ENGINE, 'this.programs.coverClear = this.g.program(S.coverClearFS);')
+    const readback = READBACK()
+    // Pigment capture only: every other export mode reads the display's output
+    // exactly as before.
+    expectContains(readback, 'if (mode === MODE.pigment)')
+    expectContains(readback, 'this.clearPaperWhiteCoverage(')
+    // render() draws displayFS straight to the canvas for the live compositor;
+    // the clearance must not leak into that path.
+    const render = sliceBetween(ENGINE, 'private render()', 'private schedule()')
+    expectNotContains(render, 'coverClear')
+    expectNotContains(render, 'clearPaperWhiteCoverage')
+    // The pass reads the very film the gate reconstructs: the live ink pair,
+    // the fixed pair, the sheet — with the display's own granulation.
+    const pass = CLEAR_PASS()
+    expectContains(pass, 'g.bindTex(0, source)')
+    expectContains(pass, 'g.bindTex(2, this.ink.read.tex[0])')
+    expectContains(pass, 'g.bindTex(3, this.ink.read.tex[1])')
+    expectContains(pass, 'g.bindTex(4, this.fixed.tex[0])')
+    expectContains(pass, 'g.bindTex(5, this.fixed.tex[1])')
+    expectContains(pass, 'gl.uniform1f(p.u.uGranulation, this.params.granulation * 0.55);')
+  })
+
+  it("leaves displayFS's law untouched — the clearance is not a display mode", () => {
+    const display = DISPLAY()
+    expectNotContains(display, 'coverClear')
+    expectContains(display, 'o = vec4(pigment * alpha * shade, alpha);')
   })
 })
