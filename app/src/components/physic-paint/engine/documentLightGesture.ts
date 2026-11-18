@@ -10,21 +10,25 @@
 //
 //  Purity: this module builds no document, reads no store and
 //  keeps no module state. It only decides whether the span is a
-//  real edit (one fresh-id descriptor) or nothing (null).
-//
-//  RED stub: the coalescing law lands in GREEN. Returning null is
-//  the "nothing was recorded" arm, so the span rows fail on their
-//  planned assertions and the null rows pass as they should.
+//  real edit (one fresh-id descriptor) or nothing (null). The
+//  equality law is the canonical `lightSignature` — absent light
+//  and the explicit `DEFAULT_LIGHT` are the same picture.
 // ============================================================
 
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import type { BackgroundEditDescriptor } from '../../../stores/efxPaintStore';
+import { lightSignature } from './physicsPaintStudioSettings';
 
 export function coalesceLightGesture(
   first: BackgroundEditDescriptor | null,
   after: EfxPaintDocument | null,
 ): BackgroundEditDescriptor | null {
-  void first;
-  void after;
-  return null;
+  if (!first || !after) return null;
+  if (lightSignature(first.before.light) === lightSignature(after.light)) return null;
+  return {
+    operationId: crypto.randomUUID(),
+    operationKind: first.operationKind,
+    before: first.before,
+    after,
+  };
 }
