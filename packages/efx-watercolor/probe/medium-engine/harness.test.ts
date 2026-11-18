@@ -220,3 +220,94 @@ describe('the white-over-blue matrix (64-17 task 2)', () => {
     })
   })
 })
+
+// Laws pinned here (64-16 task 1):
+//   9. A `ScriptEntry` carries an optional `brushId`; `makeStroke` falls back
+//      to `round`, and an unknown `--brush` id throws with the known list —
+//      the silent fallback is the failure this gate exists to prevent.
+//  10. `cover-textured` paints the dark band with `round` at Body 0, then the
+//      diagonal with the requested brush (default chalk), and reports the
+//      alpha spread on its own box, the crossing blue excess and the
+//      whole-sheet paper-white scan.
+//  11. compare.mjs dispatches `cover-textured` to its five bars in every mode.
+//  12. Both closed scenario lists accept `cover-textured` and
+//      `red-over-blue-50` with identical literals.
+describe('the textured-tip gate (64-16 task 1)', () => {
+  describe('the brush operand reaches every stroke', () => {
+    it('carries a per-entry brushId resolved against the presets', () => {
+      expectContains(PROBE, "import { BRUSH_PRESETS } from '../../src/playground/brushes'")
+      expectContains(PROBE, 'readonly brushId?: string')
+      expectContains(PROBE, 'brushId: entry.brushId ?? BRUSH_ID,')
+    })
+
+    it('throws on an unknown --brush id instead of falling back to round', () => {
+      expectContains(PROBE, 'function readBrush(): string | undefined {')
+      expectContains(PROBE, "const raw = new URLSearchParams(location.search).get('brush')")
+      expectContains(PROBE, 'const known = BRUSH_PRESETS.map((preset) => preset.id)')
+      expectContains(PROBE, '!known.includes(raw)')
+      expectContains(PROBE, 'invalid brush "${raw}" (known: ${known.join')
+    })
+
+    it('accepts --brush in run.mjs and appends it to the page query', () => {
+      expectContains(RUN, "const brushFlag = args.indexOf('--brush')")
+      expectContains(RUN, 'expected a non-empty brush id')
+      expectContains(RUN, '`&brush=${encodeURIComponent(brush)}`')
+    })
+
+    it('echoes the resolved brush in the report', () => {
+      expectContains(
+        PROBE,
+        "const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : undefined)",
+      )
+      expectContains(PROBE, 'brush: resolvedBrush ?? null,')
+    })
+  })
+
+  describe('the cover-textured scenario measures the tip spread', () => {
+    it('paints the dark band with round at Body 0 then the diagonal with the brush', () => {
+      expectContains(
+        PROBE,
+        'function coverTexturedScript(emboss?: number, body?: number, brushId?: string): readonly ScriptEntry[] {',
+      )
+      expectContains(PROBE, "brushId: 'round',")
+      expectContains(PROBE, 'const TEXTURED_BOX: BandBox = { x0: 0.44, y0: 0.41, x1: 0.58, y1: 0.55 }')
+    })
+
+    it('derives the spread without sorting and reuses the 64-17 helpers', () => {
+      expectContains(PROBE, 'function alphaSpread(')
+      expectContains(PROBE, 'const bins = new Uint32Array(256)')
+      expectContains(PROBE, 'const spread = alphaSpread(pigment, TEXTURED_BOX)')
+      expectContains(PROBE, 'coverAlphaMean: round2(alphaMean(pigment, TEXTURED_BOX)),')
+      expectContains(PROBE, 'coverAlphaP10: round2(spread.p10),')
+      expectContains(PROBE, 'coverAlphaP90: round2(spread.p90),')
+      expectContains(PROBE, 'coverAlphaCoveredFraction: round2(spread.coveredFraction),')
+      expectContains(PROBE, 'coverCrossBlueExcess: round2(bandStats(pigment, COVER_BOXES.crossing).blueExcess),')
+      expectContains(PROBE, 'coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),')
+    })
+  })
+
+  describe('the comparator gates the textured spread in every mode', () => {
+    it('maps cover-textured to its failure function and its five bars', () => {
+      expectContains(COMPARE, "'cover-textured': coverTexturedFailures,")
+      expectContains(COMPARE, 'function coverTexturedFailures(data) {')
+      expectContains(COMPARE, 'data.coverAlphaP90 >= 0.5')
+      expectContains(COMPARE, 'data.coverAlphaP10 <= 0.5')
+      expectContains(
+        COMPARE,
+        'data.coverAlphaCoveredFraction >= 0.02 && data.coverAlphaCoveredFraction <= 0.8',
+      )
+      expectContains(COMPARE, 'data.coverCrossBlueExcess <= 5')
+      expectContains(COMPARE, 'data.coveredPaperWhitePct !== 0')
+    })
+  })
+
+  describe('both closed scenario lists accept the new names', () => {
+    it('lists cover-textured and red-over-blue-50 in probe.ts and run.mjs', () => {
+      expectContains(PROBE, "raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50'")
+      expectContains(
+        RUN,
+        "scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50'",
+      )
+    })
+  })
+})
