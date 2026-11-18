@@ -83,6 +83,14 @@
 //  before and after the lift, then the paper-white scan. compare.mjs gates
 //  those readings in EVERY mode, keyed `'cover-lift'`.
 //
+//  64-16 adds `--brush <id>`: the covering stroke's brush preset. The page
+//  resolves the id against BRUSH_PRESETS and throws on an unknown one with the
+//  known list, so the id list stays in one place; this parser only rejects an
+//  empty token. `cover-textured` is the cover geometry with the light
+//  diagonal stamped by that brush (default chalk), measured as an alpha
+//  spread on TEXTURED_BOX; `red-over-blue-50` is task 2's criterion-2
+//  scenario, declared in both closed lists now so the two files cannot drift.
+//
 //  Final flag contract (later phases inherit it, do not retype it):
 //    run.mjs --gate <name>            required; [A-Za-z0-9._-]+, names the JSON
 //             [--scenario cover]      omitted renders the plan-01 single stroke
@@ -96,10 +104,16 @@
 //                                     the 50-rapid-stroke identity passage
 //             [--scenario white-over-blue]
 //                                     the criterion-1 crossing at --body
+//             [--scenario cover-textured]
+//                                     cover geometry, covering stroke at --brush
+//             [--scenario red-over-blue-50]
+//                                     the criterion-2 red-over-blue crossing
 //             [--emboss <0..100>]     omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
 //             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
 //             [--size <32..4096>]     omitted keeps the 256 square
+//             [--brush <id>]          omitted keeps the entry default (round;
+//                                     cover-textured defaults to chalk)
 //    compare.mjs <gate>               committed-baseline equality (7 fields)
 //    compare.mjs <gate> --other <g>   same-session equality; never a baseline
 //    compare.mjs <gate> --differs-from <n>
@@ -133,7 +147,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -193,9 +207,9 @@ const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect" or "cover-lift")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured" or "red-over-blue-50")`,
     )
     process.exit(1)
   }
@@ -215,13 +229,24 @@ if (sizeRaw !== undefined) {
   }
 }
 
+// 64-16: the brush operand. Only an empty token / a missing value is rejected
+// here — the page resolves the id against BRUSH_PRESETS and throws with the
+// known list, so the id list stays in one place.
+const brushFlag = args.indexOf('--brush')
+const brush = brushFlag >= 0 ? args[brushFlag + 1] : undefined
+if (brush !== undefined && (brush === '' || brush.startsWith('--'))) {
+  console.error(`invalid --brush "${brush}" (expected a non-empty brush id)`)
+  process.exit(1)
+}
+
 const pageQuery =
   `gate=${encodeURIComponent(gate)}` +
   (scenario === undefined ? '' : `&scenario=${scenario}`) +
   (emboss === undefined ? '' : `&emboss=${emboss}`) +
   (body === undefined ? '' : `&body=${body}`) +
   (light === undefined ? '' : `&light=${light}`) +
-  (size === undefined ? '' : `&size=${size}`)
+  (size === undefined ? '' : `&size=${size}`) +
+  (brush === undefined ? '' : `&brush=${encodeURIComponent(brush)}`)
 const resultPath = join(outDir, `${gate}.json`)
 
 const esbuildCandidates = [
@@ -344,6 +369,7 @@ console.log('')
 console.log('================ medium-engine pixel gate ================')
 console.log(`gate      : ${result.gate}`)
 console.log(`scenario  : ${result.scenario ?? '(neutral)'}`)
+console.log(`brush     : ${result.brush ?? '(default)'}`)
 console.log(`emboss    : ${result.emboss === null ? '(absent)' : result.emboss}`)
 console.log(`body      : ${result.body === null ? '(absent)' : result.body}`)
 console.log(`light     : ${result.light === null ? '(default)' : result.light}`)
@@ -355,6 +381,11 @@ console.log(`paper     : ${result.digestPaper}`)
 console.log(`transparent: ${result.digestTransparent}`)
 console.log(`white     : ${result.digestWhite}`)
 console.log(`pigment   : ${result.digestPigment}`)
+if (typeof result.coverAlphaP10 === 'number') {
+  console.log(
+    `spread    : P10 ${result.coverAlphaP10} | P90 ${result.coverAlphaP90} | covered ${result.coverAlphaCoveredFraction} | blue ${result.coverCrossBlueExcess} | mean ${result.coverAlphaMean} | paperWhite ${result.coveredPaperWhitePct}%`,
+  )
+}
 console.log(`result JSON: ${resultPath}`)
 console.log(`total probe: ${elapsedMs} ms`)
 console.log('=========================================================')

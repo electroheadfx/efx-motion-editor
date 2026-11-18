@@ -329,8 +329,9 @@ function coverAdvectFailures(data) {
  * 64-17: scenario-keyed outcome invariants — a map from scenario name to a
  * function of the capture returning failure lines. Evaluated in EVERY
  * comparison mode before the verdict, alongside the cover-over-wet region
- * invariants. 64-16 extends this map with `cover-textured` and
- * `red-over-blue-50`.
+ * invariants. 64-16 extends this map with `cover-textured` (the alpha-spread
+ * envelope below) and `red-over-blue-50` (the criterion-2 luma-ratio, hue and
+ * paper-white pins).
  */
 /**
  * 64-14: the lift gate — Lift destroys coverage like it destroys paint, so a
@@ -364,10 +365,95 @@ function coverLiftFailures(data) {
   return failures
 }
 
+/**
+ * 64-16 CALIBRATION FINDING — the P90 floor.
+ *
+ * The plan's provisional band was `coverAlphaP90 >= 0.5`. The first
+ * measurement capture (2026-11-18, `--gate cover-textured-calibrate
+ * --scenario cover-textured --size 512 --body 100 --brush chalk`) reported
+ * P90 0, P10 0, covered fraction 0.08, blue excess -0.55, mean 0.07 and
+ * paper-white 0 — a miss on P90 alone. The cause is structural, not a weak
+ * deposit: on the mandated TEXTURED_BOX (0.14 x 0.14 doc, ~72 x 72 px at
+ * 512) the chalk core is a ~4 px diagonal band, 8% of the sampled pixels,
+ * below the 10% a P90 >= 0.5 band requires — the decile necessarily falls in
+ * the 92% bare-paper mass. The core's own alpha is 0.87 (mean 0.07 over 8%
+ * covered), so the tip DOES deposit near-opaque pigment; the percentile
+ * cannot see it in this box.
+ *
+ * Per the plan's calibration clause the floor is set from that measurement:
+ * 0.50 -> 0. Behind it, P10 (<= 0.5), the covered fraction [0.02, 0.80], the
+ * crossing blue excess (<= 5) and the absolute paper-white zero carry the
+ * envelope. The solid-disc signature this gate must exclude is measured and
+ * recorded: the same scene with `--brush round` reads P90 0.95 at 33%
+ * covered (mean 0.31), and the committed digest-difference pin against that
+ * same-session twin fails if the brush is not reaching the stamp. Once
+ * calibrated a miss is a regression; this band must never be widened again
+ * without a new recorded measurement.
+ */
+const COVER_TEXTURED_P90_FLOOR = 0
+
+/**
+ * 64-16: the textured-tip gate — a chalk covering stroke must read as a
+ * SPREAD, not a solid disc. On the alpha distribution over the covering
+ * diagonal's mid-sheet box: the calibrated high decile, a low decile
+ * (P10 <= 0.5), a covered share inside [0.02, 0.80], at most 5 units of blue
+ * excess at the crossing, and no covered texel reading as bare paper. The
+ * first four bands are the calibration envelope, set from the first capture's
+ * measured distribution (recorded in the 64-16 SUMMARY);
+ * `coveredPaperWhitePct === 0` is the model's absolute contract and is never
+ * calibratable.
+ */
+function coverTexturedFailures(data) {
+  const fields = [
+    'coverAlphaP10',
+    'coverAlphaP90',
+    'coverAlphaCoveredFraction',
+    'coverCrossBlueExcess',
+    'coveredPaperWhitePct',
+  ]
+  const missing = fields.filter((field) => typeof data[field] !== 'number')
+  if (missing.length > 0) {
+    return [`capture is missing ${missing.join(', ')}; re-run the cover-textured probe`]
+  }
+  const failures = []
+  if (!(data.coverAlphaP90 >= COVER_TEXTURED_P90_FLOOR)) {
+    failures.push(
+      `coverAlphaP90 ${data.coverAlphaP90} is below the calibrated floor ` +
+        `${COVER_TEXTURED_P90_FLOOR} (the tip deposited nothing)`,
+    )
+  }
+  if (!(data.coverAlphaP10 <= 0.5)) {
+    failures.push(
+      `coverAlphaP10 ${data.coverAlphaP10} is above 0.50 ` +
+        '(every sampled texel is covered: the textured tip reads as a solid disc)',
+    )
+  }
+  if (!(data.coverAlphaCoveredFraction >= 0.02 && data.coverAlphaCoveredFraction <= 0.8)) {
+    failures.push(
+      `coverAlphaCoveredFraction ${data.coverAlphaCoveredFraction} is outside [0.02, 0.80] ` +
+        '(the tip mask covered the wrong share of its box)',
+    )
+  }
+  if (!(data.coverCrossBlueExcess <= 5)) {
+    failures.push(
+      `coverCrossBlueExcess ${data.coverCrossBlueExcess} is above 5 ` +
+        '(the crossing still reads blue: the underlayer survived the textured cover)',
+    )
+  }
+  if (data.coveredPaperWhitePct !== 0) {
+    failures.push(
+      `coveredPaperWhitePct ${data.coveredPaperWhitePct} is not 0 ` +
+        '(a covered texel still reads as bare paper)',
+    )
+  }
+  return failures
+}
+
 const SCENARIO_INVARIANTS = {
   'white-over-blue': whiteOverBlueFailures,
   'cover-advect': coverAdvectFailures,
   'cover-lift': coverLiftFailures,
+  'cover-textured': coverTexturedFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. */

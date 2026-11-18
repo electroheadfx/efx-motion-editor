@@ -125,11 +125,23 @@
 //  after it — the bounded limitation "Lift does not reduce coverage" becomes
 //  a measured assertion.
 //
+//  64-16 adds the brush operand and the textured-tip scenario: `--brush <id>`
+//  selects the covering stroke's brush (resolved against BRUSH_PRESETS, an
+//  unknown id throws with the known list), and `cover-textured` paints the
+//  `cover` geometry with that brush on the light diagonal (default `chalk`)
+//  so a chalk stroke's coverage can be measured as a SPREAD rather than a
+//  solid disc. The report adds the alpha distribution over TEXTURED_BOX —
+//  mean, P10, P90, covered fraction — plus the crossing's blue excess and the
+//  whole-sheet paper-white scan, all on the pigment export. The pigment alpha
+//  IS the coverage alpha by construction (mode 4: alpha = max(1 − min(rgb),
+//  cover)), which is why a coverage claim can be measured from an export.
+//
 //  Scenarios: neutral | cover | cover-over-wet | watercolor-50 | white-over-blue
-//           | cover-advect | cover-lift.
+//           | cover-advect | cover-lift | cover-textured | red-over-blue-50.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
+import { BRUSH_PRESETS } from '../../src/playground/brushes'
 import { PAPERS, type PaperPreset } from '../../src/playground/papers'
 import { createAquarelleEngineAdapter } from '../../src/adapter/engineAdapter'
 import {
@@ -499,6 +511,10 @@ interface ScriptEntry {
    *  'afterLift' record the lift scenario's two readings after the entry's
    *  own fix. Undefined entries capture nothing — every pre-existing script. */
   readonly captureCover?: 'advect' | 'beforeLift' | 'afterLift'
+  /** 64-16: the brush preset that stamps this entry; omitted keeps BRUSH_ID
+   *  (`round`). An unknown id never reaches an entry — `readBrush` throws
+   *  before the engine is constructed. */
+  readonly brushId?: string
 }
 
 /** The canonical bag as the app records it (0..100). A knob adds its key;
@@ -517,7 +533,9 @@ function makeStroke(entry: ScriptEntry): StudioStroke<AquarelleStrokePayload> {
     tool: entry.tool ?? 'brush',
     color: entry.color,
     params: paramsBag(entry),
-    brushId: BRUSH_ID,
+    // 64-16: the entry's brush wins; the probe default keeps `round`, so
+    // every pre-existing script stamps exactly as before.
+    brushId: entry.brushId ?? BRUSH_ID,
     points: entry.points.map((point) => ({ ...point })),
     mutationId: entry.mutationId,
     timestamp: 0,
@@ -715,6 +733,116 @@ function whiteOverBlueMetrics(
   }
 }
 
+// --- 64-16 textured-tip scenario ---------------------------------------------
+// The `cover` geometry with the covering stroke stamped by the requested
+// brush: a chalk stroke must cover through its own crumbly tip mask, not as a
+// solid disc. The dark band is `round` at Body 0 — a plain watercolour
+// underlayer, identical at every knob — so the measured spread belongs to the
+// covering stroke's tip alone. The alpha is the coverage alpha BY
+// CONSTRUCTION on the pigment export (mode 4: alpha = max(1 − min(rgb),
+// cover)), which is why a coverage claim can be measured from an export at
+// all.
+
+/**
+ * 64-16: the covering diagonal's MID-SHEET segment, where the light stroke's
+ * own body sits clear of the fixed dark band. Deliberately separate from
+ * `COVER_BOXES.crossing`, which stays the crossing measurement: this box asks
+ * what the TIP lays down, not what the covering stroke did to the underlayer.
+ */
+const TEXTURED_BOX: BandBox = { x0: 0.44, y0: 0.41, x1: 0.58, y1: 0.55 }
+
+/**
+ * 64-16: the alpha distribution over a box on the mode-4 pigment export — a
+ * 256-bin histogram, so P10/P90 need no sort and a crumbly tip mask's spread
+ * is measurable. `coveredFraction` is the share of sampled pixels at or above
+ * the 0.5 coverage threshold (bin 128), the same threshold the paper-white
+ * scan uses.
+ */
+function alphaSpread(
+  canvas: HTMLCanvasElement,
+  box: BandBox,
+): { p10: number; p90: number; coveredFraction: number } {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('alpha spread: exported canvas has no 2D context')
+  const w = canvas.width
+  const h = canvas.height
+  const x0 = Math.max(0, Math.min(w - 1, Math.round(box.x0 * w)))
+  const x1 = Math.max(x0 + 1, Math.min(w, Math.round(box.x1 * w)))
+  const y0 = Math.max(0, Math.min(h - 1, Math.round((1 - box.y1) * h)))
+  const y1 = Math.max(y0 + 1, Math.min(h, Math.round((1 - box.y0) * h)))
+  const data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data
+  const bins = new Uint32Array(256)
+  let total = 0
+  let covered = 0
+  for (let i = 3; i < data.length; i += 4) {
+    const alpha = data[i]!
+    bins[alpha]! += 1
+    total += 1
+    if (alpha >= 128) covered += 1
+  }
+  const quantile = (q: number): number => {
+    if (total === 0) return 0
+    const target = q * total
+    let seen = 0
+    for (let bin = 0; bin < 256; bin += 1) {
+      seen += bins[bin]!
+      if (seen >= target) return bin / 255
+    }
+    return 1
+  }
+  return {
+    p10: quantile(0.1),
+    p90: quantile(0.9),
+    coveredFraction: total > 0 ? covered / total : 0,
+  }
+}
+
+/**
+ * 64-16: the textured-tip scene — the `cover` geometry with the covering
+ * stroke stamped by `brushId`. Only the light diagonal carries the brush and
+ * the Body knob; the dark underlayer is `round` at Body 0 so the spread is
+ * the tip's, never the band's.
+ */
+function coverTexturedScript(emboss?: number, body?: number, brushId?: string): readonly ScriptEntry[] {
+  return [
+    {
+      color: COVER_DARK,
+      points: COVER_DARK_POINTS,
+      mutationId: MUTATION_ID,
+      emboss,
+      body: 0,
+      brushId: 'round',
+    },
+    {
+      color: COVER_LIGHT,
+      points: COVER_LIGHT_POINTS,
+      mutationId: MUTATION_ID + 1,
+      emboss,
+      body: body ?? 100,
+      brushId,
+    },
+  ]
+}
+
+/**
+ * 64-16: the textured-tip readings. The mean, the blue-excess reader and the
+ * paper-white scan are 64-17's helpers — consumed, never forked.
+ */
+function coverTexturedMetrics(
+  transparent: HTMLCanvasElement,
+  pigment: HTMLCanvasElement,
+): Record<string, number> {
+  const spread = alphaSpread(pigment, TEXTURED_BOX)
+  return {
+    coverAlphaMean: round2(alphaMean(pigment, TEXTURED_BOX)),
+    coverAlphaP10: round2(spread.p10),
+    coverAlphaP90: round2(spread.p90),
+    coverAlphaCoveredFraction: round2(spread.coveredFraction),
+    coverCrossBlueExcess: round2(bandStats(pigment, COVER_BOXES.crossing).blueExcess),
+    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
+  }
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -754,11 +882,16 @@ function run(
   renderer: string,
   scenario: string,
   sheet: number,
+  brush?: string,
   emboss?: number,
   body?: number,
   light?: number,
 ): void {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
+  // 64-16: the resolved brush — the operand when given, `chalk` as the
+  // textured-tip scenario's documented default, otherwise nothing. The report
+  // echoes THIS value, so a run that passed `--brush` can never print null.
+  const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : undefined)
   const script =
     scenario === 'cover'
       ? coverScript(emboss, body)
@@ -772,7 +905,9 @@ function run(
               ? watercolor50Script()
               : scenario === 'white-over-blue'
                 ? whiteOverBlueScript(body ?? 100)
-                : neutralScript(emboss, body)
+                : scenario === 'cover-textured'
+                  ? coverTexturedScript(emboss, body, resolvedBrush)
+                  : neutralScript(emboss, body)
 
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
@@ -896,9 +1031,15 @@ function run(
     const whiteOverBlueReport =
       scenario === 'white-over-blue' ? whiteOverBlueMetrics(transparentCanvas, pigmentCanvas) : {}
 
+    // 64-16: the textured-tip spread, only for its scenario, so every other
+    // report shape is unchanged.
+    const coverTexturedReport =
+      scenario === 'cover-textured' ? coverTexturedMetrics(transparentCanvas, pigmentCanvas) : {}
+
     writeResult({
       gate,
       scenario,
+      brush: resolvedBrush ?? null,
       emboss: emboss ?? null,
       body: body ?? null,
       light: light ?? null,
@@ -913,6 +1054,7 @@ function run(
       byteLength: paper.byteLength,
       ...coverRegions,
       ...whiteOverBlueReport,
+      ...coverTexturedReport,
       ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
@@ -955,18 +1097,35 @@ function readBody(): number | undefined {
   return value
 }
 
+/**
+ * 64-16: the brush operand — absent keeps each entry's default; a present id
+ * must resolve against BRUSH_PRESETS or the run throws naming the unknown id
+ * and the known list. The silent `round` fallback is the whole failure this
+ * gate exists to prevent, so there is no defaulting path here.
+ */
+function readBrush(): string | undefined {
+  const raw = new URLSearchParams(location.search).get('brush')
+  if (raw === null || raw === '') return undefined
+  const known = BRUSH_PRESETS.map((preset) => preset.id)
+  if (!known.includes(raw)) {
+    throw new Error(`invalid brush "${raw}" (known: ${known.join(', ')})`)
+  }
+  return raw
+}
+
 /** 64-06: the scenario selector — absent renders the plan-01 single stroke.
  *  64-17 adds `watercolor-50` and `white-over-blue`; 64-14 adds
- *  `cover-advect`. The closed list here and the one in run.mjs must stay
- *  literal-identical: a name accepted by the parser but unknown to the probe
- *  fails at capture, and a name the probe knows but the parser rejects can
- *  never be requested. */
+ *  `cover-advect`; 64-16 adds `cover-textured` (task 1) and `red-over-blue-50`
+ *  (task 2's scenario, declared now so the two closed lists cannot drift).
+ *  The closed list here and the one in run.mjs must stay literal-identical:
+ *  a name accepted by the parser but unknown to the probe fails at capture,
+ *  and a name the probe knows but the parser rejects can never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect" or "cover-lift")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured" or "red-over-blue-50")`,
     )
   }
   return raw
@@ -988,22 +1147,25 @@ function main(): void {
   let renderer = '(unknown)'
   let scenario = 'neutral'
   let sheet = DEFAULT_SHEET
+  let brush: string | undefined
   let emboss: number | undefined
   let body: number | undefined
   let light: number | undefined
   try {
     scenario = readScenario()
     sheet = readSize()
+    brush = readBrush()
     emboss = readEmboss()
     body = readBody()
     light = readLight()
     renderer = probeRenderer()
-    run(gate, renderer, scenario, sheet, emboss, body, light)
+    run(gate, renderer, scenario, sheet, brush, emboss, body, light)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     writeResult({
       gate,
       scenario,
+      brush: brush ?? null,
       emboss: emboss ?? null,
       body: body ?? null,
       light: light ?? null,
