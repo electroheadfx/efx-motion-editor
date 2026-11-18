@@ -197,7 +197,7 @@ Plans:
   6. The brush library groups the responses by medium in five sections; picking a brush applies its group's medium in one store write only when the group changes; the 15 existing responses are classified and the eight new ones ship.
   7. Export matches the screen on every `uMode` path, zooming produces no shimmer or crawl, and undo restores the eroded pigment and the eroded thickness exactly.
 
-**Plans:** 12/17 plans executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18)
+**Plans:** 13/17 plans executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18)
 
 Plans:
 **Wave 1**
@@ -231,7 +231,7 @@ Plans:
 - [x] 64-12-PLAN.md — The group-to-medium pick seam: one live-bag write only when the group changes, and the source audit that keeps every response surface on it
 
 **Wave 10** *(coverage addendum; blocked on the executed 64-06 + 64-10)*
-- [ ] 64-13-PLAN.md — Engine core: Spike 001's per-dab coverage composite (persistent one-channel coverage pair, `coverDeposit`/`coverMask`, mode-4 coverage alpha) and the deletion of the rev-4 `preInk`/`inkCover`/`coverDensity` seam
+- [x] 64-13-PLAN.md — Engine core: Spike 001's per-dab coverage composite (persistent one-channel coverage pair, `coverDeposit`/`coverMask`, mode-4 coverage alpha) and the deletion of the rev-4 `preInk`/`inkCover`/`coverDensity` seam
 
 **Wave 11** *(blocked on Wave 10 completion)*
 - [ ] 64-17-PLAN.md — Probe harness: digest the pigment sheet, commit the 1080² Body-0 identity law, turn Spike 001's criterion-1 numbers into standing invariants and re-specify the cover-over-wet scenario
@@ -262,7 +262,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 12/17 | In Progress | - |
+| 64. Medium Engine | 13/17 | In Progress | - |
 
 ---
 

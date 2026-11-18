@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 15
+open_count: 18
 waived_count: 18
 fixed_count: 92
-total_count: 125
-last_updated: 2026-11-17T16:54:50.677Z
+total_count: 128
+last_updated: 2026-11-18T17:38:46.302Z
 ---
 
 # Broken Windows Ledger
@@ -140,6 +140,9 @@ last_updated: 2026-11-17T16:54:50.677Z
 | 123 | 61 | deviation | app/src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.test.ts |  | 61-27 Task 3 GREEN repointed two shipped commit-call pins (61-19 live and 61-22 G-11 identifiers) from the bare 'void bundle.applyAnchorWidths?.' to its consuming form, preserving every other assertion (Rule 3 - Blocking). | open |  | 2026-11-11T11:50:07.646Z |  |
 | 124 | quick/261115-oh9 | deviation | app/src/components/physic-paint/view/WatercolorBrushLibrary.test.ts |  | CSS pin re-anchored after the full app suite exposed a substring collision with the menu's compound 34px rule | fixed |  | 2026-11-15T17:39:56.666Z | 2026-11-15T17:40:07.809Z |
 | 125 | 64 | unmet-truth | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts | 2700 | 64-07: bakeAquarelleScript builds its adapter via ports.createAquarelleAdapter(size, paper) and never applies the document light; every enumerated 64-07 bake path is wired, this Play-Script bake is not (needs a port signature + staged-cache key change) | open |  | 2026-11-17T16:54:50.677Z |  |
+| 126 | 64 | deviation | packages/efx-watercolor/src/playground/scattering.test.ts |  | 64-13: the gouache cov absence pin was rescoped to two exact tokens after the coverage model legitimately introduced float cov | open |  | 2026-11-18T17:38:45.840Z |  |
+| 127 | 64 | deviation | packages/efx-watercolor/src/playground/scattering.test.ts |  | 64-13: the coeffs: whole-file count moved 2 -> 3 for the coverageDeposit parameter annotation | open |  | 2026-11-18T17:38:46.076Z |  |
+| 128 | 64 | deviation | packages/efx-watercolor/src/playground/Engine.ts |  | 64-13: the docTargets SPIKE comment moved above return [] so the array-entry splitter sees pure entries | open |  | 2026-11-18T17:38:46.302Z |  |
 
 ````json
 [
@@ -1693,6 +1696,45 @@ last_updated: 2026-11-17T16:54:50.677Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-17T16:54:50.677Z",
+    "resolved_at": null,
+    "milestone": "v2.2.0"
+  },
+  {
+    "id": 126,
+    "kind": "deviation",
+    "phase": "64",
+    "file": "packages/efx-watercolor/src/playground/scattering.test.ts",
+    "line": null,
+    "description": "64-13: the gouache cov absence pin was rescoped to two exact tokens after the coverage model legitimately introduced float cov",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-18T17:38:45.840Z",
+    "resolved_at": null,
+    "milestone": "v2.2.0"
+  },
+  {
+    "id": 127,
+    "kind": "deviation",
+    "phase": "64",
+    "file": "packages/efx-watercolor/src/playground/scattering.test.ts",
+    "line": null,
+    "description": "64-13: the coeffs: whole-file count moved 2 -> 3 for the coverageDeposit parameter annotation",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-18T17:38:46.076Z",
+    "resolved_at": null,
+    "milestone": "v2.2.0"
+  },
+  {
+    "id": 128,
+    "kind": "deviation",
+    "phase": "64",
+    "file": "packages/efx-watercolor/src/playground/Engine.ts",
+    "line": null,
+    "description": "64-13: the docTargets SPIKE comment moved above return [] so the array-entry splitter sees pure entries",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-18T17:38:46.302Z",
     "resolved_at": null,
     "milestone": "v2.2.0"
   }
