@@ -36,18 +36,25 @@
 //
 //  quick-261117-tq7 adds `--scenario cover-over-wet`: the cover geometry with
 //  the dark entry left MOBILE (no fix), so the covering stroke meets wet `ink`
-//  instead of settled pigment. Two regression references are committed:
+//  as well as settled pigment — one mechanism (each covering dab's own
+//  coverage term, plus its coverPass erosion) reaches both underlayers. Two
+//  historical captures stay committed as digest-differs anchors only:
 //    baselines/cover-over-wet-prefix.json    the engine BEFORE the cover
 //                                            feature (no erasure at all)
 //    baselines/cover-over-wet-subtract.json  the pre-CR-01 clamped subtract
-//                                            (erases the covering stroke's
-//                                            own deposit: the bug)
-//  and baselines/cover-over-wet.json is the standing post-fix capture. The
-//  report carries four region means, and compare.mjs asserts the outcome on
-//  them: the crossing keeps more pigment than the covering stroke alone,
-//  less than the untouched dark band, gains ≥0.5 over the clamped subtract
-//  and reads ≥0.5 below the no-cover prefix; bare paper stays the empty
-//  control. The digest-differs check stays as the change detector.
+//  and baselines/cover-over-wet.json is the standing capture, re-captured by
+//  64-17 under the coverage model: it supersedes the 261117-tq7 rev-4 capture
+//  (the engine's model changed in 64-13) and the two historical references
+//  are untouched measurement records. The report carries four region means,
+//  and compare.mjs asserts the self-contained outcome on them: the covering
+//  stroke deposited pigment, the crossing is never blanker than the covering
+//  stroke alone and reads below the untouched dark band, bare paper stays the
+//  empty control. 64-17 retires both directional claims — the coverage
+//  crossing reads ABOVE both erase-era references by construction (49.66 vs
+//  the prefix's 34.05 and the subtract's 30.74, because the covering stroke
+//  now commits its own near-opaque body, own-pigment 14.54 against 3.47), so
+//  neither claim measures the erased underlayer any more. The digest-differs
+//  check stays as the change detector.
 //
 //  64-17 digests the coverage sheet: every report carries `digestPigment`
 //  (the mode-4 compositor export, whose alpha is max(1 − min(rgb), cover)),

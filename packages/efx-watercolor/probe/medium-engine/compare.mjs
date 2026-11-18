@@ -32,21 +32,25 @@
 //
 //  WR-01 (quick-261117-tq7): a cover-over-wet capture also carries four region
 //  means (crossing, covering stroke, dark band, bare paper), and EVERY mode
-//  asserts the self-contained outcome invariants on them — the crossing keeps
-//  more pigment than the covering stroke alone and less than the untouched
-//  dark band, the covering stroke deposited pigment, and bare paper is the
-//  empty control. Mode 3 adds ONE directional claim against a known reference,
-//  keyed on the reference's `gate`:
-//    --differs-from cover-over-wet-prefix    (engine before the cover
-//      feature): the crossing must read at least 0.5 BELOW it, i.e. the
-//      underlayer really is erased where the stroke crossed;
-//    --differs-from cover-over-wet-subtract  (pre-CR-01 clamped subtract):
-//      the crossing must read at least 0.5 ABOVE it, i.e. the covering
-//      stroke no longer erases its own deposit. This is the pair that makes
-//      the gate distinguish the fixed engine from the CR-01 regression —
-//      a digest-differs check alone passes for every engine against the
-//      no-cover prefix. Measured on the 256 sheet: prefix 34.05, fixed
-//      32.31, subtract 30.74 mean crossing pigment.
+//  asserts the self-contained outcome invariants on them — the covering stroke
+//  deposited pigment, the crossing is never blanker than the covering stroke
+//  alone, it reads below the untouched dark band, and bare paper is the empty
+//  control.
+//
+//  64-17 retires BOTH directional claims the erase-era gate carried against the
+//  two committed historical references; they stay --differs-from DIGEST anchors
+//  only. Measured on the 256 sheet under the coverage model, the crossing reads
+//  49.66 against the prefix reference's 34.05 and the clamped-subtract
+//  reference's 30.74 — ABOVE both — because the covering stroke now deposits
+//  its own near-opaque body (own-pigment 3.47 -> 14.54) instead of erasing the
+//  underlayer and leaving only its attenuated remainder. A directional claim
+//  against either erase-era reference therefore no longer measures the erased
+//  underlayer: "at least 0.5 below the no-cover prefix" is false by
+//  construction once the composite ADDS pigment where the erase model removed
+//  it, and "at least 0.5 above the clamped subtract" would compare a coverage
+//  crossing with an erase-era one and credit the gain to the wrong mechanism.
+//  Neither claim is retargeted or replaced with a numeric substitute; the
+//  region invariants above are self-contained and carry the gate.
 //  Non-cover scenarios carry no region fields and are unaffected.
 //
 //  64-10: every report carries `bakeMs` (script + settle) and `renderMs`
@@ -103,46 +107,39 @@ const REFERENCE_OPTIONAL = { 'neutral-identity': ['digestPigment'] }
 // the bytes changed. The probe reports four full-resolution region means
 // (mean pigment, 0..255, transparent export) and this comparator enforces:
 //   - coverOwnPigment > 0: the covering stroke deposited pigment at all;
-//   - coverCrossPigment > coverOwnPigment: the crossing is not blanker than
-//     the covering stroke alone (an over-erasing cover fails here);
-//   - coverCrossPigment < underBandPigment: the underlayer IS erased where
-//     the covering stroke crossed, well below the untouched dark band;
+//   - coverCrossPigment >= coverOwnPigment: the crossing is never blanker than
+//     the covering stroke alone — the coverage composite can leave it within
+//     rounding of the covering stroke alone (residual underlayer under the
+//     same `a`), never below (an over-erasing cover fails here);
+//   - coverCrossPigment < underBandPigment: the covering stroke's body hides
+//     the underlayer well below the untouched dark band;
 //   - paperBandPigment < coverCrossPigment: bare paper is the empty control,
 //     so a globally tinted or inverted render fails.
-// In --differs-from mode against another cover-over-wet capture the gate adds
-// ONE directional claim, keyed on the reference's own `gate`:
-//   'cover-over-wet-prefix'   the engine BEFORE the cover feature existed
-//                             (no erasure at all): the crossing must read at
-//                             least 0.5 below it — the underlayer IS erased.
-//   'cover-over-wet-subtract' the pre-CR-01 clamped `dst - src` engine: the
-//                             crossing must read at least 0.5 above it — the
-//                             covering stroke no longer erases its OWN deposit
-//                             (CR-01's regression).
-// Measured mean crossing pigment on the 256 sheet:
-//   prefix 34.05 | fixed 32.31 | subtract 30.74
-// Both deltas are ≈1.6-1.7, so a 0.5 margin sits well inside them while a
-// reversion (fixed == subtract, delta 0) fails cleanly. Any other reference
-// carries no directional claim.
+// 64-17: no directional claim is keyed on the reference — both erase-era
+// directions are retired with the reason recorded in the header. The two
+// historical captures stay digest-differs anchors only.
+// Measured mean region pigment on the 256 sheet:
+//   coverage model (this gate, 64-17 re-capture):
+//     crossing 49.66 | own 14.54 | under 84.68 | paper 0
+//   rev-4 erase-era capture (261117-tq7, superseded):
+//     crossing 33.99 | own 3.47 | under 55.36 | paper 0
+//   historical references (unchanged measurement records):
+//     prefix crossing 34.05 | subtract crossing 30.74
 const COVER_REGION_FIELDS = [
   'coverCrossPigment',
   'coverOwnPigment',
   'underBandPigment',
   'paperBandPigment',
 ]
-const COVER_CROSS_MARGIN = 0.5
-const COVER_CROSS_DIRECTION = {
-  'cover-over-wet-prefix': 'erased',
-  'cover-over-wet-subtract': 'survives',
-}
 
 /**
  * WR-01: cover-over-wet region invariants. Returns the failure lines — an
  * empty array means the capture satisfies them. Non-cover captures have no
- * region fields and no invariants. `requireGain` is true only for
- * --differs-from, where a directional claim against the reference is legal:
- * an equality comparison against the SAME capture cannot claim gain.
+ * region fields and no invariants. 64-17: the invariants are self-contained;
+ * no direction is keyed on the reference, so this runs identically in every
+ * comparison mode.
  */
-function coverRegionFailures(actualData, refData, requireGain) {
+function coverRegionFailures(actualData) {
   if (actualData.scenario !== 'cover-over-wet') return []
   const missing = COVER_REGION_FIELDS.filter((field) => typeof actualData[field] !== 'number')
   if (missing.length > 0) {
@@ -156,7 +153,7 @@ function coverRegionFailures(actualData, refData, requireGain) {
   if (!(own > 0)) {
     failures.push(`coverOwnPigment ${own} is not above 0 (the covering stroke deposited no pigment)`)
   }
-  if (!(cross > own)) {
+  if (!(cross >= own)) {
     failures.push(
       `coverCrossPigment ${cross} is not above coverOwnPigment ${own} ` +
         '(the crossing is blanker than the covering stroke alone: the cover over-erased)',
@@ -165,7 +162,7 @@ function coverRegionFailures(actualData, refData, requireGain) {
   if (!(cross < under)) {
     failures.push(
       `coverCrossPigment ${cross} is not below underBandPigment ${under} ` +
-        '(the underlayer was not erased where the covering stroke crossed)',
+        '(the covering stroke did not hide the underlayer below the untouched dark band)',
     )
   }
   if (!(paper < cross)) {
@@ -173,29 +170,6 @@ function coverRegionFailures(actualData, refData, requireGain) {
       `paperBandPigment ${paper} is not below coverCrossPigment ${cross} ` +
         '(bare paper is not the empty control: the render is tinted or inverted)',
     )
-  }
-  if (requireGain && refData.scenario === 'cover-over-wet') {
-    const refMissing = COVER_REGION_FIELDS.filter((field) => typeof refData[field] !== 'number')
-    if (refMissing.length > 0) {
-      failures.push(
-        `reference is missing ${refMissing.join(', ')}; re-capture it with a build that reports the region statistics`,
-      )
-    } else {
-      const direction = COVER_CROSS_DIRECTION[refData.gate]
-      const ref = refData.coverCrossPigment
-      if (direction === 'erased' && !(cross <= ref - COVER_CROSS_MARGIN)) {
-        failures.push(
-          `coverCrossPigment ${cross} is not at least ${COVER_CROSS_MARGIN} below the no-cover ` +
-            `reference's ${ref}: the covering stroke did not erase the underlayer`,
-        )
-      }
-      if (direction === 'survives' && !(cross >= ref + COVER_CROSS_MARGIN)) {
-        failures.push(
-          `coverCrossPigment ${cross} is not at least ${COVER_CROSS_MARGIN} above the clamped-subtract ` +
-            `reference's ${ref}: the covering stroke is erasing its own deposit again (CR-01)`,
-        )
-      }
-    }
   }
   return failures
 }
@@ -479,7 +453,7 @@ if (mode === 'differs') {
   // WR-01: the outcome invariants, measured on the crossing, the covering
   // stroke, the untouched dark band and bare paper. Checked BEFORE the verdict
   // so a digest change with a broken medium cannot pass.
-  const regionFailures = coverRegionFailures(actual, refData, true)
+  const regionFailures = coverRegionFailures(actual)
   printCoverRegions(actual, refData)
   // 64-17: the scenario-keyed invariants, in every mode before the verdict.
   const invariantFailures = scenarioInvariantFailures(actual)
@@ -537,11 +511,9 @@ for (const field of FIELDS) {
   }
 }
 
-// WR-01: the standing gate (capture vs its own post-fix baseline, or a
-// same-session pair) still asserts the self-contained outcome invariants. The
-// directional gain claim belongs to --differs-from only — an equality
-// comparison against the same capture cannot be required to gain on itself.
-const regionFailures = coverRegionFailures(actual, refData, false)
+// WR-01: the standing gate (capture vs its own baseline, or a same-session
+// pair) asserts the same self-contained outcome invariants in every mode.
+const regionFailures = coverRegionFailures(actual)
 printCoverRegions(actual, refData)
 // 64-17: the scenario-keyed invariants run in committed-baseline and
 // same-session mode too — every mode, before every verdict.

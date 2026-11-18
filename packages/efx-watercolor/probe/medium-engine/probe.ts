@@ -46,26 +46,32 @@
 //  quick-261117-tq7 adds `--scenario cover-over-wet`: the SAME dark-across /
 //  light-crossing geometry as `cover`, but the dark entry skips its fix
 //  (`fixAfter: false`), so the underlayer is still MOBILE in `ink` when the
-//  covering stroke runs — the engine's preInk cover must replace it there,
-//  exactly as the cover pass replaces settled `fixed` pigment. The pre-fix
-//  capture (cover-over-wet-prefix) is the committed baseline; the post-fix
-//  capture must differ in all three digests.
+//  covering stroke runs. One mechanism reaches both underlayers (64-17
+//  re-specification of the 64-13 coverage model): each covering dab's own
+//  coverage term attenuates the still-mobile ink
+//  (`ink <- ink·(1−a) + C·a`, the same `a` that carries the coverage), and the
+//  same dab's coverPass erodes the settled `fixed` pigment first — no
+//  stroke-start snapshot is involved. Two historical captures stay committed
+//  as digest-differs anchors only: cover-over-wet-prefix (the engine before
+//  the cover feature) and cover-over-wet-subtract (the pre-CR-01 clamped
+//  subtract).
 //
-//  WR-01 (same quick): a digest-differs check cannot tell "underlayer erased,
+//  WR-01 (same quick): a digest-differs check cannot tell "underlayer covered,
 //  covering pigment intact" from "covering stroke erased" or "colors
 //  inverted", so the cover-over-wet report also carries four bounded region
 //  means (doc uv boxes, full-resolution samples, mean pigment 255 − luma on
 //  the TRANSPARENT export: 0 is bare paper):
-//    coverCrossPigment  the intersection neighbourhood. The fixed engine
-//                       leaves ≈1.1 MORE pigment here than the pre-fix
-//                       clamped subtract (the covering stroke stops erasing
-//                       its own deposit), so the gate can assert a direction,
-//                       not just inequality.
+//    coverCrossPigment  the intersection neighbourhood. Under the coverage
+//                       model the covering stroke deposits its own near-opaque
+//                       body here (measured 49.66 on the 256 sheet, with
+//                       own-pigment 14.54 against the erase era's 3.47), so
+//                       the gate asserts the self-contained outcome — at least
+//                       the covering stroke alone, below the untouched dark
+//                       band — never a direction against an erase-era capture.
 //    coverOwnPigment    the covering diagonal clear of the dark band: proof
 //                       the covering stroke deposited pigment at all.
 //    underBandPigment   the dark band clear of the diagonal: control the
-//                       crossing must read well below (the underlayer is
-//                       erased where the stroke crossed).
+//                       crossing must read below.
 //    paperBandPigment   bare paper: the zero control.
 //  compare.mjs asserts these for every cover-over-wet capture. Only that
 //  scenario emits them, so every other scenario's report shape is unchanged.
@@ -84,9 +90,10 @@
 //  (.planning/spikes/001-coverage-composite/probe/probe.ts:603-618). No
 //  pre-existing script carries a rapid entry, so `neutral`, `cover` and
 //  `cover-over-wet`'s fixed entries keep their old drive byte-for-byte. The
-//  one behavioural trace is cover-over-wet's single mobile entry: its trailing
-//  fix re-settles mobile ink, so THAT capture changes digest here and is
-//  re-captured by 64-17 task 3 — never compare it before then.
+//  trailing fix is a no-op for cover-over-wet — its covering stroke already
+//  fixes after itself, so removing the trailing fix leaves that export
+//  byte-identical. The cover-over-wet digest moved when 64-13 landed the
+//  coverage composite, not from this drive; task 3 re-captures it.
 //
 //  Scenario list (64-17): `watercolor-50` is the spike's identity passage —
 //  50 rapid #cc2222 strokes on blank paper at Body 0, settle 1 — captured at
@@ -263,8 +270,8 @@ interface BandBox {
  * The four boxes the cover-over-wet gate asserts on. The script is fixed: a
  * dark band across y≈0.35 and a light diagonal from (0.22, 0.74) to
  * (0.82, 0.20), crossing at ≈(0.66, 0.36). Every box is clear of the other
- * stroke except `crossing`; the measured separation is documented in
- * compare.mjs beside the margins.
+ * stroke except `crossing`; the measured region means are documented in
+ * compare.mjs beside the invariants.
  */
 const COVER_BOXES: Readonly<Record<'crossing' | 'own' | 'under' | 'paper', BandBox>> = {
   // The intersection neighbourhood: the cover's erasure happens inside it.
@@ -461,8 +468,9 @@ function coverScript(emboss?: number, body?: number): readonly ScriptEntry[] {
 
 /** quick-261117-tq7: the SAME geometry as `cover`, except the dark band is
  *  left MOBILE — no fix after its settle. The light diagonal then crosses
- *  still-wet ink, so the cover pass must reach it through preInk rather
- *  than through the settled `fixed` buffers. */
+ *  still-wet ink, so each covering dab's coverage term attenuates the mobile
+ *  ink in place, and its coverPass erodes the settled pigment — one
+ *  mechanism, both underlayers, no stroke-start snapshot. */
 function coverOverWetScript(emboss?: number, body?: number): readonly ScriptEntry[] {
   return [
     {
