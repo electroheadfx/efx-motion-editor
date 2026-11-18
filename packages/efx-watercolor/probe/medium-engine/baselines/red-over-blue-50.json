@@ -1,0 +1,23 @@
+{
+  "kind": "pixel-buffer-baseline",
+  "capturedFromCommit": "8becef71a980e02e78b8235fce5c5563697ad14c",
+  "capturedAt": "2026-11-18T19:07:50Z",
+  "note": "Phase 64 (v2.2.0 medium engine), plan 64-16 task 2: Spike 001 criterion 2 as a standing gate. A dry #0044dd field at Body 0, 50 rapid #cc2222 strokes at Body 100 (settle 1, fixed every tenth and once after the loop), then one #cc2222 reference stroke on clean paper on the same sheet, 1080x1080. lumaRatio >= 0.95 and |deltaHue| <= 3 degrees are the spike's stated tolerance; the measured values here are 1.07 and -0.04. Measured on the PIGMENT export's rgb through the spike's own rgbToHsv (the VERDICT table recorded 0.982 on the transparent transmittance export; both are within tolerance). Never regenerate this baseline to make a gate pass; re-capture only when the engine model changes, and record why.",
+  "gate": "red-over-blue-50",
+  "scenario": "red-over-blue-50",
+  "body": 100,
+  "width": 1080,
+  "height": 1080,
+  "digestPaper": "53ac4d0c",
+  "digestTransparent": "82b90596",
+  "digestWhite": "43856fc9",
+  "digestPigment": "ae04a1c1",
+  "byteLength": 4665600,
+  "finalLuma": 141.75,
+  "referenceLuma": 132.21,
+  "lumaRatio": 1.07,
+  "deltaHue": -0.04,
+  "coveredPaperWhitePct": 0,
+  "renderer": "WebKit WebGL",
+  "verdict": "MEDIUM-ENGINE CAPTURED"
+}
