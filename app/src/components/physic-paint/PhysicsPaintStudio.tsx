@@ -150,6 +150,7 @@ import { deriveKeyRailSegments, projectSelectedKeyRailInspector } from './view/p
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
 import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, lightSignature, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings, type StudioBackgroundMode } from './engine/physicsPaintStudioSettings';
 import { coalesceLightGesture } from './engine/documentLightGesture';
+import { createSingleFlightRelight, lightChangeNeedsRelight, type SingleFlightRelight } from './engine/committedFrameRelight';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage, writeEfxPaintSessionDocumentCheckpoint } from './bridge/physicsPaintBridgeTransport';
 import { createDocumentSyncPushDecision, createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
@@ -2387,6 +2388,11 @@ export function PhysicsPaintStudio() {
     onFirstAcceptedBrush: () => acceptRotoScriptBrushRef.current(),
     setNavigationLocked: setRotoScriptNavigationLocked,
   });
+  // 64-19 (CR-01 / MED-17): the relight run is created ONCE, so it reads the
+  // Apply controller through a ref (the menuUndoRef / aquarelleRebakeRef
+  // pattern) — never a stale first-render wrapper.
+  const rotoScriptRef = useRef(rotoScript);
+  rotoScriptRef.current = rotoScript;
   rotoScript.updateEngine(rotoMutationPort);
   rotoScript.updateSource({
     selectionKind: currentFrameSelectionKind,
@@ -2889,6 +2895,36 @@ export function PhysicsPaintStudio() {
   // boundary — a descriptor ref, never a light mirror (the document IS the
   // light state). No signal, no render-body write.
   const documentLightGestureRef = useRef<BackgroundEditDescriptor | null>(null);
+  // 64-19 (CR-01 / MED-17): one bounded re-bake per light change, through the
+  // shipped Apply seam that resolves the document light at bake time. Created
+  // ONCE over refs — every guard reads live state at call time, so no effect
+  // ever churns. The last-seen light is a canonical SIGNATURE string, never a
+  // light mirror: the document remains the only light state.
+  const lastSyncedLightSignatureRef = useRef<string | null>(null);
+  const isPlayingRef = useRef(isPlaying);
+  isPlayingRef.current = isPlaying;
+  const committedFrameRelightRef = useRef<SingleFlightRelight | null>(null);
+  if (committedFrameRelightRef.current === null) {
+    committedFrameRelightRef.current = createSingleFlightRelight(async () => {
+      const launch = launchContextRef.current;
+      if (!launch) return false;
+      if (isPlayingRef.current) return false;
+      if (draftMode.peek()) return false;
+      if (wireframeMode.peek()) return false;
+      // The Apply lane bakes with the document light resolved at bake time
+      // (64-07) and mints no ledger entry — 64-18's gesture entry stays the
+      // only light history.
+      const lightAtRun = lightSignature(documentLight());
+      const applied = await rotoScriptRef.current.applyAquarelleTimeline(
+        getAquarelleEventsForFrame(launch.startFrame),
+      );
+      // Advance the last-seen light only after a REAL bake: a busy `false` (or
+      // a throw, swallowed by the controller) leaves it unadvanced, so the
+      // next sync or gesture retries.
+      if (applied) lastSyncedLightSignatureRef.current = lightAtRun;
+      return applied;
+    });
+  }
   // 64-18 (CR-02): the per-move write keeps the live sheet re-lighting, but
   // records NOTHING — one drag would otherwise evict the ledger and clear
   // redo on every emitted value.
@@ -2912,6 +2948,9 @@ export function PhysicsPaintStudio() {
       layerId ? getEfxPaintDocument(layerId) ?? null : null,
     );
     if (coalesced) rotoMoveHistory.recordBackgroundEdit(coalesced);
+    // 64-19 (CR-01 / MED-17): a real gesture changed the light — re-bake the
+    // visible committed frame once, through the light-resolving Apply lane.
+    if (coalesced) committedFrameRelightRef.current?.request();
   };
   // 56-05 (PAPER-03 / D-10): the shared-panel Paper section's paper-id port —
   // display-class edit through the store's paper-id setter (fond + change
@@ -6424,6 +6463,18 @@ export function PhysicsPaintStudio() {
     const layerId = lc?.layerId;
     if (!layerId) return;
     const document = getEfxPaintDocument(layerId);
+    // 64-19 (CR-01 / MED-17): the light diff runs BEFORE the fallback early
+    // return — a document with no background fallback can still carry a light,
+    // and an undo/redo that changed it must re-light the visible frame. The
+    // FIRST call records the baseline WITHOUT baking; the last-seen signature
+    // advances only after a real bake (the relight run owns that write).
+    const previousLightSignature = lastSyncedLightSignatureRef.current;
+    const currentLight = document?.light;
+    if (previousLightSignature === null) {
+      lastSyncedLightSignatureRef.current = lightSignature(currentLight);
+    } else if (lightChangeNeedsRelight(previousLightSignature, currentLight)) {
+      committedFrameRelightRef.current?.request();
+    }
     const fallback = document?.background.fallback;
     if (!fallback) return;
     const hydrated = applyBackgroundFallbackToSettings(fallback);
