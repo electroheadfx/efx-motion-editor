@@ -94,7 +94,16 @@
 //  (neutral-identity is the 256² half). The script is the spike's verbatim
 //  (.planning/spikes/001-coverage-composite/probe/probe.ts:459-473).
 //
-//  Scenarios: neutral | cover | cover-over-wet | watercolor-50.
+//  64-17 also adds `white-over-blue` (Spike 001 criterion 1): a saturated
+//  #0044dd band at Body 0, fixed, then a #f0f0f0 diagonal at the Body knob
+//  (default 100) crossing it. The pigment export's alpha IS the compositor
+//  alpha (mode 4: alpha = max(1 − min(rgb), cover)), so a coverage claim can
+//  be measured from an export at all; `crossDarkAlpha` is measured on the
+//  TRANSPARENT export on purpose — it is the exact alpha the pre-coverage
+//  commit derived from the sheet, so `crossCoverAlpha − crossDarkAlpha` is the
+//  change the model makes to the committed payload.
+//
+//  Scenarios: neutral | cover | cover-over-wet | watercolor-50 | white-over-blue.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -297,6 +306,101 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100
 }
 
+/** Mean RGB channels and mean(B) − mean(R) over a box on the transparent export. */
+function bandStats(
+  canvas: HTMLCanvasElement,
+  box: BandBox,
+): { mean: readonly [number, number, number]; blueExcess: number } {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('band stats: exported canvas has no 2D context')
+  const w = canvas.width
+  const h = canvas.height
+  const x0 = Math.max(0, Math.min(w - 1, Math.round(box.x0 * w)))
+  const x1 = Math.max(x0 + 1, Math.min(w, Math.round(box.x1 * w)))
+  const y0 = Math.max(0, Math.min(h - 1, Math.round((1 - box.y1) * h)))
+  const y1 = Math.max(y0 + 1, Math.min(h, Math.round((1 - box.y0) * h)))
+  const data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data
+  let r = 0
+  let g = 0
+  let b = 0
+  let n = 0
+  for (let i = 0; i < data.length; i += 4) {
+    r += data[i]!
+    g += data[i + 1]!
+    b += data[i + 2]!
+    n += 1
+  }
+  const mean: [number, number, number] = [r / n, g / n, b / n]
+  return { mean, blueExcess: mean[2] - mean[0] }
+}
+
+/** Mean alpha, 0..1, over a box on the mode-4 pigment export. */
+function alphaMean(canvas: HTMLCanvasElement, box: BandBox): number {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('alpha mean: exported canvas has no 2D context')
+  const w = canvas.width
+  const h = canvas.height
+  const x0 = Math.max(0, Math.min(w - 1, Math.round(box.x0 * w)))
+  const x1 = Math.max(x0 + 1, Math.min(w, Math.round(box.x1 * w)))
+  const y0 = Math.max(0, Math.min(h - 1, Math.round((1 - box.y1) * h)))
+  const y1 = Math.max(y0 + 1, Math.min(h, Math.round((1 - box.y0) * h)))
+  const data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data
+  let sum = 0
+  let n = 0
+  for (let i = 3; i < data.length; i += 4) {
+    sum += data[i]!
+    n += 1
+  }
+  return n > 0 ? sum / n / 255 : 0
+}
+
+/** Mean of 1 − min(r, g, b)/255 over a box on the transparent export — the
+ *  alpha the pre-coverage commit derived from the sheet. */
+function darkAlphaMean(canvas: HTMLCanvasElement, box: BandBox): number {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('dark alpha mean: exported canvas has no 2D context')
+  const w = canvas.width
+  const h = canvas.height
+  const x0 = Math.max(0, Math.min(w - 1, Math.round(box.x0 * w)))
+  const x1 = Math.max(x0 + 1, Math.min(w, Math.round(box.x1 * w)))
+  const y0 = Math.max(0, Math.min(h - 1, Math.round((1 - box.y1) * h)))
+  const y1 = Math.max(y0 + 1, Math.min(h, Math.round((1 - box.y0) * h)))
+  const data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data
+  let sum = 0
+  let n = 0
+  for (let i = 0; i < data.length; i += 4) {
+    sum += 1 - Math.min(data[i]!, data[i + 1]!, data[i + 2]!) / 255
+    n += 1
+  }
+  return n > 0 ? sum / n : 0
+}
+
+/**
+ * Percentage of texels the pigment layer claims to COVER (mode-4 alpha ≥
+ * threshold) that still read as bare paper (≥ 250 luma) on the transparent
+ * export — Spike 001's criterion-1 failure scan. 0 is the bar.
+ */
+function coveredPaperWhitePct(
+  transparent: HTMLCanvasElement,
+  pigment: HTMLCanvasElement,
+  threshold = 0.5,
+): number {
+  const ctxT = transparent.getContext('2d')
+  const ctxP = pigment.getContext('2d')
+  if (!ctxT || !ctxP) throw new Error('covered paper white: canvas has no 2D context')
+  const t = ctxT.getImageData(0, 0, transparent.width, transparent.height).data
+  const a = ctxP.getImageData(0, 0, pigment.width, pigment.height).data
+  let covered = 0
+  let paperWhite = 0
+  for (let i = 0; i < t.length; i += 4) {
+    if (a[i + 3]! < threshold * 255) continue
+    covered += 1
+    const luma = (t[i]! + t[i + 1]! + t[i + 2]!) / 3
+    if (luma >= 250) paperWhite += 1
+  }
+  return covered > 0 ? (100 * paperWhite) / covered : 0
+}
+
 // --- the fixed scenarios ----------------------------------------------------
 
 // One script entry: a color + a point list + a mutationId. The knobs
@@ -406,6 +510,72 @@ function watercolor50Script(): readonly ScriptEntry[] {
   return script
 }
 
+// --- 64-17 white-over-blue scenario -----------------------------------------
+// Spike 001's criterion-1 geometry verbatim (spike probe.ts:389-435): a
+// saturated blue band fixed dry, then a near-white diagonal crossing it. The
+// UNDERLAYER is painted at Body 0 — a plain watercolour, identical at every
+// Body value — and only the covering stroke carries the knob: the knob is the
+// acrylic cover, not the paint.
+
+const BLUE_BAND: readonly AquarellePoint[] = [
+  { x: 0.12, y: 0.5, p: 0.8, tx: 0, ty: 0, tw: 0 },
+  { x: 0.35, y: 0.5, p: 0.8, tx: 0, ty: 0, tw: 0 },
+  { x: 0.6, y: 0.5, p: 0.8, tx: 0, ty: 0, tw: 0 },
+  { x: 0.88, y: 0.5, p: 0.8, tx: 0, ty: 0, tw: 0 },
+]
+
+const WHITE_DIAGONAL: readonly AquarellePoint[] = [
+  { x: 0.18, y: 0.8, p: 0.8, tx: 0, ty: 0, tw: 0 },
+  { x: 0.4, y: 0.62, p: 0.8, tx: 0, ty: 0, tw: 0 },
+  { x: 0.6, y: 0.4, p: 0.8, tx: 0, ty: 0, tw: 0 },
+  { x: 0.82, y: 0.2, p: 0.8, tx: 0, ty: 0, tw: 0 },
+]
+
+/**
+ * Spike 001's four measurement boxes (spike probe.ts:652-657), doc uv, y up.
+ * The crossing box lies exactly on the two strokes' intersection at (0.5, 0.5);
+ * the other three are controls inside stroke cores — the strokes' alpha rims
+ * are ~0.02 doc heights wide, so a wider box would average paint with paper.
+ */
+const WHITE_OVER_BLUE_BOXES: Readonly<
+  Record<'crossing' | 'coverOwn' | 'underOwn' | 'paper', BandBox>
+> = {
+  crossing: { x0: 0.49, y0: 0.49, x1: 0.51, y1: 0.51 },
+  coverOwn: { x0: 0.276, y0: 0.688, x1: 0.304, y1: 0.712 },
+  underOwn: { x0: 0.24, y0: 0.488, x1: 0.3, y1: 0.512 },
+  paper: { x0: 0.45, y0: 0.86, x1: 0.55, y1: 0.94 },
+}
+
+/** 64-17: the blue band, fixed, then the white diagonal at the body knob. */
+function whiteOverBlueScript(body: number): readonly ScriptEntry[] {
+  return [
+    { color: '#0044dd', points: BLUE_BAND, mutationId: 0x51a7e1, body: 0 },
+    { color: '#f0f0f0', points: WHITE_DIAGONAL, mutationId: 0x51a7e2, body },
+  ]
+}
+
+/**
+ * 64-17: Spike 001 criterion 1 on the crossing box — the seven reported
+ * metrics. `crossDarkAlpha` reads the transparent export (the pre-coverage
+ * alpha); `crossCoverAlpha` reads the pigment export (the compositor alpha).
+ */
+function whiteOverBlueMetrics(
+  transparent: HTMLCanvasElement,
+  pigment: HTMLCanvasElement,
+): Record<string, number> {
+  const cross = WHITE_OVER_BLUE_BOXES.crossing
+  const stats = bandStats(transparent, cross)
+  return {
+    crossR: round2(stats.mean[0]),
+    crossG: round2(stats.mean[1]),
+    crossB: round2(stats.mean[2]),
+    crossBlueExcess: round2(stats.blueExcess),
+    crossCoverAlpha: round2(alphaMean(pigment, cross)),
+    crossDarkAlpha: round2(darkAlphaMean(transparent, cross)),
+    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
+  }
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -457,7 +627,9 @@ function run(
         ? coverOverWetScript(emboss, body)
         : scenario === 'watercolor-50'
           ? watercolor50Script()
-          : neutralScript(emboss, body)
+          : scenario === 'white-over-blue'
+            ? whiteOverBlueScript(body ?? 100)
+            : neutralScript(emboss, body)
 
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
@@ -537,6 +709,11 @@ function run(
           }
         : {}
 
+    // 64-17: Spike 001 criterion 1, only for its scenario, so every other
+    // report shape is unchanged apart from digestPigment.
+    const whiteOverBlueReport =
+      scenario === 'white-over-blue' ? whiteOverBlueMetrics(transparentCanvas, pigmentCanvas) : {}
+
     writeResult({
       gate,
       scenario,
@@ -553,6 +730,7 @@ function run(
       digestPigment: pigment.digest,
       byteLength: paper.byteLength,
       ...coverRegions,
+      ...whiteOverBlueReport,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
     })
@@ -595,16 +773,16 @@ function readBody(): number | undefined {
 }
 
 /** 64-06: the scenario selector — absent renders the plan-01 single stroke.
- *  64-17 adds `watercolor-50`. The closed list here and the one in run.mjs
- *  must stay literal-identical: a name accepted by the parser but unknown to
- *  the probe fails at capture, and a name the probe knows but the parser
- *  rejects can never be requested. */
+ *  64-17 adds `watercolor-50` and `white-over-blue`. The closed list here and
+ *  the one in run.mjs must stay literal-identical: a name accepted by the
+ *  parser but unknown to the probe fails at capture, and a name the probe
+ *  knows but the parser rejects can never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet" or "watercolor-50")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50" or "white-over-blue")`,
     )
   }
   return raw

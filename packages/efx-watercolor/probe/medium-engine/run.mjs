@@ -58,6 +58,13 @@
 //  strokes on blank paper at Body 0, captured at `--size 1080` as the second
 //  half of the Body-0 identity law.
 //
+//  64-17 adds `--scenario white-over-blue`: Spike 001's criterion-1 scene — a
+//  saturated #0044dd band at Body 0, fixed, then a #f0f0f0 diagonal at
+//  `--body` (default 100) crossing it. The report carries the crossing box's
+//  mean channels, blue excess, pigment alpha (the compositor alpha), the
+//  transparent sheet's darkness conversion, and the covered-paper-white scan;
+//  compare.mjs gates them in EVERY mode, keyed on the capture's own body.
+//
 //  Final flag contract (later phases inherit it, do not retype it):
 //    run.mjs --gate <name>            required; [A-Za-z0-9._-]+, names the JSON
 //             [--scenario cover]      omitted renders the plan-01 single stroke
@@ -65,6 +72,8 @@
 //                                     cover geometry, dark entry left mobile
 //             [--scenario watercolor-50]
 //                                     the 50-rapid-stroke identity passage
+//             [--scenario white-over-blue]
+//                                     the criterion-1 crossing at --body
 //             [--emboss <0..100>]     omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
 //             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
@@ -102,7 +111,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|watercolor-50] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|watercolor-50|white-over-blue] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -153,15 +162,16 @@ if (bodyRaw !== undefined) {
 
 // 64-06: optional scenario. Omitted keeps the plan-01 single stroke.
 // quick-261117-tq7 adds `cover-over-wet` (cover geometry, dark entry mobile).
-// 64-17 adds `watercolor-50` (the 50-rapid-stroke identity passage). This
-// closed list and probe.ts readScenario's must stay literal-identical.
+// 64-17 adds `watercolor-50` (the 50-rapid-stroke identity passage) and
+// `white-over-blue` (the criterion-1 crossing). This closed list and probe.ts
+// readScenario's must stay literal-identical.
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet" or "watercolor-50")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50" or "white-over-blue")`,
     )
     process.exit(1)
   }

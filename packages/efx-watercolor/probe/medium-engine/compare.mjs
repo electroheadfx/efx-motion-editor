@@ -69,6 +69,16 @@
 //  --differs-from keeps asserting those, not the sheet that must change with
 //  them.
 //
+//  64-17: scenario-keyed outcome invariants (`SCENARIO_INVARIANTS`) run in
+//  EVERY mode before the verdict, alongside — never replacing — the
+//  cover-over-wet region invariants. `white-over-blue` is the first key and
+//  encodes Spike 001 criterion 1: the bars switch on the capture's OWN body
+//  (100: the committed alpha is coverage-class, gain ≥ 0.60 over the darkness
+//  conversion, blue excess ≤ 5; 60: partial cover, gain ≥ 0.04, blue excess in
+//  [15, 38]; 30: the underlayer survives, blue excess ≥ 38, gain ≤ 0.03), and
+//  no body value may leave covered paper-white. A null or unlisted body is a
+//  failure line of its own — an unlisted body never passes silently.
+//
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
 //  teach this parser about it rather than have it silently misparse.
@@ -188,6 +198,116 @@ function coverRegionFailures(actualData, refData, requireGain) {
     }
   }
   return failures
+}
+
+/** Two decimals — the probe's reported precision. */
+function round2(value) {
+  return Math.round(value * 100) / 100
+}
+
+/**
+ * Spike 001 criterion 1 as a standing gate. `crossCoverAlpha` is the pigment
+ * export's mean alpha over the crossing; `crossDarkAlpha` is the alpha the
+ * pre-coverage commit would have derived from the transparent sheet, so the
+ * gap is the coverage model's contribution to the committed payload.
+ */
+function whiteOverBlueFailures(data) {
+  const fields = [
+    'crossR',
+    'crossG',
+    'crossB',
+    'crossBlueExcess',
+    'crossCoverAlpha',
+    'crossDarkAlpha',
+    'coveredPaperWhitePct',
+  ]
+  const missing = fields.filter((field) => typeof data[field] !== 'number')
+  if (missing.length > 0) {
+    return [`capture is missing ${missing.join(', ')}; re-run the white-over-blue probe`]
+  }
+  const gap = data.crossCoverAlpha - data.crossDarkAlpha
+  const failures = []
+  if (data.coveredPaperWhitePct !== 0) {
+    failures.push(
+      `coveredPaperWhitePct ${data.coveredPaperWhitePct} is not 0 ` +
+        '(a covered texel still reads as bare paper)',
+    )
+  }
+  if (data.body === 100) {
+    if (!(gap >= 0.6)) {
+      failures.push(
+        `crossCoverAlpha - crossDarkAlpha ${round2(gap)} is below 0.60 ` +
+          '(the committed alpha is the darkness conversion, not coverage)',
+      )
+    }
+    if (!(data.crossCoverAlpha >= 0.9)) {
+      failures.push(
+        `crossCoverAlpha ${data.crossCoverAlpha} is below 0.90 ` +
+          '(the covering stroke did not cover)',
+      )
+    }
+    if (!(data.crossBlueExcess <= 5)) {
+      failures.push(
+        `crossBlueExcess ${data.crossBlueExcess} is above 5 ` +
+          '(the crossing still reads blue: the underlayer survived)',
+      )
+    }
+  } else if (data.body === 60) {
+    if (!(data.crossCoverAlpha < 0.5)) {
+      failures.push(
+        `crossCoverAlpha ${data.crossCoverAlpha} is not below 0.50 ` +
+          '(the partial cover went opaque)',
+      )
+    }
+    if (!(gap >= 0.04)) {
+      failures.push(
+        `crossCoverAlpha - crossDarkAlpha ${round2(gap)} is below 0.04 ` +
+          '(no coverage contribution at Body 60)',
+      )
+    }
+    if (!(data.crossBlueExcess >= 15 && data.crossBlueExcess <= 38)) {
+      failures.push(
+        `crossBlueExcess ${data.crossBlueExcess} is outside [15, 38] ` +
+          '(the partial cover is off)',
+      )
+    }
+  } else if (data.body === 30) {
+    if (!(data.crossBlueExcess >= 38)) {
+      failures.push(
+        `crossBlueExcess ${data.crossBlueExcess} is below 38 ` +
+          '(the underlayer must survive at Body 30)',
+      )
+    }
+    if (!(gap <= 0.03)) {
+      failures.push(
+        `crossCoverAlpha - crossDarkAlpha ${round2(gap)} is above 0.03 ` +
+          '(the cover must be inert at Body 30)',
+      )
+    }
+  } else {
+    failures.push(
+      `body ${data.body === null ? '(null)' : data.body} has no white-over-blue bar set ` +
+        '(expected 100, 60 or 30)',
+    )
+  }
+  return failures
+}
+
+/**
+ * 64-17: scenario-keyed outcome invariants — a map from scenario name to a
+ * function of the capture returning failure lines. Evaluated in EVERY
+ * comparison mode before the verdict, alongside the cover-over-wet region
+ * invariants. 64-16 extends this map with `cover-textured` and
+ * `red-over-blue-50`.
+ */
+const SCENARIO_INVARIANTS = {
+  'white-over-blue': whiteOverBlueFailures,
+}
+
+/** Run the scenario's invariant function, if it has one. */
+function scenarioInvariantFailures(data) {
+  const invariants = SCENARIO_INVARIANTS[data.scenario]
+  return invariants ? invariants(data) : []
 }
 
 /** Print one capture's region means beside the reference's when it has them. */
@@ -361,11 +481,15 @@ if (mode === 'differs') {
   // so a digest change with a broken medium cannot pass.
   const regionFailures = coverRegionFailures(actual, refData, true)
   printCoverRegions(actual, refData)
-  if (missing > 0 || equal > 0 || regionFailures.length > 0) {
+  // 64-17: the scenario-keyed invariants, in every mode before the verdict.
+  const invariantFailures = scenarioInvariantFailures(actual)
+  for (const line of invariantFailures) console.log(`INVARIANT ${line}`)
+  if (missing > 0 || equal > 0 || regionFailures.length > 0 || invariantFailures.length > 0) {
     for (const line of regionFailures) console.log(`REGION    ${line}`)
     console.log(
       `RESULT: FAIL — ${equal} digest(s) did not differ, ${missing} missing, ` +
-        `${regionFailures.length} cover region invariant(s) failed ` +
+        `${regionFailures.length} cover region invariant(s) failed, ` +
+        `${invariantFailures.length} scenario invariant(s) failed ` +
         `(${gate} vs ${operand})`,
     )
     console.log('=========================================================')
@@ -375,8 +499,11 @@ if (mode === 'differs') {
     actual.scenario === 'cover-over-wet'
       ? ` and the ${COVER_REGION_FIELDS.length} cover region invariants hold`
       : ''
+  const scenarioNote = SCENARIO_INVARIANTS[actual.scenario]
+    ? ' and the scenario invariants hold'
+    : ''
   console.log(
-    `RESULT: PASS — all ${DIGESTS.length} digests differ${regionNote} (${gate} vs ${operand}, ${dims})`,
+    `RESULT: PASS — all ${DIGESTS.length} digests differ${regionNote}${scenarioNote} (${gate} vs ${operand}, ${dims})`,
   )
   console.log('=========================================================')
   process.exit(0)
@@ -416,19 +543,29 @@ for (const field of FIELDS) {
 // comparison against the same capture cannot be required to gain on itself.
 const regionFailures = coverRegionFailures(actual, refData, false)
 printCoverRegions(actual, refData)
+// 64-17: the scenario-keyed invariants run in committed-baseline and
+// same-session mode too — every mode, before every verdict.
+const invariantFailures = scenarioInvariantFailures(actual)
+for (const line of invariantFailures) console.log(`INVARIANT ${line}`)
 
 console.log('')
 const counterpart = mode === 'other' ? operand : 'baseline'
-if (missing > 0 || differing > 0 || regionFailures.length > 0) {
+if (missing > 0 || differing > 0 || regionFailures.length > 0 || invariantFailures.length > 0) {
   for (const line of regionFailures) console.log(`REGION    ${line}`)
   console.log(
     `RESULT: FAIL — ${differing} differing field(s), ${missing} missing field(s), ` +
-      `${regionFailures.length} cover region invariant(s) failed ` +
+      `${regionFailures.length} cover region invariant(s) failed, ` +
+      `${invariantFailures.length} scenario invariant(s) failed ` +
       `(${gate} vs ${counterpart})`,
   )
   console.log('=========================================================')
   process.exit(1)
 }
 
-console.log(`RESULT: PASS — all ${FIELDS.length} fields equal (${gate} vs ${counterpart})`)
+const scenarioNote = SCENARIO_INVARIANTS[actual.scenario]
+  ? ' and the scenario invariants hold'
+  : ''
+console.log(
+  `RESULT: PASS — all ${FIELDS.length} fields equal${scenarioNote} (${gate} vs ${counterpart})`,
+)
 console.log('=========================================================')
