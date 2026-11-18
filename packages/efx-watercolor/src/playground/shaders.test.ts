@@ -9,7 +9,8 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
-import { liftFS, stampFS } from './shaders'
+import { displayFS, liftFS, stampFS } from './shaders'
+import * as shaderModule from './shaders'
 
 const ROTATION_FORMULA = 'vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));'
 
@@ -45,5 +46,34 @@ describe('tip rotation uniform (quick 261116-inu / Task 10)', () => {
     // second mask branch again.
     expect(liftFS).not.toContain('uCover')
     expect(liftFS).not.toContain('smoothstep(0.35')
+  })
+})
+
+// ============================================================
+//  SPIKE 001 — the coverage composite shaders.
+//
+//  The per-dab coverage term is `a = coverAmount * (1 - exp(-K * amount * m))`
+//  with K the medium's pigment-independent density: `coverDepositFS` adds
+//  `C * a` after the caller attenuates the mobile ink, `coverMaskFS` unions
+//  `a` into the coverage channel, and `displayFS` mode 4 reads that channel
+//  as the compositor's alpha. The rev-4 `inkCoverFS` subtraction is gone.
+// ============================================================
+describe('coverage composite shaders (SPIKE 001)', () => {
+  const exports = shaderModule as Record<string, unknown>
+
+  it('declares coverDepositFS and coverMaskFS, and no inkCoverFS', () => {
+    expect(exports.coverDepositFS, 'coverDepositFS must exist').toBeTypeOf('string')
+    expect(exports.coverMaskFS, 'coverMaskFS must exist').toBeTypeOf('string')
+    expect(exports.inkCoverFS, 'the rev-4 inkCoverFS must be deleted').toBeUndefined()
+  })
+
+  it('displayFS mode 4 reads uCover and derives the coverage alpha', () => {
+    // Source pins report the missing LITERAL, never the shader source: a raw
+    // `toContain` dumps displayFS into the TAP report and breaks its format.
+    const pin = (needle: string) =>
+      expect(displayFS.includes(needle), `missing shader text: ${needle}`).toBe(true)
+    pin('uniform sampler2D uCover;')
+    pin('float darkAlpha = 1.0 - tMin;')
+    pin('float alpha = clamp(max(darkAlpha, cov), 0.0, 1.0);')
   })
 })
