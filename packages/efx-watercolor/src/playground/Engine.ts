@@ -1709,6 +1709,9 @@ export class WatercolorEngine {
     gl.uniform1i(p.u.uInkB, g.bindTex(3, this.ink.read.tex[1]));
     gl.uniform1i(p.u.uFixedA, g.bindTex(4, this.fixed.tex[0]));
     gl.uniform1i(p.u.uFixedB, g.bindTex(5, this.fixed.tex[1]));
+    // The coverage scope: the live committed field displayFS samples for
+    // mode 4's alpha — a Body-0 export carries cov == 0 and passes through.
+    gl.uniform1i(p.u.uCover, g.bindTex(6, this.cover.read.tex[0]));
     gl.uniform1f(p.u.uGranulation, this.params.granulation * 0.55);
     gl.disable(gl.BLEND);
     g.draw(target);

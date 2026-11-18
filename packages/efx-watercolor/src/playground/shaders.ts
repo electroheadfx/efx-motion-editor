@@ -602,23 +602,31 @@ void main(){
 // construction. At the capture/export boundary only — Engine.readback's
 // pigment path, never displayFS's interactive output — a texel whose FINAL
 // film still reads paper-white on the scan's own 8-bit grid exports ZERO
-// coverage alpha. The clear is BINARY (`step`): where the presence is exactly
-// 0 the alpha is zeroed, and everywhere else the display's own bytes pass
-// through unchanged — not a scale, so no surviving texel's alpha or pigment
-// moves, and the export's un-premultiply can never re-derive a colour. RGB is
-// never rebuilt: `src.rgb` is carried verbatim (at alpha 0 the F1
-// premultiplied contract already makes it invisible). The plan's truth stands:
-// a frozen texel still transports nothing and keeps its value exactly; this
-// pass only stops a stale coverage alpha from being COUNTED as coverage where
-// the final film is bare paper.
+// coverage alpha. The clear is BINARY: where the presence is exactly 0 the
+// alpha is zeroed, and everywhere else the display's own bytes pass through
+// unchanged — not a scale, so no surviving texel's alpha or pigment moves,
+// and the export's un-premultiply can never re-derive a colour. RGB is never
+// rebuilt: `src.rgb` is carried verbatim (at alpha 0 the F1 premultiplied
+// contract already makes it invisible).
+//
+// The clear is scoped to texels that actually carry COVERAGE (`cov > 0`), the
+// part of displayFS's `max(darkAlpha, cov)` this decision is about. With
+// cov == 0 the exported alpha is the pigment's own faint darkness, not a
+// coverage claim: a paper-white film bounds `1 - min(rgb)` at 15/255 — far
+// below the census's 0.5 alpha line — so such a texel can never be a census
+// texel, and clearing it would only move Body-0 pigment bytes the MED-20
+// identity law keeps exact. Every counted texel is coverage-bearing, so the
+// census still closes by construction.
 export const coverClearFS = `${HEADER}
 layout(location=0) out vec4 o0;
-uniform sampler2D uSrc, uPaper;
+uniform sampler2D uSrc, uPaper, uCover;
 ${FILM_PRESENCE}
 void main(){
   vec4 src = texture(uSrc, vUv);
   float p = filmPresence(vUv);
-  o0 = vec4(src.rgb, src.a * step(0.0001, p));
+  float cov = texture(uCover, vUv).x;
+  float cleared = (p < 0.0001 && cov > 0.0) ? 1.0 : 0.0;
+  o0 = vec4(src.rgb, src.a * (1.0 - cleared));
 }`;
 
 // Paper, generated per document and whenever the paper is changed, in two passes.
