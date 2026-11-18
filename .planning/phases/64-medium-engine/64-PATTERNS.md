@@ -10,6 +10,28 @@ this mapping.
 
 ---
 
+> ## SUPERSEDED: the rev-4 cover law (marked 2026-11-18)
+>
+> The sections carrying a **[SUPERSEDED]** marker below describe the **rev-4 erase
+> architecture**: a cover pass that reuses `liftFS` verbatim, the "no second program"
+> invariant, and D-11's "no paper-tooth gate in the cover shaders" note. **Spike 001's
+> coverage composite supersedes all of them.** The accepted model is a persistent
+> one-channel coverage target, three scissored draws per covering dab
+> (`coverDepositFS`, `coverMaskFS`, and `advectCoverFS` for the wet lifecycle), a
+> pigment-independent coverage amount, and a mode-4 display alpha that reads the coverage
+> channel — the coverage composite deliberately shares `FOOTPRINT_MASK` **including its
+> tooth gate** (quick 261117-tq7's shared-mask law), so D-11's no-tooth-gate note no longer
+> applies to it.
+>
+> Authority: `.planning/spikes/001-coverage-composite/VERDICT.md` (the five equations and
+> the GO verdict), plus `64-13-PLAN.md` (the model, the three programs, the coverage
+> display, the `pigment` export), `64-14-PLAN.md` (advect, undo/transport, Lift) and
+> `64-17-PLAN.md` (the committed pixel gates). Everything else in this map — the param,
+> medium, brush, store, adapter, persistence and UI patterns — is unaffected and remains
+> valid.
+
+---
+
 ## File Classification
 
 | New/Modified File | Role | Data Flow | Closest Analog | Match Quality |
@@ -258,9 +280,15 @@ setPaper(p: PaperPreset) { if (p === this.paperPreset) return; this.paperPreset 
 compare, assign, `redraw()`. `redraw()` (1290) only sets `dirtyAll` + schedules: it never
 touches paint.
 
-**(i) Program registration** (328–350): add the new fragment program to the
-`this.programs` record beside `lift`/`stamp`. One program, one entry; no second program for
-the cover pass (it reuses `lift`).
+**(i) Program registration** (328–350): add a new fragment program to the
+`this.programs` record beside `lift`/`stamp`. One program, one entry.
+
+> **[SUPERSEDED 2026-11-18]** The original text read "no second program for the cover pass
+> (it reuses `lift`)". That was the rev-4 erase law. Under Spike 001 the cover composite is
+> its OWN program family — `coverDepositFS`, `coverMaskFS` and (for the wet lifecycle)
+> `advectCoverFS` — registered per `64-13-PLAN.md` STEP 3 and `64-14-PLAN.md` task 1. See
+> the supersession banner at the top of this file and
+> `.planning/spikes/001-coverage-composite/VERDICT.md`.
 
 ---
 
@@ -286,9 +314,17 @@ f *= mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);
 
 **Invariant:** the thickness deposit program is a single-output copy of this footprint —
 same tip sample, `uAspect`/`uTipAspect`/`uTipRotation`/`uRound`, and the **same**
-`uGrain`/`uGrainThr` paper-tooth gate (spec 05 §2). The **cover pass does not** add that gate
-(D-11: uniform erase, no speckles) — it reuses `liftFS` verbatim (280–300), whose envelope is
-`uAmount * exp(-pow(dot(q,q), 2.0)) * mix(t, 1.0, uRound)` with the unconditional square crop.
+`uGrain`/`uGrainThr` paper-tooth gate (spec 05 §2). The coverage programs share that same
+`FOOTPRINT_MASK`, tooth gate included (quick 261117-tq7's shared-mask law, exercised by
+`cover-textured` in `64-16-PLAN.md`).
+
+> **[SUPERSEDED 2026-11-18]** The original text claimed the cover pass "does not add that
+> gate (D-11: uniform erase, no speckles)" and reused `liftFS` verbatim (280–300), whose
+> envelope is `uAmount * exp(-pow(dot(q,q), 2.0)) * mix(t, 1.0, uRound)`. That describes
+> the deleted rev-4 erase pass. Under Spike 001 the cover deposit and cover mask are their
+> own programs sampled from the shared footprint mask, the `liftFS` reuse is gone, and
+> D-11's no-tooth-gate note is superseded — see the banner at the top of this file,
+> `.planning/spikes/001-coverage-composite/VERDICT.md`, and `64-13-PLAN.md` STEP 2.
 
 **Light maths to reuse — `paperLightFS`** (528–542):
 ```glsl
@@ -762,7 +798,11 @@ field to the interface only is the classic silent hole.
 ### GPU program registration is one table
 **Source:** `Engine.ts:328–350`
 **Apply to:** the thickness deposit program.
-One entry; reuse `lift` for the cover pass; no second program for the same maths.
+One entry per program. **[SUPERSEDED 2026-11-18]** The original closing line — "reuse
+`lift` for the cover pass; no second program for the same maths" — is the rev-4 erase law
+and no longer applies: Spike 001 gives the coverage composite its own programs
+(`coverDepositFS`, `coverMaskFS`, `advectCoverFS`). See the banner at the top of this file
+and `64-13-PLAN.md` / `64-14-PLAN.md`.
 
 ---
 
@@ -772,8 +812,8 @@ One entry; reuse `lift` for the cover pass; no second program for the same maths
 |---|---|
 | `aquarelleStrokeSelection.ts:735–753` `commitAquarelleSelectionAppearance` | Returns `null` with no active selection — it cannot set the **next** stroke's values. D-04 supersedes spec 07 §2's parenthetical: a medium switch is never a selection edit. |
 | `aquarellePaintControls.ts:54–70` `commitAquarelleSelectionParam(s)` | Selection-only, same reason. |
-| `Engine.ts:1987` `Math.min(0.9, P.lift * dwell)` | The Lift tool's own clamp. The cover pass uses `bodyCurve(P.body)` — the shared `clamp01(body)^6` curve from `scattering.ts`: Body 50 yields 0.015625 (a glaze) and Body 100 still reaches 1 at the tip core. D-14 supersedes spec 06 §3's inline `min(1, P.body)` clamp. |
-| `shaders.ts:70–71` grain re-threshold | `stampFS`'s paper-tooth gate is correct for the **thickness deposit** (spec 05) but must NOT be added to the cover pass (D-11). |
+| `Engine.ts:1987` `Math.min(0.9, P.lift * dwell)` | The Lift tool's own clamp. **[SUPERSEDED 2026-11-18, partially]** The cover amount still derives from `bodyCurve(P.body)` — the shared `clamp01(body)^6` curve from `scattering.ts` — but it is now `Math.min(1, bodyCurve(P.body) * COVER_GAIN)` and is explicitly pigment-independent (Spike 001; `64-13-PLAN.md` STEP 4). D-14 supersedes spec 06 §3's inline `min(1, P.body)` clamp. |
+| `shaders.ts:70–71` grain re-threshold | `stampFS`'s paper-tooth gate is correct for the **thickness deposit** (spec 05). **[SUPERSEDED 2026-11-18]** The original "must NOT be added to the cover pass (D-11)" is obsolete: under Spike 001 the coverage composite deliberately samples the shared `FOOTPRINT_MASK` **including** its tooth gate (quick 261117-tq7's shared-mask law; proven by `cover-textured` in `64-16-PLAN.md`). |
 | `shaders.ts:683–685, 696, 709, 729` `cov`/gouache channel | Reassigned to scattering in spec 08; do not extend it for coverage. |
 | `Engine.ts:1394` `if (t !== this.paper) g.clearTarget(t)` | Correct for `clear()`, but remember `relief` must be in `docTargets()` for this loop to reach it. |
 

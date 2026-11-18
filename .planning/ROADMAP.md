@@ -197,7 +197,7 @@ Plans:
   6. The brush library groups the responses by medium in five sections; picking a brush applies its group's medium in one store write only when the group changes; the 15 existing responses are classified and the eight new ones ship.
   7. Export matches the screen on every `uMode` path, zooming produces no shimmer or crawl, and undo restores the eroded pigment and the eroded thickness exactly.
 
-**Plans:** 12/12 plans executed
+**Plans:** 12/17 plans executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18)
 
 Plans:
 **Wave 1**
@@ -230,9 +230,26 @@ Plans:
 **Wave 9** *(blocked on Wave 8 completion)*
 - [x] 64-12-PLAN.md — The group-to-medium pick seam: one live-bag write only when the group changes, and the source audit that keeps every response surface on it
 
+**Wave 10** *(coverage addendum; blocked on the executed 64-06 + 64-10)*
+- [ ] 64-13-PLAN.md — Engine core: Spike 001's per-dab coverage composite (persistent one-channel coverage pair, `coverDeposit`/`coverMask`, mode-4 coverage alpha) and the deletion of the rev-4 `preInk`/`inkCover`/`coverDensity` seam
+
+**Wave 11** *(blocked on Wave 10 completion)*
+- [ ] 64-17-PLAN.md — Probe harness: digest the pigment sheet, commit the 1080² Body-0 identity law, turn Spike 001's criterion-1 numbers into standing invariants and re-specify the cover-over-wet scenario
+
+**Wave 12** *(blocked on 64-13 + 64-17 completion)*
+- [ ] 64-14-PLAN.md — Coverage lifecycle: advect the channel with the ink, carry it through undo/redo and whole-document transport, and destroy it with Lift
+
+**Wave 13** *(blocked on 64-13 + 64-14 completion)*
+- [ ] 64-15-PLAN.md — App wiring and deletion: carry the coverage alpha into the normal commit, and delete the rev-4 cover punch transaction and the round-1..4 display-swap/reset seams
+
+**Wave 14** *(blocked on 64-13 + 64-14 + 64-15 + 64-17 completion)*
+- [ ] 64-16-PLAN.md — Acceptance: textured-tip coverage, the three Spike 001 tuning pins, and the UAT re-specification
+
 **Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-07-brush-groups.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-08-scattering.md`
 
 **Spec provenance** (planner input, not an execution unit — the `GSD-QUICK-PROMPT-*` filenames are historical names, not quick dispatches): spec 03 — Viscosity global (dissipation raises only, spread `0.12 × (1 − v·0.9)`, per-stroke snapshot like `lift`); spec 04 — five medium records over the canonical globals, one store write per switch; spec 05 — a real paint-thickness channel deposited through the tip, lit as an emboss with a document-level render light; spec 06 — `Body` order (a covering dab erodes the settled layer with the Lift program under its own tip, then deposits its own pigment); spec 07 — brush groups (compile-time `group` tag, five sections, group → medium in one write, 15 classified + 8 new responses); spec 08 — Kubelka-Munk scattering (`S` in `inkB.a`/`fixedB.a`, `Body`-driven, `S = 0` bit-identical).
+
+**Delivery law — AMENDED 2026-11-18 (Spike 001):** the clauses "`Body` adds no target and no shader program (it reuses the Lift program), never touches water or mobile pigment" and "no alpha compositing" are superseded by the approved coverage composite. `Body` now ships ONE persistent one-channel coverage target pair plus three small programs (`coverDepositFS`, `coverMaskFS`, `advectCoverFS`), attenuates mobile pigment source-over in coefficient space, and the live/commit sheet carries a coverage-derived alpha. The rendered cost is bounded and replaces the per-stroke 17.8 MiB `preInk` snapshot and the app-level punch. Authority: `.planning/spikes/001-coverage-composite/VERDICT.md`; plans 64-13/64-14/64-15/64-17.
 
 **Delivery law**: Viscosity is additive to the existing globals — never a redefinition of `flow`, `water`, `load`, `bleed` or any deposit math — and is applied at exactly the two named engine sites; replay determinism (same stroke ⇒ same raster live, bake and replay) is the acceptance bar for every term; the persisted changes are the additive per-stroke `viscosity`, `body` and `emboss` keys inside the canonical params bag the engine slot carries (Rust holds that slot as an opaque `Value`, so the keys round-trip without a Rust mirror) plus the optional document `light` field, declared in BOTH TS and Rust under the field-diff pin; medium records are plain serializable data and the per-stroke params snapshot stays authoritative over the advisory medium id; thickness adds exactly ONE document-resolution half-float channel — no other render target, no texture allocation, no height texture asset — is captured in the engine snapshot and protected for undo; the light is never stored in paint and enters the cache content fingerprint, so a light change is a cache miss and a deterministic re-bake; `Body` adds no target and no shader program (it reuses the Lift program), never touches water or mobile pigment, and at 0 runs no cover pass; scattering reuses `inkB.a`/`fixedB.a` with no new pass and retires the white-gouache path, and `S = 0` must reproduce today's Beer-Lambert output exactly (pixel-buffer comparison); no alpha compositing, no second engine and no second module; no package/type/signal/`BRUSH_PACK_KIND` rename and no `.mce` schema break.
 
@@ -245,7 +262,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 12/12 | In Progress | - |
+| 64. Medium Engine | 12/17 | In Progress | - |
 
 ---
 
