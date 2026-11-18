@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-13-PLAN.md
-last_updated: "2026-11-18T17:38:40.422Z"
+stopped_at: Completed 64-17-PLAN.md
+last_updated: "2026-11-18T18:18:44.409Z"
 last_activity: 2026-11-18
 last_activity_desc: Phase 64 execution started
-state_head: 3759fdef963d3fc6a2a8956afb282015851303d5
+state_head: 7ba11e607b19850d97f4f0a19e17249545569ad8
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 34
-  completed_plans: 30
+  completed_plans: 31
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 14 of 17
+Plan: 15 of 17
 Status: Ready to execute
 Last activity: 2026-11-18 — Phase 64 execution started
 
@@ -157,6 +157,7 @@ Last activity: 2026-11-18 — Phase 64 execution started
 | Phase 64 P10 | 6min14s | 3 tasks | 9 files |
 | Phase 64 P09 | 1h 49m | 2 tasks | 7 files |
 | Phase 64 P13 | 6min21s | 2 tasks | 8 files |
+| Phase 64 P17 | 32min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -513,6 +514,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: 64-09: Task 2 behavioural row drives the deps surface against the real store (node env cannot import the Studio); the Studio wiring is source-pinned (64-07 precedent)
 - [Phase 64]: 64-13: the coverage composite replaces the rev-4 erase seam wholesale (three scissored draws on one footprint, pigment-independent K = 8); Body 0 stays byte-identical and the app-side onCoverDab carry belongs to 64-15
 - [Phase 64]: 64-13: the coverage sheet is a DoubleTarget pair from the start; drawDisplay binds cover.read and 64-14 owns the advection swap
+- [Phase 64]: 64-17: both erase-era cover-over-wet directional claims retired (user decision) — the coverage crossing reads 49.66 vs the 34.05 prefix and 30.74 subtract references, above both, because the covering stroke now deposits its own near-opaque body (own-pigment 3.47 -> 14.54)
+- [Phase 64]: 64-17: coverCrossPigment >= coverOwnPigment — the composite can leave the crossing within rounding of the covering stroke alone, never blanker
+- [Phase 64]: 64-17: the cover-over-wet digest moved with 64-13's coverage model, not the drive cadence — removing the trailing rapid-entry fix is byte-identical (covering stroke already fixes after itself)
 
 ### Pending Todos
 
@@ -640,8 +644,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-18T17:38:38.837Z
-Stopped at: Completed 64-13-PLAN.md
+Last session: 2026-11-18T18:18:43.127Z
+Stopped at: Completed 64-17-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

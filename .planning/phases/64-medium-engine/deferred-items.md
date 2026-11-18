@@ -12,3 +12,12 @@ Out-of-scope discoveries logged during plan execution. Not fixed in phase 64.
 - **Impact:** only this bake path; the must-have "every bake path resolves the light" is met for the paths the plan enumerates but not for `bakeAquarelleScript`.
 - **Suggested follow-up:** a quick task or a later phase: add `light?: LightSettings` to the port and pass it through both factory calls, decide the staged-cache key term with `lightSignature`, and extend `physicsPaintRotoPlayScriptController.bake.test.ts`.
 - **Ledger:** recorded in `.planning/WINDOWS.md` as `unmet-truth`.
+
+## 64-17 — `physicPaintBridge.test.ts` reports an unhandled error in the full app suite
+
+- **Found during:** 64-17 Task 3 verification (a full-suite sanity run; running the suite is not part of this plan's gate chain)
+- **File:** `app/src/lib/physicPaintBridge.test.ts`
+- **Issue:** `pnpm --filter efx-motion-editor exec vitest run` reproducibly ends `Test Files 1 failed | 459 passed | 2 skipped (462)` with an unhandled error attributed to this file; the named test is "answers success when the catalog publish rejects after the mutation landed (WR-04)". The same file passes 186/187 (1 skipped) when run alone (`npx vitest run src/lib/physicPaintBridge.test.ts`), so it looks like a full-suite pollution/timer interaction rather than an assertion failure.
+- **Why not fixed here:** unrelated to plan 64-17, which touches only `packages/efx-watercolor/probe/medium-engine/`; the probe files are not imported by this test. Out of scope per the executor scope boundary.
+- **Impact:** none on the pixel gates or on this plan's acceptance — `probe/medium-engine/harness.test.ts` and every other file passed in the same runs.
+- **Suggested follow-up:** capture the unhandled rejection with a verbose/serial run and fix the cross-file interaction; check for unawaited timers or shared module state between tests.
