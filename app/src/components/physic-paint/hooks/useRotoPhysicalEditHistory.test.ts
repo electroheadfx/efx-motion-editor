@@ -34,6 +34,7 @@ import type {
   PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import { DEFAULT_LIGHT } from '@efxlab/efx-watercolor';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
   _setEfxPaintMarkDirtyCallback,
@@ -47,9 +48,12 @@ import {
   reset as resetEfxPaintDocumentStore,
   setActiveTrackId,
   setBackgroundFallback,
+  setDocumentLight,
   setPhotoReferenceOpacity,
   setPhotoReferenceSource,
+  type BackgroundEditDescriptor,
 } from '../../../stores/efxPaintStore';
+import { coalesceLightGesture } from '../engine/documentLightGesture';
 import {
   _setPhysicPaintCompositorSizeProvider,
   _setPhysicPaintMarkDirtyCallback,
@@ -484,6 +488,140 @@ describe('useRotoPhysicalEditHistory Background clip delete (49-06 UAT)', () => 
     expect(getDocument(layerId)!.background.fallback).toEqual({
       mode: 'paper', texture: 'canvas1', grainStrength: 0.8, grainScale: 1,
     });
+  });
+
+  // 64-18 (CR-02): one light-slider gesture = one unified-ledger entry. The
+  // per-move writes stay (they are the live sheet's only light state); the
+  // ledger records ONCE, at the release boundary, from the coalescer's span.
+  it('records a coalesced light gesture as ONE undo step that restores the previous light', async () => {
+    const layerId = 'layer-64-18-light-undo';
+    registerDocument(createEfxPaintDocument(layerId));
+    const pre = getDocument(layerId)!;
+    expect(pre.light).toBeUndefined();
+
+    // Thirty pointermoves: thirty document writes, zero ledger entries yet.
+    let first: BackgroundEditDescriptor | null = null;
+    for (let step = 0; step < 30; step += 1) {
+      const result = setDocumentLight(layerId, { azimuth: 60 + step });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('light write must be accepted');
+      if (first === null) first = result.descriptor;
+    }
+    expect(first).not.toBeNull();
+    if (!first) throw new Error('the gesture must emit its first descriptor');
+
+    const coalesced = coalesceLightGesture(first, getDocument(layerId) ?? null);
+    expect(coalesced).not.toBeNull();
+    if (!coalesced) throw new Error('a real gesture must coalesce to one entry');
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const history = useRotoPhysicalEditHistory({
+      identity: { trackId: 'track-a', launchOperationId: 'launch-1', layerId, projectContextId: 'project-1', capacity: 100 },
+      availability,
+      coordinator: { executePhysicalEdit: (async () => false) as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => [],
+        getInterpolation: () => ({ enabled: false, mode: 'duplicate' }),
+        getCapacity: () => 100,
+        raiseCapacity: () => {},
+        getLoopClips: () => [],
+        getRailMotions: () => [],
+        getIncomingInterpolationBreakKeyIds: () => [],
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => spacingSnapshot([], [], null, null),
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    history.recordBackgroundEdit(coalesced);
+    // ONE entry for the whole drag.
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // The one undo restores the pre-gesture document (and its absent light).
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)).toBe(pre);
+    expect(getDocument(layerId)!.light).toBeUndefined();
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  it('leaves redo intact when a light gesture ends where it started, and clears it on a real change', async () => {
+    const layerId = 'layer-64-18-light-redo';
+    registerDocument(createEfxPaintDocument(layerId));
+    expect(setBackgroundFallback(layerId, {
+      mode: 'paper',
+      texture: 'canvas1',
+      grainStrength: 0.5,
+      grainScale: 1,
+    }).ok).toBe(true);
+    const prior = physicPaintStore.setPaperStrength(layerId, 0.8);
+    expect(prior).not.toBeNull();
+    if (!prior) throw new Error('the paper edit must emit a descriptor');
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const history = useRotoPhysicalEditHistory({
+      identity: { trackId: 'track-a', launchOperationId: 'launch-1', layerId, projectContextId: 'project-1', capacity: 100 },
+      availability,
+      coordinator: { executePhysicalEdit: (async () => false) as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => [],
+        getInterpolation: () => ({ enabled: false, mode: 'duplicate' }),
+        getCapacity: () => 100,
+        raiseCapacity: () => {},
+        getLoopClips: () => [],
+        getRailMotions: () => [],
+        getIncomingInterpolationBreakKeyIds: () => [],
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => spacingSnapshot([], [], null, null),
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    // A committed edit, undone: redo now holds one entry.
+    history.recordBackgroundEdit(prior);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(await history.undo()).toBe(true);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    // A gesture that ends on the pre-gesture light (absent -> explicit default).
+    let sameFirst: BackgroundEditDescriptor | null = null;
+    for (const azimuth of [80, 120, 160]) {
+      const result = setDocumentLight(layerId, { azimuth });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('light write must be accepted');
+      if (sameFirst === null) sameFirst = result.descriptor;
+    }
+    const backToDefault = setDocumentLight(layerId, { ...DEFAULT_LIGHT });
+    expect(backToDefault.ok).toBe(true);
+    if (!backToDefault.ok) throw new Error('the return write must be accepted');
+
+    const sameGesture = coalesceLightGesture(sameFirst, getDocument(layerId) ?? null);
+    expect(sameGesture).toBeNull();
+    // Nothing recorded -> redo survives the whole gesture.
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+
+    // A subsequent REAL gesture records one entry and clears redo exactly once.
+    let realFirst: BackgroundEditDescriptor | null = null;
+    for (const azimuth of [40, 55]) {
+      const result = setDocumentLight(layerId, { azimuth });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('light write must be accepted');
+      if (realFirst === null) realFirst = result.descriptor;
+    }
+    const real = coalesceLightGesture(realFirst, getDocument(layerId) ?? null);
+    expect(real).not.toBeNull();
+    if (!real) throw new Error('a real gesture must coalesce to one entry');
+    history.recordBackgroundEdit(real);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
 
   it('fails closed on Undo when an unrecorded edit diverged the live document (CR-01)', async () => {
