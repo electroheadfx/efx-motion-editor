@@ -80,6 +80,23 @@ export interface LiftFootprintShape {
   aspect: number;
   angle: number;
   rotation: Rotation;
+  /**
+   * quick 261117-tq7 (rev 4, UAT round 3): the tip-sampling rotation in
+   * RADIANS — the engine's `uTipRotation`, from the brush's recorded
+   * `textureRotation` (integer degrees). Only the deposit profile reads it:
+   * Lift erases through the unrotated tip (liftFS has no rotation uniform).
+   */
+  tipRotation?: number;
+  /**
+   * Dry-media re-threshold (0..1) — the engine's `uRough`. The cover's mask
+   * low-cuts the tip at `roughness * 0.45`, like the deposit does.
+   */
+  roughness?: number;
+  /**
+   * Per-dab tip-slice offset amplitude — the engine's `uJitter`. Each dab
+   * samples a different slice of the tip, so the cover must too.
+   */
+  stampJitter?: number;
 }
 
 /**
@@ -103,6 +120,45 @@ export function liftShapeForStroke(
     aspect: brush.aspect,
     angle: brush.angle * DEG,
     rotation: brush.rotation,
+  };
+}
+
+/**
+ * quick 261117-tq7 (rev 4, UAT round 3): resolve the DEPOSIT footprint — the
+ * shape the Body cover must punch with. The engine stamps through
+ * `footprintMask()`: the active brush's TEXTURE tip (`textureId`, plus the
+ * recorded `textureRotation`), the dry-media re-threshold (`uRough`) and the
+ * per-dab jitter (`uJitter`). Resolving this through `liftShapeForStroke`
+ * forced the neutral preset tip, so every Body > 0 stroke erased the cached
+ * base over a footprint wider than the paint it laid — the reported white
+ * borders, white gaps between strokes and white bands across past paint.
+ */
+export interface CoverBrushSelection {
+  brushId: string;
+  toolOverrides?: AquarelleStroke['toolOverrides'];
+  /** `null` is the live selection's "no texture"; absent means the same. */
+  textureId?: string | null;
+  /** Integer degrees; `null` keeps the library row's default. */
+  textureRotation?: number | null;
+}
+
+export function coverShapeForBrush(selection: CoverBrushSelection): LiftFootprintShape {
+  const brush = buildBrushForStroke(selection.brushId || 'filbert', {
+    // quick-261115-oh9: a texture id rides the brush ONLY when the mask
+    // registry resolved it — the same law the live engine brush binds.
+    textureId: selection.textureId ?? null,
+    textureRotation: selection.textureRotation ?? null,
+    overrides: selection.toolOverrides,
+  });
+  return {
+    tipData: brush.tipData,
+    tipSize: brush.tipSize,
+    aspect: brush.aspect,
+    angle: brush.angle * DEG,
+    rotation: brush.rotation,
+    tipRotation: (brush.textureRotation ?? 0) * DEG,
+    roughness: brush.roughness ?? 0,
+    stampJitter: brush.stampJitter ?? 0,
   };
 }
 
@@ -329,8 +385,21 @@ function sampleTipBilinear(
   qx: number,
   qy: number,
 ): number {
-  const u = Math.min(1, Math.max(0, qx * 0.5 + 0.5));
-  const v = Math.min(1, Math.max(0, qy * 0.5 + 0.5));
+  return sampleTipBilinearUv(
+    tipData,
+    tipSize,
+    Math.min(1, Math.max(0, qx * 0.5 + 0.5)),
+    Math.min(1, Math.max(0, qy * 0.5 + 0.5)),
+  );
+}
+
+/** The same tap with the shader's own clamped uv (`clamp(tq * 0.5 + 0.5, 0, 1)`). */
+function sampleTipBilinearUv(
+  tipData: Uint8Array,
+  tipSize: number,
+  u: number,
+  v: number,
+): number {
   const fx = u * tipSize - 0.5;
   const fy = v * tipSize - 0.5;
   const x0 = Math.floor(fx);
@@ -349,6 +418,32 @@ function sampleTipBilinear(
   const top = p00 + (p10 - p00) * tx;
   const bottom = p01 + (p11 - p01) * tx;
   return (top + (bottom - top) * ty) / 255;
+}
+
+/** GLSL smoothstep, exactly (`shaders.ts` uses it for the ramp and the rim). */
+function smoothstep01(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * `footprintMask()`'s per-dab tip-slice offset (`e0`, `e1`), from the GLSL
+ * hash on the dab's document-UV centre:
+ *
+ *   e0 = fract(sin(dot(uPoint, vec2(12.9898, 78.233))) * 43758.5453)
+ *   e1 = fract(e0 * 63.7264 + 0.37)
+ *
+ * Evaluated with float32 steps to approximate a highp GPU. DECLARED
+ * APPROXIMATION: GPU `sin` implementations differ in the last bits, so the
+ * punch's slice is bounded-close to, not bit-equal to, the engine's.
+ */
+function stampJitterUv(x: number, y: number): [number, number] {
+  const dot = Math.fround(Math.fround(x * 12.9898) + Math.fround(y * 78.233));
+  const p = Math.fround(Math.fround(Math.sin(dot)) * 43758.5453);
+  const e0 = p - Math.floor(p);
+  const q = Math.fround(e0 * 63.7264 + 0.37);
+  const e1 = q - Math.floor(q);
+  return [e0, e1];
 }
 
 /**
@@ -384,16 +479,34 @@ export function buildLiftCoverage(
   };
   if (dabs.length === 0 || width <= 0 || height <= 0) return empty;
 
-  const placed = dabs.map((one) => ({
-    cx: one.x * width,
-    cy: (1 - one.y) * height,
-    rPx: Math.max(1, one.r * height),
-    amount: one.amount,
-    angle: one.angle ?? 0,
-    // rev 4: the cover's optical density rides the dab into the loop — a
-    // placement that dropped it would silently fall back to the linear law.
-    density: one.density,
-  }));
+  // rev 4 (UAT round 3): hoist the deposit footprint's constants out of the
+  // per-pixel loop — one shape serves every dab of the gesture.
+  const deposit = profile === 'deposit' && shape
+    ? {
+        cos: Math.cos(shape.tipRotation ?? 0),
+        sin: Math.sin(shape.tipRotation ?? 0),
+        jitter: shape.stampJitter ?? 0,
+        lowCut: (shape.roughness ?? 0) * 0.45,
+      }
+    : null;
+
+  const placed = dabs.map((one) => {
+    // The GLSL hash keys on the dab's document-UV centre (y up) — the same
+    // coordinate the engine binds as uPoint. Hoisted once per dab.
+    const hash = deposit !== null && deposit.jitter > 0 ? stampJitterUv(one.x, one.y) : null;
+    return {
+      cx: one.x * width,
+      cy: (1 - one.y) * height,
+      rPx: Math.max(1, one.r * height),
+      amount: one.amount,
+      angle: one.angle ?? 0,
+      // rev 4: the cover's optical density rides the dab into the loop — a
+      // placement that dropped it would silently fall back to the linear law.
+      density: one.density,
+      jitterU: hash !== null ? (hash[0] - 0.5) * deposit!.jitter : 0,
+      jitterV: hash !== null ? (hash[1] - 0.5) * deposit!.jitter : 0,
+    };
+  });
   // The discard square's corners sit at r * sqrt(1 + aspect²) from the centre;
   // the old radial law's reach was r (+1 px of anti-alias slack).
   const margin = shape ? Math.sqrt(1 + shape.aspect * shape.aspect) : 1;
@@ -452,17 +565,43 @@ export function buildLiftCoverage(
         }
         let f: number;
         if (profile === 'deposit') {
-          // quick 261117-tq7: the Body cover's law. The engine's mask IS the
-          // deposit footprint (the tip texture, no extra radial envelope).
-          // rev 4: with a recorded density the fraction is the dab's own LAYER
-          // ALPHA — `amount * (1 - exp(-density * mask))` — so overlapping
-          // dabs compose to exactly the accumulated absorbance the paint adds
-          // and a textured tip cannot erase past its own deposit. Without a
-          // shape the tip square is unknown; the unit disc is the conservative
+          // quick 261117-tq7 (rev 4, UAT round 3): the punch must erase with
+          // the EXACT mask `bodyCoverFS` binds — `footprintMask()`:
+          //   * the tip TEXTURE, sampled through the recorded texture
+          //     rotation (`uTipRotation`) and the per-dab jitter slice
+          //     (`uJitter`, the GLSL hash of the dab centre) — the neutral
+          //     preset tip was erasing where a textured deposit paints
+          //     nothing (white borders and gaps between adjacent strokes);
+          //   * the dry-media low cut `th = uRough * 0.45` and the cover's
+          //     WIDE ramp `smoothstep(th, th + 0.5, t)`;
+          //   * the soft square-rim fade `1 - smoothstep(0.82, 1, max(|q|))`
+          //     — a hard stop at the |q| = 1 cull drew the dab's contour.
+          // DECLARED APPROXIMATION: the engine also gates the mask by the
+          // paper height (`uGrain`/`uGrainThr`); the punch cannot sample the
+          // GPU paper texture, so it assumes the whole tooth is reachable
+          // (its mask is therefore >= the engine's).
+          // With a recorded density the fraction is the dab's own LAYER ALPHA
+          // — `amount * (1 - exp(-density * mask))` — so overlapping dabs
+          // compose to exactly the accumulated absorbance the paint adds and
+          // a textured tip cannot erase past its own deposit. Without a shape
+          // the tip square is unknown; the unit disc is the conservative
           // stand-in.
-          const mask = shape
-            ? sampleTipBilinear(shape.tipData, shape.tipSize, along, across)
-            : (d <= 1 ? 1 : 0);
+          let mask: number;
+          if (shape !== undefined && deposit !== null) {
+            const tqAlong = along * deposit.cos - across * deposit.sin;
+            const tqAcross = along * deposit.sin + across * deposit.cos;
+            const tip = sampleTipBilinearUv(
+              shape.tipData,
+              shape.tipSize,
+              Math.min(1, Math.max(0, tqAlong * 0.5 + 0.5 + one.jitterU)),
+              Math.min(1, Math.max(0, tqAcross * 0.5 + 0.5 + one.jitterV)),
+            );
+            const ramp = smoothstep01(deposit.lowCut, deposit.lowCut + 0.5, tip);
+            const rim = 1 - smoothstep01(0.82, 1, Math.max(Math.abs(along), Math.abs(across)));
+            mask = ramp * rim;
+          } else {
+            mask = d <= 1 ? 1 : 0;
+          }
           f = one.density !== undefined && one.density > 0
             ? one.amount * (1 - Math.exp(-one.density * mask))
             : one.amount * mask;

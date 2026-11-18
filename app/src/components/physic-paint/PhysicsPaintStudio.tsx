@@ -351,7 +351,7 @@ import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import { anchorsEqual } from '@efxlab/efx-watercolor/payload';
 import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';
-import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
+import { collectLiftDabs, coverShapeForBrush, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import {
   beginAquarelleLiftPreview,
   endAquarelleLiftPreview,
@@ -8366,7 +8366,11 @@ export function PhysicsPaintStudio() {
       // recorded brush's tip/aspect/rotation drives both the per-dab angles
       // and every punch below, so the committed erase can never disagree with
       // the live pass or the preview.
-      const shape = liftShapeForStroke(stroke);
+      // quick 261117-tq7 (rev 4, UAT round 3): a COVER punches with the
+      // DEPOSIT footprint — the recorded texture, its rotation and the dry /
+      // jitter knobs the engine's bodyCoverFS binds. The Lift shape forces the
+      // neutral tip and erased outside the paint a textured dab deposits.
+      const shape = mode === 'cover' ? coverShapeForBrush(stroke) : liftShapeForStroke(stroke);
       // 261028-k03h: the engine's own dab stream IS the erase the user saw
       // (and the preview punched). Re-deriving it from the recorded stroke
       // drifted along the stroke and erased more (UAT).
@@ -8391,6 +8395,26 @@ export function PhysicsPaintStudio() {
           // Unreachable: the mode guard above already refused a sheetless
           // cover. Repeating the check here is the narrowing seam that types
           // the live alpha canvas below.
+          revertAquarelleLiftPreview();
+          publish(AQUARELLE_COVER_FAILURE_MESSAGE);
+          return;
+        }
+        // quick 261117-tq7 (rev 4, UAT round 3): a BLANK live sheet must never
+        // publish the punch. captureLivePixels merges this sheet over the
+        // punched base; with no pigment there the underlayer is erased and the
+        // stroke's own paint missing — the reported stroke that vanishes while
+        // its removal stays (and the blank readbacks the capture ink gate
+        // warns about). Fail closed: revert the preview, publish, never punch.
+        const coverInk = measureAquarelleCanvasInk(sheet);
+        if (!passesAquarelleCaptureInkGate(coverInk)) {
+          recordAquarelleRenderSplitEvent('lift-erase', {
+            frame: plan.frame,
+            trackId: plan.trackId,
+            keyId: plan.keyId,
+            scripted: plan.scripted,
+            willPinBase: plan.willPinBase,
+            stage: 'cover-blank-live-sheet',
+          });
           revertAquarelleLiftPreview();
           publish(AQUARELLE_COVER_FAILURE_MESSAGE);
           return;
