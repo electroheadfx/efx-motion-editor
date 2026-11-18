@@ -1,0 +1,16 @@
+{
+  "capturedFromCommit": "da6ddeaef48ac700a19571c6ae4a7b42b2761ba6",
+  "capturedAt": "2026-11-18T17:49:16Z",
+  "note": "Phase 64 (v2.2.0 medium engine), plan 64-17: the second half of the Body-0 identity law. Spike 001's watercolor-50 passage verbatim — 50 rapid #cc2222 strokes with the jittered line, settle 1, a fix every tenth entry and once after the loop, every entry at Body 0 — captured on the 1080x1080 sheet. The three exported-background digests REPRODUCE the spike VERDICT.md identity table (2b4a86d7 / 7f56e401 / bc74be59): at Body 0 the coverage term is zero, so the mode-4 sheet reduces to the pre-milestone darkness-only formula. Never regenerate this baseline to make a gate pass; a mismatch means the medium changed.",
+  "kind": "pixel-buffer-baseline",
+  "gate": "watercolor-50",
+  "width": 1080,
+  "height": 1080,
+  "digestPaper": "2b4a86d7",
+  "digestTransparent": "7f56e401",
+  "digestWhite": "bc74be59",
+  "digestPigment": "432f3a3f",
+  "byteLength": 4665600,
+  "renderer": "WebKit WebGL",
+  "verdict": "MEDIUM-ENGINE CAPTURED"
+}
