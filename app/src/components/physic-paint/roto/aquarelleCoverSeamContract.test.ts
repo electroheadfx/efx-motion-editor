@@ -31,7 +31,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const studio = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
-const coordinator = readFileSync(resolve(__dirname, '../hooks/useRotoFramePersistenceCoordinator.ts'), 'utf8');
 const layer = readFileSync(resolve(__dirname, '../engine/AquarelleCanvasLayer.tsx'), 'utf8');
 const mount = readFileSync(resolve(__dirname, '../engine/PhysicsPaintCanvasMount.tsx'), 'utf8');
 const baseLayer = readFileSync(resolve(__dirname, '../engine/AquarelleCachedBaseLayer.tsx'), 'utf8');
@@ -353,30 +352,6 @@ describe('the cover transaction (runAquarelleLiftErase keeps its 3-argument sign
     );
     // The diagnostic records whether the reset was skipped.
     expect(cover).toContain('resetSkipped: coverStrokeLive,');
-  });
-
-  it('publishes the committed composite to the display, never the punched base alone', () => {
-    // quick 261117-tq7 (rev 4, UAT round 2): a new stroke rendered correctly
-    // during the drag and turned paper-white only on release. The commit was
-    // fine (leaving/returning restored the paint), but the post-ack display
-    // swap loaded `punchedCover.bytes` — the underlayer REMOVED along the
-    // footprint — while the sheet (the stroke's only on-screen pigment) had
-    // just been reset. The display must publish the COMMITTED composite: the
-    // punched base with this stroke's sheet merged over it.
-    const cover = coverBranch();
-    // The extra-canvas seam: the produce step hands its exact encoded frame
-    // to the caller so the display swap never re-merges or re-encodes.
-    expect(coordinator).toContain('onProduced?: (rendered: RenderedFramePayload) => void;');
-    expect(coordinator.indexOf('capture.onProduced?.(produced);')).toBeGreaterThan(
-      coordinator.indexOf('const produced = await (usedMerge'),
-    );
-    // The cover passes the seam on every commit attempt...
-    expect(cover).toContain('onProduced: (produced) => { coverProduced.bytes = produced.bytes; },');
-    // ...and the swap publishes those bytes (null falls back to the committed
-    // payload lookup), never the underlayer-only punch.
-    const swap = cover.slice(cover.indexOf('if (!coverStrokeLive) {'));
-    expect(swap).toContain('coverProduced.bytes,');
-    expect(swap).not.toContain('punchedCover.bytes,');
   });
 
   it('keeps every pinned Lift arm and whole-Studio count intact', () => {

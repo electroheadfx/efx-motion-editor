@@ -8390,8 +8390,7 @@ export function PhysicsPaintStudio() {
         // pigment, which is why it is always captured and always merged;
         // `baseCanvas` wins over `cachedBase`, so the recorded bytes are the
         // punched ones while the pre-punch payload satisfies the required
-        // field. The POST-STROKE DISPLAY end state is that merged composite —
-        // never the punched base alone (see the post-ack swap below).
+        // field.
         if (sheet === null) {
           // Unreachable: the mode guard above already refused a sheetless
           // cover. Repeating the check here is the narrowing seam that types
@@ -8520,13 +8519,6 @@ export function PhysicsPaintStudio() {
         // (Engine's `this.stroke` is gone) and the stroke is neither recorded
         // nor captured. Skip the reset and the display swap in that case.
         const coverStrokeGeneration = aquarelleStrokeGenerationRef.current?.() ?? 0;
-        // quick 261117-tq7 (rev 4, UAT round 2): the committed composite IS
-        // the post-stroke display. The punched base is the underlayer REMOVED
-        // along the footprint; publishing it (with the sheet reset) left the
-        // fresh stroke paper-white until the frame reloaded from persistence.
-        // The produce seam hands back the exact encoded merge this capture
-        // commits, so the swap below never re-merges or re-encodes.
-        const coverProduced: { bytes: Uint8Array | null } = { bytes: null };
         const commitCover = async () => rotoPersistenceRef.current.captureLivePixels({
           layerId: launch.layerId,
           trackId: plan.trackId,
@@ -8536,7 +8528,6 @@ export function PhysicsPaintStudio() {
           baseCanvas: punchedCover.canvas,
           mergeBlend: 'pigment-alpha',
           size,
-          onProduced: (produced) => { coverProduced.bytes = produced.bytes; },
         });
         let coverAttempts = 1;
         let coverOk = await commitCover();
@@ -8562,12 +8553,7 @@ export function PhysicsPaintStudio() {
         if (abandonIfDrifted('cover-commit-ack')) return;
         // Post-acknowledgement: the durable bytes, then the sheet reset (the
         // stroke's pigment now lives in the committed payload), then the
-        // display. The display republishes the COMMITTED composite the
-        // produce seam handed back — the punched base WITH this stroke's
-        // sheet merged over it. Loading the punched base here (the Lift's end
-        // state, which adds no pigment) was UAT round 2's vanished stroke: the
-        // underlayer erased along the footprint, the stroke nowhere. The map
-        // write goes through a local alias so the file keeps
+        // display. The map write goes through a local alias so the file keeps
         // ONE spelling of the durable store, and it only runs when the source
         // was DEFINED — UNKNOWN must never be rewritten as KNOWN-EMPTY.
         if (coverDurableDefined) {
@@ -8590,9 +8576,7 @@ export function PhysicsPaintStudio() {
               undefined,
               true,
               generation,
-              // null = the produce seam never ran, so the loader re-reads the
-              // just-committed payload; never the underlayer-only punch.
-              coverProduced.bytes,
+              punchedCover.bytes,
             );
             physicPaintVersion.value++;
           }

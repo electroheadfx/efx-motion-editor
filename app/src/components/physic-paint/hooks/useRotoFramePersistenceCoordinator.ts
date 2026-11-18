@@ -628,15 +628,6 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     backgroundOnly?: boolean;
     operationId?: string;
     background?: PhysicPaintRotoBackgroundMetadata;
-    /**
-     * quick 261117-tq7 (rev 4, UAT round 2): the produce step hands its EXACT
-     * encoded frame to the caller. A caller whose display end state differs
-     * from the base it supplied (the cover: punched base + live sheet) must
-     * publish the committed bytes, never a re-merge/re-encode of its own.
-     * Only the winning produce turn runs, so a later commit reject leaves the
-     * callback's bytes unclaimed.
-     */
-    onProduced?: (rendered: RenderedFramePayload) => void;
   }) => {
     // 261029-lsr (D-03): stamp the script epoch SYNCHRONOUSLY, before anything
     // awaits — a capture queued before an undo must carry the pre-undo epoch so
@@ -723,9 +714,6 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         const produced = await (usedMerge
           ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas, capture.mergeBlend)
           : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId));
-        // The exact bytes this capture would commit, handed to a caller that
-        // owns the post-ack display swap (see onProduced above).
-        capture.onProduced?.(produced);
         recordAquarelleRenderSplitEvent('coordinator-produce', {
           appFrame: capture.appFrame,
           identityKey,
