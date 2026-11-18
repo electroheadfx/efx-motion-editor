@@ -224,6 +224,8 @@ describe('production vite build', () => {
       // sheet transparent outside pigment, so the committed base stays visible
       // under a new stroke. This shader marker exists only in the source engine
       // that landed with 99fc8378; the stale dist has zero occurrences.
+      // 64-13: the display reads the composited coverage channel — that literal
+      // exists only in the current source engine.
       const bundled = collectFiles(outDir)
         .filter((rel) => rel.endsWith('.js'))
         .map((rel) => readFileSync(join(outDir, rel), 'utf8'))
@@ -231,7 +233,7 @@ describe('production vite build', () => {
       expect(
         bundled,
         'the pigment-alpha display shader must be bundled from source',
-      ).toContain('float mn = min(min(t.r, t.g), t.b)');
+      ).toContain('float cov = texture(uCover, uv).x');
     },
   );
 

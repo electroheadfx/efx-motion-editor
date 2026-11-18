@@ -87,8 +87,11 @@ describe('the cover forwarding chain (engine -> layer -> mount -> Studio)', () =
     );
     expect(layer).toContain('const onCoverDabRef = useRef(props.onCoverDab);');
     expect(layer).toContain('onCoverDabRef.current = props.onCoverDab;');
-    expect(layer).toContain('onCoverDab(x, y, r, amount, angle, density) {');
-    expect(layer).toContain('onCoverDabRef.current?.(x, y, r, amount, angle, density);');
+    // 64-13: the engine composites the cover itself (coverage channel) and no
+    // longer declares a cover-dab callback, so the layer must not forward one
+    // into EngineCallbacks. The retained prop surface is retired in 64-15.
+    expect(layer).not.toContain('onCoverDab(x, y, r, amount, angle, density) {');
+    expect(layer).not.toContain('onCoverDabRef.current?.(x, y, r, amount, angle, density);');
     expect(layer.indexOf('onCoverDab?:')).toBeGreaterThan(layer.indexOf('onLiftDab?:'));
     // The Lift wiring is untouched.
     expect(layer).toContain('onLiftDab(x, y, r, amount, angle)');

@@ -47,8 +47,12 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // stay translucent; dense pigment masks — the user-reported lost
     // semi-transparency.
     expect(engine).toContain('pigment: 4');
-    expect(shaders).toContain('float mn = min(min(t.r, t.g), t.b)');
-    expect(shaders).toContain('float alpha = 1.0 - mn');
+    // 64-13: alpha is the max of the darkness alpha and the composited
+    // coverage, so a near-white covering pigment is opaque too.
+    expect(shaders).toContain('float tMin = min(min(tSrgb.r, tSrgb.g), tSrgb.b)');
+    expect(shaders).toContain('float darkAlpha = 1.0 - tMin');
+    expect(shaders).toContain('float cov = texture(uCover, uv).x');
+    expect(shaders).toContain('float alpha = clamp(max(darkAlpha, cov), 0.0, 1.0)');
     // 64-04: the emboss shade multiplies the already-premultiplied colour only;
     // alpha is untouched, so the premultiplied contract still holds.
     expect(shaders).toContain('o = vec4(pigment * alpha * shade, alpha)');
@@ -270,7 +274,9 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // Capture/export still writes vec4(t, 1.0): the stored sheet stays opaque
     // and old projects/thumbnails/pose margins keep working. Display converts
     // to pigment alpha; storage never changes format.
-    expect(shaders).toContain('o = vec4(t, 1.0)');
+    // 64-13 renamed the shaded transmittance `t` -> `lit`; storage still
+    // writes it opaque.
+    expect(shaders).toContain('o = vec4(lit, 1.0)');
     expect(engine).toContain('premultipliedAlpha: true');
   });
 

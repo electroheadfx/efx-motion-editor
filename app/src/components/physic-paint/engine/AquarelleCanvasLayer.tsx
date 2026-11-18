@@ -654,11 +654,9 @@ export function AquarelleCanvasLayer(props: {
           onLiftDab(x, y, r, amount, angle) {
             onLiftDabRef.current?.(x, y, r, amount, angle);
           },
-          // quick 261117-tq7: the same forwarding for the cover dab, so the
-          // cached-base preview can punch the deposit footprint live.
-          onCoverDab(x, y, r, amount, angle, density) {
-            onCoverDabRef.current?.(x, y, r, amount, angle, density);
-          },
+          // 64-13: the engine composites the cover itself (coverage channel),
+          // so it no longer emits a cover dab; the app-side seam is retired in
+          // 64-15.
           onStrokeEnd(tool) {
             painting = false;
             lastWetAt = performance.now();
