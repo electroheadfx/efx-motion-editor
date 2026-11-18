@@ -596,6 +596,31 @@ void main(){
   o0 = vec4(a * p);
 }`;
 
+// 64-20 decision A — the capture-time clearance. The two gates above stop
+// coverage from being CLAIMED or TRANSPORTED onto paper-white film; this third
+// inclusion of the SAME FILM_PRESENCE snippet closes the census by
+// construction. At the capture/export boundary only — Engine.readback's
+// pigment path, never displayFS's interactive output — a texel whose FINAL
+// film still reads paper-white on the scan's own 8-bit grid exports ZERO
+// coverage alpha. The clear is BINARY (`step`): where the presence is exactly
+// 0 the alpha is zeroed, and everywhere else the display's own bytes pass
+// through unchanged — not a scale, so no surviving texel's alpha or pigment
+// moves, and the export's un-premultiply can never re-derive a colour. RGB is
+// never rebuilt: `src.rgb` is carried verbatim (at alpha 0 the F1
+// premultiplied contract already makes it invisible). The plan's truth stands:
+// a frozen texel still transports nothing and keeps its value exactly; this
+// pass only stops a stale coverage alpha from being COUNTED as coverage where
+// the final film is bare paper.
+export const coverClearFS = `${HEADER}
+layout(location=0) out vec4 o0;
+uniform sampler2D uSrc, uPaper;
+${FILM_PRESENCE}
+void main(){
+  vec4 src = texture(uSrc, vUv);
+  float p = filmPresence(vUv);
+  o0 = vec4(src.rgb, src.a * step(0.0001, p));
+}`;
+
 // Paper, generated per document and whenever the paper is changed, in two passes.
 // paperFieldFS builds the sheet's procedural field into a half-float target:
 //   x = height 0..1 (mean ~0.5), y = mottle 0..1 (fibre clumping, 0.5 neutral),

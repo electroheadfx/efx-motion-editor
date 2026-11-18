@@ -463,6 +463,9 @@ export class WatercolorEngine {
     this.programs.bodyCover = this.g.program(S.bodyCoverFS);
     // 64-14: the coverage advect pass, same rule — outside the pinned literal.
     this.programs.advectCover = this.g.program(S.advectCoverFS);
+    // 64-20 decision A: the capture-time clearance, same rule — outside the
+    // pinned literal. The export boundary runs it for the pigment capture only.
+    this.programs.coverClear = this.g.program(S.coverClearFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
     this.attachInput();
@@ -1688,15 +1691,48 @@ export class WatercolorEngine {
     }, type, o.quality));
   }
 
+  /**
+   * 64-20 decision A — the capture-time clearance. A dedicated pass at the
+   * export boundary (never the interactive displayFS output): the display's own
+   * pigment RGBA is the source, and the shared FILM_PRESENCE snippet zeroes the
+   * coverage alpha exactly where the final film reads paper-white on the
+   * scan's own 8-bit grid. RGB passes through verbatim; every texel the film
+   * does not clear is byte-identical.
+   */
+  private clearPaperWhiteCoverage(target: Target, source: WebGLTexture) {
+    const { gl, g } = this;
+    const p = this.programs.coverClear;
+    p.bind();
+    gl.uniform1i(p.u.uSrc, g.bindTex(0, source));
+    gl.uniform1i(p.u.uPaper, g.bindTex(1, this.paper.tex[0]));
+    gl.uniform1i(p.u.uInkA, g.bindTex(2, this.ink.read.tex[0]));
+    gl.uniform1i(p.u.uInkB, g.bindTex(3, this.ink.read.tex[1]));
+    gl.uniform1i(p.u.uFixedA, g.bindTex(4, this.fixed.tex[0]));
+    gl.uniform1i(p.u.uFixedB, g.bindTex(5, this.fixed.tex[1]));
+    gl.uniform1f(p.u.uGranulation, this.params.granulation * 0.55);
+    gl.disable(gl.BLEND);
+    g.draw(target);
+  }
+
   /** The composited document at full resolution as RGBA8 bytes, bottom row first. */
   private readback(flat: boolean, mode: number = MODE.paper, texture = true): Uint8Array {
     const { gl, g, dw, dh } = this;
     const out = g.target(dw, dh, [RGBA8], gl.NEAREST);
     this.drawDisplay(out, { x: 0, y: 0, w: dw, h: dh }, null, flat, mode, texture);
+    // 64-20 decision A: the pigment capture is cleared of stale coverage where
+    // the final film reads paper-white — a dedicated pass after the display
+    // draw, never part of displayFS itself. Every other export mode reads the
+    // display's output exactly as before.
+    let read = out;
+    if (mode === MODE.pigment) {
+      read = g.target(dw, dh, [RGBA8], gl.NEAREST);
+      this.clearPaperWhiteCoverage(read, out.tex[0]);
+    }
     const px = new Uint8Array(dw * dh * 4);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, out.fbo);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, read.fbo);
     gl.readPixels(0, 0, dw, dh, gl.RGBA, gl.UNSIGNED_BYTE, px);
     g.disposeTarget(out);
+    if (read !== out) g.disposeTarget(read);
     return px;
   }
 
