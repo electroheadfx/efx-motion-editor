@@ -284,6 +284,76 @@ void main(){
   oB = vec4((b + dB).rgb, max(b.a + dB.a, 0.0)) * uKeep;
 }`;
 
+const TO_SRGB = `
+vec3 toSRGB(vec3 c){
+  c = clamp(c, 0.0, 1.0);
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+vec3 fromSRGB(vec3 c){
+  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+}`;
+
+// 64-20 — the ONE film-presence reconstruction, shared by the coverage
+// transport (`advectCoverFS`) and the coverage deposit (`coverMaskFS`); a
+// second, divergent criterion is exactly what this constant exists to prevent.
+// It rebuilds the display's own reading of the combined paint film: the mobile
+// (ink) and fixed layers summed the way displayFS sums them, granulated by the
+// display's own literal, run through the display's own basis block
+// (`displayBasisGLSL`) — with the display's edge-darkening factor deliberately
+// omitted. The display's `k` is `gran * (1 + uEdgeDarken * edge)` with
+// `edge >= 0`, hence at least `gran`, so the display is never BRIGHTER than
+// this reconstruction (every committed gate is emboss-free, `shade` 1): a
+// texel the gate lets transport reads below the scan's line in the render too.
+// The luma is then measured on the paper-white scan's OWN grid: the display
+// writes RGBA8 before `coveredPaperWhiteBox` compares the mean of the three
+// bytes against 250, so the gate quantizes the same way and its line is the
+// scan's line, not a continuous approximation that leaves a trickle in the
+// [249.5, 250) band the scan already calls paper-white. Where the scan would
+// count a texel covered paper-white the presence is exactly 0; where the film
+// reads at or below the scan's 5-level ramp it is exactly 1.
+//
+// The snippet declares the film channels and the granulation it reads and
+// nothing else: each including program declares its own uPaper (advectCoverFS
+// directly, coverMaskFS through FOOTPRINT_MASK), so neither redeclares a
+// sampler the other already bound.
+const FILM_PRESENCE = `
+uniform sampler2D uInkA, uInkB, uFixedA, uFixedB;
+uniform float uGranulation;
+
+// The paper-white scan's own line and its margin, derived once: luma 250 of
+// 255 is the covered-paper-white scan's threshold, and the 5-level ramp is
+// the margin the scan leaves above it (a texel at or above the line can never
+// be counted covered paper-white after 8-bit quantization).
+const float PAPER_WHITE = 250.0 / 255.0;
+const float PAPER_WHITE_RAMP = 5.0 / 255.0;
+
+${TO_SRGB}
+
+// How much of the sheet this texel's combined paint film still hides: 1 where
+// the film reads at or below the scan's ramp, 0 where it reads paper-white on
+// the scan's own 8-bit grid. Exactly the display's film (the mobile and fixed
+// layers summed as displayFS sums them), exactly its granulation, exactly its
+// basis.
+float filmPresence(vec2 uv){
+  vec4 paper = texture(uPaper, uv);
+  vec4 iB = texture(uInkB, uv);
+  vec4 fB = texture(uFixedB, uv);
+  vec4 a = texture(uInkA, uv) + texture(uFixedA, uv);
+  vec3 b = iB.rgb + fB.rgb;
+  float scatter = iB.a + fB.a;
+  float gran = 1.0 + uGranulation * (0.5 - paper.g) * 2.2;
+  a *= gran; b *= gran; scatter *= gran;
+  vec3 rgb = vec3(0.0);
+  float tr;
+${displayBasisGLSL()}
+  // The scan reads the transparent export's bytes: quantize to RGBA8 the same
+  // way (round to nearest) before the mean, so both comparisons agree.
+  vec3 s = toSRGB(rgb);
+  vec3 q = floor(s * 255.0 + 0.5) / 255.0;
+  float luma = (q.r + q.g + q.b) / 3.0;
+  return 1.0 - smoothstep(PAPER_WHITE - PAPER_WHITE_RAMP, PAPER_WHITE, luma);
+}`;
+
 // Coverage transport (64-14). The coverage channel rides the SAME wet
 // simulation the pigment does — the same mobility gate, back-trace and four
 // face fluxes, computed on its single channel — so a covering stroke painted
@@ -293,12 +363,22 @@ void main(){
 // reduce coverage, or a dried near-white film would lose its opacity and the
 // cached base would reappear under it. Coverage leaves a texel only through
 // the wet flow itself.
+//
+// 64-20 — the transport is GATED by the display's own reconstruction of the
+// combined mobile + fixed film, the shared FILM_PRESENCE snippet. A texel
+// whose film still reconstructs paper-white — on the paper-white scan's own
+// 8-bit grid — transports no coverage, so the channel can no longer claim a
+// texel its own film leaves bare. This is NOT a keep factor: a frozen texel
+// keeps its coverage exactly; nothing decays, the wet flow simply cannot
+// carry coverage through bare paper.
 export const advectCoverFS = `${HEADER}
 layout(location=0) out vec4 o0;
-uniform sampler2D uVelocity, uCover, uWet;
+uniform sampler2D uVelocity, uCover, uWet, uPaper;
 uniform vec2 uSimTexel, uTexel;
 uniform float uDt, uBleed, uEdge, uAspect;
 uniform vec3 uBrush;  // x, y, radius (radius <= 0: no brush down)
+
+${FILM_PRESENCE}
 
 float mobility(float w){ return smoothstep(0.02, 0.45, w); }
 
@@ -321,9 +401,10 @@ void main(){
   float C = texture(uCover, vUv).x;
   if (m < 0.002){ o0 = vec4(C); return; }
 
+  float p = filmPresence(vUv);
   vec2 vel = texture(uVelocity, vUv).xy;
   vec2 coord = vUv - uDt * vel * uSimTexel * m;
-  float c = mix(C, texture(uCover, coord).x, m);
+  float c = mix(C, texture(uCover, coord).x, m * p);
 
   float brush = 0.0;
   if (uBrush.z > 0.0){
@@ -337,8 +418,9 @@ void main(){
   face(vec2(0.0,  uTexel.y), w, m, C, diffusion, uEdge, dC);
   face(vec2(0.0, -uTexel.y), w, m, C, diffusion, uEdge, dC);
 
-  // coverage is a committed alpha in [0, 1]: clamp the transported sum.
-  o0 = vec4(clamp(c + dC, 0.0, 1.0));
+  // Coverage is a committed alpha in [0, 1]: clamp the transported sum, scaled
+  // per texel by the film's presence — a paper-white texel keeps its value.
+  o0 = vec4(clamp(c + dC * p, 0.0, 1.0));
 }`;
 
 // "Fix": mobile pigment, and the scattering it carries, settles into the paper.
@@ -489,16 +571,29 @@ void main(){
 }`;
 
 // SPIKE 001 — the coverage channel. Composited with ONE / ONE_MINUS_SRC_ALPHA:
-//   cover <- a + cover * (1 - a)
+//   cover <- a * p + cover * (1 - a * p)
 // the union of every dab's coverage. The compositor reads it as the pigment
 // layer's alpha (displayFS mode 4), so a body-heavy stroke hides the cached
 // base underneath instead of punching a hole in it.
+//
+// 64-20 — `p` is the shared film-presence gate, evaluated on the film this dab
+// leaves behind: the two deposit draws above have already written their C * a
+// into this layer and coverPass has already eroded the fixed layer, so the
+// snippet reads the dab's own post-deposit film. A dab whose film leaves the
+// texel paper-white on the scan's 8-bit grid deposits nothing (the union draw
+// is the identity for it, so the texel keeps its value exactly); a dab whose
+// film visibly hides the sheet deposits the same coverage as before. This is
+// the same FILM_PRESENCE definition `advectCoverFS` uses — one definition,
+// two programs, one criterion for "this texel is covered".
 export const coverMaskFS = `${HEADER}${FOOTPRINT_MASK}
 layout(location=0) out vec4 o0;
 uniform float uAmount, uDensity;
+${FILM_PRESENCE}
 void main(){
   float m = footprintMask();
-  o0 = vec4(uAmount * (1.0 - exp(-uDensity * m)));
+  float a = uAmount * (1.0 - exp(-uDensity * m));
+  float p = filmPresence(vUv);
+  o0 = vec4(a * p);
 }`;
 
 // Paper, generated per document and whenever the paper is changed, in two passes.
@@ -752,15 +847,6 @@ vec3 paperColour(vec4 paper, vec3 base){
   vec3 c = base * (1.0 + uTexture * ((paper.r - 0.5) * 0.32 + (paper.b - 0.5) * uMottle * 2.0));
   float fl = (paper.a - 0.5) * 2.0 * uTexture;
   return fl < 0.0 ? mix(c, uFleckTint, -fl) : mix(c, min(base * 1.1 + 0.02, vec3(1.0)), fl);
-}`;
-
-const TO_SRGB = `
-vec3 toSRGB(vec3 c){
-  c = clamp(c, 0.0, 1.0);
-  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
-}
-vec3 fromSRGB(vec3 c){
-  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }`;
 
 /** A paper preview: the sheet with a granulating ultramarine wash across one corner. */

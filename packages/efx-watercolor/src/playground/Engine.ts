@@ -2393,9 +2393,19 @@ export class WatercolorEngine {
     g.draw(this.ink.read, rect);
     gl.disable(gl.BLEND);
     // 3) coverage <- a + cover * (1 - a): the union across the stroke's dabs.
+    // 64-20: the draw is gated by the display's own reconstruction of the film
+    // this dab leaves behind — the ink the two draws above just painted and
+    // the fixed layer coverPass already eroded — through the ONE FILM_PRESENCE
+    // snippet the transport shares. uPaper is unit 1 already (bindFootprint),
+    // so the gate samples the sheet the display granulates on.
     const m = this.programs.coverMask;
     m.bind();
     this.bindFootprint(m, x, y, r, angle, 0, grain, grainThr);
+    gl.uniform1i(m.u.uInkA, g.bindTex(2, this.ink.read.tex[0]));
+    gl.uniform1i(m.u.uInkB, g.bindTex(3, this.ink.read.tex[1]));
+    gl.uniform1i(m.u.uFixedA, g.bindTex(4, this.fixed.tex[0]));
+    gl.uniform1i(m.u.uFixedB, g.bindTex(5, this.fixed.tex[1]));
+    gl.uniform1f(m.u.uGranulation, this.params.granulation * 0.55);
     gl.uniform1f(m.u.uAmount, amount);
     gl.uniform1f(m.u.uDensity, density);
     gl.enable(gl.BLEND);
@@ -2688,16 +2698,27 @@ export class WatercolorEngine {
     // No keep factor: settlement must never reduce coverage (a dried white
     // film keeps its opacity). Units 0/1/2 are free here — the ink advect's
     // bindings belonged to its own program.
+    //
+    // 64-20: units 3-7 carry the combined film the gate reconstructs. The ink
+    // leaves are read AFTER its swap, so this is the post-advect mobile layer
+    // plus the single fixed target — the exact film displayFS reconstructs —
+    // and the paper is read with the display's own granulation literal.
     P.advectCover.bind();
     gl.uniform1i(P.advectCover.u.uVelocity, g.bindTex(0, vel.read.tex[0]));
     gl.uniform1i(P.advectCover.u.uCover, g.bindTex(1, this.cover.read.tex[0]));
     gl.uniform1i(P.advectCover.u.uWet, g.bindTex(2, this.wet.read.tex[0]));
+    gl.uniform1i(P.advectCover.u.uInkA, g.bindTex(3, this.ink.read.tex[0]));
+    gl.uniform1i(P.advectCover.u.uInkB, g.bindTex(4, this.ink.read.tex[1]));
+    gl.uniform1i(P.advectCover.u.uFixedA, g.bindTex(5, this.fixed.tex[0]));
+    gl.uniform1i(P.advectCover.u.uFixedB, g.bindTex(6, this.fixed.tex[1]));
+    gl.uniform1i(P.advectCover.u.uPaper, g.bindTex(7, this.paper.tex[0]));
     gl.uniform2fv(P.advectCover.u.uSimTexel, simTexel);
     gl.uniform2fv(P.advectCover.u.uTexel, texel);
     gl.uniform1f(P.advectCover.u.uDt, dt);
     gl.uniform1f(P.advectCover.u.uBleed, this.params.bleed);
     gl.uniform1f(P.advectCover.u.uEdge, this.params.edge * 1.4);
     gl.uniform1f(P.advectCover.u.uAspect, this.dw / this.dh);
+    gl.uniform1f(P.advectCover.u.uGranulation, this.params.granulation * 0.55);
     gl.uniform3f(P.advectCover.u.uBrush, this.brushNow.x, this.brushNow.y, this.brushNow.r);
     g.draw(this.cover.write, rect); this.cover.swap();
 
