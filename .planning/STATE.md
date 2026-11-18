@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-16-PLAN.md
-last_updated: "2026-11-18T20:33:49.482Z"
+stopped_at: Completed 64-18-PLAN.md
+last_updated: "2026-11-18T20:47:11.726Z"
 last_activity: 2026-11-18
 last_activity_desc: Phase 64 execution started
-state_head: 53482b3d9b905b027bcfc3ac1ad29c46657d7d18
+state_head: ff1ba2f548a3099ed58009f5ab9d46e6c90b935a
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 37
-  completed_plans: 34
+  completed_plans: 35
   percent: 50
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 
 ## Current Position
 
-Phase: 64 (Medium Engine) — READY TO EXECUTE
-Plan: 17 of 17
+Phase: 64 (Medium Engine) — EXECUTING
+Plan: 19 of 20
 Status: Ready to execute
 Last activity: 2026-11-18 — Phase 64 execution started
 
@@ -161,6 +161,7 @@ Last activity: 2026-11-18 — Phase 64 execution started
 | Phase 64 P14 | 12min51s | 3 tasks | 13 files |
 | Phase 64 P15 | 10min | 3 tasks | 14 files |
 | Phase 64 P16 | 16 | 3 tasks | 9 files |
+| Phase 64 P18 | 48min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -533,6 +534,7 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: The round twin gets no committed baseline: resolveReference prefers a committed baseline in --differs-from, so a committed twin would make the chalk gate pass vacuously against itself.
 - [Phase 64]: Spike 001 criterion 2 is measured on the PIGMENT export through the spike's own rgbToHsv (lumaRatio 1.07, deltaHue -0.04 deg); the VERDICT's 0.982 transparent-export reading is recorded for traceability, and no latency pin is added.
 - [Phase 64]: UAT rows 2/7/8 are re-specified, never answered: the diff-line-class gate pins three expected: lines plus updated:, ten pending rows, status testing, number 1, awaiting user response.
+- [Phase 64]: 64-18: the light coalescer delegates equality to lightSignature and mints only the operationId; the Studio parks the gesture's first descriptor (a descriptor ref, never a light mirror) and records exactly one coalesced span at release, keeping the single setDocumentLight call site via writeDocumentLight
 
 ### Pending Todos
 
@@ -660,8 +662,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-18T19:11:27.964Z
-Stopped at: Completed 64-16-PLAN.md
+Last session: 2026-11-18T20:47:07.944Z
+Stopped at: Completed 64-18-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
