@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-17-PLAN.md
-last_updated: "2026-11-18T18:18:44.409Z"
+stopped_at: Completed 64-14-PLAN.md
+last_updated: "2026-11-18T18:39:24.473Z"
 last_activity: 2026-11-18
 last_activity_desc: Phase 64 execution started
-state_head: 7ba11e607b19850d97f4f0a19e17249545569ad8
+state_head: 2720ab2825b5e49348b792063040b9682c2c3149
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 34
-  completed_plans: 31
+  completed_plans: 32
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 15 of 17
+Plan: 16 of 17
 Status: Ready to execute
 Last activity: 2026-11-18 — Phase 64 execution started
 
@@ -158,6 +158,7 @@ Last activity: 2026-11-18 — Phase 64 execution started
 | Phase 64 P09 | 1h 49m | 2 tasks | 7 files |
 | Phase 64 P13 | 6min21s | 2 tasks | 8 files |
 | Phase 64 P17 | 32min | 3 tasks | 10 files |
+| Phase 64 P14 | 12min51s | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -517,6 +518,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: 64-17: both erase-era cover-over-wet directional claims retired (user decision) — the coverage crossing reads 49.66 vs the 34.05 prefix and 30.74 subtract references, above both, because the covering stroke now deposits its own near-opaque body (own-pigment 3.47 -> 14.54)
 - [Phase 64]: 64-17: coverCrossPigment >= coverOwnPigment — the composite can leave the crossing within rounding of the covering stroke alone, never blanker
 - [Phase 64]: 64-17: the cover-over-wet digest moved with 64-13's coverage model, not the drive cadence — removing the trailing rapid-entry fix is byte-identical (covering stroke already fixes after itself)
+- [Phase 64]: advectCoverFS declares no keep uniform — the settle that reduces mobile pigment must not reduce coverage, so the cover advect keeps factor 1 by construction and a dried white film keeps its opacity.
+- [Phase 64]: Coverage is the fifth and last positional entry in allocateHistory() pool 0, snapshotLayers() and travel()'s pool-0 map; relief.test.ts re-anchors the single-framebuffer assertion on pool0[length − 2].
+- [Phase 64]: The lifecycle alpha box sits on the covering film's plateau (max 5x5 mean 0.90 at document (0.6465, 0.3652)) because the grain-scale union plateau is ~0.89-0.91 and the 0.90 pre-lift bar is only measurable there.
+- [Phase 64]: Lift erodes coverage with the fixed draw's rect, last-written uAmount and ZERO/ONE_MINUS_SRC_COLOR pair — no new program, no new uniform — ordered after fixed and before the relief erode.
+- [Phase 64]: The cover-lift probe is one plan-faithful traversal of the covering diagonal at pressure 0.8 (0.90 -> 0.53, 59%; a there-and-back scrub was measured and rejected).
 
 ### Pending Todos
 
@@ -644,8 +650,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-18T18:18:43.127Z
-Stopped at: Completed 64-17-PLAN.md
+Last session: 2026-11-18T18:39:23.192Z
+Stopped at: Completed 64-14-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
