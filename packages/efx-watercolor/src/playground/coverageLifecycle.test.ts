@@ -52,7 +52,9 @@
 //      the pigment capture's coverage alpha is zeroed exactly where the final
 //      film's presence is exactly 0; every kept texel passes through
 //      byte-identical (a binary step, never a scale, and the display's own
-//      RGB is never re-derived).
+//      RGB is never re-derived). It is scoped to texels that actually carry
+//      coverage (cov > 0), so a Body-0 export — whose alpha is the pigment's
+//      own darkness — stays byte-identical.
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -430,16 +432,32 @@ describe('the capture-time clearance closes the census (64-20 decision A)', () =
     // The same criterion the transport and the deposit use — one definition,
     // three inclusions (the arithmetic lives in the gate-shape test above).
     expectContains(clear, '${FILM_PRESENCE}')
-    expectContains(clear, 'uniform sampler2D uSrc, uPaper;')
+    expectContains(clear, 'uniform sampler2D uSrc, uPaper, uCover;')
     expectContains(clear, 'float p = filmPresence(vUv);')
     // A BINARY clear: the alpha is zeroed exactly where the presence is
     // exactly 0 and passes through untouched everywhere else. A partial scale
     // would have let the export's un-premultiply re-derive (and inflate) the
     // pigment at every cleared texel.
-    expectContains(clear, 'o0 = vec4(src.rgb, src.a * step(0.0001, p));')
+    expectContains(clear, 'o0 = vec4(src.rgb, src.a * (1.0 - cleared));')
     // The display's own RGBA is the only colour source: the clearance never
     // reconstructs the film's colour or repaints the pigment.
     expectContains(clear, 'vec4 src = texture(uSrc, vUv);')
+  })
+
+  it('scopes the clear to COVERAGE, so Body 0 exports stay byte-identical', () => {
+    const clear = COVER_CLEAR()
+    expectContains(clear, 'float cov = texture(uCover, vUv).x;')
+    // The alpha a paper-white film must not keep is the coverage part of
+    // max(darkness, cover). With cov == 0 the texel carries no coverage at
+    // all — its alpha is the pigment's own faint darkness, which the exported
+    // pigment layer keeps exactly (MED-20: neutral-pigment and watercolor-50
+    // are byte-identical, no baseline edit).
+    expectContains(clear, 'float cleared = (p < 0.0001 && cov > 0.0) ? 1.0 : 0.0;')
+    // A darkness-only texel cannot be a census texel: paper-white film bounds
+    // `1 - min(rgb)` at 15/255, far below the scan's 0.5 alpha line, so every
+    // counted texel is coverage-bearing and the census still closes.
+    expectNotContains(clear, 'uKeep')
+    expectNotContains(clear, 'uSettle')
   })
 
   it('runs at the capture boundary only, never on the interactive compositor', () => {
@@ -462,6 +480,9 @@ describe('the capture-time clearance closes the census (64-20 decision A)', () =
     expectContains(pass, 'g.bindTex(3, this.ink.read.tex[1])')
     expectContains(pass, 'g.bindTex(4, this.fixed.tex[0])')
     expectContains(pass, 'g.bindTex(5, this.fixed.tex[1])')
+    // The coverage scope reads the live committed cover field — the same one
+    // displayFS samples for mode 4's alpha.
+    expectContains(pass, 'g.bindTex(6, this.cover.read.tex[0])')
     expectContains(pass, 'gl.uniform1f(p.u.uGranulation, this.params.granulation * 0.55);')
   })
 
