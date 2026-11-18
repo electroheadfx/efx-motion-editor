@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-20-PLAN.md
-last_updated: "2026-11-18T21:33:51.638Z"
+stopped_at: Completed 64-19-PLAN.md
+last_updated: "2026-11-18T21:47:23.401Z"
 last_activity: 2026-11-18
 last_activity_desc: Phase 64 execution started
-state_head: c14228e5174ad3e47a76e0e5bcb166701a0c071f
+state_head: e6a8d17e9e638f61e92317f96a251cd165301a95
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 37
-  completed_plans: 36
+  completed_plans: 37
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 19 of 20
+Plan: 20 of 20
 Status: Ready to execute
 Last activity: 2026-11-18 — Phase 64 execution started
 
@@ -163,6 +163,7 @@ Last activity: 2026-11-18 — Phase 64 execution started
 | Phase 64 P16 | 16 | 3 tasks | 9 files |
 | Phase 64 P18 | 48min | 2 tasks | 9 files |
 | Phase 64 P20 | 41min | 3 tasks | 17 files |
+| Phase 64 P64-19 | 12min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -540,6 +541,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: 64-20: the capture-time clearance is an explicit user-authorized amendment to the must-have truth — frozen transport remains true, and the EXPORTED coverage may additionally be cleared where the final film reads paper-white (64-20 decision checkpoint).
 - [Phase 64]: 64-20: the clearance is binary and scoped to cov > 0 — a cleared texel exports exactly zero coverage alpha and its pigment RGB passes through verbatim, so no surviving texel moves and Body-0 exports stay byte-identical.
 - [Phase 64]: 64-20: the gate quantizes to RGBA8 (round to nearest) before the luma mean, so its line is the scan's line; no bar, threshold, comparator or invariant was widened.
+- [Phase 64]: 64-19: the emboss light keys every real-frame cache revision (lightCacheTerm via the canonical lightSignature; required projection parameter so a forgotten site is a compile error)
+- [Phase 64]: 64-19: one bounded re-bake per light change through applyAquarelleTimeline (one in flight, one queued follow-up, one busy-false follow-up, rejections swallowed); the last-seen light is a signature string ref, never a light mirror; draw-time re-lighting stays REJECTED (the thickness field is not persisted)
 
 ### Pending Todos
 
@@ -667,8 +670,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-18T21:33:50.824Z
-Stopped at: Completed 64-20-PLAN.md
+Last session: 2026-11-18T21:47:22.586Z
+Stopped at: Completed 64-19-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
