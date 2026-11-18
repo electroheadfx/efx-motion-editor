@@ -1,0 +1,23 @@
+{
+  "gate": "cover-advect",
+  "scenario": "cover-advect",
+  "emboss": null,
+  "body": 100,
+  "light": null,
+  "bakeMs": 44,
+  "renderMs": 10,
+  "width": 256,
+  "height": 256,
+  "digestPaper": "7f8455a5",
+  "digestTransparent": "c80ea1ee",
+  "digestWhite": "d91b481c",
+  "digestPigment": "4006ae2a",
+  "byteLength": 262144,
+  "coverAlphaBeforeAdvect": 0.82,
+  "coverAlphaPeakBefore": 0.91,
+  "coverAlphaAfterAdvect": 0.82,
+  "coverAlphaPeakAfter": 0.91,
+  "coveredPaperWhitePct": 0,
+  "renderer": "WebKit WebGL",
+  "verdict": "MEDIUM-ENGINE CAPTURED"
+}
