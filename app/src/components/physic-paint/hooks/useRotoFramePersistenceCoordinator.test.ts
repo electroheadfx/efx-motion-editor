@@ -2,11 +2,14 @@ import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_LIGHT } from '@efxlab/efx-watercolor';
 import type {
   PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoPhysicalRenderSource,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
+  lightCacheTerm,
+  recordsAsRuntimeFrames,
   rejectRotoLoopPlaceholderSource,
   resolveRotoCompletedGroupPaintTarget,
   resolveRotoLivePixelIdentityKey,
@@ -65,7 +68,9 @@ describe('Roto frame persistence coordinator launch publication', () => {
     expect(coordinatorSource).not.toContain('encodeRotoPhysicalLaunchDocument');
     expect(coordinatorSource).not.toContain('cachedRotoFrames: frames');
     expect(coordinatorSource).toContain('? { ...current, startFrame: document.cursorAppFrame }');
-    expect(coordinatorSource).toContain('recordsAsRuntimeFrames(document)');
+    // 64-19: the tolerant projection now requires the document light beside the
+    // document (the frame cache fingerprint carries the light term).
+    expect(coordinatorSource).toContain('recordsAsRuntimeFrames(document, light)');
   });
 });
 
@@ -613,5 +618,82 @@ describe('261029-lsr script epoch stamp and compare (D-03)', () => {
     const compare = captureLivePixelsSource.indexOf('isStillCurrent: scriptEpoch === undefined');
     expect(compare).toBeGreaterThan(captureCall);
     expect(captureLivePixelsSource).toContain('() => (inputRef.current.getScriptEpoch?.() ?? null) === scriptEpoch');
+  });
+});
+
+// ============================================================
+// 64-19 (CR-01 / MED-17) — the document light is part of the REAL-FRAME
+// cache fingerprint.
+//
+// CR-01: the roto frame cache revision was built from the physical content
+// revision plus a PAPER-ONLY term, so a settled wash kept serving pixels baked
+// under a superseded light. The light enters the term beside the paper, built
+// from the canonical `lightSignature` (never a retyped normalization), and the
+// projection functions REQUIRE it so a forgotten call site is a compile error.
+// ============================================================
+describe('64-19 light term in the real-frame cache fingerprint (CR-01, MED-17)', () => {
+  const lightDocument = (): PhysicPaintRotoPhysicalDocument => ({
+    capacity: 4,
+    realKeyRecords: [{
+      kind: 'real-key',
+      keyId: 'key-light',
+      appFrame: 0,
+      payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('QQ==') },
+    }],
+    groupOverrideRecords: [],
+    interpolation: { enabled: false, mode: 'duplicate' },
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 0,
+    revision: 'physical-light',
+    loopClips: [],
+    incomingInterpolationBreakKeyIds: [],
+  });
+
+  it('the term law: absent and the explicit DEFAULT_LIGHT are ONE term, real lights differ', () => {
+    // An absent light and the explicit engine default render the SAME pixels —
+    // two terms for one picture would rotate the cache for nothing.
+    expect(lightCacheTerm(undefined)).toBe(':light:default');
+    expect(lightCacheTerm({ ...DEFAULT_LIGHT })).toBe(':light:default');
+    const warm = lightCacheTerm({ ...DEFAULT_LIGHT, azimuth: 210 });
+    const cool = lightCacheTerm({ ...DEFAULT_LIGHT, azimuth: 40 });
+    expect(warm).not.toBe(cool);
+  });
+
+  it('two lights rotate the real-frame revision; the same light twice is the identical revision', () => {
+    const document = lightDocument();
+    const warm = recordsAsRuntimeFrames(document, { ...DEFAULT_LIGHT, azimuth: 210 });
+    const cool = recordsAsRuntimeFrames(document, { ...DEFAULT_LIGHT, azimuth: 40 });
+    const warmAgain = recordsAsRuntimeFrames(document, { ...DEFAULT_LIGHT, azimuth: 210 });
+    expect(warm).toHaveLength(1);
+    expect(warm[0].cacheRevision).not.toBe(cool[0].cacheRevision);
+    expect(warmAgain[0].cacheRevision).toBe(warm[0].cacheRevision);
+    // No spurious rotation: an absent light keys exactly like the explicit default.
+    expect(recordsAsRuntimeFrames(document, undefined)[0].cacheRevision)
+      .toBe(recordsAsRuntimeFrames(document, { ...DEFAULT_LIGHT })[0].cacheRevision);
+    // And the paper term still rides beside it (same document, no background).
+    expect(warm[0].cacheRevision).toContain(warmAgain[0].cacheRevision);
+  });
+
+  it('all three real-frame revision sites pass the light term — the module has exactly three calls', () => {
+    const sites = coordinatorSource.split('buildRotoRealCacheRevision(').slice(1);
+    expect(sites, 'exactly three real-frame revision sites').toHaveLength(3);
+    for (const site of sites) {
+      expect(site.slice(0, 400), 'each suffix carries the light term').toContain('lightCacheTerm(');
+    }
+  });
+
+  it('the accepted-live-frame revision reads the light from the hook input at call time', () => {
+    expect(coordinatorSource, 'the input carries the document light read').toContain(
+      'getDocumentLight: () => PaintDocumentLight | undefined;',
+    );
+    expect(coordinatorSource, 'the accepted frame embeds the live light term').toContain(
+      'lightCacheTerm(inputRef.current.getDocumentLight())',
+    );
+    // The publish projection resolves the same read — one light source.
+    expect(coordinatorSource, 'the publish projection resolves the same read').toContain(
+      'recordsAsPublishableRuntimeFrames(document, inputRef.current.getDocumentLight())',
+    );
   });
 });

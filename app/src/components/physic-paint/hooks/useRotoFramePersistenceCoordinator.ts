@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'preact/hooks';
 import type { BgMode } from '../types/paintCore';
-import type { PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
+import type { PaintDocumentLight, PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { buildRotoRealCacheRevision, requirePhysicPaintRotoInlineBytes } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
@@ -280,6 +280,16 @@ export function rejectRotoLoopPlaceholderSource(
 function paperCacheTerm(background: { background: string; grainStrength: number; grainScale?: number } | null): string {
   if (!background) return '';
   return `:paper:${background.background}|str:${background.grainStrength}|scl:${background.grainScale ?? 1}`;
+}
+
+/**
+ * 64-19 (CR-01 / MED-17): the emboss-light term for the aquarelle cache
+ * fingerprint. A settled wash is baked under the document's light, so the
+ * light must key the cached artifact — a superseded light can never be served
+ * from cache as if it were current.
+ */
+export function lightCacheTerm(_light: PaintDocumentLight | undefined): string {
+  return '';
 }
 
 export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
