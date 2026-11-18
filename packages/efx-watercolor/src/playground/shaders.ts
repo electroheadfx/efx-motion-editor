@@ -294,8 +294,9 @@ vec3 fromSRGB(vec3 c){
 }`;
 
 // 64-20 — the ONE film-presence reconstruction, shared by the coverage
-// transport (`advectCoverFS`) and the coverage deposit (`coverMaskFS`); a
-// second, divergent criterion is exactly what this constant exists to prevent.
+// transport (`advectCoverFS`) and the capture-time clearance
+// (`coverClearFS`); a second, divergent criterion is exactly what this
+// constant exists to prevent.
 // It rebuilds the display's own reading of the combined paint film: the mobile
 // (ink) and fixed layers summed the way displayFS sums them, granulated by the
 // display's own literal, run through the display's own basis block
@@ -314,8 +315,8 @@ vec3 fromSRGB(vec3 c){
 //
 // The snippet declares the film channels and the granulation it reads and
 // nothing else: each including program declares its own uPaper (advectCoverFS
-// directly, coverMaskFS through FOOTPRINT_MASK), so neither redeclares a
-// sampler the other already bound.
+// directly, coverClearFS through its own sampler line), so neither redeclares
+// a sampler the other already bound.
 const FILM_PRESENCE = `
 uniform sampler2D uInkA, uInkB, uFixedA, uFixedB;
 uniform float uGranulation;
@@ -571,29 +572,27 @@ void main(){
 }`;
 
 // SPIKE 001 — the coverage channel. Composited with ONE / ONE_MINUS_SRC_ALPHA:
-//   cover <- a * p + cover * (1 - a * p)
+//   cover <- a + cover * (1 - a)
 // the union of every dab's coverage. The compositor reads it as the pigment
 // layer's alpha (displayFS mode 4), so a body-heavy stroke hides the cached
 // base underneath instead of punching a hole in it.
 //
-// 64-20 — `p` is the shared film-presence gate, evaluated on the film this dab
-// leaves behind: the two deposit draws above have already written their C * a
-// into this layer and coverPass has already eroded the fixed layer, so the
-// snippet reads the dab's own post-deposit film. A dab whose film leaves the
-// texel paper-white on the scan's 8-bit grid deposits nothing (the union draw
-// is the identity for it, so the texel keeps its value exactly); a dab whose
-// film visibly hides the sheet deposits the same coverage as before. This is
-// the same FILM_PRESENCE definition `advectCoverFS` uses — one definition,
-// two programs, one criterion for "this texel is covered".
+// 64-20 — the deposit is deliberately UNGATED. The plan's film-coherence law
+// is the TRANSPORT gate in `advectCoverFS` ("the deposit is already clean"),
+// and the census is closed at the capture boundary by `coverClearFS`, where
+// the FINAL film is known. A deposit gate would have read the dab's own
+// TRANSIENT film — the ink it is still laying down, with the fixed layer
+// already eroded — and measured a partially-covered sheet as paper-white
+// mid-stroke: on white-over-blue the Body-60 partial cover (a legitimate
+// 0.08 gain over the pigment's own darkness) collapsed to zero. So the union
+// keeps its committed write, and the clearance is the one place the exported
+// coverage is cleared where the finished film reads paper-white.
 export const coverMaskFS = `${HEADER}${FOOTPRINT_MASK}
 layout(location=0) out vec4 o0;
 uniform float uAmount, uDensity;
-${FILM_PRESENCE}
 void main(){
   float m = footprintMask();
-  float a = uAmount * (1.0 - exp(-uDensity * m));
-  float p = filmPresence(vUv);
-  o0 = vec4(a * p);
+  o0 = vec4(uAmount * (1.0 - exp(-uDensity * m)));
 }`;
 
 // 64-20 decision A — the capture-time clearance. The two gates above stop

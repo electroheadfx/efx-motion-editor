@@ -2432,19 +2432,15 @@ export class WatercolorEngine {
     g.draw(this.ink.read, rect);
     gl.disable(gl.BLEND);
     // 3) coverage <- a + cover * (1 - a): the union across the stroke's dabs.
-    // 64-20: the draw is gated by the display's own reconstruction of the film
-    // this dab leaves behind — the ink the two draws above just painted and
-    // the fixed layer coverPass already eroded — through the ONE FILM_PRESENCE
-    // snippet the transport shares. uPaper is unit 1 already (bindFootprint),
-    // so the gate samples the sheet the display granulates on.
+    // 64-20: the deposit stays UNGATED. The film-coherence law is the transport
+    // gate; gating here read the dab's own transient film (the ink it is still
+    // laying down, with the fixed layer already eroded) and measured a partial
+    // cover as paper-white mid-stroke — white-over-blue Body 60 lost its whole
+    // coverage gain. The census is closed at the capture boundary instead, on
+    // the final film (see readback / clearPaperWhiteCoverage).
     const m = this.programs.coverMask;
     m.bind();
     this.bindFootprint(m, x, y, r, angle, 0, grain, grainThr);
-    gl.uniform1i(m.u.uInkA, g.bindTex(2, this.ink.read.tex[0]));
-    gl.uniform1i(m.u.uInkB, g.bindTex(3, this.ink.read.tex[1]));
-    gl.uniform1i(m.u.uFixedA, g.bindTex(4, this.fixed.tex[0]));
-    gl.uniform1i(m.u.uFixedB, g.bindTex(5, this.fixed.tex[1]));
-    gl.uniform1f(m.u.uGranulation, this.params.granulation * 0.55);
     gl.uniform1f(m.u.uAmount, amount);
     gl.uniform1f(m.u.uDensity, density);
     gl.enable(gl.BLEND);
