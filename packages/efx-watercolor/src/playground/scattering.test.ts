@@ -268,7 +268,13 @@ describe('the scattering transport and the white-channel retirement (MED-32 / ME
   it('has no gouache coverage term left in the composite or the layout comment', () => {
     const display = SHADERS_SOURCE.slice(SHADERS_SOURCE.indexOf('export const displayFS'))
     expect(display.length, 'displayFS is present').toBeGreaterThan(0)
-    expectNotContains(display, 'cov')
+    // SPIKE 001 reintroduces a `cov` variable for the coverage CHANNEL (the
+    // mode-4 alpha term), not the retired gouache coverage: exactly one read
+    // and its one use, and no gouache term anywhere.
+    expect(
+      (display.match(/\bcov\b/g) ?? []).length,
+      'one coverage-channel variable, read once and used once',
+    ).toBe(2)
     expectNotContains(display, 'gouache')
     // The mode structure, the paper multiply and every remaining uniform stay.
     expectContains(display, 'if (uMode == 4){')
@@ -305,15 +311,25 @@ describe('the scattering transport and the white-channel retirement (MED-32 / ME
       expectNotContains(source, 'coeffs:')
     }
     // The engine's ONE Pigment-shaped literal is the per-dab interpolation
-    // scratch, and it carries coeffs only.
+    // scratch, and it carries coeffs only. SPIKE 001: the coverage deposit
+    // receives the same coefficients as a typed parameter, so the third token
+    // is a method annotation, never a second pigment record.
     const scratch = sliceBetween(ENGINE_SOURCE, 'private readonly scratchPigment', 'private nav = false;')
     expectContains(scratch, 'coeffs: Float32Array')
     expectContains(scratch, 'coeffs: new Float32Array(COEFFS)')
     expectNotContains(scratch, 'white')
     expect(
       (ENGINE_SOURCE.match(/coeffs:/g) ?? []).length,
-      'two coeffs tokens, both in the scratch declaration',
+      'three coeffs tokens: the scratch type and value, plus the coverageDeposit parameter',
+    ).toBe(3)
+    expect(
+      (ENGINE_SOURCE.match(/coeffs: Float32Array/g) ?? []).length,
+      'the only bare annotations are the scratch field and the coverageDeposit parameter',
     ).toBe(2)
+    expectContains(
+      ENGINE_SOURCE,
+      'private coverageDeposit(x: number, y: number, r: number, angle: number, amount: number, density: number, coeffs: Float32Array,',
+    )
     // The stroke payload the app records never carries a pigment record, so no
     // shipped project file can hold the retired channel.
     expectNotContains(PAYLOAD_SOURCE, 'Pigment')
@@ -422,14 +438,14 @@ describe('the composition of order and opacity (MED-36)', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'ten target allocations, unchanged by scattering',
-    ).toBe(10)
+      'eleven target allocations: the coverage pair is the eleventh (SPIKE 001)',
+    ).toBe(11)
     expectContains(alloc, 'this.relief = g.target(')
     const programs = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
     expect(
       (programs.match(/this\.g\.program\(/g) ?? []).length,
-      'twenty-one programs, unchanged by scattering',
-    ).toBe(21)
+      'twenty-three programs: coverDeposit and coverMask join the literal (SPIKE 001)',
+    ).toBe(23)
     expectContains(programs, 'relief: this.g.program(S.reliefFS)')
     expectContains(programs, 'lift: this.g.program(S.liftFS)')
     const history = sliceBetween(ENGINE_SOURCE, 'private allocateHistory()', 'private docTargets()')

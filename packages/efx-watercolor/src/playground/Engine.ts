@@ -3,7 +3,7 @@ import { GL, type DoubleTarget, type Format, type Program, type Rect, type Targe
 import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
 import * as S from './shaders';
-import { COEFFS, coeffsOpacity, pigmentFromHex, type Pigment } from './spectral';
+import { COEFFS, pigmentFromHex, type Pigment } from './spectral';
 // 61-04: the published width-factor range lives in the pure spine module —
 // one authority for the bound, shared by the profile law and this channel.
 import { ANCHOR_WIDTH_MAX, ANCHOR_WIDTH_MIN } from '../vector/spine';
@@ -118,17 +118,16 @@ export interface EngineCallbacks {
    * preview can reproduce the erased shape.
    */
   onLiftDab?(x: number, y: number, r: number, amount: number, angle: number): void;
-  /**
-   * quick 261117-tq7: one applied cover dab (doc uv y up, radius in document
-   * heights, amount = the effective per-dab cover). The Studio previews it on
-   * a cooked frame's cached base so the cover replaces the base's pigment while
-   * the user draws; `angle` is the same tip angle onLiftDab carries.
-   */
-  onCoverDab?(x: number, y: number, r: number, amount: number, angle: number, density: number): void;
 }
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp';
-export type ExportBackground = 'transparent' | 'paper' | 'white';
+/**
+ * `pigment` (SPIKE 001) is the coverage-aware COMPOSITOR view: straight-alpha
+ * pigment whose alpha is max(1 - min(rgb), coverage), so a covering stroke
+ * carries real opacity. The established `transparent` stays the OPAQUE
+ * transmittance the cache stores and composites with multiply.
+ */
+export type ExportBackground = 'transparent' | 'paper' | 'white' | 'pigment';
 /** `texture` false exports the paper (or white) as a flat sheet; true uses the on-screen texture strength. */
 export interface ExportOptions { format: ExportFormat; background: ExportBackground; quality?: number; texture?: boolean }
 
@@ -183,21 +182,17 @@ const RELIEF_BUMP = 1.0;
 // from 3.0 to 2.3, so even a full press stays under the earlier, too-strong
 // look, and existing relief bytes need no repaint.
 const COVER_GAIN = 2;
-// quick 261117-tq7 (rev 4): the per-dab erase is the dab's own LAYER ALPHA —
-// `1 - exp(-density * mask)`, where `density` is the optical density of this
-// dab's deposit at full tip mask (pigment-scaled, see coverDensity) — never a
-// coefficient scale times an arbitrary gain. Multiplied across the stroke's
-// overlapping dabs the erase is exactly the deposit's accumulated absorbance,
-// so it can never outrun the paint. A raw coefficient scale saturated on dense
-// pigments and erased the underlayer through textured tips: each dab reads a
-// different tip slice, so the linear erase compounded as a UNION of masks
-// while the deposit only ever summed to its own texture — paper-white streaks.
+// SPIKE 001: the coverage term's per-dab medium optical density. Coverage is a
+// property of the PAINT FILM (Body x the dab's paint volume), never of the
+// pigment's absorbance — rev-4 derived it from the pigment, so a near-white
+// pigment (layer alpha ~0.06) could never cover. With this constant a
+// full-pressure dab at Body 100 covers `1 - exp(-8 * amount)` of the underlayer
+// per dab (amount ~0.08 -> ~0.48), and overlapping dabs compose to the union.
+const COVER_MEDIUM_DENSITY = 8;
 const RELIEF_GAIN = 1.5;
 const RELIEF_ERODE = 0.5;
 /** The emboss thickness a feather touch still lays, as a share of full press. */
 const EMBOSS_PRESS_FLOOR = 0.15;
-/** Per-stamp scratch for the dab deposit's coefficient vector (no allocation). */
-const DEPOSIT_COEFFS = new Float32Array(COEFFS);
 
 // 61-04: `w` is the per-sample width factor (VEC-03). It rides the queued
 // sample — never a mutable engine field — so a sample can only ever be
@@ -381,7 +376,9 @@ export class WatercolorEngine {
   private fixed!: Target;
   private wet!: DoubleTarget;
   private relief!: Target;                     // Phase 64: paint thickness, one channel, engine-only
-  private preInk: Target | null = null;        // quick 261117-tq7: stroke-start mobile-ink snapshot (cover subtract), never undo state
+  // SPIKE 001: the pigment layer's coverage, one channel. A ping-pong pair from
+  // the start: 64-14 advects it with the ink and its undo needs both halves.
+  private cover!: DoubleTarget;
   private paper!: Target;
   private wetMask!: Target;                    // coarse "is there water here" map, read back to bound the sim
   private maskPixels = new Uint8Array(0);
@@ -458,10 +455,11 @@ export class WatercolorEngine {
       paperSwatch: this.g.program(S.paperSwatchFS),
       paperSheet: this.g.program(S.paperSheetFS),
       display: this.g.program(S.displayFS),
+      coverDeposit: this.g.program(S.coverDepositFS),
+      coverMask: this.g.program(S.coverMaskFS),
     };
-    // quick 261117-tq7: outside the literal on purpose — scattering.test.ts pins
-    // that literal's program count, and `programs` is a Record.
-    this.programs.inkCover = this.g.program(S.inkCoverFS);
+    // Phase 64: outside the literal on purpose — scattering.test.ts pins that
+    // literal's program count, and `programs` is a Record.
     this.programs.bodyCover = this.g.program(S.bodyCoverFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
@@ -530,6 +528,9 @@ export class WatercolorEngine {
     // Phase 64: the thickness field — one channel on the document grid, the same
     // shape `wet` uses. Not a ping-pong pair: nothing advects it.
     this.relief = g.target(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
+    // SPIKE 001: the coverage channel — one channel on the document grid. A
+    // ping-pong pair because 64-14 advects it and its undo needs both halves.
+    this.cover = g.double(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
     this.paper = g.target(this.dw, this.dh, [RGBA8], gl.LINEAR);
     this.wetMask = g.target(Math.ceil(this.dw / MASK_BLOCK), Math.ceil(this.dh / MASK_BLOCK), [RGBA8], gl.NEAREST);
     this.maskPixels = new Uint8Array(this.wetMask.w * this.wetMask.h * 4);
@@ -547,13 +548,15 @@ export class WatercolorEngine {
 
   /** The targets that hold the sheet (not the sim grids, not the history atlases). */
   private docTargets(): Target[] {
+    // SPIKE 001: the coverage pair is LAST, after the thickness, so the sheet
+    // wipe clears it with every other non-paper document target.
     return [this.velocity.read, this.velocity.write, this.pressure.read, this.pressure.write, this.divergence, this.curl,
-      this.ink.read, this.ink.write, this.fixed, this.wet.read, this.wet.write, this.paper, this.wetMask, this.relief];
+      this.ink.read, this.ink.write, this.fixed, this.wet.read, this.wet.write, this.paper, this.wetMask, this.relief,
+      this.cover.read, this.cover.write];
   }
 
   /** (Re)create a blank `w`×`h` sheet. Discards the painting. */
   private createDocument([w, h]: [number, number]) {
-    this.dropPreInk();
     const oldAspect = this.aspect;
     [this.dw, this.dh] = clampDocSize(w, h, this.maxSide);
     // a reference placed on paper of another shape would be stretched; fit it afresh
@@ -595,7 +598,6 @@ export class WatercolorEngine {
     [w, h] = clampDocSize(w, h, this.maxSide);
     const ow = this.dw, oh = this.dh;
     if (w === ow && h === oh) return;
-    this.dropPreInk();
     this.stroke = null;
     this.restoreStrokePigment();
     this.dropFill();
@@ -604,7 +606,7 @@ export class WatercolorEngine {
     const { g } = this;
     const ox = Math.round((w - ow) / 2), oy = Math.round((h - oh) / 2);
     const meta: StepMeta = { ...this.currentMeta(), whole: this.captureWhole(), paperOrigin: [...this.paperOrigin] };
-    const old = { targets: this.docTargets(), ink: this.ink.read, fixed: this.fixed, wet: this.wet.read, relief: this.relief };
+    const old = { targets: this.docTargets(), ink: this.ink.read, fixed: this.fixed, wet: this.wet.read, relief: this.relief, cover: this.cover.read };
     this.dw = w; this.dh = h;
     this.allocateTargets();
     this.history.beginBoundary({ kind: 'resize', label: `Resize ${w} × ${h}` }, meta, w, h);
@@ -619,6 +621,7 @@ export class WatercolorEngine {
     copy(old.wet, [this.wet.read, this.wet.write]);
     copy(old.fixed, [this.fixed]);
     copy(old.relief, [this.relief]);   // Phase 64: a resized sheet keeps its relief
+    copy(old.cover, [this.cover.read, this.cover.write]);   // SPIKE 001: and its coverage
     old.targets.forEach(t => g.disposeTarget(t));
 
     this.paperOrigin = [this.paperOrigin[0] - ox, this.paperOrigin[1] - oy];
@@ -745,11 +748,6 @@ export class WatercolorEngine {
     this.stroke = null;
     this.restoreStrokePigment();
     this.dropFill();
-    // quick 261117-tq7: preInk is NOT in the disposeTargets registry, so a
-    // stale snapshot would outlive the sweep with deleted textures — and
-    // armInkCover would then early-return on the dangling field, silently
-    // corrupting the first post-restore stroke. Release it with the rest.
-    this.dropPreInk();
     this.queue = [];
     if (this.ref) { this.gl.deleteTexture(this.ref.tex); this.ref = null; }
     this.g.disposeTargets();
@@ -1538,7 +1536,6 @@ export class WatercolorEngine {
 
   /** Wipe the paint as one undo step. The sheet (and its grain) stays. */
   clear() {
-    this.dropPreInk();
     this.stroke = null;
     this.restoreStrokePigment();
     this.queue = [];
@@ -1565,7 +1562,6 @@ export class WatercolorEngine {
    * re-arms the virtual clock and the RNG stream.
    */
   resetSheet() {
-    this.dropPreInk();
     this.stroke = null;
     this.restoreStrokePigment();
     this.queue = [];
@@ -1579,7 +1575,6 @@ export class WatercolorEngine {
   abortStroke() {
     const s = this.stroke;
     if (!s) return;
-    this.dropPreInk();
     this.stroke = null;
     this.restoreStrokePigment();
     this.queue = [];
@@ -1606,7 +1601,6 @@ export class WatercolorEngine {
   /** Step through history in either direction. */
   private travel(dir: 'undo' | 'redo', notify = true) {
     this.autoFix = false;   // the last step is no longer the settle-cap fix
-    this.dropPreInk();
     this.stroke = null;
     this.restoreStrokePigment();
     this.dropFill();
@@ -1711,7 +1705,6 @@ export class WatercolorEngine {
     this.tipTextures.clear();
     if (this.ref) this.gl.deleteTexture(this.ref.tex);
     this.ref = null;
-    this.dropPreInk();
     this.g.disposeTargets();
   }
 
@@ -1972,12 +1965,6 @@ export class WatercolorEngine {
         // the pigment, so the first dab carries its own vertex colour.
         s.widthFrom = s.widthTo = q.w;
         s.pigFrom = s.pigTo = q.pig ?? null;
-        // quick 261117-tq7: a cover can only replace wet ink if the stroke
-        // knows what the sheet held before its first dab. Raw Body on purpose:
-        // the curve is spent at the dab site, and 0 / non-brush arm nothing.
-        // The params guard keeps a bare prototype harness (Object.create, no
-        // field initializers) honest: no params means no Body, so no snapshot.
-        if (s.tool === 'brush' && this.params && this.params.body > 0) this.armInkCover();
         this.stampScripted(s, q.x, q.y, s.pr, 0, 0, 1, 0, q.w, 1);
         continue;
       }
@@ -2018,7 +2005,6 @@ export class WatercolorEngine {
     // resting in place: pigment keeps soaking in, water keeps pooling
     if (!s.moved && s.started && !s.ending && !startedThisTick) this.stampScripted(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1), 1);
     if (s.ending) {
-      this.dropPreInk();
       this.stroke = null;
       this.restoreStrokePigment();
       if (s.pointerId !== SCRIPT_POINTER) {
@@ -2119,15 +2105,12 @@ export class WatercolorEngine {
         // colours do not move; 0 is inert by construction, so the neutral gate
         // stays byte-identical.
         const coverAmount = Math.min(1, bodyCurve(P.body) * COVER_GAIN);
-        // quick 261117-tq7 (rev 4): the erase tracks THIS dab's own OPACITY.
-        // `coverDensity` is the optical density of the deposit at full mask, so
-        // the shader's `1 - exp(-density * mask)` composes across overlapping
-        // dabs to exactly the accumulated absorbance the paint adds: full
-        // replacement under an opaque body, and a genuine old/new mix on the
-        // tip's alpha rim and in the bristle gaps, where the deposit is thin
-        // (never the paper white a mask-union erase punched through textured
-        // tips). Body 0 never computes it: the neutral path stays byte-exact.
-        const coverDensity = coverAmount > 0 ? this.coverDensity(amount) : 0;
+        // SPIKE 001: the per-dab coverage density is the MEDIUM's, not the
+        // pigment's: `1 - exp(-density * mask)` composes across overlapping
+        // dabs to the union of the paint film, so a near-white pigment covers
+        // as fully as a black one. Body 0 never computes it: the neutral path
+        // stays byte-exact.
+        const coverDensity = coverAmount > 0 ? COVER_MEDIUM_DENSITY * amount : 0;
         // The thickness keeps the DELIVERED erode law — the un-gained cover
         // amount times RELIEF_ERODE — never the paint opacity. The erode
         // exists to drop the UNDERLAYER's impasto; scaling it with the paint
@@ -2158,11 +2141,12 @@ export class WatercolorEngine {
         this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
           // spec 06: the cover pass draws here, before this dab's deposit
           if (coverAmount > 0) this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
-          // quick 261117-tq7: the same Body order must reach MOBILE ink too.
-          // Unguarded: inkCover's own early return guards Body 0 and a snapshot
-          // that was never armed, and the deposit below must survive the erase.
-          this.inkCover(dx, dy, dr, angle, coverAmount, coverDensity, dryness, grainThr);
-          this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
+          // SPIKE 001: source-over inside the pigment layer, replacing "erase
+          // the underlayer, then deposit". No snapshot, no full-document pass,
+          // no cached-base punch callback. Body 0 keeps the additive brushInk
+          // path unchanged, so the neutral gate stays byte-identical.
+          if (coverAmount > 0) this.coverageDeposit(dx, dy, dr, angle, coverAmount, coverDensity, c, c1[3]!, dryness, grainThr);
+          else this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
           if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
           // soft brushes wet a little beyond the tip; textured ones keep their
           // edges. A waterless brush never wakes the fluid sim at all.
@@ -2313,16 +2297,14 @@ export class WatercolorEngine {
    * the dab deposits. One multiplicative draw, no tissue-water step: Body is
    * order, not water.
    *
-   * quick 261117-tq7 (rev 4): the erase mask is the deposit's own tip-space
-   * footprint (rotation, jitter, paper tooth) with the deposit's LOW cut but a
-   * WIDE inward ramp, softened before the tip square's cull, and its strength
-   * is the dab's own LAYER ALPHA at that mask — `1 - exp(-density * mask)`.
-   * Compounded across overlapping dabs this is exactly `exp(-density * SUM
-   * mask)`, the accumulated absorbance the deposit adds, so the erase can
-   * never outrun the paint: the body replaces, the tip's alpha rim and the
-   * bristle gaps keep a partial underlayer (the old/new mix the edge needs),
-   * and a textured tip's per-dab texture slices cannot union the erasure past
-   * the sum of the paint.
+   * The erase mask is the deposit's own tip-space footprint (rotation, jitter,
+   * paper tooth) with the deposit's LOW cut but a WIDE inward ramp, softened
+   * before the tip square's cull, and its strength is the SPIKE 001 coverage
+   * term `a = coverAmount * (1 - exp(-density * mask))` — the SAME `a` the
+   * coverage composite lets the paint film hide. `fixed` loses exactly what
+   * the film gains, so the body replaces the settled underlayer while the
+   * tip's alpha rim and the bristle gaps keep a partial underlayer (the
+   * old/new mix the edge needs).
    * The Body row sits between Viscosity and Emboss (D-07); spec 08's
    * scattering composes on top through the same curve.
    *
@@ -2352,27 +2334,67 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uAmount, reliefAmount);
     gl.uniform1f(p.u.uShape, 0);
     g.draw(this.relief, rect);
-    // quick 261117-tq7: the cached-base seam mirrors onLiftDab — the Studio
-    // punches the same deposit footprint and the same alpha-shaped fraction
-    // into a reopened frame's base.
-    this.callbacks.onCoverDab?.(x, y, r, amount, angle, density);
     gl.disable(gl.BLEND);
   }
 
   /**
-   * quick 261117-tq7 (rev 4): the optical density of ONE this-dab deposit at
-   * full tip mask, from the same pigment coefficients the dab stamps. The
-   * cover's `1 - exp(-density * mask)` is the deposit's own layer alpha, so
-   * overlapping dabs compose to exactly the absorbance the paint accumulates.
-   * `coeffsOpacity` is displayFS mode 4's alpha — the compositor's own opacity,
-   * in sRGB — not a coefficient scale masquerading as one.
+   * SPIKE 001: the coverage composite — source-over inside the pigment layer,
+   * replacing "erase the underlayer, then deposit". Per dab, on one shared
+   * footprint rect, three scissored draws:
+   *
+   *   ink   <- ink * (1 - a) + C * a      (attenuate, then add the masstone)
+   *   fixed <- fixed * (1 - a)            (settled underlayer, same a; coverPass)
+   *   cover <- cover * (1 - a) + a        (the compositor's layer alpha)
+   *
+   * `a = amount * (1 - exp(-density * footprintMask))` with `density` the
+   * MEDIUM's per-dab density (see COVER_MEDIUM_DENSITY), so coverage is
+   * pigment-independent. `C` is this dab's masstone absorbance, so overlapping
+   * dabs are idempotent: the colour converges on the chosen pigment instead of
+   * summing absorbances (the black drift), and a near-white pigment covers
+   * because its coverage does not come from its darkness. No snapshot, no
+   * ping-pong, no full-document pass.
    */
-  private coverDensity(amount: number): number {
-    const c = this.pigment.coeffs;
-    for (let k = 0; k < COEFFS; k++) DEPOSIT_COEFFS[k] = c[k] * amount;
-    const opacity = coeffsOpacity(DEPOSIT_COEFFS);
-    if (!(opacity > 0)) return 0;
-    return -Math.log(Math.max(1e-6, 1 - opacity));
+  private coverageDeposit(x: number, y: number, r: number, angle: number, amount: number, density: number, coeffs: Float32Array, scatter: number, grain: number, grainThr: number) {
+    const { gl, g } = this;
+    // Same active/undo/dirty bookkeeping as brushInk: this draw IS the deposit.
+    this.touch(this.stampRect(x, y, r, this.dw, this.dh, 1.5));
+    const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
+    // 1) mobile ink *= (1 - a) — all seven coefficients and S.
+    const c = this.programs.bodyCover;
+    c.bind();
+    this.bindFootprint(c, x, y, r, angle, 0, grain, grainThr);
+    gl.uniform1f(c.u.uAmount, amount);
+    gl.uniform1f(c.u.uDensity, density);
+    gl.uniform1f(c.u.uShape, 1);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+    g.draw(this.ink.read, rect);
+    gl.disable(gl.BLEND);
+    // 2) + C * a, with the dab's scattering added to the channel's S.
+    const d = this.programs.coverDeposit;
+    d.bind();
+    this.bindFootprint(d, x, y, r, angle, 0, grain, grainThr);
+    gl.uniform4f(d.u.uColor0, coeffs[0]!, coeffs[1]!, coeffs[2]!, coeffs[3]!);
+    gl.uniform4f(d.u.uColor1, coeffs[4]!, coeffs[5]!, coeffs[6]!, scatter);
+    gl.uniform1f(d.u.uAmount, amount);
+    gl.uniform1f(d.u.uDensity, density);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    g.draw(this.ink.read, rect);
+    gl.disable(gl.BLEND);
+    // 3) coverage <- a + cover * (1 - a): the union across the stroke's dabs.
+    const m = this.programs.coverMask;
+    m.bind();
+    this.bindFootprint(m, x, y, r, angle, 0, grain, grainThr);
+    gl.uniform1f(m.u.uAmount, amount);
+    gl.uniform1f(m.u.uDensity, density);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    g.draw(this.cover.read, rect);
+    gl.disable(gl.BLEND);
   }
 
   private brushWet(x: number, y: number, r: number, angle: number, amount: number, round: number, grain: number, grainThr: number) {
@@ -2385,100 +2407,6 @@ export class WatercolorEngine {
     gl.disable(gl.BLEND);
     this.wetPeak = Math.max(this.wetPeak * this.wetDecay(), amount);
     this.lastWet = this.clock();
-  }
-
-  /**
-   * quick 261117-tq7 (spec 09 law 3): snapshot the MOBILE pigment at stroke
-   * start so the cover pass can subtract what it crosses while that paint is
-   * still wet. The two attachments are copied POSITIONALLY so attachment
-   * roles never cross.
-   *
-   * quick 261117-tq7 (rev 4, UAT round 3): arming is SELF-HEALING. A snapshot
-   * that outlived its stroke (a missed dropPreInk on an early-return path)
-   * used to survive — the old `preInk !== null` early return — and the next
-   * stroke's cover subtracted that stale density from the live ink
-   * (`ink - f * pre`), deepening coefficients negative: hue shifts and paint
-   * that vanishes. Release any stale snapshot before the copy.
-   */
-  private armInkCover() {
-    this.dropPreInk();
-    const { gl, g } = this;
-    this.preInk = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);
-    this.ink.read.views.forEach((v, i) => g.blit(v, 0, 0, this.preInk!.views[i], 0, 0, this.dw, this.dh));
-  }
-
-  /**
-   * quick 261117-tq7 (spec 09 law 3): remove the stroke-start snapshot from the
-   * MOBILE ink under the same deposit footprint the settled cover uses, so the
-   * underlayer is replaced while it is still wet instead of surviving in the
-   * bristle gaps. Only the snapshot's current amount is removed:
-   *
-   *   ink_new = ink - f * pre        (inkCoverFS, full-document ping-pong)
-   *   pre_new = pre * (1 - f)        (bodyCoverFS into preInk, right after)
-   *
-   * f = amount * (1 - exp(-density * footprintMask)), the dab's own layer
-   * alpha — the same fraction coverPass erases the settled pool with and the
-   * same pair emitted to the cached-base punch. The pair is exactly the spec's
-   * subtraction, composed geometrically across overlapping dabs instead of
-   * overshooting: the first dab removes f*P, the next f*(1-f)*P, and so on.
-   * The covering stroke's own pigment is deposited after this draw and is never
-   * part of the snapshot, so it keeps its density and its hue.
-   *
-   * The draw is a FULL-DOCUMENT ping-pong: ink.read is bound as the sampler
-   * input and ink.write is the render target, with NO rect — a scissor would
-   * leave the untouched part of the write half stale, and that half becomes the
-   * live read after the swap. Blending is OFF for the same reason: the
-   * destination here is the OTHER half of the pair, not a copy of the sampled
-   * ink, so blending against it would resurrect last frame's values; the
-   * subtraction is evaluated against the sampled ink instead. Outside the
-   * footprint the mask is exactly 0, so the shader emits the sampled texel
-   * unchanged — the identity copy the swap relies on.
-   *
-   * An unarmed snapshot or a non-positive amount draws nothing — that is the
-   * guard the call site relies on. No touch()/protect here: the stamp's
-   * coverRect already covers this draw and brushes pool 0 in the same stamp.
-   */
-  private inkCover(x: number, y: number, r: number, angle: number, amount: number, density: number, grain: number, grainThr: number) {
-    if (this.preInk === null || !(amount > 0)) return;
-    const { gl, g } = this;
-    const p = this.programs.inkCover;
-    p.bind();
-    // Units 0/1 are the shared footprint's tip and paper; the snapshot and the
-    // live ink take 2..5 so bindFootprint can never shadow them.
-    this.bindFootprint(this.programs.inkCover, x, y, r, angle, 0, grain, grainThr);
-    gl.uniform1i(p.u.uPreA, g.bindTex(2, this.preInk.tex[0]));
-    gl.uniform1i(p.u.uPreB, g.bindTex(3, this.preInk.tex[1]));
-    gl.uniform1i(p.u.uInkA, g.bindTex(4, this.ink.read.tex[0]));
-    gl.uniform1i(p.u.uInkB, g.bindTex(5, this.ink.read.tex[1]));
-    gl.uniform1f(p.u.uAmount, amount);
-    gl.uniform1f(p.u.uDensity, density);
-    gl.uniform1f(p.u.uShape, 1);
-    gl.disable(gl.BLEND);
-    g.draw(this.ink.write);
-    this.ink.swap();
-    // Decay the snapshot by (1 - f) with the SAME mask: the next dab removes
-    // only what remains, so overlapping dabs compose geometrically instead of
-    // subtracting the whole snapshot again. The stroke's own ink is never part
-    // of this decay.
-    const c = this.programs.bodyCover;
-    c.bind();
-    this.bindFootprint(this.programs.bodyCover, x, y, r, angle, 0, grain, grainThr);
-    gl.uniform1f(c.u.uAmount, amount);
-    gl.uniform1f(c.u.uDensity, density);
-    gl.uniform1f(c.u.uShape, 1);
-    const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
-    gl.enable(gl.BLEND);
-    gl.blendEquation(gl.FUNC_ADD);
-    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
-    g.draw(this.preInk, rect);
-    gl.disable(gl.BLEND);
-  }
-
-  /** quick 261117-tq7: release the pre-stroke snapshot — a transient, never undo state. */
-  private dropPreInk() {
-    if (this.preInk === null) return;
-    this.g.disposeTarget(this.preInk);
-    this.preInk = null;
   }
 
   /** Rect (in texels of a w×h grid) covered by a stamp of radius r (doc heights). */
@@ -2827,6 +2755,8 @@ export class WatercolorEngine {
     gl.uniform1i(p.u.uRef, g.bindTex(6, ref ? ref.tex : this.paper.tex[0]));
     // Phase 64: the paint thickness field takes texture unit 7 (0-6 are taken).
     gl.uniform1i(p.u.uRelief, g.bindTex(7, this.relief.tex[0]));
+    // SPIKE 001: the pigment layer's composited coverage takes unit 8.
+    gl.uniform1i(p.u.uCover, g.bindTex(8, this.cover.read.tex[0]));
     // Degrees become radians once, at this boundary — the shader reads radians.
     gl.uniform1f(p.u.uLightAzimuth, (this.light.azimuth * Math.PI) / 180);
     gl.uniform1f(p.u.uLightElevation, (this.light.elevation * Math.PI) / 180);

@@ -134,12 +134,17 @@ describe('thickness target allocation (MED-14)', () => {
     expect(declarations).toHaveLength(1)
   })
 
-  it('lists the thickness target LAST in docTargets, so the sheet wipe clears it', () => {
+  it('lists the coverage pair LAST in docTargets, with the thickness immediately before it', () => {
     const body = sliceBetween(ENGINE_SOURCE, 'private docTargets(): Target[] {', 'private createDocument(')
     const openIndex = body.indexOf('return [')
     expect(openIndex).toBeGreaterThanOrEqual(0)
     const entries = splitTopLevel(extractBracket(body, openIndex + 'return '.length))
-    expect(entries[entries.length - 1]).toBe('this.relief')
+    // SPIKE 001: the coverage pair closes the list, so the sheet wipe clears it
+    // too; the thickness keeps its single view and sits immediately before it.
+    const last = entries.length - 1
+    expect(entries[last]).toBe('this.cover.write')
+    expect(entries[last - 1]).toBe('this.cover.read')
+    expect(entries[last - 2]).toBe('this.relief')
     expect(entries.filter((entry) => entry.includes('relief'))).toHaveLength(1)
     // clear() and resetSheet() both wipe every non-paper document target.
     const wipes = ENGINE_SOURCE.match(

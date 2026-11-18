@@ -142,7 +142,8 @@ describe('displayFS emboss block (MED-15)', () => {
     expectContains(source, 'float tMin = min(min(tSrgb.r, tSrgb.g), tSrgb.b);')
     expectContains(source, 'vec3 lit = vec3(tMin) + (tSrgb - vec3(tMin)) * shade;')
     expectContains(source, 'o = vec4(lit, 1.0);')
-    expectContains(source, 'float alpha = 1.0 - tMin;')
+    // SPIKE 001: mode 4's alpha is the coverage composite, still unlit.
+    expectContains(source, 'float alpha = clamp(max(darkAlpha, cov), 0.0, 1.0);')
     expectContains(source, 'vec3 litLinear = shade == 1.0 ? rgb : fromSRGB(lit);')
     // Scaling the linear transmittance darkened the darkest bands into an
     // outline and gave the stored sheet's cached base a lit alpha.
@@ -186,7 +187,10 @@ describe('displayFS emboss block (MED-15)', () => {
     // Mode 4's early return reads the unshaded reconstruction and scales only
     // the premultiplied colour; alpha is byte-for-byte untouched.
     const mode4 = sliceBetween(source, 'if (uMode == 4){', 'if (uMode == 2){')
-    expectContains(mode4, 'vec3 pigment = alpha > 0.0 ? (tSrgb - vec3(tMin)) / alpha : vec3(0.0);')
+    // SPIKE 001: the reconstruction is over WHITE through the (possibly
+    // coverage-raised) alpha, so it reduces to the old formula at cover 0.
+    expectContains(mode4, 'vec3 pigment = alpha > 0.0 ? (tSrgb - vec3(1.0 - alpha)) / alpha : vec3(0.0);')
+    expectContains(mode4, 'pigment = clamp(pigment, 0.0, 1.0);')
     expectContains(mode4, 'o = vec4(pigment * alpha * shade, alpha);')
     expect(/alpha\s*\*=\s*shade/.test(mode4), 'alpha must never be scaled by the shade').toBe(false)
 
@@ -271,9 +275,10 @@ describe('engine light state (MED-15)', () => {
     for (const name of ['uLightAzimuth', 'uLightElevation', 'uLightIntensity', 'uReliefBump']) {
       expectContains(body, `p.u.${name}`)
     }
-    // Units 0..7, no collision: ink 0-1, fixed 2-3, wet 4, paper 5, ref 6, relief 7.
+    // Units 0..8, no collision: ink 0-1, fixed 2-3, wet 4, paper 5, ref 6,
+    // relief 7, coverage 8 (SPIKE 001 — an addition, never a replacement).
     const binds = [...body.matchAll(/g\.bindTex\((\d+),/g)].map((match) => Number(match[1]))
-    expect(binds).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    expect(binds).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8])
     // Degrees become radians once, at this boundary.
     expect(body.match(/Math\.PI\) \/ 180/g) ?? []).toHaveLength(2)
     // The bump is a fixed document-space scale, never a zoom-dependent value.

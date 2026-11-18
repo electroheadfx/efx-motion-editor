@@ -397,53 +397,46 @@ void main(){
   o1 = vec4(f);
 }`;
 
-// quick 261117-tq7 (spec 09 law 3): the pre-stroke ink cover. The seven stored
-// coefficients are SIGNED spectral projections, so neither a per-channel share
-// (it collapses for ink_c < 0 and inverts bands) nor a uniform scale of the
-// whole texel (it also erases the covering stroke's own ink, punching white
-// holes through a textured deposit) can produce order. The cover therefore
-// removes ONLY the snapshot's CURRENT amount, under the SAME footprint mask the
-// dab deposits with:
+// SPIKE 001 — the coverage composite's SOURCE term. The rev-4 order was
+// "erase the underlayer by f, then add the per-dab deposit d"; this model
+// composites the paint film over the underlayer instead:
 //
-//   ink_new = ink - f * pre        (this shader)
-//   pre_new = pre * (1 - f)        (the caller's bodyCoverFS decay, right after)
+//   ink <- ink * (1 - a) + C * a        (the caller attenuates first)
+//   a   = coverAmount * (1 - exp(-uDensity * footprintMask))
 //
-// The pair is exactly the spec's subtraction, composed geometrically across
-// overlapping dabs instead of overshooting: the first dab removes f*P, the
-// next f*(1-f)*P, and so on. Only the pre-stroke pigment is touched — the
-// stroke's own deposit is never scaled, so the centre keeps its density and
-// its hue. Both operands are valid pigment coefficient vectors, so the result
-// is valid too; no channel can be zeroed independently (no inversion).
+// C is the pigment's MASSTONE coefficient vector (concentration 1), so the
+// colour saturates at the chosen pigment instead of accumulating: overlapping
+// dabs are idempotent, red over blue converges to red, and nothing drifts
+// toward the sum of both absorptions (black). Coverage uDensity is PIGMENT-
+// INDEPENDENT (the medium's paint volume), so a near-white pigment covers as
+// fully as a black one.
 //
-// f follows the DEPOSIT's own OPACITY, not a separate core or a raw
-// coefficient scale: the caller passes the per-dab optical density uDensity
-// (pigment-scaled) and f = 1 - exp(-uDensity * mask). The product of (1 - f)
-// over overlapping dabs is exp(-uDensity * SUM mask), exactly the accumulated
-// absorbance the deposit adds, so the underlayer is replaced as far as the
-// paint is opaque and survives in proportion on the tip's alpha rim and in
-// the bristle gaps (mixing, never paper white). Only the pre-stroke pigment
-// is touched, so the stroke's own density and hue are untouched.
-//
-// The stroke-start preInk snapshot is released with the stroke.
-//
-// Full-document draw, no scissor, no discard: the mask is exactly 0 outside the
-// footprint, so the shader emits the sampled texel unchanged there — and vUv
-// sits on texel centres, so the LINEAR sample is exact.
-export const inkCoverFS = `${HEADER}${FOOTPRINT_MASK}
+// Blended with ONE / ONE: after the caller's attenuation draw the destination
+// is ink*(1-a), and this adds C*a. o1's alpha is the dab's scattering S, which
+// is deposited additively (never multiplied by a) to keep the delivered veil.
+export const coverDepositFS = `${HEADER}${FOOTPRINT_MASK}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
-uniform sampler2D uPreA, uPreB, uInkA, uInkB;
-uniform float uAmount, uDensity, uShape;
+uniform vec4 uColor0, uColor1;
+uniform float uAmount, uDensity;
 void main(){
   float m = footprintMask();
-  float f = uAmount * mix(m, 1.0 - exp(-uDensity * m), uShape);
-  vec4 preA = texture(uPreA, vUv);
-  vec4 preB = texture(uPreB, vUv);
-  vec4 inkA = texture(uInkA, vUv);
-  vec4 inkB = texture(uInkB, vUv);
-  // Subtract only the snapshot's current contribution: own ink is untouched.
-  o0 = inkA - f * preA;
-  o1 = inkB - f * preB;
+  float a = uAmount * (1.0 - exp(-uDensity * m));
+  o0 = uColor0 * a;
+  o1 = vec4(uColor1.rgb * a, uColor1.a);
+}`;
+
+// SPIKE 001 — the coverage channel. Composited with ONE / ONE_MINUS_SRC_ALPHA:
+//   cover <- a + cover * (1 - a)
+// the union of every dab's coverage. The compositor reads it as the pigment
+// layer's alpha (displayFS mode 4), so a body-heavy stroke hides the cached
+// base underneath instead of punching a hole in it.
+export const coverMaskFS = `${HEADER}${FOOTPRINT_MASK}
+layout(location=0) out vec4 o0;
+uniform float uAmount, uDensity;
+void main(){
+  float m = footprintMask();
+  o0 = vec4(uAmount * (1.0 - exp(-uDensity * m)));
 }`;
 
 // Paper, generated per document and whenever the paper is changed, in two passes.
@@ -800,6 +793,7 @@ export const displayFS = `${HEADER}
 out vec4 o;
 uniform sampler2D uInkA, uInkB, uFixedA, uFixedB, uWet, uPaper;
 uniform sampler2D uRelief; // Phase 64: paint thickness field (one channel)
+uniform sampler2D uCover;  // SPIKE 001: pigment-layer coverage (one channel)
 uniform vec4 uView;       // canvas px -> document uv: uv = (fragCoord - xy) / zw
 uniform vec2 uTexel;      // document texel size
 uniform float uGranulation, uEdgeDarken;
@@ -904,15 +898,25 @@ ${displayBasisGLSL()}
   if (uMode == 4){
     // PIGMENT ALPHA (compositor display, 2026-10-26 round 2). The same
     // transmittance as mode 2, re-expressed as straight-alpha pigment so the
-    // live sheet stacks with REAL layer alpha: alpha = 1 - min(r,g,b),
-    // colour = (t - min) / alpha. Light washes stay translucent, dense pigment
-    // masks. displayFS writes PREMULTIPLIED pixels (F1 contract), so scale the
-    // colour by alpha. Storage/export keeps mode 2's opaque sheet.
+    // live sheet stacks with REAL layer alpha. Light washes stay translucent,
+    // dense pigment masks. displayFS writes PREMULTIPLIED pixels (F1 contract),
+    // so scale the colour by alpha. Storage/export keeps mode 2's opaque sheet.
     // Phase 64: the emboss scales only the premultiplied colour; the alpha is
     // derived from the UNSHADED reconstruction and stays byte-for-byte
     // untouched, so a lit stroke never changes its opacity.
-    float alpha = 1.0 - tMin;
-    vec3 pigment = alpha > 0.0 ? (tSrgb - vec3(tMin)) / alpha : vec3(0.0);
+    //
+    // SPIKE 001: alpha is the max of the darkness alpha and the composited
+    // COVERAGE. A near-white pigment's darkness alpha is ~0.06, which is why
+    // the punch machinery existed; coverage is pigment-independent, so white
+    // acrylic now hides what is beneath it. The colour keeps the same
+    // over-white identity — over a white fond source-over gives
+    // colour*alpha + (1-alpha) = t — and reduces exactly to the old formula
+    // (alpha = 1 - tMin, colour = (t - tMin) / alpha) wherever cover is 0.
+    float darkAlpha = 1.0 - tMin;
+    float cov = texture(uCover, uv).x;
+    float alpha = clamp(max(darkAlpha, cov), 0.0, 1.0);
+    vec3 pigment = alpha > 0.0 ? (tSrgb - vec3(1.0 - alpha)) / alpha : vec3(0.0);
+    pigment = clamp(pigment, 0.0, 1.0);
     o = vec4(pigment * alpha * shade, alpha);
     return;
   }
