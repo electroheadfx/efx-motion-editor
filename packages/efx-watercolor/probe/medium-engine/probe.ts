@@ -110,6 +110,13 @@
 //  commit derived from the sheet, so `crossCoverAlpha − crossDarkAlpha` is the
 //  change the model makes to the committed payload.
 //
+//  64-20 adds the offender census beside the criterion-1 percentage:
+//  `coveredPaperWhiteBox` reports the covered count, the offending count and
+//  the offending texels' union bbox in doc uv (null when none offend), so a
+//  failing scan names its texels instead of only its percentage. It shares
+//  `coveredPaperWhitePct`'s single texel loop and threshold — the percentage
+//  can never disagree with the census it reports.
+//
 //  64-14 adds `cover-advect`: the cover geometry with the covering stroke left
 //  WET (`fixAfter: false`), so the gate can watch the coverage channel travel
 //  with its pigment through the wet simulation. The report carries the
@@ -465,6 +472,76 @@ function darkAlphaMean(canvas: HTMLCanvasElement, box: BandBox): number {
   return n > 0 ? sum / n : 0
 }
 
+/** The covered-paper-white census: which texels a failing scan counts. */
+interface CoveredPaperWhiteCensus {
+  /** Texels the pigment layer claims to cover (mode-4 alpha ≥ threshold). */
+  readonly covered: number
+  /** Of those, texels whose transparent sheet still reads as bare paper. */
+  readonly count: number
+  /** Union bbox of the offending texels, doc uv, y up (like `darkAlphaMean`). */
+  readonly box: BandBox
+}
+
+/**
+ * The offender census behind `coveredPaperWhitePct` — one texel loop serves
+ * both readings, so the percentage can never disagree with the census it
+ * reports. Counts the texels the pigment layer claims to COVER (mode-4 alpha
+ * ≥ threshold) and, among them, the texels that still read as bare paper
+ * (≥ 250 luma) on the transparent export; returns the offending texels' union
+ * bbox in document uv (y up), or `null` when no texel offends.
+ *
+ * 64-20 exists so a failing scan NAMES its texels: the percentage alone said
+ * "0.88" while the four exported digests said nothing about where.
+ */
+function coveredPaperWhiteBox(
+  transparent: HTMLCanvasElement,
+  pigment: HTMLCanvasElement,
+  threshold = 0.5,
+): CoveredPaperWhiteCensus | null {
+  const ctxT = transparent.getContext('2d')
+  const ctxP = pigment.getContext('2d')
+  if (!ctxT || !ctxP) throw new Error('covered paper white: canvas has no 2D context')
+  const w = transparent.width
+  const h = transparent.height
+  const t = ctxT.getImageData(0, 0, w, h).data
+  const a = ctxP.getImageData(0, 0, pigment.width, pigment.height).data
+  let covered = 0
+  let count = 0
+  let minX = w
+  let minY = h
+  let maxX = -1
+  let maxY = -1
+  for (let i = 0; i < t.length; i += 4) {
+    if (a[i + 3]! < threshold * 255) continue
+    covered += 1
+    const luma = (t[i]! + t[i + 1]! + t[i + 2]!) / 3
+    if (luma < 250) continue
+    count += 1
+    const texel = i / 4
+    const x = texel % w
+    const y = (texel - x) / w
+    minX = Math.min(minX, x)
+    maxX = Math.max(maxX, x)
+    minY = Math.min(minY, y)
+    maxY = Math.max(maxY, y)
+  }
+  if (count === 0) return null
+  // Six decimals: one texel at 1080² is 0.000926 doc units, so two decimals
+  // would collapse a single offending texel to a zero-width box.
+  const uv = (value: number): number => Math.round(value * 1e6) / 1e6
+  return {
+    covered,
+    count,
+    // Export rows are top-first while doc uv is y-up, so the row span flips.
+    box: {
+      x0: uv(minX / w),
+      y0: uv(1 - (maxY + 1) / h),
+      x1: uv((maxX + 1) / w),
+      y1: uv(1 - minY / h),
+    },
+  }
+}
+
 /**
  * Percentage of texels the pigment layer claims to COVER (mode-4 alpha ≥
  * threshold) that still read as bare paper (≥ 250 luma) on the transparent
@@ -475,20 +552,8 @@ function coveredPaperWhitePct(
   pigment: HTMLCanvasElement,
   threshold = 0.5,
 ): number {
-  const ctxT = transparent.getContext('2d')
-  const ctxP = pigment.getContext('2d')
-  if (!ctxT || !ctxP) throw new Error('covered paper white: canvas has no 2D context')
-  const t = ctxT.getImageData(0, 0, transparent.width, transparent.height).data
-  const a = ctxP.getImageData(0, 0, pigment.width, pigment.height).data
-  let covered = 0
-  let paperWhite = 0
-  for (let i = 0; i < t.length; i += 4) {
-    if (a[i + 3]! < threshold * 255) continue
-    covered += 1
-    const luma = (t[i]! + t[i + 1]! + t[i + 2]!) / 3
-    if (luma >= 250) paperWhite += 1
-  }
-  return covered > 0 ? (100 * paperWhite) / covered : 0
+  const census = coveredPaperWhiteBox(transparent, pigment, threshold)
+  return census && census.covered > 0 ? (100 * census.count) / census.covered : 0
 }
 
 // --- the fixed scenarios ----------------------------------------------------
@@ -724,11 +789,14 @@ function whiteOverBlueScript(body: number): readonly ScriptEntry[] {
  * 64-17: Spike 001 criterion 1 on the crossing box — the seven reported
  * metrics. `crossDarkAlpha` reads the transparent export (the pre-coverage
  * alpha); `crossCoverAlpha` reads the pigment export (the compositor alpha).
+ * 64-20 adds `coveredPaperWhiteBox` beside the percentage: the census names
+ * the offending texels (count, covered, union bbox) or is `null` when the
+ * scan is clean.
  */
 function whiteOverBlueMetrics(
   transparent: HTMLCanvasElement,
   pigment: HTMLCanvasElement,
-): Record<string, number> {
+): Record<string, number | CoveredPaperWhiteCensus | null> {
   const cross = WHITE_OVER_BLUE_BOXES.crossing
   const stats = bandStats(transparent, cross)
   return {
@@ -739,6 +807,7 @@ function whiteOverBlueMetrics(
     crossCoverAlpha: round2(alphaMean(pigment, cross)),
     crossDarkAlpha: round2(darkAlphaMean(transparent, cross)),
     coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
+    coveredPaperWhiteBox: coveredPaperWhiteBox(transparent, pigment, 0.5),
   }
 }
 
