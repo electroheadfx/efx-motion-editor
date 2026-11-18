@@ -170,7 +170,11 @@ describe('the coverage composite', () => {
     // dab (the display reads B.a as Kubelka-Munk scatter).
     expectContains(deposit, 'o1 = vec4(uColor1.rgb * a, uColor1.a * m);')
     const mask = sliceBetween(SHADERS, 'export const coverMaskFS', '`;')
-    expectContains(mask, 'o0 = vec4(uAmount * (1.0 - exp(-uDensity * m)));')
+    // 64-20: the deposited coverage is scaled by the shared film-presence gate,
+    // so a dab whose own film leaves the texel paper-white deposits nothing.
+    expectContains(mask, 'float a = uAmount * (1.0 - exp(-uDensity * m));')
+    expectContains(mask, 'float p = filmPresence(vUv);')
+    expectContains(mask, 'o0 = vec4(a * p);')
     // The attenuation program is the same footprint law, uShape switching the
     // relief draw back to LINEAR.
     const body = sliceBetween(SHADERS, 'export const bodyCoverFS', '`;')
