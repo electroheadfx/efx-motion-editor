@@ -1017,6 +1017,13 @@ function countOccurrences(source: string, literal: string): number {
   return source.split(literal).length - 1;
 }
 
+/** Strip `//` line comments and block comments; keep code and strings. */
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/gm, '$1');
+}
+
 // Phase 43 Plan 09 Task 3 (D-28, audit finding 6) re-sourced by Phase 48-05
 // (CMP-01), then made STRUCTURAL by G-52-8 (FIX 2): Studio playback
 // availability is document-presence over the structural playback frame list —
@@ -1287,7 +1294,11 @@ describe('Canvas navigation render localization', () => {
     // own module, so the mount stays plain).
     expect(canvasMount).toContain('props.aquarelleCachedBaseUrl ? (');
     expect(canvasMount).toContain('url={props.aquarelleCachedBaseUrl}');
-    expect(canvasMount).toContain('onApplied={() => onAquarelleCachedBaseAppliedRef.current?.()}');
+    // 64-15: the cover's deferred-wipe hook is gone with the punch
+    // architecture — the cached base mounts with no applied channel at all.
+    const canvasMountCode = stripComments(canvasMount);
+    expect(canvasMountCode).not.toContain('onApplied=');
+    expect(canvasMountCode).not.toContain('onAquarelleCachedBaseApplied');
     expect(studioView).toContain('const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);');
     expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount');
     expect(studioView).toContain('aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}');

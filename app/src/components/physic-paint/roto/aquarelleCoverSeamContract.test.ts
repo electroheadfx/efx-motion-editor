@@ -50,6 +50,11 @@ import { resolve } from 'node:path';
 
 const studio = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
 const port = readFileSync(resolve(__dirname, '../engine/aquarelleEnginePort.ts'), 'utf8');
+const layer = readFileSync(resolve(__dirname, '../engine/AquarelleCanvasLayer.tsx'), 'utf8');
+const mount = readFileSync(resolve(__dirname, '../engine/PhysicsPaintCanvasMount.tsx'), 'utf8');
+const baseLayer = readFileSync(resolve(__dirname, '../engine/AquarelleCachedBaseLayer.tsx'), 'utf8');
+const bus = readFileSync(resolve(__dirname, './aquarelleLiftPreview.ts'), 'utf8');
+const punchLib = readFileSync(resolve(__dirname, './aquarelleLiftErase.ts'), 'utf8');
 
 /** Strip `//` line comments and block comments; keep code and strings. */
 function stripComments(source: string): string {
@@ -60,6 +65,11 @@ function stripComments(source: string): string {
 
 const studioCode = stripComments(studio);
 const portCode = stripComments(port);
+const layerCode = stripComments(layer);
+const mountCode = stripComments(mount);
+const baseLayerCode = stripComments(baseLayer);
+const busCode = stripComments(bus);
+const punchLibCode = stripComments(punchLib);
 
 function slice(source: string, startMarker: string, endMarker: string): string {
   const start = source.indexOf(startMarker);
@@ -189,5 +199,97 @@ describe('the capture seam exports the coverage sheet eagerly', () => {
     expect(studioCode).toContain('const canvas = aquarelleSnapshotRef.current?.() ?? null;');
     expect(studioCode).toContain("aquarelleEnginePortRef.current?.exportCanvas('transparent') ?? null");
     expect(countOccurrences(studioCode, "exportCanvas('transparent'")).toBe(2);
+  });
+});
+
+describe('the cover preview and footprint plumbing is gone from the canvas stack', () => {
+  it('carries no cover dab channel and no cached-base-applied hook', () => {
+    expect(layerCode).not.toContain('onCoverDab');
+    expect(mountCode).not.toContain('onCoverDab');
+    expect(mountCode).not.toContain('onAquarelleCoverDab');
+    expect(studioCode).not.toContain('onAquarelleCoverDab');
+    expect(mountCode).not.toContain('onAquarelleCachedBaseApplied');
+    expect(studioCode).not.toContain('onAquarelleCachedBaseApplied');
+    expect(baseLayerCode).not.toContain('onApplied');
+    // The Lift channel and its five-argument dab survive byte-identically.
+    expect(layerCode).toContain('onLiftDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;');
+    expect(mountCode).toContain(
+      'onLiftDab={(x, y, r, amount, angle) => onAquarelleLiftDabRef.current?.(x, y, r, amount, angle)}',
+    );
+    expect(studioCode).toContain('onAquarelleLiftDab: handleAquarelleLiftDab,');
+  });
+
+  it('registers the reset with one argument and still performs both halves', () => {
+    expect(layerCode).toContain('onResetSheetReady?: (resetSheet: () => void) => void;');
+    expect(layerCode).toContain('onResetSheetReadyRef.current?.(resetSheet);');
+    expect(layerCode).not.toContain('onResetSheetReadyRef.current?.(resetSheet,');
+    // The reset's implementation stays: session bookkeeping + pixel wipe.
+    const resetWindow = slice(
+      layerCode,
+      'const resetSheet = () => {',
+      'onResetSheetReadyRef.current?.(resetSheet);',
+    );
+    expect(resetWindow).toContain('endSheetSession();');
+    expect(resetWindow).toContain('clearSheetPaint();');
+    expect(layerCode).not.toContain('strokeGeneration');
+    // The mount's prop and forwarding are one-argument too.
+    expect(mountCode).toContain('onAquarelleResetSheetReady?: (resetSheet: () => void) => void;');
+    expect(mountCode).toContain(
+      'onResetSheetReady={(resetSheet) => onAquarelleResetSheetReadyRef.current?.(resetSheet)}',
+    );
+    expect(mountCode).not.toContain('strokeGeneration');
+    // The Studio registers the reset alone and keeps no cover-only ref.
+    expect(studioCode).toContain('const handleAquarelleResetSheetReady = useCallback((resetSheet: () => void) => {');
+    for (const gone of [
+      'aquarelleClearSheetPaintRef',
+      'aquarelleEndSheetSessionRef',
+      'aquarelleCachedBaseAppliedRef',
+      'aquarelleStrokeGenerationRef',
+      'handleAquarelleCachedBaseApplied',
+    ]) {
+      expect(studioCode, `cover-only Studio ref survives: ${gone}`).not.toContain(gone);
+    }
+    expect(studioCode).toContain('aquarelleResetSheetRef.current = resetSheet;');
+  });
+
+  it('keeps the preview bus begin a one-argument call', () => {
+    expect(busCode).toContain('begin(frame: number): void;');
+    expect(busCode).toContain('export function beginAquarelleLiftPreview(frame: number): void {');
+    expect(busCode).toContain('previewSink?.begin(frame);');
+    expect(busCode).not.toContain("'deposit'");
+    expect(busCode).not.toContain('profile');
+    expect(busCode).not.toContain('density');
+    expect(baseLayerCode).not.toContain('profileRef');
+    expect(baseLayerCode).not.toContain("'deposit'");
+    expect(baseLayerCode).toContain('begin(frame) {');
+    // The tip shape resolution survives; the cover's deposit shape is gone.
+    expect(baseLayerCode).toContain('liftShapeForStroke(selection)');
+    expect(baseLayerCode).not.toContain('coverShapeForBrush');
+    // One decode per URL, untouched.
+    expect(countOccurrences(baseLayerCode, 'image.src = props.url;')).toBe(1);
+  });
+
+  it('keeps only the Lift law in the punch library', () => {
+    for (const gone of [
+      'coverShapeForBrush',
+      'CoverBrushSelection',
+      'LiftCoverageProfile',
+      "'deposit'",
+      'density',
+      'profile',
+      'stampJitterUv',
+      'smoothstep01',
+    ]) {
+      expect(punchLibCode, `deposit plumbing survives: ${gone}`).not.toContain(gone);
+    }
+    const buildSignature = slice(punchLibCode, 'export function buildLiftCoverage(', '): LiftCoverage {');
+    expect(buildSignature).toContain('shape?: LiftFootprintShape,');
+    // The tip laws stay byte-identical.
+    expect(punchLibCode).toContain(
+      'f = one.amount * Math.exp(-(d * d)) * (mask * (1 - LIFT_TIP_ROUND) + LIFT_TIP_ROUND);',
+    );
+    expect(punchLibCode).toContain('f = one.amount * Math.exp(-(d * d));');
+    expect(punchLibCode).toContain('buildLiftCoverage(dabs, width, height, shape);');
+    expect(punchLibCode).toContain('punchTransmittanceCanvas(source, dabs, options.shape, stats)');
   });
 });

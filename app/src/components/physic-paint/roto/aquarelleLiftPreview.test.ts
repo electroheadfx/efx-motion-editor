@@ -17,6 +17,8 @@ describe('261028-k03b aquarelle lift preview bus', () => {
       endAquarelleLiftPreview();
       revertAquarelleLiftPreview();
       expect(sink.begin).toHaveBeenCalledWith(42);
+      // 64-15: the frame is the ONLY argument — the cover's profile form is gone.
+      expect(sink.begin.mock.calls[0]).toEqual([42]);
       expect(sink.dab).toHaveBeenCalledWith({ x: 0.5, y: 0.5, r: 0.02, amount: 0.22 });
       expect(sink.end).toHaveBeenCalledTimes(1);
       expect(sink.revert).toHaveBeenCalledTimes(1);
