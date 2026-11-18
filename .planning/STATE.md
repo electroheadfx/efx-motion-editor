@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-18-PLAN.md
-last_updated: "2026-11-18T20:47:11.726Z"
+stopped_at: Completed 64-20-PLAN.md
+last_updated: "2026-11-18T21:33:51.638Z"
 last_activity: 2026-11-18
 last_activity_desc: Phase 64 execution started
-state_head: ff1ba2f548a3099ed58009f5ab9d46e6c90b935a
+state_head: c14228e5174ad3e47a76e0e5bcb166701a0c071f
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 37
-  completed_plans: 35
+  completed_plans: 36
   percent: 50
 ---
 
@@ -162,6 +162,7 @@ Last activity: 2026-11-18 — Phase 64 execution started
 | Phase 64 P15 | 10min | 3 tasks | 14 files |
 | Phase 64 P16 | 16 | 3 tasks | 9 files |
 | Phase 64 P18 | 48min | 2 tasks | 9 files |
+| Phase 64 P20 | 41min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -535,6 +536,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: Spike 001 criterion 2 is measured on the PIGMENT export through the spike's own rgbToHsv (lumaRatio 1.07, deltaHue -0.04 deg); the VERDICT's 0.982 transparent-export reading is recorded for traceability, and no latency pin is added.
 - [Phase 64]: UAT rows 2/7/8 are re-specified, never answered: the diff-line-class gate pins three expected: lines plus updated:, ten pending rows, status testing, number 1, awaiting user response.
 - [Phase 64]: 64-18: the light coalescer delegates equality to lightSignature and mints only the operationId; the Studio parks the gesture's first descriptor (a descriptor ref, never a light mirror) and records exactly one coalesced span at release, keeping the single setDocumentLight call site via writeDocumentLight
+- [Phase 64]: 64-20: the deposit stays UNGATED — the plan's law is the transport gate, and the census is closed at the capture boundary where the FINAL film is known; a deposit gate read the dab's transient film and zeroed the Body-60 partial cover.
+- [Phase 64]: 64-20: the capture-time clearance is an explicit user-authorized amendment to the must-have truth — frozen transport remains true, and the EXPORTED coverage may additionally be cleared where the final film reads paper-white (64-20 decision checkpoint).
+- [Phase 64]: 64-20: the clearance is binary and scoped to cov > 0 — a cleared texel exports exactly zero coverage alpha and its pigment RGB passes through verbatim, so no surviving texel moves and Body-0 exports stay byte-identical.
+- [Phase 64]: 64-20: the gate quantizes to RGBA8 (round to nearest) before the luma mean, so its line is the scan's line; no bar, threshold, comparator or invariant was widened.
 
 ### Pending Todos
 
@@ -662,8 +667,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-18T20:47:07.944Z
-Stopped at: Completed 64-18-PLAN.md
+Last session: 2026-11-18T21:33:50.824Z
+Stopped at: Completed 64-20-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

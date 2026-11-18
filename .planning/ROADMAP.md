@@ -197,7 +197,7 @@ Plans:
   6. The brush library groups the responses by medium in five sections; picking a brush applies its group's medium in one store write only when the group changes; the 15 existing responses are classified and the eight new ones ship.
   7. Export matches the screen on every `uMode` path, zooming produces no shimmer or crawl, and undo restores the eroded pigment and the eroded thickness exactly.
 
-**Plans:** 18/20 plans executed — 17 executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18), 3 gap-closure plans added 2026-11-18 from `64-VERIFICATION.md`
+**Plans:** 19/20 plans executed — 17 executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18), 3 gap-closure plans added 2026-11-18 from `64-VERIFICATION.md`
 
 Plans:
 **Wave 1**
@@ -248,7 +248,7 @@ Plans:
 **Gap closure** *(from `64-VERIFICATION.md` — 4 failed must-haves; planned 2026-11-18)*
 - [x] 64-18-PLAN.md — Light gesture ledger: one drag becomes one document write path and one unified-ledger entry, with the live sheet still re-lighting during the drag (closes 64-07 truth 1 and 64-09 truth 5, CR-02)
 - [ ] 64-19-PLAN.md — Light reaches committed and cached frames: the canonical `lightSignature` in every frame-cache revision plus one bounded re-bake per light gesture (closes 64-07 truth 5, CR-01; blocked on 64-18)
-- [ ] 64-20-PLAN.md — Coverage/film coherence: coverage transports only where its own paint film leaves the paper-white line, so the Body-100 white-over-blue gate greens with every bar intact and no bar widened (closes 64-17 truth 4)
+- [x] 64-20-PLAN.md — Coverage/film coherence: coverage transports only where its own paint film leaves the paper-white line, so the Body-100 white-over-blue gate greens with every bar intact and no bar widened (closes 64-17 truth 4)
 
 **Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-07-brush-groups.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-08-scattering.md`
 
@@ -267,7 +267,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 18/20 | In Progress | - |
+| 64. Medium Engine | 19/20 | In Progress | - |
 
 ---
 
