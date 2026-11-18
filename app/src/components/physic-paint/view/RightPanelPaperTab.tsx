@@ -31,6 +31,10 @@ export function RightPanelPaperTab(props: {
   light?: LightSettings;
   /** 64-09: one-field patch upward; the Studio handler owns the one write. */
   onLightChange?: (patch: Partial<LightSettings>) => void;
+  /** 64-18 (CR-02): the release boundary — exactly one call per gesture from
+   *  `SliderStepper.onCommit`, carrying the gesture's REACHED value. The
+   *  Studio coalesces the whole drag into one ledger entry here. */
+  onLightCommit?: (patch: Partial<LightSettings>) => void;
   disabled?: boolean;
 }) {
   // The document IS the state: the row is controlled, never mirrored. The
@@ -61,6 +65,7 @@ export function RightPanelPaperTab(props: {
             label="Azimuth"
             value={light.azimuth}
             onChange={(value) => props.onLightChange?.({ azimuth: value })}
+            onCommit={(next) => props.onLightCommit?.({ azimuth: next })}
             step={1}
             min={0}
             max={360}
@@ -74,6 +79,7 @@ export function RightPanelPaperTab(props: {
             label="Elevation"
             value={light.elevation}
             onChange={(value) => props.onLightChange?.({ elevation: value })}
+            onCommit={(next) => props.onLightCommit?.({ elevation: next })}
             step={1}
             min={0}
             max={90}
@@ -87,6 +93,7 @@ export function RightPanelPaperTab(props: {
             label="Intensity"
             value={light.intensity}
             onChange={(value) => props.onLightChange?.({ intensity: value })}
+            onCommit={(next) => props.onLightCommit?.({ intensity: next })}
             step={0.1}
             min={0}
             max={4}

@@ -149,6 +149,7 @@ import { deriveKeyRailSegments, projectSelectedKeyRailInspector } from './view/p
 // plan's file list is modified).
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
 import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, lightSignature, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings, type StudioBackgroundMode } from './engine/physicsPaintStudioSettings';
+import { coalesceLightGesture } from './engine/documentLightGesture';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage, writeEfxPaintSessionDocumentCheckpoint } from './bridge/physicsPaintBridgeTransport';
 import { createDocumentSyncPushDecision, createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
@@ -2868,18 +2869,43 @@ export function PhysicsPaintStudio() {
     }
     recordPaperDisplayEdit(paperEdit, fallbackEdit);
   };
-  // 64-07 (MED-17): the ONE light writer. The store owns the mutation, the
-  // engine band clamp and the unified-ledger descriptor; the Studio only
-  // records the returned entry — the same one-line contract the paper pair
-  // uses above. A same-value patch returns a null descriptor and writes
-  // nothing, so no ledger entry and no signature change.
-  const handleDocumentLightChange = (patch: Partial<PaintDocumentLight>): void => {
+  // 64-07 (MED-17) / 64-18 (CR-02): the ONE light writer. The store owns the
+  // mutation, the engine band clamp and the descriptor; both handlers below
+  // share this single call site. A same-value patch returns a null descriptor
+  // and writes nothing, so no ledger entry and no signature change.
+  const writeDocumentLight = (patch: Partial<PaintDocumentLight>): BackgroundEditDescriptor | null => {
     const layerId = launchContext?.layerId;
-    if (!layerId) return;
+    if (!layerId) return null;
     const result = setDocumentLight(layerId, patch);
-    if (result.ok && result.descriptor) {
-      rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+    return result.ok ? result.descriptor : null;
+  };
+  // 64-18 (CR-02): the gesture's FIRST descriptor, parked for the release
+  // boundary — a descriptor ref, never a light mirror (the document IS the
+  // light state). No signal, no render-body write.
+  const documentLightGestureRef = useRef<BackgroundEditDescriptor | null>(null);
+  // 64-18 (CR-02): the per-move write keeps the live sheet re-lighting, but
+  // records NOTHING — one drag would otherwise evict the ledger and clear
+  // redo on every emitted value.
+  const handleDocumentLightChange = (patch: Partial<PaintDocumentLight>): void => {
+    const descriptor = writeDocumentLight(patch);
+    if (descriptor && documentLightGestureRef.current === null) {
+      documentLightGestureRef.current = descriptor;
     }
+  };
+  // 64-18 (CR-02): the release boundary. The final one-field patch lands
+  // first (idempotent — a value already written returns a null descriptor),
+  // the coalescer decides span-or-nothing against the LIVE document, and the
+  // pending gesture clears in every branch.
+  const handleDocumentLightCommit = (patch: Partial<PaintDocumentLight>): void => {
+    writeDocumentLight(patch);
+    const pending = documentLightGestureRef.current;
+    documentLightGestureRef.current = null;
+    const layerId = launchContext?.layerId;
+    const coalesced = coalesceLightGesture(
+      pending,
+      layerId ? getEfxPaintDocument(layerId) ?? null : null,
+    );
+    if (coalesced) rotoMoveHistory.recordBackgroundEdit(coalesced);
   };
   // 56-05 (PAPER-03 / D-10): the shared-panel Paper section's paper-id port —
   // display-class edit through the store's paper-id setter (fond + change
@@ -7706,6 +7732,7 @@ export function PhysicsPaintStudio() {
     // re-runs on every document edit without a second dep entry.
     light: documentLight(),
     onLightChange: handleDocumentLightChange,
+    onLightCommit: handleDocumentLightCommit,
     onColorChange: (color: string) => {
       handleActiveColorChanged(color);
       paintStore.setForeground(color);

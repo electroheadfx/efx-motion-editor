@@ -260,4 +260,43 @@ describe('64-09 Paper & Light tab', () => {
     expect(mount, 'the tab mount carries the one handler').toContain('onLightChange={onLightChange}');
     expect(body.match(/<RightPanelPaperTab\b/g) ?? [], 'one tab mount only').toHaveLength(1);
   });
+
+  // 64-18 (CR-02): the release boundary. Every row emits `onCommit` beside
+  // `onChange`, carrying the gesture's REACHED value (`next`, the callback
+  // argument) — never the render-time `value` prop, which a keyboard/AT step
+  // or typed Enter/blur would leave stale and the light would revert.
+  it('64-18: every light row emits onCommit with the same one-field patch', () => {
+    const body = stripComments(paperTabSource);
+    for (const field of ['azimuth', 'elevation', 'intensity']) {
+      expect(body, `${field} row emits its own commit patch`).toContain(
+        `onCommit={(next) => props.onLightCommit?.({ ${field}: next })}`,
+      );
+      expect(body, `${field} row keeps its per-move change`).toContain(
+        `onChange={(value) => props.onLightChange?.({ ${field}: value })}`,
+      );
+    }
+    expect(body.match(/onCommit=\{/g) ?? [], 'exactly the three rows commit').toHaveLength(3);
+    expect(body.match(/onChange=\{/g) ?? [], 'exactly the three rows change').toHaveLength(3);
+    // The commit port is the Studio handler; the view still never persists.
+    expect(body, 'the tab never calls the store mutation').not.toContain('setDocumentLight');
+    // One-field patches only: the commit never rebuilds the triple.
+    expect(body, 'no whole-object commit').not.toContain('onLightCommit?.(light');
+  });
+
+  it('64-18: the panel threads onLightCommit beside onLightChange into the single mount', () => {
+    const body = stripComments(panelSource);
+    expect(body, 'the panel declares the commit port').toContain(
+      'onLightCommit?: (patch: Partial<LightSettings>) => void;',
+    );
+    const mountAt = body.indexOf('<RightPanelPaperTab');
+    expect(mountAt, 'the single tab mount must stay').toBeGreaterThan(-1);
+    const mountEnd = body.indexOf('/>', mountAt);
+    expect(mountEnd).toBeGreaterThan(mountAt);
+    const mount = body.slice(mountAt, mountEnd);
+    expect(mount, 'the tab mount carries the commit port').toContain('onLightCommit={onLightCommit}');
+    expect(mount, 'the change port stays beside it').toContain('onLightChange={onLightChange}');
+    // Both stay optional so every existing prop literal still compiles.
+    expect(body).toContain('light?: LightSettings;');
+    expect(body.match(/<RightPanelPaperTab\b/g) ?? [], 'one tab mount only').toHaveLength(1);
+  });
 });

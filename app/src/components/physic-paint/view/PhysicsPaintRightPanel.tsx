@@ -106,6 +106,9 @@ export interface PhysicsPaintRightPanelProps {
    */
   light?: LightSettings;
   onLightChange?: (patch: Partial<LightSettings>) => void;
+  /** 64-18 (CR-02): the release boundary of a light gesture — one call per
+   *  gesture, so the Studio records exactly one coalesced ledger entry. */
+  onLightCommit?: (patch: Partial<LightSettings>) => void;
   /**
    * quick-261023-ors: the LAST top-pane tab — the read-only script-memory gauge
    * plus the confirmed purge actions. Identity-stable ref from the Studio (the
@@ -214,6 +217,7 @@ export function PhysicsPaintRightPanel({
   onGrainScaleChange,
   light,
   onLightChange,
+  onLightCommit,
   memorySection,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
@@ -358,6 +362,7 @@ export function PhysicsPaintRightPanel({
                 onGrainScaleChange={onGrainScaleChange}
                 light={light}
                 onLightChange={onLightChange}
+                onLightCommit={onLightCommit}
                 disabled={engineControlsDisabled}
               />
             </div>

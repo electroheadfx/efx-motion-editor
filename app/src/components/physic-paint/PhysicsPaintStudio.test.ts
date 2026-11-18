@@ -8403,8 +8403,12 @@ describe('62-04 the undo router: cancel THIS apply, never the previous history e
 describe('64-09 — the right panel is fed by the document light', () => {
   const PROPS_START = 'const rightPanel = rightPanelPropsMemo.resolve(';
   const PROPS_END = 'const viewModel = usePhysicsPaintStudioViewModel';
-  const HANDLER_START = 'const handleDocumentLightChange';
+  // 64-18 (CR-02): the handler became a track/close pair around the ONE
+  // writer — the region markers follow the pair, same block.
+  const HANDLER_START = 'const writeDocumentLight';
   const HANDLER_END = '// 56-05 (PAPER-03 / D-10)';
+  const CHANGE_START = 'const handleDocumentLightChange';
+  const COMMIT_START = 'const handleDocumentLightCommit';
 
   function lightRegion(source: string, startMarker: string, endMarker: string): string {
     const start = source.indexOf(startMarker);
@@ -8419,10 +8423,12 @@ describe('64-09 — the right panel is fed by the document light', () => {
     resetEfxPaintStore();
   });
 
-  it('carries the light read and the ONE handler in rightPanelProps, with no new memo entry', () => {
+  it('carries the light read and the ONE handler pair in rightPanelProps, with no new memo entry', () => {
     const block = lightRegion(studio, PROPS_START, PROPS_END);
     expect(block, 'the document read feeds the panel').toContain('light: documentLight(),');
-    expect(block, 'the one handler feeds the panel').toContain('onLightChange: handleDocumentLightChange,');
+    expect(block, 'the one change handler feeds the panel').toContain('onLightChange: handleDocumentLightChange,');
+    // 64-18 (CR-02): the release boundary rides beside it — same memo, no dep.
+    expect(block, 'the one commit handler feeds the panel').toContain('onLightCommit: handleDocumentLightCommit,');
     // `setDocumentLight` bumps efxPaintVersion through `_notifyChange`, and that
     // dependency is already in the list — so no new entry, no new signal.
     const deps = block.slice(0, block.indexOf('], () => {'));
@@ -8447,14 +8453,58 @@ describe('64-09 — the right panel is fed by the document light', () => {
   it('forwards the one-field patch to the ONE mutation — never a whole-object write', () => {
     const handler = lightRegion(studio, HANDLER_START, HANDLER_END);
     expect(handler, 'the store mutation owns the write').toContain('setDocumentLight(layerId, patch)');
-    // The descriptor is recorded once, through the unified ledger.
-    expect(handler).toContain('rotoMoveHistory.recordBackgroundEdit(result.descriptor)');
     // No whole-object literal: the patch itself is what travels.
     expect(handler, 'no rebuilt triple').not.toContain('azimuth:');
     expect(handler, 'no rebuilt triple').not.toContain('elevation:');
     expect(handler, 'no rebuilt triple').not.toContain('intensity:');
     // ONE writer in the whole Studio — no second mutation call site.
     expect(studio.split('setDocumentLight(').length - 1, 'one setDocumentLight call site').toBe(1);
+  });
+
+  // 64-18 (CR-02): the contract split. The per-move stream keeps the live
+  // sheet re-lighting and touches NOTHING; the release boundary records the
+  // ONE coalesced span. (This replaces 64-09's per-move-record pin — the
+  // ledger entry moved, nothing was dropped: every assertion below is the
+  // same shape, scoped to the handler that now owns it.)
+  it('64-18: the per-move handler writes the document and records nothing', () => {
+    const change = lightRegion(studio, CHANGE_START, COMMIT_START);
+    // The live preview still rides the per-move document write.
+    expect(change, 'the per-move write keeps the live sheet lit').toContain('writeDocumentLight(patch)');
+    // The ledger is untouched: no record, no trim, no redo clear per move.
+    expect(change, 'the per-move path never records').not.toContain('recordBackgroundEdit');
+    // The gesture's FIRST descriptor is parked — and only the first.
+    expect(change, 'parking is gated on an empty slot').toContain('documentLightGestureRef.current === null');
+    expect(change, 'the first descriptor is parked').toContain('documentLightGestureRef.current = descriptor');
+    // A descriptor ref, never a light mirror (no second light state).
+    const parking = lightRegion(studio, HANDLER_START, CHANGE_START);
+    expect(parking, 'the parked value is a descriptor ref').toContain(
+      'useRef<BackgroundEditDescriptor | null>(null)',
+    );
+  });
+
+  it('64-18: the commit handler records exactly ONE coalesced span and clears the gesture', () => {
+    const commit = lightRegion(studio, COMMIT_START, HANDLER_END);
+    // The final one-field patch lands first, through the one writer.
+    expect(commit, 'the release patch lands through the one writer').toContain('writeDocumentLight(patch);');
+    // The coalescer receives the parked first descriptor and the LIVE document.
+    expect(commit, 'the pending first descriptor is read').toContain(
+      'const pending = documentLightGestureRef.current;',
+    );
+    expect(commit, 'the live document closes the span').toContain('getEfxPaintDocument(layerId)');
+    expect(commit, 'the pure coalescer owns the span').toContain('coalesceLightGesture(');
+    // Exactly one ledger record per gesture — never zero, never two.
+    expect(commit.match(/recordBackgroundEdit\(/g) ?? [], 'one record per gesture').toHaveLength(1);
+    expect(commit, 'the coalesced descriptor is what is recorded').toContain(
+      'if (coalesced) rotoMoveHistory.recordBackgroundEdit(coalesced);',
+    );
+    // The pending gesture clears in every branch — before the coalescer runs.
+    expect(commit, 'the pending ref clears in every branch').toContain(
+      'documentLightGestureRef.current = null;',
+    );
+    expect(
+      commit.indexOf('documentLightGestureRef.current = null;'),
+      'the clear precedes the coalesce',
+    ).toBeLessThan(commit.indexOf('coalesceLightGesture('));
   });
 
   it('BEHAVIOUR: the deps surface delivers the document light and one-field writes', () => {
