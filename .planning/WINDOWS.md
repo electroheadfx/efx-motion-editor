@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 18
+open_count: 19
 waived_count: 18
 fixed_count: 92
-total_count: 128
-last_updated: 2026-11-18T17:38:46.302Z
+total_count: 129
+last_updated: 2026-11-18T19:09:47.816Z
 ---
 
 # Broken Windows Ledger
@@ -143,6 +143,7 @@ last_updated: 2026-11-18T17:38:46.302Z
 | 126 | 64 | deviation | packages/efx-watercolor/src/playground/scattering.test.ts |  | 64-13: the gouache cov absence pin was rescoped to two exact tokens after the coverage model legitimately introduced float cov | open |  | 2026-11-18T17:38:45.840Z |  |
 | 127 | 64 | deviation | packages/efx-watercolor/src/playground/scattering.test.ts |  | 64-13: the coeffs: whole-file count moved 2 -> 3 for the coverageDeposit parameter annotation | open |  | 2026-11-18T17:38:46.076Z |  |
 | 128 | 64 | deviation | packages/efx-watercolor/src/playground/Engine.ts |  | 64-13: the docTargets SPIKE comment moved above return [] so the array-entry splitter sees pure entries | open |  | 2026-11-18T17:38:46.302Z |  |
+| 129 | 64 | deviation | packages/efx-watercolor/probe/medium-engine/compare.mjs | 1 | 64-16 calibration: the provisional coverAlphaP90 >= 0.5 band became a measured floor of 0 (chalk core occupies 8% of the mandated box; P90 reads 0 on bare paper) | open |  | 2026-11-18T19:09:47.816Z |  |
 
 ````json
 [
@@ -1735,6 +1736,19 @@ last_updated: 2026-11-18T17:38:46.302Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-18T17:38:46.302Z",
+    "resolved_at": null,
+    "milestone": "v2.2.0"
+  },
+  {
+    "id": 129,
+    "kind": "deviation",
+    "phase": "64",
+    "file": "packages/efx-watercolor/probe/medium-engine/compare.mjs",
+    "line": 1,
+    "description": "64-16 calibration: the provisional coverAlphaP90 >= 0.5 band became a measured floor of 0 (chalk core occupies 8% of the mandated box; P90 reads 0 on bare paper)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-18T19:09:47.816Z",
     "resolved_at": null,
     "milestone": "v2.2.0"
   }

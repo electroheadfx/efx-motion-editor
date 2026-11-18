@@ -4,17 +4,17 @@ milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
-status: executing
-stopped_at: Completed 64-15-PLAN.md
-last_updated: "2026-11-18T18:56:46.090Z"
+status: verifying
+stopped_at: Completed 64-16-PLAN.md
+last_updated: "2026-11-18T19:11:29.222Z"
 last_activity: 2026-11-18
 last_activity_desc: Phase 64 execution started
-state_head: 799f82213547032f6db75bdfde0d9ecf8ea0a29e
+state_head: 179e88cf52a485a7c5d829514041740f141ae2cc
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 34
-  completed_plans: 33
+  completed_plans: 34
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 
 Phase: 64 (Medium Engine) — EXECUTING
 Plan: 17 of 17
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-18 — Phase 64 execution started
 
 
@@ -160,6 +160,7 @@ Last activity: 2026-11-18 — Phase 64 execution started
 | Phase 64 P17 | 32min | 3 tasks | 10 files |
 | Phase 64 P14 | 12min51s | 3 tasks | 13 files |
 | Phase 64 P15 | 10min | 3 tasks | 14 files |
+| Phase 64 P16 | 16 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -528,6 +529,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: LiftFootprintShape's deposit-only optional fields (tipRotation, roughness, stampJitter) were deleted with coverShapeForBrush, their only producer.
 - [Phase 64]: The punch call-site pin is five, all inside runAquarelleLiftErase — the transaction, not the call count, is the one-caller invariant.
 - [Phase 64]: MED-38 is claimed at the source level only (one pigment export, one merge conversion, none in the Studio); live visual parity stays UAT row 9.
+- [Phase 64]: The textured-tip P90 floor is calibrated from measurement (0, not the provisional 0.5): the chalk core occupies ~8% of the mandated box, below the 10% a top-decile bar needs; discrimination lives in the covered-fraction window, P10 crumb check, blue excess, absolute paper-white zero and the every-digest twin difference.
+- [Phase 64]: The round twin gets no committed baseline: resolveReference prefers a committed baseline in --differs-from, so a committed twin would make the chalk gate pass vacuously against itself.
+- [Phase 64]: Spike 001 criterion 2 is measured on the PIGMENT export through the spike's own rgbToHsv (lumaRatio 1.07, deltaHue -0.04 deg); the VERDICT's 0.982 transparent-export reading is recorded for traceability, and no latency pin is added.
+- [Phase 64]: UAT rows 2/7/8 are re-specified, never answered: the diff-line-class gate pins three expected: lines plus updated:, ten pending rows, status testing, number 1, awaiting user response.
 
 ### Pending Todos
 
@@ -655,8 +660,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-18T18:56:44.845Z
-Stopped at: Completed 64-15-PLAN.md
+Last session: 2026-11-18T19:11:27.964Z
+Stopped at: Completed 64-16-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

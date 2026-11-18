@@ -197,7 +197,7 @@ Plans:
   6. The brush library groups the responses by medium in five sections; picking a brush applies its group's medium in one store write only when the group changes; the 15 existing responses are classified and the eight new ones ship.
   7. Export matches the screen on every `uMode` path, zooming produces no shimmer or crawl, and undo restores the eroded pigment and the eroded thickness exactly.
 
-**Plans:** 16/17 plans executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18)
+**Plans:** 17/17 plans executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18)
 
 Plans:
 **Wave 1**
@@ -243,7 +243,7 @@ Plans:
 - [x] 64-15-PLAN.md — App wiring and deletion: carry the coverage alpha into the normal commit, and delete the rev-4 cover punch transaction and the round-1..4 display-swap/reset seams
 
 **Wave 14** *(blocked on 64-13 + 64-14 + 64-15 + 64-17 completion)*
-- [ ] 64-16-PLAN.md — Acceptance: textured-tip coverage, the three Spike 001 tuning pins, and the UAT re-specification
+- [x] 64-16-PLAN.md — Acceptance: textured-tip coverage, the three Spike 001 tuning pins, and the UAT re-specification
 
 **Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-07-brush-groups.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-08-scattering.md`
 
@@ -262,7 +262,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 16/17 | In Progress | - |
+| 64. Medium Engine | 17/17 | In Progress | - |
 
 ---
 
