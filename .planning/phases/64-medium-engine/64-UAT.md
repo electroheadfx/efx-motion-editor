@@ -3,7 +3,7 @@ status: testing
 phase: 64-medium-engine
 source: [64-VERIFICATION.md]
 started: 2026-11-17T17:33:35Z
-updated: 2026-11-17T17:33:35Z
+updated: 2026-11-18T19:08:56Z
 ---
 
 ## Current Test
@@ -21,7 +21,7 @@ expected: Paint visibly hardens — it stops moving almost immediately and the d
 result: [pending]
 
 ### 2. Undo and redo a thick embossed stroke and a covering (Body high) stroke.
-expected: Pigment and thickness restore together; redo restores the same eroded/deposited values.
+expected: Pigment, thickness and coverage restore together; redo restores the same values, and the covered underlayer disappears again with the coverage — an undo that leaves a stale cover channel would show through as a hole in the restored paint.
 result: [pending]
 
 ### 3. Reopen the project and replay without repainting; then switch paint layers with different document lights.
@@ -41,11 +41,11 @@ expected: No shimmer or crawl; the paint reads as raised with a lit side and a s
 result: [pending]
 
 ### 7. Pick the five mediums and paint five strokes; pick two brushes inside one group after a manual tweak; pick acrylic vs watercolor.
-expected: Each stroke keeps its own look on replay; a same-group pick keeps the manual tweak; acrylic reads thick and waterless, watercolor a wash.
+expected: Each stroke keeps its own look on replay; a same-group pick keeps the manual tweak; acrylic reads as opaque coverage — it hides the paint under it and keeps its own colour — watercolor a wash that does not cover.
 result: [pending]
 
 ### 8. Body/order and scattering rows: light pigment high Body over a dried dark area; Body 50; dark pigment high Body; water above zero at the border.
-expected: High Body reads light with no bleed-through; Body 50 tints without erasing; a dark high-Body stroke covers and stays dark; the border blends when water > 0.
+expected: High Body covers the dried dark area by compositing — light, with no bleed-through and no paper-white; Body 50 partly covers and lightens without destroying the underlayer; a dark high-Body stroke hides the underlayer and stays its own dark colour; the border blends when water > 0.
 result: [pending]
 
 ### 9. Dry, replay, undo/redo, and export in every mode (paper, transparent, white, pigment) after scattering; zoom over a scattered area.
