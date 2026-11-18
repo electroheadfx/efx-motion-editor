@@ -1684,6 +1684,13 @@ export function PhysicsPaintStudio() {
   // timeline/coordinator seam and surface it as the LOG diagnostic.
   const lastRotoStatusMessageRef = useRef<string | null>(null);
   const aquarelleResetSheetRef = useRef<(() => void) | null>(null);
+  // quick 261117-tq7 (rev 4, UAT round 3): a one-shot armed by the cover's
+  // post-ack swap. The cached base keeps its old (preview-punched) pixels
+  // until the new URL decodes, so clearing the live sheet at URL-set time
+  // showed one frame of punched base alone — a paper-white flash. The reset
+  // rides this hook instead, which the layer fires in the same task as the
+  // decode's clear+draw.
+  const aquarelleCachedBaseAppliedRef = useRef<(() => void) | null>(null);
   // quick 261117-tq7 (CR-04): the layer's stroke generation getter, registered
   // beside the reset. The cover commit is async, so the post-ack reset must be
   // skipped when a newer stroke started while the ack was in flight.
@@ -8578,13 +8585,27 @@ export function PhysicsPaintStudio() {
         }
         const coverStrokeLive = (aquarelleStrokeGenerationRef.current?.() ?? 0) !== coverStrokeGeneration;
         if (!coverStrokeLive) {
-          aquarelleResetSheetRef.current?.();
           if (launchContextRef.current?.startFrame === plan.frame) {
             const generation = Math.max(
               rotoPreviewBaseContentToken(),
               previewBasePort.getAppliedPreviewBaseContentToken() ?? 0,
             );
-            loadCachedRotoReferenceFrame(
+            // quick 261117-tq7 (rev 4, UAT round 3): HOLD the live sheet until
+            // the new base bytes are on screen. The cached-base layer keeps
+            // its old (preview-punched) pixels until the decode lands, and the
+            // sheet is the stroke's only remaining pigment at this instant —
+            // clearing it at URL-set time flashed the punched base alone
+            // (paper-white) for the decode gap. The layer fires this hook in
+            // the decode's own clear+draw task.
+            const armedGeneration = aquarelleStrokeGenerationRef.current?.() ?? 0;
+            aquarelleCachedBaseAppliedRef.current = () => {
+              // A newer stroke started while the decode was pending — its
+              // pigment now lives on the sheet, and the coverStrokeLive law
+              // already says that stroke owns the display. Never clear it.
+              if ((aquarelleStrokeGenerationRef.current?.() ?? 0) !== armedGeneration) return;
+              aquarelleResetSheetRef.current?.();
+            };
+            const loaded = loadCachedRotoReferenceFrame(
               plan.frame,
               previewBasePort,
               undefined,
@@ -8594,7 +8615,14 @@ export function PhysicsPaintStudio() {
               // just-committed payload; never the underlayer-only punch.
               coverProduced.bytes,
             );
+            if (!loaded) {
+              // Nothing to display: no apply will come, so clear now.
+              aquarelleCachedBaseAppliedRef.current = null;
+              aquarelleResetSheetRef.current?.();
+            }
             physicPaintVersion.value++;
+          } else {
+            aquarelleResetSheetRef.current?.();
           }
         }
         setApplyMessage(null);
@@ -10800,6 +10828,16 @@ export function PhysicsPaintStudio() {
     aquarelleSheetHasPaintRef.current = false;
   }, []);
 
+  // quick 261117-tq7 (rev 4, UAT round 3): the cached base's decode+draw
+  // landed. Drain the armed one-shot — the caller that deferred its reset
+  // until the committed composite was actually on screen.
+  const handleAquarelleCachedBaseApplied = useCallback(() => {
+    const apply = aquarelleCachedBaseAppliedRef.current;
+    if (apply === null) return;
+    aquarelleCachedBaseAppliedRef.current = null;
+    apply();
+  }, []);
+
   // FRAME SCOPE: identity-stable getter so the canvas-mount memo never
   // invalidates on frame navigation (the persistent Efx child contract).
   const getAquarellePlayFrame = useCallback(
@@ -11100,6 +11138,7 @@ export function PhysicsPaintStudio() {
       onAquarelleLiftDab: handleAquarelleLiftDab,
       // quick 261117-tq7: the cover's live core punch source (same seam).
       onAquarelleCoverDab: handleAquarelleCoverDab,
+      onAquarelleCachedBaseApplied: handleAquarelleCachedBaseApplied,
       onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
       onAquarelleStrokeSettled: handleAquarelleStrokeSettled,
       onAquarelleCaptureFrame: handleAquarelleCaptureFrame,

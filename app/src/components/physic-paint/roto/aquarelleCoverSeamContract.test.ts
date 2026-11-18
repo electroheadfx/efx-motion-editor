@@ -348,9 +348,23 @@ describe('the cover transaction (runAquarelleLiftErase keeps its 3-argument sign
     expect(cover.indexOf('if (!coverStrokeLive) {')).toBeLessThan(
       cover.indexOf('aquarelleResetSheetRef.current?.();'),
     );
-    expect(cover.indexOf('aquarelleResetSheetRef.current?.();')).toBeLessThan(
-      cover.indexOf('loadCachedRotoReferenceFrame('),
+    // quick 261117-tq7 (rev 4, UAT round 3): the reset is DEFERRED to the
+    // cached base's applied hook, not run at URL-set time. The layer keeps
+    // the preview-punched pixels until the decode lands, so clearing the
+    // sheet first flashed the punched base alone for the decode gap (the
+    // reported paper-white flash). The hook is armed BEFORE the load; the
+    // synchronous reset survives only as the no-display fallback.
+    const armed = cover.indexOf('aquarelleCachedBaseAppliedRef.current = () => {');
+    expect(armed).toBeGreaterThanOrEqual(0);
+    expect(armed).toBeLessThan(cover.indexOf('loadCachedRotoReferenceFrame('));
+    expect(cover.slice(armed)).toContain('aquarelleResetSheetRef.current?.();');
+    expect(studio).toContain(
+      'const aquarelleCachedBaseAppliedRef = useRef<(() => void) | null>(null);',
     );
+    expect(studio).toContain('onAquarelleCachedBaseApplied: handleAquarelleCachedBaseApplied,');
+    expect(mount).toContain('onAquarelleCachedBaseApplied?: () => void;');
+    expect(baseLayer).toContain('onApplied?: () => void');
+    expect(baseLayer).toContain('props.onApplied?.();');
     // The diagnostic records whether the reset was skipped.
     expect(cover).toContain('resetSkipped: coverStrokeLive,');
   });
