@@ -470,7 +470,12 @@ void main(){
 //
 // Blended with ONE / ONE: after the caller's attenuation draw the destination
 // is ink*(1-a), and this adds C*a. o1's alpha is the dab's scattering S, which
-// is deposited additively (never multiplied by a) to keep the delivered veil.
+// is deposited additively (never multiplied by the coverage a) to keep the
+// delivered veil — but it MUST ride the footprint mask like stampFS's own
+// o1 = uColor1 * f. The additive blend writes every pixel of the scissor rect,
+// so an unmasked S deposits the dab's whole veil as a square over the paint
+// around the dab (the display reads B.a as Kubelka-Munk scatter, so the square
+// reads as brightness on neighbouring strokes).
 export const coverDepositFS = `${HEADER}${FOOTPRINT_MASK}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
@@ -480,7 +485,7 @@ void main(){
   float m = footprintMask();
   float a = uAmount * (1.0 - exp(-uDensity * m));
   o0 = uColor0 * a;
-  o1 = vec4(uColor1.rgb * a, uColor1.a);
+  o1 = vec4(uColor1.rgb * a, uColor1.a * m);
 }`;
 
 // SPIKE 001 — the coverage channel. Composited with ONE / ONE_MINUS_SRC_ALPHA:

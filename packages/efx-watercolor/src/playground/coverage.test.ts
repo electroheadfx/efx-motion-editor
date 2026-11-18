@@ -164,7 +164,11 @@ describe('the coverage composite', () => {
     expectContains(deposit, 'float m = footprintMask();')
     expectContains(deposit, 'float a = uAmount * (1.0 - exp(-uDensity * m));')
     expectContains(deposit, 'o0 = uColor0 * a;')
-    expectContains(deposit, 'o1 = vec4(uColor1.rgb * a, uColor1.a);')
+    // The additive blend writes the whole scissor rect, so the scattering S
+    // must ride the footprint mask (stampFS's o1 = uColor1 * f law); an
+    // unmasked S painted a bright square over the paint around each covering
+    // dab (the display reads B.a as Kubelka-Munk scatter).
+    expectContains(deposit, 'o1 = vec4(uColor1.rgb * a, uColor1.a * m);')
     const mask = sliceBetween(SHADERS, 'export const coverMaskFS', '`;')
     expectContains(mask, 'o0 = vec4(uAmount * (1.0 - exp(-uDensity * m)));')
     // The attenuation program is the same footprint law, uShape switching the
