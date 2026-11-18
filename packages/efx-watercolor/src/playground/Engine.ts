@@ -2390,11 +2390,18 @@ export class WatercolorEngine {
   /**
    * quick 261117-tq7 (spec 09 law 3): snapshot the MOBILE pigment at stroke
    * start so the cover pass can subtract what it crosses while that paint is
-   * still wet. One snapshot per stroke — a second call is a no-op — and the
-   * two attachments are copied POSITIONALLY so attachment roles never cross.
+   * still wet. The two attachments are copied POSITIONALLY so attachment
+   * roles never cross.
+   *
+   * quick 261117-tq7 (rev 4, UAT round 3): arming is SELF-HEALING. A snapshot
+   * that outlived its stroke (a missed dropPreInk on an early-return path)
+   * used to survive — the old `preInk !== null` early return — and the next
+   * stroke's cover subtracted that stale density from the live ink
+   * (`ink - f * pre`), deepening coefficients negative: hue shifts and paint
+   * that vanishes. Release any stale snapshot before the copy.
    */
   private armInkCover() {
-    if (this.preInk !== null) return;
+    this.dropPreInk();
     const { gl, g } = this;
     this.preInk = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);
     this.ink.read.views.forEach((v, i) => g.blit(v, 0, 0, this.preInk!.views[i], 0, 0, this.dw, this.dh));
