@@ -42,6 +42,12 @@ export function PhysicsPaintCanvasMount(props: {
   trackOpacity?: number;
   trackBlendMode?: BlendMode;
   aquarelleCachedBaseUrl?: string | null;
+  /** quick 261117-tq7 (rev 4, UAT round 3): fires after the cached base's new
+   *  bytes have been decoded AND drawn in the same task. A caller that must
+   *  clear the live sheet only once the base shows the committed composite
+   *  (the cover's post-ack swap) arms its reset here — clearing it at URL-set
+   *  time left one frame of punched base alone (paper-white flash). */
+  onAquarelleCachedBaseApplied?: () => void;
   color?: string;
   getAquarellePlayFrame?: () => number;
   getAquarellePaperId?: () => string;
@@ -107,6 +113,7 @@ export function PhysicsPaintCanvasMount(props: {
   const onAquarelleLiftBlockedRef = useRef(props.onAquarelleLiftBlocked);
   const onAquarelleLiftDabRef = useRef(props.onAquarelleLiftDab);
   const onAquarelleCoverDabRef = useRef(props.onAquarelleCoverDab);
+  const onAquarelleCachedBaseAppliedRef = useRef(props.onAquarelleCachedBaseApplied);
   const colorRef = useRef(props.color ?? '#103c65');
   onCanvasMountedRef.current = props.onCanvasMounted;
   onAquarelleStrokeEndRef.current = props.onAquarelleStrokeEnd;
@@ -129,6 +136,7 @@ export function PhysicsPaintCanvasMount(props: {
   onAquarelleLiftBlockedRef.current = props.onAquarelleLiftBlocked;
   onAquarelleLiftDabRef.current = props.onAquarelleLiftDab;
   onAquarelleCoverDabRef.current = props.onAquarelleCoverDab;
+  onAquarelleCachedBaseAppliedRef.current = props.onAquarelleCachedBaseApplied;
   colorRef.current = props.color ?? '#103c65';
 
   useEffect(() => {
@@ -222,7 +230,10 @@ export function PhysicsPaintCanvasMount(props: {
           multiply over the fond stays the paper pass. Without it a cached key
           shows bare paper after return. */}
       {props.aquarelleCachedBaseUrl ? (
-        <AquarelleCachedBaseLayer url={props.aquarelleCachedBaseUrl} />
+        <AquarelleCachedBaseLayer
+          url={props.aquarelleCachedBaseUrl}
+          onApplied={() => onAquarelleCachedBaseAppliedRef.current?.()}
+        />
       ) : null}
       <AquarelleCanvasLayer
         width={props.width}

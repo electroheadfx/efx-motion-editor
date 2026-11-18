@@ -37,7 +37,7 @@ import { frozenCacheVisible } from '../view/scriptStrokeEdition';
  * visual until it arrives. URL swaps are double-buffered (decode first, then
  * clear+draw in one task) so a refresh never blanks the canvas.
  */
-export function AquarelleCachedBaseLayer(props: { url: string }) {
+export function AquarelleCachedBaseLayer(props: { url: string; onApplied?: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** Decoded transmittance + its punchable pixel buffer. Null on legacy
    *  real-alpha frames (never punched) and until the first decode lands. */
@@ -198,6 +198,11 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
       decodedRef.current = pigment && transmittance
         ? { width, height, image: transmittance }
         : null;
+      // quick 261117-tq7 (rev 4, UAT round 3): the new bytes ARE on the
+      // canvas now. Tell the owner in the SAME task so a deferred live-sheet
+      // reset lands before the browser paints — never a frame of punched
+      // base alone after the sheet is cleared ahead of the decode.
+      props.onApplied?.();
     };
     image.src = props.url;
     return () => {
