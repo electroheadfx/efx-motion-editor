@@ -23,8 +23,14 @@ import type { DocumentSnapshot, WatercolorEngine } from '@efxlab/efx-watercolor'
  * Mirrors the watercolor engine's `ExportBackground` union. The package barrel
  * does not re-export the type, and this port is deliberately self-contained —
  * the union is stated here so Roto never imports the vendored engine module.
+ *
+ * `transparent` is the opaque TRANSMITTANCE sheet: its alpha is darkness, which
+ * is what the alpha-blind capture ink gate, the stored sheet and the save path
+ * consume. `pigment` is mode 4, the COVERAGE-AWARE compositor view, whose real
+ * alpha is `clamp(max(1 - tMin, cov), 0, 1)` — the sheet the pigment-alpha
+ * merge wants for a covering stroke (Phase 64, Spike 001).
  */
-export type AquarelleExportBackground = 'transparent' | 'paper' | 'white';
+export type AquarelleExportBackground = 'transparent' | 'paper' | 'white' | 'pigment';
 
 /**
  * The narrow engine surface. `snapshot`/`restore` carry the whole paint

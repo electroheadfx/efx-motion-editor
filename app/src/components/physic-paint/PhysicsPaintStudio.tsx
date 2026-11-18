@@ -351,8 +351,9 @@ import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import { anchorsEqual } from '@efxlab/efx-watercolor/payload';
 import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';
-import { collectLiftDabs, coverShapeForBrush, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
+import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import { hasUsableFrameBytes } from './roto/aquarelleFrameBytes';
+import { isFullyOpaqueRaster } from '../../lib/rasterAlpha';
 import {
   beginAquarelleLiftPreview,
   endAquarelleLiftPreview,
@@ -383,10 +384,6 @@ const AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL = "This key's pre-script base is unava
 const AQUARELLE_LIFT_NO_CACHE_REFUSAL = "The frame's painted pixels are unavailable — nothing changed.";
 const AQUARELLE_LIFT_PERMANENT_MESSAGE = 'Erased — removed pixels are permanent (no undo).';
 const AQUARELLE_LIFT_FAILURE_MESSAGE = 'The erase did not commit — the picture is unchanged. The recorded Eraser applies on the next Apply.';
-// quick 261117-tq7: the cover's own failure copy. A failed punch/commit leaves
-// the visible picture as it was; the stroke itself was recorded, so a later
-// Apply paints it into the frame.
-const AQUARELLE_COVER_FAILURE_MESSAGE = 'The cover did not commit — the picture is unchanged. The recorded stroke applies on the next Apply.';
 // 261101-o2m: Draft's entry arm could not resolve the frame's pre-script base.
 // Without it every Draft commit would diverge from pixels whose base was never
 // decided, and the settle's apply would fail closed (`durable-base-unknown`).
@@ -416,13 +413,6 @@ type AquarelleLiftErasePlan =
        * script bake, validate it at ≤3/255 and punch it exactly once.
        */
       recoverBase: boolean;
-      /**
-       * quick 261117-tq7: which physical edit owns this plan. Absent = lift
-       * (every pre-existing literal stays unchanged). `cover` rides the SAME
-       * transaction: one punch + one merge commit, with the sheet captured
-       * even for a scripted plan because the cover deposits pigment.
-       */
-      mode?: 'lift' | 'cover';
     };
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 /** quick-261101-f5v: one rastered key's outcome, shared by both Raster scopes. */
@@ -7931,41 +7921,6 @@ export function PhysicsPaintStudio() {
       height: display.height ?? size.height,
     };
   };
-  // quick 261117-tq7: the cover's preflight. A covering Brush stamp must reach
-  // the SAME cached-base seam Lift owns — on a cooked frame the visible paint
-  // lives in the committed base, and that seam is the only path to it. The
-  // resolution mirrors the lift plan's erase arm (ordinary current key with a
-  // cached display base) with NO refusal copy: a legacy scripted key without a
-  // durable base degrades to the visible-base punch and records a diagnostic.
-  // It sits BEFORE the lift plan so both pinned preflight windows (which start
-  // at that plan) stay byte-unchanged.
-  const planAquarelleCoverErase = useCallback((frame: number): AquarelleLiftErasePlan => {
-    const launch = launchContextRef.current;
-    if (!launch) return { kind: 'normal' };
-    const trackId = aquarelleSessionTrackIdRef.current ?? studioActiveTrackId();
-    if (!trackId) return { kind: 'normal' };
-    const document = physicPaintStore.getRotoPhysicalDocument(launch.layerId, trackId);
-    if (!document) return { kind: 'normal' };
-    const target = classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: frame });
-    // Empty, generated and group frames have no committed raster of their own:
-    // the engine's own cover is the whole edit there.
-    if (target.kind !== 'ordinary-key') return { kind: 'normal' };
-    // A live sheet with no cached display has no pixels outside the engine.
-    if (findCachedRotoDisplayFrameRef.current(frame) === null) return { kind: 'normal' };
-    const scripted = hasAquarellePaintScriptForFrame(frame);
-    const willPinBase = aquarelleScriptRecordingEnabled.peek() && scripted
-      && !aquarelleDurableBaseByKeyRef.current.has(target.keyId);
-    return {
-      kind: 'erase',
-      frame,
-      trackId,
-      keyId: target.keyId,
-      scripted,
-      willPinBase,
-      recoverBase: false,
-      mode: 'cover',
-    };
-  }, []);
   const planAquarelleLiftErase = useCallback((frame: number): AquarelleLiftErasePlan => {
     const launch = launchContextRef.current;
     if (!launch) return { kind: 'normal' };
@@ -8052,31 +8007,6 @@ export function PhysicsPaintStudio() {
       pushAquarelleLiftPreviewDab({ x, y, r, amount, angle });
     },
     [planAquarelleLiftErase],
-  );
-  // quick 261117-tq7: the cover dab's mirror. The engine emits it
-  // unconditionally; THIS sink decides whether a display layer may punch —
-  // only a cooked frame with an ordinary current key has paint outside the
-  // live sheet. The begin carries `deposit` so the cached base erases the same
-  // tip-footprint fraction the engine's pre-ink cover subtracted.
-  const aquarelleCoverPreviewPlanRef = useRef<{ frame: number; active: boolean } | null>(null);
-  const aquarelleCoverGestureDabsRef = useRef<LiftDab[]>([]);
-  const handleAquarelleCoverDab = useCallback(
-    (x: number, y: number, r: number, amount: number, angle: number, density: number) => {
-      aquarelleCoverGestureDabsRef.current.push({ x, y, r, amount, angle, density });
-      const frame = launchContextRef.current?.startFrame ?? 0;
-      const cached = aquarelleCoverPreviewPlanRef.current;
-      let active: boolean;
-      if (cached !== null && cached.frame === frame) {
-        active = cached.active;
-      } else {
-        active = planAquarelleCoverErase(frame).kind === 'erase';
-        aquarelleCoverPreviewPlanRef.current = { frame, active };
-        if (active) beginAquarelleLiftPreview(frame, 'deposit');
-      }
-      if (!active) return;
-      pushAquarelleLiftPreviewDab({ x, y, r, amount, angle, density });
-    },
-    [planAquarelleCoverErase],
   );
   // The re-bake seam, mirrored through a ref: this transaction is identity
   // stable (it must stay out of the stroke-end deps), so it must never close
@@ -8255,10 +8185,6 @@ export function PhysicsPaintStudio() {
     stroke: AquarelleStroke,
     engineDabs?: readonly LiftDab[],
   ): Promise<void> => {
-    // quick 261117-tq7: the mode travels ON the plan — the in-flight fence's
-    // pending spread carries it, so one transaction per frame still holds and
-    // the signature stays three-argument.
-    const mode = plan.mode ?? 'lift';
     if (aquarelleLiftEraseInFlightRef.current) {
       aquarelleLiftErasePendingRef.current.push({ ...plan, stroke, engineDabs });
       return;
@@ -8345,15 +8271,7 @@ export function PhysicsPaintStudio() {
       // EAGER SHEET SNAPSHOT (raster-only commits it), taken before any
       // asynchronous hop. The live layer clears the sheet on frame leave, so a
       // read taken later can commit an empty or wrong-frame capture.
-      // quick 261117-tq7: a cover deposits this stroke's own pigment even on a
-      // scripted plan (Lift takes pixels away; the cover adds them), so its
-      // sheet is always captured and always merged.
-      const sheet = plan.scripted && mode !== 'cover' ? null : (aquarelleSnapshotRef.current?.() ?? null);
-      if (mode === 'cover' && !sheet) {
-        publish(AQUARELLE_COVER_FAILURE_MESSAGE);
-        revertAquarelleLiftPreview();
-        return;
-      }
+      const sheet = plan.scripted ? null : (aquarelleSnapshotRef.current?.() ?? null);
       if (!plan.scripted && !sheet) {
         publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
         revertAquarelleLiftPreview();
@@ -8380,11 +8298,7 @@ export function PhysicsPaintStudio() {
       // recorded brush's tip/aspect/rotation drives both the per-dab angles
       // and every punch below, so the committed erase can never disagree with
       // the live pass or the preview.
-      // quick 261117-tq7 (rev 4, UAT round 3): a COVER punches with the
-      // DEPOSIT footprint — the recorded texture, its rotation and the dry /
-      // jitter knobs the engine's bodyCoverFS binds. The Lift shape forces the
-      // neutral tip and erased outside the paint a textured dab deposits.
-      const shape = mode === 'cover' ? coverShapeForBrush(stroke) : liftShapeForStroke(stroke);
+      const shape = liftShapeForStroke(stroke);
       // 261028-k03h: the engine's own dab stream IS the erase the user saw
       // (and the preview punched). Re-deriving it from the recorded stroke
       // drifted along the stroke and erased more (UAT).
@@ -8393,284 +8307,6 @@ export function PhysicsPaintStudio() {
         : collectLiftDabs(stroke, size, shape);
       if (dabs.length === 0) {
         revertAquarelleLiftPreview();
-        return;
-      }
-      if (mode === 'cover') {
-        // quick 261117-tq7: the cover's transaction. The engine already
-        // subtracted the pre-stroke ink from the LIVE sheet; on a cooked frame
-        // the visible paint is the committed base, so the SAME dabs must be
-        // punched into it with the deposit-footprint profile and the merged
-        // result committed. The recorded stroke sheet carries this stroke's own
-        // pigment, which is why it is always captured and always merged;
-        // `baseCanvas` wins over `cachedBase`, so the recorded bytes are the
-        // punched ones while the pre-punch payload satisfies the required
-        // field. The POST-STROKE DISPLAY end state is that merged composite —
-        // never the punched base alone (see the post-ack swap below).
-        if (sheet === null) {
-          // Unreachable: the mode guard above already refused a sheetless
-          // cover. Repeating the check here is the narrowing seam that types
-          // the live alpha canvas below.
-          revertAquarelleLiftPreview();
-          publish(AQUARELLE_COVER_FAILURE_MESSAGE);
-          return;
-        }
-        // quick 261117-tq7 (rev 4, UAT round 3): a BLANK live sheet must never
-        // publish the punch. captureLivePixels merges this sheet over the
-        // punched base; with no pigment there the underlayer is erased and the
-        // stroke's own paint missing — the reported stroke that vanishes while
-        // its removal stays (and the blank readbacks the capture ink gate
-        // warns about). Fail closed: revert the preview, publish, never punch.
-        const coverInk = measureAquarelleCanvasInk(sheet);
-        if (!passesAquarelleCaptureInkGate(coverInk)) {
-          recordAquarelleRenderSplitEvent('lift-erase', {
-            frame: plan.frame,
-            trackId: plan.trackId,
-            keyId: plan.keyId,
-            scripted: plan.scripted,
-            willPinBase: plan.willPinBase,
-            stage: 'cover-blank-live-sheet',
-          });
-          revertAquarelleLiftPreview();
-          publish(AQUARELLE_COVER_FAILURE_MESSAGE);
-          return;
-        }
-        const mergeBase = aquarelleMergeBaseRef.current;
-        const pinnedCoverBase = mergeBase && mergeBase.appFrame === plan.frame && mergeBase.trackId === plan.trackId
-          ? mergeBase.base
-          : null;
-        // UAT 2026-11-18: a REFERENCE-ONLY record (bytes undefined) is not a
-        // base and must never be read as one — the old `.bytes.length` guard
-        // threw here and aborted the cover commit.
-        const pinnedCoverUsable = hasUsableFrameBytes(pinnedCoverBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)
-          ? pinnedCoverBase
-          : null;
-        // Preference: this session's pin, then the key's committed payload,
-        // then the display cache. A placeholder — or a reference-only record
-        // with no bytes — carries no pixels anywhere.
-        const payloadCover = aquarelleKeyPayloadRef.current(plan.frame);
-        const payloadCoverBase: RenderedFramePayload | null = payloadCover === null
-          ? null
-          : { frameIndex: 0, appFrame: plan.frame, ...payloadCover };
-        const payloadCoverUsable = hasUsableFrameBytes(payloadCoverBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)
-          ? payloadCoverBase
-          : null;
-        const displayCoverBase = pinnedCoverUsable === null && payloadCoverUsable === null
-          ? findCachedRotoDisplayFrameRef.current(plan.frame)
-          : null;
-        const coverBase: RenderedFramePayload | null = pinnedCoverUsable
-          ?? payloadCoverUsable
-          ?? (hasUsableFrameBytes(displayCoverBase, AQUARELLE_PLACEHOLDER_MAX_BYTES)
-            ? displayCoverBase
-            : null);
-        if (!coverBase) {
-          revertAquarelleLiftPreview();
-          publish(AQUARELLE_COVER_FAILURE_MESSAGE);
-          return;
-        }
-        const punchedCover = await punchTransmittanceBytes(coverBase.bytes, size, dabs, {
-          appFrame: plan.frame,
-          shape,
-          profile: 'deposit',
-        });
-        if (!punchedCover) {
-          revertAquarelleLiftPreview();
-          publish(AQUARELLE_COVER_FAILURE_MESSAGE);
-          return;
-        }
-        // The durable base is the one pre-script paint the next Apply cannot
-        // recreate; punch it through the same core footprint when this stroke
-        // pins it or a surviving entry must be rewritten. A legacy scripted
-        // key without an entry still covers the display — the diagnostic
-        // names the degradation and the next Apply re-bakes the stroke.
-        //
-        // The map's three states are load-bearing: a present entry is KNOWN,
-        // a proven-empty `null` is KNOWN-EMPTY, and a missing key is UNKNOWN.
-        // planAquarelleLiftErase's recovery arm keys on `has()`, so writing
-        // `null` for an UNKNOWN source would convert it to KNOWN-EMPTY and the
-        // next Lift would composite over a base it believes empty, silently
-        // dropping the key's pre-script paint. The post-ack write is therefore
-        // gated on the source having been DEFINED: a defined `null` may be
-        // written back as `null`, an absent entry is left absent.
-        let punchedDurableBytes: Uint8Array | null = null;
-        let coverDurableDefined = false;
-        if (plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)) {
-          const coverDurableSource = aquarelleDurableBaseByKeyRef.current.get(plan.keyId);
-          if (coverDurableSource === undefined) {
-            recordAquarelleRenderSplitEvent('lift-erase', {
-              frame: plan.frame,
-              trackId: plan.trackId,
-              keyId: plan.keyId,
-              scripted: plan.scripted,
-              willPinBase: plan.willPinBase,
-              stage: 'cover-durable-base-unavailable',
-            });
-          } else {
-            coverDurableDefined = true;
-            if (coverDurableSource !== null) {
-              const coverDurablePunch = await punchTransmittanceBytes(coverDurableSource, size, dabs, {
-                appFrame: plan.frame,
-                shape,
-                profile: 'deposit',
-              });
-              if (!coverDurablePunch) {
-                revertAquarelleLiftPreview();
-                publish(AQUARELLE_COVER_FAILURE_MESSAGE);
-                return;
-              }
-              punchedDurableBytes = coverDurablePunch.bytes;
-            }
-          }
-        }
-        // Pin the session base BEFORE the commit await: a settle capture
-        // enqueued mid-commit must merge over the punched base, never the
-        // pre-cover one.
-        previousMergeBase = aquarelleMergeBaseRef.current;
-        mergeBasePinned = true;
-        aquarelleMergeBaseRef.current = {
-          appFrame: plan.frame,
-          trackId: plan.trackId,
-          base: { frameIndex: 0, appFrame: plan.frame, bytes: punchedCover.bytes, width: size.width, height: size.height },
-        };
-        // CR-04: the commit is async (plus one retry), so the user can start
-        // the NEXT stroke while the ack is in flight. Capture the layer's
-        // stroke generation now; if it advanced by the time the ack lands, the
-        // sheet's live pixels belong to a newer stroke and resetSheet() would
-        // null that stroke's engine state — its pointerup then returns early
-        // (Engine's `this.stroke` is gone) and the stroke is neither recorded
-        // nor captured. Skip the reset and the display swap in that case.
-        const coverStrokeGeneration = aquarelleStrokeGenerationRef.current?.() ?? 0;
-        // quick 261117-tq7 (rev 4, UAT round 2): the committed composite IS
-        // the post-stroke display. The punched base is the underlayer REMOVED
-        // along the footprint; publishing it (with the sheet reset) left the
-        // fresh stroke paper-white until the frame reloaded from persistence.
-        // The produce seam hands back the exact encoded merge this capture
-        // commits, so the swap below never re-merges or re-encodes.
-        const coverProduced: { bytes: Uint8Array | null } = { bytes: null };
-        const commitCover = async () => rotoPersistenceRef.current.captureLivePixels({
-          layerId: launch.layerId,
-          trackId: plan.trackId,
-          appFrame: plan.frame,
-          liveAlphaCanvas: sheet,
-          cachedBase: coverBase,
-          baseCanvas: punchedCover.canvas,
-          mergeBlend: 'pigment-alpha',
-          size,
-          onProduced: (produced) => { coverProduced.bytes = produced.bytes; },
-        });
-        let coverAttempts = 1;
-        let coverOk = await commitCover();
-        if (!coverOk) {
-          coverAttempts = 2;
-          coverOk = await commitCover();
-        }
-        if (!coverOk) {
-          aquarelleMergeBaseRef.current = previousMergeBase;
-          revertAquarelleLiftPreview();
-          publish(AQUARELLE_COVER_FAILURE_MESSAGE);
-          recordAquarelleRenderSplitEvent('lift-erase', {
-            frame: plan.frame,
-            trackId: plan.trackId,
-            keyId: plan.keyId,
-            scripted: plan.scripted,
-            willPinBase: plan.willPinBase,
-            stage: 'cover-commit-failed',
-            attempts: coverAttempts,
-          });
-          return;
-        }
-        if (abandonIfDrifted('cover-commit-ack')) return;
-        // Post-acknowledgement: the durable bytes, then the sheet reset (the
-        // stroke's pigment now lives in the committed payload), then the
-        // display. The display republishes the COMMITTED composite the
-        // produce seam handed back — the punched base WITH this stroke's
-        // sheet merged over it. Loading the punched base here (the Lift's end
-        // state, which adds no pigment) was UAT round 2's vanished stroke: the
-        // underlayer erased along the footprint, the stroke nowhere. The map
-        // write goes through a local alias so the file keeps
-        // ONE spelling of the durable store, and it only runs when the source
-        // was DEFINED — UNKNOWN must never be rewritten as KNOWN-EMPTY.
-        if (coverDurableDefined) {
-          const coverDurableBase = aquarelleDurableBaseByKeyRef.current;
-          coverDurableBase.set(plan.keyId, punchedDurableBytes);
-          bumpAquarelleStrokesRevision();
-          studioScriptSnapshot.markDirty();
-        }
-        const coverStrokeLive = (aquarelleStrokeGenerationRef.current?.() ?? 0) !== coverStrokeGeneration;
-        if (!coverStrokeLive) {
-          // quick 261117-tq7 (rev 4, UAT round 4): the SESSION bookkeeping is
-          // synchronous, exactly as before this round. The merge base and the
-          // sheet-has-paint gate drive the settle capture; deferring them left
-          // a stale session that re-merged an uncleared sheet into the cache
-          // (paint not persisting). Only the PIXEL wipe below is deferred.
-          aquarelleEndSheetSessionRef.current?.();
-          if (launchContextRef.current?.startFrame === plan.frame) {
-            const generation = Math.max(
-              rotoPreviewBaseContentToken(),
-              previewBasePort.getAppliedPreviewBaseContentToken() ?? 0,
-            );
-            // quick 261117-tq7 (rev 4, UAT round 3): HOLD the live sheet's
-            // pixels until the new base bytes are on screen. The cached-base
-            // layer keeps its old (preview-punched) pixels until the decode
-            // lands, and the sheet is the stroke's only remaining pigment at
-            // this instant — clearing it at URL-set time flashed the punched
-            // base alone (paper-white) for the decode gap. The layer fires the
-            // hook in the decode's own clear+draw task.
-            //
-            // UAT round 4: ONLY when the URL will actually change.
-            // `getFrameBlobUrl` is content-memoized, so the same committed
-            // bytes resolve to the URL already on screen and NO decode (and
-            // no onApplied) would ever come — the sheet would never be
-            // cleared. In that case the display already shows these bytes:
-            // clear now, flash-free.
-            const nextDisplayUrl = coverProduced.bytes !== null
-              ? getFrameBlobUrl(coverProduced.bytes)
-              : '';
-            const displayWillChange = nextDisplayUrl !== ''
-              && nextDisplayUrl !== previewBasePort.getAppliedPreviewBaseDataUrl();
-            if (displayWillChange) {
-              const armedGeneration = aquarelleStrokeGenerationRef.current?.() ?? 0;
-              aquarelleCachedBaseAppliedRef.current = () => {
-                // A newer stroke started while the decode was pending — its
-                // pigment now lives on the sheet, and the coverStrokeLive law
-                // already says that stroke owns the display. Never clear it.
-                if ((aquarelleStrokeGenerationRef.current?.() ?? 0) !== armedGeneration) return;
-                aquarelleClearSheetPaintRef.current?.();
-              };
-            }
-            const loaded = loadCachedRotoReferenceFrame(
-              plan.frame,
-              previewBasePort,
-              undefined,
-              true,
-              generation,
-              // null = the produce seam never ran, so the loader re-reads the
-              // just-committed payload; never the underlayer-only punch.
-              coverProduced.bytes,
-            );
-            if (!loaded || !displayWillChange) {
-              // No apply will come (nothing to display, or the display already
-              // shows these bytes): clear the pixels now.
-              aquarelleCachedBaseAppliedRef.current = null;
-              aquarelleClearSheetPaintRef.current?.();
-            }
-            physicPaintVersion.value++;
-          } else {
-            aquarelleClearSheetPaintRef.current?.();
-          }
-        }
-        setApplyMessage(null);
-        setApplyStatus('idle');
-        setLastError(null);
-        recordAquarelleRenderSplitEvent('lift-erase', {
-          frame: plan.frame,
-          trackId: plan.trackId,
-          keyId: plan.keyId,
-          scripted: plan.scripted,
-          willPinBase: plan.willPinBase,
-          stage: 'cover-committed',
-          attempts: coverAttempts,
-          resetSkipped: coverStrokeLive,
-        });
         return;
       }
       // 261028-k03i: a recovery that PROVES the base empty also produces the
@@ -9241,7 +8877,7 @@ export function PhysicsPaintStudio() {
     } catch {
       if (mergeBasePinned) aquarelleMergeBaseRef.current = previousMergeBase;
       revertAquarelleLiftPreview();
-      publish(mode === 'cover' ? AQUARELLE_COVER_FAILURE_MESSAGE : AQUARELLE_LIFT_FAILURE_MESSAGE);
+      publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
     } finally {
       finish();
     }
@@ -9351,20 +8987,6 @@ export function PhysicsPaintStudio() {
     const liftPlan = stroke.tool === 'lift'
       ? planAquarelleLiftErase(launchContextRef.current?.startFrame ?? 0)
       : null;
-    // quick 261117-tq7: the cover gesture's own once-per-stroke dab capture,
-    // taken before any shared refusal path so a plain Brush scribble can never
-    // leak its dabs into a later covering stroke. The painted preview stays
-    // until the commit replaces it; the per-stroke plan cache must not leak.
-    const coverGestureDabs = stroke.tool === 'brush'
-      ? aquarelleCoverGestureDabsRef.current.splice(0)
-      : [];
-    if (stroke.tool === 'brush') {
-      aquarelleCoverPreviewPlanRef.current = null;
-      endAquarelleLiftPreview();
-    }
-    const coverPlan = stroke.tool === 'brush' && coverGestureDabs.length > 0
-      ? planAquarelleCoverErase(launchContextRef.current?.startFrame ?? 0)
-      : null;
     if (liftPlan?.kind === 'refuse') {
       // 261028-k03e: the engine already erased the LIVE SHEET during the
       // gesture. A refusal must undo that local erase, or the next settle /
@@ -9460,9 +9082,6 @@ export function PhysicsPaintStudio() {
       // 261028-k03 D2: the record above is synchronous and ordered; the punch
       // is async and owns only the pixel side. It never re-records.
       if (liftPlan?.kind === 'erase') void runAquarelleLiftErase(liftPlan, stroke, liftGestureDabs);
-      // quick 261117-tq7: the cover rides the same three-argument transaction
-      // (the mode travels on the plan), behind the lift and the record.
-      if (coverPlan?.kind === 'erase') void runAquarelleLiftErase(coverPlan, stroke, coverGestureDabs);
       // 61-15 (G-1/G-2): the vector commit's pixels exist only in this
       // re-bake (the commit painted no engine dabs). Tailed after the record
       // so the timeline already contains this exact stroke; a failed record
@@ -10369,6 +9988,24 @@ export function PhysicsPaintStudio() {
       });
       return;
     }
+    // Phase 64 (Spike 001): the SHEET SPLIT. Two engine exports mean two
+    // different things and can never be swapped:
+    //  - `snapshot()` / exportCanvas('transparent') is the opaque
+    //    TRANSMITTANCE sheet — its alpha is darkness, which is what the
+    //    alpha-blind ink gate below and the STORED sheet consume.
+    //  - exportCanvas('pigment') is mode 4, the coverage-aware compositor
+    //    view with real alpha clamp(max(1 - tMin, cov), 0, 1) — the sheet the
+    //    pigment-alpha merge composites (a*C + (1-a)*B) over the cached base.
+    // A blank mode-4 sheet would read as MAXIMUM ink to the transparent gate,
+    // so the gate keeps measuring `liveAlphaCanvas` and only the merge gets
+    // the coverage canvas. The export stays EAGER (same turn as the snapshot,
+    // before any await): the live layer clears the sheet on frame leave.
+    // GUARD: the merge converts a fully OPAQUE raster as transmittance,
+    // re-deriving the darkness alpha; a real-alpha sheet returns null from
+    // transmittanceSourceToPigmentAlpha and is drawn raw. An unexpectedly
+    // opaque pigment export must therefore fall back to the transparent one.
+    const exportedCoverage = aquarelleEnginePortRef.current?.exportCanvas('pigment') ?? null;
+    const liveCoverageCanvas = exportedCoverage !== null && !isFullyOpaqueRaster(exportedCoverage) ? exportedCoverage : liveAlphaCanvas;
     // A cleared sheet still exports an opaque, near-uniform white texture tens
     // of KB large. Never let such a capture take ownership of the frame's cache.
     // quick-261109-uj0: the shared predicate decides on the global luminance
@@ -10548,7 +10185,12 @@ export function PhysicsPaintStudio() {
           layerId: launch.layerId,
           trackId: targetTrackId,
           appFrame: playFrame,
-          liveAlphaCanvas,
+          // Phase 64: the merge slot receives the COVERAGE sheet (mode 4,
+          // real alpha) — the field name is the merge API's slot and stays
+          // `liveAlphaCanvas`. The STORED sheet remains the transparent
+          // export: the save path, the clipboard and the ink gate all read
+          // `snapshot()`.
+          liveAlphaCanvas: liveCoverageCanvas,
           cachedBase,
           // Pigment-alpha law (2026-10-26 round 2): the stored sheet stays
           // opaque (MODE.transparent transmittance), but the merge converts the
@@ -11145,7 +10787,7 @@ export function PhysicsPaintStudio() {
   // completion/performance/input telemetry, beforeEngineDestroy, stroke
   // metadata, the brush script overlay) are gone; `onEnginePortReady` is the
   // Wave 3 D8 narrow port the frame-editing controller consumes.
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleCoverDab, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -11176,7 +10818,6 @@ export function PhysicsPaintStudio() {
       // 261028-k03b: the live erase preview source (exact engine dabs).
       onAquarelleLiftDab: handleAquarelleLiftDab,
       // quick 261117-tq7: the cover's live core punch source (same seam).
-      onAquarelleCoverDab: handleAquarelleCoverDab,
       onAquarelleCachedBaseApplied: handleAquarelleCachedBaseApplied,
       onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
       onAquarelleStrokeSettled: handleAquarelleStrokeSettled,

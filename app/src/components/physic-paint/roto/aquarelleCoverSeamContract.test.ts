@@ -173,8 +173,9 @@ describe('the capture seam exports the coverage sheet eagerly', () => {
 
   it('hands the coverage canvas to the merge and the transparent one to the ink gate', () => {
     const call = captureCall();
-    expect(call).toContain('liveCoverageCanvas,');
-    expect(call).not.toContain('liveAlphaCanvas');
+    // The sheet slot keeps the merge API's field name and carries the coverage
+    // canvas (the stored sheet stays the transparent export).
+    expect(call).toContain('liveAlphaCanvas: liveCoverageCanvas,');
     expect(call).toContain('cachedBase,');
     expect(call).toContain("mergeBlend: 'pigment-alpha',");
     expect(call).toContain('size: { width: canvasWidth, height: canvasHeight },');
