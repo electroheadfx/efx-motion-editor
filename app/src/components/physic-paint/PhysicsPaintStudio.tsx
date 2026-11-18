@@ -882,6 +882,16 @@ export function PhysicsPaintStudio() {
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
+  // 64-07 (MED-17): the ACTIVE paint-layer document's emboss light, resolved
+  // at CALL time — a getter, never a copied prop, so the live sheet's per-frame
+  // read, every bake and the content signature all see the current document.
+  // 64-19 (CR-01): hoisted above the roto frame projections — their ref
+  // initializers below run DURING this render, before the old site, and the
+  // light term now keys every real-frame cache revision.
+  const documentLight = (): PaintDocumentLight | undefined => {
+    const layerId = launchContextRef.current?.layerId;
+    return layerId ? getEfxPaintDocument(layerId)?.light : undefined;
+  };
   // 47-01 UAT round 8: the strip data subscriptions below re-render the whole
   // Studio on every paint event; a trailing throttle collapses a stroke
   // burst into one flush so the chrome freezes while painting (the user's
@@ -986,7 +996,7 @@ export function PhysicsPaintStudio() {
   // bytes could not be materialized at the launch door (reported loudly there)
   // boots as missing content instead of bricking the Studio. The publish path
   // keeps the strict projection.
-  const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(initialCarried ? recordsAsRuntimeFramesToleratingReferences(initialCarried) : []);
+  const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(initialCarried ? recordsAsRuntimeFramesToleratingReferences(initialCarried, documentLight()) : []);
   // 47 close-out UAT round 9: which track latestRotoFramesRef currently holds.
   const latestRotoFramesTrackRef = useRef<string>(trackIdOfLaunch(launchContext));
   // studio-realm-divergence (nature: contract): which structural revision
@@ -1005,7 +1015,7 @@ export function PhysicsPaintStudio() {
         // updater runs synchronously inside the setter, so a strict assertion
         // here aborted the whole launch replacement handoff and froze the
         // Studio at its pre-launch shell. Tolerant seed: skip, never brick.
-        latestRotoFramesRef.current = carried ? recordsAsRuntimeFramesToleratingReferences(carried) : [];
+        latestRotoFramesRef.current = carried ? recordsAsRuntimeFramesToleratingReferences(carried, documentLight()) : [];
         selectedKeyId.value = carried?.selectedKeyId ?? null;
         // Launch replacement resets the multi-selection exactly like the
         // single selection (Pattern 5): a replaced launch never inherits a
@@ -1360,13 +1370,6 @@ export function PhysicsPaintStudio() {
   // still holds the PREVIOUS context at that moment) and refreshed by every
   // project-context republish, so a save-as rebind is followed live.
   const studioScriptSnapshotAuthorityRef = useRef<string | null>(null);
-  // 64-07 (MED-17): the ACTIVE paint-layer document's emboss light, resolved
-  // at CALL time — a getter, never a copied prop, so the live sheet's per-frame
-  // read, every bake and the content signature all see the current document.
-  const documentLight = (): PaintDocumentLight | undefined => {
-    const layerId = launchContextRef.current?.layerId;
-    return layerId ? getEfxPaintDocument(layerId)?.light : undefined;
-  };
   const studioScriptSnapshotControllerRef = useRef<StudioScriptSnapshotController | null>(null);
   if (studioScriptSnapshotControllerRef.current === null) {
     studioScriptSnapshotControllerRef.current = createStudioScriptSnapshotController({
@@ -1597,6 +1600,9 @@ export function PhysicsPaintStudio() {
     },
     syncPending: () => resetRotoKeySessionRef.current(),
     getBackgroundMetadata: () => buildRotoBackgroundMetadata(settings),
+    // 64-19 (CR-01): the coordinator keys every real-frame cache revision on
+    // the document's light, read at call time by the same getter the bakes use.
+    getDocumentLight: () => documentLight(),
     sendCachePayload: async (payload) => sendPhysicPaintApplyPayload(
       payload,
       bridgeMode === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : bridgeMode,
@@ -1855,7 +1861,7 @@ export function PhysicsPaintStudio() {
       if (physicalDocument) {
         // debug studio-reopen-empty-boot: reseed is a SEED — same tolerance as
         // the launch seed (a residual unreadable frame is missing content).
-        latestRotoFramesRef.current = recordsAsRuntimeFramesToleratingReferences(physicalDocument);
+        latestRotoFramesRef.current = recordsAsRuntimeFramesToleratingReferences(physicalDocument, documentLight());
         latestRotoFramesTrackRef.current = activeTrackIdNow;
         latestRotoFramesRevisionRef.current = rotoPhysicalRevision.value;
       }

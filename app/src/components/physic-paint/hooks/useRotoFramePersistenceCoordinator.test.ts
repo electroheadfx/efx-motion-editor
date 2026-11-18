@@ -663,17 +663,22 @@ describe('64-19 light term in the real-frame cache fingerprint (CR-01, MED-17)',
 
   it('two lights rotate the real-frame revision; the same light twice is the identical revision', () => {
     const document = lightDocument();
+    // `cacheRevision` rides the runtime frame but is not declared on the
+    // transport type — read it through a narrow cast (same idiom as the
+    // launch-pack fixture).
+    const revisionOf = (frames: ReturnType<typeof recordsAsRuntimeFrames>): string =>
+      (frames[0] as { cacheRevision?: string }).cacheRevision ?? '';
     const warm = recordsAsRuntimeFrames(document, { ...DEFAULT_LIGHT, azimuth: 210 });
     const cool = recordsAsRuntimeFrames(document, { ...DEFAULT_LIGHT, azimuth: 40 });
     const warmAgain = recordsAsRuntimeFrames(document, { ...DEFAULT_LIGHT, azimuth: 210 });
     expect(warm).toHaveLength(1);
-    expect(warm[0].cacheRevision).not.toBe(cool[0].cacheRevision);
-    expect(warmAgain[0].cacheRevision).toBe(warm[0].cacheRevision);
+    expect(revisionOf(warm)).not.toBe(revisionOf(cool));
+    expect(revisionOf(warmAgain)).toBe(revisionOf(warm));
     // No spurious rotation: an absent light keys exactly like the explicit default.
-    expect(recordsAsRuntimeFrames(document, undefined)[0].cacheRevision)
-      .toBe(recordsAsRuntimeFrames(document, { ...DEFAULT_LIGHT })[0].cacheRevision);
-    // And the paper term still rides beside it (same document, no background).
-    expect(warm[0].cacheRevision).toContain(warmAgain[0].cacheRevision);
+    expect(revisionOf(recordsAsRuntimeFrames(document, undefined)))
+      .toBe(revisionOf(recordsAsRuntimeFrames(document, { ...DEFAULT_LIGHT })));
+    // And the light term rides the revision itself (the CR-01 fingerprint).
+    expect(revisionOf(warm)).toContain(':light:');
   });
 
   it('all three real-frame revision sites pass the light term — the module has exactly three calls', () => {

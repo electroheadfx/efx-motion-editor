@@ -403,7 +403,9 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
     let seedError: string | null = null;
     let seededFrames: unknown[] = [];
     try {
-      seededFrames = carriedDoc === null ? [] : recordsAsRuntimeFrames(carriedDoc);
+      // 64-19: the fixture document carries no light — light-agnostic by
+      // design (the seed's byte tolerance is orthogonal to the light term).
+      seededFrames = carriedDoc === null ? [] : recordsAsRuntimeFrames(carriedDoc, undefined);
     } catch (error) {
       seedError = error instanceof Error ? error.message : String(error);
     }
@@ -445,7 +447,7 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
     let tolerantSeedError: string | null = null;
     let tolerantFrames: unknown[] = [];
     try {
-      tolerantFrames = carriedDoc === null ? [] : recordsAsRuntimeFramesToleratingReferences(carriedDoc);
+      tolerantFrames = carriedDoc === null ? [] : recordsAsRuntimeFramesToleratingReferences(carriedDoc, undefined);
     } catch (error) {
       tolerantSeedError = error instanceof Error ? error.message : String(error);
     }
@@ -477,7 +479,7 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
     let tolerantSeedError: string | null = null;
     let tolerantFrames: unknown[] = [];
     try {
-      tolerantFrames = carriedDoc === null ? [] : recordsAsRuntimeFramesToleratingReferences(carriedDoc);
+      tolerantFrames = carriedDoc === null ? [] : recordsAsRuntimeFramesToleratingReferences(carriedDoc, undefined);
     } catch (error) {
       tolerantSeedError = error instanceof Error ? error.message : String(error);
     }
@@ -512,11 +514,11 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
 
     let strictError: string | null = null;
     try {
-      recordsAsRuntimeFrames(document);
+      recordsAsRuntimeFrames(document, undefined);
     } catch (error) {
       strictError = error instanceof Error ? error.message : String(error);
     }
-    const tolerantFrames = recordsAsRuntimeFramesToleratingReferences(document);
+    const tolerantFrames = recordsAsRuntimeFramesToleratingReferences(document, undefined);
 
     expect({
       strictSeedThrew: strictError,

@@ -13,6 +13,7 @@ import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPrese
 import { useRotoEditBufferController } from './useRotoEditBufferController';
 import { useRotoReferenceController } from './useRotoReferenceController';
 import type { RotoGroupFramePaintExecuteInput } from './useRotoPhysicalEditCoordinator';
+import { lightSignature } from '../engine/physicsPaintStudioSettings';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 import { markEfxPaintDocumentSyncFrameDelivered } from '../bridge/physicsPaintBridgeTransport';
 import { createFinalizationQueue, type FinalizationQueue } from '../pilot/finalizationQueue';
@@ -238,6 +239,12 @@ export interface UseRotoFramePersistenceCoordinatorInput {
   getActiveTrackId: (layerId: string) => string;
   syncPending: () => void;
   getBackgroundMetadata: () => PhysicPaintRotoBackgroundMetadata;
+  /**
+   * 64-19 (CR-01 / MED-17): the document's emboss light, read at call time so
+   * every real-frame cache revision keys on the light the pixels were baked
+   * under. A superseded light can never be served from cache as current.
+   */
+  getDocumentLight: () => PaintDocumentLight | undefined;
   sendCachePayload: (payload: PhysicPaintApplyPayload) => Promise<void>;
   executePhysicalEdit: (input: RotoGroupFramePaintExecuteInput) => Promise<boolean>;
   createOverrideKeyId?: () => string;
@@ -286,13 +293,17 @@ function paperCacheTerm(background: { background: string; grainStrength: number;
  * 64-19 (CR-01 / MED-17): the emboss-light term for the aquarelle cache
  * fingerprint. A settled wash is baked under the document's light, so the
  * light must key the cached artifact — a superseded light can never be served
- * from cache as if it were current.
+ * from cache as if it were current. Built from the canonical `lightSignature`,
+ * so an absent light and an explicit DEFAULT_LIGHT are ONE term (64-07 law).
  */
-export function lightCacheTerm(_light: PaintDocumentLight | undefined): string {
-  return '';
+export function lightCacheTerm(light: PaintDocumentLight | undefined): string {
+  return `:light:${lightSignature(light)}`;
 }
 
-export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
+export function recordsAsRuntimeFrames(
+  document: PhysicPaintRotoPhysicalDocument,
+  light: PaintDocumentLight | undefined,
+): PhysicPaintRotoCacheFrame[] {
   // 52.2-02 (D-07): a runtime cache frame needs pixels, so the inline carrier is
   // asserted. A reference-only record is a persisted shape and never reaches
   // this projection — the document here was built from in-memory runtime records.
@@ -304,7 +315,7 @@ export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument
     source: 'real-key' as const,
     keyId: record.keyId,
     contentRevision: document.revision,
-    cacheRevision: buildRotoRealCacheRevision(document.revision, record.keyId, paper),
+    cacheRevision: buildRotoRealCacheRevision(document.revision, record.keyId, `${paper}${lightCacheTerm(light)}`),
   }));
 }
 
@@ -321,10 +332,13 @@ export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument
  * the launch seed gives it. The strict helper stays strict for the case it was
  * written for, a door that failed to materialize bytes the package DOES have.
  */
-export function recordsAsPublishableRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
+export function recordsAsPublishableRuntimeFrames(
+  document: PhysicPaintRotoPhysicalDocument,
+  light: PaintDocumentLight | undefined,
+): PhysicPaintRotoCacheFrame[] {
   const readable = document.realKeyRecords.filter((record) => record.payload.bytes !== undefined);
-  if (readable.length === document.realKeyRecords.length) return recordsAsRuntimeFrames(document);
-  return recordsAsRuntimeFrames({ ...document, realKeyRecords: readable });
+  if (readable.length === document.realKeyRecords.length) return recordsAsRuntimeFrames(document, light);
+  return recordsAsRuntimeFrames({ ...document, realKeyRecords: readable }, light);
 }
 
 /**
@@ -342,6 +356,7 @@ export function recordsAsPublishableRuntimeFrames(document: PhysicPaintRotoPhysi
  */
 export function recordsAsRuntimeFramesToleratingReferences(
   document: PhysicPaintRotoPhysicalDocument,
+  light: PaintDocumentLight | undefined,
 ): PhysicPaintRotoCacheFrame[] {
   const paper = paperCacheTerm(document.background);
   return document.realKeyRecords
@@ -353,7 +368,7 @@ export function recordsAsRuntimeFramesToleratingReferences(
       source: 'real-key' as const,
       keyId: record.keyId,
       contentRevision: document.revision,
-      cacheRevision: buildRotoRealCacheRevision(document.revision, record.keyId, paper),
+      cacheRevision: buildRotoRealCacheRevision(document.revision, record.keyId, `${paper}${lightCacheTerm(light)}`),
     }));
 }
 
@@ -456,7 +471,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const trackId = launch?.layerId === layerId ? inputRef.current.getActiveTrackId(layerId) : '';
     const document = inputRef.current.store.getRotoPhysicalDocument(layerId, trackId);
     if (!document) return;
-    const frames = recordsAsPublishableRuntimeFrames(document);
+    const frames = recordsAsPublishableRuntimeFrames(document, inputRef.current.getDocumentLight());
     inputRef.current.latestFramesRef.current = frames;
     if (!options?.preserveRuntimeCaches) {
       confirmedFramesRef.current = new Map(frames.map((frame) => [frame.appFrame, frame]));
@@ -573,10 +588,12 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       contentRevision: route.contentRevision,
       // 261017-fz3: paper id+strength+scale join the aquarelle cache fingerprint
       // so a paper change is a cache miss (stale WebP frames are not served).
+      // 64-19 (CR-01): the emboss light joins beside it — the accepted frame's
+      // pixels are baked under the light read here at call time.
       cacheRevision: buildRotoRealCacheRevision(
         route.contentRevision,
         route.keyId,
-        paperCacheTerm(inputRef.current.getBackgroundMetadata()),
+        `${paperCacheTerm(inputRef.current.getBackgroundMetadata())}${lightCacheTerm(inputRef.current.getDocumentLight())}`,
       ),
     };
     // The local frame buffers belong to the LIVE active track. A switch flush
