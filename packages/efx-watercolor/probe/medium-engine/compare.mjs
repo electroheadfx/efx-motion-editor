@@ -57,6 +57,18 @@
 //  reported, not gated, so a duration delta can never fail a byte-identity
 //  check. The operand contract above is unchanged: 64-10 only reads it.
 //
+//  64-17: FIELDS gains `digestPigment` — the mode-4 coverage sheet whose
+//  alpha is max(1 - min(rgb), cover), so a covering stroke is visible in the
+//  comparison at all. The field is strict in EVERY mode except one named
+//  reference: `neutral-identity` was captured from commit d1fd7ea3, before the
+//  pigment export existed, so its missing field prints as `absent` and is not
+//  compared. The exception is consulted only when the REFERENCE is the
+//  committed baseline (mode 1) — a capture-side omission is still a missing
+//  field, and --other stays strict, so the legacy allowance can never launder
+//  a same-session regression. DIGESTS stays the three exported backgrounds:
+//  --differs-from keeps asserting those, not the sheet that must change with
+//  them.
+//
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
 //  teach this parser about it rather than have it silently misparse.
@@ -70,7 +82,12 @@ const here = dirname(fileURLToPath(import.meta.url))
 const tmpDir = '/tmp/medium-engine'
 
 const DIGESTS = ['digestPaper', 'digestTransparent', 'digestWhite']
-const FIELDS = [...DIGESTS, 'byteLength', 'width', 'height']
+const FIELDS = [...DIGESTS, 'digestPigment', 'byteLength', 'width', 'height']
+
+// 64-17: the one committed baseline captured before the pigment export
+// existed. `absent` is legal for these fields on the REFERENCE side only —
+// never for the capture, and never outside committed-baseline mode.
+const REFERENCE_OPTIONAL = { 'neutral-identity': ['digestPigment'] }
 
 // WR-01: the cover-over-wet gate asserts the rendered OUTCOME, not only that
 // the bytes changed. The probe reports four full-resolution region means
@@ -372,9 +389,17 @@ for (const field of FIELDS) {
   const b = refData[field]
   const aOk = a !== undefined && a !== null
   const bOk = b !== undefined && b !== null
-  if (!aOk || !bOk) {
+  // 64-17: the reference-legacy rule. Legal only against the named committed
+  // baseline (mode 1); the capture side is always required.
+  const optionalForReference =
+    mode === 'baseline' && (REFERENCE_OPTIONAL[refData.gate] ?? []).includes(field)
+  if (!aOk || (!bOk && !optionalForReference)) {
     missing += 1
     console.log(`MISSING   ${field.padEnd(18)} capture=${aOk ? a : '(missing)'} reference=${bOk ? b : '(missing)'}`)
+    continue
+  }
+  if (!bOk) {
+    console.log(`absent    ${field.padEnd(18)} ${a}  (baseline predates the field; not compared)`)
     continue
   }
   if (a !== b) {

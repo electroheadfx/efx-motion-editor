@@ -49,22 +49,38 @@
 //  and reads ≥0.5 below the no-cover prefix; bare paper stays the empty
 //  control. The digest-differs check stays as the change detector.
 //
+//  64-17 digests the coverage sheet: every report carries `digestPigment`
+//  (the mode-4 compositor export, whose alpha is max(1 − min(rgb), cover)),
+//  and a capture that lacks any of the FOUR digests is refused below. The
+//  comparison field is `digestPigment`; the one baseline captured before the
+//  export existed (`neutral-identity`) is handled explicitly by compare.mjs.
+//  64-17 also adds `--scenario watercolor-50`: the spike's 50 rapid #cc2222
+//  strokes on blank paper at Body 0, captured at `--size 1080` as the second
+//  half of the Body-0 identity law.
+//
 //  Final flag contract (later phases inherit it, do not retype it):
 //    run.mjs --gate <name>            required; [A-Za-z0-9._-]+, names the JSON
 //             [--scenario cover]      omitted renders the plan-01 single stroke
 //             [--scenario cover-over-wet]
 //                                     cover geometry, dark entry left mobile
+//             [--scenario watercolor-50]
+//                                     the 50-rapid-stroke identity passage
 //             [--emboss <0..100>]     omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
 //             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
 //             [--size <32..4096>]     omitted keeps the 256 square
-//    compare.mjs <gate>               committed-baseline equality (6 fields)
+//    compare.mjs <gate>               committed-baseline equality (7 fields)
 //    compare.mjs <gate> --other <g>   same-session equality; never a baseline
 //    compare.mjs <gate> --differs-from <n>
 //                                     committed baseline <n> when it exists,
 //                                     else the same-session capture; all
 //                                     three exported-background digests must
 //                                     differ and the dimensions must agree
+//
+//  The scenario closed lists here and in probe.ts (readScenario) must stay
+//  literal-identical: a name accepted here but unknown to the probe fails at
+//  capture, and a name the probe knows but this parser rejects can never be
+//  requested.
 //
 //  Writes /tmp/medium-engine/<name>.json. The committed reference lives
 //  at probe/medium-engine/baselines/<name>.json and is NEVER written by
@@ -86,7 +102,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|watercolor-50] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -137,12 +153,16 @@ if (bodyRaw !== undefined) {
 
 // 64-06: optional scenario. Omitted keeps the plan-01 single stroke.
 // quick-261117-tq7 adds `cover-over-wet` (cover geometry, dark entry mobile).
+// 64-17 adds `watercolor-50` (the 50-rapid-stroke identity passage). This
+// closed list and probe.ts readScenario's must stay literal-identical.
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet') {
-    console.error(`invalid --scenario "${scenarioRaw}" (expected "cover" or "cover-over-wet")`)
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50') {
+    console.error(
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet" or "watercolor-50")`,
+    )
     process.exit(1)
   }
   scenario = scenarioRaw
@@ -266,7 +286,9 @@ try {
   process.exit(1)
 }
 
-const digests = ['digestPaper', 'digestTransparent', 'digestWhite']
+// 64-17: four digests — a capture that fails to produce the coverage sheet is
+// refused instead of being compared on the three backgrounds alone.
+const digests = ['digestPaper', 'digestTransparent', 'digestWhite', 'digestPigment']
 const missing = digests.filter((key) => typeof result[key] !== 'string')
 if (missing.length > 0) {
   console.error(`[probe] result is missing ${missing.join(', ')} (verdict=${result.verdict ?? '(missing)'})`)
@@ -298,6 +320,7 @@ console.log(`renderer  : ${result.renderer ?? 'n/a'}`)
 console.log(`paper     : ${result.digestPaper}`)
 console.log(`transparent: ${result.digestTransparent}`)
 console.log(`white     : ${result.digestWhite}`)
+console.log(`pigment   : ${result.digestPigment}`)
 console.log(`result JSON: ${resultPath}`)
 console.log(`total probe: ${elapsedMs} ms`)
 console.log('=========================================================')

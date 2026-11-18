@@ -20,8 +20,9 @@
 //  Output: one JSON report in <pre id="result">; run.mjs writes it to
 //  /tmp/medium-engine/<gate>.json and compare.mjs diffs it against
 //  probe/medium-engine/baselines/<gate>.json (or a sibling capture).
-//  The report digests all three exported backgrounds (paper, transparent,
-//  white) and echoes the 64-04 `--light <0..4>` intensity it was shaded with.
+//  The report digests all four exports (paper, transparent, white and, since
+//  64-17, pigment — the coverage-aware compositor sheet) and echoes the 64-04
+//  `--light <0..4>` intensity it was shaded with.
 //
 //  64-06 adds the Body matrix: `--body <0..100>` folds the canonical key into
 //  EVERY stroke's params bag, and `--scenario cover` swaps the fixed
@@ -68,6 +69,32 @@
 //    paperBandPigment   bare paper: the zero control.
 //  compare.mjs asserts these for every cover-over-wet capture. Only that
 //  scenario emits them, so every other scenario's report shape is unchanged.
+//
+//  64-17 adds the coverage sheet to the gate: `engine.exportCanvas('pigment')`
+//  is the mode-4 COMPOSITOR view, whose alpha is max(1 − min(rgb), cover) —
+//  the exact alpha 64-15 carries into the app commit — so every report
+//  digests it as `digestPigment` beside the three backgrounds and run.mjs
+//  refuses a capture without it. Adding the export leaves the other three
+//  byte-identical, which the neutral identity gate proves on every run.
+//
+//  64-17 also adds the drive cadence the 1080² 50-stroke passage needs: a
+//  ScriptEntry carries an optional `settle` (ticks 0..settle, default
+//  SETTLE_TICKS), and a rapid entry (`fixAfter: false`) is fixed every tenth
+//  stroke and once after the loop — the spike harness's exact cadence
+//  (.planning/spikes/001-coverage-composite/probe/probe.ts:603-618). No
+//  pre-existing script carries a rapid entry, so `neutral`, `cover` and
+//  `cover-over-wet`'s fixed entries keep their old drive byte-for-byte. The
+//  one behavioural trace is cover-over-wet's single mobile entry: its trailing
+//  fix re-settles mobile ink, so THAT capture changes digest here and is
+//  re-captured by 64-17 task 3 — never compare it before then.
+//
+//  Scenario list (64-17): `watercolor-50` is the spike's identity passage —
+//  50 rapid #cc2222 strokes on blank paper at Body 0, settle 1 — captured at
+//  `--size 1080` and committed as the second half of the Body-0 identity law
+//  (neutral-identity is the 256² half). The script is the spike's verbatim
+//  (.planning/spikes/001-coverage-composite/probe/probe.ts:459-473).
+//
+//  Scenarios: neutral | cover | cover-over-wet | watercolor-50.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -282,6 +309,10 @@ interface ScriptEntry {
   readonly mutationId: number
   readonly emboss?: number
   readonly body?: number
+  /** 64-17: settle ticks after applyStroke (0..settle); omitted keeps the
+   *  phase-default SETTLE_TICKS. The 50-stroke passage settles in ONE tick
+   *  per stroke, the spike's rapid cadence. */
+  readonly settle?: number
   /** quick-261117-tq7: `false` leaves the stroke MOBILE (no fix) so the
    *  next stroke's cover pass meets wet `ink` instead of settled pigment.
    *  Omitted fixes after the settle, exactly as before. */
@@ -342,6 +373,39 @@ function coverOverWetScript(emboss?: number, body?: number): readonly ScriptEntr
   ]
 }
 
+// --- 64-17 watercolor-50 scenario -------------------------------------------
+// The spike's identity passage verbatim: 50 rapid horizontal strokes of
+// #cc2222 on blank paper at Body 0, each settling ONE tick and left mobile
+// (`fixAfter: false`), with the drive fixing every tenth stroke and once at
+// the end. The jitter walks the line ±0.003 doc heights so the strokes overlap
+// without coinciding, exactly as the spike scripted it.
+
+/** The spike's three-point horizontal line at pressure 0.75 (spike 415-421). */
+function horizontalLine(y: number): readonly AquarellePoint[] {
+  return [
+    { x: 0.16, y, p: 0.75, tx: 0, ty: 0, tw: 0 },
+    { x: 0.5, y: y + 0.002, p: 0.75, tx: 0, ty: 0, tw: 0 },
+    { x: 0.84, y, p: 0.75, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/** 64-17: the 1080² Body-0 identity passage — 50 rapid strokes, settle 1. */
+function watercolor50Script(): readonly ScriptEntry[] {
+  const script: ScriptEntry[] = []
+  for (let i = 0; i < 50; i += 1) {
+    const jitter = ((i % 3) - 1) * 0.003
+    script.push({
+      color: '#cc2222',
+      points: horizontalLine(0.5 + jitter),
+      mutationId: 0x7ee100 + i,
+      body: 0,
+      settle: 1,
+      fixAfter: false,
+    })
+  }
+  return script
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -391,7 +455,9 @@ function run(
       ? coverScript(emboss, body)
       : scenario === 'cover-over-wet'
         ? coverOverWetScript(emboss, body)
-        : neutralScript(emboss, body)
+        : scenario === 'watercolor-50'
+          ? watercolor50Script()
+          : neutralScript(emboss, body)
 
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
@@ -409,14 +475,25 @@ function run(
     // 64-06: bakeMs covers the script + settle only — the exports below are
     // the capture, not the medium, so they never inflate the cost number.
     const bakeStart = performance.now()
-    for (const entry of script) {
+    script.forEach((entry, index) => {
       adapter.applyStroke(makeStroke(entry))
-      // Plan 64-01: stepTick for ticks 0 through 8, then fix().
-      for (let tick = 0; tick <= SETTLE_TICKS; tick += 1) adapter.stepTick(tick)
+      // 64-17: per-entry settle (ticks 0..settle, default SETTLE_TICKS); the
+      // rapid entries of the 50-stroke passage settle in ONE tick each.
+      const settle = entry.settle ?? SETTLE_TICKS
+      for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
       // quick-261117-tq7: `fixAfter: false` skips the settle so the stroke
       // stays mobile `ink`, the cover-over-wet underlayer.
       if (entry.fixAfter !== false) adapter.fix()
-    }
+      // 64-17 / spike probe.ts:603-618: fix every tenth rapid stroke, so the
+      // 50-stroke session is not one giant wet pool. Unreachable for every
+      // pre-existing script — none carries a rapid entry.
+      if (entry.fixAfter === false && (index + 1) % 10 === 0) adapter.fix()
+    })
+    // 64-17: the trailing fix, only when the script carries a rapid entry —
+    // the last rapid stroke settles here (the spike's exact cadence). A script
+    // of fully-settled strokes already ended on its own fix, so this stays
+    // unreachable for `neutral` and `cover`.
+    if (script.some((entry) => entry.fixAfter === false)) adapter.fix()
     const bakeMs = Math.round(performance.now() - bakeStart)
 
     const engine = capturedEngine
@@ -436,9 +513,14 @@ function run(
     const paperCanvas = engine.exportCanvas('paper')
     const transparentCanvas = engine.exportCanvas('transparent')
     const whiteCanvas = engine.exportCanvas('white')
+    // 64-17: the mode-4 coverage-aware compositor sheet. Its alpha is
+    // max(1 − min(rgb), cover) — the exact alpha 64-15 carries into the app
+    // commit — so a covering stroke carries real opacity in this export.
+    const pigmentCanvas = engine.exportCanvas('pigment')
     const paper = digestCanvas(paperCanvas)
     const transparent = digestCanvas(transparentCanvas)
     const white = digestCanvas(whiteCanvas)
+    const pigment = digestCanvas(pigmentCanvas)
     const renderMs = Math.round(performance.now() - renderStart)
 
     // WR-01: the four region means that make the cover gate's PASS mean
@@ -468,6 +550,7 @@ function run(
       digestPaper: paper.digest,
       digestTransparent: transparent.digest,
       digestWhite: white.digest,
+      digestPigment: pigment.digest,
       byteLength: paper.byteLength,
       ...coverRegions,
       renderer,
@@ -511,12 +594,18 @@ function readBody(): number | undefined {
   return value
 }
 
-/** 64-06: the scenario selector — absent renders the plan-01 single stroke. */
+/** 64-06: the scenario selector — absent renders the plan-01 single stroke.
+ *  64-17 adds `watercolor-50`. The closed list here and the one in run.mjs
+ *  must stay literal-identical: a name accepted by the parser but unknown to
+ *  the probe fails at capture, and a name the probe knows but the parser
+ *  rejects can never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet') {
-    throw new Error(`invalid scenario "${raw}" (expected "cover" or "cover-over-wet")`)
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50') {
+    throw new Error(
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet" or "watercolor-50")`,
+    )
   }
   return raw
 }
@@ -563,6 +652,7 @@ function main(): void {
       digestPaper: null,
       digestTransparent: null,
       digestWhite: null,
+      digestPigment: null,
       byteLength: null,
       renderer,
       verdict: `MEDIUM-ENGINE FAIL ${message}`,
