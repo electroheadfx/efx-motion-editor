@@ -451,13 +451,13 @@ describe('the composition of order and opacity (MED-36)', () => {
     const history = sliceBetween(ENGINE_SOURCE, 'private allocateHistory()', 'private docTargets()')
     expectContains(
       history,
-      '{ formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R], documents: 2 }',
+      '{ formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R, HALF_FLOAT_R], documents: 2 }',
     )
     expectContains(history, '{ formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], documents: 1 }')
     const snapshot = sliceBetween(ENGINE_SOURCE, 'private snapshotLayers()', 'private drawSplat(')
     expectContains(
       snapshot,
-      'return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0]];',
+      'return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0], this.cover.read.views[0]];',
     )
   })
 

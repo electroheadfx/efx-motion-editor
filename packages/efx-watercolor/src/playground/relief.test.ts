@@ -159,13 +159,19 @@ describe('thickness target allocation (MED-14)', () => {
 // ---------------------------------------------------------------------------
 
 describe('undo pool pairing (MED-18)', () => {
-  it("keeps pool 0's formats, snapshotLayers() and the undo layer map the same length with thickness last", () => {
+  it("keeps pool 0's formats, snapshotLayers() and the undo layer map the same length with coverage fifth and last", () => {
     // Pool 0's formats, from allocateHistory().
     const historyBody = sliceBetween(ENGINE_SOURCE, 'private allocateHistory() {', 'private docTargets()')
     const formatsAt = historyBody.indexOf('formats: [')
     expect(formatsAt, 'pool 0 formats array not found').toBeGreaterThanOrEqual(0)
     const formats = splitTopLevel(extractBracket(historyBody, formatsAt + 'formats: '.length))
-    expect(formats).toEqual(['HALF_FLOAT_RGBA', 'HALF_FLOAT_RGBA', 'HALF_FLOAT_R', 'HALF_FLOAT_R'])
+    expect(formats).toEqual([
+      'HALF_FLOAT_RGBA',
+      'HALF_FLOAT_RGBA',
+      'HALF_FLOAT_R',
+      'HALF_FLOAT_R',
+      'HALF_FLOAT_R',
+    ])
 
     // snapshotLayers()'s return, in protect() order.
     const snapshotBody = sliceBetween(ENGINE_SOURCE, 'private snapshotLayers() {', 'private drawSplat(')
@@ -177,6 +183,7 @@ describe('undo pool pairing (MED-18)', () => {
       'this.ink.read.views[1]',
       'this.wet.read.views[0]',
       'this.relief.views[0]',
+      'this.cover.read.views[0]',
     ])
 
     // travel()'s pool-0 layer map entry.
@@ -191,16 +198,21 @@ describe('undo pool pairing (MED-18)', () => {
       '[ink.read.views[1], ink.write.views[1]]',
       '[wet.read.views[0], wet.write.views[0]]',
       '[this.relief.views[0]]',
+      '[this.cover.read.views[0], this.cover.write.views[0]]',
     ])
 
     // The three lists are positionally paired: equal length, same last index.
     expect(snapshot).toHaveLength(formats.length)
     expect(pool0).toHaveLength(formats.length)
-    expect(snapshot[snapshot.length - 1]).toBe('this.relief.views[0]')
-    expect(pool0[pool0.length - 1]).toBe('[this.relief.views[0]]')
-    // A single framebuffer, not a ping-pong pair: History.swap reads fbs[0]
-    // and writes every framebuffer in the entry.
-    expect(pool0[pool0.length - 1]!.match(/views\[0\]/g)).toHaveLength(1)
+    expect(snapshot[snapshot.length - 1]).toBe('this.cover.read.views[0]')
+    expect(pool0[pool0.length - 1]).toBe('[this.cover.read.views[0], this.cover.write.views[0]]')
+    // The thickness stays a single framebuffer, not a ping-pong pair:
+    // History.swap reads fbs[0] and writes every framebuffer in the entry.
+    expect(pool0[pool0.length - 2]).toBe('[this.relief.views[0]]')
+    expect(pool0[pool0.length - 2]!.match(/views\[0\]/g)).toHaveLength(1)
+    // Coverage is the one double-buffered document layer in pool 0: its entry
+    // carries both halves, so an advection write cannot outrun undo.
+    expect(pool0[pool0.length - 1]!.match(/views\[0\]/g)).toHaveLength(2)
   })
 })
 
@@ -210,8 +222,9 @@ describe('undo pool pairing (MED-18)', () => {
 
 describe('WholeDoc carry (MED-18.adjacency)', () => {
   it("adds 'relief' to the LayerId union and the WholeDoc layer record", () => {
+    // 64-14 appends 'cover' after 'relief'; the relief entry must stay present.
     expect(ENGINE_SOURCE).toContain(
-      "export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief';",
+      "export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' | 'cover';",
     )
     // WholeDoc.layers is Record<LayerId, Uint16Array>, so the union is the record.
     expect(ENGINE_SOURCE).toContain('layers: Record<LayerId, Uint16Array>')

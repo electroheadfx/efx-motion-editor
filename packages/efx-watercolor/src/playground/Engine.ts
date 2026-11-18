@@ -134,7 +134,7 @@ export interface ExportOptions { format: ExportFormat; background: ExportBackgro
 /** Placement of the reference image in document uv (y up): origin and size. */
 export interface RefRect { x: number; y: number; w: number; h: number }
 
-export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief';
+export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' | 'cover';
 
 /**
  * The paint layers as half floats (RGBA for ink and fixed, one channel for wet), cropped
@@ -540,11 +540,12 @@ export class WatercolorEngine {
 
   private allocateHistory() {
     // Pool 0 is positionally paired with snapshotLayers() and travel()'s layer
-    // map: mobile pigment (A, B), water, then Phase 64's paint thickness (R16F).
-    // Grow all three lists together or the atlas copies the wrong layer.
+    // map: mobile pigment (A, B), water, then Phase 64's paint thickness (R16F)
+    // and 64-14's coverage (R16F) as the FIFTH and last entry. Grow all three
+    // lists together or the atlas copies the wrong layer.
     this.history = new History(this.g, this.dw, this.dh, [
-      { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R], documents: 2 }, // mobile pigment + water + thickness
-      { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], documents: 1 },                              // fixed pigment
+      { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R, HALF_FLOAT_R], documents: 2 }, // mobile pigment + water + thickness + coverage
+      { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], documents: 1 },                                           // fixed pigment
     ]);
   }
 
@@ -661,6 +662,7 @@ export class WatercolorEngine {
         fixedA: read(this.fixed.views[0], 4), fixedB: read(this.fixed.views[1], 4),
         wet: read(this.wet.read.views[0], 1),
         relief: read(this.relief.views[0], 1),
+        cover: read(this.cover.read.views[0], 1),
       },
     };
   }
@@ -677,6 +679,9 @@ export class WatercolorEngine {
     up(this.fixed.tex[1], gl.RGBA, whole.layers.fixedB);
     for (const t of [this.wet.read, this.wet.write]) up(t.tex[0], gl.RED, whole.layers.wet);
     up(this.relief.tex[0], gl.RED, whole.layers.relief);
+    // 64-14: coverage is a document layer — restore it into both halves of its
+    // ping-pong pair, exactly like water.
+    for (const t of [this.cover.read, this.cover.write]) up(t.tex[0], gl.RED, whole.layers.cover);
     this.everPainted = { ...r };
   }
 
@@ -1615,9 +1620,10 @@ export class WatercolorEngine {
     const ink = this.ink, wet = this.wet;
     // Pool 0 must mirror allocateHistory()'s formats and snapshotLayers() entry
     // for entry: mobile pigment (A, B), water, then Phase 64's thickness — one
-    // framebuffer, since History.swap reads fbs[0] and writes back to each one.
+    // framebuffer — and 64-14's coverage pair (the one double-buffered document
+    // layer in pool 0), since History.swap reads fbs[0] and writes back to each.
     const layers = [
-      [[ink.read.views[0], ink.write.views[0]], [ink.read.views[1], ink.write.views[1]], [wet.read.views[0], wet.write.views[0]], [this.relief.views[0]]],
+      [[ink.read.views[0], ink.write.views[0]], [ink.read.views[1], ink.write.views[1]], [wet.read.views[0], wet.write.views[0]], [this.relief.views[0]], [this.cover.read.views[0], this.cover.write.views[0]]],
       [[this.fixed.views[0]], [this.fixed.views[1]]],
     ];
     const res = dir === 'undo' ? this.history.undo(layers, metaNow) : this.history.redo(layers, metaNow);
@@ -2440,8 +2446,9 @@ export class WatercolorEngine {
 
   private snapshotLayers() {
     // Positionally paired with allocateHistory()'s pool-0 formats and travel()'s
-    // layer map (Phase 64 adds paint thickness last).
-    return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0]];
+    // layer map (64-14 adds coverage as the FIFTH and last entry). The three
+    // lists grow together or the history atlas copies the wrong layer.
+    return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0], this.cover.read.views[0]];
   }
 
   private drawSplat(t: Target, x: number, y: number, r: number, c0: number[], c1: number[], hardness: number, extent: number) {
