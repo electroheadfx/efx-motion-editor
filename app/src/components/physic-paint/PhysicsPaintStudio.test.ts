@@ -8534,3 +8534,99 @@ describe('64-09 — the right panel is fed by the document light', () => {
     expect(efxPaintVersion.value).toBe(versionBefore + 1);
   });
 });
+
+// ============================================================
+// 64-19 (CR-01 / MED-17) — one bounded re-bake per light change,
+// through the shipped Apply seam.
+//
+// The committed-frame cache now carries the light term (the coordinator
+// suite pins that); this block pins the Studio's SCHEDULER: the run is
+// created once over refs, refuses while playing / Draft / wireframe,
+// calls the light-resolving Apply lane only, and is requested from the
+// gesture release and the undo/redo sync — nowhere else.
+// ============================================================
+describe('64-19 committed-frame relight wiring (CR-01)', () => {
+  const RELIGHT_START = 'committedFrameRelightRef.current = createSingleFlightRelight(';
+  const RELIGHT_END = 'const handleDocumentLightChange';
+  const SYNC_START = 'const syncBackgroundSettingsFromDocument';
+  const SYNC_END = 'const undo = useCallback(';
+  const COMMIT_START = 'const handleDocumentLightCommit';
+  const COMMIT_END = '// 56-05 (PAPER-03 / D-10)';
+
+  function region(startMarker: string, endMarker: string): string {
+    const start = studio.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = studio.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('creates the controller ONCE over a ref-held run — no effect churn', () => {
+    expect(studio, 'the single-flight factory is imported').toContain('createSingleFlightRelight');
+    expect(studio, 'the change test is imported').toContain('lightChangeNeedsRelight');
+    // One lazy creation, held by a ref (the menuUndoRef / aquarelleRebakeRef
+    // pattern) — never rebuilt per render.
+    expect(studio.split(RELIGHT_START).length - 1, 'one controller creation').toBe(1);
+    expect(studio, 'the controller is ref-held').toContain(
+      'const committedFrameRelightRef = useRef<SingleFlightRelight | null>(null);',
+    );
+  });
+
+  it('the run refuses while playing, while Draft is on and while wireframe is up', () => {
+    const run = region(RELIGHT_START, RELIGHT_END);
+    expect(run, 'playing is read from live state').toContain('if (isPlayingRef.current) return false;');
+    expect(run, 'the Draft gate peeks').toContain('if (draftMode.peek()) return false;');
+    expect(run, 'the wireframe gate peeks').toContain('if (wireframeMode.peek()) return false;');
+  });
+
+  it('the run re-bakes through the Apply seam only — no seed reroll, no ledger entry', () => {
+    const run = region(RELIGHT_START, RELIGHT_END);
+    expect(run.match(/applyAquarelleTimeline\(/g) ?? [], 'exactly one Apply call').toHaveLength(1);
+    expect(run, 'the launch start frame is the bake target').toContain(
+      'getAquarelleEventsForFrame(launch.startFrame)',
+    );
+    expect(run, 'never the script rebake lane').not.toContain('handleRebakeScript');
+    expect(run, 'never a ledger entry').not.toContain('recordBackgroundEdit');
+    // The last-seen light advances only on a real bake — a busy false leaves
+    // it unadvanced so the next sync or gesture retries.
+    expect(run, 'advance only on a true result').toContain(
+      'if (applied) lastSyncedLightSignatureRef.current = lightAtRun;',
+    );
+  });
+
+  it('the commit requests a relight only for a real gesture, after the ONE record', () => {
+    const commit = region(COMMIT_START, COMMIT_END);
+    expect(commit, 'a non-null coalesced span requests the bake').toContain(
+      'if (coalesced) committedFrameRelightRef.current?.request();',
+    );
+    // 64-18's ONE ledger entry still lands first; the relight adds none.
+    expect(commit.match(/recordBackgroundEdit\(/g) ?? [], 'still one record').toHaveLength(1);
+    expect(
+      commit.indexOf('recordBackgroundEdit(coalesced)'),
+      'the ledger record precedes the relight request',
+    ).toBeLessThan(commit.indexOf('committedFrameRelightRef.current?.request()'));
+  });
+
+  it('the sync diffs the light ABOVE the fallback early return, first call recording the baseline without baking', () => {
+    const sync = region(SYNC_START, SYNC_END);
+    expect(sync, 'the canonical change test decides').toContain(
+      'lightChangeNeedsRelight(previousLightSignature, currentLight)',
+    );
+    expect(sync, 'a signature ref, never a light mirror').toContain('lastSyncedLightSignatureRef');
+    expect(sync, 'the first call records the baseline without baking').toContain(
+      'lastSyncedLightSignatureRef.current = lightSignature(currentLight);',
+    );
+    expect(sync, 'the request rides the diff').toContain(
+      'committedFrameRelightRef.current?.request();',
+    );
+    const diffAt = sync.indexOf('lightChangeNeedsRelight(previousLightSignature, currentLight)');
+    const earlyReturnAt = sync.indexOf('if (!fallback) return;');
+    expect(diffAt, 'the light diff exists').toBeGreaterThan(-1);
+    expect(earlyReturnAt, 'the fallback early return exists').toBeGreaterThan(-1);
+    expect(diffAt, 'the diff sits ahead of the early return').toBeLessThan(earlyReturnAt);
+    // The ref stores a canonical signature string, never the light itself.
+    expect(studio, 'the last-seen light is a signature string').toContain(
+      'const lastSyncedLightSignatureRef = useRef<string | null>(null);',
+    );
+  });
+});
