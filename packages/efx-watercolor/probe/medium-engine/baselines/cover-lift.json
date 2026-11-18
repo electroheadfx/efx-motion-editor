@@ -1,0 +1,21 @@
+{
+  "gate": "cover-lift",
+  "scenario": "cover-lift",
+  "emboss": null,
+  "body": 100,
+  "light": null,
+  "bakeMs": 48,
+  "renderMs": 9,
+  "width": 256,
+  "height": 256,
+  "digestPaper": "4009c38d",
+  "digestTransparent": "d5d73ea7",
+  "digestWhite": "0f8112bf",
+  "digestPigment": "8214c413",
+  "byteLength": 262144,
+  "coverAlphaBeforeLift": 0.9,
+  "coverAlphaAfterLift": 0.53,
+  "coveredPaperWhitePct": 0,
+  "renderer": "WebKit WebGL",
+  "verdict": "MEDIUM-ENGINE CAPTURED"
+}

@@ -2539,6 +2539,11 @@ export class WatercolorEngine {
     g.draw(this.wet.read, rect);
     gl.uniform1f(p.u.uAmount, amount);
     g.draw(this.fixed, rect);
+    // 64-14: coverage is destroyed by Lift like paint and the thickness. The
+    // same rect, the same amount last written above and the same ZERO /
+    // ONE_MINUS_SRC_COLOR pair are exactly what liftFS erodes with, and the
+    // pool-0 protection taken at the top of lift() is what makes it undoable.
+    g.draw(this.cover.read, rect);
     // fixed pigment is dry by definition — no tissue water factor, the full amount.
     // Declared consequence: an explicit Dry is permanent for every tool except Lift.
     // Phase 64 (MED-14): thickness is destroyed by Lift like paint — the same

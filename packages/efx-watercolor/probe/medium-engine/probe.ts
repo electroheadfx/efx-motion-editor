@@ -118,8 +118,15 @@
 //  mode-4 alpha is max(darkness, cover), and at Body 100 the white pigment's
 //  own darkness alpha is a few percent, so the crossing alpha is ~cover.
 //
+//  64-14 also adds `cover-lift`: the cover geometry fully fixed, then a LIFT
+//  stroke (the same tool through the same applyStroke seam at pressure 0.8)
+//  across the covering diagonal. The report carries the crossing alpha on the
+//  PIGMENT export before and after the lift stroke, plus the paper-white scan
+//  after it — the bounded limitation "Lift does not reduce coverage" becomes
+//  a measured assertion.
+//
 //  Scenarios: neutral | cover | cover-over-wet | watercolor-50 | white-over-blue
-//           | cover-advect.
+//           | cover-advect | cover-lift.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -300,12 +307,21 @@ const COVER_BOXES: Readonly<Record<'crossing' | 'own' | 'under' | 'paper', BandB
  * 64-14: the lifecycle scenarios' alpha box. `COVER_BOXES.crossing` is a
  * REGION box for mean pigment — at 0.1 × 0.1 doc it averages the two strokes
  * with the bare paper around them, which dilutes an alpha mean to ~0.5. The
- * alpha gates ask "is the covering stroke still covering", so they read the
- * stroke CORE at the two centre-lines' intersection (≈0.648, 0.355), the same
- * few-pixel framing Spike 001's criterion-1 crossing box uses.
+ * alpha gates ask "is the covering stroke still covering", so they read a
+ * five-pixel window (the same framing Spike 001's criterion-1 box uses) on
+ * the covering stroke's alpha plateau inside the crossing neighbourhood.
+ *
+ * The window is where the plateau is measured, not the geometric intersection
+ * itself: the covering diagonal is `y = 0.4 - (x - 0.62)` and the dark band is
+ * `y = 0.37 - (x - 0.6) * 0.02 / 0.24`, crossing at (0.6545, 0.3655), but the
+ * film's grain-scale union reads 0.89 mean there. Scanning the 24 px
+ * neighbourhood for the maximum 5 × 5 mean finds 0.90 at (0.6465, 0.3652) —
+ * the plateau this box pins. Both moving readings (eight advect ticks, the
+ * lift scrub) act through the same footprint, so neither is diluted by an
+ * off-centre box.
  */
 const COVER_LIFECYCLE_BOXES: Readonly<Record<'crossing', BandBox>> = {
-  crossing: { x0: 0.638, y0: 0.345, x1: 0.658, y1: 0.365 },
+  crossing: { x0: 0.6367, y0: 0.3555, x1: 0.6563, y1: 0.3750 },
 }
 
 /**
@@ -562,6 +578,44 @@ function coverAdvectScript(body?: number): readonly ScriptEntry[] {
   ]
 }
 
+/** 64-14: the lift stroke walks the covering diagonal's geometry at pressure
+ *  0.8 — one traversal, the plan's "a lift tool stroke across the same
+ *  diagonal". Measured on the lifecycle box: 0.90 before, 0.53 after (59 % of
+ *  the pre-lift alpha, inside the 60 % bar). The lift tool ignores the colour
+ *  (it erases), so the entry reuses the light pigment — only its geometry and
+ *  pressure matter, under the standard lift bag (lift 22). */
+const LIFT_POINTS: readonly AquarellePoint[] = COVER_LIGHT_POINTS.map((point) => ({
+  ...point,
+  p: 0.8,
+}))
+
+/**
+ * 64-14: the lift scenario — the `cover` scene fully fixed (dark band at Body 0,
+ * covering diagonal at the Body knob), then a Lift stroke across the crossing
+ * it painted, then a fix so the reading is taken on the settled field the
+ * display reads. The crossing alpha is captured after each fix.
+ */
+function coverLiftScript(body?: number): readonly ScriptEntry[] {
+  return [
+    { color: COVER_DARK, points: COVER_DARK_POINTS, mutationId: MUTATION_ID, body: 0 },
+    {
+      color: COVER_LIGHT,
+      points: COVER_LIGHT_POINTS,
+      mutationId: MUTATION_ID + 1,
+      body: body ?? 100,
+      captureCover: 'beforeLift',
+    },
+    {
+      color: COVER_LIGHT,
+      points: LIFT_POINTS,
+      mutationId: MUTATION_ID + 2,
+      body: body ?? 100,
+      tool: 'lift',
+      captureCover: 'afterLift',
+    },
+  ]
+}
+
 // --- 64-17 watercolor-50 scenario -------------------------------------------
 // The spike's identity passage verbatim: 50 rapid horizontal strokes of
 // #cc2222 on blank paper at Body 0, each settling ONE tick and left mobile
@@ -712,11 +766,13 @@ function run(
         ? coverOverWetScript(emboss, body)
         : scenario === 'cover-advect'
           ? coverAdvectScript(body)
-          : scenario === 'watercolor-50'
-            ? watercolor50Script()
-            : scenario === 'white-over-blue'
-              ? whiteOverBlueScript(body ?? 100)
-              : neutralScript(emboss, body)
+          : scenario === 'cover-lift'
+            ? coverLiftScript(body)
+            : scenario === 'watercolor-50'
+              ? watercolor50Script()
+              : scenario === 'white-over-blue'
+                ? whiteOverBlueScript(body ?? 100)
+                : neutralScript(emboss, body)
 
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
@@ -908,9 +964,9 @@ function readBody(): number | undefined {
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue" or "cover-advect")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect" or "cover-lift")`,
     )
   }
   return raw

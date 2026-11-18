@@ -91,6 +91,10 @@
 //  mode-4 alpha is max(darkness, cover) — at Body 100 the white pigment's own
 //  darkness alpha is a few percent, so the crossing alpha is ~cover.
 //
+//  64-14 also adds `'cover-lift'`: Lift peels the covering stroke's opacity,
+//  so the crossing must read at least 0.90 before the lift stroke, fall to at
+//  most 60% of that value after it, and still raise no covered-paper-white.
+//
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
 //  teach this parser about it rather than have it silently misparse.
@@ -328,9 +332,42 @@ function coverAdvectFailures(data) {
  * invariants. 64-16 extends this map with `cover-textured` and
  * `red-over-blue-50`.
  */
+/**
+ * 64-14: the lift gate — Lift destroys coverage like it destroys paint, so a
+ * lift stroke across a fresh covering stroke must take the crossing alpha to
+ * at most 60% of its pre-lift value, and no covered texel may read as paper.
+ */
+function coverLiftFailures(data) {
+  const fields = ['coverAlphaBeforeLift', 'coverAlphaAfterLift', 'coveredPaperWhitePct']
+  const missing = fields.filter((field) => typeof data[field] !== 'number')
+  if (missing.length > 0) {
+    return [`capture is missing ${missing.join(', ')}; re-run the cover-lift probe`]
+  }
+  const failures = []
+  if (!(data.coverAlphaBeforeLift >= 0.9)) {
+    failures.push(
+      `coverAlphaBeforeLift ${data.coverAlphaBeforeLift} is below 0.90 (the covering stroke never covered)`,
+    )
+  }
+  if (!(data.coverAlphaAfterLift <= 0.6 * data.coverAlphaBeforeLift)) {
+    failures.push(
+      `coverAlphaAfterLift ${data.coverAlphaAfterLift} is above 60% of coverAlphaBeforeLift ` +
+        `${data.coverAlphaBeforeLift} (Lift did not reduce coverage)`,
+    )
+  }
+  if (data.coveredPaperWhitePct !== 0) {
+    failures.push(
+      `coveredPaperWhitePct ${data.coveredPaperWhitePct} is not 0 ` +
+        '(a covered texel still reads as bare paper)',
+    )
+  }
+  return failures
+}
+
 const SCENARIO_INVARIANTS = {
   'white-over-blue': whiteOverBlueFailures,
   'cover-advect': coverAdvectFailures,
+  'cover-lift': coverLiftFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. */
