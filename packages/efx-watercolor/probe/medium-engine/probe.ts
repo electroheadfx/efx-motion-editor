@@ -136,6 +136,15 @@
 //  IS the coverage alpha by construction (mode 4: alpha = max(1 − min(rgb),
 //  cover)), which is why a coverage claim can be measured from an export.
 //
+//  64-16 also adds `red-over-blue-50` — Spike 001 criterion 2: a dry blue field
+//  at Body 0, 50 rapid red strokes at the Body knob with settle 1 and no
+//  per-entry fix, then ONE red reference stroke on clean paper on the same
+//  sheet. The report carries the field's and the reference's mean luma and hue
+//  (the spike's own rgbToHsv formula, measured on the PIGMENT export's rgb) as
+//  `finalLuma`, `referenceLuma`, `lumaRatio` and `deltaHue` in signed degrees,
+//  plus the whole-sheet paper-white scan; compare.mjs gates the criterion's
+//  stated tolerance (ratio ≥ 0.95, |Δhue| ≤ 3°, no paper-white) in every mode.
+//
 //  Scenarios: neutral | cover | cover-over-wet | watercolor-50 | white-over-blue
 //           | cover-advect | cover-lift | cover-textured | red-over-blue-50.
 // ============================================================
@@ -843,6 +852,106 @@ function coverTexturedMetrics(
   }
 }
 
+// --- 64-16 red-over-blue-50 scenario -----------------------------------------
+// Spike 001's criterion-2 script verbatim (spike probe.ts:437-457): a dry blue
+// field (three lines at Body 0), then 50 rapid red strokes at the Body knob —
+// settle 1, no per-entry fix, the drive fixing every tenth and once after the
+// loop — then ONE red reference stroke on clean paper ON THE SAME SHEET, so
+// the ratio cancels the engine's paper and light. The mutationId bases are the
+// spike's, so the report stays traceable to the spike gate.
+
+const BLUE_FIELD = '#0044dd'
+const RED = '#cc2222'
+const BLUE_FIELD_LINES: readonly number[] = [0.42, 0.5, 0.58]
+const RED_REF_POINTS: readonly AquarellePoint[] = [
+  { x: 0.2, y: 0.86, p: 0.75, tx: 0, ty: 0, tw: 0 },
+  { x: 0.5, y: 0.86, p: 0.75, tx: 0, ty: 0, tw: 0 },
+  { x: 0.8, y: 0.86, p: 0.75, tx: 0, ty: 0, tw: 0 },
+]
+
+/**
+ * 64-16: the spike's two criterion-2 measurement boxes (spike probe.ts:664-665)
+ * — thin bands inside the stroke CORES, because the strokes' alpha rims are
+ * ~0.02 doc heights wide and a wider box would average paint with paper.
+ */
+const RED_FIELD_BOX: BandBox = { x0: 0.42, y0: 0.492, x1: 0.58, y1: 0.508 }
+const RED_REFERENCE_BOX: BandBox = { x0: 0.42, y0: 0.848, x1: 0.58, y1: 0.872 }
+
+/** 64-16: the criterion-2 script — three blue field lines at Body 0, then 50
+ *  rapid red strokes and one red reference stroke at the Body knob. */
+function redOverBlueScript(redBody: number): readonly ScriptEntry[] {
+  const script: ScriptEntry[] = []
+  for (let i = 0; i < BLUE_FIELD_LINES.length; i += 1) {
+    script.push({
+      color: BLUE_FIELD,
+      points: horizontalLine(BLUE_FIELD_LINES[i]!),
+      mutationId: 0x7ed001 + i,
+      body: 0,
+    })
+  }
+  for (let i = 0; i < 50; i += 1) {
+    const jitter = ((i % 3) - 1) * 0.003
+    script.push({
+      color: RED,
+      points: horizontalLine(0.5 + jitter),
+      mutationId: 0x7ed100 + i,
+      body: redBody,
+      settle: 1,
+      fixAfter: false,
+    })
+  }
+  script.push({ color: RED, points: RED_REF_POINTS, mutationId: 0x7ed200, body: redBody })
+  return script
+}
+
+/** 64-16: the spike's hue formula verbatim (spike probe.ts:230-245) — HSV hue
+ *  in degrees from a mean RGB triple. Copied, not reinvented. */
+function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
+  const rr = r / 255
+  const gg = g / 255
+  const bb = b / 255
+  const max = Math.max(rr, gg, bb)
+  const min = Math.min(rr, gg, bb)
+  const d = max - min
+  let h = 0
+  if (d > 0) {
+    if (max === rr) h = ((gg - bb) / d + 6) % 6
+    else if (max === gg) h = (bb - rr) / d + 2
+    else h = (rr - gg) / d + 4
+    h *= 60
+  }
+  return { h, s: max > 0 ? d / max : 0, v: max }
+}
+
+/**
+ * 64-16: Spike 001 criterion 2 as reported numbers — the red field's mean luma
+ * and hue against the fresh-red reference stroke's, both measured on the
+ * PIGMENT export's rgb, plus the whole-sheet paper-white scan (64-17's,
+ * reused). `lumaRatio` is finalLuma / referenceLuma; `deltaHue` is signed
+ * degrees, wrapped to (−180, 180].
+ */
+function redOverBlueMetrics(
+  transparent: HTMLCanvasElement,
+  pigment: HTMLCanvasElement,
+): Record<string, number> {
+  const field = bandStats(pigment, RED_FIELD_BOX).mean
+  const reference = bandStats(pigment, RED_REFERENCE_BOX).mean
+  const finalLuma = (field[0] + field[1] + field[2]) / 3
+  const referenceLuma = (reference[0] + reference[1] + reference[2]) / 3
+  const finalHue = rgbToHsv(field[0], field[1], field[2]).h
+  const referenceHue = rgbToHsv(reference[0], reference[1], reference[2]).h
+  let deltaHue = finalHue - referenceHue
+  if (deltaHue > 180) deltaHue -= 360
+  if (deltaHue < -180) deltaHue += 360
+  return {
+    finalLuma: round2(finalLuma),
+    referenceLuma: round2(referenceLuma),
+    lumaRatio: round2(finalLuma / referenceLuma),
+    deltaHue: round2(deltaHue),
+    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
+  }
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -907,7 +1016,9 @@ function run(
                 ? whiteOverBlueScript(body ?? 100)
                 : scenario === 'cover-textured'
                   ? coverTexturedScript(emboss, body, resolvedBrush)
-                  : neutralScript(emboss, body)
+                  : scenario === 'red-over-blue-50'
+                    ? redOverBlueScript(body ?? 100)
+                    : neutralScript(emboss, body)
 
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
@@ -1036,6 +1147,11 @@ function run(
     const coverTexturedReport =
       scenario === 'cover-textured' ? coverTexturedMetrics(transparentCanvas, pigmentCanvas) : {}
 
+    // 64-16: Spike 001 criterion 2 — luma, hue and paper-white, only for its
+    // scenario, so every other report shape is unchanged.
+    const redOverBlueReport =
+      scenario === 'red-over-blue-50' ? redOverBlueMetrics(transparentCanvas, pigmentCanvas) : {}
+
     writeResult({
       gate,
       scenario,
@@ -1055,6 +1171,7 @@ function run(
       ...coverRegions,
       ...whiteOverBlueReport,
       ...coverTexturedReport,
+      ...redOverBlueReport,
       ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',

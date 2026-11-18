@@ -449,11 +449,49 @@ function coverTexturedFailures(data) {
   return failures
 }
 
+/**
+ * 64-16: Spike 001 criterion 2 as standing invariants — 50 rapid red strokes
+ * over a dried blue field must keep at least 95% of a fresh-red reference
+ * stroke's luma and stay within 3 signed degrees of its hue, with no covered
+ * texel reading as bare paper. The reference paints on clean paper ON THE
+ * SAME SHEET, so the ratio cancels the engine's paper and light. No latency
+ * pin: the spike's p95 finding was a shared sim stall, not a model cost, and
+ * a timing threshold in a committed gate is a flaky gate.
+ */
+function redOverBlueFailures(data) {
+  const fields = ['finalLuma', 'referenceLuma', 'lumaRatio', 'deltaHue', 'coveredPaperWhitePct']
+  const missing = fields.filter((field) => typeof data[field] !== 'number')
+  if (missing.length > 0) {
+    return [`capture is missing ${missing.join(', ')}; re-run the red-over-blue-50 probe`]
+  }
+  const failures = []
+  if (!(data.lumaRatio >= 0.95)) {
+    failures.push(
+      `lumaRatio ${data.lumaRatio} below 0.95 ` +
+        `(finalLuma ${data.finalLuma} vs referenceLuma ${data.referenceLuma}: the field darkened)`,
+    )
+  }
+  if (!(Math.abs(data.deltaHue) <= 3)) {
+    failures.push(
+      `deltaHue ${data.deltaHue} exceeds ±3 degrees ` +
+        '(the field hue drifted from the fresh-red reference)',
+    )
+  }
+  if (data.coveredPaperWhitePct !== 0) {
+    failures.push(
+      `coveredPaperWhitePct ${data.coveredPaperWhitePct} is not 0 ` +
+        '(a covered texel still reads as bare paper)',
+    )
+  }
+  return failures
+}
+
 const SCENARIO_INVARIANTS = {
   'white-over-blue': whiteOverBlueFailures,
   'cover-advect': coverAdvectFailures,
   'cover-lift': coverLiftFailures,
   'cover-textured': coverTexturedFailures,
+  'red-over-blue-50': redOverBlueFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. */

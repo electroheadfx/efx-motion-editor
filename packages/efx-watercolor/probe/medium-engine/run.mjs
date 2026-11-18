@@ -386,6 +386,11 @@ if (typeof result.coverAlphaP10 === 'number') {
     `spread    : P10 ${result.coverAlphaP10} | P90 ${result.coverAlphaP90} | covered ${result.coverAlphaCoveredFraction} | blue ${result.coverCrossBlueExcess} | mean ${result.coverAlphaMean} | paperWhite ${result.coveredPaperWhitePct}%`,
   )
 }
+if (typeof result.lumaRatio === 'number') {
+  console.log(
+    `criterion2: luma ${result.finalLuma} / ${result.referenceLuma} = ${result.lumaRatio} | hue ${result.deltaHue} deg | paperWhite ${result.coveredPaperWhitePct}%`,
+  )
+}
 console.log(`result JSON: ${resultPath}`)
 console.log(`total probe: ${elapsedMs} ms`)
 console.log('=========================================================')
