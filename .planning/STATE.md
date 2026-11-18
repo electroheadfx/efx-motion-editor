@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-14-PLAN.md
-last_updated: "2026-11-18T18:39:24.473Z"
+stopped_at: Completed 64-15-PLAN.md
+last_updated: "2026-11-18T18:56:46.090Z"
 last_activity: 2026-11-18
 last_activity_desc: Phase 64 execution started
-state_head: 2720ab2825b5e49348b792063040b9682c2c3149
+state_head: 799f82213547032f6db75bdfde0d9ecf8ea0a29e
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 34
-  completed_plans: 32
+  completed_plans: 33
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 16 of 17
+Plan: 17 of 17
 Status: Ready to execute
 Last activity: 2026-11-18 — Phase 64 execution started
 
@@ -159,6 +159,7 @@ Last activity: 2026-11-18 — Phase 64 execution started
 | Phase 64 P13 | 6min21s | 2 tasks | 8 files |
 | Phase 64 P17 | 32min | 3 tasks | 10 files |
 | Phase 64 P14 | 12min51s | 3 tasks | 13 files |
+| Phase 64 P15 | 10min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -523,6 +524,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: The lifecycle alpha box sits on the covering film's plateau (max 5x5 mean 0.90 at document (0.6465, 0.3652)) because the grain-scale union plateau is ~0.89-0.91 and the 0.90 pre-lift bar is only measurable there.
 - [Phase 64]: Lift erodes coverage with the fixed draw's rect, last-written uAmount and ZERO/ONE_MINUS_SRC_COLOR pair — no new program, no new uniform — ordered after fixed and before the relief erode.
 - [Phase 64]: The cover-lift probe is one plan-faithful traversal of the covering diagonal at pressure 0.8 (0.90 -> 0.53, 59%; a there-and-back scrub was measured and rejected).
+- [Phase 64]: The merge slot keeps the field name liveAlphaCanvas while receiving the coverage canvas; the stored sheet stays the transparent export (ink gate, save path, clipboard, Lift).
+- [Phase 64]: LiftFootprintShape's deposit-only optional fields (tipRotation, roughness, stampJitter) were deleted with coverShapeForBrush, their only producer.
+- [Phase 64]: The punch call-site pin is five, all inside runAquarelleLiftErase — the transaction, not the call count, is the one-caller invariant.
+- [Phase 64]: MED-38 is claimed at the source level only (one pigment export, one merge conversion, none in the Studio); live visual parity stays UAT row 9.
 
 ### Pending Todos
 
@@ -650,8 +655,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-18T18:39:23.192Z
-Stopped at: Completed 64-14-PLAN.md
+Last session: 2026-11-18T18:56:44.845Z
+Stopped at: Completed 64-15-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
