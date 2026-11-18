@@ -77,12 +77,7 @@ export function PhysicsPaintCanvasMount(props: {
   onAquarelleFlushCaptureReady?: (flushCapture: ((captureTrackId?: string) => void) | null) => void;
   onAquarelleSnapshotReady?: (snapshot: (() => HTMLCanvasElement | null) | null) => void;
   onAquarelleSheetSessionEnd?: () => void;
-  onAquarelleResetSheetReady?: (
-    resetSheet: () => void,
-    strokeGeneration: () => number,
-    clearSheetPaint: () => void,
-    endSheetSession: () => void,
-  ) => void;
+  onAquarelleResetSheetReady?: (resetSheet: () => void, strokeGeneration: () => number) => void;
   onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void;
   onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
   onAquarelleTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
@@ -259,7 +254,7 @@ export function PhysicsPaintCanvasMount(props: {
         onFlushCaptureReady={(flushCapture) => onAquarelleFlushCaptureReadyRef.current?.(flushCapture)}
         onSnapshotReady={(snapshot) => onAquarelleSnapshotReadyRef.current?.(snapshot)}
         onSheetSessionEnd={() => onAquarelleSheetSessionEndRef.current?.()}
-        onResetSheetReady={(resetSheet, strokeGeneration, clearSheetPaint, endSheetSession) => onAquarelleResetSheetReadyRef.current?.(resetSheet, strokeGeneration, clearSheetPaint, endSheetSession)}
+        onResetSheetReady={(resetSheet, strokeGeneration) => onAquarelleResetSheetReadyRef.current?.(resetSheet, strokeGeneration)}
         onDeleteStrokes={(mutationIds) => onAquarelleDeleteStrokesRef.current?.(mutationIds)}
         onMoveStrokes={(mutationIds, dxPx, dyPx) => onAquarelleMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}
         onTransformStrokes={(mutationIds, transform) => onAquarelleTransformStrokesRef.current?.(mutationIds, transform)}

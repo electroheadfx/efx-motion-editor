@@ -470,16 +470,7 @@ export function AquarelleCanvasLayer(props: {
    * (the cover commit ack) can skip a reset that would wipe a stroke begun
    * while it was waiting.
    */
-  onResetSheetReady?: (
-    resetSheet: () => void,
-    strokeGeneration: () => number,
-    /** quick 261117-tq7 (rev 4, UAT round 4): ONLY the pixel wipe + engine
-     *  flags. The cover defers this until the committed base is on screen;
-     *  every other reset site calls `resetSheet` (both halves). */
-    clearSheetPaint: () => void,
-    /** The session bookkeeping alone (settle stamp + session end). */
-    endSheetSession: () => void,
-  ) => void;
+  onResetSheetReady?: (resetSheet: () => void, strokeGeneration: () => number) => void;
   /**
    * 261022-pim / 261024-mz5: Alt+click on an outlined stroke (or the whole
    * selected set). The Studio deletes them from the recorded script and
@@ -922,25 +913,16 @@ export function AquarelleCanvasLayer(props: {
     // Quick 261019-mj2 Task 3: same-frame reset registration for the Studio's
     // generated-cell self-promotion. Same work as the frame-change branch
     // below EXCEPT the lastPlayFrame update (this is the same frame).
-    // quick 261117-tq7 (rev 4, UAT round 4): the reset is registered in two
-    // halves so the cover can keep the SESSION bookkeeping synchronous while
-    // deferring only the pixel wipe until the committed base is on screen.
-    const endSheetSession = () => {
+    const resetSheet = () => {
       stampPendingSettle();
       onSheetSessionEndRef.current?.();
-    };
-    const clearSheetPaint = () => {
       engine.clear();
       painting = false;
       lastWetAt = 0;
       settleCapArmed = false;
       wasAwake = false;
     };
-    const resetSheet = () => {
-      endSheetSession();
-      clearSheetPaint();
-    };
-    onResetSheetReadyRef.current?.(resetSheet, () => strokeGeneration, clearSheetPaint, endSheetSession);
+    onResetSheetReadyRef.current?.(resetSheet, () => strokeGeneration);
     const tick = () => {
       const playFrame = getPlayFrameRef.current();
       if (lastPlayFrameRef.current !== playFrame) {
