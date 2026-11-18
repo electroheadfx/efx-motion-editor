@@ -72,11 +72,19 @@
 //  transparent sheet's darkness conversion, and the covered-paper-white scan;
 //  compare.mjs gates them in EVERY mode, keyed on the capture's own body.
 //
+//  64-14 adds `--scenario cover-advect`: the cover geometry with the covering
+//  stroke left wet, so the coverage channel can be read mid-script — the
+//  crossing alpha on the pigment export before and after eight extra wet
+//  ticks, plus the covered-paper-white scan. compare.mjs gates those readings
+//  in EVERY mode, keyed `'cover-advect'`.
+//
 //  Final flag contract (later phases inherit it, do not retype it):
 //    run.mjs --gate <name>            required; [A-Za-z0-9._-]+, names the JSON
 //             [--scenario cover]      omitted renders the plan-01 single stroke
 //             [--scenario cover-over-wet]
 //                                     cover geometry, dark entry left mobile
+//             [--scenario cover-advect]
+//                                     cover geometry, covering stroke left wet
 //             [--scenario watercolor-50]
 //                                     the 50-rapid-stroke identity passage
 //             [--scenario white-over-blue]
@@ -118,7 +126,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|watercolor-50|white-over-blue] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|watercolor-50|white-over-blue] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -170,15 +178,16 @@ if (bodyRaw !== undefined) {
 // 64-06: optional scenario. Omitted keeps the plan-01 single stroke.
 // quick-261117-tq7 adds `cover-over-wet` (cover geometry, dark entry mobile).
 // 64-17 adds `watercolor-50` (the 50-rapid-stroke identity passage) and
-// `white-over-blue` (the criterion-1 crossing). This closed list and probe.ts
+// `white-over-blue` (the criterion-1 crossing); 64-14 adds `cover-advect`
+// (cover geometry, covering stroke left wet). This closed list and probe.ts
 // readScenario's must stay literal-identical.
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50" or "white-over-blue")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue" or "cover-advect")`,
     )
     process.exit(1)
   }

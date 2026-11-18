@@ -110,7 +110,16 @@
 //  commit derived from the sheet, so `crossCoverAlpha − crossDarkAlpha` is the
 //  change the model makes to the committed payload.
 //
-//  Scenarios: neutral | cover | cover-over-wet | watercolor-50 | white-over-blue.
+//  64-14 adds `cover-advect`: the cover geometry with the covering stroke left
+//  WET (`fixAfter: false`), so the gate can watch the coverage channel travel
+//  with its pigment through the wet simulation. The report carries the
+//  crossing box's mean and peak alpha on the PIGMENT export before and after
+//  eight extra wet ticks, plus the covered-paper-white scan after them; the
+//  mode-4 alpha is max(darkness, cover), and at Body 100 the white pigment's
+//  own darkness alpha is a few percent, so the crossing alpha is ~cover.
+//
+//  Scenarios: neutral | cover | cover-over-wet | watercolor-50 | white-over-blue
+//           | cover-advect.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -142,6 +151,9 @@ const MUTATION_ID = 0x6d65d1
 const STROKE_COLOR = '#2244aa'
 const BRUSH_ID = 'round'
 const SETTLE_TICKS = 8
+// 64-14: the advect gate's wet window — steps taken between the two cover
+// captures of the `cover-advect` scenario.
+const ADVECT_TICKS = 8
 
 // The canonical bag exactly as the app records it (0..100), one key per
 // global. No `viscosity` / `emboss` key: this gate proves the ABSENT key
@@ -285,6 +297,18 @@ const COVER_BOXES: Readonly<Record<'crossing' | 'own' | 'under' | 'paper', BandB
 }
 
 /**
+ * 64-14: the lifecycle scenarios' alpha box. `COVER_BOXES.crossing` is a
+ * REGION box for mean pigment — at 0.1 × 0.1 doc it averages the two strokes
+ * with the bare paper around them, which dilutes an alpha mean to ~0.5. The
+ * alpha gates ask "is the covering stroke still covering", so they read the
+ * stroke CORE at the two centre-lines' intersection (≈0.648, 0.355), the same
+ * few-pixel framing Spike 001's criterion-1 crossing box uses.
+ */
+const COVER_LIFECYCLE_BOXES: Readonly<Record<'crossing', BandBox>> = {
+  crossing: { x0: 0.638, y0: 0.345, x1: 0.658, y1: 0.365 },
+}
+
+/**
  * Mean pigment (255 − mean RGB luma) over a box, 0..255, measured on an
  * opaque-transmittance export: 0 is bare paper and larger is denser medium.
  * Export rows are top-first while doc uv is y-up, so the row span flips.
@@ -361,6 +385,28 @@ function alphaMean(canvas: HTMLCanvasElement, box: BandBox): number {
   return n > 0 ? sum / n / 255 : 0
 }
 
+/** Mean and peak alpha, 0..1, over a box on the mode-4 pigment export (64-14). */
+function alphaStats(canvas: HTMLCanvasElement, box: BandBox): { mean: number; peak: number } {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('alpha stats: exported canvas has no 2D context')
+  const w = canvas.width
+  const h = canvas.height
+  const x0 = Math.max(0, Math.min(w - 1, Math.round(box.x0 * w)))
+  const x1 = Math.max(x0 + 1, Math.min(w, Math.round(box.x1 * w)))
+  const y0 = Math.max(0, Math.min(h - 1, Math.round((1 - box.y1) * h)))
+  const y1 = Math.max(y0 + 1, Math.min(h, Math.round((1 - box.y0) * h)))
+  const data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data
+  let sum = 0
+  let peak = 0
+  let n = 0
+  for (let i = 3; i < data.length; i += 4) {
+    sum += data[i]!
+    peak = Math.max(peak, data[i]!)
+    n += 1
+  }
+  return { mean: n > 0 ? sum / n / 255 : 0, peak: peak / 255 }
+}
+
 /** Mean of 1 − min(r, g, b)/255 over a box on the transparent export — the
  *  alpha the pre-coverage commit derived from the sheet. */
 function darkAlphaMean(canvas: HTMLCanvasElement, box: BandBox): number {
@@ -428,6 +474,15 @@ interface ScriptEntry {
    *  next stroke's cover pass meets wet `ink` instead of settled pigment.
    *  Omitted fixes after the settle, exactly as before. */
   readonly fixAfter?: boolean
+  /** 64-14: run this entry as a LIFT stroke instead of a brush stroke (the
+   *  standard bag already carries the lift strength). Omitted stays 'brush'. */
+  readonly tool?: 'lift'
+  /** 64-14: a mid-run cover-alpha reading on the crossing box. 'advect'
+   *  captures before a run of ADVECT_TICKS extra wet ticks and again after
+   *  them (the entry must also carry `fixAfter: false`); 'beforeLift' and
+   *  'afterLift' record the lift scenario's two readings after the entry's
+   *  own fix. Undefined entries capture nothing — every pre-existing script. */
+  readonly captureCover?: 'advect' | 'beforeLift' | 'afterLift'
 }
 
 /** The canonical bag as the app records it (0..100). A knob adds its key;
@@ -441,7 +496,9 @@ function paramsBag(entry: ScriptEntry): Record<string, number> {
 
 function makeStroke(entry: ScriptEntry): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
-    tool: 'brush',
+    // 64-14: the lift scenario drives the LIFT tool through the same
+    // applyStroke seam the brush uses; every other entry stays a brush.
+    tool: entry.tool ?? 'brush',
     color: entry.color,
     params: paramsBag(entry),
     brushId: BRUSH_ID,
@@ -482,6 +539,26 @@ function coverOverWetScript(emboss?: number, body?: number): readonly ScriptEntr
       fixAfter: false,
     },
     { color: COVER_LIGHT, points: COVER_LIGHT_POINTS, mutationId: MUTATION_ID + 1, emboss, body },
+  ]
+}
+
+/**
+ * 64-14: the coverage-lifecycle geometry — the `cover` scene with the covering
+ * stroke left WET, so the advect gate can watch its coverage travel. The dark
+ * band is fixed at Body 0 (identical at every Body value); the light diagonal
+ * carries the knob and no fix, which is what keeps the medium live.
+ */
+function coverAdvectScript(body?: number): readonly ScriptEntry[] {
+  return [
+    { color: COVER_DARK, points: COVER_DARK_POINTS, mutationId: MUTATION_ID, body: 0 },
+    {
+      color: COVER_LIGHT,
+      points: COVER_LIGHT_POINTS,
+      mutationId: MUTATION_ID + 1,
+      body: body ?? 100,
+      fixAfter: false,
+      captureCover: 'advect',
+    },
   ]
 }
 
@@ -633,11 +710,13 @@ function run(
       ? coverScript(emboss, body)
       : scenario === 'cover-over-wet'
         ? coverOverWetScript(emboss, body)
-        : scenario === 'watercolor-50'
-          ? watercolor50Script()
-          : scenario === 'white-over-blue'
-            ? whiteOverBlueScript(body ?? 100)
-            : neutralScript(emboss, body)
+        : scenario === 'cover-advect'
+          ? coverAdvectScript(body)
+          : scenario === 'watercolor-50'
+            ? watercolor50Script()
+            : scenario === 'white-over-blue'
+              ? whiteOverBlueScript(body ?? 100)
+              : neutralScript(emboss, body)
 
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
@@ -652,18 +731,60 @@ function run(
   )
 
   try {
+    const engine = capturedEngine
+    if (engine === null) throw new Error('probe never captured the adapter engine (setManual tap missed)')
+
     // 64-06: bakeMs covers the script + settle only — the exports below are
     // the capture, not the medium, so they never inflate the cost number.
+    // 64-14: the lifecycle scenarios' mid-run captures run inside the drive;
+    // their wall clock is subtracted from bakeMs for the same reason.
     const bakeStart = performance.now()
+    let captureMs = 0
+    const coverLifecycle: Record<string, number> = {}
     script.forEach((entry, index) => {
       adapter.applyStroke(makeStroke(entry))
       // 64-17: per-entry settle (ticks 0..settle, default SETTLE_TICKS); the
       // rapid entries of the 50-stroke passage settle in ONE tick each.
       const settle = entry.settle ?? SETTLE_TICKS
       for (let tick = 0; tick <= settle; tick += 1) adapter.stepTick(tick)
+      // 64-14: the advect gate reads the cover channel mid-script. The pre-read
+      // happens while the covering stroke is still wet (its entry carries
+      // `fixAfter: false`); ADVECT_TICKS extra wet ticks then run and the
+      // post-read follows — the medium is the only thing that moved.
+      if (entry.captureCover === 'advect') {
+        const captureStart = performance.now()
+        const before = alphaStats(engine.exportCanvas('pigment'), COVER_LIFECYCLE_BOXES.crossing)
+        for (let tick = 0; tick < ADVECT_TICKS; tick += 1) adapter.stepTick(tick)
+        const advectedTransparent = engine.exportCanvas('transparent')
+        const advectedPigment = engine.exportCanvas('pigment')
+        const after = alphaStats(advectedPigment, COVER_LIFECYCLE_BOXES.crossing)
+        captureMs += performance.now() - captureStart
+        coverLifecycle['coverAlphaBeforeAdvect'] = round2(before.mean)
+        coverLifecycle['coverAlphaPeakBefore'] = round2(before.peak)
+        coverLifecycle['coverAlphaAfterAdvect'] = round2(after.mean)
+        coverLifecycle['coverAlphaPeakAfter'] = round2(after.peak)
+        coverLifecycle['coveredPaperWhitePct'] = round2(
+          coveredPaperWhitePct(advectedTransparent, advectedPigment, 0.5),
+        )
+      }
       // quick-261117-tq7: `fixAfter: false` skips the settle so the stroke
       // stays mobile `ink`, the cover-over-wet underlayer.
       if (entry.fixAfter !== false) adapter.fix()
+      // 64-14: the lift gate reads the crossing after the entry's own fix, so
+      // the field it measures is the one the display reads.
+      if (entry.captureCover === 'beforeLift' || entry.captureCover === 'afterLift') {
+        const captureStart = performance.now()
+        const transparent = engine.exportCanvas('transparent')
+        const pigment = engine.exportCanvas('pigment')
+        const stats = alphaStats(pigment, COVER_LIFECYCLE_BOXES.crossing)
+        captureMs += performance.now() - captureStart
+        if (entry.captureCover === 'beforeLift') {
+          coverLifecycle['coverAlphaBeforeLift'] = round2(stats.mean)
+        } else {
+          coverLifecycle['coverAlphaAfterLift'] = round2(stats.mean)
+          coverLifecycle['coveredPaperWhitePct'] = round2(coveredPaperWhitePct(transparent, pigment, 0.5))
+        }
+      }
       // 64-17 / spike probe.ts:603-618: fix every tenth rapid stroke, so the
       // 50-stroke session is not one giant wet pool. Unreachable for every
       // pre-existing script — none carries a rapid entry.
@@ -674,10 +795,7 @@ function run(
     // of fully-settled strokes already ended on its own fix, so this stays
     // unreachable for `neutral` and `cover`.
     if (script.some((entry) => entry.fixAfter === false)) adapter.fix()
-    const bakeMs = Math.round(performance.now() - bakeStart)
-
-    const engine = capturedEngine
-    if (engine === null) throw new Error('probe never captured the adapter engine (setManual tap missed)')
+    const bakeMs = Math.round(performance.now() - bakeStart - captureMs)
 
     // 64-04: the light is render state, so it is applied after the script
     // settles and before any export. Intensity 0 is the second identity gate:
@@ -739,6 +857,7 @@ function run(
       byteLength: paper.byteLength,
       ...coverRegions,
       ...whiteOverBlueReport,
+      ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
     })
@@ -781,16 +900,17 @@ function readBody(): number | undefined {
 }
 
 /** 64-06: the scenario selector — absent renders the plan-01 single stroke.
- *  64-17 adds `watercolor-50` and `white-over-blue`. The closed list here and
- *  the one in run.mjs must stay literal-identical: a name accepted by the
- *  parser but unknown to the probe fails at capture, and a name the probe
- *  knows but the parser rejects can never be requested. */
+ *  64-17 adds `watercolor-50` and `white-over-blue`; 64-14 adds
+ *  `cover-advect`. The closed list here and the one in run.mjs must stay
+ *  literal-identical: a name accepted by the parser but unknown to the probe
+ *  fails at capture, and a name the probe knows but the parser rejects can
+ *  never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50" or "white-over-blue")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue" or "cover-advect")`,
     )
   }
   return raw

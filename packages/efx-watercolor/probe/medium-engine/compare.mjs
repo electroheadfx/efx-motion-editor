@@ -83,6 +83,14 @@
 //  no body value may leave covered paper-white. A null or unlisted body is a
 //  failure line of its own — an unlisted body never passes silently.
 //
+//  64-14 adds `'cover-advect'` to SCENARIO_INVARIANTS: the coverage channel
+//  must keep at least 90% of the crossing alpha across the eight extra wet
+//  ticks (mass preserved), must not raise the peak (spread, not sharpen),
+//  must stay at or above 0.60 (still covering) and must raise no
+//  covered-paper-white. The readings are taken on the pigment export, whose
+//  mode-4 alpha is max(darkness, cover) — at Body 100 the white pigment's own
+//  darkness alpha is a few percent, so the crossing alpha is ~cover.
+//
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
 //  teach this parser about it rather than have it silently misparse.
@@ -268,6 +276,52 @@ function whiteOverBlueFailures(data) {
 }
 
 /**
+ * 64-14: the advect gate — the coverage channel travels with its pigment
+ * without losing mass, without sharpening, and without raising paper-white.
+ * `coverAlphaPeakBefore` / `coverAlphaPeakAfter` bracket the eight extra wet
+ * ticks the probe runs between its two captures.
+ */
+function coverAdvectFailures(data) {
+  const fields = [
+    'coverAlphaBeforeAdvect',
+    'coverAlphaAfterAdvect',
+    'coverAlphaPeakBefore',
+    'coverAlphaPeakAfter',
+    'coveredPaperWhitePct',
+  ]
+  const missing = fields.filter((field) => typeof data[field] !== 'number')
+  if (missing.length > 0) {
+    return [`capture is missing ${missing.join(', ')}; re-run the cover-advect probe`]
+  }
+  const failures = []
+  if (!(data.coverAlphaAfterAdvect >= 0.9 * data.coverAlphaBeforeAdvect)) {
+    failures.push(
+      `coverAlphaAfterAdvect ${data.coverAlphaAfterAdvect} lost more than 10% of ` +
+        `coverAlphaBeforeAdvect ${data.coverAlphaBeforeAdvect} (the field lost mass)`,
+    )
+  }
+  if (!(data.coverAlphaPeakAfter <= data.coverAlphaPeakBefore)) {
+    failures.push(
+      `coverAlphaPeakAfter ${data.coverAlphaPeakAfter} is above coverAlphaPeakBefore ` +
+        `${data.coverAlphaPeakBefore} (advection sharpened the field)`,
+    )
+  }
+  if (!(data.coverAlphaAfterAdvect >= 0.6)) {
+    failures.push(
+      `coverAlphaAfterAdvect ${data.coverAlphaAfterAdvect} is below 0.60 ` +
+        '(the advected covering stroke stopped covering)',
+    )
+  }
+  if (data.coveredPaperWhitePct !== 0) {
+    failures.push(
+      `coveredPaperWhitePct ${data.coveredPaperWhitePct} is not 0 ` +
+        '(a covered texel still reads as bare paper)',
+    )
+  }
+  return failures
+}
+
+/**
  * 64-17: scenario-keyed outcome invariants — a map from scenario name to a
  * function of the capture returning failure lines. Evaluated in EVERY
  * comparison mode before the verdict, alongside the cover-over-wet region
@@ -276,12 +330,30 @@ function whiteOverBlueFailures(data) {
  */
 const SCENARIO_INVARIANTS = {
   'white-over-blue': whiteOverBlueFailures,
+  'cover-advect': coverAdvectFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. */
 function scenarioInvariantFailures(data) {
   const invariants = SCENARIO_INVARIANTS[data.scenario]
   return invariants ? invariants(data) : []
+}
+
+/** 64-14: print the lifecycle readings a capture recorded, if any. */
+function printCoverLifecycle(data) {
+  const keys = [
+    'coverAlphaBeforeAdvect',
+    'coverAlphaAfterAdvect',
+    'coverAlphaPeakBefore',
+    'coverAlphaPeakAfter',
+    'coverAlphaBeforeLift',
+    'coverAlphaAfterLift',
+    'coveredPaperWhitePct',
+  ]
+  const parts = keys.filter((key) => typeof data[key] === 'number').map((key) => `${key} ${data[key]}`)
+  if (parts.length === 0) return
+  console.log(`lifecycle : ${parts.join(' | ')}`)
+  console.log('')
 }
 
 /** Print one capture's region means beside the reference's when it has them. */
@@ -515,6 +587,7 @@ for (const field of FIELDS) {
 // pair) asserts the same self-contained outcome invariants in every mode.
 const regionFailures = coverRegionFailures(actual)
 printCoverRegions(actual, refData)
+printCoverLifecycle(actual)
 // 64-17: the scenario-keyed invariants run in committed-baseline and
 // same-session mode too — every mode, before every verdict.
 const invariantFailures = scenarioInvariantFailures(actual)

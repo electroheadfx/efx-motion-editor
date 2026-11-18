@@ -284,6 +284,63 @@ void main(){
   oB = vec4((b + dB).rgb, max(b.a + dB.a, 0.0)) * uKeep;
 }`;
 
+// Coverage transport (64-14). The coverage channel rides the SAME wet
+// simulation the pigment does — the same mobility gate, back-trace and four
+// face fluxes, computed on its single channel — so a covering stroke painted
+// into wet paper stays registered to its pigment instead of decal-ing a
+// static shape. There is deliberately NO keep factor here: the settlement
+// that reduces mobile pigment (advectInkFS's uKeep = 1 - settle) must not
+// reduce coverage, or a dried near-white film would lose its opacity and the
+// cached base would reappear under it. Coverage leaves a texel only through
+// the wet flow itself.
+export const advectCoverFS = `${HEADER}
+layout(location=0) out vec4 o0;
+uniform sampler2D uVelocity, uCover, uWet;
+uniform vec2 uSimTexel, uTexel;
+uniform float uDt, uBleed, uEdge, uAspect;
+uniform vec3 uBrush;  // x, y, radius (radius <= 0: no brush down)
+
+float mobility(float w){ return smoothstep(0.02, 0.45, w); }
+
+void face(vec2 off, float w, float m, float C, float diffusion, float edge,
+          inout float dC){
+  vec2 uv = vUv + off;
+  float wn = texture(uWet, uv).x;
+  float g = m * mobility(wn);
+  if (g <= 0.0) return;
+  float Cn = texture(uCover, uv).x;
+  float d = diffusion * g;
+  // positive: water (and coverage) drifts from this texel toward the drier neighbour
+  float e = clamp(edge * (w - wn), -0.08, 0.08) * g;
+  dC += d * (Cn - C) - (e > 0.0 ? e * C : e * Cn);
+}
+
+void main(){
+  float w = texture(uWet, vUv).x;
+  float m = mobility(w);
+  float C = texture(uCover, vUv).x;
+  if (m < 0.002){ o0 = vec4(C); return; }
+
+  vec2 vel = texture(uVelocity, vUv).xy;
+  vec2 coord = vUv - uDt * vel * uSimTexel * m;
+  float c = mix(C, texture(uCover, coord).x, m);
+
+  float brush = 0.0;
+  if (uBrush.z > 0.0){
+    vec2 d = vUv - uBrush.xy; d.x *= uAspect;
+    brush = exp(-dot(d, d) / (uBrush.z * uBrush.z));
+  }
+  float diffusion = clamp(uBleed * (0.25 + 1.3 * brush) * 0.3, 0.0, 0.15);
+  float dC = 0.0;
+  face(vec2( uTexel.x, 0.0), w, m, C, diffusion, uEdge, dC);
+  face(vec2(-uTexel.x, 0.0), w, m, C, diffusion, uEdge, dC);
+  face(vec2(0.0,  uTexel.y), w, m, C, diffusion, uEdge, dC);
+  face(vec2(0.0, -uTexel.y), w, m, C, diffusion, uEdge, dC);
+
+  // coverage is a committed alpha in [0, 1]: clamp the transported sum.
+  o0 = vec4(clamp(c + dC, 0.0, 1.0));
+}`;
+
 // "Fix": mobile pigment, and the scattering it carries, settles into the paper.
 // Drawn with additive blending into the fixed layer.
 export const settleFS = `${HEADER}

@@ -461,6 +461,8 @@ export class WatercolorEngine {
     // Phase 64: outside the literal on purpose — scattering.test.ts pins that
     // literal's program count, and `programs` is a Record.
     this.programs.bodyCover = this.g.program(S.bodyCoverFS);
+    // 64-14: the coverage advect pass, same rule — outside the pinned literal.
+    this.programs.advectCover = this.g.program(S.advectCoverFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
     this.attachInput();
@@ -2668,6 +2670,24 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uKeep, 1 - settle);
     gl.uniform3f(p.u.uBrush, this.brushNow.x, this.brushNow.y, this.brushNow.r);
     g.draw(this.ink.write, rect); this.ink.swap();
+
+    // 64-14: coverage advects with the pigment — the same mobility gate, back-
+    // trace and four face fluxes, on its single channel, into the cover pair.
+    // No keep factor: settlement must never reduce coverage (a dried white
+    // film keeps its opacity). Units 0/1/2 are free here — the ink advect's
+    // bindings belonged to its own program.
+    P.advectCover.bind();
+    gl.uniform1i(P.advectCover.u.uVelocity, g.bindTex(0, vel.read.tex[0]));
+    gl.uniform1i(P.advectCover.u.uCover, g.bindTex(1, this.cover.read.tex[0]));
+    gl.uniform1i(P.advectCover.u.uWet, g.bindTex(2, this.wet.read.tex[0]));
+    gl.uniform2fv(P.advectCover.u.uSimTexel, simTexel);
+    gl.uniform2fv(P.advectCover.u.uTexel, texel);
+    gl.uniform1f(P.advectCover.u.uDt, dt);
+    gl.uniform1f(P.advectCover.u.uBleed, this.params.bleed);
+    gl.uniform1f(P.advectCover.u.uEdge, this.params.edge * 1.4);
+    gl.uniform1f(P.advectCover.u.uAspect, this.dw / this.dh);
+    gl.uniform3f(P.advectCover.u.uBrush, this.brushNow.x, this.brushNow.y, this.brushNow.r);
+    g.draw(this.cover.write, rect); this.cover.swap();
 
     this.dirty = union(this.dirty, rect);
   }
