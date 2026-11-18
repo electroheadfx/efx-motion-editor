@@ -19,6 +19,13 @@
 //   3. The program registers outside the pinned 23-entry literal.
 //   4. `step()` draws it into the cover write half and swaps, after the ink
 //      swap and before the dirty union.
+//
+//   task 2 — undo, whole-document transport, resize
+//   5. `LayerId` carries `'cover'`; pool 0 has five formats with coverage
+//      last; `snapshotLayers()` and `travel()`'s pool-0 map agree, entry for
+//      entry (a parsed length check, so a sixth channel cannot drift).
+//   6. `captureWhole` reads the cover field at one channel and `uploadWhole`
+//      writes it into BOTH halves.
 // ============================================================
 
 import { readFileSync } from 'node:fs'
@@ -62,6 +69,35 @@ function expectNotContains(source: string, needle: string): void {
 const ADVECT_COVER = () => sliceBetween(SHADERS, 'export const advectCoverFS', '`;')
 const ADVECT_INK = () => sliceBetween(SHADERS, 'export const advectInkFS', '`;')
 const STEP = () => sliceBetween(ENGINE, 'private step(dt: number)', 'private trimActive()')
+
+/** Index of the first occurrence of `needle` at or after `from`; throws when absent. */
+function firstIndexAfter(source: string, needle: string, from = 0): number {
+  const at = source.indexOf(needle, from)
+  expect(at, `anchor not found: ${needle}`).toBeGreaterThanOrEqual(0)
+  return at
+}
+
+/**
+ * Count the top-level comma-separated entries of the bracket group opening at
+ * `openAt`. Commas nested inside a child entry (the travel map's pairs) do not
+ * count, so a desynchronised layer list is caught by arithmetic, not by a
+ * hand-maintained number.
+ */
+function countTopLevelEntries(source: string, openAt: number): number {
+  let depth = 0
+  let entries = 1
+  for (let i = openAt; i < source.length; i++) {
+    const ch = source[i]
+    if (ch === '[' || ch === '(' || ch === '{') depth += 1
+    else if (ch === ']' || ch === ')' || ch === '}') {
+      depth -= 1
+      if (depth === 0) return entries
+    } else if (ch === ',' && depth === 1) {
+      entries += 1
+    }
+  }
+  throw new Error(`unterminated bracket group at ${openAt}`)
+}
 
 describe('the coverage advect program (64-14 task 1)', () => {
   it('declares only the uniforms it reads, with a single clamped output', () => {
@@ -140,5 +176,67 @@ describe('the cover pass in step() (64-14 task 1)', () => {
     expectContains(block, 'gl.uniform3f(P.advectCover.u.uBrush, this.brushNow.x, this.brushNow.y, this.brushNow.r);')
     // The settlement's keep factor belongs to the ink's pigment only.
     expectNotContains(block, 'uKeep')
+  })
+})
+
+describe('coverage rides the document lifecycle (64-14 task 2)', () => {
+  it("adds 'cover' to LayerId after 'relief'", () => {
+    expectContains(
+      ENGINE,
+      "export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' | 'cover';",
+    )
+  })
+
+  it('gives pool 0 five formats with coverage last', () => {
+    const alloc = sliceBetween(ENGINE, 'private allocateHistory()', 'private docTargets()')
+    expectContains(alloc, 'formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R, HALF_FLOAT_R]')
+  })
+
+  it('returns five snapshotLayers() views with the cover read half last', () => {
+    const snap = sliceBetween(ENGINE, 'private snapshotLayers()', 'private drawSplat(')
+    expectContains(
+      snap,
+      'return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0], this.cover.read.views[0]];',
+    )
+  })
+
+  it("lists the cover pair last in travel()'s pool-0 layer map", () => {
+    const travel = sliceBetween(ENGINE, "private travel(dir: 'undo' | 'redo'", 'const res = dir ===')
+    expectContains(
+      travel,
+      '[[ink.read.views[0], ink.write.views[0]], [ink.read.views[1], ink.write.views[1]], [wet.read.views[0], wet.write.views[0]], [this.relief.views[0]], [this.cover.read.views[0], this.cover.write.views[0]]],',
+    )
+  })
+
+  it('reads cover in captureWhole and uploads it into both halves', () => {
+    const whole = sliceBetween(ENGINE, 'private captureWhole()', 'private applyWhole(')
+    expectContains(whole, 'cover: read(this.cover.read.views[0], 1),')
+    expectContains(
+      whole,
+      'for (const t of [this.cover.read, this.cover.write]) up(t.tex[0], gl.RED, whole.layers.cover);',
+    )
+  })
+
+  it('keeps the three positional lists the same length — five entries, cover last', () => {
+    const alloc = sliceBetween(ENGINE, 'private allocateHistory()', 'private docTargets()')
+    const formatsAt = firstIndexAfter(alloc, 'formats: [')
+    const formats = countTopLevelEntries(alloc, formatsAt + 'formats: '.length)
+
+    const snap = sliceBetween(ENGINE, 'private snapshotLayers()', 'private drawSplat(')
+    const snapshotAt = firstIndexAfter(snap, 'return [')
+    const snapshot = countTopLevelEntries(snap, snapshotAt + 'return '.length)
+
+    const travel = sliceBetween(ENGINE, "private travel(dir: 'undo' | 'redo'", 'const res = dir ===')
+    const layersAt = firstIndexAfter(travel, 'const layers = [')
+    const poolOpen = firstIndexAfter(travel, '[', layersAt + 'const layers = '.length + 1)
+    const travelPool0 = countTopLevelEntries(travel, poolOpen)
+
+    expect(formats, 'allocateHistory pool-0 formats').toBe(5)
+    expect(snapshot, 'snapshotLayers() entries').toBe(5)
+    expect(travelPool0, "travel() pool-0 layer entries").toBe(5)
+    // One arithmetic gate instead of three hand-maintained numbers: a sixth
+    // channel added to only some of the lists fails here.
+    expect(formats).toBe(snapshot)
+    expect(snapshot).toBe(travelPool0)
   })
 })
