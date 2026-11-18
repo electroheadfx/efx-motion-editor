@@ -39,15 +39,16 @@
 //      as two derived constants. No second basis, no keep, no edge term; a
 //      texel whose film leaves paper-white transports nothing and keeps its
 //      value exactly.
-//   9. The DEPOSIT is gated by the same snippet: `coverMaskFS` includes the
-//      one `FILM_PRESENCE` definition and writes `a * p`, so a dab claims
-//      coverage only where its own film (the ink its two deposit draws above
-//      just painted, with the fixed layer already eroded) leaves paper-white.
-//      One definition, exactly two inclusions.
+//   9. The DEPOSIT is deliberately UNGATED (64-20, revised): `coverMaskFS`
+//      writes its committed union coverage exactly as before. The plan's fix
+//      is the transport gate — "the deposit is already clean" — and a deposit
+//      gate evaluated on the dab's own TRANSIENT film starved a legitimate
+//      partial cover (the white-over-blue Body-60 gain fell to 0). One
+//      definition, exactly two inclusions: transport and clearance.
 //   10. `filmPresence` measures its luma on the scan's OWN 8-bit grid: the
 //      reconstructed sRGB channels are quantized to bytes before the mean, so
 //      the gate's line and the scan's "byte mean >= 250" are one test.
-//   11. The CAPTURE-TIME CLEARANCE (64-20 decision A) is the third inclusion:
+//   11. The CAPTURE-TIME CLEARANCE (64-20 decision A) is the second inclusion:
 //      at the export boundary only — never displayFS's interactive output —
 //      the pigment capture's coverage alpha is zeroed exactly where the final
 //      film's presence is exactly 0; every kept texel passes through
@@ -158,7 +159,7 @@ describe('the coverage advect program (64-14 task 1)', () => {
     expectContains(cover, 'layout(location=0) out vec4 o0;')
     // 64-20: the paper stays declared here; the combined film's four channels
     // and the display's granulation moved into the shared FILM_PRESENCE
-    // snippet, so the transport and the deposit read one declaration.
+    // snippet, so the transport and the clearance read one declaration.
     expectContains(cover, 'uniform sampler2D uVelocity, uCover, uWet, uPaper;')
     expectContains(cover, 'uniform vec2 uSimTexel, uTexel;')
     expectContains(cover, 'uniform float uDt, uBleed, uEdge, uAspect;')
@@ -373,44 +374,48 @@ describe('Lift destroys coverage (64-14 task 3)', () => {
   })
 })
 
-describe('the deposit gate shares the one reconstruction (64-20 decision A)', () => {
-  it('includes the one FILM_PRESENCE definition from every gate program', () => {
+describe('the film gate keeps ONE reconstruction (64-20 decision A)', () => {
+  it('includes the one FILM_PRESENCE definition from the transport and the clearance only', () => {
     expectContains(ADVECT_COVER(), '${FILM_PRESENCE}')
-    expectContains(COVER_MASK(), '${FILM_PRESENCE}')
-    // 64-20 decision A: the capture-time clearance is the third inclusion —
-    // still ONE definition, so transport, deposit and clearance share a single
+    expectNotContains(COVER_MASK(), '${FILM_PRESENCE}')
+    // 64-20 decision A: the capture-time clearance is the second inclusion —
+    // still ONE definition, so transport and clearance share a single
     // criterion. The basis and granulation counts stay at two because the
     // snippet carries each once, beside displayFS's own copy.
     expectContains(COVER_CLEAR(), '${FILM_PRESENCE}')
     expect(countOccurrences(SHADERS, 'const FILM_PRESENCE =')).toBe(1)
-    expect(countOccurrences(SHADERS, '${FILM_PRESENCE}')).toBe(3)
+    expect(countOccurrences(SHADERS, '${FILM_PRESENCE}')).toBe(2)
     expect(countOccurrences(SHADERS, '${displayBasisGLSL()}')).toBe(2)
     expect(countOccurrences(SHADERS, '1.0 + uGranulation * (0.5 - paper.g) * 2.2')).toBe(2)
   })
 
-  it('scales the deposited coverage by the presence and keeps the union blend', () => {
+  it('writes the committed union coverage with no film gate', () => {
     const mask = COVER_MASK()
     expectContains(mask, 'float m = footprintMask();')
-    expectContains(mask, 'float a = uAmount * (1.0 - exp(-uDensity * m));')
-    expectContains(mask, 'float p = filmPresence(vUv);')
-    expectContains(mask, 'o0 = vec4(a * p);')
-    // The ungated write is what let a dab claim a texel its own film leaves
-    // paper-white; with p = 0 the union draw is the identity and the texel
-    // keeps its value exactly.
-    expectNotContains(mask, 'o0 = vec4(uAmount * (1.0 - exp(-uDensity * m)));')
+    expectContains(mask, 'o0 = vec4(uAmount * (1.0 - exp(-uDensity * m)));')
+    // The deposit gate was evaluated on the dab's own TRANSIENT film — the
+    // ink it was still laying down — and starved a legitimate partial cover
+    // (white-over-blue Body 60: gain 0.08 -> 0). The census is closed at the
+    // capture boundary instead, where the FINAL film is known: the clearance
+    // zeroes exactly the coverage-bearing paper-white texels, by construction.
+    expectNotContains(mask, 'filmPresence')
+    expectNotContains(mask, 'uGranulation')
+    expectNotContains(mask, '${FILM_PRESENCE}')
   })
 
-  it('binds the film the two deposit draws just painted, and the display granulation', () => {
+  it('keeps the union blend and binds no film on the deposit draw', () => {
     const deposit = DEPOSIT()
-    const block = sliceBetween(deposit, 'const m = this.programs.coverMask;', 'gl.disable(gl.BLEND);')
-    expectContains(block, 'g.bindTex(2, this.ink.read.tex[0])')
-    expectContains(block, 'g.bindTex(3, this.ink.read.tex[1])')
-    expectContains(block, 'g.bindTex(4, this.fixed.tex[0])')
-    expectContains(block, 'g.bindTex(5, this.fixed.tex[1])')
-    expectContains(block, 'gl.uniform1f(m.u.uGranulation, this.params.granulation * 0.55);')
-    // uPaper is unit 1 already: bindFootprint bound the very paper the
-    // display granulates on, so the gate samples the same sheet.
-    expectNotContains(block, 'uPaper')
+    const block = sliceBetween(deposit, 'const m = this.programs.coverMask;', 'g.draw(this.cover.read, rect);')
+    expectContains(block, 'gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);')
+    expectContains(block, 'gl.uniform1f(m.u.uAmount, amount);')
+    expectContains(block, 'gl.uniform1f(m.u.uDensity, density);')
+    // No film, no granulation: an ungated union draw reads only its own
+    // footprint and the two paint amounts.
+    expectNotContains(block, 'uInkA')
+    expectNotContains(block, 'uInkB')
+    expectNotContains(block, 'uFixedA')
+    expectNotContains(block, 'uFixedB')
+    expectNotContains(block, 'uGranulation')
   })
 })
 
@@ -429,8 +434,8 @@ describe("the gate runs on the scan's own 8-bit grid (64-20 decision B)", () => 
 describe('the capture-time clearance closes the census (64-20 decision A)', () => {
   it('defines ONE clearance program on the shared FILM_PRESENCE snippet', () => {
     const clear = COVER_CLEAR()
-    // The same criterion the transport and the deposit use — one definition,
-    // three inclusions (the arithmetic lives in the gate-shape test above).
+    // The same criterion the transport uses — one definition, two inclusions
+    // (the arithmetic lives in the gate-shape test above).
     expectContains(clear, '${FILM_PRESENCE}')
     expectContains(clear, 'uniform sampler2D uSrc, uPaper, uCover;')
     expectContains(clear, 'float p = filmPresence(vUv);')
