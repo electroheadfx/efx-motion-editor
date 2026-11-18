@@ -393,15 +393,7 @@ describe('the cover profile plumbing (punch library -> bus -> cached base)', () 
     // The deposit law is the tip mask the engine deposits with, no envelope,
     // alpha-shaped by the per-dab density exactly as the engine binds it.
     expect(punchLib).toContain('if (profile === \'deposit\') {');
-    // rev 4 (UAT round 3): the tip mask mirrors footprintMask() point for
-    // point — the rotated, jittered sample through the wide ramp and the
-    // soft square rim (the raw unrotated mask erased where a textured
-    // deposit paints nothing).
-    expect(punchLib).toContain('const tqAlong = along * deposit.cos - across * deposit.sin;');
-    expect(punchLib).toContain('const ramp = smoothstep01(deposit.lowCut, deposit.lowCut + 0.5, tip);');
-    expect(punchLib).toContain(
-      'const rim = 1 - smoothstep01(0.82, 1, Math.max(Math.abs(along), Math.abs(across)));',
-    );
+    expect(punchLib).toContain('? sampleTipBilinear(shape.tipData, shape.tipSize, along, across)');
     expect(punchLib).toContain('one.amount * (1 - Math.exp(-one.density * mask))');
     // The no-density fallback keeps the legacy linear law for old literals.
     expect(punchLib).toContain(': one.amount * mask;');

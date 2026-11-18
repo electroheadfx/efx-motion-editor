@@ -529,11 +529,6 @@ export function aquarelleActiveTipId(): string | null {
 export function aquarelleBrushForActiveTool(): {
   brushId: string;
   textureId: string | null;
-  /** quick 261117-tq7 (rev 4, UAT round 3): integer DEGREES from the selected
-   *  library row — the default the record stores and the live engine brush
-   *  binds, so the cover preview resolves the same orientation. Absent on a
-   *  procedural tip (no library row to read). */
-  textureRotation?: number;
   toolOverrides: AquarelleToolOverrides;
 } {
   if (aquarelleActiveTool.value === 'lift') {
@@ -548,9 +543,6 @@ export function aquarelleBrushForActiveTool(): {
   return {
     brushId: paint.brushId,
     textureId: paint.textureId,
-    ...(paint.textureId !== null
-      ? { textureRotation: libraryRowFor(paint.textureId)?.textureRotation ?? 0 }
-      : {}),
     toolOverrides: { ...paint.toolOverrides },
   };
 }

@@ -5,7 +5,6 @@ import {
 } from '../../../lib/rasterAlpha';
 import {
   buildLiftCoverage,
-  coverShapeForBrush,
   liftShapeForStroke,
   punchTransmittanceRgba,
   type LiftFootprintShape,
@@ -104,15 +103,7 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
       // a Lift begin passes none and keeps the tip law.
       profileRef.current = profile ?? 'tip';
       // THE shape seam: one resolution per gesture (Task 2 item 13).
-      // quick 261117-tq7 (rev 4, UAT round 3): the profile picks the
-      // resolution law. A cover previews the DEPOSIT footprint (the active
-      // brush's texture, rotation and dry/jitter knobs — the same
-      // coverShapeForBrush the stroke-end commit binds); a Lift keeps its
-      // neutral-tip law.
-      const selection = aquarelleBrushForActiveTool();
-      shapeRef.current = profileRef.current === 'deposit'
-        ? coverShapeForBrush(selection)
-        : liftShapeForStroke(selection);
+      shapeRef.current = liftShapeForStroke(aquarelleBrushForActiveTool());
       const decoded = decodedRef.current;
       snapshotRef.current = decoded
         ? new ImageData(new Uint8ClampedArray(decoded.image.data), decoded.width, decoded.height)

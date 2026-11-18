@@ -30,21 +30,6 @@ const AMOUNT = 0.8;
 /** r * height = 20 px; the dab sits exactly on the sheet's centre. */
 const DAB: LiftDab = { x: 0.5, y: 0.5, r: 0.2, amount: AMOUNT, angle: 0 };
 
-/** GLSL smoothstep — the shader's own ramp and rim law. */
-function smoothstep(edge0: number, edge1: number, x: number): number {
-  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
-
-/**
- * `1 - smoothstep(0.82, 1, max(|qx|, |qy|))` — the cover's soft square rim
- * (shaders.ts FOOTPRINT_MASK). The deposit profile must fade the erase out
- * before the |q| = 1 cull, exactly like the engine's mask.
- */
-function rimFade(at: number): number {
-  return 1 - smoothstep(0.82, 1, at);
-}
-
 /** Untouched pixels read exactly 1, mirroring the coverage contract. */
 function coverageAt(
   coverage: Float32Array,
@@ -73,21 +58,18 @@ function depositCoverage(dabs: readonly LiftDab[], shape?: LiftFootprintShape) {
 describe('the deposit coverage profile', () => {
   it('removes the dab strength inside the tip square and nothing outside it', () => {
     const { coverage, coverageRect } = depositCoverage([DAB], fullMaskShape(1));
-    // A fully opaque tip: the mask is the rim fade alone inside the square,
-    // so the core loses exactly `amount` and the outermost rim keeps a
-    // partial underlayer (shaders.ts FOOTPRINT_MASK).
-    expect(coverageAt(coverage, coverageRect, 50, 50)).toBeCloseTo(1 - AMOUNT, 6);
-    expect(coverageAt(coverage, coverageRect, 60, 50)).toBeCloseTo(1 - AMOUNT, 6);
-    // The square CORNER sits at max(|q|) = 0.95 — where a hard cull used to
-    // draw the dab's contour, the cover now fades out.
-    expect(coverageAt(coverage, coverageRect, 69, 69)).toBeCloseTo(
-      1 - AMOUNT * rimFade(0.95),
-      6,
-    );
-    expect(coverageAt(coverage, coverageRect, 31, 31)).toBeCloseTo(
-      1 - AMOUNT * rimFade(0.95),
-      6,
-    );
+    // A fully opaque tip: the mask is 1 everywhere inside the square, so the
+    // underlayer loses exactly `amount` — the same fraction the engine's cover
+    // subtracts from the pigment the covering dab lands.
+    for (const [x, y] of [
+      [50, 50], // centre
+      [60, 50], // along 0.5
+      [69, 69], // the square CORNER: along .95, across .95 — the deposited
+      //           square, where a circular core would have stopped at d = 1
+      [31, 31], // the opposite corner
+    ] as const) {
+      expect(coverageAt(coverage, coverageRect, x, y)).toBeCloseTo(1 - AMOUNT, 6);
+    }
     // Outside the tip square the engine discards the dab, so nothing is erased.
     expect(coverageAt(coverage, coverageRect, 71, 50)).toBe(1);
     expect(coverageAt(coverage, coverageRect, 50, 71)).toBe(1);
@@ -110,10 +92,8 @@ describe('the deposit coverage profile', () => {
     expect(coverageAt(coverage, coverageRect, 40, 50)).toBeCloseTo(1 - AMOUNT, 6);
     // along = +0.5 -> u = 0.75 -> the empty column.
     expect(coverageAt(coverage, coverageRect, 60, 50)).toBe(1);
-    // The bilinear tap at the column boundary reads 0.5; the cover's WIDE
-    // ramp (roughness 0: smoothstep(0, 0.5, t)) saturates from 0.5 up, so the
-    // boundary erases fully, exactly as the engine's mask does.
-    expect(coverageAt(coverage, coverageRect, 50, 50)).toBeCloseTo(1 - AMOUNT, 6);
+    // The mask is bilinear, exactly as the engine samples it.
+    expect(coverageAt(coverage, coverageRect, 50, 50)).toBeCloseTo(1 - AMOUNT * 0.5, 6);
   });
 
   it('stacks overlapping dabs multiplicatively, like every coverage profile', () => {
@@ -129,10 +109,9 @@ describe('the deposit coverage profile', () => {
       1 - AMOUNT,
       6,
     );
-    // Horizontal offset 18 px: along = 0.9 — the long axis is not squeezed,
-    // but 0.9 is inside the soft rim (|q| > 0.82), so the fade applies.
+    // Horizontal offset 18 px: along = 0.9 — the long axis is not squeezed.
     expect(coverageAt(squeezed.coverage, squeezed.coverageRect, 68, 50)).toBeCloseTo(
-      1 - AMOUNT * rimFade(0.9),
+      1 - AMOUNT,
       6,
     );
     // Inside the square but outside the unit circle: still deposited (the tip
@@ -242,8 +221,7 @@ describe('the deposit profile with a per-dab density (rev 4)', () => {
   });
 
   it('follows the bilinear tip mask through the exponential', () => {
-    // A 2×2 tip whose right column is empty: the centre samples 0.5, and the
-    // cover's wide ramp (smoothstep(0, 0.5, t)) saturates from 0.5 up.
+    // A 2×2 tip whose right column is empty: the centre samples mask 0.5.
     const gapShape: LiftFootprintShape = {
       tipData: new Uint8Array([255, 0, 255, 0]),
       tipSize: 2,
@@ -258,7 +236,7 @@ describe('the deposit profile with a per-dab density (rev 4)', () => {
       gapShape,
       'deposit',
     );
-    expect(coverageAt(coverage, coverageRect, 50, 50)).toBeCloseTo(1 - shaped(1), 6);
+    expect(coverageAt(coverage, coverageRect, 50, 50)).toBeCloseTo(1 - shaped(0.5), 6);
     // The empty texel column deposits nothing, so it must erase nothing.
     expect(coverageAt(coverage, coverageRect, 60, 50)).toBe(1);
   });

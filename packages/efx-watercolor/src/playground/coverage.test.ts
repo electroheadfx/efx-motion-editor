@@ -287,18 +287,9 @@ describe('the cover seam', () => {
     expect((ENGINE_SOURCE.match(/bodyCurve\(/g) ?? []).length, 'one bodyCurve call site').toBe(1)
   })
 
-  it('self-heals a stale snapshot before allocating and copies both attachments positionally', () => {
+  it('allocates the snapshot once per stroke and copies both ink attachments positionally', () => {
     const arm = sliceBetween(ENGINE_SOURCE, 'private armInkCover() {', 'private inkCover(')
-    // quick 261117-tq7 (rev 4, UAT round 3): arming is SELF-HEALING. An
-    // early return on a non-null snapshot let a missed dropPreInk() outlive
-    // its stroke, and the next stroke's cover subtracted that stale density
-    // from the live ink (`ink - f * pre`) — deepening coefficients negative:
-    // the reported hue shifts and paint that vanishes.
-    expectNotContains(arm, 'if (this.preInk !== null) return;')
-    expectContains(arm, 'this.dropPreInk();')
-    expect(arm.indexOf('this.dropPreInk();'), 'release precedes the allocation').toBeLessThan(
-      arm.indexOf('this.preInk = g.target('),
-    )
+    expectContains(arm, 'if (this.preInk !== null) return;')
     expectContains(
       arm,
       'this.preInk = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.LINEAR);',
@@ -413,7 +404,6 @@ describe('the cover seam', () => {
     const releaseSites = [...new Set(releases.map((line) => enclosingMethod(lines, line).name))].sort()
     expect(releaseSites, 'the derived lifecycle release set').toEqual([
       'abortStroke',
-      'armInkCover', // release-before-copy: the self-healing arm
       'clear',
       'createDocument', // allocation site
       'destroy',
