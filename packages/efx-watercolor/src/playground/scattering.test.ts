@@ -543,3 +543,113 @@ describe('the composition of order and opacity (MED-36)', () => {
     expectContains(payload, 'params: Record<string, number>')
   })
 })
+
+// ============================================================
+//  64-22 (T-64-72) — the bristle gather rides the ONE curve.
+//
+//  A bristle dab deposits the five nearest bristles' ink-weighted CARRIED
+//  COEFFICIENTS — the engine's seven absorbance coefficients plus alpha,
+//  never RGB — averaged in coefficient space and written additively
+//  (`ONE, ONE`), the same law `brushInk` already uses; and the SAME gather
+//  writes the coverage channel exactly ONCE (`ONE, ONE_MINUS_SRC_ALPHA`).
+//  The scattering S is not re-derived anywhere in the bristle path: the
+//  engine computes `scatteringDeposit` (the one curve) and passes it as the
+//  `uScatter` uniform, so no bristle fragment may contain `pow(`.
+//
+//  One shared snippet, two consumers in this plan (the ink deposit and the
+//  coverage write); 64-23's Task adds the Body mask as the third consumer of
+//  the SAME snippet, never a second copy.
+// ============================================================
+
+describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
+  it('declares one shared gather snippet and rebuilds the carrier on the exported helper', () => {
+    expect(
+      (SHADERS_SOURCE.match(/export const BRISTLE_GATHER/g) ?? []).length,
+      'one shared gather snippet',
+    ).toBe(1)
+    expect(
+      (SHADERS_SOURCE.match(/Gathered gatherBristle\(/g) ?? []).length,
+      'the gather law is declared once, inside the snippet',
+    ).toBe(1)
+    expect(
+      (SHADERS_SOURCE.match(/export const BRISTLE_TEXTURES/g) ?? []).length,
+      'the texture helper is exported so the carrier and the gather share it',
+    ).toBe(1)
+    const carrier = sliceBetween(
+      SHADERS_SOURCE,
+      'export const bristleCarrierFS',
+      'export const BRISTLE_GATHER',
+    )
+    expectContains(carrier, '${HEADER}${BRISTLE_NOISE}${BRISTLE_TEXTURES}')
+  })
+
+  it('deposits the gathered coefficients additively and takes the scatter as a uniform', () => {
+    const deposit = sliceBetween(
+      SHADERS_SOURCE,
+      'export const bristleDepositFS',
+      'export const bristleCoverFS',
+    )
+    expectContains(deposit, '${HEADER}${BRISTLE_GATHER}')
+    expectNotContains(deposit, 'pow(')
+    expectContains(deposit, 'uniform float uScatter;')
+    expectContains(deposit, 'oA = g.cA * amount;')
+    expectContains(deposit, 'oB = vec4(g.cB * amount, uScatter * deposit);')
+    // Never an RGB average: the gathered value stays in coefficient space.
+    expectNotContains(deposit, 'rgb')
+    // The coverage fragment writes the SAME gather's coverage, nothing else.
+    const cover = SHADERS_SOURCE.slice(SHADERS_SOURCE.indexOf('export const bristleCoverFS'))
+    expectContains(cover, '${HEADER}${BRISTLE_GATHER}')
+    expectContains(cover, 'o0 = vec4(clamp(g.coverage, 0.0, 1.0));')
+  })
+
+  it('wires one ink draw and ONE coverage write per bristle dab', () => {
+    const ink = sliceBetween(ENGINE_SOURCE, 'private bristleInk(', 'private readBristles(')
+    expectContains(ink, 'gl.blendFunc(gl.ONE, gl.ONE);')
+    expectContains(ink, 'gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);')
+    expect((ink.match(/this\.ink\.read/g) ?? []).length, 'one ink deposit').toBe(1)
+    expect((ink.match(/this\.cover\.read/g) ?? []).length, 'exactly ONE coverage write').toBe(1)
+    // The dab's rectangle is touched BEFORE any draw (the undo bookkeeping).
+    expect(
+      ink.indexOf('this.touch('),
+      'the dab is touched before the first draw',
+    ).toBeGreaterThanOrEqual(0)
+    expect(ink.indexOf('this.touch('), 'the touch precedes the deposit').toBeLessThan(
+      ink.indexOf('g.draw(this.ink.read, rect);'),
+    )
+  })
+
+  it('scatters through scatteringDeposit only — a uniform, never re-derived', () => {
+    expect(
+      (ENGINE_SOURCE.match(/scatteringDeposit\(/g) ?? []).length,
+      'the shipped three deposit sites and no bristle re-derivation',
+    ).toBe(3)
+    expectContains(
+      ENGINE_SOURCE,
+      'const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount)];',
+    )
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expectContains(brush, 'if (bristle) this.bristleInk(dx, dy, dr, angle, amount, pr, b.grain, c1[3]!);')
+    expectNotContains(brush, 'Math.pow(')
+  })
+
+  it('takes pickup and refill from the recorded bag and keeps the pinned counts', () => {
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uPickupRate!, this.params.pickup);')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uRefillRate!, this.params.refill);')
+    expectContains(
+      ENGINE_SOURCE,
+      'gl.uniform1f(p.u.uSoftness!, gatherSoftness(this.params.feather));',
+    )
+    const programs = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
+    expect(
+      (programs.match(/this\.g\.program\(/g) ?? []).length,
+      'the pinned literal keeps twenty-three programs',
+    ).toBe(23)
+    expectContains(ENGINE_SOURCE, 'this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);')
+    expectContains(ENGINE_SOURCE, 'this.programs.bristleCover = this.g.program(S.bristleCoverFS);')
+    const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
+    expect(
+      (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
+      'the gather adds no document-sized target',
+    ).toBe(13)
+  })
+})

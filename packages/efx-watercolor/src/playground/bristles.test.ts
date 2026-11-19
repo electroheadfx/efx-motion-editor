@@ -41,6 +41,10 @@ import {
   bristleCount,
   makeBristles,
 } from './bristles'
+// 64-22: the gather's constants and its softness band. The namespace cast
+// keeps a not-yet-exported symbol a clean per-test failure instead of a
+// module-load error for the whole suite.
+import * as bristleModule from './bristles'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SOURCE = readFileSync(resolve(HERE, 'bristles.ts'), 'utf8')
@@ -319,5 +323,56 @@ describe('bristles.ts — the determinism contract in source', () => {
     expectContains(SOURCE, '§4.1')
     expectContains(SOURCE, '§4.2')
     expectContains(SOURCE, '§3.1')
+  })
+})
+
+// ============================================================
+//  64-22 — the gather's two constants and its softness band.
+//
+//  The band the gather smooths its coverage threshold by is
+//  `BRISTLE_SOFTNESS + BRISTLE_FEATHER_GAIN · feather`: §6's
+//  paint.softness at Feather 0, widening to 0.34 at Feather 1. Both
+//  numbers are declared ONCE here, beside the stroke's other constants,
+//  and the D-22 Feather global is their only input.
+// ============================================================
+
+const GATHER = bristleModule as unknown as {
+  BRISTLE_SOFTNESS: number
+  BRISTLE_FEATHER_GAIN: number
+  gatherSoftness: (feather: number) => number
+}
+
+describe('the gather constants (64-22)', () => {
+  it('exports the §6 softness and the feather gain, each declared once', () => {
+    expect(GATHER.BRISTLE_SOFTNESS, '§6 paint.softness').toBe(0.09)
+    expect(GATHER.BRISTLE_FEATHER_GAIN, 'the Feather gain').toBe(0.25)
+    expect(
+      (SOURCE.match(/BRISTLE_SOFTNESS = 0\.09/g) ?? []).length,
+      'one BRISTLE_SOFTNESS declaration, at 0.09',
+    ).toBe(1)
+    expect(
+      (SOURCE.match(/BRISTLE_FEATHER_GAIN = 0\.25/g) ?? []).length,
+      'one BRISTLE_FEATHER_GAIN declaration, at 0.25',
+    ).toBe(1)
+    expectContains(SOURCE, '§6')
+  })
+
+  it('widens the band with Feather: softness = 0.09 + 0.25 · feather', () => {
+    expect(GATHER.gatherSoftness(0), 'Feather 0 is the §6 band').toBeCloseTo(0.09, 9)
+    expect(GATHER.gatherSoftness(1), 'Feather 1 is 0.34').toBeCloseTo(0.34, 9)
+    expect(GATHER.gatherSoftness(0.5), 'the law is linear in the band').toBeCloseTo(0.215, 9)
+  })
+
+  it('clamps a negative or non-finite feather at the §6 band', () => {
+    expect(GATHER.gatherSoftness(-1), 'a negative Feather never narrows the band').toBeCloseTo(0.09, 9)
+    expect(GATHER.gatherSoftness(-0.0001)).toBeCloseTo(0.09, 9)
+    expect(GATHER.gatherSoftness(Number.NaN), 'NaN is the neutral 0').toBeCloseTo(0.09, 9)
+    expect(
+      GATHER.gatherSoftness(Number.POSITIVE_INFINITY),
+      'a non-finite Feather never widens the band',
+    ).toBeCloseTo(0.09, 9)
+    expect(GATHER.gatherSoftness(Number.NEGATIVE_INFINITY)).toBeCloseTo(0.09, 9)
+    // The top of the band is the canonical 1: above it the band stops widening.
+    expect(GATHER.gatherSoftness(2), 'above the canonical band the width saturates').toBeCloseTo(0.34, 9)
   })
 })
