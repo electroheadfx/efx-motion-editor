@@ -1,18 +1,25 @@
 ---
 phase: 64-medium-engine
 epic: efx-motion-editor-4ro
-open: 12
+open: 19
 closed: 33
-blocking_open: 12
+blocking_open: 19
 diverged: 12
 generated_from: "bd list --parent efx-motion-editor-4ro --all --json -n 0"
-generated_at: 2026-11-18T19:12:39Z
+generated_at: 2026-11-18T21:50:15Z
 ---
 
 # BEADS.md: 64-medium-engine
 
 | Issue | Title | Status | Task Status | Plan Task | Blocked By |
 |-------|-------|--------|-------------|-----------|------------|
+| efx-motion-editor-4ro.52 | 64-20.3 The probe matrix and the supersession records | open |  |  |  |
+| efx-motion-editor-4ro.51 | 64-20.2 Coverage rides only where its film leaves paper-white | open |  |  |  |
+| efx-motion-editor-4ro.50 | 64-20.1 The offender census: name the texels the scan counts | open |  |  |  |
+| efx-motion-editor-4ro.49 | 64-19.2 One bounded re-bake per light change, through the Apply seam | open |  |  |  |
+| efx-motion-editor-4ro.48 | 64-19.1 The light enters the frame cache fingerprint | open |  |  |  |
+| efx-motion-editor-4ro.47 | 64-18.2 Record at the release boundary: the onLightCommit seam | open |  |  |  |
+| efx-motion-editor-4ro.46 | 64-18.1 The gesture coalescer: one span, one descriptor, or none | open |  |  |  |
 | efx-motion-editor-4ro.45 | 64-17.3 Re-specify cover-over-wet for the coverage model and retire the erase-era harness prose | open | done | 64-17 | efx-motion-editor-4ro.44 |
 | efx-motion-editor-4ro.44 | 64-17.2 White over blue at Body 100/60/30: the committed alpha is coverage-derived, not darkness-derived | open | done | 64-17 | efx-motion-editor-4ro.43 |
 | efx-motion-editor-4ro.43 | 64-17.1 End-to-end: the pigment sheet is digested and the 1080² Body-0 identity law is committed | open | done | 64-17 | efx-motion-editor-4ro.33 |
