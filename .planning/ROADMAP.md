@@ -255,7 +255,7 @@ Plans:
 - [x] 64-21-PLAN.md — Record and reservoirs: pin the paper seed, generate the deterministic bristle set from `traceSeed`, and give every bristle its `1 × 256` reservoir pair with the carrier pass per dab — no visual law change, every identity gate byte-identical
 
 **Wave 16** *(blocked on 64-21 completion)*
-- [ ] 64-22-PLAN.md — The gather and the mixing law: the 5-nearest ink-weighted carried coefficients, the RGB→coefficient law, `pickup`/`refill`/`wetSeconds` exposed, and Body composition through the coverage composite with the D-21 bristle-modulated cover for the two bristle responses only
+- [x] 64-22-PLAN.md — The gather and the mixing law: the 5-nearest ink-weighted carried coefficients, the RGB→coefficient law, `pickup`/`refill`/`wetSeconds` exposed, and Body composition through the coverage composite with the D-21 bristle-modulated cover for the two bristle responses only
 
 **Wave 17** *(blocked on 64-22 completion)*
 - [ ] 64-23-PLAN.md — Traces and directional edges: `broken` (§4.3), the `grainHeight` trio (§4.4), rim contact (§5.3), landing (§5.4), `dryEdge` (§5.5) and the `wide`/`local` body (§4.5) — the acceptance capture for directional anti-aliased edges
@@ -282,7 +282,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 21/24 | In Progress | - |
+| 64. Medium Engine | 22/24 | In Progress | - |
 
 ---
 

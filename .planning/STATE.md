@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-21-PLAN.md
-last_updated: "2026-11-19T13:19:12.539Z"
+stopped_at: Completed 64-22-PLAN.md
+last_updated: "2026-11-19T13:48:55.114Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 64 execution started
-state_head: cada96ae2f892c2f454c49384ab1f6e7a05182d4
+state_head: 22a169c5a35be0845981911e6849da504bf9642f
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 41
-  completed_plans: 38
+  completed_plans: 39
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 22 of 24
+Plan: 23 of 24
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 64 execution started
 
@@ -165,6 +165,7 @@ Last activity: 2026-11-19 — Phase 64 execution started
 | Phase 64 P20 | 41min | 3 tasks | 17 files |
 | Phase 64 P64-19 | 12min | 2 tasks | 10 files |
 | Phase 64 P21 | 13min | 3 tasks | 20 files |
+| Phase 64 P22 | 13min | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -550,6 +551,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: Carrier ships proxy wetness only (wet * coverage): uWetMode and the last-touch sampler are 64-24's, so the pass binds ten textures, not eleven
 - [Phase 64]: Reservoir pair and shape target stay in docTargets() deliberately: membership buys disposal/wipe reach; shape re-upload at every stroke start makes a zeroed or replaced target unobservable
 - [Phase 64]: No deposit change, no second engine, no document-sized target: D-29 delivery law honoured exactly; no committed baseline edited
+- [Phase 64]: 64-22: the gather deposit averages the five nearest bristles' carried absorbance coefficients (never RGB), writes coverage exactly once, and erodes Body through the same gather — Body 0 byte-identical, all nine identity gates reproduce.
+- [Phase 64]: 64-22: the Body mask's switch is uShapeLaw because the gather binds uShape as its shape-texture sampler; fixed/relief keep the shipped alpha-shaped and LINEAR laws unchanged.
+- [Phase 64]: 64-22: Feather, Pickup and Refill are canonical, recorded and shown as Paint-tab rows; wetSeconds rides the record with no row because the panel's x100 reset would corrupt a seconds value.
 
 ### Pending Todos
 
@@ -677,8 +681,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-19T13:19:11.068Z
-Stopped at: Completed 64-21-PLAN.md
+Last session: 2026-11-19T13:48:53.611Z
+Stopped at: Completed 64-22-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
