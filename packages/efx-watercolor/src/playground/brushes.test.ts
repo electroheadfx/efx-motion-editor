@@ -17,7 +17,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import * as brushesModule from './brushes'
-import { BRUSH_PRESETS, TIP_SIZE, buildBrush } from './brushes'
+import { BRUSH_PRESETS, TIP_SIZE, buildBrush, isBristleResponse } from './brushes'
 import type { BrushPreset } from './brushes'
 
 type MediumIdLike = 'watercolor' | 'gouache' | 'pastel' | 'graphite' | 'acrylic'
@@ -412,5 +412,26 @@ describe('the eight new responses', () => {
     const body = source.slice(match!.index!, match!.index! + 800)
     expect(body).toContain('hairs(')
     expect(body).not.toContain('worley(')
+  })
+})
+
+describe('the bristle response predicate (64-21, D-27)', () => {
+  it('accepts exactly the two bristle ids with no texture id', () => {
+    for (const id of ['bristle-flat', 'bristle-round']) {
+      expect(isBristleResponse({ id }), `${id} with an absent textureId`).toBe(true)
+      expect(isBristleResponse({ id, textureId: null }), `${id} with a null textureId`).toBe(true)
+    }
+  })
+
+  it('refuses a texture pick on a bristle id — the D-27 escape hatch', () => {
+    for (const id of ['bristle-flat', 'bristle-round']) {
+      expect(isBristleResponse({ id, textureId: 'mask/acrylic-01' }), `${id} carrying a picked texture`).toBe(false)
+    }
+  })
+
+  it('refuses every other response, textured or not', () => {
+    expect(isBristleResponse({ id: 'round' })).toBe(false)
+    expect(isBristleResponse({ id: 'round', textureId: 'mask/acrylic-01' })).toBe(false)
+    expect(isBristleResponse({ id: 'chalk' })).toBe(false)
   })
 })

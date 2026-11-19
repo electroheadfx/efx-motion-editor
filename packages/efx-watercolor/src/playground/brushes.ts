@@ -241,6 +241,21 @@ function bristleTip(n: number, N: Noise): Float32Array {
   })(n);
 }
 
+/**
+ * 64-21 (D-27): the bristle response predicate — the ONE place the two bristle
+ * ids are read as "this stroke runs the per-bristle carrier".
+ *
+ * A bristle response is `bristle-flat` or `bristle-round` AND carries no
+ * texture id, i.e. the tip comes from the response's own procedural tip. A
+ * bristle response stamped through a picked texture is NOT one: the textured
+ * path keeps the shipping stamp, so the escape hatch is a texture pick,
+ * exactly as D-27 records. (Declared after `bristleTip` on purpose: the
+ * tip-source pin in brushes.test.ts matches the FIRST `*bristle*` function.)
+ */
+export function isBristleResponse(b: { id: string; textureId?: string | null }): boolean {
+  return (b.id === 'bristle-flat' || b.id === 'bristle-round') && (b.textureId === undefined || b.textureId === null);
+}
+
 /* --------------------------------------------------------------- presets */
 
 const BASE: Omit<BrushPreset, 'id' | 'name' | 'hint' | 'tip'> = {

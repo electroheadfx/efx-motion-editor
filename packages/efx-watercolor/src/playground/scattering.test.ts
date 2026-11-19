@@ -438,9 +438,16 @@ describe('the composition of order and opacity (MED-36)', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'eleven target allocations: the coverage pair is the eleventh (SPIKE 001)',
-    ).toBe(11)
+      'thirteen target allocations: the coverage pair is the eleventh (SPIKE 001); 64-21 adds the three-reservoir bristle pair and the shape texture (SPIKE 002)',
+    ).toBe(13)
     expectContains(alloc, 'this.relief = g.target(')
+    // 64-21: the fixed 1 × 256 bristle set — three RGBA16F reservoir
+    // attachments (ping-pong) and the static shape texture, NEAREST.
+    expectContains(
+      alloc,
+      'this.bristles = g.double(1, BRISTLE_CAP, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.NEAREST);',
+    )
+    expectContains(alloc, 'this.bristleShape = g.target(1, BRISTLE_CAP, [HALF_FLOAT_RGBA], gl.NEAREST);')
     const programs = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
     expect(
       (programs.match(/this\.g\.program\(/g) ?? []).length,
@@ -459,6 +466,46 @@ describe('the composition of order and opacity (MED-36)', () => {
       snapshot,
       'return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0], this.cover.read.views[0]];',
     )
+  })
+
+  it('runs the 64-21 carrier before every deposit, only on a bristle response', () => {
+    // The predicate is computed ONCE from the active brush and gates the
+    // seeding and the carrier — a non-bristle response takes the shipping
+    // path with no extra draw, bind or RNG draw (the identity proof).
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expect(
+      (brush.match(/isBristleResponse\(/g) ?? []).length,
+      'one predicate call site in the brush case',
+    ).toBe(1)
+    expectContains(brush, 'const bristle = isBristleResponse(b);')
+    expectContains(brush, 'if (bristle && this.bristleStroke !== s) {')
+    expectContains(brush, 'this.beginBristles(r);')
+    // Inside eachDab the carrier comes FIRST, before the cover pass and the
+    // deposit; the gather deposit itself is 64-22's.
+    expectContains(brush, 'if (bristle) {')
+    const dab = sliceBetween(brush, 'this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {', '});')
+    const carrierAt = dab.indexOf('this.carrierPass(')
+    const coverAt = dab.indexOf('this.coverPass(')
+    const depositAt = dab.indexOf('this.brushInk(')
+    expect(carrierAt, 'the carrier runs inside eachDab').toBeGreaterThan(-1)
+    expect(coverAt, 'the cover pass still runs inside eachDab').toBeGreaterThan(-1)
+    expect(depositAt, 'the deposit still runs inside eachDab').toBeGreaterThan(-1)
+    expect(carrierAt, 'the carrier runs BEFORE the cover pass').toBeLessThan(coverAt)
+    expect(carrierAt, 'the carrier runs BEFORE the deposit').toBeLessThan(depositAt)
+    expectContains(dab, 'this.bristleTravel(dx, dy, dr);')
+  })
+
+  it('keeps the 64-21 bristle targets inside docTargets, before the coverage pair', () => {
+    const targets = sliceBetween(ENGINE_SOURCE, 'private docTargets(): Target[] {', '\n  }')
+    expectContains(targets, 'this.bristles.read, this.bristles.write, this.bristleShape,')
+    // Commitments to the committed order: the wet mask precedes the bristle
+    // entries, and the coverage pair stays LAST (the sheet-wipe law).
+    expect(targets.indexOf('this.wetMask,')).toBeLessThan(targets.indexOf('this.bristles.read,'))
+    expect(targets.indexOf('this.bristleShape,')).toBeLessThan(targets.indexOf('this.relief,'))
+    expect(
+      targets.trimEnd().endsWith('this.cover.read, this.cover.write];'),
+      'the coverage pair stays LAST in docTargets()',
+    ).toBe(true)
   })
 
   it('declares one scattering scalar per film reconstruction and no per-pigment scattering', () => {

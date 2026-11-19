@@ -1,4 +1,6 @@
-import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, tipRowsForUpload, type Brush } from './brushes';
+import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, isBristleResponse, tipRowsForUpload, type Brush } from './brushes';
+import { BRISTLE_CAP, bristleCount, makeBristles } from './bristles';
+import { f32ToF16 } from './half';
 import { GL, type DoubleTarget, type Format, type Program, type Rect, type Target } from './gl';
 import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
@@ -381,6 +383,19 @@ export class WatercolorEngine {
   // SPIKE 001: the pigment layer's coverage, one channel. A ping-pong pair from
   // the start: 64-14 advects it with the ink and its undo needs both halves.
   private cover!: DoubleTarget;
+  // 64-21 (SPIKE 002): the per-stroke bristle reservoirs — a FIXED
+  // `1 × BRISTLE_CAP` set, three RGBA16F attachments (carried absorbance 0..3,
+  // 4..6 + carried alpha, load/across/seed/valueJitter) — plus the static
+  // `1 × BRISTLE_CAP` RGBA16F shape texture (radiusScale, touchReach,
+  // loadRate, spare). Deliberately document-independent: the delivery law
+  // allows no document-sized target for the medium engine. Engine-internal
+  // state: rebuilt from the stroke record on replay, never persisted.
+  private bristles!: DoubleTarget;
+  private bristleShape!: Target;
+  /** 64-21: the stroke object whose set is seeded — a NEW stroke always re-seeds. */
+  private bristleStroke: Stroke | null = null;
+  private bristleCount = 0;
+  private bristlePrev = { x: 0, y: 0, along: 0 };
   private paper!: Target;
   private wetMask!: Target;                    // coarse "is there water here" map, read back to bound the sim
   private maskPixels = new Uint8Array(0);
@@ -468,6 +483,9 @@ export class WatercolorEngine {
     // 64-20 decision A: the capture-time clearance, same rule — outside the
     // pinned literal. The export boundary runs it for the pigment capture only.
     this.programs.coverClear = this.g.program(S.coverClearFS);
+    // 64-21 (SPIKE 002): the per-bristle carrier, same rule — outside the
+    // pinned literal (its count stays twenty-three).
+    this.programs.bristleCarrier = this.g.program(S.bristleCarrierFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
     this.attachInput();
@@ -538,6 +556,16 @@ export class WatercolorEngine {
     // SPIKE 001: the coverage channel — one channel on the document grid. A
     // ping-pong pair because 64-14 advects it and its undo needs both halves.
     this.cover = g.double(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
+    // 64-21 (SPIKE 002): the bristle reservoirs are a FIXED 1 × 256 set,
+    // independent of the sheet — no document-sized allocation (the delivery
+    // law's budget). PATTERNS flags a fixed-size target as novel and suggests
+    // keeping it OUT of allocateTargets()/docTargets(); this plan keeps both
+    // in docTargets() on purpose so the sheet wipe, a resize and applyWhole's
+    // disposal all reach them (no leak), and makes that safe by construction:
+    // the shape is re-uploaded at every stroke start and the reservoirs are
+    // only ever read inside a seeded stroke (see beginBristles).
+    this.bristles = g.double(1, BRISTLE_CAP, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.NEAREST);
+    this.bristleShape = g.target(1, BRISTLE_CAP, [HALF_FLOAT_RGBA], gl.NEAREST);
     this.paper = g.target(this.dw, this.dh, [RGBA8], gl.LINEAR);
     this.wetMask = g.target(Math.ceil(this.dw / MASK_BLOCK), Math.ceil(this.dh / MASK_BLOCK), [RGBA8], gl.NEAREST);
     this.maskPixels = new Uint8Array(this.wetMask.w * this.wetMask.h * 4);
@@ -558,8 +586,12 @@ export class WatercolorEngine {
   private docTargets(): Target[] {
     // SPIKE 001: the coverage pair is LAST, after the thickness, so the sheet
     // wipe clears it with every other non-paper document target.
+    // 64-21: the bristle reservoirs and the shape texture are the ONLY
+    // document-independent entries here — membership buys disposal reach
+    // (resize, applyWhole) and wipe reach, and costs nothing per edition.
     return [this.velocity.read, this.velocity.write, this.pressure.read, this.pressure.write, this.divergence, this.curl,
-      this.ink.read, this.ink.write, this.fixed, this.wet.read, this.wet.write, this.paper, this.wetMask, this.relief,
+      this.ink.read, this.ink.write, this.fixed, this.wet.read, this.wet.write, this.paper, this.wetMask,
+      this.bristles.read, this.bristles.write, this.bristleShape, this.relief,
       this.cover.read, this.cover.write];
   }
 
@@ -2152,6 +2184,16 @@ export class WatercolorEngine {
     switch (s.tool) {
       case 'brush': {
         const b = this.brush;
+        // 64-21 (D-27): compute the bristle predicate ONCE from the active
+        // brush. A new stroke object always re-seeds the set; the same stroke
+        // never re-seeds (dwells and later dabs reuse it). Non-bristle
+        // responses take the shipping path with no extra draw, no extra
+        // uniform bind and no extra RNG draw — the identity proof.
+        const bristle = isBristleResponse(b);
+        if (bristle && this.bristleStroke !== s) {
+          this.bristleStroke = s;
+          this.beginBristles(r);
+        }
         // the brush empties as it travels; a dry brush skips the valleys of the paper
         const reservoir = 0.25 + 0.75 * Math.exp(-s.travelled / ((1.5 + 3 * P.water) * b.capacity));
         const dryness = clamp(b.grain + (1 - b.grain) * clamp((0.5 - reservoir) * 2.5, 0, 1) * 0.6, 0, 1);
@@ -2214,6 +2256,14 @@ export class WatercolorEngine {
           this.history.protect(1, { x0: Math.max(0, coverRect.x0 - m), y0: Math.max(0, coverRect.y0 - m), x1: Math.min(this.dw, coverRect.x1 + m), y1: Math.min(this.dh, coverRect.y1 + m) }, this.fixed.views);
         }
         this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
+          // 64-21 (SPIKE 002): the carrier samples the canvas under this dab
+          // and updates the reservoirs BEFORE the dab deposits, so it never
+          // picks up its own output. It writes only the reservoir pair — no
+          // document target — so the displayed render is unchanged.
+          if (bristle) {
+            const t = this.bristleTravel(dx, dy, dr);
+            this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, pr);
+          }
           // spec 06: the cover pass draws here, before this dab's deposit
           if (coverAmount > 0) this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
           // SPIKE 001: source-over inside the pigment layer, replacing "erase
@@ -2495,6 +2545,137 @@ export class WatercolorEngine {
     const e = Math.ceil(r * extent * h) + 2;
     const cx = Math.round(x * w), cy = Math.round(y * h);
     return { x0: clamp(cx - e, 0, w), y0: clamp(cy - e, 0, h), x1: clamp(cx + e, 0, w), y1: clamp(cy + e, 0, h) };
+  }
+
+  /* ------------------------------------------------- SPIKE 002: bristles */
+
+  /**
+   * 64-21: stroke-start bristle seeding — the count (§4.1), the tufted set
+   * (§4.2) and the initial reservoir upload. The only entropy is `this.rng`
+   * (the stroke's `traceSeed`), so the set is a pure function of the stroke
+   * record and every later dab of the same stroke reuses it.
+   *
+   * The initial reservoirs are uploaded into the WRITE half and swapped into
+   * READ, so the first carrier pass reads them and writes an all-new set.
+   * The shape texture is NOT ping-ponged: it carries per-stroke data
+   * (radiusScale, touchReach, loadRate, valueJitter), so it is re-uploaded
+   * here BEFORE the first carrierPass. That re-seed is exactly what makes the
+   * shape target's presence in `docTargets()` safe: a wipe, `resetSheet`,
+   * `applyWhole` or a resize may zero or replace it, and no bristle pass runs
+   * between that and the next stroke start.
+   */
+  private beginBristles(radiusValue: number): void {
+    const { gl, g } = this;
+    // §4.1 half-width in document texels (the radius is in doc heights), floor 1.
+    const halfWidthPx = Math.max(1, radiusValue * this.dh);
+    const count = bristleCount(halfWidthPx);
+    const set = makeBristles(count, this.rng);
+    this.bristleCount = count;
+    this.bristlePrev = { x: 0, y: 0, along: 0 };
+    const n = BRISTLE_CAP;
+    const a = new Float32Array(n * 4);
+    const b = new Float32Array(n * 4);
+    const c = new Float32Array(n * 4);
+    const sh = new Float32Array(n * 4);
+    const pig = this.pigment.coeffs;
+    for (let i = 0; i < n; i++) {
+      // Rows past `count` mirror the last bristle so a stale texel can never
+      // carry old per-stroke data into a new one; the draw stops at `count`.
+      const base = Math.min(i, count - 1) * 8;
+      const vj = set.data[base + 5]!;
+      // §4.2: the palette absorbance at this bristle's value jitter.
+      a.set([pig[0]! * vj, pig[1]! * vj, pig[2]! * vj, pig[3]! * vj], i * 4);
+      b.set([pig[4]! * vj, pig[5]! * vj, pig[6]! * vj, 1], i * 4);
+      // state = (load, across, seed, valueJitter); load starts at this
+      // bristle's §4.2 initial charge. Attachment 1's alpha starts at 1 (a
+      // fully charged bristle carries the pigment, not the canvas).
+      c.set([set.data[base + 6]!, set.data[base]!, set.data[base + 4]!, vj], i * 4);
+      // shape = (radiusScale, touchReach, loadRate, spare).
+      sh.set([set.data[base + 1]!, set.data[base + 2]!, set.data[base + 3]!, 0], i * 4);
+    }
+    const a16 = new Uint16Array(n * 4), b16 = new Uint16Array(n * 4);
+    const c16 = new Uint16Array(n * 4), sh16 = new Uint16Array(n * 4);
+    f32ToF16(a, a16); f32ToF16(b, b16); f32ToF16(c, c16); f32ToF16(sh, sh16);
+    g.uploadHalf(this.bristles.write.tex[0]!, 0, 0, 1, n, gl.RGBA, a16);
+    g.uploadHalf(this.bristles.write.tex[1]!, 0, 0, 1, n, gl.RGBA, b16);
+    g.uploadHalf(this.bristles.write.tex[2]!, 0, 0, 1, n, gl.RGBA, c16);
+    g.uploadHalf(this.bristleShape.tex[0]!, 0, 0, 1, n, gl.RGBA, sh16);
+    this.bristles.swap();
+  }
+
+  /** §3.1 travel: distance since the previous dab, in brush widths AND doc texels. */
+  private bristleTravel(x: number, y: number, r: number): { travel: number; travelPx: number; alongPx: number } {
+    const aspect = this.dw / this.dh;
+    const distDoc = Math.hypot((x - this.bristlePrev.x) * aspect, y - this.bristlePrev.y);
+    const alongDoc = this.bristlePrev.along + distDoc;
+    this.bristlePrev = { x, y, along: alongDoc };
+    const travelPx = distDoc * this.dh;
+    return {
+      travel: travelPx / Math.max(2 * r * this.dh, 1e-3),
+      travelPx,
+      alongPx: alongDoc * this.dh,
+    };
+  }
+
+  /**
+   * §3.1 carrier pass: one fragment per bristle over the `1 × count` set,
+   * three canvas taps, the pickup/refill equilibrium and the load update.
+   * Runs before the dab's deposit and writes ONLY the reservoir pair.
+   *
+   * Ten textures: the eleventh (the last-touch field) belongs to 64-24, and
+   * this fragment ships the proxy wetness `wet * coverage` only.
+   */
+  private carrierPass(x: number, y: number, r: number, angle: number, travel: number, travelPx: number, alongPx: number, pr: number): void {
+    const { gl, g } = this;
+    const p = this.programs.bristleCarrier!;
+    p.bind();
+    // The carrier REPLACES all three attachments outright: never blend.
+    gl.disable(gl.BLEND);
+    gl.uniform1i(p.u.uPaintA!, g.bindTex(0, this.bristles.read.tex[0]!));
+    gl.uniform1i(p.u.uPaintB!, g.bindTex(1, this.bristles.read.tex[1]!));
+    gl.uniform1i(p.u.uState!, g.bindTex(2, this.bristles.read.tex[2]!));
+    gl.uniform1i(p.u.uShape!, g.bindTex(3, this.bristleShape.tex[0]!));
+    gl.uniform1i(p.u.uInkA!, g.bindTex(4, this.ink.read.tex[0]!));
+    gl.uniform1i(p.u.uInkB!, g.bindTex(5, this.ink.read.tex[1]!));
+    gl.uniform1i(p.u.uFixedA!, g.bindTex(6, this.fixed.tex[0]!));
+    gl.uniform1i(p.u.uFixedB!, g.bindTex(7, this.fixed.tex[1]!));
+    gl.uniform1i(p.u.uWet!, g.bindTex(8, this.wet.read.tex[0]!));
+    gl.uniform1i(p.u.uCover!, g.bindTex(9, this.cover.read.tex[0]!));
+    gl.uniform2f(p.u.uPoint!, x, y);
+    gl.uniform2f(p.u.uAxis!, Math.cos(angle), Math.sin(angle));
+    gl.uniform1f(p.u.uRadius!, r);
+    gl.uniform1f(p.u.uCount!, this.bristleCount);
+    gl.uniform1f(p.u.uTravel!, travel);
+    gl.uniform1f(p.u.uTravelPx!, travelPx);
+    gl.uniform1f(p.u.uPressure!, clamp(pr, 0, 1));
+    gl.uniform1f(p.u.uPickupRate!, 0.6);      // §6 defaults: pickup 0.6, refill 0.6
+    gl.uniform1f(p.u.uRefillRate!, 0.6);
+    gl.uniform1f(p.u.uDepletion!, 0.25 / Math.min(this.dw, this.dh));
+    const c = this.pigment.coeffs;
+    gl.uniform4f(p.u.uPigmentA!, c[0]!, c[1]!, c[2]!, c[3]!);
+    gl.uniform3f(p.u.uPigmentB!, c[4]!, c[5]!, c[6]!);
+    gl.uniform1f(p.u.uAlongPx!, alongPx);
+    gl.uniform1f(p.u.uStreakLen!, 18);        // §5.3 default
+    gl.uniform1f(p.u.uRimContact!, 0.45);     // §5.3 default
+    g.draw(this.bristles.write, { x0: 0, y0: 0, x1: 1, y1: this.bristleCount });
+    this.bristles.swap();
+  }
+
+  /**
+   * 64-21: the three reservoir attachments, concatenated as half floats
+   * (1 × BRISTLE_CAP RGBA each) — the probe's and the tests' window into the
+   * per-bristle state. Order matches the reservoir layout documented in
+   * `bristleCarrierFS`: carried 0..3, carried 4..6 + alpha, load/across/seed/jitter.
+   */
+  readBristles(): Uint16Array {
+    const a = this.g.readHalf(this.bristles.read.views[0]!, 1, BRISTLE_CAP, 4);
+    const b = this.g.readHalf(this.bristles.read.views[1]!, 1, BRISTLE_CAP, 4);
+    const c = this.g.readHalf(this.bristles.read.views[2]!, 1, BRISTLE_CAP, 4);
+    const out = new Uint16Array(a.length + b.length + c.length);
+    out.set(a, 0);
+    out.set(b, a.length);
+    out.set(c, a.length + b.length);
+    return out;
   }
 
   /**

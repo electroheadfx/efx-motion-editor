@@ -628,6 +628,142 @@ void main(){
   o0 = vec4(src.rgb, src.a * (1.0 - cleared));
 }`;
 
+// ============================================================
+//  64-21 (SPIKE 002) — the per-bristle carrier, shader F (§3.1):
+//  pickup/refill equilibrium, load depletion, thirst, travel, wet gate.
+//
+//  Reservoir layout (all three attachments are 1 × 256 RGBA16F, row =
+//  bristle index; the engine keeps them in a NEAREST ping-pong pair so the
+//  read-modify-write pass can sample the old value):
+//    attachment 0  carried absorbance coefficients 0..3
+//    attachment 1  carried absorbance coefficients 4..6 + carried alpha (.a)
+//    attachment 2  (load, across, seed, valueJitter)
+//  The shape texture is a static 1 × 256 RGBA16F uploaded at every stroke
+//  start:
+//    (radiusScale, touchReach, loadRate, spare)
+//
+//  NOT in this fragment, by scope: `uWetMode` and the last-touch sampler
+//  (`uTimes`/`uNow`/`uWetSeconds`) belong to 64-24 — the proxy mode
+//  `wetness = wet * coverage` is the only mode this plan ships. The gather
+//  deposit (§3.2–§4.5) belongs to 64-22.
+//
+//  NOTE: the spike declared `uSheetAspect` but never read it; it is not
+//  declared here (an unread uniform is optimized out and could not be bound).
+// ============================================================
+const BRISTLE_NOISE = `
+uint pcg(uint v){
+  uint s = v * 747796405u + 2891336453u;
+  uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+  return (w >> 22u) ^ w;
+}
+float hash21(vec2 c){
+  uint x = uint(int(c.x));
+  uint y = uint(int(c.y));
+  return float(pcg(x + pcg(y))) / 4294967295.0;
+}
+float hash11(float c){ return float(pcg(uint(int(c)) + 1013904223u)) / 4294967295.0; }
+float noise1(float v){
+  float cell = floor(v);
+  float f = v - cell;
+  float blend = f * f * (3.0 - 2.0 * f);
+  return mix(hash11(cell), hash11(cell + 1.0), blend);
+}
+// touchOf (app.js): pressure vs a bristle's contact threshold.
+float touchOf(float reach, float pressure){ return smoothstep(reach, reach + 0.08, pressure); }
+`;
+const BRISTLE_TEXTURES = `
+uniform sampler2D uPaintA;   // carried absorbance coefficients 0..3
+uniform sampler2D uPaintB;   // carried absorbance coefficients 4..6 + carried alpha
+uniform sampler2D uState;    // (load, across, seed, valueJitter)
+uniform sampler2D uShape;    // (radiusScale, touchReach, loadRate, spare)
+uniform float uCount;
+vec4 bristleTex(sampler2D t, int idx){ return texelFetch(t, ivec2(0, clamp(idx, 0, 255)), 0); }
+`;
+// One invocation per bristle (gl_FragCoord.y = bristle index). Runs before the
+// dab's deposit and writes only the reservoir pair — no document target.
+//   §3.1 thirst = 0.15 + 2.4 * smoothstep(0.35, 0.9, fract(seed * 7.31))
+//   §3.1 pickup = clamp(pickupRate * thirst * travel * wet * touch, 0, 0.75)
+//   §3.1 refill = clamp(refillRate * travel * load, 0, 1)
+//   §3.1 carried = mix(carried, canvas, pickup); carried = mix(carried, pigment, refill)
+//   §3.1 load -= depletion * loadRate * travelledPx * touch * (0.35 + 0.65 * pressure)
+//   §3.1 load += pickup * 0.25
+// §3.4 wetness here is the existing-channel PROXY: wet * coverage (the
+// timestamp mode is 64-24's).
+export const bristleCarrierFS = `${HEADER}${BRISTLE_NOISE}${BRISTLE_TEXTURES}
+layout(location=0) out vec4 oA;
+layout(location=1) out vec4 oB;
+layout(location=2) out vec4 oC;
+uniform sampler2D uInkA, uInkB, uFixedA, uFixedB, uWet, uCover;
+uniform vec2 uPoint;
+uniform vec2 uAxis;          // across axis (unit, doc frame)
+uniform float uRadius;       // half-width in doc heights
+uniform float uTravel;       // distance moved since the last dab, in brush widths
+uniform float uTravelPx;     // the same distance in document texels
+uniform float uPressure;
+uniform float uPickupRate;
+uniform float uRefillRate;
+uniform float uDepletion;    // load lost per document texel travelled
+uniform vec4 uPigmentA;      // palette absorbance 0..3
+uniform vec3 uPigmentB;      // palette absorbance 4..6
+uniform float uAlongPx;
+uniform float uStreakLen;
+uniform float uRimContact;
+
+vec4 canvasAt(vec2 uv){
+  vec4 a = texture(uInkA, uv) + texture(uFixedA, uv);
+  vec3 b = (texture(uInkB, uv) + texture(uFixedB, uv)).rgb;
+  return vec4(a.rgb, b.r);
+}
+vec3 canvasAtB(vec2 uv){
+  vec4 ib = texture(uInkB, uv) + texture(uFixedB, uv);
+  return ib.rgb;
+}
+// §3.4 proxy mode: the existing wet channel gated by the coverage channel.
+float wetAt(vec2 uv){ return texture(uWet, uv).x * texture(uCover, uv).x; }
+
+void main(){
+  int idx = int(gl_FragCoord.y);
+  vec4 state = bristleTex(uState, idx);
+  vec4 paintA = bristleTex(uPaintA, idx);
+  vec4 paintB = bristleTex(uPaintB, idx);
+  vec4 shape = bristleTex(uShape, idx);
+  float across = state.y;
+
+  // The bristle's own position and 3 taps along the stroke direction (§3.1).
+  vec2 pos = uPoint + uAxis * (across * uRadius);
+  vec2 dir = vec2(-uAxis.y, uAxis.x);
+  float tap = uRadius * 0.35;
+  float wet = max(wetAt(pos), max(wetAt(pos - dir * tap), wetAt(pos + dir * tap)));
+  vec4 canvasA = canvasAt(pos);
+  vec3 canvasB = canvasAtB(pos);
+  float canvasAlpha = texture(uCover, pos).x;
+
+  // §3.1 contact threshold with rim noise (§5.3 shares the same contact law).
+  float rim = 0.25 + 0.75 * smoothstep(0.45, 1.0, abs(across));
+  float contact = noise1(uAlongPx / max(uStreakLen * 0.7, 1.0) + state.z * 2048.0 + 0.5) - 0.5;
+  float touch = touchOf(shape.y + contact * rim * uRimContact, uPressure);
+
+  float thirst = 0.15 + 2.4 * smoothstep(0.35, 0.9, fract(state.z * 7.31));
+  float pickup = clamp(uPickupRate * thirst * uTravel * wet * touch, 0.0, 0.75);
+  float refill = clamp(uRefillRate * uTravel * state.x, 0.0, 1.0);
+
+  vec4 carriedA = mix(paintA, canvasA, pickup);
+  vec3 carriedB = mix(paintB.rgb, canvasB, pickup);
+  float carriedAlpha = mix(paintB.a, canvasAlpha, pickup);
+  // The refill target is the palette pigment at this bristle's value jitter
+  // (state.w) — §3.1's brush.rgb * bristle.state.w.
+  carriedA = mix(carriedA, uPigmentA * state.w, refill);
+  carriedB = mix(carriedB, uPigmentB * state.w, refill);
+  carriedAlpha = mix(carriedAlpha, 1.0, refill);
+
+  float load = state.x - uDepletion * shape.z * uTravelPx * touch * (0.35 + 0.65 * uPressure);
+  load = clamp(load + pickup * 0.25, 0.0, 1.0);
+
+  oA = carriedA;
+  oB = vec4(carriedB, carriedAlpha);
+  oC = vec4(load, across, state.z, state.w);
+}`;
+
 // Paper, generated per document and whenever the paper is changed, in two passes.
 // paperFieldFS builds the sheet's procedural field into a half-float target:
 //   x = height 0..1 (mean ~0.5), y = mottle 0..1 (fibre clumping, 0.5 neutral),
