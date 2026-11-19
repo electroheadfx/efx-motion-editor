@@ -132,31 +132,33 @@ describe('makeBristles — a pure function of the seeded stream', () => {
     expect(Array.from(a.data)).not.toEqual(Array.from(b.data))
   })
 
-  it('consumes the RNG in a closed number of draws — six per run header, seven per bristle', () => {
+  it('consumes the RNG in a closed number of draws — six per run header, eight per bristle', () => {
     // A constant stream makes the run structure a closed quantity: the run
-    // length is `3 + floor(v·14)` for every header.
+    // length is `3 + floor(v·14)` for every header. Per bristle the fields are
+    // across, radiusScale, touchReach (two draws: `rng()·rng()`), loadRate,
+    // initialLoad, seed, valueJitter = 8 draws.
     const a = constant(0) // run length 3 → ceil(40/3) = 14 headers (the last one clipped)
     makeBristles(40, a.rng)
-    expect(a.draws()).toBe(14 * 6 + 40 * 7)
+    expect(a.draws()).toBe(14 * 6 + 40 * 8)
 
     const b = constant(0.5) // run length 10 → exactly 4 headers
     makeBristles(40, b.rng)
-    expect(b.draws()).toBe(4 * 6 + 40 * 7)
+    expect(b.draws()).toBe(4 * 6 + 40 * 8)
 
     const c = constant(0.999) // run length 16 → 3 headers (the last one clipped to 8 bristles)
     makeBristles(40, c.rng)
-    expect(c.draws()).toBe(3 * 6 + 40 * 7)
+    expect(c.draws()).toBe(3 * 6 + 40 * 8)
   })
 
   it('draws every clipped run field — one draw per field even past `count`', () => {
     // Run length 16 with count 40: the third header is clipped to 8 bristles,
-    // but its six header draws and the eight bristles' seven draws each still
-    // happen (3 headers × 6 + 40 × 7). A short-circuiting generator would
-    // report 40×7 + 2×6 + a partial third header.
+    // but its six header draws and the eight bristles' eight draws each still
+    // happen (3 headers × 6 + 40 × 8). A short-circuiting generator would
+    // report 40×8 + 2×6 + a partial third header.
     const c = constant(0.999)
     const set = makeBristles(40, c.rng)
     expect(set.count).toBe(40)
-    expect(c.draws()).toBe(3 * 6 + 40 * 7)
+    expect(c.draws()).toBe(3 * 6 + 40 * 8)
   })
 })
 
@@ -273,22 +275,37 @@ describe('makeBristles — the 8-float stride and the field order', () => {
     expect(set.data[2]).not.toBeCloseTo(set.data[3]!, 3) // touchReach ≠ loadRate on this stream
   })
 
-  it('preserves the header call order — changing it changes every bristle', () => {
-    // The first draw is the run length. A stream that returns 0 first makes
-    // the first run 3 bristles long; the same tail returning 0.999 makes it
-    // 16. Every downstream field therefore differs.
-    const a = makeBristles(40, shifted(0.0, constant(0.5).rng))
-    const b = makeBristles(40, shifted(0.999, constant(0.5).rng))
-    expect(Array.from(a.data)).not.toEqual(Array.from(b.data))
+  it('preserves the header call order — each header slot lands in its documented role', () => {
+    // Scripted header, then a constant 0.5 tail. Header order is run, d, f, p,
+    // value pick, multiplier:
+    //   0.5  → run = 3 + floor(0.5·14) = 10
+    //   0.75 → d   = 0.75 + 0.75·0.6 = 1.2
+    //   0.25 → f   = (0.25 − 0.5)·0.16 = −0.04
+    //   0.5  → p   = 0.88 + 0.5·0.12 = 0.94
+    //   0.5  → value pick → else band
+    //   0.25 → m   = 0.96 + 0.25·0.08 = 0.98
+    // Reordering any header draw moves a factor into the wrong field.
+    const header = [0.5, 0.75, 0.25, 0.5, 0.5, 0.25]
+    let i = 0
+    const scripted = (): number => (i < header.length ? header[i++]! : 0.5)
+    const set = makeBristles(40, scripted)
+    const edge0 = smoothstepEdge(set.data[0]!)
+    expect(set.data[1]!).toBeCloseTo(1.2 * (1 + 1.4 * edge0), 6) // radiusScale ← d
+    expect(set.data[3]!).toBeCloseTo(1.2 * (1 + 1.4 * edge0), 6) // loadRate ← d
+    expect(set.data[2]!).toBeCloseTo(0.075 + 0.42 * edge0, 6) // touchReach ← f (−0.04)
+    expect(set.data[5]!).toBeCloseTo(0.98, 6) // valueJitter ← m
+    expect(set.data[6]!).toBeCloseTo(0.94 * (1 - 0.15 * edge0), 6) // initialLoad ← p
   })
 })
 
 describe('bristles.ts — the determinism contract in source', () => {
   it('reads no wall clock and no Math.random', () => {
-    expectNotContains(SOURCE, 'Math.random')
-    expectNotContains(SOURCE, 'Date.now')
-    expectNotContains(SOURCE, 'performance.now')
-    expectNotContains(SOURCE, 'new Date')
+    // Call forms, not bare names: the module header legitimately names
+    // `Math.random` and the wall clock in prose to state the ban.
+    expectNotContains(SOURCE, 'Math.random(')
+    expectNotContains(SOURCE, 'Date.now(')
+    expectNotContains(SOURCE, 'performance.now(')
+    expectNotContains(SOURCE, 'new Date(')
   })
 
   it('imports nothing from the engine and documents the call order as a contract', () => {
