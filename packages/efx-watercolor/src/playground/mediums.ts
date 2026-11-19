@@ -2,14 +2,15 @@
 //  mediums.ts — the five built-in paint mediums, as plain data.
 //
 //  A medium is `{ id, name, params }`: a frozen, serializable
-//  record over exactly the ten medium keys (the canonical bag
+//  record over exactly the fourteen medium keys (the canonical bag
 //  minus `size` and `lift`, which the medium never writes). No
 //  function, no class, no hidden behaviour — a record is a
 //  parameter set, nothing more.
 //
 //  The numbers are the spec 04 amendment table, in its column
 //  order: Water, Pigment, Flow, Bleed, Dry, Edges, Grain,
-//  Viscosity, Body, Emboss.
+//  Viscosity, Body, Emboss — then 64-22's four (§3.1/§3.4/§6
+//  defaults: Feather, Pickup, Refill, WetSeconds).
 // ============================================================
 
 import { DEFAULT_CANONICAL_PARAMS } from './params'
@@ -18,9 +19,13 @@ import { DEFAULT_CANONICAL_PARAMS } from './params'
 export type MediumId = 'watercolor' | 'gouache' | 'pastel' | 'graphite' | 'acrylic'
 
 /**
- * The ten keys a medium may set. `size` (a shared pixel footprint) and
+ * The fourteen keys a medium may set. `size` (a shared pixel footprint) and
  * `lift` (the eraser popover's strength) are deliberately absent: a
  * medium switch must never resize the brush or change the eraser.
+ *
+ * 64-22 added the reference's user-facing controls: `feather` (the gather's
+ * coverage band), `pickup` and `refill` (§3.1 carrier rates) and
+ * `wetSeconds` (the §3.4 last-touch lifetime, in seconds).
  */
 export type MediumParamKey =
   | 'water'
@@ -33,6 +38,10 @@ export type MediumParamKey =
   | 'viscosity'
   | 'body'
   | 'emboss'
+  | 'feather'
+  | 'pickup'
+  | 'refill'
+  | 'wetSeconds'
 
 /** One built-in medium: plain serializable data, frozen. */
 export interface MediumRecord {
@@ -68,8 +77,17 @@ const WATERCOLOR_PARAMS: Readonly<Record<MediumParamKey, number>> = Object.freez
   viscosity: DEFAULT_CANONICAL_PARAMS.viscosity,
   body: DEFAULT_CANONICAL_PARAMS.body,
   emboss: DEFAULT_CANONICAL_PARAMS.emboss,
+  feather: DEFAULT_CANONICAL_PARAMS.feather,
+  pickup: DEFAULT_CANONICAL_PARAMS.pickup,
+  refill: DEFAULT_CANONICAL_PARAMS.refill,
+  wetSeconds: DEFAULT_CANONICAL_PARAMS.wetSeconds,
 })
 
+// 64-22: every non-watercolor record states the §6 defaults for the four new
+// keys literally (feather 0, pickup 60, refill 60, wetSeconds 7). A
+// medium-specific value needs its own measured decision — acrylic's
+// water/bleed/flow retune is D-25's, in 64-24. The committed ten numbers of
+// every record are unchanged by 64-22.
 export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
   Object.freeze({ id: 'watercolor', name: 'Watercolor', params: WATERCOLOR_PARAMS }),
   Object.freeze({
@@ -86,6 +104,10 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       viscosity: 55,
       body: 55,
       emboss: 20,
+      feather: 0,
+      pickup: 60,
+      refill: 60,
+      wetSeconds: 7,
     }),
   }),
   Object.freeze({
@@ -104,6 +126,10 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       viscosity: 85,
       body: 25,
       emboss: 0,
+      feather: 0,
+      pickup: 60,
+      refill: 60,
+      wetSeconds: 7,
     }),
   }),
   Object.freeze({
@@ -120,6 +146,10 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       viscosity: 90,
       body: 0,
       emboss: 0,
+      feather: 0,
+      pickup: 60,
+      refill: 60,
+      wetSeconds: 7,
     }),
   }),
   Object.freeze({
@@ -136,6 +166,10 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       viscosity: 90,
       body: 85,
       emboss: 40,
+      feather: 0,
+      pickup: 60,
+      refill: 60,
+      wetSeconds: 7,
     }),
   }),
 ])

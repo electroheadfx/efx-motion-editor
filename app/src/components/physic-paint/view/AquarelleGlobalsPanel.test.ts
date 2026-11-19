@@ -338,8 +338,10 @@ describe('Phase 64 medium dropdown', () => {
     expectGlobalOrder(ordered);
     expect(ordered).toHaveLength(13);
     // D-22: Feather after Body, then Pickup, then Refill, and Emboss last.
-    expect(ordered[ordered.length - 4]).toBe('Body');
-    expect(ordered[ordered.length - 3]).toBe('Feather');
+    // 1-based: Body tenth, Feather eleventh, Refill twelfth, Emboss thirteenth.
+    expect(ordered[ordered.length - 5]).toBe('Body');
+    expect(ordered[ordered.length - 4]).toBe('Feather');
+    expect(ordered[ordered.length - 3]).toBe('Pickup');
     expect(ordered[ordered.length - 2]).toBe('Refill');
     expect(ordered[ordered.length - 1]).toBe('Emboss');
     const index = (label: string) => ordered.indexOf(label);

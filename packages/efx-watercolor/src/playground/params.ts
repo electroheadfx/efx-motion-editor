@@ -5,13 +5,19 @@
 //  other seven 0..100). Live and bake BOTH map through
 //  toEngineParams() so the two halves cannot drift (A1/A2).
 //  Never store the mapped 0..1 values in the payload.
+//
+//  64-22: every slider member is 0..100 and maps to 0..1 through
+//  this file — EXCEPT `wetSeconds`, the one canonical member in
+//  SECONDS (1..30, §3.4/§6), which is forwarded as-is with a
+//  one-second floor and must never be divided by 100.
 // ============================================================
 
 import type { Params } from './Engine'
 
 /**
  * The 8 AQUA-04 globals as the UI records them, plus the Lift strength and
- * the Phase 64 medium keys (viscosity, body, emboss).
+ * the Phase 64 medium keys (viscosity, body, emboss, then 64-22's feather,
+ * pickup, refill and the seconds-valued wetSeconds).
  */
 export interface AquarelleCanonicalParams {
   size: number
@@ -47,6 +53,29 @@ export interface AquarelleCanonicalParams {
    * plan.
    */
   emboss: number
+  /**
+   * 64-22 (D-22, §6): the gather's coverage-band width, 0..100. Widens the
+   * §4.4 softness band on a bristle response; non-bristle responses never
+   * read it. 0 is the §6 `paint.softness` band (0.09).
+   */
+  feather: number
+  /**
+   * 64-22 (§3.1, §6): how much paint a bristle picks up from the sheet it
+   * crosses, 0..100. 60 is the reference's §6 `mixing.pickup` default.
+   */
+  pickup: number
+  /**
+   * 64-22 (§3.1, §6): how fast a bristle refills from the brush's own load,
+   * 0..100. 60 is the reference's §6 `mixing.refill` default.
+   */
+  refill: number
+  /**
+   * 64-22 (§3.4, §6): the last-touch wetness lifetime in SECONDS (1..30).
+   * This is the ONE canonical member that is not normalised — it is
+   * forwarded as seconds with a 1-second floor, never divided by 100.
+   * 7 is the §6 `mixing.wetSeconds` default. Consumed by 64-24.
+   */
+  wetSeconds: number
 }
 
 export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Object.freeze({
@@ -62,6 +91,10 @@ export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Obje
   viscosity: 0,
   body: 0,
   emboss: 0,
+  feather: 0,
+  pickup: 60,
+  refill: 60,
+  wetSeconds: 7,
 })
 
 function num(v: number | undefined, fallback: number): number {
@@ -112,9 +145,10 @@ export function sizeToEngineScale(sizePx: number): number {
 
 /**
  * Canonical AQUA-04 globals → vendor `Params` (all 0..1, size may
- * exceed 1 above 80 px). `size` shows 1..800 px on the track; 32 px
- * ≈ 1.0, and the 80..800 band scales linearly (typed values above
- * 800 keep growing to a finite safety ceiling).
+ * exceed 1 above 80 px; `wetSeconds` is the one member carried in
+ * seconds). `size` shows 1..800 px on the track; 32 px ≈ 1.0, and the
+ * 80..800 band scales linearly (typed values above 800 keep growing to
+ * a finite safety ceiling).
  */
 export function toEngineParams(
   canonical: Partial<AquarelleCanonicalParams> | Record<string, number> | undefined,
@@ -134,5 +168,12 @@ export function toEngineParams(
     viscosity: clamp01(num(p.viscosity, d.viscosity) / 100),
     body: clamp01(num(p.body, d.body) / 100),
     emboss: clamp01(num(p.emboss, d.emboss) / 100),
+    feather: clamp01(num(p.feather, d.feather) / 100),
+    pickup: clamp01(num(p.pickup, d.pickup) / 100),
+    refill: clamp01(num(p.refill, d.refill) / 100),
+    // 64-22 (§3.4): SECONDS, the one non-normalised member. A positive floor
+    // keeps the last-touch decay finite; absent/non-finite input falls back
+    // to the §6 default so a pre-64-24 stroke replays unchanged.
+    wetSeconds: Math.max(1, num(p.wetSeconds, d.wetSeconds)),
   }
 }

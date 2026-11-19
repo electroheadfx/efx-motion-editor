@@ -81,14 +81,32 @@ export interface AquarelleGlobalParams {
    */
   lift: number;
   /**
-   * Phase 64 (v2.2.0): the medium keys. 0 is neutral — a pre-milestone
-   * recorded bag without them replays byte-identically. They ride the one
-   * key list below, so the record loop and the selection write allowlist
-   * both carry them; the engine mapping clamps their 0..1 projection.
+   * Phase 64 (v2.2.0): the medium keys. 0 is neutral for viscosity, body and
+   * emboss — a pre-milestone recorded bag without them replays
+   * byte-identically. They ride the one key list below, so the record loop
+   * and the selection write allowlist both carry them; the engine mapping
+   * clamps their 0..1 projection (wetSeconds excepted — seconds).
    */
   viscosity: number;
   body: number;
   emboss: number;
+  /**
+   * 64-22 (D-22, §6): the gather's coverage-band width, 0..100. 0 is the §6
+   * `paint.softness` band — a pre-milestone bag replays unchanged.
+   */
+  feather: number;
+  /** 64-22 (§3.1, §6): §3.1 carrier pickup rate, 0..100 (default 60). */
+  pickup: number;
+  /** 64-22 (§3.1, §6): §3.1 carrier refill rate, 0..100 (default 60). */
+  refill: number;
+  /**
+   * 64-22 (§3.4, §6): the last-touch lifetime in SECONDS (>= 1, default 7).
+   * It rides the recorded bag for replay determinism — and `applyAquarelleMedium`
+   * therefore writes it like any other medium key — but it owns NO UI row: it
+   * is seconds, not a 0..100 slider, and the panel's ×100 reset law would
+   * corrupt it.
+   */
+  wetSeconds: number;
 }
 
 export type AquarelleGlobalKey = keyof AquarelleGlobalParams;
@@ -106,6 +124,10 @@ export const AQUARELLE_GLOBAL_KEYS: readonly AquarelleGlobalKey[] = Object.freez
   'viscosity',
   'body',
   'emboss',
+  'feather',
+  'pickup',
+  'refill',
+  'wetSeconds',
 ] as const);
 
 export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.freeze({
@@ -121,6 +143,10 @@ export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.
   viscosity: 0,
   body: 0,
   emboss: 0,
+  feather: 0,
+  pickup: 60,
+  refill: 60,
+  wetSeconds: 7,
 });
 
 /** D-08 multiplier band. */
@@ -166,7 +192,8 @@ export const aquarelleSelectedMediumId = signal<MediumId | null>(DEFAULT_MEDIUM_
  * Phase 64 (D-04): apply a whole medium record to the live bag in ONE spread
  * write, with the id written in the same handler. Never a per-key setter
  * cascade, never the stroke-selection edit path, never `size` or `lift` —
- * the record typeset is exactly the ten medium keys.
+ * the record typeset is exactly the fourteen medium keys (64-22 grew it
+ * with feather, pickup, refill and wetSeconds).
  *
  * D-03: re-picking the selected medium re-applies its record (the "get back
  * to pure acrylic" path), so the id write is independent of the bag write:

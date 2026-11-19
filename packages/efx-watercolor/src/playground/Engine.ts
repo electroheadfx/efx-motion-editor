@@ -59,7 +59,7 @@ export type Tool = 'brush' | 'water' | 'pen' | 'lift';
  * one layer into another layer's target.
  */
 
-/** All sliders are normalised 0..1. */
+/** All sliders are normalised 0..1 — except `wetSeconds`, which is SECONDS. */
 export interface Params {
   size: number;
   water: number;       // how much water the brush carries
@@ -73,6 +73,10 @@ export interface Params {
   viscosity: number;   // Phase 64: medium thickness — raises dissipation, lowers spread (0..1)
   body: number;        // Phase 64: cover strength — declared here, consumed by its own plan (0..1)
   emboss: number;      // Phase 64: relief lighting — declared here, consumed by its own plan (0..1)
+  feather: number;     // 64-22: gather coverage-band width — widens §4.4 softness on a bristle response (0..1)
+  pickup: number;      // 64-22: §3.1 carrier pickup rate — how much sheet paint a bristle lifts (0..1)
+  refill: number;      // 64-22: §3.1 carrier refill rate — how fast a bristle refills from the load (0..1)
+  wetSeconds: number;  // 64-22: last-touch wetness lifetime in SECONDS (>= 1) — declared here so the ONE mapping has one destination; consumed by 64-24
 }
 
 export const DEFAULT_PARAMS: Params = {
@@ -81,6 +85,10 @@ export const DEFAULT_PARAMS: Params = {
   viscosity: 0,
   body: 0,
   emboss: 0,
+  feather: 0,
+  pickup: 0.6,
+  refill: 0.6,
+  wetSeconds: 7,
 };
 
 /**

@@ -1,18 +1,19 @@
 // ============================================================
-//  AquarelleGlobalsPanel — the medium dropdown, the 10 watercolor
+//  AquarelleGlobalsPanel — the medium dropdown, the 13 watercolor
 //  globals + Reset. This is the Paint-tab content.
 //
-//  Phase 64 (D-01/D-07): the panel LEADS with the five-item
-//  medium dropdown, then the ten slider rows below it. A pick
+//  Phase 64 (D-01/D-07/D-22): the panel LEADS with the five-item
+//  medium dropdown, then the thirteen slider rows below it. A pick
 //  applies the whole record in one move (applyAquarelleMedium)
 //  and closes; the selected name is shown truthfully, with no
 //  "edited" marker.
 //
 //  Labels and row order follow the playground SettingsPanel
 //  (Water, Pigment, Flow, Bleed, Edges, Grain, Dry speed), with
-//  Phase 64's Viscosity, Body (64-06) and Emboss (64-04)
-//  appended in D-07's order. Param keys stay
-//  water/load/flow/bleed/edge/granulation/dry/viscosity/body/emboss.
+//  Phase 64's Viscosity, Body (64-06), Feather/Pickup/Refill
+//  (64-22) and Emboss (64-04) appended in D-22's order. Param
+//  keys stay water/load/flow/bleed/edge/granulation/dry/
+//  viscosity/body/feather/pickup/refill/emboss.
 //  `size` is NOT here — the shared Size slider owns it (D-05).
 //
 //  Reset restores playground DEFAULT_PARAMS (0..1) ×100 onto the
@@ -43,8 +44,12 @@ import {
 } from './aquarellePaintControls';
 
 /** Module-only global rows (D-05 / I-01 playground order + Phase 64's
- *  Viscosity, Body and Emboss in D-07's ten-row order). `size` is NOT here —
- *  shared Size owns it. */
+ *  Viscosity, Body, Feather, Pickup, Refill and Emboss in D-22's
+ *  thirteen-row order). `size` is NOT here — shared Size owns it.
+ *
+ *  `wetSeconds` is deliberately absent: it is a medium-record value in
+ *  SECONDS, and the ×100 reset law below (which multiplies every row's
+ *  DEFAULT_PARAMS by 100) would corrupt it. It still rides the recorded bag. */
 const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string }> = Object.freeze([
   { key: 'water', label: 'Water' },
   { key: 'load', label: 'Pigment' },
@@ -55,6 +60,9 @@ const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string }> = O
   { key: 'dry', label: 'Dry speed' },
   { key: 'viscosity', label: 'Viscosity' },
   { key: 'body', label: 'Body' },
+  { key: 'feather', label: 'Feather' },
+  { key: 'pickup', label: 'Pickup' },
+  { key: 'refill', label: 'Refill' },
   { key: 'emboss', label: 'Emboss' },
 ]);
 
