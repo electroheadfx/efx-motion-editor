@@ -275,7 +275,7 @@ interface Profiles {
  * columns average rows in the middle 50 % (clear of the side fringes), so
  * each profile measures the axis it is named for.
  */
-function profiles(img: Rgba, mask: Mask): Profiles | null {
+function profiles(img: Rgba, mask: Mask, channel: 'darkness' | 'alpha' = 'darkness'): Profiles | null {
   const b = maskBounds(mask)
   if (!b) return null
   const w = b.x1 - b.x0
@@ -285,6 +285,12 @@ function profiles(img: Rgba, mask: Mask): Profiles | null {
   const cx1 = b.x0 + Math.ceil(w * 0.75)
   const cy0 = b.y0 + Math.floor(h * 0.25)
   const cy1 = b.y0 + Math.ceil(h * 0.75)
+  const value = (p: number): number => {
+    const i = p * 4
+    return channel === 'alpha'
+      ? img.data[i + 3]!
+      : darknessOf(img.data[i]!, img.data[i + 1]!, img.data[i + 2]!)
+  }
   const rowMeans = new Float64Array(img.height).fill(NaN)
   const colMeans = new Float64Array(img.width).fill(NaN)
   for (let y = b.y0; y < b.y1; y += 1) {
@@ -293,8 +299,7 @@ function profiles(img: Rgba, mask: Mask): Profiles | null {
     for (let x = cx0; x < cx1; x += 1) {
       const p = y * img.width + x
       if (!mask.data[p]) continue
-      const i = p * 4
-      sum += darknessOf(img.data[i]!, img.data[i + 1]!, img.data[i + 2]!)
+      sum += value(p)
       n += 1
     }
     if (n >= 4) rowMeans[y] = sum / n
@@ -305,8 +310,7 @@ function profiles(img: Rgba, mask: Mask): Profiles | null {
     for (let y = cy0; y < cy1; y += 1) {
       const p = y * img.width + x
       if (!mask.data[p]) continue
-      const i = p * 4
-      sum += darknessOf(img.data[i]!, img.data[i + 1]!, img.data[i + 2]!)
+      sum += value(p)
       n += 1
     }
     if (n >= 4) colMeans[x] = sum / n
@@ -387,6 +391,77 @@ export function sideFades(img: Rgba, mask: Mask): SideFades | null {
     bottom: bot10 - bot50,
     left: left50 - left10,
     right: right10 - right50,
+  }
+}
+
+/** The alpha fade readings, with the two crossing POSITIONS per side. */
+export interface AlphaSideFades extends SideFades {
+  readonly top50: number
+  readonly top10: number
+  readonly bottom50: number
+  readonly bottom10: number
+  readonly left50: number
+  readonly left10: number
+  readonly right50: number
+  readonly right10: number
+}
+
+/** Median alpha outside the stroke mask — the paper end of the range. */
+function paperAlpha(img: Rgba, mask: Mask): number {
+  const values: number[] = []
+  for (let p = 0; p < mask.data.length; p += 1) {
+    if (!mask.data[p]) values.push(img.data[p * 4 + 3]!)
+  }
+  if (values.length === 0) return 0
+  values.sort((a, b) => a - b)
+  return values[values.length >> 1]! / 255
+}
+
+/**
+ * RULING 2026-11-19 — the per-side fade re-expressed as a fraction of the
+ * PAPER→CORE range on the ALPHA (coverage) channel, not darkness.
+ *
+ * The darkness gauge measures a fraction of the core DARKNESS, and a
+ * saturated paint's darkness has a floor: measured on blank-f100 the core
+ * reads 158 and the 10 % level is 15.8, while the mask's outer antialias row
+ * reads 13 — the walk ends on the last mask row at every side no matter how
+ * wide the soft band is. Alpha starts at the paper (0) instead, so the 10 %
+ * level sits near the paper and the profile crosses it inside the mask.
+ *
+ * Returns the band width (|10 % crossing − 50 % crossing|) in the same four
+ * `top/bottom/left/right` fields the bar reads, plus the two crossing
+ * POSITIONS (px, absolute) so the report can say WHERE the profile crosses.
+ */
+export function sideFadesAlpha(img: Rgba, mask: Mask): AlphaSideFades | null {
+  const pr = profiles(img, mask, 'alpha')
+  if (!pr) return null
+  const { b, rowMeans, colMeans, coreRow, coreCol, coreDarkness } = pr
+  const paper = paperAlpha(img, mask) * 255
+  const range = coreDarkness - paper
+  if (!(range > 0)) return null
+  const l50 = paper + 0.5 * range
+  const l10 = paper + 0.1 * range
+  const top50 = crossRow(rowMeans, coreRow, b.y0, -1, l50)
+  const top10 = crossRow(rowMeans, top50, b.y0, -1, l10)
+  const bot50 = crossRow(rowMeans, coreRow, b.y1 - 1, 1, l50)
+  const bot10 = crossRow(rowMeans, bot50, b.y1 - 1, 1, l10)
+  const left50 = crossCol(colMeans, coreCol, b.x0, -1, l50)
+  const left10 = crossCol(colMeans, left50, b.x0, -1, l10)
+  const right50 = crossCol(colMeans, coreCol, b.x1 - 1, 1, l50)
+  const right10 = crossCol(colMeans, right50, b.x1 - 1, 1, l10)
+  return {
+    top: Math.abs(top50 - top10),
+    bottom: Math.abs(bot10 - bot50),
+    left: Math.abs(left50 - left10),
+    right: Math.abs(right10 - right50),
+    top50,
+    top10,
+    bottom50: bot50,
+    bottom10: bot10,
+    left50,
+    left10,
+    right50,
+    right10,
   }
 }
 
@@ -607,6 +682,12 @@ export interface SceneInput {
   readonly substrate?: Rgba | null
   readonly finalPaper: Rgba
   readonly finalPigment?: Rgba | null
+  /**
+   * RULING 2026-11-19: the raw COVERAGE channel (value in rgb and alpha).
+   * The mode-4 pigment alpha is max(darkAlpha, cover), so darkness masks the
+   * true coverage; the fade gauge prefers this raster when present.
+   */
+  readonly coverage?: Rgba | null
   /** Parameter echo: colour, brush, size, pickup, feather, body, refill, ref. */
   readonly params: SceneRecord
 }
@@ -662,12 +743,28 @@ export function measureScene(input: SceneInput): SceneRecord {
     record['crossingPixels'] = hue.count
   }
 
-  const fades = sideFades(finalPaper, strokeMask)
+  // RULING 2026-11-19: the fade gauge is ALPHA-based on the raw COVERAGE
+  // channel (falling back to the pigment export). The reference lab has no
+  // alpha export, so its fades remain the darkness readings — an echo in the
+  // report, never a pass operand.
+  const alphaSource = input.coverage ?? input.finalPigment ?? null
+  const alphaFades = alphaSource ? sideFadesAlpha(alphaSource, strokeMask) : null
+  const fades = alphaFades ?? sideFades(finalPaper, strokeMask)
   if (fades) {
     record['fadeTop'] = r2(fades.top)
     record['fadeBottom'] = r2(fades.bottom)
     record['fadeLeft'] = r2(fades.left)
     record['fadeRight'] = r2(fades.right)
+    if (alphaFades) {
+      record['fadeTop50'] = alphaFades.top50
+      record['fadeTop10'] = alphaFades.top10
+      record['fadeBottom50'] = alphaFades.bottom50
+      record['fadeBottom10'] = alphaFades.bottom10
+      record['fadeLeft50'] = alphaFades.left50
+      record['fadeLeft10'] = alphaFades.left10
+      record['fadeRight50'] = alphaFades.right50
+      record['fadeRight10'] = alphaFades.right10
+    }
     const edge = edgeHueStd(finalPaper, strokeMask)
     if (edge) {
       record['edgeHueStdTop'] = r2(edge.top)
@@ -716,6 +813,11 @@ export interface FeatherBlock {
   readonly fadeWidths: {
     readonly f0: SideFades | null
     readonly f100: SideFades | null
+  }
+  /** RULING 2026-11-19: WHERE the alpha profile crosses 50 % and 10 % (px). */
+  readonly crossings: {
+    readonly f0: SceneRecord | null
+    readonly f100: SceneRecord | null
   }
   readonly gains: SideFades | null
   readonly hueVarianceDeg: {
@@ -793,11 +895,15 @@ export function acceptance(before: RunCapture, after: RunCapture, reference: Run
   const ref = reference.scenes
 
   // --- drag ---------------------------------------------------------
-  const hueP0 = n(a, 'band-p0', 'crossingHueDeg')
-  const hueP100 = n(a, 'band-p100', 'crossingHueDeg')
+  // RULING 2026-11-19: the drag is measured at the shipped Dry default (50),
+  // like the reference's own depletion, not on the D-E Dry-0 census pin. A
+  // Dry-0 Studio stroke never dries, so it lays a solid bar over the wet
+  // yellow; the dry-50 pair is the like-for-like crossing and control.
+  const hueP0 = n(a, 'band-p0-dry50', 'crossingHueDeg')
+  const hueP100 = n(a, 'band-p100-dry50', 'crossingHueDeg')
   const hueBand = n(a, 'band', 'bandHueDeg')
   const bandChroma = n(a, 'band', 'bandChroma')
-  const hueBlankP0 = n(a, 'blank-p0', 'strokeHueDeg')
+  const hueBlankP0 = n(a, 'blank-p0-dry50', 'strokeHueDeg')
   const blueToBandDeg = signedAngle(hueP0, hueBand)
   const signedShiftDeg = signedAngle(hueP0, hueP100)
   const fractionOfBlueToBandAngle =
@@ -856,8 +962,25 @@ export function acceptance(before: RunCapture, after: RunCapture, reference: Run
     gains.right >= FADE_MIN_GAIN_PX
   const refF0 = fadeOf(ref['blank-f0'])
   const refF100 = fadeOf(ref['blank-f100'])
+  const crossingsOf = (record: SceneRecord | undefined): SceneRecord | null => {
+    if (!record) return null
+    const keys = [
+      'fadeTop50',
+      'fadeTop10',
+      'fadeBottom50',
+      'fadeBottom10',
+      'fadeLeft50',
+      'fadeLeft10',
+      'fadeRight50',
+      'fadeRight10',
+    ]
+    const out: Record<string, unknown> = {}
+    for (const key of keys) out[key] = record[key] ?? null
+    return out
+  }
   const feather: FeatherBlock = {
     fadeWidths: { f0, f100 },
+    crossings: { f0: crossingsOf(a['blank-f0']), f100: crossingsOf(a['blank-f100']) },
     gains,
     hueVarianceDeg: {
       f0: {
@@ -916,13 +1039,14 @@ export function acceptance(before: RunCapture, after: RunCapture, reference: Run
     detail: `body100 covered ${r2(cf100)} vs body0 ${r2(cf0)} (strictly greater required)`,
   }
 
-  // --- geometry (FIX 3) --------------------------------------------
-  // The mark must READ as the same brush, not merely pass the colour bars:
-  // the measured cross-stroke half-width is compared scene by scene at
-  // identical colour, brush, Pickup and Feather (every paired scene both
-  // captures measured), and the Feather RESPONSE — how much the width grows
-  // from f0 to f100 — must match the reference's direction and magnitude.
-  const geometryScenes = ['band-p0', 'band-p100', 'blank-p0', 'blank-f0', 'blank-f100']
+  // --- geometry (FIX 3, restated by RULING 2026-11-19) --------------
+  // The mark must READ as the same brush, not merely pass the colour bars.
+  // RESTATED after re-capturing the reference at Studio's Feather-0 width
+  // (0.131 → blank-f0 10 px, Studio 10 px): the width bar reads the CLEAN
+  // blank strokes only. The band scenes' stroke masks include the dragged
+  // yellow (the smear changes the band's own pixels), so their measured
+  // "width" conflates the brush with the drag and is reported, not asserted.
+  const geometryScenes = ['blank-p0', 'blank-f0', 'blank-f100']
   const widths: GeometryBlock['widths'] = {}
   let widthPass = true
   for (const scene of geometryScenes) {

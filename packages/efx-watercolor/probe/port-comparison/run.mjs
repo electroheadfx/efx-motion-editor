@@ -46,6 +46,11 @@ const SCENE_NAMES = [
   'band',
   'band-p0',
   'band-p100',
+  // RULING 2026-11-19: the drag pair and its control at the shipped Dry
+  // default (50), like the reference's own depletion.
+  'band-p0-dry50',
+  'band-p100-dry50',
+  'blank-p0-dry50',
   'blank-p0',
   'blank-f0',
   'blank-f100',
@@ -276,15 +281,25 @@ async function runAcceptance(labels) {
 
   for (const label of labels) {
     const capture = label === labels[0] ? before : label === labels[1] ? after : reference
-    const expected = label === 'reference' ? 7 : 9
+    // RULING 2026-11-19: the AFTER table gained the three Dry-50 drag scenes
+    // (band-p0-dry50, band-p100-dry50, blank-p0-dry50); BEFORE keeps its nine
+    // (it cannot be re-rendered) and the reference lab keeps its seven.
+    const expected = label === 'reference' ? 7 : label === labels[0] ? 9 : 12
     const count = Object.keys(capture.scenes).length
     if (count !== expected) fail(`${label} carries ${count} scenes (expected ${expected})`)
   }
 
-  // The no-drag identity contract, printed beside the acceptance blocks so
-  // the report reads one output.
+  // RULING 2026-11-19 — the no-drag byte identity is RE-SCOPED to the
+  // NON-bristle scenes. The original band / band-p0 / blank-p0 guard predates
+  // the bristle display law (FIX 2c): any legitimate bristle display change
+  // moves those digests by construction, so they cannot be both a contract
+  // and a goal. In this harness EVERY painted scene uses bristle-flat —
+  // including the yellow band — so the only non-bristle scene is the empty
+  // sheet. The real frozen contract is the eight medium-engine identity
+  // baselines (all non-bristle, verified separately); this check now only
+  // catches a regression in the empty-sheet path.
   const identity = {}
-  for (const scene of ['band', 'band-p0', 'blank-p0']) {
+  for (const scene of ['blank']) {
     const b = before.scenes[scene]
     const a = after.scenes[scene]
     identity[scene] = Boolean(
@@ -319,7 +334,7 @@ async function runAcceptance(labels) {
   console.log('================ 261119-pod acceptance ================')
   console.log(JSON.stringify(report, null, 2))
   console.log('-------------------------------------------------------')
-  console.log(`identity band/band-p0/blank-p0: ${JSON.stringify(identity)}`)
+  console.log(`identity (non-bristle): ${JSON.stringify(identity)}`)
   console.log(`drag    ${result.drag.pass ? 'PASS' : 'FAIL'} — ${result.drag.detail}`)
   console.log(`feather ${result.feather.pass ? 'PASS' : 'FAIL'} — ${result.feather.detail}`)
   console.log(`strands ${result.strands.pass ? 'PASS' : 'FAIL'} — ${result.strands.detail}`)
@@ -328,7 +343,7 @@ async function runAcceptance(labels) {
   console.log('=======================================================')
 
   const identityOk = Object.values(identity).every(Boolean)
-  if (!identityOk) fail('the no-drag identity contract is broken (band / band-p0 / blank-p0 moved)')
+  if (!identityOk) fail('the NON-bristle identity contract is broken (the blank sheet moved)')
   if (
     !result.drag.pass ||
     !result.feather.pass ||

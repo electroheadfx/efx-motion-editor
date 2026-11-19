@@ -37,18 +37,16 @@
 //  wetness is high when the blue crosses it — the state the §3.3
 //  smear law is written for.
 //
-//  Size calibration: the blue stroke's canonical size is fitted so the
-//  measured stroke half-width matches the reference lab's own MEASURED
-//  mean half-width within 10%. The reference's cycle entry is
-//  0.085 x 600 / 2 = 25.5 px nominal; its seven-scene capture reports a
-//  measured mean of 10 px (per-scene spread 6..14.5 px). Size 4 measures
-//  10.07 px on the same seven-scene set (+0.7%). The D-E `dry: 0` pin
-//  moved the fit: the light wash no longer starves, and the bristle floor
-//  (BRISTLE_MIN 40) puts Studio's own minimum at 8 px, so the reference's
-//  narrowest blank-p0 (6.0 px) is unreachable at any size. The band's
-//  canonical size is the blue's times the reference's width ratio
-//  0.12 / 0.085. The chosen values and the measured half-width are echoed
-//  in every record's params, and run.mjs aggregates them into the
+//  Size calibration: RULING 2026-11-19 re-captured the reference at the
+//  width that matches Studio's Feather-0 mark. The first reference capture
+//  ran its cycle entry at 0.085 (25.5 px nominal) and measured blank-f0
+//  6.0 px; Studio measured 10 px there, so the widening bar was comparing
+//  different brush widths. `reference.mjs --width 0.131` (39.3 px nominal)
+//  measures blank-f0 10 px — identical to Studio's size-4 mark — and
+//  blank-f100 22 px. That capture is `captures/reference/metrics.json`.
+//  The band's canonical size is the blue's times the reference's width
+//  ratio 0.12 / 0.131. The chosen values and the measured half-width are
+//  echoed in every record's params, and run.mjs aggregates them into the
 //  capture's `calibration` block.
 // ============================================================
 
@@ -76,21 +74,18 @@ const BAND_COLOR = '#e8c21a'
 const BLUE_COLOR = '#5994e4'
 const BRUSH_ID = 'bristle-flat'
 /** The reference's cycle-entry widths (app.js palette, §6 defaults). */
+// The Studio BAND's size ratio (0.12 / 0.085) comes from the reference's two
+// ORIGINAL cycle entries and is a Studio calibration of its own; the blue's
+// capture width was re-fitted to 0.131 by RULING 2026-11-19 (reference.mjs),
+// which does not move the Studio band size.
 const BAND_FRACTION = 0.12
 const BLUE_FRACTION = 0.085
 /**
- * Canonical blue size, RE-fitted on 2026-11-19 after the D-E `dry: 0` pin
- * (the acceptance pin keeps the light wash alive; the older dry-50 fit no
- * longer applies). Against the reference lab's MEASURED mean half-width
- * (its seven-scene capture reports 10 px; the cycle-entry footprint is
- * 25.5 px nominal) size 4 measures 10.07 px across the seven stroke scenes
- * — +0.7%, inside the 10% band. Per scene the reference's blank-p0 is the
- * narrowest of its set at 6.0 px against Studio's 10 px there: the dry-0
- * wash no longer starves, and the bristle floor (BRISTLE_MIN 40, size 2)
- * puts Studio's own minimum at 8 px, so no size can reach 6.0 px. The
- * mean-to-mean fit is the comparison both captures' `calibration` blocks
- * print; both numbers and the reference's per-scene spread (6..14.5 px)
- * are recorded in the capture, never inferred.
+ * Canonical blue size. RULING 2026-11-19: the comparison is made at the
+ * reference width that matches this size's Feather-0 mark (0.131 → blank-f0
+ * 10 px, Studio 10 px), so the shape bar compares like with like. Size 4 is
+ * unchanged by the re-capture: it was fitted to the reference's measured
+ * mean before the ruling and still measures 10 px on the clean blank scene.
  */
 const DEFAULT_BLUE_SIZE = 4
 
@@ -105,6 +100,8 @@ interface SceneSpec {
   readonly pickup: number | null
   readonly feather: number | null
   readonly body: number | null
+  /** Paint Dry (0..100). Absent → the D-E census pin 0. */
+  readonly dry?: number
 }
 
 const SCENES: readonly SceneSpec[] = [
@@ -112,6 +109,16 @@ const SCENES: readonly SceneSpec[] = [
   { name: 'band', band: true, stroke: false, pickup: 0, feather: 0, body: 0 },
   { name: 'band-p0', band: true, stroke: true, pickup: 0, feather: 0, body: 0 },
   { name: 'band-p100', band: true, stroke: true, pickup: 100, feather: 0, body: 0 },
+  // RULING 2026-11-19 (the drag): the reference runs its DEFAULT depletion
+  // (its blue cycle entry depletes as it travels). A Dry-0 Studio stroke
+  // never dries, so it lays a solid bar where the reference breaks and lets
+  // the wet yellow read. These three scenes repeat the drag pair and the
+  // no-drag control at the shipped Dry default (50) — a like-for-like
+  // depletion test that leaves every other scene (strands included) on its
+  // D-E census pin.
+  { name: 'band-p0-dry50', band: true, stroke: true, pickup: 0, feather: 0, body: 0, dry: 50 },
+  { name: 'band-p100-dry50', band: true, stroke: true, pickup: 100, feather: 0, body: 0, dry: 50 },
+  { name: 'blank-p0-dry50', band: false, stroke: true, pickup: 0, feather: 0, body: 0, dry: 50 },
   { name: 'blank-p0', band: false, stroke: true, pickup: 0, feather: 0, body: 0 },
   { name: 'blank-f0', band: false, stroke: true, pickup: 100, feather: 0, body: 0 },
   { name: 'blank-f100', band: false, stroke: true, pickup: 100, feather: 100, body: 0 },
@@ -143,6 +150,7 @@ function paramsBag(
   pickup: number,
   feather: number,
   body: number,
+  dry = 0,
 ): Record<string, number> {
   return {
     size: sizePx,
@@ -150,7 +158,7 @@ function paramsBag(
     load: 50,
     flow: 50,
     bleed: 50,
-    dry: 0,
+    dry,
     edge: 50,
     granulation: 50,
     lift: 22,
@@ -394,17 +402,21 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
 
     let finalPaper = substrate ?? pre
     let finalPigment: Panel | null = null
+    let finalCoverage: Panel | null = null
     if (spec.stroke) {
       adapter.applyStroke(
         makeStroke(
           BLUE_COLOR,
-          paramsBag(blueSize, spec.pickup ?? 0, spec.feather ?? 0, spec.body ?? 0),
+          paramsBag(blueSize, spec.pickup ?? 0, spec.feather ?? 0, spec.body ?? 0, spec.dry ?? 0),
           0x7ec001,
         ),
       )
       settle()
       finalPaper = captureCanvas(engine.exportCanvas('paper'))
       finalPigment = captureCanvas(engine.exportCanvas('pigment'))
+      // RULING 2026-11-19: the raw coverage channel — the fade instrument's
+      // input. The pigment alpha is max(darkAlpha, cover); this is cover.
+      finalCoverage = captureCanvas(engine.exportCoverageCanvas())
     }
 
     // D-G: the touch-stamp proof rides the `body0` acceptance scene — Pickup
@@ -423,6 +435,7 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
             feather: spec.stroke ? spec.feather : 0,
             body: spec.stroke ? spec.body : 0,
             refill: 0,
+            dry: spec.stroke ? (spec.dry ?? 0) : 0,
             blueSizePx: blueSize,
             bandSizePx: bandSize,
           }
@@ -434,6 +447,7 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
             feather: null,
             body: null,
             refill: null,
+            dry: null,
             blueSizePx: blueSize,
             bandSizePx: bandSize,
           }
@@ -444,6 +458,7 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
       substrate: substrate ? substrate.rgba : null,
       finalPaper: finalPaper.rgba,
       finalPigment: finalPigment ? finalPigment.rgba : null,
+      coverage: finalCoverage ? finalCoverage.rgba : null,
       params: echo,
     })
 

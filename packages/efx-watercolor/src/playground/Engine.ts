@@ -20,7 +20,7 @@ import {
   LAST_TOUCH_DRY_SECONDS,
   makeBristles,
 } from './bristles';
-import { f32ToF16 } from './half';
+import { f32ToF16, fromHalf } from './half';
 import { GL, type DoubleTarget, type Format, type Program, type Rect, type Target } from './gl';
 import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
@@ -1350,6 +1350,34 @@ export class WatercolorEngine {
     const img = ctx.createImageData(dw, dh);
     const row = dw * 4;
     for (let y = 0; y < dh; y++) img.data.set(px.subarray((dh - 1 - y) * row, (dh - y) * row), y * row);
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  /**
+   * RULING 2026-11-19 — the COVERAGE channel as an RGBA8 canvas (value in
+   * both rgb and alpha), for the acceptance's fade instrument. The mode-4
+   * pigment export's alpha is `max(darkAlpha, cover)`, so a dark pigment's
+   * darkness masks the true coverage; this reads `cover` directly through
+   * `readHalf`. Probe/acoustic only: no draw, no shader, no document target —
+   * the render, the exports and every identity digest are untouched.
+   */
+  exportCoverageCanvas(): HTMLCanvasElement {
+    const { g, dw, dh } = this;
+    const half = g.readHalf(this.cover.read.fbo, dw, dh, 1);
+    const c = document.createElement('canvas');
+    c.width = dw; c.height = dh;
+    const ctx = c.getContext('2d')!;
+    const img = ctx.createImageData(dw, dh);
+    for (let y = 0; y < dh; y++) {
+      const src = (dh - 1 - y) * dw;   // readHalf rows are bottom-up
+      for (let x = 0; x < dw; x++) {
+        const v = clamp(fromHalf(half[src + x]!), 0, 1);
+        const i = (y * dw + x) * 4;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.round(v * 255);
+        img.data[i + 3] = Math.round(v * 255);
+      }
+    }
     ctx.putImageData(img, 0, 0);
     return c;
   }

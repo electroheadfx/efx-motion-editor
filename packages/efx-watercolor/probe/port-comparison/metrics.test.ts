@@ -31,6 +31,7 @@ import {
   measureScene,
   sha256Hex,
   sideFades,
+  sideFadesAlpha,
   signedAngle,
   strokeHalfWidthPx,
   type Mask,
@@ -220,6 +221,42 @@ describe('side fades', () => {
   it('reports null when the mask is too small to profile', () => {
     expect(sideFades(solid(4, 4, 0, 0, 0), fullMask(4, 4))).toBeNull()
   })
+
+  // RULING 2026-11-19 — the fade instrument is the ALPHA profile as a
+  // fraction of the PAPER→CORE range. The darkness gauge is broken on a
+  // saturated paint (10 % of the core sits below the mask's outer row), so
+  // this fixture carries the same trapezoid on the alpha channel: RGB can be
+  // anything, only alpha is read.
+  it('measures the four widths on ALPHA and reports the crossing positions', () => {
+    const img = rgba(25, 41, (x, y) => [0, 0, 0, Math.round(trapDarkness(x, y))])
+    const fades = sideFadesAlpha(img, fullMask(25, 41))
+    expect(fades).not.toBeNull()
+    expect(fades!.top).toBe(3)
+    expect(fades!.bottom).toBe(2)
+    expect(fades!.left).toBe(1)
+    expect(fades!.right).toBe(2)
+    // WHERE the profile crosses: top 50 % at row 4, 10 % at row 1.
+    expect(fades!.top50).toBe(4)
+    expect(fades!.top10).toBe(1)
+    expect(fades!.bottom50).toBe(37)
+    expect(fades!.bottom10).toBe(39)
+  })
+
+  it('anchors the alpha levels on the PAPER alpha outside the mask', () => {
+    // Paper alpha 40, stroke core 200: the 10 % level is 40 + 16 = 56, not
+    // 10 % of the core alone. A single ramp row at 50 is BELOW that level;
+    // with the paper offset it must not be counted as paint.
+    const img = rgba(25, 41, (x, y) => {
+      const inside = y >= 10 && y <= 30
+      const alpha = inside ? (y === 10 ? 50 : 200) : 40
+      return [0, 0, 0, alpha]
+    })
+    const mask: Mask = { width: 25, height: 41, data: new Uint8Array(25 * 41) }
+    for (let y = 10; y <= 30; y += 1) for (let x = 0; x < 25; x += 1) mask.data[y * 25 + x] = 255
+    const fades = sideFadesAlpha(img, mask)
+    expect(fades).not.toBeNull()
+    expect(fades!.top10).toBe(11)
+  })
 })
 
 describe('edge hue variance', () => {
@@ -405,6 +442,10 @@ const AFTER_SCENES: Record<string, SceneRecord> = {
   band: { bandHueDeg: 49, bandChroma: 0.5 },
   'band-p0': { crossingHueDeg: 214, strokeHalfWidthPx: 10 },
   'band-p100': { crossingHueDeg: 170, alongVariance: 12, acrossGradient: 6, coreDarkness: 105, strokeHalfWidthPx: 10 },
+  // RULING 2026-11-19: the drag block reads the shipped-Dry pair.
+  'band-p0-dry50': { crossingHueDeg: 214 },
+  'band-p100-dry50': { crossingHueDeg: 170 },
+  'blank-p0-dry50': { strokeHueDeg: 212 },
   'blank-p0': { strokeHueDeg: 212, strokeHalfWidthPx: 10 },
   // FIX 3: the same mark reads at the reference's width and widens with
   // Feather exactly as the reference does (10 -> 12 both sides).
@@ -463,9 +504,9 @@ describe('acceptance blocks', () => {
     // reference echo, never a pass operand.
     expect(a.drag.reference.signedShiftDeg).toBe(-20)
     expect(a.drag.reference.blankP0DeltaDeg).toBe(1)
-    // geometry: every paired width matches and the Feather response is 1.2x
-    // on both sides.
-    expect(a.geometry.widths['band-p100']).toEqual({ studio: 10, reference: 10, ratio: 1 })
+    // geometry (restated): the CLEAN blank pair matches at Feather 0, and the
+    // Feather response is 1.2x on both sides.
+    expect(a.geometry.widths['blank-f0']).toEqual({ studio: 10, reference: 10, ratio: 1 })
     expect(a.geometry.shape.studioWiden).toBeCloseTo(1.2, 6)
     expect(a.geometry.shape.referenceWiden).toBeCloseTo(1.2, 6)
     expect(a.geometry.shape.parity).toBe(0)
@@ -475,10 +516,10 @@ describe('acceptance blocks', () => {
   it('fails the geometry when a width deviates more than 15% from the reference', () => {
     const scenes = {
       ...AFTER_SCENES,
-      'band-p100': { ...AFTER_SCENES['band-p100'], strokeHalfWidthPx: 7.5 },
+      'blank-f0': { ...AFTER_SCENES['blank-f0'], strokeHalfWidthPx: 7.5 },
     }
     const a = acceptance(captures(BEFORE_SCENES), captures(scenes), captures(REFERENCE_SCENES))
-    expect(a.geometry.widths['band-p100']!.ratio).toBe(0.75)
+    expect(a.geometry.widths['blank-f0']!.ratio).toBe(0.75)
     expect(a.geometry.pass).toBe(false)
   })
 
@@ -495,7 +536,10 @@ describe('acceptance blocks', () => {
   })
 
   it('fails the drag when the shift is under 20% of the blue->band angle', () => {
-    const scenes = { ...AFTER_SCENES, 'band-p100': { ...AFTER_SCENES['band-p100'], crossingHueDeg: 200 } }
+    const scenes = {
+      ...AFTER_SCENES,
+      'band-p100-dry50': { ...AFTER_SCENES['band-p100-dry50'], crossingHueDeg: 200 },
+    }
     const a = acceptance(captures(BEFORE_SCENES), captures(scenes), captures(REFERENCE_SCENES))
     expect(a.drag.signedShiftDeg).toBe(-14)
     expect(Math.abs(a.drag.signedShiftDeg)).toBeGreaterThanOrEqual(HUE_MIN_SHIFT_DEG)
@@ -511,7 +555,7 @@ describe('acceptance blocks', () => {
   })
 
   it('fails the drag when the Pickup-0 control drifted', () => {
-    const scenes = { ...AFTER_SCENES, 'blank-p0': { strokeHueDeg: 220 } }
+    const scenes = { ...AFTER_SCENES, 'blank-p0-dry50': { strokeHueDeg: 220 } }
     const a = acceptance(captures(BEFORE_SCENES), captures(scenes), captures(REFERENCE_SCENES))
     expect(a.drag.blankP0DeltaDeg).toBe(6)
     expect(a.drag.pass).toBe(false)

@@ -62,7 +62,11 @@ function figure(src, caption, sub) {
 
 const referenceCrossing = panel('reference', 'band-p100')
 const referenceFeather = panel('reference', 'blank-f100')
-const afterCrossing = panel('after', 'band-p100')
+// RULING 2026-11-19: row 1 shows the drag at the shipped Dry default (50),
+// like the reference's own depletion. Row 3 keeps the Dry-0 census pair so
+// BEFORE -> AFTER isolates the port, not the calibration.
+const afterCrossing = panel('after', 'band-p100-dry50')
+const afterCensus = panel('after', 'band-p100')
 const afterFeather = panel('after', 'blank-f100')
 const beforeCrossing = panel('before', 'band-p100')
 const beforeFeather = panel('before', 'blank-f100')
@@ -76,8 +80,8 @@ const rows = [
   `<section>
     <h2>1 · Wet crossing — Pickup 100 / Refill 0 / Feather 0 · cornflower #5994e4 over wet yellow #e8c21a · bristle-flat · Body 0</h2>
     <div class="pair">
-      ${figure(referenceCrossing, 'REFERENCE — craft-brushes lab', 'pickup 1.0 · smear 1.0 · softness 0.09')}
-      ${figure(studioCrossing, studioTag, 'pickup 100 · refill 0 · feather 0 · body 0')}
+      ${figure(referenceCrossing, 'REFERENCE — craft-brushes lab', 'pickup 1.0 · smear 1.0 · softness 0.09 · default depletion')}
+      ${figure(studioCrossing, studioTag, 'pickup 100 · refill 0 · feather 0 · body 0 · dry 50')}
     </div>
   </section>`,
   `<section>
@@ -89,12 +93,12 @@ const rows = [
   </section>`,
 ]
 
-if (afterCrossing && beforeCrossing) {
+if (afterCensus && beforeCrossing) {
   rows.push(`<section>
-    <h2>3 · The same wet crossing in Studio — BEFORE (corrected §3.4 gate, pre-port) → AFTER (final engine)</h2>
+    <h2>3 · The same wet crossing in Studio (Dry 0 census) — BEFORE (corrected §3.4 gate, pre-port) → AFTER (final engine)</h2>
     <div class="pair">
       ${figure(beforeCrossing, 'STUDIO — BEFORE', 'pickup 100 · refill 0 · feather 0 · body 0')}
-      ${figure(afterCrossing, 'STUDIO — AFTER', 'pickup 100 · refill 0 · feather 0 · body 0')}
+      ${figure(afterCensus, 'STUDIO — AFTER', 'pickup 100 · refill 0 · feather 0 · body 0')}
     </div>
   </section>`)
 } else if (!preview) {

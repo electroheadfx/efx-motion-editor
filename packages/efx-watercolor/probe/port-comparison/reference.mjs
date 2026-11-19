@@ -60,8 +60,15 @@ const SCENES = [
   { name: 'blank-f100', band: false, stroke: true, pickup: 100, softness: 0.34 },
 ]
 
+// RULING 2026-11-19: the blue brush width is a CLI knob. The reference's
+// widening is brush-width dependent, so it must be captured at the width
+// that matches Studio's Feather-0 mark before its shape is used as a bar.
+const widthFlag = args.indexOf('--width')
+const BLUE_WIDTH = widthFlag >= 0 ? Number(args[widthFlag + 1]) : 0.085
+if (!(BLUE_WIDTH > 0)) fail('--width must be a positive fraction of the short side')
+
 const YELLOW = { color: '#e8c21a', depletion: 1, spread: 0.85, width: 0.12, name: 'yellow' }
-const CORNFLOWER = { color: '#5994e4', depletion: 0.75, spread: 0.85, width: 0.085, name: 'cornflower' }
+const CORNFLOWER = { color: '#5994e4', depletion: 0.75, spread: 0.85, width: BLUE_WIDTH, name: 'cornflower' }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -518,8 +525,8 @@ async function main() {
       halfWidths.length > 0
         ? Math.round((halfWidths.reduce((a, b) => a + b, 0) / halfWidths.length) * 100) / 100
         : null,
-    referenceTargetHalfWidthPx: 25.5,
-    referenceTargetNote: 'cycle-entry width 0.085 x 600 px / 2',
+    referenceTargetHalfWidthPx: Math.round(BLUE_WIDTH * 600 * 50) / 100,
+    referenceTargetNote: `cycle-entry width ${BLUE_WIDTH} x 600 px / 2`,
   }
 
   const panelDir = join(outDir, 'reference')
