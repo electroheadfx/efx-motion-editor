@@ -1,7 +1,7 @@
 ---
 phase: 64-medium-engine
 generated_from: "bd list --status open,in_progress,blocked,deferred --exclude-type epic --json -n 0"
-generated_at: 2026-11-18T19:58:53Z
+generated_at: 2026-11-19T11:47:34Z
 recall_status: ok
 ---
 
@@ -27,4 +27,5 @@ recall_status: ok
 
 | Issue | Title | Status |
 |-------|-------|--------|
+| efx-motion-editor-4ro.53 | Flaky 63-05 bridge listener tests under full-suite load | open |
 | efx-motion-editor-4ro.38 | 64-15.2 Delete the cover preview and footprint plumbing from the canvas stack | open |
