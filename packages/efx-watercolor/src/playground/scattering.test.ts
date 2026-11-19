@@ -438,8 +438,8 @@ describe('the composition of order and opacity (MED-36)', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'fourteen target allocations: the coverage pair is the eleventh (SPIKE 001); 64-21 adds the three-reservoir bristle pair and the shape texture (SPIKE 002); 64-24 adds the document-sized R32F last-touch pair (D-24, D-29)',
-    ).toBe(14)
+      'fifteen target allocations: the coverage pair is the eleventh (SPIKE 001); 64-21 adds the three-reservoir bristle pair and the shape texture (SPIKE 002); 64-24 adds the document-sized R32F last-touch pair (D-24, D-29); 261119-pod adds the smear snapshot target (D-28)',
+    ).toBe(15)
     expectContains(alloc, 'this.relief = g.target(')
     // 64-21: the fixed 1 × 256 bristle set — three RGBA16F reservoir
     // attachments (ping-pong) and the static shape texture, NEAREST.
@@ -685,8 +685,8 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'fourteen allocations: 64-24 adds the documented R32F last-touch pair; the gather adds no target of its own',
-    ).toBe(14)
+      'fifteen allocations: 64-24 adds the documented R32F last-touch pair; 261119-pod adds the smear snapshot target; the gather adds no target of its own',
+    ).toBe(15)
   })
 })
 
@@ -787,8 +787,8 @@ describe('post-UAT — the bristle Body mask is gone, Body is film opacity', () 
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'fourteen allocations: removing the Body mask removes no render target; 64-24 keeps the documented R32F last-touch pair',
-    ).toBe(14)
+      'fifteen allocations: removing the Body mask removes no render target; 64-24 keeps the documented R32F last-touch pair; 261119-pod adds the smear snapshot target',
+    ).toBe(15)
   })
 })
 
@@ -944,8 +944,8 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'fourteen allocations: the traces add no render target; 64-24 adds the documented R32F last-touch pair',
-    ).toBe(14)
+      'fifteen allocations: the traces add no render target; 64-24 adds the documented R32F last-touch pair; 261119-pod adds the smear snapshot target',
+    ).toBe(15)
   })
 })
 
@@ -1081,8 +1081,8 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'fourteen allocations: the gate adds no target — the last-touch pair landed in Task 1',
-    ).toBe(14)
+      'fifteen allocations: the gate adds no target — the last-touch pair landed in Task 1; 261119-pod adds the smear snapshot target',
+    ).toBe(15)
   })
 })
 
