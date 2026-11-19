@@ -956,11 +956,22 @@ function coverTexturedMetrics(
   pigment: HTMLCanvasElement,
 ): Record<string, number> {
   const spread = alphaSpread(pigment, TEXTURED_BOX)
+  const alpha = alphaMean(pigment, TEXTURED_BOX)
+  // Post-UAT descriptor (the bristle deposit must CARRY the paint): the
+  // pigment export's own RGB beside the film's darkness and the layer alpha.
+  // A washed deposit solves to near-white RGB while the film stays pale; a
+  // real deposit reads its pigment colour, and alpha never runs further ahead
+  // of the film than the carried opacity allows.
+  const coreMean = bandStats(pigment, TEXTURED_BOX).mean
+  const filmDarkness = darkAlphaMean(transparent, TEXTURED_BOX)
   return {
-    coverAlphaMean: round2(alphaMean(pigment, TEXTURED_BOX)),
+    coverAlphaMean: round2(alpha),
     coverAlphaP10: round2(spread.p10),
     coverAlphaP90: round2(spread.p90),
     coverAlphaCoveredFraction: round2(spread.coveredFraction),
+    coverCorePigmentMean: round2((coreMean[0] + coreMean[1] + coreMean[2]) / 3),
+    coverCoreFilmDarkness: round2(filmDarkness),
+    coverCoreAlphaMinusFilm: round2(alpha - filmDarkness),
     coverCrossBlueExcess: round2(bandStats(pigment, COVER_BOXES.crossing).blueExcess),
     coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
   }

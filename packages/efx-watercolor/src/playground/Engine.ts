@@ -225,6 +225,17 @@ const RELIEF_GAIN = 1.5;
 const RELIEF_ERODE = 0.5;
 /** The emboss thickness a feather touch still lays, as a share of full press. */
 const EMBOSS_PRESS_FLOOR = 0.15;
+/**
+ * Post-UAT (GAP-1, 2026-11-19): on the BRISTLE path Body is the paint's
+ * OPACITY — the share of the pixel the deposited film takes over — not a
+ * separate erode mask. It scales the coverage target the deposit lerps
+ * toward, so Body 100 reaches a fully opaque film and Body 0 leaves a
+ * half-opaque glaze. The floor is not zero because Body is absent (canonical
+ * 0) on every recorded pre-64 stroke and in the committed Body-0 gates: a
+ * bristle stroke must still deposit its paint there. The sixth-power
+ * `bodyCurve` stays the non-bristle order curve (D-14), untouched.
+ */
+const BRISTLE_BODY_ALPHA_FLOOR = 0.5;
 
 // 61-04: `w` is the per-sample width factor (VEC-03). It rides the queued
 // sample — never a mutable engine field — so a sample can only ever be
@@ -536,12 +547,12 @@ export class WatercolorEngine {
     // 64-21 (SPIKE 002): the per-bristle carrier, same rule — outside the
     // pinned literal (its count stays twenty-three).
     this.programs.bristleCarrier = this.g.program(S.bristleCarrierFS);
-    // 64-22 (SPIKE 002, the gather): the ink deposit, the ONE coverage write
-    // and D-21's Body mask, same rule — outside the pinned literal
-    // (twenty-three stays).
+    // 64-22 (SPIKE 002, the gather): the ink deposit and the ONE coverage
+    // write, same rule — outside the pinned literal (twenty-three stays).
+    // Post-UAT 2026-11-19 (GAP-1): D-21's Body-mask program is gone — Body
+    // is the film's opacity on the bristle path, not a second film's erode.
     this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);
     this.programs.bristleCover = this.g.program(S.bristleCoverFS);
-    this.programs.bristleBodyCover = this.g.program(S.bristleBodyCoverFS);
     // 64-24 (D-24): the touch refresh, same rule — outside the pinned literal
     // (twenty-three stays). The delivery law's third pass.
     this.programs.bristleTouch = this.g.program(S.bristleTouchFS);
@@ -2357,11 +2368,22 @@ export class WatercolorEngine {
         // saturates the stroke's own relief away under its overlapping dabs
         // (measured on probe at Body 85: the relief field doubled).
         const coverRelief = coverAmount * RELIEF_ERODE;
+        // Post-UAT (GAP-1): on a bristle response Body is NOT an erode at all —
+        // it is the paint's opacity, the share of the pixel the deposited film
+        // takes over. The deposit lerps the canvas toward the carried colour at
+        // the gather's coverage (see bristleInk); this target is what the layer
+        // alpha converges to, so it can never run ahead of the paint. Linear on
+        // purpose: acrylic (Body 85) must read opaque, and the sixth power stays
+        // the non-bristle order curve. The floor keeps Body 0 (the canonical
+        // default, and every committed Body-0 gate) depositing paint.
+        const bristleBodyAlpha = bristle
+          ? BRISTLE_BODY_ALPHA_FLOOR + (1 - BRISTLE_BODY_ALPHA_FLOOR) * clamp(P.body, 0, 1)
+          : 0;
         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
         const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount)];
-        if (coverAmount > 0) {
+        if (coverAmount > 0 || bristle) {
           // Ordering hazard (spec 06): the cover pass runs BEFORE brushInk, so
           // the deposit's own touch() comes too late to restore a relief this
           // pass already eroded. These two protections are the ONLY undo
@@ -2369,12 +2391,14 @@ export class WatercolorEngine {
           // before the first cover draw, on a rect that covers every dab
           // eachDab can produce — the dab radius grown by the largest size
           // jitter and the largest scatter displacement, with the extent the
-          // cover draw itself uses.
+          // cover draw itself uses. A bristle response reaches `fixed` too
+          // (the settled half of the canvas lerp in `bristleInk`), so it
+          // takes the same protection.
           const coverRect = this.stampRect(x, y, r * (1 + b.sizeJitter + b.scatter), this.dw, this.dh, 2);
           this.touch(coverRect);
           // 261028-k03 D1 / MED-22: the settled pool is saved the same way
-          // lift() saves it — the cover pass is the second (and only other)
-          // path that reaches dry, settled pigment.
+          // lift() saves it — the cover pass (and the bristle lerp) is the
+          // second (and only other) path that reaches dry, settled pigment.
           const m = PROTECT_MARGIN;
           this.history.protect(1, { x0: Math.max(0, coverRect.x0 - m), y0: Math.max(0, coverRect.y0 - m), x1: Math.min(this.dw, coverRect.x1 + m), y1: Math.min(this.dh, coverRect.y1 + m) }, this.fixed.views);
         }
@@ -2394,24 +2418,24 @@ export class WatercolorEngine {
             this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, pr);
           }
           // spec 06: the cover pass draws here, before this dab's deposit.
-          // 64-22 (D-21): a bristle response erodes through the SAME gather
-          // its deposit reads, so the Body erode can never cover more or less
-          // than the paint the same dab lands; every other response keeps the
-          // shipped footprint mask, untouched.
-          if (coverAmount > 0) {
-            if (bristle) this.coverBristlePass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, pr, alongPx);
-            else this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
+          // Post-UAT (GAP-1): a bristle response has NO erode pass at all —
+          // Body is the film's opacity inside the one deposit lerp (below), so
+          // nothing may dim the underlayer outside the paint that replaces it.
+          // Every other response keeps the shipped footprint mask, untouched.
+          if (coverAmount > 0 && !bristle) {
+            this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
           }
           // SPIKE 001: source-over inside the pigment layer, replacing "erase
           // the underlayer, then deposit". No snapshot, no full-document pass,
           // no cached-base punch callback. Body 0 keeps the additive brushInk
           // path unchanged, so the neutral gate stays byte-identical.
-          // 64-22 (SPIKE 002): a bristle response deposits the five nearest
-          // bristles' CARRIED coefficients through the shared gather instead
-          // — additive absorbance plus the one coverage write — and the ONE
-          // curve's scatter (c1[3]) rides along as a uniform. Every other
-          // response keeps the shipped chain, untouched.
-          if (bristle) this.bristleInk(dx, dy, dr, angle, amount, pr, c1[3]!, alongPx);
+          // Post-UAT (GAP-1): a bristle response deposits the five nearest
+          // bristles' CARRIED coefficients through the shared gather as the
+          // reference's ONE lerp — `canvas <- mix(canvas, carried, coverage)`
+          // in coefficient space — and its layer alpha is the same lerp's
+          // weight times Body's opacity, so the film and its paint can never
+          // disagree. Every other response keeps the shipped chain, untouched.
+          if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, pr, c1[3]!, alongPx);
           else if (coverAmount > 0) this.coverageDeposit(dx, dy, dr, angle, coverAmount, coverDensity, c, c1[3]!, dryness, grainThr);
           else this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
           // 64-24 (D-24): the dab records its own touch AFTER depositing and
@@ -2604,44 +2628,6 @@ export class WatercolorEngine {
     // and flatten the emboss the same Body value is meant to raise.
     gl.uniform1f(p.u.uAmount, reliefAmount);
     gl.uniform1f(p.u.uShape, 0);
-    g.draw(this.relief, rect);
-    gl.disable(gl.BLEND);
-  }
-
-  /**
-   * 64-22 (D-21): the bristle twin of `coverPass` — the Body erode read off
-   * the SAME gather the deposit uses, so at Body > 0 the erode and the paint
-   * it hides are one film (spike 002's footprint-shaped erode under a
-   * bristle-shaped deposit combed the underlayer through the bristle gaps).
-   * `m` is `gatherBristle(...).coverage`; the laws are inherited unchanged:
-   * the `fixed` pool erodes ALPHA-shaped (uShapeLaw = 1, the medium's
-   * density) and the `relief` pool erodes at the DELIVERED LINEAR thickness
-   * law (uShapeLaw = 0, `coverAmount × RELIEF_ERODE` — the float is not
-   * `uShape` because the gather binds that name as its shape-texture
-   * sampler). Same two draws, same two blend laws as `coverPass` (FUNC_ADD
-   * + ZERO, ONE_MINUS_SRC_COLOR). The coverage channel is NOT written here:
-   * `bristleInk` owns the one coverage write. Undo is the caller's: the
-   * stamp protects `fixed` once, before the first cover draw, exactly as
-   * for `coverPass`.
-   */
-  private coverBristlePass(x: number, y: number, r: number, angle: number, amount: number, density: number, reliefAmount: number, pr: number, alongPx: number): void {
-    const { gl, g } = this;
-    const p = this.programs.bristleBodyCover;
-    p.bind();
-    this.bindGather(p, x, y, r, angle, pr, alongPx);
-    gl.uniform1f(p.u.uAmount, amount);
-    gl.uniform1f(p.u.uDensity, density);
-    gl.uniform1f(p.u.uShapeLaw, 1);
-    const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
-    gl.enable(gl.BLEND);
-    gl.blendEquation(gl.FUNC_ADD);
-    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
-    g.draw(this.fixed, rect);
-    // The thickness keeps the DELIVERED LINEAR law (uShapeLaw = 0), never the
-    // paint opacity — the same reasoning as coverPass: scaling the erode with
-    // the paint saturates the stroke's own relief away under its dabs.
-    gl.uniform1f(p.u.uAmount, reliefAmount);
-    gl.uniform1f(p.u.uShapeLaw, 0);
     g.draw(this.relief, rect);
     gl.disable(gl.BLEND);
   }
@@ -2898,46 +2884,81 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uHairs!, BRISTLE_HAIRS);
     gl.uniform1f(p.u.uDryEdge!, BRISTLE_DRY_EDGE);
     gl.uniform1f(p.u.uLanding!, BRISTLE_LANDING);
+    // Post-UAT 2026-11-19 (GAP-4): the texture tip composes with the gather.
+    // Unit 4 is free (0–3 are the reservoirs); `uTipMix` is 1 only when the
+    // brush carries a mask-backed tip, so an untextured bristle stroke never
+    // samples the procedural tip and keeps its exact shipped law.
+    gl.uniform1i(p.u.uTip!, g.bindTex(4, this.tipTexture(this.brush)));
+    gl.uniform1f(p.u.uTipAspect!, this.brush.aspect);
+    gl.uniform1f(p.u.uTipRotation!, (this.brush.textureRotation ?? 0) * DEG);
+    gl.uniform1f(p.u.uRough!, this.brush.roughness ?? 0);
+    gl.uniform1f(p.u.uJitter!, this.brush.stampJitter ?? 0);
+    gl.uniform1f(p.u.uTipMix!, this.brush.textureId != null ? 1 : 0);
   }
 
   /**
-   * 64-22 (SPIKE 002, §3.2–§5.1): the bristle deposit. ONE gather, two draws
-   * on one shared rect:
+   * Post-UAT 2026-11-19 (GAP-1/GAP-2) — the bristle deposit is the
+   * REFERENCE's one compositing operation, in coefficient space:
    *
-   *   ink   += (Σ ink · carried / Σ ink) · amount   (FUNC_ADD, ONE, ONE)
-   *   cover += coverage                             (ONE, ONE_MINUS_SRC_ALPHA)
+   *   ink   <- ink · (1 − a) + carried · a        (att, then add)
+   *   S     <- S   · (1 − a) + uScatter · a       (the same weight)
+   *   cover <- cover · (1 − a) + α · a            (α = Body's film opacity)
    *
-   * The carried values are the ENGINE's seven absorbance coefficients plus
-   * alpha, averaged in coefficient space — never RGB (D-28) — and written
-   * additively, the same law `brushInk` uses, so Body 0 stays non-destructive.
-   * The coverage channel is written exactly ONCE per dab, from the SAME
-   * gather the deposit reads (a second, footprint-shaped write would compete
-   * with it and let the film's alpha run ahead of its paint). The scattering
-   * S arrives as the ONE curve's `scatteringDeposit`, evaluated by the caller
-   * at (body, amount) and passed here as `c1[3]` — no fragment re-derives
-   * the exponent.
+   * `a = gatherBristle(vUv).coverage` — the gather's own deposit weight, the
+   * reference's `deposit`. Overlapping dabs therefore CONVERGE on the carried
+   * colour instead of summing absorbances: the film's transmittance approaches
+   * the paint's, the scattering channel cannot run away to white, and the
+   * layer alpha is the very weight the paint moved by (times Body's opacity),
+   * so it can never outrun the deposited colour. The erode pass is gone from
+   * this path (the caller no longer runs `coverPass` for a bristle response):
+   * Body is opacity here, not a mask.
+   *
+   * Four draws on one shared rect: the attenuation (ZERO, ONE_MINUS_SRC_COLOR
+   * — the `coverageDeposit` idiom), the SAME attenuation on the settled pool
+   * (the engine's canvas is ink + fixed, so the lerp's canvas half needs both),
+   * the carried add (ONE, ONE) and the ONE coverage write (ONE,
+   * ONE_MINUS_SRC_ALPHA, with the fragment's own coverage as the weight in the
+   * alpha channel). The carried values are the ENGINE's seven absorbance
+   * coefficients — averaged in coefficient space by the gather, never RGB
+   * (D-28). `uScatter` is the ONE curve's `scatteringDeposit`, evaluated by the
+   * caller; no fragment re-derives it.
    */
-  private bristleInk(x: number, y: number, r: number, angle: number, amount: number, pr: number, scatter: number, alongPx: number): void {
+  private bristleInk(x: number, y: number, r: number, angle: number, bodyAlpha: number, pr: number, scatter: number, alongPx: number): void {
     const { gl, g } = this;
     // Same active/undo/dirty bookkeeping as brushInk and coverageDeposit:
     // this draw IS the deposit, so the rect is touched before anything lands.
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 1.6);
     this.touch(rect);
-    // 1) the ink — additive absorbance, the brushInk law.
     const d = this.programs.bristleDeposit;
     d.bind();
     this.bindGather(d, x, y, r, angle, pr, alongPx);
-    gl.uniform1f(d.u.uAmount!, amount);
     gl.uniform1f(d.u.uScatter!, scatter);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
+    // 1) ink *= (1 - a) and S *= (1 - a) — the lerp's first half.
+    gl.uniform1i(d.u.uMode!, 1);
+    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+    g.draw(this.ink.read, rect);
+    // 1b) The SETTLED half of the same lerp. The reference writes
+    //     mix(canvas, carried, deposit) to ONE canvas; the engine's canvas
+    //     is ink + fixed, so the settled film is displaced by the SAME
+    //     weight — otherwise an opaque stroke could never cover dried paint
+    //     (the display's transmittance is ink + fixed). Body does not appear
+    //     in this draw: it is paint replacing paint, not order. Undo is the
+    //     caller's, exactly as the non-bristle cover pass: `fixed` is
+    //     protected once per stamp before the first dab.
+    g.draw(this.fixed, rect);
+    // 2) + carried * a — the lerp's carried half.
+    gl.uniform1i(d.u.uMode!, 0);
     gl.blendFunc(gl.ONE, gl.ONE);
     g.draw(this.ink.read, rect);
     gl.disable(gl.BLEND);
-    // 2) the coverage channel — ONE write per dab, the union across dabs.
+    // 3) cover <- cover*(1 - a) + bodyAlpha*g.alpha*a — ONE write per dab,
+    //    the SAME weight as the ink, so the layer alpha tracks its paint.
     const c = this.programs.bristleCover;
     c.bind();
     this.bindGather(c, x, y, r, angle, pr, alongPx);
+    gl.uniform1f(c.u.uCoverTarget!, bodyAlpha);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);

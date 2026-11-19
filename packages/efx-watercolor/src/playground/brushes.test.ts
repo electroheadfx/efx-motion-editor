@@ -415,17 +415,14 @@ describe('the eight new responses', () => {
   })
 })
 
-describe('the bristle response predicate (64-21, D-27)', () => {
-  it('accepts exactly the two bristle ids with no texture id', () => {
+describe('the bristle response predicate (64-21, D-27 revised post-UAT)', () => {
+  it('accepts exactly the two bristle ids, with or without a texture id', () => {
     for (const id of ['bristle-flat', 'bristle-round']) {
       expect(isBristleResponse({ id }), `${id} with an absent textureId`).toBe(true)
       expect(isBristleResponse({ id, textureId: null }), `${id} with a null textureId`).toBe(true)
-    }
-  })
-
-  it('refuses a texture pick on a bristle id — the D-27 escape hatch', () => {
-    for (const id of ['bristle-flat', 'bristle-round']) {
-      expect(isBristleResponse({ id, textureId: 'mask/acrylic-01' }), `${id} carrying a picked texture`).toBe(false)
+      // Post-UAT 2026-11-19 (GAP-4): a texture pick no longer disables the
+      // engine — the tip COMPOSES with the gather (`tipMask`, uTipMix).
+      expect(isBristleResponse({ id, textureId: 'mask/acrylic-01' }), `${id} carrying a picked texture`).toBe(true)
     }
   })
 
@@ -433,5 +430,6 @@ describe('the bristle response predicate (64-21, D-27)', () => {
     expect(isBristleResponse({ id: 'round' })).toBe(false)
     expect(isBristleResponse({ id: 'round', textureId: 'mask/acrylic-01' })).toBe(false)
     expect(isBristleResponse({ id: 'chalk' })).toBe(false)
+    expect(isBristleResponse({ id: 'chalk', textureId: 'mask/acrylic-01' })).toBe(false)
   })
 })

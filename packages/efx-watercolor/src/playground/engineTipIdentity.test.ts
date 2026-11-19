@@ -70,11 +70,17 @@ describe('tip sampling quality and the rotation bind (quick 261116-inu / Task 10
     )
   })
 
-  it('binds uTipRotation in drawStamp and lift from the brush degrees', () => {
+  it('binds uTipRotation in drawStamp, lift and the bristle gather from the brush degrees', () => {
     const bindings = ENGINE_SOURCE.split('uTipRotation').length - 1
-    expect(bindings, 'stamp + lift bindings').toBe(2)
+    // Post-UAT 2026-11-19 (GAP-4): the bristle gather now samples a texture
+    // tip in the same rotated tip space, so it binds the same uniform a third
+    // time (bindGather — always from this.brush, the stroke's own).
+    expect(bindings, 'stamp + lift + gather bindings').toBe(3)
     expect(ENGINE_SOURCE).toContain(
       'gl.uniform1f(p.u.uTipRotation, (b.textureRotation ?? 0) * DEG)',
+    )
+    expect(ENGINE_SOURCE).toContain(
+      'gl.uniform1f(p.u.uTipRotation!, (this.brush.textureRotation ?? 0) * DEG);',
     )
   })
 })

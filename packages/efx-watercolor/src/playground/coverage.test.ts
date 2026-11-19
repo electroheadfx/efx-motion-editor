@@ -210,7 +210,9 @@ describe('the pigment-independent amount (T-64-36)', () => {
 describe('the per-stamp protections (T-64-37)', () => {
   it('protects both pools once per stamp, before the first dab', () => {
     const brush = BRUSH_CASE()
-    const block = sliceBetween(brush, 'if (coverAmount > 0) {', 'this.eachDab(')
+    // Post-UAT 2026-11-19 (GAP-1): the block now also runs for a bristle
+    // response, whose canvas lerp reaches the settled pool too.
+    const block = sliceBetween(brush, 'if (coverAmount > 0 || bristle) {', 'this.eachDab(')
     expectContains(
       block,
       'const coverRect = this.stampRect(x, y, r * (1 + b.sizeJitter + b.scatter), this.dw, this.dh, 2);',

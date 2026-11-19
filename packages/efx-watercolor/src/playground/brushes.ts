@@ -242,18 +242,22 @@ function bristleTip(n: number, N: Noise): Float32Array {
 }
 
 /**
- * 64-21 (D-27): the bristle response predicate — the ONE place the two bristle
- * ids are read as "this stroke runs the per-bristle carrier".
+ * 64-21 (D-27), revised post-UAT 2026-11-19 (GAP-4): the bristle response
+ * predicate — the ONE place the two bristle ids are read as "this stroke runs
+ * the per-bristle engine".
  *
- * A bristle response is `bristle-flat` or `bristle-round` AND carries no
- * texture id, i.e. the tip comes from the response's own procedural tip. A
- * bristle response stamped through a picked texture is NOT one: the textured
- * path keeps the shipping stamp, so the escape hatch is a texture pick,
- * exactly as D-27 records. (Declared after `bristleTip` on purpose: the
- * tip-source pin in brushes.test.ts matches the FIRST `*bristle*` function.)
+ * A bristle response is `bristle-flat` or `bristle-round`, whatever tip it
+ * carries. D-27 originally made a picked texture the escape hatch OUT of the
+ * engine; the UAT found the textured stroke was the one that looked best and
+ * was bypassing the engine entirely. The texture tip now COMPOSES with the
+ * gather (`tipMask` in BRISTLE_GATHER, gated by `uTipMix`), so a textured
+ * bristle stroke runs the same carrier and the same one lerp as an
+ * untextured one — the tip only bounds where the dab lands. (Declared after
+ * `bristleTip` on purpose: the tip-source pin in brushes.test.ts matches the
+ * FIRST `*bristle*` function.)
  */
 export function isBristleResponse(b: { id: string; textureId?: string | null }): boolean {
-  return (b.id === 'bristle-flat' || b.id === 'bristle-round') && (b.textureId === undefined || b.textureId === null);
+  return b.id === 'bristle-flat' || b.id === 'bristle-round';
 }
 
 /* --------------------------------------------------------------- presets */

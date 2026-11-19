@@ -807,11 +807,10 @@ void main(){
 //  64-22 (SPIKE 002) — THE GATHER (§3.2, §4.1, §4.4, §4.5, §5.1).
 //
 //  One law, included by every consumer, so they can never diverge:
-//  `bristleDepositFS` (the ink deposit), `bristleCoverFS` (the one
-//  coverage write) and `bristleBodyCoverFS` (the Body mask, D-21). A
-//  consumer is a `${HEADER}${BRISTLE_GATHER}` composition; a fourth
-//  consumer is a delivery-law amendment, not an implementation choice
-//  (D-29).
+//  `bristleDepositFS` (the ink deposit) and `bristleCoverFS` (the one
+//  coverage write). A consumer is a `${HEADER}${BRISTLE_GATHER}`
+//  composition; a third consumer is a delivery-law amendment, not an
+//  implementation choice (D-29).
 //
 //  `gatherBristle(uv)` returns the five NEAREST bristles' ink-weighted
 //  values, averaged IN COEFFICIENT SPACE — the engine's seven absorbance
@@ -857,6 +856,38 @@ uniform float uRimContact;   // §6 rimContact (BRISTLE_RIM_CONTACT 0.45)
 uniform float uHairs;        // §6 hairs (BRISTLE_HAIRS 0.45)
 uniform float uDryEdge;      // §6 dryEdge (BRISTLE_DRY_EDGE 0.35)
 uniform float uLanding;      // §6 paint.landing (BRISTLE_LANDING 1)
+// Post-UAT 2026-11-19 (GAP-4) — the texture tip composes with the gather
+// instead of disabling the engine. uTipMix is 0 for a bristle brush with no
+// textureId, so every recorded untextured bristle stroke keeps its exact
+// law; with a texture tip bound it is 1 and tipMask multiplies the gather's
+// coverage.
+uniform sampler2D uTip;
+uniform float uTipAspect;
+uniform float uTipRotation;
+uniform float uRough;
+uniform float uJitter;
+uniform float uTipMix;
+
+// The tip mask, sampled in the SAME rotated tip space footprintMask
+// (FOOTPRINT_MASK) uses: the aspect squash, the recorded rotation, the
+// per-dab jitter slice keyed on uPoint, and the long roughness ramp (a dry
+// brush re-thresholds the tip). It is a MULTIPLIER on the gather's coverage
+// — the tip says WHERE the dab lands, the gather says HOW MUCH — so the
+// engine and a texture tip compose instead of one replacing the other.
+float tipMask(vec2 uv){
+  vec2 p = uv - uPoint;
+  p.x *= uSheetAspect;
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  q.y /= max(uTipAspect, 1e-3);
+  float a = uTipRotation;
+  vec2 tq = vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
+  float e0 = fract(sin(dot(uPoint, vec2(12.9898, 78.233))) * 43758.5453);
+  float e1 = fract(e0 * 63.7264 + 0.37);
+  vec2 suv = clamp(tq * 0.5 + 0.5 + (vec2(e0, e1) - 0.5) * uJitter, 0.0, 1.0);
+  float t = texture(uTip, suv).r;
+  float th = uRough * 0.45;
+  return smoothstep(th, th + 0.5, t);
+}
 
 // §4.4 — the paper tooth as a threshold, in TWO coordinate systems:
 //  - streaks: brush-local, rotated to the stroke normal — grooves that follow
@@ -966,22 +997,39 @@ Gathered gatherBristle(vec2 uv){
   float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;
   g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
+  // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
+  // untextured law byte-identical: the multiply is never executed).
+  if (uTipMix > 0.0) g.coverage *= tipMask(uv);
   return g;
 }
 `;
 
 // 64-22 — the ink deposit. The gathered coefficients are the carried
-// values ALREADY in the engine's coefficient space; they ride the dab's
-// amount and the gather's coverage and are written ADDITIVELY (the caller
-// blends ONE, ONE into the mobile pigment layer), exactly the law
-// `brushInk` uses. The second attachment's alpha is the dab's scattering
-// S carried per texel by the same coverage — but S itself is the ONE
-// curve's `scatteringDeposit`, computed by the engine and passed as
-// `uScatter`: no fragment re-derives the exponent.
+// values ALREADY in the engine's coefficient space, and the gather's
+// coverage is the reference's `deposit` — the ONE weight of the ONE
+// compositing operation (§1/§3.5: `mix(canvas, carried, deposit)`).
+//
+// Post-UAT 2026-11-19 (GAP-1) — the deposit is a LERP, never a sum. The
+// shipped law ADDED `carried · uAmount · deposit` into the mobile layer on
+// every dab (blend ONE, ONE) while the coverage channel took a UNION of the
+// same dabs. Over the ~100–230 overlapping dabs of a stroke the absorbance
+// coefficients drifted away from the carried colour and the additive
+// scattering S ran away, saturating the Kubelka-Munk reflectance to white
+// — the flat white bars — and the union alpha outran the ink it belonged
+// to — the pale halo. This fragment is one half of the lerp; `uMode` picks
+// which half, and the caller blends each half with the pair named here:
+//
+//   ink <- ink · (1 − a) + carried · a     (mode 1: ZERO, ONE_MINUS_SRC_COLOR)
+//   S   <- S   · (1 − a) + uScatter · a    (mode 0: ONE, ONE)
+//
+// `a = gatherBristle(vUv).coverage` is the same weight in both halves, so
+// the film converges on the paint the bristles actually carry and S is
+// BOUNDED by the ONE curve's `scatteringDeposit` (`uScatter`, computed by
+// the engine — no fragment re-derives the exponent).
 export const bristleDepositFS = `${HEADER}${BRISTLE_GATHER}
-layout(location=0) out vec4 oA;   // absorbance 0..3, premultiplied by the deposit
+layout(location=0) out vec4 oA;   // absorbance 0..3
 layout(location=1) out vec4 oB;   // absorbance 4..6, scattering S
-uniform float uAmount;            // the dab's own pigment amount
+uniform int uMode;                // 1 = the attenuation half, 0 = the carried half
 uniform float uScatter;           // scatteringDeposit(body, amount), the ONE curve
 void main(){
   // The same square cull the stamp uses (an early-out only: coverage can
@@ -991,68 +1039,49 @@ void main(){
   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
   if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;
   Gathered g = gatherBristle(vUv);
-  float deposit = g.coverage;
-  if (deposit <= 1e-3) discard;
-  float amount = uAmount * deposit;
-  oA = g.cA * amount;
-  oB = vec4(g.cB * amount, uScatter * deposit);
+  float a = clamp(g.coverage, 0.0, 1.0);
+  if (a <= 1e-3) discard;
+  if (uMode == 1) {
+    // The attenuation half: the destination becomes dst · (1 − a) through
+    // ZERO, ONE_MINUS_SRC_COLOR. The fragment's own value IS the (1 − a)
+    // factor, so every channel writes a and the blend subtracts it.
+    oA = vec4(a);
+    oB = vec4(a);
+  } else {
+    // The carried half: + carried · a. oB's alpha is the scattering S — the
+    // SAME weight, so the veil lands exactly where the paint does and can
+    // never accumulate past uScatter.
+    oA = g.cA * a;
+    oB = vec4(g.cB * a, uScatter * a);
+  }
 }`;
 
 // 64-22 — the coverage write: the SAME gather's coverage, once per dab.
-// The caller blends it ONE, ONE_MINUS_SRC_ALPHA into the coverage
-// channel, so the channel is the union of the pigment layer's dabs — the
-// compositor's alpha, and the film D-21's Body mask (below) erodes.
+// The caller blends it ONE, ONE_MINUS_SRC_ALPHA into the coverage channel
+// with the gather's own coverage as the weight (`src.a`), so the channel
+// follows `cover <- cover · (1 − a) + T · a` — the SAME lerp the ink and S
+// make, never a union that can outrun the paint beside it.
+//
+// Post-UAT 2026-11-19 (GAP-1) — `T` is the film's target opacity,
+// `uCoverTarget · g.alpha`: Body's opacity (Engine's `bristleBodyAlpha`)
+// times the carried layer alpha. The shipped law wrote the bare coverage,
+// a union that saturated to 1 while the ink stayed faint, and mode 4's
+// `max(darkAlpha, cov)` promoted the alpha past the paint and re-solved a
+// near-white pigment — the pale halo and Body-as-transparency. The erode
+// pass (D-21's Body-mask program) is gone: Body no longer masks paint
+// that already landed, it sets how opaque THIS film is.
 export const bristleCoverFS = `${HEADER}${BRISTLE_GATHER}
 layout(location=0) out vec4 o0;
+uniform float uCoverTarget;       // bristleBodyAlpha · carried alpha
 void main(){
   vec2 p = vUv - uPoint;
   p.x *= uSheetAspect;
   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
   if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;
   Gathered g = gatherBristle(vUv);
-  if (g.coverage <= 1e-3) discard;
-  o0 = vec4(clamp(g.coverage, 0.0, 1.0));
-}`;
-
-// 64-22 (D-21) — the bristle Body mask: `bodyCoverFS`'s twin. Spike 002 left
-// the Body erode on the tip-space footprint mask (FOOTPRINT_MASK) while the
-// deposit read the bristle gather, so at Body > 0 the erode and the paint it
-// hides were two different films — a comb of erases under a brush of paint,
-// and the underlayer showed through the gaps as dried paper. D-21 closes the
-// open design decision by giving the two bristle responses (D-26/D-27) this
-// amendment: the erode mask IS the same `gatherBristle` the deposit reads, so
-// the Body pass can never cover more or less than the paint the same dab
-// lands. A non-bristle response keeps the shipped footprint cover untouched.
-//
-// The law is inherited, never re-invented: the same two outputs, the same
-// `uAmount · mix(m, 1 − exp(−uDensity·m), shape)` switch — shape = 1 the
-// ALPHA-shaped paint law (the caller's uDensity is the medium's per-dab
-// optical density), shape = 0 the DELIVERED LINEAR thickness law with the
-// caller's `coverAmount × RELIEF_ERODE` — with `m` taken from
-// `gatherBristle(vUv).coverage` instead of `footprintMask()`. ONE program,
-// one draw per output target; the coverage channel is never written here
-// (`bristleInk` owns the one coverage write).
-//
-// The switch is named `uShapeLaw`, not `uShape`: the gather's texture helper
-// already binds `uShape` as the shape-texture SAMPLER, and GLSL has one
-// namespace per program — `bodyCoverFS` could call its float `uShape` only
-// because FOOTPRINT_MASK declares no such sampler. The law and the two
-// values (1 then 0) are coverPass's, unchanged.
-export const bristleBodyCoverFS = `${HEADER}${BRISTLE_GATHER}
-layout(location=0) out vec4 o0;
-layout(location=1) out vec4 o1;
-uniform float uAmount, uDensity, uShapeLaw;
-void main(){
-  // The same square cull the deposit and the coverage write use, so all
-  // three fragments agree on where a dab's film ends.
-  vec2 p = vUv - uPoint;
-  p.x *= uSheetAspect;
-  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
-  if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;
-  float m = gatherBristle(vUv).coverage;
-  float f = uAmount * mix(m, 1.0 - exp(-uDensity * m), uShapeLaw);
-  o0 = vec4(f);
-  o1 = vec4(f);
+  float a = clamp(g.coverage, 0.0, 1.0);
+  if (a <= 1e-3) discard;
+  o0 = vec4(a * uCoverTarget * g.alpha, 0.0, 0.0, a);
 }`;
 
 // ============================================================

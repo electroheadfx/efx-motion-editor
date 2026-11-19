@@ -278,7 +278,10 @@ describe('the textured-tip gate (64-16 task 1)', () => {
       expectContains(PROBE, 'function alphaSpread(')
       expectContains(PROBE, 'const bins = new Uint32Array(256)')
       expectContains(PROBE, 'const spread = alphaSpread(pigment, TEXTURED_BOX)')
-      expectContains(PROBE, 'coverAlphaMean: round2(alphaMean(pigment, TEXTURED_BOX)),')
+      // Post-UAT 2026-11-19 (GAP-1): the mean is named once so the film
+      // descriptor can subtract it; the helper call is unchanged.
+      expectContains(PROBE, 'const alpha = alphaMean(pigment, TEXTURED_BOX)')
+      expectContains(PROBE, 'coverAlphaMean: round2(alpha),')
       expectContains(PROBE, 'coverAlphaP10: round2(spread.p10),')
       expectContains(PROBE, 'coverAlphaP90: round2(spread.p90),')
       expectContains(PROBE, 'coverAlphaCoveredFraction: round2(spread.coveredFraction),')

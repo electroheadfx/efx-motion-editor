@@ -582,7 +582,10 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     expectContains(carrier, '${HEADER}${BRISTLE_NOISE}${BRISTLE_TEXTURES}')
   })
 
-  it('deposits the gathered coefficients additively and takes the scatter as a uniform', () => {
+  it('deposits the gathered coefficients as the reference lerp and takes the scatter as a uniform', () => {
+    // Post-UAT 2026-11-19 (GAP-1): the shot law was an additive deposit; the
+    // law is now the reference's ONE operation — mix(canvas, carried, a) —
+    // split in two draws by `uMode` (attenuate, then add the carried half).
     const deposit = sliceBetween(
       SHADERS_SOURCE,
       'export const bristleDepositFS',
@@ -591,24 +594,47 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     expectContains(deposit, '${HEADER}${BRISTLE_GATHER}')
     expectNotContains(deposit, 'pow(')
     expectContains(deposit, 'uniform float uScatter;')
-    expectContains(deposit, 'oA = g.cA * amount;')
-    expectContains(deposit, 'oB = vec4(g.cB * amount, uScatter * deposit);')
+    expectContains(deposit, 'uniform int uMode;')
+    // The attenuation half writes the weight itself; the carried half writes
+    // carried * a, with the scattering S riding the SAME weight.
+    expectContains(deposit, 'oA = vec4(a);')
+    expectContains(deposit, 'oB = vec4(a);')
+    expectContains(deposit, 'oA = g.cA * a;')
+    expectContains(deposit, 'oB = vec4(g.cB * a, uScatter * a);')
+    // The old additive law is gone: no bare `uAmount` multiply remains.
+    expectNotContains(deposit, 'uAmount')
     // Never an RGB average: the gathered value stays in coefficient space.
     expectNotContains(deposit, 'rgb')
-    // The coverage fragment writes the SAME gather's coverage, nothing else.
+    // The coverage fragment writes the SAME gather's coverage, weighted by the
+    // film's target opacity — never the bare union that outran the ink.
     const cover = SHADERS_SOURCE.slice(SHADERS_SOURCE.indexOf('export const bristleCoverFS'))
     expectContains(cover, '${HEADER}${BRISTLE_GATHER}')
-    expectContains(cover, 'o0 = vec4(clamp(g.coverage, 0.0, 1.0));')
+    expectContains(cover, 'uniform float uCoverTarget;')
+    // The carried weight rides src.a (the FOURTH slot) — the blend's
+    // ONE_MINUS_SRC_ALPHA and the lerp both read it there. Written into the
+    // green channel instead (the first cut), src.a stayed 0 and the
+    // destination factor became 1: the channel accumulated additively past
+    // its target and mode 4 re-promoted the alpha over its own paint.
+    expectContains(cover, 'o0 = vec4(a * uCoverTarget * g.alpha, 0.0, 0.0, a);')
   })
 
-  it('wires one ink draw and ONE coverage write per bristle dab', () => {
+  it('wires the two lerp halves, the settled half and ONE coverage write per bristle dab', () => {
     // Slice ends at 64-24's touch stamp: the pass after the deposit reads the
     // coverage channel but writes nothing, so it must stay outside this count.
     const ink = sliceBetween(ENGINE_SOURCE, 'private bristleInk(', 'private bristleTouch(')
     expectContains(ink, 'gl.blendFunc(gl.ONE, gl.ONE);')
     expectContains(ink, 'gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);')
-    expect((ink.match(/this\.ink\.read/g) ?? []).length, 'one ink deposit').toBe(1)
+    expectContains(ink, 'gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
+    // Two ink draws — the attenuation and the carried add — and no more.
+    expect((ink.match(/this\.ink\.read/g) ?? []).length, 'the two lerp halves').toBe(2)
+    // The engine's canvas is ink + fixed: the settled half takes the SAME
+    // attenuation, so an opaque film can displace dried paint.
+    expect((ink.match(/this\.fixed, rect/g) ?? []).length, 'the settled half').toBe(1)
     expect((ink.match(/this\.cover\.read/g) ?? []).length, 'exactly ONE coverage write').toBe(1)
+    // Attenuate before adding: mode 1 writes the weight, mode 0 the carried add.
+    expect(ink.indexOf('gl.uniform1i(d.u.uMode!, 1);'), 'the attenuation comes first').toBeLessThan(
+      ink.indexOf('gl.uniform1i(d.u.uMode!, 0);'),
+    )
     // The dab's rectangle is touched BEFORE any draw (the undo bookkeeping).
     expect(
       ink.indexOf('this.touch('),
@@ -631,7 +657,9 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
     // 64-23: the seventh argument became the dab's cumulative `alongPx` — the
     // §4.4 grain left the call because the gather derives the paper height.
-    expectContains(brush, 'if (bristle) this.bristleInk(dx, dy, dr, angle, amount, pr, c1[3]!, alongPx);')
+    // Post-UAT 2026-11-19 (GAP-1): the fifth argument is Body's film opacity,
+    // not the dab's pigment amount — the deposit is the gather's lerp weight.
+    expectContains(brush, 'if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, pr, c1[3]!, alongPx);')
     expectNotContains(brush, 'Math.pow(')
   })
 
@@ -658,33 +686,28 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
 })
 
 // ============================================================
-//  64-22 (D-21) — the bristle-modulated Body cover.
+//  Post-UAT 2026-11-19 (GAP-1) — Body is the film's OPACITY, not a mask.
 //
-//  Spike 002 left the Body erode on the tip-space footprint mask while the
-//  deposit read the bristle gather; D-21 closes that open decision for the
-//  two bristle responses only. The erode mask IS `gatherBristle(...).coverage`
-//  — the same film the deposit lands — with the two constants inherited
-//  unchanged: the alpha-shaped `1 − exp(−uDensity·m)` paint law (uShape = 1)
-//  and the delivered LINEAR `coverAmount × RELIEF_ERODE` thickness law
-//  (uShape = 0). Every non-bristle response keeps `bodyCoverFS` and
-//  `footprintMask()`, untouched.
+//  D-21 gave the bristle path a second, gather-shaped erode pass
+//  (`bristleBodyCoverFS` / `coverBristlePass`): Body attenuated `fixed` and
+//  `relief` under the dab while the deposit separately added ink. The live
+//  UAT found the result reads as transparency — the cover union saturated
+//  while the ink stayed faint, the compositor's max(darkAlpha, cov) promoted
+//  the alpha and re-solved a near-white pigment, and every bristle stroke
+//  wore a pale halo. The pass is REMOVED: a bristle response has no erode on
+//  this path at all. Body now scales the coverage target inside the ONE
+//  deposit lerp (`bristleBodyAlpha`), the settled pool is attenuated by the
+//  SAME gather weight as the ink (paint replacing paint, Body absent), and
+//  the non-bristle `coverPass` / `bodyCoverFS` path is untouched.
 // ============================================================
 
-describe('64-22 — the bristle Body mask (D-21)', () => {
-  it('builds the Body mask on the shared gather, never on footprintMask', () => {
-    const body = sliceBetween(
-      SHADERS_SOURCE,
-      'export const bristleBodyCoverFS',
-      '// Paper, generated per document',
-    )
-    expectContains(body, '${HEADER}${BRISTLE_GATHER}')
-    expectNotContains(body, 'footprintMask()')
-    expectContains(body, 'float m = gatherBristle(vUv).coverage;')
-    expectContains(body, 'float f = uAmount * mix(m, 1.0 - exp(-uDensity * m), uShapeLaw);')
-    // One factor, two outputs — the same law bodyCoverFS declares.
-    expect((body.match(/= vec4\(f\);/g) ?? []).length, 'one factor, two outputs').toBe(2)
+describe('post-UAT — the bristle Body mask is gone, Body is film opacity', () => {
+  it('deletes the D-21 program and never reintroduces a second erode', () => {
+    expectNotContains(SHADERS_SOURCE, 'bristleBodyCoverFS')
+    expectNotContains(ENGINE_SOURCE, 'bristleBodyCover')
+    expectNotContains(ENGINE_SOURCE, 'coverBristlePass')
     // The shipped footprint twin is untouched: a non-bristle dab still reads
-    // the tip-space mask (the branch below routes it there).
+    // the tip-space mask.
     const shipped = sliceBetween(
       SHADERS_SOURCE,
       'export const bodyCoverFS',
@@ -692,58 +715,62 @@ describe('64-22 — the bristle Body mask (D-21)', () => {
     )
     expectContains(shipped, '${HEADER}${FOOTPRINT_MASK}')
     expectContains(shipped, 'float m = footprintMask();')
+    // The ONE gather snippet now has exactly two program consumers.
+    expect(
+      (SHADERS_SOURCE.match(/export const bristle\w+FS = `\$\{HEADER\}\$\{BRISTLE_GATHER\}/g) ?? []).length,
+      'two consumers: the deposit and the coverage write',
+    ).toBe(2)
   })
 
-  it('erodes fixed alpha-shaped and relief linearly, and never writes coverage', () => {
-    const pass = sliceBetween(ENGINE_SOURCE, 'private coverBristlePass(', 'private coverageDeposit(')
-    expectContains(pass, 'const p = this.programs.bristleBodyCover;')
-    expectContains(pass, 'this.bindGather(p, x, y, r, angle, pr, alongPx);')
-    // The same two draws, the same blend law as coverPass: fixed then relief.
-    expect((pass.match(/g\.draw\(/g) ?? []).length, 'two draws: fixed, then relief').toBe(2)
-    expectContains(pass, 'gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
-    expectContains(pass, 'g.draw(this.fixed, rect);')
-    expectContains(pass, 'g.draw(this.relief, rect);')
-    expect(pass.indexOf('g.draw(this.fixed, rect);'), 'fixed erodes first').toBeLessThan(
-      pass.indexOf('g.draw(this.relief, rect);'),
+  it('maps Body to a linear film opacity with a floor that keeps Body 0 painting', () => {
+    expectContains(ENGINE_SOURCE, 'const BRISTLE_BODY_ALPHA_FLOOR = 0.5;')
+    expectContains(
+      ENGINE_SOURCE,
+      'BRISTLE_BODY_ALPHA_FLOOR + (1 - BRISTLE_BODY_ALPHA_FLOOR) * clamp(P.body, 0, 1)',
     )
-    // uShapeLaw = 1 (the paint's alpha-shaped law), then 0 (the delivered
-    // LINEAR thickness law) — inherited from coverPass, never re-invented.
-    // (Named uShapeLaw because the gather binds `uShape` as its sampler.)
-    expectContains(pass, 'gl.uniform1f(p.u.uShapeLaw, 1);')
-    expectContains(pass, 'gl.uniform1f(p.u.uShapeLaw, 0);')
-    // The coverage channel is NOT written here: bristleInk owns the one write.
-    expectNotContains(pass, 'this.cover.read')
-    expectNotContains(pass, 'this.cover.write')
-    expectContains(ENGINE_SOURCE, 'this.programs.bristleBodyCover = this.g.program(S.bristleBodyCoverFS);')
-  })
-
-  it('branches the stamp cover on the bristle predicate and keeps the undo block in place', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expectContains(brush, 'const bristleBodyAlpha = bristle')
+    // The non-bristle order curve keeps the sixth power — untouched.
+    expectContains(brush, 'const coverAmount = Math.min(1, bodyCurve(P.body) * COVER_GAIN);')
+  })
+
+  it('gates the ship cover pass off the bristle path and keeps the undo block in place', () => {
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expectContains(brush, 'if (coverAmount > 0 && !bristle) {')
     expectContains(
       brush,
-      'if (bristle) this.coverBristlePass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, pr, alongPx);',
+      'this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);',
     )
-    expectContains(
-      brush,
-      'else this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);',
-    )
-    // The erode's undo coverage stays exactly where it was: once per stamp,
-    // before eachDab's first cover draw.
+    // The undo coverage moves WITH the write: the settled pool is now reached
+    // by the bristle lerp too, so the protect block covers both paths and
+    // still runs once per stamp, before eachDab's first draw.
     const protectAt = brush.indexOf('this.history.protect(1,')
     const dabAt = brush.indexOf('this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {')
     expect(protectAt, 'the protect block survives').toBeGreaterThan(-1)
     expect(protectAt, 'the protect precedes every dab').toBeLessThan(dabAt)
+    expectContains(brush, 'if (coverAmount > 0 || bristle) {')
     expectContains(brush, 'const coverRect = this.stampRect(')
-    // Order inside eachDab: carrier -> cover -> deposit, as before.
+    // Order inside eachDab: carrier -> (cover, non-bristle only) -> deposit.
     const dab = sliceBetween(brush, 'this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {', '});')
     const carrierAt = dab.indexOf('this.carrierPass(')
-    const coverAt = dab.indexOf('this.coverBristlePass(')
+    const coverAt = dab.indexOf('this.coverPass(')
     const depositAt = dab.indexOf('this.bristleInk(')
     expect(carrierAt, 'the carrier runs first').toBeGreaterThan(-1)
     expect(coverAt, 'the cover branch runs inside eachDab').toBeGreaterThan(-1)
     expect(depositAt, 'the deposit runs inside eachDab').toBeGreaterThan(-1)
     expect(carrierAt, 'carrier before cover').toBeLessThan(coverAt)
     expect(coverAt, 'cover before deposit').toBeLessThan(depositAt)
+  })
+
+  it('composes a texture tip with the gather instead of disabling the engine (GAP-4)', () => {
+    expectContains(SHADERS_SOURCE, 'uniform sampler2D uTip;')
+    expectContains(SHADERS_SOURCE, 'uniform float uTipMix;')
+    expectContains(SHADERS_SOURCE, 'float tipMask(vec2 uv){')
+    // The tip BOUNDS where the dab lands; it never replaces the gather.
+    expectContains(SHADERS_SOURCE, 'if (uTipMix > 0.0) g.coverage *= tipMask(uv);')
+    // An untextured bristle brush keeps its exact law: mix(1, tip, 0) == 1.
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uTipMix!, this.brush.textureId != null ? 1 : 0);')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1i(p.u.uTip!, g.bindTex(4, this.tipTexture(this.brush)));')
   })
 
   it('keeps the pinned program and allocation counts', () => {
@@ -755,7 +782,7 @@ describe('64-22 — the bristle Body mask (D-21)', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'fourteen allocations: the bristle Body mask adds no render target; 64-24 adds the documented R32F last-touch pair',
+      'fourteen allocations: removing the Body mask removes no render target; 64-24 keeps the documented R32F last-touch pair',
     ).toBe(14)
   })
 })
