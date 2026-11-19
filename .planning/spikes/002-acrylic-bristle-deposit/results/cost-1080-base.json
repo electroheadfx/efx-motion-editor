@@ -1,0 +1,92 @@
+{
+  "gate": "cost-1080-base",
+  "engine": "baseline",
+  "scenario": "watercolor-50",
+  "brush": "round",
+  "sizeParam": 12,
+  "sheet": 1080,
+  "touch": false,
+  "salt": 0,
+  "renderer": "WebKit WebGL",
+  "runA": {
+    "digests": {
+      "paper": "2b4a86d7",
+      "transparent": "7f56e401",
+      "white": "bc74be59",
+      "pigment": "432f3a3f"
+    },
+    "bakeMs": 850,
+    "renderMs": 77,
+    "paintedPct": 7.5,
+    "regions": {
+      "crossing": {
+        "r": 54.8718226068145,
+        "g": 0,
+        "b": 0.15062195781503515,
+        "luma": 18.34081485487651
+      },
+      "redOwn": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      },
+      "lightOwn": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      },
+      "paper": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      }
+    },
+    "bristleDigest": null,
+    "bristleInfo": null
+  },
+  "runB": {
+    "digests": {
+      "paper": "2b4a86d7",
+      "transparent": "7f56e401",
+      "white": "bc74be59",
+      "pigment": "432f3a3f"
+    },
+    "bakeMs": 837,
+    "renderMs": 75,
+    "paintedPct": 7.5,
+    "regions": {
+      "crossing": {
+        "r": 54.8718226068145,
+        "g": 0,
+        "b": 0.15062195781503515,
+        "luma": 18.34081485487651
+      },
+      "redOwn": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      },
+      "lightOwn": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      },
+      "paper": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      }
+    },
+    "bristleDigest": null,
+    "bristleInfo": null
+  },
+  "identicalImages": true,
+  "identicalBristles": false,
+  "verdict": "SPIKE-002 CAPTURED"
+}
