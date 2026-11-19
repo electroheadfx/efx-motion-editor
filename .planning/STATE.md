@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-22-PLAN.md
-last_updated: "2026-11-19T13:48:55.114Z"
+stopped_at: Completed 64-23-PLAN.md
+last_updated: "2026-11-19T14:23:09.843Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 64 execution started
-state_head: 22a169c5a35be0845981911e6849da504bf9642f
+state_head: ee8696905ff968e6f562063646e4c761563f05c7
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 41
-  completed_plans: 39
+  completed_plans: 40
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 23 of 24
+Plan: 24 of 24
 Status: Ready to execute
 Last activity: 2026-11-19 — Phase 64 execution started
 
@@ -166,6 +166,7 @@ Last activity: 2026-11-19 — Phase 64 execution started
 | Phase 64 P64-19 | 12min | 2 tasks | 10 files |
 | Phase 64 P21 | 13min | 3 tasks | 20 files |
 | Phase 64 P22 | 13min | 3 tasks | 18 files |
+| Phase 64 P23 | 26min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -554,6 +555,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: 64-22: the gather deposit averages the five nearest bristles' carried absorbance coefficients (never RGB), writes coverage exactly once, and erodes Body through the same gather — Body 0 byte-identical, all nine identity gates reproduce.
 - [Phase 64]: 64-22: the Body mask's switch is uShapeLaw because the gather binds uShape as its shape-texture sampler; fixed/relief keep the shipped alpha-shaped and LINEAR laws unchanged.
 - [Phase 64]: 64-22: Feather, Pickup and Refill are canonical, recorded and shown as Paint-tab rows; wetSeconds rides the record with no row because the panel's x100 reset would corrupt a seconds value.
+- [Phase 64]: The bristle-edge census measures the transparent export's deposited darkness (1 - min(rgb) = the engine's darkAlpha), not the mode-4 pigment alpha: the coverage channel is the source-over union of 100+ dabs and saturates, so the alpha edge is a 0.8 px silhouette at every Feather (measured 0.8 px at Feather 0 and 100) while the film edge responds to D-22's feather band (measured 20.25 px -> 25.11 px at 1080²)
+- [Phase 64]: A dash-gap station (the 4.3 dryness breakup) is recorded in edgeSkippedStations, never in edgeFailures: a dash is the trace law working, not a degenerate capture; a blank film and a station with fewer than three crossings stay named failures
+- [Phase 64]: The plan's 0.2 plateau guard was calibrated for the saturated alpha field; on the film's darkness a real light-wash stroke reads 0.13-0.16, so the blank-film guard is EDGE_MIN_PLATEAU = 0.02 (a blank render is 0)
 
 ### Pending Todos
 
@@ -681,8 +685,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-19T13:48:53.611Z
-Stopped at: Completed 64-22-PLAN.md
+Last session: 2026-11-19T14:23:08.326Z
+Stopped at: Completed 64-23-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
