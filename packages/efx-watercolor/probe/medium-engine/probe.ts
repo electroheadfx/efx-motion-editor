@@ -168,9 +168,24 @@
 //  half-width — so a non-directional (perfectly smooth) edge and a
 //  feather-blind edge both fail.
 //
+//  64-24 adds `bristle-wet` — the wetness acceptance on ONE sheet and ONE
+//  brush: two identical light bands, the LEFT one aged thirty virtual seconds
+//  and re-wetted by a `water` swash (which touches neither the coverage
+//  channel nor the last-touch field), the RIGHT one painted fresh after that
+//  advance, then one dark crossing stroke over both. Two readings, as mean
+//  film darkness on the TRANSPARENT export (255 − mean RGB luma — the field
+//  64-23's census measured on): `pickupFreshMean` over the right band's
+//  crossing region and `pickupAgedWetMean` over the left. A fresh crossing
+//  picks the underlayer's pigment into its carrier and lays that instead of
+//  its own palette; a thirty-second-old one has nothing to give. compare.mjs
+//  gates only the RELATION facts (both finite and positive, both in range,
+//  |fresh − aged| >= 1 luma); the direction is recorded evidence. The
+//  `wetMode` operand selects the A/B: 1 is the shipped timestamp law, 0 is
+//  64-21's `wet × coverage` proxy, the control.
+//
 //  Scenarios: neutral | cover | cover-over-wet | watercolor-50 | white-over-blue
 //           | cover-advect | cover-lift | cover-textured | red-over-blue-50
-//           | bristle-edge.
+//           | bristle-edge | bristle-wet.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -594,8 +609,15 @@ interface ScriptEntry {
    *  Omitted fixes after the settle, exactly as before. */
   readonly fixAfter?: boolean
   /** 64-14: run this entry as a LIFT stroke instead of a brush stroke (the
-   *  standard bag already carries the lift strength). Omitted stays 'brush'. */
-  readonly tool?: 'lift'
+   *  standard bag already carries the lift strength). Omitted stays 'brush'.
+   *  64-24 adds `water`: the wetness acceptance's re-wetting swash, which
+   *  writes only the wet channel — never coverage, never the last touch. */
+  readonly tool?: 'lift' | 'water'
+  /** 64-24: advance the VIRTUAL clock by this many ms BEFORE the entry is
+   *  driven — no simulation tick, no render, so the sheet's age moves while
+   *  its fluid state does not. The only deterministic way to age one band of
+   *  a sheet; omitted entries leave the clock exactly where it was. */
+  readonly advanceClockMs?: number
   /** 64-14: a mid-run cover-alpha reading on the crossing box. 'advect'
    *  captures before a run of ADVECT_TICKS extra wet ticks and again after
    *  them (the entry must also carry `fixAfter: false`); 'beforeLift' and
@@ -1288,6 +1310,109 @@ function bristleEdgeMetrics(sheet: HTMLCanvasElement): Record<string, number | s
   }
 }
 
+// --- 64-24 the bristle-wet acceptance ----------------------------------------
+// Acceptance ask #3 (`better-acrylic.md`): "acrylic/water with a Dry that stops
+// the mixing", on ONE sheet with ONE brush and two ages.
+//
+// The geometry: two identical LIGHT bands (#dddddd — the census's proven
+// light wash, chosen so the crossing's deposit is legible instead of floored
+// near the paper's black limit), one per half of the sheet, and one DARK
+// crossing stroke (#111111) over both at y = 0.5. The left band is painted at
+// t ≈ 0; a `tool: 'water'` swash then carries `advanceClockMs: 30000`, so the
+// clock jumps thirty virtual seconds with NO simulation tick and the swash
+// re-wets the band WITHOUT touching its last-touch field (the water case in
+// the engine writes only the wet channel). The right band is painted after
+// that advance, so it is genuinely fresh when the crossing arrives.
+//
+// What the crossing reads: each dab's carrier asks `exp(-age / wetSeconds) ×
+// coverage` at its tap. Over the fresh right band the age is a fraction of a
+// second, so the carrier picks the light band into its reservoirs and lays
+// THAT instead of its own dark palette — the crossing's track over the band
+// stays pale (mixing). Over the aged left band `exp(-30 / 7)` ≈ 0.014, so the
+// carrier keeps its palette and the track reads dark (no mixing). The
+// difference is `|pickupFreshMean - pickupAgedWetMean|`; compare.mjs gates
+// the relation, the direction is recorded evidence.
+//
+// The measured field is the TRANSPARENT export's film darkness (`255 − mean
+// RGB luma`, bandPigment — the same machinery every region gate uses), not
+// the mode-4 pigment alpha: at Body 0 the alpha is the darkness conversion,
+// and the film is what the eye sees. The boxes are tight windows on each
+// band ∩ crossing core, symmetric between the halves.
+const WET_BAND_COLOR = '#dddddd'
+const WET_CROSS_COLOR = '#111111'
+const WET_LEFT_X = 0.3
+const WET_RIGHT_X = 0.7
+const WET_CROSS_Y = 0.5
+/** The acceptance's declared age: thirty virtual seconds, above every tack
+ *  time the phase ships (the §6 default is 7 s, D-25's acrylic is 12 s). */
+const WET_AGE_MS = 30000
+
+/** One vertical stroke line at x, the twin of `horizontalLine(y)`. */
+function verticalLine(x: number): readonly AquarellePoint[] {
+  return [
+    { x, y: 0.2, p: 0.75, tx: 0, ty: 0, tw: 0 },
+    { x: x + 0.002, y: 0.5, p: 0.75, tx: 0, ty: 0, tw: 0 },
+    { x, y: 0.8, p: 0.75, tx: 0, ty: 0, tw: 0 },
+  ]
+}
+
+/** The two crossing regions: one window per band, centred on the crossing. */
+const BRISTLE_WET_BOXES: Readonly<Record<'agedWet' | 'fresh', BandBox>> = {
+  agedWet: { x0: 0.29, y0: 0.488, x1: 0.31, y1: 0.512 },
+  fresh: { x0: 0.69, y0: 0.488, x1: 0.71, y1: 0.512 },
+}
+
+/**
+ * 64-24: the four-entry acceptance script — left band, clock advance + water
+ * swash, right band, crossing. The order is load-bearing: the clock only ever
+ * moves forward, so the right band is still fresh when the crossing paints,
+ * and the crossing walks left-to-right, meeting the aged band first.
+ */
+function bristleWetScript(): readonly ScriptEntry[] {
+  return [
+    {
+      color: WET_BAND_COLOR,
+      points: verticalLine(WET_LEFT_X),
+      mutationId: 0x7ee300,
+      body: 0,
+      brushId: 'bristle-flat',
+    },
+    {
+      color: WET_BAND_COLOR,
+      points: verticalLine(WET_LEFT_X),
+      mutationId: 0x7ee301,
+      tool: 'water',
+      advanceClockMs: WET_AGE_MS,
+    },
+    {
+      color: WET_BAND_COLOR,
+      points: verticalLine(WET_RIGHT_X),
+      mutationId: 0x7ee302,
+      body: 0,
+      brushId: 'bristle-flat',
+    },
+    {
+      color: WET_CROSS_COLOR,
+      points: horizontalLine(WET_CROSS_Y),
+      mutationId: 0x7ee303,
+      body: 0,
+      brushId: 'bristle-flat',
+    },
+  ]
+}
+
+/**
+ * 64-24: the acceptance's two readings, both on the transparent export's film
+ * darkness (0..255; 0 is bare paper). Only the relation between them is
+ * gated; both numbers are recorded.
+ */
+function bristleWetMetrics(transparent: HTMLCanvasElement): Record<string, number> {
+  return {
+    pickupFreshMean: round2(bandPigment(transparent, BRISTLE_WET_BOXES.fresh)),
+    pickupAgedWetMean: round2(bandPigment(transparent, BRISTLE_WET_BOXES.agedWet)),
+  }
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -1331,6 +1456,7 @@ function run(
   emboss?: number,
   body?: number,
   light?: number,
+  wetMode: 0 | 1 = 1,
 ): void {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
   // 64-16: the resolved brush — the operand when given, `chalk` as the
@@ -1356,7 +1482,9 @@ function run(
                     ? redOverBlueScript(body ?? 100)
                     : scenario === 'bristle-edge'
                       ? bristleEdgeScript()
-                      : neutralScript(emboss, body)
+                      : scenario === 'bristle-wet'
+                        ? bristleWetScript()
+                        : neutralScript(emboss, body)
 
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
@@ -1370,6 +1498,11 @@ function run(
     }),
   )
 
+  // 64-24: the §3.4 A/B mode is engine state, written BEFORE the first stroke
+  // so every carrier pass of the script reads the same law. 1 is the shipped
+  // timestamp gate; 0 is 64-21's proxy, the recorded control.
+  adapter.setLastTouchMode(wetMode)
+
   try {
     const engine = capturedEngine
     if (engine === null) throw new Error('probe never captured the adapter engine (setManual tap missed)')
@@ -1382,6 +1515,11 @@ function run(
     let captureMs = 0
     const coverLifecycle: Record<string, number> = {}
     script.forEach((entry, index) => {
+      // 64-24: the acceptance's clock-only age — the virtual clock moves, the
+      // fluid does not, so "thirty seconds old" and "just re-wetted" are
+      // independent facts. Applied BEFORE the entry, so the entry's own dabs
+      // read (and stamp) the advanced time.
+      if (entry.advanceClockMs !== undefined) adapter.advanceClock(entry.advanceClockMs)
       adapter.applyStroke(makeStroke(entry))
       // 64-17: per-entry settle (ticks 0..settle, default SETTLE_TICKS); the
       // rapid entries of the 50-stroke passage settle in ONE tick each.
@@ -1496,6 +1634,11 @@ function run(
     const bristleEdgeReport =
       scenario === 'bristle-edge' ? bristleEdgeMetrics(transparentCanvas) : {}
 
+    // 64-24: the wetness acceptance's two readings, only for its scenario, so
+    // every other report shape is unchanged.
+    const bristleWetReport =
+      scenario === 'bristle-wet' ? bristleWetMetrics(transparentCanvas) : {}
+
     writeResult({
       gate,
       scenario,
@@ -1503,6 +1646,7 @@ function run(
       emboss: emboss ?? null,
       body: body ?? null,
       light: light ?? null,
+      wetMode,
       bakeMs,
       renderMs,
       width: sheet,
@@ -1517,6 +1661,7 @@ function run(
       ...coverTexturedReport,
       ...redOverBlueReport,
       ...bristleEdgeReport,
+      ...bristleWetReport,
       ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
@@ -1579,19 +1724,33 @@ function readBrush(): string | undefined {
  *  64-17 adds `watercolor-50` and `white-over-blue`; 64-14 adds
  *  `cover-advect`; 64-16 adds `cover-textured` (task 1) and `red-over-blue-50`
  *  (task 2's scenario, declared now so the two closed lists cannot drift).
- *  64-23 adds `bristle-edge`, the directional-edge census.
+ *  64-23 adds `bristle-edge`, the directional-edge census; 64-24 adds
+ *  `bristle-wet`, the wetness acceptance.
  *  The closed list here and the one in run.mjs must stay literal-identical:
  *  a name accepted by the parser but unknown to the probe fails at capture,
  *  and a name the probe knows but the parser rejects can never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50" or "bristle-edge")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge" or "bristle-wet")`,
     )
   }
   return raw
+}
+
+/** 64-24: the §3.4 A/B mode — absent keeps 1 (the shipped timestamp law); 0
+ *  selects 64-21's `wet × coverage` proxy, the recorded control of a capture
+ *  comparison. Anything else throws: an unknown mode must never be mistaken
+ *  for the shipped one. */
+function readWetMode(): 0 | 1 {
+  const raw = new URLSearchParams(location.search).get('wetMode')
+  if (raw === null || raw === '') return 1
+  if (raw !== '0' && raw !== '1') {
+    throw new Error(`invalid wetMode "${raw}" (expected 0 or 1)`)
+  }
+  return raw === '0' ? 0 : 1
 }
 
 /** 64-10: the square-sheet knob — absent keeps the phase-default 256 sheet. */
@@ -1614,6 +1773,7 @@ function main(): void {
   let emboss: number | undefined
   let body: number | undefined
   let light: number | undefined
+  let wetMode: 0 | 1 = 1
   try {
     scenario = readScenario()
     sheet = readSize()
@@ -1621,8 +1781,9 @@ function main(): void {
     emboss = readEmboss()
     body = readBody()
     light = readLight()
+    wetMode = readWetMode()
     renderer = probeRenderer()
-    run(gate, renderer, scenario, sheet, brush, emboss, body, light)
+    run(gate, renderer, scenario, sheet, brush, emboss, body, light, wetMode)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     writeResult({
@@ -1632,6 +1793,7 @@ function main(): void {
       emboss: emboss ?? null,
       body: body ?? null,
       light: light ?? null,
+      wetMode,
       bakeMs: null,
       renderMs: null,
       width: sheet,

@@ -223,6 +223,21 @@ export function createAquarelleEngineAdapter(
    * replay. The per-frame re-pattern bake calls this between output frames.
    */
   resetSheet(): void
+  /**
+   * 64-24 (D-24): clock-only advance — adds `ms` to the virtual clock with NO
+   * simulation tick and no render, so a bake can age one region of its sheet
+   * deterministically (a wetness acceptance's "thirty seconds later"). Unlike
+   * `skipTicks` this is NOT the per-tick law: it exists precisely to move time
+   * without moving the fluid. TEST-ONLY — the app never calls it.
+   */
+  advanceClock(ms: number): void
+  /**
+   * 64-24 (D-24): the §3.4 A/B seam — 1 (the shipped timestamp law, the
+   * default) or 0 (64-21's `wet × coverage` proxy, retained only as the
+   * recorded control). Compare-then-write, exactly like the engine's own
+   * `setLastTouchMode`. TEST-ONLY — the app never calls it.
+   */
+  setLastTouchMode(mode: 0 | 1): void
 } {
   const engineId: EngineId = 'efx-watercolor'
   const strokes: StudioStroke<AquarelleStrokePayload>[] = []
@@ -471,6 +486,21 @@ export function createAquarelleEngineAdapter(
       strokes.length = 0
       // Same construction-time stream: the sheet is constant across replays.
       engine.setRandom(seededRandom(1))
+    },
+    // 64-24 (D-24): clock-only advance for the wetness acceptance. The guard
+    // is the direction law — the virtual clock never moves backwards — and a
+    // disposed adapter's clock never drifts. No tick, no render: the fluid
+    // state is untouched, which is what makes "thirty seconds older" and
+    // "just re-wetted" two INDEPENDENT facts.
+    advanceClock(ms: number): void {
+      if (disposed || !engine) return
+      if (!Number.isFinite(ms) || ms <= 0) return
+      advanceClock(ms)
+    },
+    // 64-24 (D-24): the recorded A/B seam. 0 selects 64-21's proxy as the
+    // CONTROL of a capture comparison; nothing in the app ever writes it.
+    setLastTouchMode(mode: 0 | 1): void {
+      engine?.setLastTouchMode(mode)
     },
     // The 56-06 codec covers the one payload union (strokes + Dry).
     // The host EngineAdapter type is stroke-shaped because the host

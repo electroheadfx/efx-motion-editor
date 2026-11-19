@@ -1,0 +1,22 @@
+{
+  "gate": "bristle-wet-1080",
+  "scenario": "bristle-wet",
+  "brush": null,
+  "emboss": null,
+  "body": null,
+  "light": null,
+  "wetMode": 1,
+  "bakeMs": 190,
+  "renderMs": 178,
+  "width": 1080,
+  "height": 1080,
+  "digestPaper": "e083b0e3",
+  "digestTransparent": "4ff81f59",
+  "digestWhite": "c0aa7289",
+  "digestPigment": "0569bcdc",
+  "byteLength": 4665600,
+  "pickupFreshMean": 50.64,
+  "pickupAgedWetMean": 250.16,
+  "renderer": "WebKit WebGL",
+  "verdict": "MEDIUM-ENGINE CAPTURED"
+}

@@ -68,10 +68,10 @@ describe('medium records', () => {
     }
   })
 
-  // 64-22: the four new keys state the §6 defaults on every record — a
-  // medium-specific value needs its own measured decision (acrylic's
-  // water/bleed/flow retune is D-25's, in 64-24). The committed ten numbers
-  // are restated unchanged.
+  // 64-22: the four new keys state the §6 defaults on every record.
+  // 64-24 (D-25): the acrylic record carries the retune — Water 26, Bleed 22,
+  // Flow 60 and its own tack time (wetSeconds 12). The four other literals
+  // are the "no committed number moved" companions.
   it('matches the amendment table numbers plus the §6 defaults', () => {
     expect(recordOf('watercolor').params).toEqual({
       water: 50,
@@ -138,10 +138,10 @@ describe('medium records', () => {
       wetSeconds: 7,
     })
     expect(recordOf('acrylic').params).toEqual({
-      water: 8,
+      water: 26,
       load: 100,
-      flow: 50,
-      bleed: 10,
+      flow: 60,
+      bleed: 22,
       dry: 70,
       edge: 65,
       granulation: 25,
@@ -151,8 +151,36 @@ describe('medium records', () => {
       feather: 0,
       pickup: 60,
       refill: 60,
-      wetSeconds: 7,
+      wetSeconds: 12,
     })
+  })
+
+  // 64-24 (D-25): the retune, as arithmetic — the three transport knobs moved
+  // UP from the shipped numbers (more Water widens the fluid transport into a
+  // flowing, slightly irregular edge), and the tack time sits ABOVE the §6
+  // default of 7 s, so the D-24 gate has a medium that keeps giving up paint
+  // longer than the neutral default. Every other number is restated above.
+  it('carries the D-25 retune arithmetic on the acrylic record', () => {
+    const acrylic = recordOf('acrylic').params
+    expect(acrylic.water).toBeGreaterThan(8)
+    expect(acrylic.bleed).toBeGreaterThan(10)
+    expect(acrylic.flow).toBeGreaterThan(50)
+    expect(acrylic.wetSeconds).toBeGreaterThan(DEFAULT_CANONICAL_PARAMS.wetSeconds)
+    expect(DEFAULT_CANONICAL_PARAMS.wetSeconds).toBe(7)
+    // The retune is numbers only: the ten shipped keys it does NOT touch hold
+    // their shipped values, exactly as the four companion literals assert.
+    expect(acrylic.load).toBe(100)
+    expect(acrylic.dry).toBe(70)
+    expect(acrylic.edge).toBe(65)
+    expect(acrylic.granulation).toBe(25)
+    expect(acrylic.viscosity).toBe(90)
+    expect(acrylic.body).toBe(85)
+    expect(acrylic.emboss).toBe(40)
+    expect(acrylic.pickup).toBe(60)
+    expect(acrylic.refill).toBe(60)
+    // No `feather` expression is added by the retune: D-22's Feather half is
+    // discharged by composition through the existing softness band (D-25).
+    expect(acrylic.feather).toBe(0)
   })
 
   it('derives the watercolor record from the canonical defaults', () => {

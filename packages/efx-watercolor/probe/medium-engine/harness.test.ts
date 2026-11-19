@@ -307,14 +307,14 @@ describe('the textured-tip gate (64-16 task 1)', () => {
   })
 
   describe('both closed scenario lists accept the new names', () => {
-    it('lists cover-textured, red-over-blue-50 and bristle-edge in probe.ts and run.mjs', () => {
+    it('lists cover-textured, red-over-blue-50, bristle-edge and bristle-wet in probe.ts and run.mjs', () => {
       expectContains(
         PROBE,
-        "raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge'",
+        "raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge' && raw !== 'bristle-wet'",
       )
       expectContains(
         RUN,
-        "scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge'",
+        "scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet'",
       )
     })
   })
@@ -471,6 +471,84 @@ describe('the bristle-edge census (64-23)', () => {
       expectContains(COMPARE, 'data.edgeVariationPxFeather100 > 0')
       expectContains(COMPARE, 'data.edgeSoftnessPxFeather100 < data.edgeHalfWidthPx')
       expectContains(COMPARE, 'Array.isArray(data.edgeFailures)')
+    })
+  })
+})
+
+// Laws pinned here (64-24):
+//  20. `bristle-wet` is ONE sheet with ONE brush and two ages: identical light
+//      bands on the left and right halves, a `water` swash on the left that
+//      carries `advanceClockMs: 30000` (a clock-only advance — the entry's
+//      field is applied BEFORE the entry is driven), the right band painted
+//      after it, then one dark crossing stroke over both.
+//  21. The report carries `pickupFreshMean` / `pickupAgedWetMean` as mean film
+//      darkness on the TRANSPARENT export through the shared box machinery,
+//      plus the capture's `wetMode`.
+//  22. compare.mjs dispatches `bristle-wet` to its relation invariants in
+//      every mode: both means finite and positive, both inside [0, 255], and
+//      a gap of at least PICKUP_MIN_DELTA luma — never a direction.
+//  23. `--wet-mode <0|1>` reaches the adapter's `setLastTouchMode` in both
+//      closed lists (run.mjs parses and forwards it, probe.ts validates and
+//      applies it before the first stroke), defaulting to 1.
+describe('the bristle-wet acceptance (64-24)', () => {
+  describe('the scenario is two ages on one sheet', () => {
+    it('paints identical light bands left and right, the left one aged', () => {
+      expectContains(PROBE, 'function bristleWetScript(): readonly ScriptEntry[] {')
+      expectContains(PROBE, 'function verticalLine(x: number): readonly AquarellePoint[] {')
+      expectContains(PROBE, 'const WET_BAND_COLOR = ')
+      expectContains(PROBE, 'const WET_CROSS_COLOR = ')
+      expectContains(PROBE, 'mutationId: 0x7ee300,')
+      expectContains(PROBE, 'mutationId: 0x7ee301,')
+      expectContains(PROBE, 'mutationId: 0x7ee302,')
+      expectContains(PROBE, 'mutationId: 0x7ee303,')
+      expectContains(PROBE, 'const WET_AGE_MS = 30000')
+      expectContains(PROBE, "tool: 'water',")
+      expectContains(PROBE, 'advanceClockMs: WET_AGE_MS,')
+      expectContains(PROBE, "brushId: 'bristle-flat',")
+    })
+
+    it('applies the clock-only advance before the entry is driven', () => {
+      expectContains(PROBE, 'readonly advanceClockMs?: number')
+      expectContains(PROBE, 'if (entry.advanceClockMs !== undefined) adapter.advanceClock(entry.advanceClockMs)')
+      expectContains(PROBE, "scenario === 'bristle-wet'")
+      expectContains(PROBE, 'bristleWetScript()')
+    })
+  })
+
+  describe('the report carries the two pickup readings', () => {
+    it('measures both crossing regions on the transparent film', () => {
+      expectContains(PROBE, 'function bristleWetMetrics(transparent: HTMLCanvasElement)')
+      expectContains(PROBE, 'pickupFreshMean: round2(bandPigment(transparent, BRISTLE_WET_BOXES.fresh)),')
+      expectContains(PROBE, 'pickupAgedWetMean: round2(bandPigment(transparent, BRISTLE_WET_BOXES.agedWet)),')
+      expectContains(PROBE, 'bristleWetMetrics(transparentCanvas)')
+      expectContains(PROBE, 'wetMode,')
+    })
+  })
+
+  describe('the comparator gates the relation, never the direction', () => {
+    it('maps bristle-wet to its failure function and the delta bar', () => {
+      expectContains(COMPARE, "'bristle-wet': bristleWetFailures,")
+      expectContains(COMPARE, 'function bristleWetFailures(data) {')
+      expectContains(COMPARE, 'const PICKUP_MIN_DELTA = 1')
+      expectContains(COMPARE, 'Math.abs(fresh - aged) >= PICKUP_MIN_DELTA')
+      expectContains(COMPARE, 'fresh > 0')
+      expectContains(COMPARE, 'aged > 0')
+      expectContains(COMPARE, 'fresh < 0 || fresh > 255')
+      expectContains(COMPARE, 'aged < 0 || aged > 255')
+    })
+  })
+
+  describe('the wet-mode operand is the recorded A/B control', () => {
+    it('parses --wet-mode in run.mjs and forwards it to the page', () => {
+      expectContains(RUN, "const wetModeFlag = args.indexOf('--wet-mode')")
+      expectContains(RUN, 'expected 0 or 1')
+      expectContains(RUN, '`&wetMode=${wetMode}`')
+    })
+
+    it('validates it in probe.ts and applies it before the first stroke', () => {
+      expectContains(PROBE, 'function readWetMode(): 0 | 1 {')
+      expectContains(PROBE, 'invalid wetMode "${raw}" (expected 0 or 1)')
+      expectContains(PROBE, 'adapter.setLastTouchMode(wetMode)')
     })
   })
 })

@@ -98,6 +98,19 @@
 //  gates the relation facts (D-22's direction, non-zero variation, width
 //  inside the stroke) in every mode.
 //
+//  64-24 adds `--scenario bristle-wet` — the wetness acceptance on one sheet
+//  and one brush: two identical light bands, the LEFT one aged thirty virtual
+//  seconds (a `water` swash carries the clock-only advance and re-wets it
+//  without touching its last touch), the RIGHT one fresh, then one dark
+//  crossing stroke over both. The report carries `pickupFreshMean` and
+//  `pickupAgedWetMean` (mean film darkness on the transparent export over each
+//  band's crossing region) and the capture's `wetMode`; compare.mjs gates the
+//  relation facts only.
+//  64-24 also adds `--wet-mode <0|1>` (default 1): the recorded A/B control —
+//  1 is the shipped §3.4 timestamp law, 0 is 64-21's `wet × coverage` proxy.
+//  The A/B proof is `compare.mjs <gate> --differs-from <proxyGate>`; the proxy
+//  capture is never committed as a baseline.
+//
 //  Final flag contract (later phases inherit it, do not retype it):
 //    run.mjs --gate <name>            required; [A-Za-z0-9._-]+, names the JSON
 //             [--scenario cover]      omitted renders the plan-01 single stroke
@@ -117,12 +130,16 @@
 //                                     the criterion-2 red-over-blue crossing
 //             [--scenario bristle-edge]
 //                                     two Feather-0/100 strokes, edge census
+//             [--scenario bristle-wet]
+//                                     two ages on one sheet; pickup readings
 //             [--emboss <0..100>]     omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
 //             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
 //             [--size <32..4096>]     omitted keeps the 256 square
 //             [--brush <id>]          omitted keeps the entry default (round;
 //                                     cover-textured defaults to chalk)
+//             [--wet-mode <0|1>]      omitted keeps 1 (the shipped §3.4
+//                                     timestamp law); 0 is the A/B proxy
 //    compare.mjs <gate>               committed-baseline equality (7 fields)
 //    compare.mjs <gate> --other <g>   same-session equality; never a baseline
 //    compare.mjs <gate> --differs-from <n>
@@ -156,7 +173,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -210,15 +227,16 @@ if (bodyRaw !== undefined) {
 // 64-17 adds `watercolor-50` (the 50-rapid-stroke identity passage) and
 // `white-over-blue` (the criterion-1 crossing); 64-14 adds `cover-advect`
 // (cover geometry, covering stroke left wet) and `cover-lift` (fixed cover
-// geometry, then a Lift stroke). This closed list and probe.ts readScenario's
-// must stay literal-identical.
+// geometry, then a Lift stroke); 64-24 adds `bristle-wet` (two ages on one
+// sheet). This closed list and probe.ts readScenario's must stay
+// literal-identical.
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50" or "bristle-edge")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge" or "bristle-wet")`,
     )
     process.exit(1)
   }
@@ -248,6 +266,20 @@ if (brush !== undefined && (brush === '' || brush.startsWith('--'))) {
   process.exit(1)
 }
 
+// 64-24: the §3.4 A/B mode. Omitted keeps the probe's default (1, the
+// shipped timestamp law); 0 selects 64-21's `wet × coverage` proxy, the
+// recorded control. A value the page would refuse is refused here first.
+const wetModeFlag = args.indexOf('--wet-mode')
+const wetModeRaw = wetModeFlag >= 0 ? args[wetModeFlag + 1] : undefined
+let wetMode
+if (wetModeRaw !== undefined) {
+  if (wetModeRaw !== '0' && wetModeRaw !== '1') {
+    console.error(`invalid --wet-mode "${wetModeRaw}" (expected 0 or 1)`)
+    process.exit(1)
+  }
+  wetMode = Number(wetModeRaw)
+}
+
 const pageQuery =
   `gate=${encodeURIComponent(gate)}` +
   (scenario === undefined ? '' : `&scenario=${scenario}`) +
@@ -255,7 +287,8 @@ const pageQuery =
   (body === undefined ? '' : `&body=${body}`) +
   (light === undefined ? '' : `&light=${light}`) +
   (size === undefined ? '' : `&size=${size}`) +
-  (brush === undefined ? '' : `&brush=${encodeURIComponent(brush)}`)
+  (brush === undefined ? '' : `&brush=${encodeURIComponent(brush)}`) +
+  (wetMode === undefined ? '' : `&wetMode=${wetMode}`)
 const resultPath = join(outDir, `${gate}.json`)
 
 const esbuildCandidates = [
@@ -398,6 +431,11 @@ if (typeof result.coverAlphaP10 === 'number') {
 if (typeof result.lumaRatio === 'number') {
   console.log(
     `criterion2: luma ${result.finalLuma} / ${result.referenceLuma} = ${result.lumaRatio} | hue ${result.deltaHue} deg | paperWhite ${result.coveredPaperWhitePct}%`,
+  )
+}
+if (typeof result.pickupFreshMean === 'number') {
+  console.log(
+    `wetness   : mode ${result.wetMode} | fresh ${result.pickupFreshMean} | agedWet ${result.pickupAgedWetMean} (band darkness, 0..255)`,
   )
 }
 console.log(`result JSON: ${resultPath}`)

@@ -152,14 +152,30 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       wetSeconds: 7,
     }),
   }),
+  // 64-24 (D-25 — the acrylic retune, numbers in one record, no new term):
+  // more Water widens the fluid transport so the acrylic edge flows and turns
+  // slightly irregular instead of closing on a hard contour; Bleed and Flow
+  // carry that transport through the same three knobs they always did. Every
+  // other number is the shipped one, and every other medium is untouched.
+  //
+  // `wetSeconds` is the paint's tack time (D-24): the last-touch gate reads
+  // `exp(-age / wetSeconds) * coverage`, so 12 s is how long acrylic keeps
+  // GIVING UP its paint — the fluid's own drying (`dryTau()`) is a separate
+  // quantity and is not routed through this number.
+  //
+  // D-22's Feather half is discharged here by COMPOSITION, not by new code:
+  // the acrylic water edge is this retune's fluid transport passing through
+  // 64-22/64-23's Feather-widened softness band (`uSoftness =
+  // gatherSoftness(P.feather)`, bound in `bristleInk` / `coverBristlePass`),
+  // so this plan adds no `feather` expression and none should appear.
   Object.freeze({
     id: 'acrylic',
     name: 'Acrylic',
     params: Object.freeze({
-      water: 8,
+      water: 26,
       load: 100,
-      flow: 50,
-      bleed: 10,
+      flow: 60,
+      bleed: 22,
       dry: 70,
       edge: 65,
       granulation: 25,
@@ -169,7 +185,7 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       feather: 0,
       pickup: 60,
       refill: 60,
-      wetSeconds: 7,
+      wetSeconds: 12,
     }),
   }),
 ])

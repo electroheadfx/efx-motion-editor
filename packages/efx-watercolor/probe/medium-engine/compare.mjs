@@ -103,6 +103,15 @@
 //  narrower than the measured edge half-width. The absolute pixel widths are
 //  recorded in the SUMMARY, never gated: they are measurements, not contract.
 //
+//  64-24 adds `'bristle-wet'`: the wetness acceptance on one sheet and one
+//  brush — a fresh crossing over a right-hand band versus a thirty-second-old,
+//  re-wetted crossing over a left-hand band. Both pickup means must be finite,
+//  positive and inside [0, 255], and their gap must reach PICKUP_MIN_DELTA
+//  (1 luma unit): the age gate has to change the crossing, or Dry is
+//  decorative. The direction is recorded evidence, never asserted. The A/B is
+//  a capture comparison (`--differs-from` against the `--wet-mode 0` proxy),
+//  never a committed baseline.
+//
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
 //  teach this parser about it rather than have it silently misparse.
@@ -564,6 +573,56 @@ function bristleEdgeFailures(data) {
   return failures
 }
 
+/**
+ * 64-24: the wetness acceptance as standing invariants. `pickupFreshMean` and
+ * `pickupAgedWetMean` are mean film darkness (0..255, transparent export) over
+ * the crossing region of the FRESH right band and of the thirty-second-old,
+ * re-wetted LEFT band. The gate asserts the RELATION facts, never a direction:
+ * both finite and positive (the crossing deposited something on each side),
+ * both inside [0, 255], and a gap of at least PICKUP_MIN_DELTA luma units —
+ * the age gate must actually change the crossing, or Dry is decorative. Which
+ * crossing reads darker is recorded in the SUMMARY as evidence, not asserted
+ * (the two bands differ in age by construction, so the direction is a
+ * measurement, not a contract).
+ */
+const PICKUP_MIN_DELTA = 1
+
+function bristleWetFailures(data) {
+  const fields = ['pickupFreshMean', 'pickupAgedWetMean']
+  const missing = fields.filter((field) => typeof data[field] !== 'number')
+  if (missing.length > 0) {
+    return [`capture is missing ${missing.join(', ')}; re-run the bristle-wet probe`]
+  }
+  const fresh = data.pickupFreshMean
+  const aged = data.pickupAgedWetMean
+  const failures = []
+  if (!Number.isFinite(fresh) || !(fresh > 0)) {
+    failures.push(
+      `pickupFreshMean ${fresh} is not a finite positive mean ` +
+        '(the crossing deposited no film over the fresh band)',
+    )
+  }
+  if (!Number.isFinite(aged) || !(aged > 0)) {
+    failures.push(
+      `pickupAgedWetMean ${aged} is not a finite positive mean ` +
+        '(the crossing deposited no film over the aged band)',
+    )
+  }
+  if (!Number.isFinite(fresh) || fresh < 0 || fresh > 255) {
+    failures.push(`pickupFreshMean ${fresh} is outside [0, 255]`)
+  }
+  if (!Number.isFinite(aged) || aged < 0 || aged > 255) {
+    failures.push(`pickupAgedWetMean ${aged} is outside [0, 255]`)
+  }
+  if (!(Math.abs(fresh - aged) >= PICKUP_MIN_DELTA)) {
+    failures.push(
+      `|pickupFreshMean ${fresh} - pickupAgedWetMean ${aged}| is below ${PICKUP_MIN_DELTA} luma ` +
+        '(the age gate did not change the crossing: Dry is not load-bearing)',
+    )
+  }
+  return failures
+}
+
 const SCENARIO_INVARIANTS = {
   'white-over-blue': whiteOverBlueFailures,
   'cover-advect': coverAdvectFailures,
@@ -571,6 +630,7 @@ const SCENARIO_INVARIANTS = {
   'cover-textured': coverTexturedFailures,
   'red-over-blue-50': redOverBlueFailures,
   'bristle-edge': bristleEdgeFailures,
+  'bristle-wet': bristleWetFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. */
@@ -600,6 +660,16 @@ function printBristleEdge(data) {
   if (Array.isArray(data.edgeSkippedStations) && data.edgeSkippedStations.length > 0) {
     console.log(`edge skips: ${data.edgeSkippedStations.length} station(s) in dash gaps`)
   }
+  console.log('')
+}
+
+/** 64-24: print the wetness acceptance's readings a capture recorded, if any. */
+function printBristleWet(data) {
+  if (data.scenario !== 'bristle-wet') return
+  const keys = ['pickupFreshMean', 'pickupAgedWetMean', 'wetMode']
+  const parts = keys.filter((key) => typeof data[key] === 'number').map((key) => `${key} ${data[key]}`)
+  if (parts.length === 0) return
+  console.log(`wetness   : ${parts.join(' | ')}`)
   console.log('')
 }
 
@@ -852,6 +922,7 @@ for (const field of FIELDS) {
 const regionFailures = coverRegionFailures(actual)
 printCoverRegions(actual, refData)
 printBristleEdge(actual)
+printBristleWet(actual)
 printCoverLifecycle(actual)
 // 64-17: the scenario-keyed invariants run in committed-baseline and
 // same-session mode too — every mode, before every verdict.
