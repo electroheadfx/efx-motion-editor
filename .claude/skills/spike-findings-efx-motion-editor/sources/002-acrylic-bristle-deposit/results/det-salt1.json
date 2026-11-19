@@ -1,0 +1,110 @@
+{
+  "gate": "det-salt1",
+  "engine": "bristle",
+  "scenario": "cross",
+  "brush": "round",
+  "sizeParam": 12,
+  "sheet": 256,
+  "touch": false,
+  "salt": 1,
+  "renderer": "WebKit WebGL",
+  "runA": {
+    "digests": {
+      "paper": "bf251882",
+      "transparent": "34b76b33",
+      "white": "1c861d77",
+      "pigment": "babb5c49"
+    },
+    "bakeMs": 48,
+    "renderMs": 61,
+    "paintedPct": 13,
+    "regions": {
+      "crossing": {
+        "r": 127.6075,
+        "g": 69.0475,
+        "b": 69.3325,
+        "luma": 88.66250000000001
+      },
+      "redOwn": {
+        "r": 187.60714285714286,
+        "g": 74.99761904761905,
+        "b": 75.22142857142858,
+        "luma": 112.60873015873017
+      },
+      "lightOwn": {
+        "r": 194.2475,
+        "g": 194.0475,
+        "b": 194.1575,
+        "luma": 194.15083333333334
+      },
+      "paper": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      }
+    },
+    "bristleDigest": "30340c5b",
+    "bristleInfo": {
+      "mode": true,
+      "touch": false,
+      "count": 40,
+      "reservoirBytes": 14336,
+      "touchSheetBytes": 524288,
+      "touchUndoBytesPerTexel": 4,
+      "gpuPeakBytes": 11320320,
+      "gpuLiveBytes": 10796032
+    }
+  },
+  "runB": {
+    "digests": {
+      "paper": "bf251882",
+      "transparent": "34b76b33",
+      "white": "1c861d77",
+      "pigment": "babb5c49"
+    },
+    "bakeMs": 38,
+    "renderMs": 61,
+    "paintedPct": 13,
+    "regions": {
+      "crossing": {
+        "r": 127.6075,
+        "g": 69.0475,
+        "b": 69.3325,
+        "luma": 88.66250000000001
+      },
+      "redOwn": {
+        "r": 187.60714285714286,
+        "g": 74.99761904761905,
+        "b": 75.22142857142858,
+        "luma": 112.60873015873017
+      },
+      "lightOwn": {
+        "r": 194.2475,
+        "g": 194.0475,
+        "b": 194.1575,
+        "luma": 194.15083333333334
+      },
+      "paper": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      }
+    },
+    "bristleDigest": "30340c5b",
+    "bristleInfo": {
+      "mode": true,
+      "touch": false,
+      "count": 40,
+      "reservoirBytes": 14336,
+      "touchSheetBytes": 524288,
+      "touchUndoBytesPerTexel": 4,
+      "gpuPeakBytes": 11320320,
+      "gpuLiveBytes": 10796032
+    }
+  },
+  "identicalImages": true,
+  "identicalBristles": true,
+  "verdict": "SPIKE-002 CAPTURED"
+}

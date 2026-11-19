@@ -1,0 +1,134 @@
+{
+  "gate": "white-over-blue-baseline-b100",
+  "engine": "baseline",
+  "scenario": "white-over-blue",
+  "body": 100,
+  "width": 1080,
+  "height": 1080,
+  "renderer": "WebKit WebGL",
+  "verdict": "SPIKE-001 CAPTURED",
+  "bakeMs": 44.4,
+  "renderMs": 71.4,
+  "strokeTimingsMs": [
+    34.2,
+    10.2
+  ],
+  "strokeKinds": [
+    "under",
+    "cover"
+  ],
+  "strokeP50Ms": 10.2,
+  "strokeP95Ms": 34.2,
+  "strokeMaxMs": 34.2,
+  "draws": {
+    "total": 1735,
+    "fullDocument": 95,
+    "fullDocumentBlits": 2
+  },
+  "memory": {
+    "allocated": 212056256,
+    "disposed": 28517888,
+    "live": 174427840,
+    "peak": 193090240,
+    "setupBytes": 174427840,
+    "transientPeakBytes": 18662400
+  },
+  "digests": {
+    "paper": "e10c9d21",
+    "transparent": "7d8db1ca",
+    "white": "4c9a4dda",
+    "pigment": "cf8435ed"
+  },
+  "boxes": {
+    "cross": {
+      "mean": [
+        210.22314049586777,
+        225.74586776859505,
+        246.02479338842974
+      ],
+      "luma": 227.33126721763077,
+      "hue": 213.9854570637119,
+      "sat": 0.14552050791091398,
+      "blueExcess": 35.801652892561975,
+      "nearPaperPct": 0,
+      "minLuma": 221,
+      "maxLuma": 239.66666666666666,
+      "pixels": 484
+    },
+    "whiteOwn": {
+      "mean": [
+        250.99871794871794,
+        250.86282051282052,
+        250.89358974358976
+      ],
+      "luma": 250.9183760683762,
+      "hue": 346.41509433961653,
+      "sat": 0.0005414268128859112,
+      "blueExcess": -0.10512820512818166,
+      "nearPaperPct": 65.25641025641026,
+      "minLuma": 248,
+      "maxLuma": 255,
+      "pixels": 780
+    },
+    "blueOwn": {
+      "mean": [
+        120.47692307692307,
+        170.32899408284024,
+        244.7449704142012
+      ],
+      "luma": 178.51696252465473,
+      "hue": 215.93006147238503,
+      "sat": 0.5077450503966211,
+      "blueExcess": 124.26804733727812,
+      "nearPaperPct": 0,
+      "minLuma": 153,
+      "maxLuma": 219.66666666666666,
+      "pixels": 1690
+    },
+    "paper": {
+      "mean": [
+        255,
+        255,
+        255
+      ],
+      "luma": 255,
+      "hue": 0,
+      "sat": 0,
+      "blueExcess": 0,
+      "nearPaperPct": 100,
+      "minLuma": 255,
+      "maxLuma": 255,
+      "pixels": 9288
+    }
+  },
+  "alpha": {
+    "cross": {
+      "mean": 0.17559552746718524,
+      "min": 0.09803921568627451,
+      "max": 0.2196078431372549
+    },
+    "whiteOwn": {
+      "mean": 0.016224233283056815,
+      "min": 0,
+      "max": 0.027450980392156862
+    },
+    "blueOwn": {
+      "mean": 0.5275414781297134,
+      "min": 0.2549019607843137,
+      "max": 0.6862745098039216
+    },
+    "paper": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+    }
+  },
+  "extra": {
+    "coveredPaperWhitePct": 0
+  },
+  "ideal": {
+    "blue": "#0643dd",
+    "white": "#f0f0f0",
+    "red": "#cc2222"
+  }
+}

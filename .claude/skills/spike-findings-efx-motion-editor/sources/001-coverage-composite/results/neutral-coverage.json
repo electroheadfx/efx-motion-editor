@@ -1,0 +1,47 @@
+{
+  "gate": "neutral-coverage",
+  "engine": "coverage",
+  "scenario": "neutral",
+  "body": null,
+  "width": 256,
+  "height": 256,
+  "renderer": "WebKit WebGL",
+  "verdict": "SPIKE-001 CAPTURED",
+  "bakeMs": 31.1,
+  "renderMs": 11.7,
+  "strokeTimingsMs": [
+    31.1
+  ],
+  "strokeKinds": [
+    "stroke"
+  ],
+  "strokeP50Ms": 31.1,
+  "strokeP95Ms": 31.1,
+  "strokeMaxMs": 31.1,
+  "draws": {
+    "total": 608,
+    "fullDocument": 364,
+    "fullDocumentBlits": 0
+  },
+  "memory": {
+    "allocated": 20056064,
+    "disposed": 1572864,
+    "live": 9241600,
+    "peak": 9241600,
+    "setupBytes": 9241600,
+    "transientPeakBytes": 0
+  },
+  "digests": {
+    "paper": "d2bd637a",
+    "transparent": "291d4a11",
+    "white": "6ba88334",
+    "pigment": "13b8af1d"
+  },
+  "boxes": {},
+  "alpha": {},
+  "ideal": {
+    "blue": "#0643dd",
+    "white": "#f0f0f0",
+    "red": "#cc2222"
+  }
+}

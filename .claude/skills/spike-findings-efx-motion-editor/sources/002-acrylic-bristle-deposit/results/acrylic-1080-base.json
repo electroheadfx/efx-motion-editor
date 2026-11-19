@@ -1,0 +1,94 @@
+{
+  "gate": "acrylic-1080-base",
+  "engine": "baseline",
+  "scenario": "acrylic-20",
+  "brush": "bristle-flat",
+  "sizeParam": 60,
+  "sheet": 1080,
+  "touch": false,
+  "salt": 0,
+  "renderer": "WebKit WebGL",
+  "runA": {
+    "digests": {
+      "paper": "af33fcb6",
+      "transparent": "8baf72a2",
+      "white": "3a8fbcd2",
+      "pigment": "759782fe"
+    },
+    "bakeMs": 804,
+    "renderMs": 185,
+    "paintedPct": 15.5,
+    "regions": {
+      "crossing": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      },
+      "redOwn": {
+        "r": 0.1547100013211785,
+        "g": 1.4030915576694412,
+        "b": 8.065266217465979,
+        "luma": 3.2076892588188657
+      },
+      "lightOwn": {
+        "r": 0.06381292112564407,
+        "g": 0,
+        "b": 0.041485004624124716,
+        "luma": 0.035099308583256265
+      },
+      "paper": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      }
+    },
+    "gpuPeakBytes": 196846016,
+    "bristleDigest": null,
+    "bristleInfo": null
+  },
+  "runB": {
+    "digests": {
+      "paper": "af33fcb6",
+      "transparent": "8baf72a2",
+      "white": "3a8fbcd2",
+      "pigment": "759782fe"
+    },
+    "bakeMs": 369,
+    "renderMs": 153,
+    "paintedPct": 15.5,
+    "regions": {
+      "crossing": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      },
+      "redOwn": {
+        "r": 0.1547100013211785,
+        "g": 1.4030915576694412,
+        "b": 8.065266217465979,
+        "luma": 3.2076892588188657
+      },
+      "lightOwn": {
+        "r": 0.06381292112564407,
+        "g": 0,
+        "b": 0.041485004624124716,
+        "luma": 0.035099308583256265
+      },
+      "paper": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      }
+    },
+    "gpuPeakBytes": 196846016,
+    "bristleDigest": null,
+    "bristleInfo": null
+  },
+  "identicalImages": true,
+  "identicalBristles": false,
+  "verdict": "SPIKE-002 CAPTURED"
+}

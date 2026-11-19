@@ -14,7 +14,10 @@ unless the question requires otherwise.
   result JSON in a `<pre id="result">`, driver parses the DOM.
 - **Seeded determinism.** Replace `Math.random` for the constructor's paper seed
   (`0xc0ffee`), fix the paper, the paper strength, the script and the mutation ids. Every
-  capture must be reproducible byte for byte.
+  capture must be reproducible byte for byte. Add a **negative control** for each seed you
+  believe is load-bearing (an unrecorded RNG offset, an unpinned paper seed): if varying
+  the seed does not change the output, the record does not need it — and if it does, that
+  is the field the plan must pin.
 
 ## Structure
 
@@ -28,6 +31,11 @@ unless the question requires otherwise.
   results/             one JSON per gate (digests, regions, timings, draw/memory counters)
 ```
 
+`probe/probe.bundle.js` is an esbuild artifact (~500 KB) — regenerate it, never commit it.
+When wrapping a spike up, preserve the **patch against the base commit**, not the whole
+workbench copy: the copy goes stale the moment the main tree moves, and a stale whole file
+reads as current code.
+
 ## Patterns
 
 - **Copy, never edit in place.** A model experiment copies the source tree into
@@ -35,7 +43,13 @@ unless the question requires otherwise.
   disposable.
 - **Instrument at the GL boundary.** Patch `GL.prototype.target` / `disposeTarget` /
   `draw` / `blit` on **each** engine class to count GPU target bytes and full-document
-  passes. Measure, do not infer cost from code reading.
+  passes. Measure, do not infer cost from code reading. Reset the peak counter at script
+  start, or setup scratch (paper fields) is attributed to the feature under test.
+- **One engine per page for cost, two for determinism.** Two live engines in one page is
+  the right shape for a replay-equality gate (same process, direct digest comparison) and
+  the wrong shape for a timing gate: at 2K the second run degraded ~35 % under SwiftShader
+  memory pressure. Timing gates run one engine per process, exactly like
+  `probe/medium-engine`.
 - **Prove neutrality first.** Run the committed `neutral-identity` script (and a Body-0
   stroke script) on both engines and require byte-identical digests before trusting any
   differing number.
