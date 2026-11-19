@@ -21,6 +21,10 @@
 //  /Users/lmarques/Dev/craft-brushes/notes/brush-blending.md. Read-as-law
 //  source: spike 002 (`sources/002-acrylic-bristle-deposit/src/bristles.ts`).
 //
+//  64-22 adds the gather's two constants here, beside the stroke's other
+//  constants: §6's softness (0.09) and the Feather gain (0.25), with the
+//  band law `gatherSoftness` — one declaration, read by the engine's binder.
+//
 //  Layout per bristle (stride 8):
 //    0 across      normalised across-position, -1..1   (§4.1 shape.x)
 //    1 radiusScale tuft radius multiplier               (§4.2 shape.y)
@@ -38,6 +42,14 @@ export const BRISTLE_CAP = 256;
 export const BRISTLE_SPACING_PX = 1.1;
 /** The reference's bristle floor: small brushes pack tighter, not fewer (§4.1). */
 export const BRISTLE_MIN = 40;
+/**
+ * §6 `paint.softness` — the half-width of the band the gather's coverage
+ * threshold is smoothed by, at Feather 0. This is the reference's own
+ * default, not a tuning knob: the band widens only through Feather.
+ */
+export const BRISTLE_SOFTNESS = 0.09;
+/** 64-22 (D-22): how far the Feather global widens the band — Feather 1 is 0.34. */
+export const BRISTLE_FEATHER_GAIN = 0.25;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);
@@ -59,6 +71,18 @@ export function bristleCount(halfWidthPx: number): number {
     BRISTLE_MIN,
     BRISTLE_CAP,
   );
+}
+
+/**
+ * 64-22 (D-22): the gather's coverage band — `softness = 0.09 + 0.25·feather`.
+ * Feather 0 is §6's default band; 1 widens it to 0.34. A negative or
+ * non-finite Feather clamps at the neutral 0 (a missing record key must
+ * replay at the shipped look, never at a widened band), and the top clamps
+ * at the canonical 1 so the band cannot leave its declared range.
+ */
+export function gatherSoftness(feather: number): number {
+  const f = Number.isFinite(feather) ? clamp01(feather) : 0;
+  return BRISTLE_SOFTNESS + BRISTLE_FEATHER_GAIN * f;
 }
 
 export interface BristleSet {

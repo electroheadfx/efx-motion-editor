@@ -645,10 +645,11 @@ void main(){
 //  NOT in this fragment, by scope: `uWetMode` and the last-touch sampler
 //  (`uTimes`/`uNow`/`uWetSeconds`) belong to 64-24 — the proxy mode
 //  `wetness = wet * coverage` is the only mode this plan ships. The gather
-//  deposit (§3.2–§4.5) belongs to 64-22.
+//  deposit (§3.2–§4.5) is 64-22's, below.
 //
 //  NOTE: the spike declared `uSheetAspect` but never read it; it is not
 //  declared here (an unread uniform is optimized out and could not be bound).
+//  The GATHER does read it — its across coordinate is aspect-corrected.
 // ============================================================
 const BRISTLE_NOISE = `
 uint pcg(uint v){
@@ -671,7 +672,10 @@ float noise1(float v){
 // touchOf (app.js): pressure vs a bristle's contact threshold.
 float touchOf(float reach, float pressure){ return smoothstep(reach, reach + 0.08, pressure); }
 `;
-const BRISTLE_TEXTURES = `
+// 64-22: the shared texture helper — exported because the carrier and the
+// gather both sample the same four 1 × 256 textures; one `bristleTex`, with
+// the same `1 × 256` clamp, in both.
+export const BRISTLE_TEXTURES = `
 uniform sampler2D uPaintA;   // carried absorbance coefficients 0..3
 uniform sampler2D uPaintB;   // carried absorbance coefficients 4..6 + carried alpha
 uniform sampler2D uState;    // (load, across, seed, valueJitter)
@@ -762,6 +766,155 @@ void main(){
   oA = carriedA;
   oB = vec4(carriedB, carriedAlpha);
   oC = vec4(load, across, state.z, state.w);
+}`;
+
+// ============================================================
+//  64-22 (SPIKE 002) — THE GATHER (§3.2, §4.1, §4.4, §4.5, §5.1).
+//
+//  One law, included by every consumer, so they can never diverge:
+//  `bristleDepositFS` (the ink deposit), `bristleCoverFS` (the one
+//  coverage write) and — in 64-23's plan — `bristleBodyCoverFS` (the Body
+//  mask). A consumer is a `${HEADER}${BRISTLE_GATHER}` composition; a
+//  fourth consumer is a delivery-law amendment, not an implementation
+//  choice (D-29).
+//
+//  `gatherBristle(uv)` returns the five NEAREST bristles' ink-weighted
+//  values, averaged IN COEFFICIENT SPACE — the engine's seven absorbance
+//  coefficients plus alpha, never RGB (the reference's §3.3 RGB smear is
+//  deliberately unported, D-28):
+//    §4.1 radius   = max(radiusScale · spacing · uRadius · uSheet.y, 0.8 px)
+//    §5.1 profile  = (1 − offset²)²
+//    §3.2 ink      = profile · min(load·1.5, 1) · touch
+//    carried       = Σ ink·value / Σ ink, none when Σ ink ≤ 1e-4
+//    §4.5 body     = inkSum / max(profileSum, 0.5)
+//    §4.4 threshold = uGrain · (1 − paperHeight) − 0.25
+//    §6   softness = uSoftness (0.09 + 0.25·Feather, from bristles.ts)
+//
+//  64-23 EXTENDS THIS ONE SNIPPET — never a second copy — with §4.3's
+//  dryness streak, §5.3's rim contact noise, §5.4's landing ramp, §5.5's
+//  dry edge and §6's 1.2 paper-tooth grain-height trio. This form keeps
+//  `uGrain` = the stroke's Brush.grain and the engine's own paper tap.
+// ============================================================
+export const BRISTLE_GATHER = `${BRISTLE_NOISE}${BRISTLE_TEXTURES}
+uniform sampler2D uPaper;
+uniform vec2 uPoint;
+uniform vec2 uAxis;          // across axis (unit, doc frame)
+uniform float uRadius;       // half-width in doc heights
+uniform float uSheetAspect;  // document width / height
+uniform vec2 uSheet;         // document size in texels
+uniform float uPressure;
+uniform float uGrain;
+uniform float uSoftness;
+
+struct Gathered {
+  vec4 cA;                   // carried absorbance 0..3
+  vec3 cB;                   // carried absorbance 4..6
+  float alpha;               // carried layer alpha
+  float coverage;            // §4.4-thresholded body, 0..1
+  int nearest;               // the gathered centre bristle
+};
+
+Gathered gatherBristle(vec2 uv){
+  Gathered g;
+  g.cA = vec4(0.0);
+  g.cB = vec3(0.0);
+  g.alpha = 0.0;
+  g.coverage = 0.0;
+  g.nearest = 0;
+  vec2 p = uv - uPoint;
+  p.x *= uSheetAspect;
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  float across = q.x;
+  int count = int(uCount + 0.5);
+  float spacing = 2.0 / float(count);
+  int nearest = int(floor((across + 1.0) / spacing));
+  if (nearest < 0 || nearest >= count) return g;
+  g.nearest = nearest;
+
+  float inkSum = 0.0;
+  float profileSum = 0.0;
+  for (int o = -2; o <= 2; o++){
+    int idx = nearest + o;
+    if (idx < 0 || idx >= count) continue;
+    vec4 state = bristleTex(uState, idx);
+    vec4 shape = bristleTex(uShape, idx);
+    // §4.1: radius = max(radiusScale * spacing * halfWidth, 0.8 px).
+    float spacingPx = spacing * uRadius * uSheet.y;
+    float radius = max(shape.x * spacingPx, 0.8);
+    float offset = (across - state.y) * uRadius * uSheet.y / radius;
+    if (abs(offset) >= 1.0) continue;
+    float profile = 1.0 - offset * offset;
+    profile *= profile;                                    // §5.1
+    float touch = touchOf(shape.y, uPressure);
+    float ink = profile * min(state.x * 1.5, 1.0) * touch;  // §3.2
+    inkSum += ink;
+    profileSum += profile;
+    vec4 pa = bristleTex(uPaintA, idx);
+    vec4 pb = bristleTex(uPaintB, idx);
+    g.cA += ink * pa;
+    g.cB += ink * pb.rgb;
+    g.alpha += ink * pb.a;
+  }
+  if (inkSum <= 1e-4) return g;
+  g.cA /= inkSum;
+  g.cB /= inkSum;
+  g.alpha /= inkSum;
+
+  // §4.5: the local body — the gathered ink density over the profile mass.
+  float local = inkSum / max(profileSum, 0.5);
+  // §4.4: the paper threshold on the engine's OWN paper height, banded by
+  // §6's softness. The reference's grain-height trio is 64-23's.
+  float paperHeight = texture(uPaper, uv).g;
+  float threshold = uGrain * (1.0 - paperHeight) - 0.25;
+  float coverage = local * (0.3 + 0.7 * uPressure);
+  g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
+  return g;
+}
+`;
+
+// 64-22 — the ink deposit. The gathered coefficients are the carried
+// values ALREADY in the engine's coefficient space; they ride the dab's
+// amount and the gather's coverage and are written ADDITIVELY (the caller
+// blends ONE, ONE into the mobile pigment layer), exactly the law
+// `brushInk` uses. The second attachment's alpha is the dab's scattering
+// S carried per texel by the same coverage — but S itself is the ONE
+// curve's `scatteringDeposit`, computed by the engine and passed as
+// `uScatter`: no fragment re-derives the exponent.
+export const bristleDepositFS = `${HEADER}${BRISTLE_GATHER}
+layout(location=0) out vec4 oA;   // absorbance 0..3, premultiplied by the deposit
+layout(location=1) out vec4 oB;   // absorbance 4..6, scattering S
+uniform float uAmount;            // the dab's own pigment amount
+uniform float uScatter;           // scatteringDeposit(body, amount), the ONE curve
+void main(){
+  // The same square cull the stamp uses (an early-out only: coverage can
+  // be zero inside it, and is then written as a zero deposit).
+  vec2 p = vUv - uPoint;
+  p.x *= uSheetAspect;
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;
+  Gathered g = gatherBristle(vUv);
+  float deposit = g.coverage;
+  if (deposit <= 1e-3) discard;
+  float amount = uAmount * deposit;
+  oA = g.cA * amount;
+  oB = vec4(g.cB * amount, uScatter * deposit);
+}`;
+
+// 64-22 — the coverage write: the SAME gather's coverage, once per dab.
+// The caller blends it ONE, ONE_MINUS_SRC_ALPHA into the coverage
+// channel, so the channel is the union of the pigment layer's dabs — the
+// compositor's alpha, and the film the Body pass will erode (64-23's D-21
+// mask is this same gather).
+export const bristleCoverFS = `${HEADER}${BRISTLE_GATHER}
+layout(location=0) out vec4 o0;
+void main(){
+  vec2 p = vUv - uPoint;
+  p.x *= uSheetAspect;
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;
+  Gathered g = gatherBristle(vUv);
+  if (g.coverage <= 1e-3) discard;
+  o0 = vec4(clamp(g.coverage, 0.0, 1.0));
 }`;
 
 // Paper, generated per document and whenever the paper is changed, in two passes.
