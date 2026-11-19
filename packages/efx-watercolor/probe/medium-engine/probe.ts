@@ -936,6 +936,15 @@ function alphaSpread(
  * the tip's, never the band's.
  */
 function coverTexturedScript(emboss?: number, body?: number, brushId?: string): readonly ScriptEntry[] {
+  // 261119-pod (D-F): under the reference-faithful depletion (b8f6dfc0e) a
+  // Dry-50 bristle brush starves before the recorded light diagonal is laid —
+  // the four cover-textured records rendered blank (covered 0/0 at 1080, 0.05
+  // at 2048) and no relation could be enforced. The SCENE pins Dry 0; the
+  // engine's Dry semantics and depletion curve are untouched. Only the two
+  // bristle brushes get the pin — the `--brush chalk` identity bag never gains
+  // the key, so the eight identity gates stay byte-identical. The dark
+  // underlayer is a non-bristle `round` stroke and never reads `dry`.
+  const pinDry = brushId === 'bristle-flat' || brushId === 'bristle-round'
   return [
     {
       color: COVER_DARK,
@@ -952,6 +961,7 @@ function coverTexturedScript(emboss?: number, body?: number, brushId?: string): 
       emboss,
       body: body ?? 100,
       brushId,
+      ...(pinDry ? { dry: 0 } : {}),
     },
   ]
 }
@@ -1508,6 +1518,11 @@ function run(
                         ? bristleWetScript()
                         : neutralScript(emboss, body)
 
+  // 261119-pod (D-F): the scene-parameter echo — `dry` appears in the report
+  // only when a script pins it, so every capture records the calibration and a
+  // blank render can never be misread as the engine's look.
+  const dryEcho = script.find((entry) => entry.dry !== undefined)?.dry
+
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
   capturedEngine = null
@@ -1669,6 +1684,7 @@ function run(
       body: body ?? null,
       light: light ?? null,
       wetMode,
+      ...(dryEcho !== undefined ? { dry: dryEcho } : {}),
       bakeMs,
       renderMs,
       width: sheet,
