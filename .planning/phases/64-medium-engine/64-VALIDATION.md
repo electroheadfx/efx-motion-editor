@@ -129,7 +129,7 @@ Existing infrastructure covers all phase requirements — no stubs, fixtures or 
 
 **Approval:** validated 2026-11-18 (automated reconstruction from PLAN/SUMMARY artifacts; 38/38 requirements mapped, 158/158 file references resolve)
 
-**Audit:** re-validated 2026-11-19 for plans 64-21..64-24 (16/16 requirement IDs from those plans COVERED by executed tests or probe captures; 2 gaps found and resolved with executed tests; 0 escalations).
+**Audit:** re-validated 2026-11-19 for plans 64-21..64-24 (15/15 requirement IDs from those plans COVERED by executed tests or probe captures; 2 gaps found and resolved with executed tests; 0 escalations).
 
 ## Validation Audit 2026-11-19
 
