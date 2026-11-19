@@ -975,9 +975,13 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     expectContains(src, 'uniform float uNow;')
     expectContains(src, 'uniform float uWetSeconds;')
     expectContains(src, 'uniform int uWetMode;')
-    // Mode 1 (shipped): §3.4's age law, read from the last-touch field.
+    // Mode 1 (shipped): §3.4's age law, read from the last-touch field and
+    // gated by the PAINT's own alpha. The gate used to read `uCover`, which
+    // only Body writes — with Body at its default 0 that channel is empty, so
+    // `wet` was always 0 and Pickup had no effect at any value (GAP-2).
     expectContains(src, 'float age = max(uNow - texture(uTimes, uv).r, 0.0);')
-    expectContains(src, 'return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;')
+    expectContains(src, 'return exp(-age / max(uWetSeconds, 1.0)) * paintAlphaAt(uv);')
+    expectContains(src, 'texture(uInkB, uv).a + texture(uFixedB, uv).a')
     // Mode 0 (the recorded A/B control): 64-21's proxy, unchanged.
     expectContains(src, 'return texture(uWet, uv).x * texture(uCover, uv).x;')
     expectContains(src, 'if (uWetMode == 1)')

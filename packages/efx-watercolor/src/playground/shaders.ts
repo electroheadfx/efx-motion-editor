@@ -747,12 +747,18 @@ vec3 canvasAtB(vec2 uv){
   return ib.rgb;
 }
 // §3.4: mode 1 is the shipped law (D-24) — the texel's age from the
-// last-touch field, on the virtual clock, gated by the coverage channel.
+// last-touch field, on the virtual clock, gated by the PAINT's own alpha,
+// exactly the reference's exp(-age/wetSeconds) * canvas.a. Gating it on
+// uCover coupled pickup to Body: with Body at its default 0 nothing writes
+// that channel, so wet stayed 0 and Pickup had no effect at any value.
 // Mode 0 is 64-21's proxy retained ONLY as the recorded A/B control.
+float paintAlphaAt(vec2 uv){
+  return clamp(texture(uInkB, uv).a + texture(uFixedB, uv).a, 0.0, 1.0);
+}
 float wetAt(vec2 uv){
   if (uWetMode == 1) {
     float age = max(uNow - texture(uTimes, uv).r, 0.0);
-    return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;
+    return exp(-age / max(uWetSeconds, 1.0)) * paintAlphaAt(uv);
   }
   return texture(uWet, uv).x * texture(uCover, uv).x;
 }
