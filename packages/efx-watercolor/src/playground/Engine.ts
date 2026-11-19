@@ -2883,6 +2883,9 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uNow!, this.clock() / 1000);
     gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);
     gl.uniform1i(p.u.uWetMode!, this.lastTouchMode);
+    // 261119-pod FIX 1: the cover gate tops at this floor at Body 0, so the
+    // carrier normalises its READ by it — the same ceiling the gather uses.
+    gl.uniform1f(p.u.uBodyFloor!, BRISTLE_BODY_ALPHA_FLOOR);
     g.draw(this.bristles.write, { x0: 0, y0: 0, x1: 1, y1: this.bristleCount });
     this.bristles.swap();
   }

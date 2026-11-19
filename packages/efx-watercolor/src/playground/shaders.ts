@@ -767,6 +767,7 @@ uniform sampler2D uTimes;    // the last-touch field's read half (R32F, D-24)
 uniform float uNow;          // SECONDS on the virtual clock — never a wall clock
 uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
 uniform int uWetMode;        // 1 = the shipped timestamp law; 0 = the A/B proxy
+uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
 
 vec4 canvasAt(vec2 uv){
   vec4 a = texture(uInkA, uv) + texture(uFixedA, uv);
@@ -787,11 +788,17 @@ vec3 canvasAtB(vec2 uv){
 // max 0.042 at Body 100. 4e6b974e1 gated on that dead channel, so wet was
 // always 0 at the canonical Body 0 and Pickup had no effect at any value;
 // this restores the cover channel (261119-pod).
+// 261119-pod FIX 1: the raw cover tops at the FLOOR at Body 0, so a bristle
+// could load at most half the reference's canvas.a and smear parity produced
+// no drag (11.35 deg against the reference's 173.48). The READ is normalised
+// by the gate's own ceiling; the display law (cover <- cover·(1-a) + floor·g·a)
+// is unchanged, so Body still owns opacity. Same normalisation as the
+// gather's Lever-1 wetAt, so carrier and deposit cannot disagree.
 // Mode 0 is 64-21's proxy retained ONLY as the recorded A/B control.
 float wetAt(vec2 uv){
   if (uWetMode == 1) {
     float age = max(uNow - texture(uTimes, uv).r, 0.0);
-    return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;
+    return exp(-age / max(uWetSeconds, 1.0)) * clamp(texture(uCover, uv).x / uBodyFloor, 0.0, 1.0);
   }
   return texture(uWet, uv).x * texture(uCover, uv).x;
 }
@@ -1129,19 +1136,23 @@ Gathered gatherBristle(vec2 uv){
   float threshold = uGrain * (1.0 - height) - 0.25;
   float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;
-  g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
-  // 261119-pod (Lever 2): the four-side Feather ramp shapes the DEPOSIT,
-  // after the threshold — not the coverage the threshold quantises. Measured:
-  // pre-threshold the multiply was swallowed by the smoothstep (the bristle
-  // body saturates to ~1 at the rim, so the whole ramp crossed the narrow
-  // threshold band in under a pixel) and top/bottom kept a cliff. As a
-  // multiplier on the deposit the radial fall spans the reach in pixels.
+  // 261119-pod FIX 2 — Feather is a SPATIAL falloff on the coverage the
+  // threshold quantises, exactly the reference's softness class of operation
+  // (smoothstep over threshold minus softness to threshold plus softness):
+  // the falloff turns the threshold band into a multi-pixel deposit ramp, so
+  // there is no isolated partial-deposit rim row for the composite to render
+  // as a dark 1-px outline. It is RADIAL in brush space (across + along), so
+  // the sides and the stroke ends share one reach. The previous post-
+  // threshold multiply was a per-dab weight AFTER the band: repeated dabs
+  // saturated it into an inward-translated hard edge, measured as a half-
+  // width 10 → 8 px shrink with top/bottom fade still 0.
   // D-H: the line is compiled ONLY into the ramp variant, so the Feather-0
   // program is the pre-port one rather than a program whose register
   // allocation a dead guarded branch still perturbs.
 #ifdef BRISTLE_FEATHER_RAMP
-  if (uFeather > 0.0) g.coverage *= featherFall(across, q.y);
+  if (uFeather > 0.0) coverage *= featherFall(across, q.y);
 #endif
+  g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
   // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
   // untextured law byte-identical: the multiply is never executed).
   if (uTipMix > 0.0) g.coverage *= tipMask(uv);

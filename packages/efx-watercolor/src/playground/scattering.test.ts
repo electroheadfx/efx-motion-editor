@@ -999,7 +999,18 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     // bristleCoverFS writes `cover` on every bristle dab, and
     // BRISTLE_BODY_ALPHA_FLOOR (0.5) keeps that write live at Body 0.
     expectContains(src, 'float age = max(uNow - texture(uTimes, uv).r, 0.0);')
-    expectContains(src, 'return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;')
+    // 261119-pod FIX 1 — the §3.4 line. The read is normalised by the gate's
+    // own Body-0 ceiling: raw cover tops at BRISTLE_BODY_ALPHA_FLOOR (0.500
+    // measured max at Body 0), so the un-normalised term could only ever load
+    // half the reference's canvas.a (~1.0) and the smear drag stalled at
+    // 11.35 deg against the reference's 173.48 deg. The DISPLAY law is
+    // unchanged — Body still owns opacity; only the READ gains the factor.
+    // The literal 0.5 is forbidden: the ceiling travels as the uniform.
+    expectContains(
+      src,
+      'return exp(-age / max(uWetSeconds, 1.0)) * clamp(texture(uCover, uv).x / uBodyFloor, 0.0, 1.0);',
+    )
+    expectNotContains(src, 'texture(uCover, uv).x / 0.5')
     // Mode 0 (the recorded A/B control): 64-21's proxy, unchanged.
     expectContains(src, 'return texture(uWet, uv).x * texture(uCover, uv).x;')
     expectContains(src, 'if (uWetMode == 1)')
@@ -1042,6 +1053,9 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     expectContains(pass, 'gl.uniform1f(p.u.uNow!, this.clock() / 1000);')
     expectContains(pass, 'gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);')
     expectContains(pass, 'gl.uniform1i(p.u.uWetMode!, this.lastTouchMode);')
+    // 261119-pod FIX 1: the carrier's normalised read needs the ceiling on
+    // the same terms as the gather, bound from the one engine constant.
+    expectContains(pass, 'gl.uniform1f(p.u.uBodyFloor!, BRISTLE_BODY_ALPHA_FLOOR);')
     // The mode is a compare-then-write A/B seam; the shipped default is the
     // timestamp law.
     expectContains(ENGINE_SOURCE, 'private lastTouchMode = 1;')
@@ -1125,8 +1139,13 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
   it('carries the §3.4 wetness shape on exactly TWO lines — the carrier and the gather', () => {
     const shape = SHADERS_SOURCE.match(/return exp\(-age \/ max\(uWetSeconds, 1\.0\)\) \*/g) ?? []
     expect(shape.length, 'one shape per gate, so the laws cannot drift').toBe(2)
-    // The carrier's half is Task 1's restored pin, never edited here.
-    expectContains(SHADERS_SOURCE, 'return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;')
+    // The carrier's half gained FIX 1's normalisation on the same commit as
+    // the gather's Lever 1 (261119-pod): both gates now divide their cover
+    // term by the Body-0 ceiling, so the two reads carry one arithmetic.
+    expectContains(
+      SHADERS_SOURCE,
+      'return exp(-age / max(uWetSeconds, 1.0)) * clamp(texture(uCover, uv).x / uBodyFloor, 0.0, 1.0);',
+    )
     // 261119-pod Lever 1: the cover term is normalised by the Body-0 ceiling
     // (the uniform, never a literal) so the gate matches the reference's
     // canvas.a ~ 1 interior. The exp/age shape above is untouched.
@@ -1206,23 +1225,25 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expect((d.match(/texture\(uSnapB, vUv\)/g) ?? []).length).toBe(1)
   })
 
-  it('shapes the deposit with a RADIAL ramp AFTER the threshold, inside the guard', () => {
+  it('shapes the coverage with a RADIAL falloff BEFORE the threshold, inside the guard', () => {
     expect((SHADERS_SOURCE.match(/float featherFall\(/g) ?? []).length, 'one ramp helper').toBe(1)
     const g = gather()
     expectContains(g, 'float featherFall(float across, float along){')
     expectContains(g, 'float r = length(vec2(across, along));')
     expectContains(g, 'return mix(1.0, 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, r), uFeather);')
-    expectContains(g, 'if (uFeather > 0.0) g.coverage *= featherFall(across, q.y);')
-    const rampAt = g.indexOf('if (uFeather > 0.0) g.coverage *= featherFall(across, q.y);')
+    expectContains(g, 'if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
+    const rampAt = g.indexOf('if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
     const smoothAt = g.indexOf(
       'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);',
     )
     expect(rampAt, 'the ramp runs').toBeGreaterThan(-1)
-    // 261119-pod Lever 2: the ramp multiplies the DEPOSIT, never the coverage
-    // the threshold quantises — pre-threshold it crossed the smoothstep band
-    // in under a pixel and the top/bottom sides kept a cliff (measured).
-    expect(smoothAt, 'the threshold runs first').toBeGreaterThan(-1)
-    expect(rampAt, 'the deposit is shaped after the threshold').toBeGreaterThan(smoothAt)
+    // 261119-pod FIX 2: the falloff multiplies the COVERAGE the threshold
+    // quantises, exactly the reference's softness class. As a post-threshold
+    // per-dab weight it was saturated by repeated dabs into an inward-
+    // translated hard edge (half-width 10 → 8 px, top/bottom fade still 0);
+    // pre-threshold the smoothstep maps the falloff into a multi-pixel ramp.
+    expect(smoothAt, 'the threshold runs after the falloff').toBeGreaterThan(-1)
+    expect(rampAt, 'the falloff is shaped before the threshold').toBeLessThan(smoothAt)
     // The radial fall replaces the per-axis product: neither axis's ramp may
     // come back (the axes-fade-from-different-squares shape is the bug).
     expectNotContains(g, 'float side = 1.0 - smoothstep(')
@@ -1309,17 +1330,17 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(guarded[0]!, 'uniform float uFeather;')
     expectContains(guarded[0]!, 'uniform float uFeatherReach;')
     expectContains(guarded[1]!, 'float featherFall(float across, float along){')
-    expectContains(guarded[2]!, 'if (uFeather > 0.0) g.coverage *= featherFall(across, q.y);')
-    // The guarded call runs AFTER the threshold smoothstep — Lever 2 measured
-    // that multiplying the pre-threshold coverage was swallowed by the band.
+    expectContains(guarded[2]!, 'if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
+    // The guarded call runs BEFORE the threshold smoothstep — FIX 2: the
+    // band must quantise the falloff, not be multiplied after it.
     const callAt = SHADERS_SOURCE.indexOf(
-      'if (uFeather > 0.0) g.coverage *= featherFall(across, q.y);',
+      'if (uFeather > 0.0) coverage *= featherFall(across, q.y);',
     )
     const smoothAt = SHADERS_SOURCE.indexOf(
       'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);',
     )
     expect(callAt, 'the ramp call exists').toBeGreaterThan(-1)
-    expect(callAt, 'the ramp shapes the deposit after the threshold').toBeGreaterThan(smoothAt)
+    expect(callAt, 'the ramp shapes the coverage before the threshold').toBeLessThan(smoothAt)
     // Nothing ramp-related lives OUTSIDE a guard: strip the guarded regions
     // and the remainder must be free of the ramp's identifiers.
     const stripped = SHADERS_SOURCE.replace(/#ifdef BRISTLE_FEATHER_RAMP[\s\S]*?#endif/g, '')
