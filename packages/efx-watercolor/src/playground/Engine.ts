@@ -494,10 +494,12 @@ export class WatercolorEngine {
     // 64-21 (SPIKE 002): the per-bristle carrier, same rule — outside the
     // pinned literal (its count stays twenty-three).
     this.programs.bristleCarrier = this.g.program(S.bristleCarrierFS);
-    // 64-22 (SPIKE 002, the gather): the ink deposit and the ONE coverage
-    // write, same rule — outside the pinned literal (twenty-three stays).
+    // 64-22 (SPIKE 002, the gather): the ink deposit, the ONE coverage write
+    // and D-21's Body mask, same rule — outside the pinned literal
+    // (twenty-three stays).
     this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);
     this.programs.bristleCover = this.g.program(S.bristleCoverFS);
+    this.programs.bristleBodyCover = this.g.program(S.bristleBodyCoverFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
     this.attachInput();
@@ -2276,8 +2278,15 @@ export class WatercolorEngine {
             const t = this.bristleTravel(dx, dy, dr);
             this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, pr);
           }
-          // spec 06: the cover pass draws here, before this dab's deposit
-          if (coverAmount > 0) this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
+          // spec 06: the cover pass draws here, before this dab's deposit.
+          // 64-22 (D-21): a bristle response erodes through the SAME gather
+          // its deposit reads, so the Body erode can never cover more or less
+          // than the paint the same dab lands; every other response keeps the
+          // shipped footprint mask, untouched.
+          if (coverAmount > 0) {
+            if (bristle) this.coverBristlePass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, pr, b.grain);
+            else this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
+          }
           // SPIKE 001: source-over inside the pigment layer, replacing "erase
           // the underlayer, then deposit". No snapshot, no full-document pass,
           // no cached-base punch callback. Body 0 keeps the additive brushInk
@@ -2476,6 +2485,44 @@ export class WatercolorEngine {
     // and flatten the emboss the same Body value is meant to raise.
     gl.uniform1f(p.u.uAmount, reliefAmount);
     gl.uniform1f(p.u.uShape, 0);
+    g.draw(this.relief, rect);
+    gl.disable(gl.BLEND);
+  }
+
+  /**
+   * 64-22 (D-21): the bristle twin of `coverPass` — the Body erode read off
+   * the SAME gather the deposit uses, so at Body > 0 the erode and the paint
+   * it hides are one film (spike 002's footprint-shaped erode under a
+   * bristle-shaped deposit combed the underlayer through the bristle gaps).
+   * `m` is `gatherBristle(...).coverage`; the laws are inherited unchanged:
+   * the `fixed` pool erodes ALPHA-shaped (uShapeLaw = 1, the medium's
+   * density) and the `relief` pool erodes at the DELIVERED LINEAR thickness
+   * law (uShapeLaw = 0, `coverAmount × RELIEF_ERODE` — the float is not
+   * `uShape` because the gather binds that name as its shape-texture
+   * sampler). Same two draws, same two blend laws as `coverPass` (FUNC_ADD
+   * + ZERO, ONE_MINUS_SRC_COLOR). The coverage channel is NOT written here:
+   * `bristleInk` owns the one coverage write. Undo is the caller's: the
+   * stamp protects `fixed` once, before the first cover draw, exactly as
+   * for `coverPass`.
+   */
+  private coverBristlePass(x: number, y: number, r: number, angle: number, amount: number, density: number, reliefAmount: number, pr: number, grain: number): void {
+    const { gl, g } = this;
+    const p = this.programs.bristleBodyCover;
+    p.bind();
+    this.bindGather(p, x, y, r, angle, pr, grain);
+    gl.uniform1f(p.u.uAmount, amount);
+    gl.uniform1f(p.u.uDensity, density);
+    gl.uniform1f(p.u.uShapeLaw, 1);
+    const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+    g.draw(this.fixed, rect);
+    // The thickness keeps the DELIVERED LINEAR law (uShapeLaw = 0), never the
+    // paint opacity — the same reasoning as coverPass: scaling the erode with
+    // the paint saturates the stroke's own relief away under its dabs.
+    gl.uniform1f(p.u.uAmount, reliefAmount);
+    gl.uniform1f(p.u.uShapeLaw, 0);
     g.draw(this.relief, rect);
     gl.disable(gl.BLEND);
   }

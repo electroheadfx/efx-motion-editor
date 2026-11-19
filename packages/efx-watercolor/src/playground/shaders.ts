@@ -773,10 +773,10 @@ void main(){
 //
 //  One law, included by every consumer, so they can never diverge:
 //  `bristleDepositFS` (the ink deposit), `bristleCoverFS` (the one
-//  coverage write) and — in 64-23's plan — `bristleBodyCoverFS` (the Body
-//  mask). A consumer is a `${HEADER}${BRISTLE_GATHER}` composition; a
-//  fourth consumer is a delivery-law amendment, not an implementation
-//  choice (D-29).
+//  coverage write) and `bristleBodyCoverFS` (the Body mask, D-21). A
+//  consumer is a `${HEADER}${BRISTLE_GATHER}` composition; a fourth
+//  consumer is a delivery-law amendment, not an implementation choice
+//  (D-29).
 //
 //  `gatherBristle(uv)` returns the five NEAREST bristles' ink-weighted
 //  values, averaged IN COEFFICIENT SPACE — the engine's seven absorbance
@@ -903,8 +903,7 @@ void main(){
 // 64-22 — the coverage write: the SAME gather's coverage, once per dab.
 // The caller blends it ONE, ONE_MINUS_SRC_ALPHA into the coverage
 // channel, so the channel is the union of the pigment layer's dabs — the
-// compositor's alpha, and the film the Body pass will erode (64-23's D-21
-// mask is this same gather).
+// compositor's alpha, and the film D-21's Body mask (below) erodes.
 export const bristleCoverFS = `${HEADER}${BRISTLE_GATHER}
 layout(location=0) out vec4 o0;
 void main(){
@@ -915,6 +914,47 @@ void main(){
   Gathered g = gatherBristle(vUv);
   if (g.coverage <= 1e-3) discard;
   o0 = vec4(clamp(g.coverage, 0.0, 1.0));
+}`;
+
+// 64-22 (D-21) — the bristle Body mask: `bodyCoverFS`'s twin. Spike 002 left
+// the Body erode on the tip-space footprint mask (FOOTPRINT_MASK) while the
+// deposit read the bristle gather, so at Body > 0 the erode and the paint it
+// hides were two different films — a comb of erases under a brush of paint,
+// and the underlayer showed through the gaps as dried paper. D-21 closes the
+// open design decision by giving the two bristle responses (D-26/D-27) this
+// amendment: the erode mask IS the same `gatherBristle` the deposit reads, so
+// the Body pass can never cover more or less than the paint the same dab
+// lands. A non-bristle response keeps the shipped footprint cover untouched.
+//
+// The law is inherited, never re-invented: the same two outputs, the same
+// `uAmount · mix(m, 1 − exp(−uDensity·m), shape)` switch — shape = 1 the
+// ALPHA-shaped paint law (the caller's uDensity is the medium's per-dab
+// optical density), shape = 0 the DELIVERED LINEAR thickness law with the
+// caller's `coverAmount × RELIEF_ERODE` — with `m` taken from
+// `gatherBristle(vUv).coverage` instead of `footprintMask()`. ONE program,
+// one draw per output target; the coverage channel is never written here
+// (`bristleInk` owns the one coverage write).
+//
+// The switch is named `uShapeLaw`, not `uShape`: the gather's texture helper
+// already binds `uShape` as the shape-texture SAMPLER, and GLSL has one
+// namespace per program — `bodyCoverFS` could call its float `uShape` only
+// because FOOTPRINT_MASK declares no such sampler. The law and the two
+// values (1 then 0) are coverPass's, unchanged.
+export const bristleBodyCoverFS = `${HEADER}${BRISTLE_GATHER}
+layout(location=0) out vec4 o0;
+layout(location=1) out vec4 o1;
+uniform float uAmount, uDensity, uShapeLaw;
+void main(){
+  // The same square cull the deposit and the coverage write use, so all
+  // three fragments agree on where a dab's film ends.
+  vec2 p = vUv - uPoint;
+  p.x *= uSheetAspect;
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;
+  float m = gatherBristle(vUv).coverage;
+  float f = uAmount * mix(m, 1.0 - exp(-uDensity * m), uShapeLaw);
+  o0 = vec4(f);
+  o1 = vec4(f);
 }`;
 
 // Paper, generated per document and whenever the paper is changed, in two passes.

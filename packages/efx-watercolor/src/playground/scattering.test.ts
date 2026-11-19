@@ -556,9 +556,8 @@ describe('the composition of order and opacity (MED-36)', () => {
 //  engine computes `scatteringDeposit` (the one curve) and passes it as the
 //  `uScatter` uniform, so no bristle fragment may contain `pow(`.
 //
-//  One shared snippet, two consumers in this plan (the ink deposit and the
-//  coverage write); 64-23's Task adds the Body mask as the third consumer of
-//  the SAME snippet, never a second copy.
+//  One shared snippet, three consumers in this plan: the ink deposit, the
+//  coverage write, and D-21's Body mask — never a second copy.
 // ============================================================
 
 describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
@@ -650,6 +649,109 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
       'the gather adds no document-sized target',
+    ).toBe(13)
+  })
+})
+
+// ============================================================
+//  64-22 (D-21) — the bristle-modulated Body cover.
+//
+//  Spike 002 left the Body erode on the tip-space footprint mask while the
+//  deposit read the bristle gather; D-21 closes that open decision for the
+//  two bristle responses only. The erode mask IS `gatherBristle(...).coverage`
+//  — the same film the deposit lands — with the two constants inherited
+//  unchanged: the alpha-shaped `1 − exp(−uDensity·m)` paint law (uShape = 1)
+//  and the delivered LINEAR `coverAmount × RELIEF_ERODE` thickness law
+//  (uShape = 0). Every non-bristle response keeps `bodyCoverFS` and
+//  `footprintMask()`, untouched.
+// ============================================================
+
+describe('64-22 — the bristle Body mask (D-21)', () => {
+  it('builds the Body mask on the shared gather, never on footprintMask', () => {
+    const body = sliceBetween(
+      SHADERS_SOURCE,
+      'export const bristleBodyCoverFS',
+      '// Paper, generated per document',
+    )
+    expectContains(body, '${HEADER}${BRISTLE_GATHER}')
+    expectNotContains(body, 'footprintMask()')
+    expectContains(body, 'float m = gatherBristle(vUv).coverage;')
+    expectContains(body, 'float f = uAmount * mix(m, 1.0 - exp(-uDensity * m), uShapeLaw);')
+    // One factor, two outputs — the same law bodyCoverFS declares.
+    expect((body.match(/= vec4\(f\);/g) ?? []).length, 'one factor, two outputs').toBe(2)
+    // The shipped footprint twin is untouched: a non-bristle dab still reads
+    // the tip-space mask (the branch below routes it there).
+    const shipped = sliceBetween(
+      SHADERS_SOURCE,
+      'export const bodyCoverFS',
+      '// SPIKE 001 — the coverage composite',
+    )
+    expectContains(shipped, '${HEADER}${FOOTPRINT_MASK}')
+    expectContains(shipped, 'float m = footprintMask();')
+  })
+
+  it('erodes fixed alpha-shaped and relief linearly, and never writes coverage', () => {
+    const pass = sliceBetween(ENGINE_SOURCE, 'private coverBristlePass(', 'private coverageDeposit(')
+    expectContains(pass, 'const p = this.programs.bristleBodyCover;')
+    expectContains(pass, 'this.bindGather(p, x, y, r, angle, pr, grain);')
+    // The same two draws, the same blend law as coverPass: fixed then relief.
+    expect((pass.match(/g\.draw\(/g) ?? []).length, 'two draws: fixed, then relief').toBe(2)
+    expectContains(pass, 'gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
+    expectContains(pass, 'g.draw(this.fixed, rect);')
+    expectContains(pass, 'g.draw(this.relief, rect);')
+    expect(pass.indexOf('g.draw(this.fixed, rect);'), 'fixed erodes first').toBeLessThan(
+      pass.indexOf('g.draw(this.relief, rect);'),
+    )
+    // uShapeLaw = 1 (the paint's alpha-shaped law), then 0 (the delivered
+    // LINEAR thickness law) — inherited from coverPass, never re-invented.
+    // (Named uShapeLaw because the gather binds `uShape` as its sampler.)
+    expectContains(pass, 'gl.uniform1f(p.u.uShapeLaw, 1);')
+    expectContains(pass, 'gl.uniform1f(p.u.uShapeLaw, 0);')
+    // The coverage channel is NOT written here: bristleInk owns the one write.
+    expectNotContains(pass, 'this.cover.read')
+    expectNotContains(pass, 'this.cover.write')
+    expectContains(ENGINE_SOURCE, 'this.programs.bristleBodyCover = this.g.program(S.bristleBodyCoverFS);')
+  })
+
+  it('branches the stamp cover on the bristle predicate and keeps the undo block in place', () => {
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    expectContains(
+      brush,
+      'if (bristle) this.coverBristlePass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, pr, b.grain);',
+    )
+    expectContains(
+      brush,
+      'else this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);',
+    )
+    // The erode's undo coverage stays exactly where it was: once per stamp,
+    // before eachDab's first cover draw.
+    const protectAt = brush.indexOf('this.history.protect(1,')
+    const dabAt = brush.indexOf('this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {')
+    expect(protectAt, 'the protect block survives').toBeGreaterThan(-1)
+    expect(protectAt, 'the protect precedes every dab').toBeLessThan(dabAt)
+    expectContains(brush, 'const coverRect = this.stampRect(')
+    // Order inside eachDab: carrier -> cover -> deposit, as before.
+    const dab = sliceBetween(brush, 'this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {', '});')
+    const carrierAt = dab.indexOf('this.carrierPass(')
+    const coverAt = dab.indexOf('this.coverBristlePass(')
+    const depositAt = dab.indexOf('this.bristleInk(')
+    expect(carrierAt, 'the carrier runs first').toBeGreaterThan(-1)
+    expect(coverAt, 'the cover branch runs inside eachDab').toBeGreaterThan(-1)
+    expect(depositAt, 'the deposit runs inside eachDab').toBeGreaterThan(-1)
+    expect(carrierAt, 'carrier before cover').toBeLessThan(coverAt)
+    expect(coverAt, 'cover before deposit').toBeLessThan(depositAt)
+  })
+
+  it('keeps the pinned program and allocation counts', () => {
+    const programs = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
+    expect(
+      (programs.match(/this\.g\.program\(/g) ?? []).length,
+      'the pinned literal keeps twenty-three programs',
+    ).toBe(23)
+    const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
+    expect(
+      (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
+      'the bristle Body mask adds no render target',
     ).toBe(13)
   })
 })
