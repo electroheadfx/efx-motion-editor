@@ -321,8 +321,9 @@ describe('applyAquarelleMedium', () => {
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
     expect(aquarelleParams.value.water).toBe(91);
     // D-03: the next re-pick restores the record, and the tweak is gone.
+    // D-25 retuned the acrylic record: water 26 (was 8 before the retune).
     applyAquarelleMedium('acrylic');
-    expect(aquarelleParams.value.water).toBe(8);
+    expect(aquarelleParams.value.water).toBe(26);
   });
 
   it('leaves every recorded stroke byte-identical', () => {
