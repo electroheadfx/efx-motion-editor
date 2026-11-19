@@ -817,9 +817,11 @@ describe('configure() forwards the texture axis to buildBrushForStroke (source p
 //  WebGL2 machine.
 // ---------------------------------------------------------------------------
 
-describe('adapter light option (64-07, MED-17)', () => {
+describe('adapter render-state options: light + paper seed + wetness seams (64-07 / 64-21 / 64-24)', () => {
   /** Every engine method call in order — the ordering IS the law. */
   const calls: Array<{ method: string; args: readonly unknown[] }> = []
+  /** The clock callback the adapter installed on the engine, if any. */
+  let installedClock: (() => number) | null = null
 
   function record(method: string, args: readonly unknown[] = []): void {
     calls.push({ method, args })
@@ -832,7 +834,10 @@ describe('adapter light option (64-07, MED-17)', () => {
       record('constructor')
     }
     setManual(): void { record('setManual') }
-    setClock(): void { record('setClock') }
+    setClock(fn: () => number): void {
+      record('setClock')
+      installedClock = fn
+    }
     setRandom(): void { record('setRandom') }
     setPaper(): void { record('setPaper') }
     setParams(): void { record('setParams') }
@@ -842,6 +847,12 @@ describe('adapter light option (64-07, MED-17)', () => {
     setTool(): void { record('setTool') }
     setLight(next: { azimuth?: number; elevation?: number; intensity?: number }): void {
       record('setLight', [next])
+    }
+    setPaperSeed(seed: number | null): void {
+      record('setPaperSeed', [seed])
+    }
+    setLastTouchMode(mode: 0 | 1): void {
+      record('setLastTouchMode', [mode])
     }
     fix(): void { record('fix') }
     scriptBegin(): boolean { record('scriptBegin'); return true }
@@ -856,6 +867,7 @@ describe('adapter light option (64-07, MED-17)', () => {
     width: number
     height: number
     light?: { azimuth: number; elevation: number; intensity: number }
+    paperSeed?: number
   }) {
     vi.resetModules()
     vi.doMock('../playground/Engine', () => ({ WatercolorEngine: StubWatercolorEngine }))
@@ -867,6 +879,7 @@ describe('adapter light option (64-07, MED-17)', () => {
     vi.doUnmock('../playground/Engine')
     vi.resetModules()
     calls.length = 0
+    installedClock = null
   })
 
   const STROKE: StudioStroke<AquarelleStrokePayload> = toStudioStroke(makeStrokePayload())
@@ -916,5 +929,141 @@ describe('adapter light option (64-07, MED-17)', () => {
     // UNMODIFIED: the adapter is a pass-through; `setLight` wraps/clamps.
     expect(lightCalls[0]!.args[0]).toEqual({ azimuth: 725, elevation: -5, intensity: 99 })
     adapter.dispose()
+  })
+
+  // 64-21 (MED-02): the sheet seed rides the same seam as the light. Applied
+  // ONCE, before the first stroke, as the exact number handed in — the engine
+  // setter owns the pin, the non-finite folding and the no-op comparison.
+  it('applies a provided paper seed exactly once, before the first stroke', async () => {
+    const { canvas } = makeMockCanvas(8, 8)
+    const adapter = await adapterWithStubEngine({
+      canvas,
+      width: 8,
+      height: 8,
+      paperSeed: 0.25,
+    })
+
+    adapter.applyStroke(STROKE)
+
+    const seedCalls = calls.filter((call) => call.method === 'setPaperSeed')
+    expect(seedCalls).toHaveLength(1)
+    expect(seedCalls[0]!.args[0]).toBe(0.25)
+    // The seed lands BEFORE the first dab: the whole stroke paints on its grain.
+    const seedIndex = calls.findIndex((call) => call.method === 'setPaperSeed')
+    const beginIndex = calls.findIndex((call) => call.method === 'scriptBegin')
+    expect(beginIndex).toBeGreaterThan(-1)
+    expect(seedIndex).toBeLessThan(beginIndex)
+    adapter.dispose()
+  })
+
+  it('applies the zero seed rather than treating it as absent', async () => {
+    const { canvas } = makeMockCanvas(8, 8)
+    const adapter = await adapterWithStubEngine({
+      canvas,
+      width: 8,
+      height: 8,
+      paperSeed: 0,
+    })
+
+    adapter.applyStroke(STROKE)
+
+    // 0 is the band's inclusive lower edge — a truthiness check would drop it.
+    const seedCalls = calls.filter((call) => call.method === 'setPaperSeed')
+    expect(seedCalls).toHaveLength(1)
+    expect(seedCalls[0]!.args[0]).toBe(0)
+    adapter.dispose()
+  })
+
+  it('never calls setPaperSeed when no seed is provided', async () => {
+    const { canvas } = makeMockCanvas(8, 8)
+    const adapter = await adapterWithStubEngine({ canvas, width: 8, height: 8 })
+    adapter.applyStroke(STROKE)
+    // The engine's own roll stays in force — the adapter never manufactures one.
+    expect(calls.filter((call) => call.method === 'setPaperSeed')).toHaveLength(0)
+    adapter.dispose()
+  })
+
+  it('passes an out-of-band seed through unmodified (the engine setter owns the band)', async () => {
+    const { canvas } = makeMockCanvas(8, 8)
+    const adapter = await adapterWithStubEngine({
+      canvas,
+      width: 8,
+      height: 8,
+      paperSeed: 1.5,
+    })
+    const seedCalls = calls.filter((call) => call.method === 'setPaperSeed')
+    expect(seedCalls).toHaveLength(1)
+    // UNMODIFIED: the adapter is a pass-through; `setPaperSeed` drops the pin.
+    expect(seedCalls[0]!.args[0]).toBe(1.5)
+    adapter.dispose()
+  })
+
+  // 64-24 (D-24): the wetness acceptance's two seam methods. The probe's
+  // `advanceClockMs` and `--wet-mode` operands reach the engine ONLY through
+  // these; without an executed test, "thirty seconds later" could silently
+  // become "the same instant" and the A/B control could never select a mode.
+  describe('64-24 wetness acceptance seams', () => {
+    /** The simulation calls a clock advance must never make. */
+    const SIMULATION = ['tick', 'scriptBegin', 'scriptMove', 'scriptEnd']
+
+    it('advances exactly the virtual clock the engine reads, with no simulation tick', async () => {
+      const { canvas } = makeMockCanvas(8, 8)
+      const adapter = await adapterWithStubEngine({ canvas, width: 8, height: 8 })
+      expect(installedClock, 'the adapter must install a clock on the engine').not.toBeNull()
+      expect(installedClock!()).toBe(0)
+
+      adapter.advanceClock(30000)
+
+      // The engine's own clock reads exactly the advance — the acceptance's
+      // "thirty seconds later" is one clock fact, not a guess.
+      expect(installedClock!()).toBe(30000)
+      // Cumulative: a second advance adds to the first, never re-sets it.
+      adapter.advanceClock(5000)
+      expect(installedClock!()).toBe(35000)
+      // Clock-only: the fluid was never stepped or rendered.
+      expect(calls.filter((call) => SIMULATION.includes(call.method))).toHaveLength(0)
+      adapter.dispose()
+    })
+
+    it('never moves the clock backwards or by a non-finite amount', async () => {
+      const { canvas } = makeMockCanvas(8, 8)
+      const adapter = await adapterWithStubEngine({ canvas, width: 8, height: 8 })
+
+      for (const ms of [0, -1, -30000, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+        adapter.advanceClock(ms)
+      }
+
+      // The direction law: a wetness comparison can only ever look OLDER.
+      expect(installedClock!()).toBe(0)
+      adapter.dispose()
+    })
+
+    it('freezes the clock once the adapter is disposed', async () => {
+      const { canvas } = makeMockCanvas(8, 8)
+      const adapter = await adapterWithStubEngine({ canvas, width: 8, height: 8 })
+      adapter.advanceClock(10000)
+      expect(installedClock!()).toBe(10000)
+
+      adapter.dispose()
+      adapter.advanceClock(1000)
+
+      expect(installedClock!()).toBe(10000)
+    })
+
+    it('forwards the A/B mode to the engine exactly as given, one write per call', async () => {
+      const { canvas } = makeMockCanvas(8, 8)
+      const adapter = await adapterWithStubEngine({ canvas, width: 8, height: 8 })
+      expect(calls.filter((call) => call.method === 'setLastTouchMode')).toHaveLength(0)
+
+      adapter.setLastTouchMode(0)
+      adapter.setLastTouchMode(1)
+
+      const modeCalls = calls.filter((call) => call.method === 'setLastTouchMode')
+      // Raw pass-through, in order: the engine setter owns compare-then-write,
+      // so the `--wet-mode 0` proxy capture selects exactly that mode.
+      expect(modeCalls.map((call) => call.args[0])).toEqual([0, 1])
+      expect(calls.filter((call) => SIMULATION.includes(call.method))).toHaveLength(0)
+      adapter.dispose()
+    })
   })
 })

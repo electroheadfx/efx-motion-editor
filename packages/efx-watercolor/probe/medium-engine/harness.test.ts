@@ -28,10 +28,11 @@
 //      both closed scenario lists accept it.
 // ============================================================
 
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -550,5 +551,200 @@ describe('the bristle-wet acceptance (64-24)', () => {
       expectContains(PROBE, 'invalid wetMode "${raw}" (expected 0 or 1)')
       expectContains(PROBE, 'adapter.setLastTouchMode(wetMode)')
     })
+  })
+})
+
+// ============================================================
+//  The comparator's invariant functions, EXECUTED (64-23 / 64-24).
+//
+//  The describes above pin the law as source text; a source pin cannot fail
+//  when a relation is inverted, dropped from the dispatch map, or unreachable.
+//  These tests run compare.mjs as a real process against synthetic captures in
+//  the harness's own /tmp/medium-engine folder, so each barred relation must
+//  actually discriminate: a feather-blind edge, a smooth band, a band as wide
+//  as the stroke, a missing field, a named degeneracy and a sub-one-luma
+//  wetness gap must all exit 1, while the recorded relation set exits 0.
+//
+//  Every fixture carries a unique `nyquist-` name (the real capture names are
+//  never touched) and all 7 compared FIELDS match on both sides, so a failing
+//  test fails on the INVARIANT, never on field equality. Nothing here reads or
+//  writes a committed baseline.
+// ============================================================
+
+const TMP_DIR = '/tmp/medium-engine'
+const COMPARE_PATH = resolve(HERE, 'compare.mjs')
+const createdFixtures = new Set<string>()
+
+afterAll(() => {
+  for (const name of createdFixtures) {
+    rmSync(join(TMP_DIR, `${name}.json`), { force: true })
+  }
+})
+
+function baseCapture(scenario: string, gate: string): Record<string, unknown> {
+  return {
+    scenario,
+    gate,
+    digestPaper: 'dpaper',
+    digestTransparent: 'dtransparent',
+    digestWhite: 'dwhite',
+    digestPigment: 'dpigment',
+    byteLength: 4096,
+    width: 1080,
+    height: 1080,
+  }
+}
+
+function writeCapture(name: string, data: Record<string, unknown>): void {
+  mkdirSync(TMP_DIR, { recursive: true })
+  writeFileSync(join(TMP_DIR, `${name}.json`), JSON.stringify(data))
+  createdFixtures.add(name)
+}
+
+/**
+ * Write `actual` and an all-fields-equal reference, then run
+ * `compare.mjs <actual> --other <reference>`. Returns the exit status and
+ * combined output.
+ */
+function compareSynthetic(
+  name: string,
+  actual: Record<string, unknown>,
+): { status: number | null; output: string } {
+  writeCapture(name, actual)
+  // Same 7 compared fields on every fixture pair: digest/byteLength/width/
+  // height are copied from the actual, so the field loop can never be the
+  // reason a failure test fails.
+  writeCapture(`${name}-ref`, { ...baseCapture(String(actual.scenario), `${name}-ref`), ...actual })
+  const result = spawnSync(process.execPath, [COMPARE_PATH, name, '--other', `${name}-ref`], {
+    encoding: 'utf8',
+  })
+  return { status: result.status, output: `${result.stdout}${result.stderr}` }
+}
+
+function validEdgeCapture(): Record<string, unknown> {
+  return {
+    ...baseCapture('bristle-edge', 'nyquist'),
+    // The SUMMARY's measured readings — absolute values are evidence, the
+    // relations below them are the contract.
+    edgeSoftnessPxFeather0: 20.25,
+    edgeSoftnessPxFeather100: 25.11,
+    edgeVariationPxFeather0: 13.0,
+    edgeVariationPxFeather100: 1.06,
+    edgeHalfWidthPx: 32.14,
+    edgePlateauAlphaFeather0: 0.13,
+    edgePlateauAlphaFeather100: 0.16,
+    edgeSkippedStations: [],
+    edgeFailures: [],
+  }
+}
+
+describe('the bristle-edge invariants discriminate (64-23, executed)', () => {
+  it('passes a capture whose Feather-100 band is wider, brushed and inside the stroke', () => {
+    const { status, output } = compareSynthetic('nyquist-edge-pass', validEdgeCapture())
+
+    expect(status, output).toBe(0)
+    expect(output).toContain('all 7 fields equal')
+    // The dispatch map is load-bearing: a capture that never reached
+    // bristleEdgeFailures would pass the fields without this note.
+    expect(output).toContain('scenario invariants hold')
+  })
+
+  it('fails a feather-blind edge (Feather-100 not wider than Feather-0)', () => {
+    const { status, output } = compareSynthetic('nyquist-edge-blind', {
+      ...validEdgeCapture(),
+      edgeSoftnessPxFeather100: 20.25,
+    })
+
+    expect(status, output).toBe(1)
+    expect(output).toContain('Feather is not widening the band')
+  })
+
+  it('fails a perfectly smooth edge (zero crossing variation)', () => {
+    const { status, output } = compareSynthetic('nyquist-edge-smooth', {
+      ...validEdgeCapture(),
+      edgeVariationPxFeather0: 0,
+    })
+
+    expect(status, output).toBe(1)
+    expect(output).toContain('perfectly smooth')
+  })
+
+  it('fails a band as wide as the stroke (softness not narrower than the half-width)', () => {
+    const { status, output } = compareSynthetic('nyquist-edge-wide', {
+      ...validEdgeCapture(),
+      edgeSoftnessPxFeather100: 32.14,
+    })
+
+    expect(status, output).toBe(1)
+    expect(output).toContain('not an edge but the stroke')
+  })
+
+  it('fails a capture missing an invariant field by name', () => {
+    const capture = validEdgeCapture()
+    delete capture.edgeHalfWidthPx
+    const { status, output } = compareSynthetic('nyquist-edge-missing', capture)
+
+    expect(status, output).toBe(1)
+    expect(output).toContain('capture is missing edgeHalfWidthPx')
+  })
+
+  it("propagates the probe's own named degeneracies verbatim", () => {
+    const { status, output } = compareSynthetic('nyquist-edge-degenerate', {
+      ...validEdgeCapture(),
+      edgeFailures: ['stroke not found at y 300'],
+    })
+
+    expect(status, output).toBe(1)
+    expect(output).toContain('stroke not found at y 300')
+  })
+})
+
+describe('the bristle-wet invariant discriminates (64-24, executed)', () => {
+  it('passes a capture whose two bands differ by at least one luma unit', () => {
+    const { status, output } = compareSynthetic('nyquist-wet-pass', {
+      ...baseCapture('bristle-wet', 'nyquist'),
+      pickupFreshMean: 50.64,
+      pickupAgedWetMean: 250.16,
+      wetMode: 1,
+    })
+
+    expect(status, output).toBe(0)
+    expect(output).toContain('scenario invariants hold')
+  })
+
+  it('fails a decorative age gate (gap below PICKUP_MIN_DELTA)', () => {
+    const { status, output } = compareSynthetic('nyquist-wet-decorative', {
+      ...baseCapture('bristle-wet', 'nyquist'),
+      pickupFreshMean: 100,
+      pickupAgedWetMean: 100.5,
+      wetMode: 1,
+    })
+
+    expect(status, output).toBe(1)
+    expect(output).toContain('below 1 luma')
+  })
+
+  it('fails a blank band (no film deposited over the fresh crossing)', () => {
+    const { status, output } = compareSynthetic('nyquist-wet-blank', {
+      ...baseCapture('bristle-wet', 'nyquist'),
+      pickupFreshMean: 0,
+      pickupAgedWetMean: 50,
+      wetMode: 1,
+    })
+
+    expect(status, output).toBe(1)
+    expect(output).toContain('not a finite positive mean')
+  })
+
+  it('fails a mean outside the luma range', () => {
+    const { status, output } = compareSynthetic('nyquist-wet-range', {
+      ...baseCapture('bristle-wet', 'nyquist'),
+      pickupFreshMean: 300,
+      pickupAgedWetMean: 50,
+      wetMode: 1,
+    })
+
+    expect(status, output).toBe(1)
+    expect(output).toContain('outside [0, 255]')
   })
 })
