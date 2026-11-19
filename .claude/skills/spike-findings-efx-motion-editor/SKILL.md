@@ -69,7 +69,7 @@ Spike sessions wrapped: 2026-11-19 (spikes 001, 002)
 | Area | Reference | Key Finding |
 |------|-----------|-------------|
 | Coverage composite | references/coverage-composite.md | Per-dab coverage `a = bodyGain·(1 − exp(−8·amount·mask))` composited source-over gives true opaque acrylic; 4.1× median stroke, 0 full-document draws vs 3613, −17.8 MiB per-stroke transient. Body 0 stays byte-identical. |
-| Acrylic bristle deposit | references/bristle-deposit.md | Deterministic per-bristle carrier + 5-nearest gather ports into WebGL2 selectively: +26–29 % bake on a 50-stroke passage, +36–51 % on a large acrylic brush. Determinism holds only with a pinned paper seed (a pre-existing record gap). Wetness needs its own R32F pair: +26.1 MB at 1080². |
+| Acrylic bristle deposit | references/bristle-deposit.md | Deterministic per-bristle carrier + 5-nearest gather ports into WebGL2 selectively: +26–29 % bake on a 50-stroke passage, +36–51 % on a large acrylic brush. Determinism holds only with a pinned paper seed (a pre-existing record gap). Wetness needs its own R32F pair: +26.1 MB at 1080². Frontier (measured 2026-11-19): the gather composes with the Body-100 coverage composite — combined 675.5 ms at 1080² / 1.17 s at 2K, +22.5 % / +17.6 % over shipping at the same Body, no new GPU targets. |
 | Measurement harness | references/measurement-harness.md | Real engine + real WebGL2 in headless Chrome, one engine per process, GL-boundary instrumentation, byte-identical neutrality control before believing any delta. p95 is not a cost signal on a stalling script. |
 
 ## Source Files
@@ -83,7 +83,8 @@ Original spike artifacts are preserved in `sources/`:
 - `sources/002-acrylic-bristle-deposit/` — README (formula table with § numbers,
   64-21…64-24 slicing, non-portable list), `src/bristles.ts`,
   `src/bristleShaders.ts`, `patches/Engine.diff` (against `406d1ead1`, **on top
-  of** spike 001), `probe/`, `results/` (16 gate JSONs).
+  of** spike 001), `probe/` (with the 2026-11-19 `--body` operand), `results/`
+  (45 gate JSONs, including the Body matrix and its repeat samples).
 
 ### Applying the patches
 

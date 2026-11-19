@@ -292,7 +292,7 @@ function makeStroke(entry: Entry) {
   return toStudioStroke({
     tool: 'brush',
     color: entry.color,
-    params: { ...STROKE_PARAMS, size: CANON_SIZE },
+    params: { ...STROKE_PARAMS, size: CANON_SIZE, body: BODY },
     brushId: BRUSH_ID,
     points: entry.points.map((p) => ({ ...p })),
     mutationId: entry.mutationId,
@@ -370,6 +370,10 @@ function paintedPct(canvas: HTMLCanvasElement): number {
 const QUERY = new URLSearchParams(location.search)
 const CANON_SIZE = Number(QUERY.get('sizeParam') ?? '12')
 const BRUSH_ID = QUERY.get('brush') ?? 'round'
+// Phase 64 Body (canonical 0..100). The frontier measurement: the bristle
+// deposit and the coverage composite both on the stroke, one cost budget.
+const BODY = Number(QUERY.get('body') ?? '0')
+if (!Number.isFinite(BODY) || BODY < 0 || BODY > 100) throw new Error(`invalid body ${QUERY.get('body')}`)
 
 interface RunResult {
   readonly digests: { paper: string; transparent: string; white: string; pigment: string }
@@ -504,6 +508,7 @@ function main(): void {
       scenario: params.get('scenario') ?? 'cross',
       brush: BRUSH_ID,
       sizeParam: CANON_SIZE,
+      body: BODY,
       sheet,
       touch,
       salt,

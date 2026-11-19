@@ -50,6 +50,12 @@ if (!Number.isFinite(sizeParam) || sizeParam < 1 || sizeParam > 100) {
   console.error(`invalid --size-param "${sizeParamRaw}" (1..100)`)
   process.exit(1)
 }
+const bodyRaw = flag('--body')
+const body = bodyRaw === undefined ? 0 : Number(bodyRaw)
+if (!Number.isFinite(body) || body < 0 || body > 100) {
+  console.error(`invalid --body "${bodyRaw}" (0..100)`)
+  process.exit(1)
+}
 const sizeRaw = flag('--size')
 const size = sizeRaw === undefined ? 256 : Number(sizeRaw)
 if (!Number.isInteger(size) || size < 32 || size > 4096) {
@@ -80,7 +86,7 @@ if (paperB !== 'fixed' && paperB !== 'random') {
   process.exit(1)
 }
 
-const query = `gate=${encodeURIComponent(gate)}&engine=${engine}&scenario=${scenario}&size=${size}&touch=${touch}&salt=${salt}&runs=${runs}&paperB=${paperB}&brush=${encodeURIComponent(brush)}&sizeParam=${sizeParam}`
+const query = `gate=${encodeURIComponent(gate)}&engine=${engine}&scenario=${scenario}&size=${size}&touch=${touch}&salt=${salt}&runs=${runs}&paperB=${paperB}&brush=${encodeURIComponent(brush)}&sizeParam=${sizeParam}&body=${body}`
 
 const esbuildCandidates = [
   join(repoRoot, 'node_modules/.pnpm/esbuild@0.27.7/node_modules/esbuild/bin/esbuild'),
@@ -189,7 +195,7 @@ if (result.verdict !== 'SPIKE-002 CAPTURED') {
 console.log('')
 console.log('================ spike 002 bristle probe ================')
 console.log(`gate      : ${result.gate}`)
-console.log(`engine    : ${result.engine} | scenario ${result.scenario} | brush ${result.brush} | size ${result.sizeParam} | sheet ${result.sheet}²`)
+console.log(`engine    : ${result.engine} | scenario ${result.scenario} | brush ${result.brush} | size ${result.sizeParam} | body ${result.body} | sheet ${result.sheet}²`)
 console.log(`touch     : ${result.touch} | salt ${result.salt}`)
 console.log(`bake A/B  : ${result.runA.bakeMs} / ${result.runB.bakeMs} ms`)
 console.log(`render A/B: ${result.runA.renderMs} / ${result.runB.renderMs} ms`)

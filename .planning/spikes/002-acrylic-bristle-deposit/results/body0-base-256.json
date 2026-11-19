@@ -1,0 +1,97 @@
+{
+  "gate": "body0-base-256",
+  "engine": "baseline",
+  "scenario": "cross",
+  "brush": "round",
+  "sizeParam": 12,
+  "body": 0,
+  "sheet": 256,
+  "touch": false,
+  "salt": 0,
+  "runs": 1,
+  "paperB": "fixed",
+  "renderer": "WebKit WebGL",
+  "runA": {
+    "digests": {
+      "paper": "d880bae9",
+      "transparent": "7d078c9e",
+      "white": "c1288745",
+      "pigment": "7d58f971"
+    },
+    "bakeMs": 450,
+    "renderMs": 82,
+    "paintedPct": 9.5,
+    "regions": {
+      "crossing": {
+        "r": 89.6725,
+        "g": 0,
+        "b": 1.3925,
+        "luma": 30.355
+      },
+      "redOwn": {
+        "r": 160.40952380952382,
+        "g": 0,
+        "b": 1.6595238095238096,
+        "luma": 54.02301587301588
+      },
+      "lightOwn": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      },
+      "paper": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      }
+    },
+    "gpuPeakBytes": 10191872,
+    "bristleDigest": null,
+    "bristleInfo": null
+  },
+  "runB": {
+    "digests": {
+      "paper": "d880bae9",
+      "transparent": "7d078c9e",
+      "white": "c1288745",
+      "pigment": "7d58f971"
+    },
+    "bakeMs": 450,
+    "renderMs": 82,
+    "paintedPct": 9.5,
+    "regions": {
+      "crossing": {
+        "r": 89.6725,
+        "g": 0,
+        "b": 1.3925,
+        "luma": 30.355
+      },
+      "redOwn": {
+        "r": 160.40952380952382,
+        "g": 0,
+        "b": 1.6595238095238096,
+        "luma": 54.02301587301588
+      },
+      "lightOwn": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      },
+      "paper": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      }
+    },
+    "gpuPeakBytes": 10191872,
+    "bristleDigest": null,
+    "bristleInfo": null
+  },
+  "identicalImages": null,
+  "identicalBristles": null,
+  "verdict": "SPIKE-002 CAPTURED"
+}

@@ -211,6 +211,31 @@ Measured, headless SwiftShader, one engine per page. `bakeMs` = script + settle;
   (the only large memory delta). Determinism precedes everything; the reference's
   §9 ranks payoff the same way.
 
+### Frontier: the combined stack at full Body (measured 2026-11-19)
+
+`--body` on the same acrylic-20 passage (canonical 0..100 → `toEngineParams`),
+one engine per page:
+
+| Engine | 1080² Body 0 | 1080² Body 100 | 2K Body 0 | 2K Body 100 |
+|---|---|---|---|---|
+| bristle | 510 ms | **675.5 ms** | 819 ms | **1169 ms** |
+| baseline | 365 ms | **551.5 ms** | 553 ms | **994 ms** |
+
+- **They compose.** Order in `stamp()`: carrier → `coverPass` → bristle gather.
+  Body 100 moves the same regions in both engines (cross-scene crossing luma
+  30.4 → 107.0 baseline, 89.9 → 162.4 bristle); determinism holds at Body 100
+  (identical images + reservoirs, bristle `0f36b320`/`c9f718b5`).
+- Body is additive and deposit-law independent: **+165 ms** bristle vs **+186 ms**
+  baseline at 1080²; **+350 ms** vs **+441 ms** at 2K. One extra fragment pass
+  over the dab footprint, independent of the bristle loop.
+- Combined vs shipping at the same Body: **+22.5 %** (1080²) / **+17.6 %** (2K);
+  with last-touch **+38.5 %** / **+22.7 %**. vs the no-Medium build: **+85 % /
+  +111 %** (**+109 % / +121 %** with wetness).
+- **No new GPU targets** — GPU peak identical across Body pairs.
+- Open design decision for 64-22: the cover pass was driven by the raw dab
+  footprint while the deposit is bristle-broken; whether the cover mask should
+  be bristle-modulated is unmeasured and belongs to that plan's acceptance.
+
 ## Origin
 
 Synthesized from spike: **002-acrylic-bristle-deposit** (`VALIDATED`, three

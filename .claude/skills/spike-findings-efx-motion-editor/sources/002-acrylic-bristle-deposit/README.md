@@ -36,6 +36,7 @@ using the `probe/medium-engine` harness idiom. No production file was changed.
 | 1. Determinism | **GO**, conditional | 2 replays → identical image *and* reservoir digests at 256², 1080², 2K. Condition: the paper seed must be pinned — today it is not, and the current engine already fails replay equality without it (`det-paper-baseline`) |
 | 2. Cost | **GO** | bake +26.2 % at 2K / +28.7 % at 1080² on the 50-stroke passage; +36 % (1080²) and +51 % (2K, 256 bristles) on a large acrylic brush. Render +6–8 ms on the 50-stroke passage; at 2K the render phase is export-dominated and engine-insensitive |
 | 3. Wetness | **GO — new channel required** | coverage alone cannot encode recency; `wet × cover` is a usable proxy but not §3.4's law. R32F pair: **+26.1 MB** at 1080², **+67.1 MB** at 2K (sheet + undo atlas), measured; frame cache **0 B** (session-scoped) |
+| Frontier (2026-11-19) | **GO — they compose** | bristle gather + coverage composite on the same stroke at Body 100: stack bake 675.5 ms at 1080² / 1.17 s at 2K, **+22.5 % / +17.6 %** over the shipping Body-100 build, **+85 % / +111 %** over the no-Medium build; no new GPU targets; byte-identical replays. See "Frontier measurement" |
 
 ## Contract: source documents
 
@@ -193,6 +194,20 @@ node probe/run.mjs --gate ac2048-bristle --engine bristle  --scenario acrylic-20
 # wetness: the same acrylic scene, last-touch channel off vs on
 node probe/run.mjs --gate wet1080-off --engine bristle --scenario acrylic-20 --size 1080 --size-param 60 --brush bristle-flat --touch 0 --runs 1
 node probe/run.mjs --gate wet1080-on  --engine bristle --scenario acrylic-20 --size 1080 --size-param 60 --brush bristle-flat --touch 1 --runs 1
+
+# combined Body (added 2026-11-19): the frontier question — the deposit and
+# the coverage composite on the SAME stroke. `--body` is canonical 0..100 and
+# travels through toEngineParams(), exactly the Phase 64 mapping.
+node probe/run.mjs --gate ac1080-b0        --engine bristle  --scenario acrylic-20 --size 1080 --size-param 60 --brush bristle-flat --body 0   --runs 1
+node probe/run.mjs --gate ac1080-b100      --engine bristle  --scenario acrylic-20 --size 1080 --size-param 60 --brush bristle-flat --body 100 --runs 1
+node probe/run.mjs --gate ac1080-b100-wet  --engine bristle  --scenario acrylic-20 --size 1080 --size-param 60 --brush bristle-flat --body 100 --touch 1 --runs 1
+node probe/run.mjs --gate ac2048-b0        --engine bristle  --scenario acrylic-20 --size 2048 --size-param 60 --brush bristle-flat --body 0   --runs 1
+node probe/run.mjs --gate ac2048-b100      --engine bristle  --scenario acrylic-20 --size 2048 --size-param 60 --brush bristle-flat --body 100 --runs 1
+node probe/run.mjs --gate ac2048-b100-wet  --engine bristle  --scenario acrylic-20 --size 2048 --size-param 60 --brush bristle-flat --body 100 --touch 1 --runs 1
+node probe/run.mjs --gate acb1080-b0       --engine baseline --scenario acrylic-20 --size 1080 --size-param 60 --brush bristle-flat --body 0   --runs 1
+node probe/run.mjs --gate acb1080-b100     --engine baseline --scenario acrylic-20 --size 1080 --size-param 60 --brush bristle-flat --body 100 --runs 1
+node probe/run.mjs --gate acb2048-b0       --engine baseline --scenario acrylic-20 --size 2048 --size-param 60 --brush bristle-flat --body 0   --runs 1
+node probe/run.mjs --gate acb2048-b100     --engine baseline --scenario acrylic-20 --size 2048 --size-param 60 --brush bristle-flat --body 100 --runs 1
 ```
 
 Results land in `results/<gate>.json`. Every gate reports both runs, the four
@@ -329,6 +344,75 @@ frame starts dry (`AquarelleCanvasLayer` clears the sheet on a frame change).
 like `relief`: engine-only, rebuilt by replay, never written to a project
 format (Engine.ts's relief comment is the precedent).
 
+### Frontier measurement — the combined stack at full Body (2026-11-19)
+
+The three legs above measured the deposit alone (Body 0). The open question the
+wrap-up named was whether the bristle gather **composes with the coverage
+composite on the same stroke at full Body**, and whether that combined fragment
+stack still fits the bake budget. Measured with a `--body` operand on the same
+`acrylic-20` passage (canonical Body 0..100 → `toEngineParams`, the shipping
+mapping; one engine per page; a second sample where a delta is claimed):
+
+| Engine | Sheet | Body | bakeMs (samples) | renderMs | GPU peak |
+|---|---|---|---|---|---|
+| bristle | 1080² | 0 | **510** (510–521) | 184 | 223.0 MB |
+| bristle | 1080² | 100 | **675.5** (674–677) | 188 | 223.0 MB |
+| bristle | 1080² | 100 + last-touch | **764** | 187 | 223.0 MB |
+| bristle | 2K | 0 | **819** (819–832) | 335 | 614.2 MB |
+| bristle | 2K | 100 | **1169** (1166–1172) | 357.5 | 614.2 MB |
+| bristle | 2K | 100 + last-touch | **1220** | 355 | 614.2 MB |
+| baseline | 1080² | 0 | **365** (365–383) | 161 | 196.8 MB |
+| baseline | 1080² | 100 | **551.5** (549–554) | 196 | 196.8 MB |
+| baseline | 2K | 0 | **553** (551–553) | 374 | 547.0 MB |
+| baseline | 2K | 100 | **994** (987–1001) | 378.5 | 547.0 MB |
+
+Reading:
+
+- **They compose.** In the workbench's `stamp()` brush branch the order is
+  carrier → `coverPass` (Body > 0) → the bristle gather deposit. Body 100
+  moves the same regions in the same direction in both engines: on the 256²
+  cross scene the baseline's crossing luma goes 30.4 → 107.0 and the bristle
+  path's 89.9 → 162.4; on `acrylic-20` at 1080² the bristle crossing goes
+  14.3 → 160.9. The cover law is doing its work over the bristle deposit, not
+  fighting it.
+- **Body is additive and deposit-law independent.** Its absolute cost is the
+  same order in both engines — **+165 ms (+32.5 %)** bristle vs **+186 ms
+  (+51.1 %)** baseline at 1080²; **+350 ms (+42.7 %)** vs **+441 ms (+79.7 %)**
+  at 2K. That is the expected shape: the cover pass is ONE extra fragment pass
+  over the dab footprint, independent of the bristle loop, so it does not
+  multiply with the bristle count. The spread between the two engines' deltas
+  is SwiftShader variance and the two pages' different memory footprints, not a
+  law difference.
+- **The combined stack vs shipping at the same Body:** 675.5 vs 551.5 ms at
+  1080² (**+22.5 %**), 1169 vs 994 ms at 2K (**+17.6 %**); with the last-touch
+  channel on, 764 vs 551.5 (**+38.5 %**) and 1220 vs 994 (**+22.7 %**).
+  Against the shipping build with no Medium at all: **+85 %** (1080²) /
+  **+111 %** (2K), or **+109 % / +121 %** with wetness — the number a budget
+  line has to accept, not a number that breaks a gate (64-17: durations are
+  recorded, never gated).
+- **No new GPU targets.** The GPU peak is byte-identical across the Body pairs
+  at each sheet size (the cover pass reuses the existing ink/base targets), so
+  the Body composite costs time, not memory.
+- **Still deterministic at full Body.** Two replays of the 256² cross scene at
+  Body 100 are byte-identical on both engines — bristle images
+  `0f36b320`/`b5984bd9` and reservoirs `c9f718b5`, baseline images
+  `2b91ac4e`/`0ac9f361` — and equal to the single-run gates. The neutrality
+  control also holds: `--body 0` reproduces the recorded Body-0 region readings
+  and digests exactly on both engines.
+- **One design question this measurement does NOT settle:** the cover pass was
+  driven by the raw dab footprint (`bindFootprint`), the same mask the shipping
+  law uses, while the deposit is broken up by the bristle profile. So at high
+  Body the underlayer is hidden along the whole footprint even where the
+  bristles deposited nothing. Whether the cover mask should instead be the
+  bristle-modulated coverage is a visual law decision for **64-22**, not a
+  measured verdict; it would move cost (the mask would come from the gather)
+  and belongs in that plan's acceptance criteria.
+
+**Verdict:** go, unchanged — but 64-22's cost gate should be stated against the
+Body-100 numbers above (675.5 ms / 1.17 s), not only against the Body-0
+`833 / 951 ms` baselines, and its acceptance must pick footprint-cover or
+bristle-cover explicitly.
+
 ## Touch points in Studio (what a plan would edit)
 
 1. `packages/efx-watercolor/src/playground/Engine.ts`
@@ -359,7 +443,7 @@ format (Engine.ts's relief comment is the precedent).
 | Plan | Scope | Gate (all measured, none tuned into the law) |
 |---|---|---|
 | **64-21 — record + reservoirs** | Pin the paper seed (record or derive); deterministic bristle set from `traceSeed`; the `1 × 256` reservoir pair + carrier pass per dab. Deposit stays the current stamp: no visual law change, so every existing neutral/identity gate stays byte-identical. | Two replays in the probe → identical exports *and* reservoirs at 256²/1080²/2K; the neutral and Body-0 identity gates unchanged; `bakeMs` carries the carrier-only delta (this spike measured it as negligible). |
-| **64-22 — the gather + the mixing law** | 5-nearest ink-weighted carried coefficients; profile/body/coverage; pickup/refill exposed; the RGB→coefficient law and the §3.3 smear decision; Body composition through `coverageDeposit`. | Acceptance ask #1 (Body as a blend, contour blending) on the probe's cover scenes; the 50-stroke `bakeMs` at 1080² and 2K against **833 / 951 ms** (harness baselines) with the **+239 / +249 ms** reference delta; no new full-document pass. |
+| **64-22 — the gather + the mixing law** | 5-nearest ink-weighted carried coefficients; profile/body/coverage; pickup/refill exposed; the RGB→coefficient law and the §3.3 smear decision; Body composition through `coverageDeposit` (footprint-cover or bristle-cover — decide explicitly). | Acceptance ask #1 (Body as a blend, contour blending) on the probe's cover scenes; the 50-stroke `bakeMs` at 1080² and 2K against **833 / 951 ms** (harness baselines) with the **+239 / +249 ms** reference delta, **and** the combined Body-100 gate: **675.5 ms / 1.17 s** (this spike, 2026-11-19); no new full-document pass. |
 | **64-23 — traces + directional edges** | `broken` (§4.3), `grainHeight` trio (§4.4), rim contact (§5.3), landing (§5.4), `dryEdge` (§5.5), `wide/local` body (§4.5). This is the heaviest fragment path and the home of acceptance ask #2 and the REA "trails/edge variation" remarks. | The same cost gates (this spike's numbers already include the full noise stack); a visual gate for direction-following AA and the hairy rim; the 256-bristle cap case at 2K (**+51 %** reference). |
 | **64-24 — acrylic water + wetness** | The R32F last-touch pair (or a recorded decision to ship the `wet × cover` proxy); the §3.4 gate in the carrier; Wet/Dry UI wiring; the frame-cache decision (session-scoped). | Memory pins: **+26.1 MB** at 1080², **+67.1 MB** at 2K (sheet + undo atlas); **+103 ms** bake on the 20-stroke passage at 1080²; no persisted sidecar; the watercolor Wet/Dry law unchanged. |
 

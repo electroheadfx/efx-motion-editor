@@ -1,0 +1,97 @@
+{
+  "gate": "body100-base-256",
+  "engine": "baseline",
+  "scenario": "cross",
+  "brush": "round",
+  "sizeParam": 12,
+  "body": 100,
+  "sheet": 256,
+  "touch": false,
+  "salt": 0,
+  "runs": 1,
+  "paperB": "fixed",
+  "renderer": "WebKit WebGL",
+  "runA": {
+    "digests": {
+      "paper": "56a591e4",
+      "transparent": "0ac9f361",
+      "white": "212e2d03",
+      "pigment": "2b91ac4e"
+    },
+    "bakeMs": 122,
+    "renderMs": 66,
+    "paintedPct": 11.1,
+    "regions": {
+      "crossing": {
+        "r": 164.915,
+        "g": 77.83,
+        "b": 78.26,
+        "luma": 107.00166666666667
+      },
+      "redOwn": {
+        "r": 145.17380952380952,
+        "g": 23.311904761904763,
+        "b": 24.09285714285714,
+        "luma": 64.19285714285714
+      },
+      "lightOwn": {
+        "r": 148.9375,
+        "g": 148.625,
+        "b": 148.79,
+        "luma": 148.78416666666666
+      },
+      "paper": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      }
+    },
+    "gpuPeakBytes": 10191872,
+    "bristleDigest": null,
+    "bristleInfo": null
+  },
+  "runB": {
+    "digests": {
+      "paper": "56a591e4",
+      "transparent": "0ac9f361",
+      "white": "212e2d03",
+      "pigment": "2b91ac4e"
+    },
+    "bakeMs": 122,
+    "renderMs": 66,
+    "paintedPct": 11.1,
+    "regions": {
+      "crossing": {
+        "r": 164.915,
+        "g": 77.83,
+        "b": 78.26,
+        "luma": 107.00166666666667
+      },
+      "redOwn": {
+        "r": 145.17380952380952,
+        "g": 23.311904761904763,
+        "b": 24.09285714285714,
+        "luma": 64.19285714285714
+      },
+      "lightOwn": {
+        "r": 148.9375,
+        "g": 148.625,
+        "b": 148.79,
+        "luma": 148.78416666666666
+      },
+      "paper": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "luma": 0
+      }
+    },
+    "gpuPeakBytes": 10191872,
+    "bristleDigest": null,
+    "bristleInfo": null
+  },
+  "identicalImages": null,
+  "identicalBristles": null,
+  "verdict": "SPIKE-002 CAPTURED"
+}

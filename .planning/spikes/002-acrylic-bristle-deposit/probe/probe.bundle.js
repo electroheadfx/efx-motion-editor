@@ -12197,7 +12197,7 @@ void main(){
     return toStudioStroke2({
       tool: "brush",
       color: entry.color,
-      params: { ...STROKE_PARAMS, size: CANON_SIZE },
+      params: { ...STROKE_PARAMS, size: CANON_SIZE, body: BODY },
       brushId: BRUSH_ID,
       points: entry.points.map((p) => ({ ...p })),
       mutationId: entry.mutationId,
@@ -12257,6 +12257,8 @@ void main(){
   var QUERY = new URLSearchParams(location.search);
   var CANON_SIZE = Number(QUERY.get("sizeParam") ?? "12");
   var BRUSH_ID = QUERY.get("brush") ?? "round";
+  var BODY = Number(QUERY.get("body") ?? "0");
+  if (!Number.isFinite(BODY) || BODY < 0 || BODY > 100) throw new Error(`invalid body ${QUERY.get("body")}`);
   function runOnce(engineKind, script, sheet, touch, salt, pinnedPaperSeed = true) {
     if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS");
     if (engineKind === "baseline") baseEngine = null;
@@ -12355,6 +12357,7 @@ void main(){
         scenario: params.get("scenario") ?? "cross",
         brush: BRUSH_ID,
         sizeParam: CANON_SIZE,
+        body: BODY,
         sheet,
         touch,
         salt,
