@@ -896,29 +896,6 @@ void main(){
 //  number with a §6 name arrives as a uniform from `bristles.ts`.
 // ============================================================
 
-/**
- * 261119-pod, D-H — the Feather-0 program identity. The guarded ramp line
- * perturbs the GPU compiler's register allocation even when `uFeather` is 0
- * and the branch never enters, so a Feather-0 stroke drifts 1–2 LSB from the
- * pre-port engine and the no-drag controls stop being byte-identical. The
- * gather therefore compiles in TWO variants from ONE snippet: the plain
- * variant (this define ABSENT) is the pre-port program, and the ramp variant
- * is selected only for `uFeather > 0` (Engine's `bristleFeatherVariant`).
- * `#ifdef` is not a behaviour switch — a Feather-0 texel never sees the
- * multiply either way — it only guarantees the compiled PROGRAM is the
- * pre-port one, which is what the byte-identity contract measures.
- */
-export const BRISTLE_FEATHER_RAMP_DEFINE = '#define BRISTLE_FEATHER_RAMP 1\n';
-
-/** Injects the ramp define after the mandatory `#version` line (never before it). */
-export function withFeatherRamp(src: string): string {
-  const version = '#version 300 es\n';
-  if (!src.startsWith(version)) {
-    throw new Error('withFeatherRamp: the fragment source must start with "#version 300 es"');
-  }
-  return version + BRISTLE_FEATHER_RAMP_DEFINE + src.slice(version.length);
-}
-
 export const BRISTLE_GATHER = `${BRISTLE_NOISE}${BRISTLE_TEXTURES}
 uniform vec2 uPoint;
 uniform vec2 uAxis;          // across axis (unit, doc frame)
@@ -937,11 +914,11 @@ uniform float uStreakShare;  // §6 streakShare (BRISTLE_STREAK_SHARE 0.15)
 uniform float uRimContact;   // §6 rimContact (BRISTLE_RIM_CONTACT 0.45)
 uniform float uHairs;        // §6 hairs (BRISTLE_HAIRS 0.45)
 uniform float uDryEdge;      // §6 dryEdge (BRISTLE_DRY_EDGE 0.35)
-uniform float uLanding;      // §6 paint.landing (BRISTLE_LANDING 1)
-// 261119-pod — the §3.3 smear and the four-side Feather. The snapshot pair
-// (attachment 0 = coefficients, attachment 1 = coefficients + COVER alpha)
-// and the last-touch field are the smear's inputs; uSmear IS the Pickup
-// global (1:1), and the two ceilings travel as uniforms from bristles.ts.
+uniform float uLanding;      // §6 paint.landing (BRISTLE_LANDING 1.6)
+// 261119-pod — the §3.3 smear. The snapshot pair (attachment 0 =
+// coefficients, attachment 1 = coefficients + COVER alpha) and the
+// last-touch field are the smear's inputs; uSmear IS the Pickup global
+// (1:1), and the two ceilings travel as uniforms from bristles.ts.
 uniform sampler2D uSnapA;
 uniform sampler2D uSnapB;
 uniform sampler2D uTimes;    // the last-touch field's read half (R32F, D-24)
@@ -951,11 +928,6 @@ uniform float uSmear;        // the Pickup global, 0..1 (D-A: one knob, two laws
 uniform float uSmearPeriodPx;// §3.3 hash cell (BRISTLE_SMEAR_PERIOD_PX 6)
 uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
 uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
-#ifdef BRISTLE_FEATHER_RAMP
-uniform float uFeather;      // the Feather global, 0..1
-uniform float uFeatherReach; // Studio-only four-side reach (BRISTLE_FEATHER_REACH 0.45)
-uniform float uFeatherBand;  // FIX 2b threshold lowering at the band's rim (BRISTLE_FEATHER_BAND)
-#endif
 // Post-UAT 2026-11-19 (GAP-4) — the texture tip composes with the gather
 // instead of disabling the engine. uTipMix is 0 for a bristle brush with no
 // textureId, so every recorded untextured bristle stroke keeps its exact
@@ -1122,22 +1094,8 @@ Gathered gatherBristle(vec2 uv){
   float threshold = uGrain * (1.0 - height) - 0.25;
   float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;
-  // 261119-pod FIX 2b — Feather EXTENDS the mark outward. Two halves, both
-  // monotonic in F: the engine grows the dab radius (BRISTLE_FEATHER_GROW),
-  // and here the paper threshold is LOWERED across the same radial band, so
-  // the grown footprint's tail crosses the tooth instead of being cut at a
-  // new edge. The earlier FIX 2 multiplied the coverage DOWN, which ate the
-  // mark inward (half-width 10 → 8.5 px while the reference widens 2.42×).
-  // It stays RADIAL in brush space (across + along), so the sides and the
-  // stroke ends share one band. D-H: the line is compiled ONLY into the ramp
-  // variant, so the Feather-0 program is the pre-port one rather than a
-  // program whose register allocation a dead guarded branch still perturbs.
-#ifdef BRISTLE_FEATHER_RAMP
-  if (uFeather > 0.0) {
-    float rim = smoothstep(1.0 - uFeatherReach, 1.0, length(vec2(across, q.y)));
-    threshold -= uFeather * uFeatherBand * rim;
-  }
-#endif
+  // Feather is the reference's SOFTNESS only: uSoftness widens this band
+  // (0.09 → 0.34) and nothing else — no radius growth, no threshold shift.
   g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
   // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
   // untextured law byte-identical: the multiply is never executed).

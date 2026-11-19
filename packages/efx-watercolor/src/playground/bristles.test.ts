@@ -440,7 +440,7 @@ describe('the §6 trace and edge constants (64-23)', () => {
     expect(TRACES.BRISTLE_RIM_CONTACT, '§6 rimContact').toBe(0.45)
     expect(TRACES.BRISTLE_HAIRS, '§6 hairs').toBe(0.45)
     expect(TRACES.BRISTLE_DRY_EDGE, '§6 dryEdge').toBe(0.35)
-    expect(TRACES.BRISTLE_LANDING, '§6 paint.landing').toBe(1)
+    expect(TRACES.BRISTLE_LANDING, '§6 paint.landing').toBe(1.6)
   })
 
   it('declares each constant once in the package — a second copy fails the build', () => {
@@ -604,16 +604,16 @@ describe('bristleSoftnessBand — §4.4', () => {
 })
 
 describe('bristleLandingOffset — §5.4', () => {
-  it('is (0.04 + 0.7·fract(seed·13.7)²)·landing — landing 1 spans [0.04, 0.74)', () => {
+  it('is (0.04 + 0.7·fract(seed·13.7)²)·landing — landing 1.6 spans [0.064, 1.184)', () => {
     expect(typeof TRACES.bristleLandingOffset, 'bristleLandingOffset is exported').toBe('function')
-    expect(TRACES.bristleLandingOffset?.(0), 'seed 0 lands as early as possible').toBeCloseTo(0.04, 9)
+    expect(TRACES.bristleLandingOffset?.(0), 'seed 0 lands as early as possible').toBeCloseTo(0.064, 9)
     for (const seed of [0, 0.05, 0.25, 0.5, 0.75, 0.9, 0.99]) {
       const offset = TRACES.bristleLandingOffset?.(seed) ?? Number.NaN
-      expect(offset).toBeGreaterThanOrEqual(0.04 - 1e-12)
-      expect(offset).toBeLessThan(0.74)
+      expect(offset).toBeGreaterThanOrEqual(0.064 - 1e-12)
+      expect(offset).toBeLessThan(1.184)
     }
-    // fract(0.5·13.7) = 0.85 → 0.04 + 0.7·0.85².
-    expect(TRACES.bristleLandingOffset?.(0.5)).toBeCloseTo(0.04 + 0.7 * 0.85 * 0.85, 9)
+    // fract(0.5·13.7) = 0.85 → 1.6·(0.04 + 0.7·0.85²).
+    expect(TRACES.bristleLandingOffset?.(0.5)).toBeCloseTo(1.6 * (0.04 + 0.7 * 0.85 * 0.85), 9)
   })
 
   it('never returns NaN', () => {
@@ -621,7 +621,7 @@ describe('bristleLandingOffset — §5.4', () => {
     expect(
       TRACES.bristleLandingOffset?.(Number.NaN),
       'a missing seed lands as early as possible',
-    ).toBeCloseTo(0.04, 9)
+    ).toBeCloseTo(0.064, 9)
   })
 })
 
@@ -849,36 +849,31 @@ describe('bristleTouchValue — the touch refresh mix (64-24)', () => {
 })
 
 // ============================================================
-//  261119-pod — the §3.3 smear and the four-side Feather.
+//  261119-pod — the §3.3 smear.
 //
-//  Three Studio laws join the module's declared set: the §3.3 hash cell
-//  (`BRISTLE_SMEAR_PERIOD_PX`, 6 px), the §3.3 clamp (`BRISTLE_SMEAR_CAP`,
-//  0.8) and the Studio-only feather reach (`BRISTLE_FEATHER_REACH`, 0.45).
-//  Each pure twin is the tested mirror of one expression in `shaders.ts`:
-//  a literal that replaces a declared constant, or a second copy of a law,
-//  fails the pins below. `bristleSmearRate` IS the 1:1 mapping (D-A): one
-//  knob, no second curve.
+//  Two Studio laws join the module's declared set: the §3.3 hash cell
+//  (`BRISTLE_SMEAR_PERIOD_PX`, 6 px) and the §3.3 clamp (`BRISTLE_SMEAR_CAP`,
+//  0.8). Each pure twin is the tested mirror of one expression in
+//  `shaders.ts`: a literal that replaces a declared constant, or a second
+//  copy of a law, fails the pins below. `bristleSmearRate` IS the 1:1
+//  mapping (D-A): one knob, no second curve. Feather is the reference's
+//  softness only — it has no constant of its own beyond the band gain.
 // ============================================================
 
 const SMEAR = bristleModule as unknown as {
   BRISTLE_SMEAR_PERIOD_PX?: number
   BRISTLE_SMEAR_CAP?: number
-  BRISTLE_FEATHER_REACH?: number
   bristleSmearRate?: (pickup: number) => number
   bristleSmearWeight?: (rate: number, wet: number, hash: number) => number
-  bristleFeatherFall?: (across: number, along: number, feather: number) => number
-  bristleFeatherVariant?: (feather: number) => 'plain' | 'ramp'
 }
 
 describe('the §3.3 smear constants and twins (261119-pod)', () => {
-  it('declares the three constants once, beside the other stroke laws', () => {
+  it('declares the two constants once, beside the other stroke laws', () => {
     expect(SMEAR.BRISTLE_SMEAR_PERIOD_PX, '§3.3 hash cell period').toBe(6)
     expect(SMEAR.BRISTLE_SMEAR_CAP, '§3.3 clamp').toBe(0.8)
-    expect(SMEAR.BRISTLE_FEATHER_REACH, 'Studio-only feather reach').toBe(0.45)
     for (const [name, literal] of [
       ['BRISTLE_SMEAR_PERIOD_PX', 'export const BRISTLE_SMEAR_PERIOD_PX = 6;'],
       ['BRISTLE_SMEAR_CAP', 'export const BRISTLE_SMEAR_CAP = 0.8;'],
-      ['BRISTLE_FEATHER_REACH', 'export const BRISTLE_FEATHER_REACH = 0.45;'],
     ] as const) {
       expect(
         (SOURCE.match(new RegExp(literal.replaceAll('.', '\\.'), 'g')) ?? []).length,
@@ -933,92 +928,5 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
     }
     expect(SMEAR.bristleSmearWeight?.(1, 1, 1), 'never above the cap').toBeLessThanOrEqual(0.8)
     expect(SMEAR.bristleSmearWeight?.(Number.NaN, 1, 1), 'a missing rate drags nothing').toBe(0)
-  })
-
-  it('bristleFeatherFall is exactly 1 at Feather 0, 1 inside the reach disc, 0 beyond it', () => {
-    expect(typeof SMEAR.bristleFeatherFall, 'bristleFeatherFall is exported').toBe('function')
-    for (const [a, l] of [
-      [0, 0],
-      [0.9, 0.9],
-      [1, 1],
-      [-1, 0.3],
-    ] as const) {
-      expect(
-        SMEAR.bristleFeatherFall?.(a, l, 0),
-        'Feather 0 keeps the exact shipped arithmetic',
-      ).toBe(1)
-    }
-    // Feather 1: a RADIAL fall — exactly 1 inside the disc r ≤ 1 − reach
-    // (0.55), on every side, not just on the axes.
-    for (const [a, l] of [
-      [0, 0],
-      [0.55, 0],
-      [0, -0.55],
-      [-0.4, 0.2],
-      [0.3, 0.45],
-    ] as const) {
-      expect(SMEAR.bristleFeatherFall?.(a, l, 1), `inside the reach disc at ${a}/${l}`).toBe(1)
-    }
-    // The disc, not a square: r > 0.55 already falls, on a diagonal exactly
-    // as on the axes (the per-axis product this replaces held 1 out to
-    // (0.55, 0.55), a corner the acceptance measured as over-faded).
-    expect(SMEAR.bristleFeatherFall?.(0.4, 0.4, 1) ?? Number.NaN).toBeLessThan(1)
-    expect(SMEAR.bristleFeatherFall?.(0.4, 0.4, 1) ?? Number.NaN).toBeCloseTo(
-      SMEAR.bristleFeatherFall?.(Math.hypot(0.4, 0.4), 0, 1) ?? Number.NaN,
-      12,
-    )
-    // ... and exactly 0 on the across edge, the along edge and the corners.
-    expect(SMEAR.bristleFeatherFall?.(1, 0, 1), 'the side edge falls to zero').toBe(0)
-    expect(SMEAR.bristleFeatherFall?.(-1, 0.2, 1), 'symmetric across, past the rim').toBe(0)
-    expect(SMEAR.bristleFeatherFall?.(0, 1, 1), 'the end edge falls to zero').toBe(0)
-    expect(SMEAR.bristleFeatherFall?.(0, -1, 1)).toBe(0)
-    expect(SMEAR.bristleFeatherFall?.(0.6, 0.8, 1), 'the diagonal rim').toBe(0)
-    // Monotone from the core to the edge, and the fall scales with Feather.
-    let previous = Number.POSITIVE_INFINITY
-    for (const across of [0, 0.55, 0.7, 0.85, 1]) {
-      const v = SMEAR.bristleFeatherFall?.(across, 0, 1) ?? Number.NaN
-      expect(v).toBeLessThanOrEqual(previous)
-      previous = v
-    }
-    const mid = SMEAR.bristleFeatherFall?.(0.8, 0, 1) ?? Number.NaN
-    expect(mid).toBeGreaterThan(0)
-    expect(mid).toBeLessThan(1)
-    expect(
-      SMEAR.bristleFeatherFall?.(0.8, 0, 0.5) ?? Number.NaN,
-      'half Feather, half the fall',
-    ).toBeCloseTo(1 - (1 - mid) * 0.5, 12)
-    // Total: a non-finite argument replays the neutral core value.
-    expect(SMEAR.bristleFeatherFall?.(Number.NaN, 0.2, 1)).toBe(1)
-    expect(SMEAR.bristleFeatherFall?.(0, Number.NaN, 1)).toBe(1)
-    expect(SMEAR.bristleFeatherFall?.(0.8, 0, Number.NaN)).toBe(1)
-  })
-
-  // D-H — the Feather-0 program identity. The gather compiles twice from one
-  // snippet, and which half a stroke runs is this ONE selection: exactly zero
-  // runs the pre-port program, any positive Feather runs the ramp pair. The
-  // shader's own `uFeather > 0.0` guard is unreachable in the plain variant
-  // (the ramp code is not compiled into it at all), so the two must agree at
-  // the boundary BY CONSTRUCTION — hence the value table below.
-  it('bristleFeatherVariant keeps Feather 0 on the plain program (D-H)', () => {
-    expect(typeof SMEAR.bristleFeatherVariant, 'bristleFeatherVariant is exported').toBe('function')
-    expect(SMEAR.bristleFeatherVariant?.(0), 'exactly zero is the pre-port program').toBe('plain')
-    expect(SMEAR.bristleFeatherVariant?.(1), 'the open end is the ramp').toBe('ramp')
-    expect(SMEAR.bristleFeatherVariant?.(0.5), 'any positive Feather ramps').toBe('ramp')
-    // The smallest representable positive double must still select the ramp:
-    // the boundary is the closed zero, not an epsilon band.
-    expect(SMEAR.bristleFeatherVariant?.(Number.MIN_VALUE)).toBe('ramp')
-    // Negative and non-finite Feather never reach the shader as positive —
-    // `clamp(this.params.feather, 0, 1)` floors them, so the plain program is
-    // the honest selection and the two never disagree.
-    expect(SMEAR.bristleFeatherVariant?.(-1)).toBe('plain')
-    expect(SMEAR.bristleFeatherVariant?.(-0.0001)).toBe('plain')
-    expect(SMEAR.bristleFeatherVariant?.(Number.NaN)).toBe('plain')
-    expect(SMEAR.bristleFeatherVariant?.(Number.POSITIVE_INFINITY)).toBe('ramp')
-    expect(SMEAR.bristleFeatherVariant?.(Number.NEGATIVE_INFINITY)).toBe('plain')
-    // Declared once, beside the other stroke laws.
-    expect(
-      (SOURCE.match(/export function bristleFeatherVariant\b/g) ?? []).length,
-      'declared once',
-    ).toBe(1)
   })
 })

@@ -2,9 +2,6 @@ import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, isBristleResponse, tipRows
 import {
   BRISTLE_CAP,
   BRISTLE_DRY_EDGE,
-  BRISTLE_FEATHER_BAND,
-  BRISTLE_FEATHER_GROW,
-  BRISTLE_FEATHER_REACH,
   BRISTLE_GRAIN,
   BRISTLE_HAIRS,
   BRISTLE_LANDING,
@@ -15,7 +12,6 @@ import {
   BRISTLE_STREAK_LENGTH,
   BRISTLE_STREAK_SHARE,
   bristleCount,
-  bristleFeatherVariant,
   gatherSoftness,
   LAST_TOUCH_DRY_SECONDS,
   makeBristles,
@@ -581,14 +577,6 @@ export class WatercolorEngine {
     // is the film's opacity on the bristle path, not a second film's erode.
     this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);
     this.programs.bristleCover = this.g.program(S.bristleCoverFS);
-    // 261119-pod (D-H): the Feather-0 program identity. The gather compiles
-    // TWICE from the one snippet: the plain pair above (the pre-port program,
-    // no ramp code) and this ramp pair, selected only when Feather > 0
-    // (`bristleFeatherVariant`). A guarded runtime branch is not enough — the
-    // dead branch perturbs register allocation by 1–2 LSB, which breaks the
-    // no-drag byte-identity contract. Outside the pinned literal, same rule.
-    this.programs.bristleDepositRamp = this.g.program(S.withFeatherRamp(S.bristleDepositFS));
-    this.programs.bristleCoverRamp = this.g.program(S.withFeatherRamp(S.bristleCoverFS));
     // 64-24 (D-24): the touch refresh, same rule — outside the pinned literal
     // (twenty-three stays). The delivery law's third pass.
     this.programs.bristleTouch = this.g.program(S.bristleTouchFS);
@@ -2403,11 +2391,6 @@ export class WatercolorEngine {
         // responses take the shipping path with no extra draw, no extra
         // uniform bind and no extra RNG draw — the identity proof.
         const bristle = isBristleResponse(b);
-        // 261119-pod FIX 2b: Feather EXTENDS a bristle mark — the effective
-        // brush grows with F (the gather lowers the threshold across the same
-        // band). F = 0 is exactly the pre-port radius, so the Feather-0
-        // programs and the no-drag byte identity are untouched.
-        if (bristle && P.feather > 0) r *= 1 + clamp(P.feather, 0, 1) * BRISTLE_FEATHER_GROW;
         if (bristle && this.bristleStroke !== s) {
           this.bristleStroke = s;
           this.beginBristles(r);
@@ -2901,7 +2884,12 @@ export class WatercolorEngine {
     gl.uniform1i(p.u.uWet!, g.bindTex(8, this.wet.read.tex[0]!));
     gl.uniform1i(p.u.uCover!, g.bindTex(9, this.cover.read.tex[0]!));
     gl.uniform2f(p.u.uPoint!, x, y);
-    gl.uniform2f(p.u.uAxis!, Math.cos(angle), Math.sin(angle));
+    // The comb is laid ACROSS the stroke. `brushAngle` is the tangent (the
+    // tip's major axis); the reference's `uAxis` is the NORMAL — app.js:513
+    // computes `atan2(dy, dx) + PI/2`. Binding the tangent here laid every
+    // bristle along the travel, so profile/presence/body/colour jitter had no
+    // cross-width dimension and the mark was a constant-valued bar.
+    gl.uniform2f(p.u.uAxis!, -Math.sin(angle), Math.cos(angle));
     gl.uniform1f(p.u.uRadius!, r);
     gl.uniform1f(p.u.uCount!, this.bristleCount);
     gl.uniform1f(p.u.uTravel!, travel);
@@ -2963,7 +2951,9 @@ export class WatercolorEngine {
     gl.uniform1i(p.u.uState!, g.bindTex(2, this.bristles.read.tex[2]!));
     gl.uniform1i(p.u.uShape!, g.bindTex(3, this.bristleShape.tex[0]!));
     gl.uniform2f(p.u.uPoint!, x, y);
-    gl.uniform2f(p.u.uAxis!, Math.cos(angle), Math.sin(angle));
+    // Same law as the carrier: the gather's `across` is the stroke NORMAL
+    // (the reference's `normalOf(angle)`), never the tangent.
+    gl.uniform2f(p.u.uAxis!, -Math.sin(angle), Math.cos(angle));
     gl.uniform1f(p.u.uRadius!, r);
     gl.uniform1f(p.u.uCount!, this.bristleCount);
     gl.uniform1f(p.u.uSheetAspect!, this.dw / this.dh);
@@ -3007,11 +2997,6 @@ export class WatercolorEngine {
     // interior wetness. The ceiling travels as a uniform so the shader never
     // re-types the floor the Engine already owns.
     gl.uniform1f(p.u.uBodyFloor!, BRISTLE_BODY_ALPHA_FLOOR);
-    gl.uniform1f(p.u.uFeather!, clamp(this.params.feather, 0, 1));
-    gl.uniform1f(p.u.uFeatherReach!, BRISTLE_FEATHER_REACH);
-    // FIX 2b: the outer-band threshold lowering that lets the grown
-    // footprint's tail cross the paper tooth instead of cutting at a new edge.
-    gl.uniform1f(p.u.uFeatherBand!, BRISTLE_FEATHER_BAND);
     gl.uniform1f(p.u.uNow!, this.clock() / 1000);
     gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);
   }
@@ -3053,12 +3038,7 @@ export class WatercolorEngine {
     // bookkeeping and BEFORE the first deposit draw, only at Pickup > 0 —
     // Pickup 0 skips the draw entirely and the weight is zero besides.
     if (this.params.pickup > 0) this.bristleSnapshot(rect);
-    // 261119-pod (D-H): Feather EXACTLY 0 runs the PRE-PORT deposit/cover
-    // programs (no ramp code compiled in); any Feather > 0 runs the ramp pair.
-    // The selection is the tested twin `bristleFeatherVariant` — never an
-    // inline comparison a later edit could silently invert.
-    const ramp = bristleFeatherVariant(this.params.feather) === 'ramp';
-    const d = ramp ? this.programs.bristleDepositRamp! : this.programs.bristleDeposit;
+    const d = this.programs.bristleDeposit;
     d.bind();
     this.bindGather(d, x, y, r, angle, pr, alongPx);
     gl.uniform1f(d.u.uScatter!, scatter);
@@ -3084,7 +3064,7 @@ export class WatercolorEngine {
     gl.disable(gl.BLEND);
     // 3) cover <- cover*(1 - a) + bodyAlpha*g.alpha*a — ONE write per dab,
     //    the SAME weight as the ink, so the layer alpha tracks its paint.
-    const c = ramp ? this.programs.bristleCoverRamp! : this.programs.bristleCover;
+    const c = this.programs.bristleCover;
     c.bind();
     this.bindGather(c, x, y, r, angle, pr, alongPx);
     gl.uniform1f(c.u.uCoverTarget!, bodyAlpha);
@@ -3525,7 +3505,7 @@ export class WatercolorEngine {
     // FIX 2c: 0.8 is the pen-work edge crispener. It is baked into the eight
     // identity baselines, all non-bristle, so those keep exactly 0.8; a sheet
     // with bristle content turns it OFF (0), letting a bristle edge read as
-    // the real 50 % → 10 % fade the Feather band produces.
+    // the real 50 % → 10 % fade the gather's softness band produces.
     gl.uniform1f(p.u.uEdgeDarken, this.bristleContent ? 0 : 0.8);
     gl.uniform1f(p.u.uFlat, flat ? 1 : 0);
     gl.uniform3fv(p.u.uDesk, DESK);

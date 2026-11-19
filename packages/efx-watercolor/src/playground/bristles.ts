@@ -38,12 +38,13 @@
 //  timestamp law in mode 1) and `bristleTouchValue` (`bristleTouchFS`'s mix).
 //  The engine imports the sentinel — this module never imports anything.
 //
-//  261119-pod adds the §3.3 deposit smear (its 6 px hash cell and 0.8 clamp),
-//  the Studio-only four-side Feather reach (0.45) and their three pure twins.
-//  `bristleSmearRate` IS the Pickup 1:1 mapping (D-A): one knob, no second
-//  curve. Each twin mirrors one expression in `shaders.ts`; the engine binds
-//  the constants as uniforms, so a literal that replaces a declared constant,
-//  or a second copy of a law, fails the source pins.
+//  261119-pod adds the §3.3 deposit smear (its 6 px hash cell and 0.8 clamp)
+//  and its two pure twins. `bristleSmearRate` IS the Pickup 1:1 mapping
+//  (D-A): one knob, no second curve. Each twin mirrors one expression in
+//  `shaders.ts`; the engine binds the constants as uniforms, so a literal
+//  that replaces a declared constant, or a second copy of a law, fails the
+//  source pins. Feather is the reference's SOFTNESS only: it widens §6's
+//  band through `gatherSoftness` and changes nothing else.
 //
 //  THE §4.4 NAME COLLISION: `BRISTLE_GRAIN` (1.2) is the paint's paper-tooth
 //  scale from §6 — NOT `Brush.grain` (0..1, the dry re-threshold the engine's
@@ -98,8 +99,8 @@ export const BRISTLE_RIM_CONTACT = 0.45;
 export const BRISTLE_HAIRS = 0.45;
 /** §5.5 `dryEdge` — the coverage multiplier the outermost bristles sink to (0.35). */
 export const BRISTLE_DRY_EDGE = 0.35;
-/** §5.4 `paint.landing` — the spread of the staggered landing (1). */
-export const BRISTLE_LANDING = 1;
+/** §5.4 `paint.landing` — the spread of the staggered landing (1.6). */
+export const BRISTLE_LANDING = 1.6;
 
 // ------------------------- the §3.4 wetness gate (64-24) -------------------------
 
@@ -113,7 +114,7 @@ export const BRISTLE_LANDING = 1;
  */
 export const LAST_TOUCH_DRY_SECONDS = -604800;
 
-// ------------------------- the §3.3 smear and four-side Feather (261119-pod) -------------------------
+// ------------------------- the §3.3 smear (261119-pod) -------------------------
 
 /**
  * §3.3 `smear`: the reference hashes in bands ALONG the stroke —
@@ -128,28 +129,6 @@ export const BRISTLE_SMEAR_PERIOD_PX = 6;
  * on how much of the pre-dab snapshot one deposit texel may inherit.
  */
 export const BRISTLE_SMEAR_CAP = 0.8;
-
-/**
- * Studio-only, no reference counterpart: how far the four-side Feather band
- * reaches in from the dab's local edge. The reference fades only across the
- * stroke (its `softness`); the port opens the band on all four sides. 0.45
- * leaves the inner 55 % at full threshold and lowers it across the outer
- * 45 % — the visual weight of §6's softness band.
- */
-export const BRISTLE_FEATHER_REACH = 0.45;
-
-/**
- * FIX 2b — Feather EXTENDS the mark. F used to multiply the coverage DOWN
- * after the threshold, which ate the mark inward (measured half-width
- * 10 → 8.5 px at F = 1 while the reference widens 2.42×). The dab radius is
- * now multiplied by `1 + F · GROW` (the effective brush grows) and the
- * gather lowers the paper threshold by `F · BAND · rim` across the outer
- * band, so the grown footprint's tail crosses the tooth instead of being cut
- * at a new hard edge. Both are monotonic in F; at F = 0 neither runs, and the
- * Feather-0 program stays the pre-port one.
- */
-export const BRISTLE_FEATHER_GROW = 0.35;
-export const BRISTLE_FEATHER_BAND = 0.1;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);
@@ -253,9 +232,10 @@ export function bristleSoftnessBand(coverage: number, threshold: number, softnes
 
 /**
  * §5.4: `landing = (0.04 + 0.7·fract(seed·13.7)²)·landing` — how many brush
- * widths a bristle must travel before it prints at all. At landing 1 the
- * offset spans [0.04, 0.74), squared so most bristles land early and a few
- * land late. A non-finite seed reads as 0 → the earliest landing (0.04).
+ * widths a bristle must travel before it prints at all. At the reference's
+ * landing 1.6 the offset spans [0.064, 1.184), squared so most bristles land
+ * early and a few land late. A non-finite seed reads as 0 → the earliest
+ * landing (0.064).
  */
 export function bristleLandingOffset(seed01: number): number {
   const seed = Number.isFinite(seed01) ? seed01 : 0;
@@ -380,41 +360,6 @@ export function bristleSmearRate(pickup: number): number {
 export function bristleSmearWeight(rate: number, wet: number, hash: number): number {
   if (!Number.isFinite(rate) || !Number.isFinite(wet) || !Number.isFinite(hash)) return 0;
   return clamp(rate * wet * hash, 0, BRISTLE_SMEAR_CAP);
-}
-
-/**
- * 261119-pod (D-H): which compiled gather program a Feather value selects.
- * `'plain'` is the PRE-PORT program (no ramp code — the pre-port engine's
- * program, byte-identical on the no-drag controls); `'ramp'` is the gather +
- * four-side ramp variant. EXACTLY zero selects plain — the shader's
- * `uFeather > 0.0` guard and this selection agree by construction, so no
- * Feather-0 stroke can ever run the ramp program. The comparison is
- * deliberately the shader's own `> 0`: a NaN reads as plain (the safe,
- * shipped look) and +∞ as ramp, exactly as `clamp(feather, 0, 1)` leaves
- * them for the uniform.
- */
-export function bristleFeatherVariant(feather: number): 'plain' | 'ramp' {
-  return feather > 0 ? 'ramp' : 'plain';
-}
-
-/**
- * The four-side Feather ramp (Studio-only; the reference fades across the
- * stroke only): a RADIAL fall `1 − smoothstep(1 − reach, 1, r)` over the
- * normalized brush space `r = hypot(across, along)`, mixed in by Feather —
- * exactly `1` at Feather 0 (today's arithmetic, untouched) and the radial
- * fall at Feather 1. Radial, not a per-axis product: the 261119-pod
- * acceptance measured the product leaving the stroke's top/bottom sides a
- * cliff (both axes have to fade from the SAME disc, or the corners over-fade
- * and the sides under-fade). A non-finite axis reads as the centre and a
- * non-finite Feather as 0, so a missing key replays the un-faded look, never
- * NaN.
- */
-export function bristleFeatherFall(across: number, along: number, feather: number): number {
-  const a = Number.isFinite(across) ? across : 0;
-  const l = Number.isFinite(along) ? along : 0;
-  const f = Number.isFinite(feather) ? clamp01(feather) : 0;
-  const r = Math.hypot(a, l);
-  return mix(1, 1 - smoothstep(1 - BRISTLE_FEATHER_REACH, 1, r), f);
 }
 
 export interface BristleSet {
