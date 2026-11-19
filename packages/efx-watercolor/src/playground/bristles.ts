@@ -25,6 +25,21 @@
 //  constants: §6's softness (0.09) and the Feather gain (0.25), with the
 //  band law `gatherSoftness` — one declaration, read by the engine's binder.
 //
+//  64-23 adds the trace and edge laws — §4.3 (dryness, streak, broken),
+//  §4.4 (the paper-tooth threshold), §4.5 (the wide/local body), §5.3 (rim
+//  contact), §5.4 (the staggered landing) and §5.5 (the rim coverage bias) —
+//  as §6's eight declared constants plus ten pure formulas. Each formula is
+//  the tested twin of an expression in the gather's GLSL: `shaders.ts` must
+//  carry the same expression, and the engine binds these constants as
+//  uniforms, so a second copy of any number fails a source pin.
+//
+//  THE §4.4 NAME COLLISION: `BRISTLE_GRAIN` (1.2) is the paint's paper-tooth
+//  scale from §6 — NOT `Brush.grain` (0..1, the dry re-threshold the engine's
+//  footprint mask has always read). They are different quantities that share
+//  a word, exactly like the Stam solver's "viscosity" gotcha: the gather's
+//  `uGrain` receives `BRISTLE_GRAIN`, the footprint mask keeps the brush's
+//  grain, and neither is ever interchanged.
+//
 //  Layout per bristle (stride 8):
 //    0 across      normalised across-position, -1..1   (§4.1 shape.x)
 //    1 radiusScale tuft radius multiplier               (§4.2 shape.y)
@@ -50,6 +65,29 @@ export const BRISTLE_MIN = 40;
 export const BRISTLE_SOFTNESS = 0.09;
 /** 64-22 (D-22): how far the Feather global widens the band — Feather 1 is 0.34. */
 export const BRISTLE_FEATHER_GAIN = 0.25;
+
+// ------------------------- the trace and edge constants (64-23) -------------------------
+
+/**
+ * §6 `paint.grain` — the paint's paper-tooth scale: `threshold = 1.2·(1 − height) − 0.25`
+ * maps the whole paper-height range into [−0.25, 0.95]. NOT `Brush.grain` (0..1, the
+ * footprint mask's dry re-threshold): see the header's §4.4 collision note.
+ */
+export const BRISTLE_GRAIN = 1.2;
+/** §4.3 `paint.streak` — how early in the drying process the dashes start (0.9). */
+export const BRISTLE_STREAK = 0.9;
+/** §4.3 `paint.streakLength` — the dash wavelength along the stroke, in CSS px (18). */
+export const BRISTLE_STREAK_LENGTH = 18;
+/** §4.4 `streakShare` — how much of the paper height is brush-local streaks vs cloud (0.15). */
+export const BRISTLE_STREAK_SHARE = 0.15;
+/** §5.3 `rimContact` — the global amplitude of the rim's contact wobble (0.45). */
+export const BRISTLE_RIM_CONTACT = 0.45;
+/** §4.3/§4.5 `hairs` — how hard dryness cuts, and how much the body reads local (0.45). */
+export const BRISTLE_HAIRS = 0.45;
+/** §5.5 `dryEdge` — the coverage multiplier the outermost bristles sink to (0.35). */
+export const BRISTLE_DRY_EDGE = 0.35;
+/** §5.4 `paint.landing` — the spread of the staggered landing (1). */
+export const BRISTLE_LANDING = 1;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);
@@ -83,6 +121,144 @@ export function bristleCount(halfWidthPx: number): number {
 export function gatherSoftness(feather: number): number {
   const f = Number.isFinite(feather) ? clamp01(feather) : 0;
   return BRISTLE_SOFTNESS + BRISTLE_FEATHER_GAIN * f;
+}
+
+// ------------------------- the trace and edge formulas (64-23) -------------------------
+//
+//  Each function below is the tested twin of one expression in the gather's
+//  GLSL (shaders.ts, BRISTLE_GATHER). The constants above are bound as
+//  uniforms, so the fragment and these helpers cannot drift: a literal that
+//  replaces a declared constant fails the source pins in bristles.test.ts.
+//  Every helper is pure and total — no clock, no RNG, no module state — and a
+//  non-finite argument returns the neutral value documented on it, never NaN.
+
+const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+const fract = (v: number) => v - Math.floor(v);
+
+/**
+ * §4.3: `dryness = clamp((1 − load)·streak·1.6, 0, 1)` — how far a bristle has
+ * dried. A loaded bristle (load 1) is 0; load 0.5 is 0.72; load 0 saturates at
+ * 1. A non-finite load reads as fully loaded (0): a missing record key replays
+ * a solid stroke, never a broken one.
+ */
+export function bristleDryness(load: number): number {
+  const l = Number.isFinite(load) ? load : 1;
+  return clamp((1 - l) * BRISTLE_STREAK * 1.6, 0, 1);
+}
+
+/**
+ * §4.3: `broken = mix(1, smoothstep(0.3, 0.7, streak), dryness·hairs)` — the
+ * stroke eating itself. A loaded bristle returns exactly 1 at any noise; as it
+ * dries the term becomes the thresholded along-stroke noise at the `hairs`
+ * weight, so each bristle prints in dashes whose wavelength is
+ * `STREAK_LENGTH` and whose phase is its own seed. A non-finite load reads as
+ * fully loaded and a non-finite noise as the smooth peak (1): both replay the
+ * solid look.
+ */
+export function bristleBroken(load: number, streakNoise: number): number {
+  const dryness = bristleDryness(load);
+  const noise = Number.isFinite(streakNoise) ? streakNoise : 1;
+  return mix(1, smoothstep(0.3, 0.7, noise), dryness * BRISTLE_HAIRS);
+}
+
+/**
+ * §4.4: `threshold = grain·(1 − height) − 0.25` — the paper tooth as a bar,
+ * not a texture. At grain 1.2 a peak (height 1) maps to −0.25 (any coverage
+ * deposits) and a valley (height 0) to 0.95 (only a nearly solid load does).
+ * A non-finite grain replays §6's `BRISTLE_GRAIN`; a non-finite height reads
+ * as no tooth (0), so missing paper data never invents peaks.
+ */
+export function bristleThreshold(grain: number, height: number): number {
+  const g = Number.isFinite(grain) ? grain : BRISTLE_GRAIN;
+  const h = Number.isFinite(height) ? height : 0;
+  return g * (1 - h) - 0.25;
+}
+
+/**
+ * §4.4: `smoothstep(threshold − softness, threshold + softness, coverage)` —
+ * the band the threshold is smoothed by. At coverage = threshold it is exactly
+ * 0.5; it saturates at 0 below the low edge and 1 above the high edge. A
+ * non-finite coverage prints nothing (0), a non-finite threshold reads as no
+ * tooth (0), and a non-finite or non-positive width replays §6's softness
+ * (0.09) — the band widens only through `gatherSoftness`.
+ */
+export function bristleSoftnessBand(coverage: number, threshold: number, softness: number): number {
+  const c = Number.isFinite(coverage) ? coverage : 0;
+  const t = Number.isFinite(threshold) ? threshold : 0;
+  const s = Number.isFinite(softness) && softness > 0 ? softness : BRISTLE_SOFTNESS;
+  return smoothstep(t - s, t + s, c);
+}
+
+/**
+ * §5.4: `landing = (0.04 + 0.7·fract(seed·13.7)²)·landing` — how many brush
+ * widths a bristle must travel before it prints at all. At landing 1 the
+ * offset spans [0.04, 0.74), squared so most bristles land early and a few
+ * land late. A non-finite seed reads as 0 → the earliest landing (0.04).
+ */
+export function bristleLandingOffset(seed01: number): number {
+  const seed = Number.isFinite(seed01) ? seed01 : 0;
+  const f = fract(seed * 13.7);
+  return (0.04 + 0.7 * f * f) * BRISTLE_LANDING;
+}
+
+/**
+ * §5.4: `landed = smoothstep(offset, offset + 0.12, strokeDistance/halfWidth)` —
+ * the per-bristle landing ramp. A non-finite offset lands at 0; a non-finite
+ * distance reads as fully landed (1), i.e. no ramp — the pre-64-23 look.
+ */
+export function bristleLanded(offset: number, distOverHalfWidth: number): number {
+  const o = Number.isFinite(offset) ? offset : 0;
+  const d = Number.isFinite(distOverHalfWidth) ? distOverHalfWidth : 1;
+  return smoothstep(o, o + 0.12, d);
+}
+
+/**
+ * §5.3: `rim = 0.25 + 0.75·smoothstep(0.45, 1, |across|)` — the share of the
+ * contact wobble this bristle receives: a quarter at the centre, the full
+ * amount at the extreme edge. A non-finite across reads as the centre.
+ */
+export function bristleRim(across: number): number {
+  const a = Number.isFinite(across) ? Math.abs(across) : 0;
+  return 0.25 + 0.75 * smoothstep(0.45, 1, a);
+}
+
+/**
+ * §5.5: `dryEdge = mix(1, dryEdge, smoothstep(0.3, 1.05, |across|))` — the rim
+ * coverage bias: 1 at the core, §6's `BRISTLE_DRY_EDGE` (0.35) at the rim. A
+ * non-finite across reads as no bias (1).
+ */
+export function bristleEdgeBias(across: number): number {
+  const a = Number.isFinite(across) ? Math.abs(across) : 0;
+  return mix(1, BRISTLE_DRY_EDGE, smoothstep(0.3, 1.05, a));
+}
+
+/**
+ * §4.5: `body = mix(wide/5·presence, local, hairs)` — the wide brush body
+ * versus the fine per-bristle fibres, mixed by the same `hairs` that breaks a
+ * drying stroke. The caller supplies `presence = min(profileSum/0.5, 1)`. A
+ * non-finite wide/local/presence reads as 0; a non-finite hairs reads as 1
+ * (local only — 64-22's body), so a missing key replays the shipped look.
+ */
+export function bristleBody(wide: number, local: number, presence: number, hairs: number): number {
+  const w = Number.isFinite(wide) ? wide : 0;
+  const l = Number.isFinite(local) ? local : 0;
+  const p = Number.isFinite(presence) ? presence : 0;
+  const h = Number.isFinite(hairs) ? hairs : 1;
+  return mix((w / 5) * p, l, h);
+}
+
+/**
+ * §4.5/§5.5: `coverage = body·(0.3 + 0.7·pressure)·edgeBias` — the coverage
+ * the threshold is tested against. Pressure arrives from the engine's existing
+ * pressure law (§5.2, untouched); this helper only formats it. A non-finite
+ * body prints nothing (0), a non-finite pressure reads as the 0.3 floor, and a
+ * non-finite edge bias reads as no bias (1).
+ */
+export function bristleCoverage(body: number, pressure: number, edgeBias: number): number {
+  const b = Number.isFinite(body) ? body : 0;
+  const p = Number.isFinite(pressure) ? pressure : 0;
+  const e = Number.isFinite(edgeBias) ? edgeBias : 1;
+  return b * (0.3 + 0.7 * p) * e;
 }
 
 export interface BristleSet {
