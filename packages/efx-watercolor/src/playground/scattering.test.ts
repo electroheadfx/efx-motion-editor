@@ -1206,20 +1206,27 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expect((d.match(/texture\(uSnapB, vUv\)/g) ?? []).length).toBe(1)
   })
 
-  it('multiplies the coverage by the four-side ramp BEFORE the threshold, inside the guard', () => {
+  it('shapes the deposit with a RADIAL ramp AFTER the threshold, inside the guard', () => {
     expect((SHADERS_SOURCE.match(/float featherFall\(/g) ?? []).length, 'one ramp helper').toBe(1)
     const g = gather()
     expectContains(g, 'float featherFall(float across, float along){')
-    expectContains(g, 'float side = 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, abs(across));')
-    expectContains(g, 'float end = 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, abs(along));')
-    expectContains(g, 'return mix(1.0, side * end, uFeather);')
-    expectContains(g, 'if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
-    const rampAt = g.indexOf('if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
+    expectContains(g, 'float r = length(vec2(across, along));')
+    expectContains(g, 'return mix(1.0, 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, r), uFeather);')
+    expectContains(g, 'if (uFeather > 0.0) g.coverage *= featherFall(across, q.y);')
+    const rampAt = g.indexOf('if (uFeather > 0.0) g.coverage *= featherFall(across, q.y);')
     const smoothAt = g.indexOf(
       'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);',
     )
     expect(rampAt, 'the ramp runs').toBeGreaterThan(-1)
-    expect(smoothAt, 'the threshold follows the ramp').toBeGreaterThan(rampAt)
+    // 261119-pod Lever 2: the ramp multiplies the DEPOSIT, never the coverage
+    // the threshold quantises — pre-threshold it crossed the smoothstep band
+    // in under a pixel and the top/bottom sides kept a cliff (measured).
+    expect(smoothAt, 'the threshold runs first').toBeGreaterThan(-1)
+    expect(rampAt, 'the deposit is shaped after the threshold').toBeGreaterThan(smoothAt)
+    // The radial fall replaces the per-axis product: neither axis's ramp may
+    // come back (the axes-fade-from-different-squares shape is the bug).
+    expectNotContains(g, 'float side = 1.0 - smoothstep(')
+    expectNotContains(g, 'float end = 1.0 - smoothstep(')
     expectContains(g, 'uniform float uFeather;')
     expectContains(g, 'uniform float uFeatherReach;')
     // Feather still widens §6's softness band too — the two halves compose.
@@ -1302,17 +1309,17 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(guarded[0]!, 'uniform float uFeather;')
     expectContains(guarded[0]!, 'uniform float uFeatherReach;')
     expectContains(guarded[1]!, 'float featherFall(float across, float along){')
-    expectContains(guarded[2]!, 'if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
-    // The guarded call still runs BEFORE the threshold smoothstep — the ramp
-    // multiplies the coverage the smoothstep then quantises, not the output.
+    expectContains(guarded[2]!, 'if (uFeather > 0.0) g.coverage *= featherFall(across, q.y);')
+    // The guarded call runs AFTER the threshold smoothstep — Lever 2 measured
+    // that multiplying the pre-threshold coverage was swallowed by the band.
     const callAt = SHADERS_SOURCE.indexOf(
-      'if (uFeather > 0.0) coverage *= featherFall(across, q.y);',
+      'if (uFeather > 0.0) g.coverage *= featherFall(across, q.y);',
     )
     const smoothAt = SHADERS_SOURCE.indexOf(
       'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);',
     )
     expect(callAt, 'the ramp call exists').toBeGreaterThan(-1)
-    expect(smoothAt, 'the threshold follows the ramp').toBeGreaterThan(callAt)
+    expect(callAt, 'the ramp shapes the deposit after the threshold').toBeGreaterThan(smoothAt)
     // Nothing ramp-related lives OUTSIDE a guard: strip the guarded regions
     // and the remainder must be free of the ramp's identifiers.
     const stripped = SHADERS_SOURCE.replace(/#ifdef BRISTLE_FEATHER_RAMP[\s\S]*?#endif/g, '')

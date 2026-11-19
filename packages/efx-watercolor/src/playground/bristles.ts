@@ -386,20 +386,22 @@ export function bristleFeatherVariant(feather: number): 'plain' | 'ramp' {
 
 /**
  * The four-side Feather ramp (Studio-only; the reference fades across the
- * stroke only): `side = 1 − smoothstep(1 − reach, 1, |across|)` and
- * `end = 1 − smoothstep(1 − reach, 1, |along|)` multiplied, then mixed in by
- * Feather — exactly `1` at Feather 0 (today's arithmetic, untouched) and the
- * product at Feather 1. Both axes run in the dab's local frame (−1..1). A
- * non-finite axis reads as the core and a non-finite Feather as 0, so a
- * missing key replays the un-faded look, never NaN.
+ * stroke only): a RADIAL fall `1 − smoothstep(1 − reach, 1, r)` over the
+ * normalized brush space `r = hypot(across, along)`, mixed in by Feather —
+ * exactly `1` at Feather 0 (today's arithmetic, untouched) and the radial
+ * fall at Feather 1. Radial, not a per-axis product: the 261119-pod
+ * acceptance measured the product leaving the stroke's top/bottom sides a
+ * cliff (both axes have to fade from the SAME disc, or the corners over-fade
+ * and the sides under-fade). A non-finite axis reads as the centre and a
+ * non-finite Feather as 0, so a missing key replays the un-faded look, never
+ * NaN.
  */
 export function bristleFeatherFall(across: number, along: number, feather: number): number {
-  const a = Number.isFinite(across) ? Math.abs(across) : 0;
-  const l = Number.isFinite(along) ? Math.abs(along) : 0;
+  const a = Number.isFinite(across) ? across : 0;
+  const l = Number.isFinite(along) ? along : 0;
   const f = Number.isFinite(feather) ? clamp01(feather) : 0;
-  const side = 1 - smoothstep(1 - BRISTLE_FEATHER_REACH, 1, a);
-  const end = 1 - smoothstep(1 - BRISTLE_FEATHER_REACH, 1, l);
-  return mix(1, side * end, f);
+  const r = Math.hypot(a, l);
+  return mix(1, 1 - smoothstep(1 - BRISTLE_FEATHER_REACH, 1, r), f);
 }
 
 export interface BristleSet {

@@ -1008,15 +1008,17 @@ float smearWeight(int nearest, float alongPx, float wet){
 }
 
 // The four-side Feather ramp (Studio-only; the reference fades across the
-// stroke only). Each axis falls from 1 to 0 across the outer reach of the
-// dab's local frame; the product is mixed in by Feather. D-H: this helper
-// (and the one call below) exist ONLY in the ramp variant — the Feather-0
-// program is the pre-port one, compiled without them.
+// stroke only). A RADIAL fall over the normalized brush space — r is the
+// distance from the dab's centre in units of the half-width — so the deposit
+// tapers on ALL FOUR sides with the same reach. The earlier per-axis product
+// was measured leaving the stroke's top/bottom sides a cliff (the two axes
+// have to fade from the SAME disc). D-H: this helper (and the one call
+// below) exist ONLY in the ramp variant — the Feather-0 program is the
+// pre-port one, compiled without them.
 #ifdef BRISTLE_FEATHER_RAMP
 float featherFall(float across, float along){
-  float side = 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, abs(across));
-  float end = 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, abs(along));
-  return mix(1.0, side * end, uFeather);
+  float r = length(vec2(across, along));
+  return mix(1.0, 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, r), uFeather);
 }
 #endif
 
@@ -1127,14 +1129,19 @@ Gathered gatherBristle(vec2 uv){
   float threshold = uGrain * (1.0 - height) - 0.25;
   float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;
-  // 261119-pod: the four-side Feather ramp multiplies coverage BEFORE the
-  // threshold. D-H: the line is compiled ONLY into the ramp variant, so the
-  // Feather-0 program is the pre-port one rather than a program whose
-  // register allocation a dead guarded branch still perturbs.
-#ifdef BRISTLE_FEATHER_RAMP
-  if (uFeather > 0.0) coverage *= featherFall(across, q.y);
-#endif
   g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
+  // 261119-pod (Lever 2): the four-side Feather ramp shapes the DEPOSIT,
+  // after the threshold — not the coverage the threshold quantises. Measured:
+  // pre-threshold the multiply was swallowed by the smoothstep (the bristle
+  // body saturates to ~1 at the rim, so the whole ramp crossed the narrow
+  // threshold band in under a pixel) and top/bottom kept a cliff. As a
+  // multiplier on the deposit the radial fall spans the reach in pixels.
+  // D-H: the line is compiled ONLY into the ramp variant, so the Feather-0
+  // program is the pre-port one rather than a program whose register
+  // allocation a dead guarded branch still perturbs.
+#ifdef BRISTLE_FEATHER_RAMP
+  if (uFeather > 0.0) g.coverage *= featherFall(across, q.y);
+#endif
   // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
   // untextured law byte-identical: the multiply is never executed).
   if (uTipMix > 0.0) g.coverage *= tipMask(uv);

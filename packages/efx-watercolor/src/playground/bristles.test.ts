@@ -935,7 +935,7 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
     expect(SMEAR.bristleSmearWeight?.(Number.NaN, 1, 1), 'a missing rate drags nothing').toBe(0)
   })
 
-  it('bristleFeatherFall is exactly 1 at Feather 0, 1 inside the reach, 0 at both edges', () => {
+  it('bristleFeatherFall is exactly 1 at Feather 0, 1 inside the reach disc, 0 beyond it', () => {
     expect(typeof SMEAR.bristleFeatherFall, 'bristleFeatherFall is exported').toBe('function')
     for (const [a, l] of [
       [0, 0],
@@ -948,20 +948,31 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
         'Feather 0 keeps the exact shipped arithmetic',
       ).toBe(1)
     }
-    // Feather 1: exactly 1 inside 1 − reach = 0.55 on both axes ...
+    // Feather 1: a RADIAL fall — exactly 1 inside the disc r ≤ 1 − reach
+    // (0.55), on every side, not just on the axes.
     for (const [a, l] of [
       [0, 0],
-      [0.5, 0.5],
-      [0.55, -0.55],
+      [0.55, 0],
+      [0, -0.55],
       [-0.4, 0.2],
+      [0.3, 0.45],
     ] as const) {
-      expect(SMEAR.bristleFeatherFall?.(a, l, 1), `inside the reach at ${a}/${l}`).toBe(1)
+      expect(SMEAR.bristleFeatherFall?.(a, l, 1), `inside the reach disc at ${a}/${l}`).toBe(1)
     }
-    // ... and exactly 0 on the across edge and on the along edge.
+    // The disc, not a square: r > 0.55 already falls, on a diagonal exactly
+    // as on the axes (the per-axis product this replaces held 1 out to
+    // (0.55, 0.55), a corner the acceptance measured as over-faded).
+    expect(SMEAR.bristleFeatherFall?.(0.4, 0.4, 1) ?? Number.NaN).toBeLessThan(1)
+    expect(SMEAR.bristleFeatherFall?.(0.4, 0.4, 1) ?? Number.NaN).toBeCloseTo(
+      SMEAR.bristleFeatherFall?.(Math.hypot(0.4, 0.4), 0, 1) ?? Number.NaN,
+      12,
+    )
+    // ... and exactly 0 on the across edge, the along edge and the corners.
     expect(SMEAR.bristleFeatherFall?.(1, 0, 1), 'the side edge falls to zero').toBe(0)
-    expect(SMEAR.bristleFeatherFall?.(-1, 0.2, 1), 'symmetric across').toBe(0)
+    expect(SMEAR.bristleFeatherFall?.(-1, 0.2, 1), 'symmetric across, past the rim').toBe(0)
     expect(SMEAR.bristleFeatherFall?.(0, 1, 1), 'the end edge falls to zero').toBe(0)
     expect(SMEAR.bristleFeatherFall?.(0, -1, 1)).toBe(0)
+    expect(SMEAR.bristleFeatherFall?.(0.6, 0.8, 1), 'the diagonal rim').toBe(0)
     // Monotone from the core to the edge, and the fall scales with Feather.
     let previous = Number.POSITIVE_INFINITY
     for (const across of [0, 0.55, 0.7, 0.85, 1]) {
