@@ -56,13 +56,52 @@ result: [pending]
 expected: Dropdown shows the selected medium; Watercolor / Gouache / Chalk / Graphite / Acrylic sections are always expanded, with the texture strip above and no filter/search/collapse.
 result: [pending]
 
+### 11. Acrylic Bristle Round and Bristle Flat, Feather 100 and Pickup 100.
+expected: The stroke reads as loaded paint — distinguishable hairs, colour dragged from the canvas, a feathered edge — and the two controls visibly change the result as they move.
+result: [failed] — no perceptible change between low and 100 % on either control; strokes read as flat soft bars.
+
+### 12. Body as a mixer with the background (SPECS/v2.2.0-medium-engine/better-acrylic.md, request 1: "Blend instead transparence").
+expected: Body 100 % acts as a full mixer with the underlying paint, Body 0 % mixes nothing, and the rim carries its own blend falloff rather than a hard line.
+result: [failed] — Body behaves as a transparency/coverage term, the rim is a hard line, and a pale halo outlines every bristle stroke.
+
+### 13. Edge anti-aliasing and acrylic water (spec requests 2 and 3).
+expected: A directional smooth on the stroke edges (no aliasing on the border or inside), watery irregular edges that are not ruler-straight, and the wet control stopping edge mixing with Feather setting how much edge mixing happens.
+result: [failed] — edges are uniformly soft/hard with visible aliasing, there is no water flow, and no wet gating of edge mixing.
+
+### 14. Same stroke with a texture tip bound versus the default bristle tip.
+expected: The bristle engine composites with a texture tip and the result is at least as good as either path alone.
+result: [failed] — the texture-tip stroke reads closer to the reference than the new default-tip bristle path. Mechanically, `isBristleResponse()` excludes any brush carrying a `textureId`, so the textured stroke bypasses the new engine entirely.
+
 ## Summary
 
-total: 10
+total: 14
 passed: 0
-issues: 0
+issues: 4
 pending: 10
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+**GAP-1 — Body is a transparency term, not a mixer (spec request 1).**
+Expected: `Body` is the mixing ratio against the underlying paint, with a blend falloff on the rim.
+Actual: Body feeds a coverage/cover mask; the live compositor derives its alpha as `max(darkAlpha, cov)` (`shaders.ts`, mode-4 display law) where `cov` is the union accumulated by `coverBristlePass` (`gl.blendFunc(ZERO, ONE_MINUS_SRC_COLOR)`). Where the cover union extends past the pigment, alpha is promoted while the solved pigment goes near-white — the pale halo, and the reason Body reads as opacity rather than mixing.
+Reference law: `craft-brushes/notes/brush-blending.md` §1/§3.5 — the only compositing operation is `mix(canvas, carried, deposit)`.
+
+**GAP-2 — Feather and Pickup are inert in the visible result.**
+Expected: both controls move the look.
+Actual: Feather only widens the gather's `softness` (0.09 → 0.34), a modest blur; Pickup only feeds the carrier rates. Neither changes the deposited colour's structure, so at 100 % the stroke is indistinguishable from a default one. The reference's visible structure comes from the per-bristle tufts, `broken`, the paper threshold and the rim contact noise — all present in the gather, but their effect is flattened by the compositing path in GAP-1.
+
+**GAP-3 — Edge aliasing and no acrylic water (spec requests 2 and 3).**
+Expected: a directional smooth along the brush direction, irregular watery edges, and a wet control that stops edge mixing with Feather setting the amount.
+Actual: no directional anti-aliasing step exists; the only edge softening is the isotropic `smoothstep(threshold ± uSoftness)`. There is no edge-mixing term and no wet gate on it.
+
+**GAP-4 — The bristle engine is disabled by a texture tip.**
+Expected: the engine and a texture tip compose.
+Actual: `isBristleResponse()` in `brushes.ts` requires `textureId == null`, so every textured stroke — the one that currently looks best — runs the old path. This is also why the two A/B tests compared two different engines.
+
+**GAP-5 — Missing `smear` (spec: "les trainées… trainant des couleurs sous jacente").**
+Expected: paint dragged from the canvas under the stroke, mottled along the stroke.
+Actual: the reference's §3.3 deposit-time smear was deliberately unported (D-28, "never an RGB smear"). The user asks for the visible effect; the port needs to happen in coefficient space to respect D-28.
+
+**Phase status: NOT complete.** Four UAT rows failed; the phase goal ("a stroke reads denser, heavier and genuinely opaque") is not met at the visible level even though every automated gate is green.
