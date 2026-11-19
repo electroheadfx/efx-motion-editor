@@ -313,6 +313,7 @@ async function runAcceptance(labels) {
     feather: result.feather,
     strands: result.strands,
     body: result.body,
+    geometry: result.geometry,
   }
   console.log('')
   console.log('================ 261119-pod acceptance ================')
@@ -323,11 +324,18 @@ async function runAcceptance(labels) {
   console.log(`feather ${result.feather.pass ? 'PASS' : 'FAIL'} — ${result.feather.detail}`)
   console.log(`strands ${result.strands.pass ? 'PASS' : 'FAIL'} — ${result.strands.detail}`)
   console.log(`body    ${result.body.pass ? 'PASS' : 'FAIL'} — ${result.body.detail}`)
+  console.log(`geometry ${result.geometry.pass ? 'PASS' : 'FAIL'} — ${result.geometry.detail}`)
   console.log('=======================================================')
 
   const identityOk = Object.values(identity).every(Boolean)
   if (!identityOk) fail('the no-drag identity contract is broken (band / band-p0 / blank-p0 moved)')
-  if (!result.drag.pass || !result.feather.pass || !result.strands.pass || !result.body.pass) {
+  if (
+    !result.drag.pass ||
+    !result.feather.pass ||
+    !result.strands.pass ||
+    !result.body.pass ||
+    !result.geometry.pass
+  ) {
     fail('one or more acceptance blocks missed its declared threshold — report the numbers, do not tune')
   }
 }

@@ -403,11 +403,13 @@ function captures(scenes: Record<string, SceneRecord>): RunCapture {
 
 const AFTER_SCENES: Record<string, SceneRecord> = {
   band: { bandHueDeg: 49, bandChroma: 0.5 },
-  'band-p0': { crossingHueDeg: 214 },
-  'band-p100': { crossingHueDeg: 170, alongVariance: 12, acrossGradient: 6, coreDarkness: 105 },
-  'blank-p0': { strokeHueDeg: 212 },
-  'blank-f0': { fadeTop: 2, fadeBottom: 2, fadeLeft: 2, fadeRight: 2, edgeHueStdTop: 5, edgeHueStdBottom: 5, edgeHueStdLeft: 5, edgeHueStdRight: 5 },
-  'blank-f100': { fadeTop: 4, fadeBottom: 4, fadeLeft: 4, fadeRight: 4, edgeHueStdTop: 9, edgeHueStdBottom: 9, edgeHueStdLeft: 9, edgeHueStdRight: 9 },
+  'band-p0': { crossingHueDeg: 214, strokeHalfWidthPx: 10 },
+  'band-p100': { crossingHueDeg: 170, alongVariance: 12, acrossGradient: 6, coreDarkness: 105, strokeHalfWidthPx: 10 },
+  'blank-p0': { strokeHueDeg: 212, strokeHalfWidthPx: 10 },
+  // FIX 3: the same mark reads at the reference's width and widens with
+  // Feather exactly as the reference does (10 -> 12 both sides).
+  'blank-f0': { fadeTop: 2, fadeBottom: 2, fadeLeft: 2, fadeRight: 2, edgeHueStdTop: 5, edgeHueStdBottom: 5, edgeHueStdLeft: 5, edgeHueStdRight: 5, strokeHalfWidthPx: 10 },
+  'blank-f100': { fadeTop: 4, fadeBottom: 4, fadeLeft: 4, fadeRight: 4, edgeHueStdTop: 9, edgeHueStdBottom: 9, edgeHueStdLeft: 9, edgeHueStdRight: 9, strokeHalfWidthPx: 12 },
   body0: { coveredFraction: 0.4, interiorAlphaMean: 0.5 },
   body100: { coveredFraction: 0.8, interiorAlphaMean: 1 },
 }
@@ -418,11 +420,11 @@ const BEFORE_SCENES: Record<string, SceneRecord> = {
 
 const REFERENCE_SCENES: Record<string, SceneRecord> = {
   band: { bandHueDeg: 50, bandChroma: 0.6 },
-  'band-p0': { crossingHueDeg: 210 },
-  'band-p100': { crossingHueDeg: 190 },
-  'blank-p0': { strokeHueDeg: 211 },
-  'blank-f0': { fadeTop: 3, fadeBottom: 3, fadeLeft: 3, fadeRight: 3 },
-  'blank-f100': { fadeTop: 3, fadeBottom: 3, fadeLeft: 3, fadeRight: 3 },
+  'band-p0': { crossingHueDeg: 210, strokeHalfWidthPx: 10 },
+  'band-p100': { crossingHueDeg: 190, strokeHalfWidthPx: 10 },
+  'blank-p0': { strokeHueDeg: 211, strokeHalfWidthPx: 10 },
+  'blank-f0': { fadeTop: 3, fadeBottom: 3, fadeLeft: 3, fadeRight: 3, strokeHalfWidthPx: 10 },
+  'blank-f100': { fadeTop: 3, fadeBottom: 3, fadeLeft: 3, fadeRight: 3, strokeHalfWidthPx: 12 },
 }
 
 function run(): ReturnType<typeof acceptance> {
@@ -461,6 +463,35 @@ describe('acceptance blocks', () => {
     // reference echo, never a pass operand.
     expect(a.drag.reference.signedShiftDeg).toBe(-20)
     expect(a.drag.reference.blankP0DeltaDeg).toBe(1)
+    // geometry: every paired width matches and the Feather response is 1.2x
+    // on both sides.
+    expect(a.geometry.widths['band-p100']).toEqual({ studio: 10, reference: 10, ratio: 1 })
+    expect(a.geometry.shape.studioWiden).toBeCloseTo(1.2, 6)
+    expect(a.geometry.shape.referenceWiden).toBeCloseTo(1.2, 6)
+    expect(a.geometry.shape.parity).toBe(0)
+    expect(a.geometry.pass).toBe(true)
+  })
+
+  it('fails the geometry when a width deviates more than 15% from the reference', () => {
+    const scenes = {
+      ...AFTER_SCENES,
+      'band-p100': { ...AFTER_SCENES['band-p100'], strokeHalfWidthPx: 7.5 },
+    }
+    const a = acceptance(captures(BEFORE_SCENES), captures(scenes), captures(REFERENCE_SCENES))
+    expect(a.geometry.widths['band-p100']!.ratio).toBe(0.75)
+    expect(a.geometry.pass).toBe(false)
+  })
+
+  it('fails the geometry when Feather changes the width in the wrong direction', () => {
+    const scenes = {
+      ...AFTER_SCENES,
+      'blank-f100': { ...AFTER_SCENES['blank-f100'], strokeHalfWidthPx: 8 },
+    }
+    const a = acceptance(captures(BEFORE_SCENES), captures(scenes), captures(REFERENCE_SCENES))
+    expect(a.geometry.shape.studioWiden).toBeCloseTo(0.8, 6)
+    expect(a.geometry.shape.referenceWiden).toBeCloseTo(1.2, 6)
+    expect(a.geometry.shape.parity).toBeCloseTo(1 / 3, 2)
+    expect(a.geometry.pass).toBe(false)
   })
 
   it('fails the drag when the shift is under 20% of the blue->band angle', () => {
@@ -521,5 +552,6 @@ describe('acceptance blocks', () => {
     expect(a.feather.pass).toBe(false)
     expect(a.strands.pass).toBe(false)
     expect(a.body.pass).toBe(false)
+    expect(a.geometry.pass).toBe(false)
   })
 })

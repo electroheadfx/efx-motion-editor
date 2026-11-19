@@ -56,6 +56,8 @@ export const HUE_P0_CONTROL_MAX_DEG = 3
 export const FADE_MIN_GAIN_PX = 1
 export const STRAND_MIN_RATIO = 1.15
 export const CORE_DARKNESS_MAX_DELTA_PCT = 10
+/** FIX 3: the mark's measured width and Feather response vs the reference. */
+export const GEOMETRY_MAX_RATIO_DEVIATION = 0.15
 
 /** A pixel participates in a hue aggregate only above this saturation. */
 export const HUE_CHROMA_FLOOR = 0.05
@@ -739,12 +741,28 @@ export interface BodyBlock {
   readonly detail: string
 }
 
+/** FIX 3: cross-stroke mark geometry must match the reference, not just read. */
+export interface GeometryBlock {
+  readonly widths: Record<
+    string,
+    { readonly studio: number; readonly reference: number; readonly ratio: number }
+  >
+  readonly shape: {
+    readonly studioWiden: number
+    readonly referenceWiden: number
+    readonly parity: number
+  }
+  readonly pass: boolean
+  readonly detail: string
+}
+
 export interface Acceptance {
   readonly thresholds: SceneRecord
   readonly drag: DragBlock
   readonly feather: FeatherBlock
   readonly strands: StrandsBlock
   readonly body: BodyBlock
+  readonly geometry: GeometryBlock
 }
 
 function n(scenes: Record<string, SceneRecord>, scene: string, key: string): number {
@@ -898,6 +916,40 @@ export function acceptance(before: RunCapture, after: RunCapture, reference: Run
     detail: `body100 covered ${r2(cf100)} vs body0 ${r2(cf0)} (strictly greater required)`,
   }
 
+  // --- geometry (FIX 3) --------------------------------------------
+  // The mark must READ as the same brush, not merely pass the colour bars:
+  // the measured cross-stroke half-width is compared scene by scene at
+  // identical colour, brush, Pickup and Feather (every paired scene both
+  // captures measured), and the Feather RESPONSE — how much the width grows
+  // from f0 to f100 — must match the reference's direction and magnitude.
+  const geometryScenes = ['band-p0', 'band-p100', 'blank-p0', 'blank-f0', 'blank-f100']
+  const widths: GeometryBlock['widths'] = {}
+  let widthPass = true
+  for (const scene of geometryScenes) {
+    const studio = n(a, scene, 'strokeHalfWidthPx')
+    const referenceW = n(ref, scene, 'strokeHalfWidthPx')
+    const ratio = referenceW > 0 ? studio / referenceW : NaN
+    widths[scene] = { studio: r2(studio), reference: r2(referenceW), ratio: r2(ratio) }
+    if (!Number.isFinite(ratio) || Math.abs(ratio - 1) > GEOMETRY_MAX_RATIO_DEVIATION) widthPass = false
+  }
+  const sf0 = n(a, 'blank-f0', 'strokeHalfWidthPx')
+  const sf100 = n(a, 'blank-f100', 'strokeHalfWidthPx')
+  const rf0 = n(ref, 'blank-f0', 'strokeHalfWidthPx')
+  const rf100 = n(ref, 'blank-f100', 'strokeHalfWidthPx')
+  const studioWiden = sf0 > 0 ? sf100 / sf0 : NaN
+  const referenceWiden = rf0 > 0 ? rf100 / rf0 : NaN
+  const shapeParity =
+    referenceWiden > 0 && Number.isFinite(studioWiden)
+      ? Math.abs(studioWiden / referenceWiden - 1)
+      : NaN
+  const geometryPass = widthPass && Number.isFinite(shapeParity) && shapeParity <= GEOMETRY_MAX_RATIO_DEVIATION
+  const geometry: GeometryBlock = {
+    widths,
+    shape: { studioWiden: r2(studioWiden), referenceWiden: r2(referenceWiden), parity: r2(shapeParity) },
+    pass: geometryPass,
+    detail: `widths ${geometryScenes.map((s) => `${s} ${widths[s]!.studio}/${widths[s]!.reference} (x${widths[s]!.ratio})`).join(', ')}; Feather widen ${r2(studioWiden)} vs ${r2(referenceWiden)} (parity ${r2(shapeParity)} vs max ${GEOMETRY_MAX_RATIO_DEVIATION})`,
+  }
+
   return {
     thresholds: {
       HUE_MIN_SHIFT_DEG,
@@ -906,6 +958,7 @@ export function acceptance(before: RunCapture, after: RunCapture, reference: Run
       FADE_MIN_GAIN_PX,
       STRAND_MIN_RATIO,
       CORE_DARKNESS_MAX_DELTA_PCT,
+      GEOMETRY_MAX_RATIO_DEVIATION,
       HUE_CHROMA_FLOOR,
       MASK_THRESHOLD,
     },
@@ -913,5 +966,6 @@ export function acceptance(before: RunCapture, after: RunCapture, reference: Run
     feather,
     strands,
     body,
+    geometry,
   }
 }
