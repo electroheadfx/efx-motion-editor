@@ -91,6 +91,13 @@
 //  spread on TEXTURED_BOX; `red-over-blue-50` is task 2's criterion-2
 //  scenario, declared in both closed lists now so the two files cannot drift.
 //
+//  64-23 adds `--scenario bristle-edge`: two horizontal `bristle-flat` strokes
+//  on one sheet, identical but for the Feather global (0 upper, 100 lower).
+//  The report carries each stroke's edge softness and variation in doc pixels,
+//  the measured edge half-width and each stroke's plateau alpha; compare.mjs
+//  gates the relation facts (D-22's direction, non-zero variation, width
+//  inside the stroke) in every mode.
+//
 //  Final flag contract (later phases inherit it, do not retype it):
 //    run.mjs --gate <name>            required; [A-Za-z0-9._-]+, names the JSON
 //             [--scenario cover]      omitted renders the plan-01 single stroke
@@ -108,6 +115,8 @@
 //                                     cover geometry, covering stroke at --brush
 //             [--scenario red-over-blue-50]
 //                                     the criterion-2 red-over-blue crossing
+//             [--scenario bristle-edge]
+//                                     two Feather-0/100 strokes, edge census
 //             [--emboss <0..100>]     omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
 //             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
@@ -147,7 +156,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -207,9 +216,9 @@ const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured" or "red-over-blue-50")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50" or "bristle-edge")`,
     )
     process.exit(1)
   }

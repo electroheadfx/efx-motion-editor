@@ -95,6 +95,14 @@
 //  so the crossing must read at least 0.90 before the lift stroke, fall to at
 //  most 60% of that value after it, and still raise no covered-paper-white.
 //
+//  64-23 adds `'bristle-edge'`: two Feather-0/100 strokes on one sheet, and
+//  the census's named degeneracies (`edgeFailures`) fail verbatim. The barred
+//  relations are the census's meaning — both softnesses positive, the
+//  Feather-100 softness strictly wider (D-22's direction), both variations
+//  non-zero (the edge is brushed, not a smooth band), and the wide softness
+//  narrower than the measured edge half-width. The absolute pixel widths are
+//  recorded in the SUMMARY, never gated: they are measurements, not contract.
+//
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
 //  teach this parser about it rather than have it silently misparse.
@@ -486,18 +494,113 @@ function redOverBlueFailures(data) {
   return failures
 }
 
+/**
+ * 64-23: the bristle-edge census as standing invariants. On the PIGMENT
+ * export's mode-4 alpha the census measures, per stroke, the median 90 %-10 %
+ * transition width ("softness") and the P90-P10 spread of the 50 % crossing
+ * ("variation") in document pixels, plus the measured edge half-width and
+ * each stroke's interior plateau. The gate asserts the RELATION facts, never
+ * the absolute pixels (the SUMMARY records those; they are measurements, not
+ * contract): both softnesses finite and > 0 (an edge exists), the Feather-100
+ * softness strictly wider than the Feather-0 one (D-22's direction — a
+ * feather-blind edge fails here), both variations > 0 (the edge is brushed,
+ * not a mathematically smooth band), and the wide softness narrower than the
+ * measured half-width (the band is an edge, not the whole stroke). A
+ * non-empty `edgeFailures` array is the probe's own named degeneracy (stroke
+ * not found, a station with fewer than three crossings) and fails verbatim.
+ */
+function bristleEdgeFailures(data) {
+  const fields = [
+    'edgeSoftnessPxFeather0',
+    'edgeSoftnessPxFeather100',
+    'edgeVariationPxFeather0',
+    'edgeVariationPxFeather100',
+    'edgeHalfWidthPx',
+  ]
+  const missing = fields.filter((field) => typeof data[field] !== 'number')
+  if (missing.length > 0) {
+    return [`capture is missing ${missing.join(', ')}; re-run the bristle-edge probe`]
+  }
+  if (!Array.isArray(data.edgeFailures)) {
+    return ['capture is missing edgeFailures; re-run the bristle-edge probe']
+  }
+  const failures = data.edgeFailures.map((line) => String(line))
+  if (!(data.edgeSoftnessPxFeather0 > 0)) {
+    failures.push(
+      `edgeSoftnessPxFeather0 ${data.edgeSoftnessPxFeather0} is not a positive width ` +
+        '(the Feather-0 edge is missing)',
+    )
+  }
+  if (!(data.edgeSoftnessPxFeather100 > 0)) {
+    failures.push(
+      `edgeSoftnessPxFeather100 ${data.edgeSoftnessPxFeather100} is not a positive width ` +
+        '(the Feather-100 edge is missing)',
+    )
+  }
+  if (!(data.edgeSoftnessPxFeather100 > data.edgeSoftnessPxFeather0)) {
+    failures.push(
+      `edgeSoftnessPxFeather100 ${data.edgeSoftnessPxFeather100} is not wider than ` +
+        `edgeSoftnessPxFeather0 ${data.edgeSoftnessPxFeather0} (Feather is not widening the band)`,
+    )
+  }
+  if (!(data.edgeVariationPxFeather0 > 0)) {
+    failures.push(
+      `edgeVariationPxFeather0 ${data.edgeVariationPxFeather0} is 0 ` +
+        '(the Feather-0 edge is perfectly smooth: not a brushed edge)',
+    )
+  }
+  if (!(data.edgeVariationPxFeather100 > 0)) {
+    failures.push(
+      `edgeVariationPxFeather100 ${data.edgeVariationPxFeather100} is 0 ` +
+        '(the Feather-100 edge is perfectly smooth: not a brushed edge)',
+    )
+  }
+  if (!(data.edgeSoftnessPxFeather100 < data.edgeHalfWidthPx)) {
+    failures.push(
+      `edgeSoftnessPxFeather100 ${data.edgeSoftnessPxFeather100} is not narrower than ` +
+        `edgeHalfWidthPx ${data.edgeHalfWidthPx} (the band is not an edge but the stroke)`,
+    )
+  }
+  return failures
+}
+
 const SCENARIO_INVARIANTS = {
   'white-over-blue': whiteOverBlueFailures,
   'cover-advect': coverAdvectFailures,
   'cover-lift': coverLiftFailures,
   'cover-textured': coverTexturedFailures,
   'red-over-blue-50': redOverBlueFailures,
+  'bristle-edge': bristleEdgeFailures,
 }
 
 /** Run the scenario's invariant function, if it has one. */
 function scenarioInvariantFailures(data) {
   const invariants = SCENARIO_INVARIANTS[data.scenario]
   return invariants ? invariants(data) : []
+}
+
+/** 64-23: print the census readings a bristle-edge capture recorded, if any. */
+function printBristleEdge(data) {
+  if (data.scenario !== 'bristle-edge') return
+  const keys = [
+    'edgeSoftnessPxFeather0',
+    'edgeSoftnessPxFeather100',
+    'edgeVariationPxFeather0',
+    'edgeVariationPxFeather100',
+    'edgeHalfWidthPx',
+    'edgePlateauAlphaFeather0',
+    'edgePlateauAlphaFeather100',
+  ]
+  const parts = keys.filter((key) => typeof data[key] === 'number').map((key) => `${key} ${data[key]}`)
+  if (parts.length === 0) return
+  console.log(`edge      : ${parts.join(' | ')}`)
+  // §4.3's dash breakup leaves stations the census cannot measure; a skip is
+  // normal (the trace law working), a failure is not. Print the count so a
+  // shrinking sample never goes unnoticed.
+  if (Array.isArray(data.edgeSkippedStations) && data.edgeSkippedStations.length > 0) {
+    console.log(`edge skips: ${data.edgeSkippedStations.length} station(s) in dash gaps`)
+  }
+  console.log('')
 }
 
 /** 64-14: print the lifecycle readings a capture recorded, if any. */
@@ -748,6 +851,7 @@ for (const field of FIELDS) {
 // pair) asserts the same self-contained outcome invariants in every mode.
 const regionFailures = coverRegionFailures(actual)
 printCoverRegions(actual, refData)
+printBristleEdge(actual)
 printCoverLifecycle(actual)
 // 64-17: the scenario-keyed invariants run in committed-baseline and
 // same-session mode too — every mode, before every verdict.

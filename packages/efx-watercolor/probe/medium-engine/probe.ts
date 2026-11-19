@@ -152,8 +152,25 @@
 //  plus the whole-sheet paper-white scan; compare.mjs gates the criterion's
 //  stated tolerance (ratio ≥ 0.95, |Δhue| ≤ 3°, no paper-white) in every mode.
 //
+//  64-23 adds `bristle-edge` — the directional-edge census: two horizontal
+//  `bristle-flat` strokes of the same length and speed on blank paper, the
+//  first at Feather 0 and the second at Feather 100. The report carries each
+//  stroke's edge softness (the median 90 %-10 % width) and edge variation
+//  (the P90−P10 of the 50 % crossing) in document pixels, plus the measured
+//  edge half-width and each stroke's interior plateau, read on the
+//  TRANSPARENT export's deposited darkness (`1 − min(rgb)` = the engine's
+//  `darkAlpha`), not the mode-4 pigment alpha: the coverage channel is a
+//  saturated union on a bristle stroke (see the census section's field note),
+//  so the film's transmittance is where D-22's feather band is visible.
+//  compare.mjs gates the cardinal relation — both softnesses finite and > 0,
+//  the Feather-100 softness strictly wider than the Feather-0 one, both
+//  variations > 0, and the wide softness narrower than the measured edge
+//  half-width — so a non-directional (perfectly smooth) edge and a
+//  feather-blind edge both fail.
+//
 //  Scenarios: neutral | cover | cover-over-wet | watercolor-50 | white-over-blue
-//           | cover-advect | cover-lift | cover-textured | red-over-blue-50.
+//           | cover-advect | cover-lift | cover-textured | red-over-blue-50
+//           | bristle-edge.
 // ============================================================
 
 import { WatercolorEngine } from '../../src/playground/Engine'
@@ -589,6 +606,11 @@ interface ScriptEntry {
    *  (`round`). An unknown id never reaches an entry — `readBrush` throws
    *  before the engine is constructed. */
   readonly brushId?: string
+  /** 64-23 (D-22): the coverage-band knob (0..100) for the census scenario —
+   *  the only entry-level knob that is NOT a CLI operand, because the census
+   *  paints the same stroke at two Feather values in one capture. Omitted
+   *  adds no key, exactly like `body`/`emboss`. */
+  readonly feather?: number
 }
 
 /** The canonical bag as the app records it (0..100). A knob adds its key;
@@ -597,6 +619,7 @@ function paramsBag(entry: ScriptEntry): Record<string, number> {
   const bag: Record<string, number> = { ...STROKE_PARAMS }
   if (entry.emboss !== undefined) bag['emboss'] = entry.emboss
   if (entry.body !== undefined) bag['body'] = entry.body
+  if (entry.feather !== undefined) bag['feather'] = entry.feather
   return bag
 }
 
@@ -1021,6 +1044,250 @@ function redOverBlueMetrics(
   }
 }
 
+// --- 64-23 the bristle-edge census -------------------------------------------
+// Acceptance ask #2 (`better-acrylic.md`): "the edge looks brushed" is not a
+// byte gate, so the census measures it. TWO horizontal `bristle-flat` strokes
+// of the same length and speed on blank paper, identical but for D-22's
+// Feather global — the upper band at Feather 0, the lower at Feather 100,
+// each fixed after its settle. The census reports, per stroke, the 10 %→90 %
+// transition width of the stroke's UPPER edge (median over 24 stations along
+// the central 60 % of the stroke's x-range) and the P90−P10 spread of the
+// 50 % crossing position. The absolute numbers are recorded evidence;
+// compare.mjs gates only the relation facts (D-22's direction, a non-zero
+// variation, a width inside the stroke).
+//
+// THE FIELD (64-23, measured): the plan named the mode-4 pigment alpha, but on
+// a bristle stroke that channel is a saturated MASK, not the film. The
+// coverage channel is the union (`ONE, ONE_MINUS_SRC_ALPHA`) of the ~100–230
+// overlapping dabs, so a per-dab coverage of even 0.3 composes to 1 and the
+// exported alpha is a hard silhouette cut at the gather's geometric support
+// boundary (measured: 0.8 px at BOTH Feather 0 and Feather 100, plateau 1.0).
+// D-22's feather band, `smoothstep(threshold − uSoftness, threshold + uSoftness,
+// coverage)`, is a threshold on the DEPOSIT, so the graded, feather-shaped
+// edge lives in the film's transmittance — the transparent export's
+// `1 − min(rgb)`, which IS the engine's own `darkAlpha` (the pre-coverage
+// alpha `displayFS` derives mode 4 from), and the visible edge of the paint
+// on paper. Measured on that field the census shows the D-22 relation
+// (Feather 0: 20.25 px; Feather 100: 26.33 px, 1080²). The mode-4 alpha
+// saturation is recorded in the SUMMARY as a model finding, not silently
+// worked around.
+
+// A LIGHT pigment on purpose: the film's darkness is `1 − min(rgb)` of the
+// deposited transmittance, and a dark paint floors it near the paper's black
+// limit, hiding the across ramp under a near-saturated plateau. A light-wash
+// pigment keeps the ramp in a readable 0.1–0.2 band (measured plateau 0.125 /
+// 0.158), so the crossing fractions are resolved with room to spare.
+const EDGE_COLOR = '#dddddd'
+const EDGE_FEATHER_0_Y = 0.72
+const EDGE_FEATHER_100_Y = 0.28
+/** The stroke's own x-range (`horizontalLine`) and the census's central 60 %. */
+const EDGE_STROKE_X0 = 0.16
+const EDGE_STROKE_X1 = 0.84
+const EDGE_CENTRAL_LO = 0.2
+const EDGE_CENTRAL_HI = 0.8
+/** 24 stations spread over the central 60 % of the stroke's x-range. */
+const EDGE_STATIONS = 24
+/** How far above the stroke centre the column scan runs, in doc heights. */
+const EDGE_SCAN_HEIGHTS = 0.08
+/** The plateau reference band's half-height, in doc heights. */
+const EDGE_PLATEAU_HALF = 0.006
+/** The film's darkness a stroke must reach to be measurable at all. The plan's
+ *  0.2 was written for the saturated mode-4 alpha (which always reads 1); a
+ *  real light-wash film reads ~0.13–0.16 here, a blank render 0. */
+const EDGE_MIN_PLATEAU = 0.02
+
+/** 64-23: the two-entry census geometry — same length, same speed, one sheet,
+ *  the ONLY difference between the strokes is the Feather global. */
+function bristleEdgeScript(): readonly ScriptEntry[] {
+  return [
+    {
+      color: EDGE_COLOR,
+      points: horizontalLine(EDGE_FEATHER_0_Y),
+      mutationId: 0x7ee200,
+      feather: 0,
+      brushId: 'bristle-flat',
+    },
+    {
+      color: EDGE_COLOR,
+      points: horizontalLine(EDGE_FEATHER_100_Y),
+      mutationId: 0x7ee201,
+      feather: 100,
+      brushId: 'bristle-flat',
+    },
+  ]
+}
+
+/** Median of a non-empty list; 0 for an empty one (never NaN). */
+function median(values: readonly number[]): number {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  return sorted[Math.floor((sorted.length - 1) / 2)]!
+}
+
+/** Linear-interpolated quantile over a non-empty list. */
+function quantile(values: readonly number[], q: number): number {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const pos = q * (sorted.length - 1)
+  const lo = Math.floor(pos)
+  const hi = Math.min(sorted.length - 1, lo + 1)
+  return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (pos - lo)
+}
+
+/** One stroke's census: the median 90 %−10 % width, the P90−P10 spread of the
+ *  50 % crossing, the median crossing distance (the measured half-width) and
+ *  the plateau the halves were normalised by. */
+interface EdgeCensus {
+  readonly softnessPx: number
+  readonly variationPx: number
+  readonly halfWidthPx: number
+  readonly plateauAlpha: number
+}
+
+/**
+ * 64-23: one stroke's edge census on the FILM's darkness (see the section
+ * header for why not the mode-4 alpha). A stroke is `null` when its plateau
+ * never reaches `EDGE_MIN_PLATEAU` — a blank render — with a NAMED failure
+ * line, so an empty capture can never pass silently. Per station the column
+ * is scanned from the stroke's centre line upward (the higher doc y, which is
+ * a SMALLER canvas row); the 90 %, 50 % and 10 % crossings are interpolated
+ * between the last row above and the first row below each threshold. A
+ * station whose centre texel is not itself at the plateau (a dash gap in the
+ * deposit — the §4.3 dryness breakup breaks per bristle) cannot define an
+ * edge crossing: it is SKIPPED and recorded in `skips`, never in `failures`
+ * (a dash gap is the trace law working, not a degenerate capture). A station
+ * that runs out of rows before all three crossings IS a named failure.
+ */
+function strokeEdgeCensus(
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  strokeY: number,
+  label: string,
+  failures: string[],
+  skips: string[],
+): EdgeCensus | null {
+  const x0 = Math.round((EDGE_STROKE_X0 + (EDGE_STROKE_X1 - EDGE_STROKE_X0) * EDGE_CENTRAL_LO) * w)
+  const x1 = Math.round((EDGE_STROKE_X0 + (EDGE_STROKE_X1 - EDGE_STROKE_X0) * EDGE_CENTRAL_HI) * w)
+  const centreRow = (1 - strokeY) * h
+  const valueAt = (row: number, x: number): number => data[(row * w + x) * 4 + 3]! / 255
+
+  // 1) The plateau: the MEDIAN value in a thin band around the centre line,
+  //    over the census's central x-range — the bristle core stipples, so a
+  //    single texel would under-read it and a mean would average dashes.
+  const plateauValues: number[] = []
+  const plateauTop = Math.max(0, Math.round(centreRow - EDGE_PLATEAU_HALF * h))
+  const plateauBottom = Math.min(h - 1, Math.round(centreRow + EDGE_PLATEAU_HALF * h))
+  for (let row = plateauTop; row <= plateauBottom; row += 1) {
+    for (let x = x0; x <= x1; x += 1) plateauValues.push(valueAt(row, x))
+  }
+  const plateauAlpha = median(plateauValues)
+  if (!(plateauAlpha >= EDGE_MIN_PLATEAU)) {
+    failures.push(
+      `edge census: ${label} stroke not found (plateau ${plateauAlpha.toFixed(3)} below ${EDGE_MIN_PLATEAU})`,
+    )
+    return null
+  }
+
+  // 2) The stations: scan each column up from the centre line, interpolating
+  //    the three crossings against the plateau.
+  const widths: number[] = []
+  const crossings: number[] = []
+  const limit = Math.max(0, Math.round(centreRow - EDGE_SCAN_HEIGHTS * h))
+  const startRow = Math.max(0, Math.floor(centreRow))
+  for (let s = 0; s < EDGE_STATIONS; s += 1) {
+    const x = Math.min(w - 1, Math.round(x0 + ((s + 0.5) / EDGE_STATIONS) * (x1 - x0)))
+    const startNorm = valueAt(startRow, x) / plateauAlpha
+    if (!(startNorm >= 0.9)) {
+      skips.push(
+        `edge census: ${label} station ${s} (x=${x}) skipped — a dash gap (${startNorm.toFixed(2)} of the plateau at the centre line)`,
+      )
+      continue
+    }
+    const found: Record<'p90' | 'p50' | 'p10', number | null> = { p90: null, p50: null, p10: null }
+    const thresholds = [
+      ['p90', 0.9],
+      ['p50', 0.5],
+      ['p10', 0.1],
+    ] as const
+    let previousRow = startRow
+    let previousNorm = startNorm
+    for (let row = startRow - 1; row >= limit; row -= 1) {
+      const norm = valueAt(row, x) / plateauAlpha
+      for (const [key, q] of thresholds) {
+        if (found[key] === null && norm < q) {
+          const span = previousNorm - norm
+          const t = span > 0 ? (previousNorm - q) / span : 0
+          found[key] = centreRow - (previousRow + (row - previousRow) * t)
+        }
+      }
+      previousRow = row
+      previousNorm = norm
+    }
+    if (found.p90 === null || found.p50 === null || found.p10 === null) {
+      failures.push(
+        `edge census: ${label} station ${s} (x=${x}) has fewer than three crossings`,
+      )
+      continue
+    }
+    widths.push(found.p10 - found.p90)
+    crossings.push(found.p50)
+  }
+  if (widths.length === 0) {
+    failures.push(`edge census: ${label} stroke has no measurable station`)
+    return null
+  }
+  return {
+    softnessPx: median(widths),
+    variationPx: quantile(crossings, 0.9) - quantile(crossings, 0.1),
+    halfWidthPx: median(crossings),
+    plateauAlpha,
+  }
+}
+
+/**
+ * 64-23: the census report, read on the transparent export (see the section
+ * header for the field). Per stroke: the median 10 %→90 % width, the P90−P10
+ * spread of the 50 % crossing and the interior plateau — the film's darkness
+ * alpha — that normalised them; plus the measured half-width (the two
+ * strokes' median crossing distance — the same brush, so one number) and the
+ * named degenerate failures, which compare.mjs also refuses. Zeros stand in
+ * for a stroke the census could not find, so a blank render reads 0 and fails
+ * the invariant; the failure line names WHY.
+ */
+function bristleEdgeMetrics(sheet: HTMLCanvasElement): Record<string, number | string[]> {
+  const ctx = sheet.getContext('2d')
+  if (!ctx) throw new Error('bristle edge: exported canvas has no 2D context')
+  const w = sheet.width
+  const h = sheet.height
+  const pixels = ctx.getImageData(0, 0, w, h).data
+  // The film's darkness — the engine's own `darkAlpha` (`1 − min(rgb)` of the
+  // transparent export's transmittance), written into a scan-only buffer's
+  // alpha channel so the census reads one field.
+  const data = new Uint8ClampedArray(pixels.length)
+  for (let i = 0; i < pixels.length; i += 4) {
+    data[i + 3] = 255 - Math.min(pixels[i]!, pixels[i + 1]!, pixels[i + 2]!)
+  }
+  const failures: string[] = []
+  const skips: string[] = []
+  const zero: EdgeCensus = { softnessPx: 0, variationPx: 0, halfWidthPx: 0, plateauAlpha: 0 }
+  const feather0 =
+    strokeEdgeCensus(data, w, h, EDGE_FEATHER_0_Y, 'feather-0', failures, skips) ?? zero
+  const feather100 =
+    strokeEdgeCensus(data, w, h, EDGE_FEATHER_100_Y, 'feather-100', failures, skips) ?? zero
+  return {
+    edgeSoftnessPxFeather0: round2(feather0.softnessPx),
+    edgeSoftnessPxFeather100: round2(feather100.softnessPx),
+    edgeVariationPxFeather0: round2(feather0.variationPx),
+    edgeVariationPxFeather100: round2(feather100.variationPx),
+    edgeHalfWidthPx: round2((feather0.halfWidthPx + feather100.halfWidthPx) / 2),
+    edgePlateauAlphaFeather0: round2(feather0.plateauAlpha),
+    edgePlateauAlphaFeather100: round2(feather100.plateauAlpha),
+    edgeSkippedStations: skips,
+    edgeFailures: failures,
+  }
+}
+
 // --- WebGL2 canary ----------------------------------------------------------
 
 /** Throw if the vendored engine cannot get a real WebGL2 surface. */
@@ -1087,7 +1354,9 @@ function run(
                   ? coverTexturedScript(emboss, body, resolvedBrush)
                   : scenario === 'red-over-blue-50'
                     ? redOverBlueScript(body ?? 100)
-                    : neutralScript(emboss, body)
+                    : scenario === 'bristle-edge'
+                      ? bristleEdgeScript()
+                      : neutralScript(emboss, body)
 
   // The tap must see the adapter's engine and only the adapter's engine:
   // the canary above already constructed and destroyed its own.
@@ -1221,6 +1490,12 @@ function run(
     const redOverBlueReport =
       scenario === 'red-over-blue-50' ? redOverBlueMetrics(transparentCanvas, pigmentCanvas) : {}
 
+    // 64-23: the bristle-edge census — the two strokes' measured edge
+    // softness and variation, only for its scenario, so every other report
+    // shape is unchanged.
+    const bristleEdgeReport =
+      scenario === 'bristle-edge' ? bristleEdgeMetrics(transparentCanvas) : {}
+
     writeResult({
       gate,
       scenario,
@@ -1241,6 +1516,7 @@ function run(
       ...whiteOverBlueReport,
       ...coverTexturedReport,
       ...redOverBlueReport,
+      ...bristleEdgeReport,
       ...coverLifecycle,
       renderer,
       verdict: 'MEDIUM-ENGINE CAPTURED',
@@ -1303,15 +1579,16 @@ function readBrush(): string | undefined {
  *  64-17 adds `watercolor-50` and `white-over-blue`; 64-14 adds
  *  `cover-advect`; 64-16 adds `cover-textured` (task 1) and `red-over-blue-50`
  *  (task 2's scenario, declared now so the two closed lists cannot drift).
+ *  64-23 adds `bristle-edge`, the directional-edge census.
  *  The closed list here and the one in run.mjs must stay literal-identical:
  *  a name accepted by the parser but unknown to the probe fails at capture,
  *  and a name the probe knows but the parser rejects can never be requested. */
 function readScenario(): string {
   const raw = new URLSearchParams(location.search).get('scenario')
   if (raw === null || raw === '') return 'neutral'
-  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50') {
+  if (raw !== 'cover' && raw !== 'cover-over-wet' && raw !== 'watercolor-50' && raw !== 'white-over-blue' && raw !== 'cover-advect' && raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge') {
     throw new Error(
-      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured" or "red-over-blue-50")`,
+      `invalid scenario "${raw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50" or "bristle-edge")`,
     )
   }
   return raw

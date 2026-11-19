@@ -307,11 +307,14 @@ describe('the textured-tip gate (64-16 task 1)', () => {
   })
 
   describe('both closed scenario lists accept the new names', () => {
-    it('lists cover-textured and red-over-blue-50 in probe.ts and run.mjs', () => {
-      expectContains(PROBE, "raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50'")
+    it('lists cover-textured, red-over-blue-50 and bristle-edge in probe.ts and run.mjs', () => {
+      expectContains(
+        PROBE,
+        "raw !== 'cover-lift' && raw !== 'cover-textured' && raw !== 'red-over-blue-50' && raw !== 'bristle-edge'",
+      )
       expectContains(
         RUN,
-        "scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50'",
+        "scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge'",
       )
     })
   })
@@ -370,6 +373,104 @@ describe('the red-over-blue-50 criterion-2 gate (64-16 task 2)', () => {
       expectContains(COMPARE, 'data.lumaRatio >= 0.95')
       expectContains(COMPARE, 'Math.abs(data.deltaHue) <= 3')
       expectContains(COMPARE, 'data.coveredPaperWhitePct !== 0')
+    })
+  })
+})
+
+// Laws pinned here (64-23):
+//  16. `bristle-edge` paints TWO horizontal `bristle-flat` strokes of the same
+//      length and speed on one sheet, identical but for the Feather global
+//      (0 upper, 100 lower), each fixed after its own settle — the geometry
+//      the directional-edge census compares.
+//  17. The Feather knob is an entry-level optional bag key (0..100) forwarded
+//      verbatim; an omitted key adds nothing, so every pre-existing script's
+//      bag stays the plan-01 bag.
+//  18. The report carries each stroke's edge softness and variation plus the
+//      measured half-width and plateaus, measured on the TRANSPARENT export's
+//      deposited darkness (`1 − min(rgb)` = the engine's `darkAlpha`), never
+//      the mode-4 pigment alpha: on a bristle stroke that alpha is the
+//      saturated union of the ~100+ overlapping dabs' coverage, so its edge is
+//      the gather's support boundary at every Feather (measured 0.8 px / 0.8
+//      px), while the feather band shapes the DEPOSIT. The report's field
+//      names are the plan's; the section header records the measurement.
+//  19. compare.mjs dispatches `bristle-edge` to its relation invariants in
+//      every mode: both softnesses positive, Feather-100 strictly wider, both
+//      variations non-zero, and the wide softness narrower than the measured
+//      half-width — and the probe's own named degeneracies fail verbatim.
+describe('the bristle-edge census (64-23)', () => {
+  describe('the scenario is the two-stroke feather comparison', () => {
+    it('paints both strokes through the same geometry, differing only in Feather', () => {
+      expectContains(PROBE, 'function bristleEdgeScript(): readonly ScriptEntry[] {')
+      expectContains(PROBE, 'points: horizontalLine(EDGE_FEATHER_0_Y),')
+      expectContains(PROBE, 'points: horizontalLine(EDGE_FEATHER_100_Y),')
+      expectContains(PROBE, 'mutationId: 0x7ee200,')
+      expectContains(PROBE, 'mutationId: 0x7ee201,')
+      expectContains(PROBE, 'feather: 0,')
+      expectContains(PROBE, 'feather: 100,')
+      expectContains(PROBE, "brushId: 'bristle-flat',")
+    })
+
+    it('reaches the scene only through the closed-list scenario name', () => {
+      expectContains(PROBE, "scenario === 'bristle-edge'")
+      expectContains(PROBE, 'bristleEdgeScript()')
+    })
+  })
+
+  describe('the feather knob is an additive per-entry bag key', () => {
+    it('forwards feather only when the entry carries it', () => {
+      expectContains(PROBE, 'readonly feather?: number')
+      expectContains(PROBE, "if (entry.feather !== undefined) bag['feather'] = entry.feather")
+    })
+  })
+
+  describe('the report carries the census fields', () => {
+    it('reports both strokes softness and variation plus the half-width', () => {
+      expectContains(PROBE, 'edgeSoftnessPxFeather0: round2(feather0.softnessPx),')
+      expectContains(PROBE, 'edgeSoftnessPxFeather100: round2(feather100.softnessPx),')
+      expectContains(PROBE, 'edgeVariationPxFeather0: round2(feather0.variationPx),')
+      expectContains(PROBE, 'edgeVariationPxFeather100: round2(feather100.variationPx),')
+      expectContains(
+        PROBE,
+        'edgeHalfWidthPx: round2((feather0.halfWidthPx + feather100.halfWidthPx) / 2),',
+      )
+      expectContains(PROBE, 'edgePlateauAlphaFeather0: round2(feather0.plateauAlpha),')
+      expectContains(PROBE, 'edgePlateauAlphaFeather100: round2(feather100.plateauAlpha),')
+      expectContains(PROBE, 'edgeSkippedStations: skips,')
+      expectContains(PROBE, 'edgeFailures: failures,')
+    })
+
+    it('measures the film darkness on the transparent export', () => {
+      expectContains(PROBE, 'function bristleEdgeMetrics(sheet: HTMLCanvasElement)')
+      expectContains(PROBE, 'const pixels = ctx.getImageData(0, 0, w, h).data')
+      expectContains(
+        PROBE,
+        'data[i + 3] = 255 - Math.min(pixels[i]!, pixels[i + 1]!, pixels[i + 2]!)',
+      )
+      expectContains(PROBE, 'bristleEdgeMetrics(transparentCanvas)')
+    })
+
+    it('guards the blank film and the dash-gap station by name', () => {
+      expectContains(PROBE, 'const EDGE_MIN_PLATEAU = 0.02')
+      expectContains(PROBE, 'if (!(plateauAlpha >= EDGE_MIN_PLATEAU)) {')
+      expectContains(PROBE, 'if (!(startNorm >= 0.9)) {')
+      expectContains(PROBE, 'a dash gap')
+    })
+  })
+
+  describe('the comparator gates the census relations in every mode', () => {
+    it('maps bristle-edge to its failure function', () => {
+      expectContains(COMPARE, "'bristle-edge': bristleEdgeFailures,")
+      expectContains(COMPARE, 'function bristleEdgeFailures(data) {')
+    })
+
+    it('bars the cardinal relations, never the absolute pixels', () => {
+      expectContains(COMPARE, 'data.edgeSoftnessPxFeather0 > 0')
+      expectContains(COMPARE, 'data.edgeSoftnessPxFeather100 > 0')
+      expectContains(COMPARE, 'data.edgeSoftnessPxFeather100 > data.edgeSoftnessPxFeather0')
+      expectContains(COMPARE, 'data.edgeVariationPxFeather0 > 0')
+      expectContains(COMPARE, 'data.edgeVariationPxFeather100 > 0')
+      expectContains(COMPARE, 'data.edgeSoftnessPxFeather100 < data.edgeHalfWidthPx')
+      expectContains(COMPARE, 'Array.isArray(data.edgeFailures)')
     })
   })
 })
