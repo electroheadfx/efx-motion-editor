@@ -88,6 +88,10 @@ const WATERCOLOR_PARAMS: Readonly<Record<MediumParamKey, number>> = Object.freez
 // medium-specific value needs its own measured decision — acrylic's
 // water/bleed/flow retune is D-25's, in 64-24. The committed ten numbers of
 // every record are unchanged by 64-22.
+// 261119-pod (D-A): the watercolor record DERIVES its pickup from the
+// canonical default, so it opens at 100; the four explicit records keep
+// their recorded 60 (the new default is the neutral medium's, not a
+// blanket rewrite).
 export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
   Object.freeze({ id: 'watercolor', name: 'Watercolor', params: WATERCOLOR_PARAMS }),
   Object.freeze({

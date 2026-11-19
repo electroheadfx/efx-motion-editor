@@ -60,8 +60,10 @@ export interface AquarelleCanonicalParams {
    */
   feather: number
   /**
-   * 64-22 (§3.1, §6): how much paint a bristle picks up from the sheet it
-   * crosses, 0..100. 60 is the reference's §6 `mixing.pickup` default.
+   * 64-22, revised by 261119-pod (D-A) (§3.1, §3.3, §6): how much paint a
+   * bristle picks up from the sheet it crosses, 0..100. 100 is the
+   * reference's §6 `mixing.pickup` default, mapped 1:1 onto the engine's 1.0 —
+   * ONE knob for the §3.1 carrier pickup and the §3.3 deposit smear.
    */
   pickup: number
   /**
@@ -92,7 +94,7 @@ export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Obje
   body: 0,
   emboss: 0,
   feather: 0,
-  pickup: 60,
+  pickup: 100,
   refill: 60,
   wetSeconds: 7,
 })

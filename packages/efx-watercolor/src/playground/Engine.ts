@@ -2,10 +2,13 @@ import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, isBristleResponse, tipRows
 import {
   BRISTLE_CAP,
   BRISTLE_DRY_EDGE,
+  BRISTLE_FEATHER_REACH,
   BRISTLE_GRAIN,
   BRISTLE_HAIRS,
   BRISTLE_LANDING,
   BRISTLE_RIM_CONTACT,
+  BRISTLE_SMEAR_CAP,
+  BRISTLE_SMEAR_PERIOD_PX,
   BRISTLE_STREAK,
   BRISTLE_STREAK_LENGTH,
   BRISTLE_STREAK_SHARE,
@@ -105,7 +108,10 @@ export const DEFAULT_PARAMS: Params = {
   body: 0,
   emboss: 0,
   feather: 0,
-  pickup: 0.6,
+  // 261119-pod (D-A): the reference's §6 `mixing.pickup` default — 100
+  // canonical, 1.0 here. ONE knob feeds the §3.1 carrier pickup (clamped
+  // 0.75) and the §3.3 deposit smear (capped 0.8).
+  pickup: 1.0,
   refill: 0.6,
   wetSeconds: 7,
 };
@@ -453,6 +459,14 @@ export class WatercolorEngine {
   // state: rebuilt from the stroke record on replay, never persisted.
   private bristles!: DoubleTarget;
   private bristleShape!: Target;
+  /**
+   * 261119-pod (§3.3): the pre-dab snapshot — ONE document-sized pair of
+   * RGBA16F attachments (16 B/px): attachment 0 = inkA + fixedA, attachment 1
+   * = (inkB + fixedB).rgb with the COVER alpha in .a. Copied once per dab
+   * BEFORE the deposit draws (WebGL2 cannot sample the attachment it writes),
+   * only at Pickup > 0. Engine-internal: never persisted.
+   */
+  private smearCanvas!: Target;
   /** 64-21: the stroke object whose set is seeded — a NEW stroke always re-seeds. */
   private bristleStroke: Stroke | null = null;
   private bristleCount = 0;
@@ -556,6 +570,10 @@ export class WatercolorEngine {
     // 64-24 (D-24): the touch refresh, same rule — outside the pinned literal
     // (twenty-three stays). The delivery law's third pass.
     this.programs.bristleTouch = this.g.program(S.bristleTouchFS);
+    // 261119-pod (§3.3): the pre-dab snapshot copy, same rule — outside the
+    // pinned literal (twenty-three stays). The delivery law's fourth pass,
+    // drawing only when Pickup > 0.
+    this.programs.bristleCanvas = this.g.program(S.bristleCanvasFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
     this.attachInput();
@@ -641,6 +659,11 @@ export class WatercolorEngine {
     // only ever read inside a seeded stroke (see beginBristles).
     this.bristles = g.double(1, BRISTLE_CAP, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.NEAREST);
     this.bristleShape = g.target(1, BRISTLE_CAP, [HALF_FLOAT_RGBA], gl.NEAREST);
+    // 261119-pod (§3.3): the pre-dab snapshot — ONE document-sized RGBA16F
+    // pair, cleared here at allocation (g.target clears every attachment) and
+    // overwritten in full on every dab that reads it. No size coupling to any
+    // other target: NEAREST because the gather reads its exact texel.
+    this.smearCanvas = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.NEAREST);
     this.paper = g.target(this.dw, this.dh, [RGBA8], gl.LINEAR);
     this.wetMask = g.target(Math.ceil(this.dw / MASK_BLOCK), Math.ceil(this.dh / MASK_BLOCK), [RGBA8], gl.NEAREST);
     this.maskPixels = new Uint8Array(this.wetMask.w * this.wetMask.h * 4);
@@ -685,9 +708,11 @@ export class WatercolorEngine {
     // 64-21: the bristle reservoirs and the shape texture are the ONLY
     // document-independent entries here — membership buys disposal reach
     // (resize, applyWhole) and wipe reach, and costs nothing per edition.
+    // 261119-pod: the smear snapshot joins document-sized disposal right
+    // after the shape (it is rebuilt per dab, so a wipe of zeros is harmless).
     return [this.velocity.read, this.velocity.write, this.pressure.read, this.pressure.write, this.divergence, this.curl,
       this.ink.read, this.ink.write, this.fixed, this.wet.read, this.wet.write, this.paper, this.wetMask,
-      this.bristles.read, this.bristles.write, this.bristleShape, this.relief,
+      this.bristles.read, this.bristles.write, this.bristleShape, this.smearCanvas, this.relief,
       this.lastTouch.read, this.lastTouch.write,
       this.cover.read, this.cover.write];
   }
@@ -2901,6 +2926,21 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uRough!, this.brush.roughness ?? 0);
     gl.uniform1f(p.u.uJitter!, this.brush.stampJitter ?? 0);
     gl.uniform1f(p.u.uTipMix!, this.brush.textureId != null ? 1 : 0);
+    // 261119-pod (§3.3): the smear's three sources on the free units 5/6/7 —
+    // the pre-dab snapshot's two attachments and the last-touch field. The
+    // gather has ONE wetness law, so no A/B mode rides this program. `uSmear`
+    // IS the Pickup global (D-A: one knob, two laws, two ceilings enforced in
+    // the fragment); the carrier keeps its own bind above.
+    gl.uniform1i(p.u.uSnapA!, g.bindTex(5, this.smearCanvas.tex[0]!));
+    gl.uniform1i(p.u.uSnapB!, g.bindTex(6, this.smearCanvas.tex[1]!));
+    gl.uniform1i(p.u.uTimes!, g.bindTex(7, this.lastTouch.read.tex[0]!));
+    gl.uniform1f(p.u.uSmear!, this.params.pickup);
+    gl.uniform1f(p.u.uSmearPeriodPx!, BRISTLE_SMEAR_PERIOD_PX);
+    gl.uniform1f(p.u.uSmearCap!, BRISTLE_SMEAR_CAP);
+    gl.uniform1f(p.u.uFeather!, clamp(this.params.feather, 0, 1));
+    gl.uniform1f(p.u.uFeatherReach!, BRISTLE_FEATHER_REACH);
+    gl.uniform1f(p.u.uNow!, this.clock() / 1000);
+    gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);
   }
 
   /**
@@ -2936,6 +2976,10 @@ export class WatercolorEngine {
     // this draw IS the deposit, so the rect is touched before anything lands.
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 1.6);
     this.touch(rect);
+    // 261119-pod (§3.3): copy the PRE-DAB canvas once, AFTER the rect
+    // bookkeeping and BEFORE the first deposit draw, only at Pickup > 0 —
+    // Pickup 0 skips the draw entirely and the weight is zero besides.
+    if (this.params.pickup > 0) this.bristleSnapshot(rect);
     const d = this.programs.bristleDeposit;
     d.bind();
     this.bindGather(d, x, y, r, angle, pr, alongPx);
@@ -2971,6 +3015,27 @@ export class WatercolorEngine {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     g.draw(this.cover.read, rect);
     gl.disable(gl.BLEND);
+  }
+
+  /**
+   * 261119-pod (§3.3) — the pre-dab snapshot. ONE gather-free copy draw over
+   * the dab's rect, writing TWO attachments: 0 = inkA + fixedA (absorbance
+   * 0..3), 1 = (inkB + fixedB).rgb with the COVER alpha in .a (the
+   * reference's `canvas.a`). Five sources on units 0-4. The gather's smear
+   * reads this pair; it is never read at Pickup 0 because the caller skips
+   * this draw and the fragment's guard skips the samples.
+   */
+  private bristleSnapshot(rect: Rect): void {
+    const { gl, g } = this;
+    const p = this.programs.bristleCanvas!;
+    p.bind();
+    gl.disable(gl.BLEND);
+    gl.uniform1i(p.u.uInkA!, g.bindTex(0, this.ink.read.tex[0]!));
+    gl.uniform1i(p.u.uInkB!, g.bindTex(1, this.ink.read.tex[1]!));
+    gl.uniform1i(p.u.uFixedA!, g.bindTex(2, this.fixed.tex[0]!));
+    gl.uniform1i(p.u.uFixedB!, g.bindTex(3, this.fixed.tex[1]!));
+    gl.uniform1i(p.u.uCover!, g.bindTex(4, this.cover.read.tex[0]!));
+    g.draw(this.smearCanvas, rect);
   }
 
   /**

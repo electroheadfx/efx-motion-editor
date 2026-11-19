@@ -701,6 +701,36 @@ uniform sampler2D uShape;    // (radiusScale, touchReach, loadRate, spare)
 uniform float uCount;
 vec4 bristleTex(sampler2D t, int idx){ return texelFetch(t, ivec2(0, clamp(idx, 0, 255)), 0); }
 `;
+
+// ============================================================
+//  261119-pod (D-28 revised) — THE PRE-DAB SNAPSHOT (§3.3).
+//
+//  The reference's §3.3 smear reads the canvas it is about to write
+//  (`carried = mix(carried, canvas, clamp(smear, 0, 0.8))`) — a compute
+//  read-modify-write. WebGL2 cannot sample the attachment it draws into, so
+//  the engine copies the canvas ONCE per dab into this scratch pair and the
+//  gather consumers read the snapshot instead of the live targets. The copy
+//  runs after `touch(rect)` and before the first deposit draw, gated on
+//  Pickup > 0.
+//
+//  TWO attachments, exactly the coefficient layout the consumers need:
+//    attachment 0 = inkA + fixedA            (absorbance coefficients 0..3)
+//    attachment 1 = (inkB + fixedB).rgb      (coefficients 4..6)
+//                  with texture(uCover, uv).x in .a — the COVER alpha, the
+//                  reference's `canvas.a`; the scatter channel is never a
+//                  wetness gate (§3.4's correction).
+//  Five sources on units 0-4, no gather, no clock: one cheap copy.
+// ============================================================
+export const bristleCanvasFS = `${HEADER}
+layout(location=0) out vec4 oA;
+layout(location=1) out vec4 oB;
+uniform sampler2D uInkA, uInkB, uFixedA, uFixedB, uCover;
+void main(){
+  oA = texture(uInkA, vUv) + texture(uFixedA, vUv);
+  vec3 b = (texture(uInkB, vUv) + texture(uFixedB, vUv)).rgb;
+  oB = vec4(b, texture(uCover, vUv).x);
+}`;
+
 // One invocation per bristle (gl_FragCoord.y = bristle index). Runs before the
 // dab's deposit and writes only the reservoir pair — no document target.
 //   §3.1 thirst = 0.15 + 2.4 * smoothstep(0.35, 0.9, fract(seed * 7.31))
@@ -829,8 +859,14 @@ void main(){
 //
 //  `gatherBristle(uv)` returns the five NEAREST bristles' ink-weighted
 //  values, averaged IN COEFFICIENT SPACE — the engine's seven absorbance
-//  coefficients plus alpha, never RGB (the reference's §3.3 RGB smear is
-//  deliberately unported, D-28):
+//  coefficients plus alpha, never RGB. The reference's §3.3 RGB smear IS
+//  ported (261119-pod, D-28 revised) as the same operation in the engine's
+//  units: each consumer carries its gathered coefficients toward the pre-dab
+//  snapshot (`bristleCanvasFS`) by `clamp(pickup·wet·hash, 0, 0.8)` — ONE
+//  `smearWeight` helper, inside `if (uSmear > 0.0)` so Pickup 0 never
+//  samples the snapshot. The gather's own `wetAt` reads the snapshot's COVER
+//  alpha with the carrier's exact arithmetic shape (`uTimes` age on the
+//  virtual clock), so the two gates cannot drift:
 //    §4.1 radius   = max(radiusScale · spacing · uRadius · uSheet.y, 0.8 px)
 //    §5.1 profile  = (1 − offset²)²
 //    §5.3 touch    = touchOf(touchReach + contact · rim · uRimContact, pressure)
@@ -871,6 +907,20 @@ uniform float uRimContact;   // §6 rimContact (BRISTLE_RIM_CONTACT 0.45)
 uniform float uHairs;        // §6 hairs (BRISTLE_HAIRS 0.45)
 uniform float uDryEdge;      // §6 dryEdge (BRISTLE_DRY_EDGE 0.35)
 uniform float uLanding;      // §6 paint.landing (BRISTLE_LANDING 1)
+// 261119-pod — the §3.3 smear and the four-side Feather. The snapshot pair
+// (attachment 0 = coefficients, attachment 1 = coefficients + COVER alpha)
+// and the last-touch field are the smear's inputs; uSmear IS the Pickup
+// global (1:1), and the two ceilings travel as uniforms from bristles.ts.
+uniform sampler2D uSnapA;
+uniform sampler2D uSnapB;
+uniform sampler2D uTimes;    // the last-touch field's read half (R32F, D-24)
+uniform float uNow;          // SECONDS on the virtual clock — never a wall clock
+uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
+uniform float uSmear;        // the Pickup global, 0..1 (D-A: one knob, two laws)
+uniform float uSmearPeriodPx;// §3.3 hash cell (BRISTLE_SMEAR_PERIOD_PX 6)
+uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
+uniform float uFeather;      // the Feather global, 0..1
+uniform float uFeatherReach; // Studio-only four-side reach (BRISTLE_FEATHER_REACH 0.45)
 // Post-UAT 2026-11-19 (GAP-4) — the texture tip composes with the gather
 // instead of disabling the engine. uTipMix is 0 for a bristle brush with no
 // textureId, so every recorded untextured bristle stroke keeps its exact
@@ -902,6 +952,36 @@ float tipMask(vec2 uv){
   float t = texture(uTip, suv).r;
   float th = uRough * 0.45;
   return smoothstep(th, th + 0.5, t);
+}
+
+// §3.4 / §3.3 — the gather's OWN wetness law: the carrier's pinned arithmetic
+// shape, read off the pre-dab snapshot's COVER alpha (attachment 1's .a,
+// the reference's canvas.a). Unconditional: the gather has ONE law, so no
+// A/B mode rides it.
+float wetAt(vec2 uv){
+  float age = max(uNow - texture(uTimes, uv).r, 0.0);
+  return exp(-age / max(uWetSeconds, 1.0)) * texture(uSnapB, uv).a;
+}
+
+// §3.3 — the reference's per-pixel drag weight (pickup · wet · hash21 of the
+// nearest bristle and the along-stroke 6 px cell), clamped to the shipped
+// cap. alongPx is the PIXEL's along coordinate (uAlongPx + q.y · the dab
+// half-width), exactly like the reference's distanceAlong, so there is no
+// dab-constant divergence. ONE declaration: the deposit and the coverage
+// write both call it, and only ever inside the uSmear > 0 guard.
+float smearWeight(int nearest, float alongPx, float wet){
+  return clamp(uSmear * wet * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap);
+}
+
+// The four-side Feather ramp (Studio-only; the reference fades across the
+// stroke only). Each axis falls from 1 to 0 across the outer reach of the
+// dab's local frame; the product is mixed in by Feather. The caller encloses
+// the multiply in the uFeather > 0 guard, so Feather 0 is EXACTLY the
+// shipped arithmetic.
+float featherFall(float across, float along){
+  float side = 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, abs(across));
+  float end = 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, abs(along));
+  return mix(1.0, side * end, uFeather);
 }
 
 // §4.4 — the paper tooth as a threshold, in TWO coordinate systems:
@@ -1011,6 +1091,9 @@ Gathered gatherBristle(vec2 uv){
   float threshold = uGrain * (1.0 - height) - 0.25;
   float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;
+  // 261119-pod: the four-side Feather ramp multiplies coverage BEFORE the
+  // threshold — Feather 0 never executes the multiply (the shipped law).
+  if (uFeather > 0.0) coverage *= featherFall(across, q.y);
   g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
   // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
   // untextured law byte-identical: the multiply is never executed).
@@ -1056,6 +1139,17 @@ void main(){
   Gathered g = gatherBristle(vUv);
   float a = clamp(g.coverage, 0.0, 1.0);
   if (a <= 1e-3) discard;
+  // §3.3 (261119-pod): carry the deposit toward the PRE-DAB canvas in
+  // COEFFICIENT space — absorbance toward the snapshot, the reference's
+  // RGB-toward-paper mix re-expressed in the engine's units. ONE helper, and
+  // the block is unreachable at Pickup 0 (uSmear = 0 skips the sample too).
+  vec4 cA = g.cA;
+  vec3 cB = g.cB;
+  if (uSmear > 0.0) {
+    float smear = smearWeight(g.nearest, uAlongPx + q.y * uHalfWidthPx, wetAt(vUv));
+    cA = mix(cA, texture(uSnapA, vUv), smear);
+    cB = mix(cB, texture(uSnapB, vUv).rgb, smear);
+  }
   if (uMode == 1) {
     // The attenuation half: the destination becomes dst · (1 − a) through
     // ZERO, ONE_MINUS_SRC_COLOR. The fragment's own value IS the (1 − a)
@@ -1066,8 +1160,8 @@ void main(){
     // The carried half: + carried · a. oB's alpha is the scattering S — the
     // SAME weight, so the veil lands exactly where the paint does and can
     // never accumulate past uScatter.
-    oA = g.cA * a;
-    oB = vec4(g.cB * a, uScatter * a);
+    oA = cA * a;
+    oB = vec4(cB * a, uScatter * a);
   }
 }`;
 
@@ -1096,7 +1190,15 @@ void main(){
   Gathered g = gatherBristle(vUv);
   float a = clamp(g.coverage, 0.0, 1.0);
   if (a <= 1e-3) discard;
-  o0 = vec4(a * uCoverTarget * g.alpha, 0.0, 0.0, a);
+  // §3.3 (261119-pod): the coverage target carries toward the snapshot's
+  // COVER alpha through the SAME helper and the same guard, so the ink, the
+  // scattering and the coverage all move by one weight.
+  float target = a * uCoverTarget * g.alpha;
+  if (uSmear > 0.0) {
+    float smear = smearWeight(g.nearest, uAlongPx + q.y * uHalfWidthPx, wetAt(vUv));
+    target = mix(target, a * uCoverTarget * texture(uSnapB, vUv).a, smear);
+  }
+  o0 = vec4(target, 0.0, 0.0, a);
 }`;
 
 // ============================================================

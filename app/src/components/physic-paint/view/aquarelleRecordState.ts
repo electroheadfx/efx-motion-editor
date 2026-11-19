@@ -95,7 +95,11 @@ export interface AquarelleGlobalParams {
    * `paint.softness` band — a pre-milestone bag replays unchanged.
    */
   feather: number;
-  /** 64-22 (§3.1, §6): §3.1 carrier pickup rate, 0..100 (default 60). */
+  /**
+   * 64-22, revised by 261119-pod (D-A) (§3.1, §3.3, §6): the §3.1 carrier
+   * pickup rate, 0..100 (default 100). ONE knob: it also drives the §3.3
+   * deposit smear, and both ceilings live in the shader.
+   */
   pickup: number;
   /** 64-22 (§3.1, §6): §3.1 carrier refill rate, 0..100 (default 60). */
   refill: number;
@@ -144,7 +148,7 @@ export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.
   body: 0,
   emboss: 0,
   feather: 0,
-  pickup: 60,
+  pickup: 100,
   refill: 60,
   wetSeconds: 7,
 });

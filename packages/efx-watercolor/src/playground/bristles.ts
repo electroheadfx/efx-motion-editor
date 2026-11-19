@@ -38,6 +38,13 @@
 //  timestamp law in mode 1) and `bristleTouchValue` (`bristleTouchFS`'s mix).
 //  The engine imports the sentinel — this module never imports anything.
 //
+//  261119-pod adds the §3.3 deposit smear (its 6 px hash cell and 0.8 clamp),
+//  the Studio-only four-side Feather reach (0.45) and their three pure twins.
+//  `bristleSmearRate` IS the Pickup 1:1 mapping (D-A): one knob, no second
+//  curve. Each twin mirrors one expression in `shaders.ts`; the engine binds
+//  the constants as uniforms, so a literal that replaces a declared constant,
+//  or a second copy of a law, fails the source pins.
+//
 //  THE §4.4 NAME COLLISION: `BRISTLE_GRAIN` (1.2) is the paint's paper-tooth
 //  scale from §6 — NOT `Brush.grain` (0..1, the dry re-threshold the engine's
 //  footprint mask has always read). They are different quantities that share
@@ -105,6 +112,31 @@ export const BRISTLE_LANDING = 1;
  * imported by `Engine.ts` — never a second copy.
  */
 export const LAST_TOUCH_DRY_SECONDS = -604800;
+
+// ------------------------- the §3.3 smear and four-side Feather (261119-pod) -------------------------
+
+/**
+ * §3.3 `smear`: the reference hashes in bands ALONG the stroke —
+ * `floor(distanceAlong / 6)` at 1080 device pixels (app.js:1191-1193). The
+ * 6 px period is the reference's own number, restated as a declared constant
+ * so the gather's uniform and the twin cannot drift.
+ */
+export const BRISTLE_SMEAR_PERIOD_PX = 6;
+
+/**
+ * §3.3: `carried = mix(carried, canvas, clamp(smear, 0, 0.8))` — the clamp
+ * on how much of the pre-dab snapshot one deposit texel may inherit.
+ */
+export const BRISTLE_SMEAR_CAP = 0.8;
+
+/**
+ * Studio-only, no reference counterpart: how far the four-side Feather ramp
+ * reaches in from each edge of the dab's local frame. The reference fades
+ * only across the stroke (its `softness`); the port opens the fade on all
+ * four sides. 0.45 leaves the inner 55 % at full coverage and fades the
+ * outermost 45 % to zero — the visual weight of §6's softness band.
+ */
+export const BRISTLE_FEATHER_REACH = 0.45;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);
@@ -309,6 +341,50 @@ export function bristleTouchValue(prev: number, now: number, mask: number): numb
   const n = Number.isFinite(now) ? now : p;
   const m = Number.isFinite(mask) ? clamp01(mask) : 0;
   return p + (n - p) * m;
+}
+
+// ------------------------- the §3.3 smear and four-side Feather twins (261119-pod) -------------------------
+
+/**
+ * 261119-pod (D-A): the §3.3 smear rate IS the Pickup global — one knob, two
+ * laws. Canonical 0..100 maps 1:1 onto 0..1 before it reaches the engine, so
+ * Pickup 0 returns EXACTLY 0 (the guard skips the snapshot read AND the
+ * weight is zero — belt and braces) and Pickup 100 returns EXACTLY 1. A
+ * non-finite value reads as 0: a missing key never invents a smear.
+ */
+export function bristleSmearRate(pickup: number): number {
+  return Number.isFinite(pickup) ? clamp01(pickup) : 0;
+}
+
+/**
+ * §3.3: `smear = pickup · wet · hash` clamped to `[0, BRISTLE_SMEAR_CAP]` —
+ * how far one deposit texel is carried toward the pre-dab snapshot. `wet` is
+ * the gather's own wetness (age off the snapshot's cover alpha) and `hash` is
+ * the reference's `hash21(nearest, floor(along / period))`. Monotone in each
+ * argument and exactly 0 at rate 0. Any non-finite argument reads as 0 — a
+ * missing term replays the dry look, never NaN.
+ */
+export function bristleSmearWeight(rate: number, wet: number, hash: number): number {
+  if (!Number.isFinite(rate) || !Number.isFinite(wet) || !Number.isFinite(hash)) return 0;
+  return clamp(rate * wet * hash, 0, BRISTLE_SMEAR_CAP);
+}
+
+/**
+ * The four-side Feather ramp (Studio-only; the reference fades across the
+ * stroke only): `side = 1 − smoothstep(1 − reach, 1, |across|)` and
+ * `end = 1 − smoothstep(1 − reach, 1, |along|)` multiplied, then mixed in by
+ * Feather — exactly `1` at Feather 0 (today's arithmetic, untouched) and the
+ * product at Feather 1. Both axes run in the dab's local frame (−1..1). A
+ * non-finite axis reads as the core and a non-finite Feather as 0, so a
+ * missing key replays the un-faded look, never NaN.
+ */
+export function bristleFeatherFall(across: number, along: number, feather: number): number {
+  const a = Number.isFinite(across) ? Math.abs(across) : 0;
+  const l = Number.isFinite(along) ? Math.abs(along) : 0;
+  const f = Number.isFinite(feather) ? clamp01(feather) : 0;
+  const side = 1 - smoothstep(1 - BRISTLE_FEATHER_REACH, 1, a);
+  const end = 1 - smoothstep(1 - BRISTLE_FEATHER_REACH, 1, l);
+  return mix(1, side * end, f);
 }
 
 export interface BristleSet {
