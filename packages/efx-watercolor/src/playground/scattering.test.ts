@@ -49,6 +49,16 @@ import {
 } from './scattering'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+// 261119-pod (D-H): the ramp define and its injector. The namespace cast keeps
+// a not-yet-exported symbol a clean per-test failure, not a module-load error.
+import * as shaderModule from './shaders'
+
+const FEATHER = shaderModule as unknown as {
+  BRISTLE_FEATHER_RAMP_DEFINE?: string
+  withFeatherRamp?: (src: string) => string
+  BRISTLE_GATHER?: string
+}
+
 const SOURCE = readFileSync(resolve(HERE, 'scattering.ts'), 'utf8')
 const INDEX_SOURCE = readFileSync(resolve(HERE, 'index.ts'), 'utf8')
 const ENGINE_SOURCE = readFileSync(resolve(HERE, 'Engine.ts'), 'utf8')
@@ -1254,5 +1264,114 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(bind, 'gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);')
     // The gather has one wetness law: no A/B mode rides it.
     expectNotContains(bind, 'uWetMode')
+  })
+
+  // D-H — the Feather-0 program identity. A guarded runtime branch is NOT
+  // enough: the dead branch's registers perturb codegen by 1–2 LSB and the
+  // no-drag controls stop matching. So the ONE snippet compiles twice — the
+  // plain program is the pre-port translation unit (the preprocessor drops
+  // every ramp line), and the ramp program is the same text with the define
+  // injected after `#version`. These pins hold the three walls of that
+  // construction: the guard placement, the injector, and the selection.
+  it('compiles the Feather-0 gather without the ramp and the ramp pair only above zero (D-H)', () => {
+    // 1) The three ramp pieces each sit INSIDE the #ifdef: the helper, its
+    //    two uniforms, and the one call. Count first, so a stray copy of the
+    //    helper (or a second call) fails rather than silently compiling into
+    //    the plain program.
+    expect(
+      (SHADERS_SOURCE.match(/#ifdef BRISTLE_FEATHER_RAMP/g) ?? []).length,
+      'three guarded regions: the uniforms, the helper, the call',
+    ).toBe(3)
+    expect(
+      (SHADERS_SOURCE.match(/#endif/g) ?? []).length,
+      'each guard closes',
+    ).toBe(3)
+    const guarded = [...SHADERS_SOURCE.matchAll(/#ifdef BRISTLE_FEATHER_RAMP([\s\S]*?)#endif/g)].map(
+      (m) => m[1]!,
+    )
+    expect(guarded.length).toBe(3)
+    expectContains(guarded[0]!, 'uniform float uFeather;')
+    expectContains(guarded[0]!, 'uniform float uFeatherReach;')
+    expectContains(guarded[1]!, 'float featherFall(float across, float along){')
+    expectContains(guarded[2]!, 'if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
+    // The guarded call still runs BEFORE the threshold smoothstep — the ramp
+    // multiplies the coverage the smoothstep then quantises, not the output.
+    const callAt = SHADERS_SOURCE.indexOf(
+      'if (uFeather > 0.0) coverage *= featherFall(across, q.y);',
+    )
+    const smoothAt = SHADERS_SOURCE.indexOf(
+      'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);',
+    )
+    expect(callAt, 'the ramp call exists').toBeGreaterThan(-1)
+    expect(smoothAt, 'the threshold follows the ramp').toBeGreaterThan(callAt)
+    // Nothing ramp-related lives OUTSIDE a guard: strip the guarded regions
+    // and the remainder must be free of the ramp's identifiers.
+    const stripped = SHADERS_SOURCE.replace(/#ifdef BRISTLE_FEATHER_RAMP[\s\S]*?#endif/g, '')
+    expectNotContains(stripped, 'featherFall(')
+    expectNotContains(stripped, 'uFeatherReach')
+
+    // 2) The injector: the define lands AFTER the mandatory `#version` line
+    //    and never before it, exactly once, and an unprefixed source throws
+    //    instead of compiling a program with a misplaced #version.
+    expect(FEATHER.BRISTLE_FEATHER_RAMP_DEFINE).toBe('#define BRISTLE_FEATHER_RAMP 1\n')
+    expect(typeof FEATHER.withFeatherRamp, 'withFeatherRamp is exported').toBe('function')
+    const plain = '#version 300 es\nprecision highp float;\nvoid main(){}\n'
+    const ramp = FEATHER.withFeatherRamp?.(plain) ?? ''
+    expect(ramp.startsWith('#version 300 es\n'), 'the version line stays first').toBe(true)
+    expect(
+      ramp,
+      'the define is the second line, so it precedes every guarded region',
+    ).toBe('#version 300 es\n#define BRISTLE_FEATHER_RAMP 1\nprecision highp float;\nvoid main(){}\n')
+    expect((ramp.match(/#define BRISTLE_FEATHER_RAMP/g) ?? []).length, 'injected once').toBe(1)
+    expect(
+      (ramp.match(/#version 300 es/g) ?? []).length,
+      'the version line is not duplicated',
+    ).toBe(1)
+    for (const bad of ['', 'precision highp float;\n', ' #version 300 es\n']) {
+      expect(() => FEATHER.withFeatherRamp?.(bad), `rejects ${JSON.stringify(bad)}`).toThrow(
+        /#version 300 es/,
+      )
+    }
+    // And the plain source really does carry the guards inside the gather —
+    // the plain program is the SAME text minus the define, so the assertion
+    // that matters is that the define exists ONLY as the exported constant.
+    expectContains(FEATHER.BRISTLE_GATHER ?? '', '#ifdef BRISTLE_FEATHER_RAMP')
+    expect(
+      (SHADERS_SOURCE.match(/#define BRISTLE_FEATHER_RAMP/g) ?? []).length,
+      'one define site: the exported constant the injector reads',
+    ).toBe(1)
+
+    // 3) The engine's half: two ramp programs registered OUTSIDE the pinned
+    //    literal (its count stays twenty-three), built by the injector, and
+    //    the selection is the tested twin — never an inline comparison.
+    expectContains(ENGINE_SOURCE, 'bristleFeatherVariant,')
+    expectContains(
+      ENGINE_SOURCE,
+      'this.programs.bristleDepositRamp = this.g.program(S.withFeatherRamp(S.bristleDepositFS));',
+    )
+    expectContains(
+      ENGINE_SOURCE,
+      'this.programs.bristleCoverRamp = this.g.program(S.withFeatherRamp(S.bristleCoverFS));',
+    )
+    const literal = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
+    expect(
+      (literal.match(/this\.g\.program\(/g) ?? []).length,
+      'twenty-three in the literal: both ramp programs register outside it',
+    ).toBe(23)
+    expectNotContains(literal, 'Ramp')
+    const ink = sliceBetween(ENGINE_SOURCE, 'private bristleInk(', 'private bristleSnapshot(')
+    expectContains(ink, "const ramp = bristleFeatherVariant(this.params.feather) === 'ramp';")
+    expectContains(
+      ink,
+      'const d = ramp ? this.programs.bristleDepositRamp! : this.programs.bristleDeposit;',
+    )
+    expectContains(
+      ink,
+      'const c = ramp ? this.programs.bristleCoverRamp! : this.programs.bristleCover;',
+    )
+    // The plain pair is still the default: the deposit draw and the cover
+    // write both run through the selected local, never a hard-coded program.
+    expectNotContains(ink, 'this.programs.bristleDeposit.bind()')
+    expectNotContains(ink, 'this.programs.bristleCover.bind()')
   })
 })

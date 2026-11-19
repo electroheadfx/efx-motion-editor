@@ -888,6 +888,30 @@ void main(){
 //  grain stays in the footprint mask and the dab's own dryness. Every
 //  number with a §6 name arrives as a uniform from `bristles.ts`.
 // ============================================================
+
+/**
+ * 261119-pod, D-H — the Feather-0 program identity. The guarded ramp line
+ * perturbs the GPU compiler's register allocation even when `uFeather` is 0
+ * and the branch never enters, so a Feather-0 stroke drifts 1–2 LSB from the
+ * pre-port engine and the no-drag controls stop being byte-identical. The
+ * gather therefore compiles in TWO variants from ONE snippet: the plain
+ * variant (this define ABSENT) is the pre-port program, and the ramp variant
+ * is selected only for `uFeather > 0` (Engine's `bristleFeatherVariant`).
+ * `#ifdef` is not a behaviour switch — a Feather-0 texel never sees the
+ * multiply either way — it only guarantees the compiled PROGRAM is the
+ * pre-port one, which is what the byte-identity contract measures.
+ */
+export const BRISTLE_FEATHER_RAMP_DEFINE = '#define BRISTLE_FEATHER_RAMP 1\n';
+
+/** Injects the ramp define after the mandatory `#version` line (never before it). */
+export function withFeatherRamp(src: string): string {
+  const version = '#version 300 es\n';
+  if (!src.startsWith(version)) {
+    throw new Error('withFeatherRamp: the fragment source must start with "#version 300 es"');
+  }
+  return version + BRISTLE_FEATHER_RAMP_DEFINE + src.slice(version.length);
+}
+
 export const BRISTLE_GATHER = `${BRISTLE_NOISE}${BRISTLE_TEXTURES}
 uniform vec2 uPoint;
 uniform vec2 uAxis;          // across axis (unit, doc frame)
@@ -919,8 +943,10 @@ uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
 uniform float uSmear;        // the Pickup global, 0..1 (D-A: one knob, two laws)
 uniform float uSmearPeriodPx;// §3.3 hash cell (BRISTLE_SMEAR_PERIOD_PX 6)
 uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
+#ifdef BRISTLE_FEATHER_RAMP
 uniform float uFeather;      // the Feather global, 0..1
 uniform float uFeatherReach; // Studio-only four-side reach (BRISTLE_FEATHER_REACH 0.45)
+#endif
 // Post-UAT 2026-11-19 (GAP-4) — the texture tip composes with the gather
 // instead of disabling the engine. uTipMix is 0 for a bristle brush with no
 // textureId, so every recorded untextured bristle stroke keeps its exact
@@ -975,14 +1001,16 @@ float smearWeight(int nearest, float alongPx, float wet){
 
 // The four-side Feather ramp (Studio-only; the reference fades across the
 // stroke only). Each axis falls from 1 to 0 across the outer reach of the
-// dab's local frame; the product is mixed in by Feather. The caller encloses
-// the multiply in the uFeather > 0 guard, so Feather 0 is EXACTLY the
-// shipped arithmetic.
+// dab's local frame; the product is mixed in by Feather. D-H: this helper
+// (and the one call below) exist ONLY in the ramp variant — the Feather-0
+// program is the pre-port one, compiled without them.
+#ifdef BRISTLE_FEATHER_RAMP
 float featherFall(float across, float along){
   float side = 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, abs(across));
   float end = 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, abs(along));
   return mix(1.0, side * end, uFeather);
 }
+#endif
 
 // §4.4 — the paper tooth as a threshold, in TWO coordinate systems:
 //  - streaks: brush-local, rotated to the stroke normal — grooves that follow
@@ -1092,8 +1120,12 @@ Gathered gatherBristle(vec2 uv){
   float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;
   // 261119-pod: the four-side Feather ramp multiplies coverage BEFORE the
-  // threshold — Feather 0 never executes the multiply (the shipped law).
+  // threshold. D-H: the line is compiled ONLY into the ramp variant, so the
+  // Feather-0 program is the pre-port one rather than a program whose
+  // register allocation a dead guarded branch still perturbs.
+#ifdef BRISTLE_FEATHER_RAMP
   if (uFeather > 0.0) coverage *= featherFall(across, q.y);
+#endif
   g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
   // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
   // untextured law byte-identical: the multiply is never executed).

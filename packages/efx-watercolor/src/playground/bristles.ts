@@ -370,6 +370,21 @@ export function bristleSmearWeight(rate: number, wet: number, hash: number): num
 }
 
 /**
+ * 261119-pod (D-H): which compiled gather program a Feather value selects.
+ * `'plain'` is the PRE-PORT program (no ramp code — the pre-port engine's
+ * program, byte-identical on the no-drag controls); `'ramp'` is the gather +
+ * four-side ramp variant. EXACTLY zero selects plain — the shader's
+ * `uFeather > 0.0` guard and this selection agree by construction, so no
+ * Feather-0 stroke can ever run the ramp program. The comparison is
+ * deliberately the shader's own `> 0`: a NaN reads as plain (the safe,
+ * shipped look) and +∞ as ramp, exactly as `clamp(feather, 0, 1)` leaves
+ * them for the uniform.
+ */
+export function bristleFeatherVariant(feather: number): 'plain' | 'ramp' {
+  return feather > 0 ? 'ramp' : 'plain';
+}
+
+/**
  * The four-side Feather ramp (Studio-only; the reference fades across the
  * stroke only): `side = 1 − smoothstep(1 − reach, 1, |across|)` and
  * `end = 1 − smoothstep(1 − reach, 1, |along|)` multiplied, then mixed in by

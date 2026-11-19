@@ -867,6 +867,7 @@ const SMEAR = bristleModule as unknown as {
   bristleSmearRate?: (pickup: number) => number
   bristleSmearWeight?: (rate: number, wet: number, hash: number) => number
   bristleFeatherFall?: (across: number, along: number, feather: number) => number
+  bristleFeatherVariant?: (feather: number) => 'plain' | 'ramp'
 }
 
 describe('the §3.3 smear constants and twins (261119-pod)', () => {
@@ -979,5 +980,34 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
     expect(SMEAR.bristleFeatherFall?.(Number.NaN, 0.2, 1)).toBe(1)
     expect(SMEAR.bristleFeatherFall?.(0, Number.NaN, 1)).toBe(1)
     expect(SMEAR.bristleFeatherFall?.(0.8, 0, Number.NaN)).toBe(1)
+  })
+
+  // D-H — the Feather-0 program identity. The gather compiles twice from one
+  // snippet, and which half a stroke runs is this ONE selection: exactly zero
+  // runs the pre-port program, any positive Feather runs the ramp pair. The
+  // shader's own `uFeather > 0.0` guard is unreachable in the plain variant
+  // (the ramp code is not compiled into it at all), so the two must agree at
+  // the boundary BY CONSTRUCTION — hence the value table below.
+  it('bristleFeatherVariant keeps Feather 0 on the plain program (D-H)', () => {
+    expect(typeof SMEAR.bristleFeatherVariant, 'bristleFeatherVariant is exported').toBe('function')
+    expect(SMEAR.bristleFeatherVariant?.(0), 'exactly zero is the pre-port program').toBe('plain')
+    expect(SMEAR.bristleFeatherVariant?.(1), 'the open end is the ramp').toBe('ramp')
+    expect(SMEAR.bristleFeatherVariant?.(0.5), 'any positive Feather ramps').toBe('ramp')
+    // The smallest representable positive double must still select the ramp:
+    // the boundary is the closed zero, not an epsilon band.
+    expect(SMEAR.bristleFeatherVariant?.(Number.MIN_VALUE)).toBe('ramp')
+    // Negative and non-finite Feather never reach the shader as positive —
+    // `clamp(this.params.feather, 0, 1)` floors them, so the plain program is
+    // the honest selection and the two never disagree.
+    expect(SMEAR.bristleFeatherVariant?.(-1)).toBe('plain')
+    expect(SMEAR.bristleFeatherVariant?.(-0.0001)).toBe('plain')
+    expect(SMEAR.bristleFeatherVariant?.(Number.NaN)).toBe('plain')
+    expect(SMEAR.bristleFeatherVariant?.(Number.POSITIVE_INFINITY)).toBe('ramp')
+    expect(SMEAR.bristleFeatherVariant?.(Number.NEGATIVE_INFINITY)).toBe('plain')
+    // Declared once, beside the other stroke laws.
+    expect(
+      (SOURCE.match(/export function bristleFeatherVariant\b/g) ?? []).length,
+      'declared once',
+    ).toBe(1)
   })
 })

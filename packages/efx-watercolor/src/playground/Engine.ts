@@ -13,6 +13,7 @@ import {
   BRISTLE_STREAK_LENGTH,
   BRISTLE_STREAK_SHARE,
   bristleCount,
+  bristleFeatherVariant,
   gatherSoftness,
   LAST_TOUCH_DRY_SECONDS,
   makeBristles,
@@ -567,6 +568,14 @@ export class WatercolorEngine {
     // is the film's opacity on the bristle path, not a second film's erode.
     this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);
     this.programs.bristleCover = this.g.program(S.bristleCoverFS);
+    // 261119-pod (D-H): the Feather-0 program identity. The gather compiles
+    // TWICE from the one snippet: the plain pair above (the pre-port program,
+    // no ramp code) and this ramp pair, selected only when Feather > 0
+    // (`bristleFeatherVariant`). A guarded runtime branch is not enough — the
+    // dead branch perturbs register allocation by 1–2 LSB, which breaks the
+    // no-drag byte-identity contract. Outside the pinned literal, same rule.
+    this.programs.bristleDepositRamp = this.g.program(S.withFeatherRamp(S.bristleDepositFS));
+    this.programs.bristleCoverRamp = this.g.program(S.withFeatherRamp(S.bristleCoverFS));
     // 64-24 (D-24): the touch refresh, same rule — outside the pinned literal
     // (twenty-three stays). The delivery law's third pass.
     this.programs.bristleTouch = this.g.program(S.bristleTouchFS);
@@ -2980,7 +2989,12 @@ export class WatercolorEngine {
     // bookkeeping and BEFORE the first deposit draw, only at Pickup > 0 —
     // Pickup 0 skips the draw entirely and the weight is zero besides.
     if (this.params.pickup > 0) this.bristleSnapshot(rect);
-    const d = this.programs.bristleDeposit;
+    // 261119-pod (D-H): Feather EXACTLY 0 runs the PRE-PORT deposit/cover
+    // programs (no ramp code compiled in); any Feather > 0 runs the ramp pair.
+    // The selection is the tested twin `bristleFeatherVariant` — never an
+    // inline comparison a later edit could silently invert.
+    const ramp = bristleFeatherVariant(this.params.feather) === 'ramp';
+    const d = ramp ? this.programs.bristleDepositRamp! : this.programs.bristleDeposit;
     d.bind();
     this.bindGather(d, x, y, r, angle, pr, alongPx);
     gl.uniform1f(d.u.uScatter!, scatter);
@@ -3006,7 +3020,7 @@ export class WatercolorEngine {
     gl.disable(gl.BLEND);
     // 3) cover <- cover*(1 - a) + bodyAlpha*g.alpha*a — ONE write per dab,
     //    the SAME weight as the ink, so the layer alpha tracks its paint.
-    const c = this.programs.bristleCover;
+    const c = ramp ? this.programs.bristleCoverRamp! : this.programs.bristleCover;
     c.bind();
     this.bindGather(c, x, y, r, angle, pr, alongPx);
     gl.uniform1f(c.u.uCoverTarget!, bodyAlpha);
