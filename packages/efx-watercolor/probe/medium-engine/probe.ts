@@ -633,6 +633,14 @@ interface ScriptEntry {
    *  paints the same stroke at two Feather values in one capture. Omitted
    *  adds no key, exactly like `body`/`emboss`. */
   readonly feather?: number
+  /** 261119-pod (D-E): the entry's Dry knob (0..100). The `bristle-edge`
+   *  census was calibrated on the old, unfaithful 0.25/min depletion; under
+   *  the reference-faithful rate (b8f6dfc0e) its light-wash load falls below
+   *  the §4.4 paper threshold and the Feather-0 stroke deposits nothing.
+   *  Pinning Dry 0 isolates the census's own variable — the Feather edge —
+   *  without touching the engine. Omitted adds no key, so every identity
+   *  gate's bag stays byte-identical. */
+  readonly dry?: number
 }
 
 /** The canonical bag as the app records it (0..100). A knob adds its key;
@@ -642,6 +650,7 @@ function paramsBag(entry: ScriptEntry): Record<string, number> {
   if (entry.emboss !== undefined) bag['emboss'] = entry.emboss
   if (entry.body !== undefined) bag['body'] = entry.body
   if (entry.feather !== undefined) bag['feather'] = entry.feather
+  if (entry.dry !== undefined) bag['dry'] = entry.dry
   return bag
 }
 
@@ -1138,6 +1147,7 @@ function bristleEdgeScript(): readonly ScriptEntry[] {
       points: horizontalLine(EDGE_FEATHER_0_Y),
       mutationId: 0x7ee200,
       feather: 0,
+      dry: 0,
       brushId: 'bristle-flat',
     },
     {
@@ -1145,6 +1155,7 @@ function bristleEdgeScript(): readonly ScriptEntry[] {
       points: horizontalLine(EDGE_FEATHER_100_Y),
       mutationId: 0x7ee201,
       feather: 100,
+      dry: 0,
       brushId: 'bristle-flat',
     },
   ]
