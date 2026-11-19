@@ -140,12 +140,16 @@ describe('thickness target allocation (MED-14)', () => {
     expect(openIndex).toBeGreaterThanOrEqual(0)
     const entries = splitTopLevel(extractBracket(body, openIndex + 'return '.length))
     // SPIKE 001: the coverage pair closes the list, so the sheet wipe clears it
-    // too; the thickness keeps its single view and sits immediately before it.
+    // too. 64-24: the last-touch pair sits immediately before it, and the
+    // thickness keeps its single view immediately before that.
     const last = entries.length - 1
     expect(entries[last]).toBe('this.cover.write')
     expect(entries[last - 1]).toBe('this.cover.read')
-    expect(entries[last - 2]).toBe('this.relief')
+    expect(entries[last - 2]).toBe('this.lastTouch.write')
+    expect(entries[last - 3]).toBe('this.lastTouch.read')
+    expect(entries[last - 4]).toBe('this.relief')
     expect(entries.filter((entry) => entry.includes('relief'))).toHaveLength(1)
+    expect(entries.filter((entry) => entry.includes('lastTouch'))).toHaveLength(2)
     // clear() and resetSheet() both wipe every non-paper document target.
     const wipes = ENGINE_SOURCE.match(
       /for \(const t of this\.docTargets\(\)\) if \(t !== this\.paper\) this\.g\.clearTarget\(t\);/g,
@@ -159,7 +163,7 @@ describe('thickness target allocation (MED-14)', () => {
 // ---------------------------------------------------------------------------
 
 describe('undo pool pairing (MED-18)', () => {
-  it("keeps pool 0's formats, snapshotLayers() and the undo layer map the same length with coverage fifth and last", () => {
+  it("keeps pool 0's formats, snapshotLayers() and the undo layer map the same length with last-touch fifth and coverage last", () => {
     // Pool 0's formats, from allocateHistory().
     const historyBody = sliceBetween(ENGINE_SOURCE, 'private allocateHistory() {', 'private docTargets()')
     const formatsAt = historyBody.indexOf('formats: [')
@@ -170,6 +174,7 @@ describe('undo pool pairing (MED-18)', () => {
       'HALF_FLOAT_RGBA',
       'HALF_FLOAT_R',
       'HALF_FLOAT_R',
+      'FLOAT_R',
       'HALF_FLOAT_R',
     ])
 
@@ -183,6 +188,7 @@ describe('undo pool pairing (MED-18)', () => {
       'this.ink.read.views[1]',
       'this.wet.read.views[0]',
       'this.relief.views[0]',
+      'this.lastTouch.read.views[0]',
       'this.cover.read.views[0]',
     ])
 
@@ -198,6 +204,7 @@ describe('undo pool pairing (MED-18)', () => {
       '[ink.read.views[1], ink.write.views[1]]',
       '[wet.read.views[0], wet.write.views[0]]',
       '[this.relief.views[0]]',
+      '[this.lastTouch.read.views[0], this.lastTouch.write.views[0]]',
       '[this.cover.read.views[0], this.cover.write.views[0]]',
     ])
 
@@ -206,13 +213,19 @@ describe('undo pool pairing (MED-18)', () => {
     expect(pool0).toHaveLength(formats.length)
     expect(snapshot[snapshot.length - 1]).toBe('this.cover.read.views[0]')
     expect(pool0[pool0.length - 1]).toBe('[this.cover.read.views[0], this.cover.write.views[0]]')
+    // 64-24: the last-touch read half is the fifth entry in every list.
+    expect(formats[formats.length - 2]).toBe('FLOAT_R')
+    expect(snapshot[snapshot.length - 2]).toBe('this.lastTouch.read.views[0]')
+    expect(pool0[pool0.length - 2]).toBe('[this.lastTouch.read.views[0], this.lastTouch.write.views[0]]')
     // The thickness stays a single framebuffer, not a ping-pong pair:
     // History.swap reads fbs[0] and writes every framebuffer in the entry.
-    expect(pool0[pool0.length - 2]).toBe('[this.relief.views[0]]')
-    expect(pool0[pool0.length - 2]!.match(/views\[0\]/g)).toHaveLength(1)
-    // Coverage is the one double-buffered document layer in pool 0: its entry
-    // carries both halves, so an advection write cannot outrun undo.
+    expect(pool0[pool0.length - 3]).toBe('[this.relief.views[0]]')
+    expect(pool0[pool0.length - 3]!.match(/views\[0\]/g)).toHaveLength(1)
+    // Coverage and the last-touch memory are pool 0's two double-buffered
+    // document layers: each entry carries both halves, so an advection or a
+    // touch write cannot outrun undo.
     expect(pool0[pool0.length - 1]!.match(/views\[0\]/g)).toHaveLength(2)
+    expect(pool0[pool0.length - 2]!.match(/views\[0\]/g)).toHaveLength(2)
   })
 })
 
@@ -222,12 +235,14 @@ describe('undo pool pairing (MED-18)', () => {
 
 describe('WholeDoc carry (MED-18.adjacency)', () => {
   it("adds 'relief' to the LayerId union and the WholeDoc layer record", () => {
-    // 64-14 appends 'cover' after 'relief'; the relief entry must stay present.
+    // 64-14 appends 'cover' after 'relief' and 64-24 appends 'lastTouch'; the
+    // relief entry must stay present.
     expect(ENGINE_SOURCE).toContain(
-      "export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' | 'cover';",
+      "export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' | 'cover' | 'lastTouch';",
     )
-    // WholeDoc.layers is Record<LayerId, Uint16Array>, so the union is the record.
-    expect(ENGINE_SOURCE).toContain('layers: Record<LayerId, Uint16Array>')
+    // WholeDoc.layers is Record<LayerId, Uint16Array | Float32Array> (64-24
+    // widens it for the exact-float last-touch layer), so the union is the record.
+    expect(ENGINE_SOURCE).toContain('layers: Record<LayerId, Uint16Array | Float32Array>')
   })
 
   it('captures the layer as a single channel and uploads it back as gl.RED', () => {
@@ -239,6 +254,10 @@ describe('WholeDoc carry (MED-18.adjacency)', () => {
     const body = sliceBetween(ENGINE_SOURCE, 'resizeDocument(w: number, h: number) {', 'const shift = ')
     expect(body).toContain('relief: this.relief')
     expect(body).toContain('copy(old.relief, [this.relief]);')
+    // 64-24: the last-touch pair rides the same resize copy into both halves
+    // (the read half is the source, exactly like coverage).
+    expect(body).toContain('lastTouch: this.lastTouch.read')
+    expect(body).toContain('copy(old.lastTouch, [this.lastTouch.read, this.lastTouch.write]);')
   })
 })
 
@@ -262,7 +281,12 @@ describe('engine-only state (MED-14 prohibitions)', () => {
       return (
         /layers\.relief/.test(text) ||
         /layers\[['"]relief['"]\]/.test(text) ||
-        (file.endsWith('.rs') && /relief/i.test(text))
+        (file.endsWith('.rs') && /relief/i.test(text)) ||
+        // 64-24 (D-24): the last-touch channel is engine state too — no
+        // parser, Rust file or app module may name it (frame cache 0 B).
+        /layers\.lastTouch/.test(text) ||
+        /layers\[['"]lastTouch['"]\]/.test(text) ||
+        (file.endsWith('.rs') && /lasttouch/i.test(text))
       )
     })
     expect(offenders).toEqual([])

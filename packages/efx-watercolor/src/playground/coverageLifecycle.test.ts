@@ -276,22 +276,23 @@ describe('the cover pass in step() (64-14 task 1)', () => {
 
 describe('coverage rides the document lifecycle (64-14 task 2)', () => {
   it("adds 'cover' to LayerId after 'relief'", () => {
+    // 64-24 appends 'lastTouch' after 'cover'; the cover entry stays present.
     expectContains(
       ENGINE,
-      "export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' | 'cover';",
+      "export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' | 'cover' | 'lastTouch';",
     )
   })
 
-  it('gives pool 0 five formats with coverage last', () => {
+  it('gives pool 0 six formats with coverage last and the last-touch layer fifth', () => {
     const alloc = sliceBetween(ENGINE, 'private allocateHistory()', 'private docTargets()')
-    expectContains(alloc, 'formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R, HALF_FLOAT_R]')
+    expectContains(alloc, 'formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R, FLOAT_R, HALF_FLOAT_R]')
   })
 
-  it('returns five snapshotLayers() views with the cover read half last', () => {
+  it('returns six snapshotLayers() views with the cover read half last', () => {
     const snap = sliceBetween(ENGINE, 'private snapshotLayers()', 'private drawSplat(')
     expectContains(
       snap,
-      'return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0], this.cover.read.views[0]];',
+      'return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0], this.lastTouch.read.views[0], this.cover.read.views[0]];',
     )
   })
 
@@ -299,7 +300,7 @@ describe('coverage rides the document lifecycle (64-14 task 2)', () => {
     const travel = sliceBetween(ENGINE, "private travel(dir: 'undo' | 'redo'", 'const res = dir ===')
     expectContains(
       travel,
-      '[[ink.read.views[0], ink.write.views[0]], [ink.read.views[1], ink.write.views[1]], [wet.read.views[0], wet.write.views[0]], [this.relief.views[0]], [this.cover.read.views[0], this.cover.write.views[0]]],',
+      '[[ink.read.views[0], ink.write.views[0]], [ink.read.views[1], ink.write.views[1]], [wet.read.views[0], wet.write.views[0]], [this.relief.views[0]], [this.lastTouch.read.views[0], this.lastTouch.write.views[0]], [this.cover.read.views[0], this.cover.write.views[0]]],',
     )
   })
 
@@ -312,7 +313,7 @@ describe('coverage rides the document lifecycle (64-14 task 2)', () => {
     )
   })
 
-  it('keeps the three positional lists the same length — five entries, cover last', () => {
+  it('keeps the three positional lists the same length — six entries, last-touch fifth, cover last', () => {
     const alloc = sliceBetween(ENGINE, 'private allocateHistory()', 'private docTargets()')
     const formatsAt = firstIndexAfter(alloc, 'formats: [')
     const formats = countTopLevelEntries(alloc, formatsAt + 'formats: '.length)
@@ -326,10 +327,10 @@ describe('coverage rides the document lifecycle (64-14 task 2)', () => {
     const poolOpen = firstIndexAfter(travel, '[', layersAt + 'const layers = '.length + 1)
     const travelPool0 = countTopLevelEntries(travel, poolOpen)
 
-    expect(formats, 'allocateHistory pool-0 formats').toBe(5)
-    expect(snapshot, 'snapshotLayers() entries').toBe(5)
-    expect(travelPool0, "travel() pool-0 layer entries").toBe(5)
-    // One arithmetic gate instead of three hand-maintained numbers: a sixth
+    expect(formats, 'allocateHistory pool-0 formats').toBe(6)
+    expect(snapshot, 'snapshotLayers() entries').toBe(6)
+    expect(travelPool0, "travel() pool-0 layer entries").toBe(6)
+    // One arithmetic gate instead of three hand-maintained numbers: a seventh
     // channel added to only some of the lists fails here.
     expect(formats).toBe(snapshot)
     expect(snapshot).toBe(travelPool0)

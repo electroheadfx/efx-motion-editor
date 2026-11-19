@@ -237,6 +237,46 @@ export class GL {
     return out;
   }
 
+  /**
+   * Read a single-attachment R32F framebuffer as EXACT floats: one lane per texel,
+   * rows bottom-up, within `rect` (default: all of it). An R32F layer cannot
+   * round-trip through half floats because its cleared value is one week old
+   * (−604800 s, outside half-float's range), so this reads RGBA / FLOAT in bands
+   * and keeps lane 0, on `readHalf`'s template.
+   */
+  readFloat(fb: WebGLFramebuffer, w: number, h: number, rect?: Rect): Float32Array {
+    const { gl } = this;
+    const x0 = rect?.x0 ?? 0, y0 = rect?.y0 ?? 0, rw = (rect?.x1 ?? w) - x0, rh = (rect?.y1 ?? h) - y0;
+    const out = new Float32Array(Math.max(0, rw * rh));
+    if (rw <= 0 || rh <= 0) return out;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
+    gl.getError();   // clear anything stale so a failed read below is caught
+    const rows = Math.max(1, Math.floor((4 * 1024 * 1024) / (rw * 4)));   // ~16 MiB of float32 per band
+    const band = new Float32Array(rw * rows * 4);
+    for (let y = 0; y < rh; y += rows) {
+      const n = Math.min(rows, rh - y);
+      gl.readPixels(x0, y0 + y, rw, n, gl.RGBA, gl.FLOAT, band.subarray(0, n * rw * 4));
+      const base = y * rw;
+      for (let i = 0, m = n * rw; i < m; i++) out[base + i] = band[i * 4];
+    }
+    const err = gl.getError();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (err) throw new Error('This GPU cannot read its paint layers back.');
+    return out;
+  }
+
+  /** Upload exact floats into an R32F texStorage2D texture at (x, y). */
+  uploadFloat(tex: WebGLTexture, x: number, y: number, w: number, h: number, data: Float32Array) {
+    const { gl } = this;
+    if (w <= 0 || h <= 0) return;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RED, gl.FLOAT, data);
+  }
+
   /** Upload half floats into a texStorage2D texture at (x, y); `format` is RGBA or RED to match it. */
   uploadHalf(tex: WebGLTexture, x: number, y: number, w: number, h: number, format: number, data: Uint16Array) {
     const { gl } = this;

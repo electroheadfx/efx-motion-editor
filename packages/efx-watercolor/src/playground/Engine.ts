@@ -68,8 +68,13 @@ export type Tool = 'brush' | 'water' | 'pen' | 'lift';
  *
  * Undo carries it positionally in pool 0: allocateHistory()'s format list,
  * snapshotLayers() and travel()'s layer map list the thickness view as the same
- * last entry. Edit all three together; if they disagree the atlas copy writes
- * one layer into another layer's target.
+ * entry. Edit all three together; if they disagree the atlas copy writes one
+ * layer into another layer's target.
+ *
+ * 64-24 (D-24) adds the last-touch pair to the same lists as the fifth entry
+ * (between the thickness and the coverage, so coverage stays last), and the
+ * whole-document carry (captureWhole / uploadWhole / resizeDocument) carries it
+ * as EXACT floats — `WholeDoc.layers` is a Uint16Array | Float32Array union.
  */
 
 /** All sliders are normalised 0..1 — except `wetSeconds`, which is SECONDS. */
@@ -157,13 +162,16 @@ export interface ExportOptions { format: ExportFormat; background: ExportBackgro
 /** Placement of the reference image in document uv (y up): origin and size. */
 export interface RefRect { x: number; y: number; w: number; h: number }
 
-export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' | 'cover';
+export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' | 'cover' | 'lastTouch';
 
 /**
  * The paint layers as half floats (RGBA for ink and fixed, one channel for wet), cropped
  * to `rect`, the texel rect holding everything ever painted (null: a blank sheet).
+ * 64-24: `lastTouch` is EXACT float32 — the cleared sentinel is one week old, which a
+ * half-float round-trip would clamp at 65504 and every restored sheet would read as
+ * touched — so the record's value type is the union.
  */
-export interface WholeDoc { w: number; h: number; rect: Rect | null; layers: Record<LayerId, Uint16Array> }
+export interface WholeDoc { w: number; h: number; rect: Rect | null; layers: Record<LayerId, Uint16Array | Float32Array> }
 
 /** Document-level state that undo tracks besides the paint. */
 export interface DocState {
@@ -284,7 +292,7 @@ const STROKE_LABEL: Record<Tool, string> = { brush: 'Brush stroke', water: 'Wate
 
 // WebGL2 enum values inlined so this module imports without a WebGL2
 // global (tests / SSR). Values are fixed by the WebGL2 spec.
-const GL_RG16F = 0x822f, GL_R16F = 0x822d, GL_RGBA16F = 0x881a, GL_RG32F = 0x8230;
+const GL_RG16F = 0x822f, GL_R16F = 0x822d, GL_RGBA16F = 0x881a, GL_RG32F = 0x8230, GL_R32F = 0x822e;
 const GL_RG = 0x8227, GL_RED = 0x1903, GL_RGBA = 0x1908, GL_RGBA8 = 0x8058;
 const GL_HALF_FLOAT = 0x140b, GL_UNSIGNED_BYTE = 0x1401, GL_FLOAT = 0x1406;
 const HALF_FLOAT_RG: Format = { internal: GL_RG16F, format: GL_RG, type: GL_HALF_FLOAT };
@@ -292,6 +300,10 @@ const HALF_FLOAT_R: Format = { internal: GL_R16F, format: GL_RED, type: GL_HALF_
 const HALF_FLOAT_RGBA: Format = { internal: GL_RGBA16F, format: GL_RGBA, type: GL_HALF_FLOAT };
 const RGBA8: Format = { internal: GL_RGBA8, format: GL_RGBA, type: GL_UNSIGNED_BYTE };
 const FLOAT_RG: Format = { internal: GL_RG32F, format: GL_RG, type: GL_FLOAT };
+// 64-24 (D-24): the last-touch field is EXACT float — its cleared value is a
+// one-week sentinel (−604800 s), outside half-float's 65504 range, so an R16F
+// target would silently clamp it and every texel would read as freshly touched.
+const FLOAT_R: Format = { internal: GL_R32F, format: GL_RED, type: GL_FLOAT };
 const FILL_WATER_LEAD = 10;    // px the water runs ahead of the pigment in a bucket fill
 const FILL_WIDTH = 24;         // px over which a bucket fill's front ramps up
 const FILL_JITTER = 3;         // px the paper grain roughens a bucket fill's front
@@ -308,6 +320,12 @@ export const MAX_ZOOM = 32;
 const FIT_PADDING = 24;        // CSS px around the sheet when zoomed to fit
 const PAN_KEEP = 48;           // CSS px of the sheet that always stays on screen
 const FIX_DURATION = 1.2;
+// 64-24 (D-24): the last-touch field's CLEARED value — one week before the
+// clock's zero. A cleared R32F reads 0, which the virtual clock would read as
+// "touched at t = 0" and every texel would start wet; −604800 s makes
+// exp(−age / wetSeconds) 0 to float precision for any tack time. The only
+// cleared value the engine ever writes into the field.
+export const LAST_TOUCH_DRY_SECONDS = -604800;
 const MASK_BLOCK = 16;         // texels per wet-mask cell
 const MASK_EVERY = 10;         // frames between wet-mask readbacks that trim the active rect
 const MASK_MARGIN = MASK_BLOCK + 8;
@@ -404,6 +422,12 @@ export class WatercolorEngine {
   // SPIKE 001: the pigment layer's coverage, one channel. A ping-pong pair from
   // the start: 64-14 advects it with the ink and its undo needs both halves.
   private cover!: DoubleTarget;
+  // 64-24 (D-24): the per-texel last-touch time — SECONDS on the virtual clock,
+  // one EXACT-float channel, document-sized, ping-pong (the touch pass writes
+  // the write half, then swaps). Engine-internal state: rebuilt from the stroke
+  // script on replay, never persisted. The delivery law (D-29) admits this pair
+  // as the medium engine's ONLY document-sized addition.
+  private lastTouch!: DoubleTarget;
   // 64-21 (SPIKE 002): the per-stroke bristle reservoirs — a FIXED
   // `1 × BRISTLE_CAP` set, three RGBA16F attachments (carried absorbance 0..3,
   // 4..6 + carried alpha, load/across/seed/valueJitter) — plus the static
@@ -583,6 +607,11 @@ export class WatercolorEngine {
     // SPIKE 001: the coverage channel — one channel on the document grid. A
     // ping-pong pair because 64-14 advects it and its undo needs both halves.
     this.cover = g.double(this.dw, this.dh, [HALF_FLOAT_R], gl.LINEAR);
+    // 64-24 (D-24, the delivery law's budget): the last-touch memory — one R32F
+    // pair on the document grid, the medium engine's only document-sized
+    // addition. Cleared to the one-week sentinel at the END of this method,
+    // never to zero (a cleared R32F reads 0 = "touched at t = 0").
+    this.lastTouch = g.double(this.dw, this.dh, [FLOAT_R], gl.NEAREST);
     // 64-21 (SPIKE 002): the bristle reservoirs are a FIXED 1 × 256 set,
     // independent of the sheet — no document-sized allocation (the delivery
     // law's budget). PATTERNS flags a fixed-size target as novel and suggests
@@ -596,15 +625,33 @@ export class WatercolorEngine {
     this.paper = g.target(this.dw, this.dh, [RGBA8], gl.LINEAR);
     this.wetMask = g.target(Math.ceil(this.dw / MASK_BLOCK), Math.ceil(this.dh / MASK_BLOCK), [RGBA8], gl.NEAREST);
     this.maskPixels = new Uint8Array(this.wetMask.w * this.wetMask.h * 4);
+    this.clearLastTouch();
+  }
+
+  /**
+   * 64-24 (D-24): write the one-week sentinel into BOTH halves of the last-touch
+   * pair. `clearTarget` cannot be reused — it clears to 0, which this field
+   * reads as "touched at t = 0". Called at the end of allocateTargets() and
+   * immediately after every sheet wipe (clear / resetSheet).
+   */
+  private clearLastTouch() {
+    const { gl } = this;
+    for (const t of [this.lastTouch.read, this.lastTouch.write]) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
+      gl.clearColor(LAST_TOUCH_DRY_SECONDS, LAST_TOUCH_DRY_SECONDS, LAST_TOUCH_DRY_SECONDS, LAST_TOUCH_DRY_SECONDS);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+    gl.clearColor(0, 0, 0, 0);
   }
 
   private allocateHistory() {
     // Pool 0 is positionally paired with snapshotLayers() and travel()'s layer
-    // map: mobile pigment (A, B), water, then Phase 64's paint thickness (R16F)
-    // and 64-14's coverage (R16F) as the FIFTH and last entry. Grow all three
-    // lists together or the atlas copies the wrong layer.
+    // map: mobile pigment (A, B), water, then Phase 64's paint thickness (R16F),
+    // 64-24's last-touch memory (R32F) and 64-14's coverage (R16F) as the FIFTH,
+    // SIXTH and last entries. Grow all three lists together or the atlas copies
+    // the wrong layer.
     this.history = new History(this.g, this.dw, this.dh, [
-      { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R, HALF_FLOAT_R], documents: 2 }, // mobile pigment + water + thickness + coverage
+      { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R, FLOAT_R, HALF_FLOAT_R], documents: 2 }, // mobile pigment + water + thickness + last-touch + coverage
       { formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], documents: 1 },                                           // fixed pigment
     ]);
   }
@@ -613,12 +660,16 @@ export class WatercolorEngine {
   private docTargets(): Target[] {
     // SPIKE 001: the coverage pair is LAST, after the thickness, so the sheet
     // wipe clears it with every other non-paper document target.
+    // 64-24: the last-touch pair sits immediately BEFORE the coverage pair
+    // (coverage stays last for its committed pin) so the same wipe and
+    // disposal reach the wetness memory.
     // 64-21: the bristle reservoirs and the shape texture are the ONLY
     // document-independent entries here — membership buys disposal reach
     // (resize, applyWhole) and wipe reach, and costs nothing per edition.
     return [this.velocity.read, this.velocity.write, this.pressure.read, this.pressure.write, this.divergence, this.curl,
       this.ink.read, this.ink.write, this.fixed, this.wet.read, this.wet.write, this.paper, this.wetMask,
       this.bristles.read, this.bristles.write, this.bristleShape, this.relief,
+      this.lastTouch.read, this.lastTouch.write,
       this.cover.read, this.cover.write];
   }
 
@@ -675,7 +726,7 @@ export class WatercolorEngine {
     const { g } = this;
     const ox = Math.round((w - ow) / 2), oy = Math.round((h - oh) / 2);
     const meta: StepMeta = { ...this.currentMeta(), whole: this.captureWhole(), paperOrigin: [...this.paperOrigin] };
-    const old = { targets: this.docTargets(), ink: this.ink.read, fixed: this.fixed, wet: this.wet.read, relief: this.relief, cover: this.cover.read };
+    const old = { targets: this.docTargets(), ink: this.ink.read, fixed: this.fixed, wet: this.wet.read, relief: this.relief, cover: this.cover.read, lastTouch: this.lastTouch.read };
     this.dw = w; this.dh = h;
     this.allocateTargets();
     this.history.beginBoundary({ kind: 'resize', label: `Resize ${w} × ${h}` }, meta, w, h);
@@ -691,6 +742,7 @@ export class WatercolorEngine {
     copy(old.fixed, [this.fixed]);
     copy(old.relief, [this.relief]);   // Phase 64: a resized sheet keeps its relief
     copy(old.cover, [this.cover.read, this.cover.write]);   // SPIKE 001: and its coverage
+    copy(old.lastTouch, [this.lastTouch.read, this.lastTouch.write]);   // 64-24: and its last-touch memory
     old.targets.forEach(t => g.disposeTarget(t));
 
     this.paperOrigin = [this.paperOrigin[0] - ox, this.paperOrigin[1] - oy];
@@ -721,6 +773,10 @@ export class WatercolorEngine {
     const r = this.everPainted;
     const { g, dw, dh } = this;
     const read = (fb: WebGLFramebuffer, ch: 1 | 4) => (r ? g.readHalf(fb, dw, dh, ch, r) : new Uint16Array(0));
+    // 64-24 (D-24): the last-touch layer is EXACT f32 — a half-float round-trip
+    // would clamp the one-week sentinel and every restored sheet would read as
+    // freshly touched.
+    const readF = (fb: WebGLFramebuffer) => (r ? g.readFloat(fb, dw, dh, r) : new Float32Array(0));
     return {
       w: dw, h: dh, rect: r ? { ...r } : null,
       layers: {
@@ -729,6 +785,7 @@ export class WatercolorEngine {
         wet: read(this.wet.read.views[0], 1),
         relief: read(this.relief.views[0], 1),
         cover: read(this.cover.read.views[0], 1),
+        lastTouch: readF(this.lastTouch.read.views[0]),
       },
     };
   }
@@ -739,7 +796,16 @@ export class WatercolorEngine {
     if (!r) return;
     const { gl, g } = this;
     const w = r.x1 - r.x0, h = r.y1 - r.y0;
-    const up = (tex: WebGLTexture, format: number, data: Uint16Array) => g.uploadHalf(tex, r.x0, r.y0, w, h, format, data);
+    // 64-24: `WholeDoc.layers` is a union record (the last-touch layer is exact
+    // f32); every half-float layer still restores through the same helper, so
+    // narrow here — an engine-produced record always carries Uint16Array for
+    // these keys.
+    const up = (tex: WebGLTexture, format: number, data: Uint16Array | Float32Array) => {
+      if (!(data instanceof Uint16Array)) throw new Error('whole-document layer is not half float');
+      g.uploadHalf(tex, r.x0, r.y0, w, h, format, data);
+    };
+    // 64-24: the last-touch memory is EXACT f32 (see captureWhole).
+    const upF = (tex: WebGLTexture, data: Float32Array) => g.uploadFloat(tex, r.x0, r.y0, w, h, data);
     for (const t of [this.ink.read, this.ink.write]) { up(t.tex[0], gl.RGBA, whole.layers.inkA); up(t.tex[1], gl.RGBA, whole.layers.inkB); }
     up(this.fixed.tex[0], gl.RGBA, whole.layers.fixedA);
     up(this.fixed.tex[1], gl.RGBA, whole.layers.fixedB);
@@ -748,6 +814,11 @@ export class WatercolorEngine {
     // 64-14: coverage is a document layer — restore it into both halves of its
     // ping-pong pair, exactly like water.
     for (const t of [this.cover.read, this.cover.write]) up(t.tex[0], gl.RED, whole.layers.cover);
+    // 64-24: the last-touch memory restores into both halves too — but only
+    // when the record actually carries exact floats (the narrowing guard keeps
+    // a hypothetical half-float-era record from uploading garbage).
+    const lt = whole.layers.lastTouch;
+    if (lt instanceof Float32Array) for (const t of [this.lastTouch.read, this.lastTouch.write]) upF(t.tex[0], lt);
     this.everPainted = { ...r };
   }
 
@@ -1643,6 +1714,9 @@ export class WatercolorEngine {
       this.history.protect(1, this.everPainted, this.fixed.views);
     }
     for (const t of this.docTargets()) if (t !== this.paper) this.g.clearTarget(t);
+    // 64-24: a wiped sheet is DRY — clearTarget wrote 0, which the field reads
+    // as "touched at t = 0"; restore the one-week sentinel.
+    this.clearLastTouch();
     this.resetPaintState();
     this.notifyHistory();
     this.schedule();
@@ -1664,6 +1738,9 @@ export class WatercolorEngine {
     this.queue = [];
     this.dropFill();
     for (const t of this.docTargets()) if (t !== this.paper) this.g.clearTarget(t);
+    // 64-24: a wiped sheet is DRY — clearTarget wrote 0, which the field reads
+    // as "touched at t = 0"; restore the one-week sentinel.
+    this.clearLastTouch();
     this.resetPaintState();
     this.notifyHistory();
   }
@@ -1710,10 +1787,11 @@ export class WatercolorEngine {
     const ink = this.ink, wet = this.wet;
     // Pool 0 must mirror allocateHistory()'s formats and snapshotLayers() entry
     // for entry: mobile pigment (A, B), water, then Phase 64's thickness — one
-    // framebuffer — and 64-14's coverage pair (the one double-buffered document
-    // layer in pool 0), since History.swap reads fbs[0] and writes back to each.
+    // framebuffer — 64-24's last-touch pair (the second double-buffered
+    // document layer in pool 0) and 64-14's coverage pair, since History.swap
+    // reads fbs[0] and writes back to each.
     const layers = [
-      [[ink.read.views[0], ink.write.views[0]], [ink.read.views[1], ink.write.views[1]], [wet.read.views[0], wet.write.views[0]], [this.relief.views[0]], [this.cover.read.views[0], this.cover.write.views[0]]],
+      [[ink.read.views[0], ink.write.views[0]], [ink.read.views[1], ink.write.views[1]], [wet.read.views[0], wet.write.views[0]], [this.relief.views[0]], [this.lastTouch.read.views[0], this.lastTouch.write.views[0]], [this.cover.read.views[0], this.cover.write.views[0]]],
       [[this.fixed.views[0]], [this.fixed.views[1]]],
     ];
     const res = dir === 'undo' ? this.history.undo(layers, metaNow) : this.history.redo(layers, metaNow);
@@ -2875,9 +2953,10 @@ export class WatercolorEngine {
 
   private snapshotLayers() {
     // Positionally paired with allocateHistory()'s pool-0 formats and travel()'s
-    // layer map (64-14 adds coverage as the FIFTH and last entry). The three
-    // lists grow together or the history atlas copies the wrong layer.
-    return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0], this.cover.read.views[0]];
+    // layer map (64-24 adds the last-touch read half as the FIFTH entry and
+    // 64-14's coverage stays the SIXTH and last). The three lists grow together
+    // or the history atlas copies the wrong layer.
+    return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0], this.lastTouch.read.views[0], this.cover.read.views[0]];
   }
 
   private drawSplat(t: Target, x: number, y: number, r: number, c0: number[], c1: number[], hardness: number, extent: number) {

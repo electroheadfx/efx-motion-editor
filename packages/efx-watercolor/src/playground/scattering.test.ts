@@ -438,8 +438,8 @@ describe('the composition of order and opacity (MED-36)', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'thirteen target allocations: the coverage pair is the eleventh (SPIKE 001); 64-21 adds the three-reservoir bristle pair and the shape texture (SPIKE 002)',
-    ).toBe(13)
+      'fourteen target allocations: the coverage pair is the eleventh (SPIKE 001); 64-21 adds the three-reservoir bristle pair and the shape texture (SPIKE 002); 64-24 adds the document-sized R32F last-touch pair (D-24, D-29)',
+    ).toBe(14)
     expectContains(alloc, 'this.relief = g.target(')
     // 64-21: the fixed 1 × 256 bristle set — three RGBA16F reservoir
     // attachments (ping-pong) and the static shape texture, NEAREST.
@@ -458,13 +458,13 @@ describe('the composition of order and opacity (MED-36)', () => {
     const history = sliceBetween(ENGINE_SOURCE, 'private allocateHistory()', 'private docTargets()')
     expectContains(
       history,
-      '{ formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R, HALF_FLOAT_R], documents: 2 }',
+      '{ formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA, HALF_FLOAT_R, HALF_FLOAT_R, FLOAT_R, HALF_FLOAT_R], documents: 2 }',
     )
     expectContains(history, '{ formats: [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], documents: 1 }')
     const snapshot = sliceBetween(ENGINE_SOURCE, 'private snapshotLayers()', 'private drawSplat(')
     expectContains(
       snapshot,
-      'return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0], this.cover.read.views[0]];',
+      'return [this.ink.read.views[0], this.ink.read.views[1], this.wet.read.views[0], this.relief.views[0], this.lastTouch.read.views[0], this.cover.read.views[0]];',
     )
   })
 
@@ -650,8 +650,8 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'the gather adds no document-sized target',
-    ).toBe(13)
+      'fourteen allocations: 64-24 adds the documented R32F last-touch pair; the gather adds no target of its own',
+    ).toBe(14)
   })
 })
 
@@ -753,8 +753,8 @@ describe('64-22 — the bristle Body mask (D-21)', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'the bristle Body mask adds no render target',
-    ).toBe(13)
+      'fourteen allocations: the bristle Body mask adds no render target; 64-24 adds the documented R32F last-touch pair',
+    ).toBe(14)
   })
 })
 
@@ -910,7 +910,7 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
-      'the traces add no render target',
-    ).toBe(13)
+      'fourteen allocations: the traces add no render target; 64-24 adds the documented R32F last-touch pair',
+    ).toBe(14)
   })
 })
