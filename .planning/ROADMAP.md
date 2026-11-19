@@ -197,7 +197,7 @@ Plans:
   6. The brush library groups the responses by medium in five sections; picking a brush applies its group's medium in one store write only when the group changes; the 15 existing responses are classified and the eight new ones ship.
   7. Export matches the screen on every `uMode` path, zooming produces no shimmer or crawl, and undo restores the eroded pigment and the eroded thickness exactly.
 
-**Plans:** 20/20 plans executed — 17 executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18), 3 gap-closure plans added 2026-11-18 from `64-VERIFICATION.md`
+**Plans:** 20 of 24 executed — 17 executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18), 3 gap-closure plans added 2026-11-18 from `64-VERIFICATION.md`, and 4 acrylic-bristle extension plans (64-21…64-24) planned 2026-11-19 from `64-CONTEXT.md` + Spike 002
 
 Plans:
 **Wave 1**
@@ -250,11 +250,26 @@ Plans:
 - [x] 64-19-PLAN.md — Light reaches committed and cached frames: the canonical `lightSignature` in every frame-cache revision plus one bounded re-bake per light gesture (closes 64-07 truth 5, CR-01; blocked on 64-18)
 - [x] 64-20-PLAN.md — Coverage/film coherence: coverage transports only where its own paint film leaves the paper-white line, so the Body-100 white-over-blue gate greens with every bar intact and no bar widened (closes 64-17 truth 4)
 
+**Acrylic bristle extension** *(from `64-CONTEXT.md` + Spike 002 — planned 2026-11-19; strictly sequential)*
+**Wave 15**
+- [ ] 64-21-PLAN.md — Record and reservoirs: pin the paper seed, generate the deterministic bristle set from `traceSeed`, and give every bristle its `1 × 256` reservoir pair with the carrier pass per dab — no visual law change, every identity gate byte-identical
+
+**Wave 16** *(blocked on 64-21 completion)*
+- [ ] 64-22-PLAN.md — The gather and the mixing law: the 5-nearest ink-weighted carried coefficients, the RGB→coefficient law, `pickup`/`refill`/`wetSeconds` exposed, and Body composition through the coverage composite with the D-21 bristle-modulated cover for the two bristle responses only
+
+**Wave 17** *(blocked on 64-22 completion)*
+- [ ] 64-23-PLAN.md — Traces and directional edges: `broken` (§4.3), the `grainHeight` trio (§4.4), rim contact (§5.3), landing (§5.4), `dryEdge` (§5.5) and the `wide`/`local` body (§4.5) — the acceptance capture for directional anti-aliased edges
+
+**Wave 18** *(blocked on 64-23 completion)*
+- [ ] 64-24-PLAN.md — Acrylic water and wetness: the document-sized `R32F` last-touch ping-pong pair (D-24), the §3.4 `exp(−age / wetSeconds) · coverage` gate in the carrier, the D-25 acrylic record retune and the Wet/Dry acceptance capture
+
 **Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-07-brush-groups.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-08-scattering.md`
 
 **Spec provenance** (planner input, not an execution unit — the `GSD-QUICK-PROMPT-*` filenames are historical names, not quick dispatches): spec 03 — Viscosity global (dissipation raises only, spread `0.12 × (1 − v·0.9)`, per-stroke snapshot like `lift`); spec 04 — five medium records over the canonical globals, one store write per switch; spec 05 — a real paint-thickness channel deposited through the tip, lit as an emboss with a document-level render light; spec 06 — `Body` order (a covering dab erodes the settled layer with the Lift program under its own tip, then deposits its own pigment); spec 07 — brush groups (compile-time `group` tag, five sections, group → medium in one write, 15 classified + 8 new responses); spec 08 — Kubelka-Munk scattering (`S` in `inkB.a`/`fixedB.a`, `Body`-driven, `S = 0` bit-identical).
 
 **Delivery law — AMENDED 2026-11-18 (Spike 001):** the clauses "`Body` adds no target and no shader program (it reuses the Lift program), never touches water or mobile pigment" and "no alpha compositing" are superseded by the approved coverage composite. `Body` now ships ONE persistent one-channel coverage target pair plus three small programs (`coverDepositFS`, `coverMaskFS`, `advectCoverFS`), attenuates mobile pigment source-over in coefficient space, and the live/commit sheet carries a coverage-derived alpha. The rendered cost is bounded and replaces the per-stroke 17.8 MiB `preInk` snapshot and the app-level punch. Authority: `.planning/spikes/001-coverage-composite/VERDICT.md`; plans 64-13/64-14/64-15/64-17.
+
+**Delivery law — AMENDED 2026-11-19 (Spike 002, acrylic bristle):** the clauses "no new render target, no texture allocation" are amended EXACTLY for the acrylic bristle deposit (D-29): the bristle responses add three `RGBA16F` `1 × 256` reservoir ping-pong pairs, one static 256² shape target, three passes per dab (`bristleDeposit`, `bristleCarrier`, `bristleInk`) and ONE document-sized `R32F` last-touch ping-pong pair on the coverage-lifecycle precedent (its cleared value is a sentinel one week old, and it is engine state only — frame cache 0 B, no project member). Nothing else is added; `wetSeconds` is the acrylic record's own paint-tack time and never redefines `dryTau()`, and no paint-derived number may reach a covering density or a pigment coefficient. Every non-bristle response and every identity baseline stays byte-identical. Authority: `.planning/phases/64-medium-engine/64-CONTEXT.md` (D-21…D-29) + `.claude/skills/spike-findings-efx-motion-editor/references/bristle-deposit.md`; plans 64-21/64-22/64-23/64-24.
 
 **Delivery law**: Viscosity is additive to the existing globals — never a redefinition of `flow`, `water`, `load`, `bleed` or any deposit math — and is applied at exactly the two named engine sites; replay determinism (same stroke ⇒ same raster live, bake and replay) is the acceptance bar for every term; the persisted changes are the additive per-stroke `viscosity`, `body` and `emboss` keys inside the canonical params bag the engine slot carries (Rust holds that slot as an opaque `Value`, so the keys round-trip without a Rust mirror) plus the optional document `light` field, declared in BOTH TS and Rust under the field-diff pin; medium records are plain serializable data and the per-stroke params snapshot stays authoritative over the advisory medium id; thickness adds exactly ONE document-resolution half-float channel — no other render target, no texture allocation, no height texture asset — is captured in the engine snapshot and protected for undo; the light is never stored in paint and enters the cache content fingerprint, so a light change is a cache miss and a deterministic re-bake; `Body` adds no target and no shader program (it reuses the Lift program), never touches water or mobile pigment, and at 0 runs no cover pass; scattering reuses `inkB.a`/`fixedB.a` with no new pass and retires the white-gouache path, and `S = 0` must reproduce today's Beer-Lambert output exactly (pixel-buffer comparison); no alpha compositing, no second engine and no second module; no package/type/signal/`BRUSH_PACK_KIND` rename and no `.mce` schema break.
 
@@ -267,7 +282,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 20/20 | In Progress | - |
+| 64. Medium Engine | 20/24 | In Progress | - |
 
 ---
 
