@@ -306,6 +306,23 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(params.lift, 'lift is untouched by Reset').toBe(33);
     expect(params.wetSeconds, 'wetSeconds is untouched by Reset').toBe(21);
   });
+
+  // 261119-pod (D-A): Pickup opens at 100 and Reset restores it. The panel's
+  // Reset path reads `Math.round(DEFAULT_PARAMS[row.key] * 100)`, so the engine
+  // default 1.0 lands as the canonical 100 the reference declares (§6).
+  it('opens Pickup at 100 and resets it to 100 (D-A)', () => {
+    expect(DEFAULT_AQUARELLE_PARAMS.pickup).toBe(100);
+    setAquarelleParam('pickup', 55);
+    const tree = renderPanel();
+    const reset = [...walk(tree)].find(
+      (n) => n.type === 'button' && n.props?.['data-testid'] === 'aquarelle-params-reset',
+    );
+    expect(reset, 'Reset control must render').toBeTruthy();
+    const onClick = (reset!.props as { onClick?: () => void }).onClick;
+    expect(typeof onClick, 'Reset must be clickable').toBe('function');
+    onClick!();
+    expect(aquarelleParams.value.pickup, 'pickup → 100').toBe(100);
+  });
 });
 
 // Phase 64 (D-01/D-03/D-07) — the medium dropdown leads the Paint tab.

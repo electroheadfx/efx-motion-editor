@@ -1080,3 +1080,174 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     ).toBe(14)
   })
 })
+
+// ============================================================
+//  261119-pod — the §3.3 smear, the per-dab snapshot and the
+//  four-side Feather.
+//
+//  The reference's §3.3 drag (`carried = mix(carried, canvas, clamp(smear, 0, 0.8))`,
+//  `smear = pickup · wet · hash21(vec2(nearest, floor(along / 6)))`) is ported in
+//  COEFFICIENT space: a per-dab snapshot of the canvas (ink + fixed + cover),
+//  a single `smearWeight` helper both gather consumers call, and a gate that
+//  never samples the snapshot at Pickup 0. The gather gains its OWN `wetAt`
+//  reading the snapshot's COVER alpha — the same pinned arithmetic shape the
+//  carrier runs, so the two laws can never drift. Feather opens on all four
+//  sides with a Studio-only ramp that multiplies the coverage BEFORE the
+//  threshold smoothstep, enclosed so Feather 0 is exactly the shipped
+//  arithmetic.
+// ============================================================
+
+describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather', () => {
+  const gather = () =>
+    sliceBetween(SHADERS_SOURCE, 'export const BRISTLE_GATHER', 'export const bristleDepositFS')
+  const deposit = () =>
+    sliceBetween(SHADERS_SOURCE, 'export const bristleDepositFS', 'export const bristleCoverFS')
+  const cover = () =>
+    sliceBetween(SHADERS_SOURCE, 'export const bristleCoverFS', 'export const bristleTouchFS')
+  const snapshot = () =>
+    sliceBetween(SHADERS_SOURCE, 'export const bristleCanvasFS', 'export const bristleCarrierFS')
+
+  it('carries the §3.4 wetness shape on exactly TWO lines — the carrier and the gather', () => {
+    const shape = SHADERS_SOURCE.match(/return exp\(-age \/ max\(uWetSeconds, 1\.0\)\) \*/g) ?? []
+    expect(shape.length, 'one shape per gate, so the laws cannot drift').toBe(2)
+    // The carrier's half is Task 1's restored pin, never edited here.
+    expectContains(SHADERS_SOURCE, 'return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;')
+    expectContains(SHADERS_SOURCE, 'return exp(-age / max(uWetSeconds, 1.0)) * texture(uSnapB, uv).a;')
+    const g = gather()
+    expectContains(g, 'uniform sampler2D uSnapA;')
+    expectContains(g, 'uniform sampler2D uSnapB;')
+    expectContains(g, 'uniform sampler2D uTimes;')
+    expectContains(g, 'uniform float uNow;')
+    expectContains(g, 'uniform float uWetSeconds;')
+    // Unconditional, one shipped law: `uWetMode` stays carrier-only.
+    expectNotContains(g, 'uWetMode')
+    // The §3.4 revert's deleted helper never returns — verified by the
+    // shell gate over the whole file (this test file carries no such token).
+  })
+
+  it('copy the snapshot into two attachments: coefficients and the COVER alpha', () => {
+    expect(
+      (SHADERS_SOURCE.match(/export const bristleCanvasFS/g) ?? []).length,
+      'one snapshot fragment',
+    ).toBe(1)
+    const s = snapshot()
+    expectContains(s, 'uniform sampler2D uInkA, uInkB, uFixedA, uFixedB, uCover;')
+    expectContains(s, 'oA = texture(uInkA, vUv) + texture(uFixedA, vUv);')
+    expectContains(s, 'oB = vec4(b, texture(uCover, vUv).x);')
+    expectContains(s, 'vec3 b = (texture(uInkB, vUv) + texture(uFixedB, vUv)).rgb;')
+    // No gather, no clock: the copy is one cheap document-sized pass.
+    expectNotContains(s, 'gatherBristle')
+    expectNotContains(s, 'uNow')
+  })
+
+  it('computes ONE smearWeight from hash21(nearest, floor(alongPx / period))', () => {
+    expect((SHADERS_SOURCE.match(/float smearWeight\(/g) ?? []).length, 'one smear helper').toBe(1)
+    const g = gather()
+    expectContains(g, 'float smearWeight(int nearest, float alongPx, float wet){')
+    expectContains(g, 'hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx)))')
+    expectContains(
+      g,
+      'clamp(uSmear * wet * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap)',
+    )
+    expectContains(g, 'uniform float uSmear;')
+    expectContains(g, 'uniform float uSmearPeriodPx;')
+    expectContains(g, 'uniform float uSmearCap;')
+  })
+
+  it('mixes the deposit and the cover target through the SAME helper, inside the guard', () => {
+    const d = deposit()
+    expectContains(d, 'if (uSmear > 0.0) {')
+    expectContains(d, 'float smear = smearWeight(g.nearest, uAlongPx + q.y * uHalfWidthPx, wetAt(vUv));')
+    expectContains(d, 'vec4 cA = g.cA;')
+    expectContains(d, 'vec3 cB = g.cB;')
+    expectContains(d, 'cA = mix(cA, texture(uSnapA, vUv), smear);')
+    expectContains(d, 'cB = mix(cB, texture(uSnapB, vUv).rgb, smear);')
+    expectContains(d, 'oA = cA * a;')
+    expectContains(d, 'oB = vec4(cB * a, uScatter * a);')
+    const c = cover()
+    expectContains(c, 'if (uSmear > 0.0) {')
+    expectContains(c, 'float target = a * uCoverTarget * g.alpha;')
+    expectContains(c, 'target = mix(target, a * uCoverTarget * texture(uSnapB, vUv).a, smear);')
+    expectContains(c, 'o0 = vec4(target, 0.0, 0.0, a);')
+    // Both mixes sit AFTER the guard's anchor: Pickup 0 never samples the
+    // snapshot, and the weight is exactly zero there too (belt and braces).
+    for (const src of [d, c]) {
+      const guardAt = src.indexOf('if (uSmear > 0.0) {')
+      const weightAt = src.indexOf('smearWeight(')
+      expect(guardAt, 'the guard exists').toBeGreaterThan(-1)
+      expect(weightAt, 'the weight is inside the guard').toBeGreaterThan(guardAt)
+    }
+    // One snapshot read per consumer: the law is never re-typed.
+    expect((d.match(/texture\(uSnapA, vUv\)/g) ?? []).length).toBe(1)
+    expect((d.match(/texture\(uSnapB, vUv\)/g) ?? []).length).toBe(1)
+  })
+
+  it('multiplies the coverage by the four-side ramp BEFORE the threshold, inside the guard', () => {
+    expect((SHADERS_SOURCE.match(/float featherFall\(/g) ?? []).length, 'one ramp helper').toBe(1)
+    const g = gather()
+    expectContains(g, 'float featherFall(float across, float along){')
+    expectContains(g, 'float side = 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, abs(across));')
+    expectContains(g, 'float end = 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, abs(along));')
+    expectContains(g, 'return mix(1.0, side * end, uFeather);')
+    expectContains(g, 'if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
+    const rampAt = g.indexOf('if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
+    const smoothAt = g.indexOf(
+      'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);',
+    )
+    expect(rampAt, 'the ramp runs').toBeGreaterThan(-1)
+    expect(smoothAt, 'the threshold follows the ramp').toBeGreaterThan(rampAt)
+    expectContains(g, 'uniform float uFeather;')
+    expectContains(g, 'uniform float uFeatherReach;')
+    // Feather still widens §6's softness band too — the two halves compose.
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uSoftness!, gatherSoftness(this.params.feather));')
+  })
+
+  it('registers the snapshot program OUTSIDE the pinned literal and allocates one pair', () => {
+    expectContains(ENGINE_SOURCE, 'this.programs.bristleCanvas = this.g.program(S.bristleCanvasFS);')
+    const literal = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
+    expect(
+      (literal.match(/this\.g\.program\(/g) ?? []).length,
+      'twenty-three programs: the snapshot registers outside the literal',
+    ).toBe(23)
+    const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
+    expectContains(
+      alloc,
+      'this.smearCanvas = g.target(this.dw, this.dh, [HALF_FLOAT_RGBA, HALF_FLOAT_RGBA], gl.NEAREST);',
+    )
+    const targets = sliceBetween(ENGINE_SOURCE, 'private docTargets(): Target[] {', '\n  }')
+    expectContains(targets, 'this.bristleShape, this.smearCanvas, this.relief,')
+  })
+
+  it('takes the snapshot after touch(rect), before the first deposit draw, only at Pickup > 0', () => {
+    const ink = sliceBetween(ENGINE_SOURCE, 'private bristleInk(', 'private bristleSnapshot(')
+    const touchAt = ink.indexOf('this.touch(rect);')
+    const snapAt = ink.indexOf('if (this.params.pickup > 0) this.bristleSnapshot(rect);')
+    const depositAt = ink.indexOf('g.draw(this.ink.read, rect);')
+    expect(touchAt, 'the rect bookkeeping runs first').toBeGreaterThan(-1)
+    expect(snapAt, 'the snapshot is taken').toBeGreaterThan(touchAt)
+    expect(depositAt, 'the first deposit draw follows the snapshot').toBeGreaterThan(snapAt)
+    const snap = sliceBetween(ENGINE_SOURCE, 'private bristleSnapshot(', 'private bristleTouch(')
+    expectContains(snap, 'g.bindTex(0, this.ink.read.tex[0]!)')
+    expectContains(snap, 'g.bindTex(1, this.ink.read.tex[1]!)')
+    expectContains(snap, 'g.bindTex(2, this.fixed.tex[0]!)')
+    expectContains(snap, 'g.bindTex(3, this.fixed.tex[1]!)')
+    expectContains(snap, 'g.bindTex(4, this.cover.read.tex[0]!)')
+    expectContains(snap, 'g.draw(this.smearCanvas, rect);')
+  })
+
+  it('binds the snapshot on units 5/6, the last-touch read on 7, and the smear uniforms', () => {
+    const bind = sliceBetween(ENGINE_SOURCE, 'private bindGather(', 'private bristleInk(')
+    expectContains(bind, 'gl.uniform1i(p.u.uSnapA!, g.bindTex(5, this.smearCanvas.tex[0]!));')
+    expectContains(bind, 'gl.uniform1i(p.u.uSnapB!, g.bindTex(6, this.smearCanvas.tex[1]!));')
+    expectContains(bind, 'gl.uniform1i(p.u.uTimes!, g.bindTex(7, this.lastTouch.read.tex[0]!));')
+    expectContains(bind, 'gl.uniform1f(p.u.uSmear!, this.params.pickup);')
+    expectContains(bind, 'gl.uniform1f(p.u.uSmearPeriodPx!, BRISTLE_SMEAR_PERIOD_PX);')
+    expectContains(bind, 'gl.uniform1f(p.u.uSmearCap!, BRISTLE_SMEAR_CAP);')
+    expectContains(bind, 'gl.uniform1f(p.u.uFeather!, clamp(this.params.feather, 0, 1));')
+    expectContains(bind, 'gl.uniform1f(p.u.uFeatherReach!, BRISTLE_FEATHER_REACH);')
+    expectContains(bind, 'gl.uniform1f(p.u.uNow!, this.clock() / 1000);')
+    expectContains(bind, 'gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);')
+    // The gather has one wetness law: no A/B mode rides it.
+    expectNotContains(bind, 'uWetMode')
+  })
+})

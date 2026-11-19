@@ -125,6 +125,16 @@ describe('the medium keys in the live bag', () => {
     expect(aquarelleParams.value.wetSeconds).toBe(7);
   });
 
+  // 261119-pod (D-A): Pickup opens at 100 in the app's fresh-session record,
+  // the live bag and every per-stroke snapshot. The app value is load-bearing:
+  // a fresh Studio stroke's recorded bag comes from DEFAULT_AQUARELLE_PARAMS,
+  // so the engine default alone would never reach a live stroke.
+  it('opens Pickup at 100 (D-A) in the defaults, the bag and the snapshot', () => {
+    expect(DEFAULT_AQUARELLE_PARAMS.pickup).toBe(100);
+    expect(aquarelleParams.value.pickup).toBe(100);
+    expect(snapshotAquarelleRecord().params.pickup).toBe(100);
+  });
+
   it('keeps the bag at exactly the sixteen canonical keys', () => {
     expect(Object.keys(aquarelleParams.value).sort()).toEqual([
       'bleed',

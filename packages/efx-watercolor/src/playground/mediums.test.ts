@@ -200,6 +200,17 @@ describe('medium records', () => {
     expect(recordOf('watercolor').params.wetSeconds).toBe(DEFAULT_CANONICAL_PARAMS.wetSeconds)
   })
 
+  // 261119-pod (D-A): Pickup opens at 100 on the NEUTRAL medium only. The
+  // watercolor record derives it from the canonical default, so it moves with
+  // the default; the four explicit records keep their recorded 60 — the
+  // Pickup-100 default is the watercolor medium's, not a blanket rewrite.
+  it('opens Pickup at 100 on the neutral medium only (D-A)', () => {
+    expect(recordOf('watercolor').params.pickup).toBe(100)
+    for (const id of ['gouache', 'pastel', 'graphite', 'acrylic'] as const) {
+      expect(recordOf(id).params.pickup, `${id} keeps its recorded pickup`).toBe(60)
+    }
+  })
+
   it('keeps every record frozen plain serializable data', () => {
     expect(MEDIUMS).toHaveLength(5)
     expect(Object.isFrozen(MEDIUMS)).toBe(true)

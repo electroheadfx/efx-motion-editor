@@ -847,3 +847,137 @@ describe('bristleTouchValue — the touch refresh mix (64-24)', () => {
     expect(v, 'two missing times read as 0').toBe(0)
   })
 })
+
+// ============================================================
+//  261119-pod — the §3.3 smear and the four-side Feather.
+//
+//  Three Studio laws join the module's declared set: the §3.3 hash cell
+//  (`BRISTLE_SMEAR_PERIOD_PX`, 6 px), the §3.3 clamp (`BRISTLE_SMEAR_CAP`,
+//  0.8) and the Studio-only feather reach (`BRISTLE_FEATHER_REACH`, 0.45).
+//  Each pure twin is the tested mirror of one expression in `shaders.ts`:
+//  a literal that replaces a declared constant, or a second copy of a law,
+//  fails the pins below. `bristleSmearRate` IS the 1:1 mapping (D-A): one
+//  knob, no second curve.
+// ============================================================
+
+const SMEAR = bristleModule as unknown as {
+  BRISTLE_SMEAR_PERIOD_PX?: number
+  BRISTLE_SMEAR_CAP?: number
+  BRISTLE_FEATHER_REACH?: number
+  bristleSmearRate?: (pickup: number) => number
+  bristleSmearWeight?: (rate: number, wet: number, hash: number) => number
+  bristleFeatherFall?: (across: number, along: number, feather: number) => number
+}
+
+describe('the §3.3 smear constants and twins (261119-pod)', () => {
+  it('declares the three constants once, beside the other stroke laws', () => {
+    expect(SMEAR.BRISTLE_SMEAR_PERIOD_PX, '§3.3 hash cell period').toBe(6)
+    expect(SMEAR.BRISTLE_SMEAR_CAP, '§3.3 clamp').toBe(0.8)
+    expect(SMEAR.BRISTLE_FEATHER_REACH, 'Studio-only feather reach').toBe(0.45)
+    for (const [name, literal] of [
+      ['BRISTLE_SMEAR_PERIOD_PX', 'export const BRISTLE_SMEAR_PERIOD_PX = 6;'],
+      ['BRISTLE_SMEAR_CAP', 'export const BRISTLE_SMEAR_CAP = 0.8;'],
+      ['BRISTLE_FEATHER_REACH', 'export const BRISTLE_FEATHER_REACH = 0.45;'],
+    ] as const) {
+      expect(
+        (SOURCE.match(new RegExp(literal.replaceAll('.', '\\.'), 'g')) ?? []).length,
+        `${name} declared once`,
+      ).toBe(1)
+      const declarations = PACKAGE_SOURCES.filter(({ text }) =>
+        new RegExp(`export const ${name}\\b`).test(text),
+      ).map(({ file }) => file)
+      expect(declarations, `${name} is declared once in the package`).toEqual([
+        'playground/bristles.ts',
+      ])
+    }
+  })
+
+  it('bristleSmearRate is clamp01(pickup) — the 1:1 mapping, no second knob (D-A)', () => {
+    expect(typeof SMEAR.bristleSmearRate, 'bristleSmearRate is exported').toBe('function')
+    expect(SMEAR.bristleSmearRate?.(0), 'Pickup 0 smears nothing').toBe(0)
+    expect(
+      SMEAR.bristleSmearRate?.(1),
+      'Pickup 100 normalises to 1.0 through the ONE mapping',
+    ).toBe(1)
+    expect(SMEAR.bristleSmearRate?.(0.6), 'the same number, one knob').toBeCloseTo(0.6, 12)
+    expect(SMEAR.bristleSmearRate?.(1.5), 'clamped above').toBe(1)
+    expect(SMEAR.bristleSmearRate?.(-0.2), 'clamped below').toBe(0)
+    expect(SMEAR.bristleSmearRate?.(Number.NaN), 'a missing rate smears nothing').toBe(0)
+  })
+
+  it('bristleSmearWeight is clamp(rate·wet·hash, 0, 0.8) — monotone, zero at rate 0', () => {
+    expect(typeof SMEAR.bristleSmearWeight, 'bristleSmearWeight is exported').toBe('function')
+    expect(SMEAR.bristleSmearWeight?.(0, 1, 1), 'no pickup, no drag').toBe(0)
+    expect(SMEAR.bristleSmearWeight?.(1, 1, 1), 'the §3.3 cap').toBeCloseTo(0.8, 12)
+    expect(SMEAR.bristleSmearWeight?.(0.5, 0.5, 0.5)).toBeCloseTo(0.125, 12)
+    expect(SMEAR.bristleSmearWeight?.(1, 1, 0.5)).toBeCloseTo(0.5, 12)
+    // Monotone in each argument across its band.
+    let previous = -1
+    for (const rate of [0, 0.1, 0.25, 0.5, 0.75, 1]) {
+      const w = SMEAR.bristleSmearWeight?.(rate, 0.8, 0.7) ?? Number.NaN
+      expect(w).toBeGreaterThanOrEqual(previous)
+      previous = w
+    }
+    previous = -1
+    for (const wet of [0, 0.1, 0.25, 0.5, 0.75, 1]) {
+      const w = SMEAR.bristleSmearWeight?.(1, wet, 1) ?? Number.NaN
+      expect(w).toBeGreaterThanOrEqual(previous)
+      previous = w
+    }
+    previous = -1
+    for (const hash of [0, 0.1, 0.25, 0.5, 0.75, 1]) {
+      const w = SMEAR.bristleSmearWeight?.(1, 1, hash) ?? Number.NaN
+      expect(w).toBeGreaterThanOrEqual(previous)
+      previous = w
+    }
+    expect(SMEAR.bristleSmearWeight?.(1, 1, 1), 'never above the cap').toBeLessThanOrEqual(0.8)
+    expect(SMEAR.bristleSmearWeight?.(Number.NaN, 1, 1), 'a missing rate drags nothing').toBe(0)
+  })
+
+  it('bristleFeatherFall is exactly 1 at Feather 0, 1 inside the reach, 0 at both edges', () => {
+    expect(typeof SMEAR.bristleFeatherFall, 'bristleFeatherFall is exported').toBe('function')
+    for (const [a, l] of [
+      [0, 0],
+      [0.9, 0.9],
+      [1, 1],
+      [-1, 0.3],
+    ] as const) {
+      expect(
+        SMEAR.bristleFeatherFall?.(a, l, 0),
+        'Feather 0 keeps the exact shipped arithmetic',
+      ).toBe(1)
+    }
+    // Feather 1: exactly 1 inside 1 − reach = 0.55 on both axes ...
+    for (const [a, l] of [
+      [0, 0],
+      [0.5, 0.5],
+      [0.55, -0.55],
+      [-0.4, 0.2],
+    ] as const) {
+      expect(SMEAR.bristleFeatherFall?.(a, l, 1), `inside the reach at ${a}/${l}`).toBe(1)
+    }
+    // ... and exactly 0 on the across edge and on the along edge.
+    expect(SMEAR.bristleFeatherFall?.(1, 0, 1), 'the side edge falls to zero').toBe(0)
+    expect(SMEAR.bristleFeatherFall?.(-1, 0.2, 1), 'symmetric across').toBe(0)
+    expect(SMEAR.bristleFeatherFall?.(0, 1, 1), 'the end edge falls to zero').toBe(0)
+    expect(SMEAR.bristleFeatherFall?.(0, -1, 1)).toBe(0)
+    // Monotone from the core to the edge, and the fall scales with Feather.
+    let previous = Number.POSITIVE_INFINITY
+    for (const across of [0, 0.55, 0.7, 0.85, 1]) {
+      const v = SMEAR.bristleFeatherFall?.(across, 0, 1) ?? Number.NaN
+      expect(v).toBeLessThanOrEqual(previous)
+      previous = v
+    }
+    const mid = SMEAR.bristleFeatherFall?.(0.8, 0, 1) ?? Number.NaN
+    expect(mid).toBeGreaterThan(0)
+    expect(mid).toBeLessThan(1)
+    expect(
+      SMEAR.bristleFeatherFall?.(0.8, 0, 0.5) ?? Number.NaN,
+      'half Feather, half the fall',
+    ).toBeCloseTo(1 - (1 - mid) * 0.5, 12)
+    // Total: a non-finite argument replays the neutral core value.
+    expect(SMEAR.bristleFeatherFall?.(Number.NaN, 0.2, 1)).toBe(1)
+    expect(SMEAR.bristleFeatherFall?.(0, Number.NaN, 1)).toBe(1)
+    expect(SMEAR.bristleFeatherFall?.(0.8, 0, Number.NaN)).toBe(1)
+  })
+})

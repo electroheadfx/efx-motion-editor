@@ -137,6 +137,17 @@ describe('toEngineParams', () => {
     expect(DEFAULT_PARAMS.refill).toBeCloseTo(0.6, 12);
   });
 
+  // 261119-pod (D-A): Pickup opens at 100 — the reference's §6 `mixing.pickup`
+  // default, mapped 1:1 onto the engine's 1.0. ONE knob feeds both the §3.1
+  // carrier pickup (clamped 0.75) and the §3.3 deposit smear (capped 0.8).
+  it('opens Pickup at 100 (D-A) in the canonical and engine bags', () => {
+    expect(DEFAULT_CANONICAL_PARAMS.pickup).toBe(100);
+    expect(DEFAULT_PARAMS.pickup).toBe(1);
+    expect(toEngineParams({}).pickup).toBe(1);
+    expect(toEngineParams(undefined).pickup).toBe(1);
+    expect(toEngineParams({ water: 50 }).pickup).toBe(1);
+  });
+
   // Phase 64 (v2.2.0): the medium bag's first key. 0 is neutral — an absent
   // key must replay a pre-milestone stroke byte-identically.
   it('maps the Viscosity global 0..100 onto the 0..1 medium bag', () => {
