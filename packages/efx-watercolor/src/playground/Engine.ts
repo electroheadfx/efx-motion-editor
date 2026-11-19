@@ -2828,8 +2828,10 @@ export class WatercolorEngine {
     // The reference's whole visible structure (broken dashes, fibre body and
     // the paper threshold winning) only switches on as the per-bristle load
     // falls. At 0.25/doc a full brush needed ~4000 px of travel to empty, so a
-    // normal stroke never dried and always deposited a solid bar.
-    gl.uniform1f(p.u.uDepletion!, 4.0 / Math.min(this.dw, this.dh));
+    // normal stroke never dried and always deposited a solid bar. `Dry` now
+    // owns the rate: 0 = stays wet for the whole stroke, 1 = empties in ~250 px.
+    const dryRate = clamp(this.params.dry, 0, 1);
+    gl.uniform1f(p.u.uDepletion!, (0.05 + 3.8 * dryRate * dryRate) / Math.min(this.dw, this.dh));
     const c = this.pigment.coeffs;
     gl.uniform4f(p.u.uPigmentA!, c[0]!, c[1]!, c[2]!, c[3]!);
     gl.uniform3f(p.u.uPigmentB!, c[4]!, c[5]!, c[6]!);
