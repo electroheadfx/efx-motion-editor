@@ -14,7 +14,7 @@
 //      the live surface, and returns the record door's refusal
 //      instead of throwing.
 //   5. The Paint tab agrees after a cross-group pick — the selected
-//      medium id and the ten globals — and a texture selection
+//      medium id and the fourteen globals — and a texture selection
 //      changes neither.
 //   6. One seam: every response surface calls pickAquarelleBrush, and
 //      only the Paint-tab dropdown and the seam call the medium
@@ -78,6 +78,10 @@ const MEDIUM_KEYS: readonly MediumParamKey[] = [
   'viscosity',
   'body',
   'emboss',
+  'feather',
+  'pickup',
+  'refill',
+  'wetSeconds',
 ];
 
 interface PortCall {
@@ -307,7 +311,7 @@ describe('a cross-group pick applies the group medium (64-12 MED-28)', () => {
 });
 
 describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
-  it('moves the selected medium id and the ten globals with the group', async () => {
+  it('moves the selected medium id and the fourteen globals with the group', async () => {
     setAquarelleParam('size', 55);
     setAquarelleParam('lift', 27);
     const sizeBefore = aquarelleParams.value.size;
@@ -322,9 +326,9 @@ describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
     const globals = Object.fromEntries(
       MEDIUM_KEYS.map((key) => [key, aquarelleParams.value[key]]),
     );
-    expect(Object.keys(globals), 'exactly the ten keys D-02 names').toHaveLength(10);
-    expect(globals, 'the ten globals equal the record').toEqual(record.params);
-    expect(Object.keys(aquarelleParams.value).sort(), 'the bag keeps its twelve keys').toEqual(
+    expect(Object.keys(globals), 'exactly the fourteen keys D-02 names').toHaveLength(14);
+    expect(globals, 'the fourteen globals equal the record').toEqual(record.params);
+    expect(Object.keys(aquarelleParams.value).sort(), 'the bag keeps its sixteen keys').toEqual(
       [...MEDIUM_KEYS, 'size', 'lift'].sort(),
     );
     expect(aquarelleParams.value.size, 'size is reference-equal to its prior value').toBe(

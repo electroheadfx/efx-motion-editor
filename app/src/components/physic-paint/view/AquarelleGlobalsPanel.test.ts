@@ -5,10 +5,12 @@
  *   Phase 64 (D-01/D-07): the medium dropdown is the FIRST child row and names
  *   the selected medium; five items render in the fixed D-18 order
  *   (Watercolor, Gouache, Chalk, Graphite, Acrylic)
- *   10 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
- *   Dry speed, Viscosity, Body, Emboss (keys stay
- *   water/load/flow/bleed/edge/granulation/dry/viscosity/body/emboss; 64-06
- *   inserted Body between Viscosity and Emboss — D-07's ten-row order)
+ *   13 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
+ *   Dry speed, Viscosity, Body, Feather, Pickup, Refill, Emboss (keys stay
+ *   water/load/flow/bleed/edge/granulation/dry/viscosity/body/feather/pickup/
+ *   refill/emboss; 64-22 inserted Feather after Body and Pickup/Refill after
+ *   Feather — D-22's thirteen-row order). `wetSeconds` is a medium-record
+ *   value with NO row — it is seconds, and the ×100 reset law would corrupt it.
  *   no Size control (top-bar owns it, Q1a) and no Hand row
  *   Reset writes playground DEFAULT_PARAMS ×100 for every non-size row via
  *   setAquarelleParam and never writes size or lift (T-261017-WMW-01)
@@ -163,7 +165,9 @@ function collectOrderedLabels(tree: TestVNode): string[] {
 }
 
 /** I-01/I-02 playground order (SettingsPanel SLIDERS minus Size and Hand),
- *  with Phase 64's Viscosity, Body and Emboss (D-07's ten-row order). */
+ *  with Phase 64's Viscosity, Body, Feather, Pickup, Refill and Emboss
+ *  (D-22's thirteen-row order: Feather after Body, Pickup then Refill after
+ *  Feather, Emboss last). */
 const GLOBAL_LABELS = [
   'Water',
   'Pigment',
@@ -174,6 +178,9 @@ const GLOBAL_LABELS = [
   'Dry speed',
   'Viscosity',
   'Body',
+  'Feather',
+  'Pickup',
+  'Refill',
   'Emboss',
 ] as const;
 
@@ -181,7 +188,7 @@ const GLOBAL_LABELS = [
  *  "Chalk" deliberately — the id is not the label. */
 const MEDIUM_NAMES = ['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic'] as const;
 
-/** Playground DEFAULT_PARAMS ×100 for the 10 non-size rows. */
+/** Playground DEFAULT_PARAMS ×100 for the 13 non-size rows. */
 const RESET_EXPECTED = {
   water: 60,
   load: 50,
@@ -192,6 +199,9 @@ const RESET_EXPECTED = {
   dry: 40,
   viscosity: 0,
   body: 0,
+  feather: 0,
+  pickup: 60,
+  refill: 60,
   emboss: 0,
 } as const;
 
@@ -207,7 +217,7 @@ function findTestId(tree: TestVNode, testId: string): TestVNode | undefined {
 }
 
 describe('AquarelleGlobalsPanel sliders (I-02)', () => {
-  it('renders the 10 named global slider labels in playground order', () => {
+  it('renders the 13 named global slider labels in playground order', () => {
     const tree = renderPanel();
     const ordered = collectOrderedLabels(tree).filter((l) =>
       (GLOBAL_LABELS as readonly string[]).includes(l),
@@ -229,7 +239,7 @@ describe('AquarelleGlobalsPanel sliders (I-02)', () => {
     expect(/\bsize\b/i.test(text), 'found size text in panel').toBe(false);
   });
 
-  it('renders nothing but the 10 sliders + Reset (no response chrome)', () => {
+  it('renders nothing but the 13 sliders + Reset (no response chrome)', () => {
     const tree = renderPanel();
     const text = textContent(tree);
     expect(text).not.toContain('Brush response');
@@ -259,7 +269,11 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     setAquarelleParam('dry', 7);
     setAquarelleParam('viscosity', 55);
     setAquarelleParam('body', 55);
+    setAquarelleParam('feather', 55);
+    setAquarelleParam('pickup', 55);
+    setAquarelleParam('refill', 55);
     setAquarelleParam('emboss', 55);
+    setAquarelleParam('wetSeconds', 21);
     setAquarelleParam('lift', 33);
 
     const tree = renderPanel();
@@ -281,11 +295,16 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(params.dry, 'dry → 40').toBe(RESET_EXPECTED.dry);
     expect(params.viscosity, 'viscosity → 0').toBe(RESET_EXPECTED.viscosity);
     expect(params.body, 'body → 0').toBe(RESET_EXPECTED.body);
+    expect(params.feather, 'feather → 0').toBe(RESET_EXPECTED.feather);
+    expect(params.pickup, 'pickup → 60').toBe(RESET_EXPECTED.pickup);
+    expect(params.refill, 'refill → 60').toBe(RESET_EXPECTED.refill);
     expect(params.emboss, 'emboss → 0').toBe(RESET_EXPECTED.emboss);
     // T-261017-WMW-01: Reset must never write size (top-bar Brush size owns it)
-    // and never touches the eraser strength.
+    // and never touches the eraser strength. D-22: `wetSeconds` has no row,
+    // so Reset never touches it either — a ×100 reset would corrupt seconds.
     expect(params.size, 'size is untouched by Reset').toBe(77);
     expect(params.lift, 'lift is untouched by Reset').toBe(33);
+    expect(params.wetSeconds, 'wetSeconds is untouched by Reset').toBe(21);
   });
 });
 
@@ -306,18 +325,42 @@ describe('Phase 64 medium dropdown', () => {
     expect(text, 'the row names the selected medium').toContain('Watercolor');
   });
 
-  it('renders ten slider rows below the dropdown, Body ninth and Emboss last', () => {
+  it('renders thirteen slider rows below the dropdown, Refill twelfth and Emboss last', () => {
     const tree = renderPanel();
     const sliders = [...walk(tree)].filter(
       (node) => node.props?.['data-testid'] === 'slider-stepper',
     );
-    expect(sliders, 'ten slider rows at this wave').toHaveLength(GLOBAL_LABELS.length);
+    expect(sliders, 'thirteen slider rows after 64-22').toHaveLength(GLOBAL_LABELS.length);
+    expect(GLOBAL_LABELS).toHaveLength(13);
     const ordered = collectOrderedLabels(tree).filter((label) =>
       (GLOBAL_LABELS as readonly string[]).includes(label),
     );
     expectGlobalOrder(ordered);
-    expect(ordered[ordered.length - 2]).toBe('Body');
+    expect(ordered).toHaveLength(13);
+    // D-22: Feather after Body, then Pickup, then Refill, and Emboss last.
+    expect(ordered[ordered.length - 4]).toBe('Body');
+    expect(ordered[ordered.length - 3]).toBe('Feather');
+    expect(ordered[ordered.length - 2]).toBe('Refill');
     expect(ordered[ordered.length - 1]).toBe('Emboss');
+    const index = (label: string) => ordered.indexOf(label);
+    expect(index('Feather'), 'Feather sits after Body').toBeGreaterThan(index('Body'));
+    expect(index('Pickup'), 'Pickup sits after Feather').toBeGreaterThan(index('Feather'));
+    expect(index('Refill'), 'Refill sits after Pickup').toBeGreaterThan(index('Pickup'));
+    expect(index('Emboss'), 'Emboss stays last').toBeGreaterThan(index('Refill'));
+  });
+
+  it('never renders a wetSeconds row: it is seconds, not a 0..100 global', () => {
+    const tree = renderPanel();
+    const labels = collectLabels(tree);
+    expect(labels.some((label) => /wet/i.test(label)), 'found a wet row').toBe(false);
+    const sliders = [...walk(tree)].filter(
+      (node) => node.props?.['data-testid'] === 'slider-stepper',
+    );
+    const sliderLabels = sliders.map((node) => node.props?.['label']);
+    expect(sliderLabels).not.toContain('wetSeconds');
+    expect(sliderLabels).not.toContain('Wet seconds');
+    expect(sliderLabels).not.toContain('Wet Seconds');
+    expect(sliderLabels).toHaveLength(13);
   });
 
   it('moves the canonical body key through the one seam on change and release', () => {
@@ -451,8 +494,8 @@ describe('261018-gqo spacing rhythm', () => {
 });
 
 // quick 261111-ucf — each global row commits at its release boundary and
-// Reset sends ONE ten-key batch after its ten live writes. Id band
-// 10721+.
+// Reset sends ONE thirteen-key batch after its thirteen live writes (64-22
+// grew the row set). Id band 10721+.
 describe('quick 261111-ucf globals release commits + Reset batch', () => {
   afterEach(() => {
     setAquarelleSelectionEditPort(null);
@@ -460,7 +503,7 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     clearScriptStrokeSelection();
   });
 
-  it('Reset commits ONE ten-key params patch after the ten live writes', () => {
+  it('Reset commits ONE thirteen-key params patch after the thirteen live writes', () => {
     recordAquarelleStroke(10721, stroke10721([point10721(0.5, 0.5)]));
     const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
     const promise = Promise.resolve(true);
@@ -486,7 +529,7 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     // into the TAP diagnostic and breaks the RED evidence parser.
     expect(
       JSON.stringify(calls[0]!.patch),
-      'the batch is the full ten-key patch',
+      'the batch is the full thirteen-key patch',
     ).toBe(JSON.stringify({ params: RESET_EXPECTED }));
     expect(Object.keys(calls[0]!.patch.params ?? {}), 'size is never committed').not.toContain('size');
   });

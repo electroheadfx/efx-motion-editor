@@ -5,7 +5,8 @@
 //  Laws pinned here:
 //   1. viscosity, body and emboss join the interface, the key list
 //      and the defaults (0), so the record loop and the selection
-//      write allowlist both gain them.
+//      write allowlist both gain them. 64-22 adds feather (0),
+//      pickup (60), refill (60) and wetSeconds (7 seconds).
 //   2. applyAquarelleMedium is ONE spread assignment plus one id
 //      write — never a per-key setter cascade, never the
 //      selection-edit path, never size, never lift.
@@ -105,21 +106,61 @@ describe('the medium keys in the live bag', () => {
     expect(aquarelleParams.value.emboss).toBe(0);
   });
 
-  it('keeps the bag at exactly the twelve canonical keys', () => {
+  // 64-22 (D-22, §3.1, §6): Feather, Pickup and Refill are canonical globals
+  // and wetSeconds rides the recorded bag. They enter through the SAME key
+  // list, so the record loop and the selection write allowlist both carry them.
+  it('carries feather, pickup, refill and wetSeconds in the key list and the defaults', () => {
+    expect(AQUARELLE_GLOBAL_KEYS).toContain('feather');
+    expect(AQUARELLE_GLOBAL_KEYS).toContain('pickup');
+    expect(AQUARELLE_GLOBAL_KEYS).toContain('refill');
+    expect(AQUARELLE_GLOBAL_KEYS).toContain('wetSeconds');
+    expect(AQUARELLE_GLOBAL_KEYS).toHaveLength(16);
+    expect(DEFAULT_AQUARELLE_PARAMS.feather).toBe(0);
+    expect(DEFAULT_AQUARELLE_PARAMS.pickup).toBe(60);
+    expect(DEFAULT_AQUARELLE_PARAMS.refill).toBe(60);
+    expect(DEFAULT_AQUARELLE_PARAMS.wetSeconds).toBe(7);
+    expect(aquarelleParams.value.feather).toBe(0);
+    expect(aquarelleParams.value.pickup).toBe(60);
+    expect(aquarelleParams.value.refill).toBe(60);
+    expect(aquarelleParams.value.wetSeconds).toBe(7);
+  });
+
+  it('keeps the bag at exactly the sixteen canonical keys', () => {
     expect(Object.keys(aquarelleParams.value).sort()).toEqual([
       'bleed',
       'body',
       'dry',
       'edge',
       'emboss',
+      'feather',
       'flow',
       'granulation',
       'lift',
       'load',
+      'pickup',
+      'refill',
       'size',
       'viscosity',
       'water',
+      'wetSeconds',
     ]);
+  });
+
+  it('records the four new keys in the per-stroke snapshot', () => {
+    const fresh = snapshotAquarelleRecord();
+    expect(fresh.params.feather).toBe(0);
+    expect(fresh.params.pickup).toBe(60);
+    expect(fresh.params.refill).toBe(60);
+    expect(fresh.params.wetSeconds).toBe(7);
+    setAquarelleParam('feather', 35);
+    setAquarelleParam('pickup', 80);
+    setAquarelleParam('refill', 15);
+    setAquarelleParam('wetSeconds', 12);
+    const snapped = snapshotAquarelleRecord();
+    expect(snapped.params.feather).toBe(35);
+    expect(snapped.params.pickup).toBe(80);
+    expect(snapped.params.refill).toBe(15);
+    expect(snapped.params.wetSeconds).toBe(12);
   });
 
   it('records all three keys in the per-stroke snapshot', () => {
@@ -151,6 +192,12 @@ describe('the medium keys in the live bag', () => {
     expect(toEngineParams(legacy).viscosity).toBe(0);
     expect(toEngineParams(legacy).body).toBe(0);
     expect(toEngineParams(legacy).emboss).toBe(0);
+    // 64-22: the reference's three controls replay at their §6 defaults and
+    // wetSeconds at its 7-second fallback — never undefined, never NaN.
+    expect(toEngineParams(legacy).feather).toBe(0);
+    expect(toEngineParams(legacy).pickup).toBe(0.6);
+    expect(toEngineParams(legacy).refill).toBe(0.6);
+    expect(toEngineParams(legacy).wetSeconds).toBe(7);
   });
 
   it('accepts a medium-key patch in the selection-edit allowlist', () => {
@@ -161,6 +208,15 @@ describe('the medium keys in the live bag', () => {
     expect(getRecordedAquarelleStroke(8101)!.params.body).toBe(55);
     expect(updateAquarelleStrokesInScript([8101], { params: { emboss: 20 } })).toBe(1);
     expect(getRecordedAquarelleStroke(8101)!.params.emboss).toBe(20);
+    // 64-22: the three exposed globals ride the same allowlist.
+    expect(updateAquarelleStrokesInScript([8101], { params: { feather: 30 } })).toBe(1);
+    expect(getRecordedAquarelleStroke(8101)!.params.feather).toBe(30);
+    expect(updateAquarelleStrokesInScript([8101], { params: { pickup: 75 } })).toBe(1);
+    expect(getRecordedAquarelleStroke(8101)!.params.pickup).toBe(75);
+    expect(updateAquarelleStrokesInScript([8101], { params: { refill: 45 } })).toBe(1);
+    expect(getRecordedAquarelleStroke(8101)!.params.refill).toBe(45);
+    expect(updateAquarelleStrokesInScript([8101], { params: { wetSeconds: 12 } })).toBe(1);
+    expect(getRecordedAquarelleStroke(8101)!.params.wetSeconds).toBe(12);
   });
 });
 
@@ -186,6 +242,11 @@ describe('applyAquarelleMedium', () => {
     expect(aquarelleParams.value.viscosity).toBe(85);
     expect(aquarelleParams.value.body).toBe(25);
     expect(aquarelleParams.value.emboss).toBe(0);
+    // 64-22: all fourteen medium keys land in the one write.
+    expect(aquarelleParams.value.feather).toBe(0);
+    expect(aquarelleParams.value.pickup).toBe(60);
+    expect(aquarelleParams.value.refill).toBe(60);
+    expect(aquarelleParams.value.wetSeconds).toBe(7);
     expect(aquarelleParams.value.size, 'a medium never resizes the brush').toBe(77);
     expect(aquarelleParams.value.lift, 'a medium never changes the eraser').toBe(33);
     expect(aquarelleSelectedMediumId.value).toBe('pastel');

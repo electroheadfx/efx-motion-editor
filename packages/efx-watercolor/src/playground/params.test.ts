@@ -51,7 +51,7 @@ describe('toEngineParams', () => {
 
   it('maps the seven canonical globals onto 0..1', () => {
     expect(toEngineParams({ water: 50, load: 25, flow: 100, bleed: 0, dry: 75, edge: 60, granulation: 40 }))
-      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0 });
+      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0, feather: 0, pickup: 0.6, refill: 0.6, wetSeconds: 7 });
   });
 
   // Phase 64 (v2.2.0): Body and Emboss join the medium bag. 0 is neutral —
@@ -85,6 +85,56 @@ describe('toEngineParams', () => {
     expect(DEFAULT_CANONICAL_PARAMS.emboss).toBe(0);
     expect(DEFAULT_PARAMS.body).toBe(0);
     expect(DEFAULT_PARAMS.emboss).toBe(0);
+  });
+
+  // Phase 64 / 64-22 (D-22, §3.1, §6): Feather, Pickup and Refill are the
+  // reference's user-facing controls, carried as canonical 0..100 globals.
+  it('maps the Feather, Pickup and Refill globals 0..100 onto the 0..1 medium bag', () => {
+    // The same clamp01 table every Phase 64 medium key obeys (T-64-01).
+    for (const key of ['feather', 'pickup', 'refill'] as const) {
+      expect(toEngineParams({ [key]: 0 })[key]).toBe(0);
+      expect(toEngineParams({ [key]: 60 })[key]).toBe(0.6);
+      expect(toEngineParams({ [key]: 100 })[key]).toBe(1);
+      // T-64-01: out-of-track values are clamped in the ONE mapping.
+      expect(toEngineParams({ [key]: 250 })[key]).toBe(1);
+      expect(toEngineParams({ [key]: -40 })[key]).toBe(0);
+    }
+  });
+
+  // Phase 64 / 64-22 (§3.4, §6): wetSeconds is SECONDS — the one canonical
+  // member that is not divided by 100. It is forwarded with a 1-second floor
+  // and a 7-second fallback so a recorded bag without it replays the §6 value.
+  it('forwards wetSeconds in seconds with a one-second floor and the 7-second fallback', () => {
+    expect(toEngineParams({ wetSeconds: 12 }).wetSeconds).toBe(12);
+    expect(toEngineParams({ wetSeconds: 7 }).wetSeconds).toBe(7);
+    expect(toEngineParams({ wetSeconds: 0.4 }).wetSeconds).toBe(1);
+    expect(toEngineParams({ wetSeconds: -3 }).wetSeconds).toBe(1);
+    expect(toEngineParams({}).wetSeconds).toBe(7);
+    expect(toEngineParams(undefined).wetSeconds).toBe(7);
+    expect(toEngineParams({ wetSeconds: Number.NaN }).wetSeconds).toBe(7);
+    expect(toEngineParams({ wetSeconds: Number.POSITIVE_INFINITY }).wetSeconds).toBe(7);
+    expect(toEngineParams({ wetSeconds: 30 }).wetSeconds).toBe(30);
+  });
+
+  it('replays a stroke without the Feather, Pickup, Refill or wetSeconds key at the recorded default', () => {
+    expect(toEngineParams({ water: 50 }).feather).toBe(0);
+    expect(toEngineParams(undefined).feather).toBe(0);
+    expect(toEngineParams({ feather: Number.NaN }).feather).toBe(0);
+    expect(toEngineParams({ water: 50 }).pickup).toBe(0.6);
+    expect(toEngineParams(undefined).pickup).toBe(0.6);
+    expect(toEngineParams({ pickup: Number.POSITIVE_INFINITY }).pickup).toBe(0.6);
+    expect(toEngineParams({ water: 50 }).refill).toBe(0.6);
+    expect(toEngineParams(undefined).refill).toBe(0.6);
+    expect(toEngineParams({ refill: Number.NaN }).refill).toBe(0.6);
+  });
+
+  it('declares Feather, Pickup and Refill in the canonical and engine bags', () => {
+    expect(DEFAULT_CANONICAL_PARAMS.feather).toBe(0);
+    expect(DEFAULT_CANONICAL_PARAMS.pickup).toBe(60);
+    expect(DEFAULT_CANONICAL_PARAMS.refill).toBe(60);
+    expect(DEFAULT_PARAMS.feather).toBe(0);
+    expect(DEFAULT_PARAMS.pickup).toBeCloseTo(0.6, 12);
+    expect(DEFAULT_PARAMS.refill).toBeCloseTo(0.6, 12);
   });
 
   // Phase 64 (v2.2.0): the medium bag's first key. 0 is neutral — an absent

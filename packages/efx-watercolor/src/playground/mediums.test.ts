@@ -1,7 +1,7 @@
 // ============================================================
 //  Medium records (Phase 64, MED-07 / MED-08 / MED-09).
 //
-//  The five built-ins are plain frozen data over exactly the ten
+//  The five built-ins are plain frozen data over exactly the fourteen
 //  medium keys. Everything here is restated as literals — the
 //  amendment table, the key list, the display names — so a dropped
 //  key or a drifted number fails the pin instead of moving it.
@@ -11,7 +11,8 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_CANONICAL_PARAMS } from './params'
 import { DEFAULT_MEDIUM_ID, MEDIUM_IDS, MEDIUMS, mediumById } from './mediums'
 
-// The ten medium keys, in the amendment table's column order.
+// The fourteen medium keys: the amendment table's column order, then
+// 64-22's four (D-22 / §3.1 / §6).
 const MEDIUM_KEYS = [
   'water',
   'load',
@@ -23,6 +24,10 @@ const MEDIUM_KEYS = [
   'viscosity',
   'body',
   'emboss',
+  'feather',
+  'pickup',
+  'refill',
+  'wetSeconds',
 ] as const
 
 /** Resolve a record and fail as an assertion (never a load error) when absent. */
@@ -52,7 +57,7 @@ describe('medium records', () => {
     ])
   })
 
-  it('carries exactly the ten medium keys and never size or lift', () => {
+  it('carries exactly the fourteen medium keys and never size or lift', () => {
     expect(MEDIUMS).toHaveLength(5)
     for (const medium of MEDIUMS) {
       expect(Object.keys(medium.params).sort(), `${medium.id} keys`).toEqual(
@@ -63,7 +68,11 @@ describe('medium records', () => {
     }
   })
 
-  it('matches the amendment table numbers', () => {
+  // 64-22: the four new keys state the §6 defaults on every record — a
+  // medium-specific value needs its own measured decision (acrylic's
+  // water/bleed/flow retune is D-25's, in 64-24). The committed ten numbers
+  // are restated unchanged.
+  it('matches the amendment table numbers plus the §6 defaults', () => {
     expect(recordOf('watercolor').params).toEqual({
       water: 50,
       load: 50,
@@ -75,6 +84,10 @@ describe('medium records', () => {
       viscosity: 0,
       body: 0,
       emboss: 0,
+      feather: 0,
+      pickup: 60,
+      refill: 60,
+      wetSeconds: 7,
     })
     expect(recordOf('gouache').params).toEqual({
       water: 35,
@@ -87,6 +100,10 @@ describe('medium records', () => {
       viscosity: 55,
       body: 55,
       emboss: 20,
+      feather: 0,
+      pickup: 60,
+      refill: 60,
+      wetSeconds: 7,
     })
     expect(recordOf('pastel').params).toEqual({
       water: 0,
@@ -99,6 +116,10 @@ describe('medium records', () => {
       viscosity: 85,
       body: 25,
       emboss: 0,
+      feather: 0,
+      pickup: 60,
+      refill: 60,
+      wetSeconds: 7,
     })
     expect(recordOf('graphite').params).toEqual({
       water: 0,
@@ -111,6 +132,10 @@ describe('medium records', () => {
       viscosity: 90,
       body: 0,
       emboss: 0,
+      feather: 0,
+      pickup: 60,
+      refill: 60,
+      wetSeconds: 7,
     })
     expect(recordOf('acrylic').params).toEqual({
       water: 8,
@@ -123,6 +148,10 @@ describe('medium records', () => {
       viscosity: 90,
       body: 85,
       emboss: 40,
+      feather: 0,
+      pickup: 60,
+      refill: 60,
+      wetSeconds: 7,
     })
   })
 
@@ -136,6 +165,11 @@ describe('medium records', () => {
     expect(recordOf('watercolor').params.viscosity).toBe(0)
     expect(recordOf('watercolor').params.body).toBe(0)
     expect(recordOf('watercolor').params.emboss).toBe(0)
+    // 64-22: the four new keys derive from the canonical defaults too.
+    expect(recordOf('watercolor').params.feather).toBe(DEFAULT_CANONICAL_PARAMS.feather)
+    expect(recordOf('watercolor').params.pickup).toBe(DEFAULT_CANONICAL_PARAMS.pickup)
+    expect(recordOf('watercolor').params.refill).toBe(DEFAULT_CANONICAL_PARAMS.refill)
+    expect(recordOf('watercolor').params.wetSeconds).toBe(DEFAULT_CANONICAL_PARAMS.wetSeconds)
   })
 
   it('keeps every record frozen plain serializable data', () => {
