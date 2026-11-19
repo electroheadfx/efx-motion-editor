@@ -723,6 +723,7 @@ uniform vec2 uAxis;          // across axis (unit, doc frame)
 uniform float uRadius;       // half-width in doc heights
 uniform float uTravel;       // distance moved since the last dab, in brush widths
 uniform float uTravelPx;     // the same distance in document texels
+uniform vec2 uSheet;         // document size in px — sizes the §3.1 tap step
 uniform float uPressure;
 uniform float uPickupRate;
 uniform float uRefillRate;
@@ -771,14 +772,18 @@ void main(){
   vec4 shape = bristleTex(uShape, idx);
   float across = state.y;
 
-  // The bristle's own position and 3 taps along the stroke direction (§3.1).
+  // The bristle's own position and the §3.1 three-tap sample.
+  // The reference samples ±1.5 device px along the stroke and AVERAGES colour
+  // and wetness across the taps (sampleCanvas). Taking the colour from the
+  // centre tap alone meant a bristle only ever saw the paint it had just laid
+  // down, so Pickup could never drag the colour beside or ahead of the stroke.
   vec2 pos = uPoint + uAxis * (across * uRadius);
   vec2 dir = vec2(-uAxis.y, uAxis.x);
-  float tap = uRadius * 0.35;
-  float wet = max(wetAt(pos), max(wetAt(pos - dir * tap), wetAt(pos + dir * tap)));
-  vec4 canvasA = canvasAt(pos);
-  vec3 canvasB = canvasAtB(pos);
-  float canvasAlpha = texture(uCover, pos).x;
+  vec2 tapUv = dir * (1.5 / max(uSheet, vec2(1.0)));
+  vec4 canvasA = (canvasAt(pos - tapUv) + canvasAt(pos) + canvasAt(pos + tapUv)) * (1.0 / 3.0);
+  vec3 canvasB = (canvasAtB(pos - tapUv) + canvasAtB(pos) + canvasAtB(pos + tapUv)) * (1.0 / 3.0);
+  float canvasAlpha = (paintAlphaAt(pos - tapUv) + paintAlphaAt(pos) + paintAlphaAt(pos + tapUv)) * (1.0 / 3.0);
+  float wet = (wetAt(pos - tapUv) + wetAt(pos) + wetAt(pos + tapUv)) * (1.0 / 3.0);
 
   // §3.1 contact threshold with rim noise — §5.3's shared contact law
   // (bristleRimShare + bristleContact from BRISTLE_NOISE); the gather's

@@ -2819,6 +2819,7 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uCount!, this.bristleCount);
     gl.uniform1f(p.u.uTravel!, travel);
     gl.uniform1f(p.u.uTravelPx!, travelPx);
+    gl.uniform2f(p.u.uSheet!, this.dw, this.dh);
     gl.uniform1f(p.u.uPressure!, clamp(pr, 0, 1));
     // 64-22 (D-06/D-22): the §6 constant defaults now ride the recorded bag
     // — Pickup and Refill are canonical globals through the ONE mapping, and
