@@ -930,3 +930,61 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
     expect(SMEAR.bristleSmearWeight?.(Number.NaN, 1, 1), 'a missing rate drags nothing').toBe(0)
   })
 })
+
+describe('bristleContactPressure — §3.1, the reference brush pressure (spike 004)', () => {
+  const LAW = bristleModule as unknown as {
+    bristleContactPressure?: (pen: number, speed: number, distPx: number, shortPx: number) => number
+    BRISTLE_PRESSURE_SLOW?: number
+    BRISTLE_PRESSURE_FAST?: number
+    BRISTLE_PRESSURE_SPEED?: number
+    BRISTLE_PRESSURE_ATTACK?: number
+    BRISTLE_PRESSURE_ATTACK_FLOOR?: number
+    BRISTLE_PRESSURE_START?: number
+  }
+
+  it('carries the reference Settings values verbatim', () => {
+    expect(LAW.BRISTLE_PRESSURE_SLOW).toBe(1)
+    expect(LAW.BRISTLE_PRESSURE_FAST).toBe(0.42)
+    expect(LAW.BRISTLE_PRESSURE_SPEED).toBe(1.4)
+    expect(LAW.BRISTLE_PRESSURE_ATTACK).toBe(0.018)
+    expect(LAW.BRISTLE_PRESSURE_ATTACK_FLOOR).toBe(0.45)
+    expect(LAW.BRISTLE_PRESSURE_START).toBe(0.3)
+  })
+
+  it('a fast drag at full attack paints at pressureFast·pen — 0.42, not the pointer 1.0', () => {
+    expect(typeof LAW.bristleContactPressure, 'bristleContactPressure is exported').toBe('function')
+    expect(LAW.bristleContactPressure?.(1, 10, 100, 600), 'fast, past the attack ramp').toBeCloseTo(0.42, 12)
+    expect(LAW.bristleContactPressure?.(0.75, 10, 100, 600), 'the Studio scene pen').toBeCloseTo(0.315, 12)
+  })
+
+  it('a resting brush reads pressureSlow·pen', () => {
+    expect(LAW.bristleContactPressure?.(1, 0, 100, 600)).toBeCloseTo(1, 12)
+    expect(LAW.bristleContactPressure?.(0.5, 0, 100, 600)).toBeCloseTo(0.5, 12)
+  })
+
+  it('the attack ramp starts at the 0.45 floor over attack·shortSide px', () => {
+    expect(LAW.bristleContactPressure?.(1, 10, 0, 600)).toBeCloseTo(0.42 * 0.45, 12)
+    expect(LAW.bristleContactPressure?.(1, 10, 600 * 0.018, 600)).toBeCloseTo(0.42, 12)
+    expect(LAW.bristleContactPressure?.(1, 10, 3, 600)).toBeGreaterThan(LAW.bristleContactPressure?.(1, 10, 0, 600) ?? 1)
+  })
+
+  it('is monotone in speed and linear in pen pressure', () => {
+    let previous = Number.POSITIVE_INFINITY
+    for (const speed of [0, 0.35, 0.7, 1.05, 1.4, 4]) {
+      const p = LAW.bristleContactPressure?.(1, speed, 100, 600) ?? Number.NaN
+      expect(p).toBeLessThanOrEqual(previous + 1e-12)
+      previous = p
+    }
+    expect(LAW.bristleContactPressure?.(0.5, 2, 100, 600)).toBeCloseTo(
+      (LAW.bristleContactPressure?.(1, 2, 100, 600) ?? Number.NaN) / 2,
+      12,
+    )
+  })
+
+  it('a non-finite argument reads as the neutral value, never NaN', () => {
+    expect(LAW.bristleContactPressure?.(Number.NaN, 2, 100, 600)).toBeCloseTo(0.42, 12)
+    expect(LAW.bristleContactPressure?.(1, Number.NaN, 100, 600), 'a missing speed reads as rest').toBeCloseTo(1, 12)
+    expect(LAW.bristleContactPressure?.(1, 2, Number.NaN, 600), 'a missing distance reads as zero travel').toBeCloseTo(0.42 * 0.45, 12)
+    expect(LAW.bristleContactPressure?.(1, 2, 100, 0)).toBeCloseTo(0.42, 12)
+  })
+})

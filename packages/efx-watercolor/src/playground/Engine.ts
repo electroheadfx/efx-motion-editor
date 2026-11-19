@@ -11,6 +11,7 @@ import {
   BRISTLE_STREAK,
   BRISTLE_STREAK_LENGTH,
   BRISTLE_STREAK_SHARE,
+  bristleContactPressure,
   bristleCount,
   gatherSoftness,
   LAST_TOUCH_DRY_SECONDS,
@@ -2446,6 +2447,12 @@ export class WatercolorEngine {
         const bristleBodyAlpha = bristle
           ? BRISTLE_BODY_ALPHA_FLOOR + (1 - BRISTLE_BODY_ALPHA_FLOOR) * clamp(P.body, 0, 1)
           : 0;
+        // Spike 004: the bristle carrier and gather read the reference's
+        // brush CONTACT pressure (speed- and attack-shaped), not the pointer's
+        // — the authored pr still owns the footprint, radius and wet passes.
+        const contactPr = bristle
+          ? bristleContactPressure(clamp(pr, 0, 1), s.speed, s.travelled * this.dh, this.dh)
+          : pr;
         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
         const c = this.pigment.coeffs;
         const c0 = [c[0] * amount, c[1] * amount, c[2] * amount, c[3] * amount];
@@ -2482,7 +2489,7 @@ export class WatercolorEngine {
           if (bristle) {
             const t = this.bristleTravel(dx, dy, dr);
             alongPx = t.alongPx;
-            this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, pr);
+            this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, contactPr);
           }
           // spec 06: the cover pass draws here, before this dab's deposit.
           // Post-UAT (GAP-1): a bristle response has NO erode pass at all —
@@ -2502,7 +2509,7 @@ export class WatercolorEngine {
           // in coefficient space — and its layer alpha is the same lerp's
           // weight times Body's opacity, so the film and its paint can never
           // disagree. Every other response keeps the shipped chain, untouched.
-          if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, pr, c1[3]!, alongPx);
+          if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx);
           else if (coverAmount > 0) this.coverageDeposit(dx, dy, dr, angle, coverAmount, coverDensity, c, c1[3]!, dryness, grainThr);
           else this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
           // 64-24 (D-24): the dab records its own touch AFTER depositing and

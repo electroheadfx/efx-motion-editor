@@ -1,0 +1,25 @@
+<!doctype html>
+<!--
+  pickup-collapse page template — NOT served directly.
+
+  run.mjs reads this file, replaces the PC-BUNDLE placeholder with the
+  esbuild IIFE bundle of probe.ts, writes the result to /tmp/pickup-collapse/
+  page.html and launches headless Chrome on it with --dump-dom. The bundle
+  stays out of the repository (scratch harness convention, probe/CONVENTIONS).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pickup collapse — per-dab carrier readout</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #f6f3ec; }
+  canvas { display: none; }
+  pre { font: 11px/1.35 ui-monospace, Menlo, monospace; padding: 8px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<pre id="result"></pre>
+<p id="status">RUNNING</p>
+<!--PC-BUNDLE-->
+</body>
+</html>

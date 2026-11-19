@@ -679,7 +679,9 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     // §4.4 grain left the call because the gather derives the paper height.
     // Post-UAT 2026-11-19 (GAP-1): the fifth argument is Body's film opacity,
     // not the dab's pigment amount — the deposit is the gather's lerp weight.
-    expectContains(brush, 'if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, pr, c1[3]!, alongPx);')
+    // Spike 004: the sixth argument is the reference's CONTACT pressure, not
+    // the pointer's (the authored `pr` still owns the footprint and radius).
+    expectContains(brush, 'if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx);')
     expectNotContains(brush, 'Math.pow(')
   })
 

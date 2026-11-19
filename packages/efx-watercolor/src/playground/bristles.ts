@@ -102,6 +102,53 @@ export const BRISTLE_DRY_EDGE = 0.35;
 /** §5.4 `paint.landing` — the spread of the staggered landing (1.6). */
 export const BRISTLE_LANDING = 1.6;
 
+// ------------------------- the contact pressure law (spike 004) -------------------------
+//
+//  The pointer's pressure is NOT the pressure the reference's carrier and
+//  gather read. `press()` (app.js:445) seeds the brush at 0.3·penPressure and
+//  `update()` (app.js:521-531) converges it, each frame, toward
+//    mix(pressureSlow 1, pressureFast 0.42, speedRamp) · penPressure · attackRamp
+//  with speedRamp = smoothstep(0, pressureSpeed 1.4, speed / shortSide) and
+//  attackRamp = smoothstep(0, attack 0.018 · shortSide, distance). A fast mouse
+//  drag therefore paints at ~0.42, not 1.0 — and BOTH the coverage factor
+//  (0.3 + 0.7·pressure) and the touch gate follow it, which is the whole of
+//  the reference's core porosity. The engine keeps its authored pressure for
+//  the footprint/radius (Studio's size law) and feeds this contact pressure to
+//  the bristle carrier and gather only.
+export const BRISTLE_PRESSURE_SLOW = 1;
+export const BRISTLE_PRESSURE_FAST = 0.42;
+export const BRISTLE_PRESSURE_SPEED = 1.4;
+export const BRISTLE_PRESSURE_ATTACK = 0.018;
+export const BRISTLE_PRESSURE_ATTACK_FLOOR = 0.45;
+/** `press()`: the brush starts a stroke at 0.3·penPressure. */
+export const BRISTLE_PRESSURE_START = 0.3;
+
+/**
+ * §3.1: the reference's brush contact pressure. `speed` is in document heights
+ * per second (app.js divides device px/s by the short side), `strokeDistPx`
+ * is the brush's cumulative path in document texels, `docShortPx` the
+ * document's short side. A non-finite argument reads as the neutral pen
+ * pressure 1 / zero speed / zero distance, never NaN.
+ */
+export function bristleContactPressure(
+  penPressure: number,
+  speed: number,
+  strokeDistPx: number,
+  docShortPx: number,
+): number {
+  const pen = Number.isFinite(penPressure) ? clamp01(penPressure) : 1;
+  const v = Number.isFinite(speed) ? Math.max(0, speed) : 0;
+  const d = Number.isFinite(strokeDistPx) ? Math.max(0, strokeDistPx) : 0;
+  const reach = Number.isFinite(docShortPx) && docShortPx > 0 ? BRISTLE_PRESSURE_ATTACK * docShortPx : 0;
+  const speedRamp = smoothstep(0, BRISTLE_PRESSURE_SPEED, v);
+  const attackRamp = reach > 0 ? smoothstep(0, reach, d) : 1;
+  return (
+    mix(BRISTLE_PRESSURE_SLOW, BRISTLE_PRESSURE_FAST, speedRamp) *
+    pen *
+    mix(BRISTLE_PRESSURE_ATTACK_FLOOR, 1, attackRamp)
+  );
+}
+
 // ------------------------- the §3.4 wetness gate (64-24) -------------------------
 
 /**
