@@ -2946,6 +2946,11 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uSmear!, this.params.pickup);
     gl.uniform1f(p.u.uSmearPeriodPx!, BRISTLE_SMEAR_PERIOD_PX);
     gl.uniform1f(p.u.uSmearCap!, BRISTLE_SMEAR_CAP);
+    // 261119-pod (Lever 1): the smear's wet gate normalises the snapshot's
+    // cover alpha by the Body-0 ceiling, restoring the reference's ~1.0
+    // interior wetness. The ceiling travels as a uniform so the shader never
+    // re-types the floor the Engine already owns.
+    gl.uniform1f(p.u.uBodyFloor!, BRISTLE_BODY_ALPHA_FLOOR);
     gl.uniform1f(p.u.uFeather!, clamp(this.params.feather, 0, 1));
     gl.uniform1f(p.u.uFeatherReach!, BRISTLE_FEATHER_REACH);
     gl.uniform1f(p.u.uNow!, this.clock() / 1000);

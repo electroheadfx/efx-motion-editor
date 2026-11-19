@@ -1127,7 +1127,16 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expect(shape.length, 'one shape per gate, so the laws cannot drift').toBe(2)
     // The carrier's half is Task 1's restored pin, never edited here.
     expectContains(SHADERS_SOURCE, 'return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;')
-    expectContains(SHADERS_SOURCE, 'return exp(-age / max(uWetSeconds, 1.0)) * texture(uSnapB, uv).a;')
+    // 261119-pod Lever 1: the cover term is normalised by the Body-0 ceiling
+    // (the uniform, never a literal) so the gate matches the reference's
+    // canvas.a ~ 1 interior. The exp/age shape above is untouched.
+    expectContains(
+      SHADERS_SOURCE,
+      'return exp(-age / max(uWetSeconds, 1.0)) * min(texture(uSnapB, uv).a / uBodyFloor, 1.0);',
+    )
+    expectNotContains(SHADERS_SOURCE, 'texture(uSnapB, uv).a / 0.5')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uBodyFloor!, BRISTLE_BODY_ALPHA_FLOOR);')
+    expectContains(SHADERS_SOURCE, 'uniform float uBodyFloor;')
     const g = gather()
     expectContains(g, 'uniform sampler2D uSnapA;')
     expectContains(g, 'uniform sampler2D uSnapB;')

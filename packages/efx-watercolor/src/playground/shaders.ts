@@ -943,6 +943,7 @@ uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
 uniform float uSmear;        // the Pickup global, 0..1 (D-A: one knob, two laws)
 uniform float uSmearPeriodPx;// §3.3 hash cell (BRISTLE_SMEAR_PERIOD_PX 6)
 uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
+uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
 #ifdef BRISTLE_FEATHER_RAMP
 uniform float uFeather;      // the Feather global, 0..1
 uniform float uFeatherReach; // Studio-only four-side reach (BRISTLE_FEATHER_REACH 0.45)
@@ -986,7 +987,14 @@ float tipMask(vec2 uv){
 // A/B mode rides it.
 float wetAt(vec2 uv){
   float age = max(uNow - texture(uTimes, uv).r, 0.0);
-  return exp(-age / max(uWetSeconds, 1.0)) * texture(uSnapB, uv).a;
+  // 261119-pod (Lever 1): the snapshot's cover alpha IS the reference's
+  // canvas.a, but a Body-0 stroke tops out at BRISTLE_BODY_ALPHA_FLOOR
+  // (cover <- cover·(1−a) + 0.5·g.alpha·a), so the raw term gates the drag at
+  // half the reference's weight — measured: smear mean 0.22 / p90 0.39 / never
+  // at the 0.8 cap, against the reference's 0.44 / 0.80 / 10 % capped.
+  // Normalising by the floor restores the reference's ~1.0 interior wetness
+  // WITHOUT changing the layer alpha the smear reads: Body still owns opacity.
+  return exp(-age / max(uWetSeconds, 1.0)) * min(texture(uSnapB, uv).a / uBodyFloor, 1.0);
 }
 
 // §3.3 — the reference's per-pixel drag weight (pickup · wet · hash21 of the
