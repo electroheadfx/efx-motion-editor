@@ -62,8 +62,12 @@ describe('aquarelle light render paths (64-07, MED-17)', () => {
     // never keeps a light copy (the document is the one source).
     expect(has(layer, 'const getLightRef = useRef(props.getLight);')).toBe(true);
     expect(has(layer, 'getLightRef.current = props.getLight;')).toBe(true);
-    // Both the mount call and the per-frame call pass the LIVE getter.
-    expect(count(layer, /applyLiveConfig\(engine, getLightRef\.current\)/g)).toBe(2);
+    // Both the mount call and the per-frame call pass the LIVE getter — and the
+    // 64-21 recorded-paper-seed getter beside it, so the sheet paints on the
+    // grain the document records.
+    expect(
+      count(layer, /applyLiveConfig\(engine, getLightRef\.current, getPaperSeedRef\.current\)/g),
+    ).toBe(2);
     // The apply itself: read the getter, only a present light writes. The
     // engine's compare-then-write setLight owns the bands and the no-op, so a
     // per-frame call costs three numeric comparisons and nothing else.
