@@ -914,3 +914,126 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     ).toBe(14)
   })
 })
+
+// ============================================================
+//  64-24 — the §3.4 wetness gate and the touch refresh (D-24).
+//
+//  The carrier's wetness stops being the `wet * coverage` proxy and
+//  becomes the timestamp law: `exp(−age / max(wetSeconds, 1)) · coverage`,
+//  `age = max(now − lastTouch, 0)`, `now` from the engine's VIRTUAL clock —
+//  never a wall clock. The proxy survives as mode 0, the recorded A/B
+//  control 64-21 reserved `uWetMode` for. Each bristle dab then stamps its
+//  own touch AFTER depositing and after its one coverage write, so a later
+//  dab's carrier reads an honest age of the paint it crosses.
+// ============================================================
+
+describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
+  // Resolved lazily: before GREEN the touch anchor does not exist, and a
+  // collection-time slice would take the whole file's report down as a
+  // fixture fault — each test must fail on its own assertion instead.
+  const carrier = () =>
+    sliceBetween(SHADERS_SOURCE, 'export const bristleCarrierFS', 'export const BRISTLE_GATHER')
+  const touch = () =>
+    sliceBetween(
+      SHADERS_SOURCE,
+      'export const bristleTouchFS',
+      '// Paper, generated per document',
+    )
+
+  it('declares the timestamp gate on the carrier, with no wall clock in the bristle fragments', () => {
+    const src = carrier()
+    expectContains(src, 'uniform sampler2D uTimes;')
+    expectContains(src, 'uniform float uNow;')
+    expectContains(src, 'uniform float uWetSeconds;')
+    expectContains(src, 'uniform int uWetMode;')
+    // Mode 1 (shipped): §3.4's age law, read from the last-touch field.
+    expectContains(src, 'float age = max(uNow - texture(uTimes, uv).r, 0.0);')
+    expectContains(src, 'return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;')
+    // Mode 0 (the recorded A/B control): 64-21's proxy, unchanged.
+    expectContains(src, 'return texture(uWet, uv).x * texture(uCover, uv).x;')
+    expectContains(src, 'if (uWetMode == 1)')
+    const touchSrc = touch()
+    for (const fragment of [src, touchSrc]) {
+      expectNotContains(fragment, 'Date.now(')
+      expectNotContains(fragment, 'performance.now(')
+      expectNotContains(fragment, 'Math.random(')
+    }
+  })
+
+  it('declares ONE gather-free bristleTouchFS: the cover-weighted mix toward uNow', () => {
+    const touchSrc = touch()
+    expect(
+      (SHADERS_SOURCE.match(/export const bristleTouchFS/g) ?? []).length,
+      'one touch fragment',
+    ).toBe(1)
+    expectContains(touchSrc, '${HEADER}')
+    expectContains(touchSrc, 'uniform sampler2D uTimes, uCover;')
+    expectContains(touchSrc, 'uniform float uNow;')
+    expectContains(touchSrc, 'uniform float uAmount;')
+    expectContains(touchSrc, 'float weight = clamp(texture(uCover, vUv).x * uAmount, 0.0, 1.0);')
+    expectContains(touchSrc, 'o0 = vec4(mix(texture(uTimes, vUv).r, uNow, weight));')
+    // No gather: the coverage write is the weight, so the touch pass stays
+    // one cheap document-sized draw over the dab rect (D-29's third pass).
+    expectNotContains(touchSrc, 'BRISTLE_GATHER')
+    expectNotContains(touchSrc, 'gatherBristle')
+  })
+
+  it('binds the gate from the last-touch read half and the virtual clock', () => {
+    const pass = sliceBetween(ENGINE_SOURCE, 'private carrierPass(', 'private bindGather(')
+    expectContains(pass, 'gl.uniform1i(p.u.uTimes!, g.bindTex(10, this.lastTouch.read.tex[0]!));')
+    expectContains(pass, 'gl.uniform1f(p.u.uNow!, this.clock() / 1000);')
+    expectContains(pass, 'gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);')
+    expectContains(pass, 'gl.uniform1i(p.u.uWetMode!, this.lastTouchMode);')
+    // The mode is a compare-then-write A/B seam; the shipped default is the
+    // timestamp law.
+    expectContains(ENGINE_SOURCE, 'private lastTouchMode = 1;')
+    expectContains(
+      ENGINE_SOURCE,
+      'if (mode !== this.lastTouchMode) this.lastTouchMode = mode === 0 ? 0 : 1;',
+    )
+    // Registered OUTSIDE the pinned literal, like every 64-21/22 program.
+    expectContains(
+      ENGINE_SOURCE,
+      'this.programs.bristleTouch = this.g.program(S.bristleTouchFS);',
+    )
+  })
+
+  it('stamps the touch into the write half, then swaps — after the deposit', () => {
+    const stamp = sliceBetween(
+      ENGINE_SOURCE,
+      'private bristleTouch(',
+      'readBristles(): Uint16Array {',
+    )
+    expectContains(stamp, 'gl.uniform1i(t.u.uTimes!, g.bindTex(0, this.lastTouch.read.tex[0]!));')
+    expectContains(stamp, 'gl.uniform1i(t.u.uCover!, g.bindTex(1, this.cover.read.tex[0]!));')
+    expectContains(stamp, 'gl.uniform1f(t.u.uNow!, this.clock() / 1000);')
+    expectContains(stamp, 'g.draw(this.lastTouch.write, rect);')
+    expectContains(stamp, 'this.lastTouch.swap();')
+    const drawAt = stamp.indexOf('g.draw(this.lastTouch.write, rect);')
+    const swapAt = stamp.indexOf('this.lastTouch.swap();')
+    expect(drawAt, 'the write half is drawn').toBeGreaterThan(-1)
+    expect(swapAt, 'the pair swaps after the write').toBeGreaterThan(drawAt)
+    // The call site: deposit first, then touch, then anything else the dab does.
+    const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
+    const depositAt = brush.indexOf('this.bristleInk(')
+    const touchAt = brush.indexOf('this.bristleTouch(')
+    const reliefAt = brush.indexOf('this.brushRelief(')
+    expectContains(brush, 'if (bristle) this.bristleTouch(dx, dy, dr, angle, amount);')
+    expect(depositAt, 'the deposit runs inside eachDab').toBeGreaterThan(-1)
+    expect(touchAt, 'the touch follows the deposit').toBeGreaterThan(depositAt)
+    expect(reliefAt, 'the relief follows the touch').toBeGreaterThan(touchAt)
+  })
+
+  it('keeps the pinned program and allocation counts', () => {
+    const programs = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
+    expect(
+      (programs.match(/this\.g\.program\(/g) ?? []).length,
+      'the touch refresh registers outside the pinned literal',
+    ).toBe(23)
+    const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
+    expect(
+      (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
+      'fourteen allocations: the gate adds no target — the last-touch pair landed in Task 1',
+    ).toBe(14)
+  })
+})

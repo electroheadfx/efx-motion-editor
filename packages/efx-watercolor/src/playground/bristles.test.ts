@@ -734,3 +734,116 @@ describe('bristleCoverage — §4.5 / §5.5', () => {
     ).toBeCloseTo(0.5, 9)
   })
 })
+
+// ============================================================
+//  64-24 — the §3.4 wetness gate and the touch refresh (D-24).
+//
+//  Two pure laws, each the tested twin of an expression the engine's
+//  fragments run: `bristleWetness` is the carrier's `wetAt` in mode 1 (the
+//  timestamp law — an old sheet stops giving up its paint) and
+//  `bristleTouchValue` is `bristleTouchFS`'s `mix`. The sentinel
+//  `LAST_TOUCH_DRY_SECONDS` lives HERE, beside every other declared law:
+//  the module declares each once and the engine imports it, so the
+//  package-wide scan below fails the build on a second copy.
+// ============================================================
+
+const WETNESS = bristleModule as unknown as {
+  LAST_TOUCH_DRY_SECONDS?: number
+  bristleWetness?: (ageSeconds: number, wetSeconds: number) => number
+  bristleTouchValue?: (prev: number, now: number, mask: number) => number
+}
+
+describe('the §3.4 wetness gate (64-24)', () => {
+  it('declares LAST_TOUCH_DRY_SECONDS once, here: one week before the clock\'s zero', () => {
+    expect(WETNESS.LAST_TOUCH_DRY_SECONDS, 'the one-week sentinel').toBe(-604800)
+    const declarations = PACKAGE_SOURCES.filter(({ text }) =>
+      /export const LAST_TOUCH_DRY_SECONDS\b/.test(text),
+    ).map(({ file }) => file)
+    expect(declarations.length, 'declared once in the package').toBe(1)
+    expect(declarations[0], 'declared in playground/bristles.ts').toBe('playground/bristles.ts')
+    // A cleared R32F would read 0 = "touched at t = 0", i.e. every texel wet;
+    // the sentinel exists precisely so the cleared value is never 0.
+    expectContains(SOURCE, 'touched at t = 0')
+  })
+
+  it('is exp(−age / wetSeconds): 1 at age 0, exp(−1) at one tack time, dry-to-float at 600 s', () => {
+    expect(typeof WETNESS.bristleWetness, 'bristleWetness is exported').toBe('function')
+    expect(WETNESS.bristleWetness?.(0, 7), 'fresh paint gives everything up').toBe(1)
+    expect(WETNESS.bristleWetness?.(7, 7), 'one tack time in').toBeCloseTo(Math.exp(-1), 12)
+    const old = WETNESS.bristleWetness?.(600, 7) ?? Number.NaN
+    expect(Number.isFinite(old), 'still finite at 600 s').toBe(true)
+    expect(old, '600 s is dry to float precision').toBeLessThan(1e-30)
+    expect(old, 'never negative').toBeGreaterThanOrEqual(0)
+  })
+
+  it('decays monotonically in age and floors wetSeconds at 1', () => {
+    const w = (age: number) => WETNESS.bristleWetness?.(age, 7) ?? Number.NaN
+    expect(w(0)).toBe(1)
+    expect(w(1)).toBeGreaterThan(w(7))
+    expect(w(7)).toBeGreaterThan(w(60))
+    expect(w(60)).toBeGreaterThan(w(600))
+    // The floor: a zero, negative or non-finite tack time reads as one second.
+    expect(WETNESS.bristleWetness?.(1, 0), 'zero tack time floors at 1 s').toBeCloseTo(
+      Math.exp(-1),
+      12,
+    )
+    expect(WETNESS.bristleWetness?.(1, -5), 'negative tack time floors at 1 s').toBeCloseTo(
+      Math.exp(-1),
+      12,
+    )
+    expect(WETNESS.bristleWetness?.(1, Number.NaN), 'a missing tack time is 1 s').toBeCloseTo(
+      Math.exp(-1),
+      12,
+    )
+  })
+
+  it('reads a negative or non-finite age as 1 — never NaN, never above 1', () => {
+    expect(WETNESS.bristleWetness?.(-3, 7), 'a future timestamp is not yet old').toBe(1)
+    expect(WETNESS.bristleWetness?.(Number.NaN, 7)).toBe(1)
+    expect(WETNESS.bristleWetness?.(Number.POSITIVE_INFINITY, 7)).toBe(1)
+    const v = WETNESS.bristleWetness?.(0.5, 7) ?? Number.NaN
+    expect(v).toBeGreaterThanOrEqual(0)
+    expect(v).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('bristleTouchValue — the touch refresh mix (64-24)', () => {
+  it('is prev + (now − prev)·clamp01(mask): 0 keeps, 1 writes, 0.5 halves', () => {
+    expect(typeof WETNESS.bristleTouchValue, 'bristleTouchValue is exported').toBe('function')
+    expect(WETNESS.bristleTouchValue?.(0.2, 0.8, 0), 'mask 0 leaves the field').toBe(0.2)
+    expect(WETNESS.bristleTouchValue?.(0.2, 0.8, 1), 'mask 1 writes now').toBe(0.8)
+    expect(WETNESS.bristleTouchValue?.(0.2, 0.8, 0.5), 'half the way').toBeCloseTo(0.5, 12)
+  })
+
+  it('clamps the mask and always lands between its two inputs', () => {
+    expect(WETNESS.bristleTouchValue?.(0.2, 0.8, 2), 'mask above 1 clamps').toBe(0.8)
+    expect(WETNESS.bristleTouchValue?.(0.2, 0.8, -1), 'mask below 0 clamps').toBe(0.2)
+    const table: Array<[number, number, number]> = [
+      [3, 10, 0.25],
+      [10, 3, 0.75],
+      [-604800, 0, 0.1],
+      [0, -604800, 0.9],
+      [1, 1, 0.5],
+    ]
+    for (const [prev, now, mask] of table) {
+      const v = WETNESS.bristleTouchValue?.(prev, now, mask) ?? Number.NaN
+      expect(v, `between ${prev} and ${now} at mask ${mask}`).toBeGreaterThanOrEqual(
+        Math.min(prev, now),
+      )
+      expect(v, `between ${prev} and ${now} at mask ${mask}`).toBeLessThanOrEqual(
+        Math.max(prev, now),
+      )
+    }
+  })
+
+  it('is total: a missing time or weight never produces NaN', () => {
+    // No previous → the touch writes now; no time to write → the field keeps;
+    // no weight → nothing is recorded; two missing times → 0.
+    expect(WETNESS.bristleTouchValue?.(Number.NaN, 10, 1), 'no previous keeps now').toBe(10)
+    expect(WETNESS.bristleTouchValue?.(5, Number.NaN, 1), 'no now keeps the field').toBe(5)
+    expect(WETNESS.bristleTouchValue?.(5, 10, Number.NaN), 'no weight records nothing').toBe(5)
+    const v = WETNESS.bristleTouchValue?.(Number.NaN, Number.NaN, Number.NaN) ?? Number.NaN
+    expect(Number.isFinite(v), 'never NaN').toBe(true)
+    expect(v, 'two missing times read as 0').toBe(0)
+  })
+})
