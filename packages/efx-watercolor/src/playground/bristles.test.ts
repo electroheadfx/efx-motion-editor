@@ -30,8 +30,8 @@
 //   7. The module never reads `Math.random`, a wall clock, or the engine.
 // ============================================================
 
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
@@ -374,5 +374,363 @@ describe('the gather constants (64-22)', () => {
     expect(GATHER.gatherSoftness(Number.NEGATIVE_INFINITY)).toBeCloseTo(0.09, 9)
     // The top of the band is the canonical 1: above it the band stops widening.
     expect(GATHER.gatherSoftness(2), 'above the canonical band the width saturates').toBeCloseTo(0.34, 9)
+  })
+})
+
+// ============================================================
+//  64-23 — the trace constants, the edge constants and their formulas.
+//
+//  The reference's §6 constants are declared ONCE here, beside the
+//  stroke's other constants, and each pure helper is pinned at both
+//  endpoints of its band so the GLSL in `shaders.ts` has a tested twin it
+//  must mirror expression-for-expression (Task 2 binds them as uniforms).
+//
+//   §4.3  dryness / streak / broken     §4.4  the paper tooth threshold
+//   §4.5  the wide/local body           §5.3  rim contact noise
+//   §5.4  the staggered landing         §5.5  the rim coverage bias
+//
+//  The namespace cast keeps a not-yet-exported symbol a clean per-test
+//  assertion failure instead of a module-load error for the whole suite.
+// ============================================================
+
+const TRACES = bristleModule as unknown as {
+  BRISTLE_GRAIN?: number
+  BRISTLE_STREAK?: number
+  BRISTLE_STREAK_LENGTH?: number
+  BRISTLE_STREAK_SHARE?: number
+  BRISTLE_RIM_CONTACT?: number
+  BRISTLE_HAIRS?: number
+  BRISTLE_DRY_EDGE?: number
+  BRISTLE_LANDING?: number
+  bristleDryness?: (load: number) => number
+  bristleBroken?: (load: number, streakNoise: number) => number
+  bristleThreshold?: (grain: number, height: number) => number
+  bristleSoftnessBand?: (coverage: number, threshold: number, softness: number) => number
+  bristleLandingOffset?: (seed01: number) => number
+  bristleLanded?: (offset: number, distOverHalfWidth: number) => number
+  bristleRim?: (across: number) => number
+  bristleEdgeBias?: (across: number) => number
+  bristleBody?: (wide: number, local: number, presence: number, hairs: number) => number
+  bristleCoverage?: (body: number, pressure: number, edgeBias: number) => number
+}
+
+const SRC_ROOT = resolve(HERE, '..')
+
+function packageSourceFiles(dir: string): string[] {
+  const out: string[] = []
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry)
+    if (statSync(full).isDirectory()) out.push(...packageSourceFiles(full))
+    else if (entry.endsWith('.ts') && !entry.endsWith('.test.ts')) out.push(full)
+  }
+  return out
+}
+
+const PACKAGE_SOURCES = packageSourceFiles(SRC_ROOT).map(file => ({
+  file: file.slice(SRC_ROOT.length + 1),
+  text: readFileSync(file, 'utf8'),
+}))
+
+describe('the §6 trace and edge constants (64-23)', () => {
+  it('pins each constant to its §6 default', () => {
+    expect(TRACES.BRISTLE_GRAIN, '§6 paint.grain — the paper-tooth scale').toBe(1.2)
+    expect(TRACES.BRISTLE_STREAK, '§6 paint.streak').toBe(0.9)
+    expect(TRACES.BRISTLE_STREAK_LENGTH, '§6 paint.streakLength').toBe(18)
+    expect(TRACES.BRISTLE_STREAK_SHARE, '§6 streakShare').toBe(0.15)
+    expect(TRACES.BRISTLE_RIM_CONTACT, '§6 rimContact').toBe(0.45)
+    expect(TRACES.BRISTLE_HAIRS, '§6 hairs').toBe(0.45)
+    expect(TRACES.BRISTLE_DRY_EDGE, '§6 dryEdge').toBe(0.35)
+    expect(TRACES.BRISTLE_LANDING, '§6 paint.landing').toBe(1)
+  })
+
+  it('declares each constant once in the package — a second copy fails the build', () => {
+    const names = [
+      'BRISTLE_GRAIN',
+      'BRISTLE_STREAK',
+      'BRISTLE_STREAK_LENGTH',
+      'BRISTLE_STREAK_SHARE',
+      'BRISTLE_RIM_CONTACT',
+      'BRISTLE_HAIRS',
+      'BRISTLE_DRY_EDGE',
+      'BRISTLE_LANDING',
+    ]
+    for (const name of names) {
+      const declarations = PACKAGE_SOURCES.filter(({ text }) =>
+        new RegExp(`export const ${name}\\b`).test(text),
+      ).map(({ file }) => file)
+      expect(declarations.length, `${name} is declared once in the package`).toBe(1)
+      expect(declarations[0], `${name} is declared in playground/bristles.ts`).toBe(
+        'playground/bristles.ts',
+      )
+    }
+  })
+
+  it('documents the §4.4 grain collision with the brush preset grain', () => {
+    expectContains(SOURCE, 'Brush.grain')
+    expectContains(SOURCE, 'paper-tooth')
+    expectContains(SOURCE, '§4.4')
+  })
+
+  it('cites every law it ports', () => {
+    for (const section of ['§4.3', '§4.4', '§4.5', '§5.3', '§5.4', '§5.5', '§6']) {
+      expectContains(SOURCE, section)
+    }
+  })
+})
+
+describe('bristleDryness — §4.3', () => {
+  it('is clamp((1 − load)·0.9·1.6, 0, 1)', () => {
+    expect(typeof TRACES.bristleDryness, 'bristleDryness is exported').toBe('function')
+    expect(TRACES.bristleDryness?.(1), 'a loaded bristle has zero dryness').toBe(0)
+    expect(TRACES.bristleDryness?.(0.5), 'half-dry: 0.5 · 0.9 · 1.6').toBeCloseTo(0.72, 9)
+    expect(TRACES.bristleDryness?.(0), 'a dry bristle saturates at 1').toBe(1)
+  })
+
+  it('clamps at the band and never returns NaN', () => {
+    expect(typeof TRACES.bristleDryness, 'bristleDryness is exported').toBe('function')
+    expect(TRACES.bristleDryness?.(1.5), 'an over-full load never goes negative').toBe(0)
+    expect(TRACES.bristleDryness?.(-1), 'a negative load saturates at 1').toBe(1)
+    expect(TRACES.bristleDryness?.(Number.NaN), 'NaN is the neutral, fully loaded 0').toBe(0)
+    expect(TRACES.bristleDryness?.(Number.POSITIVE_INFINITY), 'non-finite is the neutral 0').toBe(0)
+    expect(TRACES.bristleDryness?.(Number.NEGATIVE_INFINITY), 'non-finite is the neutral 0').toBe(0)
+  })
+})
+
+describe('bristleBroken — §4.3', () => {
+  it('prints solid while loaded, at any noise', () => {
+    expect(typeof TRACES.bristleBroken, 'bristleBroken is exported').toBe('function')
+    for (const noise of [0, 0.3, 0.5, 0.7, 1]) {
+      expect(TRACES.bristleBroken?.(1, noise), 'a loaded bristle is exactly solid').toBe(1)
+    }
+  })
+
+  it('mixes the thresholded noise by dryness · hairs', () => {
+    expect(typeof TRACES.bristleBroken, 'bristleBroken is exported').toBe('function')
+    // load 0 → dryness 1 → weight 0.45; smoothstep(0.3, 0.7, 0.5) = 0.5.
+    expect(TRACES.bristleBroken?.(0, 0.5), 'the fully dry mid-noise mix').toBeCloseTo(
+      1 - 0.45 + 0.45 * 0.5,
+      9,
+    )
+    expect(TRACES.bristleBroken?.(0, 0), 'a valley dashes the most').toBeCloseTo(0.55, 9)
+    expect(TRACES.bristleBroken?.(0, 1), 'a peak prints solid even when dry').toBe(1)
+    expect(TRACES.bristleBroken?.(0.5, 0.5), 'half-dry: weight 0.72 · 0.45').toBeCloseTo(
+      1 - 0.324 + 0.324 * 0.5,
+      9,
+    )
+    expect(TRACES.bristleBroken?.(0, 0.3), 'below 0.3 the noise thresholds to 0').toBeCloseTo(0.55, 9)
+    expect(TRACES.bristleBroken?.(0, 0.7), 'at 0.7 the noise thresholds to 1').toBe(1)
+  })
+
+  it('replays the solid look for non-finite inputs', () => {
+    expect(typeof TRACES.bristleBroken, 'bristleBroken is exported').toBe('function')
+    expect(TRACES.bristleBroken?.(Number.NaN, 0.5), 'a missing load reads as fully loaded').toBe(1)
+    expect(TRACES.bristleBroken?.(0, Number.NaN), 'a missing noise reads as the smooth peak').toBe(1)
+  })
+})
+
+describe('bristleThreshold — §4.4', () => {
+  it('is grain·(1 − height) − 0.25; peaks map to −0.25 and valleys to 0.95 at grain 1.2', () => {
+    expect(typeof TRACES.bristleThreshold, 'bristleThreshold is exported').toBe('function')
+    expect(TRACES.bristleThreshold?.(1.2, 1), 'a paper peak admits any coverage').toBeCloseTo(-0.25, 9)
+    expect(TRACES.bristleThreshold?.(1.2, 0), 'a valley needs a nearly solid load').toBeCloseTo(0.95, 9)
+    expect(TRACES.bristleThreshold?.(1.2, 0.5)).toBeCloseTo(0.35, 9)
+  })
+
+  it('is monotone decreasing in height', () => {
+    expect(typeof TRACES.bristleThreshold, 'bristleThreshold is exported').toBe('function')
+    let previous = Number.POSITIVE_INFINITY
+    for (const height of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1]) {
+      const value = TRACES.bristleThreshold?.(1.2, height) ?? Number.NaN
+      expect(value).toBeLessThan(previous)
+      previous = value
+    }
+  })
+
+  it('never returns NaN', () => {
+    expect(typeof TRACES.bristleThreshold, 'bristleThreshold is exported').toBe('function')
+    expect(
+      TRACES.bristleThreshold?.(Number.NaN, 0.5),
+      'a missing grain replays §6 BRISTLE_GRAIN',
+    ).toBeCloseTo(1.2 * 0.5 - 0.25, 9)
+    expect(
+      TRACES.bristleThreshold?.(1.2, Number.NaN),
+      'a missing height reads as no tooth (0)',
+    ).toBeCloseTo(0.95, 9)
+  })
+})
+
+describe('bristleSoftnessBand — §4.4', () => {
+  it('is 0.5 at the threshold and saturates at the band edges', () => {
+    expect(typeof TRACES.bristleSoftnessBand, 'bristleSoftnessBand is exported').toBe('function')
+    expect(
+      TRACES.bristleSoftnessBand?.(0.4, 0.4, 0.09),
+      'coverage = threshold is the half point',
+    ).toBeCloseTo(0.5, 9)
+    expect(
+      TRACES.bristleSoftnessBand?.(0.31, 0.4, 0.09),
+      'below the low edge prints nothing',
+    ).toBe(0)
+    expect(
+      TRACES.bristleSoftnessBand?.(0.49, 0.4, 0.09),
+      'above the high edge prints fully',
+    ).toBe(1)
+  })
+
+  it('is the smoothstep between the edges, not a linear ramp', () => {
+    expect(typeof TRACES.bristleSoftnessBand, 'bristleSoftnessBand is exported').toBe('function')
+    // A quarter into the band: t = 0.25 → 3t² − 2t³ = 0.15625.
+    expect(TRACES.bristleSoftnessBand?.(0.35, 0.4, 0.1)).toBeCloseTo(0.15625, 9)
+  })
+
+  it('never returns NaN', () => {
+    expect(typeof TRACES.bristleSoftnessBand, 'bristleSoftnessBand is exported').toBe('function')
+    expect(
+      TRACES.bristleSoftnessBand?.(Number.NaN, 0.4, 0.09),
+      'a missing coverage prints nothing',
+    ).toBe(0)
+    expect(
+      TRACES.bristleSoftnessBand?.(0.4, Number.NaN, 0.09),
+      'a missing threshold reads as no tooth (0)',
+    ).toBe(1)
+    expect(
+      TRACES.bristleSoftnessBand?.(0.4, 0.4, Number.NaN),
+      'a missing width replays §6 0.09',
+    ).toBeCloseTo(0.5, 9)
+    expect(
+      TRACES.bristleSoftnessBand?.(0.4, 0.4, -0.09),
+      'a negative width replays §6 0.09',
+    ).toBeCloseTo(0.5, 9)
+  })
+})
+
+describe('bristleLandingOffset — §5.4', () => {
+  it('is (0.04 + 0.7·fract(seed·13.7)²)·landing — landing 1 spans [0.04, 0.74)', () => {
+    expect(typeof TRACES.bristleLandingOffset, 'bristleLandingOffset is exported').toBe('function')
+    expect(TRACES.bristleLandingOffset?.(0), 'seed 0 lands as early as possible').toBeCloseTo(0.04, 9)
+    for (const seed of [0, 0.05, 0.25, 0.5, 0.75, 0.9, 0.99]) {
+      const offset = TRACES.bristleLandingOffset?.(seed) ?? Number.NaN
+      expect(offset).toBeGreaterThanOrEqual(0.04 - 1e-12)
+      expect(offset).toBeLessThan(0.74)
+    }
+    // fract(0.5·13.7) = 0.85 → 0.04 + 0.7·0.85².
+    expect(TRACES.bristleLandingOffset?.(0.5)).toBeCloseTo(0.04 + 0.7 * 0.85 * 0.85, 9)
+  })
+
+  it('never returns NaN', () => {
+    expect(typeof TRACES.bristleLandingOffset, 'bristleLandingOffset is exported').toBe('function')
+    expect(
+      TRACES.bristleLandingOffset?.(Number.NaN),
+      'a missing seed lands as early as possible',
+    ).toBeCloseTo(0.04, 9)
+  })
+})
+
+describe('bristleLanded — §5.4', () => {
+  it('is smoothstep(offset, offset + 0.12, distance/halfWidth)', () => {
+    expect(typeof TRACES.bristleLanded, 'bristleLanded is exported').toBe('function')
+    expect(TRACES.bristleLanded?.(0.3, 0.3), 'before the offset a bristle does not print').toBe(0)
+    expect(TRACES.bristleLanded?.(0.3, 0.2)).toBe(0)
+    expect(TRACES.bristleLanded?.(0.3, 0.36), 'the ramp midpoint is half landed').toBeCloseTo(0.5, 9)
+    expect(TRACES.bristleLanded?.(0.3, 0.42), 'past the ramp the bristle is fully landed').toBe(1)
+  })
+
+  it('never returns NaN', () => {
+    expect(typeof TRACES.bristleLanded, 'bristleLanded is exported').toBe('function')
+    expect(TRACES.bristleLanded?.(Number.NaN, 0.5), 'a missing offset lands at 0').toBe(1)
+    expect(TRACES.bristleLanded?.(0.3, Number.NaN), 'a missing distance reads as fully landed').toBe(1)
+  })
+})
+
+describe('bristleRim — §5.3', () => {
+  it('is 0.25 + 0.75·smoothstep(0.45, 1, |across|)', () => {
+    expect(typeof TRACES.bristleRim, 'bristleRim is exported').toBe('function')
+    expect(TRACES.bristleRim?.(0), 'a centre bristle gets a quarter of the wobble').toBeCloseTo(0.25, 9)
+    expect(TRACES.bristleRim?.(0.45), 'the wobble starts at 0.45').toBeCloseTo(0.25, 9)
+    expect(TRACES.bristleRim?.(1), 'an edge bristle gets the full amount').toBeCloseTo(1, 9)
+    expect(TRACES.bristleRim?.(-1), 'the law is symmetric in across').toBeCloseTo(1, 9)
+    expect(TRACES.bristleRim?.(0.725), 'the midpoint is 0.25 + 0.75·0.5').toBeCloseTo(0.625, 6)
+  })
+
+  it('never returns NaN', () => {
+    expect(typeof TRACES.bristleRim, 'bristleRim is exported').toBe('function')
+    expect(TRACES.bristleRim?.(Number.NaN), 'a missing across reads as the centre').toBeCloseTo(0.25, 9)
+  })
+})
+
+describe('bristleEdgeBias — §5.5', () => {
+  it('is mix(1, 0.35, smoothstep(0.3, 1.05, |across|))', () => {
+    expect(typeof TRACES.bristleEdgeBias, 'bristleEdgeBias is exported').toBe('function')
+    expect(TRACES.bristleEdgeBias?.(0), 'the core carries no bias').toBe(1)
+    expect(TRACES.bristleEdgeBias?.(0.3)).toBe(1)
+    expect(TRACES.bristleEdgeBias?.(1.05), 'the rim is biased to 0.35').toBeCloseTo(0.35, 9)
+    expect(TRACES.bristleEdgeBias?.(-1.1), 'beyond the band the bias saturates').toBeCloseTo(0.35, 9)
+    expect(TRACES.bristleEdgeBias?.(0.675), 'the midpoint is 0.675').toBeCloseTo(0.675, 6)
+  })
+
+  it('never returns NaN', () => {
+    expect(typeof TRACES.bristleEdgeBias, 'bristleEdgeBias is exported').toBe('function')
+    expect(TRACES.bristleEdgeBias?.(Number.NaN), 'a missing across reads as no bias').toBe(1)
+  })
+})
+
+describe('bristleBody — §4.5', () => {
+  it('is mix(wide/5·presence, local, hairs)', () => {
+    expect(typeof TRACES.bristleBody, 'bristleBody is exported').toBe('function')
+    expect(TRACES.bristleBody?.(5, 0.5, 1, 0), 'hairs 0 is the wide body alone').toBeCloseTo(1, 9)
+    expect(TRACES.bristleBody?.(5, 0.5, 1, 1), 'hairs 1 is the local fibres alone').toBeCloseTo(0.5, 9)
+    expect(TRACES.bristleBody?.(5, 0.5, 1, 0.45), 'the default mixes 45 % local').toBeCloseTo(
+      0.55 * 1 + 0.45 * 0.5,
+      9,
+    )
+    expect(TRACES.bristleBody?.(2.5, 0.5, 0.5, 0), 'presence scales the wide body').toBeCloseTo(0.25, 9)
+  })
+
+  it('never returns NaN', () => {
+    expect(typeof TRACES.bristleBody, 'bristleBody is exported').toBe('function')
+    expect(TRACES.bristleBody?.(Number.NaN, 0.5, 1, 0.45), 'a missing wide reads as 0').toBeCloseTo(
+      0.45 * 0.5,
+      9,
+    )
+    expect(TRACES.bristleBody?.(5, Number.NaN, 1, 0.45), 'a missing local reads as 0').toBeCloseTo(
+      0.55,
+      9,
+    )
+    expect(TRACES.bristleBody?.(5, 0.5, Number.NaN, 0.45), 'a missing presence reads as 0').toBeCloseTo(
+      0.45 * 0.5,
+      9,
+    )
+    expect(
+      TRACES.bristleBody?.(5, 0.5, 1, Number.NaN),
+      'a missing hairs replays the 64-22 local-only body',
+    ).toBeCloseTo(0.5, 9)
+  })
+})
+
+describe('bristleCoverage — §4.5 / §5.5', () => {
+  it('is body·(0.3 + 0.7·pressure)·edgeBias', () => {
+    expect(typeof TRACES.bristleCoverage, 'bristleCoverage is exported').toBe('function')
+    expect(TRACES.bristleCoverage?.(0.5, 0, 1), 'zero pressure keeps only the 0.3 floor').toBeCloseTo(
+      0.15,
+      9,
+    )
+    expect(TRACES.bristleCoverage?.(0.5, 1, 1), 'full pressure is the full body').toBeCloseTo(0.5, 9)
+    expect(TRACES.bristleCoverage?.(0.5, 0.5, 1), 'half pressure is 0.65').toBeCloseTo(0.325, 9)
+    expect(TRACES.bristleCoverage?.(0.5, 1, 0.35), 'the rim bias scales the coverage').toBeCloseTo(
+      0.175,
+      9,
+    )
+  })
+
+  it('never returns NaN', () => {
+    expect(typeof TRACES.bristleCoverage, 'bristleCoverage is exported').toBe('function')
+    expect(TRACES.bristleCoverage?.(Number.NaN, 1, 1), 'a missing body prints nothing').toBe(0)
+    expect(
+      TRACES.bristleCoverage?.(0.5, Number.NaN, 1),
+      'a missing pressure reads as the 0.3 floor',
+    ).toBeCloseTo(0.15, 9)
+    expect(
+      TRACES.bristleCoverage?.(0.5, 1, Number.NaN),
+      'a missing edge bias reads as no bias',
+    ).toBeCloseTo(0.5, 9)
   })
 })
