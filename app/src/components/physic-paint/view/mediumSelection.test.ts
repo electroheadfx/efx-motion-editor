@@ -6,7 +6,9 @@
 //   1. viscosity, body and emboss join the interface, the key list
 //      and the defaults (0), so the record loop and the selection
 //      write allowlist both gain them. 64-22 adds feather (0),
-//      pickup (60), refill (60) and wetSeconds (7 seconds).
+//      pickup (100 — 261119-pod D-A), refill (60) and wetSeconds (7).
+//      The four EXPLICIT records keep pickup 60 (D-A is the neutral
+//      medium's default, not a blanket rewrite).
 //   2. applyAquarelleMedium is ONE spread assignment plus one id
 //      write — never a per-key setter cascade, never the
 //      selection-edit path, never size, never lift.
@@ -116,11 +118,12 @@ describe('the medium keys in the live bag', () => {
     expect(AQUARELLE_GLOBAL_KEYS).toContain('wetSeconds');
     expect(AQUARELLE_GLOBAL_KEYS).toHaveLength(16);
     expect(DEFAULT_AQUARELLE_PARAMS.feather).toBe(0);
-    expect(DEFAULT_AQUARELLE_PARAMS.pickup).toBe(60);
+    // 261119-pod (D-A): Pickup opens at 100 — the reference's §6 default.
+    expect(DEFAULT_AQUARELLE_PARAMS.pickup).toBe(100);
     expect(DEFAULT_AQUARELLE_PARAMS.refill).toBe(60);
     expect(DEFAULT_AQUARELLE_PARAMS.wetSeconds).toBe(7);
     expect(aquarelleParams.value.feather).toBe(0);
-    expect(aquarelleParams.value.pickup).toBe(60);
+    expect(aquarelleParams.value.pickup).toBe(100);
     expect(aquarelleParams.value.refill).toBe(60);
     expect(aquarelleParams.value.wetSeconds).toBe(7);
   });
@@ -159,7 +162,8 @@ describe('the medium keys in the live bag', () => {
   it('records the four new keys in the per-stroke snapshot', () => {
     const fresh = snapshotAquarelleRecord();
     expect(fresh.params.feather).toBe(0);
-    expect(fresh.params.pickup).toBe(60);
+    // 261119-pod (D-A): a fresh snapshot carries the new Pickup default.
+    expect(fresh.params.pickup).toBe(100);
     expect(fresh.params.refill).toBe(60);
     expect(fresh.params.wetSeconds).toBe(7);
     setAquarelleParam('feather', 35);
@@ -205,7 +209,8 @@ describe('the medium keys in the live bag', () => {
     // 64-22: the reference's three controls replay at their §6 defaults and
     // wetSeconds at its 7-second fallback — never undefined, never NaN.
     expect(toEngineParams(legacy).feather).toBe(0);
-    expect(toEngineParams(legacy).pickup).toBe(0.6);
+    // 261119-pod (D-A): the §6 pickup default is 1.0 engine / 100 canonical.
+    expect(toEngineParams(legacy).pickup).toBe(1);
     expect(toEngineParams(legacy).refill).toBe(0.6);
     expect(toEngineParams(legacy).wetSeconds).toBe(7);
   });

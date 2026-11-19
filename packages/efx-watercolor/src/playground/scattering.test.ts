@@ -599,8 +599,10 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     // carried * a, with the scattering S riding the SAME weight.
     expectContains(deposit, 'oA = vec4(a);')
     expectContains(deposit, 'oB = vec4(a);')
-    expectContains(deposit, 'oA = g.cA * a;')
-    expectContains(deposit, 'oB = vec4(g.cB * a, uScatter * a);')
+    // 261119-pod: the carried half reads the smear-adjusted locals (`cA`,
+    // `cB`), which equal the gathered value when Pickup is 0.
+    expectContains(deposit, 'oA = cA * a;')
+    expectContains(deposit, 'oB = vec4(cB * a, uScatter * a);')
     // The old additive law is gone: no bare `uAmount` multiply remains.
     expectNotContains(deposit, 'uAmount')
     // Never an RGB average: the gathered value stays in coefficient space.
@@ -615,13 +617,16 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     // green channel instead (the first cut), src.a stayed 0 and the
     // destination factor became 1: the channel accumulated additively past
     // its target and mode 4 re-promoted the alpha over its own paint.
-    expectContains(cover, 'o0 = vec4(a * uCoverTarget * g.alpha, 0.0, 0.0, a);')
+    // 261119-pod: the write is the smear-adjusted `target`, which equals
+    // `a * uCoverTarget * g.alpha` when Pickup is 0.
+    expectContains(cover, 'o0 = vec4(target, 0.0, 0.0, a);')
   })
 
   it('wires the two lerp halves, the settled half and ONE coverage write per bristle dab', () => {
-    // Slice ends at 64-24's touch stamp: the pass after the deposit reads the
-    // coverage channel but writes nothing, so it must stay outside this count.
-    const ink = sliceBetween(ENGINE_SOURCE, 'private bristleInk(', 'private bristleTouch(')
+    // Slice ends at 261119-pod's snapshot pass (its five source binds are
+    // pinned by their own test) and at 64-24's touch stamp: neither is a
+    // deposit draw, so neither belongs in these counts.
+    const ink = sliceBetween(ENGINE_SOURCE, 'private bristleInk(', 'private bristleSnapshot(')
     expectContains(ink, 'gl.blendFunc(gl.ONE, gl.ONE);')
     expectContains(ink, 'gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);')
     expectContains(ink, 'gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
@@ -1161,7 +1166,7 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(d, 'vec4 cA = g.cA;')
     expectContains(d, 'vec3 cB = g.cB;')
     expectContains(d, 'cA = mix(cA, texture(uSnapA, vUv), smear);')
-    expectContains(d, 'cB = mix(cB, texture(uSnapB, vUv).rgb, smear);')
+    expectContains(d, 'cB = mix(cB, texture(uSnapB, vUv).xyz, smear);')
     expectContains(d, 'oA = cA * a;')
     expectContains(d, 'oB = vec4(cB * a, uScatter * a);')
     const c = cover()

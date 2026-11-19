@@ -1148,7 +1148,7 @@ void main(){
   if (uSmear > 0.0) {
     float smear = smearWeight(g.nearest, uAlongPx + q.y * uHalfWidthPx, wetAt(vUv));
     cA = mix(cA, texture(uSnapA, vUv), smear);
-    cB = mix(cB, texture(uSnapB, vUv).rgb, smear);
+    cB = mix(cB, texture(uSnapB, vUv).xyz, smear);
   }
   if (uMode == 1) {
     // The attenuation half: the destination becomes dst · (1 − a) through

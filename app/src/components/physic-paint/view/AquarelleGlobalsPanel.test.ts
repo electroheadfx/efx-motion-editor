@@ -200,7 +200,8 @@ const RESET_EXPECTED = {
   viscosity: 0,
   body: 0,
   feather: 0,
-  pickup: 60,
+  // 261119-pod (D-A): the playground default opens Pickup at 100.
+  pickup: 100,
   refill: 60,
   emboss: 0,
 } as const;
@@ -296,7 +297,7 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(params.viscosity, 'viscosity → 0').toBe(RESET_EXPECTED.viscosity);
     expect(params.body, 'body → 0').toBe(RESET_EXPECTED.body);
     expect(params.feather, 'feather → 0').toBe(RESET_EXPECTED.feather);
-    expect(params.pickup, 'pickup → 60').toBe(RESET_EXPECTED.pickup);
+    expect(params.pickup, 'pickup → 100').toBe(RESET_EXPECTED.pickup);
     expect(params.refill, 'refill → 60').toBe(RESET_EXPECTED.refill);
     expect(params.emboss, 'emboss → 0').toBe(RESET_EXPECTED.emboss);
     // T-261017-WMW-01: Reset must never write size (top-bar Brush size owns it)

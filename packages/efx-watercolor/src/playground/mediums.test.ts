@@ -85,7 +85,9 @@ describe('medium records', () => {
       body: 0,
       emboss: 0,
       feather: 0,
-      pickup: 60,
+      // 261119-pod (D-A): the watercolor record derives the canonical
+      // default, which now opens Pickup at 100.
+      pickup: 100,
       refill: 60,
       wetSeconds: 7,
     })

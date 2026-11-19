@@ -51,7 +51,7 @@ describe('toEngineParams', () => {
 
   it('maps the seven canonical globals onto 0..1', () => {
     expect(toEngineParams({ water: 50, load: 25, flow: 100, bleed: 0, dry: 75, edge: 60, granulation: 40 }))
-      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0, feather: 0, pickup: 0.6, refill: 0.6, wetSeconds: 7 });
+      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22, viscosity: 0, body: 0, emboss: 0, feather: 0, pickup: 1, refill: 0.6, wetSeconds: 7 });
   });
 
   // Phase 64 (v2.2.0): Body and Emboss join the medium bag. 0 is neutral —
@@ -120,9 +120,11 @@ describe('toEngineParams', () => {
     expect(toEngineParams({ water: 50 }).feather).toBe(0);
     expect(toEngineParams(undefined).feather).toBe(0);
     expect(toEngineParams({ feather: Number.NaN }).feather).toBe(0);
-    expect(toEngineParams({ water: 50 }).pickup).toBe(0.6);
-    expect(toEngineParams(undefined).pickup).toBe(0.6);
-    expect(toEngineParams({ pickup: Number.POSITIVE_INFINITY }).pickup).toBe(0.6);
+    // 261119-pod (D-A): Pickup opens at 100 canonical / 1 engine — the
+    // reference's §6 default; Refill keeps its recorded 60 / 0.6.
+    expect(toEngineParams({ water: 50 }).pickup).toBe(1);
+    expect(toEngineParams(undefined).pickup).toBe(1);
+    expect(toEngineParams({ pickup: Number.POSITIVE_INFINITY }).pickup).toBe(1);
     expect(toEngineParams({ water: 50 }).refill).toBe(0.6);
     expect(toEngineParams(undefined).refill).toBe(0.6);
     expect(toEngineParams({ refill: Number.NaN }).refill).toBe(0.6);
@@ -130,10 +132,11 @@ describe('toEngineParams', () => {
 
   it('declares Feather, Pickup and Refill in the canonical and engine bags', () => {
     expect(DEFAULT_CANONICAL_PARAMS.feather).toBe(0);
-    expect(DEFAULT_CANONICAL_PARAMS.pickup).toBe(60);
+    // 261119-pod (D-A): Pickup opens at 100 canonical / 1 engine.
+    expect(DEFAULT_CANONICAL_PARAMS.pickup).toBe(100);
     expect(DEFAULT_CANONICAL_PARAMS.refill).toBe(60);
     expect(DEFAULT_PARAMS.feather).toBe(0);
-    expect(DEFAULT_PARAMS.pickup).toBeCloseTo(0.6, 12);
+    expect(DEFAULT_PARAMS.pickup).toBe(1);
     expect(DEFAULT_PARAMS.refill).toBeCloseTo(0.6, 12);
   });
 
