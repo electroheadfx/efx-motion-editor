@@ -1225,25 +1225,31 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expect((d.match(/texture\(uSnapB, vUv\)/g) ?? []).length).toBe(1)
   })
 
-  it('shapes the coverage with a RADIAL falloff BEFORE the threshold, inside the guard', () => {
-    expect((SHADERS_SOURCE.match(/float featherFall\(/g) ?? []).length, 'one ramp helper').toBe(1)
+  it('lowers the RADIAL outer-band threshold BEFORE the smoothstep, inside the guard', () => {
     const g = gather()
-    expectContains(g, 'float featherFall(float across, float along){')
-    expectContains(g, 'float r = length(vec2(across, along));')
-    expectContains(g, 'return mix(1.0, 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, r), uFeather);')
-    expectContains(g, 'if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
-    const rampAt = g.indexOf('if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
+    expectContains(g, 'uniform float uFeatherBand;')
+    expectContains(
+      g,
+      'float rim = smoothstep(1.0 - uFeatherReach, 1.0, length(vec2(across, q.y)));',
+    )
+    expectContains(g, 'threshold -= uFeather * uFeatherBand * rim;')
+    const bandAt = g.indexOf('threshold -= uFeather * uFeatherBand * rim;')
     const smoothAt = g.indexOf(
       'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);',
     )
-    expect(rampAt, 'the ramp runs').toBeGreaterThan(-1)
-    // 261119-pod FIX 2: the falloff multiplies the COVERAGE the threshold
-    // quantises, exactly the reference's softness class. As a post-threshold
-    // per-dab weight it was saturated by repeated dabs into an inward-
-    // translated hard edge (half-width 10 → 8 px, top/bottom fade still 0);
-    // pre-threshold the smoothstep maps the falloff into a multi-pixel ramp.
-    expect(smoothAt, 'the threshold runs after the falloff').toBeGreaterThan(-1)
-    expect(rampAt, 'the falloff is shaped before the threshold').toBeLessThan(smoothAt)
+    expect(bandAt, 'the band runs').toBeGreaterThan(-1)
+    // 261119-pod FIX 2b — Feather EXTENDS the mark. The earlier FIX 2
+    // multiplied the coverage DOWN before the threshold; measured, it ate the
+    // mark inward (half-width 10 → 8.5 px at F = 1 while the reference widens
+    // 2.42×). The threshold is now LOWERED across the outer band, and the
+    // engine grows the dab radius by F·BRISTLE_FEATHER_GROW: both monotonic
+    // in F, neither runs at F = 0, so the Feather-0 program is untouched.
+    expect(smoothAt, 'the threshold smoothstep runs').toBeGreaterThan(-1)
+    expect(bandAt, 'the lowering feeds the smoothstep').toBeLessThan(smoothAt)
+    expectNotContains(g, 'coverage *= featherFall')
+    expectNotContains(g, 'featherFall(')
+    expectContains(ENGINE_SOURCE, 'if (bristle && P.feather > 0) r *= 1 + clamp(P.feather, 0, 1) * BRISTLE_FEATHER_GROW;')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uFeatherBand!, BRISTLE_FEATHER_BAND);')
     // The radial fall replaces the per-axis product: neither axis's ramp may
     // come back (the axes-fade-from-different-squares shape is the bug).
     expectNotContains(g, 'float side = 1.0 - smoothstep(')
@@ -1317,34 +1323,32 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     //    the plain program.
     expect(
       (SHADERS_SOURCE.match(/#ifdef BRISTLE_FEATHER_RAMP/g) ?? []).length,
-      'three guarded regions: the uniforms, the helper, the call',
-    ).toBe(3)
+      'two guarded regions: the uniforms and the threshold band',
+    ).toBe(2)
     expect(
       (SHADERS_SOURCE.match(/#endif/g) ?? []).length,
       'each guard closes',
-    ).toBe(3)
+    ).toBe(2)
     const guarded = [...SHADERS_SOURCE.matchAll(/#ifdef BRISTLE_FEATHER_RAMP([\s\S]*?)#endif/g)].map(
       (m) => m[1]!,
     )
-    expect(guarded.length).toBe(3)
+    expect(guarded.length).toBe(2)
     expectContains(guarded[0]!, 'uniform float uFeather;')
     expectContains(guarded[0]!, 'uniform float uFeatherReach;')
-    expectContains(guarded[1]!, 'float featherFall(float across, float along){')
-    expectContains(guarded[2]!, 'if (uFeather > 0.0) coverage *= featherFall(across, q.y);')
-    // The guarded call runs BEFORE the threshold smoothstep — FIX 2: the
-    // band must quantise the falloff, not be multiplied after it.
-    const callAt = SHADERS_SOURCE.indexOf(
-      'if (uFeather > 0.0) coverage *= featherFall(across, q.y);',
-    )
+    expectContains(guarded[0]!, 'uniform float uFeatherBand;')
+    expectContains(guarded[1]!, 'threshold -= uFeather * uFeatherBand * rim;')
+    // The guarded lowering runs BEFORE the threshold smoothstep — FIX 2b: the
+    // smoothstep must quantise the lowered threshold, not be post-multiplied.
+    const callAt = SHADERS_SOURCE.indexOf('threshold -= uFeather * uFeatherBand * rim;')
     const smoothAt = SHADERS_SOURCE.indexOf(
       'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);',
     )
-    expect(callAt, 'the ramp call exists').toBeGreaterThan(-1)
-    expect(callAt, 'the ramp shapes the coverage before the threshold').toBeLessThan(smoothAt)
+    expect(callAt, 'the band call exists').toBeGreaterThan(-1)
+    expect(callAt, 'the band lowers the threshold before the smoothstep').toBeLessThan(smoothAt)
     // Nothing ramp-related lives OUTSIDE a guard: strip the guarded regions
     // and the remainder must be free of the ramp's identifiers.
     const stripped = SHADERS_SOURCE.replace(/#ifdef BRISTLE_FEATHER_RAMP[\s\S]*?#endif/g, '')
-    expectNotContains(stripped, 'featherFall(')
+    expectNotContains(stripped, 'uFeatherBand')
     expectNotContains(stripped, 'uFeatherReach')
 
     // 2) The injector: the define lands AFTER the mandatory `#version` line
@@ -1410,5 +1414,25 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // write both run through the selected local, never a hard-coded program.
     expectNotContains(ink, 'this.programs.bristleDeposit.bind()')
     expectNotContains(ink, 'this.programs.bristleCover.bind()')
+  })
+
+  // FIX 2c — the display's edge-darkening crispener (uEdgeDarken = 0.8, up to
+  // 1.8× density at any gradient) turns a bristle rim into a dark 1-px
+  // outline and pinned the fade gauge's core to the boundary. It is gated to
+  // NON-bristle content only: the eight identity baselines are all
+  // non-bristle, so they keep exactly 0.8 and stay byte-identical.
+  it('gates the edge-darkening display law off for bristle content (FIX 2c)', () => {
+    expectContains(ENGINE_SOURCE, 'private bristleContent = false;')
+    expectContains(
+      ENGINE_SOURCE,
+      'gl.uniform1f(p.u.uEdgeDarken, this.bristleContent ? 0 : 0.8);',
+    )
+    const begin = sliceBetween(ENGINE_SOURCE, 'private beginBristles(', 'const halfWidthPx')
+    expectContains(begin, 'this.bristleContent = true;')
+    // A wiped sheet drops the flag on BOTH wipe paths (clear and resetSheet).
+    expect(
+      (ENGINE_SOURCE.match(/this\.bristleContent = false;/g) ?? []).length,
+      'clear() and resetSheet() both reset',
+    ).toBe(2)
   })
 })

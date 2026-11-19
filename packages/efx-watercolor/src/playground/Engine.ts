@@ -2,6 +2,8 @@ import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, isBristleResponse, tipRows
 import {
   BRISTLE_CAP,
   BRISTLE_DRY_EDGE,
+  BRISTLE_FEATHER_BAND,
+  BRISTLE_FEATHER_GROW,
   BRISTLE_FEATHER_REACH,
   BRISTLE_GRAIN,
   BRISTLE_HAIRS,
@@ -471,6 +473,17 @@ export class WatercolorEngine {
   /** 64-21: the stroke object whose set is seeded — a NEW stroke always re-seeds. */
   private bristleStroke: Stroke | null = null;
   private bristleCount = 0;
+  /**
+   * FIX 2c — the display's edge-darkening law (`k = gran·(1+0.8·edge)`, up to
+   * 1.8× density at ANY gradient) is a pen-work crispener that turns a
+   * bristle stroke's soft rim into a dark 1-px outline and pins the fade
+   * gauge's core to the boundary. It is OFF for bristle content and stays
+   * exactly 0.8 for every non-bristle response, so the eight identity
+   * baselines are untouched. Document-level: once a sheet carries bristle
+   * paint, no region keeps the law (a mixed sheet pays the crispening cost) —
+   * the per-pixel alternative needs a new target channel.
+   */
+  private bristleContent = false;
   private bristlePrev = { x: 0, y: 0, along: 0 };
   private paper!: Target;
   private wetMask!: Target;                    // coarse "is there water here" map, read back to bound the sim
@@ -1780,6 +1793,8 @@ export class WatercolorEngine {
     // 64-24: a wiped sheet is DRY — clearTarget wrote 0, which the field reads
     // as "touched at t = 0"; restore the one-week sentinel.
     this.clearLastTouch();
+    // FIX 2c: a wiped sheet no longer carries bristle content.
+    this.bristleContent = false;
     this.resetPaintState();
     this.notifyHistory();
     this.schedule();
@@ -1804,6 +1819,8 @@ export class WatercolorEngine {
     // 64-24: a wiped sheet is DRY — clearTarget wrote 0, which the field reads
     // as "touched at t = 0"; restore the one-week sentinel.
     this.clearLastTouch();
+    // FIX 2c: a wiped sheet no longer carries bristle content.
+    this.bristleContent = false;
     this.resetPaintState();
     this.notifyHistory();
   }
@@ -2347,7 +2364,7 @@ export class WatercolorEngine {
   /** One dab of the current tool. `moving` = 0 with `dt` set means a dwell. */
   private stamp(s: Stroke, x: number, y: number, pr: number, vx: number, vy: number, moving: number, dt = 0, widthFactor = 1) {
     const P = this.params;
-    const r = this.radius(s.tool, pr, s.speed, widthFactor);
+    let r = this.radius(s.tool, pr, s.speed, widthFactor);
     const dwell = moving ? 1 : dt * 8;
     switch (s.tool) {
       case 'brush': {
@@ -2358,6 +2375,11 @@ export class WatercolorEngine {
         // responses take the shipping path with no extra draw, no extra
         // uniform bind and no extra RNG draw — the identity proof.
         const bristle = isBristleResponse(b);
+        // 261119-pod FIX 2b: Feather EXTENDS a bristle mark — the effective
+        // brush grows with F (the gather lowers the threshold across the same
+        // band). F = 0 is exactly the pre-port radius, so the Feather-0
+        // programs and the no-drag byte identity are untouched.
+        if (bristle && P.feather > 0) r *= 1 + clamp(P.feather, 0, 1) * BRISTLE_FEATHER_GROW;
         if (bristle && this.bristleStroke !== s) {
           this.bristleStroke = s;
           this.beginBristles(r);
@@ -2770,6 +2792,9 @@ export class WatercolorEngine {
    */
   private beginBristles(radiusValue: number): void {
     const { gl, g } = this;
+    // FIX 2c: the sheet now carries bristle content — the display's
+    // edge-darkening crispener steps aside (see drawDisplay).
+    this.bristleContent = true;
     // §4.1 half-width in document texels (the radius is in doc heights), floor 1.
     const halfWidthPx = Math.max(1, radiusValue * this.dh);
     const count = bristleCount(halfWidthPx);
@@ -2956,6 +2981,9 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uBodyFloor!, BRISTLE_BODY_ALPHA_FLOOR);
     gl.uniform1f(p.u.uFeather!, clamp(this.params.feather, 0, 1));
     gl.uniform1f(p.u.uFeatherReach!, BRISTLE_FEATHER_REACH);
+    // FIX 2b: the outer-band threshold lowering that lets the grown
+    // footprint's tail cross the paper tooth instead of cutting at a new edge.
+    gl.uniform1f(p.u.uFeatherBand!, BRISTLE_FEATHER_BAND);
     gl.uniform1f(p.u.uNow!, this.clock() / 1000);
     gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);
   }
@@ -3466,7 +3494,11 @@ export class WatercolorEngine {
     gl.uniform4f(p.u.uView, view.x, view.y, view.w, view.h);
     gl.uniform2f(p.u.uTexel, 1 / this.dw, 1 / this.dh);
     gl.uniform1f(p.u.uGranulation, this.params.granulation * 0.55);
-    gl.uniform1f(p.u.uEdgeDarken, 0.8);
+    // FIX 2c: 0.8 is the pen-work edge crispener. It is baked into the eight
+    // identity baselines, all non-bristle, so those keep exactly 0.8; a sheet
+    // with bristle content turns it OFF (0), letting a bristle edge read as
+    // the real 50 % → 10 % fade the Feather band produces.
+    gl.uniform1f(p.u.uEdgeDarken, this.bristleContent ? 0 : 0.8);
     gl.uniform1f(p.u.uFlat, flat ? 1 : 0);
     gl.uniform3fv(p.u.uDesk, DESK);
     gl.uniform1i(p.u.uMode, mode);

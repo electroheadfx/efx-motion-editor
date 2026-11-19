@@ -130,13 +130,26 @@ export const BRISTLE_SMEAR_PERIOD_PX = 6;
 export const BRISTLE_SMEAR_CAP = 0.8;
 
 /**
- * Studio-only, no reference counterpart: how far the four-side Feather ramp
- * reaches in from each edge of the dab's local frame. The reference fades
- * only across the stroke (its `softness`); the port opens the fade on all
- * four sides. 0.45 leaves the inner 55 % at full coverage and fades the
- * outermost 45 % to zero — the visual weight of §6's softness band.
+ * Studio-only, no reference counterpart: how far the four-side Feather band
+ * reaches in from the dab's local edge. The reference fades only across the
+ * stroke (its `softness`); the port opens the band on all four sides. 0.45
+ * leaves the inner 55 % at full threshold and lowers it across the outer
+ * 45 % — the visual weight of §6's softness band.
  */
 export const BRISTLE_FEATHER_REACH = 0.45;
+
+/**
+ * FIX 2b — Feather EXTENDS the mark. F used to multiply the coverage DOWN
+ * after the threshold, which ate the mark inward (measured half-width
+ * 10 → 8.5 px at F = 1 while the reference widens 2.42×). The dab radius is
+ * now multiplied by `1 + F · GROW` (the effective brush grows) and the
+ * gather lowers the paper threshold by `F · BAND · rim` across the outer
+ * band, so the grown footprint's tail crosses the tooth instead of being cut
+ * at a new hard edge. Both are monotonic in F; at F = 0 neither runs, and the
+ * Feather-0 program stays the pre-port one.
+ */
+export const BRISTLE_FEATHER_GROW = 0.35;
+export const BRISTLE_FEATHER_BAND = 0.1;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);

@@ -954,6 +954,7 @@ uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLO
 #ifdef BRISTLE_FEATHER_RAMP
 uniform float uFeather;      // the Feather global, 0..1
 uniform float uFeatherReach; // Studio-only four-side reach (BRISTLE_FEATHER_REACH 0.45)
+uniform float uFeatherBand;  // FIX 2b threshold lowering at the band's rim (BRISTLE_FEATHER_BAND)
 #endif
 // Post-UAT 2026-11-19 (GAP-4) — the texture tip composes with the gather
 // instead of disabling the engine. uTipMix is 0 for a bristle brush with no
@@ -1013,21 +1014,6 @@ float wetAt(vec2 uv){
 float smearWeight(int nearest, float alongPx, float wet){
   return clamp(uSmear * wet * hash21(vec2(float(nearest), floor(alongPx / uSmearPeriodPx))), 0.0, uSmearCap);
 }
-
-// The four-side Feather ramp (Studio-only; the reference fades across the
-// stroke only). A RADIAL fall over the normalized brush space — r is the
-// distance from the dab's centre in units of the half-width — so the deposit
-// tapers on ALL FOUR sides with the same reach. The earlier per-axis product
-// was measured leaving the stroke's top/bottom sides a cliff (the two axes
-// have to fade from the SAME disc). D-H: this helper (and the one call
-// below) exist ONLY in the ramp variant — the Feather-0 program is the
-// pre-port one, compiled without them.
-#ifdef BRISTLE_FEATHER_RAMP
-float featherFall(float across, float along){
-  float r = length(vec2(across, along));
-  return mix(1.0, 1.0 - smoothstep(1.0 - uFeatherReach, 1.0, r), uFeather);
-}
-#endif
 
 // §4.4 — the paper tooth as a threshold, in TWO coordinate systems:
 //  - streaks: brush-local, rotated to the stroke normal — grooves that follow
@@ -1136,21 +1122,21 @@ Gathered gatherBristle(vec2 uv){
   float threshold = uGrain * (1.0 - height) - 0.25;
   float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;
-  // 261119-pod FIX 2 — Feather is a SPATIAL falloff on the coverage the
-  // threshold quantises, exactly the reference's softness class of operation
-  // (smoothstep over threshold minus softness to threshold plus softness):
-  // the falloff turns the threshold band into a multi-pixel deposit ramp, so
-  // there is no isolated partial-deposit rim row for the composite to render
-  // as a dark 1-px outline. It is RADIAL in brush space (across + along), so
-  // the sides and the stroke ends share one reach. The previous post-
-  // threshold multiply was a per-dab weight AFTER the band: repeated dabs
-  // saturated it into an inward-translated hard edge, measured as a half-
-  // width 10 → 8 px shrink with top/bottom fade still 0.
-  // D-H: the line is compiled ONLY into the ramp variant, so the Feather-0
-  // program is the pre-port one rather than a program whose register
-  // allocation a dead guarded branch still perturbs.
+  // 261119-pod FIX 2b — Feather EXTENDS the mark outward. Two halves, both
+  // monotonic in F: the engine grows the dab radius (BRISTLE_FEATHER_GROW),
+  // and here the paper threshold is LOWERED across the same radial band, so
+  // the grown footprint's tail crosses the tooth instead of being cut at a
+  // new edge. The earlier FIX 2 multiplied the coverage DOWN, which ate the
+  // mark inward (half-width 10 → 8.5 px while the reference widens 2.42×).
+  // It stays RADIAL in brush space (across + along), so the sides and the
+  // stroke ends share one band. D-H: the line is compiled ONLY into the ramp
+  // variant, so the Feather-0 program is the pre-port one rather than a
+  // program whose register allocation a dead guarded branch still perturbs.
 #ifdef BRISTLE_FEATHER_RAMP
-  if (uFeather > 0.0) coverage *= featherFall(across, q.y);
+  if (uFeather > 0.0) {
+    float rim = smoothstep(1.0 - uFeatherReach, 1.0, length(vec2(across, q.y)));
+    threshold -= uFeather * uFeatherBand * rim;
+  }
 #endif
   g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
   // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
