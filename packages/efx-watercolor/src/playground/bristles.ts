@@ -33,6 +33,11 @@
 //  carry the same expression, and the engine binds these constants as
 //  uniforms, so a second copy of any number fails a source pin.
 //
+//  64-24 adds the §3.4 wetness gate: `LAST_TOUCH_DRY_SECONDS` (the last-touch
+//  field's one-week cleared sentinel), `bristleWetness` (the carrier's
+//  timestamp law in mode 1) and `bristleTouchValue` (`bristleTouchFS`'s mix).
+//  The engine imports the sentinel — this module never imports anything.
+//
 //  THE §4.4 NAME COLLISION: `BRISTLE_GRAIN` (1.2) is the paint's paper-tooth
 //  scale from §6 — NOT `Brush.grain` (0..1, the dry re-threshold the engine's
 //  footprint mask has always read). They are different quantities that share
@@ -88,6 +93,18 @@ export const BRISTLE_HAIRS = 0.45;
 export const BRISTLE_DRY_EDGE = 0.35;
 /** §5.4 `paint.landing` — the spread of the staggered landing (1). */
 export const BRISTLE_LANDING = 1;
+
+// ------------------------- the §3.4 wetness gate (64-24) -------------------------
+
+/**
+ * D-24: the last-touch field's CLEARED value — one week before the clock's
+ * zero. A cleared R32F reads 0, which the gate would read as "touched at t = 0"
+ * and every texel would start wet; −604800 s makes `exp(−age / wetSeconds)`
+ * 0 to float precision for any tack time. The only cleared value the engine
+ * ever writes into the field, declared HERE with the module's other laws and
+ * imported by `Engine.ts` — never a second copy.
+ */
+export const LAST_TOUCH_DRY_SECONDS = -604800;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);
@@ -259,6 +276,39 @@ export function bristleCoverage(body: number, pressure: number, edgeBias: number
   const p = Number.isFinite(pressure) ? pressure : 0;
   const e = Number.isFinite(edgeBias) ? edgeBias : 1;
   return b * (0.3 + 0.7 * p) * e;
+}
+
+// ------------------------- the §3.4 wetness laws (64-24) -------------------------
+
+/**
+ * §3.4: `wetness = exp(−age / wetSeconds)` — how much of its paint a texel
+ * still gives up. `age` is SECONDS since the last touch (the last-touch
+ * field, on the virtual clock) and `wetSeconds` is the paint's tack time,
+ * floored at 1 so a zero or negative record value can never divide by zero.
+ * A negative or non-finite age reads as 1 — a future timestamp is not yet
+ * old, and a missing one must replay the fresh look, never NaN. The result
+ * is clamped to 0..1 (exact float: `exp(−600/7)` is ~6e−38, still finite).
+ */
+export function bristleWetness(ageSeconds: number, wetSeconds: number): number {
+  if (!Number.isFinite(ageSeconds) || ageSeconds < 0) return 1;
+  const tau = Number.isFinite(wetSeconds) && wetSeconds > 1 ? wetSeconds : 1;
+  return clamp01(Math.exp(-ageSeconds / tau));
+}
+
+/**
+ * §3.4 / the touch stamp: `value = prev + (now − prev)·clamp01(mask)` — the
+ * exact law `bristleTouchFS` runs, and the tested twin of its
+ * `mix(prev, uNow, weight)`. Mask 0 leaves the field untouched, mask 1
+ * writes `now`, and the result always lies between the two inputs. Total:
+ * a non-finite prev reads as `now` (nothing to keep), a non-finite now as
+ * the kept value, a non-finite mask as 0 (a missing weight records no
+ * touch), and two missing times as 0 — never NaN.
+ */
+export function bristleTouchValue(prev: number, now: number, mask: number): number {
+  const p = Number.isFinite(prev) ? prev : Number.isFinite(now) ? now : 0;
+  const n = Number.isFinite(now) ? now : p;
+  const m = Number.isFinite(mask) ? clamp01(mask) : 0;
+  return p + (n - p) * m;
 }
 
 export interface BristleSet {

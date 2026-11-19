@@ -602,7 +602,9 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
   })
 
   it('wires one ink draw and ONE coverage write per bristle dab', () => {
-    const ink = sliceBetween(ENGINE_SOURCE, 'private bristleInk(', 'readBristles(): Uint16Array {')
+    // Slice ends at 64-24's touch stamp: the pass after the deposit reads the
+    // coverage channel but writes nothing, so it must stay outside this count.
+    const ink = sliceBetween(ENGINE_SOURCE, 'private bristleInk(', 'private bristleTouch(')
     expectContains(ink, 'gl.blendFunc(gl.ONE, gl.ONE);')
     expectContains(ink, 'gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);')
     expect((ink.match(/this\.ink\.read/g) ?? []).length, 'one ink deposit').toBe(1)

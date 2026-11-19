@@ -709,8 +709,10 @@ vec4 bristleTex(sampler2D t, int idx){ return texelFetch(t, ivec2(0, clamp(idx, 
 //   §3.1 carried = mix(carried, canvas, pickup); carried = mix(carried, pigment, refill)
 //   §3.1 load -= depletion * loadRate * travelledPx * touch * (0.35 + 0.65 * pressure)
 //   §3.1 load += pickup * 0.25
-// §3.4 wetness here is the existing-channel PROXY: wet * coverage (the
-// timestamp mode is 64-24's).
+// §3.4 wetness: mode 1 (the shipped law, 64-24 / D-24) reads the last-touch
+// field's age on the VIRTUAL clock; mode 0 keeps 64-21's existing-channel
+// PROXY (`wet * coverage`) as the recorded A/B control only. `uTimes` is the
+// exact-float last-touch pair's read half — the reservation 64-21 made.
 export const bristleCarrierFS = `${HEADER}${BRISTLE_NOISE}${BRISTLE_TEXTURES}
 layout(location=0) out vec4 oA;
 layout(location=1) out vec4 oB;
@@ -730,6 +732,10 @@ uniform vec3 uPigmentB;      // palette absorbance 4..6
 uniform float uAlongPx;
 uniform float uStreakLen;
 uniform float uRimContact;
+uniform sampler2D uTimes;    // the last-touch field's read half (R32F, D-24)
+uniform float uNow;          // SECONDS on the virtual clock — never a wall clock
+uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
+uniform int uWetMode;        // 1 = the shipped timestamp law; 0 = the A/B proxy
 
 vec4 canvasAt(vec2 uv){
   vec4 a = texture(uInkA, uv) + texture(uFixedA, uv);
@@ -740,8 +746,16 @@ vec3 canvasAtB(vec2 uv){
   vec4 ib = texture(uInkB, uv) + texture(uFixedB, uv);
   return ib.rgb;
 }
-// §3.4 proxy mode: the existing wet channel gated by the coverage channel.
-float wetAt(vec2 uv){ return texture(uWet, uv).x * texture(uCover, uv).x; }
+// §3.4: mode 1 is the shipped law (D-24) — the texel's age from the
+// last-touch field, on the virtual clock, gated by the coverage channel.
+// Mode 0 is 64-21's proxy retained ONLY as the recorded A/B control.
+float wetAt(vec2 uv){
+  if (uWetMode == 1) {
+    float age = max(uNow - texture(uTimes, uv).r, 0.0);
+    return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;
+  }
+  return texture(uWet, uv).x * texture(uCover, uv).x;
+}
 
 void main(){
   int idx = int(gl_FragCoord.y);
@@ -1039,6 +1053,27 @@ void main(){
   float f = uAmount * mix(m, 1.0 - exp(-uDensity * m), uShapeLaw);
   o0 = vec4(f);
   o1 = vec4(f);
+}`;
+
+// ============================================================
+//  64-24 (D-24) — THE TOUCH STAMP.
+//
+//  One cheap document-sized draw over the dab's rect, after the deposit and
+//  its one coverage write: `weight = clamp(cover · amount, 0, 1)` and the
+//  last-touch field mixes toward `uNow` — a texel this dab painted is now
+//  `uNow` old, a texel it missed keeps its age. No gather: the coverage
+//  channel IS the weight, so the touch refresh stays one draw (D-29's third
+//  pass). `uTimes` is the exact-float field's read half — exact f32 because
+//  the cleared sentinel (−604800 s) is outside half-float's range.
+// ============================================================
+export const bristleTouchFS = `${HEADER}
+layout(location=0) out vec4 o0;
+uniform sampler2D uTimes, uCover;
+uniform float uNow;
+uniform float uAmount;
+void main(){
+  float weight = clamp(texture(uCover, vUv).x * uAmount, 0.0, 1.0);
+  o0 = vec4(mix(texture(uTimes, vUv).r, uNow, weight));
 }`;
 
 // Paper, generated per document and whenever the paper is changed, in two passes.

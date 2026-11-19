@@ -11,6 +11,7 @@ import {
   BRISTLE_STREAK_SHARE,
   bristleCount,
   gatherSoftness,
+  LAST_TOUCH_DRY_SECONDS,
   makeBristles,
 } from './bristles';
 import { f32ToF16 } from './half';
@@ -320,12 +321,9 @@ export const MAX_ZOOM = 32;
 const FIT_PADDING = 24;        // CSS px around the sheet when zoomed to fit
 const PAN_KEEP = 48;           // CSS px of the sheet that always stays on screen
 const FIX_DURATION = 1.2;
-// 64-24 (D-24): the last-touch field's CLEARED value — one week before the
-// clock's zero. A cleared R32F reads 0, which the virtual clock would read as
-// "touched at t = 0" and every texel would start wet; −604800 s makes
-// exp(−age / wetSeconds) 0 to float precision for any tack time. The only
-// cleared value the engine ever writes into the field.
-export const LAST_TOUCH_DRY_SECONDS = -604800;
+// 64-24 (D-24): `LAST_TOUCH_DRY_SECONDS` — the last-touch field's one-week
+// cleared sentinel — is declared in `bristles.ts` with the module's other
+// laws and imported above; a second declaration fails the package scan.
 const MASK_BLOCK = 16;         // texels per wet-mask cell
 const MASK_EVERY = 10;         // frames between wet-mask readbacks that trim the active rect
 const MASK_MARGIN = MASK_BLOCK + 8;
@@ -428,6 +426,13 @@ export class WatercolorEngine {
   // script on replay, never persisted. The delivery law (D-29) admits this pair
   // as the medium engine's ONLY document-sized addition.
   private lastTouch!: DoubleTarget;
+  /**
+   * 64-24 (D-24): the carrier's wetness source — 1 is the shipped timestamp
+   * law, 0 is 64-21's `wet * coverage` proxy kept ONLY as the recorded A/B
+   * control 64-21 reserved `uWetMode` for. The probe's `--wet-mode` flag is
+   * its one caller; the app never calls `setLastTouchMode`.
+   */
+  private lastTouchMode = 1;
   // 64-21 (SPIKE 002): the per-stroke bristle reservoirs — a FIXED
   // `1 × BRISTLE_CAP` set, three RGBA16F attachments (carried absorbance 0..3,
   // 4..6 + carried alpha, load/across/seed/valueJitter) — plus the static
@@ -537,6 +542,9 @@ export class WatercolorEngine {
     this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);
     this.programs.bristleCover = this.g.program(S.bristleCoverFS);
     this.programs.bristleBodyCover = this.g.program(S.bristleBodyCoverFS);
+    // 64-24 (D-24): the touch refresh, same rule — outside the pinned literal
+    // (twenty-three stays). The delivery law's third pass.
+    this.programs.bristleTouch = this.g.program(S.bristleTouchFS);
     this.fitCanvas();
     this.createDocument(size ?? this.screenSize);
     this.attachInput();
@@ -1212,6 +1220,16 @@ export class WatercolorEngine {
 
   /** Deterministic bake: install a virtual clock in ms (A2). */
   setClock(fn: () => number) { this.clock = fn; }
+
+  /**
+   * 64-24 (D-24): the recorded A/B seam — 1 is the shipped timestamp law for
+   * the carrier's wetness, 0 is 64-21's proxy. Compare-then-write so a
+   * replayed script can never toggle the mode mid-bake. Test/probe only; the
+   * app never calls it.
+   */
+  setLastTouchMode(mode: 0 | 1) {
+    if (mode !== this.lastTouchMode) this.lastTouchMode = mode === 0 ? 0 : 1;
+  }
 
   /** Deterministic bake: stop the rAF loop; the host drives tick(dt). */
   setManual(on: boolean) {
@@ -2396,6 +2414,10 @@ export class WatercolorEngine {
           if (bristle) this.bristleInk(dx, dy, dr, angle, amount, pr, c1[3]!, alongPx);
           else if (coverAmount > 0) this.coverageDeposit(dx, dy, dr, angle, coverAmount, coverDensity, c, c1[3]!, dryness, grainThr);
           else this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
+          // 64-24 (D-24): the dab records its own touch AFTER depositing and
+          // after its one coverage write — the next dab's carrier reads an
+          // honest age of the paint it crosses.
+          if (bristle) this.bristleTouch(dx, dy, dr, angle, amount);
           if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
           // soft brushes wet a little beyond the tip; textured ones keep their
           // edges. A waterless brush never wakes the fluid sim at all.
@@ -2784,8 +2806,10 @@ export class WatercolorEngine {
    * three canvas taps, the pickup/refill equilibrium and the load update.
    * Runs before the dab's deposit and writes ONLY the reservoir pair.
    *
-   * Ten textures: the eleventh (the last-touch field) belongs to 64-24, and
-   * this fragment ships the proxy wetness `wet * coverage` only.
+   * Eleven textures: the last-touch field's read half arrives on unit 10
+   * (64-24 / D-24) and the fragment's §3.4 wetness is the timestamp law on
+   * the VIRTUAL clock (`this.clock()`), gated by coverage — the 64-21 proxy
+   * survives only as the recorded A/B mode 0.
    */
   private carrierPass(x: number, y: number, r: number, angle: number, travel: number, travelPx: number, alongPx: number, pr: number): void {
     const { gl, g } = this;
@@ -2825,6 +2849,13 @@ export class WatercolorEngine {
     // `bristles.ts`, so the contact wobble cannot drift from its tested twin.
     gl.uniform1f(p.u.uStreakLen!, BRISTLE_STREAK_LENGTH);
     gl.uniform1f(p.u.uRimContact!, BRISTLE_RIM_CONTACT);
+    // 64-24 (D-24): the §3.4 gate — the last-touch field's read half on a
+    // free unit, `uNow` on the virtual clock (SECONDS), the recorded tack
+    // time, and the A/B mode (1 shipped). No wall clock exists here.
+    gl.uniform1i(p.u.uTimes!, g.bindTex(10, this.lastTouch.read.tex[0]!));
+    gl.uniform1f(p.u.uNow!, this.clock() / 1000);
+    gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);
+    gl.uniform1i(p.u.uWetMode!, this.lastTouchMode);
     g.draw(this.bristles.write, { x0: 0, y0: 0, x1: 1, y1: this.bristleCount });
     this.bristles.swap();
   }
@@ -2912,6 +2943,31 @@ export class WatercolorEngine {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     g.draw(this.cover.read, rect);
     gl.disable(gl.BLEND);
+  }
+
+  /**
+   * 64-24 (D-24, §3.4): the touch stamp. One gather-free draw over the dab's
+   * rect — the coverage channel this dab just wrote is the weight — mixing
+   * the last-touch field toward `uNow` (SECONDS on the virtual clock) in the
+   * WRITE half, then swapping the pair. Runs AFTER the deposit and its one
+   * coverage write, so the next dab's carrier reads an honest age of the
+   * paint it crosses. Texels outside the dab rect keep their age untouched.
+   */
+  private bristleTouch(x: number, y: number, r: number, angle: number, amount: number): void {
+    const { gl, g } = this;
+    // `angle` is accepted for signature symmetry with bristleInk: the touch
+    // rect is the dab's axis-aligned stamp at the SAME extent (1.6).
+    void angle;
+    const t = this.programs.bristleTouch!;
+    const rect = this.stampRect(x, y, r, this.dw, this.dh, 1.6);
+    t.bind();
+    gl.disable(gl.BLEND);
+    gl.uniform1i(t.u.uTimes!, g.bindTex(0, this.lastTouch.read.tex[0]!));
+    gl.uniform1i(t.u.uCover!, g.bindTex(1, this.cover.read.tex[0]!));
+    gl.uniform1f(t.u.uNow!, this.clock() / 1000);
+    gl.uniform1f(t.u.uAmount!, amount);
+    g.draw(this.lastTouch.write, rect);
+    this.lastTouch.swap();
   }
 
   /**

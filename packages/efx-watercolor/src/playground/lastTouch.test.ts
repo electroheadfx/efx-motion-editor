@@ -85,11 +85,17 @@ describe('last-touch format and sentinel (D-24)', () => {
   })
 
   it('declares exactly one LAST_TOUCH_DRY_SECONDS constant, one week old', () => {
+    // 64-24 Task 2: the constant lives in `bristles.ts` ("one law, declared
+    // once") and the engine IMPORTS it — the package-wide one-declaration
+    // scan in bristles.test.ts proves no second copy exists anywhere.
+    expect(ENGINE_SOURCE).toMatch(
+      /import \{[^}]*\bLAST_TOUCH_DRY_SECONDS\b[^}]*\} from '\.\/bristles'/,
+    )
+    expect(ENGINE_SOURCE).not.toContain('export const LAST_TOUCH_DRY_SECONDS')
     const declarations = ENGINE_SOURCE.match(/LAST_TOUCH_DRY_SECONDS/g) ?? []
-    // One declaration plus its three uses inside clearLastTouch (the loop's two
-    // halves share one gl.clearColor call) — pinned exactly.
+    // The import plus the four uses inside clearLastTouch's single
+    // gl.clearColor call (both halves share it) — pinned exactly.
     expect(declarations.length).toBeGreaterThanOrEqual(2)
-    expect(ENGINE_SOURCE).toContain('export const LAST_TOUCH_DRY_SECONDS = -604800;')
     expect(ENGINE_SOURCE).not.toContain('LAST_TOUCH_DRY_SECONDS = 0')
   })
 
