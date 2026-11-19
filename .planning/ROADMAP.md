@@ -252,7 +252,7 @@ Plans:
 
 **Acrylic bristle extension** *(from `64-CONTEXT.md` + Spike 002 — planned 2026-11-19; strictly sequential)*
 **Wave 15**
-- [ ] 64-21-PLAN.md — Record and reservoirs: pin the paper seed, generate the deterministic bristle set from `traceSeed`, and give every bristle its `1 × 256` reservoir pair with the carrier pass per dab — no visual law change, every identity gate byte-identical
+- [x] 64-21-PLAN.md — Record and reservoirs: pin the paper seed, generate the deterministic bristle set from `traceSeed`, and give every bristle its `1 × 256` reservoir pair with the carrier pass per dab — no visual law change, every identity gate byte-identical
 
 **Wave 16** *(blocked on 64-21 completion)*
 - [ ] 64-22-PLAN.md — The gather and the mixing law: the 5-nearest ink-weighted carried coefficients, the RGB→coefficient law, `pickup`/`refill`/`wetSeconds` exposed, and Body composition through the coverage composite with the D-21 bristle-modulated cover for the two bristle responses only
@@ -282,7 +282,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 20/24 | In Progress | - |
+| 64. Medium Engine | 21/24 | In Progress | - |
 
 ---
 

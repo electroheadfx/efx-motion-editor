@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Phase 64 context gathered (acrylic bristle deposit extension)
-last_updated: "2026-11-19T12:45:55.578Z"
-last_activity: 2026-11-18
+stopped_at: Completed 64-21-PLAN.md
+last_updated: "2026-11-19T13:19:12.539Z"
+last_activity: 2026-11-19
 last_activity_desc: Phase 64 execution started
-state_head: 7f1edd661c96aae1c213cbed8e50beaae8778c53
+state_head: cada96ae2f892c2f454c49384ab1f6e7a05182d4
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 41
-  completed_plans: 37
+  completed_plans: 38
   percent: 50
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 
 ## Current Position
 
-Phase: 64 (Medium Engine) — READY TO EXECUTE
-Plan: 20 of 20
+Phase: 64 (Medium Engine) — EXECUTING
+Plan: 22 of 24
 Status: Ready to execute
-Last activity: 2026-11-18 — Phase 64 execution started
+Last activity: 2026-11-19 — Phase 64 execution started
 
 
 ## Performance Metrics
@@ -164,6 +164,7 @@ Last activity: 2026-11-18 — Phase 64 execution started
 | Phase 64 P18 | 48min | 2 tasks | 9 files |
 | Phase 64 P20 | 41min | 3 tasks | 17 files |
 | Phase 64 P64-19 | 12min | 2 tasks | 10 files |
+| Phase 64 P21 | 13min | 3 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -543,6 +544,12 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: 64-20: the gate quantizes to RGBA8 (round to nearest) before the luma mean, so its line is the scan's line; no bar, threshold, comparator or invariant was widened.
 - [Phase 64]: 64-19: the emboss light keys every real-frame cache revision (lightCacheTerm via the canonical lightSignature; required projection parameter so a forgotten site is a compile error)
 - [Phase 64]: 64-19: one bounded re-bake per light change through applyAquarelleTimeline (one in flight, one queued follow-up, one busy-false follow-up, rejections swallowed); the last-seen light is a signature string ref, never a light mirror; draw-time re-lighting stays REJECTED (the thickness field is not persisted)
+- [Phase 64]: Paper seed rides the optional-additive precedent: paperSeed?: number, absent reads as derivePaperSeed(layerId) (FNV-1a/2^32), one adapter option before the first stroke; resetSheet/setPaper keep the seed
+- [Phase 64]: Rust mirror is declaration-class MceDocumentPaperSeed: paint document is opaque in Rust, so the cross-language pin is declaration-level with a documented no-validation asymmetry
+- [Phase 64]: Bristle set consumes this.rng (the stroke traceSeed) at first dab; seeded stroke tracked by object identity, so a new stroke always re-seeds
+- [Phase 64]: Carrier ships proxy wetness only (wet * coverage): uWetMode and the last-touch sampler are 64-24's, so the pass binds ten textures, not eleven
+- [Phase 64]: Reservoir pair and shape target stay in docTargets() deliberately: membership buys disposal/wipe reach; shape re-upload at every stroke start makes a zeroed or replaced target unobservable
+- [Phase 64]: No deposit change, no second engine, no document-sized target: D-29 delivery law honoured exactly; no committed baseline edited
 
 ### Pending Todos
 
@@ -670,9 +677,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-19T11:41:30.752Z
-Stopped at: Phase 64 context gathered (acrylic bristle deposit extension)
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/64-medium-engine/64-CONTEXT.md
+Last session: 2026-11-19T13:19:11.068Z
+Stopped at: Completed 64-21-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
