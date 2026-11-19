@@ -663,6 +663,16 @@ float hash21(vec2 c){
   return float(pcg(x + pcg(y))) / 4294967295.0;
 }
 float hash11(float c){ return float(pcg(uint(int(c)) + 1013904223u)) / 4294967295.0; }
+// 64-23: the 2D member of the same family — §4.4's grainHeight samples it in
+// two coordinate systems (brush-local streaks and screen-space tooth/cloud).
+float valueNoise(vec2 p){
+  vec2 cell = floor(p);
+  vec2 f = p - cell;
+  vec2 blend = f * f * (3.0 - 2.0 * f);
+  float bottom = mix(hash21(cell), hash21(cell + vec2(1.0, 0.0)), blend.x);
+  float top = mix(hash21(cell + vec2(0.0, 1.0)), hash21(cell + vec2(1.0, 1.0)), blend.x);
+  return mix(bottom, top, blend.y);
+}
 float noise1(float v){
   float cell = floor(v);
   float f = v - cell;
@@ -671,6 +681,14 @@ float noise1(float v){
 }
 // touchOf (app.js): pressure vs a bristle's contact threshold.
 float touchOf(float reach, float pressure){ return smoothstep(reach, reach + 0.08, pressure); }
+// §5.3 — the contact law is SHARED by the carrier (§3.1) and the gather: the
+// rim share of the wobble (a quarter at the centre, the full amount at the
+// edge) and the per-bristle wobble itself, along the stroke. One declaration,
+// so the two fragments cannot drift.
+float bristleRimShare(float across){ return 0.25 + 0.75 * smoothstep(0.45, 1.0, abs(across)); }
+float bristleContact(float alongPx, float seed, float streakLen){
+  return noise1(alongPx / max(streakLen * 0.7, 1.0) + seed * 2048.0 + 0.5) - 0.5;
+}
 `;
 // 64-22: the shared texture helper — exported because the carrier and the
 // gather both sample the same four 1 × 256 textures; one `bristleTex`, with
@@ -742,10 +760,13 @@ void main(){
   vec3 canvasB = canvasAtB(pos);
   float canvasAlpha = texture(uCover, pos).x;
 
-  // §3.1 contact threshold with rim noise (§5.3 shares the same contact law).
-  float rim = 0.25 + 0.75 * smoothstep(0.45, 1.0, abs(across));
-  float contact = noise1(uAlongPx / max(uStreakLen * 0.7, 1.0) + state.z * 2048.0 + 0.5) - 0.5;
-  float touch = touchOf(shape.y + contact * rim * uRimContact, uPressure);
+  // §3.1 contact threshold with rim noise — §5.3's shared contact law
+  // (bristleRimShare + bristleContact from BRISTLE_NOISE); the gather's
+  // per-bristle touch reads the SAME pair, so the carrier and the deposit
+  // can never disagree about which bristles are in contact.
+  float touch = touchOf(
+    shape.y + bristleContact(uAlongPx, state.z, uStreakLen) * bristleRimShare(across) * uRimContact,
+    uPressure);
 
   float thirst = 0.15 + 2.4 * smoothstep(0.35, 0.9, fract(state.z * 7.31));
   float pickup = clamp(uPickupRate * thirst * uTravel * wet * touch, 0.0, 0.75);
@@ -784,27 +805,63 @@ void main(){
 //  deliberately unported, D-28):
 //    §4.1 radius   = max(radiusScale · spacing · uRadius · uSheet.y, 0.8 px)
 //    §5.1 profile  = (1 − offset²)²
-//    §3.2 ink      = profile · min(load·1.5, 1) · touch
+//    §5.3 touch    = touchOf(touchReach + contact · rim · uRimContact, pressure)
+//    §4.3 broken   = mix(1, smoothstep(0.3, 0.7, streak), dryness · uHairs)
+//    §5.4 landed   = smoothstep(landing, landing + 0.12, strokeDist/halfWidth)
+//    §3.2 ink      = profile · min(load·1.5, 1) · touch · broken · landed
 //    carried       = Σ ink·value / Σ ink, none when Σ ink ≤ 1e-4
-//    §4.5 body     = inkSum / max(profileSum, 0.5)
-//    §4.4 threshold = uGrain · (1 − paperHeight) − 0.25
+//    §4.5 body     = mix(wide/5 · presence, local, uHairs)
+//    §4.5 presence = min(profileSum/0.5, 1), local = inkSum/max(profileSum, 0.5)
+//    §4.4 height   = grainHeight(uv·uSheet, uAxis) — streaks + tooth + cloud
+//    §4.4 threshold = uGrain · (1 − height) − 0.25
+//    §5.5 coverage = body · (0.3 + 0.7·pressure) · dryEdge
 //    §6   softness = uSoftness (0.09 + 0.25·Feather, from bristles.ts)
 //
-//  64-23 EXTENDS THIS ONE SNIPPET — never a second copy — with §4.3's
+//  64-23 extends this ONE snippet — never a second copy — with §4.3's
 //  dryness streak, §5.3's rim contact noise, §5.4's landing ramp, §5.5's
-//  dry edge and §6's 1.2 paper-tooth grain-height trio. This form keeps
-//  `uGrain` = the stroke's Brush.grain and the engine's own paper tap.
+//  dry edge and §6's 1.2 paper-tooth grain-height trio. `uGrain` here is
+//  §6's `BRISTLE_GRAIN` (1.2), NOT the stroke's Brush.grain: the brush's
+//  grain stays in the footprint mask and the dab's own dryness. Every
+//  number with a §6 name arrives as a uniform from `bristles.ts`.
 // ============================================================
 export const BRISTLE_GATHER = `${BRISTLE_NOISE}${BRISTLE_TEXTURES}
-uniform sampler2D uPaper;
 uniform vec2 uPoint;
 uniform vec2 uAxis;          // across axis (unit, doc frame)
 uniform float uRadius;       // half-width in doc heights
 uniform float uSheetAspect;  // document width / height
 uniform vec2 uSheet;         // document size in texels
 uniform float uPressure;
-uniform float uGrain;
+uniform float uGrain;        // §4.4 §6 paint.grain (BRISTLE_GRAIN 1.2), not Brush.grain
 uniform float uSoftness;
+uniform float uAlongPx;      // cumulative distance along the stroke, doc texels
+uniform float uStrokeDistPx; // the same cumulative distance for the landing ramp
+uniform float uHalfWidthPx;  // the dab's half-width in doc texels
+uniform float uStreak;       // §6 paint.streak (BRISTLE_STREAK 0.9)
+uniform float uStreakLen;    // §6 paint.streakLength (BRISTLE_STREAK_LENGTH 18)
+uniform float uStreakShare;  // §6 streakShare (BRISTLE_STREAK_SHARE 0.15)
+uniform float uRimContact;   // §6 rimContact (BRISTLE_RIM_CONTACT 0.45)
+uniform float uHairs;        // §6 hairs (BRISTLE_HAIRS 0.45)
+uniform float uDryEdge;      // §6 dryEdge (BRISTLE_DRY_EDGE 0.35)
+uniform float uLanding;      // §6 paint.landing (BRISTLE_LANDING 1)
+
+// §4.4 — the paper tooth as a threshold, in TWO coordinate systems:
+//  - streaks: brush-local, rotated to the stroke normal — grooves that follow
+//    the stroke (11 px / 3 px across, 0.75 / 1.9 along);
+//  - tooth: screen/CSS space, isotropic — the physical tooth of the paper;
+//  - cloud: screen/CSS space, low frequency — absorbency variation.
+// The mix weights are streakShare vs (0.65 − streakShare), with the tooth
+// fixed at 0.35, so the three bands sum to exactly one weight.
+float grainHeight(vec2 css, vec2 normal){
+  vec2 tangent = vec2(-normal.y, normal.x);
+  vec2 local = vec2(dot(css, tangent), dot(css, normal));
+  float streaks = valueNoise(vec2(local.x / 11.0, local.y * 0.75)) * 0.65
+                + valueNoise(vec2(local.x / 3.0, local.y * 1.9)) * 0.35;
+  float tooth = valueNoise(css * 1.3) * 0.55 + valueNoise(css * 0.45 + 17.0) * 0.45;
+  float cloud = valueNoise(css * 0.12 + 41.0) * 0.45
+              + valueNoise(css * 0.05 + 83.0) * 0.33
+              + valueNoise(css * 0.02 + 7.0) * 0.22;
+  return streaks * uStreakShare + tooth * 0.35 + cloud * (0.65 - uStreakShare);
+}
 
 struct Gathered {
   vec4 cA;                   // carried absorbance 0..3
@@ -845,8 +902,21 @@ Gathered gatherBristle(vec2 uv){
     if (abs(offset) >= 1.0) continue;
     float profile = 1.0 - offset * offset;
     profile *= profile;                                    // §5.1
-    float touch = touchOf(shape.y, uPressure);
-    float ink = profile * min(state.x * 1.5, 1.0) * touch;  // §3.2
+    // §5.3: the SHARED contact law (BRISTLE_NOISE) — rim-scaled noise along
+    // the stroke, so edge bristles keep dropping out and back in.
+    float touch = touchOf(
+      shape.y + bristleContact(uAlongPx, state.z, uStreakLen) * bristleRimShare(state.y) * uRimContact,
+      uPressure);
+    float load = state.x;
+    // §4.3: the stroke eating itself — a loaded bristle prints solid, a
+    // drying one prints per-bristle dashes whose wavelength is uStreakLen.
+    float dryness = clamp((1.0 - load) * uStreak * 1.6, 0.0, 1.0);
+    float streak = noise1(uAlongPx / max(uStreakLen, 1.0) + state.z * 4096.0);
+    float broken = mix(1.0, smoothstep(0.3, 0.7, streak), dryness * uHairs);
+    // §5.4: a staggered per-bristle landing ramp over the first brush widths.
+    float landing = (0.04 + 0.7 * fract(state.z * 13.7) * fract(state.z * 13.7)) * uLanding;
+    float landed = smoothstep(landing, landing + 0.12, uStrokeDistPx / max(uHalfWidthPx, 1.0));
+    float ink = profile * min(load * 1.5, 1.0) * touch * broken * landed;  // §3.2
     inkSum += ink;
     profileSum += profile;
     vec4 pa = bristleTex(uPaintA, idx);
@@ -860,13 +930,27 @@ Gathered gatherBristle(vec2 uv){
   g.cB /= inkSum;
   g.alpha /= inkSum;
 
-  // §4.5: the local body — the gathered ink density over the profile mass.
+  // §4.5 wide vs local body: the wide samples the bundle 7 bristles apart, so
+  // it reads the brush's body; local is the fine per-bristle ink of this
+  // pixel. The same uHairs that cuts a drying stroke mixes the two.
+  float wide = 0.0;
+  for (int o = -2; o <= 2; o++){
+    int idx = clamp(nearest + o * 7, 0, count - 1);
+    vec4 wState = bristleTex(uState, idx);
+    vec4 wShape = bristleTex(uShape, idx);
+    wide += min(wState.x * 1.25, 1.0) * touchOf(wShape.y, uPressure);
+  }
+  float presence = min(profileSum / 0.5, 1.0);
   float local = inkSum / max(profileSum, 0.5);
-  // §4.4: the paper threshold on the engine's OWN paper height, banded by
-  // §6's softness. The reference's grain-height trio is 64-23's.
-  float paperHeight = texture(uPaper, uv).g;
-  float threshold = uGrain * (1.0 - paperHeight) - 0.25;
-  float coverage = local * (0.3 + 0.7 * uPressure);
+  float body = mix(wide / 5.0 * presence, local, uHairs);
+
+  // §4.4 / §5.5: the paper threshold, biased at the rim. uGrain is §6's
+  // BRISTLE_GRAIN (1.2) — the paper-tooth scale, never Brush.grain.
+  vec2 css = uv * uSheet;
+  float height = grainHeight(css, uAxis);
+  float threshold = uGrain * (1.0 - height) - 0.25;
+  float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));
+  float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;
   g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
   return g;
 }

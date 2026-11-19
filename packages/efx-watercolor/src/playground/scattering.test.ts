@@ -627,7 +627,9 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
       'const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, scatteringDeposit(P.body, amount)];',
     )
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
-    expectContains(brush, 'if (bristle) this.bristleInk(dx, dy, dr, angle, amount, pr, b.grain, c1[3]!);')
+    // 64-23: the seventh argument became the dab's cumulative `alongPx` — the
+    // §4.4 grain left the call because the gather derives the paper height.
+    expectContains(brush, 'if (bristle) this.bristleInk(dx, dy, dr, angle, amount, pr, c1[3]!, alongPx);')
     expectNotContains(brush, 'Math.pow(')
   })
 
@@ -693,7 +695,7 @@ describe('64-22 — the bristle Body mask (D-21)', () => {
   it('erodes fixed alpha-shaped and relief linearly, and never writes coverage', () => {
     const pass = sliceBetween(ENGINE_SOURCE, 'private coverBristlePass(', 'private coverageDeposit(')
     expectContains(pass, 'const p = this.programs.bristleBodyCover;')
-    expectContains(pass, 'this.bindGather(p, x, y, r, angle, pr, grain);')
+    expectContains(pass, 'this.bindGather(p, x, y, r, angle, pr, alongPx);')
     // The same two draws, the same blend law as coverPass: fixed then relief.
     expect((pass.match(/g\.draw\(/g) ?? []).length, 'two draws: fixed, then relief').toBe(2)
     expectContains(pass, 'gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
@@ -717,7 +719,7 @@ describe('64-22 — the bristle Body mask (D-21)', () => {
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
     expectContains(
       brush,
-      'if (bristle) this.coverBristlePass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, pr, b.grain);',
+      'if (bristle) this.coverBristlePass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, pr, alongPx);',
     )
     expectContains(
       brush,
@@ -752,6 +754,163 @@ describe('64-22 — the bristle Body mask (D-21)', () => {
     expect(
       (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
       'the bristle Body mask adds no render target',
+    ).toBe(13)
+  })
+})
+
+// ============================================================
+//  64-23 — the traces in the gather and the carrier (§4.3–§5.5).
+//
+//  Every §6 constant is declared once in `bristles.ts` and bound here from
+//  its name; each fragment expression matches the tested helper text-for-
+//  text. The carrier (§3.1) and the gather (§5.1) share ONE noise family —
+//  `bristleRimShare` + `bristleContact` live in `BRISTLE_NOISE`, so a
+//  re-typed contact law fails every declaration scan below.
+// ============================================================
+
+describe('64-23 — the traces in the gather and the carrier', () => {
+  const gather = sliceBetween(SHADERS_SOURCE, 'export const BRISTLE_GATHER', '// 64-22 — the ink deposit')
+  const carrier = sliceBetween(SHADERS_SOURCE, 'export const bristleCarrierFS', 'export const BRISTLE_GATHER')
+
+  it('shares one noise family between the carrier and the gather', () => {
+    expect(
+      (SHADERS_SOURCE.match(/float valueNoise\(/g) ?? []).length,
+      'one value-noise declaration',
+    ).toBe(1)
+    expect(
+      (SHADERS_SOURCE.match(/float bristleRimShare\(/g) ?? []).length,
+      'one rim-share declaration',
+    ).toBe(1)
+    expect(
+      (SHADERS_SOURCE.match(/float bristleContact\(/g) ?? []).length,
+      'one contact-noise declaration',
+    ).toBe(1)
+    // Both fragments call the SHARED pair — carrier first, then gather.
+    expectContains(
+      carrier,
+      'shape.y + bristleContact(uAlongPx, state.z, uStreakLen) * bristleRimShare(across) * uRimContact,',
+    )
+    expectContains(
+      gather,
+      'shape.y + bristleContact(uAlongPx, state.z, uStreakLen) * bristleRimShare(state.y) * uRimContact,',
+    )
+    // The gather composes on the SAME snippet the carrier does.
+    expectContains(SHADERS_SOURCE, 'export const BRISTLE_GATHER = `${BRISTLE_NOISE}${BRISTLE_TEXTURES}')
+  })
+
+  it('builds grainHeight from three bands in two coordinate systems (§4.4)', () => {
+    expectContains(gather, 'float grainHeight(vec2 css, vec2 normal){')
+    // Band 1 — streaks: brush-local, rotated to the stroke normal.
+    expectContains(gather, 'vec2 local = vec2(dot(css, tangent), dot(css, normal));')
+    expectContains(gather, 'valueNoise(vec2(local.x / 11.0, local.y * 0.75)) * 0.65')
+    expectContains(gather, 'valueNoise(vec2(local.x / 3.0, local.y * 1.9)) * 0.35')
+    // Band 2 — tooth: isotropic, screen/CSS space.
+    expectContains(gather, 'float tooth = valueNoise(css * 1.3) * 0.55 + valueNoise(css * 0.45 + 17.0) * 0.45;')
+    // Band 3 — cloud: low frequency, screen/CSS space.
+    expectContains(gather, 'float cloud = valueNoise(css * 0.12 + 41.0) * 0.45')
+    expectContains(gather, 'valueNoise(css * 0.05 + 83.0) * 0.33')
+    expectContains(gather, 'valueNoise(css * 0.02 + 7.0) * 0.22;')
+    // The mix: streakShare swaps cloud weight for streaks; the tooth holds 0.35.
+    expectContains(gather, 'return streaks * uStreakShare + tooth * 0.35 + cloud * (0.65 - uStreakShare);')
+    // The trio replaces the paper tap outright: no sampler survives in the gather.
+    expectContains(gather, 'float height = grainHeight(css, uAxis);')
+    expectContains(gather, 'float threshold = uGrain * (1.0 - height) - 0.25;')
+    expectNotContains(gather, 'uPaper')
+    expectNotContains(gather, 'texture(uPaper')
+  })
+
+  it('binds §6 grain to the gather and keeps the brush grain on the footprint', () => {
+    // The §4.4 name collision, pinned on both sides of the seam: the gather's
+    // uGrain receives BRISTLE_GRAIN (1.2, the paper-tooth scale), while the
+    // footprint mask keeps receiving the stroke's brush grain.
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uGrain!, BRISTLE_GRAIN);')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uGrain, grain);')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uGrainThr, grainThr);')
+    // No second declaration of the §6 number in the engine's bristle code.
+    const binder = sliceBetween(ENGINE_SOURCE, 'private bindGather(', 'private bristleInk(')
+    expectNotContains(binder, 'uGrain!, 1.2')
+    // The gather's own comment records the distinction, never silent.
+    expectContains(gather, 'never Brush.grain')
+  })
+
+  it('multiplies broken and landed into the ink weight in that order (§4.3 §5.4)', () => {
+    expectContains(gather, 'float dryness = clamp((1.0 - load) * uStreak * 1.6, 0.0, 1.0);')
+    expectContains(gather, 'float streak = noise1(uAlongPx / max(uStreakLen, 1.0) + state.z * 4096.0);')
+    expectContains(gather, 'float broken = mix(1.0, smoothstep(0.3, 0.7, streak), dryness * uHairs);')
+    expectContains(
+      gather,
+      'float landing = (0.04 + 0.7 * fract(state.z * 13.7) * fract(state.z * 13.7)) * uLanding;',
+    )
+    expectContains(
+      gather,
+      'float landed = smoothstep(landing, landing + 0.12, uStrokeDistPx / max(uHalfWidthPx, 1.0));',
+    )
+    expectContains(gather, 'float ink = profile * min(load * 1.5, 1.0) * touch * broken * landed;')
+    const brokenAt = gather.indexOf('float broken =')
+    const landedAt = gather.indexOf('float landed =')
+    const inkAt = gather.indexOf('float ink =')
+    expect(brokenAt, 'broken is computed before landed').toBeLessThan(landedAt)
+    expect(landedAt, 'landed precedes the ink weight').toBeLessThan(inkAt)
+  })
+
+  it('biases the rim and mixes the wide/local body (§4.5 §5.5)', () => {
+    expectContains(gather, 'wide += min(wState.x * 1.25, 1.0) * touchOf(wShape.y, uPressure);')
+    expectContains(gather, 'float presence = min(profileSum / 0.5, 1.0);')
+    expectContains(gather, 'float local = inkSum / max(profileSum, 0.5);')
+    expectContains(gather, 'float body = mix(wide / 5.0 * presence, local, uHairs);')
+    expectContains(gather, 'float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));')
+    expectContains(gather, 'float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;')
+    expectContains(gather, 'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);')
+  })
+
+  it('binds every declared constant from bristles.ts — no literal survives', () => {
+    const bindings: Array<[string, string]> = [
+      ['uAlongPx', 'alongPx'],
+      ['uStrokeDistPx', 'alongPx'],
+      ['uHalfWidthPx', 'r * this.dh'],
+      ['uStreak', 'BRISTLE_STREAK'],
+      ['uStreakLen', 'BRISTLE_STREAK_LENGTH'],
+      ['uStreakShare', 'BRISTLE_STREAK_SHARE'],
+      ['uRimContact', 'BRISTLE_RIM_CONTACT'],
+      ['uHairs', 'BRISTLE_HAIRS'],
+      ['uDryEdge', 'BRISTLE_DRY_EDGE'],
+      ['uLanding', 'BRISTLE_LANDING'],
+    ]
+    const binder = sliceBetween(ENGINE_SOURCE, 'private bindGather(', 'private bristleInk(')
+    for (const [uniform, source] of bindings) {
+      expectContains(gather, `uniform float ${uniform}`)
+      expectContains(binder, `gl.uniform1f(p.u.${uniform}!, ${source});`)
+    }
+    // The carrier's two 64-21 spike literals now ride the declared constants.
+    const pass = sliceBetween(ENGINE_SOURCE, 'private carrierPass(', 'private bindGather(')
+    expectContains(pass, 'gl.uniform1f(p.u.uStreakLen!, BRISTLE_STREAK_LENGTH);')
+    expectContains(pass, 'gl.uniform1f(p.u.uRimContact!, BRISTLE_RIM_CONTACT);')
+    expectNotContains(pass, 'uStreakLen!, 18)')
+    expectNotContains(pass, 'uRimContact!, 0.45)')
+  })
+
+  it('leaves the pressure path untouched (§5.2 out of scope)', () => {
+    const bristleCode =
+      sliceBetween(ENGINE_SOURCE, 'private carrierPass(', 'readBristles(): Uint16Array {') +
+      gather
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uPressure!, clamp(pr, 0, 1));')
+    expectContains(gather, 'uniform float uPressure;')
+    // No new derivation: no speed read, no input-processing branch anywhere in
+    // the bristle code — the pressure arrives as the existing uniform.
+    expectNotContains(bristleCode, 'speed')
+    expectNotContains(bristleCode, 'processInput')
+  })
+
+  it('keeps the pinned program and allocation counts', () => {
+    const programs = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
+    expect(
+      (programs.match(/this\.g\.program\(/g) ?? []).length,
+      'the traces add no program',
+    ).toBe(23)
+    const alloc = sliceBetween(ENGINE_SOURCE, 'private allocateTargets()', 'private allocateHistory()')
+    expect(
+      (alloc.match(/this\.\w+ = g\.(?:double|target)\(/g) ?? []).length,
+      'the traces add no render target',
     ).toBe(13)
   })
 })

@@ -1,5 +1,18 @@
 import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, isBristleResponse, tipRowsForUpload, type Brush } from './brushes';
-import { BRISTLE_CAP, bristleCount, gatherSoftness, makeBristles } from './bristles';
+import {
+  BRISTLE_CAP,
+  BRISTLE_DRY_EDGE,
+  BRISTLE_GRAIN,
+  BRISTLE_HAIRS,
+  BRISTLE_LANDING,
+  BRISTLE_RIM_CONTACT,
+  BRISTLE_STREAK,
+  BRISTLE_STREAK_LENGTH,
+  BRISTLE_STREAK_SHARE,
+  bristleCount,
+  gatherSoftness,
+  makeBristles,
+} from './bristles';
 import { f32ToF16 } from './half';
 import { GL, type DoubleTarget, type Format, type Program, type Rect, type Target } from './gl';
 import { History, type StepInfo, type StepKind } from './history';
@@ -2274,8 +2287,14 @@ export class WatercolorEngine {
           // and updates the reservoirs BEFORE the dab deposits, so it never
           // picks up its own output. It writes only the reservoir pair — no
           // document target — so the displayed render is unchanged.
+          // 64-23: `bristleTravel` runs ONCE per dab and its cumulative
+          // `alongPx` feeds the carrier's contact noise AND the gather's
+          // streak/landing uniforms — calling it twice would double-count the
+          // path distance.
+          let alongPx = 0;
           if (bristle) {
             const t = this.bristleTravel(dx, dy, dr);
+            alongPx = t.alongPx;
             this.carrierPass(dx, dy, dr, angle, t.travel, t.travelPx, t.alongPx, pr);
           }
           // spec 06: the cover pass draws here, before this dab's deposit.
@@ -2284,7 +2303,7 @@ export class WatercolorEngine {
           // than the paint the same dab lands; every other response keeps the
           // shipped footprint mask, untouched.
           if (coverAmount > 0) {
-            if (bristle) this.coverBristlePass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, pr, b.grain);
+            if (bristle) this.coverBristlePass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, pr, alongPx);
             else this.coverPass(dx, dy, dr, angle, coverAmount, coverDensity, coverRelief, dryness, grainThr);
           }
           // SPIKE 001: source-over inside the pigment layer, replacing "erase
@@ -2296,7 +2315,7 @@ export class WatercolorEngine {
           // — additive absorbance plus the one coverage write — and the ONE
           // curve's scatter (c1[3]) rides along as a uniform. Every other
           // response keeps the shipped chain, untouched.
-          if (bristle) this.bristleInk(dx, dy, dr, angle, amount, pr, b.grain, c1[3]!);
+          if (bristle) this.bristleInk(dx, dy, dr, angle, amount, pr, c1[3]!, alongPx);
           else if (coverAmount > 0) this.coverageDeposit(dx, dy, dr, angle, coverAmount, coverDensity, c, c1[3]!, dryness, grainThr);
           else this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
           if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
@@ -2505,11 +2524,11 @@ export class WatercolorEngine {
    * stamp protects `fixed` once, before the first cover draw, exactly as
    * for `coverPass`.
    */
-  private coverBristlePass(x: number, y: number, r: number, angle: number, amount: number, density: number, reliefAmount: number, pr: number, grain: number): void {
+  private coverBristlePass(x: number, y: number, r: number, angle: number, amount: number, density: number, reliefAmount: number, pr: number, alongPx: number): void {
     const { gl, g } = this;
     const p = this.programs.bristleBodyCover;
     p.bind();
-    this.bindGather(p, x, y, r, angle, pr, grain);
+    this.bindGather(p, x, y, r, angle, pr, alongPx);
     gl.uniform1f(p.u.uAmount, amount);
     gl.uniform1f(p.u.uDensity, density);
     gl.uniform1f(p.u.uShapeLaw, 1);
@@ -2723,27 +2742,34 @@ export class WatercolorEngine {
     gl.uniform4f(p.u.uPigmentA!, c[0]!, c[1]!, c[2]!, c[3]!);
     gl.uniform3f(p.u.uPigmentB!, c[4]!, c[5]!, c[6]!);
     gl.uniform1f(p.u.uAlongPx!, alongPx);
-    gl.uniform1f(p.u.uStreakLen!, 18);        // §5.3 default
-    gl.uniform1f(p.u.uRimContact!, 0.45);     // §5.3 default
+    // 64-23: the carrier's contact noise reads §5.3's two declared constants
+    // — 64-21 hard-coded the spike's numbers here; they now come from
+    // `bristles.ts`, so the contact wobble cannot drift from its tested twin.
+    gl.uniform1f(p.u.uStreakLen!, BRISTLE_STREAK_LENGTH);
+    gl.uniform1f(p.u.uRimContact!, BRISTLE_RIM_CONTACT);
     g.draw(this.bristles.write, { x0: 0, y0: 0, x1: 1, y1: this.bristleCount });
     this.bristles.swap();
   }
 
   /**
-   * 64-22 (SPIKE 002): the gather's shared binder — the four reservoir
-   * textures (the carrier's own pair, shape at unit 3), the engine's paper
-   * tap at unit 4, and the dab-frame uniforms every gather consumer reads.
-   * `uSoftness` comes from the ONE declaration pair in bristles.ts (the
-   * Feather global widens the coverage band); `uGrain` is the stroke's
-   * Brush.grain in this plan — 64-23 supplies §6's paper-tooth constant.
+   * 64-22 (SPIKE 002), extended by 64-23: the gather's shared binder — the
+   * four reservoir textures (the carrier's own pair, shape at unit 3) and the
+   * dab-frame uniforms every gather consumer reads.
+   *
+   * 64-23: the §4.4 paper height is procedural (`grainHeight`), so the paper
+   * sampler is gone and `uGrain` is §6's `BRISTLE_GRAIN` (1.2) — NOT the
+   * stroke's Brush.grain, which stays bound to the footprint mask and the
+   * dab's own `dryness`. Every other §6 constant rides its OWN declaration
+   * from `bristles.ts`: no literal is re-typed here. `alongPx` is the dab's
+   * cumulative path distance in document texels; it feeds both the noise
+   * phase (`uAlongPx`) and the landing ramp (`uStrokeDistPx`).
    */
-  private bindGather(p: Program, x: number, y: number, r: number, angle: number, pr: number, grain: number): void {
+  private bindGather(p: Program, x: number, y: number, r: number, angle: number, pr: number, alongPx: number): void {
     const { gl, g } = this;
     gl.uniform1i(p.u.uPaintA!, g.bindTex(0, this.bristles.read.tex[0]!));
     gl.uniform1i(p.u.uPaintB!, g.bindTex(1, this.bristles.read.tex[1]!));
     gl.uniform1i(p.u.uState!, g.bindTex(2, this.bristles.read.tex[2]!));
     gl.uniform1i(p.u.uShape!, g.bindTex(3, this.bristleShape.tex[0]!));
-    gl.uniform1i(p.u.uPaper!, g.bindTex(4, this.paper.tex[0]!));
     gl.uniform2f(p.u.uPoint!, x, y);
     gl.uniform2f(p.u.uAxis!, Math.cos(angle), Math.sin(angle));
     gl.uniform1f(p.u.uRadius!, r);
@@ -2751,8 +2777,18 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uSheetAspect!, this.dw / this.dh);
     gl.uniform2f(p.u.uSheet!, this.dw, this.dh);
     gl.uniform1f(p.u.uPressure!, clamp(pr, 0, 1));
-    gl.uniform1f(p.u.uGrain!, clamp(grain, 0, 1));
+    gl.uniform1f(p.u.uGrain!, BRISTLE_GRAIN);
     gl.uniform1f(p.u.uSoftness!, gatherSoftness(this.params.feather));
+    gl.uniform1f(p.u.uAlongPx!, alongPx);
+    gl.uniform1f(p.u.uStrokeDistPx!, alongPx);
+    gl.uniform1f(p.u.uHalfWidthPx!, r * this.dh);
+    gl.uniform1f(p.u.uStreak!, BRISTLE_STREAK);
+    gl.uniform1f(p.u.uStreakLen!, BRISTLE_STREAK_LENGTH);
+    gl.uniform1f(p.u.uStreakShare!, BRISTLE_STREAK_SHARE);
+    gl.uniform1f(p.u.uRimContact!, BRISTLE_RIM_CONTACT);
+    gl.uniform1f(p.u.uHairs!, BRISTLE_HAIRS);
+    gl.uniform1f(p.u.uDryEdge!, BRISTLE_DRY_EDGE);
+    gl.uniform1f(p.u.uLanding!, BRISTLE_LANDING);
   }
 
   /**
@@ -2772,7 +2808,7 @@ export class WatercolorEngine {
    * at (body, amount) and passed here as `c1[3]` — no fragment re-derives
    * the exponent.
    */
-  private bristleInk(x: number, y: number, r: number, angle: number, amount: number, pr: number, grain: number, scatter: number): void {
+  private bristleInk(x: number, y: number, r: number, angle: number, amount: number, pr: number, scatter: number, alongPx: number): void {
     const { gl, g } = this;
     // Same active/undo/dirty bookkeeping as brushInk and coverageDeposit:
     // this draw IS the deposit, so the rect is touched before anything lands.
@@ -2781,7 +2817,7 @@ export class WatercolorEngine {
     // 1) the ink — additive absorbance, the brushInk law.
     const d = this.programs.bristleDeposit;
     d.bind();
-    this.bindGather(d, x, y, r, angle, pr, grain);
+    this.bindGather(d, x, y, r, angle, pr, alongPx);
     gl.uniform1f(d.u.uAmount!, amount);
     gl.uniform1f(d.u.uScatter!, scatter);
     gl.enable(gl.BLEND);
@@ -2792,7 +2828,7 @@ export class WatercolorEngine {
     // 2) the coverage channel — ONE write per dab, the union across dabs.
     const c = this.programs.bristleCover;
     c.bind();
-    this.bindGather(c, x, y, r, angle, pr, grain);
+    this.bindGather(c, x, y, r, angle, pr, alongPx);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
