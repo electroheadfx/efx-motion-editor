@@ -480,7 +480,7 @@ export class WatercolorEngine {
    * the per-pixel alternative needs a new target channel.
    */
   private bristleContent = false;
-  private bristlePrev = { x: 0, y: 0, along: 0 };
+  private bristlePrev: { x: number; y: number; along: number } | null = null;
   private paper!: Target;
   private wetMask!: Target;                    // coarse "is there water here" map, read back to bound the sim
   private maskPixels = new Uint8Array(0);
@@ -2811,7 +2811,7 @@ export class WatercolorEngine {
     const count = bristleCount(halfWidthPx);
     const set = makeBristles(count, this.rng);
     this.bristleCount = count;
-    this.bristlePrev = { x: 0, y: 0, along: 0 };
+    this.bristlePrev = null;
     const n = BRISTLE_CAP;
     const a = new Float32Array(n * 4);
     const b = new Float32Array(n * 4);
@@ -2843,11 +2843,22 @@ export class WatercolorEngine {
     this.bristles.swap();
   }
 
-  /** §3.1 travel: distance since the previous dab, in brush widths AND doc texels. */
+  /**
+   * §3.1 travel: distance since the previous dab, in brush widths AND doc
+   * texels. The FIRST dab after a seed is the path's origin — measuring from
+   * (0, 0) made its distance its distance from the page corner (hundreds of
+   * px): `landed` was 1 on the very first dab and it over-depleted and
+   * over-picked-up before it had moved.
+   */
   private bristleTravel(x: number, y: number, r: number): { travel: number; travelPx: number; alongPx: number } {
+    const prev = this.bristlePrev;
+    if (prev === null) {
+      this.bristlePrev = { x, y, along: 0 };
+      return { travel: 0, travelPx: 0, alongPx: 0 };
+    }
     const aspect = this.dw / this.dh;
-    const distDoc = Math.hypot((x - this.bristlePrev.x) * aspect, y - this.bristlePrev.y);
-    const alongDoc = this.bristlePrev.along + distDoc;
+    const distDoc = Math.hypot((x - prev.x) * aspect, y - prev.y);
+    const alongDoc = prev.along + distDoc;
     this.bristlePrev = { x, y, along: alongDoc };
     const travelPx = distDoc * this.dh;
     return {

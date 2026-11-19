@@ -122,6 +122,14 @@ const SCENES: readonly SceneSpec[] = [
   { name: 'blank-p0', band: false, stroke: true, pickup: 0, feather: 0, body: 0 },
   { name: 'blank-f0', band: false, stroke: true, pickup: 100, feather: 0, body: 0 },
   { name: 'blank-f100', band: false, stroke: true, pickup: 100, feather: 100, body: 0 },
+  // MEASUREMENT-ONLY (2026-11-19): the reference dries by default — its
+  // brush.depletion 1.6 x the cornflower cycle entry 0.75 is 0.002 px^-1,
+  // which is Studio's Dry ~= 55. The acceptance scenes pin Dry 0, so they
+  // are not like-for-like on depletion; this pair repeats the Feather pair
+  // at Dry 55 and joins NO acceptance table (run.mjs keeps it opt-in via
+  // --scene, so `--acceptance` still reads the twelve-scene AFTER capture).
+  { name: 'blank-f0-dry55', band: false, stroke: true, pickup: 100, feather: 0, body: 0, dry: 55 },
+  { name: 'blank-f100-dry55', band: false, stroke: true, pickup: 100, feather: 100, body: 0, dry: 55 },
   { name: 'body0', band: false, stroke: true, pickup: 100, feather: 0, body: 0 },
   { name: 'body100', band: false, stroke: true, pickup: 100, feather: 0, body: 100 },
 ]

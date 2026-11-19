@@ -496,6 +496,20 @@ describe('the composition of order and opacity (MED-36)', () => {
     expectContains(dab, 'this.bristleTravel(dx, dy, dr);')
   })
 
+  // 261119-pod FIRST-DAB ANCHOR: measuring travel from (0, 0) gave the first
+  // dab's `alongPx` its distance from the page corner (hundreds of px), so
+  // `landed` was already 1 before the stroke moved and the first dab
+  // over-depleted and over-picked-up. The seed anchors the path at the
+  // stroke's first dab; a new stroke re-seeds, the same stroke never does.
+  it('anchors bristle travel at the stroke first dab, never the page origin', () => {
+    const begin = sliceBetween(ENGINE_SOURCE, 'private beginBristles(', 'const a = new Float32Array')
+    expectContains(begin, 'this.bristlePrev = null;')
+    const travel = sliceBetween(ENGINE_SOURCE, 'private bristleTravel(', 'const aspect =')
+    expectContains(travel, 'const prev = this.bristlePrev;')
+    expectContains(travel, 'if (prev === null) {')
+    expectContains(travel, 'return { travel: 0, travelPx: 0, alongPx: 0 };')
+  })
+
   it('keeps the 64-21 bristle targets inside docTargets, before the coverage pair', () => {
     const targets = sliceBetween(ENGINE_SOURCE, 'private docTargets(): Target[] {', '\n  }')
     expectContains(targets, 'this.bristles.read, this.bristles.write, this.bristleShape,')

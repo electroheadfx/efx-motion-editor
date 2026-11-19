@@ -9,6 +9,10 @@
 //           [--scene <name>] [--blue-size <px>] [--out <metrics.json>]
 //    node probe/port-comparison/run.mjs --acceptance before after reference
 //
+//  `--scene` also accepts the two MEASUREMENT-ONLY scenes
+//  (blank-f0-dry55, blank-f100-dry55) that repeat the Feather pair at the
+//  reference's own depletion; they never join the full table.
+//
 //  `--run` renders the NINE-scene table (one Chrome page load per scene)
 //  through the real vendored WebGL2 engine and writes
 //    probe/port-comparison/captures/<label>/metrics.json
@@ -57,6 +61,12 @@ const SCENE_NAMES = [
   'body0',
   'body100',
 ]
+
+// MEASUREMENT-ONLY scenes: reachable through --scene (which requires --out),
+// never part of the full table, so the committed acceptance captures keep
+// their scene counts and `--acceptance` keeps reading the twelve-scene AFTER.
+const MEASUREMENT_SCENES = ['blank-f0-dry55', 'blank-f100-dry55']
+const KNOWN_SCENES = [...SCENE_NAMES, ...MEASUREMENT_SCENES]
 
 const args = process.argv.slice(2)
 const flag = (name) => {
@@ -165,7 +175,7 @@ function runCapture(label) {
   const sceneFlag = flag('--scene')
   const scenes = sceneFlag ? [sceneFlag] : SCENE_NAMES
   for (const name of scenes) {
-    if (!SCENE_NAMES.includes(name)) fail(`unknown --scene "${name}" (known: ${SCENE_NAMES.join(', ')})`)
+    if (!KNOWN_SCENES.includes(name)) fail(`unknown --scene "${name}" (known: ${KNOWN_SCENES.join(', ')})`)
   }
   const blueSizeRaw = flag('--blue-size')
   let blueSize
