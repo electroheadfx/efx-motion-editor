@@ -1103,12 +1103,23 @@ void main(){
 //  64-24 (D-24) — THE TOUCH STAMP.
 //
 //  One cheap document-sized draw over the dab's rect, after the deposit and
-//  its one coverage write: `weight = clamp(cover · amount, 0, 1)` and the
-//  last-touch field mixes toward `uNow` — a texel this dab painted is now
-//  `uNow` old, a texel it missed keeps its age. No gather: the coverage
-//  channel IS the weight, so the touch refresh stays one draw (D-29's third
-//  pass). `uTimes` is the exact-float field's read half — exact f32 because
-//  the cleared sentinel (−604800 s) is outside half-float's range.
+//  its one coverage write: `weight = clamp(cover, 0, 1)` — the coverage
+//  channel IS the weight, and the last-touch field mixes toward `uNow`; a
+//  texel this dab painted is now `uNow` old, a texel it missed keeps its age.
+//  No gather, so the touch refresh stays one draw (D-29's third pass).
+//  `uTimes` is the exact-float field's read half — exact f32 because the
+//  cleared sentinel (−604800 s) is outside half-float's range.
+//
+//  261119-pod (Rule 1, measured): the weight used to be multiplied by the
+//  dab's ink `uAmount` (~0.01..0.03 per dab). Against the one-week sentinel
+//  that needs ~250 overlapping dabs at one texel to freshen, so the field
+//  stayed ~-48000 s after a full stroke and §3.4's `exp(-age/7)` was always 0
+//  — pickup inert at EVERY Body (both acceptance scenes byte-identical). The
+//  reference writes `times[i] = mix(times[i], now, deposit)` with the dab's
+//  DEPOSIT weight, order 1 at the stroke core. The coverage write this pass
+//  samples is that weight's accumulated analogue (0.5 floor at Body 0), so
+//  the bare channel converges in a few dabs, exactly as the shipped law's own
+//  prose ("the coverage channel IS the weight") always claimed.
 // ============================================================
 export const bristleTouchFS = `${HEADER}
 layout(location=0) out vec4 o0;
@@ -1116,7 +1127,7 @@ uniform sampler2D uTimes, uCover;
 uniform float uNow;
 uniform float uAmount;
 void main(){
-  float weight = clamp(texture(uCover, vUv).x * uAmount, 0.0, 1.0);
+  float weight = clamp(texture(uCover, vUv).x, 0.0, 1.0);
   o0 = vec4(mix(texture(uTimes, vUv).r, uNow, weight));
 }`;
 

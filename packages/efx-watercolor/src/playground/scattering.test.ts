@@ -1005,8 +1005,15 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     expectContains(touchSrc, '${HEADER}')
     expectContains(touchSrc, 'uniform sampler2D uTimes, uCover;')
     expectContains(touchSrc, 'uniform float uNow;')
+    // `uAmount` stays declared and bound (the signature is unchanged), but it
+    // is not the weight: 261119-pod measured that `cover * uAmount` (~0.01)
+    // leaves the one-week sentinel at ~-48000 s after a whole stroke, so
+    // §3.4's exp(-age/7) was always 0 and pickup was inert at every Body. The
+    // reference mixes the last touch toward `now` by the dab's DEPOSIT weight
+    // (order 1 at the core); the coverage channel this pass samples is its
+    // accumulated analogue, so the bare channel is the weight.
     expectContains(touchSrc, 'uniform float uAmount;')
-    expectContains(touchSrc, 'float weight = clamp(texture(uCover, vUv).x * uAmount, 0.0, 1.0);')
+    expectContains(touchSrc, 'float weight = clamp(texture(uCover, vUv).x, 0.0, 1.0);')
     expectContains(touchSrc, 'o0 = vec4(mix(texture(uTimes, vUv).r, uNow, weight));')
     // No gather: the coverage write is the weight, so the touch pass stays
     // one cheap document-sized draw over the dab rect (D-29's third pass).
