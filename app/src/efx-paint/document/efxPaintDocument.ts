@@ -260,10 +260,36 @@ export interface EfxPaintDocument {
    * admits exactly the three members, fail-closed.
    */
   readonly light?: PaintDocumentLight;
+  /**
+   * Phase 64-21 (MED-02): OPTIONAL-ADDITIVE law — the recording's sheet seed,
+   * the engine's own `[0, 1)` paper-grain roll, stored next to the paper's
+   * `background` member. Absent is legal and means "derive it": the reader
+   * resolves `derivePaperSeed(layerId)` so an old project replays on one
+   * deterministic sheet with no migration and no write. The factory NEVER
+   * writes it, so an untouched pre-milestone project saves byte-identically.
+   * When present the parser admits exactly one finite number in `[0, 1)`.
+   */
+  readonly paperSeed?: number;
   readonly photoReference: PhotoReferenceTrack | null;
   /** The document's placed sound clips (261008-ig1, D-01); empty when none. */
   readonly audios: readonly DocumentSoundClip[];
   readonly compositeRevision: number;
+}
+
+/**
+ * Phase 64-21 (MED-02): the absent-`paperSeed` fallback. FNV-1a over the
+ * layer id, mapped into the engine's `[0, 1)` seed band — a stable sheet per
+ * layer, derived not stored, so an old project replays on one deterministic
+ * grain with no migration and no document write. Pure: same id, same seed.
+ */
+export function derivePaperSeed(layerId: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < layerId.length; i += 1) {
+    hash ^= layerId.charCodeAt(i);
+    // FNV prime 16777619 via shifts: stays in uint32 without Math.imul overflow aliasing.
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash / 0x100000000;
 }
 
 function createDefaultPaintTrack(id: string): InternalPaintTrack {

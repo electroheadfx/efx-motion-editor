@@ -313,6 +313,20 @@ export interface MceDocumentLight {
 }
 
 /**
+ * Phase 64-21 (MED-02): the per-paint-layer-document sheet seed — the engine's
+ * own `[0, 1)` paper-grain roll, under the dual-language field-diff pin.
+ * Declaration-class only, exactly like `MceDocumentLight` above: the seed
+ * crosses the native Studio handoff nested inside the launch envelope's opaque
+ * `document` member, so `PhysicPaintLaunchContext` gains no `paperSeed` key and
+ * `isPhysicPaintLaunchContext` validates it through `parseEfxPaintDocument` —
+ * never a second serialization path. Absent is legal: the reader derives the
+ * sheet from the layer id (`derivePaperSeed`), so no project is migrated.
+ */
+export interface MceDocumentPaperSeed {
+  paperSeed?: number;
+}
+
+/**
  * Aquarelle per-brush property surface (AQUA-03 / R1.7 / D-08). The 8 numeric
  * multipliers snapshotted onto a stroke at record time; the same flat surface
  * rides every brush-pack snapshot entry.

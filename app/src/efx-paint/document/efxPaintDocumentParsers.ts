@@ -61,7 +61,7 @@ function isFinitePositiveNumber(value: unknown): value is number {
 // below (Pitfall 5 — never one without the other). The retired singular
 // `sound` member is gone: an old document carrying it throws — no shim, no
 // migration (project law).
-const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'light', 'photoReference', 'audios', 'compositeRevision']);
+const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'light', 'paperSeed', 'photoReference', 'audios', 'compositeRevision']);
 // 261008-ig1 (D-05): the audio CONTAINER allowlist — the document is the
 // container, so this set names the only audio-family member a document may
 // carry. Defense-in-depth: DOCUMENT_KEYS above is the primary gate; this trip-
@@ -602,6 +602,25 @@ export function normalizeDocumentLight(value: unknown): PaintDocumentLight | und
 }
 
 /**
+ * Phase 64-21 (MED-02): normalize the OPTIONAL document sheet seed. Absent
+ * returns `undefined` — never a manufactured default (the reader resolves
+ * `derivePaperSeed(layerId)`), so an absent member stays truly absent through
+ * parse and re-encode. Present is fail-closed: `null` is NOT absence, a
+ * non-number throws, and the number must be finite and inside the engine's
+ * `[0, 1)` seed band. The return is a plain number — nothing to freeze.
+ */
+export function normalizeDocumentPaperSeed(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error('EfxPaintDocument: paperSeed must be a finite number.');
+  }
+  if (value < 0 || value >= 1) {
+    throw new Error('EfxPaintDocument: paperSeed must be within [0, 1).');
+  }
+  return value;
+}
+
+/**
  * Reconstruct a validated {@link EfxPaintDocument} from untrusted input.
  *
  * Throws a closed validation failure on any invalid input; caller-owned
@@ -623,7 +642,7 @@ export function parseEfxPaintDocument(
     throw new Error('EfxPaintDocument: expected a record.');
   }
   if (!hasOnlyKeys(value, DOCUMENT_KEYS)) {
-    throw new Error('EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, light, photoReference, audios, compositeRevision.');
+    throw new Error('EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, light, paperSeed, photoReference, audios, compositeRevision.');
   }
   // 261008-ig1 (D-05) container tripwire: any audio-family member present must
   // be inside AUDIO_LIST_KEYS. DOCUMENT_KEYS already rejects the retired
@@ -666,6 +685,9 @@ export function parseEfxPaintDocument(
   // member TRULY absent — an explicit `undefined` key would break the
   // byte-identity law for untouched pre-milestone projects.
   const light = normalizeDocumentLight(value.light);
+  // Phase 64-21 (MED-02): the OPTIONAL sheet seed — same conditional-spread
+  // form, so an absent member stays truly absent through parse and re-encode.
+  const paperSeed = normalizeDocumentPaperSeed(value.paperSeed);
   return Object.freeze({
     version: EFX_PAINT_DOCUMENT_VERSION,
     parentLayerId: value.parentLayerId,
@@ -674,6 +696,7 @@ export function parseEfxPaintDocument(
     tracks,
     background: parseBackgroundTrack(value.background),
     ...(light === undefined ? {} : { light }),
+    ...(paperSeed === undefined ? {} : { paperSeed }),
     photoReference: value.photoReference === null ? null : parsePhotoReferenceTrack(value.photoReference),
     // 261008-ig1 (D-01, A2): optional member — absent normalizes to []. A
     // non-array (including null) throws — fail-closed, never coerced.

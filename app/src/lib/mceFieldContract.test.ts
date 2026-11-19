@@ -472,3 +472,38 @@ describe('Phase 64 document light (MED-17)', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 64-21 document sheet seed (MED-02)
+//
+// Same declaration-class treatment as the document light above: the seed rides
+// the document, which crosses the native Studio handoff as an opaque `document`
+// member, so neither language needs a second serialization path. TS declares
+// the camelCase `paperSeed`; Rust declares the same wire key through
+// `#[serde(rename = "paperSeed")]` on an `Option<f64>` so an absent key stays
+// absent. The generic wire-key diff makes a one-language edit fail here.
+// ---------------------------------------------------------------------------
+
+describe('Phase 64-21 document sheet seed (MED-02)', () => {
+  it('declares the document sheet seed in both languages', () => {
+    // MED-02: the engine's [0,1) paper-grain roll rides the document.
+    expectMemberKeys('MceDocumentPaperSeed', ['paperSeed']);
+  });
+
+  it('admits no snake_case or lowercased variant of the key in either language', () => {
+    // Rename discipline: the wire key is exactly `paperSeed` on both sides —
+    // a snake_case variant on either side would be a silent drop-hole.
+    expect(ts.get('MceDocumentPaperSeed')!.has('paper_seed')).toBe(false);
+    expect(ts.get('MceDocumentPaperSeed')!.has('paperseed')).toBe(false);
+    expect([...rust.get('MceDocumentPaperSeed')!.values()]).not.toContain('paper_seed');
+    expect([...rust.get('MceDocumentPaperSeed')!.values()]).not.toContain('paperseed');
+  });
+
+  it('did not claim a one-language exception for the sheet seed', () => {
+    for (const entry of ALLOWED_ONE_LANGUAGE) {
+      expect(entry.toLowerCase()).not.toContain('documentpaperseed');
+      expect(entry.toLowerCase()).not.toContain('paper_seed');
+      expect(entry.toLowerCase()).not.toContain('paperseed');
+    }
+  });
+});

@@ -446,6 +446,29 @@ pub struct MceDocumentLight {
     pub intensity: f64,
 }
 
+/// Phase 64-21 (MED-02): the per-paint-layer-document sheet seed.
+/// Declaration-class pin only (DATA-04 / D-27 pattern), like
+/// `MceDocumentLight` above: the seed crosses the native Studio handoff nested
+/// inside the launch envelope's opaque `document` member
+/// (`PhysicsPaintLaunchContext.document`), and the layer sub-file is itself
+/// opaque (`HashMap<String, Value>`), so neither that launch struct nor the
+/// package carrier grows a `paperSeed` field — a launch field would be a
+/// second, unread copy of a value the document already carries end to end.
+///
+/// The TypeScript field is `EfxPaintDocument.paperSeed` (the engine's own
+/// `[0, 1)` paper-grain roll); absent is legal and reads as
+/// `derivePaperSeed(layerId)`, so an old project needs no migration.
+/// `Option<f64>` + `skip_serializing_if` keep an absent key truly absent
+/// through serde. Deliberately unvalidated here: the TS parser is the
+/// fail-closed gate (finite, inside `[0, 1)`); Rust only round-trips — the
+/// asymmetry is the contract, not an omission.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceDocumentPaperSeed {
+    #[serde(rename = "paperSeed", default, skip_serializing_if = "Option::is_none")]
+    pub paper_seed: Option<f64>,
+}
+
 /// Aquarelle per-brush property surface (AQUA-03 / R1.7 / D-08). The 8
 /// numeric multipliers snapshotted onto a stroke at record time; the same
 /// flat surface rides every brush-pack snapshot entry.

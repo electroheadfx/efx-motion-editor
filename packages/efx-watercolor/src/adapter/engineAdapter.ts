@@ -76,6 +76,16 @@ export interface AquarelleAdapterOptions {
    * the engine's own default in force — the adapter never manufactures one.
    */
   light?: LightSettings
+  /**
+   * 64-21: the recording's sheet seed (the document's `paperSeed`, or the
+   * layer-id derivation for an old document), applied ONCE before the first
+   * `applyStroke` so the replayed deposit lands on the same grain it was
+   * painted on. `Engine.setPaperSeed` owns the pin (a non-finite value clears
+   * it) and regenerates the sheet only on a real change. Absent leaves the
+   * engine's own per-sheet roll in force — the adapter never manufactures a
+   * value.
+   */
+  paperSeed?: number
 }
 
 /**
@@ -273,6 +283,11 @@ export function createAquarelleEngineAdapter(
   // this path (the engine setter owns the bands, see AquarelleAdapterOptions).
   if (options.light && engine) {
     engine.setLight({ ...options.light })
+  }
+  // 64-21: the sheet seed rides the same seam — in place before the first
+  // applyStroke, one pass-through write (the engine setter owns the pin).
+  if (typeof options.paperSeed === 'number' && engine) {
+    engine.setPaperSeed(options.paperSeed)
   }
 
   /** Pending stroke being walked on the tick grid. */

@@ -49,6 +49,10 @@ export function PhysicsPaintCanvasMount(props: {
   /** 64-07 (MED-17): the ACTIVE layer document's emboss light, forwarded to
    *  the live sheet as a getter — the per-frame apply reads it live. */
   getAquarelleLight?: () => LightSettings | undefined;
+  /** 64-21 (MED-02): the ACTIVE layer document's sheet seed (or its layer-id
+   *  derivation), forwarded to the live sheet as a getter — the per-frame
+   *  apply reads it live and `setPaperSeed` is compare-then-write. */
+  getAquarellePaperSeed?: () => number | undefined;
   /** 261028-k03 D3/D2: a Lift gesture is refused at pointerdown for every
    *  fail-closed state (Script OFF with a script, group frame, unknown base,
    *  no displayable paint). Returns the copy to publish, or null to proceed. */
@@ -97,6 +101,7 @@ export function PhysicsPaintCanvasMount(props: {
   const getAquarellePaperIdRef = useRef(props.getAquarellePaperId);
   const getAquarellePaperGrainStrengthRef = useRef(props.getAquarellePaperGrainStrength);
   const getAquarelleLightRef = useRef(props.getAquarelleLight);
+  const getAquarellePaperSeedRef = useRef(props.getAquarellePaperSeed);
   const getAquarelleLiftBlockedRef = useRef(props.getAquarelleLiftBlocked);
   const onAquarelleLiftBlockedRef = useRef(props.onAquarelleLiftBlocked);
   const onAquarelleLiftDabRef = useRef(props.onAquarelleLiftDab);
@@ -118,6 +123,7 @@ export function PhysicsPaintCanvasMount(props: {
   getAquarellePaperIdRef.current = props.getAquarellePaperId;
   getAquarellePaperGrainStrengthRef.current = props.getAquarellePaperGrainStrength;
   getAquarelleLightRef.current = props.getAquarelleLight;
+  getAquarellePaperSeedRef.current = props.getAquarellePaperSeed;
   getAquarelleLiftBlockedRef.current = props.getAquarelleLiftBlocked;
   onAquarelleLiftBlockedRef.current = props.onAquarelleLiftBlocked;
   onAquarelleLiftDabRef.current = props.onAquarelleLiftDab;
@@ -224,6 +230,7 @@ export function PhysicsPaintCanvasMount(props: {
         getPaperId={() => getAquarellePaperIdRef.current?.() ?? 'paper/cold-press'}
         getPaperGrainStrength={() => getAquarellePaperGrainStrengthRef.current?.() ?? 1}
         getLight={() => getAquarelleLightRef.current?.()}
+        getPaperSeed={() => getAquarellePaperSeedRef.current?.()}
         disabled={false}
         getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}
         onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}

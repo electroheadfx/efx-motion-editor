@@ -312,6 +312,7 @@ let appliedMaskGeneration = -1;
 function applyLiveConfig(
   engine: WatercolorEngine,
   getLight?: () => LightSettings | undefined,
+  getPaperSeed?: () => number | undefined,
 ): void {
   const generation = maskGeneration();
   if (generation !== appliedMaskGeneration) {
@@ -363,6 +364,11 @@ function applyLiveConfig(
   // costs three numeric comparisons and nothing else.
   const light = getLight?.();
   if (light) engine.setLight(light);
+  // 64-21 (MED-02): the document's sheet seed, read live through the getter —
+  // `setPaperSeed` is compare-then-write and never re-creates targets, so an
+  // unchanged seed costs one comparison per frame.
+  const paperSeed = getPaperSeed?.();
+  if (paperSeed !== undefined) engine.setPaperSeed(paperSeed);
 }
 
 export function AquarelleCanvasLayer(props: {
@@ -391,6 +397,13 @@ export function AquarelleCanvasLayer(props: {
    * default in force.
    */
   getLight?: () => LightSettings | undefined;
+  /**
+   * 64-21 (MED-02): the paint-layer document's sheet seed — a getter on the
+   * same terms as `getLight`, so the live sheet paints on the grain the
+   * document records (or derives). Absent leaves the engine's own roll in
+   * force.
+   */
+  getPaperSeed?: () => number | undefined;
   disabled?: boolean;
   onStrokeEnd?: (stroke: AquarelleStroke) => void;
   /**
@@ -505,6 +518,7 @@ export function AquarelleCanvasLayer(props: {
   const getPaperIdRef = useRef(props.getPaperId);
   const getPaperGrainStrengthRef = useRef(props.getPaperGrainStrength);
   const getLightRef = useRef(props.getLight);
+  const getPaperSeedRef = useRef(props.getPaperSeed);
   const onStrokeEndRef = useRef(props.onStrokeEnd);
   const getLiftBlockedRef = useRef(props.getLiftBlocked);
   const onLiftBlockedRef = useRef(props.onLiftBlocked);
@@ -528,6 +542,7 @@ export function AquarelleCanvasLayer(props: {
   getPaperIdRef.current = props.getPaperId;
   getPaperGrainStrengthRef.current = props.getPaperGrainStrength;
   getLightRef.current = props.getLight;
+  getPaperSeedRef.current = props.getPaperSeed;
   onStrokeEndRef.current = props.onStrokeEnd;
   getLiftBlockedRef.current = props.getLiftBlocked;
   onLiftBlockedRef.current = props.onLiftBlocked;
@@ -736,7 +751,7 @@ export function AquarelleCanvasLayer(props: {
     // display on transparent (the document fond is the compositor's — v1.0).
     engine.setCompositorLayer(true);
 
-    applyLiveConfig(engine, getLightRef.current);
+    applyLiveConfig(engine, getLightRef.current, getPaperSeedRef.current);
     engine.setPigment(pigmentFromHex(colorRef.current));
     // F3: deposit grain follows the Studio paper (R2.3) — never the vendor
     // default. 261027 UAT round 9: the STRENGTH is half of that law; the bake
@@ -979,7 +994,7 @@ export function AquarelleCanvasLayer(props: {
       if (wasAwake && !awake) stampPendingSettle();
       wasAwake = awake;
       if (!disabledRef.current) {
-        applyLiveConfig(engine, getLightRef.current);
+        applyLiveConfig(engine, getLightRef.current, getPaperSeedRef.current);
         engine.setPigment(pigmentFromHex(colorRef.current));
         applyPaper();
       }

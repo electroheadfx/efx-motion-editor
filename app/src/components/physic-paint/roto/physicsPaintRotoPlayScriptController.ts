@@ -4251,6 +4251,12 @@ export async function bakeAquarelleEventsToFrame(input: {
    * pass-through — no resolution, no default, no second copy.
    */
   light?: LightSettings;
+  /**
+   * 64-21 (MED-02): the recording's sheet seed, read by the caller AT RENDER
+   * TIME and handed to the adapter before the first stroke. A plain
+   * pass-through — no resolution, no default, no second copy.
+   */
+  paperSeed?: number;
   /** 261022 Apply parity: per-fully-fed-stroke progress (Dry excluded). */
   onStrokeFed?: (completed: number, total: number) => void;
   /**
@@ -4261,7 +4267,7 @@ export async function bakeAquarelleEventsToFrame(input: {
   onDiagnostics?: (d: AquarelleApplyDiagnostics) => void;
 }): Promise<{ bytes: Uint8Array; width: number; height: number } | null> {
   const createStartedAt = readNow();
-  const adapter = await createDefaultAquarelleAdapter(input.size, input.paper, input.light);
+  const adapter = await createDefaultAquarelleAdapter(input.size, input.paper, input.light, input.paperSeed);
   // Creation span: the dynamic import + engine construction. The teardown
   // span is added in the finally — the field is the adapter's lifecycle cost,
   // never the whole bake.
@@ -4328,6 +4334,8 @@ export async function applyAquarelleEventsToKey(input: {
   paper: AquarelleBakePaper;
   /** 64-07 (MED-17): the document light, forwarded unchanged to the bake. */
   light?: LightSettings;
+  /** 64-21 (MED-02): the sheet seed, forwarded unchanged to the bake. */
+  paperSeed?: number;
   /** 261022 Apply parity: per-fully-fed-stroke progress (Dry excluded). */
   onStrokeFed?: (completed: number, total: number) => void;
   /** 261029-bks: forwarded unchanged to `bakeAquarelleEventsToFrame`. */
@@ -4339,6 +4347,7 @@ export async function applyAquarelleEventsToKey(input: {
     size: input.size,
     paper: input.paper,
     light: input.light,
+    paperSeed: input.paperSeed,
     onStrokeFed: input.onStrokeFed,
     onDiagnostics: input.onDiagnostics,
   });
@@ -4357,6 +4366,7 @@ async function createDefaultAquarelleAdapter(
   size: { width: number; height: number },
   paper?: AquarelleBakePaper,
   light?: LightSettings,
+  paperSeed?: number,
 ): Promise<EngineAdapter<AquarelleStrokePayload> & { isAwake?: () => boolean }> {
   const { createAquarelleEngineAdapter } = await import('@efxlab/efx-watercolor');
   return createAquarelleEngineAdapter({
@@ -4367,6 +4377,8 @@ async function createDefaultAquarelleAdapter(
     // 64-07 (MED-17): render state beside the paper — the adapter applies it
     // before the first stroke; absent keeps the engine default.
     light,
+    // 64-21 (MED-02): the recording's sheet seed — same seam, same pass-through.
+    paperSeed,
   });
 }
 

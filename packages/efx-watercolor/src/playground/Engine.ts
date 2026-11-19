@@ -340,6 +340,8 @@ export class WatercolorEngine {
   private tipTextures = new Map<string, WebGLTexture>();
   private paperPreset: PaperPreset = DEFAULT_PAPER;
   private paperSeed = 0;
+  /** 64-21: an explicit sheet seed (null = roll one per sheet, the pre-64-21 law). */
+  private paperSeedPin: number | null = null;
   private paperStrength = 1;
   private paperScale = 1;                           // paper units per texel, fixed when the sheet is made
   private paperOrigin: [number, number] = [0, 0];   // where the sheet sits in the paper's field (texels)
@@ -571,7 +573,9 @@ export class WatercolorEngine {
     this.allocateTargets();
     this.allocateHistory();
 
-    this.paperSeed = this.rng();
+    // 64-21: a pinned seed makes the sheet a recorded constant across replays;
+    // an unpinned engine keeps the pre-64-21 per-sheet roll, byte for byte.
+    this.paperSeed = this.paperSeedPin ?? this.rng();
     this.paperScale = PAPER_UNITS / this.dh;
     this.paperOrigin = [0, 0];
     this.drawPaper(this.paper, this.paperOrigin, this.paperScale);
@@ -1181,6 +1185,30 @@ export class WatercolorEngine {
 
   /** The current emboss light state (Phase 64). A copy: callers cannot mutate the engine. */
   getLight(): LightSettings { return { ...this.light }; }
+
+  /**
+   * 64-21: pin the sheet seed (null = roll one per sheet, the pre-64-21 law).
+   * The paper grain is render state like the light, but unlike the light it is
+   * not reproducible from the document alone — a replay must set it BEFORE the
+   * first stroke, and `resetSheet` must never re-roll it, so the seeded grain
+   * stays the constant across replays. A non-finite value is treated as absent
+   * (clears the pin); an unchanged value writes nothing and redraws nothing; a
+   * real change stores the pin, regenerates the sheet and redraws. Params, the
+   * pigment and the thickness field are never touched and no target is
+   * recreated.
+   */
+  setPaperSeed(seed: number | null) {
+    const pinned = typeof seed === 'number' && Number.isFinite(seed) ? seed : null;
+    if (pinned === this.paperSeedPin && (pinned === null || this.paperSeed === pinned)) return;
+    this.paperSeedPin = pinned;
+    if (pinned === null) return;   // cleared: the sheet in force keeps its seed
+    this.paperSeed = pinned;
+    this.drawPaper(this.paper, this.paperOrigin, this.paperScale);
+    this.redraw();
+  }
+
+  /** 64-21: the sheet seed actually in force (the pin, the roll, or a restored snapshot). */
+  getPaperSeed(): number { return this.paperSeed; }
 
   /**
    * Swap the sheet under the painting. Only the paper changes: the paint stays, and

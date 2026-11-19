@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { CompletedPaintMutation, PaintHistoryAvailability, RotoEditableState } from './types/paintCore';
-import type { BlendMode, DocumentSoundClip, FrameLoopClipRepeat, FrameLoopClipScale, PaintDocumentLight } from '../../efx-paint/document/efxPaintDocument';
+import { derivePaperSeed, type BlendMode, type DocumentSoundClip, type FrameLoopClipRepeat, type FrameLoopClipScale, type PaintDocumentLight } from '../../efx-paint/document/efxPaintDocument';
 import type { SoundBandGesturePatch } from './view/soundBandGeometry';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../types/physicPaint';
 import type { PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
@@ -892,6 +892,15 @@ export function PhysicsPaintStudio() {
   const documentLight = (): PaintDocumentLight | undefined => {
     const layerId = launchContextRef.current?.layerId;
     return layerId ? getEfxPaintDocument(layerId)?.light : undefined;
+  };
+  // 64-21 (MED-02): the ACTIVE paint-layer document's sheet seed — the recorded
+  // field, or the layer-id derivation for an old document, so the live sheet
+  // and every bake land on the same grain with no migration. A getter on the
+  // light's exact terms: resolved at CALL time, never a copied prop.
+  const documentPaperSeed = (): number | undefined => {
+    const layerId = launchContextRef.current?.layerId;
+    if (!layerId) return undefined;
+    return getEfxPaintDocument(layerId)?.paperSeed ?? derivePaperSeed(layerId);
   };
   // 47-01 UAT round 8: the strip data subscriptions below re-render the whole
   // Studio on every paint event; a trailing throttle collapses a stroke
@@ -2221,6 +2230,9 @@ export function PhysicsPaintStudio() {
         // 64-07 (MED-17): the bake renders with the ACTIVE layer document's
         // current light — resolved at render time, never a copied prop.
         light: documentLight(),
+        // 64-21 (MED-02): same rule for the sheet seed — the recorded field or
+        // the layer-id derivation, so the Apply bake replays on its own grain.
+        paperSeed: documentPaperSeed(),
         publish: async (frame) => {
           // 261026 axis 2 (watercolor-loop-render-split): the baked sheet is the
           // SCRIPT layer only. On a group frame the rail's cached paint is the
@@ -8159,6 +8171,7 @@ export function PhysicsPaintStudio() {
         size,
         paper: aquarelleLiftPaperRef.current,
         light: documentLight(),
+        paperSeed: documentPaperSeed(),
         onDiagnostics: (diagnostics) => {
           recoveryDiagnostics = diagnostics;
         },
@@ -8500,6 +8513,7 @@ export function PhysicsPaintStudio() {
               size,
               paper: aquarelleLiftPaperRef.current,
               light: documentLight(),
+              paperSeed: documentPaperSeed(),
               onDiagnostics: (diagnostics) => {
                 recoveryDiagnostics = diagnostics;
               },
@@ -10864,6 +10878,8 @@ export function PhysicsPaintStudio() {
       // 64-07 (MED-17): a getter, not a value — the live sheet reads the
       // document light every frame and the canvas-mount memo stays stable.
       getAquarelleLight: documentLight,
+      // 64-21 (MED-02): the document sheet seed on the same getter terms.
+      getAquarellePaperSeed: documentPaperSeed,
       // 261028-k03 D3: the pointerdown gate's two legs.
       getAquarelleLiftBlocked,
       onAquarelleLiftBlocked: handleAquarelleLiftBlocked,

@@ -9,6 +9,8 @@
 //    R1.5 / D-20  same script ⇒ same pixels; no unseeded RNG in the
 //                 deposit or payload path
 //    D-29 / P1    engine-2 never imports engine-1 (clean-room)
+//    64-21        the sheet seed is replay INPUT (the `paperSeed` option),
+//                 not an ambient Math.random roll — proven load-bearing
 // ============================================================
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -60,6 +62,8 @@ const replayEngine = vi.hoisted(() => {
     isAwake = false
     private readonly surface: FakeCanvas
     private readonly dabs: Array<{ x: number; y: number; p: number }> = []
+    /** 64-21: the sheet seed is replay INPUT — folded into the export digest. */
+    private paperSeed: number | null = null
 
     constructor(surface: FakeCanvas) {
       this.surface = surface
@@ -69,6 +73,9 @@ const replayEngine = vi.hoisted(() => {
     setClock(): void {}
     setRandom(): void {}
     setPaper(): void {}
+    setPaperSeed(seed: number | null): void {
+      this.paperSeed = typeof seed === 'number' && Number.isFinite(seed) ? seed : null
+    }
     setParams(): void {}
     setBrush(): void {}
     setPigment(): void {}
@@ -102,11 +109,12 @@ const replayEngine = vi.hoisted(() => {
       this.dabs.length = 0
     }
 
-    /** Export one deterministic pixel per fed sample. */
+    /** Export one deterministic pixel per fed sample, salted by the sheet seed. */
     exportCanvas(): FakeCanvas {
       const ctx = this.surface.getContext('2d')
       if (!ctx) return this.surface
       const image = ctx.createImageData(this.surface.width, this.surface.height)
+      const seedByte = this.paperSeed === null ? 0 : Math.floor(this.paperSeed) & 0xff
       for (const dab of this.dabs) {
         const px =
           ((Math.trunc(dab.x) % this.surface.width) + this.surface.width) % this.surface.width
@@ -115,7 +123,7 @@ const replayEngine = vi.hoisted(() => {
         const at = (py * this.surface.width + px) * 4
         image.data[at] = 0x11
         image.data[at + 1] = Math.min(255, Math.max(0, Math.round(dab.p * 255)))
-        image.data[at + 2] = this.dabs.length & 0xff
+        image.data[at + 2] = (this.dabs.length ^ seedByte) & 0xff
         image.data[at + 3] = 255
       }
       ctx.putImageData(image, 0, 0)
@@ -238,40 +246,20 @@ function makeStroke(viscosity?: number, emboss?: number, body?: number): StudioS
 
 const PAPER_SEED = 0xc0ffee
 
-/** mulberry32 — the same generator the adapter installs. */
-function seededRandom(seed: number): () => number {
-  let state = (seed | 0) || 1
-  return () => {
-    state = (state + 0x6d2b79f5) | 0
-    let t = Math.imul(state ^ (state >>> 15), 1 | state)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-
 /**
- * 61-07: the constructor draws `paperSeed` from Math.random before the
- * adapter installs its own RNG — pin it around every construction or the
- * replay digests mean nothing.
+ * 64-21: `withSeededMathRandom` retired. Through 64-20 this file patched
+ * `Math.random` around every construction because the engine drew its sheet
+ * seed from it before the adapter installed its own RNG — the sheet was an
+ * UNRECORDED replay input. The seed is now a document field applied through
+ * `AquarelleAdapterOptions.paperSeed` before the first stroke, so the replay
+ * input is explicit and no global patch is needed. The negative control below
+ * proves the seed is load-bearing, not decorative.
  */
-function withSeededMathRandom<T>(seed: number, fn: () => T): T {
-  const original = Math.random
-  const rng = seededRandom(seed)
-  Math.random = () => rng()
-  try {
-    return fn()
-  } finally {
-    Math.random = original
-  }
-}
-
-function replayBytes(): Uint8ClampedArray {
+function replayBytes(paperSeed: number = PAPER_SEED): Uint8ClampedArray {
   const width = 64
   const height = 64
   const { canvas, pixels } = makeMockCanvas(width, height)
-  const adapter = withSeededMathRandom(PAPER_SEED, () =>
-    createAquarelleEngineAdapter({ width, height, canvas }),
-  )
+  const adapter = createAquarelleEngineAdapter({ width, height, canvas, paperSeed })
   adapter.applyStroke(makeStroke())
   for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
   adapter.captureFrame()
@@ -293,9 +281,7 @@ function replayRun(stroke: StudioStroke<AquarelleStrokePayload>): {
   const width = 64
   const height = 64
   const { canvas, pixels } = makeMockCanvas(width, height)
-  const adapter = withSeededMathRandom(PAPER_SEED, () =>
-    createAquarelleEngineAdapter({ width, height, canvas }),
-  )
+  const adapter = createAquarelleEngineAdapter({ width, height, canvas, paperSeed: PAPER_SEED })
   adapter.applyStroke(stroke)
   for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
   adapter.captureFrame()
@@ -315,6 +301,18 @@ describe('determinism contract', () => {
     const b = replayBytes()
     expect(a.length).toBe(b.length)
     expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true)
+  })
+
+  // 64-21: the negative control that makes the recorded seed load-bearing.
+  // Two adapters whose ONLY difference is the paper seed must diverge; two
+  // with the same seed must reproduce. Without this pair, a decorative seed
+  // would pass every equality row above unnoticed.
+  it('makes the paper seed load-bearing: same seed reproduces, a different seed diverges', () => {
+    const a = replayBytes()
+    const b = replayBytes()
+    const c = replayBytes(PAPER_SEED + 1)
+    expect(Buffer.from(a).equals(Buffer.from(b)), 'same seed: identical bytes').toBe(true)
+    expect(Buffer.from(a).equals(Buffer.from(c)), 'different seed: different bytes').toBe(false)
   })
 
   it('projects traceSeed = hashMutationId so replays share one seed law', () => {

@@ -34,7 +34,7 @@ import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPh
 // cycle is safe: efxPaintStore references physicPaintStore ONLY inside function
 // bodies (never in its module body), so no TDZ `let` is written mid-evaluation.
 import { getDocument as getEfxPaintDocument, setBackgroundFallback, type BackgroundEditDescriptor } from './efxPaintStore';
-import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN, type PaperTexture } from '../efx-paint/document/efxPaintDocument';
+import { derivePaperSeed, GRAIN_SCALE_MAX, GRAIN_SCALE_MIN, type PaperTexture } from '../efx-paint/document/efxPaintDocument';
 // 49-02 Task 3 (BKG-09): the reopen-path hydration resolves each background
 // clip source ref to its library asset URL (efxasset://) and decodes bytes.
 // imageStore imports only ipc + types — no cycle with this store.
@@ -2486,6 +2486,10 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       // 64-07 (MED-17): the layer document's emboss light, read at render time
       // from the record already loaded above — never a copied input.
       light: document.light,
+      // 64-21 (MED-02): the recorded sheet seed, or the layer-id derivation for
+      // an old document — the replay-equality input the bake used to lose to
+      // the engine's Math.random roll.
+      paperSeed: document.paperSeed ?? derivePaperSeed(input.layerId),
       onStrokeFrameAnchors: input.onStrokeFrameAnchors,
       signal: input.signal,
       onProgress: input.onProgress,
@@ -2689,6 +2693,9 @@ export async function renderRevealTailFrames(input: RevealTailRenderInput): Prom
       // 64-07 (MED-17): the layer document's emboss light, read at render time
       // from the record already loaded above — never a copied input.
       light: document.light,
+      // 64-21 (MED-02): the recorded sheet seed, or the layer-id derivation —
+      // the tail bake must land on the same grain the creation bake did.
+      paperSeed: document.paperSeed ?? derivePaperSeed(input.layerId),
       onStrokeFrameAnchors: (next) => { anchors = next; },
       signal: input.signal,
       onProgress: input.onProgress,

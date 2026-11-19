@@ -70,6 +70,14 @@ export interface RotoRevealRenderInput {
    */
   light?: LightSettings;
   /**
+   * 64-21 (MED-02): the recording's sheet seed, read by the caller AT RENDER
+   * TIME (the document field or its layer-id derivation). Applied at adapter
+   * creation so the bake lands on the same grain it was painted on; absent
+   * keeps the engine's own roll. A plain pass-through — never resolved,
+   * defaulted or copied here.
+   */
+  paperSeed?: number;
+  /**
    * The frame-aligned reference plus the display transform (D-14).
    *
    * `bytesByAppFrame` maps an APPLICATION frame to the reference image that
@@ -159,6 +167,8 @@ async function renderRotoRevealFramesAquarelle(
     // 64-07 (MED-17): render state beside the paper — in place before the
     // reveal bake's first stroke.
     light: input.light,
+    // 64-21 (MED-02): the sheet seed — same seam, same one pass-through write.
+    paperSeed: input.paperSeed,
   });
   const isStatic = (input.mode ?? 'progressive') === 'static';
   // 261030-v1t: ON re-bakes every output frame (static included) with its own
