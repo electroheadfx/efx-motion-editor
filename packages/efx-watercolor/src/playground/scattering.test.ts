@@ -976,12 +976,15 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     expectContains(src, 'uniform float uWetSeconds;')
     expectContains(src, 'uniform int uWetMode;')
     // Mode 1 (shipped): §3.4's age law, read from the last-touch field and
-    // gated by the PAINT's own alpha. The gate used to read `uCover`, which
-    // only Body writes — with Body at its default 0 that channel is empty, so
-    // `wet` was always 0 and Pickup had no effect at any value (GAP-2).
+    // gated by the PAINT's own COVERAGE — the reference's `canvas.a`
+    // analogue. Corrected by 261119-pod: 4e6b974e1 gated on the scatter
+    // channel instead, which is dead at the canonical Body 0 (measured 1080
+    // sheet: cover max 0.500 / mean 0.184 against the scatter channel's max
+    // 0.000), so `wet` was always 0 and Pickup had no effect at any value.
+    // bristleCoverFS writes `cover` on every bristle dab, and
+    // BRISTLE_BODY_ALPHA_FLOOR (0.5) keeps that write live at Body 0.
     expectContains(src, 'float age = max(uNow - texture(uTimes, uv).r, 0.0);')
-    expectContains(src, 'return exp(-age / max(uWetSeconds, 1.0)) * paintAlphaAt(uv);')
-    expectContains(src, 'texture(uInkB, uv).a + texture(uFixedB, uv).a')
+    expectContains(src, 'return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;')
     // Mode 0 (the recorded A/B control): 64-21's proxy, unchanged.
     expectContains(src, 'return texture(uWet, uv).x * texture(uCover, uv).x;')
     expectContains(src, 'if (uWetMode == 1)')

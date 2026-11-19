@@ -748,18 +748,20 @@ vec3 canvasAtB(vec2 uv){
   return ib.rgb;
 }
 // §3.4: mode 1 is the shipped law (D-24) — the texel's age from the
-// last-touch field, on the virtual clock, gated by the PAINT's own alpha,
-// exactly the reference's exp(-age/wetSeconds) * canvas.a. Gating it on
-// uCover coupled pickup to Body: with Body at its default 0 nothing writes
-// that channel, so wet stayed 0 and Pickup had no effect at any value.
+// last-touch field, on the virtual clock, gated by the PAINT's own coverage,
+// exactly the reference's exp(-age/wetSeconds) * canvas.a. uCover IS that
+// paint alpha: bristleCoverFS writes it on every bristle dab, and
+// BRISTLE_BODY_ALPHA_FLOOR (0.5) keeps it live at Body 0 — measured on the
+// 1080 sheet at Body 0 as cover max 0.500 / mean 0.184. The scatter channel
+// (inkB.a + fixedB.a) is not paint alpha: measured max 0.000 at Body 0 and
+// max 0.042 at Body 100. 4e6b974e1 gated on that dead channel, so wet was
+// always 0 at the canonical Body 0 and Pickup had no effect at any value;
+// this restores the cover channel (261119-pod).
 // Mode 0 is 64-21's proxy retained ONLY as the recorded A/B control.
-float paintAlphaAt(vec2 uv){
-  return clamp(texture(uInkB, uv).a + texture(uFixedB, uv).a, 0.0, 1.0);
-}
 float wetAt(vec2 uv){
   if (uWetMode == 1) {
     float age = max(uNow - texture(uTimes, uv).r, 0.0);
-    return exp(-age / max(uWetSeconds, 1.0)) * paintAlphaAt(uv);
+    return exp(-age / max(uWetSeconds, 1.0)) * texture(uCover, uv).x;
   }
   return texture(uWet, uv).x * texture(uCover, uv).x;
 }
@@ -782,7 +784,9 @@ void main(){
   vec2 tapUv = dir * (1.5 / max(uSheet, vec2(1.0)));
   vec4 canvasA = (canvasAt(pos - tapUv) + canvasAt(pos) + canvasAt(pos + tapUv)) * (1.0 / 3.0);
   vec3 canvasB = (canvasAtB(pos - tapUv) + canvasAtB(pos) + canvasAtB(pos + tapUv)) * (1.0 / 3.0);
-  float canvasAlpha = (paintAlphaAt(pos - tapUv) + paintAlphaAt(pos) + paintAlphaAt(pos + tapUv)) * (1.0 / 3.0);
+  // The paint alpha the pickup equilibrium mixes, three-tapped like the colour
+  // above: uCover is the painting's own coverage (§3.4's canvas.a analogue).
+  float canvasAlpha = (texture(uCover, pos - tapUv).x + texture(uCover, pos).x + texture(uCover, pos + tapUv).x) * (1.0 / 3.0);
   float wet = (wetAt(pos - tapUv) + wetAt(pos) + wetAt(pos + tapUv)) * (1.0 / 3.0);
 
   // §3.1 contact threshold with rim noise — §5.3's shared contact law
