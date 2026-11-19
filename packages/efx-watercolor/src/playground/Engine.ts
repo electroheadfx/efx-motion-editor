@@ -2825,7 +2825,11 @@ export class WatercolorEngine {
     // the fragment keeps its own §3.1 clamps (0.75 pickup, 1 refill).
     gl.uniform1f(p.u.uPickupRate!, this.params.pickup);
     gl.uniform1f(p.u.uRefillRate!, this.params.refill);
-    gl.uniform1f(p.u.uDepletion!, 0.25 / Math.min(this.dw, this.dh));
+    // The reference's whole visible structure (broken dashes, fibre body and
+    // the paper threshold winning) only switches on as the per-bristle load
+    // falls. At 0.25/doc a full brush needed ~4000 px of travel to empty, so a
+    // normal stroke never dried and always deposited a solid bar.
+    gl.uniform1f(p.u.uDepletion!, 4.0 / Math.min(this.dw, this.dh));
     const c = this.pigment.coeffs;
     gl.uniform4f(p.u.uPigmentA!, c[0]!, c[1]!, c[2]!, c[3]!);
     gl.uniform3f(p.u.uPigmentB!, c[4]!, c[5]!, c[6]!);
