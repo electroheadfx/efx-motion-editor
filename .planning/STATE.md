@@ -4,17 +4,17 @@ milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
-status: executing
-stopped_at: Completed 64-23-PLAN.md
-last_updated: "2026-11-19T14:23:09.843Z"
+status: verifying
+stopped_at: Completed 64-24-PLAN.md
+last_updated: "2026-11-19T14:48:47.256Z"
 last_activity: 2026-11-19
 last_activity_desc: Phase 64 execution started
-state_head: ee8696905ff968e6f562063646e4c761563f05c7
+state_head: a6dcd283cd33b46cf91760fe9def035b058e14fe
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 41
-  completed_plans: 40
+  completed_plans: 41
   percent: 50
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 
 Phase: 64 (Medium Engine) — EXECUTING
 Plan: 24 of 24
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-19 — Phase 64 execution started
 
 
@@ -167,6 +167,7 @@ Last activity: 2026-11-19 — Phase 64 execution started
 | Phase 64 P21 | 13min | 3 tasks | 20 files |
 | Phase 64 P22 | 13min | 3 tasks | 18 files |
 | Phase 64 P23 | 26min | 3 tasks | 13 files |
+| Phase 64 P24 | 14min | 3 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -558,6 +559,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: The bristle-edge census measures the transparent export's deposited darkness (1 - min(rgb) = the engine's darkAlpha), not the mode-4 pigment alpha: the coverage channel is the source-over union of 100+ dabs and saturates, so the alpha edge is a 0.8 px silhouette at every Feather (measured 0.8 px at Feather 0 and 100) while the film edge responds to D-22's feather band (measured 20.25 px -> 25.11 px at 1080²)
 - [Phase 64]: A dash-gap station (the 4.3 dryness breakup) is recorded in edgeSkippedStations, never in edgeFailures: a dash is the trace law working, not a degenerate capture; a blank film and a station with fewer than three crossings stay named failures
 - [Phase 64]: The plan's 0.2 plateau guard was calibrated for the saturated alpha field; on the film's darkness a real light-wash stroke reads 0.13-0.16, so the blank-film guard is EDGE_MIN_PLATEAU = 0.02 (a blank render is 0)
+- [Phase 64]: D-24: the last-touch field is a document-sized exact-float R32F pair cleared to -604800 s (one week old) and carried through the whole-document lifecycle as the sixth pool-0 layer; the §3.4 gate exp(-age/wetSeconds)*coverage multiplies PICKUP only on the virtual clock
+- [Phase 64]: D-25: the acrylic retune (water 26, bleed 22, flow 60, wetSeconds 12) is numbers in one record; D-22's Feather half is discharged by composition through the existing uSoftness band, no feather expression added
+- [Phase 64]: The bristle-wet acceptance measures band darkness on the transparent export: fresh 50.64 vs agedWet 250.16 luma, and the uncommitted --wet-mode 0 proxy differs on all three digests (paper e083b0e3 vs 9eaef5be); the sheet pair records 9,331,200 B at 1080² and 33,554,432 B at 2K, frame cache 0 B
 
 ### Pending Todos
 
@@ -685,8 +689,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-19T14:23:08.326Z
-Stopped at: Completed 64-23-PLAN.md
+Last session: 2026-11-19T14:48:45.722Z
+Stopped at: Completed 64-24-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -261,7 +261,7 @@ Plans:
 - [x] 64-23-PLAN.md — Traces and directional edges: `broken` (§4.3), the `grainHeight` trio (§4.4), rim contact (§5.3), landing (§5.4), `dryEdge` (§5.5) and the `wide`/`local` body (§4.5) — the acceptance capture for directional anti-aliased edges
 
 **Wave 18** *(blocked on 64-23 completion)*
-- [ ] 64-24-PLAN.md — Acrylic water and wetness: the document-sized `R32F` last-touch ping-pong pair (D-24), the §3.4 `exp(−age / wetSeconds) · coverage` gate in the carrier, the D-25 acrylic record retune and the Wet/Dry acceptance capture
+- [x] 64-24-PLAN.md — Acrylic water and wetness: the document-sized `R32F` last-touch ping-pong pair (D-24), the §3.4 `exp(−age / wetSeconds) · coverage` gate in the carrier, the D-25 acrylic record retune and the Wet/Dry acceptance capture
 
 **Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-07-brush-groups.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-08-scattering.md`
 
@@ -282,7 +282,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 23/24 | In Progress | - |
+| 64. Medium Engine | 24/24 | In Progress | - |
 
 ---
 
