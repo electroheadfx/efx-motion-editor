@@ -66,9 +66,9 @@ First load the mapper agent's skill bundle (the executor's `AGENT_SKILLS`
 from step `init_context` is for `gsd-executor`, not the mapper):
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
 $ARGUMENTS
-GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
+GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
 GSD_ARGS=${GSD_ARGS%$'\n'}
 # gsd_run is defined by the canonical preamble in the drift-check block above and reused
 # here via the workflow's shared shell scope — defining it once keeps the file compliant

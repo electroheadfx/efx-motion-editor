@@ -97,9 +97,9 @@ This runs in parallel - all gaps investigated simultaneously.
 **Load agent skills:**
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
 $ARGUMENTS
-GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
+GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
 GSD_ARGS=${GSD_ARGS%$'\n'}
 GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
 AGENT_SKILLS_DEBUGGER=$(gsd_run query agent-skills gsd-debugger ${GSD_WS:+--ws=${GSD_WS##* }})
@@ -282,7 +282,9 @@ Update status in frontmatter to "diagnosed".
 
 Commit the updated UAT.md:
 ```bash
-gsd_run query commit "docs({phase_num}): add root causes from diagnosis" --files ".planning/phases/XX-name/{phase_num}-UAT.md"
+PLANNING_ROOT=$(gsd_run query planning.inspect ${GSD_WS:+--ws=${GSD_WS##* }} --pick generated_from.planning_root)
+: "${PLANNING_ROOT:?}"
+gsd_run query commit "docs({phase_num}): add root causes from diagnosis" --files "${PLANNING_ROOT}/phases/XX-name/{phase_num}-UAT.md"
 ```
 </step>
 

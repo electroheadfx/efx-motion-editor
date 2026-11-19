@@ -25,9 +25,9 @@ Parse `$ARGUMENTS` for the idea summary.
 First, check for an enrich flag:
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60' || true
 $ARGUMENTS
-GSD_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
+GSD_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
 GSD_ARGS=${GSD_ARGS%$'\n'}
 if echo "$GSD_ARGS" | grep -qE '\-\-enrich[[:space:]]+SEED-[0-9]+(-[a-zA-Z0-9]{3})?'; then
   # Anchor on the flag and capture the COMPLETE id — uppercase-tolerant, since
@@ -73,12 +73,12 @@ mkdir -p .planning/seeds
 
 <step name="generate-seed-id">
 ```bash
-# Seed id: date + 3 random base36 chars (the `.planning/quick/` shape).
+# Seed id: date + 3 random base36 chars (the quick-task id shape).
 # NO shared counter: `.planning/seeds/` is shared, but each worktree only sees
 # what has merged — counting files collides across parallel workstreams (#4378).
 # Residual bound: two workstreams planting the same day before either merges
 # can still draw the same suffix (~1 in 46,656 per pair) — the same bound the
-# `.planning/quick/` scheme accepts.
+# quick-task id scheme accepts.
 SEED_DATE=$(date +%y%m%d)
 SEED_ID=""
 for _SEED_ATTEMPT in 1 2; do

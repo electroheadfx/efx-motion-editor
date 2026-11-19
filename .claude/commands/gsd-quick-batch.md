@@ -75,9 +75,9 @@ and newlines in the text cannot break out). Paste the exact contents of the
 
 ```bash
 QUICK_BATCH_PARSE_FILE=$(mktemp)
-gsd_run quick-batch parse-args --raw --stdin > "$QUICK_BATCH_PARSE_FILE" 2>&1 <<'GSD_QUICK_BATCH_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87'
+gsd_run quick-batch parse-args --raw --stdin > "$QUICK_BATCH_PARSE_FILE" 2>&1 <<'GSD_QUICK_BATCH_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60'
 <the exact contents of the `<arguments>` block, verbatim>
-GSD_QUICK_BATCH_ARGS_END_4f67eeb92219a6e4f8166feaedf96e87
+GSD_QUICK_BATCH_ARGS_END_ecf322f229ac84d767fe3d3e505aeb60
 QUICK_BATCH_PARSE_RC=$?
 QUICK_BATCH_PARSE=$(cat "$QUICK_BATCH_PARSE_FILE"); rm -f "$QUICK_BATCH_PARSE_FILE"
 ```
