@@ -50,21 +50,26 @@ import {
  *  `wetSeconds` is deliberately absent: it is a medium-record value in
  *  SECONDS, and the ×100 reset law below (which multiplies every row's
  *  DEFAULT_PARAMS by 100) would corrupt it. It still rides the recorded bag. */
-const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string }> = Object.freeze([
-  { key: 'water', label: 'Water' },
-  { key: 'load', label: 'Pigment' },
-  { key: 'flow', label: 'Flow' },
-  { key: 'bleed', label: 'Bleed' },
-  { key: 'edge', label: 'Edges' },
-  { key: 'granulation', label: 'Grain' },
-  { key: 'dry', label: 'Dry speed' },
-  { key: 'viscosity', label: 'Viscosity' },
-  { key: 'body', label: 'Body' },
-  { key: 'feather', label: 'Feather' },
-  { key: 'pickup', label: 'Pickup' },
-  { key: 'refill', label: 'Refill' },
-  { key: 'emboss', label: 'Emboss' },
-]);
+/** Post-UAT (2026-11-21): emboss relief is very hard above 15 — the row's
+ *  band is capped so neither the track nor a typed entry can exceed it. */
+const EMBOSS_MAX = 15;
+
+const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string; max?: number }> =
+  Object.freeze([
+    { key: 'water', label: 'Water' },
+    { key: 'load', label: 'Pigment' },
+    { key: 'flow', label: 'Flow' },
+    { key: 'bleed', label: 'Bleed' },
+    { key: 'edge', label: 'Edges' },
+    { key: 'granulation', label: 'Grain' },
+    { key: 'dry', label: 'Dry speed' },
+    { key: 'viscosity', label: 'Viscosity' },
+    { key: 'body', label: 'Body' },
+    { key: 'feather', label: 'Feather' },
+    { key: 'pickup', label: 'Pickup' },
+    { key: 'refill', label: 'Refill' },
+    { key: 'emboss', label: 'Emboss', max: EMBOSS_MAX },
+  ]);
 
 const GLOBAL_MIN = 0;
 const GLOBAL_MAX = 100;
@@ -72,19 +77,23 @@ const GLOBAL_MAX = 100;
 function GlobalSlider(props: {
   label: string;
   value: number;
+  min?: number;
+  max?: number;
   onChange: (value: number) => void;
   onCommit?: (value: number) => void;
 }) {
+  const min = props.min ?? GLOBAL_MIN;
+  const max = props.max ?? GLOBAL_MAX;
   return (
     <div class="physics-paint-option-row">
       <SliderStepper
         label={props.label}
-        value={Math.max(GLOBAL_MIN, Math.min(GLOBAL_MAX, props.value))}
+        value={Math.max(min, Math.min(max, props.value))}
         onChange={props.onChange}
         onCommit={props.onCommit}
         step={1}
-        min={GLOBAL_MIN}
-        max={GLOBAL_MAX}
+        min={min}
+        max={max}
         ariaLabel={props.label}
       />
     </div>
@@ -240,6 +249,8 @@ export function AquarelleGlobalsPanel() {
           key={String(row.key)}
           label={row.label}
           value={params[row.key]}
+          min={row.min}
+          max={row.max}
           onChange={onGlobalChange(row.key)}
           onCommit={onGlobalCommit(row.key)}
         />

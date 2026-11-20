@@ -573,6 +573,42 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
   });
 });
 
+// Post-UAT (2026-11-21): emboss relief is very hard above 15 — its row is
+// capped at 0..15 on the track, the typed-entry commit clamp and the readout,
+// while every other global row keeps the 0..100 band.
+describe('post-UAT 2026-11-21 emboss row cap', () => {
+  function sliderProps(label: string): { value: number; min: number; max: number } {
+    const row = [...walk(AquarelleGlobalsPanel())].find(
+      (node) => node.props?.['label'] === label && typeof node.props?.['onChange'] === 'function',
+    );
+    expect(row, `the ${label} row must render`).toBeTruthy();
+    const group = (row!.type as (props: Record<string, unknown>) => unknown)(
+      row!.props,
+    ) as TestVNode;
+    const slider = childrenOf(group)[0] as TestVNode;
+    return slider.props as { value: number; min: number; max: number };
+  }
+
+  it('pins min 0 and max 15 on the Emboss row (both drag and typed commits)', () => {
+    setAquarelleParam('emboss', 7);
+    const props = sliderProps('Emboss');
+    expect(props.min, 'the row floor stays 0').toBe(0);
+    expect(props.max, 'the row ceiling is 15').toBe(15);
+    expect(props.value, 'an in-band value passes through').toBe(7);
+  });
+
+  it('reads a legacy value above the cap as 15', () => {
+    setAquarelleParam('emboss', 40);
+    expect(sliderProps('Emboss').value, 'an out-of-band value reads as the cap').toBe(15);
+  });
+
+  it('leaves every other global row on the 0..100 band', () => {
+    const body = sliderProps('Body');
+    expect(body.min).toBe(0);
+    expect(body.max).toBe(100);
+  });
+});
+
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }

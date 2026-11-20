@@ -107,7 +107,9 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       granulation: 40,
       viscosity: 55,
       body: 55,
-      emboss: 20,
+      // Post-UAT (2026-11-21): the Emboss row is capped at 15, so the record
+      // states the cap's ceiling instead of the unreachable 20.
+      emboss: 15,
       feather: 0,
       pickup: 60,
       refill: 60,

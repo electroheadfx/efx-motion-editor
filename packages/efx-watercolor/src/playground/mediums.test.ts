@@ -101,7 +101,7 @@ describe('medium records', () => {
       granulation: 40,
       viscosity: 55,
       body: 55,
-      emboss: 20,
+      emboss: 15,
       feather: 0,
       pickup: 60,
       refill: 60,
