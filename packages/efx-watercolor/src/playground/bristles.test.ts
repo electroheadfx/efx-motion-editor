@@ -962,27 +962,41 @@ describe('bristleContactPressure — §3.1, the reference brush pressure (spike 
   })
 })
 
-// 2026-11-20 (the artist's large-brush steps): the motion-supersampling
-// factor scales with the CANONICAL Size, is exactly 1 below the start, and
-// saturates at the max. Normal sizes must never pay for big-brush sampling.
-describe('bristleSampleScale — size-proportional motion supersampling', () => {
-  it('is exactly 1 at and below the start (normal sizes pay nothing)', () => {
-    expect(bristleModule.bristleSampleScale(1)).toBe(1)
-    expect(bristleModule.bristleSampleScale(117)).toBe(1)
-    expect(bristleModule.bristleSampleScale(180)).toBe(1)
+// 2026-11-20 (the artist's explicit table): <50 → 1x, 100 → 2x, 200 → 4x,
+// 240 → 8x, 300 → 16x, 340 → 30x, above 340 → 50x. Interpolated linearly
+// between the anchors, stepped above 340, by CANONICAL Size.
+describe('bristleSampleScale — the artist’s size-driven motion supersampling table', () => {
+  it('is exactly 1 at and below 50 (normal sizes pay nothing)', () => {
     expect(bristleModule.bristleSampleScale(0)).toBe(1)
+    expect(bristleModule.bristleSampleScale(1)).toBe(1)
+    expect(bristleModule.bristleSampleScale(50)).toBe(1)
   })
 
-  it('grows linearly to the max by the full size', () => {
-    expect(bristleModule.bristleSampleScale(270)).toBeCloseTo(
-      1 + ((270 - 180) / (360 - 180)) * (2.2 - 1),
-      12,
-    )
-    expect(bristleModule.bristleSampleScale(360)).toBeCloseTo(2.2, 12)
-    expect(bristleModule.bristleSampleScale(800), 'clamped').toBeCloseTo(2.2, 12)
-    expect(bristleModule.bristleSampleScale(327), 'the artist’s size').toBeCloseTo(
-      1 + (147 / 180) * 1.2,
-      12,
-    )
+  it('hits every anchor of the table', () => {
+    expect(bristleModule.bristleSampleScale(100)).toBeCloseTo(2, 12)
+    expect(bristleModule.bristleSampleScale(200)).toBeCloseTo(4, 12)
+    expect(bristleModule.bristleSampleScale(240)).toBeCloseTo(8, 12)
+    expect(bristleModule.bristleSampleScale(300)).toBeCloseTo(16, 12)
+    expect(bristleModule.bristleSampleScale(340)).toBeCloseTo(30, 12)
+  })
+
+  it('interpolates linearly between anchors', () => {
+    expect(bristleModule.bristleSampleScale(75)).toBeCloseTo(1.5, 12)
+    expect(bristleModule.bristleSampleScale(150)).toBeCloseTo(3, 12)
+    expect(bristleModule.bristleSampleScale(220)).toBeCloseTo(6, 12)
+    expect(bristleModule.bristleSampleScale(270)).toBeCloseTo(12, 12)
+    expect(bristleModule.bristleSampleScale(320)).toBeCloseTo(23, 12)
+  })
+
+  it('steps to 50x above 340 and never decreases', () => {
+    expect(bristleModule.bristleSampleScale(341)).toBe(50)
+    expect(bristleModule.bristleSampleScale(800)).toBe(50)
+    expect(bristleModule.bristleSampleScale(Number.NaN)).toBe(50)
+    let previous = 0
+    for (let px = 0; px <= 500; px += 1) {
+      const scale = bristleModule.bristleSampleScale(px)
+      expect(scale).toBeGreaterThanOrEqual(previous)
+      previous = scale
+    }
   })
 })

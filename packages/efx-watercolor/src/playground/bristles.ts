@@ -135,20 +135,43 @@ export const BRISTLE_DRY_CAP_FULL = 0.7;
  * supersampling law — so a large tip motif is re-sampled more finely instead
  * of repeating as visible steps. Gated on the canonical Size (the slider the
  * artist reads), never on the document-pixel radius, which moves with the
- * sheet resolution. Below START the factor is exactly 1: normal sizes keep
- * the validated dab cadence and pay nothing. The per-dab ink divides by the
- * same factor, so the wash per distance is unchanged — only the sampling.
+ * sheet resolution. The per-dab ink divides by the same factor, so the wash
+ * per distance is unchanged — only the sampling.
+ *
+ * 2026-11-20 (the artist's explicit table, after both the linear and the
+ * exponential first passes): <50 → 1x, 100 → 2x, 200 → 4x, 240 → 8x,
+ * 300 → 16x, 340 → 30x, above 340 → 50x. Interpolated linearly between the
+ * anchors; the jump above 340 is a STEP, exactly as specified. Cost is the
+ * trade the artist accepted ("increase sampling, but it increases render"):
+ * big sizes stamp far more dabs; ≤50 is untouched.
  */
-export const BRISTLE_SAMPLE_START_PX = 180;
-/** Canonical Size where the supersampling factor reaches its maximum. */
-export const BRISTLE_SAMPLE_FULL_PX = 360;
-/** Most dabs per radius multiplier at FULL_PX (~2x at the artist's 327). */
-export const BRISTLE_SAMPLE_MAX = 2.2;
+export const BRISTLE_SAMPLE_TABLE: ReadonlyArray<readonly [sizePx: number, scale: number]> = Object.freeze([
+  [0, 1],
+  [50, 1],
+  [100, 2],
+  [200, 4],
+  [240, 8],
+  [300, 16],
+  [340, 30],
+] as const);
+/** Above this canonical Size the factor steps to {@link BRISTLE_SAMPLE_ABOVE}. */
+export const BRISTLE_SAMPLE_ABOVE_PX = 340;
+/** The step value above BRISTLE_SAMPLE_ABOVE_PX. */
+export const BRISTLE_SAMPLE_ABOVE = 50;
 
 /** The motion-supersampling factor for a canonical Size in px (1 = off). */
 export function bristleSampleScale(sizePx: number): number {
-  const t = clamp01((sizePx - BRISTLE_SAMPLE_START_PX) / (BRISTLE_SAMPLE_FULL_PX - BRISTLE_SAMPLE_START_PX));
-  return 1 + t * (BRISTLE_SAMPLE_MAX - 1);
+  if (!Number.isFinite(sizePx)) return BRISTLE_SAMPLE_ABOVE;
+  if (sizePx > BRISTLE_SAMPLE_ABOVE_PX) return BRISTLE_SAMPLE_ABOVE;
+  const table = BRISTLE_SAMPLE_TABLE;
+  for (let i = 1; i < table.length; i += 1) {
+    const [x1, y1] = table[i]!;
+    if (sizePx > x1) continue;
+    const [x0, y0] = table[i - 1]!;
+    if (x1 === x0) return y1;
+    return y0 + ((sizePx - x0) / (x1 - x0)) * (y1 - y0);
+  }
+  return BRISTLE_SAMPLE_ABOVE;
 }
 
 /**

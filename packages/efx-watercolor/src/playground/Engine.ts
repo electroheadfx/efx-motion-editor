@@ -2481,10 +2481,11 @@ export class WatercolorEngine {
    * 2026-11-20 (the artist's large-brush steps; "samples should be
    * proportional to the size of the brush, to not slow down normal size
    * brush"): the brush's dab chain is supersampled with its canonical Size —
-   * the 3D motion-supersampling law. The factor is exactly 1 below
-   * BRISTLE_SAMPLE_START_PX, so every normal size keeps its validated
-   * cadence and pays nothing; the per-dab ink divides by the same factor in
-   * `stamp`, so the wash per distance is unchanged.
+   * the 3D motion-supersampling law — through the artist's explicit table
+   * (BRISTLE_SAMPLE_TABLE: 1x up to Size 50, 2x at 100, 4x at 200, 8x at
+   * 240, 16x at 300, 30x at 340, a 50x step above). Sizes ≤50 pay nothing;
+   * the per-dab ink divides by the same factor in `stamp`, so the wash per
+   * distance is unchanged.
    */
   private samplingScale(): number {
     return bristleSampleScale(engineScaleToSize(this.params.size));
