@@ -956,6 +956,9 @@ uniform float uFeatherEdge;  // silhouette radius, in nominal footprint units
 uniform float uFeatherCap;   // leading end cap, fraction of the radius (all Feathers)
 uniform float uFeatherMin;   // Feather-0 lateral fade, fraction of the silhouette
 uniform float uCapGain;      // the along-cap fade's gain (BRISTLE_CAP_GAIN)
+uniform float uDrySpeed;     // the Dry slider, 0..1
+uniform float uDryCapFloor;  // the end cap's share at Dry 0
+uniform float uDryCapFull;   // the Dry value where the cap reaches full width
 uniform float uAlongPx;      // cumulative distance along the stroke, doc texels
 uniform float uStrokeDistPx; // the same cumulative distance for the landing ramp
 uniform float uHalfWidthPx;  // the dab's half-width in doc texels
@@ -1200,7 +1203,14 @@ Gathered gatherBristle(vec2 uv){
   // lowered to 0.30 for the SIDES, which inverted this control: F100 got the
   // SHORTEST end taper. The cap is now Feather-independent and always carries
   // the full gain — F0 is unchanged, F100 stops shortening.
-  float capW = clamp(uFeatherCap * uCapGain, 0.0, 0.85);
+  //
+  // 2026-11-20 (the artist's Dry re-range): DRY owns the transition's WIDTH.
+  // A wet brush (Dry 0) was ending on a long wet fade; it now ends on a short
+  // crisp taper, while the full cap is reached at BRISTLE_DRY_CAP_FULL (the
+  // acrylic default) and kept there. The floor keeps the width non-zero at
+  // Dry 0 so smoothstep's edges never collapse into a hard cut.
+  float dryCap = mix(uDryCapFloor, 1.0, smoothstep(0.0, uDryCapFull, uDrySpeed));
+  float capW = clamp(uFeatherCap * uCapGain * dryCap, 0.0, 0.85);
   float exposedTrail = 1.0 - smoothstep(0.0, 1.0, uStrokeDistPx / max(uHalfWidthPx, 1.0));
   float along = mix(max(-q.y, 0.0), abs(q.y), exposedTrail);
   // 2026-11-20 (the same report: the start reads natural, the end reads "like

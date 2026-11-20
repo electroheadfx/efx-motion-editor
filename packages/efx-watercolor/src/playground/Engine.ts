@@ -2,6 +2,8 @@ import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, isBristleResponse, tipRows
 import {
   BRISTLE_CAP,
   BRISTLE_CAP_GAIN,
+  BRISTLE_DRY_CAP_FLOOR,
+  BRISTLE_DRY_CAP_FULL,
   BRISTLE_DRY_EDGE,
   BRISTLE_FEATHER_CAP,
   BRISTLE_FEATHER_EDGE,
@@ -2995,8 +2997,11 @@ export class WatercolorEngine {
     // Dry 0 must not dry AT ALL ("le dry 0 devrait avoir aucune transition"):
     // 3.0 sheet heights is ~3x the probe stroke, so the mark stays uniform end
     // to end. The 0.55 exponent makes the low end bite: Dry 33 already fades
-    // well before the stroke's end, while 100 empties at ~30 %.
-    const dryDistance = 3.0 - 2.38 * Math.pow(dryRate, 0.55);
+    // well before the stroke's end. 2026-11-20 (the artist's Dry 100 pass:
+    // "I want shorter transition"): the top of the range empties in about
+    // half the travel — Dry 100 is 0.30 sheet heights (was 0.62) — while
+    // Dry 0 is untouched and the acrylic default (70) moves 1.04 -> 0.78.
+    const dryDistance = 3.0 - 2.7 * Math.pow(dryRate, 0.55);
     // Load is the paint in the brush: it scales how far that paint lasts.
     // Load 50 is the calibration (factor 1). Below the midpoint the tank is
     // the visible lever (0.3x at Load 0). Above it, the artist wants Load 100
@@ -3084,6 +3089,11 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uFeatherCap!, BRISTLE_FEATHER_CAP);
     gl.uniform1f(p.u.uFeatherMin!, BRISTLE_FEATHER_MIN);
     gl.uniform1f(p.u.uCapGain!, BRISTLE_CAP_GAIN);
+    // Dry owns the end transition's width (the artist's 2026-11-20 re-range):
+    // short at Dry 0, full from BRISTLE_DRY_CAP_FULL (the acrylic default).
+    gl.uniform1f(p.u.uDrySpeed!, clamp(this.params.dry, 0, 1));
+    gl.uniform1f(p.u.uDryCapFloor!, BRISTLE_DRY_CAP_FLOOR);
+    gl.uniform1f(p.u.uDryCapFull!, BRISTLE_DRY_CAP_FULL);
     gl.uniform1f(p.u.uAlongPx!, alongPx);
     gl.uniform1f(p.u.uStrokeDistPx!, alongPx);
     gl.uniform1f(p.u.uHalfWidthPx!, r * this.dh);

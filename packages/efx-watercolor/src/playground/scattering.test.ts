@@ -943,6 +943,9 @@ describe('64-23 — the traces in the gather and the carrier', () => {
       ['uHairs', 'BRISTLE_HAIRS'],
       ['uDryEdge', 'BRISTLE_DRY_EDGE'],
       ['uLanding', 'BRISTLE_LANDING'],
+      ['uDrySpeed', 'clamp(this.params.dry, 0, 1)'],
+      ['uDryCapFloor', 'BRISTLE_DRY_CAP_FLOOR'],
+      ['uDryCapFull', 'BRISTLE_DRY_CAP_FULL'],
     ]
     const binder = sliceBetween(ENGINE_SOURCE, 'private bindGather(', 'private bristleInk(')
     for (const [uniform, source] of bindings) {
@@ -1309,8 +1312,10 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // sits at its trailing rim, so a symmetric along fade would erase the core.
     // 2026-11-20: the cap no longer mixes toward uFeatherReach (that inverted
     // the control — F100 got the shortest end taper); it carries the gain at
-    // every Feather.
-    expectContains(g, 'float capW = clamp(uFeatherCap * uCapGain, 0.0, 0.85);')
+    // every Feather, and Dry (the artist's re-range) owns its WIDTH: short at
+    // Dry 0, full from BRISTLE_DRY_CAP_FULL, the acrylic default.
+    expectContains(g, 'float dryCap = mix(uDryCapFloor, 1.0, smoothstep(0.0, uDryCapFull, uDrySpeed));')
+    expectContains(g, 'float capW = clamp(uFeatherCap * uCapGain * dryCap, 0.0, 0.85);')
     // 2026-11-20 (artist's box-at-release): the stroke's first dab fades its
     // trailing half too while the stroke is inside its first half-width;
     // later dabs keep the leading-only cap, so the core never thins.

@@ -373,6 +373,13 @@ const SCENES: readonly SceneSpec[] = [
   { name: 'live-end-117', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
   { name: 'live-end-117-f0', band: false, stroke: false, pickup: null, feather: 0, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
   { name: 'live-end-117-f50', band: false, stroke: false, pickup: null, feather: 50, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  // The Dry re-range pair: the same stroke at the ends of the Dry slider.
+  { name: 'live-end-117-dry0', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 0, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'live-end-117-dry35', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 35, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  // The Dry-100 tail at the Load-50 calibration: depletion is visible here
+  // (Load 100 is a 7x tank), so the empty distance is what the eye reads.
+  { name: 'live-end-117-dry100-l50', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 50, flow: 60, bleed: 22, dry: 100, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'live-end-117-dry70-l50', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 50, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
   { name: 'end-cap-control', band: false, stroke: true, pickup: 100, feather: 74, body: 100, dry: 100, load: 100, refill: 0, color: '#3a5f8a', pauseTail: 0, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
   { name: 'end-block-pen', band: false, stroke: true, pickup: 100, feather: 74, body: 100, dry: 100, load: 100, refill: 0, color: '#3a5f8a', slowTail: true, tailPressure: 1, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
 ]

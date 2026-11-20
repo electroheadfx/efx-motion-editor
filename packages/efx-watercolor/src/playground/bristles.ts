@@ -117,6 +117,18 @@ export const BRISTLE_FEATHER_CAP = 0.5;
  */
 export const BRISTLE_CAP_GAIN = 1.8;
 /**
+ * 2026-11-20 (the artist's Dry re-range): the end transition's WIDTH follows
+ * Dry. Dry 0 is a wet brush, and its end read as a long wet fade — it now
+ * ends on a short, crisp taper. The ramp reaches full width at
+ * BRISTLE_DRY_CAP_FULL, the acrylic default (Dry 70), so the validated
+ * default is unchanged and Dry 100 keeps the width the artist approved.
+ * The floor keeps the fade non-zero at Dry 0 (a zero width collapses
+ * smoothstep's edges and hard-cuts every hair).
+ */
+export const BRISTLE_DRY_CAP_FLOOR = 0.12;
+/** The Dry value (0..1) where the end cap reaches its full width. */
+export const BRISTLE_DRY_CAP_FULL = 0.7;
+/**
  * The lateral fade's start anchor for Feather > 0. The 2026-11-20 white-seam
  * ruling supersedes the earlier "even F0 keeps a soft lateral edge" cut: at
  * F0 the gather applies NONE of this fade — the rim is the thresholded
