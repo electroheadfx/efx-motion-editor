@@ -13,8 +13,12 @@
 //  fields and stubbed stamp/trace sinks, the engineScriptWidth law.
 // ============================================================
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { WatercolorEngine } from './Engine'
+
+const ENGINE_SOURCE = readFileSync(resolve(__dirname, 'Engine.ts'), 'utf8')
 
 interface StampCall {
   x: number
@@ -113,5 +117,21 @@ describe('quick 261116-rp start-dwell law', () => {
     const engine = harness(stroke(true), [], 'bristle-flat')
     for (let tick = 0; tick < 4; tick += 1) engine.processInput(1 / 60)
     expect(engine.stampCalls).toEqual([])
+  })
+
+  // 2026-11-20 (the artist's pen cap): a tablet pen keeps reporting moves
+  // after the nib leaves the glass — pressure 0, no buttons — before
+  // pointerup. pushSample's 0 -> 0.5 fallback painted them, so sweeping the
+  // hand away after the intended end stamped an isolated second impression.
+  // No contact must END the stroke, never paint the hover path.
+  it('ends the stroke on a pen hover move instead of painting it', () => {
+    expect(ENGINE_SOURCE).toContain(
+      "if (s.pointerType === 'pen' && s.pressure <= 0 && s.buttons === 0 && !nativeContact) {",
+    )
+    expect(ENGINE_SOURCE).toContain('this.stroke.ending = true;')
+    const hoverAt = ENGINE_SOURCE.indexOf('s.pressure <= 0 && s.buttons === 0')
+    const pushAt = ENGINE_SOURCE.indexOf('this.pushSample(s);', hoverAt)
+    expect(hoverAt, 'the hover guard exists').toBeGreaterThan(-1)
+    expect(pushAt, 'the hover guard sits before the sample is queued').toBeGreaterThan(hoverAt)
   })
 })

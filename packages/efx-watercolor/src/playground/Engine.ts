@@ -2120,7 +2120,26 @@ export class WatercolorEngine {
       this.trackHover(e);
       if (!this.stroke || e.pointerId !== this.stroke.pointerId) return;
       const events = e.getCoalescedEvents?.() ?? [];
-      for (const s of events.length ? events : [e]) this.pushSample(s);
+      for (const s of events.length ? events : [e]) {
+        // 2026-11-20 (the artist's pen cap): a tablet pen keeps reporting
+        // moves after the nib LEAVES the glass — pressure 0, no buttons — and
+        // they arrive BEFORE pointerup while the stroke is still open.
+        // pushSample's 0 -> 0.5 fallback then painted them, so sweeping the
+        // hand away after the intended end stamped an isolated second
+        // impression wherever it travelled (the "cap"). No contact means the
+        // stroke is over: end it here instead of painting the hover path.
+        // A fresh native tablet sample is real contact even when the DOM
+        // event omits pressure (the WKWebView 0.5 sentinel path), so the
+        // heuristic never ends a stroke the host says is on the glass.
+        const nativeContact = this.nativePen !== null
+          && this.nativePen.pressure > 0
+          && this.clock() - this.nativePenAt < 300;
+        if (s.pointerType === 'pen' && s.pressure <= 0 && s.buttons === 0 && !nativeContact) {
+          this.stroke.ending = true;
+          break;
+        }
+        this.pushSample(s);
+      }
       this.schedule();
     });
 
