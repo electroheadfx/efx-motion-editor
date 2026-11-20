@@ -1,37 +1,57 @@
 ---
 phase: 64-medium-engine
 epic: efx-motion-editor-4ro
-open: 19
-closed: 33
-blocking_open: 19
-diverged: 12
+open: 18
+closed: 54
+blocking_open: 18
+diverged: 18
 generated_from: "bd list --parent efx-motion-editor-4ro --all --json -n 0"
-generated_at: 2026-11-18T21:50:15Z
+generated_at: 2026-11-19T14:51:28Z
 ---
 
 # BEADS.md: 64-medium-engine
 
 | Issue | Title | Status | Task Status | Plan Task | Blocked By |
 |-------|-------|--------|-------------|-----------|------------|
-| efx-motion-editor-4ro.52 | 64-20.3 The probe matrix and the supersession records | open |  |  |  |
-| efx-motion-editor-4ro.51 | 64-20.2 Coverage rides only where its film leaves paper-white | open |  |  |  |
-| efx-motion-editor-4ro.50 | 64-20.1 The offender census: name the texels the scan counts | open |  |  |  |
-| efx-motion-editor-4ro.49 | 64-19.2 One bounded re-bake per light change, through the Apply seam | open |  |  |  |
-| efx-motion-editor-4ro.48 | 64-19.1 The light enters the frame cache fingerprint | open |  |  |  |
-| efx-motion-editor-4ro.47 | 64-18.2 Record at the release boundary: the onLightCommit seam | open |  |  |  |
-| efx-motion-editor-4ro.46 | 64-18.1 The gesture coalescer: one span, one descriptor, or none | open |  |  |  |
-| efx-motion-editor-4ro.45 | 64-17.3 Re-specify cover-over-wet for the coverage model and retire the erase-era harness prose | open | done | 64-17 | efx-motion-editor-4ro.44 |
-| efx-motion-editor-4ro.44 | 64-17.2 White over blue at Body 100/60/30: the committed alpha is coverage-derived, not darkness-derived | open | done | 64-17 | efx-motion-editor-4ro.43 |
-| efx-motion-editor-4ro.43 | 64-17.1 End-to-end: the pigment sheet is digested and the 1080² Body-0 identity law is committed | open | done | 64-17 | efx-motion-editor-4ro.33 |
+| efx-motion-editor-4ro.72 | 64-24.3 Task 3: The D-25 record retune, the acceptance capture and the cost record | open | done | 64-24 | efx-motion-editor-4ro.71 |
+| efx-motion-editor-4ro.71 | 64-24.2 Task 2: The §3.4 gate and the touch refresh | open | done | 64-24 | efx-motion-editor-4ro.70 |
+| efx-motion-editor-4ro.70 | 64-24.1 Task 1: The last-touch channel and its eight lifecycle sites | open | done | 64-24 | efx-motion-editor-4ro.69 |
+| efx-motion-editor-4ro.69 | 64-23.3 Task 3: The edge census — acceptance ask #2, measured | open | done | 64-23 | efx-motion-editor-4ro.68 |
+| efx-motion-editor-4ro.68 | 64-23.2 Task 2: The traces in the gather and the carrier | open | done | 64-23 | efx-motion-editor-4ro.67 |
+| efx-motion-editor-4ro.67 | 64-23.1 Task 1: The trace constants and their tested formulas | open | done | 64-23 | efx-motion-editor-4ro.66 |
+| efx-motion-editor-4ro.66 | 64-22.3 Task 3: The bristle-modulated cover (D-21) and the composition gate | open | done | 64-22 | efx-motion-editor-4ro.65 |
+| efx-motion-editor-4ro.65 | 64-22.2 Task 2: The gather — carried coefficients into the spectral field | open | done | 64-22 | efx-motion-editor-4ro.64 |
+| efx-motion-editor-4ro.64 | 64-22.1 Task 1: The three exposed globals and the recorded medium surface | open | done | 64-22 | efx-motion-editor-4ro.63 |
+| efx-motion-editor-4ro.63 | 64-21.3 Task 3: The reservoirs and the carrier, before the deposit | closed | done | 64-21 | efx-motion-editor-4ro.62 |
+| efx-motion-editor-4ro.62 | 64-21.2 Task 2: The paper seed, one record in two languages | closed | done | 64-21 | efx-motion-editor-4ro.61 |
+| efx-motion-editor-4ro.61 | 64-21.1 Task 1: The deterministic bristle set | closed | done | 64-21 | efx-motion-editor-4ro.60 |
+| efx-motion-editor-4ro.60 | 64-20.3 The probe matrix and the supersession records | closed | done | 64-20 | efx-motion-editor-4ro.59 |
+| efx-motion-editor-4ro.59 | 64-20.2 Coverage rides only where its film leaves paper-white | closed | done | 64-20 | efx-motion-editor-4ro.58 |
+| efx-motion-editor-4ro.58 | 64-20.1 The offender census: name the texels the scan counts | closed | done | 64-20 |  |
+| efx-motion-editor-4ro.57 | 64-19.2 One bounded re-bake per light change, through the Apply seam | closed | done | 64-19 | efx-motion-editor-4ro.56 |
+| efx-motion-editor-4ro.56 | 64-19.1 The light enters the frame cache fingerprint | closed | done | 64-19 | efx-motion-editor-4ro.55 |
+| efx-motion-editor-4ro.55 | 64-18.2 Record at the release boundary: the onLightCommit seam | closed | done | 64-18 | efx-motion-editor-4ro.54 |
+| efx-motion-editor-4ro.54 | 64-18.1 The gesture coalescer: one span, one descriptor, or none | closed | done | 64-18 |  |
+| efx-motion-editor-4ro.53 | Flaky 63-05 bridge listener tests under full-suite load | closed |  |  |  |
+| efx-motion-editor-4ro.52 | 64-20.3 The probe matrix and the supersession records | closed |  |  |  |
+| efx-motion-editor-4ro.51 | 64-20.2 Coverage rides only where its film leaves paper-white | closed |  |  |  |
+| efx-motion-editor-4ro.50 | 64-20.1 The offender census: name the texels the scan counts | closed |  |  |  |
+| efx-motion-editor-4ro.49 | 64-19.2 One bounded re-bake per light change, through the Apply seam | closed |  |  |  |
+| efx-motion-editor-4ro.48 | 64-19.1 The light enters the frame cache fingerprint | closed |  |  |  |
+| efx-motion-editor-4ro.47 | 64-18.2 Record at the release boundary: the onLightCommit seam | closed |  |  |  |
+| efx-motion-editor-4ro.46 | 64-18.1 The gesture coalescer: one span, one descriptor, or none | closed |  |  |  |
+| efx-motion-editor-4ro.45 | 64-17.3 Re-specify cover-over-wet for the coverage model and retire the erase-era harness prose | closed | done | 64-17 | efx-motion-editor-4ro.44 |
+| efx-motion-editor-4ro.44 | 64-17.2 White over blue at Body 100/60/30: the committed alpha is coverage-derived, not darkness-derived | closed | done | 64-17 | efx-motion-editor-4ro.43 |
+| efx-motion-editor-4ro.43 | 64-17.1 End-to-end: the pigment sheet is digested and the 1080² Body-0 identity law is committed | closed | done | 64-17 | efx-motion-editor-4ro.33 |
 | efx-motion-editor-4ro.42 | 64-16.3 Re-specify UAT rows 2, 7, 8 for the coverage model — and answer none | open | done | 64-16 | efx-motion-editor-4ro.41 |
 | efx-motion-editor-4ro.41 | 64-16.2 The Spike 001 criterion-2 pins become standing invariants: red over blue at 1080² | open | done | 64-16 | efx-motion-editor-4ro.40 |
-| efx-motion-editor-4ro.40 | 64-16.1 End-to-end: a chalk stroke covers with its own crumbly mask | open | done | 64-16 | efx-motion-editor-4ro.39, efx-motion-editor-4ro.36, efx-motion-editor-4ro.33 |
+| efx-motion-editor-4ro.40 | 64-16.1 End-to-end: a chalk stroke covers with its own crumbly mask | open | done | 64-16 | efx-motion-editor-4ro.45, efx-motion-editor-4ro.39, efx-motion-editor-4ro.36, efx-motion-editor-4ro.33 |
 | efx-motion-editor-4ro.39 | 64-15.3 Prove the whole app seam: no punch on the brush path, Lift untouched, medium record intact | open | done | 64-15 | efx-motion-editor-4ro.38 |
 | efx-motion-editor-4ro.38 | 64-15.2 Delete the cover preview and footprint plumbing from the canvas stack | open | done | 64-15 | efx-motion-editor-4ro.37 |
 | efx-motion-editor-4ro.37 | 64-15.1 End-to-end: the commit consumes the coverage sheet and the cover transaction is deleted | open | done | 64-15 | efx-motion-editor-4ro.33, efx-motion-editor-4ro.36 |
 | efx-motion-editor-4ro.36 | 64-14.3 Lift reduces coverage with the program it already binds | open | done | 64-14 | efx-motion-editor-4ro.35 |
 | efx-motion-editor-4ro.35 | 64-14.2 Coverage rides undo, redo, whole-document transport and resize | open | done | 64-14 | efx-motion-editor-4ro.34 |
-| efx-motion-editor-4ro.34 | 64-14.1 End-to-end: coverage advects with the wet ink and survives the settle | open | done | 64-14 | efx-motion-editor-4ro.33 |
+| efx-motion-editor-4ro.34 | 64-14.1 End-to-end: coverage advects with the wet ink and survives the settle | open | done | 64-14 | efx-motion-editor-4ro.45, efx-motion-editor-4ro.33 |
 | efx-motion-editor-4ro.33 | 64-13.2 Pin the coverage seam as a source contract | closed | done | 64-13 | efx-motion-editor-4ro.32 |
 | efx-motion-editor-4ro.32 | 64-13.1 End-to-end: a covering dab composites source-over and the display reads the coverage channel | closed | done | 64-13 | efx-motion-editor-4ro.27, efx-motion-editor-4ro.18 |
 | efx-motion-editor-4ro.31 | 64-12.2 The seam audit — one pick path, one payload, Paint-tab agreement | closed | done | 64-12 | efx-motion-editor-4ro.30 |

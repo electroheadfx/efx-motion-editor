@@ -60,6 +60,14 @@ reads as current code.
   that spans a rim averages paint with paper and invents "paper-white" failures.
 - **Separate the knob from the scene.** When a control is under test, the underlayer is
   painted neutral (Body 0) and only the stroke under test carries the knob.
+- **Per-dab readouts come from a prototype tap, not a re-implementation.** Wrap the
+  private per-dab method (`bristleTravel`, `carrierPass`) on `WatercolorEngine.prototype`
+  and capture the arguments it is called with; read `readBristles()` and the GPU fields at
+  the *start* of dab N+1 to see the state *after* dab N. Reset the counter in
+  `beginBristles` (one call per stroke). Recompute a shader term on the CPU only from
+  those recorded arguments, with the GLSL twin transcribed (e.g. `noise1`/`hash21`), and
+  pin bristle indices across builds (`--centre/--rim`) — a field-dependent pick can
+  otherwise select different bristles per build.
 
 ## Tools & Libraries
 
