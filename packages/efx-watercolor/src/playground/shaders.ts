@@ -769,10 +769,13 @@ uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
 uniform int uWetMode;        // 1 = the shipped timestamp law; 0 = the A/B proxy
 uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
 
+// The canonical seven coefficients: attachment A carries c0..c3 (its .a is a
+// real coefficient, not spare) and attachment B.rgb carries c4..c6. The old
+// pack dropped c3 and duplicated c4 into its slot; it made the same-paint
+// cosine score ~0.97, so a little of the brush's own paint leaked through the
+// gate (visible as density at Pickup 100).
 vec4 canvasAt(vec2 uv){
-  vec4 a = texture(uInkA, uv) + texture(uFixedA, uv);
-  vec3 b = (texture(uInkB, uv) + texture(uFixedB, uv)).rgb;
-  return vec4(a.rgb, b.r);
+  return texture(uInkA, uv) + texture(uFixedA, uv);
 }
 vec3 canvasAtB(vec2 uv){
   vec4 ib = texture(uInkB, uv) + texture(uFixedB, uv);
@@ -819,11 +822,52 @@ void main(){
   vec2 pos = uPoint + uAxis * (across * uRadius);
   vec2 dir = vec2(-uAxis.y, uAxis.x);
   vec2 tapUv = dir * (1.5 / max(uSheet, vec2(1.0)));
-  vec4 canvasA = (canvasAt(pos - tapUv) + canvasAt(pos) + canvasAt(pos + tapUv)) * (1.0 / 3.0);
-  vec3 canvasB = (canvasAtB(pos - tapUv) + canvasAtB(pos) + canvasAtB(pos + tapUv)) * (1.0 / 3.0);
-  // The paint alpha the pickup equilibrium mixes, three-tapped like the colour
-  // above: uCover is the painting's own coverage (§3.4's canvas.a analogue).
-  float canvasAlpha = (texture(uCover, pos - tapUv).x + texture(uCover, pos).x + texture(uCover, pos + tapUv).x) * (1.0 / 3.0);
+  // 2026-11-20 (the artist's colour-blend regression): lift is decided by
+  // COLOUR, never by AGE. The touch pass stamps uNow over the whole dab, so a
+  // continuous stroke always sits on its own fresh stamps — a "paint older
+  // than this stroke" gate can never be true live and Pickup died at every
+  // value ("no more color blend"). Taps are weighted by their cover alpha,
+  // so bare paper lifts nothing, and the same-colour gate below owns the
+  // own-paint case (the yellow-goes-green report). A different colour always
+  // lifts: the wet-on-wet drag.
+  float a0 = texture(uCover, pos - tapUv).x;
+  float a1 = texture(uCover, pos).x;
+  float a2 = texture(uCover, pos + tapUv).x;
+  float w0 = a0;
+  float w1 = a1;
+  float w2 = a2;
+  float wSum = w0 + w1 + w2;
+  // With no covered tap the target stays the carried colour (a no-op mix)
+  // and canvasAlpha stays 0, closing liftGate.
+  vec4 canvasA = paintA;
+  vec3 canvasB = paintB.rgb;
+  float canvasAlpha = 0.0;
+  if (wSum > 1e-4){
+    canvasA = (canvasAt(pos - tapUv) * w0 + canvasAt(pos) * w1 + canvasAt(pos + tapUv) * w2) / wSum;
+    canvasB = (canvasAtB(pos - tapUv) * w0 + canvasAtB(pos) * w1 + canvasAtB(pos + tapUv) * w2) / wSum;
+    canvasAlpha = wSum * (1.0 / 3.0);
+  }
+  float liftGate = smoothstep(0.55, 0.85, clamp(canvasAlpha / uBodyFloor, 0.0, 1.0));
+  // 2026-11-20 (the artist's live repeat): an OLDER stroke of the SAME paint
+  // is still a lift, and in this engine's spectral space lifting your own
+  // colour is not neutral — it re-deposits the film's attenuated spectrum and
+  // the Body KM display reads it as green. The gate compares the canvas to
+  // the BRUSH'S PALETTE PIGMENT, not to the carried colour: the carried mix
+  // drifts toward the canvas as it drags, so a carried-side gate shut itself
+  // off partway (the artist's "not totally"). Same paint (cosine >= 0.99 at
+  // every coverage, attenuation is a scalar) is never lifted; any different
+  // paint lifts at full strength for the whole overlap.
+  float own2 = dot(uPigmentA, uPigmentA) + dot(uPigmentB, uPigmentB);
+  float can2 = dot(canvasA, canvasA) + dot(canvasB, canvasB);
+  float cross7 = dot(uPigmentA, canvasA) + dot(uPigmentB, canvasB);
+  float samePaint = cross7 / sqrt(max(own2 * can2, 1e-8));
+  // The ramp's top is ~1.0 by construction: own paint's canvas is the same
+  // spectral DIRECTION at every coverage, so the cosine sits at fp16's 1.0.
+  // 0.975..0.995 blocks that outright while letting a contact-band texel that
+  // is at least ~20 % the other paint lift at full strength (a 10 % dash still
+  // reads ~0.997 and stays blocked — the cosine cannot separate those, and
+  // the strict side is the artist's yellow-goes-green report).
+  liftGate *= 1.0 - smoothstep(0.975, 0.995, samePaint);
   float wet = (wetAt(pos - tapUv) + wetAt(pos) + wetAt(pos + tapUv)) * (1.0 / 3.0);
 
   // §3.1 contact threshold with rim noise — §5.3's shared contact law
@@ -835,7 +879,7 @@ void main(){
     uPressure);
 
   float thirst = 0.15 + 2.4 * smoothstep(0.35, 0.9, fract(state.z * 7.31));
-  float pickup = clamp(uPickupRate * thirst * uTravel * wet * touch, 0.0, 0.75);
+  float pickup = clamp(uPickupRate * thirst * uTravel * wet * touch * liftGate, 0.0, 0.75);
   float refill = clamp(uRefillRate * uTravel * state.x, 0.0, 1.0);
 
   vec4 carriedA = mix(paintA, canvasA, pickup);
@@ -934,6 +978,8 @@ uniform float uSmear;        // the Pickup global, 0..1 (D-A: one knob, two laws
 uniform float uSmearPeriodPx;// §3.3 hash cell (BRISTLE_SMEAR_PERIOD_PX 6)
 uniform float uSmearCap;     // §3.3 clamp (BRISTLE_SMEAR_CAP 0.8)
 uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
+uniform vec4 uPigmentA;      // the brush's palette absorbance 0..3 (same-paint gate)
+uniform vec3 uPigmentB;      // the brush's palette absorbance 4..6
 // Post-UAT 2026-11-19 (GAP-4) — the texture tip composes with the gather
 // instead of disabling the engine. uTipMix is 0 for a bristle brush with no
 // textureId, so every recorded untextured bristle stroke keeps its exact
@@ -1122,7 +1168,16 @@ Gathered gatherBristle(vec2 uv){
   // threshold and ADDS paint, which read inverted.
   float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));
   float lateralFade = 1.0 - smoothstep(featherStart, uFeatherEdge, lateral);
-  float featherFade = mix(1.0, lateralFade, uFeather);
+  // 2026-11-20 (the artist's live F100 report): a SMOOTH analytic fade over the
+  // paper renders as a thin white veil, never as a feathered edge — the rim the
+  // artist likes at F0 is ragged. The fade therefore breaks into hairs: the
+  // stroke's own streak noise (fine across the band, slow along it) picks, per
+  // texel, between the full paint and the faded depth, so a wide Feather reads
+  // as a wider dry fringe instead of a uniform wash. F0 is untouched by
+  // construction (uFeather scales it to zero).
+  float fadeStreak = noise1(across * 37.0 + uAlongPx / max(uStreakLen * 5.0, 1.0) + 11.3);
+  float raggedFade = mix(lateralFade, 1.0, smoothstep(0.35, 0.75, fadeStreak));
+  float featherFade = mix(1.0, raggedFade, uFeather);
   // The stroke's FRONT CAP. The gather's along coordinate is
   // q.y = -(p · travel)/radius (uAxis is bound as the stroke normal), so the
   // leading half is q.y < 0. ONLY the leading side fades: an interior texel's
@@ -1194,8 +1249,25 @@ void main(){
   vec3 cB = g.cB;
   if (uSmear > 0.0) {
     float smear = smearWeight(g.nearest, uAlongPx + q.y * uHalfWidthPx, wetAt(vUv));
-    cA = mix(cA, texture(uSnapA, vUv), smear);
-    cB = mix(cB, texture(uSnapB, vUv).xyz, smear);
+    // 2026-11-20 (the artist's yellow-on-white report): the SAME solid-paint
+    // gate as the carrier's liftGate. A partial or blank snapshot is a thin
+    // film whose coverage-attenuated absorbance, lifted raw, reads as diluted
+    // pigment and rotates the hue. Solid paint only.
+    vec4 snapB = texture(uSnapB, vUv);
+    smear *= smoothstep(0.55, 0.85, clamp(snapB.a / uBodyFloor, 0.0, 1.0));
+    // Same law as the carrier: the smear is decided by COLOUR, and the
+    // reference is the brush's palette pigment — not the carried mix, which
+    // drifts toward the canvas and would strangle the drag partway. Own paint
+    // re-deposited is what turned the artist's yellow green and darker; a
+    // different paint's spectrum is the wet-on-wet drag, at full strength.
+    vec4 snapA = texture(uSnapA, vUv);
+    float own2 = dot(uPigmentA, uPigmentA) + dot(uPigmentB, uPigmentB);
+    float can2 = dot(snapA, snapA) + dot(snapB.xyz, snapB.xyz);
+    float cross7 = dot(uPigmentA, snapA) + dot(uPigmentB, snapB.xyz);
+    float samePaint = cross7 / sqrt(max(own2 * can2, 1e-8));
+    smear *= 1.0 - smoothstep(0.975, 0.995, samePaint);
+    cA = mix(cA, snapA, smear);
+    cB = mix(cB, snapB.xyz, smear);
   }
   if (uMode == 1) {
     // The attenuation half: the destination becomes dst · (1 − a) through
@@ -1243,7 +1315,17 @@ void main(){
   float target = a * uCoverTarget * g.alpha;
   if (uSmear > 0.0) {
     float smear = smearWeight(g.nearest, uAlongPx + q.y * uHalfWidthPx, wetAt(vUv));
-    target = mix(target, a * uCoverTarget * texture(uSnapB, vUv).a, smear);
+    // Same law as the ink smear: the cover drags toward the PRE-DAB sheet
+    // only when it is a DIFFERENT paint. Own paint's cover re-deposited is
+    // the artist's "darker" half of the yellow-on-white report.
+    vec4 snapA = texture(uSnapA, vUv);
+    vec4 snapB = texture(uSnapB, vUv);
+    float own2 = dot(uPigmentA, uPigmentA) + dot(uPigmentB, uPigmentB);
+    float can2 = dot(snapA, snapA) + dot(snapB.xyz, snapB.xyz);
+    float cross7 = dot(uPigmentA, snapA) + dot(uPigmentB, snapB.xyz);
+    float samePaint = cross7 / sqrt(max(own2 * can2, 1e-8));
+    smear *= 1.0 - smoothstep(0.975, 0.995, samePaint);
+    target = mix(target, a * uCoverTarget * snapB.a, smear);
   }
   o0 = vec4(target, 0.0, 0.0, a);
 }`;

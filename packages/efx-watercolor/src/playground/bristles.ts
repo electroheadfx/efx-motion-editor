@@ -89,9 +89,15 @@ export const BRISTLE_SOFTNESS = 0.09;
  * silhouette analytically at `BRISTLE_FEATHER_EDGE`, filling the rim pores at
  * low Feather. This constant is the fraction of that silhouette the fade
  * opens over at F1 (`featherStart = edge · (1 - reach)`): F0 is a crisp edge,
- * F1 dissolves the outer band into the paper while the core stays loaded.
+ * F1 softens the outer band while the core stays loaded.
+ *
+ * 2026-11-20, the artist's live F100 report: at 0.65 the fade covered the
+ * outer two-thirds of the silhouette, so F100 washed the stroke's body out
+ * and where two feathered strokes met both films thinned to nothing — read as
+ * a white glow seam. 0.30 keeps the mark's body solid and opens only the
+ * outer rim.
  */
-export const BRISTLE_FEATHER_REACH = 0.65;
+export const BRISTLE_FEATHER_REACH = 0.3;
 /**
  * The stroke's LEADING end cap at Feather 0: the fraction of the dab's
  * forward half over which the front of the mark fades. The start of a stroke
@@ -224,10 +230,15 @@ export const LAST_TOUCH_DRY_SECONDS = -604800;
 export const BRISTLE_SMEAR_PERIOD_PX = 6;
 
 /**
- * §3.3: `carried = mix(carried, canvas, clamp(smear, 0, 0.8))` — the clamp
+ * §3.3: `carried = mix(carried, canvas, clamp(smear, 0, cap))` — the clamp
  * on how much of the pre-dab snapshot one deposit texel may inherit.
+ * 2026-11-20 (artist): raised from the reference's 0.8 to 1.0. The Pickup
+ * knob now carries its own response curve (2x at 100 %), the cap was binding
+ * across most of the contact band, and the artist's maximum must read as a
+ * full wet-on-wet pull — the strongest texels may adopt the sheet's colour
+ * outright.
  */
-export const BRISTLE_SMEAR_CAP = 0.8;
+export const BRISTLE_SMEAR_CAP = 1.0;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const clamp01 = (v: number) => clamp(v, 0, 1);

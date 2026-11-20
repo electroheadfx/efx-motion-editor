@@ -397,6 +397,22 @@ export class WatercolorEngine {
   private clock: () => number = () => performance.now();
   /** When true, schedule() is a no-op — the host drives tick(dt) (bake). */
   private manual = false;
+  /**
+   * 2026-11-20: the last-touch field is float32, and the LIVE clock is
+   * performance.now() in seconds (~1.7e6). At that magnitude f32 resolves
+   * ~0.25 s, so strokes painted quickly apart stored IDENTICAL stamps and
+   * the wetness age was wrong. Every last-touch timestamp is therefore
+   * relative to this base: small values, microsecond precision.
+   * The bake's virtual clock (0-based) is unchanged behaviourally.
+   */
+  private timeBaseMs: number | null = null;
+
+  /** Seconds on the engine-relative clock — the ONE time base for last-touch. */
+  private nowSec(): number {
+    const now = this.clock();
+    if (this.timeBaseMs === null) this.timeBaseMs = now;
+    return (now - this.timeBaseMs) / 1000;
+  }
 
   private tipTextures = new Map<string, WebGLTexture>();
   private paperPreset: PaperPreset = DEFAULT_PAPER;
@@ -693,6 +709,7 @@ export class WatercolorEngine {
    * immediately after every sheet wipe (clear / resetSheet).
    */
   private clearLastTouch() {
+    this.timeBaseMs = null;
     const { gl } = this;
     for (const t of [this.lastTouch.read, this.lastTouch.write]) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
@@ -1271,7 +1288,7 @@ export class WatercolorEngine {
   setRandom(fn: () => number) { this.rng = fn; }
 
   /** Deterministic bake: install a virtual clock in ms (A2). */
-  setClock(fn: () => number) { this.clock = fn; }
+  setClock(fn: () => number) { this.clock = fn; this.timeBaseMs = null; }
 
   /**
    * 64-24 (D-24): the recorded A/B seam — 1 is the shipped timestamp law for
@@ -2922,7 +2939,9 @@ export class WatercolorEngine {
     // 64-22 (D-06/D-22): the §6 constant defaults now ride the recorded bag
     // — Pickup and Refill are canonical globals through the ONE mapping, and
     // the fragment keeps its own §3.1 clamps (0.75 pickup, 1 refill).
-    gl.uniform1f(p.u.uPickupRate!, this.params.pickup);
+    // The Pickup knob keeps ONE response curve (pickupResponse) across both
+    // laws, so the carrier and the smear are always the same user value.
+    gl.uniform1f(p.u.uPickupRate!, this.pickupResponse(this.params.pickup));
     gl.uniform1f(p.u.uRefillRate!, this.params.refill);
     // The reference's whole visible structure (broken dashes, fibre body and
     // the paper threshold winning) only switches on as the per-bristle load
@@ -2964,7 +2983,7 @@ export class WatercolorEngine {
     // free unit, `uNow` on the virtual clock (SECONDS), the recorded tack
     // time, and the A/B mode (1 shipped). No wall clock exists here.
     gl.uniform1i(p.u.uTimes!, g.bindTex(10, this.lastTouch.read.tex[0]!));
-    gl.uniform1f(p.u.uNow!, this.clock() / 1000);
+    gl.uniform1f(p.u.uNow!, this.nowSec());
     gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);
     gl.uniform1i(p.u.uWetMode!, this.lastTouchMode);
     // 261119-pod FIX 1: the cover gate tops at this floor at Body 0, so the
@@ -2987,6 +3006,19 @@ export class WatercolorEngine {
    * cumulative path distance in document texels; it feeds both the noise
    * phase (`uAlongPx`) and the landing ramp (`uStrokeDistPx`).
    */
+  /**
+   * 2026-11-20 (artist): the Pickup knob's response curve. The knob drives
+   * BOTH laws (the carrier's rate and the §3.3 smear) through this ONE map:
+   * a linear knob made 100 % only the reference's drag, but the artist's
+   * maximum should read as a wet-on-wet PULL. q -> q·(1 + q²): 0 stays 0,
+   * 50 % -> 0.63, 100 % -> 2x the reference's weight. The pinned ceilings
+   * (0.75 pickup, BRISTLE_SMEAR_CAP) still clamp the result.
+   */
+  private pickupResponse(p: number): number {
+    const q = clamp(p, 0, 1);
+    return q * (1 + q * q);
+  }
+
   private bindGather(p: Program, x: number, y: number, r: number, angle: number, pr: number, alongPx: number): void {
     const { gl, g } = this;
     gl.uniform1i(p.u.uPaintA!, g.bindTex(0, this.bristles.read.tex[0]!));
@@ -3039,15 +3071,20 @@ export class WatercolorEngine {
     gl.uniform1i(p.u.uSnapA!, g.bindTex(5, this.smearCanvas.tex[0]!));
     gl.uniform1i(p.u.uSnapB!, g.bindTex(6, this.smearCanvas.tex[1]!));
     gl.uniform1i(p.u.uTimes!, g.bindTex(7, this.lastTouch.read.tex[0]!));
-    gl.uniform1f(p.u.uSmear!, this.params.pickup);
+    gl.uniform1f(p.u.uSmear!, this.pickupResponse(this.params.pickup));
     gl.uniform1f(p.u.uSmearPeriodPx!, BRISTLE_SMEAR_PERIOD_PX);
     gl.uniform1f(p.u.uSmearCap!, BRISTLE_SMEAR_CAP);
+    // 2026-11-20: the same-paint gate's reference — the BRUSH's palette, so
+    // the drag never weakens as the carried colour drifts toward the canvas.
+    const pc = this.pigment.coeffs;
+    gl.uniform4f(p.u.uPigmentA!, pc[0]!, pc[1]!, pc[2]!, pc[3]!);
+    gl.uniform3f(p.u.uPigmentB!, pc[4]!, pc[5]!, pc[6]!);
     // 261119-pod (Lever 1): the smear's wet gate normalises the snapshot's
     // cover alpha by the Body-0 ceiling, restoring the reference's ~1.0
     // interior wetness. The ceiling travels as a uniform so the shader never
     // re-types the floor the Engine already owns.
     gl.uniform1f(p.u.uBodyFloor!, BRISTLE_BODY_ALPHA_FLOOR);
-    gl.uniform1f(p.u.uNow!, this.clock() / 1000);
+    gl.uniform1f(p.u.uNow!, this.nowSec());
     gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);
   }
 
@@ -3114,6 +3151,10 @@ export class WatercolorEngine {
     gl.disable(gl.BLEND);
     // 3) cover <- cover*(1 - a) + bodyAlpha*g.alpha*a — ONE write per dab,
     //    the SAME weight as the ink, so the layer alpha tracks its paint.
+    //    The lerp's AVERAGING over dabs is the ragged fringe itself (the
+    //    artist's 2026-11-20 ruling): a MAX was tried and reverted — it
+    //    jumped the channel to the strongest dab, every edge went smooth and
+    //    hard, and Feather 0 lost its bristle texture along with Feather 100.
     const c = this.programs.bristleCover;
     c.bind();
     this.bindGather(c, x, y, r, angle, pr, alongPx);
@@ -3165,7 +3206,7 @@ export class WatercolorEngine {
     gl.disable(gl.BLEND);
     gl.uniform1i(t.u.uTimes!, g.bindTex(0, this.lastTouch.read.tex[0]!));
     gl.uniform1i(t.u.uCover!, g.bindTex(1, this.cover.read.tex[0]!));
-    gl.uniform1f(t.u.uNow!, this.clock() / 1000);
+    gl.uniform1f(t.u.uNow!, this.nowSec());
     gl.uniform1f(t.u.uAmount!, amount);
     g.draw(this.lastTouch.write, rect);
     this.lastTouch.swap();

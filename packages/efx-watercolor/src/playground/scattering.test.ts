@@ -645,6 +645,10 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     expectContains(ink, 'gl.blendFunc(gl.ONE, gl.ONE);')
     expectContains(ink, 'gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);')
     expectContains(ink, 'gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);')
+    // The coverage write stays a LERP: its averaging over dabs IS the ragged
+    // fringe. A MAX was tried 2026-11-20 and reverted the same hour — it
+    // flattened every edge (Feather 0 and 100 both lost their bristle).
+    expectNotContains(ink, 'gl.blendEquation(gl.MAX);')
     // Two ink draws — the attenuation and the carried add — and no more.
     expect((ink.match(/this\.ink\.read/g) ?? []).length, 'the two lerp halves').toBe(2)
     // The engine's canvas is ink + fixed: the settled half takes the SAME
@@ -686,7 +690,16 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
   })
 
   it('takes pickup and refill from the recorded bag and keeps the pinned counts', () => {
-    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uPickupRate!, this.params.pickup);')
+    // 2026-11-20 (artist): ONE response curve for the Pickup knob drives both
+    // laws — 0 stays 0, 100 % is 2x the reference's drag (q·(1 + q²)).
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uPickupRate!, this.pickupResponse(this.params.pickup));')
+    expectContains(ENGINE_SOURCE, 'return q * (1 + q * q);')
+    // The carrier's canvas sample must be the canonical seven coefficients
+    // (A = c0..c3, B.rgb = c4..c6). The old vec4(a.rgb, b.r) packing dropped
+    // c3 and duplicated c4, making same-paint score ~0.97 and leaking a
+    // little own-paint lift through the gate.
+    expectContains(SHADERS_SOURCE, 'return texture(uInkA, uv) + texture(uFixedA, uv);')
+    expectNotContains(SHADERS_SOURCE, 'vec4(a.rgb, b.r)')
     expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uRefillRate!, this.params.refill);')
     expectContains(
       ENGINE_SOURCE,
@@ -1059,7 +1072,7 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
   it('binds the gate from the last-touch read half and the virtual clock', () => {
     const pass = sliceBetween(ENGINE_SOURCE, 'private carrierPass(', 'private bindGather(')
     expectContains(pass, 'gl.uniform1i(p.u.uTimes!, g.bindTex(10, this.lastTouch.read.tex[0]!));')
-    expectContains(pass, 'gl.uniform1f(p.u.uNow!, this.clock() / 1000);')
+    expectContains(pass, 'gl.uniform1f(p.u.uNow!, this.nowSec());')
     expectContains(pass, 'gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);')
     expectContains(pass, 'gl.uniform1i(p.u.uWetMode!, this.lastTouchMode);')
     // 261119-pod FIX 1: the carrier's normalised read needs the ceiling on
@@ -1087,7 +1100,7 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     )
     expectContains(stamp, 'gl.uniform1i(t.u.uTimes!, g.bindTex(0, this.lastTouch.read.tex[0]!));')
     expectContains(stamp, 'gl.uniform1i(t.u.uCover!, g.bindTex(1, this.cover.read.tex[0]!));')
-    expectContains(stamp, 'gl.uniform1f(t.u.uNow!, this.clock() / 1000);')
+    expectContains(stamp, 'gl.uniform1f(t.u.uNow!, this.nowSec());')
     expectContains(stamp, 'g.draw(this.lastTouch.write, rect);')
     expectContains(stamp, 'this.lastTouch.swap();')
     const drawAt = stamp.indexOf('g.draw(this.lastTouch.write, rect);')
@@ -1213,14 +1226,41 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(d, 'float smear = smearWeight(g.nearest, uAlongPx + q.y * uHalfWidthPx, wetAt(vUv));')
     expectContains(d, 'vec4 cA = g.cA;')
     expectContains(d, 'vec3 cB = g.cB;')
-    expectContains(d, 'cA = mix(cA, texture(uSnapA, vUv), smear);')
-    expectContains(d, 'cB = mix(cB, texture(uSnapB, vUv).xyz, smear);')
+    // 2026-11-20 (the artist's yellow-on-white report): lift ONLY solid
+    // paint — a partial or blank snapshot is a thin film whose
+    // coverage-attenuated absorbance, lifted raw, reads as diluted pigment
+    // and rotates the hue (yellow -> green). The gate uses the same
+    // cover/floor normalization wetAt does.
+    expectContains(d, 'vec4 snapB = texture(uSnapB, vUv);')
+    expectContains(d, 'smear *= smoothstep(0.55, 0.85, clamp(snapB.a / uBodyFloor, 0.0, 1.0));')
+    // 2026-11-20 (the artist's colour-blend regression): lift is decided by
+    // COLOUR, never by AGE. The touch pass stamps uNow over the whole dab, so
+    // a continuous stroke always sits on its own fresh stamps — a stroke-age
+    // gate zeroed every live pickup ("no more color blend") and must not
+    // return. The same-colour gate below owns the own-paint case.
+    expectNotContains(SHADERS_SOURCE, 'uStrokeStart')
+    // Same-paint is never re-deposited (an older stroke of the SAME yellow
+    // turned green through the Body KM display), but the comparison is the
+    // BRUSH'S PALETTE, not the carried mix: the mix drifts toward the canvas
+    // as it drags, and a carried-side gate shut the drag off partway (the
+    // artist's "not totally"). Different paint lifts at full strength.
+    expectContains(d, 'float samePaint = cross7 / sqrt(max(own2 * can2, 1e-8));')
+    expectContains(d, 'smear *= 1.0 - smoothstep(0.975, 0.995, samePaint);')
+    const g = gather()
+    expectContains(g, 'uniform vec4 uPigmentA;')
+    expectContains(g, 'uniform vec3 uPigmentB;')
+    expectContains(d, 'cA = mix(cA, snapA, smear);')
+    expectContains(d, 'cB = mix(cB, snapB.xyz, smear);')
     expectContains(d, 'oA = cA * a;')
     expectContains(d, 'oB = vec4(cB * a, uScatter * a);')
     const c = cover()
     expectContains(c, 'if (uSmear > 0.0) {')
     expectContains(c, 'float target = a * uCoverTarget * g.alpha;')
-    expectContains(c, 'target = mix(target, a * uCoverTarget * texture(uSnapB, vUv).a, smear);')
+    // The cover drag obeys the SAME same-paint gate as the ink smear: own
+    // paint's cover re-deposited is the artist's "darker" half of the
+    // yellow-on-white report (measured at Pickup 100 with the response curve).
+    expectContains(c, 'smear *= 1.0 - smoothstep(0.975, 0.995, samePaint);')
+    expectContains(c, 'target = mix(target, a * uCoverTarget * snapB.a, smear);')
     expectContains(c, 'o0 = vec4(target, 0.0, 0.0, a);')
     // Both mixes sit AFTER the guard's anchor: Pickup 0 never samples the
     // snapshot, and the weight is exactly zero there too (belt and braces).
@@ -1256,7 +1296,12 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
       'float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));',
     )
     expectContains(g, 'float lateralFade = 1.0 - smoothstep(featherStart, uFeatherEdge, lateral);')
-    expectContains(g, 'float featherFade = mix(1.0, lateralFade, uFeather);')
+    // 2026-11-20: the fade breaks into hairs — a smooth ramp read as a white
+    // veil at F100 (the artist's live report). F0 stays exact: uFeather scales
+    // the ragged term to zero.
+    expectContains(g, 'float fadeStreak = noise1(across * 37.0 + uAlongPx / max(uStreakLen * 5.0, 1.0) + 11.3);')
+    expectContains(g, 'float raggedFade = mix(lateralFade, 1.0, smoothstep(0.35, 0.75, fadeStreak));')
+    expectContains(g, 'float featherFade = mix(1.0, raggedFade, uFeather);')
     // The front cap is LEADING-only (q.y < 0): an interior texel's last dab
     // sits at its trailing rim, so a symmetric along fade would erase the core.
     expectContains(g, 'float capW = mix(uFeatherCap, uFeatherReach, uFeather);')
@@ -1335,10 +1380,10 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expectContains(bind, 'gl.uniform1i(p.u.uSnapA!, g.bindTex(5, this.smearCanvas.tex[0]!));')
     expectContains(bind, 'gl.uniform1i(p.u.uSnapB!, g.bindTex(6, this.smearCanvas.tex[1]!));')
     expectContains(bind, 'gl.uniform1i(p.u.uTimes!, g.bindTex(7, this.lastTouch.read.tex[0]!));')
-    expectContains(bind, 'gl.uniform1f(p.u.uSmear!, this.params.pickup);')
+    expectContains(bind, 'gl.uniform1f(p.u.uSmear!, this.pickupResponse(this.params.pickup));')
     expectContains(bind, 'gl.uniform1f(p.u.uSmearPeriodPx!, BRISTLE_SMEAR_PERIOD_PX);')
     expectContains(bind, 'gl.uniform1f(p.u.uSmearCap!, BRISTLE_SMEAR_CAP);')
-    expectContains(bind, 'gl.uniform1f(p.u.uNow!, this.clock() / 1000);')
+    expectContains(bind, 'gl.uniform1f(p.u.uNow!, this.nowSec());')
     expectContains(bind, 'gl.uniform1f(p.u.uWetSeconds!, this.params.wetSeconds);')
     // The gather has one wetness law: no A/B mode rides it.
     expectNotContains(bind, 'uWetMode')

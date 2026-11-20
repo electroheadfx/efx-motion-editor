@@ -121,6 +121,20 @@ interface SceneSpec {
   readonly dry?: number
   /** Paint Load (0..100). Absent → the shipped default 50. */
   readonly load?: number
+  /** Paint Refill (0..100). Absent → the probe bag's 0. */
+  readonly refill?: number
+  /** Stroke colour. Absent → BLUE_COLOR. */
+  readonly color?: string
+  /** MEASUREMENT-ONLY: paint this many offset passes (the artist's "several strokes"). */
+  readonly passes?: number
+  /** MEASUREMENT-ONLY: extra bag keys (the Studio medium's values the sliders don't name). */
+  readonly bagOverride?: Record<string, number>
+  /** Paint Water (0..100). Absent → the probe bag's 50. */
+  readonly water?: number
+  /** MEASUREMENT-ONLY: the artist's two-stroke Feather study at this Feather. */
+  readonly edgePair?: number
+  /** MEASUREMENT-ONLY: the edge-pair scenes' pickup (default 100). */
+  readonly pairPickup?: number
   /** Sheet override. Absent → Cold Press. */
   readonly paper?: PaperPreset
   /**
@@ -216,6 +230,27 @@ const SCENES: readonly SceneSpec[] = [
   // and no longer reads as a multiply over the ground.
   { name: 'yellow-f75d40l70-b85', band: false, stroke: true, pickup: 100, feather: 75, body: 85, dry: 40, load: 70, paper: YELLOW },
   { name: 'yellow-f75d40l70-b100', band: false, stroke: true, pickup: 100, feather: 75, body: 100, dry: 40, load: 70, paper: YELLOW },
+  // MEASUREMENT-ONLY (2026-11-20, the artist's yellow-on-white report): one
+  // yellow stroke on the DEFAULT white sheet, the live bag around it. Bisect
+  // Pickup (carrier + smear dilution) and Body (scatter/KM) at F100.
+  { name: 'yw-p100r0b100f100', band: false, stroke: true, pickup: 100, feather: 100, body: 100, dry: 50, load: 50, refill: 0, color: '#f2d23c' },
+  { name: 'yw-p0r0b100f100', band: false, stroke: true, pickup: 0, feather: 100, body: 100, dry: 50, load: 50, refill: 0, color: '#f2d23c' },
+  { name: 'yw-p100r0b0f100', band: false, stroke: true, pickup: 100, feather: 100, body: 0, dry: 50, load: 50, refill: 0, color: '#f2d23c' },
+  { name: 'yw-p0r0b0f100', band: false, stroke: true, pickup: 0, feather: 100, body: 0, dry: 50, load: 50, refill: 0, color: '#f2d23c' },
+  { name: 'yw-p100r60b100f100', band: false, stroke: true, pickup: 100, feather: 100, body: 100, dry: 50, load: 50, refill: 60, color: '#f2d23c' },
+  { name: 'yw-p100r100b100f100', band: false, stroke: true, pickup: 100, feather: 100, body: 100, dry: 50, load: 50, refill: 100, color: '#f2d23c' },
+  { name: 'yw-p50r0b100f100', band: false, stroke: true, pickup: 50, feather: 100, body: 100, dry: 50, load: 50, refill: 0, color: '#f2d23c' },
+  { name: 'yw-multi-p0b100', band: false, stroke: true, pickup: 0, feather: 100, body: 100, dry: 50, load: 50, refill: 0, color: '#f2d23c', passes: 3 },
+  { name: 'yw-multi-p100b100', band: false, stroke: true, pickup: 100, feather: 100, body: 100, dry: 50, load: 50, refill: 0, color: '#f2d23c', passes: 3 },
+  { name: 'yw-multi-p100b0', band: false, stroke: true, pickup: 100, feather: 100, body: 0, dry: 50, load: 50, refill: 0, color: '#f2d23c', passes: 3 },
+  // The artist's LIVE Studio bag: the Acrylic medium's own values for the
+  // sliders they did not name (Water 26, Pigment 100, Dry 70, Viscosity 90,
+  // Grain 25, Edges 65, Flow 60, Bleed 22, wetSeconds 12) plus their overrides
+  // (Body 100, Feather 100, Refill 0, Emboss 0), Pickup 0 vs 100.
+  { name: 'yw-studio-p0', band: false, stroke: true, pickup: 0, feather: 100, body: 100, dry: 70, load: 100, refill: 0, color: '#f2d23c', bagOverride: { water: 26, flow: 60, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'yw-studio-p100', band: false, stroke: true, pickup: 100, feather: 100, body: 100, dry: 70, load: 100, refill: 0, color: '#f2d23c', bagOverride: { water: 26, flow: 60, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'yw-p100r0b100f0', band: false, stroke: true, pickup: 100, feather: 0, body: 100, dry: 50, load: 50, refill: 0, color: '#f2d23c' },
+  { name: 'yw-p0r0b100f0', band: false, stroke: true, pickup: 0, feather: 0, body: 100, dry: 50, load: 50, refill: 0, color: '#f2d23c' },
   // MEASUREMENT-ONLY (2026-11-20): the artist's wet-on-wet composition. A
   // yellow PIGMENT ground (four bristle strokes, Body 100, full tank), then
   // blue and red strokes crossing it while it is still wet. Nothing is
@@ -283,6 +318,20 @@ const SCENES: readonly SceneSpec[] = [
   { name: 'blank-f100-dry55', band: false, stroke: true, pickup: 100, feather: 100, body: 0, dry: 55 },
   { name: 'body0', band: false, stroke: true, pickup: 100, feather: 0, body: 0 },
   { name: 'body100', band: false, stroke: true, pickup: 100, feather: 0, body: 100 },
+  // MEASUREMENT-ONLY (2026-11-20): the artist's live Feather study — Water 25,
+  // Dry 70, Body 100, Pickup 100, Refill 0, Emboss 0, at Feather 0 vs 100, on
+  // a thick stroke (run with --blue-size 16). Diagnoses the white rim.
+  { name: 'edge-f0', band: false, stroke: true, pickup: 100, feather: 0, body: 100, dry: 70, load: 50, water: 25 },
+  { name: 'edge-f100', band: false, stroke: true, pickup: 100, feather: 100, body: 100, dry: 70, load: 50, water: 25 },
+  // The artist's two-stroke arrangement: a yellow-green stroke, then blue
+  // partly over it — the state where the white rim was reported.
+  { name: 'edge-pair-f0', band: false, stroke: false, pickup: null, feather: null, body: null, edgePair: 0 },
+  { name: 'edge-pair-f100', band: false, stroke: false, pickup: null, feather: null, body: null, edgePair: 100 },
+  // MEASUREMENT-ONLY (2026-11-20): the cross-colour drag vanished when the
+  // stroke-age gate was added (the touch stamp makes it live-impossible). This
+  // twin is edge-pair-f100 with Pickup 0, so the drag's fingerprint is a
+  // measured delta between the two, never an eyeballed one.
+  { name: 'edge-pair-p0-f100', band: false, stroke: false, pickup: null, feather: null, body: null, edgePair: 100, pairPickup: 0 },
 ]
 
 // --- the fixed path ---------------------------------------------------------
@@ -910,14 +959,30 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
       finalPaper = captureCanvas(engine.exportCanvas('paper'))
       finalPigment = captureCanvas(engine.exportCanvas('pigment'))
       finalCoverage = captureCanvas(engine.exportCoverageCanvas())
+    } else if (spec.edgePair !== undefined) {
+      // Water 25, Dry 70, Body 100, Pickup 100, Refill 0, Emboss 0 — the
+      // artist's live bag. Yellow-green first, then blue partly over it.
+      const size = Math.max(8, Math.round(blueSize * 3))
+      const bag = paramsBag(size, spec.pairPickup ?? 100, spec.edgePair, 100, 70, 50, 0, 0)
+      bag.water = 25
+      let seed = 0x7ec400
+      adapter.applyStroke(makeStroke('#c9d24a', bag, seed++, linePoints(0.3, 0.15, 0.46, 0.85)))
+      adapter.applyStroke(makeStroke('#2f6fd0', bag, seed++, linePoints(0.27, 0.15, 0.43, 0.85)))
+      settle()
+      finalPaper = captureCanvas(engine.exportCanvas('paper'))
+      finalPigment = captureCanvas(engine.exportCanvas('pigment'))
+      finalCoverage = captureCanvas(engine.exportCoverageCanvas())
     } else if (spec.stroke) {
-      adapter.applyStroke(
-        makeStroke(
-          BLUE_COLOR,
-          paramsBag(blueSize, spec.pickup ?? 0, spec.feather ?? 0, spec.body ?? 0, spec.dry ?? 0, spec.load ?? 50),
-          0x7ec001,
-        ),
-      )
+      const bag = paramsBag(blueSize, spec.pickup ?? 0, spec.feather ?? 0, spec.body ?? 0, spec.dry ?? 0, spec.load ?? 50, 0, spec.refill ?? 0)
+      if (spec.water !== undefined) bag.water = spec.water
+      if (spec.bagOverride !== undefined) Object.assign(bag, spec.bagOverride)
+      const passes = spec.passes ?? 1
+      for (let i = 0; i < passes; i += 1) {
+        const y = 0.5 + (i - (passes - 1) / 2) * 0.09
+        adapter.applyStroke(
+          makeStroke(spec.color ?? BLUE_COLOR, bag, 0x7ec001 + i, linePoints(0.22, y, 0.78, y + 0.01)),
+        )
+      }
       settle()
       finalPaper = captureCanvas(engine.exportCanvas('paper'))
       finalPigment = captureCanvas(engine.exportCanvas('pigment'))

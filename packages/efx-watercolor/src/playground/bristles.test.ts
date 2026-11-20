@@ -840,10 +840,13 @@ const SMEAR = bristleModule as unknown as {
 describe('the §3.3 smear constants and twins (261119-pod)', () => {
   it('declares the two constants once, beside the other stroke laws', () => {
     expect(SMEAR.BRISTLE_SMEAR_PERIOD_PX, '§3.3 hash cell period').toBe(6)
-    expect(SMEAR.BRISTLE_SMEAR_CAP, '§3.3 clamp').toBe(0.8)
+    // 2026-11-20 (artist): 1.0 — the Pickup knob's 2x response curve made the
+    // reference's 0.8 bind across the whole contact band; the artist's
+    // maximum must read as a full wet-on-wet pull.
+    expect(SMEAR.BRISTLE_SMEAR_CAP, '§3.3 clamp').toBe(1)
     for (const [name, literal] of [
       ['BRISTLE_SMEAR_PERIOD_PX', 'export const BRISTLE_SMEAR_PERIOD_PX = 6;'],
-      ['BRISTLE_SMEAR_CAP', 'export const BRISTLE_SMEAR_CAP = 0.8;'],
+      ['BRISTLE_SMEAR_CAP', 'export const BRISTLE_SMEAR_CAP = 1.0;'],
     ] as const) {
       expect(
         (SOURCE.match(new RegExp(literal.replaceAll('.', '\\.'), 'g')) ?? []).length,
@@ -871,10 +874,10 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
     expect(SMEAR.bristleSmearRate?.(Number.NaN), 'a missing rate smears nothing').toBe(0)
   })
 
-  it('bristleSmearWeight is clamp(rate·wet·hash, 0, 0.8) — monotone, zero at rate 0', () => {
+  it('bristleSmearWeight is clamp(rate·wet·hash, 0, BRISTLE_SMEAR_CAP) — monotone, zero at rate 0', () => {
     expect(typeof SMEAR.bristleSmearWeight, 'bristleSmearWeight is exported').toBe('function')
     expect(SMEAR.bristleSmearWeight?.(0, 1, 1), 'no pickup, no drag').toBe(0)
-    expect(SMEAR.bristleSmearWeight?.(1, 1, 1), 'the §3.3 cap').toBeCloseTo(0.8, 12)
+    expect(SMEAR.bristleSmearWeight?.(1, 1, 1), 'the §3.3 cap').toBeCloseTo(1, 12)
     expect(SMEAR.bristleSmearWeight?.(0.5, 0.5, 0.5)).toBeCloseTo(0.125, 12)
     expect(SMEAR.bristleSmearWeight?.(1, 1, 0.5)).toBeCloseTo(0.5, 12)
     // Monotone in each argument across its band.
@@ -896,7 +899,7 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
       expect(w).toBeGreaterThanOrEqual(previous)
       previous = w
     }
-    expect(SMEAR.bristleSmearWeight?.(1, 1, 1), 'never above the cap').toBeLessThanOrEqual(0.8)
+    expect(SMEAR.bristleSmearWeight?.(1, 1, 1), 'never above the cap').toBeLessThanOrEqual(1)
     expect(SMEAR.bristleSmearWeight?.(Number.NaN, 1, 1), 'a missing rate drags nothing').toBe(0)
   })
 })
