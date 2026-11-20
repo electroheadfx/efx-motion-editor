@@ -146,6 +146,20 @@ export function sizeToEngineScale(sizePx: number): number {
 }
 
 /**
+ * The exact inverse of {@link sizeToEngineScale} for the 80..800 band (the
+ * 32..80 flat band is many-to-one and reads back as its top). Size-driven
+ * laws — the brush supersampling — must gate on the CANONICAL size the
+ * artist reads, never on a document-pixel radius, which moves with the
+ * sheet resolution.
+ */
+export function engineScaleToSize(scale: number): number {
+  if (!Number.isFinite(scale)) return SIZE_MAX_PX
+  if (scale < 1) return Math.max(0, scale * 32)
+  const px = LEGACY_SIZE_MAX_PX + ((scale - 1) / (SIZE_SCALE_AT_MAX - 1)) * (SIZE_MAX_PX - LEGACY_SIZE_MAX_PX)
+  return Math.min(SIZE_MAX_PX, px)
+}
+
+/**
  * Canonical AQUA-04 globals → vendor `Params` (all 0..1, size may
  * exceed 1 above 80 px; `wetSeconds` is the one member carried in
  * seconds). `size` shows 1..800 px on the track; 32 px ≈ 1.0, and the

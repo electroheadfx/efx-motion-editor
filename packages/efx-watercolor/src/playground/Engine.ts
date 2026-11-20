@@ -21,11 +21,13 @@ import {
   BRISTLE_STREAK_SHARE,
   bristleContactPressure,
   bristleCount,
+  bristleSampleScale,
   gatherSoftness,
   LAST_TOUCH_DRY_SECONDS,
   makeBristles,
 } from './bristles';
 import { f32ToF16, fromHalf } from './half';
+import { engineScaleToSize } from './params';
 import { GL, type DoubleTarget, type Format, type Program, type Rect, type Target } from './gl';
 import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
@@ -2128,13 +2130,16 @@ export class WatercolorEngine {
         // hand away after the intended end stamped an isolated second
         // impression wherever it travelled (the "cap"). No contact means the
         // stroke is over: end it here instead of painting the hover path.
-        // A fresh native tablet sample is real contact even when the DOM
-        // event omits pressure (the WKWebView 0.5 sentinel path), so the
-        // heuristic never ends a stroke the host says is on the glass.
-        const nativeContact = this.nativePen !== null
-          && this.nativePen.pressure > 0
-          && this.clock() - this.nativePenAt < 300;
-        if (s.pointerType === 'pen' && s.pressure <= 0 && s.buttons === 0 && !nativeContact) {
+        // The tip button, not pressure, is the contact truth here: WKWebView
+        // reports the fixed 0.5 pressure sentinel (and a stale native
+        // pressure can linger), but a pen touching the glass always has its
+        // tip button held, and a pen in the air never does. This host's
+        // tablet events can also arrive as pointerType 'mouse' with native
+        // pressure injected (updateNativePenInput), so the guard must cover
+        // any tablet input — a pen-only check let the hover path through.
+        const tabletInput = s.pointerType === 'pen' || this.pencilSeen
+          || (this.nativePenAt > -Infinity && this.clock() - this.nativePenAt < 300);
+        if (tabletInput && s.buttons === 0) {
           this.stroke.ending = true;
           break;
         }
@@ -2472,11 +2477,25 @@ export class WatercolorEngine {
     s.x = ex; s.y = ey; s.pr = pr;
   }
 
+  /**
+   * 2026-11-20 (the artist's large-brush steps; "samples should be
+   * proportional to the size of the brush, to not slow down normal size
+   * brush"): the brush's dab chain is supersampled with its canonical Size —
+   * the 3D motion-supersampling law. The factor is exactly 1 below
+   * BRISTLE_SAMPLE_START_PX, so every normal size keeps its validated
+   * cadence and pays nothing; the per-dab ink divides by the same factor in
+   * `stamp`, so the wash per distance is unchanged.
+   */
+  private samplingScale(): number {
+    return bristleSampleScale(engineScaleToSize(this.params.size));
+  }
+
   /** Dab spacing as a fraction of the footprint radius. */
   private spacingFrac(tool: Tool) {
     const b = this.brush;
     // flat tips need tighter spacing: the footprint is thin across one axis
-    return tool === 'brush' || tool === 'water' ? b.spacing * Math.sqrt(b.aspect) : 0.5;
+    const frac = tool === 'brush' || tool === 'water' ? b.spacing * Math.sqrt(b.aspect) : 0.5;
+    return tool === 'brush' ? frac / this.samplingScale() : frac;
   }
 
   /** One dab of the current tool. `moving` = 0 with `dt` set means a dwell. */
@@ -2507,7 +2526,9 @@ export class WatercolorEngine {
         const conc = 0.15 * Math.exp(P.load * 2.8) * reservoir * (0.4 + 0.6 * pr) * b.load;
         // spacing / profile integral -> ~conc in the stroke, normalised for sparse tips
         const norm = clamp(Math.sqrt(0.5 / b.tipMean), 0.7, 2.2);
-        const amount = conc * Math.min(b.spacing, 1) / 1.8 * norm * dwell;
+        // The supersampling factor divides the per-dab ink: more, smaller
+        // dabs for a big tip, the same wash per distance.
+        const amount = conc * Math.min(b.spacing, 1) / 1.8 * norm * dwell / this.samplingScale();
         // Phase 64 (MED-14, the deposit law): thickness is deposited in
         // proportion to the dab's OWN ink amount, scaled by the stroke's emboss.
         // 0 draws nothing at all — no program bind, no blend change, no draw —

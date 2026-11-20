@@ -815,6 +815,16 @@ describe('post-UAT — the bristle Body mask is gone, Body is film opacity', () 
     expectContains(SHADERS_SOURCE, 'return smoothstep(th, th + 0.5, t);')
   })
 
+  it('supersamples the dab chain with the brush SIZE, never the document (the artist’s big-brush steps)', () => {
+    // 2026-11-20 (artist: "samples should be proportional to the size of the
+    // brush, to not slow down normal size brush"): the factor rides the
+    // canonical Size and is exactly 1 below the start; the per-dab ink
+    // divides by the same factor so the wash per distance is unchanged.
+    expectContains(ENGINE_SOURCE, 'return bristleSampleScale(engineScaleToSize(this.params.size));')
+    expectContains(ENGINE_SOURCE, "return tool === 'brush' ? frac / this.samplingScale() : frac;")
+    expectContains(ENGINE_SOURCE, 'const amount = conc * Math.min(b.spacing, 1) / 1.8 * norm * dwell / this.samplingScale();')
+  })
+
   it('keeps the pinned program and allocation counts', () => {
     const programs = sliceBetween(ENGINE_SOURCE, 'this.programs = {', '};')
     expect(

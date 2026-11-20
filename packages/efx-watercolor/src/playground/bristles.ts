@@ -129,6 +129,29 @@ export const BRISTLE_DRY_CAP_FLOOR = 0.12;
 /** The Dry value (0..1) where the end cap reaches its full width. */
 export const BRISTLE_DRY_CAP_FULL = 0.7;
 /**
+ * 2026-11-20 (the artist's large-brush steps; "samples should be proportional
+ * to the size of the brush, to not slow down normal size brush"): the dab
+ * chain is SUPERSAMPLED with the brush's canonical Size — the 3D motion
+ * supersampling law — so a large tip motif is re-sampled more finely instead
+ * of repeating as visible steps. Gated on the canonical Size (the slider the
+ * artist reads), never on the document-pixel radius, which moves with the
+ * sheet resolution. Below START the factor is exactly 1: normal sizes keep
+ * the validated dab cadence and pay nothing. The per-dab ink divides by the
+ * same factor, so the wash per distance is unchanged — only the sampling.
+ */
+export const BRISTLE_SAMPLE_START_PX = 180;
+/** Canonical Size where the supersampling factor reaches its maximum. */
+export const BRISTLE_SAMPLE_FULL_PX = 360;
+/** Most dabs per radius multiplier at FULL_PX (~2x at the artist's 327). */
+export const BRISTLE_SAMPLE_MAX = 2.2;
+
+/** The motion-supersampling factor for a canonical Size in px (1 = off). */
+export function bristleSampleScale(sizePx: number): number {
+  const t = clamp01((sizePx - BRISTLE_SAMPLE_START_PX) / (BRISTLE_SAMPLE_FULL_PX - BRISTLE_SAMPLE_START_PX));
+  return 1 + t * (BRISTLE_SAMPLE_MAX - 1);
+}
+
+/**
  * The lateral fade's start anchor for Feather > 0. The 2026-11-20 white-seam
  * ruling supersedes the earlier "even F0 keeps a soft lateral edge" cut: at
  * F0 the gather applies NONE of this fade — the rim is the thresholded

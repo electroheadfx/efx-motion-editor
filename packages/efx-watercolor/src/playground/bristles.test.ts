@@ -961,3 +961,28 @@ describe('bristleContactPressure — §3.1, the reference brush pressure (spike 
     expect(LAW.bristleContactPressure?.(1, 2, 100, 0)).toBeCloseTo(0.42, 12)
   })
 })
+
+// 2026-11-20 (the artist's large-brush steps): the motion-supersampling
+// factor scales with the CANONICAL Size, is exactly 1 below the start, and
+// saturates at the max. Normal sizes must never pay for big-brush sampling.
+describe('bristleSampleScale — size-proportional motion supersampling', () => {
+  it('is exactly 1 at and below the start (normal sizes pay nothing)', () => {
+    expect(bristleModule.bristleSampleScale(1)).toBe(1)
+    expect(bristleModule.bristleSampleScale(117)).toBe(1)
+    expect(bristleModule.bristleSampleScale(180)).toBe(1)
+    expect(bristleModule.bristleSampleScale(0)).toBe(1)
+  })
+
+  it('grows linearly to the max by the full size', () => {
+    expect(bristleModule.bristleSampleScale(270)).toBeCloseTo(
+      1 + ((270 - 180) / (360 - 180)) * (2.2 - 1),
+      12,
+    )
+    expect(bristleModule.bristleSampleScale(360)).toBeCloseTo(2.2, 12)
+    expect(bristleModule.bristleSampleScale(800), 'clamped').toBeCloseTo(2.2, 12)
+    expect(bristleModule.bristleSampleScale(327), 'the artist’s size').toBeCloseTo(
+      1 + (147 / 180) * 1.2,
+      12,
+    )
+  })
+})

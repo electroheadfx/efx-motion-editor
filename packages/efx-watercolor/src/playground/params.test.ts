@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PARAMS } from './Engine';
-import { DEFAULT_CANONICAL_PARAMS, toEngineParams } from './params';
+import { DEFAULT_CANONICAL_PARAMS, engineScaleToSize, sizeToEngineScale, toEngineParams } from './params';
 
 describe('toEngineParams', () => {
   // quick 261116-inu / Task 7: every step of this table is the HEAD OUTPUT
@@ -29,6 +29,19 @@ describe('toEngineParams', () => {
   it('extends the footprint scale monotonically through the 80..800 track band', () => {
     expect(toEngineParams({ size: 400 }).size).toBeCloseTo(1 + (320 / 720) * 1.04795, 12);
     expect(toEngineParams({ size: 800 }).size).toBeCloseTo(2.04795, 12);
+  });
+
+  // Size-gated engine laws (the brush supersampling) read the canonical px
+  // back from the engine scale, so the inverse must round-trip the slider.
+  it('inverts the 80..800 band exactly (engineScaleToSize)', () => {
+    for (const px of [80, 117, 200, 300, 327, 800]) {
+      expect(engineScaleToSize(sizeToEngineScale(px))).toBeCloseTo(px, 9);
+    }
+    // The 32..80 flat band is many-to-one and reads back as its top.
+    expect(engineScaleToSize(sizeToEngineScale(32))).toBe(80);
+    expect(engineScaleToSize(sizeToEngineScale(48))).toBe(80);
+    // Below the band the map is linear.
+    expect(engineScaleToSize(toEngineParams({ size: 12 }).size!)).toBeCloseTo(12, 12);
   });
 
   it('keeps growing for typed values above the 800 track, up to the safety ceiling', () => {

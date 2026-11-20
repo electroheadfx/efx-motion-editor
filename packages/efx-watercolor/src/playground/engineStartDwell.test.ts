@@ -124,12 +124,15 @@ describe('quick 261116-rp start-dwell law', () => {
   // pointerup. pushSample's 0 -> 0.5 fallback painted them, so sweeping the
   // hand away after the intended end stamped an isolated second impression.
   // No contact must END the stroke, never paint the hover path.
-  it('ends the stroke on a pen hover move instead of painting it', () => {
-    expect(ENGINE_SOURCE).toContain(
-      "if (s.pointerType === 'pen' && s.pressure <= 0 && s.buttons === 0 && !nativeContact) {",
-    )
+  it('ends the stroke on a tablet hover move instead of painting it', () => {
+    // Buttons — not pressure — is the contact test: WKWebView's 0.5 pressure
+    // sentinel and a lingering native pressure both make pressure lie. The
+    // guard also covers tablet events that arrive as pointerType 'mouse'
+    // (native pressure injected by the host), which a pen-only check missed.
+    expect(ENGINE_SOURCE).toContain("const tabletInput = s.pointerType === 'pen' || this.pencilSeen")
+    expect(ENGINE_SOURCE).toContain('if (tabletInput && s.buttons === 0) {')
     expect(ENGINE_SOURCE).toContain('this.stroke.ending = true;')
-    const hoverAt = ENGINE_SOURCE.indexOf('s.pressure <= 0 && s.buttons === 0')
+    const hoverAt = ENGINE_SOURCE.indexOf('if (tabletInput && s.buttons === 0) {')
     const pushAt = ENGINE_SOURCE.indexOf('this.pushSample(s);', hoverAt)
     expect(hoverAt, 'the hover guard exists').toBeGreaterThan(-1)
     expect(pushAt, 'the hover guard sits before the sample is queued').toBeGreaterThan(hoverAt)
