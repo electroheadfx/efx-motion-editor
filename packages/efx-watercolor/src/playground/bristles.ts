@@ -99,14 +99,23 @@ export const BRISTLE_SOFTNESS = 0.09;
  */
 export const BRISTLE_FEATHER_REACH = 0.3;
 /**
- * The stroke's LEADING end cap at Feather 0: the fraction of the dab's
- * forward half over which the front of the mark fades. The start of a stroke
- * is soft through the reference's staggered landing ramp; without a matching
- * takeoff the mark ended on a hard dab edge (artist: "la fin est trop dure,
- * elle devrait être comme le début"). F0 gets this short cap; Feather widens
- * it to BRISTLE_FEATHER_REACH so the ends feather with the sides.
+ * The stroke's LEADING end cap: the fraction of the dab's forward half over
+ * which the front of the mark fades. The start of a stroke is soft through
+ * the reference's staggered landing ramp; without a matching takeoff the mark
+ * ended on a hard dab edge (artist: "la fin est trop dure, elle devrait être
+ * comme le début"). 2026-11-20: the cap no longer mixes toward
+ * BRISTLE_FEATHER_REACH — that constant was lowered for the SIDES, which
+ * made Feather shorten the ends. The cap now carries the gain at every
+ * Feather, and the gather breaks it into hairs like the landing does.
  */
 export const BRISTLE_FEATHER_CAP = 0.5;
+/**
+ * 2026-11-20 (artist: the end "like cutted by a knife"): the along-cap fade's
+ * gain. The cap fraction above was tuned on small marks; on a 100 px brush it
+ * spans ~30 px and reads as a cut. 1.8 lengthens the taper while leaving the
+ * LATERAL fade (which owns its own constants) untouched.
+ */
+export const BRISTLE_CAP_GAIN = 1.8;
 /**
  * The lateral fade's start anchor for Feather > 0. The 2026-11-20 white-seam
  * ruling supersedes the earlier "even F0 keeps a soft lateral edge" cut: at

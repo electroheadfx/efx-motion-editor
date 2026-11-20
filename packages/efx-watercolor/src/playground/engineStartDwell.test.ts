@@ -60,7 +60,7 @@ function stroke(started: boolean): Record<string, unknown> {
   }
 }
 
-function harness(seed: Record<string, unknown>, queue: Array<Record<string, number>>): Harness {
+function harness(seed: Record<string, unknown>, queue: Array<Record<string, number>>, brushId = 'flat'): Harness {
   const engine = Object.create(WatercolorEngine.prototype) as unknown as Harness & Record<string, unknown>
   engine.dw = 1
   engine.dh = 1
@@ -68,6 +68,9 @@ function harness(seed: Record<string, unknown>, queue: Array<Record<string, numb
   engine.schedule = () => undefined
   engine.stroke = seed
   engine.queue = queue
+  // The classic response keeps the start-dwell law; a BRISTLE response never
+  // dwells (2026-11-20: the full-dab-per-tick end cap the artist reported).
+  engine.brush = { id: brushId }
   engine.stampCalls = []
   engine.traceCalls = []
   // The deposit sink AND the curve tracer are stubbed: this file pins the
@@ -103,6 +106,12 @@ describe('quick 261116-rp start-dwell law', () => {
     const engine = harness(stroke(true), [sample(0.7, 0.5)])
     engine.processInput(1 / 60)
     expect(engine.traceCalls).toHaveLength(1)
+    expect(engine.stampCalls).toEqual([])
+  })
+
+  it('a BRISTLE brush never dwell-stamps — the artist’s release cap', () => {
+    const engine = harness(stroke(true), [], 'bristle-flat')
+    for (let tick = 0; tick < 4; tick += 1) engine.processInput(1 / 60)
     expect(engine.stampCalls).toEqual([])
   })
 })

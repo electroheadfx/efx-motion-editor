@@ -61,6 +61,9 @@ import {
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { f16ToF32 } from '../../src/playground/half'
 import { LAST_TOUCH_DRY_SECONDS } from '../../src/playground/bristles'
+import { toEngineParams } from '../../src/playground/params'
+import { buildBrushForStroke } from '../../src/playground/brushBridge'
+import { pigmentFromHex } from '../../src/playground/spectral'
 import { measureScene, type Rgba } from './metrics'
 
 const SHEET_W = 800
@@ -135,6 +138,27 @@ interface SceneSpec {
   readonly edgePair?: number
   /** MEASUREMENT-ONLY: the edge-pair scenes' pickup (default 100). */
   readonly pairPickup?: number
+  /** MEASUREMENT-ONLY: a tiny near-tap stroke (the artist's box-at-release). */
+  readonly shortTap?: boolean
+  /**
+   * MEASUREMENT-ONLY: the live mouse sample pattern — normal speed, then a
+   * slow tail at the release. p = -1 keeps the sentinel, so the engine derives
+   * pressure from speed exactly like the live pointer path.
+   */
+  readonly slowTail?: boolean
+  /** MEASUREMENT-ONLY: the slow-tail stroke's pressure (default the -1 sentinel = mouse). */
+  readonly tailPressure?: number
+  /**
+   * MEASUREMENT-ONLY: repeat the last sample this many times — the pointer
+   * RESTING at the release (one dwell tick per repeat). The artist's end cap.
+   */
+  readonly pauseTail?: number
+  /** MEASUREMENT-ONLY: drive the REAL pointer listeners (the live path). */
+  readonly liveEnd?: boolean
+  /** MEASUREMENT-ONLY: the live path's pointer is a pen (default mouse). */
+  readonly livePen?: boolean
+  /** MEASUREMENT-ONLY: the live path's brush size in px (default blueSize·3). */
+  readonly liveSize?: number
   /** Sheet override. Absent → Cold Press. */
   readonly paper?: PaperPreset
   /**
@@ -332,6 +356,25 @@ const SCENES: readonly SceneSpec[] = [
   // twin is edge-pair-f100 with Pickup 0, so the drag's fingerprint is a
   // measured delta between the two, never an eyeballed one.
   { name: 'edge-pair-p0-f100', band: false, stroke: false, pickup: null, feather: null, body: null, edgePair: 100, pairPickup: 0 },
+  // MEASUREMENT-ONLY (2026-11-20, the artist's box-at-release): a near-tap
+  // stroke at a big size with the artist's bag — a single isolated dab.
+  { name: 'short-cap', band: false, stroke: true, pickup: 100, feather: 74, body: 100, dry: 100, load: 100, refill: 0, color: '#3a5f8a', shortTap: true, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  // MEASUREMENT-ONLY (2026-11-20, the release block): normal speed then a
+  // nearly-still tail with the mouse sentinel — the artist's end block.
+  { name: 'end-block', band: false, stroke: true, pickup: 100, feather: 74, body: 100, dry: 100, load: 100, refill: 0, color: '#3a5f8a', slowTail: true, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  // MEASUREMENT-ONLY (2026-11-20, the end cap): a normal stroke resting at the
+  // release — the dwell stamp the artist sees as a block, pen pressure.
+  { name: 'end-cap', band: false, stroke: true, pickup: 100, feather: 74, body: 100, dry: 100, load: 100, refill: 0, color: '#3a5f8a', pauseTail: 4, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'live-end-mouse', band: false, stroke: false, pickup: null, feather: null, body: null, liveEnd: true, pauseTail: 4, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'live-end-mouse-nopause', band: false, stroke: false, pickup: null, feather: null, body: null, liveEnd: true, pauseTail: 0, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'live-end-pen', band: false, stroke: false, pickup: null, feather: null, body: null, liveEnd: true, livePen: true, pauseTail: 4, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  // The artist's live case at the tested size: acrylic defaults (Feather 100),
+  // size 117, the real pointer path, a two-tick rest before the lift.
+  { name: 'live-end-117', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'live-end-117-f0', band: false, stroke: false, pickup: null, feather: 0, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'live-end-117-f50', band: false, stroke: false, pickup: null, feather: 50, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'end-cap-control', band: false, stroke: true, pickup: 100, feather: 74, body: 100, dry: 100, load: 100, refill: 0, color: '#3a5f8a', pauseTail: 0, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  { name: 'end-block-pen', band: false, stroke: true, pickup: 100, feather: 74, body: 100, dry: 100, load: 100, refill: 0, color: '#3a5f8a', slowTail: true, tailPressure: 1, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
 ]
 
 // --- the fixed path ---------------------------------------------------------
@@ -972,16 +1015,70 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
       finalPaper = captureCanvas(engine.exportCanvas('paper'))
       finalPigment = captureCanvas(engine.exportCanvas('pigment'))
       finalCoverage = captureCanvas(engine.exportCoverageCanvas())
+    } else if (spec.liveEnd) {
+      const size = spec.liveSize ?? Math.max(8, Math.round(blueSize * 3))
+      const bag = paramsBag(size, 100, spec.feather ?? 74, 100, 100, 100, 0, 0)
+      if (spec.bagOverride !== undefined) Object.assign(bag, spec.bagOverride)
+      engine.setParams(toEngineParams(bag as never))
+      engine.setBrush(buildBrushForStroke(BRUSH_ID))
+      engine.setPigment(pigmentFromHex('#3a5f8a'))
+      engine.setTool('brush')
+      const canvas = (engine as unknown as { canvas: HTMLCanvasElement }).canvas
+      canvas.style.cssText = 'position:fixed;left:0;top:0;width:800px;height:600px'
+      if (!canvas.parentElement) document.body.appendChild(canvas)
+      // The probe's canvas has no layout, so the engine's own DOM -> UV mapping
+      // reads zeros; feed UV directly and keep the LIVE pipeline
+      // (pointerdown/move/up -> pushSample -> processInput) under test.
+      let target: [number, number] = [0, 0]
+      ;(engine as unknown as { toUv: (e: PointerEvent) => [number, number] }).toUv = () => target
+      const fire = (type: string, u: number, v: number, buttons: number, pressure: number): void => {
+        target = [u, v]
+        canvas.dispatchEvent(new PointerEvent(type, {
+          pointerId: 7, pointerType: spec.livePen ? 'pen' : 'mouse', isPrimary: true,
+          buttons, button: 0,
+          clientX: 0, clientY: 0,
+          pressure, bubbles: true, cancelable: true,
+        }))
+      }
+      const tick = (): void => { engine.tick(1 / 60) }
+      const pauseAt = spec.pauseTail ?? 4
+      fire('pointerdown', 0.3, 0.25, 1, spec.livePen ? 0.7 : 0.5)
+      tick()
+      for (let k = 1; k <= 30; k += 1) {
+        fire('pointermove', 0.2 + k * 0.02, 0.2 + k * 0.02, 1, spec.livePen ? 0.7 : 0.5)
+        tick()
+      }
+      for (let k = 0; k < pauseAt; k += 1) tick()
+      fire('pointerup', 0.8, 0.8, 0, spec.livePen ? 0.3 : 0.5)
+      tick()
+      for (let k = 0; k < SETTLE_TICKS; k += 1) tick()
+      finalPaper = captureCanvas(engine.exportCanvas('paper'))
+      finalPigment = captureCanvas(engine.exportCanvas('pigment'))
+      finalCoverage = captureCanvas(engine.exportCoverageCanvas())
     } else if (spec.stroke) {
       const bag = paramsBag(blueSize, spec.pickup ?? 0, spec.feather ?? 0, spec.body ?? 0, spec.dry ?? 0, spec.load ?? 50, 0, spec.refill ?? 0)
       if (spec.water !== undefined) bag.water = spec.water
       if (spec.bagOverride !== undefined) Object.assign(bag, spec.bagOverride)
       const passes = spec.passes ?? 1
+      const short = spec.shortTap === true
+      const pts = (i: number): readonly AquarellePoint[] => {
+        if (!spec.slowTail) {
+          const base = short ? linePoints(0.47, 0.5, 0.495, 0.5) : linePoints(0.22, 0.5 + (i - (passes - 1) / 2) * 0.09, 0.78, 0.5 + (i - (passes - 1) / 2) * 0.09 + 0.01)
+          if (spec.pauseTail === undefined) return base
+          const last = base[base.length - 1]!
+          const out = [...base]
+          for (let k = 0; k < spec.pauseTail; k += 1) out.push(last)
+          return out
+        }
+        // Normal-speed descent, then three nearly-still samples at the lift.
+        const tail: AquarellePoint[] = []
+        const pp = spec.tailPressure ?? -1
+        for (let k = 0; k <= 10; k += 1) tail.push({ x: 0.5, y: 0.2 + k * 0.05, p: pp, tx: 0, ty: 0, tw: 0 })
+        for (const y of [0.703, 0.7045, 0.7055]) tail.push({ x: 0.5, y, p: pp, tx: 0, ty: 0, tw: 0 })
+        return tail
+      }
       for (let i = 0; i < passes; i += 1) {
-        const y = 0.5 + (i - (passes - 1) / 2) * 0.09
-        adapter.applyStroke(
-          makeStroke(spec.color ?? BLUE_COLOR, bag, 0x7ec001 + i, linePoints(0.22, y, 0.78, y + 0.01)),
-        )
+        adapter.applyStroke(makeStroke(spec.color ?? BLUE_COLOR, bag, 0x7ec001 + i, pts(i)))
       }
       settle()
       finalPaper = captureCanvas(engine.exportCanvas('paper'))

@@ -953,8 +953,9 @@ uniform float uSoftness;     // the reference's band (0.09), never Feather-drive
 uniform float uFeather;      // studio Feather 0..1: the mark's edge law
 uniform float uFeatherReach; // fraction of the silhouette the fade opens over
 uniform float uFeatherEdge;  // silhouette radius, in nominal footprint units
-uniform float uFeatherCap;   // Feather-0 leading end cap, fraction of the radius
+uniform float uFeatherCap;   // leading end cap, fraction of the radius (all Feathers)
 uniform float uFeatherMin;   // Feather-0 lateral fade, fraction of the silhouette
+uniform float uCapGain;      // the along-cap fade's gain (BRISTLE_CAP_GAIN)
 uniform float uAlongPx;      // cumulative distance along the stroke, doc texels
 uniform float uStrokeDistPx; // the same cumulative distance for the landing ramp
 uniform float uHalfWidthPx;  // the dab's half-width in doc texels
@@ -1152,7 +1153,6 @@ Gathered gatherBristle(vec2 uv){
   float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);
   float threshold = uGrain * (1.0 - height) - 0.25;
   float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, lateral));
-  float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;
   // Studio Feather (artist's rulings 2026-11-19, revised 2026-11-20, then the
   // 2026-11-20 white-seam ruling): Feather owns the mark's edge, and F0 must
   // read as PAINT, not as a blurred border. At F0 the rim is therefore the
@@ -1175,19 +1175,52 @@ Gathered gatherBristle(vec2 uv){
   // texel, between the full paint and the faded depth, so a wide Feather reads
   // as a wider dry fringe instead of a uniform wash. F0 is untouched by
   // construction (uFeather scales it to zero).
-  float fadeStreak = noise1(across * 37.0 + uAlongPx / max(uStreakLen * 5.0, 1.0) + 11.3);
+  // 2026-11-20 (artist: the edges read "very pixelate aliased"): the
+  // ragged fade's across frequency was a fixed 37, i.e. ~80 hair cells over
+  // the brush whatever its pixel size — under ~2 px per hair on a 117 px
+  // brush, below the sampling grid. Tie it to the brush's pixel half-width
+  // (about one hair per 5 px, floored at 6 and capped at 40 cells).
+  float hairFreq = clamp(uHalfWidthPx / 5.0, 6.0, 40.0);
+  float fadeStreak = noise1(across * hairFreq + uAlongPx / max(uStreakLen * 5.0, 1.0) + 11.3);
   float raggedFade = mix(lateralFade, 1.0, smoothstep(0.35, 0.75, fadeStreak));
   float featherFade = mix(1.0, raggedFade, uFeather);
-  // The stroke's FRONT CAP. The gather's along coordinate is
+  // The stroke's CAPS. The gather's along coordinate is
   // q.y = -(p · travel)/radius (uAxis is bound as the stroke normal), so the
-  // leading half is q.y < 0. ONLY the leading side fades: an interior texel's
-  // last covering dab sits at its trailing rim (q.y = +1), so a symmetric
-  // along fade re-writes the core with near-zero carried values — the failure
-  // that killed the radial cut. The final dab's leading half is never
-  // overwritten, so this fade is exactly the mark's end cap, and the start
-  // (the first dab's trailing half) is untouched.
-  float capW = mix(uFeatherCap, uFeatherReach, uFeather);
-  float alongFade = 1.0 - smoothstep(1.0 - capW, 1.0, max(-q.y, 0.0));
+  // leading half is q.y < 0. ONLY the leading side fades on a normal dab: an
+  // interior texel's last covering dab sits at its trailing rim (q.y = +1), so
+  // a blanket symmetric fade re-writes the core weak (measured: interior alpha
+  // 0.84 -> 0.61). The exception is the stroke's OWN START: the first dab's
+  // trailing half is the only trailing edge that is ever exposed. It fades
+  // too, while the stroke has not yet travelled half a width — without it an
+  // isolated dab (a short click, a fast stroke, the release dab) is a
+  // hard-edged RECTANGLE, the artist's "box brush" at every size.
+  //
+  // 2026-11-20 (the artist's live end report): Feather used to mix the cap
+  // from BRISTLE_FEATHER_CAP down to BRISTLE_FEATHER_REACH. REACH was later
+  // lowered to 0.30 for the SIDES, which inverted this control: F100 got the
+  // SHORTEST end taper. The cap is now Feather-independent and always carries
+  // the full gain — F0 is unchanged, F100 stops shortening.
+  float capW = clamp(uFeatherCap * uCapGain, 0.0, 0.85);
+  float exposedTrail = 1.0 - smoothstep(0.0, 1.0, uStrokeDistPx / max(uHalfWidthPx, 1.0));
+  float along = mix(max(-q.y, 0.0), abs(q.y), exposedTrail);
+  // 2026-11-20 (the same report: the start reads natural, the end reads "like
+  // cutted by a knife"): the start thins per BRISTLE (the staggered landing
+  // above), while this along ramp is ONE smooth profile across the width — a
+  // clean line with a soft halo, which the eye reads as a cut. The hairs
+  // instead LIFT OFF at different points inside the cap band, mirroring the
+  // landing's stagger. A plain per-hair mask over the smooth ramp was tried
+  // and rejected: it restored whole hairs PAST the radius, so they ran to the
+  // deposit rect and ended on a straight wall with a notch (the artist's
+  // 2026-11-20 end-block crop). Every hair now ends at or before the radius.
+  // The trailing half is untouched (along = 0 there): interiors never thin.
+  float hairEnd = 1.0 - (1.0 - fadeStreak) * capW * 0.6;
+  float alongFade = 1.0 - smoothstep(hairEnd - capW * 0.4, hairEnd, along);
+  // 2026-11-20 (the artist's dry-end reference): the fade also runs through
+  // the paper THRESHOLD, not just the film. As it lowers the coverage, the
+  // tooth opens pores FIRST, so the end breaks into specks like a drying
+  // brush instead of thinning as one solid veil. The carried film keeps the
+  // same fade so the surviving specks fade with it.
+  float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade;
   featherFade *= alongFade;
   // The band itself is the reference's constant; its width never moves.
   float inked = uSoftness > 0.0

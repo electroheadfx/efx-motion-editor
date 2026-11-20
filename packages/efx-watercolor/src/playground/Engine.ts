@@ -1,6 +1,7 @@
 import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, isBristleResponse, tipRowsForUpload, type Brush } from './brushes';
 import {
   BRISTLE_CAP,
+  BRISTLE_CAP_GAIN,
   BRISTLE_DRY_EDGE,
   BRISTLE_FEATHER_CAP,
   BRISTLE_FEATHER_EDGE,
@@ -312,6 +313,30 @@ interface StepMeta {
   whole?: WholeDoc; paperOrigin?: [number, number];
 }
 const STROKE_LABEL: Record<Tool, string> = { brush: 'Brush stroke', water: 'Water', pen: 'Pen', lift: 'Lift' };
+/**
+ * 2026-11-20 (artist): the synthetic (pressureless pointer) speed → pressure
+ * map. Speed is in document heights per second and every drawing stroke is
+ * several units, so the ported 0.95 slope pinned the WHOLE body to the 0.12
+ * floor: with the contact law (FAST 0.42 × pen) that is below every bristle's
+ * touchReach (0.27..0.9), so moving dabs printed nothing and only the still
+ * start/release reached the SLOW pressure — the artist's empty body with a
+ * block at each end. A mouse keeps a print-capable ~0.9 while moving; the
+ * speed response rides the contact law's SLOW/FAST ramp instead.
+ */
+const SIM_PRESSURE_SLOPE = 0.1;
+const SIM_PRESSURE_FLOOR = 0.9;
+/**
+ * 2026-11-20 (artist's release block): the speed EMA's time constant, in
+ * 1/seconds. The ported 10/s (100 ms) resolved a normal release deceleration
+ * into the SLOW contact pressure within two or three samples, and the start's
+ * acceleration likewise — every stroke began and ended with a full-footprint
+ * patch the body did not have (the artist's "cap", present with pen and
+ * mouse). 0.6/s (~1.7 s window) makes speed a LONG-window quantity: within a
+ * normal stroke the contact pressure is steady, so the mark is one consistent
+ * band; only a sustained fast or slow motion moves it. Measured on the live
+ * pointer path: the caps are gone and the stroke reads uniform.
+ */
+const SPEED_SMOOTHING = 0.6;
 
 // WebGL2 enum values inlined so this module imports without a WebGL2
 // global (tests / SSR). Values are fixed by the WebGL2 spec.
@@ -2314,8 +2339,15 @@ export class WatercolorEngine {
       const k = s.pointerType === 'mouse' ? 0.5 : 0.65;
       const nx = s.cx + (q.x - s.cx) * k, ny = s.cy + (q.y - s.cy) * k;
       const len = Math.hypot((nx - s.cx) * aspect, ny - s.cy);
-      s.speed += (len / sdt - s.speed) * (1 - Math.exp(-sdt * 10));
-      const target = clamp(1.18 - s.speed * 0.95, 0.12, 1);
+      s.speed += (len / sdt - s.speed) * (1 - Math.exp(-sdt * SPEED_SMOOTHING));
+      // 2026-11-20 (artist: "impossible to draw at normal speed"): the ported
+      // slope (1.18 - 0.95·speed, floor 0.12) was scaled for different speed
+      // units — ANY drawing motion is ~3 document heights per second here, so
+      // every moving dab landed at the 12 % floor (a nearly invisible body)
+      // and only the still start and release reached full pressure: the faint
+      // stroke with a block at each end. Gentle slope, real floor: a fast
+      // flick keeps a visible wash, a pause still presses.
+      const target = clamp(1.05 - s.speed * SIM_PRESSURE_SLOPE, SIM_PRESSURE_FLOOR, 1);
       s.simPressure += (target - s.simPressure) * (1 - Math.exp(-sdt * 6));
       const pr = this.pressureOf(s, q.p);
       const vx = (nx - s.cx) / sdt, vy = (ny - s.cy) / sdt;
@@ -2333,8 +2365,16 @@ export class WatercolorEngine {
     this.queue = [];
     // the curve trails half a sample behind; catch up once the pointer rests or lifts
     if (s.started && (!s.moved || s.ending) && (s.x !== s.cx || s.y !== s.cy)) this.trace(s, s.cx, s.cy, s.cx, s.cy, s.pr, 0, 0);
-    // resting in place: pigment keeps soaking in, water keeps pooling
-    if (!s.moved && s.started && !s.ending && !startedThisTick) this.stampScripted(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1), 1);
+    // resting in place: pigment keeps soaking in, water keeps pooling.
+    // 2026-11-20 (artist's end cap): a BRISTLE stroke never dwells — the
+    // touch pass lerps a full gather dab every tick, and the classic path's
+    // `dwell = dt·8` amount never reaches the bristle coverage, so a pointer
+    // resting for a few frames before the lift stamped a solid, unbroken
+    // full-width patch at the release. Brush marks are movement-driven.
+    const bristleStroke = s.tool === 'brush' && isBristleResponse(this.brush);
+    if (!s.moved && s.started && !s.ending && !startedThisTick && !bristleStroke) {
+      this.stampScripted(s, s.x, s.y, this.pressureOf(s, -1), 0, 0, 0, dt, this.widthFactorAt(s, 1), 1);
+    }
     if (s.ending) {
       this.stroke = null;
       this.restoreStrokePigment();
@@ -3043,6 +3083,7 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uFeatherEdge!, BRISTLE_FEATHER_EDGE);
     gl.uniform1f(p.u.uFeatherCap!, BRISTLE_FEATHER_CAP);
     gl.uniform1f(p.u.uFeatherMin!, BRISTLE_FEATHER_MIN);
+    gl.uniform1f(p.u.uCapGain!, BRISTLE_CAP_GAIN);
     gl.uniform1f(p.u.uAlongPx!, alongPx);
     gl.uniform1f(p.u.uStrokeDistPx!, alongPx);
     gl.uniform1f(p.u.uHalfWidthPx!, r * this.dh);

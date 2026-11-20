@@ -923,7 +923,9 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     expectContains(gather, 'float local = inkSum / max(profileSum, 0.5);')
     expectContains(gather, 'float body = mix(wide / 5.0 * presence, local, uHairs);')
     expectContains(gather, 'float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, lateral));')
-    expectContains(gather, 'float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;')
+    // 2026-11-20: the along fade is pushed through the threshold so the end
+    // breaks into paper-tooth specks (the artist's dry-end reference).
+    expectContains(gather, 'float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade;')
     expectContains(gather, 'float inked = uSoftness > 0.0')
     expectContains(gather, ': step(threshold, coverage);')
     expectContains(gather, 'g.coverage = inked * featherFade;')
@@ -1299,13 +1301,27 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // 2026-11-20: the fade breaks into hairs — a smooth ramp read as a white
     // veil at F100 (the artist's live report). F0 stays exact: uFeather scales
     // the ragged term to zero.
-    expectContains(g, 'float fadeStreak = noise1(across * 37.0 + uAlongPx / max(uStreakLen * 5.0, 1.0) + 11.3);')
+    expectContains(g, 'float hairFreq = clamp(uHalfWidthPx / 5.0, 6.0, 40.0);')
+    expectContains(g, 'float fadeStreak = noise1(across * hairFreq + uAlongPx / max(uStreakLen * 5.0, 1.0) + 11.3);')
     expectContains(g, 'float raggedFade = mix(lateralFade, 1.0, smoothstep(0.35, 0.75, fadeStreak));')
     expectContains(g, 'float featherFade = mix(1.0, raggedFade, uFeather);')
     // The front cap is LEADING-only (q.y < 0): an interior texel's last dab
     // sits at its trailing rim, so a symmetric along fade would erase the core.
-    expectContains(g, 'float capW = mix(uFeatherCap, uFeatherReach, uFeather);')
-    expectContains(g, 'float alongFade = 1.0 - smoothstep(1.0 - capW, 1.0, max(-q.y, 0.0));')
+    // 2026-11-20: the cap no longer mixes toward uFeatherReach (that inverted
+    // the control — F100 got the shortest end taper); it carries the gain at
+    // every Feather.
+    expectContains(g, 'float capW = clamp(uFeatherCap * uCapGain, 0.0, 0.85);')
+    // 2026-11-20 (artist's box-at-release): the stroke's first dab fades its
+    // trailing half too while the stroke is inside its first half-width;
+    // later dabs keep the leading-only cap, so the core never thins.
+    expectContains(g, 'float exposedTrail = 1.0 - smoothstep(0.0, 1.0, uStrokeDistPx / max(uHalfWidthPx, 1.0));')
+    expectContains(g, 'float along = mix(max(-q.y, 0.0), abs(q.y), exposedTrail);')
+    // The end report: one smooth along profile reads as a knife cut, so the
+    // hairs LIFT OFF at staggered points inside the cap band (mirroring the
+    // landing ramp). The per-hair mask must never restore paint past the
+    // radius — that ran whole hairs to the deposit rect (end-block crop).
+    expectContains(g, 'float hairEnd = 1.0 - (1.0 - fadeStreak) * capW * 0.6;')
+    expectContains(g, 'float alongFade = 1.0 - smoothstep(hairEnd - capW * 0.4, hairEnd, along);')
     expectContains(g, 'featherFade *= alongFade;')
     // F0 calms the paper tooth at the rim so the edge follows the smooth
     // bristle profile; it must never FABRICATE paint there (the old max() skin
