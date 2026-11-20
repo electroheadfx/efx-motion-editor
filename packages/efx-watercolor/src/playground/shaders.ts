@@ -995,6 +995,11 @@ uniform float uTipRotation;
 uniform float uRough;
 uniform float uJitter;
 uniform float uTipMix;
+// 2026-11-20 (the artist's pen end block): 1 when this dab is a catch-up
+// impression — the pointer stopped, so no next dab follows to cover its
+// trailing half. Its cap must fade BOTH halves; a running dab (0) keeps the
+// leading-only cap so overlapping dabs never thin the stroke's core.
+uniform float uEndCap;
 
 // The tip mask, sampled in the SAME rotated tip space footprintMask
 // (FOOTPRINT_MASK) uses: the aspect squash, the recorded rotation, the
@@ -1211,7 +1216,9 @@ Gathered gatherBristle(vec2 uv){
   // Dry 0 so smoothstep's edges never collapse into a hard cut.
   float dryCap = mix(uDryCapFloor, 1.0, smoothstep(0.0, uDryCapFull, uDrySpeed));
   float capW = clamp(uFeatherCap * uCapGain * dryCap, 0.0, 0.85);
-  float exposedTrail = 1.0 - smoothstep(0.0, 1.0, uStrokeDistPx / max(uHalfWidthPx, 1.0));
+  float exposedTrail = max(
+    1.0 - smoothstep(0.0, 1.0, uStrokeDistPx / max(uHalfWidthPx, 1.0)),
+    uEndCap);
   float along = mix(max(-q.y, 0.0), abs(q.y), exposedTrail);
   // 2026-11-20 (the same report: the start reads natural, the end reads "like
   // cutted by a knife"): the start thins per BRISTLE (the staggered landing
@@ -1225,13 +1232,22 @@ Gathered gatherBristle(vec2 uv){
   // The trailing half is untouched (along = 0 there): interiors never thin.
   float hairEnd = 1.0 - (1.0 - fadeStreak) * capW * 0.6;
   float alongFade = 1.0 - smoothstep(hairEnd - capW * 0.4, hairEnd, along);
+  // 2026-11-20 (the artist's pen end block): the trailing half carries no
+  // fade because the NEXT dab normally covers it — but the dab's trailing
+  // RECTANGLE (outside the footprint, q.y > 1) was painted at full weight,
+  // so a stroke that stopped there re-inked a solid block behind its last
+  // dab (the hard edge = the deposit rect). A dab's support ends at its own
+  // tip: trim the trailing side at the footprint. Interior texels sit at
+  // q.y <= one spacing (far below the trim), so a running stroke keeps its
+  // exact deposit and only the exposed trailing rect opens into pores.
+  float trailSupport = 1.0 - smoothstep(0.95, 1.2, q.y);
   // 2026-11-20 (the artist's dry-end reference): the fade also runs through
   // the paper THRESHOLD, not just the film. As it lowers the coverage, the
   // tooth opens pores FIRST, so the end breaks into specks like a drying
   // brush instead of thinning as one solid veil. The carried film keeps the
   // same fade so the surviving specks fade with it.
-  float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade;
-  featherFade *= alongFade;
+  float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade * trailSupport;
+  featherFade *= alongFade * trailSupport;
   // The band itself is the reference's constant; its width never moves.
   float inked = uSoftness > 0.0
     ? smoothstep(threshold - uSoftness, threshold + uSoftness, coverage)

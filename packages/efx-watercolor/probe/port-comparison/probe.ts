@@ -64,7 +64,27 @@ import { LAST_TOUCH_DRY_SECONDS } from '../../src/playground/bristles'
 import { toEngineParams } from '../../src/playground/params'
 import { buildBrushForStroke } from '../../src/playground/brushBridge'
 import { pigmentFromHex } from '../../src/playground/spectral'
+import { registerMask } from '../../src/brushes/maskRegistry'
+import { TIP_MASK_EDGE } from '../../src/brushes/deriveMask'
 import { measureScene, type Rgba } from './metrics'
+
+/** MEASUREMENT-ONLY: a synthetic textured tip — 14 hairs dashed ALONG the
+ *  stroke, so a directional blur's effect is measurable. */
+const TEX_ID = 'wc/probe-dashes'
+function probeTipMask(): Uint8Array {
+  const E = TIP_MASK_EDGE
+  const m = new Uint8Array(E * E)
+  for (let y = 0; y < E; y += 1) {
+    const v = (y + 0.5) / E
+    const dash = Math.sin(v * Math.PI * 46) > -0.2
+    for (let x = 0; x < E; x += 1) {
+      const u = (x + 0.5) / E
+      const hair = Math.abs(((u * 14) % 1) - 0.5) * 2 < 0.55
+      m[y * E + x] = hair && dash ? 255 : 0
+    }
+  }
+  return m
+}
 
 const SHEET_W = 800
 const SHEET_H = 600
@@ -159,6 +179,17 @@ interface SceneSpec {
   readonly livePen?: boolean
   /** MEASUREMENT-ONLY: the live path's brush size in px (default blueSize·3). */
   readonly liveSize?: number
+  /**
+   * MEASUREMENT-ONLY: the live path's per-event UV step (default 0.02). A
+   * FAST pen step leaves a smoothing lag larger than one dab spacing, which
+   * is when the trailing catch-up actually stamps the final impression.
+   */
+  readonly liveStep?: number
+  /**
+   * MEASUREMENT-ONLY: register a synthetic, anisotropic tip mask (14 dashes
+   * along the stroke) and paint with it — the artist's textured tip at size.
+   */
+  readonly tex?: boolean
   /** Sheet override. Absent → Cold Press. */
   readonly paper?: PaperPreset
   /**
@@ -379,6 +410,13 @@ const SCENES: readonly SceneSpec[] = [
   // The Dry-100 tail at the Load-50 calibration: depletion is visible here
   // (Load 100 is a 7x tank), so the empty distance is what the eye reads.
   { name: 'live-end-117-dry100-l50', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 50, flow: 60, bleed: 22, dry: 100, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  // A textured tip at size 300: the tip motif's stamping is what the artist
+  // sees at 200 px+, and the directional blur is gated on this size.
+  { name: 'live-end-big-tex', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 300, pauseTail: 2, tex: true, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  // 2026-11-20 (the artist's pen end block): a pen, a mid brush, and a pause
+  // before the lift — the last dab is stamped by the idle catch-up, so its
+  // un-faded trailing rectangle used to re-ink a solid block.
+  { name: 'live-end-pen-big', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, livePen: true, liveSize: 220, liveStep: 0.05, pauseTail: 6, bagOverride: { water: 60, body: 85, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
   { name: 'live-end-117-dry70-l50', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 117, pauseTail: 2, bagOverride: { water: 26, load: 50, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
   { name: 'end-cap-control', band: false, stroke: true, pickup: 100, feather: 74, body: 100, dry: 100, load: 100, refill: 0, color: '#3a5f8a', pauseTail: 0, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
   { name: 'end-block-pen', band: false, stroke: true, pickup: 100, feather: 74, body: 100, dry: 100, load: 100, refill: 0, color: '#3a5f8a', slowTail: true, tailPressure: 1, bagOverride: { water: 26, flow: 57, bleed: 22, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
@@ -1027,7 +1065,12 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
       const bag = paramsBag(size, 100, spec.feather ?? 74, 100, 100, 100, 0, 0)
       if (spec.bagOverride !== undefined) Object.assign(bag, spec.bagOverride)
       engine.setParams(toEngineParams(bag as never))
-      engine.setBrush(buildBrushForStroke(BRUSH_ID))
+      if (spec.tex) {
+        registerMask(TEX_ID, probeTipMask())
+        engine.setBrush(buildBrushForStroke(BRUSH_ID, { textureId: TEX_ID }))
+      } else {
+        engine.setBrush(buildBrushForStroke(BRUSH_ID))
+      }
       engine.setPigment(pigmentFromHex('#3a5f8a'))
       engine.setTool('brush')
       const canvas = (engine as unknown as { canvas: HTMLCanvasElement }).canvas
@@ -1049,10 +1092,12 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
       }
       const tick = (): void => { engine.tick(1 / 60) }
       const pauseAt = spec.pauseTail ?? 4
+      const step = spec.liveStep ?? 0.02
       fire('pointerdown', 0.3, 0.25, 1, spec.livePen ? 0.7 : 0.5)
       tick()
-      for (let k = 1; k <= 30; k += 1) {
-        fire('pointermove', 0.2 + k * 0.02, 0.2 + k * 0.02, 1, spec.livePen ? 0.7 : 0.5)
+      const moves = Math.max(4, Math.round(0.6 / step))
+      for (let k = 1; k <= moves; k += 1) {
+        fire('pointermove', 0.2 + k * step, 0.2 + k * step, 1, spec.livePen ? 0.7 : 0.5)
         tick()
       }
       for (let k = 0; k < pauseAt; k += 1) tick()

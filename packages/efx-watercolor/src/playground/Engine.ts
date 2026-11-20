@@ -517,6 +517,15 @@ export class WatercolorEngine {
   private smearCanvas!: Target;
   /** 64-21: the stroke object whose set is seeded — a NEW stroke always re-seeds. */
   private bristleStroke: Stroke | null = null;
+  /**
+   * 2026-11-20 (the artist's pen end block): dabs laid by the trailing
+   * catch-up have no NEXT dab to cover their trailing half, so they are
+   * tentative end impressions — the gather fades both halves. The following
+   * movement dabs, laid with the leading-only cap, re-commit any trailing
+   * band a mid-stroke catch-up thinned; at a real stop nothing follows and
+   * the final impression dissolves into the same specks as the start.
+   */
+  private bristleEndCap = false;
   private bristleCount = 0;
   /**
    * FIX 2c — the display's edge-darkening law (`k = gran·(1+0.8·edge)`, up to
@@ -2366,7 +2375,16 @@ export class WatercolorEngine {
     }
     this.queue = [];
     // the curve trails half a sample behind; catch up once the pointer rests or lifts
-    if (s.started && (!s.moved || s.ending) && (s.x !== s.cx || s.y !== s.cy)) this.trace(s, s.cx, s.cy, s.cx, s.cy, s.pr, 0, 0);
+    if (s.started && (!s.moved || s.ending) && (s.x !== s.cx || s.y !== s.cy)) {
+      // 2026-11-20: a catch-up dab is not followed by a movement dab, so its
+      // trailing half is exposed — stamp it as a tentative end impression.
+      this.bristleEndCap = true;
+      try {
+        this.trace(s, s.cx, s.cy, s.cx, s.cy, s.pr, 0, 0);
+      } finally {
+        this.bristleEndCap = false;
+      }
+    }
     // resting in place: pigment keeps soaking in, water keeps pooling.
     // 2026-11-20 (artist's end cap): a BRISTLE stroke never dwells — the
     // touch pass lerps a full gather dab every tick, and the classic path's
@@ -2573,7 +2591,7 @@ export class WatercolorEngine {
           // in coefficient space — and its layer alpha is the same lerp's
           // weight times Body's opacity, so the film and its paint can never
           // disagree. Every other response keeps the shipped chain, untouched.
-          if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx);
+          if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx, this.bristleEndCap);
           else if (coverAmount > 0) this.coverageDeposit(dx, dy, dr, angle, coverAmount, coverDensity, c, c1[3]!, dryness, grainThr);
           else this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
           // 64-24 (D-24): the dab records its own touch AFTER depositing and
@@ -3064,7 +3082,7 @@ export class WatercolorEngine {
     return q * (1 + q * q);
   }
 
-  private bindGather(p: Program, x: number, y: number, r: number, angle: number, pr: number, alongPx: number): void {
+  private bindGather(p: Program, x: number, y: number, r: number, angle: number, pr: number, alongPx: number, endCap = false): void {
     const { gl, g } = this;
     gl.uniform1i(p.u.uPaintA!, g.bindTex(0, this.bristles.read.tex[0]!));
     gl.uniform1i(p.u.uPaintB!, g.bindTex(1, this.bristles.read.tex[1]!));
@@ -3097,6 +3115,10 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uAlongPx!, alongPx);
     gl.uniform1f(p.u.uStrokeDistPx!, alongPx);
     gl.uniform1f(p.u.uHalfWidthPx!, r * this.dh);
+    // A catch-up dab has no following dab to cover its trailing half, so its
+    // cap fades BOTH halves (the artist's pen end block); 0 keeps a running
+    // dab's leading-only cap and its exact core deposit.
+    gl.uniform1f(p.u.uEndCap!, endCap ? 1 : 0);
     gl.uniform1f(p.u.uStreak!, BRISTLE_STREAK);
     gl.uniform1f(p.u.uStreakLen!, BRISTLE_STREAK_LENGTH);
     gl.uniform1f(p.u.uStreakShare!, BRISTLE_STREAK_SHARE);
@@ -3166,7 +3188,7 @@ export class WatercolorEngine {
    * (D-28). `uScatter` is the ONE curve's `scatteringDeposit`, evaluated by the
    * caller; no fragment re-derives it.
    */
-  private bristleInk(x: number, y: number, r: number, angle: number, bodyAlpha: number, pr: number, scatter: number, alongPx: number): void {
+  private bristleInk(x: number, y: number, r: number, angle: number, bodyAlpha: number, pr: number, scatter: number, alongPx: number, endCap = false): void {
     const { gl, g } = this;
     // Same active/undo/dirty bookkeeping as brushInk and coverageDeposit:
     // this draw IS the deposit, so the rect is touched before anything lands.
@@ -3178,7 +3200,7 @@ export class WatercolorEngine {
     if (this.params.pickup > 0) this.bristleSnapshot(rect);
     const d = this.programs.bristleDeposit;
     d.bind();
-    this.bindGather(d, x, y, r, angle, pr, alongPx);
+    this.bindGather(d, x, y, r, angle, pr, alongPx, endCap);
     gl.uniform1f(d.u.uScatter!, scatter);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
@@ -3208,7 +3230,7 @@ export class WatercolorEngine {
     //    hard, and Feather 0 lost its bristle texture along with Feather 100.
     const c = this.programs.bristleCover;
     c.bind();
-    this.bindGather(c, x, y, r, angle, pr, alongPx);
+    this.bindGather(c, x, y, r, angle, pr, alongPx, endCap);
     gl.uniform1f(c.u.uCoverTarget!, bodyAlpha);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);

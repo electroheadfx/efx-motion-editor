@@ -685,7 +685,7 @@ describe('64-22 — the bristle gather rides the one curve (T-64-72)', () => {
     // not the dab's pigment amount — the deposit is the gather's lerp weight.
     // Spike 004: the sixth argument is the reference's CONTACT pressure, not
     // the pointer's (the authored `pr` still owns the footprint and radius).
-    expectContains(brush, 'if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx);')
+    expectContains(brush, 'if (bristle) this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx, this.bristleEndCap);')
     expectNotContains(brush, 'Math.pow(')
   })
 
@@ -806,6 +806,13 @@ describe('post-UAT — the bristle Body mask is gone, Body is film opacity', () 
     // An untextured bristle brush keeps its exact law: mix(1, tip, 0) == 1.
     expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uTipMix!, this.brush.textureId != null ? 1 : 0);')
     expectContains(ENGINE_SOURCE, 'gl.uniform1i(p.u.uTip!, g.bindTex(4, this.tipTexture(this.brush)));')
+    // 2026-11-20 (the artist's ruling): the texture-space directional blur
+    // was the wrong tool and is REMOVED — the tip mask is one raw sample,
+    // exactly as before, so the high-end paint is untouched. The large-brush
+    // stepping is addressed on the sampling side (motion-vector supersampling),
+    // never by blurring the texture.
+    expectNotContains(SHADERS_SOURCE, 'uTipBlur')
+    expectContains(SHADERS_SOURCE, 'return smoothstep(th, th + 0.5, t);')
   })
 
   it('keeps the pinned program and allocation counts', () => {
@@ -924,8 +931,9 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     expectContains(gather, 'float body = mix(wide / 5.0 * presence, local, uHairs);')
     expectContains(gather, 'float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, lateral));')
     // 2026-11-20: the along fade is pushed through the threshold so the end
-    // breaks into paper-tooth specks (the artist's dry-end reference).
-    expectContains(gather, 'float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade;')
+    // breaks into paper-tooth specks (the artist's dry-end reference), and
+    // the trailing rect is trimmed at the footprint (the pen end block).
+    expectContains(gather, 'float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade * trailSupport;')
     expectContains(gather, 'float inked = uSoftness > 0.0')
     expectContains(gather, ': step(threshold, coverage);')
     expectContains(gather, 'g.coverage = inked * featherFade;')
@@ -1319,15 +1327,32 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // 2026-11-20 (artist's box-at-release): the stroke's first dab fades its
     // trailing half too while the stroke is inside its first half-width;
     // later dabs keep the leading-only cap, so the core never thins.
-    expectContains(g, 'float exposedTrail = 1.0 - smoothstep(0.0, 1.0, uStrokeDistPx / max(uHalfWidthPx, 1.0));')
+    // 2026-11-20 (the artist's pen end block): a catch-up dab has no NEXT
+    // dab to cover its trailing half, so uEndCap makes its cap symmetric —
+    // the final impression dissolves into specks instead of re-inking the
+    // whole footprint. Running dabs stay leading-only (uEndCap = 0).
+    expectContains(g, 'uniform float uEndCap;')
+    expectContains(g, 'float exposedTrail = max(')
+    expectContains(g, '1.0 - smoothstep(0.0, 1.0, uStrokeDistPx / max(uHalfWidthPx, 1.0)),')
+    expectContains(g, 'uEndCap);')
     expectContains(g, 'float along = mix(max(-q.y, 0.0), abs(q.y), exposedTrail);')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uEndCap!, endCap ? 1 : 0);')
+    expectContains(ENGINE_SOURCE, 'this.bristleEndCap = true;')
+    expectContains(ENGINE_SOURCE, 'this.bristleInk(dx, dy, dr, angle, bristleBodyAlpha, contactPr, c1[3]!, alongPx, this.bristleEndCap);')
     // The end report: one smooth along profile reads as a knife cut, so the
     // hairs LIFT OFF at staggered points inside the cap band (mirroring the
     // landing ramp). The per-hair mask must never restore paint past the
     // radius — that ran whole hairs to the deposit rect (end-block crop).
     expectContains(g, 'float hairEnd = 1.0 - (1.0 - fadeStreak) * capW * 0.6;')
     expectContains(g, 'float alongFade = 1.0 - smoothstep(hairEnd - capW * 0.4, hairEnd, along);')
-    expectContains(g, 'featherFade *= alongFade;')
+    // 2026-11-20 (the artist's pen end block): the trailing half has no fade
+    // (the next dab covers it), but the trailing RECTANGLE outside the
+    // footprint was painted at full weight — a stroke that stopped there
+    // re-inked a solid block behind its last dab. The dab's support must end
+    // at its own tip; interior texels sit at q.y <= one spacing, untouched.
+    expectContains(g, 'float trailSupport = 1.0 - smoothstep(0.95, 1.2, q.y);')
+    expectContains(g, 'float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge * alongFade * trailSupport;')
+    expectContains(g, 'featherFade *= alongFade * trailSupport;')
     // F0 calms the paper tooth at the rim so the edge follows the smooth
     // bristle profile; it must never FABRICATE paint there (the old max() skin
     // left a 1 px line along the silhouette wherever the brush was dry).
