@@ -184,11 +184,15 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       edge: 65,
       granulation: 25,
       viscosity: 90,
-      body: 85,
-      emboss: 40,
-      feather: 0,
-      pickup: 60,
-      refill: 60,
+      // 2026-11-20 (artist's acrylic brush default): a bristle acrylic pick
+      // must start from the mixing bag the artist paints with — full Body,
+      // full Pickup, no Refill, full Feather and no Emboss. The rest of the
+      // D-25 retune is untouched.
+      body: 100,
+      emboss: 0,
+      feather: 100,
+      pickup: 100,
+      refill: 0,
       wetSeconds: 12,
     }),
   }),

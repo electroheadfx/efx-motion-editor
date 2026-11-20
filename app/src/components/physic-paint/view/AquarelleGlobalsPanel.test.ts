@@ -447,7 +447,7 @@ describe('Phase 64 medium dropdown', () => {
     expect(writes, 'one spread assignment, not a per-key cascade').toBe(1);
     // D-25 retuned the acrylic record: water 26 (was 8 before the retune).
     expect(aquarelleParams.value.water, 'acrylic water').toBe(26);
-    expect(aquarelleParams.value.body, 'acrylic body').toBe(85);
+    expect(aquarelleParams.value.body, 'acrylic body').toBe(100);
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
     expect(aquarelleMediumMenuOpen.value).toBe(false);
   });

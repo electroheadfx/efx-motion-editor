@@ -148,11 +148,13 @@ describe('medium records', () => {
       edge: 65,
       granulation: 25,
       viscosity: 90,
-      body: 85,
-      emboss: 40,
-      feather: 0,
-      pickup: 60,
-      refill: 60,
+      // 2026-11-20 (artist's acrylic brush default): the mixing bag a
+      // bristle acrylic pick must start from.
+      body: 100,
+      emboss: 0,
+      feather: 100,
+      pickup: 100,
+      refill: 0,
       wetSeconds: 12,
     })
   })
@@ -169,20 +171,22 @@ describe('medium records', () => {
     expect(acrylic.flow).toBeGreaterThan(50)
     expect(acrylic.wetSeconds).toBeGreaterThan(DEFAULT_CANONICAL_PARAMS.wetSeconds)
     expect(DEFAULT_CANONICAL_PARAMS.wetSeconds).toBe(7)
-    // The retune is numbers only: the ten shipped keys it does NOT touch hold
-    // their shipped values, exactly as the four companion literals assert.
+    // The retune is numbers only: the shipped keys it does NOT touch hold
+    // their values, exactly as the companion literals assert.
     expect(acrylic.load).toBe(100)
     expect(acrylic.dry).toBe(70)
     expect(acrylic.edge).toBe(65)
     expect(acrylic.granulation).toBe(25)
     expect(acrylic.viscosity).toBe(90)
-    expect(acrylic.body).toBe(85)
-    expect(acrylic.emboss).toBe(40)
-    expect(acrylic.pickup).toBe(60)
-    expect(acrylic.refill).toBe(60)
-    // No `feather` expression is added by the retune: D-22's Feather half is
+    // 2026-11-20 (artist's acrylic brush default): the five mixing knobs ride
+    // the brush pick — full Body, full Pickup, no Refill, full Feather, no
+    // Emboss. No new `feather` expression is added: D-22's Feather half is
     // discharged by composition through the existing softness band (D-25).
-    expect(acrylic.feather).toBe(0)
+    expect(acrylic.body).toBe(100)
+    expect(acrylic.emboss).toBe(0)
+    expect(acrylic.pickup).toBe(100)
+    expect(acrylic.refill).toBe(0)
+    expect(acrylic.feather).toBe(100)
   })
 
   it('derives the watercolor record from the canonical defaults', () => {
@@ -206,9 +210,12 @@ describe('medium records', () => {
   // watercolor record derives it from the canonical default, so it moves with
   // the default; the four explicit records keep their recorded 60 — the
   // Pickup-100 default is the watercolor medium's, not a blanket rewrite.
-  it('opens Pickup at 100 on the neutral medium only (D-A)', () => {
+  it('opens Pickup at 100 on the neutral medium and the acrylic record (D-A)', () => {
     expect(recordOf('watercolor').params.pickup).toBe(100)
-    for (const id of ['gouache', 'pastel', 'graphite', 'acrylic'] as const) {
+    // 2026-11-20 (artist's acrylic brush default): the acrylic record opens
+    // Pickup at 100 too — a bristle acrylic pick must start from the mixing bag.
+    expect(recordOf('acrylic').params.pickup).toBe(100)
+    for (const id of ['gouache', 'pastel', 'graphite'] as const) {
       expect(recordOf(id).params.pickup, `${id} keeps its recorded pickup`).toBe(60)
     }
   })

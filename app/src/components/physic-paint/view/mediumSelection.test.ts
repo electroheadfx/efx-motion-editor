@@ -295,7 +295,7 @@ describe('applyAquarelleMedium', () => {
     neutral.stop();
 
     applyAquarelleMedium('acrylic');
-    expect(aquarelleParams.value.body, 'acrylic landed').toBe(85);
+    expect(aquarelleParams.value.body, 'acrylic landed').toBe(100);
     const bag = countBagWrites();
     const ids = countIdWrites();
     applyAquarelleMedium('acrylic');
@@ -327,7 +327,7 @@ describe('applyAquarelleMedium', () => {
     expect(bag.count()).toBe(2);
     bag.stop();
     expect(aquarelleSelectedMediumId.value).toBe('acrylic');
-    expect(aquarelleParams.value.body).toBe(85);
+    expect(aquarelleParams.value.body).toBe(100);
   });
 
   it('keeps the medium selected after a manual global tweak', () => {
