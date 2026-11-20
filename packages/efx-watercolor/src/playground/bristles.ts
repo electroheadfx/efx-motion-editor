@@ -22,8 +22,8 @@
 //  source: spike 002 (`sources/002-acrylic-bristle-deposit/src/bristles.ts`).
 //
 //  64-22 adds the gather's two constants here, beside the stroke's other
-//  constants: §6's softness (0.09) and the Feather gain (0.25), with the
-//  band law `gatherSoftness` — one declaration, read by the engine's binder.
+//  constants: §6's softness (0.09), which never moves, and Studio's Feather
+//  reach — one declaration, read by the engine's binder.
 //
 //  64-23 adds the trace and edge laws — §4.3 (dryness, streak, broken),
 //  §4.4 (the paper-tooth threshold), §4.5 (the wide/local body), §5.3 (rim
@@ -43,8 +43,9 @@
 //  (D-A): one knob, no second curve. Each twin mirrors one expression in
 //  `shaders.ts`; the engine binds the constants as uniforms, so a literal
 //  that replaces a declared constant, or a second copy of a law, fails the
-//  source pins. Feather is the reference's SOFTNESS only: it widens §6's
-//  band through `gatherSoftness` and changes nothing else.
+//  source pins. Feather never widens §6's band: it thins the carried film
+//  radially (`BRISTLE_FEATHER_REACH`), so F0 keeps the reference's full
+//  stroke and F1 dissolves the rim.
 //
 //  THE §4.4 NAME COLLISION: `BRISTLE_GRAIN` (1.2) is the paint's paper-tooth
 //  scale from §6 — NOT `Brush.grain` (0..1, the dry re-threshold the engine's
@@ -71,13 +72,64 @@ export const BRISTLE_SPACING_PX = 1.1;
 /** The reference's bristle floor: small brushes pack tighter, not fewer (§4.1). */
 export const BRISTLE_MIN = 40;
 /**
- * §6 `paint.softness` — the half-width of the band the gather's coverage
- * threshold is smoothed by, at Feather 0. This is the reference's own
- * default, not a tuning knob: the band widens only through Feather.
+ * §6 `paint.softness` — the REFERENCE's band, and its only one: the reference
+ * has no Feather control, so every reference stroke uses this 0.09. It is a
+ * constant in Studio too: Feather thins the film radially instead of touching
+ * this band (a wider band ADDS paint — the inverted first cut). It remains the
+ * neutral fallback for a missing / non-finite band width.
  */
 export const BRISTLE_SOFTNESS = 0.09;
-/** 64-22 (D-22): how far the Feather global widens the band — Feather 1 is 0.34. */
-export const BRISTLE_FEATHER_GAIN = 0.25;
+/**
+ * Studio-only Feather (D-22; artist's rulings 2026-11-19 and 2026-11-20):
+ * Feather owns the mark's EDGE, and F0 must read CLEAN. Two earlier cuts
+ * were rejected: widening the threshold band lowered the threshold and ADDS
+ * paint (the control read inverted); a lateral fade on the coverage alone was
+ * erased by the dab-over-dab lerp, so F0/F100 differed only by display blur.
+ * The shipped law thins the carried film at the LATERAL rim and bounds the
+ * silhouette analytically at `BRISTLE_FEATHER_EDGE`, filling the rim pores at
+ * low Feather. This constant is the fraction of that silhouette the fade
+ * opens over at F1 (`featherStart = edge · (1 - reach)`): F0 is a crisp edge,
+ * F1 dissolves the outer band into the paper while the core stays loaded.
+ */
+export const BRISTLE_FEATHER_REACH = 0.65;
+/**
+ * The stroke's LEADING end cap at Feather 0: the fraction of the dab's
+ * forward half over which the front of the mark fades. The start of a stroke
+ * is soft through the reference's staggered landing ramp; without a matching
+ * takeoff the mark ended on a hard dab edge (artist: "la fin est trop dure,
+ * elle devrait être comme le début"). F0 gets this short cap; Feather widens
+ * it to BRISTLE_FEATHER_REACH so the ends feather with the sides.
+ */
+export const BRISTLE_FEATHER_CAP = 0.5;
+/**
+ * The lateral fade's start anchor for Feather > 0. The 2026-11-20 white-seam
+ * ruling supersedes the earlier "even F0 keeps a soft lateral edge" cut: at
+ * F0 the gather applies NONE of this fade — the rim is the thresholded
+ * bristle coverage, so a drying stroke breaks into hairs instead of fading
+ * into a blurred band over the paper. From Feather > 0 the fade opens from
+ * this fraction of the silhouette and widens to BRISTLE_FEATHER_REACH at F1
+ * (its strength is also scaled by uFeather, so the edge grows continuously
+ * from the ragged F0 rim).
+ */
+export const BRISTLE_FEATHER_MIN = 0.18;
+/**
+ * Where the mark's SILHOUETTE sits, in fractions of the nominal bristle
+ * footprint radius. The outer third of the footprint is intermittent bristle
+ * spill: the reference's visible half-width measures ~0.66 of it (probe:
+ * 19 px visible vs 29 px nominal at size 19). Studio's analytic edge anchors
+ * here, so Feather smooths and fades the edge WITHOUT resizing the brush —
+ * an edge at the full nominal radius made F0 50 % wider than F100 (measured:
+ * 29 px vs 18.5 px) and the slider read as a size control.
+ */
+export const BRISTLE_FEATHER_EDGE = 0.66;
+/**
+ * The display polish's one strength: a 5-tap soften of the PAINT FILM only
+ * (never the paper), for every bristle sheet regardless of Feather. The
+ * gather deposits near-binary coverage, so the mark's rim stair-steps at
+ * document resolution; the artist asked for a slight blur to tame that.
+ * Display-only — it never touches the stored film.
+ */
+export const BRISTLE_FILM_BLUR = 0.35;
 
 // ------------------------- the trace and edge constants (64-23) -------------------------
 
@@ -200,15 +252,15 @@ export function bristleCount(halfWidthPx: number): number {
 }
 
 /**
- * 64-22 (D-22): the gather's coverage band — `softness = 0.09 + 0.25·feather`.
- * Feather 0 is §6's default band; 1 widens it to 0.34. A negative or
- * non-finite Feather clamps at the neutral 0 (a missing record key must
- * replay at the shipped look, never at a widened band), and the top clamps
- * at the canonical 1 so the band cannot leave its declared range.
+ * 64-22 (D-22): the gather's coverage band. The reference's 0.09 is a
+ * constant: Feather never widens it (a wider band lowers the threshold and
+ * ADDS paint — the inverted first cut the artist rejected). The argument is
+ * kept so every recorded call site and the replay record stay stable.
  */
-export function gatherSoftness(feather: number): number {
-  const f = Number.isFinite(feather) ? clamp01(feather) : 0;
-  return BRISTLE_SOFTNESS + BRISTLE_FEATHER_GAIN * f;
+export function gatherSoftness(_feather: number): number {
+  // The band is the reference's constant; Feather never widens it (that was
+  // the inversion: a wider band lowers the threshold and ADDS paint).
+  return BRISTLE_SOFTNESS;
 }
 
 // ------------------------- the trace and edge formulas (64-23) -------------------------
@@ -265,14 +317,16 @@ export function bristleThreshold(grain: number, height: number): number {
 /**
  * §4.4: `smoothstep(threshold − softness, threshold + softness, coverage)` —
  * the band the threshold is smoothed by. At coverage = threshold it is exactly
- * 0.5; it saturates at 0 below the low edge and 1 above the high edge. A
- * non-finite coverage prints nothing (0), a non-finite threshold reads as no
- * tooth (0), and a non-finite or non-positive width replays §6's softness
- * (0.09) — the band widens only through `gatherSoftness`.
+ * 0.5; it saturates at 0 below the low edge and 1 above the high edge. A width
+ * of exactly 0 is the law's own limit: a HARD step (Feather 0 has no feather).
+ * A non-finite coverage prints nothing (0), a non-finite threshold reads as no
+ * tooth (0), and a non-finite or negative width replays the reference's own
+ * band (0.09) — the band widens only through `gatherSoftness`.
  */
 export function bristleSoftnessBand(coverage: number, threshold: number, softness: number): number {
   const c = Number.isFinite(coverage) ? coverage : 0;
   const t = Number.isFinite(threshold) ? threshold : 0;
+  if (softness === 0) return c >= t ? 1 : 0;
   const s = Number.isFinite(softness) && softness > 0 ? softness : BRISTLE_SOFTNESS;
   return smoothstep(t - s, t + s, c);
 }
@@ -445,12 +499,16 @@ export function makeBristles(count: number, rng: () => number): BristleSet {
       // §4.1: across-position jitter is ±30 % of one spacing — the difference
       // between a comb and a brush.
       const across = -1 + (i + 0.5) * spacing + (rng() - 0.5) * 0.6 * spacing;
-      const edge = smoothstep(0.55, 1, Math.abs(across));
-      // §4.2: edge bristles are thicker.
-      const radiusScale = d * (0.88 + rng() * 0.24) * (1 + 1.4 * edge);
+      // app.js C(): `o(0.55, 1, |across|)` — the radial weight is LINEAR, never
+      // a smoothstep. It scales touchReach and loadRate, not the radius.
+      const edge = clamp(Math.abs(across), 0.55, 1);
+      // app.js C(): `l = 0.75 + a()*0.95` — the radius scale is plain per
+      // bristle. The edge-thickening `g` law is shape.w (loadRate): the rim
+      // bristles are NOT thicker, they DRY FIRST.
+      const radiusScale = 0.75 + rng() * 0.95;
       // §4.2: touchReach is how much pressure a bristle needs to print.
       const touchReach = clamp(0.04 + 0.3 * rng() * rng() + 0.42 * edge + f, 0, 0.92);
-      // §4.2: loadRate shares the radius law — the rim dries first.
+      // app.js C(): `g = d·(0.88 + a()·0.24)·(1 + 1.4·radial)` — the rim dries first.
       const loadRate = d * (0.88 + rng() * 0.24) * (1 + 1.4 * edge);
       // §4.2: the rim starts with less paint.
       const initialLoad = p * (1 - 0.3 * edge * rng());

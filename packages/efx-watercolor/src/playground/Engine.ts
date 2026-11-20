@@ -2,6 +2,11 @@ import { BRUSH_PRESETS, brushTipCacheKey, buildBrush, isBristleResponse, tipRows
 import {
   BRISTLE_CAP,
   BRISTLE_DRY_EDGE,
+  BRISTLE_FEATHER_CAP,
+  BRISTLE_FEATHER_EDGE,
+  BRISTLE_FEATHER_MIN,
+  BRISTLE_FEATHER_REACH,
+  BRISTLE_FILM_BLUR,
   BRISTLE_GRAIN,
   BRISTLE_HAIRS,
   BRISTLE_LANDING,
@@ -2925,7 +2930,27 @@ export class WatercolorEngine {
     // normal stroke never dried and always deposited a solid bar. `Dry` now
     // owns the rate: 0 = stays wet for the whole stroke, 1 = empties in ~250 px.
     const dryRate = clamp(this.params.dry, 0, 1);
-    gl.uniform1f(p.u.uDepletion!, (0.05 + 3.8 * dryRate * dryRate) / Math.min(this.dw, this.dh));
+    // Dry maps to the EMPTY DISTANCE, not to the rate. Depletion is a rate
+    // (load lost per texel), so a linear rate makes the visible fade position
+    // hyperbolic in Dry — the artist read the control as "très logarithmique".
+    // Dry 0 must not dry AT ALL ("le dry 0 devrait avoir aucune transition"):
+    // 3.0 sheet heights is ~3x the probe stroke, so the mark stays uniform end
+    // to end. The 0.55 exponent makes the low end bite: Dry 33 already fades
+    // well before the stroke's end, while 100 empties at ~30 %.
+    const dryDistance = 3.0 - 2.38 * Math.pow(dryRate, 0.55);
+    // Load is the paint in the brush: it scales how far that paint lasts.
+    // Load 50 is the calibration (factor 1). Below the midpoint the tank is
+    // the visible lever (0.3x at Load 0). Above it, the artist wants Load 100
+    // to be a FULL tank — no drying inside a normal stroke — while Load 66
+    // still dries: a linear or gently curved factor put 66 and 100 almost on
+    // top of each other (both outlasted the stroke). The power law widens
+    // that gap without moving Load 50, and no density change is involved
+    // (fading the pigment with the tank desaturated the low values).
+    const loadParam = clamp(this.params.load, 0, 1);
+    const loadFactor = loadParam <= 0.5
+      ? 0.3 + 1.4 * loadParam
+      : 1.0 + 6.0 * Math.pow((loadParam - 0.5) / 0.5, 3);
+    gl.uniform1f(p.u.uDepletion!, (1 / (dryDistance * loadFactor)) / Math.min(this.dw, this.dh));
     const c = this.pigment.coeffs;
     gl.uniform4f(p.u.uPigmentA!, c[0]!, c[1]!, c[2]!, c[3]!);
     gl.uniform3f(p.u.uPigmentB!, c[4]!, c[5]!, c[6]!);
@@ -2979,6 +3004,13 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uPressure!, clamp(pr, 0, 1));
     gl.uniform1f(p.u.uGrain!, BRISTLE_GRAIN);
     gl.uniform1f(p.u.uSoftness!, gatherSoftness(this.params.feather));
+    // Feather is the radial fade, not the band: 0 leaves the coverage alone,
+    // 1 dissolves the outer band (the artist's control direction).
+    gl.uniform1f(p.u.uFeather!, clamp(this.params.feather, 0, 1));
+    gl.uniform1f(p.u.uFeatherReach!, BRISTLE_FEATHER_REACH);
+    gl.uniform1f(p.u.uFeatherEdge!, BRISTLE_FEATHER_EDGE);
+    gl.uniform1f(p.u.uFeatherCap!, BRISTLE_FEATHER_CAP);
+    gl.uniform1f(p.u.uFeatherMin!, BRISTLE_FEATHER_MIN);
     gl.uniform1f(p.u.uAlongPx!, alongPx);
     gl.uniform1f(p.u.uStrokeDistPx!, alongPx);
     gl.uniform1f(p.u.uHalfWidthPx!, r * this.dh);
@@ -3525,6 +3557,15 @@ export class WatercolorEngine {
     // with bristle content turns it OFF (0), letting a bristle edge read as
     // the real 50 % → 10 % fade the gather's softness band produces.
     gl.uniform1f(p.u.uEdgeDarken, this.bristleContent ? 0 : 0.8);
+    // Display polish (261119-pod follow-up): a sheet carrying bristle content
+    // softens the PAINT film by one texel of 5-tap average. The gather deposits
+    // near-binary coverage, so the rim reads as a stair step; the tap average
+    // restores the sub-pixel falloff without touching the paper. Non-bristle
+    // sheets keep 0 and stay byte-identical.
+    // The polish follows the Feather global: Feather 0 must read as NO feather
+    // (a hard edge), so the film softener is off there and reaches its full
+    // 0.55 only at Feather 1.
+    gl.uniform1f(p.u.uFilmBlur, this.bristleContent ? BRISTLE_FILM_BLUR : 0);
     gl.uniform1f(p.u.uFlat, flat ? 1 : 0);
     gl.uniform3fv(p.u.uDesk, DESK);
     gl.uniform1i(p.u.uMode, mode);

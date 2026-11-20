@@ -886,7 +886,8 @@ void main(){
 //    §4.4 height   = grainHeight(uv·uSheet, uAxis) — streaks + tooth + cloud
 //    §4.4 threshold = uGrain · (1 − height) − 0.25
 //    §5.5 coverage = body · (0.3 + 0.7·pressure) · dryEdge
-//    §6   softness = uSoftness (0.09 + 0.25·Feather, from bristles.ts)
+//    §6   softness = uSoftness (the reference's 0.09, never Feather-driven)
+//         and the Studio-only radial fade that thins the carried film (§5.6)
 //
 //  64-23 extends this ONE snippet — never a second copy — with §4.3's
 //  dryness streak, §5.3's rim contact noise, §5.4's landing ramp, §5.5's
@@ -904,7 +905,12 @@ uniform float uSheetAspect;  // document width / height
 uniform vec2 uSheet;         // document size in texels
 uniform float uPressure;
 uniform float uGrain;        // §4.4 §6 paint.grain (BRISTLE_GRAIN 1.2), not Brush.grain
-uniform float uSoftness;
+uniform float uSoftness;     // the reference's band (0.09), never Feather-driven
+uniform float uFeather;      // studio Feather 0..1: the mark's edge law
+uniform float uFeatherReach; // fraction of the silhouette the fade opens over
+uniform float uFeatherEdge;  // silhouette radius, in nominal footprint units
+uniform float uFeatherCap;   // Feather-0 leading end cap, fraction of the radius
+uniform float uFeatherMin;   // Feather-0 lateral fade, fraction of the silhouette
 uniform float uAlongPx;      // cumulative distance along the stroke, doc texels
 uniform float uStrokeDistPx; // the same cumulative distance for the landing ramp
 uniform float uHalfWidthPx;  // the dab's half-width in doc texels
@@ -1089,14 +1095,53 @@ Gathered gatherBristle(vec2 uv){
 
   // §4.4 / §5.5: the paper threshold, biased at the rim. uGrain is §6's
   // BRISTLE_GRAIN (1.2) — the paper-tooth scale, never Brush.grain.
+  float lateral = abs(across);
+  // The paper tooth is CALMED at the lateral rim as Feather falls, so F0's
+  // edge follows the smooth bristle-coverage profile instead of the grain's
+  // speckle. The earlier "skin" filled the rim pores with max() instead and
+  // fabricated a 1 px paint line along the silhouette wherever the brush was
+  // dry (measured on the Dry-55 tail); calming the threshold never adds paint.
   vec2 css = uv * uSheet;
-  float height = grainHeight(css, uAxis);
+  float rimCalm = (1.0 - uFeather) * smoothstep(0.45, 0.75, lateral);
+  float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);
   float threshold = uGrain * (1.0 - height) - 0.25;
-  float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));
+  float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, lateral));
   float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;
-  // Feather is the reference's SOFTNESS only: uSoftness widens this band
-  // (0.09 → 0.34) and nothing else — no radius growth, no threshold shift.
-  g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);
+  // Studio Feather (artist's rulings 2026-11-19, revised 2026-11-20, then the
+  // 2026-11-20 white-seam ruling): Feather owns the mark's edge, and F0 must
+  // read as PAINT, not as a blurred border. At F0 the rim is therefore the
+  // REFERENCE's own law — the thresholded bristle coverage, which breaks into
+  // hairs as the brush dries. The analytic lateral fade (uFeatherMin at F0)
+  // re-smoothed that ragged rim into a soft band; where two drying rims met it
+  // read as a blurred white seam (measured: a 6-14 px cover-alpha gap).
+  // The fade is still the mechanism that OPENS the edge as Feather rises —
+  // scaled by uFeather so F0 applies none of it. The carried film is thinned
+  // by the same fade: a coverage-only multiply is erased by the dab-over-dab
+  // lerp, and a RADIAL fade lets each trailing dab re-write the stroke core
+  // (both measured). Never a wider threshold band: widening lowers the
+  // threshold and ADDS paint, which read inverted.
+  float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));
+  float lateralFade = 1.0 - smoothstep(featherStart, uFeatherEdge, lateral);
+  float featherFade = mix(1.0, lateralFade, uFeather);
+  // The stroke's FRONT CAP. The gather's along coordinate is
+  // q.y = -(p · travel)/radius (uAxis is bound as the stroke normal), so the
+  // leading half is q.y < 0. ONLY the leading side fades: an interior texel's
+  // last covering dab sits at its trailing rim (q.y = +1), so a symmetric
+  // along fade re-writes the core with near-zero carried values — the failure
+  // that killed the radial cut. The final dab's leading half is never
+  // overwritten, so this fade is exactly the mark's end cap, and the start
+  // (the first dab's trailing half) is untouched.
+  float capW = mix(uFeatherCap, uFeatherReach, uFeather);
+  float alongFade = 1.0 - smoothstep(1.0 - capW, 1.0, max(-q.y, 0.0));
+  featherFade *= alongFade;
+  // The band itself is the reference's constant; its width never moves.
+  float inked = uSoftness > 0.0
+    ? smoothstep(threshold - uSoftness, threshold + uSoftness, coverage)
+    : step(threshold, coverage);
+  g.coverage = inked * featherFade;
+  g.cA *= featherFade;
+  g.cB *= featherFade;
+  g.alpha *= featherFade;
   // GAP-4: a texture tip bounds WHERE the dab lands (uTipMix = 0 keeps the
   // untextured law byte-identical: the multiply is never executed).
   if (uTipMix > 0.0) g.coverage *= tipMask(uv);
@@ -1584,6 +1629,7 @@ uniform sampler2D uCover;  // SPIKE 001: pigment-layer coverage (one channel)
 uniform vec4 uView;       // canvas px -> document uv: uv = (fragCoord - xy) / zw
 uniform vec2 uTexel;      // document texel size
 uniform float uGranulation, uEdgeDarken;
+uniform float uFilmBlur;  // display polish: 5-tap soften of the PAINT FILM, 0 = off
 uniform float uFlat;      // 1: ignore the paper's relief, grain and wetness (for region picking)
 uniform vec3 uDesk;
 uniform int uMode;        // 0 screen, 1 export on paper, 2 export transparent, 3 export on white, 4 display pigment alpha
@@ -1598,6 +1644,16 @@ const float EMBOSS_SHADE_MAX = 1.5;
 ${PAPER_COLOUR}
 ${TO_SRGB}
 float density(vec2 uv){ return texture(uInkA, uv).x + texture(uFixedA, uv).x; }
+
+// Display polish: the film's absorbance at one texel. The PAPER is never part
+// of this — a bristle sheet's stair-stepped rim softens without touching the
+// paper grain or its fibres.
+void filmAt(vec2 uv, out vec4 a, out vec3 b, out float s){
+  a = texture(uInkA, uv) + texture(uFixedA, uv);
+  vec4 ib = texture(uInkB, uv), fb = texture(uFixedB, uv);
+  b = ib.rgb + fb.rgb;
+  s = ib.a + fb.a;
+}
 
 // Signed distance (canvas px) from p to the sheet, moved down by \`drop\`.
 float sheetDist(vec2 p, float drop){
@@ -1633,6 +1689,19 @@ void main(){
   // every band. It is scaled with the coefficients below, so the grainiest
   // paint is also the most variable in opacity (D-16).
   float scatter = iB.a + fB.a;
+  if (uFilmBlur > 0.0){
+    // Display polish: one texel of 5-tap soften of the PAINT FILM. The gather
+    // deposits near-binary coverage, so the mark's rim reads as a stair step;
+    // averaging the paint alone restores the reference's sub-pixel falloff
+    // while the paper keeps its grain and fibres.
+    vec2 dx = vec2(uTexel.x, 0.0), dy = vec2(0.0, uTexel.y);
+    vec4 a1, a2, a3, a4; vec3 b1, b2, b3, b4; float s1, s2, s3, s4;
+    filmAt(uv - dx, a1, b1, s1); filmAt(uv + dx, a2, b2, s2);
+    filmAt(uv - dy, a3, b3, s3); filmAt(uv + dy, a4, b4, s4);
+    a = mix(a, (a + a1 + a2 + a3 + a4) * 0.2, uFilmBlur);
+    b = mix(b, (b + b1 + b2 + b3 + b4) * 0.2, uFilmBlur);
+    scatter = mix(scatter, (scatter + s1 + s2 + s3 + s4) * 0.2, uFilmBlur);
+  }
 
   // Granulation: pigment settles into the valleys of the paper.
   float d0 = a.x;

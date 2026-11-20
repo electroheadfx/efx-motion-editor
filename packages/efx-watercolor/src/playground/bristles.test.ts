@@ -17,13 +17,16 @@
 //      multiplier draw in all three bands), seven per bristle (across,
 //      radiusScale, touchReach, loadRate, initialLoad, seed, valueJitter),
 //      INCLUDING the fields of a run clipped by `count`.
-//   4. A run shares its tuft multipliers: `radiusScale` and `loadRate` vary
-//      only by the ±12 % per-bristle factor and the edge term, `initialLoad`
+//   4. A run shares its tuft multiplier: `loadRate` varies only by the ±12 %
+//      per-bristle factor and the edge term. `radiusScale` is the reference's
+//      PLAIN per-bristle `0.75 + rnd·0.95` (app.js C() `l`), never the
+//      edge-thickening `g` law — that one is `loadRate` (shape.w). `initialLoad`
 //      shares the run's `p`, and `valueJitter` shares one run multiplier
 //      within ±4 % (§4.2).
-//   5. `across` is monotone and spans approximately −1..1; `edge` is
-//      `smoothstep(0.55, 1, |across|)`; an edge bristle is thicker than a
-//      centre bristle of the same run; `touchReach` is clamped to 0..0.92;
+//   5. `across` is monotone and spans approximately −1..1; `edge` is the
+//      LINEAR `clamp(|across|, 0.55, 1)` (app.js C() `o(0.55,1,|n|)`); a rim
+//      bristle DRIES FASTER (`loadRate`) but is NOT thicker (`radiusScale` is
+//      position-independent); `touchReach` is clamped to 0..0.92;
 //      `initialLoad` is in (0, 1].
 //   6. The stride is exactly 8 floats and the field order is the documented
 //      one, with the spare slot zero.
@@ -93,10 +96,9 @@ function expectNotContains(source: string, needle: string): void {
   expect(source.includes(needle), `unexpected source text: ${needle}`).toBe(false)
 }
 
-/** `smoothstep(0.55, 1, x)` — declared here so the edge law has an independent witness. */
-function smoothstepEdge(across: number): number {
-  const t = Math.min(1, Math.max(0, (Math.abs(across) - 0.55) / (1 - 0.55)))
-  return t * t * (3 - 2 * t)
+/** `clamp(|x|, 0.55, 1)` — the reference's LINEAR radial weight (app.js C()). */
+function clampEdge(across: number): number {
+  return Math.min(1, Math.max(0.55, Math.abs(across)))
 }
 
 describe('bristleCount — the §4.1 count law', () => {
@@ -167,26 +169,27 @@ describe('makeBristles — a pure function of the seeded stream', () => {
 })
 
 describe('makeBristles — the run structure (§4.2)', () => {
-  it('shares one tuft multiplier across a run: radiusScale and loadRate vary only by the ±12 % factor and the edge term', () => {
+  it('shares one tuft multiplier across a run: loadRate varies only by the ±12 % factor and the edge term; radiusScale is plain', () => {
     // A constant 0.5 stream: run length 10, d = 1.05, p = 0.94,
-    // m = 1.0, per-bristle factor = 1.0. `radiusScale / (1 + 1.4·edge)` must
-    // then be the SAME constant (d · 0.88..1.12) for every bristle of a run.
+    // m = 1.0, per-bristle factor = 1.0. `loadRate / (1 + 1.4·edge)` must
+    // then be the SAME constant (d · 0.88..1.12) for every bristle of a run,
+    // and the radius scale is the plain `0.75 + 0.5·0.95` (app.js C() `l`).
     const set = makeBristles(40, constant(0.5).rng)
     const runValues: number[] = []
     for (let i = 0; i < 10; i += 1) {
       const across = set.data[i * 8]!
       const radiusScale = set.data[i * 8 + 1]!
       const loadRate = set.data[i * 8 + 3]!
-      const edge = smoothstepEdge(across)
-      expect(loadRate).toBeCloseTo(radiusScale, 6)
-      runValues.push(radiusScale / (1 + 1.4 * edge))
+      const edge = clampEdge(across)
+      expect(radiusScale).toBeCloseTo(0.75 + 0.5 * 0.95, 6)
+      runValues.push(loadRate / (1 + 1.4 * edge))
     }
     for (const v of runValues) expect(v).toBeCloseTo(runValues[0]!, 6)
     // A different run (bristle 10 starts the second header) may share the same
     // constant on this stream — the law is per-run sharing, not run uniqueness.
     const across10 = set.data[10 * 8]!
-    const radius10 = set.data[10 * 8 + 1]!
-    expect(radius10 / (1 + 1.4 * smoothstepEdge(across10))).toBeCloseTo(runValues[0]!, 6)
+    const load10 = set.data[10 * 8 + 3]!
+    expect(load10 / (1 + 1.4 * clampEdge(across10))).toBeCloseTo(runValues[0]!, 6)
   })
 
   it('shares one run multiplier in valueJitter, within ±4 %', () => {
@@ -212,9 +215,10 @@ describe('makeBristles — the run structure (§4.2)', () => {
     const set = makeBristles(40, constant(0.5).rng)
     const across0 = set.data[0]!
     expect(across0).toBeCloseTo(-0.975, 6)
-    const edge0 = smoothstepEdge(across0)
-    expect(edge0).toBeCloseTo(0.991083, 5)
-    expect(set.data[1]!).toBeCloseTo(1.05 * (1 + 1.4 * edge0), 5)
+    const edge0 = clampEdge(across0)
+    expect(edge0).toBeCloseTo(0.975, 6)
+    // app.js C(): radiusScale `l` = 0.75 + a()·0.95, position-independent.
+    expect(set.data[1]!).toBeCloseTo(0.75 + 0.5 * 0.95, 6)
     expect(set.data[2]!).toBeCloseTo(0.04 + 0.3 * 0.5 * 0.5 + 0.42 * edge0, 6)
     expect(set.data[3]!).toBeCloseTo(1.05 * (1 + 1.4 * edge0), 5)
     expect(set.data[4]!).toBeCloseTo(0.5, 6) // seed: one draw
@@ -232,7 +236,7 @@ describe('makeBristles — the run structure (§4.2)', () => {
       expect(across).toBeGreaterThanOrEqual(-1.1)
       expect(across).toBeLessThanOrEqual(1.1)
       expect(radiusScale).toBeGreaterThan(0)
-      expect(radiusScale).toBeLessThanOrEqual(1.35 * 1.12 * 2.4 + 1e-9)
+      expect(radiusScale).toBeLessThanOrEqual(1.7 + 1e-9)
       expect(touchReach).toBeGreaterThanOrEqual(0)
       expect(touchReach).toBeLessThanOrEqual(0.92)
       expect(initialLoad).toBeGreaterThan(0)
@@ -240,7 +244,7 @@ describe('makeBristles — the run structure (§4.2)', () => {
     }
   })
 
-  it('is monotone across the set and thicker at the edges than at the centre', () => {
+  it('is monotone across the set and dries faster at the edges than at the centre', () => {
     const set = makeBristles(256, mulberry32(3))
     let previous = -Infinity
     for (let i = 0; i < set.count; i += 1) {
@@ -251,12 +255,13 @@ describe('makeBristles — the run structure (§4.2)', () => {
     // The edge law is proven on the constant stream, where every run carries
     // the same tuft multipliers and `edge` is the only term that moves radius.
     const flat = makeBristles(256, constant(0.5).rng)
-    const centreRadius = flat.data[Math.floor(256 / 2) * 8 + 1]!
-    const edgeRadius = flat.data[0 * 8 + 1]!
-    const centreEdge = smoothstepEdge(flat.data[Math.floor(256 / 2) * 8]!)
-    const edgeEdge = smoothstepEdge(flat.data[0 * 8]!)
-    expect(edgeEdge).toBeGreaterThan(centreEdge)
-    expect(edgeRadius).toBeGreaterThan(centreRadius)
+    const centre = Math.floor(256 / 2)
+    const centreLoad = flat.data[centre * 8 + 3]!
+    const edgeLoad = flat.data[0 * 8 + 3]!
+    expect(clampEdge(flat.data[0 * 8]!)).toBeGreaterThan(clampEdge(flat.data[centre * 8]!))
+    expect(edgeLoad).toBeGreaterThan(centreLoad)
+    // The radius scale is position-independent (app.js C() `l`).
+    expect(flat.data[0 * 8 + 1]!).toBeCloseTo(flat.data[centre * 8 + 1]!, 6)
   })
 })
 
@@ -293,8 +298,8 @@ describe('makeBristles — the 8-float stride and the field order', () => {
     let i = 0
     const scripted = (): number => (i < header.length ? header[i++]! : 0.5)
     const set = makeBristles(40, scripted)
-    const edge0 = smoothstepEdge(set.data[0]!)
-    expect(set.data[1]!).toBeCloseTo(1.2 * (1 + 1.4 * edge0), 6) // radiusScale ← d
+    const edge0 = clampEdge(set.data[0]!)
+    expect(set.data[1]!).toBeCloseTo(0.75 + 0.5 * 0.95, 6) // radiusScale: plain l (app.js C())
     expect(set.data[3]!).toBeCloseTo(1.2 * (1 + 1.4 * edge0), 6) // loadRate ← d
     expect(set.data[2]!).toBeCloseTo(0.075 + 0.42 * edge0, 6) // touchReach ← f (−0.04)
     expect(set.data[5]!).toBeCloseTo(0.98, 6) // valueJitter ← m
@@ -327,56 +332,15 @@ describe('bristles.ts — the determinism contract in source', () => {
 })
 
 // ============================================================
-//  64-22 — the gather's two constants and its softness band.
+//  64-22 — the gather's softness band, restated 2026-11-19.
 //
-//  The band the gather smooths its coverage threshold by is
-//  `BRISTLE_SOFTNESS + BRISTLE_FEATHER_GAIN · feather`: §6's
-//  paint.softness at Feather 0, widening to 0.34 at Feather 1. Both
-//  numbers are declared ONCE here, beside the stroke's other constants,
-//  and the D-22 Feather global is their only input.
-// ============================================================
-
-const GATHER = bristleModule as unknown as {
-  BRISTLE_SOFTNESS: number
-  BRISTLE_FEATHER_GAIN: number
-  gatherSoftness: (feather: number) => number
-}
-
-describe('the gather constants (64-22)', () => {
-  it('exports the §6 softness and the feather gain, each declared once', () => {
-    expect(GATHER.BRISTLE_SOFTNESS, '§6 paint.softness').toBe(0.09)
-    expect(GATHER.BRISTLE_FEATHER_GAIN, 'the Feather gain').toBe(0.25)
-    expect(
-      (SOURCE.match(/BRISTLE_SOFTNESS = 0\.09/g) ?? []).length,
-      'one BRISTLE_SOFTNESS declaration, at 0.09',
-    ).toBe(1)
-    expect(
-      (SOURCE.match(/BRISTLE_FEATHER_GAIN = 0\.25/g) ?? []).length,
-      'one BRISTLE_FEATHER_GAIN declaration, at 0.25',
-    ).toBe(1)
-    expectContains(SOURCE, '§6')
-  })
-
-  it('widens the band with Feather: softness = 0.09 + 0.25 · feather', () => {
-    expect(GATHER.gatherSoftness(0), 'Feather 0 is the §6 band').toBeCloseTo(0.09, 9)
-    expect(GATHER.gatherSoftness(1), 'Feather 1 is 0.34').toBeCloseTo(0.34, 9)
-    expect(GATHER.gatherSoftness(0.5), 'the law is linear in the band').toBeCloseTo(0.215, 9)
-  })
-
-  it('clamps a negative or non-finite feather at the §6 band', () => {
-    expect(GATHER.gatherSoftness(-1), 'a negative Feather never narrows the band').toBeCloseTo(0.09, 9)
-    expect(GATHER.gatherSoftness(-0.0001)).toBeCloseTo(0.09, 9)
-    expect(GATHER.gatherSoftness(Number.NaN), 'NaN is the neutral 0').toBeCloseTo(0.09, 9)
-    expect(
-      GATHER.gatherSoftness(Number.POSITIVE_INFINITY),
-      'a non-finite Feather never widens the band',
-    ).toBeCloseTo(0.09, 9)
-    expect(GATHER.gatherSoftness(Number.NEGATIVE_INFINITY)).toBeCloseTo(0.09, 9)
-    // The top of the band is the canonical 1: above it the band stops widening.
-    expect(GATHER.gatherSoftness(2), 'above the canonical band the width saturates').toBeCloseTo(0.34, 9)
-  })
-})
-
+//  Feather is a STUDIO control: the reference has ONE constant band, §6's
+//  paint.softness 0.09, and no Feather at all. The artist's ruling: Feather 0
+//  must mean NO feather, so the studio band never moves and Feather instead
+//  thins the carried film radially (pinned in scattering.test.ts).
+//  BRISTLE_SOFTNESS stays declared as the reference's own band, the neutral
+//  fallback the twin uses for a missing width, and the constant
+//  `gatherSoftness` returns at every Feather.
 // ============================================================
 //  64-23 — the trace constants, the edge constants and their formulas.
 //
@@ -574,6 +538,12 @@ describe('bristleSoftnessBand — §4.4', () => {
       TRACES.bristleSoftnessBand?.(0.49, 0.4, 0.09),
       'above the high edge prints fully',
     ).toBe(1)
+  })
+
+  it('is a hard step at width 0 — Feather 0 has no feather', () => {
+    expect(TRACES.bristleSoftnessBand?.(0.39, 0.4, 0)).toBe(0)
+    expect(TRACES.bristleSoftnessBand?.(0.4, 0.4, 0)).toBe(1)
+    expect(TRACES.bristleSoftnessBand?.(0.41, 0.4, 0)).toBe(1)
   })
 
   it('is the smoothstep between the edges, not a linear ramp', () => {

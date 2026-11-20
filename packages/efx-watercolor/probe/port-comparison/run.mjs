@@ -65,7 +65,45 @@ const SCENE_NAMES = [
 // MEASUREMENT-ONLY scenes: reachable through --scene (which requires --out),
 // never part of the full table, so the committed acceptance captures keep
 // their scene counts and `--acceptance` keeps reading the twelve-scene AFTER.
-const MEASUREMENT_SCENES = ['blank-f0-dry55', 'blank-f100-dry55']
+const MEASUREMENT_SCENES = [
+  'blank-f0-dry55',
+  'blank-f100-dry55',
+  'blank-f30',
+  'blank-f60',
+  'dry0-f75',
+  'dry33-f75',
+  'dry66-f75',
+  'dry100-f75',
+  'load0-f75d33',
+  'load33-f75d33',
+  'load66-f75d33',
+  'load100-f75d33',
+  'full-f0d0l100',
+  'yellow-blank',
+  'yellow-f75d40l70',
+  'yellow-f75d40l70-b85',
+  'yellow-f75d40l70-b100',
+  'mix-wet',
+  'mix-thick',
+  'mix-thick-drag',
+  'mix-thick-dry',
+  'mix-thick-dry-norefill',
+  'mix-thick-dry-f75',
+  'intro-m',
+  'intro-m-drag',
+  'intro-m-drag-hard',
+  'intro-m-fine',
+  'intro-m-fine-drag',
+  'intro-m-fine-hard',
+  'intro-g',
+  'intro-g-drag',
+  'intro-g-hard',
+  'intro-g-fine',
+  'intro-cross',
+  'intro-cross-hard',
+  'intro-pastel',
+  'intro-pastel-soft',
+]
 const KNOWN_SCENES = [...SCENE_NAMES, ...MEASUREMENT_SCENES]
 
 const args = process.argv.slice(2)

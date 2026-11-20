@@ -864,7 +864,7 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     // The mix: streakShare swaps cloud weight for streaks; the tooth holds 0.35.
     expectContains(gather, 'return streaks * uStreakShare + tooth * 0.35 + cloud * (0.65 - uStreakShare);')
     // The trio replaces the paper tap outright: no sampler survives in the gather.
-    expectContains(gather, 'float height = grainHeight(css, uAxis);')
+    expectContains(gather, 'float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);')
     expectContains(gather, 'float threshold = uGrain * (1.0 - height) - 0.25;')
     expectNotContains(gather, 'uPaper')
     expectNotContains(gather, 'texture(uPaper')
@@ -909,9 +909,11 @@ describe('64-23 — the traces in the gather and the carrier', () => {
     expectContains(gather, 'float presence = min(profileSum / 0.5, 1.0);')
     expectContains(gather, 'float local = inkSum / max(profileSum, 0.5);')
     expectContains(gather, 'float body = mix(wide / 5.0 * presence, local, uHairs);')
-    expectContains(gather, 'float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, abs(across)));')
+    expectContains(gather, 'float dryEdge = mix(1.0, uDryEdge, smoothstep(0.3, 1.05, lateral));')
     expectContains(gather, 'float coverage = body * (0.3 + 0.7 * uPressure) * dryEdge;')
-    expectContains(gather, 'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);')
+    expectContains(gather, 'float inked = uSoftness > 0.0')
+    expectContains(gather, ': step(threshold, coverage);')
+    expectContains(gather, 'g.coverage = inked * featherFade;')
   })
 
   it('binds every declared constant from bristles.ts — no literal survives', () => {
@@ -1127,10 +1129,11 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
 //  a single `smearWeight` helper both gather consumers call, and a gate that
 //  never samples the snapshot at Pickup 0. The gather gains its OWN `wetAt`
 //  reading the snapshot's COVER alpha — the same pinned arithmetic shape the
-//  carrier runs, so the two laws can never drift. Feather opens on all four
-//  sides with a Studio-only ramp that multiplies the coverage BEFORE the
-//  threshold smoothstep, enclosed so Feather 0 is exactly the shipped
-//  arithmetic.
+//  carrier runs, so the two laws can never drift. Feather is a Studio-only
+//  LATERAL fade after the threshold, thinning the carried coefficients, the
+//  carried alpha and the coverage together — a coverage-only fade was erased
+//  by the deposit lerp, and a radial one let each trailing dab re-write the
+//  core. Feather 0 is exactly the shipped arithmetic.
 // ============================================================
 
 describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather', () => {
@@ -1232,23 +1235,66 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     expect((d.match(/texture\(uSnapB, vUv\)/g) ?? []).length).toBe(1)
   })
 
-  it('feathers through the §6 softness band ONLY — no radius growth, no threshold shift', () => {
+  it('feathers by THINNING the carried film at the lateral rim — never by widening the band', () => {
     const g = gather()
-    // The reference's Feather IS paint.softness: one uniform, widening the
-    // coverage smoothstep's band from 0.09 to 0.34.
+    // The band is the reference's constant; Feather owns the edge law.
     expectContains(g, 'uniform float uSoftness;')
+    expectContains(g, 'uniform float uFeather;')
+    expectContains(g, 'uniform float uFeatherReach;')
+    expectContains(g, 'uniform float uFeatherEdge;')
+    expectContains(g, 'uniform float uFeatherCap;')
+    expectContains(g, 'uniform float uFeatherMin;')
+    // The analytic silhouette is anchored at the visible half-width
+    // (BRISTLE_FEATHER_EDGE), never the full nominal footprint: Feather must
+    // not resize the brush. F0 is a crisp edge (edge - 0.04); F1 opens the
+    // fade over uFeatherReach of the silhouette.
+    // 2026-11-20 white-seam ruling: F0 applies NONE of the analytic fade.
+    // The rim is the thresholded bristle coverage (ragged paint); the fade
+    // opens scaled by uFeather from there, so the two laws cannot fight.
     expectContains(
       g,
-      'g.coverage = smoothstep(threshold - uSoftness, threshold + uSoftness, coverage);',
+      'float featherStart = uFeatherEdge * (1.0 - mix(uFeatherMin, uFeatherReach, uFeather));',
     )
+    expectContains(g, 'float lateralFade = 1.0 - smoothstep(featherStart, uFeatherEdge, lateral);')
+    expectContains(g, 'float featherFade = mix(1.0, lateralFade, uFeather);')
+    // The front cap is LEADING-only (q.y < 0): an interior texel's last dab
+    // sits at its trailing rim, so a symmetric along fade would erase the core.
+    expectContains(g, 'float capW = mix(uFeatherCap, uFeatherReach, uFeather);')
+    expectContains(g, 'float alongFade = 1.0 - smoothstep(1.0 - capW, 1.0, max(-q.y, 0.0));')
+    expectContains(g, 'featherFade *= alongFade;')
+    // F0 calms the paper tooth at the rim so the edge follows the smooth
+    // bristle profile; it must never FABRICATE paint there (the old max() skin
+    // left a 1 px line along the silhouette wherever the brush was dry).
+    expectContains(g, 'float rimCalm = (1.0 - uFeather) * smoothstep(0.45, 0.75, lateral);')
+    expectContains(g, 'float height = mix(grainHeight(css, uAxis), 0.5, rimCalm);')
+    expectNotContains(g, 'max(inked, skin)')
+    // The fade must reach every value the deposit carries: a coverage-only
+    // multiply is erased by the dab-over-dab lerp (measured: F0/F100 differed
+    // only by display blur).
+    expectContains(g, 'g.cA *= featherFade;')
+    expectContains(g, 'g.cB *= featherFade;')
+    expectContains(g, 'g.alpha *= featherFade;')
+    expectContains(g, 'float inked = uSoftness > 0.0')
+    expectContains(g, ': step(threshold, coverage);')
+    expectContains(g, 'g.coverage = inked * featherFade;')
+    // Load is the tank ONLY: scaling the pigment with it desaturated the low
+    // values (artist: "il y a une perte de couleur sur le LOAD 0, 33, 66").
+    expectNotContains(g, 'uLoadGain')
+    expectNotContains(ENGINE_SOURCE, 'uLoadGain')
+    expectContains(ENGINE_SOURCE, '? 0.3 + 1.4 * loadParam')
+    expectContains(ENGINE_SOURCE, ': 1.0 + 6.0 * Math.pow((loadParam - 0.5) / 0.5, 3);')
     expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uSoftness!, gatherSoftness(this.params.feather));')
-    // No extension mechanism survives: no radius growth, no threshold
-    // lowering, and no second feather uniform on the gather.
-    expectNotContains(g, 'uFeather')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uFeather!, clamp(this.params.feather, 0, 1));')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uFeatherReach!, BRISTLE_FEATHER_REACH);')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uFeatherEdge!, BRISTLE_FEATHER_EDGE);')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uFeatherCap!, BRISTLE_FEATHER_CAP);')
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uFeatherMin!, BRISTLE_FEATHER_MIN);')
+    // The blur is display polish, independent of Feather.
+    expectContains(ENGINE_SOURCE, 'gl.uniform1f(p.u.uFilmBlur, this.bristleContent ? BRISTLE_FILM_BLUR : 0);')
+    // The two mechanisms the artist rejected must never come back.
     expectNotContains(g, 'featherFall(')
     expectNotContains(ENGINE_SOURCE, 'BRISTLE_FEATHER_GROW')
     expectNotContains(ENGINE_SOURCE, 'uFeatherBand')
-    expectNotContains(ENGINE_SOURCE, 'uFeatherReach')
   })
 
   it('registers the snapshot program OUTSIDE the pinned literal and allocates one pair', () => {

@@ -72,6 +72,8 @@ const PAPER_STRENGTH = 1
 const SETTLE_TICKS = 8
 const BAND_COLOR = '#e8c21a'
 const BLUE_COLOR = '#5994e4'
+const RED_COLOR = '#c8412f'
+const CYAN_COLOR = '#2f9bb5'
 const BRUSH_ID = 'bristle-flat'
 /** The reference's cycle-entry widths (app.js palette, §6 defaults). */
 // The Studio BAND's size ratio (0.12 / 0.085) comes from the reference's two
@@ -90,6 +92,21 @@ const BLUE_FRACTION = 0.085
 const DEFAULT_BLUE_SIZE = 4
 
 const COLD: PaperPreset | undefined = PAPERS.find((preset) => preset.id === 'cold')
+const HOT: PaperPreset | undefined = PAPERS.find((preset) => preset.id === 'hot')
+
+// Probe-only yellow fond (2026-11-20): the artist's final bristle check on a
+// warm ground. Same height field as Cold Press so the paint behaviour is
+// unchanged — only the sheet colour moves.
+const YELLOW: PaperPreset = {
+  id: 'probe-yellow',
+  name: 'Yellow',
+  hint: 'Probe-only warm yellow fond',
+  kind: 0,
+  tint: '#e6cf72',
+  fleck: '#857646',
+  bump: 1,
+  mottle: 0.05,
+}
 
 // --- scene table ------------------------------------------------------------
 
@@ -102,6 +119,56 @@ interface SceneSpec {
   readonly body: number | null
   /** Paint Dry (0..100). Absent → the D-E census pin 0. */
   readonly dry?: number
+  /** Paint Load (0..100). Absent → the shipped default 50. */
+  readonly load?: number
+  /** Sheet override. Absent → Cold Press. */
+  readonly paper?: PaperPreset
+  /**
+   * MEASUREMENT-ONLY wet-on-wet composition: a painted yellow ground, then
+   * blue and red bristle strokes crossing it while it is still wet. Every
+   * colour is pigment deposited by the engine — no post-composite — so the
+   * mixing, if any, is the Studio paint physics.
+   * `thick` is the artist's Dry 0 / Feather 75 test: a 3–4× thicker brush
+   * whose strokes overlap each other as well as the wet ground. `drag` is
+   * the same composition with Refill 10 — the original's "greedy brush that
+   * drags colour far" lab preset — so the picked-up colour survives the
+   * trip instead of being overwritten by the reservoir.
+   */
+  readonly mix?: 'wet' | 'thick' | 'drag' | 'thick-dry' | 'thick-dry-norefill'
+  /**
+   * MEASUREMENT-ONLY: the thick composition's crossing-stroke settings.
+   * Absent → the rejected Dry 0 / Feather 75 / Load 90 / Refill 60 bag.
+   */
+  readonly mixTuning?: {
+    readonly dry?: number
+    readonly feather?: number
+    readonly load?: number
+    readonly refill?: number
+  }
+  /**
+   * MEASUREMENT-ONLY: replay the original app's intro autopainter sequence
+   * through the real engine. `m` is the nine diagonal palette strokes the
+   * artist's target screenshot is built from; the paths, colours, widths and
+   * speeds are copied from `app.js` (craft-brushes) rather than invented.
+   */
+  readonly intro?: 'm' | 'g' | 'cross' | 'pastel'
+  /**
+   * MEASUREMENT-ONLY: overrides the intro stroke's Load/Refill. The base
+   * replay is the original's (Load 90, Refill 60). A LOWER load empties the
+   * tank during the stroke (the per-bristle dry dashes switch on), and a
+   * LOWER refill stops the reservoir overwriting what the bristles picked up
+   * (the drag survives).
+   */
+  readonly introTuning?: { readonly load: number; readonly refill: number }
+  /**
+   * MEASUREMENT-ONLY: dabs per stroke. The original autopainter walks the
+   * Catmull path in `v = 48` substeps; the coarse 10-dab replay undersamples
+   * the 18 px per-bristle dash wavelength, so the dry dashes blur into a
+   * static grain. 48 restores the original cadence.
+   */
+  readonly introSegments?: number
+  /** Document size override. Absent → the 800 × 600 acceptance sheet. */
+  readonly sheet?: readonly [number, number]
 }
 
 const SCENES: readonly SceneSpec[] = [
@@ -122,6 +189,90 @@ const SCENES: readonly SceneSpec[] = [
   { name: 'blank-p0', band: false, stroke: true, pickup: 0, feather: 0, body: 0 },
   { name: 'blank-f0', band: false, stroke: true, pickup: 100, feather: 0, body: 0 },
   { name: 'blank-f100', band: false, stroke: true, pickup: 100, feather: 100, body: 0 },
+  // MEASUREMENT-ONLY (2026-11-20): the artist's value-coherence sweep —
+  // Feather 0/30/60/100 on the same blank-sheet stroke.
+  { name: 'blank-f30', band: false, stroke: true, pickup: 100, feather: 30, body: 0 },
+  { name: 'blank-f60', band: false, stroke: true, pickup: 100, feather: 60, body: 0 },
+  // MEASUREMENT-ONLY (2026-11-20): the Dry sweep at a fixed Feather 75 —
+  // the brush-emptying transition the artist wants to judge.
+  { name: 'dry0-f75', band: false, stroke: true, pickup: 100, feather: 75, body: 0, dry: 0 },
+  { name: 'dry33-f75', band: false, stroke: true, pickup: 100, feather: 75, body: 0, dry: 33 },
+  { name: 'dry66-f75', band: false, stroke: true, pickup: 100, feather: 75, body: 0, dry: 66 },
+  { name: 'dry100-f75', band: false, stroke: true, pickup: 100, feather: 75, body: 0, dry: 100 },
+  // MEASUREMENT-ONLY (2026-11-20): the Load sweep at Feather 75 / Dry 33 —
+  // how long the brush's paint tank lasts.
+  { name: 'load0-f75d33', band: false, stroke: true, pickup: 100, feather: 75, body: 0, dry: 33, load: 0 },
+  { name: 'load33-f75d33', band: false, stroke: true, pickup: 100, feather: 75, body: 0, dry: 33, load: 33 },
+  { name: 'load66-f75d33', band: false, stroke: true, pickup: 100, feather: 75, body: 0, dry: 33, load: 66 },
+  { name: 'load100-f75d33', band: false, stroke: true, pickup: 100, feather: 75, body: 0, dry: 33, load: 100 },
+  // MEASUREMENT-ONLY (2026-11-20): the "100 % matter, no transition" goal —
+  // Dry 0 + Feather 0 + Load 100 must lay a uniformly loaded stroke.
+  { name: 'full-f0d0l100', band: false, stroke: true, pickup: 100, feather: 0, body: 0, dry: 0, load: 100 },
+  // MEASUREMENT-ONLY (2026-11-20): the artist's final bristle check — a blue
+  // stroke with the classic settings on a warm yellow sheet.
+  { name: 'yellow-blank', band: false, stroke: false, pickup: null, feather: null, body: null, paper: YELLOW },
+  { name: 'yellow-f75d40l70', band: false, stroke: true, pickup: 100, feather: 75, body: 0, dry: 40, load: 70, paper: YELLOW },
+  // Same stroke with acrylic BODY: the layer turns opaque, covers the sheet
+  // and no longer reads as a multiply over the ground.
+  { name: 'yellow-f75d40l70-b85', band: false, stroke: true, pickup: 100, feather: 75, body: 85, dry: 40, load: 70, paper: YELLOW },
+  { name: 'yellow-f75d40l70-b100', band: false, stroke: true, pickup: 100, feather: 75, body: 100, dry: 40, load: 70, paper: YELLOW },
+  // MEASUREMENT-ONLY (2026-11-20): the artist's wet-on-wet composition. A
+  // yellow PIGMENT ground (four bristle strokes, Body 100, full tank), then
+  // blue and red strokes crossing it while it is still wet. Nothing is
+  // composited afterwards: the paper and pigment panels are the engine's own
+  // exports, so every trace of mixing is the Studio paint physics.
+  { name: 'mix-wet', band: false, stroke: false, pickup: null, feather: null, body: null, mix: 'wet' },
+  // MEASUREMENT-ONLY (2026-11-20): the artist's thick-brush mixing test —
+  // Dry 0 / Feather 75, a 3-4x brush, four crossing strokes over the wet
+  // yellow ground, and same-colour passes overlapping each other.
+  { name: 'mix-thick', band: false, stroke: false, pickup: null, feather: null, body: null, mix: 'thick' },
+  // MEASUREMENT-ONLY (2026-11-20): the exact same composition at Refill 10,
+  // so the carrier keeps what it picked up and drags it past the wet band.
+  { name: 'mix-thick-drag', band: false, stroke: false, pickup: null, feather: null, body: null, mix: 'drag' },
+  // MEASUREMENT-ONLY (2026-11-20): the thick composition with the DEPLETION
+  // that makes the texture move (Dry 55 / Load 45) and the target's hard
+  // edge (Feather 0). The pair differs ONLY in Refill: 60 vs 0.
+  { name: 'mix-thick-dry', band: false, stroke: false, pickup: null, feather: null, body: null, mix: 'thick-dry', mixTuning: { dry: 55, feather: 0, load: 45, refill: 60 } },
+  { name: 'mix-thick-dry-norefill', band: false, stroke: false, pickup: null, feather: null, body: null, mix: 'thick-dry-norefill', mixTuning: { dry: 55, feather: 0, load: 45, refill: 0 } },
+  // The artist's Feather 75 kept, with the depletion + low refill that make
+  // the texture move and the pickup survive.
+  { name: 'mix-thick-dry-f75', band: false, stroke: false, pickup: null, feather: null, body: null, mix: 'thick-dry', mixTuning: { dry: 55, feather: 75, load: 45, refill: 10 } },
+  // MEASUREMENT-ONLY (2026-11-20): the original app's intro `m()` sequence —
+  // nine wide diagonal palette strokes on a portrait hot-press sheet. This is
+  // the composition of the artist's target screenshot, replayed through the
+  // real engine with the original's settings (Body 100, Dry from each
+  // palette entry's depletion, Pickup 100, Refill 60, Feather 0).
+  { name: 'intro-m', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'm', sheet: [480, 600], paper: HOT },
+  // MEASUREMENT-ONLY (2026-11-20): the same composition with the tank
+  // emptying during the stroke (Load 55) and the reservoir no longer
+  // overwriting the pickup (Refill 10).
+  { name: 'intro-m-drag', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'm', introTuning: { load: 55, refill: 10 }, sheet: [480, 600], paper: HOT },
+  // The hard version: Load 45 / Refill 0 — the brush empties sooner and
+  // keeps everything it picks up.
+  { name: 'intro-m-drag-hard', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'm', introTuning: { load: 45, refill: 0 }, sheet: [480, 600], paper: HOT },
+  // MEASUREMENT-ONLY (2026-11-20): the original autopainter's own 48-substep
+  // cadence — the coarse 10-dab replay blurred the per-bristle dashes.
+  { name: 'intro-m-fine', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'm', introSegments: 48, sheet: [480, 600], paper: HOT },
+  { name: 'intro-m-fine-drag', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'm', introTuning: { load: 55, refill: 10 }, introSegments: 48, sheet: [480, 600], paper: HOT },
+  { name: 'intro-m-fine-hard', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'm', introTuning: { load: 45, refill: 0 }, introSegments: 48, sheet: [480, 600], paper: HOT },
+  // MEASUREMENT-ONLY (2026-11-20): the ORIGINAL `g()` — five dense vertical
+  // strokes (green/teal/tan/cornflower/crimson), the composition of the
+  // artist's target screenshot. Base = the app defaults; drag/hard lower the
+  // tank and the refill.
+  { name: 'intro-g', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'g', sheet: [480, 600], paper: HOT },
+  { name: 'intro-g-drag', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'g', introTuning: { load: 55, refill: 10 }, sheet: [480, 600], paper: HOT },
+  { name: 'intro-g-hard', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'g', introTuning: { load: 45, refill: 0 }, sheet: [480, 600], paper: HOT },
+  { name: 'intro-g-fine', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'g', introSegments: 48, sheet: [480, 600], paper: HOT },
+  // MEASUREMENT-ONLY (2026-11-20): the target-style CROSSING composition —
+  // seven near-vertical palette strokes leaning into each other, 20 dabs
+  // each. Drag = Load 55 / Refill 10; hard = Load 45 / Refill 0.
+  { name: 'intro-cross', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'cross', introTuning: { load: 55, refill: 10 }, introSegments: 20, sheet: [480, 600], paper: HOT },
+  { name: 'intro-cross-hard', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'cross', introTuning: { load: 45, refill: 0 }, introSegments: 20, sheet: [480, 600], paper: HOT },
+  // MEASUREMENT-ONLY (2026-11-20): the pastel layering study on the
+  // Feather-0 ragged-rim law — yellow over cyan, cream over blue, plus red,
+  // orange and green.
+  { name: 'intro-pastel', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'pastel', introTuning: { load: 65, refill: 10 }, introSegments: 20, sheet: [480, 600], paper: HOT },
+  { name: 'intro-pastel-soft', band: false, stroke: false, pickup: null, feather: null, body: null, intro: 'pastel', introTuning: { load: 75, refill: 30 }, introSegments: 20, sheet: [480, 600], paper: HOT },
   // MEASUREMENT-ONLY (2026-11-19): the reference dries by default — its
   // brush.depletion 1.6 x the cornflower cycle entry 0.75 is 0.002 px^-1,
   // which is Studio's Dry ~= 55. The acceptance scenes pin Dry 0, so they
@@ -136,9 +287,25 @@ const SCENES: readonly SceneSpec[] = [
 
 // --- the fixed path ---------------------------------------------------------
 
-/** The reference's horizontal path, four knots at pressure 0.75 (doc uv, y up). */
+/**
+ * The reference's horizontal path at its own cadence: the press plus twelve
+ * moves, one captured frame each (reference.mjs dispatchStroke). The engine's
+ * speed — and therefore the bristle CONTACT pressure — is derived from the
+ * sample spacing per tick, so a four-knot path fed one tick apart paints at a
+ * different speed than the reference's twelve-frame drag. Thirteen evenly
+ * spaced samples reproduce its timing; p stays at the authored 0.75.
+ */
 function horizontalPoints(): readonly AquarellePoint[] {
-  return [0.12, 0.3733, 0.6267, 0.88].map((x) => ({ x, y: 0.5, p: 0.75, tx: 0, ty: 0, tw: 0 }))
+  const points: AquarellePoint[] = []
+  for (let i = 0; i <= 12; i += 1) {
+    // The reference capture is driven by mouse events, and its penPressure()
+    // returns 1.0 for a mouse (app.js penPressure). The authored 0.75 was a
+    // stylus value the comparison never used: with the contact-pressure law it
+    // scales the touch gate BELOW the bristles' reach, so almost no bristle
+    // printed. Feed what the reference actually fed.
+    points.push({ x: 0.12 + (0.76 * i) / 12, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0 })
+  }
+  return points
 }
 
 /**
@@ -159,11 +326,14 @@ function paramsBag(
   feather: number,
   body: number,
   dry = 0,
+  load = 50,
+  emboss = 0,
+  refill = 0,
 ): Record<string, number> {
   return {
     size: sizePx,
     water: 50,
-    load: 50,
+    load,
     flow: 50,
     bleed: 50,
     dry,
@@ -173,22 +343,255 @@ function paramsBag(
     pickup,
     feather,
     body,
-    refill: 0,
+    refill,
     wetSeconds: 7,
+    emboss,
   }
+}
+
+/** Thirteen evenly spaced samples from (x0, y0) to (x1, y1), mouse pressure. */
+function linePoints(x0: number, y0: number, x1: number, y1: number): readonly AquarellePoint[] {
+  const points: AquarellePoint[] = []
+  for (let i = 0; i <= 12; i += 1) {
+    points.push({
+      x: x0 + ((x1 - x0) * i) / 12,
+      y: y0 + ((y1 - y0) * i) / 12,
+      p: 1,
+      tx: 0,
+      ty: 0,
+      tw: 0,
+    })
+  }
+  return points
+}
+
+// --- the original app's intro autopainter (measurement-only) ----------------
+// app.js `m()` — nine wide diagonal palette strokes. The paths are authored in
+// the original's 1280 × 1600 canvas; `introM()` reproduces its seeded draw
+// exactly, and `introPoints()` applies the app's Catmull-Rom sampler and
+// pressure fade (intro.fade = .45). Nothing here is a composite: the strokes
+// go through the real engine's adapter like any other scene.
+const INTRO_PALETTE = {
+  teal: { color: '#1b5b74', depletion: 0.6, width: 0.09 },
+  cornflower: { color: '#5994e4', depletion: 0.75, width: 0.085 },
+  tan: { color: '#c7a08a', depletion: 0.7, width: 0.1 },
+  green: { color: '#0b4628', depletion: 0.9, width: 0.08 },
+  orange: { color: '#f08208', depletion: 1.1, width: 0.05 },
+  crimson: { color: '#c0102f', depletion: 1.0, width: 0.055 },
+  // Pastel set (2026-11-20): the artist's layering study — yellow over cyan,
+  // cream over blue, plus red, orange and green.
+  pcyan: { color: '#8fd0d4', depletion: 0.6, width: 0.1 },
+  pyellow: { color: '#f2e29a', depletion: 0.55, width: 0.095 },
+  pcream: { color: '#f2e6cf', depletion: 0.5, width: 0.095 },
+  pblue: { color: '#8fb6e6', depletion: 0.6, width: 0.1 },
+  pred: { color: '#e08a8a', depletion: 0.7, width: 0.09 },
+  porange: { color: '#efb07a', depletion: 0.65, width: 0.085 },
+  pgreen: { color: '#a6cfa0', depletion: 0.65, width: 0.09 },
+} as const
+
+type IntroPaint = keyof typeof INTRO_PALETTE
+
+interface IntroStroke {
+  readonly paint: IntroPaint
+  readonly control: readonly (readonly [number, number])[]
+  readonly speed: number
+  readonly width: number
+}
+
+function introRandom(seed: number): () => number {
+  let state = seed >>> 0
+  return () => {
+    state = (state + 1831565813) >>> 0
+    let e = state
+    e = Math.imul(e ^ (e >>> 15), e | 1)
+    e ^= e + Math.imul(e ^ (e >>> 7), e | 61)
+    return ((e ^ (e >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function introCurve(
+  start: readonly [number, number],
+  end: readonly [number, number],
+  amplitude: number,
+): readonly (readonly [number, number])[] {
+  const [x0, y0] = start
+  const [x1, y1] = end
+  const across = -(y1 - y0)
+  const along = x1 - x0
+  const points: (readonly [number, number])[] = []
+  for (let i = 0; i < 4; i += 1) {
+    const t = i / 3
+    const bow = Math.sin(t * Math.PI) * amplitude
+    points.push([x0 + (x1 - x0) * t + across * bow, y0 + (y1 - y0) * t + along * bow])
+  }
+  return points
+}
+
+function introM(): readonly IntroStroke[] {
+  const random = introRandom(11)
+  const paints: readonly IntroPaint[] = [
+    'teal', 'cornflower', 'tan', 'green', 'cornflower', 'teal', 'orange', 'tan', 'crimson',
+  ]
+  return paints.map((paint, index) => {
+    const x = 140 + index * 95 + (random() - 0.5) * 60
+    const y = 120 + index * 70 + (random() - 0.5) * 60
+    const length = 760 + random() * 320
+    const width = 0.95 + random() * 0.45
+    const speed = 0.85 + random() * 0.3
+    return {
+      paint,
+      width,
+      speed,
+      control: introCurve([x, y], [x + length * 0.52, y + length], 0.08),
+    }
+  })
+}
+
+/**
+ * app.js `g()` — five vertical strokes (green, teal, tan, cornflower,
+ * crimson), centred on the 1280-wide design space at 95 px spacing. This is
+ * the dense vertical cluster of the artist's target, not `m()`'s diagonal
+ * fan. Same seeded draw order as the app: x, start y, end y, width.
+ */
+function introG(): readonly IntroStroke[] {
+  const random = introRandom(71)
+  const paints: readonly IntroPaint[] = ['green', 'teal', 'tan', 'cornflower', 'crimson']
+  return paints.map((paint, index) => {
+    const x = 1280 / 2 + (index - (paints.length - 1) / 2) * 95 + (random() - 0.5) * 30
+    const y0 = 220 + random() * 180
+    const y1 = 1180 + random() * 220
+    const width = 1.05 + random() * 0.35
+    return {
+      paint,
+      width,
+      speed: 0.9,
+      control: [
+        [x, y0],
+        [x, (y0 + y1) / 2],
+        [x, y1],
+      ],
+    }
+  })
+}
+
+/**
+ * MEASUREMENT-ONLY (2026-11-20): a dense composition in the style of the
+ * artist's target — seven near-vertical palette strokes whose paths lean
+ * into each other and cross near the centre. The original sequences (m, g,
+ * h) are all parallel; the target's colour interpenetration happens at
+ * crossings, so this composition gives the real carrier pickup somewhere to
+ * act. Paths and palette are authored here, the physics is the engine's.
+ */
+function introCross(): readonly IntroStroke[] {
+  const random = introRandom(97)
+  // Nine strokes on a 70 px top spacing with alternating leans: they cross
+  // in a dense central band while the brush still carries paint, so each
+  // bristle samples a different wet neighbour.
+  const specs: readonly { paint: IntroPaint; x0: number; x1: number; y0: number; y1: number }[] = [
+    { paint: 'orange', x0: 340, x1: 420, y0: 260, y1: 640 },
+    { paint: 'green', x0: 420, x1: 560, y0: 150, y1: 1250 },
+    { paint: 'teal', x0: 500, x1: 380, y0: 100, y1: 1330 },
+    { paint: 'tan', x0: 660, x1: 540, y0: 240, y1: 1310 },
+    { paint: 'tan', x0: 820, x1: 700, y0: 140, y1: 1290 },
+    { paint: 'teal', x0: 900, x1: 780, y0: 180, y1: 1350 },
+    { paint: 'cornflower', x0: 580, x1: 700, y0: 120, y1: 1280 },
+    { paint: 'cornflower', x0: 740, x1: 860, y0: 90, y1: 1260 },
+    { paint: 'crimson', x0: 980, x1: 860, y0: 300, y1: 1450 },
+  ]
+  return specs.map((spec) => {
+    const bow = (random() - 0.5) * 0.12
+    return {
+      paint: spec.paint,
+      width: 1.05 + random() * 0.35,
+      speed: 0.85 + random() * 0.25,
+      control: introCurve([spec.x0, spec.y0], [spec.x1, spec.y1], bow),
+    }
+  })
+}
+
+/**
+ * MEASUREMENT-ONLY (2026-11-20): the artist's pastel layering study —
+ * cyan grounds with yellow over them, blue grounds with cream over them,
+ * plus red, orange and green crossing the cluster. Paint order is
+ * background → top, so the pale overlays genuinely pick up and drag the
+ * colour beneath (the carrier law, no composite).
+ */
+function introPastel(): readonly IntroStroke[] {
+  const random = introRandom(131)
+  const specs: readonly { paint: IntroPaint; x0: number; x1: number; y0: number; y1: number }[] = [
+    { paint: 'pcyan', x0: 420, x1: 500, y0: 120, y1: 1300 },
+    { paint: 'pcyan', x0: 530, x1: 450, y0: 150, y1: 1350 },
+    { paint: 'pblue', x0: 780, x1: 860, y0: 110, y1: 1280 },
+    { paint: 'pblue', x0: 900, x1: 810, y0: 140, y1: 1320 },
+    { paint: 'pgreen', x0: 610, x1: 690, y0: 180, y1: 1240 },
+    { paint: 'porange', x0: 690, x1: 620, y0: 200, y1: 1200 },
+    { paint: 'pred', x0: 950, x1: 880, y0: 260, y1: 1400 },
+    { paint: 'pyellow', x0: 480, x1: 540, y0: 220, y1: 1180 },
+    { paint: 'pcream', x0: 830, x1: 780, y0: 200, y1: 1220 },
+  ]
+  return specs.map((spec) => {
+    const bow = (random() - 0.5) * 0.08
+    return {
+      paint: spec.paint,
+      width: 1.05 + random() * 0.3,
+      speed: 0.85 + random() * 0.25,
+      control: introCurve([spec.x0, spec.y0], [spec.x1, spec.y1], bow),
+    }
+  })
+}
+
+function catmull(a: number, b: number, c: number, d: number, t: number): number {
+  const t2 = t * t
+  const t3 = t2 * t
+  return 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3)
+}
+
+function introPoints(
+  control: readonly (readonly [number, number])[],
+  segments = 10,
+): readonly AquarellePoint[] {
+  const n = control.length - 1
+  const points: AquarellePoint[] = []
+  for (let i = 0; i <= segments; i += 1) {
+    const u = (i / segments) * n
+    const k = Math.min(n - 1, Math.floor(u))
+    const t = u - k
+    const p0 = control[Math.max(0, k - 1)]!
+    const p1 = control[k]!
+    const p2 = control[Math.min(control.length - 1, k + 1)]!
+    const p3 = control[Math.min(control.length - 1, k + 2)]!
+    const x = catmull(p0[0], p1[0], p2[0], p3[0], t)
+    const y = catmull(p0[1], p1[1], p2[1], p3[1], t)
+    // app.js intro.fade = .45, applied on the autopainter's eased progress.
+    const progress = i / segments
+    const pressure = 1 + (0.45 - 1) * Math.pow(progress, 1.5)
+    points.push({
+      x: x / 1280,
+      // The engine's document y is bottom-up; the original app's autopainter
+      // is screen-space (y down). Flip so the replay matches the reference's
+      // top-left → bottom-right fan.
+      y: 1 - y / 1600,
+      p: pressure,
+      tx: 0,
+      ty: 0,
+      tw: 0,
+    })
+  }
+  return points
 }
 
 function makeStroke(
   color: string,
   bag: Record<string, number>,
   mutationId: number,
+  points: readonly AquarellePoint[] = horizontalPoints(),
 ): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color,
     params: bag,
     brushId: BRUSH_ID,
-    points: horizontalPoints().map((point) => ({ ...point })),
+    points: points.map((point) => ({ ...point })),
     mutationId,
     timestamp: 0,
   })
@@ -372,6 +775,8 @@ function probeRenderer(): string {
 
 function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<string, unknown> {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
+  const sheetW = spec.sheet?.[0] ?? SHEET_W
+  const sheetH = spec.sheet?.[1] ?? SHEET_H
   // The band's canonical size mirrors the reference's width ratio.
   const bandSize = Math.round(blueSize * (BAND_FRACTION / BLUE_FRACTION))
 
@@ -379,9 +784,9 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
   // see the adapter's engine and only the adapter's engine.
   capturedEngine = null
   const adapter = createAquarelleEngineAdapter({
-    width: SHEET_W,
-    height: SHEET_H,
-    paperPreset: COLD,
+    width: sheetW,
+    height: sheetH,
+    paperPreset: spec.paper ?? COLD,
     paperStrength: PAPER_STRENGTH,
     paperSeed: PAPER_SEED,
   })
@@ -411,11 +816,105 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
     let finalPaper = substrate ?? pre
     let finalPigment: Panel | null = null
     let finalCoverage: Panel | null = null
-    if (spec.stroke) {
+    if (spec.intro) {
+      // The original app's intro `m()`: nine wide diagonal palette strokes,
+      // same control points and seeded widths/speeds, sampled with its
+      // Catmull-Rom law and pressure fade. The Studio has no Body (the
+      // original is opaque), so Body 100; Dry comes from each palette entry's
+      // own depletion (1.6 × entry / the cornflower baseline); Pickup 100 is
+      // the Studio default; Refill 60 the original's; Feather 0 is the
+      // original's fixed softness .09. No post-composite.
+      const strokes =
+        spec.intro === 'g'
+          ? introG()
+          : spec.intro === 'cross'
+            ? introCross()
+            : spec.intro === 'pastel'
+              ? introPastel()
+              : introM()
+      let seed = 0x7ec200
+      const load = spec.introTuning?.load ?? 90
+      const refill = spec.introTuning?.refill ?? 60
+      for (const stroke of strokes) {
+        const entry = INTRO_PALETTE[stroke.paint]
+        const size = Math.max(5, Math.round(24 * (entry.width / 0.085) * (stroke.width / 1.15)))
+        const dry = Math.min(100, Math.max(0, 55 * (entry.depletion / 0.75)))
+        adapter.applyStroke(
+          makeStroke(
+            entry.color,
+            paramsBag(size, 100, 0, 100, dry, load, 0, refill),
+            seed++,
+            introPoints(stroke.control, spec.introSegments),
+          ),
+        )
+      }
+      settle()
+      finalPaper = captureCanvas(engine.exportCanvas('paper'))
+      finalPigment = captureCanvas(engine.exportCanvas('pigment'))
+      finalCoverage = captureCanvas(engine.exportCoverageCanvas())
+    } else if (spec.mix) {
+      let seed = spec.mix === 'wet' ? 0x7ec100 : 0x7ec300
+      if (
+        spec.mix === 'thick' ||
+        spec.mix === 'drag' ||
+        spec.mix === 'thick-dry' ||
+        spec.mix === 'thick-dry-norefill'
+      ) {
+        // The artist's thick-brush test (2026-11-20): Dry 0 keeps the brush
+        // wet end to end, Feather 75 softens the film edges, and a 3-4x
+        // brush crosses its own wet strokes. Every colour is engine pigment
+        // at Body 100; the only variables are the path overlaps.
+        const groundBag = paramsBag(Math.round(blueSize * 4), 0, 0, 100, 0, 100, 0)
+        for (const y of [0.4, 0.47, 0.54]) {
+          adapter.applyStroke(makeStroke(BAND_COLOR, groundBag, seed++, linePoints(0.08, y, 0.92, y)))
+        }
+        settle()
+        substrate = captureCanvas(engine.exportCanvas('paper'))
+        const tuning = spec.mixTuning ?? {}
+        const crossingBag = paramsBag(
+          Math.round(blueSize * 3),
+          100,
+          tuning.feather ?? 75,
+          100,
+          tuning.dry ?? 0,
+          tuning.load ?? 90,
+          0,
+          tuning.refill ?? (spec.mix === 'drag' ? 10 : 60),
+        )
+        // Blue and red cross each other; a second blue pass overlaps the
+        // first; cyan crosses the yellow band and runs out onto bare paper
+        // at both ends, so pick-up has to drag colour along the path.
+        adapter.applyStroke(makeStroke(BLUE_COLOR, crossingBag, seed++, linePoints(0.16, 0.22, 0.48, 0.82)))
+        adapter.applyStroke(makeStroke(RED_COLOR, crossingBag, seed++, linePoints(0.3, 0.85, 0.62, 0.18)))
+        adapter.applyStroke(makeStroke(BLUE_COLOR, crossingBag, seed++, linePoints(0.24, 0.2, 0.56, 0.8)))
+        adapter.applyStroke(makeStroke(CYAN_COLOR, crossingBag, seed++, linePoints(0.1, 0.62, 0.9, 0.36)))
+      } else {
+        // Wet-on-wet: the yellow ground is PIGMENT (four broad bristle
+        // strokes at Body 100 and a full tank), then blue and red bristle
+        // strokes cross it while it is still wet. Pickup 60 is the Studio
+        // default the port must not inherit away; the crossing strokes keep
+        // the artist's classic Feather 75 · Dry 40 · Load 70. NO
+        // post-composite: both panels below are the engine's own exports.
+        const groundBag = paramsBag(blueSize, 0, 0, 100, 0, 100, 0)
+        for (const y of [0.4, 0.46, 0.52]) {
+          adapter.applyStroke(makeStroke(BAND_COLOR, groundBag, seed++, linePoints(0.1, y, 0.9, y)))
+        }
+        settle()
+        substrate = captureCanvas(engine.exportCanvas('paper'))
+        const wetBag = paramsBag(blueSize, 100, 30, 100, 80, 90, 0, 10)
+        adapter.applyStroke(makeStroke(BLUE_COLOR, wetBag, seed++, linePoints(0.32, 0.28, 0.32, 0.72)))
+        adapter.applyStroke(makeStroke(RED_COLOR, wetBag, seed++, linePoints(0.5, 0.28, 0.5, 0.72)))
+        adapter.applyStroke(makeStroke(CYAN_COLOR, wetBag, seed++, linePoints(0.68, 0.28, 0.68, 0.72)))
+      }
+      settle()
+      finalPaper = captureCanvas(engine.exportCanvas('paper'))
+      finalPigment = captureCanvas(engine.exportCanvas('pigment'))
+      finalCoverage = captureCanvas(engine.exportCoverageCanvas())
+    } else if (spec.stroke) {
       adapter.applyStroke(
         makeStroke(
           BLUE_COLOR,
-          paramsBag(blueSize, spec.pickup ?? 0, spec.feather ?? 0, spec.body ?? 0, spec.dry ?? 0),
+          paramsBag(blueSize, spec.pickup ?? 0, spec.feather ?? 0, spec.body ?? 0, spec.dry ?? 0, spec.load ?? 50),
           0x7ec001,
         ),
       )
