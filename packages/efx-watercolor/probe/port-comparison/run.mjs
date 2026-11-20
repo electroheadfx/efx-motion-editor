@@ -122,6 +122,7 @@ const MEASUREMENT_SCENES = [
   'live-end-117-dry100-l50',
   'live-end-117-dry70-l50',
   'live-end-big-tex',
+  'live-end-big-emboss',
   'live-end-pen-big',
   'end-cap-control',
   'end-block-pen',

@@ -185,6 +185,8 @@ interface SceneSpec {
    * is when the trailing catch-up actually stamps the final impression.
    */
   readonly liveStep?: number
+  /** MEASUREMENT-ONLY: the live path's Emboss (0..100, the app band). */
+  readonly emboss?: number
   /**
    * MEASUREMENT-ONLY: register a synthetic, anisotropic tip mask (14 dashes
    * along the stroke) and paint with it — the artist's textured tip at size.
@@ -413,6 +415,10 @@ const SCENES: readonly SceneSpec[] = [
   // A textured tip at size 300: the tip motif's stamping is what the artist
   // sees at 200 px+, and the directional blur is gated on this size.
   { name: 'live-end-big-tex', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 300, pauseTail: 2, tex: true, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  // Post-UAT 2026-11-21 (the artist's emboss-vs-real-border report): a big
+  // bristle stroke at the Emboss cap (15) must light the REAL mark — never a
+  // seam along the solid base footprint inside the feathered paint.
+  { name: 'live-end-big-emboss', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 300, pauseTail: 2, emboss: 15, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
   // 2026-11-20 (the artist's pen end block): a pen, a mid brush, and a pause
   // before the lift — the last dab is stamped by the idle catch-up, so its
   // un-faded trailing rectangle used to re-ink a solid block.
@@ -1062,7 +1068,7 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
       finalCoverage = captureCanvas(engine.exportCoverageCanvas())
     } else if (spec.liveEnd) {
       const size = spec.liveSize ?? Math.max(8, Math.round(blueSize * 3))
-      const bag = paramsBag(size, 100, spec.feather ?? 74, 100, 100, 100, 0, 0)
+      const bag = paramsBag(size, 100, spec.feather ?? 74, 100, 100, 100, spec.emboss ?? 0, 0)
       if (spec.bagOverride !== undefined) Object.assign(bag, spec.bagOverride)
       engine.setParams(toEngineParams(bag as never))
       if (spec.tex) {

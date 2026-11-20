@@ -27,6 +27,9 @@
 //      its depth follows the pen pressure between EMBOSS_PRESS_FLOOR
 //      and 1; Lift erodes with the same rect and amount.
 //   7. No step, fill, pen or vector path reads or writes the target.
+//   8. Post-UAT 2026-11-21: a bristle response deposits thickness through
+//      the gather's REAL coverage (bristleReliefFS), never the solid base
+//      footprint — the footprint boundary lit as a seam inside the mark.
 // ============================================================
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -366,8 +369,13 @@ describe('relief deposit (MED-14)', () => {
     expect(inkAt).toBeGreaterThan(seam)
     expect(reliefAt).toBeGreaterThan(inkAt)
     expect(wetAt).toBeGreaterThan(reliefAt)
+    // Post-UAT 2026-11-21: a bristle response deposits through the gather's
+    // real coverage; every other response keeps reliefFS's footprint.
     expect(brush).toContain(
-      'if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);',
+      'if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefAmount, contactPr, alongPx, this.bristleEndCap);',
+    )
+    expect(brush).toContain(
+      'else this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);',
     )
   })
 
@@ -419,5 +427,46 @@ describe('thickness never flows (MED-14 prohibitions)', () => {
     expect(ENGINE_SOURCE.match(/this\.drawRelief\(/g) ?? []).toHaveLength(2)
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
     expect(brush.match(/this\.brushRelief\(/g) ?? []).toHaveLength(1)
+    // Post-UAT 2026-11-21: the bristle thickness deposit is the gather's
+    // coverage, called once from the same guarded slot.
+    expect(ENGINE_SOURCE.match(/this\.bristleReliefPass\(/g) ?? []).toHaveLength(1)
+    expect(brush.match(/this\.bristleReliefPass\(/g) ?? []).toHaveLength(1)
+  })
+})
+
+// Post-UAT (2026-11-21) — the emboss must follow the REAL bristle mark.
+// reliefFS's solid base-footprint boundary sat inside a feathered, hairy
+// stroke and lit as a dark/white seam at big sizes. The bristle response now
+// deposits thickness through a third BRISTLE_GATHER consumer whose mask is the
+// gather's own coverage — the exact weight the ink deposit moved by.
+describe('bristleReliefFS — thickness follows the real bristle mark', () => {
+  it('composes the ONE gather snippet and writes uAmount × coverage to one output', () => {
+    const relief = shaderSource('bristleReliefFS')
+    expect(relief).toContain('${BRISTLE_GATHER}')
+    expect(relief).toContain('uniform float uAmount;')
+    expect(relief).toContain('float a = clamp(gatherBristle(vUv).coverage, 0.0, 1.0);')
+    expect(relief).toContain('o0 = vec4(uAmount * a);')
+    expect(relief).not.toContain('layout(location=1)')
+    // The deposit's own square cull, never a wider stamp rect.
+    expect(relief).toContain('if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;')
+  })
+
+  it('registers outside the pinned literal and binds the shared gather', () => {
+    expect(ENGINE_SOURCE).toContain(
+      'this.programs.bristleRelief = this.g.program(S.bristleReliefFS);',
+    )
+    const pass = sliceBetween(
+      ENGINE_SOURCE,
+      'private bristleReliefPass(',
+      'private brushInk(',
+    )
+    expect(pass).toContain('this.bindGather(p, x, y, r, angle, pr, alongPx, endCap);')
+    expect(pass).toContain('gl.uniform1f(p.u.uAmount!, amount);')
+    expect(pass).toContain('gl.blendFunc(gl.ONE, gl.ONE);')
+    expect(pass).toContain('g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.6));')
+    // It draws the thickness target only: no ink, no coverage, no snapshot.
+    expect(pass).not.toContain('this.ink')
+    expect(pass).not.toContain('this.cover')
+    expect(pass).not.toContain('bristleSnapshot(')
   })
 })

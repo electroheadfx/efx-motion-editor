@@ -637,6 +637,9 @@ export class WatercolorEngine {
     // is the film's opacity on the bristle path, not a second film's erode.
     this.programs.bristleDeposit = this.g.program(S.bristleDepositFS);
     this.programs.bristleCover = this.g.program(S.bristleCoverFS);
+    // Post-UAT (2026-11-21): the bristle thickness deposit, same rule —
+    // outside the pinned literal. The gather's coverage IS its mask.
+    this.programs.bristleRelief = this.g.program(S.bristleReliefFS);
     // 64-24 (D-24): the touch refresh, same rule — outside the pinned literal
     // (twenty-three stays). The delivery law's third pass.
     this.programs.bristleTouch = this.g.program(S.bristleTouchFS);
@@ -2639,7 +2642,15 @@ export class WatercolorEngine {
           // after its one coverage write — the next dab's carrier reads an
           // honest age of the paint it crosses.
           if (bristle) this.bristleTouch(dx, dy, dr, angle, amount);
-          if (reliefAmount > 0) this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
+          // Post-UAT (2026-11-21): a bristle response's thickness follows the
+          // gather's REAL coverage, never the solid base footprint — the
+          // footprint's boundary lit as a dark/white seam inside the
+          // feathered mark at big sizes. Every other response keeps reliefFS,
+          // which already IS its pigment stamp's footprint.
+          if (reliefAmount > 0) {
+            if (bristle) this.bristleReliefPass(dx, dy, dr, angle, reliefAmount, contactPr, alongPx, this.bristleEndCap);
+            else this.brushRelief(dx, dy, dr, angle, reliefAmount, dryness, grainThr);
+          }
           // soft brushes wet a little beyond the tip; textured ones keep their
           // edges. A waterless brush never wakes the fluid sim at all.
           if (wet > 0) this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, dryness, grainThr);
@@ -2770,6 +2781,28 @@ export class WatercolorEngine {
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE);
     this.drawRelief(amount, x, y, r, angle, grain, grainThr);
+    gl.disable(gl.BLEND);
+  }
+
+  /**
+   * Post-UAT (2026-11-21, the artist's emboss-vs-border report): a bristle
+   * response deposits thickness through the gather's OWN coverage — the
+   * exact weight `bristleInk` moved the paint by — so the lit ramp ends on
+   * the real mark (feather, streaks, caps, paper tooth) instead of the solid
+   * base footprint's boundary, which sat inside the paint and read as a
+   * dark/white seam. Additive, like brushRelief; Emboss 0 still draws
+   * nothing at all. Undo/protection is the caller's, exactly as brushRelief.
+   */
+  private bristleReliefPass(x: number, y: number, r: number, angle: number, amount: number, pr: number, alongPx: number, endCap = false): void {
+    const { gl, g } = this;
+    const p = this.programs.bristleRelief;
+    p.bind();
+    this.bindGather(p, x, y, r, angle, pr, alongPx, endCap);
+    gl.uniform1f(p.u.uAmount!, amount);
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    g.draw(this.relief, this.stampRect(x, y, r, this.dw, this.dh, 1.6));
     gl.disable(gl.BLEND);
   }
 

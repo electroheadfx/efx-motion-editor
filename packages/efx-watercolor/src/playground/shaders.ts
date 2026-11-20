@@ -1389,6 +1389,28 @@ void main(){
   o0 = vec4(target, 0.0, 0.0, a);
 }`;
 
+// Post-UAT (2026-11-21, the artist's emboss-vs-real-border report) — the
+// thickness deposit for a BRISTLE response. The gather's coverage is the ONLY
+// mask the emboss may light: reliefFS deposits the solid base footprint, whose
+// boundary sits INSIDE a feathered, hairy mark — at big sizes it lit as a
+// dark/white seam that ignored the real silhouette. Here thickness is written
+// with the very weight the ink deposit moved by, so the lit ramp ends exactly
+// on the edge the artist sees. A third gather consumer (D-29's delivery law).
+export const bristleReliefFS = `${HEADER}${BRISTLE_GATHER}
+layout(location=0) out vec4 o0;
+uniform float uAmount;       // the delivered per-dab thickness
+void main(){
+  // The deposit's own square cull — an early-out only: coverage can be 0
+  // inside it and is then written as a zero addition.
+  vec2 p = vUv - uPoint;
+  p.x *= uSheetAspect;
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  if (abs(q.x) > 1.15 || abs(q.y) > 1.15) discard;
+  float a = clamp(gatherBristle(vUv).coverage, 0.0, 1.0);
+  if (a <= 1e-3) discard;
+  o0 = vec4(uAmount * a);
+}`;
+
 // ============================================================
 //  64-24 (D-24) — THE TOUCH STAMP.
 //

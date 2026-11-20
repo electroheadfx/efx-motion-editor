@@ -750,11 +750,13 @@ describe('post-UAT — the bristle Body mask is gone, Body is film opacity', () 
     )
     expectContains(shipped, '${HEADER}${FOOTPRINT_MASK}')
     expectContains(shipped, 'float m = footprintMask();')
-    // The ONE gather snippet now has exactly two program consumers.
+    // The ONE gather snippet now has exactly three program consumers: the
+    // deposit, the coverage write, and (post-UAT 2026-11-21) the thickness
+    // deposit, so the emboss follows the mark the paint actually made.
     expect(
       (SHADERS_SOURCE.match(/export const bristle\w+FS = `\$\{HEADER\}\$\{BRISTLE_GATHER\}/g) ?? []).length,
-      'two consumers: the deposit and the coverage write',
-    ).toBe(2)
+      'three consumers: the deposit, the coverage write and the thickness deposit',
+    ).toBe(3)
   })
 
   it('maps Body to a linear film opacity with a floor that keeps Body 0 painting', () => {
