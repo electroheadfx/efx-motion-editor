@@ -191,6 +191,9 @@ export type LayerId = 'inkA' | 'inkB' | 'fixedA' | 'fixedB' | 'wet' | 'relief' |
  */
 export interface WholeDoc { w: number; h: number; rect: Rect | null; layers: Record<LayerId, Uint16Array | Float32Array> }
 
+/** LIVE-SEED CACHE (2026-11-22): an exact sheet capture the host can restore. */
+export interface SheetSnapshot { whole: WholeDoc; bristleContent: boolean }
+
 /** Document-level state that undo tracks besides the paint. */
 export interface DocState {
   paperId: string;
@@ -1023,6 +1026,40 @@ export class WatercolorEngine {
       reference: m.doc.reference,
       view: { zoom: this.zoomLevel, pan: [...this.pan], fitted: this.fitMode },
     };
+  }
+
+  /**
+   * LIVE-SEED CACHE (2026-11-22): the exact sheet layer set, for a host that
+   * wants to bring a frame's committed base back WITHOUT replaying its
+   * script. This is a SHEET snapshot, not a document one: no paper, no
+   * history, no view and no wet bookkeeping. `captureWhole` is the same exact
+   * float capture a saved document uses, so a restore reproduces the pixels
+   * and the pickup fields the sheet held when it was captured.
+   */
+  captureSheet(): SheetSnapshot {
+    return { whole: this.captureWhole(), bristleContent: this.bristleContent };
+  }
+
+  /**
+   * Put a captured sheet back on a BLANK sheet of the same size (the caller
+   * clears first on a frame change; this method also wipes, so it is always
+   * safe). Paper, history, view and the undo memory are untouched. The
+   * restored base is DRY: the sheet's own last-touch stamps ride the record
+   * and keep aging on the engine clock, exactly like a committed base.
+   * Returns false when the record cannot be applied (size mismatch) — the
+   * caller falls back to the script replay.
+   */
+  restoreSheet(s: SheetSnapshot): boolean {
+    const whole = s.whole;
+    if (whole.w !== this.dw || whole.h !== this.dh) return false;
+    this.resetSheet();
+    this.uploadWhole(whole);
+    this.bristleContent = s.bristleContent;
+    this.dirty = null;
+    this.dirtyAll = true;
+    this.notifyHistory();
+    this.schedule();
+    return true;
   }
 
   /** Replace the painting with a saved one. History starts afresh. */

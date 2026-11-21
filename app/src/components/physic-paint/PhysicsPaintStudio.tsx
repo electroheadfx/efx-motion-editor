@@ -10628,9 +10628,11 @@ export function PhysicsPaintStudio() {
   // order. The live sheet replays this list, so the seed can only ever equal
   // the commit it is reproducing. Identity-stable getter (the mount memo
   // contract); the event list is read at seed time, never carried.
+  // 2026-11-22: by FRAME. The layer reads the frame it is LEAVING to stamp
+  // the sheet cache, so the getter must not fall back to the launch frame.
   const getAquarelleSeedEvents = useCallback(
-    () =>
-      getAquarelleEventsForFrame(launchContextRef.current?.startFrame ?? 0).map((event) =>
+    (frame: number) =>
+      getAquarelleEventsForFrame(frame).map((event) =>
         isAquarelleDryEvent(event) ? { ...event } : withAquarelleReplayGrid(event),
       ),
     [],

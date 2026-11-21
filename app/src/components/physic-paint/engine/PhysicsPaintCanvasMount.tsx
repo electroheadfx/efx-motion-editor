@@ -91,8 +91,10 @@ export function PhysicsPaintCanvasMount(props: {
   onEnginePortReady?: (port: AquarelleEnginePort | null) => void;
   /** LIVE-SEED (2026-11-21): the committed frame script (grid-normalised
    *  exactly as the commit bake saw it) the live sheet is seeded from — the
-   *  sheet must HOLD the committed paint for the pickup law to read it. */
-  getAquarelleSeedEvents?: () => readonly AquarellePayloadEvent[] | null;
+   *  sheet must HOLD the committed paint for the pickup law to read it.
+   *  2026-11-22: by FRAME — the sheet cache also validates the frame being
+   *  left, so the getter cannot rely on the Studio's current frame. */
+  getAquarelleSeedEvents?: (frame: number) => readonly AquarellePayloadEvent[] | null;
 }) {
   recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
@@ -252,7 +254,7 @@ export function PhysicsPaintCanvasMount(props: {
         getPaperGrainStrength={() => getAquarellePaperGrainStrengthRef.current?.() ?? 1}
         getLight={() => getAquarelleLightRef.current?.()}
         getPaperSeed={() => getAquarellePaperSeedRef.current?.()}
-        getSeedEvents={() => getAquarelleSeedEventsRef.current?.() ?? null}
+        getSeedEvents={(frame) => getAquarelleSeedEventsRef.current?.(frame) ?? null}
         disabled={false}
         getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}
         onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}

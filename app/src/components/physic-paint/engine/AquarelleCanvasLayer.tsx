@@ -36,6 +36,7 @@ import {
   type AquarellePayloadEvent,
   type AquarelleSeedHandle,
   type PaperPreset,
+  type SheetSnapshot,
 } from '@efxlab/efx-watercolor';
 import type {
   AquarellePoint,
@@ -568,8 +569,11 @@ export function AquarelleCanvasLayer(props: {
    * event list, grid-normalised identically). Read once per seed; the layer
    * replays it into the live engine through the bake's adapter path so the
    * sheet holds the committed paint. Empty / null when the frame has none.
+   * 2026-11-22: takes the FRAME so the layer can also read a frame it is
+   * leaving (the sheet cache's signature) — a frame number is not identity,
+   * so every cache restore is validated against it.
    */
-  getSeedEvents?: () => readonly AquarellePayloadEvent[] | null;
+  getSeedEvents?: (frame: number) => readonly AquarellePayloadEvent[] | null;
 }) {
   const engineRef = useRef<WatercolorEngine | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -878,6 +882,66 @@ export function AquarelleCanvasLayer(props: {
       seeding = false;
       if (aquarelleSheetSeeded.value) aquarelleSheetSeeded.value = false;
     };
+    // LIVE-SEED CACHE (2026-11-22): the replay is linear in the committed dab
+    // count (a real frame costs seconds), and a key change used to pay it
+    // EVERY time. A frame's sheet is now captured when the artist leaves it
+    // and restored when they come back — the engine's exact layer set, the
+    // same capture a saved document uses. Entries are keyed by the frame's
+    // script signature: any script edit (stroke, delete, undo) mismatches and
+    // forces a replay. Memory-bounded, oldest evicted first.
+    const SHEET_CACHE_MAX_FRAMES = 3;
+    const SHEET_CACHE_MAX_BYTES = 256 * 1024 * 1024;
+    interface CachedSheet { signature: number; sheet: SheetSnapshot; bytes: number }
+    const sheetCache = new Map<number, CachedSheet>();
+    const sheetBytes = (sheet: SheetSnapshot): number => {
+      let total = 0;
+      for (const layer of Object.values(sheet.whole.layers)) total += layer.byteLength;
+      return total;
+    };
+    // FNV-1a over the event identity. Stroke events are immutable once
+    // recorded, so (mutation id, sample count) per event plus the list length
+    // detects every script edit — including deletes, which filter the list.
+    const seedSignature = (events: readonly AquarellePayloadEvent[]): number => {
+      let hash = (2166136261 ^ events.length) >>> 0;
+      for (const event of events) {
+        const mutationId =
+          (event as { engine?: { mutationId?: number } }).engine?.mutationId ?? -1;
+        const samples = (event as { pts?: readonly unknown[] }).pts?.length ?? 0;
+        hash = Math.imul(hash ^ (mutationId + 0x9e3779b9), 16777619) >>> 0;
+        hash = Math.imul(hash ^ samples, 16777619) >>> 0;
+      }
+      return hash >>> 0;
+    };
+    const rememberSheet = (frame: number, signature: number, sheet: SheetSnapshot) => {
+      const bytes = sheetBytes(sheet);
+      // One sheet over half the budget would evict everything else for a
+      // single frame — leave it to the replay instead.
+      if (bytes > SHEET_CACHE_MAX_BYTES / 2) return;
+      sheetCache.delete(frame);
+      sheetCache.set(frame, { signature, sheet, bytes });
+      let total = 0;
+      for (const entry of sheetCache.values()) total += entry.bytes;
+      while (sheetCache.size > SHEET_CACHE_MAX_FRAMES || total > SHEET_CACHE_MAX_BYTES) {
+        const oldest = sheetCache.keys().next();
+        if (oldest.done) break;
+        const entry = sheetCache.get(oldest.value);
+        if (entry) total -= entry.bytes;
+        sheetCache.delete(oldest.value);
+      }
+    };
+    const takeSheet = (frame: number, signature: number): SheetSnapshot | null => {
+      const entry = sheetCache.get(frame);
+      if (!entry) return null;
+      if (entry.signature !== signature) {
+        // The frame's script changed since the capture — the sheet is stale.
+        sheetCache.delete(frame);
+        return null;
+      }
+      sheetCache.delete(frame);
+      sheetCache.set(frame, entry);
+      return entry.sheet;
+    };
+
     // Read the committed script NOW (the Studio's getter clones it — the
     // exact event list the commit bake saw), then replay it on the chain. The
     // generation token makes a superseded seed unreachable: a frame change or
@@ -886,7 +950,7 @@ export function AquarelleCanvasLayer(props: {
       cancelFrameSeed();
       seedGeneration += 1;
       const generation = seedGeneration;
-      const events = getSeedEventsRef.current?.() ?? null;
+      const events = getSeedEventsRef.current?.(getPlayFrameRef.current()) ?? null;
       if (aquarelleSheetSeeded.value) aquarelleSheetSeeded.value = false;
       if (seedHandle) {
         seedHandle.cancel();
@@ -1168,6 +1232,15 @@ export function AquarelleCanvasLayer(props: {
         // capture here would only re-merge a fragment.
         if (leavingHasPaint && !leavingSeeded) {
           onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
+          // LIVE-SEED CACHE: the sheet the artist is leaving is EXACTLY the
+          // state they will expect on return — capture it with the script
+          // signature it was built from, so a later return restores it
+          // instead of replaying the whole frame script.
+          const leavingFrame = lastPlayFrameRef.current;
+          const leavingEvents = getSeedEventsRef.current?.(leavingFrame) ?? null;
+          if (leavingEvents) {
+            rememberSheet(leavingFrame, seedSignature(leavingEvents), engine.captureSheet());
+          }
         }
         // PLAY FIDELITY: the sheet is about to be wiped — stamp the measured
         // settle window for a stroke whose cooking never reached sleep.
@@ -1190,13 +1263,21 @@ export function AquarelleCanvasLayer(props: {
         // collapse on a bare sheet). Debounced past a scrub burst; the pointer
         // stays refused while the sheet is not yet the committed one.
         abandonSeed();
-        const frameEvents = getSeedEventsRef.current?.() ?? null;
+        const frameEvents = getSeedEventsRef.current?.(playFrame) ?? null;
         if (frameEvents && frameEvents.length > 0) {
-          seeding = true;
-          frameSeedTimer = window.setTimeout(() => {
-            frameSeedTimer = 0;
-            seedSheet();
-          }, FRAME_SEED_DEBOUNCE_MS);
+          // LIVE-SEED CACHE: a frame left earlier in this session restores
+          // its captured sheet in one upload — no replay, no input refusal.
+          const signature = seedSignature(frameEvents);
+          const cached = takeSheet(playFrame, signature);
+          if (cached && engine.restoreSheet(cached)) {
+            aquarelleSheetSeeded.value = true;
+          } else {
+            seeding = true;
+            frameSeedTimer = window.setTimeout(() => {
+              frameSeedTimer = 0;
+              seedSheet();
+            }, FRAME_SEED_DEBOUNCE_MS);
+          }
         }
       }
       // VISIBLE SETTLE CAP: no wet input for the cap window → force-dry. The

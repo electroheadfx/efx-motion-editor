@@ -11,7 +11,7 @@
 // ============================================================
 
 export { WatercolorEngine, DEFAULT_PARAMS, DEFAULT_LIGHT, clampDocSize, MIN_DOC_SIDE, MIN_ZOOM, MAX_ZOOM } from './Engine'
-export type { Params, Tool, LightSettings, EngineCallbacks, ExportOptions, DocumentSnapshot, DocState, WholeDoc, LayerId } from './Engine'
+export type { Params, Tool, LightSettings, EngineCallbacks, ExportOptions, DocumentSnapshot, DocState, WholeDoc, LayerId, SheetSnapshot } from './Engine'
 export {
   BRUSH_PRESETS,
   buildBrush,

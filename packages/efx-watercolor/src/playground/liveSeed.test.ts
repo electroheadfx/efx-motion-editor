@@ -140,6 +140,36 @@ describe('the seed replay law (aquarelleSeed)', () => {
   })
 })
 
+describe('the sheet cache seam (2026-11-22)', () => {
+  it('captures and restores the exact sheet layers, never the paper or history', () => {
+    // The replay is linear in the committed dab count; a real frame costs the
+    // artist seconds on EVERY key change. The engine exposes its own exact
+    // sheet capture (the same one a saved document uses) so the host can
+    // restore a frame instead of replaying it.
+    const capture = ENGINE_SOURCE.slice(
+      ENGINE_SOURCE.indexOf('captureSheet(): SheetSnapshot {'),
+      ENGINE_SOURCE.indexOf('restoreSheet(s: SheetSnapshot): boolean {'),
+    )
+    expect(capture.length, 'captureSheet is declared before restoreSheet').toBeGreaterThan(0)
+    expectContains(capture, 'return { whole: this.captureWhole(), bristleContent: this.bristleContent };')
+    const restore = ENGINE_SOURCE.slice(
+      ENGINE_SOURCE.indexOf('restoreSheet(s: SheetSnapshot): boolean {'),
+      ENGINE_SOURCE.indexOf('/** Replace the painting with a saved one. History starts afresh. */'),
+    )
+    expect(restore.length, 'restoreSheet is a bounded method').toBeGreaterThan(0)
+    // A size mismatch must FAIL, never upload a wrong-sized sheet.
+    expectContains(restore, 'if (whole.w !== this.dw || whole.h !== this.dh) return false;')
+    // A known blank first (dry sentinel + paint state), then the exact layers.
+    expect(restore.indexOf('this.resetSheet();')).toBeGreaterThan(-1)
+    expect(restore.indexOf('this.resetSheet();')).toBeLessThan(restore.indexOf('this.uploadWhole(whole);'))
+    expectContains(restore, 'this.bristleContent = s.bristleContent;')
+    // It is a SHEET seam: paper, view and history are never touched here.
+    expect(restore).not.toContain('drawPaper(')
+    expect(restore).not.toContain('allocateTargets(')
+    expect(restore).not.toContain('history.begin')
+  })
+})
+
 describe('the seed orchestration at runtime (no WebGL)', () => {
   it('owns the engine for the replay and hands it back even when the bake fails', async () => {
     // A Proxy engine records every engine call. The bake is given no events,
