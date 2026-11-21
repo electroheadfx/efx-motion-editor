@@ -20,6 +20,7 @@ import type {
 } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import {
+  DEFAULT_AQUARELLE_PARAMS,
   aquarelleActiveTool,
   aquarelleLiftTipId,
   aquarelleParams,
@@ -274,7 +275,10 @@ describe('Phase 64 Body record path (MED-23)', () => {
   it('snapshots the live body into the recorded bag', () => {
     const previous = aquarelleParams.value.body;
     try {
-      expect(previous, 'the neutral default is 0').toBe(0);
+      // 2026-11-22: the fresh session now loads the ACRYLIC record (body
+      // 100). The neutral DEFAULT bag still maps body to 0 — this row pins
+      // that neutral default, not the session's medium.
+      expect(DEFAULT_AQUARELLE_PARAMS.body, 'the neutral default is 0').toBe(0);
       setAquarelleParam('body', 40);
       expect(snapshotAquarelleRecord().params.body, 'the snapshot carries body').toBe(40);
     } finally {

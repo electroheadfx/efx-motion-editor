@@ -39,11 +39,11 @@ function resetSelection(): void {
 }
 
 describe('I-11 default brush selection', () => {
-  it('opens with FILBERT selected (261028-k03c D1 default — new strokes only)', () => {
-    // 261028-k03c D1: Filbert replaced the 261027-gh9f dry CHALK stick as the
-    // default for NEW Brush strokes; existing strokes keep their recorded
-    // brushId. Filbert is also the default Lift shape.
-    expect(aquarelleSelectedTipId.value).toBe('filbert');
+  it('opens with BRISTLE ROUND selected (2026-11-22 default — new strokes only)', () => {
+    // 2026-11-22 (artist): the NEW-Brush default moved from Filbert (a
+    // watercolor preset) to the acrylic Bristle Round; existing strokes keep
+    // their recorded brushId. Filbert stays the default Lift shape.
+    expect(aquarelleSelectedTipId.value).toBe('bristle-round');
     expect(aquarelleToolOverrides.value).toEqual({ ...NEUTRAL_TOOL_OVERRIDES });
   });
 });

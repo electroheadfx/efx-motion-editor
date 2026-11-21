@@ -230,9 +230,8 @@ describe('261027-gh9g top bar brush trigger + centered sliders', () => {
     ) as AnyVNode | undefined;
 
     expect(trigger, 'brush trigger seats in the left slot').toBeTruthy();
-    // 261028-k03c D1: FILBERT is the new-Brush default (was the 261027-gh9f
-    // dry CHALK stick).
-    expect(trigger!.props?.presetId).toBe('filbert');
+    // 2026-11-22 (artist): BRISTLE ROUND is the new-Brush default.
+    expect(trigger!.props?.presetId).toBe('bristle-round');
     expect(primaryDesc.some((n) => typeof (n as AnyVNode).props?.onToggle === 'function'), 'primary holds sliders only').toBe(false);
     // quick-261112: the Paint script/raster switch rides INSIDE the pill,
     // after the trigger button.
@@ -537,7 +536,7 @@ describe('261029-hy2 tool pill + settings-cluster gating', () => {
         const pill = findPill(tree);
         expect(pill, `${tool} keeps the brush pill`).toBeDefined();
         expect(pill!.props?.tool).toBe('brush');
-        expect(pill!.props?.presetId).toBe('filbert');
+        expect(pill!.props?.presetId).toBe('bristle-round');
       } finally {
         setAquarelleTool('brush');
       }

@@ -28,7 +28,9 @@ describe('Physics Paint Studio settings', () => {
 
   it('keeps the established painting defaults', () => {
     expect(makeInitialPhysicsPaintStudioSettings()).toMatchObject({
-      tool: 'paint', color: '#103c65', size: 11, opacity: 100,
+      // 2026-11-22 (artist): the fresh Studio opens on orange, not the old
+      // dark-blue #103c65.
+      tool: 'paint', color: '#ff6633', size: 11, opacity: 100,
       background: 'canvas1', grainStrength: 0.35,
       edgeDetail: 20, pickup: 0, eraseStrength: 100, smoothing: 1, spread: 65,
       physicsMode: 'local', activePhysicsAction: null,

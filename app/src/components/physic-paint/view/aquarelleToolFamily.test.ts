@@ -34,19 +34,29 @@ import {
 const WATERCOLOR_FIRST = BRUSH_PRESETS.find((preset) => brushGroupOf(preset) === 'watercolor')!;
 const STORE_SOURCE = readFileSync(resolve(__dirname, './aquarelleRecordState.ts'), 'utf8');
 
-describe('the opening tool follows the default brush (rev 3)', () => {
-  it('the default brush is filbert and its family tool is Watercolor', () => {
-    expect(paintToolForTip('filbert')).toBe('watercolor');
-    expect(brushGroupOf(BRUSH_PRESETS.find((preset) => preset.id === 'filbert')!)).toBe(
-      'watercolor',
-    );
+describe('the opening tool follows the default brush (2026-11-22)', () => {
+  it('the default brush is Bristle Round and its family tool is Brush', () => {
+    // Artist decision 2026-11-22: a fresh Studio opens on the ACRYLIC family,
+    // not the watercolor Filbert (the old default).
+    expect(paintToolForTip('bristle-round')).toBe('brush');
+    expect(
+      brushGroupOf(BRUSH_PRESETS.find((preset) => preset.id === 'bristle-round')!),
+    ).toBe('acrylic');
   });
 
   it('the active-tool signal is derived from the default tip, never hardcoded', () => {
     expect(STORE_SOURCE).toContain(
       'export const aquarelleActiveTool = signal<AquarelleTool>(paintToolForTip(DEFAULT_TIP_ID));',
     );
-    expect(STORE_SOURCE).toContain("const DEFAULT_TIP_ID = 'filbert';");
+    expect(STORE_SOURCE).toContain("const DEFAULT_TIP_ID = 'bristle-round';");
+    // The fresh session's medium matches the default brush's family: the
+    // initial selection IS the acrylic record (a watercolor label over an
+    // acrylic brush would show the fluid rows for a bristle brush).
+    expect(STORE_SOURCE).toContain("const INITIAL_MEDIUM_ID: MediumId = 'acrylic';");
+    expect(STORE_SOURCE).toContain(
+      'export const aquarelleSelectedMediumId = signal<MediumId | null>(INITIAL_MEDIUM_ID);',
+    );
+    expect(STORE_SOURCE).toContain('...mediumById(INITIAL_MEDIUM_ID)!.params,');
   });
 });
 

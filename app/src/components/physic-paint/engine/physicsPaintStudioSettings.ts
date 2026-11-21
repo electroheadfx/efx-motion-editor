@@ -32,7 +32,9 @@ export type PhysicsPaintStudioSettings = {
 export function makeInitialPhysicsPaintStudioSettings(): PhysicsPaintStudioSettings {
   return {
     tool: 'paint',
-    color: '#103c65',
+    // 2026-11-22 (artist): a fresh Studio opens on ORANGE (the palette's
+    // long-standing #ff6633), not the dark blue axis default.
+    color: '#ff6633',
     size: 11,
     opacity: 100,
     background: 'canvas1',

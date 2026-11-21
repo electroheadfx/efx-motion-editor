@@ -62,9 +62,11 @@ import {
   sheetZIndex,
 } from './floatingSheetStack';
 import {
+  aquarelleActiveTool,
   aquarellePaintCanonicalFromPx,
   aquarelleParams,
   aquarelleSelectedTextureId,
+  aquarelleSelectedTipId,
   aquarelleTextureModalOpen,
   recordAquarelleStroke,
   setAquarelleSelectedTextureId,
@@ -181,6 +183,11 @@ function textOf(node: unknown): string {
 }
 
 beforeEach(() => {
+  // 2026-11-22: the fresh session now opens on Bristle Round. This suite's
+  // px-derivation pin is stated against the FILBERT response, so it selects
+  // that tip explicitly instead of riding the session default.
+  aquarelleSelectedTipId.value = 'filbert';
+  aquarelleActiveTool.value = 'brush';
   aquarelleTextureModalOpen.value = false;
   resetTextureModalLayout();
   resetTextureDeleteState();

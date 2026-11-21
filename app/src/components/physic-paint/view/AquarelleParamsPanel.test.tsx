@@ -3,11 +3,12 @@
  *
  * Laws pinned here:
  *   D-05   no local size/scale control — the shared Size slider owns it
- *   quick 261121-mtu — the seven classic labels are a SUBSET of the default
- *          context's rows (Brush + Watercolor) and follow spec §8's GROUP
- *          order: Pigment, Water, Dry speed, Flow, Bleed, Edges, Grain
- *          (keys stay load/water/dry/flow/bleed/edge/granulation). The old
- *          flat playground order is superseded by the group order.
+ *   quick 261121-mtu — in the WATERCOLOR context (set explicitly below; the
+ *          fresh session now opens on Acrylic) the seven classic labels are a
+ *          subset of the rows and follow spec §8's GROUP order: Pigment,
+ *          Water, Dry speed, Flow, Bleed, Edges, Grain (keys stay
+ *          load/water/dry/flow/bleed/edge/granulation). The old flat
+ *          playground order is superseded by the group order.
  *   I-01   Reset restores playground DEFAULT_PARAMS ×100 for the 7 non-size
  *          globals via setAquarelleParam and never writes size (top-bar owns it)
  *   I-01   the Brush response block is NOT in this panel (I-02 owns that move)
@@ -18,10 +19,12 @@
  * Render tests materialize the vnode tree (no DOM environment — same pattern
  * as panelSplitShell.test.tsx / PaperPicker.test.tsx).
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_AQUARELLE_PARAMS,
+  aquarelleActiveTool,
   aquarelleParams,
+  aquarelleSelectedMediumId,
   aquarelleSelectedTipId,
   buildAquarelleStrokePayload,
   selectAquarelleTip,
@@ -169,6 +172,14 @@ const RESET_EXPECTED = {
   granulation: 45,
   dry: 40,
 } as const;
+
+// 2026-11-22: the fresh session now opens on Brush + Acrylic. This suite pins
+// the WATERCOLOR context's classic seven labels, so it states that context
+// explicitly instead of riding the session default.
+beforeEach(() => {
+  aquarelleActiveTool.value = 'watercolor';
+  aquarelleSelectedMediumId.value = 'watercolor';
+});
 
 describe('AquarelleParamsPanel globals (AQUA-04 / D-05 / D-06 / I-01)', () => {
   it('renders the 7 named global slider labels', () => {

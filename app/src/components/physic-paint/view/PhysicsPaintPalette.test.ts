@@ -112,7 +112,7 @@ vi.mock('lucide-preact', () => {
 });
 
 import { PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
-import { DEFAULT_AQUARELLE_PARAMS } from './aquarelleRecordState';
+import { DEFAULT_AQUARELLE_PARAMS, aquarelleParams } from './aquarelleRecordState';
 
 const DEFAULTS = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
 
@@ -255,6 +255,10 @@ function paletteKeyEvent(
 }
 
 beforeEach(() => {
+  // 2026-11-22: the fresh session opens on the ACRYLIC record; this suite
+  // pins the palette's commit against the neutral playground bag, so it
+  // states that bag explicitly.
+  aquarelleParams.value = { ...DEFAULT_AQUARELLE_PARAMS };
   runtime = new HookRuntime();
   componentFrames = new Map();
   vi.clearAllMocks();

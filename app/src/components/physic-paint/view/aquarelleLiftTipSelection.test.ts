@@ -3,8 +3,8 @@
  *
  * Laws pinned here:
  *   aquarelleLiftTipId defaults to 'filbert' (the new Lift default)
- *   aquarelleSelectedTipId defaults to 'filbert' (new Brush strokes only —
- *   existing strokes keep their recorded brushId)
+ *   aquarelleSelectedTipId defaults to 'bristle-round' (new Brush strokes
+ *   only — existing strokes keep their recorded brushId; artist 2026-11-22)
  *   setAquarelleLiftTipId never flips the active tool and never mutates the
  *   Brush selection, the live override bag or the response memory
  *   setAquarelleLiftTipId normalizes an unknown id to null (same findTip /
@@ -53,14 +53,17 @@ function resetSelection(): void {
 }
 
 describe('261028-k03c D1 Lift tip defaults', () => {
-  it('opens with the Lift tip and the new-Brush tip both on FILBERT', () => {
+  it('opens with the Lift tip on FILBERT and the new-Brush tip on BRISTLE ROUND', () => {
+    // 2026-11-22 (artist): the fresh Brush default moved from the watercolor
+    // filbert to the acrylic bristle-round; the Lift tip keeps filbert.
     expect(aquarelleLiftTipId.value).toBe('filbert');
-    expect(aquarelleSelectedTipId.value).toBe('filbert');
+    expect(aquarelleSelectedTipId.value).toBe('bristle-round');
     expect(aquarelleToolOverrides.value).toEqual({ ...NEUTRAL_TOOL_OVERRIDES });
   });
 
-  it('filbert is a real BRUSH_PRESETS id', () => {
+  it('both default tip ids are real BRUSH_PRESETS ids', () => {
     expect(BRUSH_PRESETS.some((preset) => preset.id === 'filbert')).toBe(true);
+    expect(BRUSH_PRESETS.some((preset) => preset.id === 'bristle-round')).toBe(true);
   });
 });
 

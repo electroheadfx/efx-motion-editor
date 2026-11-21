@@ -43,7 +43,6 @@ import {
 } from '@efxlab/efx-watercolor/brushes';
 import {
   BRUSH_PRESETS,
-  DEFAULT_MEDIUM_ID,
   brushGroupOf,
   mediumById,
   resolveMask,
@@ -160,19 +159,26 @@ export const MULTIPLIER_MIN = 0.5;
 export const MULTIPLIER_MAX = 2.0;
 export const MULTIPLIER_DEFAULT = 1.0;
 
+/**
+ * 2026-11-22 (artist): a fresh Studio opens on the ACRYLIC family — Bristle
+ * Round selected, the Brush tool (derived from the tip's group, never
+ * hardcoded) and the Acrylic medium record loaded into the bag, so the Paint
+ * panel, the response grid and the live params all describe the same medium.
+ * Existing recorded strokes keep the brushId and params they carry — this
+ * only describes a fresh session's first stroke.
+ */
+const DEFAULT_TIP_ID = 'bristle-round';
+const INITIAL_MEDIUM_ID: MediumId = 'acrylic';
+
 export const aquarelleParams = signal<AquarelleGlobalParams>({
   ...DEFAULT_AQUARELLE_PARAMS,
+  ...mediumById(INITIAL_MEDIUM_ID)!.params,
 });
-// 261028-k03c D1: FILBERT is the default for NEW Brush strokes (it replaced the
-// 261027-gh9f dry CHALK stick). Existing recorded strokes keep the brushId they
-// carry — this default only describes a fresh session's first stroke.
-const DEFAULT_TIP_ID = 'filbert';
 /**
  * quick 261121-mtu (rev 3): the fresh Studio's tool follows the DEFAULT BRUSH's
- * family. `filbert` is a watercolor preset, so opening on the Brush tool would
- * leave a watercolor brush active under a list that excludes it — the very
- * mismatch the family filter exists to prevent. Derived, never hardcoded:
- * changing the default brush moves the opening tool with it.
+ * family — `bristle-round` is an acrylic preset, so the opening tool is Brush
+ * (the Acrylic family). Derived, never hardcoded: changing the default brush
+ * moves the opening tool with it.
  */
 export const aquarelleActiveTool = signal<AquarelleTool>(paintToolForTip(DEFAULT_TIP_ID));
 export const aquarelleSelectedTipId = signal<string | null>(DEFAULT_TIP_ID);
@@ -200,7 +206,7 @@ export const aquarelleSelectedTextureId = signal<string | null>(null);
  * selected (no "edited" marker), and re-picking re-applies the full record.
  * Compare-then-write, like every other selection signal.
  */
-export const aquarelleSelectedMediumId = signal<MediumId | null>(DEFAULT_MEDIUM_ID);
+export const aquarelleSelectedMediumId = signal<MediumId | null>(INITIAL_MEDIUM_ID);
 
 /**
  * Phase 64 (D-04): apply a whole medium record to the live bag in ONE spread

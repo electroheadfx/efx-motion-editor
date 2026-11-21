@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
+import { BRUSH_PRESETS, brushGroupOf } from '@efxlab/efx-watercolor';
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -122,15 +122,19 @@ afterEach(() => {
 });
 
 describe('261027-gh9g top-bar brush dropdown', () => {
-  it('lists every brush and puts Open modal FIRST', () => {
+  it('lists the Brush tool family (no watercolor presets) and puts Open modal FIRST', () => {
     setAquarelleBrushMenuOpen(true);
     const tree = PhysicsPaintBrushMenu() as TestVNode;
     const ids = buttonTestIds(collect(tree));
     expect(ids[0]).toBe('watercolor-brush-menu-open-modal');
-    for (const preset of BRUSH_PRESETS) {
+    // quick 261121-mtu: the Brush tool exposes the NON-watercolor family; the
+    // watercolor presets belong to the Watercolor tool's list.
+    const family = BRUSH_PRESETS.filter((preset) => brushGroupOf(preset) !== 'watercolor');
+    for (const preset of family) {
       expect(ids).toContain(`watercolor-brush-menu-item-${preset.id}`);
     }
-    expect(ids.filter((id) => id.startsWith('watercolor-brush-menu-item-')).length).toBe(BRUSH_PRESETS.length);
+    expect(ids.filter((id) => id.startsWith('watercolor-brush-menu-item-')).length).toBe(family.length);
+    expect(ids).not.toContain('watercolor-brush-menu-item-flat');
     // 261029-hy2: the brush target keeps the catalog's name.
     expect(String(tree.props?.['aria-label'])).toBe('Brushes');
   });
@@ -196,9 +200,11 @@ describe('261027-gh9g top-bar brush dropdown', () => {
   it('picking a brush selects it and closes the dropdown', () => {
     setAquarelleBrushMenuOpen(true);
     const nodes = collect(PhysicsPaintBrushMenu());
-    const flat = nodes.find((node) => node.props?.['data-testid'] === 'watercolor-brush-menu-item-flat')!;
+    // The Brush tool's list: an acrylic preset (a watercolor pick would flip
+    // the tool — that law is pinned in aquarelleToolFamily.test.ts).
+    const flat = nodes.find((node) => node.props?.['data-testid'] === 'watercolor-brush-menu-item-bristle-flat')!;
     click(flat);
-    expect(aquarelleSelectedTipId.value).toBe('flat');
+    expect(aquarelleSelectedTipId.value).toBe('bristle-flat');
     expect(aquarelleBrushMenuOpen.value).toBe(false);
     expect(aquarelleBrushModalOpen.value).toBe(false);
   });

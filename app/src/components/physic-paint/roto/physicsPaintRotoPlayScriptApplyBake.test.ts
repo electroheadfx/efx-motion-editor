@@ -46,6 +46,11 @@ const harness = vi.hoisted(() => ({
 
 vi.mock('@efxlab/efx-watercolor', () => ({
   DEFAULT_MEDIUM_ID: 'watercolor',
+  // The record module reads these at import time (the fresh-session medium
+  // record + the default tip's family); this suite only orchestrates the bake.
+  BRUSH_PRESETS: [],
+  brushGroupOf: () => 'acrylic',
+  mediumById: (id: string) => ({ id, params: {} }),
   createAquarelleEngineAdapter: (options: Record<string, unknown>) => {
     harness.adapterOptions.push(options);
     return {
