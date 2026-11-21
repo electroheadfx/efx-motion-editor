@@ -23,6 +23,7 @@ import { signal, type Signal } from '@preact/signals';
 import { Maximize2 } from 'lucide-preact';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import {
+  aquarelleActiveTool,
   aquarelleBrushMenuAnchor,
   aquarelleBrushMenuOpen,
   aquarelleBrushMenuTarget,
@@ -43,6 +44,8 @@ export function PhysicsPaintBrushMenu() {
   const open = aquarelleBrushMenuOpen.value;
   const anchor = aquarelleBrushMenuAnchor.value;
   const selectedId = aquarelleSelectedTipId.value;
+  // quick 261121-mtu (rev 2): the brush branch lists the active tool's family.
+  const activeTool = aquarelleActiveTool.value;
   // 261029-hy2: one popover, two tools. Captured at open time by the trigger;
   // never written here. The lift tip is its own selection (Filbert fallback),
   // completely independent of the brush selection.
@@ -128,7 +131,7 @@ export function PhysicsPaintBrushMenu() {
         // An eraser picks a tip shape from the same shipped preset list.
         <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
           <div ref={listRef} class="physics-paint-brush-menu-list">
-            {brushMenuPresets('lift').map((preset) => {
+            {brushMenuPresets('lift', activeTool).map((preset) => {
               const selected = preset.id === liftTipId;
               return (
                 <button
@@ -176,7 +179,7 @@ export function PhysicsPaintBrushMenu() {
           <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
             <div ref={listRef} class="physics-paint-brush-menu-list">
               {/* The brush branch lists every shipped preset. */}
-              {brushMenuPresets('brush').map((preset) => {
+              {brushMenuPresets('brush', activeTool).map((preset) => {
                 const selected = preset.id === selectedId;
                 return (
                   <button

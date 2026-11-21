@@ -426,8 +426,10 @@ describe('the seam audit (64-12 MED-28)', () => {
     // "Each beside its definition": one definition, the ONE tool-pick seam
     // (quick 261121-mtu: selectAquarellePaintTool calls both — a Watercolor
     // press binds the family's first preset and the watercolor medium), and
-    // one dropdown call — never a second pathway.
-    expect(countOf(sources, 'aquarelleRecordState.ts', 'selectAquarelleTip(')).toBe(2);
+    // one dropdown call — never a second pathway. rev 2 adds the mirror
+    // Brush press (a watercolor tip lands in the non-watercolor family), so
+    // the tip-pick count is 3: definition + Watercolor seam + Brush seam.
+    expect(countOf(sources, 'aquarelleRecordState.ts', 'selectAquarelleTip(')).toBe(3);
     expect(countOf(sources, 'aquarellePaintControls.ts', 'selectAquarelleTip(')).toBe(1);
     expect(countOf(sources, 'aquarelleRecordState.ts', 'applyAquarelleMedium(')).toBe(2);
     expect(countOf(sources, 'aquarellePaintControls.ts', 'applyAquarelleMedium(')).toBe(1);

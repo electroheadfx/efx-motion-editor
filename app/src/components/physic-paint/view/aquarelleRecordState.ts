@@ -58,6 +58,7 @@ import {
   type KeyIdentityFrameRecord,
 } from '../roto/keyIdentityFrameMap';
 import { disarmAquarellePicker } from './aquarelleColorPicker';
+import { firstBrushPresetForTool } from './brushToolFamily';
 import { exitRailMotionEditing } from './railMotionEditingMode';
 import { reorderForStackPosition, targetIndexForStackPosition } from './stackOrder';
 import {
@@ -515,7 +516,21 @@ export function selectAquarellePaintTool(tool: AquarelleTool): void {
     return;
   }
   if (tool === 'brush') {
-    // A Brush pick changes neither the selected tip nor the medium.
+    // quick 261121-mtu (rev 2): the Brush tool exposes the NON-watercolor
+    // family (the response grid and the top-bar popover both filter to it).
+    // A pick that leaves a WATERCOLOR preset active would paint a brush its
+    // own list no longer shows, so it lands on the family's first preset —
+    // derived from brushGroupOrder, never a hardcoded id. A catalog/unknown
+    // tip is left alone (the Brush tool can use it), and the medium is never
+    // touched: only a brush PICK applies a medium.
+    const current = aquarelleSelectedTipId.value;
+    const currentPreset = current === null
+      ? undefined
+      : BRUSH_PRESETS.find((entry) => entry.id === current);
+    if (currentPreset && brushGroupOf(currentPreset) === 'watercolor') {
+      const first = firstBrushPresetForTool('brush');
+      if (first) selectAquarelleTip(first.id);
+    }
     setAquarelleTool('brush');
     return;
   }

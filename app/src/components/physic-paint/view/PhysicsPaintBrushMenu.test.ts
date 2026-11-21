@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
+import { BRUSH_PRESETS, brushGroupOf } from '@efxlab/efx-watercolor';
 import { brushMenuPresets } from './brushMenuPresets';
 
 const SOURCE = readFileSync(resolve(__dirname, './PhysicsPaintBrushMenu.tsx'), 'utf8');
@@ -30,22 +30,41 @@ function countOf(haystack: string, needle: string): number {
 }
 
 describe('brushMenuPresets', () => {
-  it('both lists are the complete shipped preset list, in order', () => {
+  // quick 261121-mtu (rev 2): the brush branch lists the ACTIVE TOOL's brush
+  // family — Brush = every non-watercolor group, Watercolor = its own group,
+  // utility tools = the whole table. The eraser branch picks a SHAPE and is
+  // never filtered.
+  it('the brush branch follows the active tool family; the lift branch lists every shape', () => {
     const shipped = BRUSH_PRESETS.map((preset) => preset.id);
-    expect(brushMenuPresets('brush').map((preset) => preset.id)).toEqual(shipped);
-    expect(brushMenuPresets('lift').map((preset) => preset.id)).toEqual(shipped);
+    expect(brushMenuPresets('lift', 'watercolor').map((preset) => preset.id)).toEqual(shipped);
+
+    const watercolorIds = brushMenuPresets('brush', 'watercolor').map((preset) => preset.id);
+    expect(watercolorIds).toEqual(
+      BRUSH_PRESETS.filter((preset) => brushGroupOf(preset) === 'watercolor').map((preset) => preset.id),
+    );
+
+    const brushIds = brushMenuPresets('brush', 'brush').map((preset) => preset.id);
+    expect(brushIds).not.toContain('round');
+    expect(brushIds).toContain('bristle-flat');
+    expect(brushIds).toContain('gouache-round');
+    expect(brushIds).toContain('chalk');
+
+    // The utility tools carry no family of their own.
+    for (const tool of ['water', 'pen', 'lift'] as const) {
+      expect(brushMenuPresets('brush', tool).map((preset) => preset.id)).toEqual(shipped);
+    }
   });
 });
 
 describe('PhysicsPaintBrushMenu wiring (61-07)', () => {
-  it('the lift branch lists tip shapes and the brush branch lists every preset', () => {
+  it('the lift branch lists tip shapes and the brush branch lists the tool family', () => {
     const lift = sourceRegion("menuTarget === 'lift' ? (", '\n      ) : (');
-    expect(lift).toContain("brushMenuPresets('lift')");
-    expect(lift).not.toContain("brushMenuPresets('brush')");
+    expect(lift).toContain("brushMenuPresets('lift', activeTool)");
+    expect(lift).not.toContain("brushMenuPresets('brush'");
 
     const brush = sourceRegion('\n      ) : (', '\n      )}\n    </div>');
-    expect(brush).toContain("brushMenuPresets('brush')");
-    expect(brush).not.toContain("brushMenuPresets('lift')");
+    expect(brush).toContain("brushMenuPresets('brush', activeTool)");
+    expect(brush).not.toContain("brushMenuPresets('lift'");
   });
 
   it('never maps the raw preset list directly', () => {

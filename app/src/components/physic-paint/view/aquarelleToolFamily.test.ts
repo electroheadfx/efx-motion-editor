@@ -97,12 +97,26 @@ describe('selectAquarellePaintTool (quick 261121-mtu)', () => {
     expect(aquarelleActiveTool.value).toBe('watercolor');
   });
 
-  it('the Brush tool changes neither the selected tip nor the medium', () => {
+  // quick 261121-mtu (rev 2): the Brush tool exposes the NON-watercolor family.
+  // A non-watercolor tip is left alone (mid-pick on a family brush is not a
+  // family change); a watercolor tip lands on the family's first preset —
+  // derived from brushGroupOrder, never a hardcoded id — and the medium is
+  // untouched in both cases.
+  it('the Brush tool leaves a non-watercolor tip alone and never touches the medium', () => {
+    aquarelleSelectedTipId.value = 'chalk';
+    const medium = aquarelleSelectedMediumId.value;
+    selectAquarellePaintTool('brush');
+    expect(aquarelleActiveTool.value).toBe('brush');
+    expect(aquarelleSelectedTipId.value).toBe('chalk');
+    expect(aquarelleSelectedMediumId.value).toBe(medium);
+  });
+
+  it('the Brush tool moves a watercolor tip into the brush family', () => {
     aquarelleSelectedTipId.value = 'hake';
     const medium = aquarelleSelectedMediumId.value;
     selectAquarellePaintTool('brush');
     expect(aquarelleActiveTool.value).toBe('brush');
-    expect(aquarelleSelectedTipId.value).toBe('hake');
+    expect(aquarelleSelectedTipId.value).toBe('gouache-round');
     expect(aquarelleSelectedMediumId.value).toBe(medium);
   });
 

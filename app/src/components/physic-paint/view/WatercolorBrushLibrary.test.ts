@@ -385,7 +385,12 @@ let toDataUrlCalls: string[];
 function resetSelection(): void {
   aquarelleSelectedTipId.value = null;
   aquarelleSelectedTextureId.value = null;
-  aquarelleActiveTool.value = 'brush';
+  // quick 261121-mtu (rev 2): the grid now filters to the active tool's brush
+  // FAMILY (Brush = non-watercolor, Watercolor = watercolor only). This suite
+  // pins the five-section grid itself, so it runs under a UTILITY tool, which
+  // exposes the whole table; the paint-family filter has its own block below
+  // and its pure law in brushToolFamily.test.ts.
+  aquarelleActiveTool.value = 'water';
   aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES };
   // quick 261116-inu: the catalog is the machine library; every case starts
   // with none, and there are no compile-time masks to restore.
@@ -1115,6 +1120,66 @@ describe('quick 261111-ucf library card picks edit the armed selection', () => {
     expect(calls[0]!.ids).toEqual([10651]);
     expect(calls[0]!.patch.brushId).toBe('round');
     expect(calls[0]!.patch.toolOverrides).toEqual(aquarelleToolOverrides.peek());
+  });
+});
+
+// quick 261121-mtu (rev 2) — the artist's requirement: the response list is
+// FILTERED by the active tool's brush family, not one flat catalog under
+// every tool. Brush = every non-watercolor group; Watercolor = its own group;
+// the utility tools expose the whole table (a pick there is a family pick).
+describe('brush family filter per tool (quick 261121-mtu rev 2)', () => {
+  beforeEach(() => {
+    originalDocument = globalThis.document;
+    resetSelection();
+  });
+
+  afterEach(() => {
+    Object.assign(globalThis, { document: originalDocument });
+  });
+
+  function sectionIds(tree: TestVNode): Array<string | undefined> {
+    return sectionNodes(tree).map(
+      (node) => node.props?.['data-testid'] as string | undefined,
+    );
+  }
+
+  function cardIds(tree: TestVNode): string[] {
+    return cardNodes(tree)
+      .map((node) => node.props?.['data-testid'])
+      .filter((id): id is string => typeof id === 'string');
+  }
+
+  it('Watercolor renders the watercolor section alone', () => {
+    aquarelleActiveTool.value = 'watercolor';
+    const tree = renderLibrary();
+    expect(sectionIds(tree)).toEqual(['watercolor-brush-section-watercolor']);
+    expect(cardIds(tree)).toContain('watercolor-brush-card-round');
+    expect(cardIds(tree)).not.toContain('watercolor-brush-card-bristle-flat');
+    expect(cardIds(tree)).not.toContain('watercolor-brush-card-chalk');
+  });
+
+  it('Brush renders every non-watercolor section and no watercolor card', () => {
+    aquarelleActiveTool.value = 'brush';
+    const tree = renderLibrary();
+    expect(sectionIds(tree)).toEqual([
+      'watercolor-brush-section-gouache',
+      'watercolor-brush-section-pastel',
+      'watercolor-brush-section-graphite',
+      'watercolor-brush-section-acrylic',
+    ]);
+    expect(cardIds(tree)).toContain('watercolor-brush-card-bristle-flat');
+    expect(cardIds(tree)).not.toContain('watercolor-brush-card-round');
+    expect(cardIds(tree)).not.toContain('watercolor-brush-card-hake');
+  });
+
+  it('the utility tools keep every group reachable', () => {
+    for (const tool of ['water', 'pen', 'lift'] as const) {
+      aquarelleActiveTool.value = tool;
+      const tree = renderLibrary();
+      expect(sectionIds(tree), tool).toHaveLength(5);
+      expect(cardIds(tree), tool).toContain('watercolor-brush-card-round');
+      expect(cardIds(tree), tool).toContain('watercolor-brush-card-bristle-flat');
+    }
   });
 });
 

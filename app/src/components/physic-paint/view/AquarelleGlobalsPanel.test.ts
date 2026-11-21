@@ -34,6 +34,7 @@ import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/pay
 import {
   AQUARELLE_GLOBAL_KEYS,
   DEFAULT_AQUARELLE_PARAMS,
+  aquarelleActiveTool,
   aquarelleMediumMenuAnchor,
   aquarelleMediumMenuOpen,
   aquarelleParams,
@@ -222,6 +223,9 @@ const RESET_EXPECTED = {
 beforeEach(() => {
   aquarelleParams.value = { ...DEFAULT_AQUARELLE_PARAMS };
   aquarelleSelectedMediumId.value = DEFAULT_MEDIUM_ID;
+  // quick 261121-mtu: the panel's rows are (tool, medium)-driven; the default
+  // context these suites describe is the Brush tool.
+  aquarelleActiveTool.value = 'brush';
   aquarelleMediumMenuOpen.value = false;
   aquarelleMediumMenuAnchor.value = null;
 });
@@ -711,6 +715,101 @@ function stripComments(source: string): string {
 function point10721(x: number, y: number): AquarellePoint {
   return { x, y, p: 1, tx: 0, ty: 0, tw: 0 };
 }
+
+// quick 261121-mtu (rev 2) — the panel FILTERS on the tool/medium context.
+// These assert the RENDERED rows per context (the pure law has its own suite
+// in aquarelleParamVisibility.test.ts); the artist's report was that both
+// Watercolor and Acrylic still showed the whole parameter list.
+describe('tool x medium context rows (quick 261121-mtu)', () => {
+  function renderedSliders(): string[] {
+    // The stepper's +/- buttons carry "Decrease X" / "Increase X" aria
+    // labels; only the row labels themselves are under test here.
+    return collectOrderedLabels(renderPanel()).filter(
+      (label) => !/^(Decrease|Increase) /.test(label),
+    );
+  }
+
+  it('Acrylic shows its seven rows and no Refill / fluid-only row', () => {
+    applyAquarelleMedium('acrylic');
+    const labels = renderedSliders();
+    expect(labels).toEqual([
+      'Viscosity',
+      'Emboss',
+      'Pigment',
+      'Pickup',
+      'Water',
+      'Dry speed',
+      'Feather',
+    ]);
+    for (const absent of ['Refill', 'Flow', 'Bleed', 'Edges', 'Grain']) {
+      expect(labels.includes(absent), `${absent} is absent for acrylic`).toBe(false);
+    }
+  });
+
+  it('Watercolor shows its ten rows with no Refill and no Feather', () => {
+    applyAquarelleMedium('watercolor');
+    const labels = renderedSliders();
+    expect(labels).toEqual([
+      'Viscosity',
+      'Emboss',
+      'Pigment',
+      'Pickup',
+      'Water',
+      'Dry speed',
+      'Flow',
+      'Bleed',
+      'Edges',
+      'Grain',
+    ]);
+    expect(labels.includes('Refill'), 'Refill is absent for watercolor').toBe(false);
+    expect(labels.includes('Feather'), 'Feather is absent for watercolor').toBe(false);
+  });
+
+  it('Gouache keeps Refill and Feather and shows no fluid-only row', () => {
+    applyAquarelleMedium('gouache');
+    const labels = renderedSliders();
+    expect(labels).toEqual([
+      'Viscosity',
+      'Emboss',
+      'Pigment',
+      'Pickup',
+      'Refill',
+      'Water',
+      'Dry speed',
+      'Feather',
+    ]);
+    for (const absent of ['Flow', 'Bleed', 'Edges', 'Grain']) {
+      expect(labels.includes(absent), `${absent} is absent for gouache`).toBe(false);
+    }
+  });
+
+  it('the Eraser shows the Lift row alone and the Water tool its fluid set', () => {
+    aquarelleActiveTool.value = 'lift';
+    expect(renderedSliders()).toEqual(['Lift']);
+    aquarelleActiveTool.value = 'water';
+    expect(renderedSliders()).toEqual([
+      'Viscosity',
+      'Dry speed',
+      'Flow',
+      'Bleed',
+      'Edges',
+      'Grain',
+    ]);
+  });
+
+  it('renders one group heading per non-empty group', () => {
+    const tree = renderPanel();
+    const headings = [...walk(tree)]
+      .map((node) => node.props?.['data-testid'])
+      .filter((id): id is string => typeof id === 'string' && id.startsWith('aquarelle-param-group-'));
+    expect(headings).toEqual([
+      'aquarelle-param-group-medium',
+      'aquarelle-param-group-paint',
+      'aquarelle-param-group-drying',
+      'aquarelle-param-group-watercolor',
+    ]);
+  });
+});
 
 function stroke10721(points: readonly AquarellePoint[]): AquarelleStroke {
   return {

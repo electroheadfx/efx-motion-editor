@@ -60,9 +60,7 @@ import { useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { FolderOpen } from 'lucide-preact';
 import {
-  BRUSH_PRESETS,
   brushGroupLabels,
-  brushSections,
 } from '@efxlab/efx-watercolor'
 import type { MediumId } from '@efxlab/efx-watercolor';
 import {
@@ -72,9 +70,11 @@ import {
 } from '@efxlab/efx-watercolor/brushes';
 import { requestPhysicPaintBrushImport } from '../../../lib/physicPaintBridge';
 import {
+  aquarelleActiveTool,
   aquarelleSelectedTipId,
   setAquarelleSelectedTextureId,
 } from './aquarelleRecordState';
+import { brushSectionsForTool } from './brushToolFamily';
 import {
   aquarelleSelectionEditActive,
   setAquarelleSelectMode,
@@ -343,6 +343,10 @@ export function WatercolorBrushLibrary() {
   // Narrow signal reads (efx-preact-reactivity rule 5): one read per signal
   // per render, and no signal is written from this body.
   const selectedTipId = aquarelleSelectedTipId.value;
+  // quick 261121-mtu (rev 2): the tool selects the brush FAMILY — Brush shows
+  // every non-watercolor group, Watercolor shows the watercolor group alone,
+  // and the utility tools (Water / Pen / Eraser) expose the whole table.
+  const activeTool = aquarelleActiveTool.value;
 
   return (
     <div
@@ -367,7 +371,7 @@ export function WatercolorBrushLibrary() {
         <WatercolorTextureStrip />
         <WatercolorTextureImport />
       </div>
-      {brushSections(BRUSH_PRESETS).map((section) => (
+      {brushSectionsForTool(activeTool).map((section) => (
         <BrushSection
           key={section.group}
           id={section.group}

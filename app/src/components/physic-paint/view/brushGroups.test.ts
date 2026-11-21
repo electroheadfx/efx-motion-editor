@@ -211,7 +211,13 @@ let originalDocument: typeof globalThis.document
 function resetSelection(): void {
   aquarelleSelectedTipId.value = null
   aquarelleSelectedTextureId.value = null
-  aquarelleActiveTool.value = 'brush'
+  // quick 261121-mtu (rev 2): the grid filters to the active tool's brush
+  // FAMILY (Brush = non-watercolor, Watercolor = its own group). This suite
+  // pins the five-section rendering law, so it runs under a UTILITY tool,
+  // which exposes the whole table; the paint-family filter has its own
+  // block in WatercolorBrushLibrary.test.ts and its pure suite in
+  // brushToolFamily.test.ts.
+  aquarelleActiveTool.value = 'water'
   aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES }
   watercolorBrushImporting.value = false
   watercolorBrushImportFailure.value = false
@@ -324,8 +330,11 @@ describe('brush library sections (64-11 MED-27)', () => {
 
   it('pins the texture axis in both directions at the source level', () => {
     const library = readFileSync(resolve(__dirname, 'WatercolorBrushLibrary.tsx'), 'utf8')
-    expect(library, 'the library maps the pure section helper').toMatch(
-      /brushSections\(BRUSH_PRESETS\)/,
+    // quick 261121-mtu (rev 2): the library maps the TOOL-FILTERED section
+    // helper (Brush = non-watercolor family, Watercolor = its own group), so
+    // the flat `brushSections(BRUSH_PRESETS)` call moved into brushToolFamily.
+    expect(library, 'the library maps the pure tool-family section helper').toMatch(
+      /brushSectionsForTool\(activeTool\)/,
     )
     expect(library, 'the card pick is the one brush-pick seam').toMatch(
       /void pickAquarelleBrush\(props\.id\)/,
