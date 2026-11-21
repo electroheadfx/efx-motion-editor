@@ -5,15 +5,18 @@
  *   Phase 64 (D-01/D-07): the medium dropdown is the FIRST child row and names
  *   the selected medium; five items render in the fixed D-18 order
  *   (Watercolor, Gouache, Chalk, Graphite, Acrylic)
- *   13 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
- *   Dry speed, Viscosity, Body, Feather, Pickup, Refill, Emboss (keys stay
+ *   12 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
+ *   Dry speed, Viscosity, Feather, Pickup, Refill, Emboss (keys stay
  *   water/load/flow/bleed/edge/granulation/dry/viscosity/body/feather/pickup/
- *   refill/emboss; 64-22 inserted Feather after Body and Pickup/Refill after
- *   Feather — D-22's thirteen-row order). `wetSeconds` is a medium-record
- *   value with NO row — it is seconds, and the ×100 reset law would corrupt it.
+ *   refill/emboss). Post-UAT 2026-11-22: `body` rides the bag and the Reset
+ *   law but has NO row — the compositor's alpha is max(pigment-darkness,
+ *   cover), so Body only reads on near-white pigments. `wetSeconds` is a
+ *   medium-record value with NO row — it is seconds, and the ×100 reset law
+ *   would corrupt it.
  *   no Size control (top-bar owns it, Q1a) and no Hand row
- *   Reset writes playground DEFAULT_PARAMS ×100 for every non-size row via
- *   setAquarelleParam and never writes size or lift (T-261017-WMW-01)
+ *   Reset writes playground DEFAULT_PARAMS ×100 for every non-size key
+ *   (Body included) via setAquarelleParam and never writes size or lift
+ *   (T-261017-WMW-01)
  *   no Brush response chrome in this panel (I-02 puts it in BrushResponsePanel)
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
@@ -26,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_MEDIUM_ID } from '@efxlab/efx-watercolor';
 import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
+  AQUARELLE_GLOBAL_KEYS,
   DEFAULT_AQUARELLE_PARAMS,
   aquarelleMediumMenuAnchor,
   aquarelleMediumMenuOpen,
@@ -165,9 +169,8 @@ function collectOrderedLabels(tree: TestVNode): string[] {
 }
 
 /** I-01/I-02 playground order (SettingsPanel SLIDERS minus Size and Hand),
- *  with Phase 64's Viscosity, Body, Feather, Pickup, Refill and Emboss
- *  (D-22's thirteen-row order: Feather after Body, Pickup then Refill after
- *  Feather, Emboss last). */
+ *  with Phase 64's Viscosity, Feather, Pickup, Refill and Emboss. Post-UAT
+ *  2026-11-22: Body has NO row (kept in the bag and the Reset law only). */
 const GLOBAL_LABELS = [
   'Water',
   'Pigment',
@@ -177,7 +180,6 @@ const GLOBAL_LABELS = [
   'Grain',
   'Dry speed',
   'Viscosity',
-  'Body',
   'Feather',
   'Pickup',
   'Refill',
@@ -188,7 +190,8 @@ const GLOBAL_LABELS = [
  *  "Chalk" deliberately — the id is not the label. */
 const MEDIUM_NAMES = ['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic'] as const;
 
-/** Playground DEFAULT_PARAMS ×100 for the 13 non-size rows. */
+/** Playground DEFAULT_PARAMS ×100 for the 12 visible keys plus the hidden
+ *  Body key, in the panel's reset order (Body resets last: it has no row). */
 const RESET_EXPECTED = {
   water: 60,
   load: 50,
@@ -198,12 +201,13 @@ const RESET_EXPECTED = {
   granulation: 45,
   dry: 40,
   viscosity: 0,
-  body: 0,
   feather: 0,
   // 261119-pod (D-A): the playground default opens Pickup at 100.
   pickup: 100,
   refill: 60,
   emboss: 0,
+  // Post-UAT 2026-11-22: hidden row, still restored by Reset.
+  body: 0,
 } as const;
 
 beforeEach(() => {
@@ -343,30 +347,39 @@ describe('Phase 64 medium dropdown', () => {
     expect(text, 'the row names the selected medium').toContain('Watercolor');
   });
 
-  it('renders thirteen slider rows below the dropdown, Refill twelfth and Emboss last', () => {
+  it('renders twelve slider rows below the dropdown, Refill eleventh and Emboss last', () => {
     const tree = renderPanel();
     const sliders = [...walk(tree)].filter(
       (node) => node.props?.['data-testid'] === 'slider-stepper',
     );
-    expect(sliders, 'thirteen slider rows after 64-22').toHaveLength(GLOBAL_LABELS.length);
-    expect(GLOBAL_LABELS).toHaveLength(13);
+    expect(sliders, 'twelve slider rows').toHaveLength(GLOBAL_LABELS.length);
+    expect(GLOBAL_LABELS).toHaveLength(12);
     const ordered = collectOrderedLabels(tree).filter((label) =>
       (GLOBAL_LABELS as readonly string[]).includes(label),
     );
     expectGlobalOrder(ordered);
-    expect(ordered).toHaveLength(13);
-    // D-22: Feather after Body, then Pickup, then Refill, and Emboss last.
-    // 1-based: Body tenth, Feather eleventh, Refill twelfth, Emboss thirteenth.
-    expect(ordered[ordered.length - 5]).toBe('Body');
+    expect(ordered).toHaveLength(12);
+    // Post-UAT 2026-11-22: Body has no row. Viscosity, then Feather, Pickup,
+    // Refill and Emboss (1-based: Viscosity eighth, Emboss twelfth).
+    expect(ordered[ordered.length - 5]).toBe('Viscosity');
     expect(ordered[ordered.length - 4]).toBe('Feather');
     expect(ordered[ordered.length - 3]).toBe('Pickup');
     expect(ordered[ordered.length - 2]).toBe('Refill');
     expect(ordered[ordered.length - 1]).toBe('Emboss');
     const index = (label: string) => ordered.indexOf(label);
-    expect(index('Feather'), 'Feather sits after Body').toBeGreaterThan(index('Body'));
+    expect(index('Feather'), 'Feather sits after Viscosity').toBeGreaterThan(index('Viscosity'));
     expect(index('Pickup'), 'Pickup sits after Feather').toBeGreaterThan(index('Feather'));
     expect(index('Refill'), 'Refill sits after Pickup').toBeGreaterThan(index('Pickup'));
     expect(index('Emboss'), 'Emboss stays last').toBeGreaterThan(index('Refill'));
+  });
+
+  it('renders no Body row: the key stays in the bag, the panel drops the row', () => {
+    const tree = renderPanel();
+    const labels = collectLabels(tree);
+    expect(labels.some((label) => label === 'Body'), 'found a Body row').toBe(false);
+    // The recorded key itself is untouched — the medium records and replay
+    // still carry it.
+    expect(AQUARELLE_GLOBAL_KEYS).toContain('body');
   });
 
   it('never renders a wetSeconds row: it is seconds, not a 0..100 global', () => {
@@ -380,19 +393,19 @@ describe('Phase 64 medium dropdown', () => {
     expect(sliderLabels).not.toContain('wetSeconds');
     expect(sliderLabels).not.toContain('Wet seconds');
     expect(sliderLabels).not.toContain('Wet Seconds');
-    expect(sliderLabels).toHaveLength(13);
+    expect(sliderLabels).toHaveLength(12);
   });
 
-  it('moves the canonical body key through the one seam on change and release', () => {
+  it('moves the canonical viscosity key through the one seam on change and release', () => {
     // The RAW vnode tree keeps GlobalSlider's own props (materialize invokes
     // the function component), so the row's onChange/onCommit are reachable.
-    const bodyRow = [...walk(AquarelleGlobalsPanel())].find(
-      (node) => node.props?.['label'] === 'Body' && typeof node.props?.['onChange'] === 'function',
+    const row = [...walk(AquarelleGlobalsPanel())].find(
+      (node) => node.props?.['label'] === 'Viscosity' && typeof node.props?.['onChange'] === 'function',
     );
-    expect(bodyRow, 'the Body row must render').toBeTruthy();
-    (bodyRow!.props['onChange'] as (value: number) => void)(42);
-    expect(aquarelleParams.value.body, 'Body writes the canonical body key').toBe(42);
-    expect(typeof bodyRow!.props['onCommit'], 'the release path is wired like every row').toBe(
+    expect(row, 'the Viscosity row must render').toBeTruthy();
+    (row!.props['onChange'] as (value: number) => void)(42);
+    expect(aquarelleParams.value.viscosity, 'Viscosity writes the canonical key').toBe(42);
+    expect(typeof row!.props['onCommit'], 'the release path is wired like every row').toBe(
       'function',
     );
   });
@@ -603,9 +616,9 @@ describe('post-UAT 2026-11-21 emboss row cap', () => {
   });
 
   it('leaves every other global row on the 0..100 band', () => {
-    const body = sliderProps('Body');
-    expect(body.min).toBe(0);
-    expect(body.max).toBe(100);
+    const viscosity = sliderProps('Viscosity');
+    expect(viscosity.min).toBe(0);
+    expect(viscosity.max).toBe(100);
   });
 });
 

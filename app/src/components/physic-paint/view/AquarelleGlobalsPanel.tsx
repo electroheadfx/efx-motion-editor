@@ -1,25 +1,29 @@
 // ============================================================
-//  AquarelleGlobalsPanel — the medium dropdown, the 13 watercolor
-//  globals + Reset. This is the Paint-tab content.
+//  AquarelleGlobalsPanel — the medium dropdown, the 12 visible
+//  watercolor globals + Reset. This is the Paint-tab content.
 //
 //  Phase 64 (D-01/D-07/D-22): the panel LEADS with the five-item
-//  medium dropdown, then the thirteen slider rows below it. A pick
+//  medium dropdown, then the slider rows below it. A pick
 //  applies the whole record in one move (applyAquarelleMedium)
 //  and closes; the selected name is shown truthfully, with no
 //  "edited" marker.
 //
 //  Labels and row order follow the playground SettingsPanel
 //  (Water, Pigment, Flow, Bleed, Edges, Grain, Dry speed), with
-//  Phase 64's Viscosity, Body (64-06), Feather/Pickup/Refill
-//  (64-22) and Emboss (64-04) appended in D-22's order. Param
-//  keys stay water/load/flow/bleed/edge/granulation/dry/
-//  viscosity/body/feather/pickup/refill/emboss.
+//  Phase 64's Viscosity, Feather/Pickup/Refill (64-22) and Emboss
+//  (64-04) appended in D-22's order. Param keys stay water/load/
+//  flow/bleed/edge/granulation/dry/viscosity/body/feather/pickup/
+//  refill/emboss — `body` rides the bag and the Reset law but has
+//  NO row (post-UAT 2026-11-22: the compositor's alpha is
+//  max(pigment-darkness, cover), so Body is invisible for every
+//  pigmented paint and only reads on near-white pigments).
 //  `size` is NOT here — the shared Size slider owns it (D-05).
 //
 //  Reset restores playground DEFAULT_PARAMS (0..1) ×100 onto the
-//  app 0-100 slider band for every non-size row via the one
-//  record-path seam (setAquarelleParam). Never writes size
-//  (top-bar Brush size owns it, Q1a / T-261017-WMW-01).
+//  app 0-100 slider band for every non-size row (and the hidden
+//  Body key) via the one record-path seam (setAquarelleParam).
+//  Never writes size (top-bar Brush size owns it, Q1a /
+//  T-261017-WMW-01).
 //
 //  The Brush response block lives in BrushResponsePanel (I-02).
 // ============================================================
@@ -44,8 +48,14 @@ import {
 } from './aquarellePaintControls';
 
 /** Module-only global rows (D-05 / I-01 playground order + Phase 64's
- *  Viscosity, Body, Feather, Pickup, Refill and Emboss in D-22's
- *  thirteen-row order). `size` is NOT here — shared Size owns it.
+ *  Viscosity, Feather, Pickup, Refill and Emboss in D-22's order).
+ *  `size` is NOT here — shared Size owns it.
+ *
+ *  `body` is deliberately row-LESS (post-UAT 2026-11-22): the compositor's
+ *  alpha is `max(pigment-darkness, cover)`, so Body's film opacity is hidden
+ *  by any pigmented paint and only ever reads on near-white pigments. The key
+ *  still rides the recorded bag and the medium records, and the Reset law
+ *  below still restores it (see RESET_ONLY_KEYS).
  *
  *  `wetSeconds` is deliberately absent: it is a medium-record value in
  *  SECONDS, and the ×100 reset law below (which multiplies every row's
@@ -54,7 +64,7 @@ import {
  *  band is capped so neither the track nor a typed entry can exceed it. */
 const EMBOSS_MAX = 15;
 
-const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string; max?: number }> =
+const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string; min?: number; max?: number }> =
   Object.freeze([
     { key: 'water', label: 'Water' },
     { key: 'load', label: 'Pigment' },
@@ -64,12 +74,16 @@ const GLOBAL_ROWS: ReadonlyArray<{ key: AquarelleGlobalKey; label: string; max?:
     { key: 'granulation', label: 'Grain' },
     { key: 'dry', label: 'Dry speed' },
     { key: 'viscosity', label: 'Viscosity' },
-    { key: 'body', label: 'Body' },
     { key: 'feather', label: 'Feather' },
     { key: 'pickup', label: 'Pickup' },
     { key: 'refill', label: 'Refill' },
     { key: 'emboss', label: 'Emboss', max: EMBOSS_MAX },
   ]);
+
+/** Keys with no visible row that the Reset law still restores. Body's
+ *  opacity story is real for near-white pigments and the recorded bag must
+ *  land back on the canonical default, even though its row is hidden. */
+const RESET_ONLY_KEYS: readonly AquarelleGlobalKey[] = Object.freeze(['body'] as const);
 
 const GLOBAL_MIN = 0;
 const GLOBAL_MAX = 100;
@@ -146,16 +160,18 @@ export function AquarelleGlobalsPanel() {
   };
 
   // I-01 Reset: playground DEFAULT_PARAMS (0..1) mapped onto the app 0-100
-  // slider band (×100), written once per non-size row through the one seam.
+  // slider band (×100), written once per non-size key through the one seam.
   // Never writes size (top-bar Brush size owns it, Q1a / T-261017-WMW-01).
-  // The same values leave as ONE selection patch after the live writes,
-  // so Reset costs at most one undo entry and no selection is a no-op.
+  // The hidden Body key resets too (RESET_ONLY_KEYS), so a medium pick's
+  // body never survives a Reset. The same values leave as ONE selection
+  // patch after the live writes, so Reset costs at most one undo entry and
+  // no selection is a no-op.
   const onReset = () => {
     const next: Record<string, number> = {};
-    for (const row of GLOBAL_ROWS) {
-      const value = Math.round(DEFAULT_PARAMS[row.key] * 100);
-      next[row.key] = value;
-      setAquarelleParam(row.key, value);
+    for (const key of [...GLOBAL_ROWS.map((row) => row.key), ...RESET_ONLY_KEYS]) {
+      const value = Math.round(DEFAULT_PARAMS[key] * 100);
+      next[key] = value;
+      setAquarelleParam(key, value);
     }
     void commitAquarelleSelectionParams(next);
   };
