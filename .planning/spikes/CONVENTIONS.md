@@ -58,6 +58,12 @@ reads as current code.
   copy, same scripts and seeds.
 - **Boxes live inside stroke cores.** Stroke alpha rims are ~0.02 doc heights wide; a box
   that spans a rim averages paint with paper and invents "paper-white" failures.
+- **Read per-dab terms, not the final metric.** When a deposit-chain law misbehaves,
+  instrument the pass on the real engine — a prototype tap on the pass's per-dab uniforms
+  and pre-dab fields plus `readBristles()` — and pin the exact bristle indices
+  (`--centre/--rim`). A final hue/pixel metric cannot name the collapsed term (spikes
+  002/003: the pickup collapse was one uniform on the first dab; wet, touch and thirst
+  were identical).
 - **Separate the knob from the scene.** When a control is under test, the underlayer is
   painted neutral (Body 0) and only the stroke under test carries the knob.
 - **Per-dab readouts come from a prototype tap, not a re-implementation.** Wrap the

@@ -1,8 +1,8 @@
 # Spike Wrap-Up Summary
 
-**Date:** 2026-11-19
-**Spikes processed:** 2
-**Feature areas:** Coverage composite, Acrylic bristle deposit, Measurement harness
+**Date:** 2026-11-19 (spikes 001–002), 2026-11-21 (spike 003)
+**Spikes processed:** 3
+**Feature areas:** Coverage composite, Acrylic bristle deposit, Measurement harness, Pickup carrier
 **Skill output:** `./.claude/skills/spike-findings-efx-motion-editor/`
 
 ## Processed Spikes
@@ -11,9 +11,25 @@
 |---|------|------|---------|--------------|
 | 001 | coverage-composite-acrylic | standard | ✓ VALIDATED | Coverage composite |
 | 002 | acrylic-bristle-deposit | standard | ✓ VALIDATED (3 conditional legs) | Acrylic bristle deposit |
+| 003 | pickup-collapse | standard | ✓ VALIDATED | Pickup carrier |
 
 Both ideas (`opaque-acrylic-coverage`, `acrylic-bristle-deposit`) were wrapped;
 no unrelated idea is represented in this skill.
+
+## 2026-11-21 session — spike 003 (pickup-collapse)
+
+Spike 003 was run outside GSD while investigating a hard pickup regression; it
+is wrapped here so the knowledge is loaded by future build sessions.
+
+**The drag-hue collapse was `uTravel` on the first dab only.** Reverting just
+`c0ab29b2c`'s first-dab anchor restores travel 314.99 px (7.61 BW at size 17 /
+18.58 BW at size 4) → pickup 0.75 (cap) → carried hue 77.0/73.8 after one dab;
+HEAD (travel 0) reads 214.5. wet (0.969), touch (1.0) and thirst are identical
+at dab 1; every later dab is identical in both builds (travel 0.0265 BW,
+pickup 0.003–0.009). One dab decides the stroke colour because the core's
+per-dab pickup is ~0.5 % and its taps sample the stroke's own film. The anchor
+fix is correct and must stay; the tap-law consequence is a follow-up decision,
+not a revert. New reference: `references/pickup-carrier.md`.
 
 ## Key Findings
 

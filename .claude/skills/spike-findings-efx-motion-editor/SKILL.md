@@ -61,6 +61,11 @@ Spike sessions wrapped: 2026-11-19 (spikes 001, 002)
   smear, smudge/wipe/resample.
 - Deliverable is per-leg verdicts, the Studio touch points, and a slicing
   adjusted to what was measured (64-21…64-24).
+- Spike 003 (pickup collapse, added 2026-11-21): keep the first-dab travel
+  anchor (`c0ab29b2c`) — the first dab's travel is 0, never the page-corner
+  distance; diagnose pickup regressions by the carrier's per-dab terms on the
+  real engine (`carrierPass` prototype tap + `readBristles()`), not from the
+  final hue metric alone.
 </requirements>
 
 <findings_index>
@@ -71,6 +76,7 @@ Spike sessions wrapped: 2026-11-19 (spikes 001, 002)
 | Coverage composite | references/coverage-composite.md | Per-dab coverage `a = bodyGain·(1 − exp(−8·amount·mask))` composited source-over gives true opaque acrylic; 4.1× median stroke, 0 full-document draws vs 3613, −17.8 MiB per-stroke transient. Body 0 stays byte-identical. |
 | Acrylic bristle deposit | references/bristle-deposit.md | Deterministic per-bristle carrier + 5-nearest gather ports into WebGL2 selectively: +26–29 % bake on a 50-stroke passage, +36–51 % on a large acrylic brush. Determinism holds only with a pinned paper seed (a pre-existing record gap). Wetness needs its own R32F pair: +26.1 MB at 1080². Frontier (measured 2026-11-19): the gather composes with the Body-100 coverage composite — combined 675.5 ms at 1080² / 1.17 s at 2K, +22.5 % / +17.6 % over shipping at the same Body, no new GPU targets. |
 | Measurement harness | references/measurement-harness.md | Real engine + real WebGL2 in headless Chrome, one engine per process, GL-boundary instrumentation, byte-identical neutrality control before believing any delta. p95 is not a cost signal on a stalling script. |
+| Pickup carrier | references/pickup-carrier.md | The carrier chain is intact; the drag-hue collapse (211→78 vs 213→205) was `uTravel` on the FIRST dab only. The first-dab travel anchor (`c0ab29b2c`) must stay; the first dab seeds the stroke colour because core pickup is ~0.5 %/dab. Diagnose with a `carrierPass` tap + `readBristles()`, never the final hue. |
 
 ## Source Files
 
@@ -85,6 +91,13 @@ Original spike artifacts are preserved in `sources/`:
   `src/bristleShaders.ts`, `patches/Engine.diff` (against `406d1ead1`, **on top
   of** spike 001), `probe/` (with the 2026-11-19 `--body` operand), `results/`
   (45 gate JSONs, including the Body matrix and its repeat samples).
+- `sources/003-pickup-collapse/` — README (per-dab table, investigation trail,
+  limitations), the `pickup-collapse` probe (`probe.ts`, `run.mjs`,
+  `index.html`). Result JSONs stay in `/tmp/pickup-collapse/` (re-runnable).
+
+Application-level laws (compositing parity, capture merge, per-stroke seeds,
+seams and UAT gates) live in `Skill("efx-studio-paint")` — load both for any
+change that affects what the paint looks like.
 
 ### Applying the patches
 
@@ -101,4 +114,6 @@ bristle workbench — 002's `Engine.ts` calls `coverageDeposit`.
 - 001-coverage-composite (opaque-acrylic-coverage) — VALIDATED
 - 002-acrylic-bristle-deposit (acrylic-bristle-deposit) — VALIDATED, three
   conditional legs
+- 003-pickup-collapse (acrylic-bristle-deposit) — VALIDATED (wrapped
+  2026-11-21)
 </metadata>
