@@ -337,6 +337,8 @@ function stampAt(f: Fields, u: number, v: number): number {
 // the uploaded underlay (sRGB transmittance, y-flipped like setUnderlay) and
 // its engine-relative last-touch stamp (`underlayTimeSec`).
 let baseTap: { data: Uint8ClampedArray; w: number; h: number; time: number } | null = null
+/** The committed base sheet the live arm bound (the display composite's input). */
+let baseSheetCanvas: HTMLCanvasElement | null = null
 
 /** `texture(uBaseTap, uv)` — GL_LINEAR, CLAMP_TO_EDGE, uploaded with a y flip. */
 function baseSrgbAt(uvX: number, uvY: number): [number, number, number] {
@@ -1122,6 +1124,134 @@ function measureSheetInk(canvas: HTMLCanvasElement): {
   }
 }
 
+/**
+ * The app's `isFullyOpaqueRaster` gate, mirrored: a 64×64 downsample must be
+ * alpha 255 everywhere. When this fails in the app, `setUnderlay` receives
+ * null — no display composite AND no base tap, on every surface at once.
+ */
+function isFullyOpaqueTwin(source: CanvasImageSource): boolean {
+  try {
+    const probe = document.createElement('canvas')
+    probe.width = 64
+    probe.height = 64
+    const ctx = probe.getContext('2d', { willReadFrequently: true })
+    if (!ctx || typeof ctx.getImageData !== 'function') return false
+    ctx.clearRect(0, 0, 64, 64)
+    ctx.drawImage(source, 0, 0, 64, 64)
+    const data = ctx.getImageData(0, 0, 64, 64).data
+    for (let i = 3; i < data.length; i += 4) if (data[i] !== 255) return false
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * THE LIVE SURFACE — displayFS mode 4's underlay branch, transcribed.
+ *   t' = toSRGB(fromSRGB(tSheet) * fromSRGB(tBase)^(1 - cover))     (linear)
+ * then the mode-4 darkness↔pigment-alpha conversion, composited over white
+ * (the Studio paper's no-pigment identity). This is the same arithmetic the
+ * capture merge stores (`coverage-composite`): the artist's "first render" is
+ * exactly this image; the re-bake's sheet is the comparison target.
+ */
+function composeLiveSurface(
+  sheet: HTMLCanvasElement,
+  cover: HTMLCanvasElement,
+  base: HTMLCanvasElement,
+): HTMLCanvasElement {
+  const w = sheet.width
+  const h = sheet.height
+  const read = (canvas: HTMLCanvasElement): Uint8ClampedArray => {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx || typeof ctx.getImageData !== 'function') throw new Error('composeLiveSurface: no readback')
+    return ctx.getImageData(0, 0, w, h).data
+  }
+  const s = read(sheet)
+  const c = read(cover)
+  const b = read(base)
+  const out = document.createElement('canvas')
+  out.width = w
+  out.height = h
+  const octx = out.getContext('2d')!
+  const image = octx.createImageData(w, h)
+  const toLinear = (v: number): number => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4))
+  const toSrgb = (v: number): number => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055)
+  for (let i = 0; i < s.length; i += 4) {
+    const cov = Math.min(1, Math.max(0, c[i]! / 255))
+    for (let k = 0; k < 3; k += 1) {
+      const tNew = toLinear(s[i + k]! / 255)
+      const tBase = toLinear(b[i + k]! / 255)
+      const t = Math.min(1, toSrgb(tNew * Math.pow(tBase, 1 - cov)))
+      image.data[i + k] = Math.round(t * 255)
+    }
+    image.data[i + 3] = 255
+  }
+  octx.putImageData(image, 0, 0)
+  return out
+}
+
+/**
+ * Colour statistics of one rendered surface over the stroke's own painted
+ * texels (cover > 0.5, inside the stroke's lateral extent). `greenShift` is
+ * the artist's blend signature: a pure-yellow film has G < R (a yellow pigment
+ * with R high); a picked-up yellow-over-blue moves G toward and past R while
+ * B climbs. A live surface whose greenShift stays at the palette's while the
+ * bake's climbs is the "no blending colour" report, in one number.
+ */
+function surfaceMetrics(
+  surface: HTMLCanvasElement,
+  cover: HTMLCanvasElement,
+  radiusUv: number,
+): Record<string, unknown> {
+  const w = surface.width
+  const h = surface.height
+  const sctx = surface.getContext('2d', { willReadFrequently: true })
+  const cctx = cover.getContext('2d', { willReadFrequently: true })
+  if (!sctx || !cctx || typeof sctx.getImageData !== 'function' || typeof cctx.getImageData !== 'function') {
+    return { error: 'no readback' }
+  }
+  const s = sctx.getImageData(0, 0, w, h).data
+  const c = cctx.getImageData(0, 0, w, h).data
+  const y0 = Math.max(0, Math.floor((0.5 - radiusUv * 0.6) * h))
+  const y1 = Math.min(h, Math.ceil((0.5 + radiusUv * 0.6) * h))
+  const x0 = Math.floor(0.12 * w)
+  const x1 = Math.ceil(0.88 * w)
+  let n = 0
+  let r = 0
+  let g = 0
+  let bl = 0
+  let greenMinusRed = 0
+  let greenMinusBlue = 0
+  const samples: { x: number; y: number; srgb: [number, number, number] }[] = []
+  const sampleXs = [0.2, 0.35, 0.5, 0.65, 0.8]
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const i = (y * w + x) * 4
+      if (c[i]! < 128) continue
+      n += 1
+      r += s[i]!
+      g += s[i + 1]!
+      bl += s[i + 2]!
+      greenMinusRed += s[i + 1]! - s[i]!
+      greenMinusBlue += s[i + 1]! - s[i + 2]!
+    }
+  }
+  for (const sx of sampleXs) {
+    const px = Math.floor(sx * w)
+    const py = Math.floor(0.5 * h)
+    const i = (py * w + px) * 4
+    samples.push({ x: sx, y: 0.5, srgb: [s[i]!, s[i + 1]!, s[i + 2]!] })
+  }
+  if (n === 0) return { texels: 0, samples }
+  return {
+    texels: n,
+    meanRgb: [r / n, g / n, bl / n].map((v) => Number(v.toFixed(1))),
+    greenShift: Number((greenMinusRed / n).toFixed(2)),
+    greenOverBlue: Number((greenMinusBlue / n).toFixed(2)),
+    samples,
+  }
+}
+
 // --- capture ----------------------------------------------------------------
 
 interface Sample {
@@ -1489,6 +1619,7 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
   midReport = null
   midDab = 0
   baseTap = null
+  baseSheetCanvas = null
 
   const adapter = createAquarelleEngineAdapter({
     width: SHEET_W,
@@ -1530,8 +1661,12 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
       if (config.scene === 'app-live') {
         const sheet = engine.exportCanvas('transparent')
         const sheetCover = engine.exportCoverageCanvas()
+        baseSheetCanvas = sheet
         appSurface = {
           underlay: 'committed-sheet',
+          // The app binds the underlay through `new Image()` + isFullyOpaqueRaster;
+          // a false gate silently drops BOTH the display composite and the tap.
+          underlayOpaqueGate: isFullyOpaqueTwin(sheet),
           sheet: measureSheetInk(sheet),
           coverImprint: measureSheetInk(sheetCover),
         }
@@ -1574,6 +1709,31 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
       .map(([, capture]) => capture)
     const picks = targetBristles
     const mid = midReport === null ? null : { ...midReport, dabs: totalDabs, captureAtDab: midDab }
+
+    // THE ACCEPTANCE TARGET: the FINAL RENDERED PIXELS. The live arm renders
+    // the display law over the committed base (mode-4 underlay branch); the
+    // bake arm's sheet IS the re-bake surface. Same stroke geometry, same base.
+    const radiusUv = (finalTerms?.r ?? 0.0345) as number
+    const finalSheet = engine.exportCanvas('transparent')
+    const finalCover = engine.exportCoverageCanvas()
+    let surface: Record<string, unknown> | null = null
+    let surfacePng: string | null = null
+    let rawSheetPng: string | null = null
+    if (config.scene === 'app-live' && baseSheetCanvas !== null) {
+      const live = composeLiveSurface(finalSheet, finalCover, baseSheetCanvas)
+      surface = {
+        law: "t' = toSRGB(fromSRGB(tSheet) * fromSRGB(tBase)^(1 - cover)) over white",
+        metrics: surfaceMetrics(live, finalCover, radiusUv),
+      }
+      surfacePng = live.toDataURL('image/png')
+      rawSheetPng = finalSheet.toDataURL('image/png')
+    } else if (config.scene === 'app-bake') {
+      surface = {
+        law: 're-bake sheet (mode 2) over white',
+        metrics: surfaceMetrics(finalSheet, finalCover, radiusUv),
+      }
+      surfacePng = finalSheet.toDataURL('image/png')
+    }
     return {
       scene: config.scene,
       config,
@@ -1587,6 +1747,9 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
       captures: ordered,
       mid,
       appSurface,
+      surface,
+      surfacePng,
+      rawSheetPng,
       fieldDumpBand,
       fieldDumpFinal,
       renderer,

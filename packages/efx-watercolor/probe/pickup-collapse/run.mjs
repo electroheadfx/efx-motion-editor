@@ -53,7 +53,7 @@ const label = flag('--label')
 if (!label) {
   fail(
     'usage: node run.mjs --label <name> [--scene band|blank|app-live|app-bake] [--size <px>] ' +
-      '[--dry <0..100>] [--feather <0..100>] [--pressure <0..1>] [--gap <ms>]',
+      '[--dry <0..100>] [--feather <0..100>] [--body <0..100>] [--pressure <0..1>] [--gap <ms>]',
   )
 }
 const sceneRaw = flag('--scene') ?? 'band'
@@ -74,6 +74,7 @@ const dry = numericFlag('--dry', sceneRaw === 'blank' ? 55 : 50)
 const feather = numericFlag('--feather', 0)
 const pressure = numericFlag('--pressure', 0.75)
 const pickup = numericFlag('--pickup', 100)
+const body = numericFlag('--body', 0)
 const gapMs = numericFlag('--gap', 3000)
 const centreRaw = flag('--centre')
 const rimRaw = flag('--rim')
@@ -117,7 +118,7 @@ function buildBundle() {
 
 function runPage() {
   const query =
-    `scene=${sceneRaw}&size=${blueSize}&dry=${dry}&feather=${feather}&pressure=${pressure}&pickup=${pickup}&gap=${gapMs}${pinQuery}`
+    `scene=${sceneRaw}&size=${blueSize}&dry=${dry}&feather=${feather}&body=${body}&pressure=${pressure}&pickup=${pickup}&gap=${gapMs}${pinQuery}`
   const run = spawnSync(
     chrome,
     [
@@ -220,11 +221,37 @@ function report(result) {
   if (result.appSurface) {
     console.log(`app   | ${JSON.stringify(result.appSurface)}`)
   }
+  if (result.surface) {
+    console.log(`pixel | ${result.surface.law}`)
+    console.log(`      | ${JSON.stringify(result.surface.metrics)}`)
+  }
+}
+
+/**
+ * Write the rendered surface PNG(s) next to the JSON and drop the (large)
+ * data URLs from the record, so the JSON stays readable and greppable.
+ */
+function writeSurfacePngs(result) {
+  const written = []
+  for (const [key, suffix] of [['surfacePng', 'surface'], ['rawSheetPng', 'rawsheet']]) {
+    const dataUrl = result[key]
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) {
+      delete result[key]
+      continue
+    }
+    const path = join(outDir, `${label}-${suffix}.png`)
+    writeFileSync(path, Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64'))
+    written.push(path)
+    delete result[key]
+  }
+  if (result.surface && written.length > 0) result.surface.png = written[0]
+  return written
 }
 
 buildBundle()
 const result = runPage()
+const pngs = writeSurfacePngs(result)
 const outPath = join(outDir, `${label}.json`)
 writeFileSync(outPath, JSON.stringify(result, null, 2) + '\n')
 report(result)
-console.log(`[pickup-collapse] wrote ${outPath}`)
+console.log(`[pickup-collapse] wrote ${outPath}${pngs.length ? ' + ' + pngs.join(' ') : ''}`)
