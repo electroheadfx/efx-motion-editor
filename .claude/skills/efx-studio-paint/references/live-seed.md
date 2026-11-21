@@ -90,6 +90,24 @@ the frame it is leaving.
 The package's `yieldToHostMs` slicing stays (the bake seam is still used by
 `seedAquarelleEngine` and the probe) but the Studio no longer drives a replay.
 
+### Re-render adoption (2026-11-23)
+
+A re-render (Apply, a script edit, the artist's manual rebake) hands its bake
+engine's EXACT sheet to the live layer (`bakeAquarelleEventsToFrame` →
+`onSheet` → `adapter.captureSheet()` → the layer's `adoptSheet` →
+`engine.restoreSheet`). The live engine then holds the committed base, so
+painting over it blends and picks up like a fresh bake — no stroke replay and
+no rebake per stroke. The sheet stores last-touch as AGES and the restore
+re-stamps them on the live clock: the bake runs a virtual clock from 0, so a
+raw stamp would read as ancient on the live engine and the base would never
+blend. When each engine `nowSec()` starts at 0 after the restore's
+`resetSheet()`, `stamp = 0 - age` is the correct negative-origin encoding.
+
+Flow: open a painted key → cached image only (no blend) → trigger the
+re-render once → the sheet is adopted → every later stroke blends/picks up.
+The first-visit no-blend residual above still applies; adoption is the
+artist-sanctioned base rebuild.
+
 ## Verification
 
 - Probe `packages/efx-watercolor/probe/pickup-collapse/` (`run.mjs`):

@@ -1029,31 +1029,52 @@ export class WatercolorEngine {
   }
 
   /**
-   * LIVE-SEED CACHE (2026-11-22): the exact sheet layer set, for a host that
+   * SHEET SNAPSHOT (2026-11-22): the exact sheet layer set, for a host that
    * wants to bring a frame's committed base back WITHOUT replaying its
-   * script. This is a SHEET snapshot, not a document one: no paper, no
-   * history, no view and no wet bookkeeping. `captureWhole` is the same exact
-   * float capture a saved document uses, so a restore reproduces the pixels
-   * and the pickup fields the sheet held when it was captured.
+   * script — the same session's sheet cache AND a re-bake engine handing its
+   * exact result to the live engine. This is a SHEET snapshot, not a
+   * document one: no paper, no history, no view and no wet bookkeeping.
+   *
+   * The last-touch layer is stored as AGES (seconds before the capture),
+   * never absolute stamps: the capture and the restore can live on
+   * different engine clocks (a re-bake runs a virtual clock from 0; the live
+   * engine runs real time), and a raw stamp would read as ancient on the
+   * other clock. Restoring `now - age` keeps the base's wetness exactly the
+   * same across clocks and lets it keep aging while away.
    */
   captureSheet(): SheetSnapshot {
-    return { whole: this.captureWhole(), bristleContent: this.bristleContent };
+    const whole = this.captureWhole();
+    const lastTouch = whole.layers.lastTouch;
+    if (lastTouch instanceof Float32Array && lastTouch.length > 0) {
+      const now = this.nowSec();
+      for (let i = 0; i < lastTouch.length; i += 1) {
+        lastTouch[i] = Math.max(now - lastTouch[i], 0);
+      }
+    }
+    return { whole, bristleContent: this.bristleContent };
   }
 
   /**
-   * Put a captured sheet back on a BLANK sheet of the same size (the caller
-   * clears first on a frame change; this method also wipes, so it is always
-   * safe). Paper, history, view and the undo memory are untouched. The
-   * restored base is DRY: the sheet's own last-touch stamps ride the record
-   * and keep aging on the engine clock, exactly like a committed base.
-   * Returns false when the record cannot be applied (size mismatch) — the
-   * caller falls back to the script replay.
+   * Put a captured sheet back on a BLANK sheet of the same size (this method
+   * wipes first, so it is always safe). Paper, history, view and the undo
+   * memory are untouched. The restored last-touch AGES are re-stamped on
+   * this engine's clock, so the base blends and picks up exactly as it did
+   * when captured. Returns false when the record cannot be applied (size
+   * mismatch) — every caller falls back to its committed image.
    */
   restoreSheet(s: SheetSnapshot): boolean {
     const whole = s.whole;
     if (whole.w !== this.dw || whole.h !== this.dh) return false;
     this.resetSheet();
-    this.uploadWhole(whole);
+    let upload = whole;
+    const ages = whole.layers.lastTouch;
+    if (ages instanceof Float32Array && ages.length > 0) {
+      const now = this.nowSec();
+      const stamps = new Float32Array(ages.length);
+      for (let i = 0; i < ages.length; i += 1) stamps[i] = now - ages[i];
+      upload = { ...whole, layers: { ...whole.layers, lastTouch: stamps } };
+    }
+    this.uploadWhole(upload);
     this.bristleContent = s.bristleContent;
     this.dirty = null;
     this.dirtyAll = true;

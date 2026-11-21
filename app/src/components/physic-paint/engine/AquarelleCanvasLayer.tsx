@@ -516,6 +516,14 @@ export function AquarelleCanvasLayer(props: {
    */
   onResetSheetReady?: (resetSheet: () => void) => void;
   /**
+   * 2026-11-23: the layer hands out its SHEET-ADOPTION seam (null on unmount).
+   * A re-render (Apply, a script edit, the artist's manual rebake) passes its
+   * bake engine's EXACT sheet here; the live engine restores it, so painting
+   * over the committed paint blends and picks up like a fresh bake — with no
+   * stroke replay and no per-paint rebake.
+   */
+  onAdoptSheetReady?: (adopt: ((frame: number, sheet: SheetSnapshot) => boolean) | null) => void;
+  /**
    * 261022-pim / 261024-mz5: Alt+click on an outlined stroke (or the whole
    * selected set). The Studio deletes them from the recorded script and
    * re-bakes through the shared Apply path.
@@ -588,6 +596,7 @@ export function AquarelleCanvasLayer(props: {
   const onSnapshotReadyRef = useRef(props.onSnapshotReady);
   const onSheetSessionEndRef = useRef(props.onSheetSessionEnd);
   const onResetSheetReadyRef = useRef(props.onResetSheetReady);
+  const onAdoptSheetReadyRef = useRef(props.onAdoptSheetReady);
   const onDeleteStrokesRef = useRef(props.onDeleteStrokes);
   const onMoveStrokesRef = useRef(props.onMoveStrokes);
   const onTransformStrokesRef = useRef(props.onTransformStrokes);
@@ -615,6 +624,7 @@ export function AquarelleCanvasLayer(props: {
   onSnapshotReadyRef.current = props.onSnapshotReady;
   onSheetSessionEndRef.current = props.onSheetSessionEnd;
   onResetSheetReadyRef.current = props.onResetSheetReady;
+  onAdoptSheetReadyRef.current = props.onAdoptSheetReady;
   onDeleteStrokesRef.current = props.onDeleteStrokes;
   onMoveStrokesRef.current = props.onMoveStrokes;
   onTransformStrokesRef.current = props.onTransformStrokes;
@@ -1122,6 +1132,24 @@ export function AquarelleCanvasLayer(props: {
       aquarelleSheetSeeded.value = false;
     };
     onResetSheetReadyRef.current?.(resetSheet);
+    // 2026-11-23: adopt a re-render's EXACT bake sheet into the LIVE engine.
+    // The artist's re-render is the base rebuild; painting on it must blend
+    // and pick up like a fresh bake WITHOUT replaying the script and WITHOUT
+    // a rebake per stroke. The sheet carries last-touch AGES (the engine
+    // re-stamps them on this clock), so wetness survives the engine hop.
+    const adoptSheet = (frame: number, sheet: SheetSnapshot): boolean => {
+      if (frame !== getPlayFrameRef.current()) return false;
+      if (!engine.restoreSheet(sheet)) return false;
+      aquarelleSheetSeeded.value = true;
+      painting = false;
+      lastWetAt = 0;
+      settleCapArmed = false;
+      wasAwake = false;
+      const events = getSeedEventsRef.current?.(frame) ?? null;
+      if (events) rememberSheet(frame, seedSignature(events), sheet);
+      return true;
+    };
+    onAdoptSheetReadyRef.current?.(adoptSheet);
     const tick = () => {
       const playFrame = getPlayFrameRef.current();
       if (lastPlayFrameRef.current !== playFrame) {
@@ -1241,6 +1269,9 @@ export function AquarelleCanvasLayer(props: {
       // SAVE PATH (261026-nvq): drop the snapshot seam too — a later Save must
       // never call a closure holding the destroyed engine.
       onSnapshotReadyRef.current?.(null);
+      // SHEET ADOPTION: the seam closes over the engine — drop it before the
+      // engine dies so a late re-render can never restore into a dead sheet.
+      onAdoptSheetReadyRef.current?.(null);
       window.removeEventListener('pointerdown', reopenSettleOnPaint, true);
       resizeObserver.disconnect();
       dprQuery?.removeEventListener('change', onDprChange);

@@ -223,6 +223,17 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // The Studio still reads the script per FRAME (the sheet cache signs the
     // frame being left) — never as a replay source.
     expect(studio).toContain('getAquarelleEventsForFrame(frame)');
+    // REBAKE ADOPTION (2026-11-23): a re-render (Apply, a script edit — the
+    // artist's manual base rebuild) hands its bake engine's EXACT sheet to
+    // the live layer. Painting on it then blends and picks up like a fresh
+    // bake: no stroke replay, no rebake per stroke. The sheet carries
+    // last-touch AGES so the engine hop keeps the base's wetness.
+    expect(layer).toContain('onAdoptSheetReadyRef.current?.(adoptSheet);');
+    expect(layer).toContain('if (!engine.restoreSheet(sheet)) return false;');
+    expect(layer).toContain('onAdoptSheetReadyRef.current?.(null);');
+    expect(mount).toContain('onAdoptSheetReady={(adopt) => onAquarelleAdoptSheetReadyRef.current?.(adopt)}');
+    expect(studio).toContain('onSheet: (sheet) => aquarelleAdoptSheetRef.current?.(target.appFrame, sheet)');
+    expect(studio).toContain('onAquarelleAdoptSheetReady: handleAquarelleAdoptSheetReady,');
   });
 
   it('NAV FLUSH: navigation forces an aquarelle frame-leave capture BEFORE flushing live pixels', () => {

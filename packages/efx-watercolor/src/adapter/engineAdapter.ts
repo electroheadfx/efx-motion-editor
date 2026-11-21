@@ -43,7 +43,7 @@ import {
   type AquarellePayloadEvent,
 } from '../payload/dryEvent'
 import { payloadCodec } from '../payload/codec'
-import { WatercolorEngine, type LightSettings, type Tool } from '../playground/Engine'
+import { WatercolorEngine, type LightSettings, type SheetSnapshot, type Tool } from '../playground/Engine'
 import { toEngineParams } from '../playground/params'
 import { buildBrushForStroke } from '../playground/brushBridge'
 import { pigmentFromHex, type Pigment } from '../playground/spectral'
@@ -256,6 +256,12 @@ export function createAquarelleEngineAdapter(
   isAwake(): boolean
   /** 261019c: force-dry at the visible settle cap (the live sheet's cap). */
   fix(): void
+  /**
+   * 2026-11-23: the engine's exact sheet (last-touch as AGES). Lets the host
+   * adopt a re-render's bake into its LIVE engine — blend/pickup without a
+   * stroke replay. Null before construction or after dispose.
+   */
+  captureSheet(): SheetSnapshot | null
   /**
    * 261029-bks: clock-only advance for an idle gap the bake proved asleep.
    * Never calls engine.tick or render; one `advanceClock(1000 * HOST_DT)` per
@@ -517,6 +523,13 @@ export function createAquarelleEngineAdapter(
     // runs the same fix so the end key keeps the artist's denser look.
     fix(): void {
       engine?.fix()
+    },
+    // 2026-11-23: the bake's EXACT sheet (last-touch stored as ages), so the
+    // host can adopt a re-rendered base into its LIVE engine — painting over
+    // the committed paint then blends and picks up with no stroke replay.
+    captureSheet(): SheetSnapshot | null {
+      if (disposed || !engine) return null
+      return engine.captureSheet()
     },
     // 261029-bks: clock-only advance for an idle gap the bake proved asleep.
     // The guard is the exact `stepTick` law — it must precede every clock add,

@@ -352,7 +352,7 @@ import {
   type ScriptStrokeAppearancePatch,
   type StrokeSettingsDialogBundle,
 } from './view/strokeSettingsModel';
-import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
+import type { AquarelleStroke, AquarelleStrokePayload, SheetSnapshot } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 import { isAquarelleDryEvent, isAquarellePaintTool, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent, type AquarelleTool } from '@efxlab/efx-watercolor/payload';
 import { anchorsEqual } from '@efxlab/efx-watercolor/payload';
@@ -1695,6 +1695,13 @@ export function PhysicsPaintStudio() {
   // timeline/coordinator seam and surface it as the LOG diagnostic.
   const lastRotoStatusMessageRef = useRef<string | null>(null);
   const aquarelleResetSheetRef = useRef<(() => void) | null>(null);
+  // 2026-11-23: the live layer's sheet-adoption seam. A re-render (Apply, a
+  // script edit, the artist's manual rebake) hands its bake's EXACT sheet
+  // here, so the live engine holds the committed base again — painting over
+  // it blends and picks up with no stroke replay and no per-paint rebake.
+  const aquarelleAdoptSheetRef = useRef<
+    ((frame: number, sheet: SheetSnapshot) => boolean) | null
+  >(null);
   // 261029-lsr: the SAME capture a settled stroke runs. A tile-history undo/redo
   // leaves the sheet holding exactly the post-command image, so it is snapshotted
   // into the frame cache instead of being re-derived by a re-bake.
@@ -2224,6 +2231,10 @@ export function PhysicsPaintStudio() {
         onDiagnostics: (diagnostics) => {
           bakeDiagnostics = diagnostics;
         },
+        // 2026-11-23: adopt the bake's EXACT sheet into the live engine. The
+        // artist's re-render is the manual base rebuild; painting on it then
+        // blends and picks up with no stroke replay and no per-paint rebake.
+        onSheet: (sheet) => aquarelleAdoptSheetRef.current?.(target.appFrame, sheet),
         size: { width: canvasWidth, height: canvasHeight },
         paper: {
           paperId: bgMeta.background,
@@ -10614,6 +10625,13 @@ export function PhysicsPaintStudio() {
     aquarelleMergeBaseRef.current = null;
     aquarelleSheetHasPaintRef.current = false;
   }, []);
+  // 2026-11-23: the layer's sheet-adoption registrar (the bake → live handoff).
+  const handleAquarelleAdoptSheetReady = useCallback(
+    (adopt: ((frame: number, sheet: SheetSnapshot) => boolean) | null) => {
+      aquarelleAdoptSheetRef.current = adopt;
+    },
+    [],
+  );
 
   // FRAME SCOPE: identity-stable getter so the canvas-mount memo never
   // invalidates on frame navigation (the persistent Efx child contract).
@@ -10899,7 +10917,7 @@ export function PhysicsPaintStudio() {
   // completion/performance/input telemetry, beforeEngineDestroy, stroke
   // metadata, the brush script overlay) are gone; `onEnginePortReady` is the
   // Wave 3 D8 narrow port the frame-editing controller consumes.
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeWillStart, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarelleSeedEvents, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeWillStart, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleAdoptSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarelleSeedEvents, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -10941,6 +10959,7 @@ export function PhysicsPaintStudio() {
       onAquarelleSnapshotReady: handleAquarelleSnapshotReady,
       onAquarelleSheetSessionEnd: handleAquarelleSheetSessionEnd,
       onAquarelleResetSheetReady: handleAquarelleResetSheetReady,
+      onAquarelleAdoptSheetReady: handleAquarelleAdoptSheetReady,
       onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,
       onAquarelleMoveStrokes: handleAquarelleMoveStrokes,
       onAquarelleTransformStrokes: handleAquarelleTransformStrokes,

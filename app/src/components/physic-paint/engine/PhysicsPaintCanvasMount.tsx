@@ -4,6 +4,7 @@ import type {
   AquarellePayloadEvent,
   AquarelleStroke,
   LightSettings,
+  SheetSnapshot,
   VectorAnchor,
 } from '@efxlab/efx-watercolor';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
@@ -79,6 +80,11 @@ export function PhysicsPaintCanvasMount(props: {
   onAquarelleSnapshotReady?: (snapshot: (() => HTMLCanvasElement | null) | null) => void;
   onAquarelleSheetSessionEnd?: () => void;
   onAquarelleResetSheetReady?: (resetSheet: () => void) => void;
+  /** 2026-11-23: the layer registers its sheet-adoption seam (a re-render's
+   *  exact bake layers → the live engine); null on unmount. */
+  onAquarelleAdoptSheetReady?: (
+    adopt: ((frame: number, sheet: SheetSnapshot) => boolean) | null,
+  ) => void;
   onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void;
   onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
   onAquarelleTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
@@ -108,6 +114,7 @@ export function PhysicsPaintCanvasMount(props: {
   const onAquarelleSnapshotReadyRef = useRef(props.onAquarelleSnapshotReady);
   const onAquarelleSheetSessionEndRef = useRef(props.onAquarelleSheetSessionEnd);
   const onAquarelleResetSheetReadyRef = useRef(props.onAquarelleResetSheetReady);
+  const onAquarelleAdoptSheetReadyRef = useRef(props.onAquarelleAdoptSheetReady);
   const onAquarelleDeleteStrokesRef = useRef(props.onAquarelleDeleteStrokes);
   const onAquarelleMoveStrokesRef = useRef(props.onAquarelleMoveStrokes);
   const onAquarelleTransformStrokesRef = useRef(props.onAquarelleTransformStrokes);
@@ -132,6 +139,7 @@ export function PhysicsPaintCanvasMount(props: {
   onAquarelleSnapshotReadyRef.current = props.onAquarelleSnapshotReady;
   onAquarelleSheetSessionEndRef.current = props.onAquarelleSheetSessionEnd;
   onAquarelleResetSheetReadyRef.current = props.onAquarelleResetSheetReady;
+  onAquarelleAdoptSheetReadyRef.current = props.onAquarelleAdoptSheetReady;
   onAquarelleDeleteStrokesRef.current = props.onAquarelleDeleteStrokes;
   onAquarelleMoveStrokesRef.current = props.onAquarelleMoveStrokes;
   onAquarelleTransformStrokesRef.current = props.onAquarelleTransformStrokes;
@@ -267,6 +275,7 @@ export function PhysicsPaintCanvasMount(props: {
         onSnapshotReady={(snapshot) => onAquarelleSnapshotReadyRef.current?.(snapshot)}
         onSheetSessionEnd={() => onAquarelleSheetSessionEndRef.current?.()}
         onResetSheetReady={(resetSheet) => onAquarelleResetSheetReadyRef.current?.(resetSheet)}
+        onAdoptSheetReady={(adopt) => onAquarelleAdoptSheetReadyRef.current?.(adopt)}
         onDeleteStrokes={(mutationIds) => onAquarelleDeleteStrokesRef.current?.(mutationIds)}
         onMoveStrokes={(mutationIds, dxPx, dyPx) => onAquarelleMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}
         onTransformStrokes={(mutationIds, transform) => onAquarelleTransformStrokesRef.current?.(mutationIds, transform)}

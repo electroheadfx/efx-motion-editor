@@ -36,7 +36,7 @@ import type { PlayScriptDialogDefaults } from '../../../lib/playScriptDialogDefa
 import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
 // 64-07 (MED-17): type-only — the package root stays out of the UI chunk; the
 // runtime module is still imported lazily inside createDefaultAquarelleAdapter.
-import type { LightSettings } from '@efxlab/efx-watercolor';
+import type { LightSettings, SheetSnapshot } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import { getRecordedAquarelleDryEvents, getRecordedAquarellePayload, getRecordedAquarelleStroke, isAquarelleStrokeDeleted } from '../view/aquarelleRecordState';
@@ -4265,6 +4265,14 @@ export async function bakeAquarelleEventsToFrame(input: {
    * Called AFTER `bake.dispose()` and `adapter.dispose()`.
    */
   onDiagnostics?: (d: AquarelleApplyDiagnostics) => void;
+  /**
+   * 2026-11-23: the bake engine's EXACT sheet (last-touch stored as ages),
+   * fired after the bake's flush and before the engine is disposed. The host
+   * adopts it into its LIVE engine so painting over the re-rendered key
+   * blends and picks up like a fresh bake — no stroke replay. A throwing
+   * consumer never fails the bake.
+   */
+  onSheet?: (sheet: SheetSnapshot) => void;
 }): Promise<{ bytes: Uint8Array; width: number; height: number } | null> {
   const createStartedAt = readNow();
   const adapter = await createDefaultAquarelleAdapter(input.size, input.paper, input.light, input.paperSeed);
@@ -4296,6 +4304,18 @@ export async function bakeAquarelleEventsToFrame(input: {
     const last = result.frames[result.frames.length - 1];
     if (!last) return null;
     await bake.flush();
+    // 2026-11-23: hand the bake's exact sheet to the host BEFORE the engine is
+    // disposed. The seam is optional (older adapters / test doubles); a
+    // throwing consumer must never fail a completed bake.
+    try {
+      const seam = adapter as EngineAdapter<AquarelleStrokePayload> & {
+        captureSheet?: () => SheetSnapshot | null;
+      };
+      const sheet = seam.captureSheet?.() ?? null;
+      if (sheet) input.onSheet?.(sheet);
+    } catch {
+      // diagnostics-only seam
+    }
     return { bytes: last.bytes, width: last.width, height: last.height };
   } finally {
     const teardownStartedAt = readNow();
@@ -4340,6 +4360,8 @@ export async function applyAquarelleEventsToKey(input: {
   onStrokeFed?: (completed: number, total: number) => void;
   /** 261029-bks: forwarded unchanged to `bakeAquarelleEventsToFrame`. */
   onDiagnostics?: (d: AquarelleApplyDiagnostics) => void;
+  /** 2026-11-23: the bake's exact sheet, forwarded unchanged (see below). */
+  onSheet?: (sheet: SheetSnapshot) => void;
   publish: (frame: { keyId: string; appFrame: number; bytes: Uint8Array; width: number; height: number }) => Promise<boolean>;
 }): Promise<boolean> {
   const baked = await bakeAquarelleEventsToFrame({
@@ -4350,6 +4372,7 @@ export async function applyAquarelleEventsToKey(input: {
     paperSeed: input.paperSeed,
     onStrokeFed: input.onStrokeFed,
     onDiagnostics: input.onDiagnostics,
+    onSheet: input.onSheet,
   });
   if (!baked) return false;
   return input.publish({
