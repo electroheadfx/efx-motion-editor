@@ -1,6 +1,6 @@
 ---
 name: efx-studio-paint
-description: Studio paint engine (Physic Paint / watercolor + acrylic bristle media). The shipped compositing laws — pigment replacement with coverage, live-over-committed parity, live-seed replay (the live sheet holds the committed paint), the capture merge, per-stroke seeds, first-paint pickup parity, seed cost — plus the seams, files, verification gates and debugging discipline for any change to what the artist sees. Load before touching the aquarelle engine, its Studio layers, the live-seed path, the capture merge, or brush/mutation recording.
+description: Studio paint engine (Physic Paint / watercolor + acrylic bristle media). The shipped compositing laws — pigment replacement with coverage, the Body cliff, live-over-committed parity, KEY = CACHE (a key opens on its committed image and strokes are never replayed), the sheet cache and re-render adoption, the capture merge, per-stroke seeds, first-paint pickup parity, cache cost — plus the seams, files, verification gates and debugging discipline for any change to what the artist sees. Load before touching the aquarelle engine, its Studio layers, the key/sheet path, the capture merge, brush/mutation recording, or any medium record.
 ---
 
 <context>
@@ -45,6 +45,14 @@ Consequences, and they are not negotiable:
 - The re-bake (`aquarelleBake`, `applyAquarelleEvents`) replays the whole
   stroke script through this same law. THE REPLAY IS THE ARBITER of the look:
   first paint must render what a re-render renders.
+- **Body is ORDER, and any Body above 0 moves the WHOLE deposit into this
+  composite** (non-bristle): its film weight is `bodyCurve(Body) * COVER_GAIN`
+  on the `body ^ 6` curve, so a low Body deposits almost nothing — Body 25 is
+  a 0.05 % film and paints BLANK (the 2026-11-21 chalk regression; probe
+  `probe/chalk-deposit`). A medium record either states Body 0 (additive
+  deposit: watercolor, Chalk/pastel, graphite) or a visible cover (gouache 55,
+  acrylic 100). Never ship a Body on the invisible cliff, pinned in
+  `mediums.test.ts`.
 </the-one-law>
 
 <parity-rules>
@@ -55,67 +63,62 @@ Consequences, and they are not negotiable:
    `strokeRandomForMutationId(id)` before the first dab; stroke end accepts
    that reserved id (`allocateStrokeMutation(..., reservedMutationId)`). Live
    and every re-bake then share one random stream.
-2. **Live-seed: the live sheet HOLDS the committed paint.** At mount, after
-   every `resetSheet()` and on a debounced frame change, the committed script
-   is replayed into the LIVE engine through the bake's own adapter feed path
-   (`seedAquarelleEngine`) — same events (including the commit's
-   `withAquarelleReplayGrid` transform), same per-stroke seeds, same capped
-   settle. The carrier's `canvasAt`/`wetAt` taps then read the base exactly as
-   a re-bake's do, and the stroke's own touch re-wets it, so Pickup works on
-   the FIRST live dab for ANY pause. This is the primary live path; a tap on
-   the display raster is NOT a substitute (a static raster dries out and cannot
-   be re-wet).
-3. **The underlay is the fallback, never stacked.** While a sheet is seeding
-   or seeded, the live compositor binds NO underlay (`setUnderlay(null)`) and
-   the cached base element steps aside (`aquarelleBaseCompositedLive`). The
-   underlay path (`engine.setUnderlay`, `t' = t_sheet x t_base^(1 - cover)`,
-   render-only, exports ignore it) remains for non-seeded / legacy / empty
-   states. Never bind or stack the base under a seeded sheet — that counts the
+2. **KEY = CACHE: a key opens on its cache and strokes are NEVER replayed**
+   (artist decision 2026-11-22, supersedes the live-seed replay). The
+   displayed base is the key's committed cached image; the live sheet starts
+   blank. A key revisited in the SAME session uploads the exact sheet it was
+   left with (`Engine.captureSheet()` / `restoreSheet()`, validated by the
+   frame's script signature) — an upload, never a replay. `seedAquarelleEngine`
+   stays in the package for probe/parity work; the Studio layer never calls
+   it. Do not reintroduce a stroke replay under any name.
+3. **The underlay is the base, never stacked.** `syncUnderlay` binds `null`
+   while `aquarelleSheetSeeded`; `aquarelleBaseCompositedLive = painted &&
+   (underlayApplied || aquarelleSheetSeeded)`. A BLANK first-visit key binds
+   the cached image as the underlay. The underlay path (`engine.setUnderlay`,
+   `t' = t_sheet x t_base^(1 - cover)`, render-only) is for every non-restored
+   sheet. Never bind the base under a RESTORED sheet — that counts the
    committed paint twice.
 4. **Capture: export the sheet, then merge only what it does not contain.**
-   Seeded: the exported sheet ALREADY carries the committed paint, so the
-   ordinary capture merges with a null base — the sheet alone is the stored
-   result. Non-seeded: the ordinary capture exports the transparent sheet AND
-   `exportCanvas('coverage')` in the same turn and merges with `mergeBlend:
-   'coverage-composite'`: `t' = t_sheet x t_base^(1 - cover)`. Roto-owned
-   composites (Lift punches, Apply over group bases) keep their
-   `pigment-alpha` law.
+   Restored sheet (`aquarelleSheetSeeded`): the exported sheet ALREADY carries
+   the committed paint, so the capture merges with `base: null` — the sheet
+   alone is the stored result. Blank key: the ordinary capture exports the
+   transparent sheet AND `exportCanvas('coverage')` in the same turn and
+   merges with `mergeBlend: 'coverage-composite'`: `t' = t_sheet x
+   t_base^(1 - cover)`. Roto-owned composites (Lift punches, Apply over group
+   bases) keep their `pigment-alpha` law. A re-render adopts its bake engine's
+   exact sheet into the live layer (`onSheet` → `adoptSheet`), so painting
+   after one re-render blends and picks up with no replay and no rebake per
+   stroke.
 5. **Alpha is darkness.** `alpha = 1 - min(t)` in mode 4 and in
    `rasterAlpha.ts`; the coverage channel drives deposition, erode, the wet
    gate and the base-replacement weight — never display opacity.
 </parity-rules>
 
-<live-seed>
-## Live-seed: mechanism, cost and guarded surfaces
+<sheet-cache>
+## Sheet cache: cost and guarded surfaces
 
-- **Undo isolation.** The seed is the committed base, not an artist action:
-  `Engine.setStepRecording(false)` makes `beginStep`, `recordChange` and every
-  `history.protect` a no-op for the seed's duration. A seed must never appear
-  as an undo step or pollute the previous step's tiles.
-- **One clock.** `setManual(true)` + ONE mode-switched clock closure
-  (`seedMode ? seedMs : seedEndMs + realElapsed`). Never a second `setClock`:
-  `nowSec()` re-bases on install, and a re-base makes every seeded last-touch
-  stamp read as age 0. Ages start at ~0 at handoff and grow with the artist's
-  real pause — the bake's temporal law.
-- **Input and mid-seed safety.** The pointer is refused while `seeding`;
-  snapshots, flushes, dry/settle captures and frame-leave captures skip a
-  mid-replay film; a frame scrub is debounced (`FRAME_SEED_DEBOUNCE_MS`, 250 ms)
-  so a burst seeds only the landing frame; one `seedChain` + generation token
-  makes a superseded seed unreachable.
-- **Cost is real and linear in the committed dab count.** The replay dominates;
-  the settle is ~1 ms and the readback ~80–90 ms. Measured on the headless CPU
-  (SwiftShader upper bound): 1.84 s at 1080×1080 / 240 dabs, 3.41 s at
-  1920×1080 / 457 dabs. An app GPU is faster, but the feed is CPU work. Treat a
-  new slowdown as a critical-engine regression: read the seed cost first
-  (probe `app-seedcost`, `seedMs` / `seedPhases`), not the display path.
-- **Known surface changes.** On a seeded sheet the filter-mode eye cannot hide
-  the committed paint (it lives IN the sheet; neither the cached base nor the
-  underlay is bound or stacked); the gather's mid-stroke smear read remains
-  sheet-only (live smear < bake smear) — follow-up only if the artist's surface
-  shows it.
+- **Cost.** Key leave: pixel capture + one GPU readback of the sheet
+  (`captureSheet`, everPainted rect). Key return (visited this session): one
+  texture upload (`restoreSheet`). Key return (not visited): nothing — the
+  sheet starts blank over the cached image. No stroke replay anywhere in the
+  Studio.
+- **Cache law.** Entries are keyed by the frame's script signature (mutation
+  id + sample count per event); any script edit mismatches and the key opens
+  blank over its cache. Bounded: 3 frames / 256 MB, LRU; a single sheet over
+  half the budget is never cached.
+- **Clocks.** A sheet stores last-touch as AGES, not stamps: a bake runs a
+  virtual clock from 0, and restoring raw stamps onto the live clock would
+  read as ancient (no wetness, no blend). `restoreSheet` re-stamps as
+  `now - age` after its `resetSheet()` re-bases `nowSec()` to ~0.
+- **Known residual.** On a first-visit key (blank sheet) the first strokes do
+  not pick up the committed base; they still paint and composite correctly
+  over the cached image. One manual re-render adopts the sheet and restores
+  blend/pickup. The sanctioned direction for base pickup without a re-render
+  is a pickup-side read of the committed cache image (shader change + UAT),
+  never a replay.
 
 Detail, reproduction scenes and pitfalls: `references/live-seed.md`.
-</live-seed>
+</sheet-cache>
 
 <debugging-discipline>
 ## Debugging discipline (this is the part that matters)
@@ -129,22 +132,29 @@ Before changing any compositing law:
    was written when they were edited.
 2. **Reproduce the re-bake through the real engine** with the probe harness
    (`packages/efx-watercolor/probe/port-comparison`: `live-pickup-*`,
-   `bake-pickup-*`, the D-G touch proof; `probe/pickup-collapse`: `app-seeded`
-   / `app-bake` / `app-seedcost`). The repro is the acceptance target — not a
-   screenshot description, not display math.
+   `bake-pickup-*`, the D-G touch proof; `probe/pickup-collapse`: `app-live`
+   / `app-bake` / `app-seedcost`; `probe/chalk-deposit` for a blank or faint
+   deposit). The repro is the acceptance target — not a screenshot
+   description, not display math.
 3. **Change ONE law, compare pixels again.** A law change that cannot be shown
    in the probe (or in a live UAT row naming the exact surface) is not
    verified. Source-pin/unit tests only pin the law you just wrote.
 4. **Name the surface** in every handover: live during stroke, after settle,
    after move/re-bake. They must agree.
-5. **First-paint parity bugs: check the SEED, not the underlay.** Ask whether
-   the sheet is seeded (`seeding` / `aquarelleSheetSeeded`) and whether the
-   seed getter applied the commit's transform. A display-raster tap cannot
-   reproduce the bake's pickup — the base must live in the sheet.
+5. **First-paint parity bugs: check the SHEET, not the underlay.** Ask whether
+   the key's sheet was restored this session (`aquarelleSheetSeeded`) or is
+   blank over the cached image, and whether a re-render adopted its bake sheet
+   (`adoptSheet`). A display-raster tap cannot reproduce the bake's pickup —
+   the base must live in the sheet. NEVER "fix" the gap with a stroke replay:
+   the artist's law is then violated.
+6. **A blank or near-blank stroke: bisect the medium record before the brush.**
+   Paint the response through `probe/chalk-deposit` with the record's own
+   params, then with one key reverted at a time. The 2026-11-21 chalk blank
+   was Body 25 on the Chalk record, not a brush or shader defect.
 
 Never: start the dev server (the artist runs it), run vitest in watch mode,
-push, replace the live-seed with an underlay tap for pickup, or touch the
-store's paint paths to "make the test pass".
+push, replay committed strokes into the live engine, or touch the store's
+paint paths to "make the test pass".
 </debugging-discipline>
 
 <seams-and-files>
@@ -155,11 +165,12 @@ store's paint paths to "make the test pass".
 | Dab/deposit laws, coverage, exports | `packages/efx-watercolor/src/playground/Engine.ts`, `shaders.ts` |
 | Display modes 2/4, underlay branch | `shaders.ts` (`displayFS`), `Engine.drawDisplay`/`render` |
 | Replay/bake (the arbiter) | `packages/efx-watercolor/src/bake/aquarelleBake.ts`, `adapter/engineAdapter.ts` |
-| Live-seed replay (live sheet = committed paint) | `packages/efx-watercolor/src/bake/aquarelleSeed.ts`; `adapter/engineAdapter.ts` (engine + clock injection); `playground/Engine.ts` (`setStepRecording`, clock) |
-| Seeded live surface / input gates | `app/src/components/physic-paint/engine/AquarelleCanvasLayer.tsx` (`seeding`, `aquarelleSheetSeeded`, `seedChain`, capture gates) |
-| Seeded capture branch | `PhysicsPaintStudio.tsx` (`handleAquarelleCaptureFrame` → `base: null` while seeded) |
-| First-paint probe / seed cost | `packages/efx-watercolor/probe/pickup-collapse/` (`app-seeded`, `app-bake`, `app-seedcost`) |
-| Seed parity | `engineAdapter.ts` (`strokeRandomForMutationId`), `paintMutationLedger.ts` |
+| Sheet cache (capture/restore, KEY = CACHE) | `playground/Engine.ts` (`captureSheet`/`restoreSheet`, last-touch ages), `AquarelleCanvasLayer.tsx` (`rememberSheet`/`takeSheet`/`restoreCachedSheet`, script signature) |
+| Re-render adoption (bake sheet → live) | `bakeAquarelleEventsToFrame` (`onSheet`), `adapter.captureSheet`, `AquarelleCanvasLayer.adoptSheet`, `PhysicsPaintStudio.tsx` (`aquarelleAdoptSheetRef`) |
+| Restored capture branch | `PhysicsPaintStudio.tsx` (`handleAquarelleCaptureFrame` → `base: null` while `aquarelleSheetSeeded`) |
+| First-paint probe / cache cost | `packages/efx-watercolor/probe/pickup-collapse/` (`app-live`, `app-bake`, `app-seedcost`) |
+| Per-stroke seed parity | `engineAdapter.ts` (`strokeRandomForMutationId`), `paintMutationLedger.ts` |
+| Medium records / the Body cliff | `playground/mediums.ts`, `mediums.test.ts`, probe `probe/chalk-deposit` |
 | Live surface | `app/src/components/physic-paint/engine/AquarelleCanvasLayer.tsx` |
 | Committed base display | `.../engine/AquarelleCachedBaseLayer.tsx` (pigment-alpha conversion; steps aside while composited) |
 | Canvas stack | `.../engine/PhysicsPaintCanvasMount.tsx` |
@@ -178,12 +189,12 @@ Known caveats:
   aside during a live composite the preview is only visible when the live sheet
   is empty (the shipped flow). Do not "fix" this by stacking the base.
 - The cache eye (`frozenCacheVisible`) disables the underlay and hides the
-  cached base — both display-only. On a SEEDED sheet it cannot hide the
+  cached base — both display-only. On a RESTORED sheet it cannot hide the
   committed paint: the paint is in the sheet (artist-accepted surface change).
-- On a seeded sheet the FIRST stroke after a frame switch waits for the seed
-  replay (pointer refused; cost above). This is a deliberate parity tradeoff,
-  not a bug; any regression is measured from `seedMs`, never "fixed" by
-  skipping the seed.
+- On a first-visit key the sheet is blank over the cached image: instant, but
+  the first strokes do not pick up/blend with the committed base until ONE
+  manual re-render adopts the bake's sheet. That residual is by design; never
+  "fix" it by replaying strokes.
 </seams-and-files>
 
 <gates>
@@ -192,11 +203,13 @@ Known caveats:
 - `pnpm --dir packages/efx-watercolor exec vitest run` (never watch)
 - `pnpm --dir app exec vitest run`
 - `pnpm --dir app exec tsc --noEmit`
-- first-paint probe: `probe/pickup-collapse` `app-seeded` vs `app-bake` at
+- first-paint probe: `probe/pickup-collapse` `app-live` vs `app-bake` at
   `--gap 20000`; FINAL PIXELS must be identical; pickup-0 control unmixed on
   both
-- seed cost: `app-seedcost --sheet WxH --base-samples N`; record `seedMs` and
-  `seedPhases` (replay dominates)
+- chalk/dry deposit: `node probe/chalk-deposit/run.mjs` — every presets
+  response must report painted texels > 0 on its own medium record
+- cache cost: `app-seedcost --sheet WxH --base-samples N`; record the capture
+  and restore phases
 - probe scene(s) for the touched surface through the real engine
 - live UAT row naming the exact surface (live / committed / re-render)
 
