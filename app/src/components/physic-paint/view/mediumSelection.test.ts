@@ -275,6 +275,16 @@ describe('applyAquarelleMedium', () => {
     expect(aquarelleSelectedMediumId.value).toBe('gouache');
   });
 
+  // quick 261121-mtu (decision B): the acrylic record fixes Refill 0 — its
+  // row is hidden, but the KEY still carries the value — while the neutral
+  // record keeps 60 (hidden for watercolor too, and NOT zeroed there).
+  it('carries Refill 0 for acrylic and 60 for watercolor (decision B)', () => {
+    applyAquarelleMedium('acrylic');
+    expect(aquarelleParams.value.refill, 'acrylic fixes Refill 0').toBe(0);
+    applyAquarelleMedium('watercolor');
+    expect(aquarelleParams.value.refill, 'the neutral record keeps 60').toBe(60);
+  });
+
   it('restores a drifted bag when the same medium is re-picked', () => {
     applyAquarelleMedium('gouache');
     setAquarelleParam('water', 90);

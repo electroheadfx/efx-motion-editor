@@ -5,18 +5,21 @@
  *   Phase 64 (D-01/D-07): the medium dropdown is the FIRST child row and names
  *   the selected medium; five items render in the fixed D-18 order
  *   (Watercolor, Gouache, Chalk, Graphite, Acrylic)
- *   12 sliders in playground order Water, Pigment, Flow, Bleed, Edges, Grain,
- *   Dry speed, Viscosity, Feather, Pickup, Refill, Emboss (keys stay
- *   water/load/flow/bleed/edge/granulation/dry/viscosity/body/feather/pickup/
- *   refill/emboss). Post-UAT 2026-11-22: `body` rides the bag and the Reset
- *   law but has NO row — the compositor's alpha is max(pigment-darkness,
- *   cover), so Body only reads on near-white pigments. `wetSeconds` is a
- *   medium-record value with NO row — it is seconds, and the ×100 reset law
- *   would corrupt it.
+ *   quick 261121-mtu: the panel renders the six context groups from the ONE
+ *   pure selector (`aquarelleParamVisibility.ts`, spec §8), driven by the
+ *   active TOOL plus the selected MEDIUM. Default context (Brush + Watercolor)
+ *   is ten rows in the order Viscosity, Emboss, Pigment, Pickup, Water,
+ *   Dry speed, Flow, Bleed, Edges, Grain — decision B hides Refill for
+ *   watercolor and Feather is bristle-only, so the Edge group drops. The
+ *   old flat playground order is SUPERSEDED by the group order. Post-UAT
+ *   2026-11-22: `body` rides the bag and the Reset law but has NO row — the
+ *   compositor's alpha is max(pigment-darkness, cover), so Body only reads on
+ *   near-white pigments. `wetSeconds` is a medium-record value with NO row —
+ *   it is seconds, and the ×100 reset law would corrupt it.
  *   no Size control (top-bar owns it, Q1a) and no Hand row
- *   Reset writes playground DEFAULT_PARAMS ×100 for every non-size key
- *   (Body included) via setAquarelleParam and never writes size or lift
- *   (T-261017-WMW-01)
+ *   Reset writes playground DEFAULT_PARAMS ×100 for every non-lift row key
+ *   (Body included; Refill 0 in the acrylic context) via setAquarelleParam
+ *   and never writes size or lift (T-261017-WMW-01, quick 261121-mtu)
  *   no Brush response chrome in this panel (I-02 puts it in BrushResponsePanel)
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
@@ -35,6 +38,7 @@ import {
   aquarelleMediumMenuOpen,
   aquarelleParams,
   aquarelleSelectedMediumId,
+  applyAquarelleMedium,
   recordAquarelleStroke,
   setAquarelleMediumMenuOpen,
   setAquarelleParam,
@@ -168,44 +172,49 @@ function collectOrderedLabels(tree: TestVNode): string[] {
   return [...seen];
 }
 
-/** I-01/I-02 playground order (SettingsPanel SLIDERS minus Size and Hand),
- *  with Phase 64's Viscosity, Feather, Pickup, Refill and Emboss. Post-UAT
- *  2026-11-22: Body has NO row (kept in the bag and the Reset law only). */
+/** quick 261121-mtu: the DEFAULT context (Brush tool + Watercolor medium)
+ *  row order, from Matrix 2 / spec §8 — the old flat playground order is
+ *  superseded by the group order. Decision B hides Refill for watercolor and
+ *  Feather is bristle-only (so the Edge group drops entirely here).
+ *  Post-UAT 2026-11-22: Body has NO row (kept in the bag and the Reset law). */
 const GLOBAL_LABELS = [
-  'Water',
+  'Viscosity',
+  'Emboss',
   'Pigment',
+  'Pickup',
+  'Water',
+  'Dry speed',
   'Flow',
   'Bleed',
   'Edges',
   'Grain',
-  'Dry speed',
-  'Viscosity',
-  'Feather',
-  'Pickup',
-  'Refill',
-  'Emboss',
 ] as const;
 
 /** D-18 display names in the fixed MEDIUM_IDS order. `pastel` displays
  *  "Chalk" deliberately — the id is not the label. */
 const MEDIUM_NAMES = ['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic'] as const;
 
-/** Playground DEFAULT_PARAMS ×100 for the 12 visible keys plus the hidden
- *  Body key, in the panel's reset order (Body resets last: it has no row). */
+/** Playground DEFAULT_PARAMS ×100 for the twelve non-lift row keys plus the
+ *  hidden Body key, in the panel's reset order — quick 261121-mtu: the row
+ *  table order minus Lift; Body resets last (it has no row). The literal's
+ *  KEY ORDER mirrors the loop because the batch is compared via
+ *  JSON.stringify (order-sensitive); the key SET is unchanged. */
 const RESET_EXPECTED = {
-  water: 60,
+  viscosity: 0,
+  emboss: 0,
   load: 50,
+  // 261119-pod (D-A): the playground default opens Pickup at 100.
+  pickup: 100,
+  // Decision B hides the Refill row for acrylic/watercolor, but the key
+  // still resets — 60 here because the default context is watercolor.
+  refill: 60,
+  water: 60,
+  dry: 40,
+  feather: 0,
   flow: 45,
   bleed: 50,
   edge: 50,
   granulation: 45,
-  dry: 40,
-  viscosity: 0,
-  feather: 0,
-  // 261119-pod (D-A): the playground default opens Pickup at 100.
-  pickup: 100,
-  refill: 60,
-  emboss: 0,
   // Post-UAT 2026-11-22: hidden row, still restored by Reset.
   body: 0,
 } as const;
@@ -222,7 +231,7 @@ function findTestId(tree: TestVNode, testId: string): TestVNode | undefined {
 }
 
 describe('AquarelleGlobalsPanel sliders (I-02)', () => {
-  it('renders the 13 named global slider labels in playground order', () => {
+  it('renders the ten default-context global slider labels in group order', () => {
     const tree = renderPanel();
     const ordered = collectOrderedLabels(tree).filter((l) =>
       (GLOBAL_LABELS as readonly string[]).includes(l),
@@ -302,7 +311,10 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(params.body, 'body → 0').toBe(RESET_EXPECTED.body);
     expect(params.feather, 'feather → 0').toBe(RESET_EXPECTED.feather);
     expect(params.pickup, 'pickup → 100').toBe(RESET_EXPECTED.pickup);
-    expect(params.refill, 'refill → 60').toBe(RESET_EXPECTED.refill);
+    // quick 261121-mtu, decision B: the Refill ROW is hidden for watercolor,
+    // but the key still resets — hidden is exposure, never storage, and only
+    // the acrylic context forces 0.
+    expect(params.refill, 'refill → 60 (hidden, not zeroed)').toBe(RESET_EXPECTED.refill);
     expect(params.emboss, 'emboss → 0').toBe(RESET_EXPECTED.emboss);
     // T-261017-WMW-01: Reset must never write size (top-bar Brush size owns it)
     // and never touches the eraser strength. D-22: `wetSeconds` has no row,
@@ -347,30 +359,50 @@ describe('Phase 64 medium dropdown', () => {
     expect(text, 'the row names the selected medium').toContain('Watercolor');
   });
 
-  it('renders twelve slider rows below the dropdown, Refill eleventh and Emboss last', () => {
+  it('renders the ten default-context rows below the dropdown in Matrix 2 order', () => {
     const tree = renderPanel();
     const sliders = [...walk(tree)].filter(
       (node) => node.props?.['data-testid'] === 'slider-stepper',
     );
-    expect(sliders, 'twelve slider rows').toHaveLength(GLOBAL_LABELS.length);
-    expect(GLOBAL_LABELS).toHaveLength(12);
+    expect(sliders, 'ten row sliders for Brush + Watercolor').toHaveLength(GLOBAL_LABELS.length);
+    expect(GLOBAL_LABELS).toHaveLength(10);
     const ordered = collectOrderedLabels(tree).filter((label) =>
       (GLOBAL_LABELS as readonly string[]).includes(label),
     );
     expectGlobalOrder(ordered);
-    expect(ordered).toHaveLength(12);
-    // Post-UAT 2026-11-22: Body has no row. Viscosity, then Feather, Pickup,
-    // Refill and Emboss (1-based: Viscosity eighth, Emboss twelfth).
-    expect(ordered[ordered.length - 5]).toBe('Viscosity');
-    expect(ordered[ordered.length - 4]).toBe('Feather');
-    expect(ordered[ordered.length - 3]).toBe('Pickup');
-    expect(ordered[ordered.length - 2]).toBe('Refill');
-    expect(ordered[ordered.length - 1]).toBe('Emboss');
+    expect(ordered).toHaveLength(10);
+    // quick 261121-mtu: decision B hides Refill for watercolor and Feather is
+    // bristle-only. Neither row may appear in the default context.
+    expect(ordered).not.toContain('Refill');
+    expect(ordered).not.toContain('Feather');
     const index = (label: string) => ordered.indexOf(label);
-    expect(index('Feather'), 'Feather sits after Viscosity').toBeGreaterThan(index('Viscosity'));
-    expect(index('Pickup'), 'Pickup sits after Feather').toBeGreaterThan(index('Feather'));
-    expect(index('Refill'), 'Refill sits after Pickup').toBeGreaterThan(index('Pickup'));
-    expect(index('Emboss'), 'Emboss stays last').toBeGreaterThan(index('Refill'));
+    expect(index('Viscosity'), 'Viscosity leads the Medium group').toBe(0);
+    expect(index('Emboss'), 'Emboss follows Viscosity').toBe(1);
+    expect(index('Pigment'), 'Pigment opens Paint & reservoir').toBe(2);
+    expect(index('Pickup'), 'Pickup follows Pigment').toBe(3);
+    expect(index('Water'), 'Water opens Drying').toBe(4);
+    expect(index('Dry speed'), 'Dry speed follows Water').toBe(5);
+    expect(index('Flow'), 'Flow opens Watercolor only').toBe(6);
+    expect(index('Grain'), 'Grain closes the list').toBe(9);
+  });
+
+  it('renders the non-empty group headings in the fixed order', () => {
+    const tree = renderPanel();
+    const groups = [...walk(tree)].filter((node) => {
+      const id = node.props?.['data-testid'];
+      return typeof id === 'string' && id.startsWith('aquarelle-param-group-');
+    });
+    // Default context (Brush + Watercolor): the Edge group is EMPTY (Feather
+    // is bristle-only, so the heading drops) and the Eraser group never
+    // renders outside the Eraser.
+    expect(groups.map((group) => group.props?.['data-testid']).join('|')).toBe(
+      'aquarelle-param-group-medium|aquarelle-param-group-paint|aquarelle-param-group-drying|aquarelle-param-group-watercolor',
+    );
+    const headings = ['Medium', 'Paint & reservoir', 'Drying', 'Watercolor only'];
+    const texts = groups.map((group) => textContent(group));
+    for (let i = 0; i < headings.length; i += 1) {
+      expect(texts[i]!.startsWith(headings[i]!), `heading ${headings[i]}`).toBe(true);
+    }
   });
 
   it('renders no Body row: the key stays in the bag, the panel drops the row', () => {
@@ -393,7 +425,8 @@ describe('Phase 64 medium dropdown', () => {
     expect(sliderLabels).not.toContain('wetSeconds');
     expect(sliderLabels).not.toContain('Wet seconds');
     expect(sliderLabels).not.toContain('Wet Seconds');
-    expect(sliderLabels).toHaveLength(12);
+    // quick 261121-mtu: ten rows in the default context, not twelve.
+    expect(sliderLabels).toHaveLength(10);
   });
 
   it('moves the canonical viscosity key through the one seam on change and release', () => {
@@ -566,6 +599,55 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
       'the batch is the full thirteen-key patch',
     ).toBe(JSON.stringify({ params: RESET_EXPECTED }));
     expect(Object.keys(calls[0]!.patch.params ?? {}), 'size is never committed').not.toContain('size');
+    // quick 261121-mtu: Lift has a row (Eraser context) but Reset never
+    // writes it — the eraser strength is not a global default.
+    expect(Object.keys(calls[0]!.patch.params ?? {}), 'lift is never committed').not.toContain('lift');
+  });
+
+  it('Reset in the acrylic context writes Refill 0 and the batch carries 0 (decision B)', () => {
+    recordAquarelleStroke(10722, stroke10721([point10721(0.4, 0.4)]));
+    const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
+    setAquarelleSelectionEditPort({
+      applyAppearance: (ids, patch) => {
+        calls.push({ ids, patch });
+        return Promise.resolve(true);
+      },
+    });
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([10722]);
+    applyAquarelleMedium('acrylic');
+    setAquarelleParam('refill', 55);
+
+    const tree = renderPanel();
+    const reset = [...walk(tree)].find(
+      (n) => n.type === 'button' && n.props?.['data-testid'] === 'aquarelle-params-reset',
+    );
+    expect(reset, 'Reset control must render').toBeTruthy();
+    (reset!.props as { onClick?: () => void }).onClick!();
+
+    expect(aquarelleParams.value.refill, 'live bag refill → 0').toBe(0);
+    expect(calls, 'one batch').toHaveLength(1);
+    expect(calls[0]!.patch.params?.refill, 'the batch carries refill 0').toBe(0);
+    // Every other key still resets to the canonical default — the acrylic
+    // zero lives in the Reset expression and nowhere else.
+    expect(calls[0]!.patch.params?.water, 'water keeps the canonical 60').toBe(
+      RESET_EXPECTED.water,
+    );
+    expect(calls[0]!.patch.params?.load, 'load keeps the canonical 50').toBe(RESET_EXPECTED.load);
+  });
+
+  it('Reset under every non-acrylic medium keeps Refill at 60 (hidden, not zeroed)', () => {
+    for (const medium of ['watercolor', 'gouache', 'pastel', 'graphite'] as const) {
+      applyAquarelleMedium(medium);
+      setAquarelleParam('refill', 55);
+      const tree = renderPanel();
+      const reset = [...walk(tree)].find(
+        (n) => n.type === 'button' && n.props?.['data-testid'] === 'aquarelle-params-reset',
+      );
+      expect(reset, `Reset control must render (${medium})`).toBeTruthy();
+      (reset!.props as { onClick?: () => void }).onClick!();
+      expect(aquarelleParams.value.refill, `${medium} resets refill to 60`).toBe(60);
+    }
   });
 
   it('source pins: the GlobalSlider passthrough and the ONE Reset batch', () => {

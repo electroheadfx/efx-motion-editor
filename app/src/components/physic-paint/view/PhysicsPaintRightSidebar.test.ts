@@ -35,11 +35,14 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel).not.toContain('activeModule');
     expect(rightPanel).not.toContain('label="Opacity"');
     expect(rightPanel).toContain('opacity={aquarelleParams.value.load}');
-    const globals = readFileSync(
-      fileURLToPath(new URL('./AquarelleGlobalsPanel.tsx', import.meta.url)),
+    // quick 261121-mtu: the row table moved out of the panel into the pure
+    // visibility selector, and each row now carries context fields — so the
+    // literal no longer closes right after `label`.
+    const visibility = readFileSync(
+      fileURLToPath(new URL('./aquarelleParamVisibility.ts', import.meta.url)),
       'utf8',
     );
-    expect(globals).toContain("{ key: 'load', label: 'Pigment' }");
+    expect(visibility).toContain("{ key: 'load', label: 'Pigment'");
   });
 
   it('renders the top pane with the fixed Color/Brush/Paper/Memory tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Scripts/Onion/Motion tab group', () => {

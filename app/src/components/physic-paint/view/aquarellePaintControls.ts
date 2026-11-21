@@ -6,10 +6,14 @@
 //  setters are the caller's job on `onChange` and are never called
 //  here (except the live tip and the group's medium inside the pick).
 //
-//  Every commit rides `commitAquarelleSelectionAppearance` with
-//  filter 'paint', so a lift (eraser) stroke is never addressed by
-//  a paint control, and the Studio's ONE appearance door still
-//  owns the undo entry, the revision bump and the seed re-roll.
+//  Every commit rides `commitAquarelleSelectionAppearance`, and the
+//  Studio's ONE appearance door still owns the undo entry, the
+//  revision bump and the seed re-roll. The filter is the row's own
+//  family: brush picks, the multiplier releases and the Reset batch
+//  use 'paint', so a lift (eraser) stroke is never addressed by a
+//  paint control; quick 261121-mtu's Lift row (the Eraser context's
+//  only row) uses 'lift', so its release edits exactly the strokes
+//  it describes and never a paint stroke.
 //  No selection / Select mode off stays a no-attempt no-op.
 // ============================================================
 
@@ -32,8 +36,13 @@ import {
 import { commitAquarelleSelectionAppearance } from './aquarelleStrokeSelection';
 import type { AquarelleSelectionEditOptions } from './aquarelleStrokeSelection';
 
-/** The one filter every paint control uses: never a lift stroke. */
+/** The filter every paint control uses: never a lift stroke. */
 const PAINT_ONLY: AquarelleSelectionEditOptions = { filter: 'paint' };
+
+/** quick 261121-mtu: the Lift row's own family. The row renders only in the
+ *  Eraser context, so its release must edit lift strokes — and ONLY the
+ *  Reset batch and the paint controls keep the 'paint' filter. */
+const LIFT_ONLY: AquarelleSelectionEditOptions = { filter: 'lift' };
 
 /**
  * The group of a response id, resolved from the ONE preset table (64-11's
@@ -86,12 +95,17 @@ export function pickAquarelleBrush(presetId: string): Promise<boolean> | null {
   );
 }
 
-/** One global slider release → one params patch on the selected paint strokes. */
+/** One global slider release → one params patch on the selected strokes of the
+ *  row's own family (quick 261121-mtu: the Lift row edits lift strokes; every
+ *  other row edits paint strokes). */
 export function commitAquarelleSelectionParam(
   key: AquarelleGlobalKey,
   value: number,
 ): Promise<boolean> | null {
-  return commitAquarelleSelectionAppearance({ params: { [key]: value } }, PAINT_ONLY);
+  return commitAquarelleSelectionAppearance(
+    { params: { [key]: value } },
+    key === 'lift' ? LIFT_ONLY : PAINT_ONLY,
+  );
 }
 
 /**

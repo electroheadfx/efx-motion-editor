@@ -2,12 +2,15 @@
 //  quick 261111-ucf — the ONE paint-control seam.
 //
 //  A brush pick and every paint-control release edit the SELECTED
-//  paint strokes through the registered appearance port, while the
-//  live brush/sliders keep their shipped behaviour:
+//  strokes of their own family through the registered appearance
+//  port, while the live brush/sliders keep their shipped behaviour:
 //   - the pick selects the live tip FIRST, so the forwarded
 //     multiplier bag is the bag the live brush now carries;
-//   - every commit uses the 'paint' filter, so a lift (eraser)
-//     stroke is never addressed;
+//   - brush picks, multiplier releases and the Reset batch use the
+//     'paint' filter, so a lift (eraser) stroke is never addressed;
+//   - quick 261121-mtu: the Lift row's release (the Eraser context's
+//     only row) uses the 'lift' filter — it edits lift strokes and
+//     never a paint stroke;
 //   - no selection / Select mode off is a no-attempt no-op.
 //
 //  Node env, real signals, real record state. Id band 10601+.
@@ -21,8 +24,10 @@ import {
   MULTIPLIER_MIN,
   aquarelleBrushResponseMemory,
   aquarelleParams,
+  aquarelleSelectedMediumId,
   aquarelleSelectedTipId,
   aquarelleToolOverrides,
+  applyAquarelleMedium,
   recordAquarelleStroke,
   selectAquarelleTip,
 } from './aquarelleRecordState';
@@ -212,6 +217,40 @@ describe('commitAquarelleSelectionParam(s) — event-time params patches', () =>
     expect(calls[0]!.patch).toEqual({ params: { water: 55 } });
     // The caller owns the live write — this seam never touches the live bag.
     expect(aquarelleParams.value.water).toBe(42);
+  });
+
+  // quick 261121-mtu: the Lift row renders only in the Eraser context, so its
+  // release must edit LIFT strokes — the filter is chosen from the key.
+  it('edits lift strokes for a lift-key release and paint strokes for a paint key', async () => {
+    recordAquarelleStroke(10613, stroke({ points: [point(0.1, 0.5)] }));
+    recordAquarelleStroke(10614, stroke({ points: [point(0.2, 0.5)], tool: 'lift' }));
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([10613, 10614]);
+    const { calls } = installPort();
+
+    await commitAquarelleSelectionParam('lift', 40);
+    expect(calls, 'the lift release addressed exactly one stroke').toHaveLength(1);
+    expect(calls[0]!.ids, 'the lift stroke, never the paint stroke').toEqual([10614]);
+    expect(calls[0]!.patch).toEqual({ params: { lift: 40 } });
+
+    await commitAquarelleSelectionParam('water', 55);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.ids, 'the paint key keeps the paint filter').toEqual([10613]);
+  });
+
+  // quick 261121-mtu (decision B): a same-group acrylic pick writes no record,
+  // so the acrylic Refill 0 survives the pick instead of reverting to 60.
+  it('a same-group acrylic brush pick leaves the acrylic Refill at 0', () => {
+    applyAquarelleMedium('acrylic');
+    selectAquarelleTip('bristle-flat');
+    expect(aquarelleParams.value.refill, 'acrylic landed with Refill 0').toBe(0);
+    const bag = aquarelleParams.value;
+
+    pickAquarelleBrush('bristle-round');
+
+    expect(aquarelleSelectedMediumId.value, 'the group did not change').toBe('acrylic');
+    expect(aquarelleParams.value, 'the pick wrote no record').toBe(bag);
+    expect(aquarelleParams.value.refill, 'Refill stays 0').toBe(0);
   });
 
   it('sends the Reset batch as ONE call, and an empty batch is no attempt', async () => {

@@ -3,8 +3,11 @@
  *
  * Laws pinned here:
  *   D-05   no local size/scale control — the shared Size slider owns it
- *   I-01   playground labels and order: Water, Pigment, Flow, Bleed, Edges,
- *          Grain, Dry speed (keys stay water/load/flow/bleed/edge/granulation/dry)
+ *   quick 261121-mtu — the seven classic labels are a SUBSET of the default
+ *          context's rows (Brush + Watercolor) and follow spec §8's GROUP
+ *          order: Pigment, Water, Dry speed, Flow, Bleed, Edges, Grain
+ *          (keys stay load/water/dry/flow/bleed/edge/granulation). The old
+ *          flat playground order is superseded by the group order.
  *   I-01   Reset restores playground DEFAULT_PARAMS ×100 for the 7 non-size
  *          globals via setAquarelleParam and never writes size (top-bar owns it)
  *   I-01   the Brush response block is NOT in this panel (I-02 owns that move)
@@ -143,15 +146,17 @@ function collectOrderedLabels(tree: TestVNode): string[] {
   return [...seen];
 }
 
-/** I-01 playground order (SettingsPanel SLIDERS minus Size and Hand). */
+/** quick 261121-mtu: the seven classic labels in the default context's group
+ *  order (spec §8) — Paint & reservoir (Pigment), Drying (Water, Dry speed),
+ *  Watercolor only (Flow, Bleed, Edges, Grain). */
 const GLOBAL_LABELS = [
-  'Water',
   'Pigment',
+  'Water',
+  'Dry speed',
   'Flow',
   'Bleed',
   'Edges',
   'Grain',
-  'Dry speed',
 ] as const;
 
 /** Playground DEFAULT_PARAMS ×100 for the 7 non-size keys. */
@@ -174,7 +179,7 @@ describe('AquarelleParamsPanel globals (AQUA-04 / D-05 / D-06 / I-01)', () => {
     }
   });
 
-  it('renders the 7 globals in playground order Water, Pigment, Flow, Bleed, Edges, Grain, Dry speed', () => {
+  it('renders the 7 globals in group order Pigment, Water, Dry speed, Flow, Bleed, Edges, Grain', () => {
     const tree = renderPanel();
     const ordered = collectOrderedLabels(tree).filter((l) =>
       (GLOBAL_LABELS as readonly string[]).includes(l),
