@@ -129,9 +129,9 @@ describe('wiring contracts (261029-lel)', () => {
 
   it('the live canvas layer publishes from the rAF tick only while no stroke is in flight', () => {
     const src = readFileSync(resolve(__dirname, '../engine/AquarelleCanvasLayer.tsx'), 'utf8');
-    // LIVE-SEED (2026-11-21): a mid-seed sheet is not the artist's surface —
-    // the wet truth is not sampled while the seed replay drives the engine.
-    expect(src).toContain('if (!painting && !seeding) setAquarelleHasWetPaint(engine.hasStandingWater)');
+    // KEY = CACHE (2026-11-22): the sheet is never replayed, so the only
+    // guard is the in-flight stroke.
+    expect(src).toContain('if (!painting) setAquarelleHasWetPaint(engine.hasStandingWater)');
     expect(src).toContain('clearAquarelleWetPaint();');
     // The wet truth is the dedicated getter — never isAwake (also true during
     // the Dry fix bake and the post-stroke min-awake window).

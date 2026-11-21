@@ -29,12 +29,10 @@ import {
   maskGeneration,
   PAPERS,
   pigmentFromHex,
-  seedAquarelleEngine,
   strokeRandomForMutationId,
   toEngineParams,
   WatercolorEngine,
   type AquarellePayloadEvent,
-  type AquarelleSeedHandle,
   type PaperPreset,
   type SheetSnapshot,
 } from '@efxlab/efx-watercolor';
@@ -83,13 +81,6 @@ const HOST_TICK_MS = 1000 / HOST_TICK_HZ;
 
 /** Engine.ts FIX_DURATION (1.2s) — Dry bakes the wet pigment over this window. */
 const FIX_SETTLE_MS = 1200;
-
-/**
- * LIVE-SEED (2026-11-21): a frame change arms ONE seed after this quiet window,
- * so scrubbing through frames never pays a bake per intermediate frame. The
- * pointer stays refused while the sheet is not yet the committed one.
- */
-const FRAME_SEED_DEBOUNCE_MS = 250;
 
 // ============================================================
 //  Footprint cursor (261028-k03c D6). Same dual-ring family as
@@ -846,49 +837,12 @@ export function AquarelleCanvasLayer(props: {
     };
     applyPaper();
 
-    // LIVE-SEED (2026-11-21): the committed script, replayed into the live
-    // sheet through the bake's OWN adapter feed path (seedAquarelleEngine), so
-    // the sheet's ink / fixed / cover / last-touch HOLD the committed paint.
-    // The stroke's own touch pass then re-wets the base exactly as a re-bake
-    // does — Pickup 100 over a committed base reads the base on the FIRST
-    // live dab instead of an empty sheet. The replay runs in manual mode on
-    // one mode-switched clock that hands over to real time, and with step
-    // recording OFF (the seed is the committed base, never an artist action).
-    // `seeding` owns the input surface: pointerdowns are refused and the rAF
-    // poll neither re-configures the engine nor captures the sheet mid-replay.
-    let seeding = false;
-    let seedGeneration = 0;
-    let seedHandle: AquarelleSeedHandle | null = null;
-    let frameSeedTimer = 0;
-    // One chain: a superseded seed's handoff (recording / manual / clock
-    // restore) must land BEFORE the next seed touches those same seams.
-    let seedChain: Promise<void> = Promise.resolve();
-    const cancelFrameSeed = () => {
-      if (frameSeedTimer !== 0) {
-        window.clearTimeout(frameSeedTimer);
-        frameSeedTimer = 0;
-      }
-    };
-    // Drop any seed in flight or armed. The engine keeps whatever sheet it
-    // holds; the caller decides what happens (a reset re-seeds, a frame change
-    // arms one, cleanup tears everything down).
-    const abandonSeed = () => {
-      cancelFrameSeed();
-      seedGeneration += 1;
-      if (seedHandle) {
-        seedHandle.cancel();
-        seedHandle = null;
-      }
-      seeding = false;
-      if (aquarelleSheetSeeded.value) aquarelleSheetSeeded.value = false;
-    };
-    // LIVE-SEED CACHE (2026-11-22): the replay is linear in the committed dab
-    // count (a real frame costs seconds), and a key change used to pay it
-    // EVERY time. A frame's sheet is now captured when the artist leaves it
-    // and restored when they come back — the engine's exact layer set, the
-    // same capture a saved document uses. Entries are keyed by the frame's
-    // script signature: any script edit (stroke, delete, undo) mismatches and
-    // forces a replay. Memory-bounded, oldest evicted first.
+    // KEY = CACHE (2026-11-22, artist law): a key OPENS on its committed
+    // cache. The live sheet is NEVER rebuilt by replaying recorded strokes —
+    // not on a key change, not after a lift, not on Studio open. The only
+    // sheet a key can start with is one THIS session captured when the artist
+    // left that key; every other key starts on a blank sheet over its cached
+    // image (the display underlay), exactly like the app's cache law.
     const SHEET_CACHE_MAX_FRAMES = 3;
     const SHEET_CACHE_MAX_BYTES = 256 * 1024 * 1024;
     interface CachedSheet { signature: number; sheet: SheetSnapshot; bytes: number }
@@ -915,7 +869,7 @@ export function AquarelleCanvasLayer(props: {
     const rememberSheet = (frame: number, signature: number, sheet: SheetSnapshot) => {
       const bytes = sheetBytes(sheet);
       // One sheet over half the budget would evict everything else for a
-      // single frame — leave it to the replay instead.
+      // single frame — that key simply opens on its cached image.
       if (bytes > SHEET_CACHE_MAX_BYTES / 2) return;
       sheetCache.delete(frame);
       sheetCache.set(frame, { signature, sheet, bytes });
@@ -942,40 +896,18 @@ export function AquarelleCanvasLayer(props: {
       return entry.sheet;
     };
 
-    // Read the committed script NOW (the Studio's getter clones it — the
-    // exact event list the commit bake saw), then replay it on the chain. The
-    // generation token makes a superseded seed unreachable: a frame change or
-    // reset that landed meanwhile can never flip the seeded state.
-    const seedSheet = () => {
-      cancelFrameSeed();
-      seedGeneration += 1;
-      const generation = seedGeneration;
-      const events = getSeedEventsRef.current?.(getPlayFrameRef.current()) ?? null;
-      if (aquarelleSheetSeeded.value) aquarelleSheetSeeded.value = false;
-      if (seedHandle) {
-        seedHandle.cancel();
-        seedHandle = null;
-      }
-      seeding = true;
-      seedChain = seedChain.then(async () => {
-        if (generation !== seedGeneration) return;
-        if (!events || events.length === 0) {
-          seeding = false;
-          return;
-        }
-        const handle = seedAquarelleEngine({
-          engine,
-          events,
-          width: widthRef.current,
-          height: heightRef.current,
-        });
-        seedHandle = handle;
-        const result = await handle.done;
-        if (seedHandle === handle) seedHandle = null;
-        if (generation !== seedGeneration) return;
-        seeding = false;
-        aquarelleSheetSeeded.value = result.ok;
-      });
+    // Apply this session's captured sheet for `frame`, when its script still
+    // matches the capture. No replay happens here — either the exact sheet is
+    // uploaded or the key opens blank over its cache.
+    const restoreCachedSheet = (
+      frame: number,
+      events: readonly AquarellePayloadEvent[] | null,
+    ): boolean => {
+      if (!events || events.length === 0) return false;
+      const cached = takeSheet(frame, seedSignature(events));
+      if (!cached || !engine.restoreSheet(cached)) return false;
+      aquarelleSheetSeeded.value = true;
+      return true;
     };
 
     // LIVE OVER COMMITTED (2026-11-21): the engine's underlay is the frame's
@@ -989,11 +921,11 @@ export function AquarelleCanvasLayer(props: {
     let underlayApplied = false;
     let underlayToken = 0;
     const syncUnderlay = () => {
-      // LIVE-SEED: a seeded sheet CARRIES the committed base in its own ink /
-      // cover channels — binding the display underlay over it would multiply
-      // the base under its own copy. Seeded (or still seeding) = no underlay;
-      // the cached base display steps aside through the same never-stack law.
-      const seeded = seeding || aquarelleSheetSeeded.value;
+      // A RESTORED sheet (this session's capture) CARRIES the committed base
+      // in its own ink / cover channels — binding the display underlay over
+      // it would multiply the base under its own copy. A blank sheet keeps
+      // the key's cached image as the display base (the app's cache law).
+      const seeded = aquarelleSheetSeeded.value;
       const url = seeded ? null : underlayUrlRef.current;
       const visible = seeded ? false : frozenCacheVisible.value;
       if (url === appliedUnderlayUrl && visible === appliedUnderlayVisible) return;
@@ -1019,10 +951,8 @@ export function AquarelleCanvasLayer(props: {
       };
       image.src = url;
     };
-    // LIVE-SEED: the session starts on the committed script, not a bare
-    // sheet. Called before the first underlay sync so a seeding sheet never
-    // binds the underlay it is about to hold itself.
-    seedSheet();
+    // KEY = CACHE: the session starts on the key's cached image (the
+    // underlay) with a blank sheet — never on a replay.
     syncUnderlay();
 
     // REFIT (261027 UAT round 4, Bug 3): the engine captures dpr + canvasSize
@@ -1058,11 +988,6 @@ export function AquarelleCanvasLayer(props: {
     // CACHE WRITE: the composited sheet (transparent background — A5 export
     // law). Resolved later by captureLivePixels (52.1 deferred-copy law).
     const snapshot = () => {
-      // LIVE-SEED: a mid-replay sheet is not the artist's surface — never let
-      // a capture, save or thumbnail read a half-seeded film. The committed
-      // base is still in the cache; the next capture after the seed reads the
-      // complete sheet.
-      if (seeding) return null;
       try {
         return engine.exportCanvas('transparent');
       } catch {
@@ -1083,11 +1008,9 @@ export function AquarelleCanvasLayer(props: {
         trigger: 'flush',
         playFrame: lastPlayFrameRef.current,
         hasPaint,
-        invoked: hasPaint && !seeding,
+        invoked: hasPaint,
       });
-      // LIVE-SEED: a flush mid-replay would commit a partial seed; the sheet's
-      // content is the committed base either way, so skipping loses nothing.
-      if (!hasPaint || seeding) return;
+      if (!hasPaint) return;
       onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot, captureTrackId);
     };
     onFlushCaptureReadyRef.current?.(flushCapture);
@@ -1103,8 +1026,6 @@ export function AquarelleCanvasLayer(props: {
     // this is the LIVE end — force-dry the wet sheet so the paint stops
     // moving right where the user pressed Dry. No second channel.
     const offDry = onAquarelleDry(() => {
-      // LIVE-SEED: never force-dry a sheet the replay is still writing.
-      if (seeding) return;
       settleCapArmed = true;
       engine.fix();
     });
@@ -1116,15 +1037,6 @@ export function AquarelleCanvasLayer(props: {
     // on window so this runs BEFORE the engine's own canvas pointerdown.
     const reopenSettleOnPaint = (event: PointerEvent) => {
       if (event.target !== canvas || event.button === 1) return;
-      // LIVE-SEED: while the sheet is being seeded (or a frame-change seed is
-      // armed) the surface is not the committed one yet — refuse the stroke at
-      // the capture pass, before the engine's own canvas pointerdown runs, so
-      // no recorded stroke can land on a half-seeded sheet.
-      if (seeding) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
       // 261028-k03 D3/D2: every Lift refusal (Script OFF with a script, group
       // frame, unknown pre-script base, no displayable paint) must happen at
       // POINTERDOWN — the only place that keeps the gesture out of the engine.
@@ -1165,15 +1077,14 @@ export function AquarelleCanvasLayer(props: {
         pendingSettleTimers.delete(timer);
         const frameChanged = getPlayFrameRef.current() !== dryPlayFrame;
         const hasPaint = engine.hasPaint;
-        const seedInFlight = seeding;
         recordAquarelleRenderSplitEvent('layer-capture', {
           trigger: 'dry',
           playFrame: dryPlayFrame,
           hasPaint,
           frameChanged,
-          invoked: !frameChanged && hasPaint && !seedInFlight,
+          invoked: !frameChanged && hasPaint,
         });
-        if (frameChanged || seedInFlight) return;
+        if (frameChanged) return;
         if (!hasPaint) return;
         onCaptureFrameRef.current?.(dryPlayFrame, snapshot);
       }, FIX_SETTLE_MS);
@@ -1205,12 +1116,10 @@ export function AquarelleCanvasLayer(props: {
     const resetSheet = () => {
       endSheetSession();
       clearSheetPaint();
-      // LIVE-SEED: the Studio resets the sheet right after a commit (Apply,
-      // lift, track switch), and it mutates the script BEFORE this call — the
-      // committed base IS the frame script now, so the fresh sheet is seeded
-      // from it immediately (the next stroke must find the base again).
-      abandonSeed();
-      seedSheet();
+      // KEY = CACHE: a reset (Apply, lift, track switch) wipes the sheet. The
+      // key continues on its committed cached image (the underlay) — the
+      // sheet is never rebuilt from recorded strokes.
+      aquarelleSheetSeeded.value = false;
     };
     onResetSheetReadyRef.current?.(resetSheet);
     const tick = () => {
@@ -1219,23 +1128,18 @@ export function AquarelleCanvasLayer(props: {
         // CACHE WRITE: leaving a frame lands whatever the sheet holds before
         // the wipe — never a blank sheet over existing cache.
         const leavingHasPaint = engine.hasPaint;
-        const leavingSeeded = seeding;
         recordAquarelleRenderSplitEvent('layer-capture', {
           trigger: 'frame-leave',
           playFrame: lastPlayFrameRef.current,
           nextPlayFrame: playFrame,
           hasPaint: leavingHasPaint,
-          invoked: leavingHasPaint && !leavingSeeded,
+          invoked: leavingHasPaint,
         });
-        // LIVE-SEED: a sheet mid-replay holds a partial seed of the frame it
-        // is LEAVING — the committed cache already carries that paint, so a
-        // capture here would only re-merge a fragment.
-        if (leavingHasPaint && !leavingSeeded) {
+        if (leavingHasPaint) {
           onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
-          // LIVE-SEED CACHE: the sheet the artist is leaving is EXACTLY the
-          // state they will expect on return — capture it with the script
-          // signature it was built from, so a later return restores it
-          // instead of replaying the whole frame script.
+          // SHEET CACHE (no replay): the sheet the artist is leaving is
+          // exactly the state they will expect on return — keep it with the
+          // script signature it was built from so the return can upload it.
           const leavingFrame = lastPlayFrameRef.current;
           const leavingEvents = getSeedEventsRef.current?.(leavingFrame) ?? null;
           if (leavingEvents) {
@@ -1258,38 +1162,18 @@ export function AquarelleCanvasLayer(props: {
         lastWetAt = 0;
         settleCapArmed = false;
         wasAwake = false;
-        // LIVE-SEED: the new frame's sheet must hold THAT frame's committed
-        // script before the artist can paint on it (the pickup law would
-        // collapse on a bare sheet). Debounced past a scrub burst; the pointer
-        // stays refused while the sheet is not yet the committed one.
-        abandonSeed();
+        // KEY = CACHE: a key this session already visited uploads its own
+        // captured sheet (an upload, never a replay). Every other key opens
+        // blank over its committed cached image — the underlay binds below.
         const frameEvents = getSeedEventsRef.current?.(playFrame) ?? null;
-        if (frameEvents && frameEvents.length > 0) {
-          // LIVE-SEED CACHE: a frame left earlier in this session restores
-          // its captured sheet in one upload — no replay, no input refusal.
-          const signature = seedSignature(frameEvents);
-          const cached = takeSheet(playFrame, signature);
-          if (cached && engine.restoreSheet(cached)) {
-            aquarelleSheetSeeded.value = true;
-          } else {
-            seeding = true;
-            frameSeedTimer = window.setTimeout(() => {
-              frameSeedTimer = 0;
-              seedSheet();
-            }, FRAME_SEED_DEBOUNCE_MS);
-          }
-        }
+        aquarelleSheetSeeded.value = restoreCachedSheet(playFrame, frameEvents);
       }
       // VISIBLE SETTLE CAP: no wet input for the cap window → force-dry. The
       // fix bakes over 1.2 s and sleeps, so the settle capture lands the
       // denser wash the bake's capped end frame holds. The cap fix is marked
       // AUTO: the next stroke reopens it (see reopenSettleOnPaint) so it can
       // still blend; an explicit Dry stays permanent.
-      // LIVE-SEED: the cap fix must never fire MID-REPLAY — after a lift the
-      // stroke left `lastWetAt`/`isAwake` set, and a sliced seed yields to
-      // the host between chunks (the tick runs there). A cap fix then would
-      // force-dry a partial seed and poison the committed base.
-      if (!seeding && !painting && !settleCapArmed && lastWetAt > 0 && engine.isAwake) {
+      if (!painting && !settleCapArmed && lastWetAt > 0 && engine.isAwake) {
         const capMs = aquarelleVisibleSettleTicks(aquarelleParams.value.dry) * HOST_TICK_MS;
         if (performance.now() - lastWetAt >= capMs) {
           settleCapArmed = true;
@@ -1299,19 +1183,14 @@ export function AquarelleCanvasLayer(props: {
       // CACHE WRITE (settle): the dry (concentrated) look, not the wet stroke.
       const awake = engine.isAwake;
       if (wasAwake && !awake && engine.hasPaint) {
-        // LIVE-SEED: the seed's own settle flips the awake window mid-replay —
-        // that is not the artist's stroke settling, so no capture until the
-        // seed has handed the engine back.
-        if (!seeding) {
-          recordAquarelleRenderSplitEvent('layer-capture', {
-            trigger: 'settle',
-            playFrame,
-            hasPaint: true,
-            invoked: true,
-          });
-          onCaptureFrameRef.current?.(playFrame, snapshot);
-        }
-      } else if (wasAwake && !awake && !seeding) {
+        recordAquarelleRenderSplitEvent('layer-capture', {
+          trigger: 'settle',
+          playFrame,
+          hasPaint: true,
+          invoked: true,
+        });
+        onCaptureFrameRef.current?.(playFrame, snapshot);
+      } else if (wasAwake && !awake) {
         recordAquarelleRenderSplitEvent('layer-capture', {
           trigger: 'settle',
           playFrame,
@@ -1323,9 +1202,7 @@ export function AquarelleCanvasLayer(props: {
       // is now known; record it as its cuisson for the replay.
       if (wasAwake && !awake) stampPendingSettle();
       wasAwake = awake;
-      // LIVE-SEED: the replay's own configure() drives params / brush / tool /
-      // pigment per event; the live poll must not fight it mid-seed.
-      if (!disabledRef.current && !seeding) {
+      if (!disabledRef.current) {
         applyLiveConfig(engine, getLightRef.current, getPaperSeedRef.current);
         engine.setPigment(pigmentFromHex(colorRef.current));
         applyPaper();
@@ -1335,14 +1212,13 @@ export function AquarelleCanvasLayer(props: {
       syncUnderlay();
       // EMPTY SHEET GATE: hide the opaque white sheet until it holds paint.
       // Read AFTER the frame-change clear above so a new sheet starts hidden
-      // in the same tick (opacity keeps the canvas interactive). A sheet
-      // mid-seed stays hidden too — the cached base shows until the seed has
-      // the committed content, so a partial seed is never composited.
-      const painted = !seeding && engine.hasPaint;
+      // in the same tick (opacity keeps the canvas interactive). A blank key
+      // shows its cached image through the underlay.
+      const painted = engine.hasPaint;
       if (aquarelleLivePaint.value !== painted) aquarelleLivePaint.value = painted;
       // The live canvas carries the committed sheet itself once the underlay
-      // is applied OR the sheet was seeded from the committed script — the
-      // cached base must not stack under it (double count).
+      // is applied OR the sheet was restored from this session's capture —
+      // the cached base must not stack under it (double count).
       const baseCompositedLive = painted && (underlayApplied || aquarelleSheetSeeded.value);
       if (aquarelleBaseCompositedLive.value !== baseCompositedLive) {
         aquarelleBaseCompositedLive.value = baseCompositedLive;
@@ -1351,7 +1227,7 @@ export function AquarelleCanvasLayer(props: {
       // place that holds the live engine. The `!painting` guard is the "never
       // flip mid-stroke" law — a stroke in flight is never sampled, and the
       // stroke end publishes on the very next frame (the tick always re-schedules).
-      if (!painting && !seeding) setAquarelleHasWetPaint(engine.hasStandingWater);
+      if (!painting) setAquarelleHasWetPaint(engine.hasStandingWater);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -1372,11 +1248,6 @@ export function AquarelleCanvasLayer(props: {
       offDryCapture();
       for (const timer of pendingSettleTimers) window.clearTimeout(timer);
       pendingSettleTimers.clear();
-      // LIVE-SEED: stop the replay BEFORE the engine dies. A cancelled seed
-      // still runs its handoff (recording / manual restore) on the microtask
-      // queue; Engine.destroy's `destroyed` guard keeps that handoff from
-      // re-scheduling the loop on the dead instance.
-      abandonSeed();
       cancelAnimationFrame(raf);
       // ENGINE PORT: drop the typed surface BEFORE the engine dies so no
       // consumer can call into a destroyed instance.
