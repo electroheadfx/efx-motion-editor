@@ -2421,16 +2421,18 @@ export class WatercolorEngine {
     dt: number,
     widthFactor: number,
     colorFraction: number,
+    // 261121-w5n: the dab floor's ink ratio (1 everywhere the floor is inert).
+    amountScale = 1,
   ): void {
     const pigment = this.pigmentAt(s, colorFraction);
     if (pigment === null) {
-      this.stamp(s, x, y, pr, vx, vy, moving, dt, widthFactor);
+      this.stamp(s, x, y, pr, vx, vy, moving, dt, widthFactor, amountScale);
       return;
     }
     const previous = this.pigment;
     this.pigment = pigment;
     try {
-      this.stamp(s, x, y, pr, vx, vy, moving, dt, widthFactor);
+      this.stamp(s, x, y, pr, vx, vy, moving, dt, widthFactor, amountScale);
     } finally {
       this.pigment = previous;
     }
@@ -2574,6 +2576,9 @@ export class WatercolorEngine {
    */
   private trace(s: Stroke, qx: number, qy: number, ex: number, ey: number, pr: number, vx: number, vy: number) {
     const aspect = this.dw / this.dh;
+    // 261121-w5n: the SAME predicate processInput uses for the no-dwell law —
+    // the dab floor below is scoped to it, so no third predicate is invented.
+    const bristleStroke = s.tool === 'brush' && isBristleResponse(this.brush);
     const x0 = s.x, y0 = s.y, pr0 = s.pr;
     const approx = Math.hypot((qx - x0) * aspect, qy - y0) + Math.hypot((ex - qx) * aspect, ey - qy);
     if (approx < 1e-7) return;
@@ -2599,14 +2604,53 @@ export class WatercolorEngine {
         s.dx /= m; s.dy /= m;
         this.lastDir = [s.dx, s.dy];
       }
-      const spacing = this.radius(s.tool, p, s.speed, widthAt) * this.spacingFrac(s.tool);
+      const spacing0 = this.radius(s.tool, p, s.speed, widthAt) * this.spacingFrac(s.tool);
+      // 261121-w5n (the artist: "the acrylic small-brush is very slow below
+      // ~30 px"): a bristle response's dab spacing floors at ONE DEVICE PIXEL.
+      // The render targets are allocated at exactly `dw x dh`, so the document
+      // grid IS the device grid; below this floor a small tip emits several
+      // dabs per pixel and every acrylic dab costs ~9 draws. The floored dab's
+      // ink is multiplied by the SAME ratio (`amountScale`) — the mirror of
+      // the supersampling law above, which divides spacing and amount by the
+      // same factor — so the wash per distance is unchanged. Where the floor
+      // does not bind, `spacing === spacing0` and `amountScale === 1`: nothing
+      // is recomputed and `stamp` skips the multiply, so the output is
+      // bit-identical by construction (`Math.max` would give the same float;
+      // the branch keeps `amountScale` provably 1 rather than a quotient that
+      // happens to equal 1). Scoped to the SAME predicate processInput uses —
+      // watercolor, pen, lift and every non-bristle brush keep their law.
+      let spacing = spacing0;
+      let amountScale = 1;
+      if (bristleStroke) {
+        const floorPx = 1 / this.dh;
+        if (spacing0 > 0 && spacing0 < floorPx) {
+          spacing = floorPx;
+          amountScale = floorPx / spacing0;
+        }
+      }
       let pos = 0;
       while (len - pos >= spacing - s.carry) {
-        pos += spacing - s.carry;
+        const step = spacing - s.carry;
+        if (!(step > 0)) {
+          // A pressure/width drop can shrink the spacing under the carried arc
+          // length. The shipped loop then steps BACKWARDS and stamps outside
+          // the segment, and at a zero spacing it never advances at all — the
+          // hang this quick closes. Spend the carry as ONE catch-up dab at
+          // this segment's start (bounded: at most one per subdivision, n ≤ 48
+          // per trace, so a width drop can never pile ink or spin) and resume
+          // from a clean carry. A degenerate (non-positive) spacing has no dab
+          // distance at all: end this segment's loop. The negated-positive
+          // form also rejects NaN.
+          if (!(spacing > 0)) break;
+          this.stampScripted(s, px, py, p, vx, vy, 1, 0, this.widthFactorAt(s, (i - 1) / n), (i - 1) / n, amountScale);
+          s.carry = 0;
+          continue;
+        }
+        pos += step;
         s.carry = 0;
         const t = pos / len;
         const fraction = (i - 1 + t) / n;
-        this.stampScripted(s, px + (cx - px) * t, py + (cy - py) * t, p, vx, vy, 1, 0, this.widthFactorAt(s, fraction), fraction);
+        this.stampScripted(s, px + (cx - px) * t, py + (cy - py) * t, p, vx, vy, 1, 0, this.widthFactorAt(s, fraction), fraction, amountScale);
       }
       s.carry += len - pos;
       s.travelled += len;
@@ -2638,7 +2682,7 @@ export class WatercolorEngine {
   }
 
   /** One dab of the current tool. `moving` = 0 with `dt` set means a dwell. */
-  private stamp(s: Stroke, x: number, y: number, pr: number, vx: number, vy: number, moving: number, dt = 0, widthFactor = 1) {
+  private stamp(s: Stroke, x: number, y: number, pr: number, vx: number, vy: number, moving: number, dt = 0, widthFactor = 1, amountScale = 1) {
     const P = this.params;
     let r = this.radius(s.tool, pr, s.speed, widthFactor);
     const dwell = moving ? 1 : dt * 8;
@@ -2667,7 +2711,13 @@ export class WatercolorEngine {
         const norm = clamp(Math.sqrt(0.5 / b.tipMean), 0.7, 2.2);
         // The supersampling factor divides the per-dab ink: more, smaller
         // dabs for a big tip, the same wash per distance.
-        const amount = conc * Math.min(b.spacing, 1) / 1.8 * norm * dwell / this.samplingScale();
+        let amount = conc * Math.min(b.spacing, 1) / 1.8 * norm * dwell / this.samplingScale();
+        // 261121-w5n: the one-device-pixel floor's compensation — the mirror
+        // of the supersampling law above (which divides spacing and amount by
+        // the same factor), so the wash per distance is unchanged where the
+        // floor binds. `1` skips the multiply entirely: the inert path is
+        // bit-identical to HEAD by construction.
+        if (amountScale !== 1) amount *= amountScale;
         // Phase 64 (MED-14, the deposit law): thickness is deposited in
         // proportion to the dab's OWN ink amount, scaled by the stroke's emboss.
         // 0 draws nothing at all — no program bind, no blend change, no draw —
