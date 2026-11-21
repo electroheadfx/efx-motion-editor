@@ -148,14 +148,16 @@ Exactly the five expected files; no protected tree touched.
 
 None - plan executed exactly as written. (The plan's measured-anchor HEAD `6024f7454` is one docs commit behind the execution HEAD `a7cc74170`; the package source was verified unchanged between the two, so every recorded baseline number matched the planning table exactly.)
 
-## UAT — automated-ready (the artist runs native UAT; none of these is "done")
+## UAT — APPROVED 2026-11-21 (native UAT by the artist)
 
-| Row | Surface | Expected |
-| --- | --- | --- |
-| (a) | Studio, acrylic Bristle Round/Flat, Dry 0 / Pigment 100 — very light press | Continuous line, thinner than a full press (no breakup into specks) |
-| (b) | Same bag — full press | Unchanged from the shipped look (probe: 1.0 byte-identical) |
-| (c) | Same bag — fast gesture at light pressure | Still thins/fades (the speed ramp is untouched) |
-| (d) | Same bag — Dry 70, long stroke at full pressure | Still fades mid-stroke (probe: Dry-70 byte-identical) |
+The approval covers quick 261121-umu **plus** the follow-up speedLink fix `0e41c0d6a` (Dry 0 binds zero depletion; the acrylic family ignores hand speed in the contact gate).
+
+| Row | Surface | Expected | Result |
+| --- | --- | --- | --- |
+| (a) | Studio, acrylic Bristle Round/Flat, Dry 0 / Pigment 100 — very light press | Continuous line, thinner than a full press (no breakup into specks) | ✓ approved |
+| (b) | Same bag — full press | Unchanged from the shipped look (probe: 1.0 byte-identical) | ✓ approved |
+| (c) | Same bag — fast gesture | **Superseded:** hand speed no longer thins or fades the acrylic family (`speedLink: 0`); fast paints like slow | ✓ approved as changed |
+| (d) | Same bag — Dry 70, long stroke at full pressure | Still fades mid-stroke (probe: Dry-70 byte-identical) | ✓ approved |
 
 ## Self-Check: PASSED
 

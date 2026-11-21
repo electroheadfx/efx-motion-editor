@@ -105,16 +105,16 @@ RED-first provenance: commit order is `3497c0705` (test pins) → `13906a9f1` (s
 |-------------|------------|-------------|--------|----------|
 | — | — | Plan declares `requirements: []`; quick tasks carry no REQUIREMENTS.md ids | N/A | — |
 
-### UAT rows — automated-ready (not done)
+### UAT rows — APPROVED 2026-11-21
 
-The artist runs native UAT; these rows are deliberately not "done" and are not a verification gap.
+The artist ran native UAT and approved the acrylic law (quick 261121-umu plus the follow-up speedLink fix `0e41c0d6a`).
 
-| Row | Surface | Expected |
-|-----|---------|----------|
-| (a) | Studio, acrylic Bristle Round/Flat, Dry 0 / Pigment 100 — very light press | Continuous line, thinner than a full press (probe: covered 17.13 vs 57.11, every segment > 100) |
-| (b) | Same bag — full press | Unchanged (probe: pressure 1.0 case exactly equal to the pre-change capture) |
-| (c) | Same bag — fast gesture at light pressure | Still thins (the speed ramp is untouched and pinned) |
-| (d) | Same bag — Dry 70, long stroke at full pressure | Still fades mid-stroke (probe: Dry-70 case exactly equal; tail 7.5) |
+| Row | Surface | Expected | Result |
+|-----|---------|----------|--------|
+| (a) | Studio, acrylic Bristle Round/Flat, Dry 0 / Pigment 100 — very light press | Continuous line, thinner than a full press | ✓ approved |
+| (b) | Same bag — full press | Unchanged shipped look | ✓ approved |
+| (c) | Same bag — fast gesture | **Superseded by the 2026-11-21 artist ruling:** hand speed no longer thins or fades the acrylic family (`speedLink: 0`); fast paints like slow | ✓ approved as changed |
+| (d) | Same bag — Dry 70, long stroke at full pressure | Still fades mid-stroke (Dry curve untouched) | ✓ approved |
 
 ### Scope note on independent re-execution
 
