@@ -13,6 +13,10 @@
 
 - **Spike findings for efx-motion-editor** (acrylic coverage + bristle-deposit shader laws, measured costs, determinism contracts, headless-Chrome harness patterns) → `Skill("spike-findings-efx-motion-editor")`
 
+# Studio paint
+
+- **Studio paint engine** (watercolor + acrylic compositing laws, live↔committed parity, capture merge, per-stroke seeds, seams/files, probe + UAT gates) → `Skill("efx-studio-paint")`. Load it before changing anything that affects what the paint looks like.
+
 # Preact
 
 This project uses **Preact + @preact/signals**, not React. Before writing or reviewing any component, hook, effect, store setter, or signal subscription, consult the **`efx-preact-reactivity`** skill — it holds the project's mandatory reactivity rules (idempotent store setters, identity-stable effect deps, narrow signal reads, no render-body signal writes, loop termination). Use the `developing-preact` skill for general Preact guidance. Never apply React patterns by default.
