@@ -254,14 +254,24 @@ export const BRISTLE_PRESSURE_START = 0.3;
  * is the brush's cumulative path in document texels, `docShortPx` the
  * document's short side. A non-finite argument reads as the neutral pen
  * pressure 1 / zero speed / zero distance, never NaN.
+ *
+ * `pressureLink` (0..1, quick 261121-umu) is how much the authored pen
+ * pressure enters this CONTACT gate: 1 keeps the shipped formula exactly; 0
+ * makes the gate independent of the authored pen while the speed and attack
+ * ramps still apply — a light press then thins the mark through the footprint,
+ * not through the gate. A non-finite link reads as 1 (the never-NaN contract).
  */
 export function bristleContactPressure(
   penPressure: number,
   speed: number,
   strokeDistPx: number,
   docShortPx: number,
+  pressureLink = 1,
 ): number {
-  const pen = Number.isFinite(penPressure) ? clamp01(penPressure) : 1;
+  const authored = Number.isFinite(penPressure) ? clamp01(penPressure) : 1;
+  const link = Number.isFinite(pressureLink) ? clamp01(pressureLink) : 1;
+  // mix(1, authored, link), associated so link 1 returns `authored` exactly.
+  const pen = authored + (1 - authored) * (1 - link);
   const v = Number.isFinite(speed) ? Math.max(0, speed) : 0;
   const d = Number.isFinite(strokeDistPx) ? Math.max(0, strokeDistPx) : 0;
   const reach = Number.isFinite(docShortPx) && docShortPx > 0 ? BRISTLE_PRESSURE_ATTACK * docShortPx : 0;

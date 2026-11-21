@@ -2711,8 +2711,10 @@ export class WatercolorEngine {
         // Spike 004: the bristle carrier and gather read the reference's
         // brush CONTACT pressure (speed- and attack-shaped), not the pointer's
         // — the authored pr still owns the footprint, radius and wet passes.
+        // 261121-umu: a response's link decides how much authored pressure
+        // reaches the gate; an absent field reads as the shipped 1.
         const contactPr = bristle
-          ? bristleContactPressure(clamp(pr, 0, 1), s.speed, s.travelled * this.dh, this.dh)
+          ? bristleContactPressure(clamp(pr, 0, 1), s.speed, s.travelled * this.dh, this.dh, b.pressureLink ?? 1)
           : pr;
         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
         const c = this.pigment.coeffs;
