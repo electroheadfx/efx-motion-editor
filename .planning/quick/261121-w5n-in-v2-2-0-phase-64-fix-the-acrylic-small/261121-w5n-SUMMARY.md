@@ -220,15 +220,15 @@ The floor is a device-pixel law, so the identity rows only measure an inert floo
 - **App-suite flake, unrelated:** the first two full `pnpm --dir app exec vitest run` runs each failed one test in `src/lib/physicPaintBridge.test.ts` (a 20 s bounded-wait timeout, then a different test in the same file). The file passes 186/186 in 2.3 s in isolation, and the third full run passed 9753 tests with exit 0. Load-induced timing sensitivity in a 466-file parallel run; no engine code is involved. Not fixed here (pre-existing, out of scope).
 - The `[aquarelle-render-split] write failed ReferenceError: window is not defined` lines in the app suite are pre-existing console noise; the passing run exits 0.
 
-## UAT — automated-ready (not "done")
+## UAT — APPROVED 2026-11-21 (native UAT by the artist)
 
-The responsiveness claim is a live judgment the artist makes in the app; the probe pins the law on a fixed headless scene.
+The artist's verdict: "amazing speed improvement, approved UAT".
 
 | Row | Surface | Expected | Result |
 | --- | --- | --- | --- |
-| (a) | Studio, acrylic Bristle Round/Flat at Size 1, 10 and 30 — draw a stroke | Responsive: no lag or stall at the small sizes (measured: one dab per device pixel instead of up to 2.5) | automated-ready |
-| (b) | Same, Size 30 and Size 100 | Matches HEAD pixels (probe: dabs and both exported digests equal at both sizes) | automated-ready |
-| (c) | A Size 10 stroke — re-bake the same recorded stroke | Same paint as its first paint (probe: parity equal in both gates) | automated-ready |
+| (a) | Studio, acrylic Bristle Round/Flat at Size 1, 10 and 30 — draw a stroke | Responsive: no lag or stall at the small sizes (measured: one dab per device pixel instead of up to 2.5) | ✓ approved |
+| (b) | Same, Size 30 and Size 100 | Matches HEAD pixels (probe: dabs and both exported digests equal at both sizes) | ✓ approved |
+| (c) | A Size 10 stroke — re-bake the same recorded stroke | Same paint as its first paint (probe: parity equal in both gates) | ✓ approved |
 
 ## Next Phase Readiness
 
