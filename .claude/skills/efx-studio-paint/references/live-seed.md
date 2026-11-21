@@ -72,11 +72,29 @@ Replay-dominated and linear in the committed dab count:
 | 1920×1080 | 457 | 3.41 s | replay 3.32 s / settle 1 ms / capture 87 ms |
 
 Headless Chrome SwiftShader = CPU upper bound; the app GPU is faster, but the
-feed is JS/CPU work. The pointer is refused for the window. If a slowdown is
-reported, measure `seedMs` / `seedPhases` (probe `app-seedcost`) BEFORE touching
-the display or compositing path. Mitigations if the artist rejects the pause
-(lazy seed on first pointerdown, per-frame seed cache, visible-region seed) are
-NOT shipped; choosing one is a design decision, not a bug fix.
+feed is JS/CPU work. If a slowdown is reported, measure `seedMs` /
+`seedPhases` (probe `app-seedcost`) BEFORE touching the display or
+compositing path.
+
+### Shipped mitigations (2026-11-22, artist report: 10 s blocked pen on key change)
+
+- **Host slicing** — the bake takes `yieldToHostMs` (seed passes 8): it yields
+  between sample chunks, idle-gap ticks and settle ticks, so a replay never
+  freezes the window. The stepped state is identical (manual mode). The
+  visible settle cap is refused while `seeding` — a yield lets the tick run.
+- **Per-frame sheet cache** — `Engine.captureSheet()` / `restoreSheet()` expose
+  the exact layer set (`captureWhole`/`uploadWhole`, no paper/history/view).
+  The layer captures the sheet when the artist LEAVES a frame and restores it
+  on return (one texture upload) — the replay is paid once per frame per
+  session, not on every key change. Entries are keyed by the frame's script
+  signature (mutation id + sample count per event) and the sheet size; any
+  script edit mismatches and forces a replay. Bounded: 3 frames / 256 MB, LRU;
+  a single sheet over half the budget is never cached. `getSeedEvents` takes
+  the FRAME so the layer can sign the frame it is leaving.
+- **Remaining cost**: the FIRST seed of a frame in a session (Studio open on
+  frame 0, first visit of each key) still replays the whole script. If the
+  artist rejects that too, the next lever is a cheaper first seed (low-res or
+  image-based base) — a fidelity decision, not a wiring fix.
 
 ## Verification
 
