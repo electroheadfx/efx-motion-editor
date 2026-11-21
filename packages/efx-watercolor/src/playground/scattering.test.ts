@@ -827,7 +827,10 @@ describe('post-UAT — the bristle Body mask is gone, Body is film opacity', () 
     // divides by the same factor so the wash per distance is unchanged.
     expectContains(ENGINE_SOURCE, 'return bristleSampleScale(engineScaleToSize(this.params.size));')
     expectContains(ENGINE_SOURCE, "return tool === 'brush' ? frac / this.samplingScale() : frac;")
-    expectContains(ENGINE_SOURCE, 'const amount = conc * Math.min(b.spacing, 1) / 1.8 * norm * dwell / this.samplingScale();')
+    // 2026-11-21 (261121-w5n): the declaration is `let` — the bristle dab floor
+    // multiplies this same amount by the ratio it applied to the spacing, the
+    // mirror of this divide, so wash per distance is still unchanged.
+    expectContains(ENGINE_SOURCE, 'let amount = conc * Math.min(b.spacing, 1) / 1.8 * norm * dwell / this.samplingScale();')
   })
 
   it('keeps the pinned program and allocation counts', () => {
