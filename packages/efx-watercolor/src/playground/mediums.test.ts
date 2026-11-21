@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CANONICAL_PARAMS } from './params'
 import { DEFAULT_MEDIUM_ID, MEDIUM_IDS, MEDIUMS, mediumById } from './mediums'
+import { bodyCurve } from './scattering'
 
 // The fourteen medium keys: the amendment table's column order, then
 // 64-22's four (D-22 / §3.1 / §6).
@@ -116,7 +117,11 @@ describe('medium records', () => {
       edge: 70,
       granulation: 60,
       viscosity: 85,
-      body: 25,
+      // 2026-11-21 (artist UAT): the spec table's 25 blanked every chalk
+      // brush — Body > 0 takes the coverage composite, whose film alpha is
+      // `bodyCurve(Body) * 2` on the `body ^ 6` curve (0.05 % at 25). A dry
+      // stick deposits additively, so the record states Body 0.
+      body: 0,
       emboss: 0,
       feather: 0,
       pickup: 60,
@@ -191,6 +196,26 @@ describe('medium records', () => {
     expect(acrylic.pickup).toBe(100)
     expect(acrylic.refill).toBe(0)
     expect(acrylic.feather).toBe(85)
+  })
+
+  // 2026-11-21 (artist UAT, "all chalk brushes paint nothing"): Body is ORDER,
+  // and any non-zero Body routes the whole deposit through the coverage
+  // composite — the film alpha is `bodyCurve(Body) * COVER_GAIN` on the D-14
+  // `body ^ 6` curve, so a LOW Body deposits almost nothing (Body 25 = 0.05 %,
+  // measured blank on every chalk response). A record is therefore either 0
+  // (additive deposit) or high enough to be a visible cover; the dry media
+  // (chalk, graphite) and the neutral medium stay 0.
+  it('never ships a Body between the additive path and a visible cover', () => {
+    expect(bodyCurve(0.25) * 2, 'Body 25 is a blank film').toBeLessThan(0.001)
+    expect(bodyCurve(0.55) * 2, 'Body 55 is visible').toBeGreaterThan(0.05)
+    for (const medium of MEDIUMS) {
+      const body = medium.params.body
+      expect(
+        body === 0 || body >= 50,
+        `${medium.id} body ${body} sits on the invisible cliff (0 or >= 50)`,
+      ).toBe(true)
+    }
+    expect(recordOf('pastel').params.body).toBe(0)
   })
 
   it('derives the watercolor record from the canonical defaults', () => {

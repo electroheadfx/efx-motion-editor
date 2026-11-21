@@ -255,7 +255,9 @@ describe('applyAquarelleMedium', () => {
     expect(aquarelleParams.value.edge).toBe(70);
     expect(aquarelleParams.value.granulation).toBe(60);
     expect(aquarelleParams.value.viscosity).toBe(85);
-    expect(aquarelleParams.value.body).toBe(25);
+    // 2026-11-21: Body 0, not the spec table's 25 — a non-zero Body takes the
+    // coverage composite and blanked every chalk brush (see mediums.ts).
+    expect(aquarelleParams.value.body).toBe(0);
     expect(aquarelleParams.value.emboss).toBe(0);
     // 64-22: all fourteen medium keys land in the one write.
     expect(aquarelleParams.value.feather).toBe(0);

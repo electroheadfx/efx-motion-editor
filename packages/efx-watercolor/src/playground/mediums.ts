@@ -130,7 +130,14 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       edge: 70,
       granulation: 60,
       viscosity: 85,
-      body: 25,
+      // 2026-11-21 (artist UAT: "all chalk brushes paint nothing"): Body 0,
+      // NOT the spec table's 25. Body is ORDER, and any Body above 0 routes
+      // the whole deposit through the coverage composite, whose film alpha is
+      // `bodyCurve(Body) * COVER_GAIN` — the D-14 curve is `body ^ 6`, so
+      // Body 25 deposits a 0.05 % film (measured: 0 painted texels on every
+      // chalk-group response). A dry stick has no covering role; Body 0 keeps
+      // the additive deposit, which is the visible chalk this medium is for.
+      body: 0,
       emboss: 0,
       feather: 0,
       pickup: 60,
