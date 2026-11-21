@@ -28,14 +28,17 @@ coefficient-space (no RGB averaging).
 | --- | --- |
 | Storage / cache bytes | mode 2: opaque transmittance `vec4(lit, 1)`, white = no pigment |
 | Cached-base display | `rasterAlpha.transmittanceToAlpha`: `alpha = 1 - min(t)`, `color = (t - min) / alpha` |
+| Seeded live surface (primary) | the live sheet holds the committed paint (replayed through §1); NO underlay; the cached base steps aside |
+| Capture of a seeded sheet | stores the exported sheet alone (`base: null`) — the sheet already holds the base |
 | Live compositor (mode 4) | `alpha = 1 - min(t)`, `color = (t - min) / alpha`; premultiplied output |
-| Live over committed (underlay) | `t' = t_sheet x t_base^(1 - cover)`, linear light, then mode 4 |
-| Capture merge (`coverage-composite`) | stored `t' = t_sheet x t_base^(1 - cover)`, linear light |
+| Live over committed (underlay fallback) | `t' = t_sheet x t_base^(1 - cover)`, linear light, then mode 4 — non-seeded / legacy / empty states only |
+| Capture merge (`coverage-composite`, non-seeded) | stored `t' = t_sheet x t_base^(1 - cover)`, linear light |
 | Full-script re-bake | replay through §1, published raw (`durableBase: known-empty` for ordinary keys) |
 
 The underlay composite is `Engine.setUnderlay` + the mode-4 branch in
 `displayFS`; it is bound only when `target === null && mode === MODE.pigment`
-(the on-screen render). Exports never sample it.
+(the on-screen render). Exports never sample it. While a sheet is seeding or
+seeded (`aquarelleSheetSeeded`), no underlay is bound at all.
 
 ## 3. Why the parity holds
 
@@ -58,6 +61,13 @@ layer with `alpha = 1 - min(t') < 1`, so the cached base underneath would
 re-add its paint (the double count). `aquarelleBaseCompositedLive` hides it
 (display-only class; the canvas stays mounted).
 
+With the LIVE-SEED (shipped 2026-11-21) the live sheet is not empty: it is
+seeded from the committed script at mount/reset/frame change, so it already
+holds the base's ink, cover and last-touch. `S` is realized by the sheet itself
+and the stroke's touch can re-wet the base exactly as in the bake. The underlay
+formula above is the non-seeded fallback; applying it over a seeded sheet
+double-counts. Detail: `references/live-seed.md`.
+
 ## 4. Seed parity
 
 `hashMutationId(id)` is the trace seed `configure()` derives for an unsalted
@@ -75,4 +85,8 @@ record agree.
 - App diagnostics: `/tmp/efx-aquarelle-render-split.json` — `coordinator-produce`
   (`mergeBlend`), `script-bake` (`diagnostics.path`, `simulatedTicks`,
   `skippedGapTicks`), `capture-alpha-proof`.
+- Live-seed / first-paint pickup: `packages/efx-watercolor/probe/pickup-collapse/`
+  (`app-seeded` vs `app-bake` at `--gap 20000`, final pixels must be identical;
+  `app-seedcost --sheet WxH --base-samples N` for the seed pause). Detail:
+  `references/live-seed.md`.
 - UAT must name the surface: live during stroke / after settle / after move.
