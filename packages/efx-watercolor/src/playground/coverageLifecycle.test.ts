@@ -370,8 +370,9 @@ describe('Lift destroys coverage (64-14 task 3)', () => {
     expect(firstDraw, 'the first lift draw').toBeGreaterThanOrEqual(0)
     const preamble = lift.slice(0, firstDraw)
     expectContains(preamble, 'this.touch(rect);')
-    // Lift reaches fixed pigment, so the fixed pool is saved before its draw.
-    expectContains(preamble, 'this.history.protect(1,')
+    // Lift reaches fixed pigment, so the fixed pool is saved before its draw —
+    // through the LIVE-SEED guarded form (setStepRecording(false) suppresses).
+    expectContains(preamble, 'this.protectHistory(1,')
   })
 })
 

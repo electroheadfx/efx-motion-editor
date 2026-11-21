@@ -12,4 +12,8 @@ export * from './payload'
 export * from './adapter'
 export * from './papers'
 export * from './bake'
+// LIVE-SEED (2026-11-21): exported from the MAIN entry only — the seed drives
+// the live engine through the adapter, so it must not pull the fluid engine
+// into the lean `./bake` sub-entry chunk.
+export * from './bake/aquarelleSeed'
 export * from './playground'

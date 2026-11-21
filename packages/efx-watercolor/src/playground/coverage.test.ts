@@ -218,11 +218,13 @@ describe('the per-stamp protections (T-64-37)', () => {
       'const coverRect = this.stampRect(x, y, r * (1 + b.sizeJitter + b.scatter), this.dw, this.dh, 2);',
     )
     expectContains(block, 'this.touch(coverRect);')
-    expectContains(block, 'this.history.protect(1,')
-    expect(block.indexOf('this.touch(coverRect)')).toBeLessThan(block.indexOf('this.history.protect(1,'))
+    // LIVE-SEED (2026-11-21): every protection routes through the guarded form,
+    // so the seed replay (setStepRecording(false)) can never write history.
+    expectContains(block, 'this.protectHistory(1,')
+    expect(block.indexOf('this.touch(coverRect)')).toBeLessThan(block.indexOf('this.protectHistory(1,'))
     const eachDabAt = brush.indexOf('this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {')
     expect(brush.indexOf('this.touch(coverRect)')).toBeLessThan(eachDabAt)
-    expect(brush.indexOf('this.history.protect(1,')).toBeLessThan(eachDabAt)
+    expect(brush.indexOf('this.protectHistory(1,')).toBeLessThan(eachDabAt)
     // The callback adds only the per-dab dirty bookkeeping touch -- never an
     // undo protection (the stamp-wide pair above already covers it).
     const callback = CALLBACK()

@@ -59,6 +59,21 @@ export interface AquarelleAdapterOptions {
   height?: number
   canvas?: HTMLCanvasElement
   /**
+   * LIVE-SEED (2026-11-21): inject the LIVE engine instead of constructing
+   * one. The seed replay must run against the same WebGL2 engine the artist
+   * paints on — a second WatercolorEngine over the same canvas would
+   * double-own the context. Injected mode skips canvas sizing, the
+   * manual/clock/RNG install and the paper/light/paperSeed writes (the live
+   * sheet already carries them); `dispose()` never destroys the engine.
+   */
+  engine?: WatercolorEngine
+  /**
+   * LIVE-SEED: drive the replay through the host's clock state instead of the
+   * adapter's private `virtualNow`. Used with `engine` — the seed controller
+   * owns the clock and hands it to real time at the seed's end.
+   */
+  clock?: { now(): number; advance(ms: number): void }
+  /**
    * 261017-fz3: resolved Studio paper preset (paperPresetForStudioId, app-side).
    * The adapter calls engine.setPaper + engine.paperTexture before the first
    * applyStroke so the deposit carries the Studio paper's tooth. Q5a cold
@@ -259,16 +274,22 @@ export function createAquarelleEngineAdapter(
 
   // The vendor engine owns a WebGL2 surface. Bake runs on an offscreen
   // canvas at document resolution (A5: transparent where unpainted).
+  const injectedEngine = options.engine ?? null
   const canvas =
     options.canvas ??
     (typeof document !== 'undefined' ? document.createElement('canvas') : null)
-  if (canvas && width > 0 && height > 0) {
+  if (!injectedEngine && canvas && width > 0 && height > 0) {
     canvas.width = width
     canvas.height = height
   }
 
   let engine: WatercolorEngine | null = null
-  if (canvas) {
+  if (injectedEngine) {
+    // LIVE-SEED: the canvas, the manual/clock/RNG state and the sheet all
+    // belong to the host that owns this engine — this adapter only borrows
+    // it for a deterministic replay.
+    engine = injectedEngine
+  } else if (canvas) {
     try {
       engine = new WatercolorEngine(canvas, null, {}, width > 0 && height > 0 ? [width, height] : null)
       engine.setManual(true)
@@ -278,13 +299,18 @@ export function createAquarelleEngineAdapter(
     }
   }
 
-  // Virtual clock + seeded RNG so two bakes of one script match (A2).
+  // Virtual clock + seeded RNG so two bakes of one script match (A2). An
+  // injected host clock replaces the private virtualNow (LIVE-SEED).
   let virtualNow = 0
   const advanceClock = (ms: number) => {
-    virtualNow += ms
+    if (options.clock) options.clock.advance(ms)
+    else virtualNow += ms
   }
-  engine?.setClock(() => virtualNow)
-  engine?.setRandom(seededRandom(1))
+  const clockNow = () => (options.clock ? options.clock.now() : virtualNow)
+  if (!injectedEngine) {
+    engine?.setClock(() => virtualNow)
+    engine?.setRandom(seededRandom(1))
+  }
 
   // 261030-v1t: per-output-frame paint salt. `null` = today's exact stream.
   // A negative or fractional frame is not a frame — clamp to an integer >= 0.
@@ -301,19 +327,21 @@ export function createAquarelleEngineAdapter(
       engine.paperTexture = strength < 0 ? 0 : strength > 1 ? 1 : strength
     }
   }
-  applyPaper(undefined, options.paperPreset)
-  if (typeof options.paperStrength === 'number' && engine) {
+  // LIVE-SEED: an injected engine's sheet is the host's — never re-apply the
+  // paper / light / seed here or the seed would repaint the artist's sheet.
+  if (!injectedEngine) applyPaper(undefined, options.paperPreset)
+  if (!injectedEngine && typeof options.paperStrength === 'number' && engine) {
     engine.paperTexture = options.paperStrength < 0 ? 0 : options.paperStrength > 1 ? 1 : options.paperStrength
   }
   // 64-07 (MED-17): the light is render state and must be in place before the
   // first applyStroke — one pass-through write, never a clamp or a default on
   // this path (the engine setter owns the bands, see AquarelleAdapterOptions).
-  if (options.light && engine) {
+  if (!injectedEngine && options.light && engine) {
     engine.setLight({ ...options.light })
   }
   // 64-21: the sheet seed rides the same seam — in place before the first
   // applyStroke, one pass-through write (the engine setter owns the pin).
-  if (typeof options.paperSeed === 'number' && engine) {
+  if (!injectedEngine && typeof options.paperSeed === 'number' && engine) {
     engine.setPaperSeed(options.paperSeed)
   }
 
@@ -437,7 +465,7 @@ export function createAquarelleEngineAdapter(
           samplePigment,
         )
       } else {
-        engine.scriptMove(p.x, p.y, p.p, virtualNow, p.tx, p.ty, widthFactor, samplePigment)
+        engine.scriptMove(p.x, p.y, p.p, clockNow(), p.tx, p.ty, widthFactor, samplePigment)
       }
       // Live==bake law (56-12): one sample then engine.tick advances the
       // fluid. Skipping the tick deposits the whole stroke in one instant so
@@ -492,12 +520,13 @@ export function createAquarelleEngineAdapter(
     resetSheet(): void {
       if (disposed || !engine) return
       engine.resetSheet()
-      virtualNow = 0
+      // LIVE-SEED: the injected host owns its clock and RNG stream.
+      if (!options.clock) virtualNow = 0
       active = null
       feedStates.clear()
       strokes.length = 0
       // Same construction-time stream: the sheet is constant across replays.
-      engine.setRandom(seededRandom(1))
+      if (!injectedEngine) engine.setRandom(seededRandom(1))
     },
     // 64-24 (D-24): clock-only advance for the wetness acceptance. The guard
     // is the direction law — the virtual clock never moves backwards — and a
@@ -643,7 +672,8 @@ export function createAquarelleEngineAdapter(
       disposed = true
       strokes.length = 0
       active = null
-      engine?.destroy()
+      // LIVE-SEED: the injected engine outlives the seed — the host destroys it.
+      if (!injectedEngine) engine?.destroy()
       engine = null
     },
   }

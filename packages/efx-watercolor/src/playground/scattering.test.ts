@@ -783,7 +783,8 @@ describe('post-UAT — the bristle Body mask is gone, Body is film opacity', () 
     // The undo coverage moves WITH the write: the settled pool is now reached
     // by the bristle lerp too, so the protect block covers both paths and
     // still runs once per stamp, before eachDab's first draw.
-    const protectAt = brush.indexOf('this.history.protect(1,')
+    // LIVE-SEED (2026-11-21): the guarded form — the seed replay suppresses it.
+    const protectAt = brush.indexOf('this.protectHistory(1,')
     const dabAt = brush.indexOf('this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {')
     expect(protectAt, 'the protect block survives').toBeGreaterThan(-1)
     expect(protectAt, 'the protect precedes every dab').toBeLessThan(dabAt)

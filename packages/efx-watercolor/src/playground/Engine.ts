@@ -428,6 +428,14 @@ export class WatercolorEngine {
   /** When true, schedule() is a no-op — the host drives tick(dt) (bake). */
   private manual = false;
   /**
+   * 2026-11-21 LIVE-SEED: while off, engine changes record NO undo step and
+   * no history tiles (beginStep / protect are no-ops). The live sheet is
+   * seeded by replaying the committed script THROUGH THIS ENGINE; that replay
+   * is the committed base, not an artist action, so it must not push a Dry /
+   * Stroke step into the undo memory.
+   */
+  private stepRecording = true;
+  /**
    * 2026-11-20: the last-touch field is float32, and the LIVE clock is
    * performance.now() in seconds (~1.7e6). At that magnitude f32 resolves
    * ~0.25 s, so strokes painted quickly apart stored IDENTICAL stamps and
@@ -573,6 +581,10 @@ export class WatercolorEngine {
   private brushNow = { x: 0, y: 0, r: 0 };
   private raf = 0;
   private lastFrame = 0;
+  /** LIVE-SEED (2026-11-21): a late async caller (a cancelled seed's handoff)
+   *  may still reach setManual(false) after destroy(); never re-schedule the
+   *  loop on a dead engine. */
+  private destroyed = false;
   private seenEvictions = 0;           // history.evictions as of the last onHistoryChange
 
   // input
@@ -996,6 +1008,7 @@ export class WatercolorEngine {
   recordChange(kind: StepKind, label: string, before: DocState) {
     this.dropFill();
     this.autoFix = false;   // a newer step makes the settle-cap fix permanent
+    if (!this.stepRecording) return;   // LIVE-SEED: invisible to the undo memory
     this.history.begin({ kind, label }, { ...this.currentMeta(), doc: before } satisfies StepMeta);
     this.notifyHistory();
   }
@@ -1382,6 +1395,16 @@ export class WatercolorEngine {
    */
   setLastTouchMode(mode: 0 | 1) {
     if (mode !== this.lastTouchMode) this.lastTouchMode = mode === 0 ? 0 : 1;
+  }
+
+  /**
+   * 2026-11-21 LIVE-SEED: turn undo-step recording off/on. While off, no
+   * beginStep pushes a step, no protect snapshots history tiles and no
+   * onHistoryChange fires — the seed replay is invisible to the artist's undo
+   * memory. The seeding controller restores it before live input.
+   */
+  setStepRecording(on: boolean) {
+    this.stepRecording = on;
   }
 
   /** Deterministic bake: stop the rAF loop; the host drives tick(dt). */
@@ -1885,7 +1908,7 @@ export class WatercolorEngine {
     if (!this.painted || this.fixTimer > 0) return false;
     this.beginStep('dry', 'Dry');
     // the fixed layer changes here AND at lift() (261028-k03 D1), so both snapshot it
-    this.history.protect(1, this.painted, this.fixed.views);
+    this.protectHistory(1, this.painted, this.fixed.views);
     this.fixTimer = FIX_DURATION;
     this.autoFix = auto;
     // mobile pigment only exists where strokes have been, so only that needs settling
@@ -1915,8 +1938,8 @@ export class WatercolorEngine {
     if (!this.everPainted && !this.fill) return;   // already blank
     this.beginStep('clear', 'Clear');
     if (this.everPainted) {
-      this.history.protect(0, this.everPainted, this.snapshotLayers());
-      this.history.protect(1, this.everPainted, this.fixed.views);
+      this.protectHistory(0, this.everPainted, this.snapshotLayers());
+      this.protectHistory(1, this.everPainted, this.fixed.views);
     }
     for (const t of this.docTargets()) if (t !== this.paper) this.g.clearTarget(t);
     // 64-24: a wiped sheet is DRY — clearTarget wrote 0, which the field reads
@@ -2121,6 +2144,7 @@ export class WatercolorEngine {
   }
 
   destroy() {
+    this.destroyed = true;
     cancelAnimationFrame(this.raf);
     this.dropFill();
     this.disposers.forEach(d => d());
@@ -2653,7 +2677,7 @@ export class WatercolorEngine {
           // lift() saves it — the cover pass (and the bristle lerp) is the
           // second (and only other) path that reaches dry, settled pigment.
           const m = PROTECT_MARGIN;
-          this.history.protect(1, { x0: Math.max(0, coverRect.x0 - m), y0: Math.max(0, coverRect.y0 - m), x1: Math.min(this.dw, coverRect.x1 + m), y1: Math.min(this.dh, coverRect.y1 + m) }, this.fixed.views);
+          this.protectHistory(1, { x0: Math.max(0, coverRect.x0 - m), y0: Math.max(0, coverRect.y0 - m), x1: Math.min(this.dw, coverRect.x1 + m), y1: Math.min(this.dh, coverRect.y1 + m) }, this.fixed.views);
         }
         this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
           // 64-21 (SPIKE 002): the carrier samples the canvas under this dab
@@ -3440,7 +3464,7 @@ export class WatercolorEngine {
     const next = union(this.active, rect);
     if (save) {
       const m = PROTECT_MARGIN;
-      this.history.protect(0, { x0: Math.max(0, rect.x0 - m), y0: Math.max(0, rect.y0 - m), x1: Math.min(this.dw, rect.x1 + m), y1: Math.min(this.dh, rect.y1 + m) }, this.snapshotLayers());
+      this.protectHistory(0, { x0: Math.max(0, rect.x0 - m), y0: Math.max(0, rect.y0 - m), x1: Math.min(this.dw, rect.x1 + m), y1: Math.min(this.dh, rect.y1 + m) }, this.snapshotLayers());
     }
     this.active = next;
     this.painted = union(this.painted, rect);
@@ -3519,7 +3543,7 @@ export class WatercolorEngine {
     // 261028-k03 D1: Lift is the ONE tool that also reaches fixed pigment, so the
     // fixed pool is saved before the fixed draw (same per-dab margin as the mobile tiles).
     const m = PROTECT_MARGIN;
-    this.history.protect(1, { x0: Math.max(0, rect.x0 - m), y0: Math.max(0, rect.y0 - m), x1: Math.min(this.dw, rect.x1 + m), y1: Math.min(this.dh, rect.y1 + m) }, this.fixed.views);
+    this.protectHistory(1, { x0: Math.max(0, rect.x0 - m), y0: Math.max(0, rect.y0 - m), x1: Math.min(this.dw, rect.x1 + m), y1: Math.min(this.dh, rect.y1 + m) }, this.fixed.views);
     const p = this.programs.lift;
     p.bind();
     // 261028-k03c: the tip footprint binds exactly like drawStamp — the same
@@ -3578,8 +3602,21 @@ export class WatercolorEngine {
   private beginStep(kind: StepKind, label: string) {
     this.dropFill();   // a new action ends a running fill; its remaining bands never land in this step
     this.autoFix = false;   // any newer action makes the settle-cap fix permanent
+    if (!this.stepRecording) return;   // LIVE-SEED: the replay is not an artist action
     this.history.begin({ kind, label }, this.currentMeta());
     this.notifyHistory();
+  }
+
+  /**
+   * 2026-11-21 LIVE-SEED: the guarded form of `history.protect`. While step
+   * recording is off there is either no step to save into or — worse — only
+   * the step that was on the stack BEFORE the seed (resetSheet's 'clear'),
+   * which the seed must not overwrite. Every protect call site goes through
+   * here so the suppression cannot be defeated by a single missed site.
+   */
+  private protectHistory(p: number, rect: Rect, layers: WebGLFramebuffer[]) {
+    if (!this.stepRecording) return;
+    this.history.protect(p, rect, layers);
   }
 
   private step(dt: number) {
@@ -3859,9 +3896,12 @@ export class WatercolorEngine {
   /* ------------------------------------------------------------ main loop */
 
   private schedule() {
-    if (this.manual) return;
+    if (this.manual || this.destroyed) return;
     if (!this.raf) {
-      this.lastFrame = this.clock();
+      // The rAF timestamp is performance.now-based; the ENGINE clock may be a
+      // seed clock handed off mid-session (LIVE-SEED 2026-11-21), so the dt
+      // base must ride the SAME axis `frame(now)` receives.
+      this.lastFrame = performance.now();
       this.raf = requestAnimationFrame(this.frame);
     }
   }
@@ -3874,8 +3914,13 @@ export class WatercolorEngine {
 
     this.processInput(dt);
 
+    // The awake window is ENGINE-clock arithmetic (minAwakeUntil / lastWet are
+    // clock stamps), so it must be compared on the engine clock — the rAF
+    // `now` is performance.now only until a seed clock replaces it
+    // (LIVE-SEED 2026-11-21). Under the default clock both readings agree.
+    const clockNow = this.clock();
     const awake = this.active !== null &&
-      (this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.wetUntil());
+      (this.stroke !== null || this.fixTimer > 0 || clockNow < this.minAwakeUntil || clockNow < this.wetUntil());
     if (awake) {
       // Grow the simulated region as fast as the wet front can move: slow diffusive
       // creep plus a share of the (decaying) flow speed
