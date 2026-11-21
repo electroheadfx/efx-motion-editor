@@ -98,6 +98,12 @@ export function seedAquarelleEngine(options: AquarelleSeedOptions): AquarelleSee
     frameCount: 1,
     // The seed captures no frame — the live sheet IS the output.
     encodeWebp: async () => new Uint8Array(0),
+    // FREEZE FIX (2026-11-22): the seed replays the WHOLE committed script on
+    // the live engine — without slicing it owns the main thread for the replay
+    // (1.8 s at 240 samples, more for a real script) and the Studio freezes
+    // after every lift and frame change. Yield between samples/ticks; the
+    // engine is in manual mode, so the seeded state is unchanged.
+    yieldToHostMs: 8,
   })
 
   let cancelled = false

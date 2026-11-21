@@ -129,6 +129,15 @@ describe('the seed replay law (aquarelleSeed)', () => {
   it('is exported from the MAIN entry only (the lean bake chunk stays lean)', () => {
     expectContains(INDEX_SOURCE, "export * from './bake/aquarelleSeed'")
   })
+
+  it('time-slices the replay so the Studio never freezes (2026-11-22)', () => {
+    // The seed replays the whole committed script on the LIVE engine. Without
+    // host yields that replay owns the main thread for its whole duration
+    // (probe: 1.8 s @ 1080p / 240 samples) — the artist saw the Studio freeze
+    // after every lift and every frame change. The bake's opt-in slicing seam
+    // is the fix; the seed must always pass it.
+    expectContains(SEED_SOURCE, 'yieldToHostMs: 8,')
+  })
 })
 
 describe('the seed orchestration at runtime (no WebGL)', () => {

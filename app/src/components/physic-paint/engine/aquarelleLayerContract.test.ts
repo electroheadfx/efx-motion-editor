@@ -205,6 +205,12 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('if (!hasPaint || seeding) return;');
     expect(layer).toContain('if (leavingHasPaint && !leavingSeeded) {');
     expect(layer).toContain('if (!disabledRef.current && !seeding) {');
+    // FREEZE FIX (2026-11-22): the seed now yields to the host mid-replay, so
+    // the rAF tick runs there. The visible settle cap must never force-dry a
+    // PARTIAL seed (after a lift its lastWetAt/awake state is already set).
+    expect(layer).toContain(
+      'if (!seeding && !painting && !settleCapArmed && lastWetAt > 0 && engine.isAwake) {',
+    );
     // NEVER STACK: a seeded sheet CARRIES the committed base, so the display
     // underlay stays unbound and the cached base steps aside through the one
     // never-stack law (`aquarelleBaseCompositedLive`).

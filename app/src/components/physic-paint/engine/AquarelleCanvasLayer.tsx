@@ -1204,7 +1204,11 @@ export function AquarelleCanvasLayer(props: {
       // denser wash the bake's capped end frame holds. The cap fix is marked
       // AUTO: the next stroke reopens it (see reopenSettleOnPaint) so it can
       // still blend; an explicit Dry stays permanent.
-      if (!painting && !settleCapArmed && lastWetAt > 0 && engine.isAwake) {
+      // LIVE-SEED: the cap fix must never fire MID-REPLAY — after a lift the
+      // stroke left `lastWetAt`/`isAwake` set, and a sliced seed yields to
+      // the host between chunks (the tick runs there). A cap fix then would
+      // force-dry a partial seed and poison the committed base.
+      if (!seeding && !painting && !settleCapArmed && lastWetAt > 0 && engine.isAwake) {
         const capMs = aquarelleVisibleSettleTicks(aquarelleParams.value.dry) * HOST_TICK_MS;
         if (performance.now() - lastWetAt >= capMs) {
           settleCapArmed = true;

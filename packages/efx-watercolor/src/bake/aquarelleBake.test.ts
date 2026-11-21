@@ -1734,3 +1734,55 @@ describe('quick 261116-rp — raw pointer ticks in the timed walk', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// LIVE-SEED slicing (2026-11-22): the seed replays the WHOLE committed script
+// on the live engine. Before this option the replay ran with no macrotask gap
+// at all (measured 1.8 s @ 240 samples, scaling with the script) and the
+// Studio froze solid after every lift and frame change. `yieldToHostMs` is
+// opt-in, so the commit / Play paths keep their exact yield points.
+// ---------------------------------------------------------------------------
+
+describe('LIVE-SEED slicing: the replay yields to the host', () => {
+  it('runs a host macrotask DURING a long replay when yieldToHostMs is set', async () => {
+    const { adapter } = makeFakeAdapter()
+    const inner = adapter.renderPartialStrokes
+    // Stand-in for the engine-tick cost the freeze came from: every feed
+    // chunk burns real wall time inside the synchronous sample loop.
+    adapter.renderPartialStrokes = (entries) => {
+      const until = performance.now() + 3
+      while (performance.now() < until) {
+        // stylized engine tick
+      }
+      inner(entries)
+    }
+    let hostTurns = 0
+    const timer = setInterval(() => {
+      hostTurns += 1
+    }, 0)
+    try {
+      const bake = createAquarelleBake(adapter, {
+        frameCount: 1,
+        encodeWebp: pixelEncoder,
+        width: 8,
+        height: 8,
+        yieldToHostMs: 1,
+      })
+      const points = Array.from({ length: 64 }, (_, index) => ({
+        x: 4 + (index % 32),
+        y: 4,
+        p: 0.5,
+        tx: 0,
+        ty: 0,
+        tw: 0,
+      }))
+      const result = await bake.bake([makeStroke({ points })])
+      expect(result.ok).toBe(true)
+      // A timer callback only runs between macrotasks; zero here would mean
+      // the replay owned the thread from start to finish.
+      expect(hostTurns).toBeGreaterThan(0)
+    } finally {
+      clearInterval(timer)
+    }
+  })
+})

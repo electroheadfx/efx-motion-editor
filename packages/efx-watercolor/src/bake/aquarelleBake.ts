@@ -216,6 +216,18 @@ export interface AquarelleBakeOptions {
    * ON costs one full replay per output frame: `paintSeedReplays` reports it.
    */
   paintSeedVariation?: 'progressive' | 'static'
+  /**
+   * LIVE-SEED (2026-11-22): time-slice the replay. When set (> 0), the bake
+   * awaits a MACROTASK yield whenever this many ms of replay work elapsed
+   * since the last one — between sample-feed chunks, inside long idle-gap
+   * walks and across the settle ticks. The seed replays a whole committed
+   * script on the LIVE engine; without this it owns the main thread for the
+   * whole replay (measured 1.8-3.4 s on a 240-sample base, scaling with the
+   * script) and the Studio freezes solid. The stepped state is IDENTICAL —
+   * the engine is in manual mode and only advances inside the walk — the
+   * option only lets the host paint. Absent = zero behaviour change.
+   */
+  yieldToHostMs?: number
 }
 
 export type AquarelleBakeResult =
@@ -481,6 +493,51 @@ export function createAquarelleBake(
     const canSkip = typeof seams.skipTicks === 'function' && typeof seams.isAwake === 'function'
     const stepTimeline = countedStep(diagnostics)
 
+    // LIVE-SEED slicing (2026-11-22): opt-in host yields inside the replay.
+    // The seed runs a whole committed script on the LIVE engine; without
+    // these the main thread is owned for seconds (measured seedMs in the
+    // probe). Every yield lands BETWEEN samples/ticks with the engine in
+    // manual mode, so the stepped state — and therefore the bake's bytes —
+    // is untouched. Commit and Play never pass the option: their yield
+    // points stay exactly where they were.
+    const sliceMs = options.yieldToHostMs ?? 0
+    // Small chunks: one engine tick is the cost unit and a slow CPU can spend
+    // several ms on it, so the check cadence — never a timer — bounds a block.
+    const FEED_SLICE_POINTS = 8
+    const FEED_SLICE_TICKS = 8
+    let lastSliceAt = readNow()
+    const sliceNow = async (): Promise<void> => {
+      if (sliceMs <= 0 || readNow() - lastSliceAt < sliceMs) return
+      await yieldToHost()
+      lastSliceAt = readNow()
+    }
+    /**
+     * Feed sample counts in bounded chunks so a long stroke can never own
+     * the thread. Absolute increasing counts are exactly what the adapter
+     * already consumes (its own cursor ignores re-fed samples), and the
+     * per-entry split is the sequential law a multi-entry call already walks.
+     * No option → the one original call, byte-identical.
+     */
+    const feedSliced = async (
+      entries: ReadonlyArray<{ stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }>,
+    ): Promise<void> => {
+      if (sliceMs <= 0) {
+        adapter.renderPartialStrokes(entries)
+        return
+      }
+      for (const entry of entries) {
+        const target = entry.pointCount
+        if (target > FEED_SLICE_POINTS) {
+          for (let count = FEED_SLICE_POINTS; count < target; count += FEED_SLICE_POINTS) {
+            adapter.renderPartialStrokes([{ stroke: entry.stroke, pointCount: count }])
+            await sliceNow()
+          }
+        }
+        adapter.renderPartialStrokes([{ stroke: entry.stroke, pointCount: target }])
+        await sliceNow()
+      }
+    }
+
     /**
      * 261029-bks: walk one idle gap `[fromTick, toTick)` on the recorded
      * timeline. Probe BEFORE each step: while awake the tick runs on the
@@ -490,10 +547,11 @@ export function createAquarelleBake(
      * Never reads or mutates any walker's cursor; never crosses a Dry, a
      * window bound or the settle law (the caller owns the bounds).
      */
-    function stepGap(fromTick: number, toTick: number): void {
+    async function stepGap(fromTick: number, toTick: number): Promise<void> {
       if (toTick <= fromTick) return
       diagnostics.gapCount += 1
       let tick = fromTick
+      let sinceSliceCheck = 0
       while (tick < toTick) {
         if (canSkip && !seams.isAwake!()) {
           // Mandatory boundary tick: the tick that first observes sleep.
@@ -510,6 +568,13 @@ export function createAquarelleBake(
         }
         stepTimeline(tick)
         tick += 1
+        if (sliceMs > 0) {
+          sinceSliceCheck += 1
+          if (sinceSliceCheck >= FEED_SLICE_TICKS) {
+            sinceSliceCheck = 0
+            await sliceNow()
+          }
+        }
       }
     }
 
@@ -769,14 +834,14 @@ export function createAquarelleBake(
           }
           if (pointCount <= fed) continue
           const firstTick = entry.beginTick + pointTickAt(entry.stroke, fed)
-          stepGap(cursor, firstTick)
+          await stepGap(cursor, firstTick)
           if (fed === 0) {
             for (const dry of drysBeforeStroke.get(entry.stroke) ?? []) {
               adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
             }
           }
           // The adapter ticks once per fed sample.
-          adapter.renderPartialStrokes([{ stroke: entry.stroke, pointCount }])
+          await feedSliced([{ stroke: entry.stroke, pointCount }])
           cursor = entry.beginTick + pointTickAt(entry.stroke, pointCount - 1) + 1
           state.fedCounts.set(entry.stroke, pointCount)
           if (pointCount >= pts.length) await reportFed(entry.stroke, state.report)
@@ -786,19 +851,19 @@ export function createAquarelleBake(
         if (frameIndex === frameSpan - 1 && trailingDrys.length > 0) {
           // The Dry fires AFTER the clock reaches windowEnd (its fix + 30
           // ticks unchanged) — the gap may skip, the Dry never moves.
-          stepGap(cursor, window.windowEnd)
+          await stepGap(cursor, window.windowEnd)
           cursor = window.windowEnd
           for (const dry of trailingDrys) {
             adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
           }
         }
-        stepGap(cursor, window.windowEnd)
+        await stepGap(cursor, window.windowEnd)
         state.cursor = cursor
       } else {
         for (const dry of drysByFrame.get(frameIndex) ?? []) {
           adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
         }
-        adapter.renderPartialStrokes(
+        await feedSliced(
           window.frameStrokes as { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[],
         )
         for (const entry of window.frameStrokes) {
@@ -806,6 +871,7 @@ export function createAquarelleBake(
         }
         for (let tick = 0; tick < window.tickBudget; tick += 1) {
           stepTimeline(tick)
+          if (sliceMs > 0 && (tick % FEED_SLICE_TICKS) === FEED_SLICE_TICKS - 1) await sliceNow()
         }
       }
     }
@@ -817,19 +883,21 @@ export function createAquarelleBake(
      * test doubles) keep the cook-to-sleep fallback. NEVER skipped (truth table
      * row 5).
      */
-    const applySettle = (): void => {
+    const applySettle = async (): Promise<void> => {
       const fixSeam = seams.fix
       if (settleCapped && typeof fixSeam === 'function') {
         fixSeam.call(adapter)
         for (let tick = 0; tick < FIX_SETTLE_TICKS; tick += 1) {
           stepTimeline(tick)
           diagnostics.settleTicks += 1
+          if (sliceMs > 0 && (tick % FEED_SLICE_TICKS) === FEED_SLICE_TICKS - 1) await sliceNow()
         }
       } else if (typeof seams.isAwake === 'function') {
         const awake = seams.isAwake
         for (let guard = 0; guard < SETTLE_MAX_TICKS && awake(); guard += 1) {
           stepTimeline(guard)
           diagnostics.settleTicks += 1
+          if (sliceMs > 0 && (guard % FEED_SLICE_TICKS) === FEED_SLICE_TICKS - 1) await sliceNow()
         }
       }
     }
@@ -853,7 +921,7 @@ export function createAquarelleBake(
           // cursor and a shared feed map. The last frame applies the settle law.
           const state: ReplayState = { cursor: window.windowStart, fedCounts, report: true }
           await walkWindow(frameIndex, window, state)
-          if (isFinalFrame) applySettle()
+          if (isFinalFrame) await applySettle()
           return adapter.captureFrame()
         }
 
@@ -871,7 +939,7 @@ export function createAquarelleBake(
           report: isFinalFrame,
         }
         for (let w = 0; w <= lastWindow; w += 1) await walkWindow(w, windows[w]!, state)
-        if (variation === 'static' || isFinalFrame) applySettle()
+        if (variation === 'static' || isFinalFrame) await applySettle()
         return adapter.captureFrame()
       })
 
