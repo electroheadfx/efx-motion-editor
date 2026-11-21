@@ -48,7 +48,8 @@ import {
 } from '../../src/payload/toStudioStroke'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { f16ToF32 } from '../../src/playground/half'
-import { coeffsToLinear } from '../../src/playground/spectral'
+import { coeffsToLinear, pigmentFromHex } from '../../src/playground/spectral'
+import { BASIS, PRIMARIES, SPECTRAL_EPSILON } from '../../src/playground/spectralData'
 
 const SHEET_W = 800
 const SHEET_H = 600
@@ -221,6 +222,11 @@ interface Fields {
   dh: number
   cover: Float32Array
   stamps: Float32Array
+  /** The composed sheet's own coefficients: inkA/inkB + fixedA/fixedB (RGBA each). */
+  inkA: Float32Array
+  inkB: Float32Array
+  fixedA: Float32Array
+  fixedB: Float32Array
 }
 
 function readFields(engine: WatercolorEngine): Fields {
@@ -229,7 +235,78 @@ function readFields(engine: WatercolorEngine): Fields {
   const cover = new Float32Array(half.length)
   f16ToF32(half, cover)
   const stamps = e.g.readFloat(e.lastTouch.read.views[0]!, e.dw, e.dh)
-  return { dw: e.dw, dh: e.dh, cover, stamps }
+  const read4 = (fb: WebGLFramebuffer): Float32Array => {
+    const h = e.g.readHalf(fb, e.dw, e.dh, 4)
+    const out = new Float32Array(h.length)
+    f16ToF32(h, out)
+    return out
+  }
+  return {
+    dw: e.dw,
+    dh: e.dh,
+    cover,
+    stamps,
+    inkA: read4(e.ink.read.views[0]!),
+    inkB: read4(e.ink.read.views[1]!),
+    fixedA: read4(e.fixed.views[0]!),
+    fixedB: read4(e.fixed.views[1]!),
+  }
+}
+
+/** Bilinear sample of one RGBA channel, GL_LINEAR CLAMP_TO_EDGE, uv in texel coords. */
+function bilinearRGBA(data: Float32Array, f: Fields, ch: number, u: number, v: number): number {
+  const x = u - 0.5
+  const y = v - 0.5
+  const x0 = Math.floor(x)
+  const y0 = Math.floor(y)
+  const fx = x - x0
+  const fy = y - y0
+  const cx = (v2: number): number => Math.min(f.dw - 1, Math.max(0, v2))
+  const cy = (v2: number): number => Math.min(f.dh - 1, Math.max(0, v2))
+  const at = (px: number, py: number): number => data[(cy(py) * f.dw + cx(px)) * 4 + ch]!
+  const p00 = at(x0, y0)
+  const p10 = at(x0 + 1, y0)
+  const p01 = at(x0, y0 + 1)
+  const p11 = at(x0 + 1, y0 + 1)
+  return (p00 + (p10 - p00) * fx) + ((p01 + (p11 - p01) * fx) - (p00 + (p10 - p00) * fx)) * fy
+}
+
+/** `canvasAt`/`canvasAtB`: the sheet's seven coefficients at a uv. */
+function canvasCoeffsAt(f: Fields, uvX: number, uvY: number): number[] {
+  const u = uvX * f.dw
+  const v = uvY * f.dh
+  const c: number[] = []
+  for (let ch = 0; ch < 4; ch++) c.push(bilinearRGBA(f.inkA, f, ch, u, v) + bilinearRGBA(f.fixedA, f, ch, u, v))
+  for (let ch = 0; ch < 3; ch++) c.push(bilinearRGBA(f.inkB, f, ch, u, v) + bilinearRGBA(f.fixedB, f, ch, u, v))
+  return c
+}
+
+/**
+ * CPU mirror of `pigmentFromDisplayGLSL` (the committed-base inversion): sRGB
+ * transmittance -> the seven absorbance coefficients, tables imported from
+ * spectralData exactly as the emitted block generates them.
+ */
+function underlayCoeffsCpu(t: readonly number[]): number[] {
+  const lin = t.map((val) => (val < 0.04045 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4)))
+  const w = Math.min(lin[0]!, lin[1]!, lin[2]!)
+  const q = lin.map((val) => val - w)
+  const c = Math.min(q[1]!, q[2]!)
+  const m = Math.min(q[0]!, q[2]!)
+  const y = Math.min(q[0]!, q[1]!)
+  const rr = Math.min(Math.max(0, q[0]! - q[2]!), Math.max(0, q[0]! - q[1]!))
+  const gg = Math.min(Math.max(0, q[1]! - q[2]!), Math.max(0, q[1]! - q[0]!))
+  const bb = Math.min(Math.max(0, q[2]! - q[1]!), Math.max(0, q[2]! - q[0]!))
+  const coeffs: number[] = []
+  for (let k = 0; k < 7; k++) {
+    let sum = 0
+    for (let i = 0; i < 38; i++) {
+      const pri = PRIMARIES[i]!
+      const r = w + c * pri[0]! + m * pri[1]! + y * pri[2]! + rr * pri[3]! + gg * pri[4]! + bb * pri[5]!
+      sum += BASIS[k]![i]! * -Math.log(Math.max(r, SPECTRAL_EPSILON))
+    }
+    coeffs.push(sum)
+  }
+  return coeffs
 }
 
 /** `texture(uCover, uv)` — GL_LINEAR, CLAMP_TO_EDGE. uv in texel coords. */
@@ -256,18 +333,68 @@ function stampAt(f: Fields, u: number, v: number): number {
   return f.stamps[y * f.dw + x]!
 }
 
-/** The carrier/gather `wetAt` at one UV texel: exp(-age/T) * clamp(cover/floor). */
+// The app-live arm's committed base, mirroring the carrier's uBaseTap seam:
+// the uploaded underlay (sRGB transmittance, y-flipped like setUnderlay) and
+// its engine-relative last-touch stamp (`underlayTimeSec`).
+let baseTap: { data: Uint8ClampedArray; w: number; h: number; time: number } | null = null
+
+/** `texture(uBaseTap, uv)` — GL_LINEAR, CLAMP_TO_EDGE, uploaded with a y flip. */
+function baseSrgbAt(uvX: number, uvY: number): [number, number, number] {
+  const b = baseTap!
+  const x = uvX * b.w - 0.5
+  const y = (1 - uvY) * b.h - 0.5
+  const x0 = Math.floor(x)
+  const y0 = Math.floor(y)
+  const fx = x - x0
+  const fy = y - y0
+  const cx = (v: number): number => Math.min(b.w - 1, Math.max(0, v))
+  const cy = (v: number): number => Math.min(b.h - 1, Math.max(0, v))
+  const at = (px: number, py: number): number[] => {
+    const i = (cy(py) * b.w + cx(px)) * 4
+    return [b.data[i]! / 255, b.data[i + 1]! / 255, b.data[i + 2]! / 255]
+  }
+  const p00 = at(x0, y0)
+  const p10 = at(x0 + 1, y0)
+  const p01 = at(x0, y0 + 1)
+  const p11 = at(x0 + 1, y0 + 1)
+  return [0, 1, 2].map(
+    (c) =>
+      (p00[c]! + (p10[c]! - p00[c]!) * fx) +
+      ((p01[c]! + (p11[c]! - p01[c]!) * fx) - (p00[c]! + (p10[c]! - p00[c]!) * fx)) * fy,
+  ) as [number, number, number]
+}
+
+/** The carrier's `underlayAlpha`: rasterAlpha's `1 - min(t)` on the sample. */
+function baseAlphaAt(uvX: number, uvY: number): number {
+  const t = baseSrgbAt(uvX, uvY)
+  return clamp01(1 - Math.min(t[0], t[1], t[2]))
+}
+
+/**
+ * The carrier/gather `wetAt` at one UV texel: exp(-age/T) * clamp(cover/floor).
+ * `useBase` mirrors the carrier's uBaseTapOn seam (the gather keeps it off):
+ * a bare base texel takes the committed age, the union cover feeds the gate.
+ */
 function wetAtUV(
   f: Fields,
   uvX: number,
   uvY: number,
   uNow: number,
   wetSeconds: number,
+  useBase = false,
 ): { wet: number; coverRaw: number; coverNorm: number; age: number } {
   const u = uvX * f.dw
   const v = uvY * f.dh
-  const coverRaw = coverAt(f, u, v)
-  const age = Math.max(uNow - stampAt(f, u, v), 0)
+  let coverRaw = coverAt(f, u, v)
+  let age = Math.max(uNow - stampAt(f, u, v), 0)
+  if (useBase && baseTap !== null) {
+    // The base's stamp is the oldest real memory; a sheet age beyond it is
+    // cleared-sentinel residue, not a touch. Its paint survives to the deposit
+    // law's residual (1 - cover/floor), the same share the tap colour uses.
+    age = Math.min(age, Math.max(uNow - baseTap.time, 0))
+    const share = 1 - clamp01(coverRaw / BODY_FLOOR)
+    coverRaw = clamp01(coverRaw + baseAlphaAt(uvX, uvY) * share)
+  }
   const decay = Math.exp(-age / Math.max(wetSeconds, 1))
   return {
     wet: decay * clamp01(coverRaw / BODY_FLOOR),
@@ -306,7 +433,14 @@ interface BristleTerms {
   touch: number
   pickupRaw: number
   pickup: number
+  /** The composed tap colour's display hue — what `mix(carried, canvas, pickup)` pulls toward. */
+  tapHueDeg: number | null
+  /** The samePaint cosine of the composed tap against the brush's own pigment. */
+  samePaint: number
 }
+
+/** The tested stroke's palette pigment (BAND_COLOR at concentration 1). */
+const TESTED_PIGMENT = pigmentFromHex(BAND_COLOR).coeffs
 
 let capturedEngine: WatercolorEngine | null = null
 let strokeSeq = 0
@@ -409,9 +543,9 @@ function bristleTermsAt(
   const tapX = dirX * (1.5 / e.dw)
   const tapY = dirY * (1.5 / e.dh)
   const taps = [
-    wetAtUV(fields, posX - tapX, posY - tapY, dab.uNow, e.params.wetSeconds),
-    wetAtUV(fields, posX, posY, dab.uNow, e.params.wetSeconds),
-    wetAtUV(fields, posX + tapX, posY + tapY, dab.uNow, e.params.wetSeconds),
+    wetAtUV(fields, posX - tapX, posY - tapY, dab.uNow, e.params.wetSeconds, true),
+    wetAtUV(fields, posX, posY, dab.uNow, e.params.wetSeconds, true),
+    wetAtUV(fields, posX + tapX, posY + tapY, dab.uNow, e.params.wetSeconds, true),
   ]
   const wet = (taps[0]!.wet + taps[1]!.wet + taps[2]!.wet) / 3
   const coverRaw = (taps[0]!.coverRaw + taps[1]!.coverRaw + taps[2]!.coverRaw) / 3
@@ -423,6 +557,47 @@ function bristleTermsAt(
     dab.pr,
   )
   const pickupRaw = 1.0 * thirst * dab.travel * wet * touch
+  // The composed tap colour (`tapCanvas` x3, cover-weighted): the sheet's own
+  // coefficients plus the committed base at the display's (1 - cover) share.
+  const tapA = [0, 0, 0, 0]
+  const tapB = [0, 0, 0]
+  let wSum = 0
+  for (const [du, dv] of [
+    [-tapX, -tapY],
+    [0, 0],
+    [tapX, tapY],
+  ] as const) {
+    const uvX = posX + du
+    const uvY = posY + dv
+    const sheetCov = coverAt(fields, uvX * fields.dw, uvY * fields.dh)
+    const coeffs = canvasCoeffsAt(fields, uvX, uvY)
+    let cov = sheetCov
+    if (baseTap !== null) {
+      // The deposit law's residual (1 - cover/floor), not the display's 1 - cover.
+      const share = 1 - clamp01(sheetCov / BODY_FLOOR)
+      const base = underlayCoeffsCpu(baseSrgbAt(uvX, uvY))
+      for (let k = 0; k < 7; k++) coeffs[k]! += base[k]! * share
+      cov = clamp01(sheetCov + baseAlphaAt(uvX, uvY) * share)
+    }
+    for (let k = 0; k < 4; k++) tapA[k]! += coeffs[k]! * cov
+    for (let k = 0; k < 3; k++) tapB[k]! += coeffs[4 + k]! * cov
+    wSum += cov
+  }
+  let tapHueDeg: number | null = null
+  let samePaint = 1
+  if (wSum > 1e-4) {
+    const composed = [...tapA.map((v) => v / wSum), ...tapB.map((v) => v / wSum)]
+    tapHueDeg = coeffsHue(composed).hueDeg
+    let own2 = 0
+    let can2 = 0
+    let cross = 0
+    for (let k = 0; k < 7; k++) {
+      own2 += TESTED_PIGMENT[k]! * TESTED_PIGMENT[k]!
+      can2 += composed[k]! * composed[k]!
+      cross += TESTED_PIGMENT[k]! * composed[k]!
+    }
+    samePaint = cross / Math.sqrt(Math.max(own2 * can2, 1e-8))
+  }
   return {
     index,
     across,
@@ -436,6 +611,8 @@ function bristleTermsAt(
     touch,
     pickupRaw,
     pickup: Math.min(0.75, Math.max(0, pickupRaw)),
+    tapHueDeg,
+    samePaint,
   }
 }
 
@@ -899,6 +1076,52 @@ function filmAt(
   return { coeffs, hueDeg: c.hueDeg, chroma: c.chroma }
 }
 
+/**
+ * What the committed sheet actually holds, read from the exported raster.
+ * MODE.transparent is opaque with white = no pigment, so darkness
+ * `1 - min(rgb)` is the pigment's own alpha law (mode-4 display alpha is
+ * darkness). `coverImprint` runs the same read on exportCanvas('coverage')
+ * (the coverage channel is drawn into alpha) as the merge's replacement weight.
+ */
+function measureSheetInk(canvas: HTMLCanvasElement): {
+  width: number
+  height: number
+  centre: [number, number, number, number]
+  centreDarkness: number
+  meanDarkness: number
+  paintedFraction: number
+} {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('measureSheetInk: no 2d context')
+  const { width, height } = canvas
+  const data = ctx.getImageData(0, 0, width, height).data
+  const darknessAt = (i: number): number => {
+    const r = data[i]!
+    const g = data[i + 1]!
+    const b = data[i + 2]!
+    return 1 - Math.min(r, g, b) / 255
+  }
+  let sum = 0
+  let painted = 0
+  const total = width * height
+  for (let i = 0; i < data.length; i += 4) {
+    const d = darknessAt(i)
+    sum += d
+    if (d > 0.01) painted += 1
+  }
+  const cx = Math.floor(width / 2)
+  const cy = Math.floor(height / 2)
+  const ci = (cy * width + cx) * 4
+  return {
+    width,
+    height,
+    centre: [data[ci]!, data[ci + 1]!, data[ci + 2]!, data[ci + 3]!],
+    centreDarkness: darknessAt(ci),
+    meanDarkness: sum / total,
+    paintedFraction: painted / total,
+  }
+}
+
 // --- capture ----------------------------------------------------------------
 
 interface Sample {
@@ -995,14 +1218,18 @@ function horizontalPoints(pressure: number): readonly AquarellePoint[] {
   return [0.12, 0.3733, 0.6267, 0.88].map((x) => ({ x, y: 0.5, p: pressure, tx: 0, ty: 0, tw: 0 }))
 }
 
+type ProbeScene = 'band' | 'blank' | 'app-live' | 'app-bake'
+
 interface SceneConfig {
-  scene: 'band' | 'blank'
+  scene: ProbeScene
   blueSize: number
   dry: number
   feather: number
   pickup: number
   body: number
   pressure: number
+  /** Artist pause between the base and the tested stroke, in ms. */
+  gapMs: number
 }
 
 let sceneConfig: SceneConfig = {
@@ -1013,6 +1240,7 @@ let sceneConfig: SceneConfig = {
   pickup: 100,
   body: 0,
   pressure: 0.75,
+  gapMs: 3000,
 }
 
 let midReport: MidReport | null = null
@@ -1047,13 +1275,14 @@ function makeStroke(
   color: string,
   bag: Record<string, number>,
   mutationId: number,
+  points: readonly AquarellePoint[] = horizontalPoints(sceneConfig.pressure),
 ): StudioStroke<AquarelleStrokePayload> {
   return toStudioStroke({
     tool: 'brush',
     color,
     params: bag,
     brushId: BRUSH_ID,
-    points: horizontalPoints(sceneConfig.pressure).map((point) => ({ ...point })),
+    points: points.map((point) => ({ ...point })),
     mutationId,
     timestamp: 0,
   })
@@ -1205,10 +1434,14 @@ function dumpFields(engine: WatercolorEngine): Record<string, unknown> {
 function readSceneConfig(): SceneConfig {
   const params = new URLSearchParams(location.search)
   const sceneRaw = params.get('scene')
-  const scene: 'band' | 'blank' =
-    sceneRaw === null || sceneRaw === '' ? 'band' : sceneRaw === 'blank' ? 'blank' : sceneRaw === 'band' ? 'band' : (() => {
-      throw new Error(`invalid scene "${sceneRaw}"`)
-    })()
+  const scene: ProbeScene =
+    sceneRaw === null || sceneRaw === ''
+      ? 'band'
+      : sceneRaw === 'blank' || sceneRaw === 'band' || sceneRaw === 'app-live' || sceneRaw === 'app-bake'
+        ? sceneRaw
+        : (() => {
+            throw new Error(`invalid scene "${sceneRaw}"`)
+          })()
   const sizeRaw = params.get('size') ?? params.get('blueSize')
   const blueSize = sizeRaw === null || sizeRaw === '' ? 17 : Number(sizeRaw)
   if (!Number.isInteger(blueSize) || blueSize < 1 || blueSize > 800) {
@@ -1229,6 +1462,7 @@ function readSceneConfig(): SceneConfig {
     pickup: number('pickup', 100),
     body: number('body', 0),
     pressure: number('pressure', 0.75),
+    gapMs: number('gap', 3000),
   }
 }
 
@@ -1254,6 +1488,7 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
   captures.clear()
   midReport = null
   midDab = 0
+  baseTap = null
 
   const adapter = createAquarelleEngineAdapter({
     width: SHEET_W,
@@ -1270,18 +1505,60 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
       for (let tick = 0; tick <= SETTLE_TICKS; tick += 1) adapter.stepTick(tick)
     }
     let fieldDumpBand: Record<string, unknown> | null = null
+    let appSurface: Record<string, unknown> | null = null
+    const testedBag = paramsBag(blueSize, config.pickup, config.feather, config.body, config.dry)
+    let testedStroke: StudioStroke<AquarelleStrokePayload>
     if (config.scene === 'band') {
       adapter.applyStroke(makeStroke(BAND_COLOR, paramsBag(bandSize, 0, 0, 0), 0x7ec000))
       settle()
       fieldDumpBand = dumpFields(engine)
+      testedStroke = makeStroke(BLUE_COLOR, testedBag, 0x7ec001)
+    } else if (config.scene === 'app-live' || config.scene === 'app-bake') {
+      // THE ARTIST'S TWO SURFACES (2026-11-21): a committed blue base, then a
+      // yellow stroke at Pickup `config.pickup` / Refill 0.
+      //   app-bake — the base is IN the sheet, exactly what the re-bake
+      //              replays before the tested stroke.
+      //   app-live — the base exists ONLY as the display underlay: the app
+      //              reset the sheet at the Apply/session boundary and bound
+      //              the committed bytes through engine.setUnderlay.
+      // The committed base lies UNDER the whole tested stroke (the artist's
+      // sheet, and the spike-003 band lens): same path, wider.
+      adapter.applyStroke(
+        makeStroke(BLUE_COLOR, paramsBag(bandSize, 0, 0, 0), 0x7ec000),
+      )
+      settle()
+      if (config.scene === 'app-live') {
+        const sheet = engine.exportCanvas('transparent')
+        const sheetCover = engine.exportCoverageCanvas()
+        appSurface = {
+          underlay: 'committed-sheet',
+          sheet: measureSheetInk(sheet),
+          coverImprint: measureSheetInk(sheetCover),
+        }
+        engine.resetSheet()
+        engine.setUnderlay(sheet)
+        // Mirror the carrier's uBaseTap seam: the uploaded bytes (sRGB, y-flip)
+        // and the engine-relative stamp setUnderlay just wrote.
+        const ctx2d = sheet.getContext('2d')!
+        const img = ctx2d.getImageData(0, 0, sheet.width, sheet.height)
+        baseTap = {
+          data: img.data,
+          w: sheet.width,
+          h: sheet.height,
+          time: (engine as unknown as { underlayTimeSec?: number }).underlayTimeSec ?? 0,
+        }
+      } else {
+        appSurface = { underlay: 'none (base in sheet)' }
+      }
+      // The artist's pause before the tested stroke — the SAME clock in both
+      // arms, so only the carrier's sheet content can differ.
+      adapter.advanceClock(config.gapMs)
+      fieldDumpBand = dumpFields(engine)
+      testedStroke = makeStroke(BAND_COLOR, testedBag, 0x7ec001)
+    } else {
+      testedStroke = makeStroke(BLUE_COLOR, testedBag, 0x7ec001)
     }
-    adapter.applyStroke(
-      makeStroke(
-        BLUE_COLOR,
-        paramsBag(blueSize, config.pickup, config.feather, config.body, config.dry),
-        0x7ec001,
-      ),
-    )
+    adapter.applyStroke(testedStroke)
     const fieldDumpFinal = dumpFields(engine)
     // The stroke is deposited synchronously; the final state is "after the
     // last dab". Its gate is the last target dab's terms when one was taken.
@@ -1309,6 +1586,7 @@ function runScene(config: SceneConfig, renderer: string): Record<string, unknown
       bristleCount: picks?.count ?? null,
       captures: ordered,
       mid,
+      appSurface,
       fieldDumpBand,
       fieldDumpFinal,
       renderer,
@@ -1325,7 +1603,9 @@ function main(): void {
   try {
     config = readSceneConfig()
     sceneConfig = config
-    blueStrokeSeq = config.scene === 'band' ? 2 : 1
+    // The tested stroke is the second bristle stroke everywhere except the
+    // blank scene (nothing painted before it).
+    blueStrokeSeq = config.scene === 'blank' ? 1 : 2
     const canvas = document.createElement('canvas')
     canvas.width = 64
     canvas.height = 64

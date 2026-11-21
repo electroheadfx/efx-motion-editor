@@ -479,6 +479,14 @@ export class WatercolorEngine {
    * render (no export target), so the stored sheet stays stroke-only.
    */
   private underlayTex: WebGLTexture | null = null;
+  /**
+   * 2026-11-21 (pickup-collapse-live): the committed base's last touch on the
+   * engine-relative clock (SECONDS) — the underlay tap's age input. A re-bake
+   * reads the base's real last-touch stamps; the live sheet has none for the
+   * committed base, so the commit (setUnderlay) is the stamp unless the host
+   * passes the committed sheet's real age.
+   */
+  private underlayTimeSec = 0;
   private fitPadding = FIT_PADDING;             // CSS px around the sheet when fitted
   private pan: [number, number] = [0, 0];       // sheet centre from canvas centre (canvas px, y up)
   private fitMode = true;                       // keep the sheet fitted as the window changes
@@ -1148,8 +1156,16 @@ export class WatercolorEngine {
    *
    * Render-only: exports never sample it. The image is uploaded with the same
    * y-flip as the reference so document uv (y up) matches.
+   *
+   * `ageSeconds` is how long ago the committed sheet was last touched
+   * (default 0: the commit itself). The carrier's underlay tap ages the base's
+   * wetness from it, so the live first stroke reads the same tack a re-bake's
+   * last-touch field would carry — see underlayTap.test.ts.
    */
-  setUnderlay(source: HTMLCanvasElement | HTMLImageElement | null): void {
+  setUnderlay(
+    source: HTMLCanvasElement | HTMLImageElement | null,
+    opts?: { ageSeconds?: number },
+  ): void {
     const { gl } = this;
     if (!source) {
       if (this.underlayTex === null) return;
@@ -1169,6 +1185,10 @@ export class WatercolorEngine {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.underlayTex = tex;
+    // Stamp the base's age on the ONE time base last-touch uses, so the
+    // carrier's underlay tap and the settle law cannot disagree about time.
+    const age = Math.max(0, Number.isFinite(opts?.ageSeconds) ? opts!.ageSeconds! : 0);
+    this.underlayTimeSec = this.nowSec() - age;
     this.redraw();
   }
 
@@ -3179,6 +3199,14 @@ export class WatercolorEngine {
     // 261119-pod FIX 1: the cover gate tops at this floor at Body 0, so the
     // carrier normalises its READ by it — the same ceiling the gather uses.
     gl.uniform1f(p.u.uBodyFloor!, BRISTLE_BODY_ALPHA_FLOOR);
+    // 2026-11-21 (pickup-collapse-live): the committed base's tap source — the
+    // same display-only underlay displayFS composites (unit 11 is the carrier's
+    // first free unit; 0..10 are its reservoirs, fields, cover and times).
+    // Every bake engine has no underlay, so uBaseTapOn is 0 there and the
+    // recorded carrier arithmetic is untouched.
+    gl.uniform1i(p.u.uBaseTap!, g.bindTex(11, this.underlayTex ?? this.paper.tex[0]!));
+    gl.uniform1f(p.u.uBaseTapOn!, this.underlayTex !== null ? 1 : 0);
+    gl.uniform1f(p.u.uBaseTime!, this.underlayTimeSec);
     g.draw(this.bristles.write, { x0: 0, y0: 0, x1: 1, y1: this.bristleCount });
     this.bristles.swap();
   }

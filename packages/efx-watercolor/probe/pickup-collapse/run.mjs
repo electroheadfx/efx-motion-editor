@@ -52,12 +52,12 @@ if (!chrome) fail('Chrome/Chromium not found; candidates:\n  ' + chromeCandidate
 const label = flag('--label')
 if (!label) {
   fail(
-    'usage: node run.mjs --label <name> [--scene band|blank] [--size <px>] ' +
-      '[--dry <0..100>] [--feather <0..100>] [--pressure <0..1>]',
+    'usage: node run.mjs --label <name> [--scene band|blank|app-live|app-bake] [--size <px>] ' +
+      '[--dry <0..100>] [--feather <0..100>] [--pressure <0..1>] [--gap <ms>]',
   )
 }
 const sceneRaw = flag('--scene') ?? 'band'
-if (sceneRaw !== 'band' && sceneRaw !== 'blank') fail(`invalid --scene "${sceneRaw}"`)
+if (!['band', 'blank', 'app-live', 'app-bake'].includes(sceneRaw)) fail(`invalid --scene "${sceneRaw}"`)
 const sizeRaw = flag('--size') ?? flag('--blue-size')
 const blueSize = sizeRaw === undefined ? 17 : Number(sizeRaw)
 if (!Number.isInteger(blueSize) || blueSize < 1 || blueSize > 800) {
@@ -74,6 +74,7 @@ const dry = numericFlag('--dry', sceneRaw === 'blank' ? 55 : 50)
 const feather = numericFlag('--feather', 0)
 const pressure = numericFlag('--pressure', 0.75)
 const pickup = numericFlag('--pickup', 100)
+const gapMs = numericFlag('--gap', 3000)
 const centreRaw = flag('--centre')
 const rimRaw = flag('--rim')
 let pinQuery = ''
@@ -116,7 +117,7 @@ function buildBundle() {
 
 function runPage() {
   const query =
-    `scene=${sceneRaw}&size=${blueSize}&dry=${dry}&feather=${feather}&pressure=${pressure}&pickup=${pickup}${pinQuery}`
+    `scene=${sceneRaw}&size=${blueSize}&dry=${dry}&feather=${feather}&pressure=${pressure}&pickup=${pickup}&gap=${gapMs}${pinQuery}`
   const run = spawnSync(
     chrome,
     [
@@ -198,7 +199,9 @@ function reportMid(mid) {
 function report(result) {
   console.log(`\n[pickup-collapse] ${label}: scene ${result.scene}, blue size ${result.blueSize}, band ${result.bandSize}, ` +
     `${result.totalDabs} dabs, ${result.bristleCount} bristles (centre ${result.centreIndex}, rim ${result.rimIndex})`)
-  console.log('dab | travelPx | travelBW |  wetC  coverC ageC  pickupC |   loadC    hueC |  wetR  pickupR |   loadR    hueR | coverA smear')
+  console.log(
+    'dab | travelPx | travelBW |  wetC  coverC ageC  pickupC |   loadC    hueC |  wetR  pickupR |   loadR    hueR |  tapC   spC  tapR   spR | coverA smear',
+  )
   for (const c of result.captures) {
     const centre = c.samples[0]
     const rim = c.samples[1]
@@ -208,10 +211,15 @@ function report(result) {
         `${fmt(centre.load, 3)} ${fmt(centre.carriedHueDeg, 1).padStart(6)} | ` +
         `${fmt(rim.gate.wet, 3)} ${fmt(rim.gate.pickup, 4).padStart(7)} | ` +
         `${fmt(rim.load, 3)} ${fmt(rim.carriedHueDeg, 1).padStart(6)} | ` +
+        `${fmt(centre.gate.tapHueDeg, 1).padStart(5)} ${fmt(centre.gate.samePaint, 3)} ` +
+        `${fmt(rim.gate.tapHueDeg, 1).padStart(5)} ${fmt(rim.gate.samePaint, 3)} | ` +
         `${fmt(c.gather.coverMean, 3)} ${fmt(c.gather.smearMean, 3)}`,
     )
   }
   reportMid(result.mid)
+  if (result.appSurface) {
+    console.log(`app   | ${JSON.stringify(result.appSurface)}`)
+  }
 }
 
 buildBundle()

@@ -135,6 +135,73 @@ export function mixToHex(parts: { pigment: Pigment; amount: number }[]): string 
  * The epsilon and the one-dab deposit maximum are interpolated from
  * ./scattering — never retyped below.
  */
+/**
+ * The display-only side of the committed-sheet seam (2026-11-21,
+ * pickup-collapse-live): the underlay stores the committed sheet as an opaque
+ * sRGB TRANSMITTANCE raster (white = no pigment), and the carrier's taps must
+ * read it in the sheet's coefficient space or Pickup collapses on the first
+ * live stroke over a committed-only base.
+ *
+ * The block IS {@link pigmentFromHex} applied to the observed colour — the
+ * reflectance upsample followed by the basis projection — with
+ * {@link coeffsOpacity}'s alpha (rasterAlpha's `1 - min(t)`). It recovers a
+ * pigment's OWN seven coefficients from its display over white at depth
+ * 0.2..1.0 (direction cos >= 0.99, magnitude within 15 %, display error
+ * <= 0.05), so the same-paint gate stays shut on a committed base of the
+ * brush's own paint and opens for a different one. Pinned by
+ * src/playground/underlayTap.test.ts; the carrier gates every read behind
+ * uBaseTapOn, so a bake (no underlay ever bound) keeps its recorded
+ * arithmetic.
+ *
+ * Tables are emitted from spectralData — never retyped here.
+ */
+export function pigmentFromDisplayGLSL(): string {
+  const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : v.toPrecision(7))
+  const priA = PRIMARIES.map((r) => `vec4(${r.slice(0, 4).map(f).join(',')})`);
+  const priB = PRIMARIES.map((r) => `vec2(${r.slice(4, 6).map(f).join(',')})`);
+  const basis = BASIS.flatMap((row) => row.map(f));
+  const sums = BASIS.map((_, k) =>
+    `  for (int i = 0; i < 38; i++) k${k} += BASIS_K[${k * 38}+i] * a[i];`);
+  return [
+    '// COMMITTED-BASE TAP — sRGB transmittance -> the seven absorbance',
+    '// coefficients of the paint that produced it (pigmentFromHex applied to the',
+    '// observed colour, generated from spectralData).',
+    `const vec4 PRI_A[38] = vec4[38](${priA.join(',')});`,
+    `const vec2 PRI_B[38] = vec2[38](${priB.join(',')});`,
+    `const float BASIS_K[266] = float[266](${basis.join(',')});`,
+    'float underlayAlpha(vec3 t){',
+    '  return clamp(1.0 - min(t.r, min(t.g, t.b)), 0.0, 1.0);',
+    '}',
+    'void underlayCoeffs(vec3 t, out vec4 cA, out vec3 cB){',
+    '  vec3 lin = mix(t / 12.92, pow((t + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), t));',
+    '  float w = min(lin.r, min(lin.g, lin.b));',
+    '  vec3 q = lin - vec3(w);',
+    '  float c = min(q.g, q.b);',
+    '  float m = min(q.r, q.b);',
+    '  float y = min(q.r, q.g);',
+    '  float rr = min(max(0.0, q.r - q.b), max(0.0, q.r - q.g));',
+    '  float gg = min(max(0.0, q.g - q.b), max(0.0, q.g - q.r));',
+    '  float bb = min(max(0.0, q.b - q.g), max(0.0, q.b - q.r));',
+    '  float a[38];',
+    '  for (int i = 0; i < 38; i++){',
+    '    float r = w + c * PRI_A[i].x + m * PRI_A[i].y + y * PRI_A[i].z',
+    '                + rr * PRI_A[i].w + gg * PRI_B[i].x + bb * PRI_B[i].y;',
+    `    a[i] = -log(max(r, ${f(SPECTRAL_EPSILON)}));`,
+    '  }',
+    '  float k0 = 0.0;',
+    '  float k1 = 0.0;',
+    '  float k2 = 0.0;',
+    '  float k3 = 0.0;',
+    '  float k4 = 0.0;',
+    '  float k5 = 0.0;',
+    '  float k6 = 0.0;',
+    ...sums,
+    '  cA = vec4(k0, k1, k2, k3);',
+    '  cB = vec3(k4, k5, k6);',
+    '}',
+  ].join('\n');
+}
+
 export function displayBasisGLSL(): string {
   const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : v.toPrecision(7));
   const scattered: string[] = [];
