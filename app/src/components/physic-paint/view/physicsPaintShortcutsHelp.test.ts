@@ -72,6 +72,8 @@ describe('Studio catalog accuracy', () => {
   it('documents the tool letters the Studio dispatcher owns', () => {
     expect(groupByTitle('Paint Tools').entries.map((entry) => entry.keys)).toEqual([
       'B',
+      // quick 261121-mtu: A joins Paint Tools as the Watercolor tool.
+      'A',
       'W',
       'E',
       'P',
@@ -88,7 +90,8 @@ describe('Studio catalog accuracy', () => {
 
   it('documents the Move/Edit surface keys and gestures', () => {
     const keys = groupByTitle('Move/Edit').entries.map((entry) => entry.keys);
-    for (const expected of ['A', '⇧A', 'Tab', 'Delete / ⌫', 'Drag', 'Corner handles', 'Edge handles', 'Top handle']) {
+    // quick 261121-mtu: the Move/Edit toggle moved from A to M; Shift+A stays.
+    for (const expected of ['M', '⇧A', 'Tab', 'Delete / ⌫', 'Drag', 'Corner handles', 'Edge handles', 'Top handle']) {
       expect(keys).toContain(expected);
     }
   });

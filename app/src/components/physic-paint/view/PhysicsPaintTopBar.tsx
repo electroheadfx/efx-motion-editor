@@ -450,10 +450,14 @@ export function PhysicsPaintTopBar({
   // grain) do not describe an eraser stroke.
   const activeTool = aquarelleActiveTool.value;
   const liftStrength = aquarelleParams.value.lift;
-  // 261029-hy2: only Brush and Eraser own top-bar settings. Water and Pen
-  // REMOVE the cluster from the DOM (not merely disable it) — an empty
-  // flex: 1 1 auto box would still eat the bar's remaining width.
-  const toolOwnsSettings = activeTool === 'brush' || activeTool === 'lift';
+  // 261029-hy2: only the paint tools (Brush, and quick 261121-mtu's
+  // Watercolor) and the Eraser own top-bar settings. Water and Pen REMOVE the
+  // cluster from the DOM (not merely disable it) — an empty flex: 1 1 auto box
+  // would still eat the bar's remaining width. 'watercolor' is a paint tool
+  // with the brush family: without it the Size slider would vanish while
+  // painting watercolor.
+  const toolOwnsSettings =
+    activeTool === 'brush' || activeTool === 'watercolor' || activeTool === 'lift';
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">

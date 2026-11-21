@@ -1959,6 +1959,8 @@ describe('261031-cf9 the Paint seed variation switch row', () => {
 describe('261031-euf stroke list model', () => {
   it('maps each recorded tool to its display label', () => {
     expect(strokeToolLabel('brush')).toBe('Brush');
+    // quick 261121-mtu: the fifth payload tool is its own list category.
+    expect(strokeToolLabel('watercolor')).toBe('Watercolor');
     expect(strokeToolLabel('water')).toBe('Water');
     expect(strokeToolLabel('pen')).toBe('Pen');
     expect(strokeToolLabel('lift')).toBe('Eraser');
@@ -2112,16 +2114,18 @@ describe('261031-euf finer filter model', () => {
     listStroke(8, 'lift', 'round'),
   ];
 
-  it('lists only the present tools in the canonical brush/water/pen/lift order', () => {
+  it('lists only the present tools in the canonical brush/watercolor/water/pen/lift order', () => {
     expect(listStrokeToolOptions([])).toEqual([]);
     expect(listStrokeToolOptions(MIXED_ROWS)).toEqual(['brush', 'lift']);
+    // quick 261121-mtu: watercolor slots between brush and water (tool-row order).
     expect(listStrokeToolOptions([
       listStroke(1, 'lift', 'round'),
       listStroke(2, 'pen', 'wc/flat-dry'),
       listStroke(3, 'water', 'water-mop'),
       listStroke(4, 'brush', 'wc/round-medium'),
       listStroke(5, 'water', 'water-mop'),
-    ])).toEqual(['brush', 'water', 'pen', 'lift']);
+      listStroke(6, 'watercolor', 'round'),
+    ])).toEqual(['brush', 'watercolor', 'water', 'pen', 'lift']);
   });
 
   it('dedupes tips in first-appearance order with their resolved names', () => {

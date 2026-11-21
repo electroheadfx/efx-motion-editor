@@ -3,7 +3,8 @@
 //  available only while the live sheet holds standing water.
 //
 //  The store is published by the live canvas layer's rAF tick;
-//  the rail, the four-tool row and the W shortcut all read it.
+//  the rail, the five-tool row (quick 261121-mtu) and the W
+//  shortcut all read it.
 //  These tests pin the store contract and the wiring literals so
 //  a future edit cannot quietly drop a surface from the gate.
 // ============================================================

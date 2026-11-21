@@ -544,6 +544,26 @@ describe('261029-hy2 tool pill + settings-cluster gating', () => {
     }
   });
 
+  it('keeps the tool settings cluster for the Watercolor paint tool', () => {
+    // quick 261121-mtu: Watercolor is a paint tool with the brush family —
+    // without it the Size slider (and every brush setting) would vanish.
+    setAquarelleTool('watercolor');
+    try {
+      const tree = renderTopBar(baseTopBarProps());
+      const primary = (childrenOf(tree) as AnyVNode[]).find(
+        (node) => node.props?.class === 'physics-paint-topbar-primary',
+      );
+      expect(primary, 'the action cluster renders').toBeDefined();
+      const primaryDesc = childrenOf(primary!) as AnyVNode[];
+      expect(
+        primaryDesc.some((node) => typeof node.props?.label === 'string'),
+        'Watercolor keeps its tool settings',
+      ).toBe(true);
+    } finally {
+      setAquarelleTool('brush');
+    }
+  });
+
   it('the pill opens its own dropdown with the tool target and the viewport anchor', () => {
     setAquarelleTool('brush');
     aquarelleBrushMenuOpen.value = false;

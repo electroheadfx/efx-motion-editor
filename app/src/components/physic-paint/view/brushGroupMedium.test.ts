@@ -423,11 +423,13 @@ describe('the seam audit (64-12 MED-28)', () => {
       'PhysicsPaintTopBar.tsx',
       'aquarelleRecordState.ts',
     ]);
-    // "Each beside its definition": one definition, one seam call, one
-    // dropdown call — never a second pathway.
-    expect(countOf(sources, 'aquarelleRecordState.ts', 'selectAquarelleTip(')).toBe(1);
+    // "Each beside its definition": one definition, the ONE tool-pick seam
+    // (quick 261121-mtu: selectAquarellePaintTool calls both — a Watercolor
+    // press binds the family's first preset and the watercolor medium), and
+    // one dropdown call — never a second pathway.
+    expect(countOf(sources, 'aquarelleRecordState.ts', 'selectAquarelleTip(')).toBe(2);
     expect(countOf(sources, 'aquarellePaintControls.ts', 'selectAquarelleTip(')).toBe(1);
-    expect(countOf(sources, 'aquarelleRecordState.ts', 'applyAquarelleMedium(')).toBe(1);
+    expect(countOf(sources, 'aquarelleRecordState.ts', 'applyAquarelleMedium(')).toBe(2);
     expect(countOf(sources, 'aquarellePaintControls.ts', 'applyAquarelleMedium(')).toBe(1);
     expect(countOf(sources, 'AquarelleGlobalsPanel.tsx', 'applyAquarelleMedium(')).toBe(1);
   });

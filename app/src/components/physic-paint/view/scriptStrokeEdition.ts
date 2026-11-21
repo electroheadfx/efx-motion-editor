@@ -51,20 +51,25 @@ export interface ScriptStrokeSize {
 }
 
 /**
- * quick 261031-euf: the four recorded paint tools. Display metadata only —
- * the filter, hit-test and geometry laws stay on `kind`.
+ * quick 261031-euf: the recorded paint tools. Display metadata only — the
+ * filter, hit-test and geometry laws stay on `kind`. quick 261121-mtu added
+ * the fifth payload tool (`watercolor`); it is additive, so every stored
+ * brush/water/pen/lift row keeps its category.
  */
-export type ScriptStrokeTool = 'brush' | 'water' | 'pen' | 'lift';
+export type ScriptStrokeTool = 'brush' | 'watercolor' | 'water' | 'pen' | 'lift';
 
 /**
- * 62-UAT: the stroke list's filter categories. The four tool values are
+ * 62-UAT: the stroke list's filter categories. The tool values are
  * hand-painted/ordinary rows; `vector` is a stroke CREATED by the vector pen
- * and `<tool>-vector` is a painted stroke later converted to a path.
+ * and `<tool>-vector` is a painted stroke later converted to a path. quick
+ * 261121-mtu: `watercolor-vector` is its own category — mapping a converted
+ * watercolor stroke onto `brush-vector` would conflate two brush families.
  */
 export type ScriptStrokeFilterValue =
   | ScriptStrokeTool
   | 'vector'
   | 'brush-vector'
+  | 'watercolor-vector'
   | 'water-vector'
   | 'pen-vector';
 

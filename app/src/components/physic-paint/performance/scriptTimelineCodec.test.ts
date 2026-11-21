@@ -77,7 +77,9 @@ interface StrokeSpec {
   traceSeed: number;
   recordedOrder: number;
   color: string | null;
-  tool: 'brush' | 'water' | 'pen' | 'lift';
+  // quick 261121-mtu: the payload union grew to five; the codec appends
+  // `watercolor` at code 4 and keeps the legacy 0-3 values frozen.
+  tool: 'brush' | 'watercolor' | 'water' | 'pen' | 'lift';
   params: Record<string, number>;
   mutationId?: number;
   diffusionFrames?: number;
@@ -344,6 +346,37 @@ function corruptMinimal(mutate: (bytes: Uint8Array, view: DataView) => void): Ui
   mutate(bytes, new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength));
   return bytes;
 }
+
+// ---------------------------------------------------------------------------
+// Payload tool codes (quick 261121-mtu: Watercolor appended at code 4)
+// ---------------------------------------------------------------------------
+
+describe('payload tool codes (quick 261121-mtu)', () => {
+  it('round-trips a watercolor stroke through both codecs', () => {
+    const stroke = makeStroke({ ...STROKE_A, tool: 'watercolor' }, 2);
+    const [fromJson] = decodeScriptTimelineJson(encodeScriptTimelineJson([stroke]));
+    expect(asStroke(fromJson!).engine.tool).toBe('watercolor');
+    const [fromBinary] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([stroke]));
+    expect(asStroke(fromBinary!).engine.tool).toBe('watercolor');
+  });
+
+  it('keeps the four legacy codes 0-3 and appends watercolor at 4', () => {
+    // Appending (never inserting) is the stored-project contract: every code
+    // a shipped script already carries keeps its numeric value.
+    const codes = (['brush', 'water', 'pen', 'lift', 'watercolor'] as const).map((tool) => {
+      const base = minimalStroke();
+      const stroke = { ...base, engine: { ...base.engine, tool } };
+      return [tool, encodeScriptTimelineBinary([stroke])[MINIMAL_TOOL_OFFSET]];
+    });
+    expect(codes).toEqual([
+      ['brush', 0],
+      ['water', 1],
+      ['pen', 2],
+      ['lift', 3],
+      ['watercolor', 4],
+    ]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // JSON baseline

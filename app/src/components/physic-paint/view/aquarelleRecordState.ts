@@ -44,6 +44,7 @@ import {
 import {
   BRUSH_PRESETS,
   DEFAULT_MEDIUM_ID,
+  brushGroupOf,
   mediumById,
   resolveMask,
   type MediumId,
@@ -468,6 +469,60 @@ export function clearAquarelleTextureSelectionIfDeleted(deletedTipId: string | n
 }
 
 /**
+ * quick 261121-mtu: the brush pick's family law. The paint tool follows the
+ * picked brush's GROUP — a watercolor-group preset returns the Watercolor
+ * tool; every other group (gouache/pastel/graphite/acrylic) and every pick
+ * with no `BRUSH_PRESETS` entry (a catalog `wc/custom-*`, an unknown id or
+ * null) returns the Brush tool — today's fallback, unchanged.
+ */
+function paintToolForTip(tipId: string | null): AquarelleTool {
+  if (tipId === null) return 'brush';
+  const preset = BRUSH_PRESETS.find((entry) => entry.id === tipId);
+  if (preset && brushGroupOf(preset) === 'watercolor') return 'watercolor';
+  return 'brush';
+}
+
+/**
+ * quick 261121-mtu: the ONE tool-pick seam for every tool surface (the live
+ * rail, the test-only tool row, the Studio's `selectAquarelleTool`).
+ *
+ * - `'watercolor'`: the paint tool whose family is the watercolor group.
+ *   Binds that family — when the selected tip is outside it (or there is
+ *   none), the group's first preset (`round`) is selected through
+ *   `selectAquarelleTip`; then the Watercolor medium is applied and the tool
+ *   is set. A tip already in the group is kept.
+ * - `'brush'`: sets the tool only — never touches the tip or the medium.
+ * - Everything else: a plain tool write (the Water dry-sheet gate lives in
+ *   the surfaces, not here).
+ *
+ * Idempotent: every write below is compare-then-write, and all of them run
+ * in the click handler — never a render body.
+ */
+export function selectAquarellePaintTool(tool: AquarelleTool): void {
+  if (tool === 'watercolor') {
+    const current = aquarelleSelectedTipId.value;
+    const currentPreset = current === null
+      ? undefined
+      : BRUSH_PRESETS.find((entry) => entry.id === current);
+    if (!currentPreset || brushGroupOf(currentPreset) !== 'watercolor') {
+      // The law, not a hardcoded id: the group's FIRST preset is `round`
+      // today, but the lookup is the authority if the catalog order moves.
+      const first = BRUSH_PRESETS.find((entry) => brushGroupOf(entry) === 'watercolor');
+      if (first) selectAquarelleTip(first.id);
+    }
+    applyAquarelleMedium('watercolor');
+    setAquarelleTool('watercolor');
+    return;
+  }
+  if (tool === 'brush') {
+    // A Brush pick changes neither the selected tip nor the medium.
+    setAquarelleTool('brush');
+    return;
+  }
+  setAquarelleTool(tool);
+}
+
+/**
  * Select a tip and load its per-brush multipliers into the Brush
  * response surface (D-07 / R1.7). A null id clears the selection
  * and resets multipliers to neutral.
@@ -475,9 +530,10 @@ export function clearAquarelleTextureSelectionIfDeleted(deletedTipId: string | n
  * 261017-xa0 I-03: a pick may also be a bare playground `BRUSH_PRESETS`
  * id (`round`, `flat`, …). Presets carry their own shape via
  * `buildBrush`, so a preset hit loads the neutral multiplier bag and
- * keeps the id. Any successful non-null pick also forces the active
- * tool back to `brush` (user directive 2026-10-16) — picking while
- * Water / Pen / Lift is active returns the surface to Brush.
+ * keeps the id. Any successful non-null pick also returns the surface to
+ * a PAINT tool: quick 261121-mtu replaced the blanket `brush` flip with
+ * the picked brush's GROUP — watercolor presets select the Watercolor
+ * tool, every other group (and every catalog/unknown id) selects Brush.
  *
  * 63-06 D-03 / G-5: a mask-backed CATALOG tip (a machine-library import,
  * `wc/custom-*`) is a valid pick too. It resolves LAST, after the
@@ -492,9 +548,12 @@ export function selectAquarelleTip(tipId: string | null): void {
     : undefined;
   const catalogTip = !tip && !preset && tipId ? resolveCatalogTip(tipId) : null;
   const nextId = tip ? tip.id : preset ? preset.id : catalogTip ? catalogTip.id : null;
-  // A successful pick is a brush-tool variant pick — flip the tool first
-  // so a re-pick of the already-selected id still returns to Brush.
-  if (nextId !== null) setAquarelleTool('brush');
+  // A successful pick is a paint-tool variant pick — set the tool first so a
+  // re-pick of the already-selected id still returns to its family. quick
+  // 261121-mtu: the tool follows the picked brush's GROUP (watercolor →
+  // Watercolor, any other group or no preset → Brush); the old blanket
+  // `brush` flip is gone, so an acrylic pick still returns to Brush.
+  if (nextId !== null) setAquarelleTool(paintToolForTip(nextId));
   const currentId = aquarelleSelectedTipId.value;
   if (currentId === nextId) return;
 

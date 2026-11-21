@@ -173,13 +173,17 @@ const OVERRIDE_KEYS = [
   'wetRound',
 ] as const;
 
-const TOOL_NAMES = ['brush', 'water', 'pen', 'lift'] as const;
+// quick 261121-mtu: 'watercolor' APPENDS at code 4 — never inserted in the
+// middle. The decoder indexes this table by position, so a middle insert
+// would corrupt every existing snapshot's tool codes.
+const TOOL_NAMES = ['brush', 'water', 'pen', 'lift', 'watercolor'] as const;
 
 const TOOL_CODE_BY_NAME: Readonly<Record<string, number>> = {
   brush: 0,
   water: 1,
   pen: 2,
   lift: 3,
+  watercolor: 4,
 };
 
 // 61-05 vector block codes (D-01: exactly two anchor kinds; D-12: exactly

@@ -308,9 +308,10 @@ export function buildPaintSeedVariationPatch(enabled: boolean): ScriptStrokeAppe
 
 export type StrokeListTypeFilter = 'all' | 'paint' | 'lift';
 
-/** Closed four-way map (the engine's tool union is closed on these). */
+/** Closed map over the five payload tools (quick 261121-mtu added watercolor). */
 const STROKE_TOOL_LABELS: Readonly<Record<ScriptStrokeTool, string>> = Object.freeze({
   brush: 'Brush',
+  watercolor: 'Watercolor',
   water: 'Water',
   pen: 'Pen',
   lift: 'Eraser',
@@ -325,6 +326,7 @@ const STROKE_VECTOR_FILTER_LABELS: Readonly<Record<'vector' | `${ScriptStrokeToo
   Object.freeze({
     vector: 'Vector',
     'brush-vector': 'Brush-Vector',
+    'watercolor-vector': 'Watercolor-Vector',
     'water-vector': 'Water-Vector',
     'pen-vector': 'Pen-Vector',
     'lift-vector': 'Eraser-Vector',
@@ -343,6 +345,8 @@ export function strokeRowFilterValue(
   switch (stroke.tool) {
     case 'brush':
       return 'brush-vector';
+    case 'watercolor':
+      return 'watercolor-vector';
     case 'water':
       return 'water-vector';
     case 'pen':
@@ -413,11 +417,14 @@ export const ALL_TIP_FILTER_LABEL = 'All tips';
 /** The categories, in canonical display order — tools first, vectors after. */
 const STROKE_FILTER_ORDER: readonly ScriptStrokeFilterValue[] = Object.freeze([
   'brush',
+  // quick 261121-mtu: the fifth payload tool, after Brush (tool-row order).
+  'watercolor',
   'water',
   'pen',
   'lift',
   'vector',
   'brush-vector',
+  'watercolor-vector',
   'water-vector',
   'pen-vector',
 ]);
@@ -950,6 +957,9 @@ export function resolvePaintedCurveEligibility(stroke: AquarelleStroke): CurveEn
   }
   if (
     candidate.tool !== 'brush'
+    // quick 261121-mtu: the Watercolor tool paints like Brush, so a recorded
+    // watercolor stroke is path-editable too.
+    && candidate.tool !== 'watercolor'
     && candidate.tool !== 'water'
     && candidate.tool !== 'pen'
   ) {

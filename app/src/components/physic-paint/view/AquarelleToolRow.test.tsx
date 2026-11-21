@@ -3,7 +3,8 @@
  * (AQUA-02 UI, D-13, D-15).
  *
  * Laws pinned here:
- *   D-13   4-button row brush|water|pen|lift, one active, 32×32, never wraps
+ *   D-13   5-button row brush|watercolor|water|pen|lift (quick 261121-mtu
+ *          added Watercolor), one active, 32×32, never wraps
  *   D-15   Dry is an ACTION button (not a 5th tool), label 'Dry',
  *          tooltip 'Flash-dry the sheet (F). Recorded in the script.'
  *   AQUA-02 concurrency: clicking another tool replaces the active one
@@ -44,6 +45,8 @@ vi.mock('lucide-preact', () => {
     Eraser: Icon,
     Plus: Icon,
     FolderOpen: Icon,
+    // quick 261121-mtu: Water now wears WavesArrowDown; Watercolor wears Droplet.
+    WavesArrowDown: Icon,
   };
 });
 
@@ -142,15 +145,15 @@ function renderModule(): TestVNode {
   return materialize(WatercolorModuleSection()) as TestVNode;
 }
 
-const TOOLS = ['Brush', 'Water', 'Pen', 'Eraser'] as const;
+const TOOLS = ['Brush', 'Watercolor', 'Water', 'Pen', 'Eraser'] as const;
 const DRY_TOOLTIP = 'Flash-dry the sheet (F). Recorded in the script.';
 
 describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
-  it('renders exactly 4 tools with labels Brush, Water, Pen, Eraser', () => {
+  it('renders exactly 5 tools with labels Brush, Watercolor, Water, Pen, Eraser', () => {
     setAquarelleTool('brush');
     const tree = renderToolRow();
     const labels = buttonLabels(tree);
-    expect(labels).toHaveLength(4);
+    expect(labels).toHaveLength(5);
     for (const name of TOOLS) {
       expect(labels.some((l) => l.includes(name)), `missing tool ${name}`).toBe(true);
     }
@@ -165,7 +168,9 @@ describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
     try {
       const tree = renderToolRow();
       const buttons = findButtons(tree);
-      const water = buttons.find((b) => textContent(b).includes('Water'));
+      // quick 261121-mtu: match by testid, never by substring — the label
+      // `Water` is now a substring of `Watercolor`.
+      const water = buttons.find((b) => b.props?.['data-testid'] === 'aquarelle-tool-water');
       expect(water, 'no Water button').toBeTruthy();
       clickButton(water!);
       expect(aquarelleActiveTool.value).toBe('water');
@@ -178,7 +183,8 @@ describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
         String(b.props?.class ?? '').includes('active'),
       );
       expect(activeAfter.length).toBe(1);
-      expect(textContent(activeAfter[0]!).trim()).toContain('Water');
+      expect(activeAfter[0]!.props?.['data-testid']).toBe('aquarelle-tool-water');
+      expect(textContent(activeAfter[0]!).trim()).toBe('Water');
       // silence unused
       expect(active.length >= 0).toBe(true);
     } finally {

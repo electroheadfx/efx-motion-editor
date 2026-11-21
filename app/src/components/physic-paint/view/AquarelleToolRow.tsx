@@ -1,16 +1,19 @@
 // ============================================================
-//  AquarelleToolRow — the four-tool row (AQUA-02 / D-13).
+//  AquarelleToolRow — the five-tool row (AQUA-02 / D-13, quick
+//  261121-mtu).
 //
-//  Exactly brush | water | pen | lift. Dry is NOT a fifth tool
-//  (D-15) — it is an action button in WatercolorModuleSection.
+//  Exactly brush | watercolor | water | pen | lift. Dry is NOT a
+//  tool (D-15) — it is an action button in WatercolorModuleSection.
 //  Selection lives in the click handler (never a deferred effect).
+//  Must stay in lockstep with the live rail's WATERCOLOR_RAIL_TOOLS
+//  (the lift-contract source pin checks both).
 // ============================================================
 
-import { Droplet, Eraser, Paintbrush, Pen } from 'lucide-preact';
+import { Droplet, Eraser, Paintbrush, Pen, WavesArrowDown } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import {
   aquarelleActiveTool,
-  setAquarelleTool,
+  selectAquarellePaintTool,
 } from './aquarelleRecordState';
 import { aquarelleSelectMode, setAquarelleSelectMode } from './aquarelleStrokeSelection';
 import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
@@ -23,7 +26,8 @@ const TOOLS: ReadonlyArray<{
   Icon: (props: { size?: number }) => ComponentChildren;
 }> = Object.freeze([
   { id: 'brush', label: 'Brush', shortcut: 'B', Icon: Paintbrush },
-  { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplet },
+  { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: Droplet },
+  { id: 'water', label: 'Water', shortcut: 'W', Icon: WavesArrowDown },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
@@ -67,7 +71,8 @@ export function AquarelleToolRow() {
               if (id === 'water' && !aquarelleHasWetPaint.peek()) return;
               // 261022-pim: picking a paint tool returns the sheet to painting.
               setAquarelleSelectMode(false);
-              setAquarelleTool(id);
+              // quick 261121-mtu: the ONE tool-pick seam (same as the rail).
+              selectAquarellePaintTool(id);
             }}
             style={{
               width: '32px',

@@ -1,12 +1,12 @@
 import { memo } from 'preact/compat';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, Scan, VectorSquare } from 'lucide-preact';
+import { Droplet, Eraser, Paintbrush, Pen, PenTool, Pipette, Scan, VectorSquare, WavesArrowDown } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
 import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
+import { aquarelleActiveTool, selectAquarellePaintTool } from './aquarelleRecordState';
 import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
 import {
   aquarelleSelectMode,
@@ -51,8 +51,10 @@ const VECTOR_PEN_TOOLTIP =
   'Vector pen (V) — click to place a smooth anchor · hold Alt for a corner · Enter or double-click to finish · click the first anchor to finish there';
 
 /**
- * UI checklist rows 8/9: Water color rail = Brush | Water | Pen | Lift.
- * quick-261112: the Flash-dry action left for the top-bar action cluster.
+ * UI checklist rows 8/9: Water color rail = Brush | Watercolor | Water | Pen |
+ * Eraser (quick 261121-mtu added the Watercolor paint tool — Droplet moved to
+ * it; Water now wears WavesArrowDown). quick-261112: the Flash-dry action
+ * left for the top-bar action cluster.
  */
 const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   id: AquarelleTool;
@@ -61,7 +63,8 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   Icon: (props: { size?: number }) => ComponentChildren;
 }> = Object.freeze([
   { id: 'brush', label: 'Brush', shortcut: 'B', Icon: Paintbrush },
-  { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplet },
+  { id: 'watercolor', label: 'Watercolor', shortcut: 'A', Icon: Droplet },
+  { id: 'water', label: 'Water', shortcut: 'W', Icon: WavesArrowDown },
   { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
@@ -144,7 +147,9 @@ export function WatercolorRail({
               exitVectorPen();
               exitPathEdit();
               setAquarelleSelectMode(false);
-              setAquarelleTool(id);
+              // quick 261121-mtu: the ONE tool-pick seam — a Watercolor press
+              // also binds the watercolor family and medium; Brush keeps both.
+              selectAquarellePaintTool(id);
             }}
           >
             <Icon size={18} />
@@ -171,7 +176,7 @@ export function WatercolorRail({
       {/* 261030-cnq: the color picker. A HOST tool — deliberately outside
           WATERCOLOR_RAIL_TOOLS and the `AquarelleTool` union, so latching it
           never changes the paint tool and unlatching is "back to the previous
-          tool". A paint-tool key (B/W/E/P) or Select entry disarms it. */}
+          tool". A paint-tool key (A/B/W/P/E) or Select entry disarms it. */}
       <button
         type="button"
         class={`physics-paint-icon-button${pickerActive ? ' active' : ''}`}
@@ -201,8 +206,8 @@ export function WatercolorRail({
         data-testid="aquarelle-select-toggle"
         disabled={railDisabled || wireframeActive || !selectAvailable.value}
         title={wireframeActive
-          ? 'Select (A) — turn wireframe off to select'
-          : "Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward"}
+          ? 'Select (M) — turn wireframe off to select'
+          : "Select (M) — click or M toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward"}
         aria-label="Select"
         aria-pressed={selectActive}
         onClick={() => toggleAquarelleSelectMode()}

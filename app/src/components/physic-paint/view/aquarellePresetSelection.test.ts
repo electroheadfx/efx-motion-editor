@@ -3,7 +3,8 @@
  *
  * Laws pinned here:
  *   each BRUSH_PRESETS id selects cleanly (no silent clear)
- *   a successful pick forces aquarelleActiveTool to 'brush'
+ *   a successful pick selects the tool of the tip's brush family (quick
+ *   261121-mtu: watercolor group → 'watercolor', every other group → 'brush')
  *   a preset pick loads NEUTRAL_TOOL_OVERRIDES; setAquarelleMultiplier rides on top
  *   snapshotAquarelleRecord().brushId / buildAquarelleStrokePayload().brushId carry the id
  *   buildBrushForStroke(id) matches buildBrush(preset) on the vendor Brush fields
@@ -115,13 +116,18 @@ describe('I-03 playground preset ids on the tip seam', () => {
     }
   });
 
-  it('a preset pick issued while water / pen / lift is active flips the tool to brush', () => {
+  it('a preset pick issued while water / pen / lift is active flips the tool to the tip\'s brush family', () => {
+    // quick 261121-mtu: the old blanket `brush` flip is gone. `round` is a
+    // watercolor-group preset, so the pick lands on the Watercolor tool;
+    // `bristle-flat` is acrylic and lands on Brush.
     for (const tool of ['water', 'pen', 'lift'] as const) {
       resetSelection();
       setAquarelleTool(tool);
       expect(aquarelleActiveTool.value).toBe(tool);
       selectAquarelleTip('round');
-      expect(aquarelleActiveTool.value, `pick during ${tool} must return to brush`).toBe('brush');
+      expect(aquarelleActiveTool.value, `pick during ${tool} must select the watercolor family`).toBe('watercolor');
+      selectAquarelleTip('bristle-flat');
+      expect(aquarelleActiveTool.value, `pick during ${tool} must select the brush family`).toBe('brush');
     }
   });
 

@@ -130,12 +130,17 @@ describe('261028-k03c D1 setAquarelleLiftTipId', () => {
     }
   });
 
-  it('selectAquarelleTip stays the Brush-only seam (it still flips the tool)', () => {
+  it('selectAquarelleTip stays the Brush-only seam (it still flips the tool, to the tip family)', () => {
+    // quick 261121-mtu: the flip is family-aware. `round` is a watercolor-group
+    // preset, so the pick lands on the Watercolor tool; every non-watercolor
+    // group still lands on Brush.
     setAquarelleTool('lift');
     selectAquarelleTip('round');
-    expect(aquarelleActiveTool.value, 'the Brush catalog pick still returns to brush').toBe(
-      'brush',
+    expect(aquarelleActiveTool.value, 'a watercolor-family pick selects the Watercolor tool').toBe(
+      'watercolor',
     );
+    selectAquarelleTip('bristle-flat');
+    expect(aquarelleActiveTool.value, 'an acrylic pick selects the Brush tool').toBe('brush');
     expect(aquarelleLiftTipId.value, 'the Lift selection is untouched by a Brush pick').toBe(
       'filbert',
     );
@@ -152,7 +157,7 @@ describe('261028-k03c D1 aquarelleActiveTipId', () => {
     setAquarelleSelectedTipIdForTest('round');
     setAquarelleTool('lift');
     expect(aquarelleActiveTipId()).toBe('flat');
-    for (const tool of ['brush', 'water', 'pen'] as const) {
+    for (const tool of ['brush', 'watercolor', 'water', 'pen'] as const) {
       setAquarelleTool(tool);
       expect(aquarelleActiveTipId(), `active tip on ${tool}`).toBe('round');
     }
@@ -194,7 +199,7 @@ describe('261028-k03c D1 aquarelleBrushForActiveTool', () => {
     setAquarelleLiftTipId('flat');
     setAquarelleSelectedTipIdForTest('round');
     setAquarelleMultiplier('capacity', 1.6);
-    for (const tool of ['brush', 'water', 'pen'] as const) {
+    for (const tool of ['brush', 'watercolor', 'water', 'pen'] as const) {
       setAquarelleTool(tool);
       const selection = aquarelleBrushForActiveTool();
       expect(selection.brushId, `brushId on ${tool}`).toBe('round');

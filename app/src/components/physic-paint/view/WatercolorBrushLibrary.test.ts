@@ -536,7 +536,10 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
     expect(source, 'no category filter in source').not.toMatch(/category-filter|CATEGORY_FILTER/);
   });
 
-  it('picking a card selects the preset and forces the Brush tool', () => {
+  it('picking a card selects the preset and forces the tool of the card\'s brush family', () => {
+    // quick 261121-mtu: the blanket `brush` flip is gone. A watercolor-group
+    // card selects the Watercolor tool; a non-watercolor card still selects
+    // Brush (pinned below with the acrylic preset).
     for (const id of ['round', 'flat', 'detail'] as const) {
       resetSelection();
       setAquarelleTool('water');
@@ -549,8 +552,20 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
       expect(onClick, `card ${id} must be clickable`).toBeTruthy();
       onClick!();
       expect(aquarelleSelectedTipId.value, `pick ${id}`).toBe(id);
-      expect(aquarelleActiveTool.value, `pick ${id} forces brush`).toBe('brush');
+      expect(aquarelleActiveTool.value, `pick ${id} selects the watercolor family`).toBe('watercolor');
     }
+
+    // The non-watercolor control: an acrylic card still lands on Brush.
+    resetSelection();
+    setAquarelleTool('water');
+    const acrylicTree = renderLibrary();
+    const acrylicCard = cardNodes(acrylicTree).find(
+      (c) => c.props?.['data-testid'] === 'watercolor-brush-card-bristle-flat',
+    );
+    expect(acrylicCard, 'the acrylic card must render').toBeTruthy();
+    (acrylicCard!.props as { onClick?: () => void }).onClick!();
+    expect(aquarelleSelectedTipId.value).toBe('bristle-flat');
+    expect(aquarelleActiveTool.value, 'an acrylic pick selects the Brush tool').toBe('brush');
   });
 
   it('leaves Edit select mode on every brush pick (WR-03)', () => {
@@ -568,7 +583,9 @@ describe('WatercolorBrushLibrary brush-card grid (I-03, 261027-gh9)', () => {
         // A pick must never strand select mode: the Edit switch unmounts with
         // the Eraser cluster, so nothing visible could disarm it afterwards.
         expect(aquarelleSelectMode.value, `pick ${id} leaves Edit mode`).toBe(false);
-        expect(aquarelleActiveTool.value, `pick ${id} forces brush`).toBe('brush');
+        // quick 261121-mtu: round and hake are watercolor-group cards, so the
+        // pick selects the Watercolor tool (family law, not a blanket brush).
+        expect(aquarelleActiveTool.value, `pick ${id} selects the watercolor family`).toBe('watercolor');
       } finally {
         setAquarelleSelectMode(false);
       }

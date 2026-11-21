@@ -287,23 +287,27 @@ describe('the session module is session-only (T-61-53)', () => {
   });
 });
 
-describe('the four paint tools stay closed', () => {
+describe('the five payload paint tools stay closed (engine still four)', () => {
   const railPath = fileURLToPath(new URL('./PhysicsPaintToolRail.tsx', import.meta.url));
   const payloadPath = fileURLToPath(
     new URL('../../../../../packages/efx-watercolor/src/payload/toStudioStroke.ts', import.meta.url),
   );
 
-  it('WATERCOLOR_RAIL_TOOLS still has exactly four entries', () => {
+  // quick 261121-mtu: the payload union grew ADDITIVELY to five (Watercolor is
+  // a brush-family paint tool, not a new deposit law); the engine's own guard
+  // still accepts four — `watercolor` maps to `brush` through the explicit
+  // table in engineAdapter.ts, never through the union.
+  it('WATERCOLOR_RAIL_TOOLS has exactly five entries', () => {
     const rail = readFileSync(railPath, 'utf8');
     const block = rail.slice(rail.indexOf('const WATERCOLOR_RAIL_TOOLS'), rail.indexOf('function WatercolorRail'));
     expect(block.length).toBeGreaterThan(0);
-    expect(block.match(/\{ id: '/g) ?? []).toHaveLength(4);
+    expect(block.match(/\{ id: '/g) ?? []).toHaveLength(5);
   });
 
-  it('AquarelleTool still has exactly four members', () => {
+  it('AquarelleTool has exactly five members', () => {
     const payload = readFileSync(payloadPath, 'utf8');
     const union = /export type AquarelleTool = ([^\n]+)/.exec(payload)?.[1] ?? '';
-    expect(union.match(/'[a-z]+'/g) ?? []).toHaveLength(4);
+    expect(union.match(/'[a-z]+'/g) ?? []).toHaveLength(5);
   });
 });
 

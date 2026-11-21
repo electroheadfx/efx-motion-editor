@@ -100,7 +100,7 @@ import {
   resolveMotionChannelPresence,
 } from './view/TimelineMotionChannels';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
-import { aquarelleActiveTool, setAquarelleTool } from './view/aquarelleRecordState';
+import { aquarelleActiveTool, selectAquarellePaintTool } from './view/aquarelleRecordState';
 import {
   disarmAquarellePicker,
   isAquarellePickerArmed,
@@ -354,7 +354,7 @@ import {
 } from './view/strokeSettingsModel';
 import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
-import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import { isAquarelleDryEvent, isAquarellePaintTool, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent, type AquarelleTool } from '@efxlab/efx-watercolor/payload';
 import { anchorsEqual } from '@efxlab/efx-watercolor/payload';
 import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
@@ -2682,23 +2682,25 @@ export function PhysicsPaintStudio() {
   const handleActiveColorChanged = useCallback((color: string) => {
     setSettings((current) => (current.color === color ? current : { ...current, color }));
   }, [setSettings]);
-  // 261029: the Studio tool shortcuts. B / W / E / P pick a painting tool and
-  // leave Move/Edit mode; A toggles the Move/Edit (Select) surface — leaving
-  // resumes the previous paint tool, which the surface never replaced; Tab
-  // cycles the stroke-type filter Paint → Eraser → All while Move/Edit is on.
+  // 261029: the Studio tool shortcuts. B / A / W / E / P pick a painting tool
+  // and leave Move/Edit mode (quick 261121-mtu: A is the Watercolor tool);
+  // M toggles the Move/Edit (Select) surface — leaving resumes the previous
+  // paint tool, which the surface never replaced; Tab cycles the stroke-type
+  // filter Paint → Eraser → All while Move/Edit is on.
   // Every read is `.peek()` — the Studio render body never subscribes a
   // selection signal.
-  const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'pen' | 'lift') => {
+  const handleSelectAquarelleTool = useCallback((tool: AquarelleTool) => {
     // 61-13 (D-16): the paint row is disarmed while wireframe is on — the rail
     // renders it deselected + disabled with the reason, and this gate refuses
     // a programmatic press (a keyboard shortcut or a stale rail render).
     if (wireframeMode.peek()) return;
-    // 61-08 (D-06): a paint-tool press (rail or B/W/E/P) clears the vector pen
+    // 61-08 (D-06): a paint-tool press (rail or A/B/W/P/E) clears the vector pen
     // and ends path edit — the input surfaces are mutually exclusive.
     vectorPathSession.exitVectorPen();
     vectorPathSession.exitPathEdit();
     setAquarelleSelectMode(false);
-    setAquarelleTool(tool);
+    // quick 261121-mtu: the ONE tool-pick seam (same as the rail and the row).
+    selectAquarellePaintTool(tool);
   }, []);
   // 261030-cnq: the ONE pick seam — sample the visible stack and write BOTH
   // color surfaces with the same normalized hex (the right-panel color law).
@@ -5338,12 +5340,8 @@ export function PhysicsPaintStudio() {
         && target.closest('.physics-paint-reference-transform, .physics-paint-background-transform, .physics-paint-rail-motion-transform')) return;
       if (activeModule.value === 'watercolor') {
         // lift is erase-like and Dry is a separate action — neither may create
-        // a key on a non-real cell.
-        if (!(
-          aquarelleActiveTool.value === 'brush'
-          || aquarelleActiveTool.value === 'water'
-          || aquarelleActiveTool.value === 'pen'
-        )) return;
+        // a key on a non-real cell. quick 261121-mtu: the ONE paint predicate.
+        if (!isAquarellePaintTool(aquarelleActiveTool.value)) return;
       } else {
         // A selected move tool never promotes a blank cell.
         const effectiveToolIsPaint = settings.tool === 'paint';
@@ -5422,9 +5420,7 @@ export function PhysicsPaintStudio() {
       && target instanceof Element
       && target.closest('.physics-paint-reference-transform, .physics-paint-background-transform, .physics-paint-rail-motion-transform')) return false;
     const paintToolActive = activeModule.value === 'watercolor'
-      ? (aquarelleActiveTool.value === 'brush'
-        || aquarelleActiveTool.value === 'water'
-        || aquarelleActiveTool.value === 'pen')
+      ? isAquarellePaintTool(aquarelleActiveTool.value)
       : settings.tool === 'paint';
     if (!paintToolActive) return false;
     pendingFirstPaintTargetRef.current = null;

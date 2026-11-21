@@ -1,3 +1,4 @@
+import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 import type { PhysicsPaintWorkflowStripFrameMarker } from './PhysicsPaintWorkflowStrip';
 import { RAIL_TARGET_SELECTOR } from './physicsPaintRailKeyboardNavigation';
 
@@ -43,10 +44,13 @@ export interface PhysicsPaintStudioKeyboardActions {
   pasteRotoKey?: () => void;
   /** quick-261004-hwa: Photoshop X — swap foreground/background swatch. */
   swapFgBg?: () => void;
-  /** Bare B / W / E / P: pick a painting tool and leave Select mode. */
-  selectAquarelleTool?: (tool: 'brush' | 'water' | 'pen' | 'lift') => void;
-  /** Bare A: toggle the Move/Edit (Select) surface; leaving resumes the
-   *  previous paint tool, which the surface never replaced. */
+  /** Bare A / B / W / E / P: pick a painting tool and leave Select mode.
+   *  quick 261121-mtu: A is the Watercolor paint tool (the payload union's
+   *  fifth member); the Water dry-sheet gate still applies to W only. */
+  selectAquarelleTool?: (tool: AquarelleTool) => void;
+  /** Bare M: toggle the Move/Edit (Select) surface; leaving resumes the
+   *  previous paint tool, which the surface never replaced. (A moved to the
+   *  Watercolor tool in quick 261121-mtu; Shift+A still selects all.) */
   toggleAquarelleSelect?: () => void;
   /** Shift+A: enter Move/Edit when needed, select every stroke the live filter
    *  lists, and deselect all when the whole list is already selected. */
@@ -353,14 +357,15 @@ export function dispatchPhysicsPaintStudioKeyDown(
     return;
   }
 
-    // Bare tool keys: B / W / E / P pick a painting tool and leave Select mode,
-    // A toggles the Move/Edit surface (leaving resumes the previous paint
-    // tool), Tab cycles its stroke filter Paint → Eraser → All while Move/Edit
-    // is on; F flash-dries, S toggles Script/Pixel recording, C clears the
-    // frame, D resets the swatch, I latches/unlatches the color picker.
-    // Modifier chords (Cmd+A select-all, Cmd+Shift+D duplicate track, …) are
-    // owned by the branches above, so these fire only on a bare keypress.
-    if (!meta && !event.altKey && !event.shiftKey && !event.repeat) {
+  // Bare tool keys: A / B / W / E / P pick a painting tool and leave Select
+  // mode (quick 261121-mtu: A is the Watercolor tool), M toggles the
+  // Move/Edit surface (leaving resumes the previous paint tool), Tab cycles
+  // its stroke filter Paint → Eraser → All while Move/Edit is on; F
+  // flash-dries, S toggles Script/Pixel recording, C clears the frame, D
+  // resets the swatch, I latches/unlatches the color picker.
+  // Modifier chords (Cmd+A select-all, Cmd+Shift+D duplicate track, …) are
+  // owned by the branches above, so these fire only on a bare keypress.
+  if (!meta && !event.altKey && !event.shiftKey && !event.repeat) {
       if (event.key === 'Tab' && actions.cycleAquarelleSelectFilter) {
         // preventDefault only when Move/Edit consumes it — everywhere else Tab
         // keeps its native focus navigation.
@@ -368,13 +373,14 @@ export function dispatchPhysicsPaintStudioKeyDown(
         event.preventDefault();
         return;
       }
-      if ((key === 'b' || key === 'w' || key === 'e' || key === 'p') && actions.selectAquarelleTool) {
+      if ((key === 'a' || key === 'b' || key === 'w' || key === 'e' || key === 'p') && actions.selectAquarelleTool) {
         event.preventDefault();
         // 261029-lel: W is a silent no-op while the live sheet is dry (the key
-        // is still consumed). B / E / P never consult the gate.
+        // is still consumed). A / B / E / P never consult the gate (quick
+        // 261121-mtu: A is the Watercolor paint tool, not the old Select toggle).
         if (key === 'w' && state.canSelectWater && !state.canSelectWater()) return;
         actions.selectAquarelleTool(
-          key === 'b' ? 'brush' : key === 'w' ? 'water' : key === 'p' ? 'pen' : 'lift',
+          key === 'a' ? 'watercolor' : key === 'b' ? 'brush' : key === 'w' ? 'water' : key === 'p' ? 'pen' : 'lift',
         );
         return;
       }
@@ -391,7 +397,9 @@ export function dispatchPhysicsPaintStudioKeyDown(
         actions.toggleVectorPen();
         return;
       }
-      if (key === 'a' && actions.toggleAquarelleSelect) {
+      // quick 261121-mtu: Move/Edit moved from bare A to bare M (A is the
+      // Watercolor tool). Shift+A (select all) is owned by the chord branch.
+      if (key === 'm' && actions.toggleAquarelleSelect) {
         event.preventDefault();
         actions.toggleAquarelleSelect();
         return;

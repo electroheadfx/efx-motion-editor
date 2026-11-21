@@ -2887,9 +2887,12 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
   it('gates promotion on the effective paint-producing tool and a non-transform target', () => {
     const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
     expect(beginBlock).toContain("settings.tool === 'paint'");
-    expect(beginBlock).toContain("aquarelleActiveTool.value === 'brush'");
-    expect(beginBlock).toContain("aquarelleActiveTool.value === 'water'");
-    expect(beginBlock).toContain("aquarelleActiveTool.value === 'pen'");
+    // quick 261121-mtu: ONE paint predicate replaces the inline brush/water/pen
+    // list — 'watercolor' paints; 'lift' and Dry never promote.
+    expect(beginBlock).toContain('isAquarellePaintTool(aquarelleActiveTool.value)');
+    expect(beginBlock).not.toContain("aquarelleActiveTool.value === 'brush'");
+    expect(beginBlock).not.toContain("aquarelleActiveTool.value === 'water'");
+    expect(beginBlock).not.toContain("aquarelleActiveTool.value === 'pen'");
     expect(beginBlock).toContain('physics-paint-reference-transform');
     expect(beginBlock).toContain('physics-paint-background-transform');
     // 59-13 fix: pressing the rail-motion gizmo must not start an auto-key
@@ -3236,9 +3239,10 @@ describe('261022-pim watercolor stroke select surface', () => {
     // 61-18: the wireframe latch joins the Select disable expression — the
     // construction view never offers a selection surface over it.
     expect(watercolorRail).toContain('disabled={railDisabled || wireframeActive || !selectAvailable.value}');
-    // Better hover text: the A shortcut, the drag, the Backspace delete and the
-    // 261022-ujp Space step live on it.
-    expect(watercolorRail).toContain('Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
+    // Better hover text: the M shortcut (quick 261121-mtu moved it from A, now
+    // the Watercolor tool), the drag, the Backspace delete and the 261022-ujp
+    // Space step live on it.
+    expect(watercolorRail).toContain('Select (M) — click or M toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
     // 261027-klx: the Brush module tool set (and its Move tooltip) left with
     // engine 1 — the aquarelle rail is the only tool surface left.
     expect(toolRail).not.toContain('Move — Cmd toggles Move on/off');
@@ -6583,7 +6587,9 @@ describe('61-10 vector path edit wiring in the Studio', () => {
   });
 
   it('forwards the handler into the mount memo and its props object', () => {
-    expect(studio).toContain("import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';");
+    // quick 261121-mtu: `isAquarellePaintTool` and the five-member
+    // `AquarelleTool` type join the ONE payload import line.
+    expect(studio).toContain("import { isAquarelleDryEvent, isAquarellePaintTool, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent, type AquarelleTool } from '@efxlab/efx-watercolor/payload';");
     expect(studio).toContain('  beginAquarellePathEdit,');
     expect(studio).toContain('handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {');
     expect(studio).toContain('onAquarelleVectorPathEdit: handleAquarelleVectorPathEdit,');
@@ -7237,7 +7243,9 @@ describe('61-11 Anchor width bundle wiring in the Studio', () => {
     );
     // The verbatim payload import pinned above stays byte-identical; the
     // guard's predicate rides its OWN same-module line beside it.
-    expect(studio).toContain("import { isAquarelleDryEvent, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';");
+    // quick 261121-mtu: `isAquarellePaintTool` and the five-member
+    // `AquarelleTool` type join the ONE payload import line.
+    expect(studio).toContain("import { isAquarelleDryEvent, isAquarellePaintTool, normaliseAquarelleAnchors, toStudioStroke, type AquarelleAnchor, type AquarellePayloadEvent, type AquarelleTool } from '@efxlab/efx-watercolor/payload';");
     expect(studio.split("import { anchorsEqual } from '@efxlab/efx-watercolor/payload';").length - 1)
       .toBe(1);
   });
@@ -7621,9 +7629,9 @@ describe('61-13 wireframe gates — reasons, Draft ownership, idempotency', () =
   afterEach(resetWireframeGateSignals);
 
   it('states every gated control reason in the rail source', () => {
-    // The four paint literals are composed as `${label} (${shortcut}) — ...`
-    // and asserted verbatim by the RENDERED rail pins (PhysicsPaintToolRail.
-    // test.ts).
+    // The five paint literals (quick 261121-mtu added Watercolor) are composed
+    // as `${label} (${shortcut}) — ...` and asserted verbatim by the RENDERED
+    // rail pins (PhysicsPaintToolRail.test.ts).
     expect(toolRail).toContain('— turn wireframe off to paint');
     // 61-25 (UI-05 / §5): the contract DISARMS the picker under wireframe; it
     // never removes the function. The button stays pressable with its shipped

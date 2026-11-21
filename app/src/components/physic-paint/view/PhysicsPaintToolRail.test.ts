@@ -3,7 +3,7 @@
  * `WATERCOLOR_RAIL_TOOLS` in `PhysicsPaintToolRail.tsx`).
  *
  * Laws pinned here:
- *   - exactly one `aquarelle-vector-pen-toggle`, after the four paint buttons
+ *   - exactly one `aquarelle-vector-pen-toggle`, after the five paint buttons
  *   - a 1px `#5a5e63` `.physics-paint-rail-separator` sits immediately before it
  *   - `aria-pressed` follows the session signal; the title is the approved copy
  *   - it is a HOST tool: latching it never changes the paint tool
@@ -49,6 +49,7 @@ vi.mock('lucide-preact', () => {
     RefreshCcwDot: Icon,
     Scan: Icon,
     VectorSquare: Icon,
+    WavesArrowDown: Icon,
     Wind: Icon,
   };
 });
@@ -168,7 +169,7 @@ afterEach(() => {
 });
 
 describe('WatercolorRail — the fifth entry (D-05 / C-01)', () => {
-  it('renders exactly one vector-pen entry after the four paint buttons', () => {
+  it('renders exactly one vector-pen entry after the five paint buttons', () => {
     const nav = renderRail();
     const ordered = directChildren(nav);
     const matches = [...walk(nav)].filter(
@@ -176,15 +177,18 @@ describe('WatercolorRail — the fifth entry (D-05 / C-01)', () => {
     );
     expect(matches).toHaveLength(1);
 
-    const paintTitles = ordered.slice(0, 4).map((node) => String(node.props?.title ?? ''));
+    // quick 261121-mtu: the row is Brush · Watercolor · Water · Pen · Eraser —
+    // five payload tools, the engine still sees four (`watercolor → brush`).
+    const paintTitles = ordered.slice(0, 5).map((node) => String(node.props?.title ?? ''));
     expect(paintTitles[0]?.startsWith('Brush')).toBe(true);
-    expect(paintTitles[1]?.startsWith('Water')).toBe(true);
-    expect(paintTitles[2]?.startsWith('Pen')).toBe(true);
-    expect(paintTitles[3]?.startsWith('Eraser')).toBe(true);
-    for (const node of ordered.slice(0, 4)) expect(node.type).toBe('button');
+    expect(paintTitles[1]?.startsWith('Watercolor')).toBe(true);
+    expect(paintTitles[2]?.startsWith('Water')).toBe(true);
+    expect(paintTitles[3]?.startsWith('Pen')).toBe(true);
+    expect(paintTitles[4]?.startsWith('Eraser')).toBe(true);
+    for (const node of ordered.slice(0, 5)) expect(node.type).toBe('button');
 
     const penIndex = ordered.indexOf(penButton(nav));
-    expect(penIndex).toBeGreaterThan(3);
+    expect(penIndex).toBeGreaterThan(4);
   });
 
   it('draws the separator immediately before the pen, aria-hidden', () => {
@@ -318,9 +322,10 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
   it('disables the whole paint row with its reason and renders it deselected', () => {
     wireframeMode.value = true;
     const nav = renderRail();
-    const paint = directChildren(nav).slice(0, 4);
+    const paint = directChildren(nav).slice(0, 5);
     expect(paint.map((node) => node.props?.title)).toEqual([
       'Brush (B) — turn wireframe off to paint',
+      'Watercolor (A) — turn wireframe off to paint',
       'Water (W) — turn wireframe off to paint',
       'Pen (P) — turn wireframe off to paint',
       'Eraser (E) — turn wireframe off to paint',
@@ -358,9 +363,10 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
     renderRail();
     wireframeMode.value = false;
     const nav = renderRail();
-    const paint = directChildren(nav).slice(0, 4);
+    const paint = directChildren(nav).slice(0, 5);
     expect(paint.map((node) => node.props?.title)).toEqual([
       'Brush (B)',
+      'Watercolor (A)',
       'Water (W) — needs standing water',
       'Pen (P)',
       'Eraser (E)',
@@ -379,7 +385,7 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
     expect(select, 'the Select button is rendered').toBeTruthy();
     // `selectAvailable` is TRUE: the disable reason is the wireframe gate alone.
     expect(select.props?.disabled).toBe(true);
-    expect(select.props?.title).toBe('Select (A) — turn wireframe off to select');
+    expect(select.props?.title).toBe('Select (M) — turn wireframe off to select');
     // The rendered bindings are the shipped ones — only the inert state and
     // its reason change.
     expect(select.props?.['aria-label']).toBe('Select');
@@ -388,7 +394,9 @@ describe('WatercolorRail — the wireframe gates (61-13 Task 3)', () => {
   });
 
   it('restores the shipped Select copy and enablement when the latch clears', () => {
-    const SHIPPED_SELECT_TITLE = 'Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward';
+    // quick 261121-mtu: Move/Edit moved from bare A (now the Watercolor tool) to
+    // bare M; Shift+A is untouched.
+    const SHIPPED_SELECT_TITLE = 'Select (M) — click or M toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward';
     const enabled = button(renderRail({ selectAvailable: signal(true) }), 'aquarelle-select-toggle')!;
     expect(enabled.props?.title).toBe(SHIPPED_SELECT_TITLE);
     expect(enabled.props?.disabled).toBe(false);
@@ -446,9 +454,10 @@ describe('WatercolorRail — 61-25 UI-01/UI-05', () => {
   it('still disables every depositing control under wireframe and leaves the pen available', () => {
     wireframeMode.value = true;
     const nav = renderRail();
-    const paint = directChildren(nav).slice(0, 4);
+    const paint = directChildren(nav).slice(0, 5);
     expect(paint.map((node) => node.props?.title)).toEqual([
       'Brush (B) — turn wireframe off to paint',
+      'Watercolor (A) — turn wireframe off to paint',
       'Water (W) — turn wireframe off to paint',
       'Pen (P) — turn wireframe off to paint',
       'Eraser (E) — turn wireframe off to paint',
