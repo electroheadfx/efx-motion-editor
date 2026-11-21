@@ -1,7 +1,7 @@
 ---
 phase: 64-medium-engine
 generated_from: "bd list --status open,in_progress,blocked,deferred --exclude-type epic --json -n 0"
-generated_at: 2026-11-19T11:47:34Z
+generated_at: 2026-11-21T21:03:43Z
 recall_status: ok
 ---
 
@@ -11,9 +11,14 @@ recall_status: ok
 
 | Issue | Title | Status | Matched via |
 |-------|-------|--------|--------------|
-| efx-motion-editor-4ro.45 | 64-17.3 Re-specify cover-over-wet for the coverage model and retire the erase-era harness prose | open | matched via: description |
-| efx-motion-editor-4ro.44 | 64-17.2 White over blue at Body 100/60/30: the committed alpha is coverage-derived, not darkness-derived | open | matched via: description |
-| efx-motion-editor-4ro.43 | 64-17.1 End-to-end: the pigment sheet is digested and the 1080² Body-0 identity law is committed | open | matched via: description |
+| efx-motion-editor-4ro.72 | 64-24.3 Task 3: The D-25 record retune, the acceptance capture and the cost record | open | matched via: files |
+| efx-motion-editor-4ro.71 | 64-24.2 Task 2: The §3.4 gate and the touch refresh | open | matched via: files |
+| efx-motion-editor-4ro.70 | 64-24.1 Task 1: The last-touch channel and its eight lifecycle sites | open | matched via: files |
+| efx-motion-editor-4ro.69 | 64-23.3 Task 3: The edge census — acceptance ask #2, measured | open | matched via: description |
+| efx-motion-editor-4ro.68 | 64-23.2 Task 2: The traces in the gather and the carrier | open | matched via: files |
+| efx-motion-editor-4ro.66 | 64-22.3 Task 3: The bristle-modulated cover (D-21) and the composition gate | open | matched via: files |
+| efx-motion-editor-4ro.65 | 64-22.2 Task 2: The gather — carried coefficients into the spectral field | open | matched via: files |
+| efx-motion-editor-4ro.64 | 64-22.1 Task 1: The three exposed globals and the recorded medium surface | open | matched via: files |
 | efx-motion-editor-4ro.42 | 64-16.3 Re-specify UAT rows 2, 7, 8 for the coverage model — and answer none | open | matched via: description |
 | efx-motion-editor-4ro.41 | 64-16.2 The Spike 001 criterion-2 pins become standing invariants: red over blue at 1080² | open | matched via: description |
 | efx-motion-editor-4ro.40 | 64-16.1 End-to-end: a chalk stroke covers with its own crumbly mask | open | matched via: description |
@@ -27,5 +32,5 @@ recall_status: ok
 
 | Issue | Title | Status |
 |-------|-------|--------|
-| efx-motion-editor-4ro.53 | Flaky 63-05 bridge listener tests under full-suite load | open |
+| efx-motion-editor-4ro.67 | 64-23.1 Task 1: The trace constants and their tested formulas | open |
 | efx-motion-editor-4ro.38 | 64-15.2 Delete the cover preview and footprint plumbing from the canvas stack | open |
