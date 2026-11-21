@@ -28,6 +28,7 @@ import {
   resolveStrokeBaseColor,
   resolveStrokeColors,
   resolveStrokeWidthFactors,
+  strokeRandomForMutationId,
 } from './engineAdapter'
 import { PAPERS } from '../playground/papers'
 import { pigmentFromHex } from '../playground/spectral'
@@ -822,6 +823,8 @@ describe('adapter render-state options: light + paper seed + wetness seams (64-0
   const calls: Array<{ method: string; args: readonly unknown[] }> = []
   /** The clock callback the adapter installed on the engine, if any. */
   let installedClock: (() => number) | null = null
+  /** The RNG factory the last configure() installed, if any. */
+  let installedRandom: (() => number) | null = null
 
   function record(method: string, args: readonly unknown[] = []): void {
     calls.push({ method, args })
@@ -838,7 +841,10 @@ describe('adapter render-state options: light + paper seed + wetness seams (64-0
       record('setClock')
       installedClock = fn
     }
-    setRandom(): void { record('setRandom') }
+    setRandom(fn: () => number): void {
+      record('setRandom')
+      installedRandom = fn
+    }
     setPaper(): void { record('setPaper') }
     setParams(): void { record('setParams') }
     setBrush(): void { record('setBrush') }
@@ -880,6 +886,7 @@ describe('adapter render-state options: light + paper seed + wetness seams (64-0
     vi.resetModules()
     calls.length = 0
     installedClock = null
+    installedRandom = null
   })
 
   const STROKE: StudioStroke<AquarelleStrokePayload> = toStudioStroke(makeStrokePayload())
@@ -995,6 +1002,25 @@ describe('adapter render-state options: light + paper seed + wetness seams (64-0
     expect(seedCalls).toHaveLength(1)
     // UNMODIFIED: the adapter is a pass-through; `setPaperSeed` drops the pin.
     expect(seedCalls[0]!.args[0]).toBe(1.5)
+    adapter.dispose()
+  })
+
+  // LIVE-SEED PARITY (post-UAT 2026-11-21): the live sheet must paint a stroke
+  // with the SAME stream its later re-bake runs. The bake keys configure() from
+  // traceSeed = hashMutationId(mutationId) (STROKE above projects exactly that
+  // for id 42); `strokeRandomForMutationId` is that key, exposed so the app can
+  // seed the live engine at pointerdown instead of leaving Math.random in force.
+  it('strokeRandomForMutationId reproduces the exact stream configure() keys', async () => {
+    const { canvas } = makeMockCanvas(8, 8)
+    const adapter = await adapterWithStubEngine({ canvas, width: 8, height: 8 })
+    adapter.applyStroke(STROKE)
+    expect(installedRandom, 'configure() must key the engine RNG').not.toBeNull()
+    expect(STROKE.traceSeed).toBe(hashMutationId(42))
+
+    const live = strokeRandomForMutationId(42)
+    for (let draw = 0; draw < 16; draw += 1) {
+      expect(live()).toBe(installedRandom!())
+    }
     adapter.dispose()
   })
 

@@ -36,7 +36,16 @@ import { frozenCacheVisible } from '../view/scriptStrokeEdition';
  * visual until it arrives. URL swaps are double-buffered (decode first, then
  * clear+draw in one task) so a refresh never blanks the canvas.
  */
-export function AquarelleCachedBaseLayer(props: { url: string }) {
+export function AquarelleCachedBaseLayer(props: {
+  url: string;
+  /**
+   * 2026-11-21: true while the live canvas renders the WHOLE composite
+   * (committed sheet x the session's ink through the engine's coverage law).
+   * The canvas stays mounted and warm — only its pixels step aside, or the
+   * same committed paint would be counted twice under the live surface.
+   */
+  hidden?: boolean;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** Decoded transmittance + its punchable pixel buffer. Null on legacy
    *  real-alpha frames (never punched) and until the first decode lands. */
@@ -198,10 +207,11 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
   // — the canvas stays mounted so the decoded pixels stay warm, and no capture,
   // save or export path consults it.
   const cacheVisible = frozenCacheVisible.value;
+  const hidden = !cacheVisible || props.hidden === true;
   return (
     <canvas
       ref={canvasRef}
-      class={`aquarelle-cached-base${cacheVisible ? '' : ' aquarelle-cached-base-hidden'}`}
+      class={`aquarelle-cached-base${hidden ? ' aquarelle-cached-base-hidden' : ''}`}
       aria-hidden="true"
     />
   );

@@ -53,10 +53,17 @@ export interface PaintMutationLedger {
    * to register the id it is about to receive (the Roto clipboard's
    * expected-id / accepted-target registration), because the return
    * value arrives too late — the completion has already been emitted.
+   *
+   * LIVE-SEED PARITY (post-UAT 2026-11-21): `reservedMutationId` accepts a
+   * stroke under an id already drawn with `allocateMutationId()` at
+   * pointerdown (the live engine seeds from it before the first dab). It must
+   * be a drawn, not-yet-accepted id — anything else fails closed without
+   * touching the clock or the accepted list.
    */
   allocateStrokeMutation(
     group: Readonly<RecordedStrokeGroup>,
     onAccepted?: (mutationId: number) => void,
+    reservedMutationId?: number,
   ): number;
   /** Max-raise; non-integers and values <= 0 are ignored (idempotent/order-free). */
   reserveNextMutationId(minNextMutationId: number): void;
@@ -89,6 +96,7 @@ export function createPaintMutationLedger(): PaintMutationLedger {
   let inputLocked = false;
   let active = false;
   const accepted: AcceptedPaintMutation[] = [];
+  const acceptedMutationIds = new Set<number>();
   const listeners = new Set<PaintMutationCompletionListener>();
 
   function reserveNextMutationId(minNextMutationId: number): void {
@@ -107,6 +115,7 @@ export function createPaintMutationLedger(): PaintMutationLedger {
   function allocateStrokeMutation(
     group: Readonly<RecordedStrokeGroup>,
     onAccepted?: (mutationId: number) => void,
+    reservedMutationId?: number,
   ): number {
     // Fail closed BEFORE the clock moves (same guards as
     // EfxPaintEngine.enqueueRecordedStroke). The clipboard's apply burst
@@ -133,7 +142,26 @@ export function createPaintMutationLedger(): PaintMutationLedger {
       return continuation;
     });
 
-    const mutationId = allocateMutationId();
+    // LIVE-SEED PARITY (post-UAT 2026-11-21): a live stroke is accepted under
+    // the id drawn for it at pointerdown, so the recorded traceSeed matches the
+    // seed the live engine painted with. Consume it only if it is one of OUR
+    // drawn ids and no accepted mutation owns it; otherwise fail closed before
+    // the clock moves.
+    let mutationId: number;
+    if (reservedMutationId === undefined) {
+      mutationId = allocateMutationId();
+    } else {
+      if (
+        !Number.isInteger(reservedMutationId)
+        || reservedMutationId <= 0
+        || reservedMutationId >= nextMutationId
+        || acceptedMutationIds.has(reservedMutationId)
+      ) {
+        throw new TypeError('Reserved mutation id must be a drawn, unused id');
+      }
+      mutationId = reservedMutationId;
+    }
+    acceptedMutationIds.add(mutationId);
     delete primary.mutationId;
     primary.mutationId = mutationId;
     // Same immutability as acceptStroke: the ledger's points are frozen.

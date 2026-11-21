@@ -28,6 +28,7 @@ import {
   maskGeneration,
   PAPERS,
   pigmentFromHex,
+  strokeRandomForMutationId,
   toEngineParams,
   WatercolorEngine,
   type PaperPreset,
@@ -54,6 +55,8 @@ import {
 import { libraryRowFor } from '../../../stores/aquarelleBrushCatalog';
 import { aquarelleSelectMode } from '../view/aquarelleStrokeSelection';
 import { aquarellePickerActive } from '../view/aquarelleColorPicker';
+import { frozenCacheVisible } from '../view/scriptStrokeEdition';
+import { isFullyOpaqueRaster } from '../../../lib/rasterAlpha';
 import { clearAquarelleWetPaint, setAquarelleHasWetPaint } from '../view/aquarelleWetPaintGate';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import { buildVectorStroke, type VectorPathCommit } from '../view/vectorPathHandles';
@@ -124,6 +127,17 @@ let lastPointerPressure = 0;
  * Written only on change by the rAF poll (efx-preact-reactivity).
  */
 const aquarelleLivePaint = signal(false);
+
+/**
+ * LIVE OVER COMMITTED (2026-11-21): true while the live canvas is rendering
+ * the WHOLE composite (committed sheet x the session's ink, through the
+ * engine's coverage law) and the committed cached base must step aside.
+ * The live canvas then shows the base itself, so keeping the cached base
+ * underneath would count the same blue twice — a translucent yellow that
+ * darkens the layer below (the artist's report). Display-only; the cached
+ * base canvas stays mounted (no decode loss).
+ */
+export const aquarelleBaseCompositedLive = signal(false);
 
 /**
  * 261030-cnq: the ring is MOUNTED by the canvas stack (a sibling of the
@@ -407,6 +421,14 @@ export function AquarelleCanvasLayer(props: {
   disabled?: boolean;
   onStrokeEnd?: (stroke: AquarelleStroke) => void;
   /**
+   * LIVE-SEED PARITY (post-UAT 2026-11-21): the capture-phase pointerdown that
+   * precedes the engine's own canvas handler asks the Studio for this stroke's
+   * mutation id, then seeds the engine with the exact per-stroke key the
+   * re-bake's configure() derives from it. A move/edit re-bake then reproduces
+   * the live texture instead of re-rolling it. Null keeps the engine's stream.
+   */
+  onStrokeWillStart?: () => number | null;
+  /**
    * 261028-k03 D3/D2: every Lift refusal (Script OFF with a script, group
    * frame, unknown pre-script base, no displayable paint) is decided by the
    * Studio's preflight and applied HERE, in the capture phase — before
@@ -507,6 +529,14 @@ export function AquarelleCanvasLayer(props: {
    * port identity, so a second port over the same engine reads null.
    */
   onEnginePortReady?: (port: AquarelleEnginePort | null) => void;
+  /**
+   * LIVE OVER COMMITTED (2026-11-21): the committed sheet this session's ink
+   * paints over — the same URL the cached base layer displays. The engine
+   * multiplies it under the live film (linear transmittance), so the first
+   * render shows exactly what the capture merge will store and a re-bake
+   * reproduces. Null when the frame has no committed paint.
+   */
+  underlayUrl?: string | null;
 }) {
   const engineRef = useRef<WatercolorEngine | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -520,6 +550,7 @@ export function AquarelleCanvasLayer(props: {
   const getLightRef = useRef(props.getLight);
   const getPaperSeedRef = useRef(props.getPaperSeed);
   const onStrokeEndRef = useRef(props.onStrokeEnd);
+  const onStrokeWillStartRef = useRef(props.onStrokeWillStart);
   const getLiftBlockedRef = useRef(props.getLiftBlocked);
   const onLiftBlockedRef = useRef(props.onLiftBlocked);
   const onLiftDabRef = useRef(props.onLiftDab);
@@ -534,6 +565,7 @@ export function AquarelleCanvasLayer(props: {
   const onTransformStrokesRef = useRef(props.onTransformStrokes);
   const onEditVectorPathRef = useRef(props.onEditVectorPath);
   const onEnginePortReadyRef = useRef(props.onEnginePortReady);
+  const underlayUrlRef = useRef<string | null>(props.underlayUrl ?? null);
   disabledRef.current = props.disabled ?? false;
   colorRef.current = props.color ?? '#103c65';
   widthRef.current = props.width;
@@ -544,6 +576,7 @@ export function AquarelleCanvasLayer(props: {
   getLightRef.current = props.getLight;
   getPaperSeedRef.current = props.getPaperSeed;
   onStrokeEndRef.current = props.onStrokeEnd;
+  onStrokeWillStartRef.current = props.onStrokeWillStart;
   getLiftBlockedRef.current = props.getLiftBlocked;
   onLiftBlockedRef.current = props.onLiftBlocked;
   onLiftDabRef.current = props.onLiftDab;
@@ -558,6 +591,7 @@ export function AquarelleCanvasLayer(props: {
   onTransformStrokesRef.current = props.onTransformStrokes;
   onEditVectorPathRef.current = props.onEditVectorPath;
   onEnginePortReadyRef.current = props.onEnginePortReady;
+  underlayUrlRef.current = props.underlayUrl ?? null;
 
   // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
   // leak the previous frame's paint (the user saw the same paint on every
@@ -773,6 +807,44 @@ export function AquarelleCanvasLayer(props: {
     };
     applyPaper();
 
+    // LIVE OVER COMMITTED (2026-11-21): the engine's underlay is the frame's
+    // DISPLAYED committed sheet — the same bytes the cached base layer shows.
+    // URL changes ride the rAF poll (no effect); the stroke-settings cache eye
+    // hides it exactly like the cached base layer's display-only hide. A
+    // legacy real-alpha frame is not a transmittance sheet (the cached base
+    // draws it raw), so it never becomes an underlay.
+    let appliedUnderlayUrl: string | null = null;
+    let appliedUnderlayVisible = true;
+    let underlayApplied = false;
+    let underlayToken = 0;
+    const syncUnderlay = () => {
+      const url = underlayUrlRef.current;
+      const visible = frozenCacheVisible.value;
+      if (url === appliedUnderlayUrl && visible === appliedUnderlayVisible) return;
+      appliedUnderlayUrl = url;
+      appliedUnderlayVisible = visible;
+      const token = ++underlayToken;
+      if (!url || !visible) {
+        underlayApplied = false;
+        engine.setUnderlay(null);
+        return;
+      }
+      const image = new Image();
+      image.onload = () => {
+        if (token !== underlayToken) return;
+        const opaque = isFullyOpaqueRaster(image);
+        underlayApplied = opaque;
+        engine.setUnderlay(opaque ? image : null);
+      };
+      image.onerror = () => {
+        if (token !== underlayToken) return;
+        underlayApplied = false;
+        engine.setUnderlay(null);
+      };
+      image.src = url;
+    };
+    syncUnderlay();
+
     // REFIT (261027 UAT round 4, Bug 3): the engine captures dpr + canvasSize
     // + view at construction (`fitCanvas`) and maps EVERY pointer through
     // them (`toUv`). The canvas CSS box can change later without remounting
@@ -871,6 +943,16 @@ export function AquarelleCanvasLayer(props: {
         return;
       }
       engine.cancelAutoFix();
+      // LIVE-SEED PARITY (post-UAT 2026-11-21): this capture listener runs
+      // BEFORE the engine's own canvas pointerdown, so the stream is keyed
+      // before the first dab. The Studio draws the id here because stroke end
+      // must accept THAT id — a fresh allocation would re-roll every re-bake.
+      // `painting` is the palm-rejection guard: a second pointer during a
+      // stroke must never re-key the bristles already depositing.
+      if (!painting && !disabledRef.current) {
+        const mutationId = onStrokeWillStartRef.current?.() ?? null;
+        if (mutationId !== null) engine.setRandom(strokeRandomForMutationId(mutationId));
+      }
     };
     window.addEventListener('pointerdown', reopenSettleOnPaint, true);
 
@@ -998,11 +1080,20 @@ export function AquarelleCanvasLayer(props: {
         engine.setPigment(pigmentFromHex(colorRef.current));
         applyPaper();
       }
+      // URL / cache-eye changes: compare-then-write, so an unchanged frame
+      // costs one string and one signal read per tick.
+      syncUnderlay();
       // EMPTY SHEET GATE: hide the opaque white sheet until it holds paint.
       // Read AFTER the frame-change clear above so a new sheet starts hidden
       // in the same tick (opacity keeps the canvas interactive).
       const painted = engine.hasPaint;
       if (aquarelleLivePaint.value !== painted) aquarelleLivePaint.value = painted;
+      // The live canvas carries the committed sheet itself once the underlay
+      // is applied — the cached base must not stack under it (double count).
+      const baseCompositedLive = painted && underlayApplied;
+      if (aquarelleBaseCompositedLive.value !== baseCompositedLive) {
+        aquarelleBaseCompositedLive.value = baseCompositedLive;
+      }
       // WATER GATE (261029-lel): publish the standing-water truth from the ONE
       // place that holds the live engine. The `!painting` guard is the "never
       // flip mid-stroke" law — a stroke in flight is never sampled, and the
@@ -1036,6 +1127,7 @@ export function AquarelleCanvasLayer(props: {
       engineRef.current = null;
       // The next mount starts on a blank sheet — never inherit painted state.
       aquarelleLivePaint.value = false;
+      aquarelleBaseCompositedLive.value = false;
       clearAquarelleWetPaint();
     };
   }, []);

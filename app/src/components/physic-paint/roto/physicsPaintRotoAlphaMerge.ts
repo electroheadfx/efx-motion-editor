@@ -11,15 +11,51 @@ export interface RotoAlphaMergeSize {
 /**
  * How the live sheet meets the cached base.
  * - `source-over` (default): engine-1 real-alpha strokes over the base.
- * - `pigment-alpha`: aquarelle. The live MODE.transparent sheet is OPAQUE
- *   transmittance in storage (white = no pigment); it converts to
- *   straight-alpha pigment (alpha = 1 − min(r,g,b)) and composites over the
+ * - `pigment-alpha`: aquarelle (2026-10-26 round 2). The live MODE.transparent
+ *   sheet is OPAQUE transmittance in storage (white = no pigment); it converts
+ *   to straight-alpha pigment (alpha = 1 − min(r,g,b)) and composites over the
  *   base on a white paper fill. The stored result stays the opaque sheet
- *   t' = a*C + (1-a)*t_base — the later one-fond multiply reconstructs the
- *   live pigment composite exactly. Opaque source-over would cover the base
- *   wholesale, and multiply would glaze it (the round-2 bug).
+ *   t' = a*C + (1-a)*t_base.
+ * - `coverage-composite` (2026-11-21, the artist's live-vs-committed report):
+ *   THE ENGINE'S OWN DAB LAW. A dab REPLACES pigment — `ink <- ink*(1-a) +
+ *   C*a` — so across the sheet the committed base's remaining share is exactly
+ *   `1 - cover` (the coverage channel is the union of every dab's a). Stored in
+ *   linear light: t' = t_sheet x t_base^(1 - cover). A full-core dab
+ *   (cover 1) replaces the base; a bristle gap (cover 0) keeps it. This is
+ *   what a full-script re-bake produces and what the artist's re-render shows
+ *   (#142) — NOT a film multiply, which reads dark.
  */
-export type RotoAlphaMergeBlend = 'source-over' | 'pigment-alpha';
+export type RotoAlphaMergeBlend = 'source-over' | 'pigment-alpha' | 'coverage-composite';
+
+/**
+ * Lookup tables for the coverage composite, built once. `pow` is a 64 KiB
+ * Float32 table over (base byte, cover byte): srgbToLinear(base/255) **
+ * (1 - cover/255). `sheetLinear` and `encode` avoid per-pixel gamma math.
+ */
+let coverageLuts: {
+  pow: Float32Array;
+  sheetLinear: Float64Array;
+  encode: Uint8Array;
+} | null = null;
+function coverageCompositeLuts() {
+  if (coverageLuts) return coverageLuts;
+  const toLinear = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  const toSrgb = (v: number) => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055);
+  const linear = new Float64Array(256);
+  for (let i = 0; i < 256; i += 1) linear[i] = toLinear(i / 255);
+  const pow = new Float32Array(256 * 256);
+  for (let base = 0; base < 256; base += 1) {
+    for (let cov = 0; cov < 256; cov += 1) {
+      pow[base * 256 + cov] = linear[base] ** (1 - cov / 255);
+    }
+  }
+  const encode = new Uint8Array(4096);
+  for (let i = 0; i < 4096; i += 1) {
+    encode[i] = Math.max(0, Math.min(255, Math.round(toSrgb(i / 4095) * 255)));
+  }
+  coverageLuts = { pow, sheetLinear: linear, encode };
+  return coverageLuts;
+}
 
 export async function mergeCachedRotoAlphaFrame(
   baseFrame: Pick<PhysicPaintRenderedFrame, 'bytes'> | null,
@@ -29,8 +65,9 @@ export async function mergeCachedRotoAlphaFrame(
   mutationId?: number,
   baseCanvas?: HTMLCanvasElement | null,
   blend: RotoAlphaMergeBlend = 'source-over',
+  coverageCanvas?: HTMLCanvasElement | null,
 ): Promise<PhysicPaintRenderedFrame> {
-  const output = await mergeRotoAlphaCanvases(baseFrame, liveAlphaCanvas, size, baseCanvas, blend);
+  const output = await mergeRotoAlphaCanvases(baseFrame, liveAlphaCanvas, size, baseCanvas, blend, coverageCanvas);
   return encodeRotoFrameFromCanvas(output, appFrame, undefined, mutationId);
 }
 
@@ -43,6 +80,7 @@ export async function mergeRotoAlphaCanvases(
   // resurrects the removed paint — draw the erased layer instead.
   baseCanvas?: HTMLCanvasElement | null,
   blend: RotoAlphaMergeBlend = 'source-over',
+  coverageCanvas?: HTMLCanvasElement | null,
 ): Promise<HTMLCanvasElement> {
   const output = document.createElement('canvas');
   output.width = size.width;
@@ -51,10 +89,10 @@ export async function mergeRotoAlphaCanvases(
   if (!context) throw new Error('Could not merge Roto alpha frames: 2D context unavailable.');
 
   context.clearRect(0, 0, size.width, size.height);
-  if (blend === 'pigment-alpha') {
-    // Round 2 law: paper white → cached base → converted live sheet. Over an
-    // opaque base this stores t' = a*C + (1-a)*t_base; a partial-alpha base
-    // shows paper instead of a black hole (single fond multiply downstream).
+  if (blend === 'pigment-alpha' || blend === 'coverage-composite') {
+    // Round 2 law / coverage law: paper white (the no-pigment identity) →
+    // cached base → the live sheet. A partial-alpha base shows paper instead
+    // of a black hole (single fond multiply downstream).
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, size.width, size.height);
   }
@@ -63,6 +101,66 @@ export async function mergeRotoAlphaCanvases(
   } else if (baseFrame) {
     const baseImage = await loadCachedRotoBaseImage(baseFrame.bytes);
     context.drawImage(baseImage, 0, 0, size.width, size.height);
+  }
+  if (blend === 'coverage-composite') {
+    // 2026-11-21: THE ENGINE'S OWN DAB LAW. A dab replaces pigment with its
+    // coverage `a` (`ink <- ink*(1-a) + C*a`); across the sheet the committed
+    // base survives by exactly `1 - cover`. In linear light the stored sheet is
+    //   t' = t_sheet x t_base^(1 - cover)
+    // — a full-core dab (cover 1) replaces the base, a bristle gap (cover 0)
+    // keeps it. That is the blended yellow-over-blue the re-render shows.
+    // The sheet and the coverage are opaque rasters from the same engine state;
+    // drawn over white so a partial raster still reads as transmittance.
+    // Fail-open (no coverage / no readback) to the raw sheet: a merge missing
+    // its paint is worse than an unconverted sheet.
+    const scratchOf = (source: CanvasImageSource): HTMLCanvasElement | null => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size.width;
+      canvas.height = size.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return null;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size.width, size.height);
+      ctx.drawImage(source, 0, 0, size.width, size.height);
+      return canvas;
+    };
+    const sheetCanvas = scratchOf(scriptAlphaCanvas);
+    const coverCanvas = coverageCanvas ? scratchOf(coverageCanvas) : null;
+    const composed = (() => {
+      if (!sheetCanvas || !coverCanvas) return null;
+      const sheetContext = sheetCanvas.getContext('2d', { willReadFrequently: true });
+      const coverContext = coverCanvas.getContext('2d', { willReadFrequently: true });
+      if (!sheetContext || !coverContext || typeof context.getImageData !== 'function' || typeof sheetContext.getImageData !== 'function' || typeof coverContext.getImageData !== 'function') return null;
+      try {
+        const base = context.getImageData(0, 0, size.width, size.height);
+        const sheet = sheetContext.getImageData(0, 0, size.width, size.height);
+        const cover = coverContext.getImageData(0, 0, size.width, size.height);
+        const { pow, sheetLinear, encode } = coverageCompositeLuts();
+        const b = base.data;
+        const s = sheet.data;
+        const c = cover.data;
+        for (let i = 0; i < b.length; i += 4) {
+          // cover rides the coverage raster's red channel (exportCoverageCanvas).
+          const cov = c[i];
+          for (let k = 0; k < 3; k += 1) {
+            const linear = sheetLinear[s[i + k]] * pow[b[i + k] * 256 + cov];
+            b[i + k] = encode[Math.min(4095, Math.max(0, Math.round(linear * 4095)))];
+          }
+          b[i + 3] = 255;
+        }
+        return base;
+      } catch {
+        return null;
+      }
+    })();
+    if (composed) {
+      context.putImageData(composed, 0, 0);
+    } else {
+      context.globalCompositeOperation = 'source-over';
+      context.drawImage(scriptAlphaCanvas, 0, 0, size.width, size.height);
+    }
+    context.globalCompositeOperation = 'source-over';
+    return output;
   }
   // Fail-open to the raw sheet when the readback is unavailable: a merge
   // missing its paint is worse than an unconverted (still opaque) sheet.

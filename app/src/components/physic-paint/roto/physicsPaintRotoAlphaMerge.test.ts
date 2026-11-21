@@ -195,6 +195,95 @@ describe('mergeCachedRotoAlphaFrame', () => {
     expect(liveDraw).toMatchObject({ compositeOp: 'source-over' });
   });
 
+  it('COVERAGE-COMPOSITE: the base survives by (1 - cover), the engine dab law', async () => {
+    // 2026-11-21 (the artist's re-render): base t = (128, 128, 255), sheet
+    // t = (255, 255, 64). At cover 255 the dab REPLACES the base → (255, 255, 64).
+    // At cover 0 the base is fully kept → sheet x base = (128, 128, 64).
+    // At cover 128 (0.502) the base survives at 0.498: 0.2159^0.498 ≈ 0.466
+    // → red/green ≈ 182, blue 64 — a blended yellow-over-blue, never the dark
+    // full product.
+    class PixelCanvas {
+      width = 2;
+      height = 1;
+      pixels: number[] = [];
+      getContext(contextId: string): PixelContext | null {
+        return contextId === '2d' ? new PixelContext(this) : null;
+      }
+    }
+    class PixelContext {
+      globalCompositeOperation = 'source-over';
+      fillStyle = '';
+      constructor(private canvas: PixelCanvas) {}
+      clearRect(): void {}
+      fillRect(): void {}
+      drawImage(): void {}
+      getImageData(_x: number, _y: number, width: number, height: number) {
+        return { data: new Uint8ClampedArray(this.canvas.pixels), width, height };
+      }
+      putImageData(image: { data: Uint8ClampedArray }): void {
+        this.canvas.pixels = Array.from(image.data);
+      }
+    }
+    const created: PixelCanvas[] = [];
+    let coverByte = 255;
+    vi.stubGlobal('document', {
+      createElement: (tagName: string) => {
+        if (tagName !== 'canvas') throw new Error(`Unexpected test element: ${tagName}`);
+        const canvas = new PixelCanvas();
+        // Creation order: output (holds the drawn base), sheet scratch, cover
+        // scratch. drawImage is a no-op here, so seed the rasters directly.
+        canvas.pixels = created.length === 0
+          ? [128, 128, 255, 255]
+          : created.length === 1
+            ? [255, 255, 64, 255]
+            : [coverByte, coverByte, coverByte, coverByte];
+        created.push(canvas);
+        return canvas as unknown as HTMLElement;
+      },
+    });
+    const liveCanvas = new TestCanvas() as unknown as HTMLCanvasElement;
+    liveCanvas.width = 2;
+    liveCanvas.height = 1;
+    const baseCanvas = new TestCanvas() as unknown as HTMLCanvasElement;
+    const coverageCanvas = new TestCanvas() as unknown as HTMLCanvasElement;
+    const run = async () => {
+      created.length = 0;
+      await mergeCachedRotoAlphaFrame(
+        null,
+        liveCanvas,
+        12,
+        { width: 2, height: 1 },
+        undefined,
+        baseCanvas,
+        'coverage-composite',
+        coverageCanvas,
+      );
+      return created[0]!.pixels;
+    };
+
+    coverByte = 255;
+    expect(await run()).toEqual([255, 255, 64, 255]);
+    coverByte = 0;
+    expect(await run()).toEqual([128, 128, 64, 255]);
+    coverByte = 128;
+    const blended = await run();
+    expect(Math.abs(blended[0]! - 182)).toBeLessThanOrEqual(2);
+    expect(Math.abs(blended[1]! - 182)).toBeLessThanOrEqual(2);
+    expect(Math.abs(blended[2]! - 64)).toBeLessThanOrEqual(2);
+    expect(blended[3]).toBe(255);
+    expect(harness.convert).not.toHaveBeenCalled();
+  });
+
+  it('COVERAGE-COMPOSITE: fails open to the raw sheet without a coverage readback', async () => {
+    // The default harness canvas has no getImageData: the merge must still
+    // produce a sheet (drawn raw), never drop the stroke.
+    await mergeCachedRotoAlphaFrame(makeBaseFrame(), makeLiveCanvas(), 12, { width: 320, height: 180 }, undefined, undefined, 'coverage-composite', null);
+
+    const liveDraw = operations.find((operation) => operation.type === 'drawImage' && operation.source === 'live-transparent-stroke-canvas');
+    expect(liveDraw).toMatchObject({ compositeOp: 'source-over' });
+    expect(harness.convert).not.toHaveBeenCalled();
+  });
+
   it('56-12/WATERCOLOR-CLEAR: default blend stays source-over so engine-1 merges are unchanged', async () => {
     await mergeCachedRotoAlphaFrame(makeBaseFrame(), makeLiveCanvas(), 12, { width: 320, height: 180 });
 

@@ -23,9 +23,15 @@ vi.mock('preact/hooks', () => ({
 // The layer modules pull the watercolor runtime; the mount's contract is which
 // layers it renders and how it forwards to the latest parent callbacks, so both
 // layers are opaque string elements here.
-vi.mock('./AquarelleCanvasLayer', () => ({
-  AquarelleCanvasLayer: 'aquarelle-canvas-layer',
-}));
+vi.mock('./AquarelleCanvasLayer', async () => {
+  const { signal } = await import('@preact/signals');
+  return {
+    AquarelleCanvasLayer: 'aquarelle-canvas-layer',
+    // 2026-11-21: the mount hides the cached base while the live canvas
+    // carries the whole composite (never double-count the committed paint).
+    aquarelleBaseCompositedLive: signal(false),
+  };
+});
 vi.mock('./AquarelleCachedBaseLayer', () => ({
   AquarelleCachedBaseLayer: 'aquarelle-cached-base-layer',
 }));

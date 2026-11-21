@@ -22,7 +22,7 @@
 //  mapped 0..1 bag.
 // ============================================================
 
-import { mixStrokeSeed } from '@efxlab/efx-paint-host'
+import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type {
   EngineAdapter,
   EngineId,
@@ -131,6 +131,18 @@ function seededRandom(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
+}
+
+/**
+ * LIVE-SEED PARITY (post-UAT 2026-11-21): the RNG factory a LIVE stroke with
+ * this mutation id must paint with. It is the exact stream `configure()` gives
+ * that stroke's later re-bake — `seededRandom(traceSeed || 1)` with the
+ * projected `traceSeed = hashMutationId(mutationId)` and no paint-seed salt —
+ * so an edit or move that re-bakes the script reproduces the live texture
+ * instead of re-rolling its bristles.
+ */
+export function strokeRandomForMutationId(mutationId: number): () => number {
+  return seededRandom(hashMutationId(mutationId) || 1)
 }
 
 const AQUARELLE_TOOL_SET = new Set<Tool>(['brush', 'water', 'pen', 'lift'])

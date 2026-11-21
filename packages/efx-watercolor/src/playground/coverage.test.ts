@@ -18,9 +18,9 @@
 //   2. The amount is `bodyCurve(P.body)` and the density is the MEDIUM's —
 //      pigment-independent, so a near-white pigment covers.
 //   3. Both pools are protected once per stamp, before the first dab.
-//   4. Mode 4 renders max(darkness, coverage) and the emboss scales the
-//      premultiplied colour, never the alpha; at cover 0 it reduces to the
-//      legacy darkness-only formula.
+//   4. Mode 4 renders the committed darkness alpha (live/committed parity,
+//      2026-11-21) and the emboss scales the premultiplied colour, never the
+//      alpha. The coverage term 64-13 added here was retired with the law.
 //   5. The rev-4 seam (preInk, inkCover, armInkCover, dropPreInk, onCoverDab,
 //      the pigment-scaled coverDensity method) is gone from both sources.
 //   6. The advect/undo/Lift lifecycle of the coverage sheet belongs to
@@ -231,13 +231,15 @@ describe('the per-stamp protections (T-64-37)', () => {
 })
 
 describe('the display formula (T-64-39)', () => {
-  it('renders max(darkness, coverage) in mode 4 and reduces to the legacy formula at cover 0', () => {
+  it('renders the committed darkness alpha in mode 4 (live/committed parity)', () => {
+    // 2026-11-21 (the artist's live-vs-committed report): the live compositor
+    // emits exactly what the committed sheet converts to (alpha = 1 − min(t)),
+    // so what is painted is what a move/re-bake lands. SPIKE 001's coverage
+    // term made Body-100 paint opaque live and translucent committed.
     const mode4 = MODE_4()
     expectContains(SHADERS, 'uniform sampler2D uCover;')
-    expectContains(mode4, 'float darkAlpha = 1.0 - tMin;')
-    expectContains(mode4, 'float cov = texture(uCover, uv).x;')
-    // At cover 0 the max collapses to the darkness alpha: the legacy formula.
-    expectContains(mode4, 'float alpha = clamp(max(darkAlpha, cov), 0.0, 1.0);')
+    expectContains(mode4, 'float alpha = clamp(1.0 - tMin, 0.0, 1.0);')
+    expectNotContains(mode4, 'max(darkAlpha, cov)')
     // The reconstruction is over WHITE through that same alpha.
     expectContains(mode4, 'vec3 pigment = alpha > 0.0 ? (tSrgb - vec3(1.0 - alpha)) / alpha : vec3(0.0);')
     expectContains(mode4, 'pigment = clamp(pigment, 0.0, 1.0);')
@@ -246,8 +248,8 @@ describe('the display formula (T-64-39)', () => {
     expectNotContains(mode4, 'alpha *= shade')
     expect(/\balpha\s*\*=\s*shade/.test(mode4), 'alpha must never be scaled by the shade').toBe(false)
     expectNotContains(mode4, 'rgb *= shade;')
-    // Mode 2 keeps its early return after mode 4, so the lit alpha is only
-    // ever the coverage-aware one.
+    // Mode 2 keeps its early return after mode 4, so the alpha pin above is
+    // the only display alpha either mode emits.
     expectContains(mode4, 'return;')
   })
 

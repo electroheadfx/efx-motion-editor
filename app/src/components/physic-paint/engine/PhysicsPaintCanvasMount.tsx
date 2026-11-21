@@ -5,7 +5,7 @@ import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { physicsPaintCanvasZoom } from '../view/physicsPaintCanvasZoom';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import { AquarelleCanvasLayer } from './AquarelleCanvasLayer';
+import { aquarelleBaseCompositedLive, AquarelleCanvasLayer } from './AquarelleCanvasLayer';
 import { AquarelleCachedBaseLayer } from './AquarelleCachedBaseLayer';
 import type { AquarelleEnginePort } from './aquarelleEnginePort';
 
@@ -64,6 +64,10 @@ export function PhysicsPaintCanvasMount(props: {
    *  unchanged; the preview shape is resolved in AquarelleCachedBaseLayer. */
   onAquarelleLiftDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;
   onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void;
+  /** LIVE-SEED PARITY (post-UAT 2026-11-21): draws the stroke's mutation id at
+   *  pointerdown so the layer can seed the live engine from it. The stroke-end
+   *  handler accepts the same id — live paint and re-bake share one stream. */
+  onAquarelleStrokeWillStart?: () => number | null;
   onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void;
   onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => void;
   onAquarelleFlushCaptureReady?: (flushCapture: ((captureTrackId?: string) => void) | null) => void;
@@ -86,6 +90,7 @@ export function PhysicsPaintCanvasMount(props: {
   const [mountError, setMountError] = useState<string | null>(null);
   const onCanvasMountedRef = useRef(props.onCanvasMounted);
   const onAquarelleStrokeEndRef = useRef(props.onAquarelleStrokeEnd);
+  const onAquarelleStrokeWillStartRef = useRef(props.onAquarelleStrokeWillStart);
   const onAquarelleStrokeSettledRef = useRef(props.onAquarelleStrokeSettled);
   const onAquarelleCaptureFrameRef = useRef(props.onAquarelleCaptureFrame);
   const onAquarelleFlushCaptureReadyRef = useRef(props.onAquarelleFlushCaptureReady);
@@ -108,6 +113,7 @@ export function PhysicsPaintCanvasMount(props: {
   const colorRef = useRef(props.color ?? '#103c65');
   onCanvasMountedRef.current = props.onCanvasMounted;
   onAquarelleStrokeEndRef.current = props.onAquarelleStrokeEnd;
+  onAquarelleStrokeWillStartRef.current = props.onAquarelleStrokeWillStart;
   onAquarelleStrokeSettledRef.current = props.onAquarelleStrokeSettled;
   onAquarelleCaptureFrameRef.current = props.onAquarelleCaptureFrame;
   onAquarelleFlushCaptureReadyRef.current = props.onAquarelleFlushCaptureReady;
@@ -220,12 +226,16 @@ export function PhysicsPaintCanvasMount(props: {
           multiply over the fond stays the paper pass. Without it a cached key
           shows bare paper after return. */}
       {props.aquarelleCachedBaseUrl ? (
-        <AquarelleCachedBaseLayer url={props.aquarelleCachedBaseUrl} />
+        <AquarelleCachedBaseLayer
+          url={props.aquarelleCachedBaseUrl}
+          hidden={aquarelleBaseCompositedLive.value}
+        />
       ) : null}
       <AquarelleCanvasLayer
         width={props.width}
         height={props.height}
         color={colorRef.current}
+        underlayUrl={props.aquarelleCachedBaseUrl ?? null}
         getPlayFrame={() => getAquarellePlayFrameRef.current?.() ?? 0}
         getPaperId={() => getAquarellePaperIdRef.current?.() ?? 'paper/cold-press'}
         getPaperGrainStrength={() => getAquarellePaperGrainStrengthRef.current?.() ?? 1}
@@ -236,6 +246,7 @@ export function PhysicsPaintCanvasMount(props: {
         onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}
         onLiftDab={(x, y, r, amount, angle) => onAquarelleLiftDabRef.current?.(x, y, r, amount, angle)}
         onStrokeEnd={(stroke) => onAquarelleStrokeEndRef.current?.(stroke)}
+        onStrokeWillStart={() => onAquarelleStrokeWillStartRef.current?.() ?? null}
         onStrokeSettled={(stroke, ticks) => onAquarelleStrokeSettledRef.current?.(stroke, ticks)}
         onCaptureFrame={(playFrame, snapshot, captureTrackId) => onAquarelleCaptureFrameRef.current?.(playFrame, snapshot, captureTrackId)}
         onFlushCaptureReady={(flushCapture) => onAquarelleFlushCaptureReadyRef.current?.(flushCapture)}

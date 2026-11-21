@@ -183,6 +183,41 @@ describe('quick 261027-klx paint mutation ledger', () => {
     expect(order).toEqual(['accepted:1', 'completion:1']);
   });
 
+  // LIVE-SEED PARITY (post-UAT 2026-11-21): the live sheet draws the stroke's
+  // id at pointerdown and seeds the engine from it, so stroke end must accept
+  // THAT id — a fresh allocation would make every re-bake re-roll the paint.
+  it('accepts a stroke under the id drawn for it at pointerdown', () => {
+    const ledger = createPaintMutationLedger();
+    const drawn = ledger.allocateMutationId();
+    const id = ledger.allocateStrokeMutation({ primary: stroke(1) }, undefined, drawn);
+    expect(id).toBe(drawn);
+    expect(ledger.lookupAcceptedTarget(drawn)).not.toBeNull();
+    // The clock keeps moving: the next stroke gets a fresh id.
+    expect(ledger.allocateMutationId()).toBe(drawn + 1);
+  });
+
+  it('fails closed on a reserved id it never drew, and on one already accepted', () => {
+    const ledger = createPaintMutationLedger();
+    const drawn = ledger.allocateMutationId();
+    for (const invalid of [0, -3, 1.5, drawn + 5]) {
+      expect(() => ledger.allocateStrokeMutation({ primary: stroke(1) }, undefined, invalid)).toThrow(TypeError);
+    }
+    // None of the refusals consumed anything: the drawn id is still acceptable.
+    expect(ledger.allocateStrokeMutation({ primary: stroke(1) }, undefined, drawn)).toBe(drawn);
+    // Re-using an accepted id is refused — ids are never reused.
+    expect(() => ledger.allocateStrokeMutation({ primary: stroke(2) }, undefined, drawn)).toThrow(TypeError);
+    expect(ledger.allocateMutationId()).toBe(drawn + 1);
+  });
+
+  it('a reserved acceptance emits the one completion later listeners see', () => {
+    const ledger = createPaintMutationLedger();
+    const observed: CompletedPaintMutation[] = [];
+    ledger.subscribe((mutation) => observed.push(mutation));
+    const drawn = ledger.allocateMutationId();
+    ledger.allocateStrokeMutation({ primary: stroke(1) }, undefined, drawn);
+    expect(observed).toEqual([{ kind: 'paint', isEmpty: true, mutationId: drawn }]);
+  });
+
   it('fails closed on malformed groups without consuming an id', () => {
     const ledger = createPaintMutationLedger();
     expect(() => ledger.allocateStrokeMutation({ primary: stroke(1, { points: [] }) })).toThrow(TypeError);

@@ -47,12 +47,14 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // stay translucent; dense pigment masks — the user-reported lost
     // semi-transparency.
     expect(engine).toContain('pigment: 4');
-    // 64-13: alpha is the max of the darkness alpha and the composited
-    // coverage, so a near-white covering pigment is opaque too.
+    // 2026-11-21 (the artist's live-vs-committed report): alpha is the
+    // DARKNESS alpha only — the exact law the committed sheet converts to
+    // (rasterAlpha.ts: 1 − min(t)), so the live surface and a move/re-bake
+    // render the same pixels. The retired 64-13 coverage term made Body-100
+    // paint opaque live and translucent once committed.
     expect(shaders).toContain('float tMin = min(min(tSrgb.r, tSrgb.g), tSrgb.b)');
-    expect(shaders).toContain('float darkAlpha = 1.0 - tMin');
-    expect(shaders).toContain('float cov = texture(uCover, uv).x');
-    expect(shaders).toContain('float alpha = clamp(max(darkAlpha, cov), 0.0, 1.0)');
+    expect(shaders).toContain('float alpha = clamp(1.0 - tMin, 0.0, 1.0)');
+    expect(shaders).not.toContain('max(darkAlpha, cov)');
     // 64-04: the emboss shade multiplies the already-premultiplied colour only;
     // alpha is untouched, so the premultiplied contract still holds.
     expect(shaders).toContain('o = vec4(pigment * alpha * shade, alpha)');

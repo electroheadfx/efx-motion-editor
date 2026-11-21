@@ -5393,7 +5393,11 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
       'const handleAquarelleStrokeSettled',
     );
     // ONE synchronous allocation: the ledger emits the completion inside it.
-    expect(strokeEnd).toContain('const mutationId = paintMutationLedger.allocateStrokeMutation({ primary: paintStroke });');
+    // LIVE-SEED PARITY (post-UAT 2026-11-21): the id drawn at pointerdown rides
+    // the same call, so the record keeps the seed the live engine painted with.
+    expect(strokeEnd).toContain('const mutationId = paintMutationLedger.allocateStrokeMutation(');
+    expect(strokeEnd).toContain('{ primary: paintStroke },');
+    expect(strokeEnd).toContain('reservedMutationId ?? undefined,');
     // Nothing on this path may wait on an engine, a raster or a dry queue.
     expect(strokeEnd).not.toContain('enqueueRecordedStroke');
     expect(strokeEnd).not.toContain('flushPendingStrokeFinalizations');
@@ -5944,9 +5948,12 @@ describe('quick 261101-o2m — every edit commits under Draft, the cache eye', (
 
   it('hides the frozen sheet through a display-only class on the mounted canvas', () => {
     // The leaf subscribes to the session preference and only swaps a class.
+    // 2026-11-21: the SAME class also steps the base aside while the live
+    // canvas carries the whole composite (never double-count the base).
     expect(cachedBase).toContain("import { frozenCacheVisible } from '../view/scriptStrokeEdition';");
     expect(cachedBase).toContain('const cacheVisible = frozenCacheVisible.value;');
-    expect(cachedBase).toContain('class={`aquarelle-cached-base${cacheVisible ? \'\' : \' aquarelle-cached-base-hidden\'}`}');
+    expect(cachedBase).toContain('const hidden = !cacheVisible || props.hidden === true;');
+    expect(cachedBase).toContain('class={`aquarelle-cached-base${hidden ? \' aquarelle-cached-base-hidden\' : \'\'}`}');
     // Mounted, never unmounted, never nulled: the decode cache stays warm.
     expect(cachedBase).toContain('ref={canvasRef}');
     expect(cachedBase).toContain('aria-hidden="true"');

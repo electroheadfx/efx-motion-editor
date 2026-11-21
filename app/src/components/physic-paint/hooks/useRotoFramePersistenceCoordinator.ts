@@ -645,10 +645,14 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
      * no pixel erase ran). When set, the merge draws it instead of cachedBase
      * bytes so the capture records the removal. */
     baseCanvas?: HTMLCanvasElement | null;
-    /** 2026-10-26 round 2: `pigment-alpha` when the live sheet is aquarelle
-     * opaque transmittance (it converts to straight-alpha pigment over the
-     * base); default `source-over` for engine-1 real-alpha strokes. */
+    /** 2026-11-21: `coverage-composite` for the ordinary aquarelle capture —
+     * the engine's own dab law, t' = t_sheet x t_base^(1 - cover), with the
+     * engine's coverage field; `pigment-alpha` remains for the Roto-owned
+     * composites; default `source-over` for engine-1 strokes. */
     mergeBlend?: RotoAlphaMergeBlend;
+    /** The engine's coverage field (exportCanvas('coverage')) for
+     * `coverage-composite`: the base survives under the sheet by (1 - cover). */
+    coverageCanvas?: HTMLCanvasElement | null;
     size: { width: number; height: number };
     mutationId?: number;
     interpolationSettings?: PhysicPaintRotoInterpolationSettings;
@@ -748,7 +752,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         if (!liveAlphaCanvas) throw new Error('live-alpha snapshot unavailable');
         const usedMerge = Boolean(capture.cachedBase || capture.baseCanvas);
         const produced = await (usedMerge
-          ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas, capture.mergeBlend)
+          ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas, capture.mergeBlend, capture.coverageCanvas)
           : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId));
         // The exact bytes this capture would commit, handed to a caller that
         // owns the post-ack display swap (see onProduced above).
@@ -763,7 +767,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
           baseCanvasPresent: capture.baseCanvas !== null && capture.baseCanvas !== undefined,
           produced: summarizeRenderedFrame(produced),
         }, { producedInk: produced.bytes, baseInk: capture.cachedBase?.bytes ?? null });
-        // 261026 (round 2): prove the pigment-alpha composite keeps the base's
+        // 261026 (round 2) / 2026-11-21: prove the merge keeps the base's
         // visible paint. Base = the pre-script cache pinned at sheet start;
         // sheet = the live transmittance canvas; produced = what will commit.
         recordAquarelleAlphaProof('capture-alpha-proof', {

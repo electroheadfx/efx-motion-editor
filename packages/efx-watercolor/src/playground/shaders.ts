@@ -573,9 +573,9 @@ void main(){
 
 // SPIKE 001 — the coverage channel. Composited with ONE / ONE_MINUS_SRC_ALPHA:
 //   cover <- a + cover * (1 - a)
-// the union of every dab's coverage. The compositor reads it as the pigment
-// layer's alpha (displayFS mode 4), so a body-heavy stroke hides the cached
-// base underneath instead of punching a hole in it.
+// the union of every dab's coverage. 2026-11-21: the display no longer reads
+// it (mode 4's alpha is darkness-only, matching the committed sheet), so the
+// channel now feeds deposition, erode and the wet gate — never opacity.
 //
 // 64-20 — the deposit is deliberately UNGATED. The plan's film-coherence law
 // is the TRANSPORT gate in `advectCoverFS` ("the deposit is already clean"),
@@ -609,7 +609,8 @@ void main(){
 // contract already makes it invisible).
 //
 // The clear is scoped to texels that actually carry COVERAGE (`cov > 0`), the
-// part of displayFS's `max(darkAlpha, cov)` this decision is about. With
+// only texels that ever claimed a coverage-raised alpha (SPIKE 001's mode-4
+// term, retired 2026-11-21 — display alpha is darkness-only now). With
 // cov == 0 the exported alpha is the pigment's own faint darkness, not a
 // coverage claim: a paper-white film bounds `1 - min(rgb)` at 15/255 — far
 // below the census's 0.5 alpha line — so such a texel can never be a census
@@ -1352,11 +1353,13 @@ void main(){
 // Post-UAT 2026-11-19 (GAP-1) — `T` is the film's target opacity,
 // `uCoverTarget · g.alpha`: Body's opacity (Engine's `bristleBodyAlpha`)
 // times the carried layer alpha. The shipped law wrote the bare coverage,
-// a union that saturated to 1 while the ink stayed faint, and mode 4's
-// `max(darkAlpha, cov)` promoted the alpha past the paint and re-solved a
-// near-white pigment — the pale halo and Body-as-transparency. The erode
-// pass (D-21's Body-mask program) is gone: Body no longer masks paint
-// that already landed, it sets how opaque THIS film is.
+// a union that saturated to 1 while the ink stayed faint, and the compositor
+// promoted that alpha past the paint and re-solved a near-white pigment — the
+// pale halo and Body-as-transparency. The erode pass (D-21's Body-mask
+// program) is gone: Body no longer masks paint that already landed, it sets
+// how opaque THIS film is. (The display itself stopped reading the channel on
+// 2026-11-21 — alpha is darkness-only there — so Body now reaches the eye
+// only through the film's deposited pigment.)
 export const bristleCoverFS = `${HEADER}${BRISTLE_GATHER}
 layout(location=0) out vec4 o0;
 uniform float uCoverTarget;       // bristleBodyAlpha · carried alpha
@@ -1789,6 +1792,12 @@ out vec4 o;
 uniform sampler2D uInkA, uInkB, uFixedA, uFixedB, uWet, uPaper;
 uniform sampler2D uRelief; // Phase 64: paint thickness field (one channel)
 uniform sampler2D uCover;  // SPIKE 001: pigment-layer coverage (one channel)
+// LIVE OVER COMMITTED (2026-11-21): the committed sheet this session's ink
+// paints over. Bound ONLY by the live compositor render (Engine.drawDisplay
+// with no export target) — every export path leaves uUnderlayOn at 0, so the
+// stored/captured sheet stays stroke-only.
+uniform sampler2D uUnderlay;
+uniform float uUnderlayOn;
 uniform vec4 uView;       // canvas px -> document uv: uv = (fragCoord - xy) / zw
 uniform vec2 uTexel;      // document texel size
 uniform float uGranulation, uEdgeDarken;
@@ -1924,16 +1933,39 @@ ${displayBasisGLSL()}
     // derived from the UNSHADED reconstruction and stays byte-for-byte
     // untouched, so a lit stroke never changes its opacity.
     //
-    // SPIKE 001: alpha is the max of the darkness alpha and the composited
-    // COVERAGE. A near-white pigment's darkness alpha is ~0.06, which is why
-    // the punch machinery existed; coverage is pigment-independent, so white
-    // acrylic now hides what is beneath it. The colour keeps the same
-    // over-white identity — over a white fond source-over gives
-    // colour*alpha + (1-alpha) = t — and reduces exactly to the old formula
-    // (alpha = 1 - tMin, colour = (t - tMin) / alpha) wherever cover is 0.
-    float darkAlpha = 1.0 - tMin;
-    float cov = texture(uCover, uv).x;
-    float alpha = clamp(max(darkAlpha, cov), 0.0, 1.0);
+    // 2026-11-21 (the artist's live-vs-committed report): alpha is the
+    // DARKNESS alpha ONLY — the exact arithmetic of the committed sheet's
+    // transmittance→pigment conversion (rasterAlpha.ts: alpha = 1 − min(t),
+    // colour = (t − min) / alpha). SPIKE 001's max(darkAlpha, cover) broke
+    // that parity: Body-100 paint read opaque LIVE while the SAME sheet read
+    // translucent once committed (yellow hides blue live, multiplies to green
+    // after a re-bake), so the live surface stopped being what you get. Over
+    // any fond, source-over of this layer equals the cached base's: live and
+    // committed render the same pixels by construction. The coverage channel
+    // no longer drives display alpha (it still drives deposition, erode and
+    // the wet gate); paint covers by depositing more pigment, not by alpha.
+    //
+    // LIVE OVER COMMITTED (2026-11-21): the engine's OWN dab law, applied to
+    // the committed sheet under this session's ink. A dab REPLACES pigment
+    // (ink <- ink*(1-a) + C*a, and Engine.bristleInk draws 1/1b attenuate the
+    // settled pool by the same a), so across the sheet the base's remaining
+    // share is exactly 1 - cover (the coverage channel is the union of every
+    // dab's a). The base film is attenuated by that share, NOT multiplied in
+    // whole: a full-core dab (cover 1) replaces the base, a bristle gap
+    // (cover 0) keeps it — the artist's blended-yellow-over-blue re-render
+    // (#142), never the dark film-multiply.
+    if (uUnderlayOn > 0.5){
+      vec3 tNew = fromSRGB(lit);
+      vec3 tBase = fromSRGB(texture(uUnderlay, uv).rgb);
+      float cov = clamp(texture(uCover, uv).x, 0.0, 1.0);
+      vec3 all = min(toSRGB(tNew * pow(tBase, vec3(1.0 - cov))), vec3(1.0));
+      float m = min(min(all.r, all.g), all.b);
+      float ua = clamp(1.0 - m, 0.0, 1.0);
+      vec3 up = ua > 0.0 ? (all - vec3(1.0 - ua)) / ua : vec3(0.0);
+      o = vec4(clamp(up, 0.0, 1.0) * ua, ua);
+      return;
+    }
+    float alpha = clamp(1.0 - tMin, 0.0, 1.0);
     vec3 pigment = alpha > 0.0 ? (tSrgb - vec3(1.0 - alpha)) / alpha : vec3(0.0);
     pigment = clamp(pigment, 0.0, 1.0);
     o = vec4(pigment * alpha * shade, alpha);

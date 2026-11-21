@@ -67,13 +67,36 @@ describe('coverage composite shaders (SPIKE 001)', () => {
     expect(exports.inkCoverFS, 'the rev-4 inkCoverFS must be deleted').toBeUndefined()
   })
 
-  it('displayFS mode 4 reads uCover and derives the coverage alpha', () => {
+  it('displayFS mode 4 emits the committed darkness alpha (live/committed parity)', () => {
+    // 2026-11-21 (the artist's live-vs-committed report): the live compositor
+    // must emit the SAME straight-alpha pigment the committed sheet converts
+    // to (rasterAlpha.ts: alpha = 1 − min(t)). SPIKE 001's coverage term broke
+    // that parity — Body-100 paint read opaque live and translucent once
+    // committed (yellow hides blue vs multiplies to green after a re-bake).
     // Source pins report the missing LITERAL, never the shader source: a raw
     // `toContain` dumps displayFS into the TAP report and breaks its format.
     const pin = (needle: string) =>
       expect(displayFS.includes(needle), `missing shader text: ${needle}`).toBe(true)
     pin('uniform sampler2D uCover;')
-    pin('float darkAlpha = 1.0 - tMin;')
-    pin('float alpha = clamp(max(darkAlpha, cov), 0.0, 1.0);')
+    pin('float alpha = clamp(1.0 - tMin, 0.0, 1.0);')
+    pin('vec3 pigment = alpha > 0.0 ? (tSrgb - vec3(1.0 - alpha)) / alpha : vec3(0.0);')
+    expect(displayFS.includes('max(darkAlpha, cov)'), 'the coverage alpha term must stay retired').toBe(false)
+  })
+
+  it('displayFS mode 4 composites the committed underlay with the engine coverage law', () => {
+    // 2026-11-21 (the artist's re-render): a dab REPLACES pigment
+    // (`ink <- ink*(1-a) + C*a`, Engine.bristleInk draws 1/1b attenuate the
+    // settled pool by the same a), so the committed base survives by
+    // (1 - cover). The live compositor applies the same law — NOT a film
+    // multiply, which reads dark.
+    const pin = (needle: string) =>
+      expect(displayFS.includes(needle), `missing shader text: ${needle}`).toBe(true)
+    pin('uniform sampler2D uUnderlay;')
+    pin('uniform float uUnderlayOn;')
+    pin('if (uUnderlayOn > 0.5){')
+    pin('vec3 tNew = fromSRGB(lit);')
+    pin('vec3 tBase = fromSRGB(texture(uUnderlay, uv).rgb);')
+    pin('float cov = clamp(texture(uCover, uv).x, 0.0, 1.0);')
+    pin('vec3 all = min(toSRGB(tNew * pow(tBase, vec3(1.0 - cov))), vec3(1.0));')
   })
 })

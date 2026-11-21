@@ -18,27 +18,26 @@
 //  no cover transaction, no cover dab channel and no deposit footprint —
 //  a brush stroke is recorded and settled like any other stroke.
 //
-//  What replaces it is a SHEET SPLIT at the capture seam. The engine
-//  exports two canvases with two different meanings:
+//  What replaces it is the ENGINE'S OWN DAB LAW at the capture seam
+//  (2026-11-21, the artist's live-vs-committed report):
 //
-//    exportCanvas('transparent') — the opaque transmittance sheet. Its
-//      alpha is darkness, which is exactly what the alpha-blind ink gate
-//      and the stored sheet (`liveAlphaCanvas`) consume.
-//    exportCanvas('pigment') — the mode-4 coverage-aware compositor
-//      view, whose real alpha is `clamp(max(1 - tMin, cov), 0, 1)`.
+//    exportCanvas('transparent') — the opaque transmittance sheet (white =
+//      no pigment; its alpha is darkness, what the ink gate consumes).
+//    exportCanvas('coverage')    — the cover field: the union of every dab's
+//      `a`. The engine attenuates the settled paint under a dab by (1 - a)
+//      (bristleInk draws 1/1b), so the committed base survives under the
+//      session's stroke by exactly (1 - cover).
 //
-//  The capture handler exports the coverage sheet eagerly (same turn as
-//  the transparent snapshot, before any await) and hands it to the
-//  `pigment-alpha` merge while the ink gate keeps measuring the
-//  transparent canvas. A blank mode-4 sheet would read as MAXIMUM ink to
-//  the transparent gate, so the two canvases can never be swapped.
+//  The merge (`coverage-composite`) stores
+//    t' = t_sheet x t_base^(1 - cover)
+//  in linear light — a full-core dab (cover 1) replaces the base, a bristle
+//  gap (cover 0) keeps it. Replaying the whole script (the re-render the
+//  artist approves) applies the same law; a full transmittance product reads
+//  dark, and the old pigment-alpha lerp replaced the base wholesale.
 //
-//  The merge converts a fully OPAQUE raster as transmittance (re-deriving
-//  the darkness alpha); a real-alpha sheet returns null from
-//  transmittanceSourceToPigmentAlpha and is drawn raw, compositing
-//  a*C + (1-a)*B over the white-filled base. The capture handler must
-//  therefore guard with isFullyOpaqueRaster and fall back to the
-//  transparent snapshot when the export is unexpectedly opaque.
+//  The `pigment-alpha` law (t' = a*C + (1-a)*t_base) remains for the
+//  Roto-owned composites that do not replay the whole script (Lift punches,
+//  Apply over group bases); the ordinary paint capture no longer uses it.
 //
 //  Every absence assertion runs on a comment-stripped copy: a deleted
 //  symbol's name may still be explained in prose, never in code.
@@ -55,7 +54,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const studio = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
-const port = readFileSync(resolve(__dirname, '../engine/aquarelleEnginePort.ts'), 'utf8');
 const layer = readFileSync(resolve(__dirname, '../engine/AquarelleCanvasLayer.tsx'), 'utf8');
 const mount = readFileSync(resolve(__dirname, '../engine/PhysicsPaintCanvasMount.tsx'), 'utf8');
 const baseLayer = readFileSync(resolve(__dirname, '../engine/AquarelleCachedBaseLayer.tsx'), 'utf8');
@@ -72,7 +70,6 @@ function stripComments(source: string): string {
 }
 
 const studioCode = stripComments(studio);
-const portCode = stripComments(port);
 const layerCode = stripComments(layer);
 const mountCode = stripComments(mount);
 const baseLayerCode = stripComments(baseLayer);
@@ -103,12 +100,6 @@ const erase = () => slice(
   studioCode,
   'const runAquarelleLiftErase = useCallback(',
   'const handleAquarelleStrokeEnd = useCallback(',
-);
-/** The eager coverage export added beside the transparent snapshot. */
-const coverageExport = () => slice(
-  studioCode,
-  'const exportedCoverage',
-  'const ink = measureAquarelleCanvasInk(',
 );
 /** The captureLivePixels argument object (sheet slot included). */
 const captureCall = () => slice(
@@ -176,32 +167,22 @@ describe('the Lift transaction stays the only punch path', () => {
   });
 });
 
-describe('the capture seam exports the coverage sheet eagerly', () => {
-  it('adds pigment to the export union and exports it through the port ref', () => {
-    expect(portCode).toContain(
-      "export type AquarelleExportBackground = 'transparent' | 'paper' | 'white' | 'pigment';",
-    );
-    expect(studioCode).toContain("import { isFullyOpaqueRaster } from '../../lib/rasterAlpha';");
-    const window = coverageExport();
-    expect(window).toContain("aquarelleEnginePortRef.current?.exportCanvas('pigment')");
-    // A real-alpha sheet is the only legal sheet: a fully opaque export is
-    // converted as transmittance, so it must fall back to the transparent one.
-    expect(window).toContain('!isFullyOpaqueRaster(exportedCoverage)');
-    expect(window).toContain(': liveAlphaCanvas');
-    expect(countOccurrences(studioCode, "exportCanvas('pigment')")).toBe(1);
+describe('the capture seam stores the multiply of the live sheet and the base', () => {
+  it('never exports a second coverage canvas for the merge', () => {
+    expect(countOccurrences(studioCode, "exportCanvas('pigment')")).toBe(0);
+    expect(studioCode).not.toContain('liveCoverageCanvas');
+    expect(studioCode).not.toContain('isFullyOpaqueRaster');
   });
 
-  it('hands the coverage canvas to the merge and the transparent one to the ink gate', () => {
+  it('hands the transparent sheet to the merge with the multiply law', () => {
     const call = captureCall();
-    // The sheet slot keeps the merge API's field name and carries the coverage
-    // canvas (the stored sheet stays the transparent export).
-    expect(call).toContain('liveAlphaCanvas: liveCoverageCanvas,');
+    // One sheet, one law: the stored format IS the merge input.
+    expect(call).toContain('liveAlphaCanvas,');
     expect(call).toContain('cachedBase,');
-    expect(call).toContain("mergeBlend: 'pigment-alpha',");
+    expect(call).toContain("mergeBlend: 'coverage-composite',");
     expect(call).toContain('size: { width: canvasWidth, height: canvasHeight },');
     // The alpha-blind gate keeps measuring the transparent transmittance.
     expect(studioCode).toContain('const ink = measureAquarelleCanvasInk(liveAlphaCanvas);');
-    expect(studioCode).not.toContain('measureAquarelleCanvasInk(liveCoverageCanvas)');
   });
 
   it('keeps the save path and the clipboard on the transparent snapshot', () => {
@@ -338,15 +319,20 @@ describe('the brush path records then captures and never punches', () => {
     expect(countOccurrences(punchLibCode, 'export async function punchTransmittanceBytes(')).toBe(1);
   });
 
-  it('keeps every baseCanvas and pigment-alpha argument on the Lift/capture paths', () => {
+  it('keeps every baseCanvas argument on the Lift path and the merge laws named', () => {
     // The only `baseCanvas:` arguments in the Studio are the Lift's two
-    // commits; the ordinary capture passes none — its sheet is the coverage
-    // export, never a punched canvas.
+    // commits; the ordinary capture passes none — its sheet is the stored
+    // transmittance, never a punched canvas.
     expect(countOccurrences(studioCode, 'baseCanvas:')).toBe(2);
     expect(countOccurrences(erase(), 'baseCanvas:')).toBe(2);
     expect(captureCall()).not.toContain('baseCanvas');
-    expect(countOccurrences(studioCode, "mergeBlend: 'pigment-alpha'")).toBe(4);
+    // 2026-11-21: the ordinary paint capture stores the transmittance product;
+    // the two Lift commits keep the Roto pigment-alpha law (a punch is not a
+    // replayed script).
+    expect(countOccurrences(studioCode, "mergeBlend: 'pigment-alpha'")).toBe(2);
     expect(countOccurrences(erase(), "mergeBlend: 'pigment-alpha'")).toBe(2);
+    // One capture request + its display diagnostic.
+    expect(countOccurrences(studioCode, "mergeBlend: 'coverage-composite'")).toBe(2);
     // The post-ack display swap that punched the cached base is unreachable.
     for (const gone of [
       'aquarelleCachedBaseAppliedRef',
@@ -375,15 +361,17 @@ describe('the medium record is unchanged', () => {
   });
 });
 
-describe('MED-38 (narrowed): one mode-4 program serves screen and commit', () => {
-  it('keeps exactly one pigment export call site, in the capture handler', () => {
-    expect(countOccurrences(studioCode, "exportCanvas('pigment')")).toBe(1);
-    expect(coverageExport()).toContain("exportCanvas('pigment')");
+describe('MED-38 (narrowed): one display program, one stored format', () => {
+  it('leaves the Studio with no pigment export call site at all', () => {
+    expect(countOccurrences(studioCode, "exportCanvas('pigment')")).toBe(0);
   });
 
-  it("keeps the merge module's pigment-alpha branch as the only conversion", () => {
-    expect(mergeCode).toContain("export type RotoAlphaMergeBlend = 'source-over' | 'pigment-alpha';");
-    expect(mergeCode).toContain("if (blend === 'pigment-alpha') {");
+  it('keeps the merge module to the three named laws, one conversion each', () => {
+    expect(mergeCode).toContain(
+      "export type RotoAlphaMergeBlend = 'source-over' | 'pigment-alpha' | 'coverage-composite';",
+    );
+    expect(mergeCode).toContain("if (blend === 'pigment-alpha' || blend === 'coverage-composite') {");
+    expect(mergeCode).toContain("if (blend === 'coverage-composite') {");
     expect(mergeCode).toContain(
       'transmittanceSourceToPigmentAlpha(scriptAlphaCanvas) ?? scriptAlphaCanvas',
     );

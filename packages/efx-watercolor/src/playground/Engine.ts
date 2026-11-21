@@ -167,14 +167,15 @@ export interface EngineCallbacks {
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp';
 /**
- * `pigment` (SPIKE 001) is the coverage-aware COMPOSITOR view: straight-alpha
- * pigment whose alpha is max(1 - min(rgb), coverage), so a covering stroke
- * carries real opacity. The established `transparent` stays the OPAQUE
- * transmittance the cache stores and composites with multiply.
+ * `pigment` (SPIKE 001) is the LIVE COMPOSITOR view: straight-alpha pigment
+ * whose alpha is 1 - min(rgb) — the same law the committed cached base converts
+ * to (2026-11-21 live/committed parity; the former coverage term is retired).
+ * The established `transparent` stays the OPAQUE transmittance the cache stores
+ * and composites with multiply.
  */
-export type ExportBackground = 'transparent' | 'paper' | 'white' | 'pigment';
+export type ExportBackground = 'transparent' | 'paper' | 'white' | 'pigment' | 'coverage';
 /** `texture` false exports the paper (or white) as a flat sheet; true uses the on-screen texture strength. */
-export interface ExportOptions { format: ExportFormat; background: ExportBackground; quality?: number; texture?: boolean }
+export interface ExportOptions { format: ExportFormat; background: Exclude<ExportBackground, 'coverage'>; quality?: number; texture?: boolean }
 
 /** Placement of the reference image in document uv (y up): origin and size. */
 export interface RefRect { x: number; y: number; w: number; h: number }
@@ -470,6 +471,14 @@ export class WatercolorEngine {
   private zoomLevel = 1;                        // 1 = one document texel per CSS px
   /** Compositor-layer mode: exact-fit view + transparent pigment display. */
   private compositorLayer = false;
+  /**
+   * 2026-11-21 live/committed parity: the committed sheet this session's ink
+   * paints over. The live compositor multiplies the two transmittances, so the
+   * artist sees the film the capture merge stores instead of a stroke floating
+   * over the base. DISPLAY-ONLY: `drawDisplay` binds it only for the live
+   * render (no export target), so the stored sheet stays stroke-only.
+   */
+  private underlayTex: WebGLTexture | null = null;
   private fitPadding = FIT_PADDING;             // CSS px around the sheet when fitted
   private pan: [number, number] = [0, 0];       // sheet centre from canvas centre (canvas px, y up)
   private fitMode = true;                       // keep the sheet fitted as the window changes
@@ -1129,6 +1138,40 @@ export class WatercolorEngine {
     this.redraw();
   }
 
+  /**
+   * 2026-11-21 live/committed parity: the committed sheet UNDER this session's
+   * ink (the frame's cached aquarelle sheet — an OPAQUE MODE.transparent
+   * transmittance raster, white = no pigment). The live compositor display
+   * multiplies it with the live film in linear light, exactly what the capture
+   * merge stores, so the first render and every re-bake agree. Pass null to
+   * drop it (no committed paint, legacy real-alpha frame, or the cache hidden).
+   *
+   * Render-only: exports never sample it. The image is uploaded with the same
+   * y-flip as the reference so document uv (y up) matches.
+   */
+  setUnderlay(source: HTMLCanvasElement | HTMLImageElement | null): void {
+    const { gl } = this;
+    if (!source) {
+      if (this.underlayTex === null) return;
+      gl.deleteTexture(this.underlayTex);
+      this.underlayTex = null;
+      this.redraw();
+      return;
+    }
+    const tex = this.underlayTex ?? gl.createTexture()!;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.underlayTex = tex;
+    this.redraw();
+  }
+
   /** Move the sheet by (dx, dy) CSS pixels. */
   panBy(dx: number, dy: number) {
     if (!dx && !dy) return;
@@ -1380,6 +1423,11 @@ export class WatercolorEngine {
 
   /** The composited document as an RGBA8 canvas (bottom row first flipped to top). */
   exportCanvas(background: ExportBackground = 'transparent', texture = true): HTMLCanvasElement {
+    // 2026-11-21: the coverage sheet is a FIELD readback, not a display mode.
+    // The capture merge needs the engine's own per-dab replacement weight:
+    // a dab attenuates the settled underneath by (1 - a) and the cover channel
+    // accumulates that same a, so the committed base survives by (1 - cover).
+    if (background === 'coverage') return this.exportCoverageCanvas();
     const { dw, dh } = this;
     const px = this.readback(false, MODE[background], texture);
     // displayFS writes PREMULTIPLIED alpha (F1). ImageData / WebP want
@@ -1408,11 +1456,12 @@ export class WatercolorEngine {
 
   /**
    * RULING 2026-11-19 — the COVERAGE channel as an RGBA8 canvas (value in
-   * both rgb and alpha), for the acceptance's fade instrument. The mode-4
-   * pigment export's alpha is `max(darkAlpha, cover)`, so a dark pigment's
-   * darkness masks the true coverage; this reads `cover` directly through
-   * `readHalf`. Probe/acoustic only: no draw, no shader, no document target —
-   * the render, the exports and every identity digest are untouched.
+   * both rgb and alpha), for the acceptance's fade instrument. 2026-11-21:
+   * the mode-4 pigment export's alpha is darkness-only again, so it no longer
+   * carries the coverage claim at all; the instrument still reads `cover`
+   * directly through `readHalf`. Probe/acoustic only: no draw, no shader, no
+   * document target — the render, the exports and every identity digest are
+   * untouched.
    */
   exportCoverageCanvas(): HTMLCanvasElement {
     const { g, dw, dh } = this;
@@ -1999,6 +2048,8 @@ export class WatercolorEngine {
    */
   async exportImage(o: ExportOptions): Promise<Blob> {
     const { dw, dh } = this;
+    // 'coverage' is a field readback, never a display mode — image export
+    // cannot request it (ExportOptions.background excludes it).
     const bg = o.format === 'jpeg' && o.background === 'transparent' ? 'white' : o.background;
     const px = this.readback(false, MODE[bg], o.texture ?? true);
     const c = document.createElement('canvas');
@@ -2077,6 +2128,8 @@ export class WatercolorEngine {
     this.tipTextures.clear();
     if (this.ref) this.gl.deleteTexture(this.ref.tex);
     this.ref = null;
+    if (this.underlayTex) this.gl.deleteTexture(this.underlayTex);
+    this.underlayTex = null;
     this.g.disposeTargets();
   }
 
@@ -3766,6 +3819,12 @@ export class WatercolorEngine {
     gl.uniform1i(p.u.uRelief, g.bindTex(7, this.relief.tex[0]));
     // SPIKE 001: the pigment layer's composited coverage takes unit 8.
     gl.uniform1i(p.u.uCover, g.bindTex(8, this.cover.read.tex[0]));
+    // 2026-11-21: the committed-sheet underlay is a LIVE-COMPOSITOR-ONLY seam.
+    // `target === null` is the on-screen render; every export passes its own
+    // canvas and must stay stroke-only (the stored/captured sheet format).
+    const underlayLive = target === null && mode === MODE.pigment && this.underlayTex !== null;
+    gl.uniform1i(p.u.uUnderlay, g.bindTex(9, this.underlayTex ?? this.paper.tex[0]));
+    gl.uniform1f(p.u.uUnderlayOn, underlayLive ? 1 : 0);
     // Degrees become radians once, at this boundary — the shader reads radians.
     gl.uniform1f(p.u.uLightAzimuth, (this.light.azimuth * Math.PI) / 180);
     gl.uniform1f(p.u.uLightElevation, (this.light.elevation * Math.PI) / 180);

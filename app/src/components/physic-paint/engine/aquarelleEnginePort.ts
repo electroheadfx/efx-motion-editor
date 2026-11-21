@@ -25,12 +25,17 @@ import type { DocumentSnapshot, WatercolorEngine } from '@efxlab/efx-watercolor'
  * the union is stated here so Roto never imports the vendored engine module.
  *
  * `transparent` is the opaque TRANSMITTANCE sheet: its alpha is darkness, which
- * is what the alpha-blind capture ink gate, the stored sheet and the save path
- * consume. `pigment` is mode 4, the COVERAGE-AWARE compositor view, whose real
- * alpha is `clamp(max(1 - tMin, cov), 0, 1)` — the sheet the pigment-alpha
- * merge wants for a covering stroke (Phase 64, Spike 001).
+ * is what the alpha-blind capture ink gate, the stored sheet, the save path and
+ * the capture merge consume. `pigment` is mode 4, the compositor's display
+ * view, whose straight alpha is `clamp(1 - tMin, 0, 1)` — the exact law the
+ * committed cached base converts to (2026-11-21 live/committed parity).
+ * `coverage` is the engine's per-dab replacement weight (the cover channel):
+ * a dab attenuates the settled paint under it by (1 - a), so the committed
+ * base survives under a stroke by (1 - cover). The capture merge composites
+ * with it; the live surface draws the same composite (`setUnderlay`, a
+ * render-only seam).
  */
-export type AquarelleExportBackground = 'transparent' | 'paper' | 'white' | 'pigment';
+export type AquarelleExportBackground = 'transparent' | 'paper' | 'white' | 'pigment' | 'coverage';
 
 /**
  * The narrow engine surface. `snapshot`/`restore` carry the whole paint

@@ -269,13 +269,15 @@ describe('the scattering transport and the white-channel retirement (MED-32 / ME
   it('has no gouache coverage term left in the composite or the layout comment', () => {
     const display = SHADERS_SOURCE.slice(SHADERS_SOURCE.indexOf('export const displayFS'))
     expect(display.length, 'displayFS is present').toBeGreaterThan(0)
-    // SPIKE 001 reintroduces a `cov` variable for the coverage CHANNEL (the
-    // mode-4 alpha term), not the retired gouache coverage: exactly one read
-    // and its one use, and no gouache term anywhere.
+    // 2026-11-21: the mode-4 alpha is darkness-only, and the coverage channel
+    // returns ONLY as the live-underlay composite weight (a dab attenuates the
+    // settled paint under it by 1 - cover). The retired gouache coverage term
+    // must not come back with it: no cov-driven alpha, no gouache.
     expect(
       (display.match(/\bcov\b/g) ?? []).length,
-      'one coverage-channel variable, read once and used once',
+      'coverage appears only in the live underlay seam',
     ).toBe(2)
+    expectNotContains(display, 'max(darkAlpha, cov)')
     expectNotContains(display, 'gouache')
     // The mode structure, the paper multiply and every remaining uniform stay.
     expectContains(display, 'if (uMode == 4){')

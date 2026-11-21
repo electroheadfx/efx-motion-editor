@@ -355,7 +355,6 @@ import { anchorsEqual } from '@efxlab/efx-watercolor/payload';
 import type { AquarelleCurveMode } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import { hasUsableFrameBytes } from './roto/aquarelleFrameBytes';
-import { isFullyOpaqueRaster } from '../../lib/rasterAlpha';
 import {
   beginAquarelleLiftPreview,
   endAquarelleLiftPreview,
@@ -7924,6 +7923,11 @@ export function PhysicsPaintStudio() {
   // SAME stroke instance it recorded — this map resolves it to its mutation id
   // so the recorded cuisson can be replaced with the real one.
   const aquarelleStrokeMutationIdsRef = useRef(new WeakMap<AquarelleStroke, number>());
+  // LIVE-SEED PARITY (post-UAT 2026-11-21): the id drawn at pointerdown for the
+  // stroke the live engine is about to seed from. Read-and-cleared at stroke
+  // end, whichever branch the handler takes — a refused gesture never leaks its
+  // id into a later stroke.
+  const aquarellePendingStrokeMutationIdRef = useRef<number | null>(null);
   // 261028-k03 D2: the Lift preflight. Runs at STROKE END, before the durable
   // pin and the script record, so a refused lift leaves no event and no
   // half-written base. The two booleans below are NOT the Script toggle and
@@ -9037,7 +9041,22 @@ export function PhysicsPaintStudio() {
     });
     return dispose;
   }, [drainVectorCommitBake, rotoScript]);
+  // LIVE-SEED PARITY (post-UAT 2026-11-21): the layer's capture-phase
+  // pointerdown asks for the stroke's mutation id BEFORE the engine's first
+  // dab, seeds the live engine from it, and this draw is then consumed by the
+  // stroke-end acceptance below. One id, one seed: the live texture and every
+  // later re-bake of this stroke run the same bristle stream.
+  const handleAquarelleStrokeWillStart = useCallback((): number => {
+    const mutationId = paintMutationLedger.allocateMutationId();
+    aquarellePendingStrokeMutationIdRef.current = mutationId;
+    return mutationId;
+  }, [paintMutationLedger]);
   const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
+    // LIVE-SEED PARITY: consume the pointerdown draw. A vector commit has no
+    // engine pointerdown of its own (the overlay owns the gesture) and simply
+    // receives whatever was pending — or a fresh allocation.
+    const reservedMutationId = aquarellePendingStrokeMutationIdRef.current;
+    aquarellePendingStrokeMutationIdRef.current = null;
     // 3.6 (261027-klx): the app-owned ledger allocates the id and emits the
     // completion SYNCHRONOUSLY — no engine, no rasterization and no pending
     // finalization stands between acceptance and completion.
@@ -9124,7 +9143,11 @@ export function PhysicsPaintStudio() {
     }
     const paintStroke = aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight });
     try {
-      const mutationId = paintMutationLedger.allocateStrokeMutation({ primary: paintStroke });
+      const mutationId = paintMutationLedger.allocateStrokeMutation(
+        { primary: paintStroke },
+        undefined,
+        reservedMutationId ?? undefined,
+      );
       aquarelleStrokeMutationIdsRef.current.set(stroke, mutationId);
       // 261027: stamp the OWNING KEY with the stroke. A frame number is not
       // identity — a deleted key's strokes must never seed the key that
@@ -10069,24 +10092,16 @@ export function PhysicsPaintStudio() {
       });
       return;
     }
-    // Phase 64 (Spike 001): the SHEET SPLIT. Two engine exports mean two
-    // different things and can never be swapped:
-    //  - `snapshot()` / exportCanvas('transparent') is the opaque
-    //    TRANSMITTANCE sheet — its alpha is darkness, which is what the
-    //    alpha-blind ink gate below and the STORED sheet consume.
-    //  - exportCanvas('pigment') is mode 4, the coverage-aware compositor
-    //    view with real alpha clamp(max(1 - tMin, cov), 0, 1) — the sheet the
-    //    pigment-alpha merge composites (a*C + (1-a)*B) over the cached base.
-    // A blank mode-4 sheet would read as MAXIMUM ink to the transparent gate,
-    // so the gate keeps measuring `liveAlphaCanvas` and only the merge gets
-    // the coverage canvas. The export stays EAGER (same turn as the snapshot,
-    // before any await): the live layer clears the sheet on frame leave.
-    // GUARD: the merge converts a fully OPAQUE raster as transmittance,
-    // re-deriving the darkness alpha; a real-alpha sheet returns null from
-    // transmittanceSourceToPigmentAlpha and is drawn raw. An unexpectedly
-    // opaque pigment export must therefore fall back to the transparent one.
-    const exportedCoverage = aquarelleEnginePortRef.current?.exportCanvas('pigment') ?? null;
-    const liveCoverageCanvas = exportedCoverage !== null && !isFullyOpaqueRaster(exportedCoverage) ? exportedCoverage : liveAlphaCanvas;
+    // Phase 64 (Spike 001) / 2026-11-21: the capture consumes the stored
+    // TRANSMITTANCE sheet (`snapshot()` / exportCanvas('transparent'), white =
+    // no pigment — the alpha-blind ink gate measures it) plus the engine's
+    // COVERAGE field, exported eagerly in this same turn. The engine's own dab
+    // law attenuates the settled paint under a dab by (1 - a) and adds the
+    // carried pigment, so the committed base survives under the session's
+    // stroke by exactly (1 - cover). The merge composites
+    // t' = t_sheet x t_base^(1 - cover): the blended first render the artist
+    // gets from a re-render, never the dark film-multiply. Both exports are
+    // eager: the live layer clears the sheet on frame leave.
     // A cleared sheet still exports an opaque, near-uniform white texture tens
     // of KB large. Never let such a capture take ownership of the frame's cache.
     // quick-261109-uj0: the shared predicate decides on the global luminance
@@ -10094,6 +10109,11 @@ export function PhysicsPaintStudio() {
     // baseline (yellow/orange are luminance-bright and would otherwise read as
     // blank). The densest capped window remains diagnostic only (localized
     // acceptance wiped fresh paint in the packaged build UAT).
+    // 2026-11-21: the per-dab replacement weight the merge needs. Read in the
+    // SAME turn as the sheet snapshot (the sheet session is cleared on frame
+    // leave); null only when the engine has gone away, and the merge then
+    // fails open to the raw sheet.
+    const coverageCanvas = aquarelleEnginePortRef.current?.exportCanvas('coverage') ?? null;
     const ink = measureAquarelleCanvasInk(liveAlphaCanvas);
     const passesInkGate = passesAquarelleCaptureInkGate(ink);
     recordAquarelleRenderSplitEvent('studio-capture-entry', {
@@ -10257,7 +10277,7 @@ export function PhysicsPaintStudio() {
         pendingFirstPaintTarget: pendingFirstPaintTarget !== null,
         classification: summarizePhysicPaintRotoGroupFrameTarget(targetClassification),
         identityKey,
-        mergeBlend: 'pigment-alpha',
+        mergeBlend: 'coverage-composite',
       }, cachedBase);
       // The snapshot is an eager canvas copy, so a retry can reuse it after the
       // live sheet was cleared by the frame change.
@@ -10266,19 +10286,20 @@ export function PhysicsPaintStudio() {
           layerId: launch.layerId,
           trackId: targetTrackId,
           appFrame: playFrame,
-          // Phase 64: the merge slot receives the COVERAGE sheet (mode 4,
-          // real alpha) — the field name is the merge API's slot and stays
-          // `liveAlphaCanvas`. The STORED sheet remains the transparent
-          // export: the save path, the clipboard and the ink gate all read
-          // `snapshot()`.
-          liveAlphaCanvas: liveCoverageCanvas,
+          // The ONE stored format: the opaque MODE.transparent transmittance
+          // sheet. Save path, clipboard, ink gate and merge all read it.
+          liveAlphaCanvas,
           cachedBase,
-          // Pigment-alpha law (2026-10-26 round 2): the stored sheet stays
-          // opaque (MODE.transparent transmittance), but the merge converts the
-          // live sheet to straight-alpha pigment over the cached base on
-          // white — t' = a*C + (1-a)*t_base. Opaque source-over covered the
-          // cache wholesale; multiply glazed it. Neither is a paint layer.
-          mergeBlend: 'pigment-alpha',
+          // 2026-11-21 (the artist's live-vs-committed report): the engine's
+          // OWN dab law. A dab attenuates the settled paint under it by
+          // (1 - a) and adds the carried pigment, so the committed base
+          // survives under the session's stroke by exactly (1 - cover):
+          // t' = t_sheet x t_base^(1 - cover). Replaying the whole script
+          // (the re-render the artist approves) applies the same law; the old
+          // pigment-alpha lerp replaced the base wholesale (opaque yellow) and
+          // a full transmittance product read dark.
+          mergeBlend: 'coverage-composite',
+          coverageCanvas,
           size: { width: canvasWidth, height: canvasHeight },
         });
         recordAquarelleRenderSplitEvent('capture-enqueue', {
@@ -10853,7 +10874,7 @@ export function PhysicsPaintStudio() {
   // completion/performance/input telemetry, beforeEngineDestroy, stroke
   // metadata, the brush script overlay) are gone; `onEnginePortReady` is the
   // Wave 3 D8 narrow port the frame-editing controller consumes.
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeWillStart, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -10886,6 +10907,7 @@ export function PhysicsPaintStudio() {
       // 261028-k03b: the live erase preview source (exact engine dabs).
       onAquarelleLiftDab: handleAquarelleLiftDab,
       onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
+      onAquarelleStrokeWillStart: handleAquarelleStrokeWillStart,
       onAquarelleStrokeSettled: handleAquarelleStrokeSettled,
       onAquarelleCaptureFrame: handleAquarelleCaptureFrame,
       onAquarelleFlushCaptureReady: handleAquarelleFlushCaptureReady,
