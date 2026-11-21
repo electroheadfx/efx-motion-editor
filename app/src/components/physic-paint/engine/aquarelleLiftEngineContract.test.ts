@@ -51,7 +51,10 @@ describe('Engine.lift() erases fixed pigment (261028-k03 D1)', () => {
 
   it('FIXED UNDO: the fixed pool is protected before the fixed draw', () => {
     const lift = liftSlice();
-    const protect1 = lift.indexOf('this.history.protect(1,');
+    // LIVE-SEED (2026-11-21): every protect routes through the guarded helper
+    // (setStepRecording can suppress the seed's settle) — the one direct
+    // history.protect call lives inside protectHistory.
+    const protect1 = lift.indexOf('this.protectHistory(1,');
     const fixedViews = lift.indexOf('this.fixed.views');
     const fixedDraw = lift.indexOf('g.draw(this.fixed, rect)');
     expect(protect1).toBeGreaterThanOrEqual(0);

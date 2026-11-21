@@ -3653,7 +3653,9 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
     expect(canvasMount).toContain('onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
     expect(canvasMount).toContain('onMoveStrokes={(mutationIds, dxPx, dyPx) => onAquarelleMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}');
     expect(studio).toContain('onAquarelleMoveStrokes: handleAquarelleMoveStrokes,');
-    expect(studio).toContain('handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit]');
+    // LIVE-SEED (2026-11-21): getAquarelleSeedEvents joins the identity-stable
+    // memo deps — the committed script the live sheet is seeded from.
+    expect(studio).toContain('handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarelleSeedEvents, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit]');
     expect(aquarelleCanvasLayer).toContain('onMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
     expect(aquarelleCanvasLayer).toContain('onMoveStrokes={(mutationIds, dxPx, dyPx) => onMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}');
     expect(aquarelleStrokeOverlay).toContain('onMoveStrokes: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
@@ -6588,7 +6590,13 @@ describe('61-10 vector path edit wiring in the Studio', () => {
   });
 
   it('threads the mount prop into the layer seam through one ref', () => {
-    expect(canvasMount).toContain("import type { AquarelleStroke, LightSettings, VectorAnchor } from '@efxlab/efx-watercolor';");
+    // The type import became a multi-line block when the LIVE-SEED prop added
+    // AquarellePayloadEvent — pin the members, never the collapsed one-liner.
+    const mountTypeImport = canvasMount.slice(0, canvasMount.indexOf("} from '@efxlab/efx-watercolor';"));
+    expect(mountTypeImport).toContain('AquarelleStroke,');
+    expect(mountTypeImport).toContain('LightSettings,');
+    expect(mountTypeImport).toContain('VectorAnchor,');
+    expect(mountTypeImport).toContain('AquarellePayloadEvent,');
     expect(canvasMount).toContain('onAquarelleVectorPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => Promise<number | null>;');
     expect(canvasMount).toContain('const onAquarelleVectorPathEditRef = useRef(props.onAquarelleVectorPathEdit);');
     expect(canvasMount).toContain('onAquarelleVectorPathEditRef.current = props.onAquarelleVectorPathEdit;');

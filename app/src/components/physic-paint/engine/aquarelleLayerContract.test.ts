@@ -142,13 +142,15 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // t' = a*C + (1-a)*t_base — the later one-fond multiply reconstructs the
     // editor's live result exactly. Neither opaque source-over (covers the
     // base wholesale) nor multiply (glazes it) is the law.
-    // 261028-k03: exactly ONE `cachedBase: null` site is allowed — the Lift
+    // 261028-k03: exactly ONE `cachedBase: null` literal is allowed — the Lift
     // erase seam, where the base pixels travel in `baseCanvas` (the punched
-    // D^K composite) instead of the cached bytes. Every other capture keeps
-    // the pinned base, so the law above still holds for the ordinary path.
-    // 261028-k03g: two null-base sites by design — the raster Lift merge and
+    // D^K composite) instead of the cached bytes.
+    // 261028-k03g: two null-base literals by design — the raster Lift merge and
     // the scripted Lift's DIRECT encode of the punched composite (which must
     // never merge the live sheet over a payload that already carries it).
+    // LIVE-SEED (2026-11-21): the ordinary UNSEEDED capture still keeps the
+    // pinned base; the SEEDED route pins a null merge base through the ref
+    // (see the LIVE-SEED test below), never a third `cachedBase:` literal.
     const nullBaseSites = studio.match(/cachedBase: null/g) ?? [];
     expect(nullBaseSites).toHaveLength(2);
     const eraseCapture = studio.slice(studio.indexOf('cachedBase: null'));
@@ -159,6 +161,76 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(studio).not.toContain("mergeBlend: 'multiply'");
     // Same seam engine-1 uses — no second cache system.
     expect(studio).toContain('captureLivePixels');
+  });
+
+  it('LIVE-SEED: the live sheet is seeded from the committed script, never stacked (2026-11-21)', () => {
+    // The artist's pickup-collapse report: a committed base (the blue sheet)
+    // was INVISIBLE to the first live stroke because the live engine started
+    // from an empty sheet — a re-bake (the arbiter) starts from the committed
+    // sheet and picks the base up. The layer SEEDS its sheet by replaying the
+    // committed script through the bake's own adapter feed path
+    // (`seedAquarelleEngine`); the sheet's ink / fixed / cover / last-touch
+    // then hold the committed paint and the stroke's own touch pass re-wets
+    // it exactly as the bake does, for an arbitrary bind-to-paint delay.
+    const packageImport = layer.slice(0, layer.indexOf("} from '@efxlab/efx-watercolor';"));
+    expect(packageImport).toContain('seedAquarelleEngine,');
+    expect(packageImport).toContain('type AquarelleSeedHandle,');
+    expect(layer).toContain('seedAquarelleEngine({');
+    expect(layer).toContain('const events = getSeedEventsRef.current?.() ?? null;');
+    // Mount starts on the committed script; every resetSheet re-seeds (the
+    // Studio mutates the script BEFORE calling reset, so the committed base
+    // IS the frame script). A superseded seed's handoff must land before the
+    // next seed touches manual / clock / recording — one chain, no races.
+    const mountSeedIdx = layer.indexOf('seedSheet();');
+    expect(mountSeedIdx).toBeGreaterThan(-1);
+    expect(mountSeedIdx).toBeLessThan(layer.indexOf('syncUnderlay();'));
+    expect(layer).toContain('seedChain = seedChain.then(');
+    expect(layer).toContain('if (generation !== seedGeneration) return;');
+    const resetBody = layer.slice(layer.indexOf('const resetSheet = () => {'));
+    expect(resetBody.slice(0, resetBody.indexOf('};'))).toContain('abandonSeed();');
+    expect(resetBody.slice(0, resetBody.indexOf('};'))).toContain('seedSheet();');
+    // A frame change arms a DEBOUNCED seed for the new frame (a scrub burst
+    // never pays a bake per intermediate frame) and clears the old sheet.
+    expect(layer).toContain('const FRAME_SEED_DEBOUNCE_MS = 250;');
+    const frameChange = layer.slice(layer.indexOf('const frameEvents = getSeedEventsRef.current?.() ?? null;'));
+    expect(frameChange).toContain('seeding = true;');
+    expect(frameChange).toContain('frameSeedTimer = window.setTimeout(() => {');
+    // Cleanup cancels the replay BEFORE the engine dies.
+    const cleanupBody = layer.slice(layer.indexOf('cleanupRef.current = () => {'));
+    expect(cleanupBody.indexOf('abandonSeed();')).toBeGreaterThan(-1);
+    expect(cleanupBody.indexOf('abandonSeed();')).toBeLessThan(cleanupBody.indexOf('engine.destroy()'));
+    // Mid-replay the sheet is NOT the artist's surface: no capture, no save,
+    // no force-dry and no stroke may read or write a half-seeded film.
+    expect(layer).toContain('if (seeding) return null;');
+    expect(layer).toContain('if (!hasPaint || seeding) return;');
+    expect(layer).toContain('if (leavingHasPaint && !leavingSeeded) {');
+    expect(layer).toContain('if (!disabledRef.current && !seeding) {');
+    // NEVER STACK: a seeded sheet CARRIES the committed base, so the display
+    // underlay stays unbound and the cached base steps aside through the one
+    // never-stack law (`aquarelleBaseCompositedLive`).
+    expect(layer).toContain('export const aquarelleSheetSeeded = signal(false)');
+    expect(layer).toContain('const seeded = seeding || aquarelleSheetSeeded.value;');
+    expect(layer).toContain('const url = seeded ? null : underlayUrlRef.current;');
+    expect(layer).toContain('(underlayApplied || aquarelleSheetSeeded.value)');
+    // The mount forwards the committed script through a ref like every other
+    // aquarelle seam — no effect, no state, no memo.
+    expect(mount).toContain('getAquarelleSeedEvents');
+    expect(mount).toContain('getSeedEvents={() => getAquarelleSeedEventsRef.current?.() ?? null}');
+    // Studio: the seeded ordinary capture NEVER re-merges the cached base —
+    // the exported sheet alone is the stored result (its paint is counted
+    // once). The null base rides the ref so the two Roto-owned literals stay
+    // the only `cachedBase: null` sites.
+    const seededBranch = studio.slice(
+      studio.indexOf('} else if (aquarelleSheetSeeded.value) {'),
+      studio.indexOf('} else {', studio.indexOf('} else if (aquarelleSheetSeeded.value) {')),
+    );
+    expect(seededBranch).toContain('cachedBase = null;');
+    expect(seededBranch).toContain('base: null');
+    expect(seededBranch).not.toContain('cachedBase: null');
+    // The Studio seeds from the COMMIT-TRANSFORMED script — the exact event
+    // list the commit bake saw, or live and re-bake would replay different
+    // paths from one seed.
+    expect(studio).toContain('isAquarelleDryEvent(event) ? { ...event } : withAquarelleReplayGrid(event)');
   });
 
   it('NAV FLUSH: navigation forces an aquarelle frame-leave capture BEFORE flushing live pixels', () => {

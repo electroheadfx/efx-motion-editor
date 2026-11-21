@@ -120,6 +120,10 @@ import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from '.
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
 import type { AquarelleEnginePort } from './engine/aquarelleEnginePort';
+// LIVE-SEED (2026-11-21): the live sheet HOLDS the committed script (seeded by
+// replay), so the ordinary capture must stop re-merging the cached base.
+import { aquarelleSheetSeeded } from './engine/AquarelleCanvasLayer';
+import { withAquarelleReplayGrid } from './roto/aquarelleReplayGrid';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
 import { disarmSolo } from './view/physicsPaintSoloArm';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
@@ -10216,6 +10220,15 @@ export function PhysicsPaintStudio() {
         // base needs no special blend — source-over encodes the sheet alone.
         cachedBase = pendingFirstPaintTarget.baseKind === 'clone' ? pendingFirstPaintTarget.blankFrame : null;
         aquarelleMergeBaseRef.current = { appFrame: playFrame, trackId: targetTrackId, base: cachedBase };
+      } else if (aquarelleSheetSeeded.value) {
+        // LIVE-SEED (2026-11-21): the live sheet was seeded with the committed
+        // script, so it ALREADY carries this frame's committed paint in its own
+        // ink/cover channels. Merging the cached base under it again would
+        // count the same paint twice (a translucent stroke darkening the layer
+        // below); the exported sheet alone IS the stored result. Roto-owned
+        // composites (the promotion branch above, Lift punches) keep their law.
+        cachedBase = null;
+        aquarelleMergeBaseRef.current = { appFrame: playFrame, trackId: targetTrackId, base: null };
       } else {
         // The pin is per (track, frame): two tracks share frame numbers, so a
         // frame-only pin merged the incoming sheet over the outgoing base.
@@ -10613,6 +10626,20 @@ export function PhysicsPaintStudio() {
     [],
   );
 
+  // LIVE-SEED (2026-11-21): the committed frame script, transformed EXACTLY
+  // as `applyAquarelleTimeline` transforms it for the commit bake — vector
+  // strokes re-gridded to their draw-time cadence, Dry events cloned in
+  // order. The live sheet replays this list, so the seed can only ever equal
+  // the commit it is reproducing. Identity-stable getter (the mount memo
+  // contract); the event list is read at seed time, never carried.
+  const getAquarelleSeedEvents = useCallback(
+    () =>
+      getAquarelleEventsForFrame(launchContextRef.current?.startFrame ?? 0).map((event) =>
+        isAquarelleDryEvent(event) ? { ...event } : withAquarelleReplayGrid(event),
+      ),
+    [],
+  );
+
   // F3 (R2.3): Studio paper → the aquarelle engine's deposit-grain preset.
   // Identity-stable getter — paper changes must not invalidate the mount memo.
   const settingsRef = useRef(settings);
@@ -10874,7 +10901,7 @@ export function PhysicsPaintStudio() {
   // completion/performance/input telemetry, beforeEngineDestroy, stroke
   // metadata, the brush script overlay) are gone; `onEnginePortReady` is the
   // Wave 3 D8 narrow port the frame-editing controller consumes.
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeWillStart, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeWillStart, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarelleSeedEvents, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes, handleAquarelleVectorPathEdit], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -10894,6 +10921,8 @@ export function PhysicsPaintStudio() {
       // FRAME SCOPE: identity-stable getter — the sheet previews the live
       // edit frame without invalidating the mount memo on navigation.
       getAquarellePlayFrame,
+      // LIVE-SEED: the committed script the live sheet is seeded from.
+      getAquarelleSeedEvents,
       getAquarellePaperId,
       getAquarellePaperGrainStrength,
       // 64-07 (MED-17): a getter, not a value — the live sheet reads the

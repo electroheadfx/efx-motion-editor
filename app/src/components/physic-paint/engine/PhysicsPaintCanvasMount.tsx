@@ -1,6 +1,11 @@
 import type { CSSProperties } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { AquarelleStroke, LightSettings, VectorAnchor } from '@efxlab/efx-watercolor';
+import type {
+  AquarellePayloadEvent,
+  AquarelleStroke,
+  LightSettings,
+  VectorAnchor,
+} from '@efxlab/efx-watercolor';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { physicsPaintCanvasZoom } from '../view/physicsPaintCanvasZoom';
@@ -84,6 +89,10 @@ export function PhysicsPaintCanvasMount(props: {
   onAquarelleVectorPathEdit?: (mutationId: number, anchors: readonly VectorAnchor[]) => Promise<number | null>;
   /** Wave 3 D8: the ONE narrow engine port, forwarded from the layer. */
   onEnginePortReady?: (port: AquarelleEnginePort | null) => void;
+  /** LIVE-SEED (2026-11-21): the committed frame script (grid-normalised
+   *  exactly as the commit bake saw it) the live sheet is seeded from — the
+   *  sheet must HOLD the committed paint for the pickup law to read it. */
+  getAquarelleSeedEvents?: () => readonly AquarellePayloadEvent[] | null;
 }) {
   recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
@@ -107,6 +116,7 @@ export function PhysicsPaintCanvasMount(props: {
   const getAquarellePaperGrainStrengthRef = useRef(props.getAquarellePaperGrainStrength);
   const getAquarelleLightRef = useRef(props.getAquarelleLight);
   const getAquarellePaperSeedRef = useRef(props.getAquarellePaperSeed);
+  const getAquarelleSeedEventsRef = useRef(props.getAquarelleSeedEvents);
   const getAquarelleLiftBlockedRef = useRef(props.getAquarelleLiftBlocked);
   const onAquarelleLiftBlockedRef = useRef(props.onAquarelleLiftBlocked);
   const onAquarelleLiftDabRef = useRef(props.onAquarelleLiftDab);
@@ -130,6 +140,7 @@ export function PhysicsPaintCanvasMount(props: {
   getAquarellePaperGrainStrengthRef.current = props.getAquarellePaperGrainStrength;
   getAquarelleLightRef.current = props.getAquarelleLight;
   getAquarellePaperSeedRef.current = props.getAquarellePaperSeed;
+  getAquarelleSeedEventsRef.current = props.getAquarelleSeedEvents;
   getAquarelleLiftBlockedRef.current = props.getAquarelleLiftBlocked;
   onAquarelleLiftBlockedRef.current = props.onAquarelleLiftBlocked;
   onAquarelleLiftDabRef.current = props.onAquarelleLiftDab;
@@ -241,6 +252,7 @@ export function PhysicsPaintCanvasMount(props: {
         getPaperGrainStrength={() => getAquarellePaperGrainStrengthRef.current?.() ?? 1}
         getLight={() => getAquarelleLightRef.current?.()}
         getPaperSeed={() => getAquarellePaperSeedRef.current?.()}
+        getSeedEvents={() => getAquarelleSeedEventsRef.current?.() ?? null}
         disabled={false}
         getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}
         onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}
