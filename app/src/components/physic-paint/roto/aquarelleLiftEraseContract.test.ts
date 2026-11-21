@@ -126,6 +126,14 @@ describe('Lift pointerdown gate (261028-k03 D3)', () => {
     expect(layer).not.toContain('onStrokeTool');
   });
 
+  it('261121-mtu: the live tool write goes through the explicit payload → engine mapping, never a cast', () => {
+    // The payload union is five members ('watercolor' added); the engine's is
+    // four. A cast would let 'watercolor' reach the engine as itself — the
+    // mapping is the ONLY path into Engine.Tool.
+    expect(layer).not.toContain('aquarelleActiveTool.value as Tool');
+    expect(layer).toContain('engineToolForAquarelleTool(aquarelleActiveTool.value)');
+  });
+
   it('quick-261115-oh9: a LIFT stroke never records a texture', () => {
     // The eraser has no texture. The engine-resolved tool gates the spread, so
     // a pen's eraser end (tool 'lift' while Brush is selected) cannot record

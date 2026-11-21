@@ -50,7 +50,7 @@ import {
   type Brush,
   type Rotation,
 } from '@efxlab/efx-watercolor';
-import type { AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import type { AquarelleStroke, AquarelleTool } from '@efxlab/efx-watercolor/payload';
 import {
   buildLiftRibbon,
   buildLiftRibbonCached,
@@ -115,7 +115,10 @@ export function paintTipForStroke(
  * drift.
  */
 export function paintRadiusDocFor(
-  tool: 'brush' | 'water' | 'pen',
+  // 261121-mtu: the payload union is five; 'lift' is handled by its own ribbon
+  // before this law runs, and 'watercolor' paints the brush footprint by
+  // construction (the same radius law as 'brush').
+  tool: Exclude<AquarelleTool, 'lift'>,
   brush: Brush,
   engineSize: number,
   pressure: number,

@@ -29,7 +29,7 @@ import type {
   StudioPoint,
   StudioStroke,
 } from '@efxlab/efx-paint-host'
-import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
+import type { AquarelleStrokePayload, AquarelleTool } from '../payload/toStudioStroke'
 import { toStudioStroke } from '../payload/toStudioStroke'
 import {
   isUniformColorProfile,
@@ -160,10 +160,34 @@ export function strokeRandomForMutationId(mutationId: number): () => number {
   return seededRandom(hashMutationId(mutationId) || 1)
 }
 
-const AQUARELLE_TOOL_SET = new Set<Tool>(['brush', 'water', 'pen', 'lift'])
+/**
+ * 261121-mtu: the payload union is five members, the engine's is four. This
+ * frozen table is the ONE place the two vocabularies meet, and it states the
+ * intent: `watercolor` is a paint stroke and deposits through the engine's
+ * `brush` mode — the distinction it carries (watercolor brush family and
+ * medium) is exposure, not a new deposit law.
+ */
+const PAYLOAD_TOOL_TO_ENGINE: Readonly<Record<AquarelleTool, Tool>> = Object.freeze({
+  brush: 'brush',
+  watercolor: 'brush',
+  water: 'water',
+  pen: 'pen',
+  lift: 'lift',
+})
+
+/**
+ * Resolve a PAYLOAD tool to the engine's closed four-member union.
+ *
+ * A member resolves through the table above; anything genuinely unknown
+ * (corrupt stored data, a future id) falls back to `'brush'` — fail-closed,
+ * never a silent fifth engine mode.
+ */
+export function engineToolForAquarelleTool(raw: string): Tool {
+  return (PAYLOAD_TOOL_TO_ENGINE as Readonly<Record<string, Tool | undefined>>)[raw] ?? 'brush'
+}
 
 function asTool(raw: string): Tool {
-  return AQUARELLE_TOOL_SET.has(raw as Tool) ? (raw as Tool) : 'brush'
+  return engineToolForAquarelleTool(raw)
 }
 
 /**

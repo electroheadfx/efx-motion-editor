@@ -23,24 +23,40 @@ import { mixSpectral } from '@efxlab/efx-spectral'
 import type { Rgb } from '@efxlab/efx-spectral'
 import { seededRng } from '@efxlab/efx-paint-host'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
-import {
-  AQUARELLE_TOOLS,
-  type AquarelleStrokePayload,
-  type AquarelleTool,
+import type {
+  AquarelleStrokePayload,
+  AquarelleTool,
 } from '../payload/toStudioStroke'
 import type { AquarelleTip } from '../brushes/tips'
 import { toolOverridesFromTip } from '../brushes/tips'
 import { WET_EPS, MAX_DENSITY, type FluidSheet } from './fluid'
 import { splatVelocity } from './transport'
 
-// Re-exported so callers can name the closed tool union from the
+// Re-exported so callers can name the payload tool union from the
 // engine surface (the test contract imports it from './deposit').
 export type { AquarelleTool } from '../payload/toStudioStroke'
 export { AQUARELLE_TOOLS } from '../payload/toStudioStroke'
 
-const TOOL_SET: ReadonlySet<string> = new Set<string>(AQUARELLE_TOOLS)
+/**
+ * The ENGINE's closed tool union (AQUA-02 / D-18) — four deposit modes.
+ *
+ * 261121-mtu: deliberately LOCAL, never derived from the payload
+ * `AQUARELLE_TOOLS`. The payload union gained the paint-only `'watercolor'`
+ * member (it maps to the engine's `brush` at the adapter), so deriving this
+ * guard from the payload list would silently let a fifth value reach
+ * `stampTool` / `depositStrokeOnSheet` as a pigment mode. The fail-closed
+ * guard stays closed on exactly these four.
+ */
+export const ENGINE_TOOLS: readonly AquarelleTool[] = Object.freeze([
+  'brush',
+  'water',
+  'pen',
+  'lift',
+] as const)
 
-/** Fail-closed tool guard — throws on any kind outside the closed union. */
+const TOOL_SET: ReadonlySet<string> = new Set<string>(ENGINE_TOOLS)
+
+/** Fail-closed tool guard — throws on any kind outside the ENGINE union. */
 export function assertAquarelleTool(tool: string): asserts tool is AquarelleTool {
   if (!TOOL_SET.has(tool)) {
     throw new RangeError(`Unknown aquarelle tool: ${tool} (expected brush | water | pen | lift)`)

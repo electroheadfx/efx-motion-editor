@@ -25,6 +25,7 @@ import {
   aquarelleVisibleSettleTicks,
   buildBrushForStroke,
   DEFAULT_PAPER,
+  engineToolForAquarelleTool,
   maskGeneration,
   PAPERS,
   pigmentFromHex,
@@ -35,7 +36,6 @@ import {
   type AquarellePayloadEvent,
   type AquarelleSeedHandle,
   type PaperPreset,
-  type Tool,
 } from '@efxlab/efx-watercolor';
 import type {
   AquarellePoint,
@@ -363,7 +363,11 @@ function applyLiveConfig(
   engine.setParams(
     toEngineParams({ ...aquarelleParams.value, size: aquarelleActiveCanonicalSize() }),
   );
-  engine.setTool(aquarelleActiveTool.value as Tool);
+  // 261121-mtu: the payload union is five members, the engine's is four. The
+  // explicit mapping (watercolor → brush) is the ONLY path a payload tool
+  // takes into the engine — never a cast, so 'watercolor' can never reach a
+  // `tool === 'brush'` engine branch as itself.
+  engine.setTool(engineToolForAquarelleTool(aquarelleActiveTool.value));
   // 261028-k03c: the live brush is the SAME selection law the record uses
   // (`aquarelleBrushForActiveTool`), so a Lift stroke's live erase, its
   // recorded brushId and the bake can never disagree. `brushIdForSelection`

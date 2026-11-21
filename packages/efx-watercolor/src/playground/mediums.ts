@@ -186,13 +186,16 @@ export const MEDIUMS: ReadonlyArray<MediumRecord> = Object.freeze([
       edge: 65,
       granulation: 25,
       viscosity: 90,
-      // 2026-11-20 (artist's acrylic brush default): a bristle acrylic pick
-      // must start from the mixing bag the artist paints with — full Body,
-      // full Pickup, no Refill, full Feather and no Emboss. The rest of the
-      // D-25 retune is untouched.
+      // 2026-11-21 (artist's acrylic brush default, quick 261121-mtu): the
+      // bristle pick starts from the mixing bag the artist paints with —
+      // full Body and Pickup, no Refill. Feather 85 keeps a soft-but-defined
+      // acrylic edge (100 smears the mark's silhouette); Emboss 3 adds a
+      // light relief pass (the row caps at 15); Refill 0 keeps the acrylic
+      // mixing bag from washing out; Pickup 100 keeps it taking the sheet's
+      // colour. The rest of the D-25 retune is untouched.
       body: 100,
-      emboss: 0,
-      feather: 100,
+      emboss: 3,
+      feather: 85,
       pickup: 100,
       refill: 0,
       wetSeconds: 12,

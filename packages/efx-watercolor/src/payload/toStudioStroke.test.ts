@@ -27,7 +27,9 @@ import { toEngineParams } from '../playground/params'
 import { ANCHOR_WIDTH_DEFAULT, isUniformWidthProfile } from '../vector/spine'
 import type { AquarelleAnchor } from './vectorPath'
 import {
+  AQUARELLE_TOOLS,
   PAINT_SEED_SALT_PARAM,
+  isAquarellePaintTool,
   paintSeedSaltOf,
   toStudioStroke,
   type AquarelleStroke,
@@ -319,5 +321,40 @@ describe('toStudioStroke raw pointer ticks (quick 261116-rp)', () => {
     if (decoded === null || isAquarelleDryEvent(decoded)) throw new Error('expected a stroke')
     expect(decoded.pts.map((point) => point.tick)).toEqual([0, 0, 3, 9])
     expect(decoded.ticks).toBe(9)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 4. The five-member payload union (quick 261121-mtu) — additive only
+// ---------------------------------------------------------------------------
+
+describe('AquarelleTool payload union (quick 261121-mtu)', () => {
+  it("lists exactly five payload tools, in tool-row order — 'watercolor' second", () => {
+    expect([...AQUARELLE_TOOLS]).toEqual(['brush', 'watercolor', 'water', 'pen', 'lift'])
+  })
+
+  it('isAquarellePaintTool is true for brush and watercolor only', () => {
+    expect(AQUARELLE_TOOLS.filter(isAquarellePaintTool)).toEqual(['brush', 'watercolor'])
+  })
+
+  it("accepts a payload whose engine slot carries tool: 'watercolor' (codec shape guard)", () => {
+    const stroke = toStudioStroke(makeRuntimeStroke({ tool: 'watercolor' }))
+    expect(stroke.engine.tool).toBe('watercolor')
+    const decoded = payloadCodec.parse(payloadCodec.serialize(stroke))
+    expect(decoded).not.toBeNull()
+    if (decoded === null || isAquarelleDryEvent(decoded)) throw new Error('expected a stroke')
+    expect(decoded.engine.tool).toBe('watercolor')
+  })
+
+  it('keeps the four legacy payloads byte-identical through a JSON round trip', () => {
+    // Additive contract: widening the union must not touch what a stored
+    // brush/water/pen/lift stroke serialises to — no migration, no new keys.
+    for (const tool of ['brush', 'water', 'pen', 'lift'] as const) {
+      const projected = toStudioStroke(makeRuntimeStroke({ tool }))
+      const json = JSON.stringify(projected.engine)
+      const reparsed = JSON.parse(json) as { tool: string }
+      expect(reparsed).toEqual(projected.engine)
+      expect(reparsed.tool).toBe(tool)
+    }
   })
 })

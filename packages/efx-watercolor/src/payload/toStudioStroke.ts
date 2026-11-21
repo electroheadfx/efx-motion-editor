@@ -52,19 +52,36 @@ import type { AquarelleAnchor, AquarelleCurveMode } from './vectorPath'
 export type { AquarelleDryEvent, AquarellePayloadEvent } from './dryEvent'
 
 /**
- * The only four tools that carry pts/brush payload (AQUA-02 / D-18).
- * Closed union — no fifth kind. Dry is a recorded timeline event,
- * not a paint tool (D-15).
+ * The PAYLOAD tool union — five members (261121-mtu).
+ *
+ * The ENGINE union (`Engine.Tool`, `engine/deposit.ts`'s local
+ * `ENGINE_TOOLS`) stays four (brush | water | pen | lift). `'watercolor'`
+ * is a PAYLOAD-ONLY paint tool: it adds no deposit law and maps to the
+ * engine's `brush` at the adapter seam. The distinction it carries is the
+ * brush/medium family the tool exposes (the watercolor group and its
+ * medium), not a fifth engine mode. Dry is a recorded timeline event, not
+ * a paint tool (D-15).
  */
-export type AquarelleTool = 'brush' | 'water' | 'pen' | 'lift'
+export type AquarelleTool = 'brush' | 'watercolor' | 'water' | 'pen' | 'lift'
 
-/** Exhaustive tool list — the engine union is closed on these four. */
+/** Exhaustive payload tool list, in tool-row order (`'watercolor'` appended). */
 export const AQUARELLE_TOOLS: readonly AquarelleTool[] = Object.freeze([
   'brush',
+  'watercolor',
   'water',
   'pen',
   'lift',
 ] as const)
+
+/**
+ * 261121-mtu: the ONE shared paint-tool predicate. A paint tool deposits
+ * pigment under the active medium; the Water tool only wets/pushes and the
+ * Lift tool only erases. Callers (the auto-promotion gate, the
+ * generated-frame paint guard) use this instead of duplicating the list.
+ */
+export function isAquarellePaintTool(tool: AquarelleTool): boolean {
+  return tool === 'brush' || tool === 'watercolor'
+}
 
 /** Engine-2 private fields carried in the opaque `engine: P` slot. */
 export interface AquarelleStrokePayload {

@@ -148,11 +148,13 @@ describe('medium records', () => {
       edge: 65,
       granulation: 25,
       viscosity: 90,
-      // 2026-11-20 (artist's acrylic brush default): the mixing bag a
-      // bristle acrylic pick must start from.
+      // 2026-11-21 (artist's acrylic brush default, quick 261121-mtu): the
+      // mixing bag a bristle acrylic pick must start from — Feather 85 (a
+      // soft-but-defined edge; 100 smeared the mark's silhouette) and Emboss
+      // 3 (a light relief pass; the row caps at 15).
       body: 100,
-      emboss: 0,
-      feather: 100,
+      emboss: 3,
+      feather: 85,
       pickup: 100,
       refill: 0,
       wetSeconds: 12,
@@ -178,15 +180,17 @@ describe('medium records', () => {
     expect(acrylic.edge).toBe(65)
     expect(acrylic.granulation).toBe(25)
     expect(acrylic.viscosity).toBe(90)
-    // 2026-11-20 (artist's acrylic brush default): the five mixing knobs ride
-    // the brush pick — full Body, full Pickup, no Refill, full Feather, no
-    // Emboss. No new `feather` expression is added: D-22's Feather half is
-    // discharged by composition through the existing softness band (D-25).
+    // 2026-11-21 (artist's acrylic brush default, quick 261121-mtu): the five
+    // mixing knobs ride the brush pick — full Body, full Pickup, no Refill,
+    // Feather 85 (soft-but-defined edge: 100 smeared the silhouette) and
+    // Emboss 3 (a light relief pass; the row caps at 15). No new `feather`
+    // expression is added: D-22's Feather half is discharged by composition
+    // through the existing softness band (D-25).
     expect(acrylic.body).toBe(100)
-    expect(acrylic.emboss).toBe(0)
+    expect(acrylic.emboss).toBe(3)
     expect(acrylic.pickup).toBe(100)
     expect(acrylic.refill).toBe(0)
-    expect(acrylic.feather).toBe(100)
+    expect(acrylic.feather).toBe(85)
   })
 
   it('derives the watercolor record from the canonical defaults', () => {

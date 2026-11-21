@@ -21,7 +21,7 @@ import { hashMutationId, seededRng } from '@efxlab/efx-paint-host'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { createSheet, step, sheetToBytes, totalPigment, wetPixelCount } from './fluid'
 import type { FluidSheet } from './fluid'
-import { AQUARELLE_TOOLS, stampTool, depositStrokeOnSheet } from './deposit'
+import { ENGINE_TOOLS, stampTool, depositStrokeOnSheet } from './deposit'
 import { forceDrySheet } from './drying'
 import type { AquarelleTool } from './deposit'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
@@ -405,8 +405,20 @@ describe("tool 'pen'", () => {
 // ---------------------------------------------------------------------------
 
 describe('tool union exhaustiveness', () => {
-  it("exposes exactly 'brush' | 'water' | 'pen' | 'lift' — no fifth tool kind", () => {
-    expect([...AQUARELLE_TOOLS].sort()).toEqual(['brush', 'lift', 'pen', 'water'])
+  it("the ENGINE exposes exactly 'brush' | 'water' | 'pen' | 'lift' — no fifth tool kind", () => {
+    expect([...ENGINE_TOOLS].sort()).toEqual(['brush', 'lift', 'pen', 'water'])
+  })
+
+  it("rejects the payload-only 'watercolor' — it is not an engine mode", () => {
+    // 261121-mtu: the payload union is NO LONGER the engine's authority. It
+    // gained the paint-only 'watercolor' member (the adapter maps it to
+    // 'brush'), so the engine keeps a LOCAL closed list and this guard must
+    // keep throwing for any value outside those four — otherwise stampTool /
+    // depositStrokeOnSheet would treat it as a pigment mode.
+    const sheet = createSheet(8, 8)
+    expect(() =>
+      stampTool(sheet, 'watercolor' as AquarelleTool, 4, 4, { radius: 2 }),
+    ).toThrow(/Unknown aquarelle tool/)
   })
 
   it('rejects an unknown tool fail-closed (never a silent fifth mode)', () => {
@@ -416,8 +428,8 @@ describe('tool union exhaustiveness', () => {
     ).toThrow()
   })
 
-  it('every declared tool round-trips through the payload union', () => {
-    for (const tool of AQUARELLE_TOOLS) {
+  it('every ENGINE tool round-trips through the payload union', () => {
+    for (const tool of ENGINE_TOOLS) {
       const stroke = makeStroke(7, tool)
       expect(stroke.engine.tool).toBe(tool)
     }

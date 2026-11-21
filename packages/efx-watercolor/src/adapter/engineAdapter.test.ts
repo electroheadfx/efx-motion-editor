@@ -24,6 +24,7 @@ import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation
 import { mixSpectral } from '@efxlab/efx-spectral'
 import {
   createAquarelleEngineAdapter,
+  engineToolForAquarelleTool,
   resolveBakePaperPreset,
   resolveStrokeBaseColor,
   resolveStrokeColors,
@@ -246,6 +247,27 @@ describe('toStudioStroke payload round-trip', () => {
     expect(reparsed?.engine.params['load']).toBe(50)
     expect(reparsed?.engine.params['granulation']).toBe(50)
     adapter.dispose()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2b. Payload → engine tool mapping (quick 261121-mtu) — explicit, pinned
+// ---------------------------------------------------------------------------
+
+describe('engineToolForAquarelleTool (quick 261121-mtu)', () => {
+  it("maps the paint-only 'watercolor' payload to the engine's 'brush' through the table", () => {
+    // The intent is the TABLE entry, not the unknown-tool fallback: a
+    // 'watercolor' stroke deposits through the engine's brush mode.
+    expect(engineToolForAquarelleTool('watercolor')).toBe('brush')
+    expect(engineToolForAquarelleTool('brush')).toBe('brush')
+    expect(engineToolForAquarelleTool('water')).toBe('water')
+    expect(engineToolForAquarelleTool('pen')).toBe('pen')
+    expect(engineToolForAquarelleTool('lift')).toBe('lift')
+  })
+
+  it("falls back to 'brush' for a genuinely unknown string (fail-closed, separate from the table)", () => {
+    expect(engineToolForAquarelleTool('fill')).toBe('brush')
+    expect(engineToolForAquarelleTool('')).toBe('brush')
   })
 })
 
