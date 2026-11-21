@@ -81,8 +81,15 @@ function acrylicParams(dry: number): Record<string, number> {
   }
 }
 
-/** Three rows of serpentine travel, evenly spaced so the speed is constant. */
-function serpentine(pressure: number): AquarellePoint[] {
+/**
+ * Three rows of serpentine travel, evenly spaced so the speed is constant.
+ *
+ * `repeat` holds each point for that many extra 60 Hz samples, so the hand
+ * moves the same path over more ticks — the SLOW-hand control. repeat 1 is
+ * the fast hand (~2.8 doc heights/s on this 800x600 sheet, past the
+ * BRISTLE_PRESSURE_SPEED ramp).
+ */
+function serpentine(pressure: number, repeat = 1): AquarellePoint[] {
   const points: AquarellePoint[] = []
   const rows = [0.25, 0.5, 0.75]
   const perRow = 20
@@ -91,7 +98,9 @@ function serpentine(pressure: number): AquarellePoint[] {
     for (let i = 0; i < perRow; i += 1) {
       const t = i / (perRow - 1)
       const x = flip ? 0.85 - 0.7 * t : 0.15 + 0.7 * t
-      points.push({ x, y, p: pressure, tx: 0, ty: 0, tw: 0 })
+      for (let k = 0; k < repeat; k += 1) {
+        points.push({ x, y, p: pressure, tx: 0, ty: 0, tw: 0 })
+      }
     }
     flip = !flip
   }
@@ -101,6 +110,7 @@ function serpentine(pressure: number): AquarellePoint[] {
 interface Report {
   pressure: number
   dry: number
+  repeat: number
   segments: number[]
   covered: number
   loadMin: number
@@ -113,7 +123,7 @@ function round2(v: number): number {
   return Math.round(v * 100) / 100
 }
 
-function runCase(pressure: number, dry: number): Report {
+function runCase(pressure: number, dry: number, repeat = 1): Report {
   if (!COLD) throw new Error("paper preset 'cold' is not in PAPERS")
   capturedEngine = null
   const adapter = withSeededMathRandom(PAPER_SEED, () =>
@@ -127,7 +137,7 @@ function runCase(pressure: number, dry: number): Report {
   try {
     const engine = capturedEngine
     if (engine === null) throw new Error('probe never captured the adapter engine')
-    const points = serpentine(pressure)
+    const points = serpentine(pressure, repeat)
     const payload: AquarelleStrokePayload = {
       tool: 'brush',
       color: STROKE_COLOR,
@@ -156,7 +166,7 @@ function runCase(pressure: number, dry: number): Report {
     }
     // Sample the middle 12 path points (skip the row turns) — a box around each.
     const samples: AquarellePoint[] = []
-    for (let i = 2; i < points.length - 2; i += 5) samples.push(points[i]!)
+    for (let i = 2; i < points.length - 2; i += 5 * repeat) samples.push(points[i]!)
     for (const point of samples) {
       const cx = Math.round(point.x * (canvas.width - 1))
       const cy = Math.round((1 - point.y) * (canvas.height - 1))
@@ -187,6 +197,7 @@ function runCase(pressure: number, dry: number): Report {
     return {
       pressure,
       dry,
+      repeat,
       segments,
       covered: round2((100 * covered) / total),
       loadMin: round2(Math.min(...finite)),
@@ -206,6 +217,11 @@ function run(): void {
     runCase(0.7, 0),
     runCase(1.0, 0),
     runCase(1.0, 70),
+    // The hand-speed control (2026-11-21): same path, same Dry 0, one fast
+    // and one slow pass. Any gap between these two rows is hand speed
+    // reaching the paint.
+    runCase(1.0, 0, 1),
+    runCase(1.0, 0, 12),
   ]
   const report = {
     sheet: [SHEET_W, SHEET_H],

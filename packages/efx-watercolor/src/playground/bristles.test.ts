@@ -908,7 +908,7 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
 
 describe('bristleContactPressure — §3.1, the reference brush pressure (spike 004)', () => {
   const LAW = bristleModule as unknown as {
-    bristleContactPressure?: (pen: number, speed: number, distPx: number, shortPx: number, pressureLink?: number) => number
+    bristleContactPressure?: (pen: number, speed: number, distPx: number, shortPx: number, pressureLink?: number, speedLink?: number) => number
     BRISTLE_PRESSURE_SLOW?: number
     BRISTLE_PRESSURE_FAST?: number
     BRISTLE_PRESSURE_SPEED?: number
@@ -1021,11 +1021,65 @@ describe('bristleContactPressure — §3.1, the reference brush pressure (spike 
     )
   })
 
-  it('the engine passes the brush pressureLink at its ONE contact-pressure call site', () => {
+  it('the engine passes the brush pressureLink and speedLink at its ONE contact-pressure call site', () => {
     expect(ENGINE_SOURCE.match(/bristleContactPressure\s*\(/g) ?? [], 'exactly one call site').toHaveLength(1)
     expect(ENGINE_SOURCE).toMatch(
-      /bristleContactPressure\(clamp\(pr, 0, 1\), s\.speed, s\.travelled \* this\.dh, this\.dh, b\.pressureLink \?\? 1\)/,
+      /bristleContactPressure\(clamp\(pr, 0, 1\), s\.speed, s\.travelled \* this\.dh, this\.dh, b\.pressureLink \?\? 1, b\.speedLink \?\? 1\)/,
     )
+  })
+
+  // --- speedLink (2026-11-21, the artist's fast-hand report): how much the
+  // HAND SPEED enters the CONTACT gate. 1 = the shipped law; 0 = the gate
+  // ignores hand speed, so Dry alone decides whether the paint runs out.
+
+  it('an absent speedLink is the shipped formula, bit for bit', () => {
+    for (const speed of [0, 0.35, 1.4, 4]) {
+      expect(LAW.bristleContactPressure?.(1, speed, 100, 600, 1, 1), `speed ${speed} at link 1`).toBe(
+        LAW.bristleContactPressure?.(1, speed, 100, 600, 1),
+      )
+    }
+    expect(LAW.bristleContactPressure?.(1, 10, 100, 600, 1, 1), 'the shipped fast contact value').toBeCloseTo(0.42, 12)
+  })
+
+  it('speedLink 0 takes the hand speed out of the contact gate', () => {
+    expect(LAW.bristleContactPressure?.(1, 0, 100, 600, 1, 0), 'rest').toBeCloseTo(1, 12)
+    expect(LAW.bristleContactPressure?.(1, 10, 100, 600, 1, 0), 'fast deposits like rest').toBeCloseTo(1, 12)
+    expect(LAW.bristleContactPressure?.(0.15, 10, 100, 600, 0, 0), 'both links out').toBeCloseTo(1, 12)
+    let previous = Number.POSITIVE_INFINITY
+    for (const speed of [0, 0.35, 0.7, 1.05, 1.4, 4]) {
+      const p = LAW.bristleContactPressure?.(1, speed, 100, 600, 1, 0) ?? Number.NaN
+      expect(p).toBe(1)
+      expect(p).toBeLessThanOrEqual(previous + 1e-12)
+      previous = p
+    }
+  })
+
+  it('speedLink 0 keeps the attack ramp', () => {
+    expect(LAW.bristleContactPressure?.(1, 10, 0, 600, 1, 0), 'first touch').toBeCloseTo(0.45, 12)
+    expect(LAW.bristleContactPressure?.(1, 10, 600 * 0.018, 600, 1, 0), 'past the attack').toBeCloseTo(1, 12)
+  })
+
+  it('speedLink interpolates between 1 and the speed ramp', () => {
+    expect(LAW.bristleContactPressure?.(1, 10, 100, 600, 1, 0.5), 'half link').toBeCloseTo(0.71, 12)
+    // A higher link lets more of the fast-hand ramp in, so the contact value
+    // is monotone NON-INCREASING across 0 -> 1.
+    let previous = Number.POSITIVE_INFINITY
+    for (const link of [0, 0.25, 0.5, 0.75, 1]) {
+      const p = LAW.bristleContactPressure?.(1, 10, 100, 600, 1, link) ?? Number.NaN
+      expect(p).toBeLessThanOrEqual(previous + 1e-12)
+      previous = p
+    }
+  })
+
+  it('a non-finite speedLink reads as the shipped 1', () => {
+    expect(LAW.bristleContactPressure?.(1, 10, 100, 600, 1, Number.NaN)).toBe(
+      LAW.bristleContactPressure?.(1, 10, 100, 600, 1),
+    )
+  })
+
+  it('Dry speed 0 binds zero depletion in the engine', () => {
+    expect(ENGINE_SOURCE).toMatch(/const depletion = dryRate <= 0 \? 0 :/)
+    expect(ENGINE_SOURCE).toMatch(/gl\.uniform1f\(p\.u\.uDepletion!, depletion\)/)
   })
 })
 

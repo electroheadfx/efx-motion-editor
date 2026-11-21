@@ -260,6 +260,11 @@ export const BRISTLE_PRESSURE_START = 0.3;
  * makes the gate independent of the authored pen while the speed and attack
  * ramps still apply — a light press then thins the mark through the footprint,
  * not through the gate. A non-finite link reads as 1 (the never-NaN contract).
+ *
+ * `speedLink` (0..1, 2026-11-21) is how much the HAND SPEED enters the same
+ * gate: 1 keeps the shipped formula exactly; 0 removes the speed ramp, so a
+ * fast hand deposits like a slow one and the Dry law alone decides whether the
+ * paint runs out. A non-finite link reads as 1.
  */
 export function bristleContactPressure(
   penPressure: number,
@@ -267,6 +272,7 @@ export function bristleContactPressure(
   strokeDistPx: number,
   docShortPx: number,
   pressureLink = 1,
+  speedLink = 1,
 ): number {
   const authored = Number.isFinite(penPressure) ? clamp01(penPressure) : 1;
   const link = Number.isFinite(pressureLink) ? clamp01(pressureLink) : 1;
@@ -275,7 +281,9 @@ export function bristleContactPressure(
   const v = Number.isFinite(speed) ? Math.max(0, speed) : 0;
   const d = Number.isFinite(strokeDistPx) ? Math.max(0, strokeDistPx) : 0;
   const reach = Number.isFinite(docShortPx) && docShortPx > 0 ? BRISTLE_PRESSURE_ATTACK * docShortPx : 0;
-  const speedRamp = smoothstep(0, BRISTLE_PRESSURE_SPEED, v);
+  const speedLinkClamped = Number.isFinite(speedLink) ? clamp01(speedLink) : 1;
+  // `× 1` is exact in IEEE, so the shipped link 1 is bit-identical.
+  const speedRamp = smoothstep(0, BRISTLE_PRESSURE_SPEED, v) * speedLinkClamped;
   const attackRamp = reach > 0 ? smoothstep(0, reach, d) : 1;
   return (
     mix(BRISTLE_PRESSURE_SLOW, BRISTLE_PRESSURE_FAST, speedRamp) *

@@ -467,3 +467,39 @@ describe('the acrylic pressureLink (quick 261121-umu)', () => {
     expect('pressureLink' in CUSTOM_BASE, 'CUSTOM_BASE states no link').toBe(false)
   })
 })
+
+// 2026-11-21 (the artist's fast-hand report): the acrylic family's per-
+// response speedLink — 0 removes hand speed from the bristle contact gate so
+// Dry alone decides whether the paint runs out. Same compile-time-only field
+// contract as pressureLink; an absent field reads as the shipped 1.
+describe('the acrylic speedLink (2026-11-21)', () => {
+  const linkOf = (preset: BrushPreset): number | undefined =>
+    (preset as unknown as { speedLink?: number }).speedLink
+
+  it('only the two acrylic responses state a speedLink', () => {
+    const linked = BRUSH_PRESETS.filter((preset) => linkOf(preset) !== undefined)
+    expect(linked.map((preset) => preset.id)).toEqual(['bristle-flat', 'bristle-round'])
+    expect(linkOf(presetById('bristle-flat')), 'bristle-flat speedLink').toBe(0)
+    expect(linkOf(presetById('bristle-round')), 'bristle-round speedLink').toBe(0)
+  })
+
+  it('buildBrush carries the speedLink', () => {
+    expect(
+      (buildBrush(presetById('bristle-flat')) as unknown as { speedLink?: number }).speedLink,
+      'a bristle brush carries its link',
+    ).toBe(0)
+    expect('speedLink' in buildBrush(presetById('round')), 'a non-acrylic brush states no link').toBe(false)
+  })
+
+  it('BASE and CUSTOM_BASE do not state a speedLink', () => {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const source = readFileSync(resolve(here, 'brushes.ts'), 'utf8')
+    const baseStart = source.indexOf('const BASE:')
+    const baseEnd = source.indexOf('const define =')
+    expect(baseStart, 'the BASE table must exist').toBeGreaterThanOrEqual(0)
+    expect(baseEnd, 'the define helper must follow BASE').toBeGreaterThan(baseStart)
+    expect(source.slice(baseStart, baseEnd), 'BASE never states a speedLink').not.toContain('speedLink')
+    expect('speedLink' in presetById('round'), 'a define-built preset inherits no link').toBe(false)
+    expect('speedLink' in CUSTOM_BASE, 'CUSTOM_BASE states no link').toBe(false)
+  })
+})

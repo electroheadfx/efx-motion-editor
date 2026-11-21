@@ -2711,10 +2711,12 @@ export class WatercolorEngine {
         // Spike 004: the bristle carrier and gather read the reference's
         // brush CONTACT pressure (speed- and attack-shaped), not the pointer's
         // — the authored pr still owns the footprint, radius and wet passes.
-        // 261121-umu: a response's link decides how much authored pressure
-        // reaches the gate; an absent field reads as the shipped 1.
+        // 261121-umu: a response's pressure link decides how much authored
+        // pressure reaches the gate; 2026-11-21 its speed link does the same
+        // for the hand speed (the acrylic family ignores it: Dry alone owns
+        // whether the paint runs out). Absent fields read as the shipped 1.
         const contactPr = bristle
-          ? bristleContactPressure(clamp(pr, 0, 1), s.speed, s.travelled * this.dh, this.dh, b.pressureLink ?? 1)
+          ? bristleContactPressure(clamp(pr, 0, 1), s.speed, s.travelled * this.dh, this.dh, b.pressureLink ?? 1, b.speedLink ?? 1)
           : pr;
         const wet = (0.25 + 0.75 * P.water) * (0.7 + 0.3 * pr) * b.water * (0.4 + 0.6 * reservoir);
         const c = this.pigment.coeffs;
@@ -3243,7 +3245,12 @@ export class WatercolorEngine {
     const loadFactor = loadParam <= 0.5
       ? 0.3 + 1.4 * loadParam
       : 1.0 + 6.0 * Math.pow((loadParam - 0.5) / 0.5, 3);
-    gl.uniform1f(p.u.uDepletion!, (1 / (dryDistance * loadFactor)) / Math.min(this.dw, this.dh));
+    // 2026-11-21 (the artist's Dry-0 ruling: no drying at all) — the
+    // 3.0-sheet-height tank still emptied over a long stroke / a low Load, so
+    // Dry 0 binds ZERO depletion, not a very long one. Every Dry > 0 keeps
+    // the untouched curve above.
+    const depletion = dryRate <= 0 ? 0 : (1 / (dryDistance * loadFactor)) / Math.min(this.dw, this.dh);
+    gl.uniform1f(p.u.uDepletion!, depletion);
     const c = this.pigment.coeffs;
     gl.uniform4f(p.u.uPigmentA!, c[0]!, c[1]!, c[2]!, c[3]!);
     gl.uniform3f(p.u.uPigmentB!, c[4]!, c[5]!, c[6]!);

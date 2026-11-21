@@ -77,6 +77,16 @@ export interface BrushPreset {
    * persists the response id and this table is the authority at read time.
    */
   pressureLink?: number;
+  /**
+   * 2026-11-21 (the artist's fast-hand report): 0..1 — how much the HAND
+   * SPEED enters the bristle CONTACT pressure. 1 = the shipped law (a fast
+   * hand drops the contact gate to 0.42, below most bristles' touchReach, so
+   * the mark breaks into specks); 0 = the gate ignores hand speed, and Dry
+   * alone decides whether the paint runs out. The attack ramp and the
+   * footprint stay as they are. Absent reads as 1. COMPILE-TIME ONLY like
+   * `pressureLink`: no serializer, no `.mce` field.
+   */
+  speedLink?: number;
   custom?: boolean;
 }
 
@@ -572,7 +582,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'bristle-flat', name: 'Bristle Flat', hint: 'Thick acrylic flat: directional hair marks, hard body',
-    group: 'acrylic', pressureLink: 0,
+    group: 'acrylic', pressureLink: 0, speedLink: 0,
     aspect: 0.28, rotation: 'follow',
     water: 0.05, load: 1.5, flow: 0.5, capacity: 1.8, grain: 0.15,
     spacing: 0.1, roughness: 0.55, stampJitter: 0.06,
@@ -580,7 +590,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
   }),
   define({
     id: 'bristle-round', name: 'Bristle Round', hint: 'Round acrylic brush with body: springy, loaded hairs',
-    group: 'acrylic', pressureLink: 0,
+    group: 'acrylic', pressureLink: 0, speedLink: 0,
     aspect: 0.7, rotation: 'follow',
     water: 0.06, load: 1.4, capacity: 1.6, grain: 0.15,
     roughness: 0.4, spacing: 0.14,
