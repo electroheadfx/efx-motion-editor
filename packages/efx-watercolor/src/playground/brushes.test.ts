@@ -17,7 +17,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import * as brushesModule from './brushes'
-import { BRUSH_PRESETS, TIP_SIZE, buildBrush, isBristleResponse } from './brushes'
+import { BRUSH_PRESETS, CUSTOM_BASE, TIP_SIZE, buildBrush, isBristleResponse } from './brushes'
 import type { BrushPreset } from './brushes'
 
 type MediumIdLike = 'watercolor' | 'gouache' | 'pastel' | 'graphite' | 'acrylic'
@@ -431,5 +431,39 @@ describe('the bristle response predicate (64-21, D-27 revised post-UAT)', () => 
     expect(isBristleResponse({ id: 'round', textureId: 'mask/acrylic-01' })).toBe(false)
     expect(isBristleResponse({ id: 'chalk' })).toBe(false)
     expect(isBristleResponse({ id: 'chalk', textureId: 'mask/acrylic-01' })).toBe(false)
+  })
+})
+
+// quick 261121-umu: the acrylic family's per-response pressureLink. It is a
+// compile-time-only field (the `group` precedent) — no serializer, no `.mce`
+// field. An absent field reads as the shipped link 1.
+describe('the acrylic pressureLink (quick 261121-umu)', () => {
+  const linkOf = (preset: BrushPreset): number | undefined =>
+    (preset as unknown as { pressureLink?: number }).pressureLink
+  const brushLinkOf = (id: string): number | undefined =>
+    (buildBrush(presetById(id)) as unknown as { pressureLink?: number }).pressureLink
+
+  it('only the two acrylic responses state a pressureLink', () => {
+    const linked = BRUSH_PRESETS.filter((preset) => linkOf(preset) !== undefined)
+    expect(linked.map((preset) => preset.id)).toEqual(['bristle-flat', 'bristle-round'])
+    expect(linkOf(presetById('bristle-flat')), 'bristle-flat pressureLink').toBe(0)
+    expect(linkOf(presetById('bristle-round')), 'bristle-round pressureLink').toBe(0)
+  })
+
+  it('buildBrush carries the pressureLink', () => {
+    expect(brushLinkOf('bristle-flat'), 'a bristle brush carries its link').toBe(0)
+    expect('pressureLink' in buildBrush(presetById('round')), 'a non-acrylic brush states no link').toBe(false)
+  })
+
+  it('BASE and CUSTOM_BASE do not state a pressureLink', () => {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const source = readFileSync(resolve(here, 'brushes.ts'), 'utf8')
+    const baseStart = source.indexOf('const BASE:')
+    const baseEnd = source.indexOf('const define =')
+    expect(baseStart, 'the BASE table must exist').toBeGreaterThanOrEqual(0)
+    expect(baseEnd, 'the define helper must follow BASE').toBeGreaterThan(baseStart)
+    expect(source.slice(baseStart, baseEnd), 'BASE never states a pressureLink').not.toContain('pressureLink')
+    expect('pressureLink' in presetById('round'), 'a define-built preset inherits no link').toBe(false)
+    expect('pressureLink' in CUSTOM_BASE, 'CUSTOM_BASE states no link').toBe(false)
   })
 })

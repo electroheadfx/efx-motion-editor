@@ -51,6 +51,8 @@ import * as bristleModule from './bristles'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SOURCE = readFileSync(resolve(HERE, 'bristles.ts'), 'utf8')
+// 261121-umu: the engine's ONE contact-pressure call site is pinned from source.
+const ENGINE_SOURCE = readFileSync(resolve(HERE, 'Engine.ts'), 'utf8')
 
 /** mulberry32 — the same generator family the adapter installs (the test owns its own copy). */
 function mulberry32(seed: number): () => number {
@@ -906,7 +908,7 @@ describe('the §3.3 smear constants and twins (261119-pod)', () => {
 
 describe('bristleContactPressure — §3.1, the reference brush pressure (spike 004)', () => {
   const LAW = bristleModule as unknown as {
-    bristleContactPressure?: (pen: number, speed: number, distPx: number, shortPx: number) => number
+    bristleContactPressure?: (pen: number, speed: number, distPx: number, shortPx: number, pressureLink?: number) => number
     BRISTLE_PRESSURE_SLOW?: number
     BRISTLE_PRESSURE_FAST?: number
     BRISTLE_PRESSURE_SPEED?: number
@@ -959,6 +961,71 @@ describe('bristleContactPressure — §3.1, the reference brush pressure (spike 
     expect(LAW.bristleContactPressure?.(1, Number.NaN, 100, 600), 'a missing speed reads as rest').toBeCloseTo(1, 12)
     expect(LAW.bristleContactPressure?.(1, 2, Number.NaN, 600), 'a missing distance reads as zero travel').toBeCloseTo(0.42 * 0.45, 12)
     expect(LAW.bristleContactPressure?.(1, 2, 100, 0)).toBeCloseTo(0.42, 12)
+  })
+
+  // --- pressureLink (quick 261121-umu): how much the authored pen pressure
+  // enters the CONTACT gate. 1 = the shipped law; 0 = the gate ignores the
+  // authored pen while the speed and attack ramps still apply.
+
+  it('an absent pressureLink is the shipped formula, bit for bit', () => {
+    expect(typeof LAW.bristleContactPressure, 'bristleContactPressure is exported').toBe('function')
+    for (const pen of [0, 0.15, 0.3, 0.75, 1]) {
+      expect(LAW.bristleContactPressure?.(pen, 2, 100, 600, 1), `pen ${pen} at link 1`).toBe(
+        LAW.bristleContactPressure?.(pen, 2, 100, 600),
+      )
+    }
+    expect(LAW.bristleContactPressure?.(0.15, 10, 100, 600), 'the shipped 0.15 contact value').toBeCloseTo(0.063, 12)
+  })
+
+  it('pressureLink 0 takes the authored pen out of the contact gate', () => {
+    expect(LAW.bristleContactPressure?.(0.15, 10, 100, 600, 0)).toBeCloseTo(0.42, 12)
+    expect(LAW.bristleContactPressure?.(1, 10, 100, 600, 0)).toBeCloseTo(0.42, 12)
+    expect(LAW.bristleContactPressure?.(0, 10, 100, 600, 0)).toBeCloseTo(0.42, 12)
+  })
+
+  it('pressureLink 0 keeps the speed ramp', () => {
+    expect(LAW.bristleContactPressure?.(0.15, 0, 100, 600, 0), 'rest').toBeCloseTo(1, 12)
+    expect(LAW.bristleContactPressure?.(0.15, 10, 100, 600, 0), 'fast').toBeCloseTo(0.42, 12)
+    let previous = Number.POSITIVE_INFINITY
+    for (const speed of [0, 0.35, 0.7, 1.05, 1.4, 4]) {
+      const p = LAW.bristleContactPressure?.(0.15, speed, 100, 600, 0) ?? Number.NaN
+      expect(p).toBeLessThanOrEqual(previous + 1e-12)
+      previous = p
+    }
+  })
+
+  it('pressureLink 0 keeps the attack ramp', () => {
+    expect(LAW.bristleContactPressure?.(0.15, 10, 0, 600, 0), 'first touch').toBeCloseTo(0.42 * 0.45, 12)
+    expect(LAW.bristleContactPressure?.(0.15, 10, 600 * 0.018, 600, 0), 'past the attack').toBeCloseTo(0.42, 12)
+    let previous = -1
+    for (const distance of [0, 3, 6, 10.8]) {
+      const p = LAW.bristleContactPressure?.(0.15, 10, distance, 600, 0) ?? Number.NaN
+      expect(p).toBeGreaterThanOrEqual(previous - 1e-12)
+      previous = p
+    }
+  })
+
+  it('pressureLink interpolates between the authored pressure and 1', () => {
+    expect(LAW.bristleContactPressure?.(0.15, 10, 100, 600, 0.5), 'half link').toBeCloseTo(0.42 * 0.575, 12)
+    let previous = Number.POSITIVE_INFINITY
+    for (const link of [0, 0.25, 0.5, 0.75, 1]) {
+      const p = LAW.bristleContactPressure?.(0.15, 10, 100, 600, link) ?? Number.NaN
+      expect(p).toBeLessThanOrEqual(previous + 1e-12)
+      previous = p
+    }
+  })
+
+  it('a non-finite pressureLink reads as the shipped 1', () => {
+    expect(LAW.bristleContactPressure?.(0.5, 2, 100, 600, Number.NaN)).toBe(
+      LAW.bristleContactPressure?.(0.5, 2, 100, 600),
+    )
+  })
+
+  it('the engine passes the brush pressureLink at its ONE contact-pressure call site', () => {
+    expect(ENGINE_SOURCE.match(/bristleContactPressure\s*\(/g) ?? [], 'exactly one call site').toHaveLength(1)
+    expect(ENGINE_SOURCE).toMatch(
+      /bristleContactPressure\(clamp\(pr, 0, 1\), s\.speed, s\.travelled \* this\.dh, this\.dh, b\.pressureLink \?\? 1\)/,
+    )
   })
 })
 

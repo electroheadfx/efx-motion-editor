@@ -1,0 +1,126 @@
+{
+  "sheet": [
+    800,
+    600
+  ],
+  "brush": "bristle-round",
+  "size": 40,
+  "params": "acrylic record + dry/load overrides",
+  "cases": [
+    {
+      "pressure": 0.15,
+      "dry": 0,
+      "segments": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "covered": 0,
+      "loadMin": 0.71,
+      "loadMean": 0.85,
+      "loadMax": 0.94,
+      "bristles": 256
+    },
+    {
+      "pressure": 0.4,
+      "dry": 0,
+      "segments": [
+        165.97,
+        162.31,
+        142.1,
+        76.24,
+        133.34,
+        29.12,
+        0.02,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "covered": 6.83,
+      "loadMin": 0.67,
+      "loadMean": 0.74,
+      "loadMax": 0.97,
+      "bristles": 256
+    },
+    {
+      "pressure": 0.7,
+      "dry": 0,
+      "segments": [
+        184.07,
+        180.67,
+        187.21,
+        189.12,
+        200.39,
+        193.23,
+        198.3,
+        192.72,
+        142.84,
+        89.15,
+        117.06,
+        66.59
+      ],
+      "covered": 33.4,
+      "loadMin": 0,
+      "loadMean": 0.27,
+      "loadMax": 0.88,
+      "bristles": 256
+    },
+    {
+      "pressure": 1,
+      "dry": 0,
+      "segments": [
+        171.19,
+        169.32,
+        174.6,
+        184.45,
+        177.36,
+        187,
+        183.74,
+        188.92,
+        192.07,
+        198.26,
+        193.68,
+        199.28
+      ],
+      "covered": 57.11,
+      "loadMin": 0,
+      "loadMean": 0.32,
+      "loadMax": 0.82,
+      "bristles": 256
+    },
+    {
+      "pressure": 1,
+      "dry": 70,
+      "segments": [
+        171.64,
+        170.86,
+        178.66,
+        192.64,
+        195.86,
+        197.26,
+        181.6,
+        120.98,
+        50.15,
+        24.93,
+        24.9,
+        7.5
+      ],
+      "covered": 33.99,
+      "loadMin": 0,
+      "loadMean": 0.05,
+      "loadMax": 0.47,
+      "bristles": 256
+    }
+  ]
+}
