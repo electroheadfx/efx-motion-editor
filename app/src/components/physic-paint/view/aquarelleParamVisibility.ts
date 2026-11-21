@@ -20,6 +20,12 @@
 //  STAYS visible for gouache / chalk / graphite: that exposure is
 //  the artist's DEFERRED decision, and their records keep 60.
 //
+//  quick 261121-mtu (rev 3): PICKUP follows the same audit — the
+//  engine binds it only as the bristle carrier rate (`uPickupRate`)
+//  and the gather's smear (`uSmear`), so the watercolor context
+//  hides it too. Gouache / chalk / graphite keep it as the same
+//  DEFERRED class.
+//
 //  `body` has no row anywhere (bag-only, Reset-only) and
 //  `wetSeconds` has no row (it is seconds, not a 0..100 global) —
 //  neither appears in `AQUARELLE_PARAM_ROWS` by design.
@@ -93,6 +99,15 @@ const BRISTLE_MEDIA: readonly MediumId[] = Object.freeze([
 ]);
 /** Decision B: Acrylic fixes Refill at 0; the fluid path never reads it. */
 const REFILL_HIDDEN: readonly MediumId[] = Object.freeze(['acrylic', 'watercolor']);
+/**
+ * quick 261121-mtu (rev 3): Pickup is the bristle carrier's reservoir rate
+ * (`uPickupRate`) and the gather's deposit smear (`uSmear`) — the ONLY two
+ * bindings. The fluid path reads neither, so the row is dead for the fluid
+ * watercolor context and hidden there. Gouache / chalk / graphite are also
+ * non-bristle but keep the row: that exposure is the artist's DEFERRED
+ * decision, same class as Refill.
+ */
+const PICKUP_HIDDEN: readonly MediumId[] = Object.freeze(['watercolor']);
 
 /**
  * The thirteen rows in Matrix 2's order (twelve canvas rows + the
@@ -103,7 +118,13 @@ export const AQUARELLE_PARAM_ROWS: readonly AquarelleParamRow[] = Object.freeze(
   Object.freeze({ key: 'viscosity', label: 'Viscosity', group: 'medium', paint: 'all', water: true }),
   Object.freeze({ key: 'emboss', label: 'Emboss', group: 'medium', max: EMBOSS_MAX, paint: 'all' }),
   Object.freeze({ key: 'load', label: 'Pigment', group: 'paint', paint: 'all' }),
-  Object.freeze({ key: 'pickup', label: 'Pickup', group: 'paint', paint: 'all' }),
+  Object.freeze({
+    key: 'pickup',
+    label: 'Pickup',
+    group: 'paint',
+    paint: 'all',
+    hiddenForMedia: PICKUP_HIDDEN,
+  }),
   Object.freeze({
     key: 'refill',
     label: 'Refill',

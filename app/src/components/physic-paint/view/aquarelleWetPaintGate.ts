@@ -13,7 +13,12 @@
 // ============================================================
 
 import { signal } from '@preact/signals';
-import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
+import {
+  aquarelleActiveTool,
+  aquarelleSelectedTipId,
+  paintToolForTip,
+  setAquarelleTool,
+} from './aquarelleRecordState';
 
 /** True while the live sheet holds standing water the Water tool can act on. */
 export const aquarelleHasWetPaint = signal(false);
@@ -22,13 +27,17 @@ export const aquarelleHasWetPaint = signal(false);
  * Publish the live sheet's wetness. Compare-then-write (efx-preact-reactivity
  * rule 3): a same-value publish must not wake subscribers. On the true -> false
  * transition the Water tool cannot stay active — there is nothing left to
- * blend — so it falls back to Brush (same precedent as the Select disarm).
+ * blend — so it returns to the ACTIVE BRUSH'S OWN paint tool (quick
+ * 261121-mtu rev 3): a watercolor tip must land on the Watercolor tool, never
+ * on a Brush tool whose filtered list excludes it.
  */
 export function setAquarelleHasWetPaint(next: boolean): void {
   const current = aquarelleHasWetPaint.peek();
   if (current === next) return;
   aquarelleHasWetPaint.value = next;
-  if (!next && aquarelleActiveTool.peek() === 'water') setAquarelleTool('brush');
+  if (!next && aquarelleActiveTool.peek() === 'water') {
+    setAquarelleTool(paintToolForTip(aquarelleSelectedTipId.peek()));
+  }
 }
 
 /**

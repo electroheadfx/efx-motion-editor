@@ -13,6 +13,8 @@
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BRUSH_PRESETS, brushGroupOf, mediumById } from '@efxlab/efx-watercolor';
 import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
@@ -24,11 +26,29 @@ import {
   aquarelleSelectedTipId,
   aquarelleToolOverrides,
   applyAquarelleMedium,
+  paintToolForTip,
   selectAquarellePaintTool,
   selectAquarelleTip,
 } from './aquarelleRecordState';
 
 const WATERCOLOR_FIRST = BRUSH_PRESETS.find((preset) => brushGroupOf(preset) === 'watercolor')!;
+const STORE_SOURCE = readFileSync(resolve(__dirname, './aquarelleRecordState.ts'), 'utf8');
+
+describe('the opening tool follows the default brush (rev 3)', () => {
+  it('the default brush is filbert and its family tool is Watercolor', () => {
+    expect(paintToolForTip('filbert')).toBe('watercolor');
+    expect(brushGroupOf(BRUSH_PRESETS.find((preset) => preset.id === 'filbert')!)).toBe(
+      'watercolor',
+    );
+  });
+
+  it('the active-tool signal is derived from the default tip, never hardcoded', () => {
+    expect(STORE_SOURCE).toContain(
+      'export const aquarelleActiveTool = signal<AquarelleTool>(paintToolForTip(DEFAULT_TIP_ID));',
+    );
+    expect(STORE_SOURCE).toContain("const DEFAULT_TIP_ID = 'filbert';");
+  });
+});
 
 function resetFamily(): void {
   aquarelleSelectedTipId.value = null;

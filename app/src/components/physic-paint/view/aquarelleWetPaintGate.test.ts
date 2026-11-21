@@ -12,7 +12,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
+import {
+  aquarelleActiveTool,
+  aquarelleSelectedTipId,
+  setAquarelleTool,
+} from './aquarelleRecordState';
 import {
   aquarelleHasWetPaint,
   aquarelleWaterAvailable,
@@ -74,7 +78,18 @@ describe('aquarelleHasWetPaint store', () => {
 });
 
 describe('aquarelleHasWetPaint tool fallback', () => {
-  it('drops an active Water tool to Brush on the true -> false transition', () => {
+  // quick 261121-mtu (rev 3): the fallback returns to the ACTIVE BRUSH's own
+  // paint tool, so the tool and its filtered response list can never disagree.
+  it('drops an active Water tool to the watercolor brush family tool', () => {
+    aquarelleSelectedTipId.value = 'filbert';
+    setAquarelleHasWetPaint(true);
+    setAquarelleTool('water');
+    setAquarelleHasWetPaint(false);
+    expect(aquarelleActiveTool.peek()).toBe('watercolor');
+  });
+
+  it('drops an active Water tool to Brush when the brush is non-watercolor', () => {
+    aquarelleSelectedTipId.value = 'bristle-flat';
     setAquarelleHasWetPaint(true);
     setAquarelleTool('water');
     setAquarelleHasWetPaint(false);

@@ -178,11 +178,13 @@ function collectOrderedLabels(tree: TestVNode): string[] {
  *  superseded by the group order. Decision B hides Refill for watercolor and
  *  Feather is bristle-only (so the Edge group drops entirely here).
  *  Post-UAT 2026-11-22: Body has NO row (kept in the bag and the Reset law). */
+// Default context = Brush + Watercolor. rev 3: Pickup is the bristle
+// carrier/gather smear only, so the fluid context hides it alongside Refill
+// and Feather — nine rows.
 const GLOBAL_LABELS = [
   'Viscosity',
   'Emboss',
   'Pigment',
-  'Pickup',
   'Water',
   'Dry speed',
   'Flow',
@@ -363,31 +365,32 @@ describe('Phase 64 medium dropdown', () => {
     expect(text, 'the row names the selected medium').toContain('Watercolor');
   });
 
-  it('renders the ten default-context rows below the dropdown in Matrix 2 order', () => {
+  it('renders the nine default-context rows below the dropdown in Matrix 2 order', () => {
     const tree = renderPanel();
     const sliders = [...walk(tree)].filter(
       (node) => node.props?.['data-testid'] === 'slider-stepper',
     );
-    expect(sliders, 'ten row sliders for Brush + Watercolor').toHaveLength(GLOBAL_LABELS.length);
-    expect(GLOBAL_LABELS).toHaveLength(10);
+    expect(sliders, 'nine row sliders for Brush + Watercolor').toHaveLength(GLOBAL_LABELS.length);
+    expect(GLOBAL_LABELS).toHaveLength(9);
     const ordered = collectOrderedLabels(tree).filter((label) =>
       (GLOBAL_LABELS as readonly string[]).includes(label),
     );
     expectGlobalOrder(ordered);
-    expect(ordered).toHaveLength(10);
-    // quick 261121-mtu: decision B hides Refill for watercolor and Feather is
-    // bristle-only. Neither row may appear in the default context.
+    expect(ordered).toHaveLength(9);
+    // quick 261121-mtu: decision B hides Refill for watercolor, rev 3 hides
+    // Pickup (bristle-program-only), and Feather is bristle-only. None of the
+    // three may appear in the default context.
     expect(ordered).not.toContain('Refill');
+    expect(ordered).not.toContain('Pickup');
     expect(ordered).not.toContain('Feather');
     const index = (label: string) => ordered.indexOf(label);
     expect(index('Viscosity'), 'Viscosity leads the Medium group').toBe(0);
     expect(index('Emboss'), 'Emboss follows Viscosity').toBe(1);
     expect(index('Pigment'), 'Pigment opens Paint & reservoir').toBe(2);
-    expect(index('Pickup'), 'Pickup follows Pigment').toBe(3);
-    expect(index('Water'), 'Water opens Drying').toBe(4);
-    expect(index('Dry speed'), 'Dry speed follows Water').toBe(5);
-    expect(index('Flow'), 'Flow opens Watercolor only').toBe(6);
-    expect(index('Grain'), 'Grain closes the list').toBe(9);
+    expect(index('Water'), 'Water opens Drying').toBe(3);
+    expect(index('Dry speed'), 'Dry speed follows Water').toBe(4);
+    expect(index('Flow'), 'Flow opens Watercolor only').toBe(5);
+    expect(index('Grain'), 'Grain closes the list').toBe(8);
   });
 
   it('renders the non-empty group headings in the fixed order', () => {
@@ -429,8 +432,8 @@ describe('Phase 64 medium dropdown', () => {
     expect(sliderLabels).not.toContain('wetSeconds');
     expect(sliderLabels).not.toContain('Wet seconds');
     expect(sliderLabels).not.toContain('Wet Seconds');
-    // quick 261121-mtu: ten rows in the default context, not twelve.
-    expect(sliderLabels).toHaveLength(10);
+    // quick 261121-mtu: nine rows in the default context, not twelve.
+    expect(sliderLabels).toHaveLength(9);
   });
 
   it('moves the canonical viscosity key through the one seam on change and release', () => {
@@ -746,14 +749,13 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
     }
   });
 
-  it('Watercolor shows its ten rows with no Refill and no Feather', () => {
+  it('Watercolor shows its nine rows with no Refill, Pickup or Feather', () => {
     applyAquarelleMedium('watercolor');
     const labels = renderedSliders();
     expect(labels).toEqual([
       'Viscosity',
       'Emboss',
       'Pigment',
-      'Pickup',
       'Water',
       'Dry speed',
       'Flow',
@@ -762,6 +764,9 @@ describe('tool x medium context rows (quick 261121-mtu)', () => {
       'Grain',
     ]);
     expect(labels.includes('Refill'), 'Refill is absent for watercolor').toBe(false);
+    // rev 3: Pickup is the bristle carrier+gather smear only — dead on the
+    // fluid path, same evidence class as Refill.
+    expect(labels.includes('Pickup'), 'Pickup is absent for watercolor').toBe(false);
     expect(labels.includes('Feather'), 'Feather is absent for watercolor').toBe(false);
   });
 

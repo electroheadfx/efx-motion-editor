@@ -163,11 +163,19 @@ export const MULTIPLIER_DEFAULT = 1.0;
 export const aquarelleParams = signal<AquarelleGlobalParams>({
   ...DEFAULT_AQUARELLE_PARAMS,
 });
-export const aquarelleActiveTool = signal<AquarelleTool>('brush');
 // 261028-k03c D1: FILBERT is the default for NEW Brush strokes (it replaced the
 // 261027-gh9f dry CHALK stick). Existing recorded strokes keep the brushId they
 // carry — this default only describes a fresh session's first stroke.
-export const aquarelleSelectedTipId = signal<string | null>('filbert');
+const DEFAULT_TIP_ID = 'filbert';
+/**
+ * quick 261121-mtu (rev 3): the fresh Studio's tool follows the DEFAULT BRUSH's
+ * family. `filbert` is a watercolor preset, so opening on the Brush tool would
+ * leave a watercolor brush active under a list that excludes it — the very
+ * mismatch the family filter exists to prevent. Derived, never hardcoded:
+ * changing the default brush moves the opening tool with it.
+ */
+export const aquarelleActiveTool = signal<AquarelleTool>(paintToolForTip(DEFAULT_TIP_ID));
+export const aquarelleSelectedTipId = signal<string | null>(DEFAULT_TIP_ID);
 export const aquarelleToolOverrides = signal<AquarelleToolOverrides>({
   ...NEUTRAL_TOOL_OVERRIDES,
 });
@@ -476,7 +484,7 @@ export function clearAquarelleTextureSelectionIfDeleted(deletedTipId: string | n
  * with no `BRUSH_PRESETS` entry (a catalog `wc/custom-*`, an unknown id or
  * null) returns the Brush tool — today's fallback, unchanged.
  */
-function paintToolForTip(tipId: string | null): AquarelleTool {
+export function paintToolForTip(tipId: string | null): AquarelleTool {
   if (tipId === null) return 'brush';
   const preset = BRUSH_PRESETS.find((entry) => entry.id === tipId);
   if (preset && brushGroupOf(preset) === 'watercolor') return 'watercolor';

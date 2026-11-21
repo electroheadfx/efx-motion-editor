@@ -36,7 +36,10 @@ const PAINT_TOOLS: readonly AquarelleTool[] = ['brush', 'watercolor', 'pen'];
 const MEDIA = ['watercolor', 'gouache', 'pastel', 'graphite', 'acrylic'] as const;
 
 const P_A = 'viscosity|emboss|load|pickup|water|dry|feather';
-const P_W = 'viscosity|emboss|load|pickup|water|dry|flow|bleed|edge|granulation';
+// rev 3: Pickup joins Refill as bristle-only — `uPickupRate` (carrier) and
+// `uSmear` (gather) are the only bindings, so the fluid row is dead and the
+// watercolor context hides it.
+const P_W = 'viscosity|emboss|load|water|dry|flow|bleed|edge|granulation';
 const P_D = 'viscosity|emboss|load|pickup|refill|water|dry|feather';
 const W_KEYS = 'viscosity|dry|flow|bleed|edge|granulation';
 const L_KEYS = 'lift';
@@ -89,9 +92,9 @@ describe('Matrix 2 — the row set per (tool, medium) context', () => {
     }
   });
 
-  it('reproduces Matrix 2 row counts: P-A 7, P-W 10, P-D 8, W 6, L 1', () => {
+  it('reproduces Matrix 2 row counts: P-A 7, P-W 9, P-D 8, W 6, L 1', () => {
     expect(visibleAquarelleParamRows('brush', 'acrylic'), 'P-A').toHaveLength(7);
-    expect(visibleAquarelleParamRows('brush', 'watercolor'), 'P-W').toHaveLength(10);
+    expect(visibleAquarelleParamRows('brush', 'watercolor'), 'P-W').toHaveLength(9);
     expect(visibleAquarelleParamRows('brush', 'gouache'), 'P-D').toHaveLength(8);
     expect(visibleAquarelleParamRows('brush', 'pastel'), 'P-D (chalk)').toHaveLength(8);
     expect(visibleAquarelleParamRows('brush', 'graphite'), 'P-D').toHaveLength(8);
@@ -214,10 +217,14 @@ describe('the row table itself', () => {
     }
   });
 
-  it('uses hiddenForMedia on the Refill row only (decision B is the ONE exception)', () => {
+  it('uses hiddenForMedia on exactly Refill and Pickup', () => {
+    // Decision B hides Refill for acrylic (fixed 0) and watercolor; rev 3
+    // hides Pickup for watercolor (both laws are bristle-program-only).
     const hidden = AQUARELLE_PARAM_ROWS.filter((row) => row.hiddenForMedia !== undefined);
-    expect(hidden.map((row) => row.key).join('|')).toBe('refill');
-    expect(hidden[0]!.hiddenForMedia!.join('|')).toBe('acrylic|watercolor');
+    // Table order: Pickup precedes Refill.
+    expect(hidden.map((row) => row.key).join('|')).toBe('pickup|refill');
+    expect(hidden[0]!.hiddenForMedia!.join('|')).toBe('watercolor');
+    expect(hidden[1]!.hiddenForMedia!.join('|')).toBe('acrylic|watercolor');
   });
 
   it('gives the Lift row no paint/water context and the other rows no lift context', () => {
