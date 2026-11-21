@@ -185,6 +185,31 @@ interface SceneSpec {
    * is when the trailing catch-up actually stamps the final impression.
    */
   readonly liveStep?: number
+  /**
+   * MEASUREMENT-ONLY: the inter-stroke cadence A/B. 'live' force-dries at
+   * the visible settle cap after the blue wash and cancels that fix before
+   * the yellow (the canvas pointerdown law); 'bake' only simulates to sleep,
+   * as the current re-bake does.
+   */
+  readonly cadence?: 'live' | 'bake'
+  /**
+   * MEASUREMENT-ONLY (2026-11-21, the artist's live pickup report): a blue
+   * wash, then a small yellow stroke across it at the artist's decoded sizes.
+   * 'cap' = the app's settle-cap cadence (fix(true) + cancelAutoFix on the
+   * next pointerdown) through the REAL pointer listeners; 'cap-nocancel' =
+   * same without the reopen; 'nocap' = let the sheet sleep naturally; 'bake'
+   * = the same two strokes through the adapter with the re-bake's cadence.
+   */
+  readonly pickupLive?: 'cap' | 'cap-nocancel' | 'nocap' | 'idle' | 'app' | 'bake'
+  /** MEASUREMENT-ONLY: the idle arm's clock-only pause in ms (default 17.8 min). */
+  readonly idleMs?: number
+  /** MEASUREMENT-ONLY: the pickup scenes' yellow brush size (default 21 px). */
+  readonly yellowSize?: number
+  /**
+   * MEASUREMENT-ONLY: bump the yellow stroke's mutation id, which re-keys its
+   * traceSeed the way the Studio's move/edit paint-seed re-roll does.
+   */
+  readonly reseed?: number
   /** MEASUREMENT-ONLY: the live path's Emboss (0..100, the app band). */
   readonly emboss?: number
   /**
@@ -419,6 +444,27 @@ const SCENES: readonly SceneSpec[] = [
   // bristle stroke at the Emboss cap (15) must light the REAL mark — never a
   // seam along the solid base footprint inside the feathered paint.
   { name: 'live-end-big-emboss', band: false, stroke: false, pickup: null, feather: 100, body: null, liveEnd: true, liveSize: 300, pauseTail: 2, emboss: 15, bagOverride: { water: 26, load: 100, flow: 60, bleed: 22, dry: 70, edge: 65, granulation: 25, viscosity: 90, wetSeconds: 12 } },
+  // Post-UAT 2026-11-22 (the artist's "move re-renders different"): the
+  // inter-stroke cadence A/B — the live settle-cap force-dry vs the re-bake's
+  // simulate-to-sleep. A clean yellow arm is the live look.
+  { name: 'cadence-live', band: false, stroke: false, pickup: null, feather: null, body: null, cadence: 'live' },
+  { name: 'cadence-bake', band: false, stroke: false, pickup: null, feather: null, body: null, cadence: 'bake' },
+  // The Studio's move/edit paint-seed re-roll, isolated: same cadence, a new
+  // yellow traceSeed. A hue shift here is the moved-stroke re-roll, not time.
+  { name: 'cadence-reseed', band: false, stroke: false, pickup: null, feather: null, body: null, cadence: 'live', reseed: 1 },
+  // 2026-11-21 (the artist's live pickup report): the initial paint stays
+  // FULL yellow over a blue wash, while the re-bake (same strokes, adapter,
+  // no mid-fix) drags the blue. Decoded sizes: blue 118, yellow 21.
+  { name: 'live-pickup-cap', band: false, stroke: false, pickup: null, feather: null, body: null, pickupLive: 'cap' },
+  { name: 'live-pickup-cap-nocancel', band: false, stroke: false, pickup: null, feather: null, body: null, pickupLive: 'cap-nocancel' },
+  { name: 'live-pickup-nocap', band: false, stroke: false, pickup: null, feather: null, body: null, pickupLive: 'nocap' },
+  { name: 'live-pickup-idle', band: false, stroke: false, pickup: null, feather: null, body: null, pickupLive: 'idle' },
+  // The artist's exact composition: four 118 px blue passes, a 17.8-minute
+  // pause, four 12 px yellow strokes — live (real pointer + cap cadence) vs
+  // the re-bake's feed.
+  { name: 'live-pickup-app', band: false, stroke: false, pickup: null, feather: null, body: null, pickupLive: 'app', yellowSize: 12 },
+  { name: 'bake-pickup-app', band: false, stroke: false, pickup: null, feather: null, body: null, pickupLive: 'app-bake', yellowSize: 12 },
+  { name: 'bake-pickup', band: false, stroke: false, pickup: null, feather: null, body: null, pickupLive: 'bake' },
   // 2026-11-20 (the artist's pen end block): a pen, a mid brush, and a pause
   // before the lift — the last dab is stamped by the idle catch-up, so its
   // un-faded trailing rectangle used to re-ink a solid block.
@@ -959,6 +1005,9 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
     let finalPaper = substrate ?? pre
     let finalPigment: Panel | null = null
     let finalCoverage: Panel | null = null
+    // 2026-11-21 pickup scenes: the last-touch state the yellow is about to
+    // read — the carrier/smear age gate sampled BEFORE the second colour.
+    let pickupPreYellow: Record<string, unknown> | null = null
     if (spec.intro) {
       // The original app's intro `m()`: nine wide diagonal palette strokes,
       // same control points and seeded widths/speeds, sampled with its
@@ -1113,6 +1162,140 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
       finalPaper = captureCanvas(engine.exportCanvas('paper'))
       finalPigment = captureCanvas(engine.exportCanvas('pigment'))
       finalCoverage = captureCanvas(engine.exportCoverageCanvas())
+    } else if (spec.pickupLive !== undefined) {
+      // THE ARTIST'S LIVE CASE (2026-11-21): a big blue wash, a pause, then a
+      // small yellow stroke across it at the decoded sizes/params. 'cap' and
+      // 'nocap' drive the REAL pointer listeners (the app's live pipeline);
+      // 'bake' drives the adapter with the re-bake's simulate-to-sleep
+      // cadence — the control the artist sees after a move. Clean yellow = the
+      // carrier lifted nothing; green/olive = the wet drag.
+      const blueBag = paramsBag(spec.liveSize ?? 118, 100, 100, 100, 70, 100, 0, 0)
+      Object.assign(blueBag, {
+        water: 26, load: 100, flow: 60, bleed: 22, edge: 65,
+        granulation: 25, viscosity: 90, body: 100, wetSeconds: 12,
+      })
+      const yellowBag = { ...blueBag, size: spec.yellowSize ?? 21 }
+      const bluePath = linePoints(0.5, 0.12, 0.5, 0.88)
+      const yellowPath = linePoints(0.15, 0.5, 0.85, 0.5)
+      if (spec.pickupLive === 'bake' || spec.pickupLive === 'app-bake') {
+        // Same pointer pressure as the live arm (the mouse sentinel literal):
+        // the bake must differ ONLY by its feed path/cadence, never the input.
+        const p05 = (path: readonly AquarellePoint[]): readonly AquarellePoint[] =>
+          path.map((point) => ({ ...point, p: 0.5 }))
+        // app-bake: the artist's exact composition (4 blue passes, 4 yellow
+        // strokes); plain bake: the one-stroke pair.
+        const appMode = spec.pickupLive === 'app-bake'
+        const bluePaths = appMode
+          ? [0.36, 0.45, 0.54, 0.63].map((x) => linePoints(x, 0.12, x, 0.88))
+          : [bluePath]
+        let feedTick = 0
+        for (const [index, path] of bluePaths.entries()) {
+          adapter.applyStroke(makeStroke('#1469e8', blueBag, 0x61e0 + index, p05(path)))
+          for (let step = 0; step < 600 && engine.isAwake; step += 1) adapter.stepTick(feedTick++)
+        }
+        // The artist's real pause between colours (17.8 min, the decoded gap).
+        adapter.advanceClock(spec.idleMs ?? 1_070_561)
+        // Measurement only: the proof throws on a dead gate, which is itself
+        // the result here (a long idle kills the age gate by construction).
+        try { pickupPreYellow = readTouchProof(engine) } catch (error) { pickupPreYellow = { gateDead: String(error) } }
+        const yellowPaths = appMode
+          ? [0.40, 0.50, 0.60, 0.70].map((x) => linePoints(x, 0.15, x, 0.85))
+          : [yellowPath]
+        for (const [index, path] of yellowPaths.entries()) {
+          adapter.applyStroke(makeStroke('#ffdc16', yellowBag, 0x61e1 + index, p05(path)))
+          for (let step = 0; step < 600 && engine.isAwake; step += 1) adapter.stepTick(feedTick++)
+        }
+      } else {
+        engine.setCompositorLayer(true)
+        const canvas = (engine as unknown as { canvas: HTMLCanvasElement }).canvas
+        canvas.style.cssText = 'position:fixed;left:0;top:0;width:800px;height:600px'
+        if (!canvas.parentElement) document.body.appendChild(canvas)
+        let target: [number, number] = [0, 0]
+        ;(engine as unknown as { toUv: (e: PointerEvent) => [number, number] }).toUv = () => target
+        const fire = (type: string, u: number, v: number, buttons: number): void => {
+          target = [u, v]
+          canvas.dispatchEvent(new PointerEvent(type, {
+            pointerId: 9, pointerType: 'mouse', isPrimary: true,
+            buttons, button: 0, clientX: 0, clientY: 0, pressure: 0.5,
+            bubbles: true, cancelable: true,
+          }))
+        }
+        const tick = (count = 1): void => { for (let i = 0; i < count; i += 1) engine.tick(1 / 60) }
+        const liveStroke = (path: readonly AquarellePoint[]): void => {
+          const first = path[0]!
+          fire('pointerdown', first.x, first.y, 1)
+          tick()
+          for (const point of path.slice(1)) {
+            fire('pointermove', point.x, point.y, 1)
+            tick()
+          }
+          const last = path[path.length - 1]!
+          fire('pointerup', last.x, last.y, 0)
+          tick()
+        }
+        if (spec.pickupLive === 'app') {
+          // The artist's exact composition through the REAL pointer path: four
+          // big blue passes (their wash), then — 17.8 min later — four thin
+          // yellow strokes across it.
+          engine.setParams(toEngineParams(blueBag as never))
+          engine.setBrush(buildBrushForStroke(BRUSH_ID))
+          engine.setPigment(pigmentFromHex('#1469e8'))
+          engine.setTool('brush')
+          for (const x of [0.36, 0.45, 0.54, 0.63]) {
+            liveStroke(linePoints(x, 0.12, x, 0.88))
+            tick(80)
+          }
+          tick(111)
+          engine.fix(true)
+          tick(72)
+          adapter.advanceClock(spec.idleMs ?? 1_070_561)
+          try { pickupPreYellow = readTouchProof(engine) } catch (error) { pickupPreYellow = { gateDead: String(error) } }
+          // The canvas pointerdown law runs before the engine's own handler.
+          engine.cancelAutoFix()
+          engine.setParams(toEngineParams(yellowBag as never))
+          engine.setPigment(pigmentFromHex('#ffdc16'))
+          for (const x of [0.40, 0.50, 0.60, 0.70]) {
+            liveStroke(linePoints(x, 0.15, x, 0.85))
+            tick(90)
+          }
+          for (let i = 0; i < 600 && engine.isAwake; i += 1) tick()
+        } else {
+        engine.setParams(toEngineParams(blueBag as never))
+        engine.setBrush(buildBrushForStroke(BRUSH_ID))
+        engine.setPigment(pigmentFromHex('#1469e8'))
+        engine.setTool('brush')
+        liveStroke(bluePath)
+        if (spec.pickupLive === 'nocap' || spec.pickupLive === 'idle') {
+          // The pre-cap control: nothing force-dries the blue; it dries out
+          // on its own schedule exactly once.
+          for (let i = 0; i < 600 && engine.isAwake; i += 1) tick()
+          // The artist's real pause (17.8 min, the decoded gap): clock only,
+          // the sheet is asleep. This ages the last-touch stamps the pickup
+          // gate reads — the live session's own timeline.
+          if (spec.pickupLive === 'idle') adapter.advanceClock(spec.idleMs ?? 1_070_561)
+        } else {
+          // The app's visible settle cap at Dry 70 (111 ticks) + the fix's
+          // own 72-tick flash, then the artist's pause.
+          tick(111)
+          engine.fix(true)
+          tick(72)
+        }
+        tick(30)
+        // The canvas pointerdown law: a new stroke reopens the settle-cap fix
+        // so wet-on-wet blending survives (skip in the nocancel control).
+        if (spec.pickupLive === 'cap') engine.cancelAutoFix()
+        // Measurement only: the proof throws on a dead gate, which is itself
+        // the result here (a long idle kills the age gate by construction).
+        try { pickupPreYellow = readTouchProof(engine) } catch (error) { pickupPreYellow = { gateDead: String(error) } }
+        engine.setParams(toEngineParams(yellowBag as never))
+        engine.setPigment(pigmentFromHex('#ffdc16'))
+        liveStroke(yellowPath)
+        for (let i = 0; i < 600 && engine.isAwake; i += 1) tick()
+        }
+      }
+      finalPaper = captureCanvas(engine.exportCanvas('paper'))
+      finalPigment = captureCanvas(engine.exportCanvas('pigment'))
+      finalCoverage = captureCanvas(engine.exportCoverageCanvas())
     } else if (spec.stroke) {
       const bag = paramsBag(blueSize, spec.pickup ?? 0, spec.feather ?? 0, spec.body ?? 0, spec.dry ?? 0, spec.load ?? 50, 0, spec.refill ?? 0)
       if (spec.water !== undefined) bag.water = spec.water
@@ -1143,6 +1326,46 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
       finalPigment = captureCanvas(engine.exportCanvas('pigment'))
       // RULING 2026-11-19: the raw coverage channel — the fade instrument's
       // input. The pigment alpha is max(darkAlpha, cover); this is cover.
+      finalCoverage = captureCanvas(engine.exportCoverageCanvas())
+    } else if (spec.cadence !== undefined) {
+      // Post-UAT 2026-11-22 (the artist's "move re-renders different"):
+      // the LIVE sheet force-dries at the visible settle cap after every
+      // stroke (auto fix + FIX_SETTLE_TICKS) and the next pointerdown cancels
+      // that fix; the re-bake only fixes at its END frame. This scene paints
+      // one blue wash, ages it, then paints a yellow stroke across it under
+      // BOTH cadences:
+      //   live — 111 normal ticks, fix(true), 72 fix ticks, clock-only pause,
+      //          cancelAutoFix() before the yellow;
+      //   bake — normal ticks until the engine sleeps, clock-only pause.
+      // Clean yellow = the underlayer stayed put; green = it kept flowing.
+      const bag = paramsBag(200, 100, 100, 100, 70, 100, 0, 0)
+      Object.assign(bag, {
+        water: 26, flow: 60, bleed: 22, edge: 65, granulation: 25,
+        viscosity: 90, body: 100, wetSeconds: 12,
+      })
+      let tickIndex = 0
+      const step = (count: number): void => {
+        for (let i = 0; i < count; i += 1) adapter.stepTick(tickIndex++)
+      }
+      const settleLive = (): void => {
+        step(111)
+        engine.fix(true)
+        step(72)
+      }
+      const settleBake = (): void => {
+        for (let i = 0; i < 600 && engine.isAwake; i += 1) adapter.stepTick(tickIndex++)
+      }
+      adapter.applyStroke(makeStroke('#3a5f8a', bag, 0x51a0, linePoints(0.22, 0.35, 0.78, 0.35)))
+      if (spec.cadence === 'live') settleLive()
+      else settleBake()
+      // The artist's pause between colours — clock only, the sheet is asleep.
+      adapter.advanceClock(20_000)
+      if (spec.cadence === 'live') engine.cancelAutoFix()
+      adapter.applyStroke(makeStroke('#e8c21a', bag, 0x51a1 + (spec.reseed ?? 0), linePoints(0.5, 0.2, 0.5, 0.65)))
+      // Both arms end on the bake's end-frame law.
+      settleLive()
+      finalPaper = captureCanvas(engine.exportCanvas('paper'))
+      finalPigment = captureCanvas(engine.exportCanvas('pigment'))
       finalCoverage = captureCanvas(engine.exportCoverageCanvas())
     }
 
@@ -1193,6 +1416,7 @@ function runScene(spec: SceneSpec, blueSize: number, renderer: string): Record<s
       scene: spec.name,
       record,
       touchProof,
+      pickupPreYellow,
       paperPng: finalPaper.png,
       pigmentPng: finalPigment ? finalPigment.png : null,
       renderer,

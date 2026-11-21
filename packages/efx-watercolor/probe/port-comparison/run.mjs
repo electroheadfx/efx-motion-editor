@@ -123,6 +123,16 @@ const MEASUREMENT_SCENES = [
   'live-end-117-dry70-l50',
   'live-end-big-tex',
   'live-end-big-emboss',
+  'cadence-live',
+  'cadence-bake',
+  'cadence-reseed',
+  'live-pickup-cap',
+  'live-pickup-cap-nocancel',
+  'live-pickup-nocap',
+  'live-pickup-idle',
+  'live-pickup-app',
+  'bake-pickup-app',
+  'bake-pickup',
   'live-end-pen-big',
   'end-cap-control',
   'end-block-pen',
@@ -279,6 +289,9 @@ function runCapture(label) {
     records[name] = result.touchProof
       ? { ...result.record, touchProof: result.touchProof }
       : result.record
+    // 2026-11-21 pickup scenes: the last-touch state the yellow is about to
+    // read (its age gate), sampled before the second colour.
+    if (result.pickupPreYellow) records[name].pickupPreYellow = result.pickupPreYellow
     writeFileSync(join(panelDir, `${name}-paper.png`), Buffer.from(result.paperPng.split(',')[1], 'base64'))
     if (typeof result.pigmentPng === 'string') {
       writeFileSync(join(panelDir, `${name}-pigment.png`), Buffer.from(result.pigmentPng.split(',')[1], 'base64'))
