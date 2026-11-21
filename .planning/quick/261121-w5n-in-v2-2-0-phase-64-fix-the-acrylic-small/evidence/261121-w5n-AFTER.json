@@ -1,0 +1,72 @@
+{
+  "quick": "261121-w5n",
+  "gate": "after",
+  "engineHead": "7d64aff468ebb3eb153822df9089a6e38860d5d5",
+  "sheet": [
+    1080,
+    1080
+  ],
+  "brush": "bristle-round",
+  "pressure": 0,
+  "travelPx": 100,
+  "settleTicks": 8,
+  "cases": [
+    {
+      "size": 1,
+      "dabs": 95,
+      "spacingPx": 0.3974,
+      "floorBinds": true,
+      "radiusDoc": 0.0031418213999999996,
+      "stampedPressure": 0.02,
+      "spacingPxStamped": 0.4256,
+      "travelledPx": 94.6155,
+      "digestTransparent": "e25e0671",
+      "digestPigment": "836aef65",
+      "byteLength": 4665600
+    },
+    {
+      "size": 10,
+      "dabs": 95,
+      "spacingPx": 0.7373,
+      "floorBinds": true,
+      "radiusDoc": 0.0058285725,
+      "stampedPressure": 0.02,
+      "spacingPxStamped": 0.7896,
+      "travelledPx": 94.6155,
+      "digestTransparent": "5969a5db",
+      "digestPigment": "1a74b193",
+      "byteLength": 4665600
+    },
+    {
+      "size": 30,
+      "dabs": 31,
+      "spacingPx": 2.9111,
+      "floorBinds": false,
+      "radiusDoc": 0.0230124983,
+      "stampedPressure": 0.02,
+      "spacingPxStamped": 3.1176,
+      "travelledPx": 94.6155,
+      "digestTransparent": "2e13e726",
+      "digestPigment": "dcf85116",
+      "byteLength": 4665600
+    },
+    {
+      "size": 100,
+      "dabs": 50,
+      "spacingPx": 1.7801,
+      "floorBinds": false,
+      "radiusDoc": 0.0281437304,
+      "stampedPressure": 0.02,
+      "spacingPxStamped": 1.9064,
+      "travelledPx": 94.6155,
+      "digestTransparent": "f30ca1ab",
+      "digestPigment": "8201f9a9",
+      "byteLength": 4665600
+    }
+  ],
+  "paritySize10": {
+    "firstDigest": "5969a5db",
+    "rebakeDigest": "5969a5db",
+    "equal": true
+  }
+}
