@@ -98,7 +98,7 @@ Skills to load before implementing: `efx-studio-paint` (the one-law / parity rul
 | 0.7 | 0 | 33.40 | 0/0.27/0.88 | 184.07 180.67 187.21 189.12 200.39 193.23 198.3 192.72 142.84 89.15 117.06 66.59 |
 | 1.0 | 0 | 57.11 | 0/0.32/0.82 | 171.19 169.32 174.6 184.45 177.36 187 183.74 188.92 192.07 198.26 193.68 199.28 |
 | 1.0 | 70 | 33.99 | 0/0.05/0.47 | 171.64 170.86 178.66 192.64 195.86 197.26 181.6 120.98 50.15 24.93 24.9 7.5 |
-The 0.7 row is EXPECTED TO MOVE (its authored pen left the gate) and is not gated. The 1.0 rows must not move.
+The 0.7 row is EXPECTED TO MOVE (its authored pen left the gate) and is not gated. The 1.0 rows must not move. The 0.4 "dies mid-stroke" signature is `segments[6] < 1` plus an all-zero tail from index 7 — segment 6 records 0.02, not 0 — with the head `segments.slice(0, 6)` carrying a value > 100. Encode it that way: an all-zero `slice(6)` gate is false at HEAD and can never pass.
 
 **Test conventions to reuse**
 - `bristles.test.ts` reads its own source into `SOURCE` and reaches new exports through `import * as bristleModule` + a local cast, so a missing symbol fails as an assertion, never an ESM load error. Extend the existing `describe('bristleContactPressure …')` (L907-962) rather than starting a new suite.
@@ -112,7 +112,7 @@ The 0.7 row is EXPECTED TO MOVE (its authored pen left the gate) and is not gate
   <name>Task 1: Pin the pressure link RED, and capture the pre-change probe evidence</name>
   <files>packages/efx-watercolor/src/playground/bristles.test.ts, packages/efx-watercolor/src/playground/brushes.test.ts, packages/efx-watercolor/probe/long-stroke/captures/before/result.json</files>
   <behavior>
-    Written against the CURRENT source. Every bullet marked RED must FAIL after this task; the two marked GUARD ignore their fifth argument today (an extra argument is inert at runtime) and therefore PASS pre-change — they exist to stay green after the change, and they carry no RED evidence.
+    Written against the CURRENT source. Every bullet marked RED must FAIL after this task; the three bullets marked GUARD pass pre-change (the two argument guards ignore a fifth argument, inert at runtime; the BASE/CUSTOM_BASE absence already holds because the field does not exist yet) — they exist to stay green after the change and carry no RED evidence.
 
     bristles.test.ts (extend the existing `bristleContactPressure` describe; add `const ENGINE_SOURCE = readFileSync(resolve(HERE, 'Engine.ts'), 'utf8')` beside `SOURCE`):
     - `an absent link is the shipped formula, bit for bit` GUARD: for p in {0, 0.15, 0.3, 0.75, 1}, `expect(bristleContactPressure(p, 2, 100, 600, 1)).toBe(bristleContactPressure(p, 2, 100, 600))` (exact `toBe`), and `bristleContactPressure(0.15, 10, 100, 600)` ≈ 0.063.
@@ -125,8 +125,8 @@ The 0.7 row is EXPECTED TO MOVE (its authored pen left the gate) and is not gate
 
     brushes.test.ts (new describe, `pressureLink` read through a local `{ pressureLink?: number }` cast):
     - `only the two acrylic responses state a pressure link` RED: `BRUSH_PRESETS.filter((p) => linkOf(p) !== undefined).map((p) => p.id)` equals `['bristle-flat', 'bristle-round']`, and both values are exactly 0.
-    - `buildBrush carries the link` RED: `buildBrush(bristleFlat).pressureLink` is 0; `'pressureLink' in buildBrush(round)` is false.
-    - `BASE and CUSTOM_BASE do not state a link` RED: neither object has the key (import `CUSTOM_BASE`).
+    - `buildBrush carries the link` RED: `buildBrush(presetById('bristle-flat')).pressureLink` is 0; `'pressureLink' in buildBrush(presetById('round'))` is false.
+    - `BASE and CUSTOM_BASE do not state a link` GUARD: `BASE` is private, so pin it through the existing `readFileSync(resolve(here, 'brushes.ts'), 'utf8')` idiom — locate `const BASE:` and `const define =` (assert both indexes, `baseEnd` after `baseStart`) and assert the window between them does not contain `pressureLink`; then `'pressureLink' in presetById('round')` is false (a `define`-built preset that inherits `BASE`), and `'pressureLink' in CUSTOM_BASE` is false (import `CUSTOM_BASE` from './brushes').
   </behavior>
   <action>
     1. Record the starting commit for the guardrail audit: `git rev-parse HEAD | tee /tmp/umu-start-sha` (also note it for the SUMMARY; do not commit yet). Every later audit diffs against that SHA, so a per-task commit cannot hide a file from the check.
@@ -136,10 +136,10 @@ The 0.7 row is EXPECTED TO MOVE (its authored pen left the gate) and is not gate
     5. Record in the SUMMARY the five baseline rows (pressure, dry, covered, load min/mean/max, segments) and the RED test names.
   </action>
   <verify>
-    <automated>node -e "const r=require(process.cwd()+'/packages/efx-watercolor/probe/long-stroke/captures/before/result.json');const c=r.cases;if(c.length!==5)throw new Error('baseline must carry 5 cases');const a=c[0],b=c[1],d=c[3],e=c[4];if(a.pressure!==0.15||a.covered!==0||a.segments.some(s=>s!==0))throw new Error('0.15 baseline signature moved');if(b.pressure!==0.4||!b.segments.slice(6).every(s=>s===0)||!b.segments.slice(0,6).some(s=>s>100))throw new Error('0.4 baseline signature moved');if(d.pressure!==1||d.dry!==0||d.segments.some(s=>s<=100))throw new Error('1.0 baseline signature moved');if(e.pressure!==1||e.dry!==70||e.segments[e.segments.length-1]>=100)throw new Error('Dry-70 baseline signature moved');console.log('BASELINE OK')" && (pnpm --dir packages/efx-watercolor exec vitest run src/playground/bristles.test.ts src/playground/brushes.test.ts > /tmp/umu-red.log 2>&1 || true) && grep -q "pressureLink" /tmp/umu-red.log</automated>
+    <automated>node -e "const r=require(process.cwd()+'/packages/efx-watercolor/probe/long-stroke/captures/before/result.json');const c=r.cases;if(c.length!==5)throw new Error('baseline must carry 5 cases');const a=c[0],b=c[1],d=c[3],e=c[4];if(a.pressure!==0.15||a.covered!==0||a.segments.some(s=>s!==0))throw new Error('0.15 baseline signature moved');if(b.pressure!==0.4||!b.segments.slice(0,6).some(s=>s>100)||!(b.segments[6]<1)||!b.segments.slice(7).every(s=>s===0))throw new Error('0.4 baseline signature moved');if(d.pressure!==1||d.dry!==0||d.segments.some(s=>s<=100))throw new Error('1.0 baseline signature moved');if(e.pressure!==1||e.dry!==70||e.segments[e.segments.length-1]>=100)throw new Error('Dry-70 baseline signature moved');console.log('BASELINE OK')" && (pnpm --dir packages/efx-watercolor exec vitest run src/playground/bristles.test.ts src/playground/brushes.test.ts > /tmp/umu-red.log 2>&1 || true) && grep -q "pressureLink" /tmp/umu-red.log</automated>
   </verify>
   <done>
-    Both suites carry the new pressure-link pins; running them on the untouched source fails on exactly the link-dependent assertions (RED proven, log kept at /tmp/umu-red.log); `captures/before/result.json` holds the five recorded cases and is byte-reproducible by a second run; no production file was modified.
+    Both suites carry the new pressure-link pins; running them on the untouched source fails on exactly the link-dependent assertions (RED proven, log kept at /tmp/umu-red.log); `captures/before/result.json` holds the five recorded cases, passes the baseline gate verbatim (`BASELINE OK`, including the 0.4 `segments[6] < 1` + zero tail signature) and is byte-reproducible by a second run; no production file was modified.
   </done>
 </task>
 

@@ -6,10 +6,10 @@ current_phase: 64
 current_phase_name: Medium Engine
 status: verifying
 stopped_at: Completed 64-24-PLAN.md
-last_updated: "2026-11-21T16:27:26.776Z"
-last_activity: 2026-11-19
+last_updated: "2026-11-21T21:28:09.688Z"
+last_activity: 2026-11-21
 last_activity_desc: Phase 64 execution started
-state_head: c068a0139c4562d639c3b4f88ba398369c93945e
+state_head: 106074578cba8a7fb05ad5dfce58456897b2330f
 progress:
   total_phases: 2
   completed_phases: 1
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 Phase: 64 (Medium Engine) — EXECUTING
 Plan: 24 of 24
 Status: Phase complete — ready for verification
-Last activity: 2026-11-21 - Completed quick task 261121-mtu: Refill hidden for acrylic and watercolor (acrylic fixed 0), acrylic preset Feather 85 / Emboss 3, Watercolor paint tool (A; Move/Edit to M), tool x medium Paint panel (decision B; gouache/chalk/graphite Refill deferred)
+Last activity: 2026-11-21 - Completed quick task 261121-umu: Decouple the acrylic bristle deposit from authored pressure (pressureLink 0 on bristle-flat/round; width still pressure-owned)
 
 
 ## Performance Metrics
@@ -678,6 +678,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261117-e6j | Studio rail delete no longer wedges the window: a drifted post-publication settlement releases its lease instead of transferring it to recovery ownership (the recovery lease gated physicalMutationAvailable, so every later Add key/rail was refused); the diagnostic now names the failing drift sub-check; pinned by a store-level delete-settlement test (UAT approved 2026-11-17) | 2026-11-17 | 9caf1a116 | [261117-e6j-regression-with-studio-on-deleting-after](./quick/261117-e6j-regression-with-studio-on-deleting-after/) |
 | 261117-tq7 | Cover pass erases pre-stroke wet ink and the cached base: a Body>0 Brush stamp subtracts the stroke-start ink snapshot under its solid core (bounded share law) and punches a cooked frame's cached base through the Lift preview/punch seam with a new core profile; Body 0 stays byte-identical 6/6 | 2026-11-17 | 4dbe9f6d7 | [261117-tq7-cover-pass-erases-pre-stroke-wet-ink-and](./quick/261117-tq7-cover-pass-erases-pre-stroke-wet-ink-and/) |
 | 261121-mtu | Refill hidden for acrylic and watercolor (acrylic fixed 0), acrylic preset Feather 85 / Emboss 3, Watercolor paint tool (A; Move/Edit to M), tool x medium Paint panel (decision B; gouache/chalk/graphite Refill deferred) | 2026-11-21 | c068a0139 | [261121-mtu-refill-acrylic-only-three-paint-tool-cat](./quick/261121-mtu-refill-acrylic-only-three-paint-tool-cat/) |
+| 261121-umu | Decouple the acrylic bristle deposit from authored pressure (pressureLink 0 on bristle-flat/round; width still pressure-owned) | 2026-11-21 | 106074578 | [261121-umu-task-decouple-the-acrylic-bristle-deposi](./quick/261121-umu-task-decouple-the-acrylic-bristle-deposi/) |
 
 ## Roadmap Evolution
 
