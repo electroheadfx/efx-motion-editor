@@ -1,4 +1,4 @@
-import { displayBasisGLSL, pigmentFromDisplayGLSL } from './spectral';
+import { displayBasisGLSL } from './spectral';
 
 // Texture layout
 //   velocity  RG16F  (sim grid)       water flow, in sim texels / second
@@ -744,7 +744,7 @@ void main(){
 // field's age on the VIRTUAL clock; mode 0 keeps 64-21's existing-channel
 // PROXY (`wet * coverage`) as the recorded A/B control only. `uTimes` is the
 // exact-float last-touch pair's read half — the reservation 64-21 made.
-export const bristleCarrierFS = `${HEADER}${BRISTLE_NOISE}${BRISTLE_TEXTURES}${pigmentFromDisplayGLSL()}
+export const bristleCarrierFS = `${HEADER}${BRISTLE_NOISE}${BRISTLE_TEXTURES}
 layout(location=0) out vec4 oA;
 layout(location=1) out vec4 oB;
 layout(location=2) out vec4 oC;
@@ -769,17 +769,6 @@ uniform float uNow;          // SECONDS on the virtual clock — never a wall cl
 uniform float uWetSeconds;   // the paint's tack time (params.wetSeconds, >= 1)
 uniform int uWetMode;        // 1 = the shipped timestamp law; 0 = the A/B proxy
 uniform float uBodyFloor;    // the Body-0 cover ceiling (BRISTLE_BODY_ALPHA_FLOOR 0.5)
-// LIVE OVER COMMITTED (2026-11-21, pickup-collapse-live): the display-only
-// underlay displayFS composites under this session's ink (Engine.setUnderlay).
-// The carrier must tap it or Pickup collapses on the first live stroke over a
-// committed-only base: the sheet holds no committed base, so wet/cover/lift
-// read zero while a re-bake — which replays the base into the sheet — picks up
-// correctly and the two surfaces disagree. uBaseTapOn is 0 in every bake (no
-// underlay is ever bound there), so the recorded arithmetic is untouched;
-// uBaseTime is the committed base's last touch on THIS clock (engine seconds).
-uniform sampler2D uBaseTap;
-uniform float uBaseTapOn;
-uniform float uBaseTime;
 
 // The canonical seven coefficients: attachment A carries c0..c3 (its .a is a
 // real coefficient, not spare) and attachment B.rgb carries c4..c6. The old
@@ -792,30 +781,6 @@ vec4 canvasAt(vec2 uv){
 vec3 canvasAtB(vec2 uv){
   vec4 ib = texture(uInkB, uv) + texture(uFixedB, uv);
   return ib.rgb;
-}
-// One tap of the composed canvas: the sheet's own paint plus the committed
-// base at the deposit law's own residual — the fraction of the base a re-bake's
-// sheet would still hold. The cover channel accumulates floor*(1 - prod(1-a))
-// from zero while the ink lerp leaves prod(1-a) of the base's absorption, so
-// 1 - cover/floor IS that residual (the same normalisation wetAt uses). The
-// display's 1 - cover share is NOT it: raw cover saturates at the Body floor,
-// so the base would never leave the tap and a live core would keep reading the
-// underlay while the re-bake — the arbiter — reads its own ink. cov is the
-// union coverage (the lift gate and the tap weights read it), exactly what a
-// re-bake's cover channel would hold.
-void tapCanvas(vec2 uv, out vec4 cA, out vec3 cB, out float cov){
-  cov = texture(uCover, uv).x;
-  cA = canvasAt(uv);
-  cB = canvasAtB(uv);
-  if (uBaseTapOn > 0.5){
-    float share = 1.0 - clamp(cov / uBodyFloor, 0.0, 1.0);
-    vec4 bA;
-    vec3 bB;
-    underlayCoeffs(texture(uBaseTap, uv).rgb, bA, bB);
-    cA += bA * share;
-    cB += bB * share;
-    cov = clamp(cov + underlayAlpha(texture(uBaseTap, uv).rgb) * share, 0.0, 1.0);
-  }
 }
 // §3.4: mode 1 is the shipped law (D-24) — the texel's age from the
 // last-touch field, on the virtual clock, gated by the PAINT's own coverage,
@@ -836,24 +801,8 @@ void tapCanvas(vec2 uv, out vec4 cA, out vec3 cB, out float cov){
 // Mode 0 is 64-21's proxy retained ONLY as the recorded A/B control.
 float wetAt(vec2 uv){
   if (uWetMode == 1) {
-    float cov = texture(uCover, uv).x;
     float age = max(uNow - texture(uTimes, uv).r, 0.0);
-    if (uBaseTapOn > 0.5){
-      // The base's stamp is the OLDEST memory a session can hold: the sheet is
-      // reset at the commit, so every genuine sheet touch is newer, and a
-      // sheet age beyond the base's is cleared-sentinel residue (the touch
-      // pass mixes toward uNow, so a rim texel keeps a huge negative stamp for
-      // many dabs). The last touch is the more recent of the two memories —
-      // exactly what a re-bake's last-touch field carries, since its base
-      // stroke's own stamps seed that field. The union cover is what the lift
-      // gate and the Body floor read.
-      age = min(age, max(uNow - uBaseTime, 0.0));
-      // Same deposit-law residual as tapCanvas: the base's wet paint is only
-      // present to the degree this session's ink has not replaced it.
-      float share = 1.0 - clamp(cov / uBodyFloor, 0.0, 1.0);
-      cov = clamp(cov + underlayAlpha(texture(uBaseTap, uv).rgb) * share, 0.0, 1.0);
-    }
-    return exp(-age / max(uWetSeconds, 1.0)) * clamp(cov / uBodyFloor, 0.0, 1.0);
+    return exp(-age / max(uWetSeconds, 1.0)) * clamp(texture(uCover, uv).x / uBodyFloor, 0.0, 1.0);
   }
   return texture(uWet, uv).x * texture(uCover, uv).x;
 }
@@ -882,21 +831,12 @@ void main(){
   // so bare paper lifts nothing, and the same-colour gate below owns the
   // own-paint case (the yellow-goes-green report). A different colour always
   // lifts: the wet-on-wet drag.
-  // Every tap reads the composed canvas — the sheet's paint plus the committed
-  // base at the display's own share (tapCanvas; the base is inert when
-  // uBaseTapOn is 0, which is every bake).
-  vec4 tapA0;
-  vec3 tapB0;
-  float w0;
-  vec4 tapA1;
-  vec3 tapB1;
-  float w1;
-  vec4 tapA2;
-  vec3 tapB2;
-  float w2;
-  tapCanvas(pos - tapUv, tapA0, tapB0, w0);
-  tapCanvas(pos, tapA1, tapB1, w1);
-  tapCanvas(pos + tapUv, tapA2, tapB2, w2);
+  float a0 = texture(uCover, pos - tapUv).x;
+  float a1 = texture(uCover, pos).x;
+  float a2 = texture(uCover, pos + tapUv).x;
+  float w0 = a0;
+  float w1 = a1;
+  float w2 = a2;
   float wSum = w0 + w1 + w2;
   // With no covered tap the target stays the carried colour (a no-op mix)
   // and canvasAlpha stays 0, closing liftGate.
@@ -904,8 +844,8 @@ void main(){
   vec3 canvasB = paintB.rgb;
   float canvasAlpha = 0.0;
   if (wSum > 1e-4){
-    canvasA = (tapA0 * w0 + tapA1 * w1 + tapA2 * w2) / wSum;
-    canvasB = (tapB0 * w0 + tapB1 * w1 + tapB2 * w2) / wSum;
+    canvasA = (canvasAt(pos - tapUv) * w0 + canvasAt(pos) * w1 + canvasAt(pos + tapUv) * w2) / wSum;
+    canvasB = (canvasAtB(pos - tapUv) * w0 + canvasAtB(pos) * w1 + canvasAtB(pos + tapUv) * w2) / wSum;
     canvasAlpha = wSum * (1.0 / 3.0);
   }
   float liftGate = smoothstep(0.55, 0.85, clamp(canvasAlpha / uBodyFloor, 0.0, 1.0));

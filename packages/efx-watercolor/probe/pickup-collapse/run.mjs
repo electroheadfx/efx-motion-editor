@@ -52,12 +52,12 @@ if (!chrome) fail('Chrome/Chromium not found; candidates:\n  ' + chromeCandidate
 const label = flag('--label')
 if (!label) {
   fail(
-    'usage: node run.mjs --label <name> [--scene band|blank|app-live|app-bake] [--size <px>] ' +
-      '[--dry <0..100>] [--feather <0..100>] [--body <0..100>] [--pressure <0..1>] [--gap <ms>]',
+    'usage: node run.mjs --label <name> [--scene band|blank] [--size <px>] ' +
+      '[--dry <0..100>] [--feather <0..100>] [--pressure <0..1>]',
   )
 }
 const sceneRaw = flag('--scene') ?? 'band'
-if (!['band', 'blank', 'app-live', 'app-bake'].includes(sceneRaw)) fail(`invalid --scene "${sceneRaw}"`)
+if (sceneRaw !== 'band' && sceneRaw !== 'blank') fail(`invalid --scene "${sceneRaw}"`)
 const sizeRaw = flag('--size') ?? flag('--blue-size')
 const blueSize = sizeRaw === undefined ? 17 : Number(sizeRaw)
 if (!Number.isInteger(blueSize) || blueSize < 1 || blueSize > 800) {
@@ -74,8 +74,6 @@ const dry = numericFlag('--dry', sceneRaw === 'blank' ? 55 : 50)
 const feather = numericFlag('--feather', 0)
 const pressure = numericFlag('--pressure', 0.75)
 const pickup = numericFlag('--pickup', 100)
-const body = numericFlag('--body', 0)
-const gapMs = numericFlag('--gap', 3000)
 const centreRaw = flag('--centre')
 const rimRaw = flag('--rim')
 let pinQuery = ''
@@ -118,7 +116,7 @@ function buildBundle() {
 
 function runPage() {
   const query =
-    `scene=${sceneRaw}&size=${blueSize}&dry=${dry}&feather=${feather}&body=${body}&pressure=${pressure}&pickup=${pickup}&gap=${gapMs}${pinQuery}`
+    `scene=${sceneRaw}&size=${blueSize}&dry=${dry}&feather=${feather}&pressure=${pressure}&pickup=${pickup}${pinQuery}`
   const run = spawnSync(
     chrome,
     [
@@ -200,9 +198,7 @@ function reportMid(mid) {
 function report(result) {
   console.log(`\n[pickup-collapse] ${label}: scene ${result.scene}, blue size ${result.blueSize}, band ${result.bandSize}, ` +
     `${result.totalDabs} dabs, ${result.bristleCount} bristles (centre ${result.centreIndex}, rim ${result.rimIndex})`)
-  console.log(
-    'dab | travelPx | travelBW |  wetC  coverC ageC  pickupC |   loadC    hueC |  wetR  pickupR |   loadR    hueR |  tapC   spC  tapR   spR | coverA smear',
-  )
+  console.log('dab | travelPx | travelBW |  wetC  coverC ageC  pickupC |   loadC    hueC |  wetR  pickupR |   loadR    hueR | coverA smear')
   for (const c of result.captures) {
     const centre = c.samples[0]
     const rim = c.samples[1]
@@ -212,46 +208,15 @@ function report(result) {
         `${fmt(centre.load, 3)} ${fmt(centre.carriedHueDeg, 1).padStart(6)} | ` +
         `${fmt(rim.gate.wet, 3)} ${fmt(rim.gate.pickup, 4).padStart(7)} | ` +
         `${fmt(rim.load, 3)} ${fmt(rim.carriedHueDeg, 1).padStart(6)} | ` +
-        `${fmt(centre.gate.tapHueDeg, 1).padStart(5)} ${fmt(centre.gate.samePaint, 3)} ` +
-        `${fmt(rim.gate.tapHueDeg, 1).padStart(5)} ${fmt(rim.gate.samePaint, 3)} | ` +
         `${fmt(c.gather.coverMean, 3)} ${fmt(c.gather.smearMean, 3)}`,
     )
   }
   reportMid(result.mid)
-  if (result.appSurface) {
-    console.log(`app   | ${JSON.stringify(result.appSurface)}`)
-  }
-  if (result.surface) {
-    console.log(`pixel | ${result.surface.law}`)
-    console.log(`      | ${JSON.stringify(result.surface.metrics)}`)
-  }
-}
-
-/**
- * Write the rendered surface PNG(s) next to the JSON and drop the (large)
- * data URLs from the record, so the JSON stays readable and greppable.
- */
-function writeSurfacePngs(result) {
-  const written = []
-  for (const [key, suffix] of [['surfacePng', 'surface'], ['rawSheetPng', 'rawsheet']]) {
-    const dataUrl = result[key]
-    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) {
-      delete result[key]
-      continue
-    }
-    const path = join(outDir, `${label}-${suffix}.png`)
-    writeFileSync(path, Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64'))
-    written.push(path)
-    delete result[key]
-  }
-  if (result.surface && written.length > 0) result.surface.png = written[0]
-  return written
 }
 
 buildBundle()
 const result = runPage()
-const pngs = writeSurfacePngs(result)
 const outPath = join(outDir, `${label}.json`)
 writeFileSync(outPath, JSON.stringify(result, null, 2) + '\n')
 report(result)
-console.log(`[pickup-collapse] wrote ${outPath}${pngs.length ? ' + ' + pngs.join(' ') : ''}`)
+console.log(`[pickup-collapse] wrote ${outPath}`)

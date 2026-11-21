@@ -1055,12 +1055,9 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     // 11.35 deg against the reference's 173.48 deg. The DISPLAY law is
     // unchanged — Body still owns opacity; only the READ gains the factor.
     // The literal 0.5 is forbidden: the ceiling travels as the uniform.
-    // pickup-collapse-live (2026-11-21): the carrier's cover is the UNION with
-    // the committed-base tap (`cov`; uBaseTapOn = 0 leaves it the sheet's own
-    // read), normalised by the same ceiling.
     expectContains(
       src,
-      'return exp(-age / max(uWetSeconds, 1.0)) * clamp(cov / uBodyFloor, 0.0, 1.0);',
+      'return exp(-age / max(uWetSeconds, 1.0)) * clamp(texture(uCover, uv).x / uBodyFloor, 0.0, 1.0);',
     )
     expectNotContains(src, 'texture(uCover, uv).x / 0.5')
     // Mode 0 (the recorded A/B control): 64-21's proxy, unchanged.
@@ -1195,12 +1192,9 @@ describe('261119-pod — the §3.3 smear, the snapshot and the four-side Feather
     // The carrier's half gained FIX 1's normalisation on the same commit as
     // the gather's Lever 1 (261119-pod): both gates now divide their cover
     // term by the Body-0 ceiling, so the two reads carry one arithmetic.
-    // pickup-collapse-live (2026-11-21): the carrier's cover is the UNION with
-    // the committed-base tap (`cov`), normalised by the same ceiling; a bake
-    // (uBaseTapOn = 0) leaves cov = the sheet's own read.
     expectContains(
       SHADERS_SOURCE,
-      'return exp(-age / max(uWetSeconds, 1.0)) * clamp(cov / uBodyFloor, 0.0, 1.0);',
+      'return exp(-age / max(uWetSeconds, 1.0)) * clamp(texture(uCover, uv).x / uBodyFloor, 0.0, 1.0);',
     )
     // 261119-pod Lever 1: the cover term is normalised by the Body-0 ceiling
     // (the uniform, never a literal) so the gate matches the reference's
