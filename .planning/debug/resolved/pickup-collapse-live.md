@@ -1,16 +1,16 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Phase 64 bristle/acrylic: pickup 100% collapses to pickup 0% on the first live paint. Committed blue sheet, then a yellow stroke with Pickup 100 / Refill 0: first live paint is unmixed yellow (reads pickup 0); moving that stroke re-renders it green-ish (pickup 100). The re-bake is the arbiter; the two surfaces must agree."
 created: 2026-11-21T00:00:00Z
-updated: 2026-11-21T17:50:00Z
+updated: 2026-11-21T18:20:00Z
 ---
 
 ## Current Focus
 
 hypothesis: "CONFIRMED AND IMPLEMENTED. The live sheet is seeded by replaying the committed script through seedAquarelleEngine (bake's own feed path, one clock handoff, recording suppressed), so the stroke's touch pass re-wets the committed paint on the first live dab. Probe: seeded-live == app-bake final pixels line-for-line at 20 s (pickup 100) and the pickup-0 control stays unmixed. All gates green; committed 1efea6997 (package seam), a3a842d85 (app wiring), 62f86ea7e (probe harness)."
-test: "The artist's native UAT. Automated proof is complete and the fix-acceptance guardrail is accepted; the felt behaviour (first live paint over a committed base, settle, move/re-bake, scrub-seed cost) is the human judgement left."
-expecting: "Artist confirms: pickup 100 over a committed base drags green/blue on the FIRST live dab, matching the post-move re-bake; pickup 0 stays unmixed; scrubbing to a painted frame seeds before the first stroke; the seed pause is acceptable at the artist's document sizes."
-next_action: "Present the human-verify checkpoint with named surfaces and explicit UAT rows; do NOT claim done before the artist's UAT."
+test: "Artist's native UAT — PASSED 2026-11-21: the pickup rows confirmed, and the seed pause + filter-eye surface changes accepted with the monitored risks documented."
+expecting: "Met: pickup 100 over a committed base drags green/blue on the FIRST live dab, matching the post-move re-bake; pickup 0 stays unmixed; the seeded sheet pauses before painting are accepted at the artist's document sizes."
+next_action: "None — resolved. Durable laws, costs and risks are captured in Skill('efx-studio-paint') references/live-seed.md."
 reasoning_checkpoint:
   hypothesis: "X (the live sheet lacks the committed paint) causes Y (the carrier's wet/lift taps read the dry sentinel on the first live dab, pickup 0.0000) because Z (canvasAt/wetAt sample the engine's own ink/fixed/cover/lastTouch, and no path replays the committed script into the live engine)."
   confirming_evidence:
@@ -133,6 +133,8 @@ started: "Not dated by user. Context: commit 14bb73f77 made first paint == re-ba
   - Signal 5 (revert-and-reconfirm): re-ran the baseline app-live arm (same harness/settings/gap 20000, no seed): rim pickup 0.0000 / 0.0000 / 0.0000 / 0.0021 / 0.0021 at dabs 1/5/20/50/100, carried hue 50.8 unmixed throughout, final samples include the blue base bleeding through at x0.65 (140,186,240) — the artist's symptom returns without the seed; with the seed the same stroke renders the bake's pixels (rim hue 214.4, meanRgb [198.7,203.1,118.9]). Bug returned on revert = true; fixed on reapply = true.
   - Signals 1/3/4 from the 17:35 evidence (probe final-pixel equality + pins; net-additive diff whose only removals are the artist-authorized never-stack change; both suites + both tscts). Verdict `accepted` — the session moves to human verification.
 
+- timestamp: 2026-11-21T18:20:00Z — NATIVE UAT APPROVED by the artist: "approbated UAT". The pickup rows passed (first live paint / after settle / after move / pickup-0 control), and the artist accepted the two named surface tradeoffs (seed pause, filter eye) while asking that the risks be documented in the skill because the engine is critical. Remaining monitored risks: seed cost scales with the committed dab count (1.84 s @ 1080×1080 / 240 dabs, 3.41 s @ 1920×1080 / 457 dabs on the headless CPU upper bound) and the pointer is refused during the seed window; the seeded sheet means the filter-mode eye can no longer hide the committed paint; the gather's mid-stroke smear read stays sheet-only. All durable laws and risks captured in Skill("efx-studio-paint") `references/live-seed.md`.
+
 ## Eliminated
 
 - Retuning the pickup chain or the first-dab travel anchor: not implicated — travel/touch/thirst identical across arms before and after.
@@ -183,6 +185,19 @@ files_changed:
   - "app/src/components/physic-paint/PhysicsPaintStudio.test.ts, engine/aquarelleLiftEngineContract.test.ts, view/aquarelleWetPaintGate.test.ts: literal pins updated deliberately"
   - "packages/efx-watercolor/probe/pickup-collapse/probe.ts + run.mjs: app-seeded / app-seedcost scenes, --gap / --body / --sheet / --base-samples"
 
-commits: "1efea6997 (package seam), a3a842d85 (app wiring), 62f86ea7e (probe harness) — local only, no push"
+commits: "1efea6997 (package seam), a3a842d85 (app wiring), 62f86ea7e (probe harness), de2f1d2df (debug record) — local only, no push"
 
-status_note: "awaiting_human_verify — automated proof and the fix-acceptance guardrail are complete; the artist's native UAT is the final gate."
+uat:
+  verdict: pass
+  approved: 2026-11-21
+  rows:
+    - "first live paint, pickup 100 over a committed base: green/blue drag, no translucent yellow"
+    - "after settle: hue stable"
+    - "after move / re-bake: matches the live paint"
+    - "pickup 0 control: unmixed yellow on all surfaces"
+  accepted_risks:
+    - "seed pause: pointer refused during the seed window (1.84 s @ 1080×1080 / 240 dabs, 3.41 s @ 1920×1080 / 457 dabs, headless CPU upper bound; replay-dominated, linear in committed dabs)"
+    - "filter-mode eye no longer hides the committed paint on a seeded frame"
+    - "gather smear remains sheet-only"
+
+status_note: "resolved — artist UAT approved 2026-11-21. Durable laws, costs and risks documented in Skill('efx-studio-paint') references/live-seed.md."
