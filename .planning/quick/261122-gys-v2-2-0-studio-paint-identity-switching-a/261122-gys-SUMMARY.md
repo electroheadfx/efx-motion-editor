@@ -160,15 +160,17 @@ _Note: both tasks are `tdd="true"`; the test inversions were written with and ve
 
 Old code compared the **outgoing tip's** group (`groupOfPreset(current) ?? DEFAULT_MEDIUM_ID`) with the incoming group. A catalog / TIPS tip (`wc/texture-sponge`, no `BRUSH_PRESETS` entry) resolved to null → `DEFAULT_MEDIUM_ID` (watercolor), so an acrylic pick after it looked like "already watercolor" and the watercolor record was never applied. New code compares `aquarelleSelectedMediumId.peek()` with the incoming preset's group: `incomingGroup !== null && selectedMedium !== incomingGroup → applyAquarelleMedium(incomingGroup)`. Same-group picks still write nothing (id equality preserves MED-13). Regression-pinned in `brushGroupMedium.test.ts` (bristle-round → wc/texture-sponge keeps acrylic → round applies watercolor with all 14 keys).
 
-## Live UAT rows (artist-run) — status: automated-ready, NOT done
+## Live UAT rows (artist-run) — APPROVED 2026-11-22 (native UAT by the artist)
 
-The five rows from the plan, with their exact surfaces:
+The artist approved the five rows below.
 
-1. **Switch law (live surface):** fresh Studio → press Watercolor, then Brush. Expect Bristle Round, Medium = Acrylic, and Body 100 / Feather 85 / Viscosity 90 / Water 26 / WetSeconds 12 in the Paint panel.
-2. **Reset per medium (Paint panel, live values):** with Acrylic selected, press Reset → the acrylic record (Water 26, Pigment 100, Flow 60, Bleed 22, Dry 70, Edges 65, Grain 25, Viscosity 90, Body 100, Emboss 3, Feather 85, Pickup 100, Refill 0, wetSeconds 12); with Watercolor selected → the watercolor record (all 50, Viscosity/Body/Emboss/Feather 0, Pickup 100, Refill 60, wetSeconds 7). Size and the eraser strength unchanged.
-3. **Dropdown binding (live):** with a gouache brush active, pick Acrylic in the Medium dropdown → an acrylic brush (Bristle Round), the acrylic label and rows.
-4. **Fresh Studio unchanged (live):** opening surface is Brush + Bristle Round + Acrylic + the acrylic record.
-5. **Family memory (live):** paint `hake`, press Brush and back to Watercolor → `hake` and the watercolor rows; paint `chalk`, cross both tools and return to Brush → `chalk` with the Chalk (pastel) medium.
+| # | Surface | Expected | Result |
+| --- | --- | --- | --- |
+| 1 | **Switch law (live surface):** fresh Studio → press Watercolor, then Brush | Bristle Round, Medium = Acrylic, and Body 100 / Feather 85 / Viscosity 90 / Water 26 / WetSeconds 12 in the Paint panel | ✓ approved |
+| 2 | **Reset per medium (Paint panel, live values):** press Reset with Acrylic selected, then with Watercolor selected | Acrylic record (Water 26, Pigment 100, Flow 60, Bleed 22, Dry 70, Edges 65, Grain 25, Viscosity 90, Body 100, Emboss 3, Feather 85, Pickup 100, Refill 0, wetSeconds 12); Watercolor record (all 50, Viscosity/Body/Emboss/Feather 0, Pickup 100, Refill 60, wetSeconds 7). Size and the eraser strength unchanged | ✓ approved |
+| 3 | **Dropdown binding (live):** with a gouache brush active, pick Acrylic in the Medium dropdown | An acrylic brush (Bristle Round), the acrylic label and rows | ✓ approved |
+| 4 | **Fresh Studio unchanged (live):** opening surface | Brush + Bristle Round + Acrylic + the acrylic record | ✓ approved |
+| 5 | **Family memory (live):** paint `hake`, press Brush and back to Watercolor; paint `chalk`, cross both tools and return to Brush | `hake` and the watercolor rows; then `chalk` with the Chalk (pastel) medium | ✓ approved |
 
 ## Deviations from Plan
 
@@ -206,8 +208,7 @@ None. The change is selection/exposure state only — no new endpoint, auth path
 ## Next Phase Readiness
 
 - The Studio paint identity law, the dropdown binding and the record-driven Reset are in place and fully pinned by unit tests plus source audits.
-- Awaiting the artist's five live UAT rows; until they pass, this quick is **automated-ready**, not done.
-- Docs commit (SUMMARY / STATE / PLAN) and quick-task close-out are left to the orchestrator (Step 8).
+- The artist's five live UAT rows passed on 2026-11-22 — this quick is **closed**.
 
 ---
 *Plan: quick/261122-gys*
