@@ -15,8 +15,15 @@ import { lightSignature } from './physicsPaintStudioSettings';
 export interface SingleFlightRelight {
   /** Ask for a re-bake against the CURRENT document state (coalesced). */
   request: () => void;
-  /** Resolves once the in-flight run and any queued follow-up completed. */
+  /** Resolves once the in-flight run, any queued follow-up and any parked request completed. */
   settle: () => Promise<void>;
+  /**
+   * 64-27 (WR-04): tell the scheduler the caller cannot bake right now
+   * (playing, Draft, wireframe). A request during the block is PARKED instead
+   * of being discovered as a busy `false`: nothing starts, and the
+   * blocked-to-idle edge drains the parked request exactly once.
+   */
+  setBlocked: (blocked: boolean) => void;
 }
 
 /**
@@ -39,6 +46,13 @@ export function lightChangeNeedsRelight(
  * rejected run is swallowed and never auto-retried; a run that resolves
  * `false` (the Apply lane is busy) grants exactly ONE automatic follow-up,
  * then stops. No timers, no unbounded retries.
+ *
+ * 64-27 (WR-04): an EXTERNAL refusal is the caller's knowledge, not a busy
+ * result. While `setBlocked(true)` holds, nothing starts and any number of
+ * requests collapse into ONE parked request; the blocked-to-idle edge drains
+ * it through the same single-run-in-flight path a request takes — never
+ * beside a run. A refusal therefore no longer spends the follow-up budget
+ * and is never silently dropped.
  */
 export function createSingleFlightRelight(run: () => Promise<boolean>): SingleFlightRelight {
   let inFlight = false;
@@ -46,16 +60,26 @@ export function createSingleFlightRelight(run: () => Promise<boolean>): SingleFl
   // True once this burst has spent its automatic follow-up — a busy `false`
   // grants exactly one, a rejection none.
   let followUpUsed = false;
+  // 64-27 (WR-04): the external refusal and the ONE request parked under it.
+  // While `blocked` holds nothing starts; the idle edge drains `pending` once.
+  let blocked = false;
+  let pending = false;
   let waiters: Array<() => void> = [];
 
   const resolveIdleWaiters = (): void => {
-    if (inFlight || queued) return;
-    const pending = waiters;
+    if (inFlight || queued || pending) return;
+    const waiting = waiters;
     waiters = [];
-    for (const resolve of pending) resolve();
+    for (const resolve of waiting) resolve();
   };
 
   const start = (): void => {
+    // 64-27 (WR-04): a run asked for while the caller cannot bake parks
+    // instead of spending itself against a state that would refuse.
+    if (blocked) {
+      pending = true;
+      return;
+    }
     inFlight = true;
     void (async () => {
       let applied = false;
@@ -85,6 +109,11 @@ export function createSingleFlightRelight(run: () => Promise<boolean>): SingleFl
 
   return {
     request: () => {
+      // 64-27 (WR-04): a parked request collapses — one flag, no timer.
+      if (blocked) {
+        pending = true;
+        return;
+      }
       if (inFlight) {
         queued = true;
         return;
@@ -93,10 +122,25 @@ export function createSingleFlightRelight(run: () => Promise<boolean>): SingleFl
       start();
     },
     settle: () => {
-      if (!inFlight && !queued) return Promise.resolve();
+      if (!inFlight && !queued && !pending) return Promise.resolve();
       return new Promise<void>((resolve) => {
         waiters.push(resolve);
       });
+    },
+    setBlocked: (next: boolean) => {
+      if (next === blocked) return;
+      blocked = next;
+      if (blocked || !pending) return;
+      // The idle edge: drain the parked request through the shipped
+      // single-run-in-flight path — queued behind a live run, started when
+      // the scheduler is idle. A fresh burst, like a fresh request.
+      pending = false;
+      followUpUsed = false;
+      if (inFlight) {
+        queued = true;
+        return;
+      }
+      start();
     },
   };
 }
