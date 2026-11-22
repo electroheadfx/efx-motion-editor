@@ -148,6 +148,12 @@
 //             [--over]                bristle-line only: paint the wide
 //                                     low-load wet understory first; file the
 //                                     capture as `bristle-line-over`
+//             [--scenario bristle-tip]
+//                                     one bristle-flat line for the texture-tip
+//                                     A/B (`probe/tip-ab` is the probe's own
+//                                     deterministic mask)
+//             [--texture <mask id>]   bristle-tip only: the mask id the stroke
+//                                     carries; omitted is the plain leg
 //             [--emboss <0..100>]     omitted writes no emboss key
 //             [--body <0..100>]       omitted writes no body key
 //             [--light <0..4>]        omitted keeps DEFAULT_LIGHT
@@ -202,7 +208,7 @@ const gateFlag = args.indexOf('--gate')
 const gate = gateFlag >= 0 ? args[gateFlag + 1] : undefined
 if (!gate) {
   console.error(
-    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>]   (e.g. neutral-identity)',
+    'usage: node run.mjs --gate <name> [--scenario cover|cover-over-wet|cover-advect|cover-lift|watercolor-50|white-over-blue|cover-textured|red-over-blue-50|bristle-edge|bristle-wet|bristle-line|bristle-tip] [--emboss <0..100>] [--body <0..100>] [--light <0..4>] [--size <32..4096>] [--brush <id>] [--wet-mode <0|1>] [--texture <mask id>]   (e.g. neutral-identity)',
   )
   console.error(
     '       every operand except --gate is optional and additive; an omitted operand writes no key/value, so the neutral gate keeps reproducing the committed baseline',
@@ -257,15 +263,15 @@ if (bodyRaw !== undefined) {
 // `white-over-blue` (the criterion-1 crossing); 64-14 adds `cover-advect`
 // (cover geometry, covering stroke left wet) and `cover-lift` (fixed cover
 // geometry, then a Lift stroke); 64-24 adds `bristle-wet` (two ages on one
-// sheet). This closed list and probe.ts readScenario's must stay
-// literal-identical.
+// sheet); 64-29 adds `bristle-tip` (the texture-tip A/B). This closed list
+// and probe.ts readScenario's must stay literal-identical.
 const scenarioFlag = args.indexOf('--scenario')
 const scenarioRaw = scenarioFlag >= 0 ? args[scenarioFlag + 1] : undefined
 let scenario
 if (scenarioRaw !== undefined) {
-  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line') {
+  if (scenarioRaw !== 'cover' && scenarioRaw !== 'cover-over-wet' && scenarioRaw !== 'watercolor-50' && scenarioRaw !== 'white-over-blue' && scenarioRaw !== 'cover-advect' && scenarioRaw !== 'cover-lift' && scenarioRaw !== 'cover-textured' && scenarioRaw !== 'red-over-blue-50' && scenarioRaw !== 'bristle-edge' && scenarioRaw !== 'bristle-wet' && scenarioRaw !== 'bristle-line' && scenarioRaw !== 'bristle-tip') {
     console.error(
-      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet" or "bristle-line")`,
+      `invalid --scenario "${scenarioRaw}" (expected "cover", "cover-over-wet", "watercolor-50", "white-over-blue", "cover-advect", "cover-lift", "cover-textured", "red-over-blue-50", "bristle-edge", "bristle-wet", "bristle-line" or "bristle-tip")`,
     )
     process.exit(1)
   }
@@ -379,6 +385,25 @@ if (wetModeRaw !== undefined) {
   wetMode = Number(wetModeRaw)
 }
 
+// 64-29: the texture-tip A/B's masked leg. The id rides the one bristle line
+// as `brush.textureId`; the probe registers its own deterministic mask under
+// `probe/tip-ab`, so the flag is a selector, never a file path. bristle-tip
+// only — any other scenario would paint a line this gate cannot judge.
+const textureFlag = args.indexOf('--texture')
+const textureRaw = textureFlag >= 0 ? args[textureFlag + 1] : undefined
+let texture
+if (textureRaw !== undefined) {
+  if (textureRaw === '' || textureRaw.startsWith('--')) {
+    console.error(`invalid --texture "${textureRaw}" (expected a non-empty mask id)`)
+    process.exit(1)
+  }
+  if (scenario !== 'bristle-tip') {
+    console.error('--texture is only valid with --scenario bristle-tip')
+    process.exit(1)
+  }
+  texture = textureRaw
+}
+
 const pageQuery =
   `gate=${encodeURIComponent(gate)}` +
   (scenario === undefined ? '' : `&scenario=${scenario}`) +
@@ -391,7 +416,8 @@ const pageQuery =
   (band === undefined ? '' : `&band=${band}`) +
   (mut === undefined ? '' : `&mut=${mut}`) +
   (over === undefined ? '' : '&over=1') +
-  (wetMode === undefined ? '' : `&wetMode=${wetMode}`)
+  (wetMode === undefined ? '' : `&wetMode=${wetMode}`) +
+  (texture === undefined ? '' : `&texture=${encodeURIComponent(texture)}`)
 const resultPath = join(outDir, `${gate}.json`)
 
 const esbuildCandidates = [

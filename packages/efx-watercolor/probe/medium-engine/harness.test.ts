@@ -216,8 +216,11 @@ describe('the white-over-blue matrix (64-17 task 2)', () => {
     })
 
     it('prints every failure with the INVARIANT prefix before the verdict', () => {
+      // 64-29: the call gained the reference operand — the bristle-tip A/B
+      // band bar needs the plain leg's band count. The intent is unchanged:
+      // the scenario invariants run in every mode, before every verdict.
       expectContains(COMPARE, '`INVARIANT ${line}`')
-      expectContains(COMPARE, 'scenarioInvariantFailures(actual)')
+      expectContains(COMPARE, 'scenarioInvariantFailures(actual, refData)')
     })
   })
 })
@@ -258,10 +261,11 @@ describe('the textured-tip gate (64-16 task 1)', () => {
     it('echoes the resolved brush in the report', () => {
       // 2026-11-22 (acrylic pale-line): the bristle-line scenario extended the
       // default chain with its own brush; the intent is unchanged — the report
-      // echoes the brush the run actually used.
+      // echoes the brush the run actually used. 64-29 extends the same chain
+      // with `bristle-tip` (the A/B's flat response tip).
       expectContains(
         PROBE,
-        "const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : scenario === 'bristle-line' ? 'bristle-flat' : undefined)",
+        "const resolvedBrush = brush ?? (scenario === 'cover-textured' ? 'chalk' : scenario === 'bristle-line' || scenario === 'bristle-tip' ? 'bristle-flat' : undefined)",
       )
       expectContains(PROBE, 'brush: resolvedBrush ?? null,')
     })
@@ -1321,22 +1325,38 @@ describe('the texture-tip A/B (64-29 task 3)', () => {
     expect(output.includes(needle), `missing report text: ${needle}`).toBe(true)
   }
 
-  /** Write `actual` and a DIFFERENT reference (three digests differ, equal
-   *  dimensions), then run `compare.mjs <name> --differs-from <name>-ref` —
-   *  the A/B mode the scenario is judged in. */
+  /** Write `actual` and a reference with equal dimensions, then run
+   *  `compare.mjs <name> --differs-from <name>-ref` — the A/B mode the
+   *  scenario is judged in. The reference digests are controlled here, never
+   *  by the caller: the synthetic differing triple by default, or the
+   *  capture's own digests when `sameDigests` (the identical-triple failure).
+   *  Caller-supplied digest fields are overwritten — otherwise a reference
+   *  built from `baseCapture` (as every fixture here is) would silently
+   *  restore equal digests. */
   function compareSyntheticDiffers(
     name: string,
     actual: Record<string, unknown>,
     reference: Record<string, unknown>,
+    sameDigests = false,
   ): { status: number | null; output: string } {
     writeCapture(name, actual)
+    const digests = sameDigests
+      ? {
+          digestPaper: actual.digestPaper,
+          digestTransparent: actual.digestTransparent,
+          digestWhite: actual.digestWhite,
+          digestPigment: actual.digestPigment,
+        }
+      : {
+          digestPaper: 'rpaper',
+          digestTransparent: 'rtransparent',
+          digestWhite: 'rwhite',
+          digestPigment: 'rpigment',
+        }
     writeCapture(`${name}-ref`, {
       ...baseCapture(String(reference.scenario), `${name}-ref`),
-      digestPaper: 'rpaper',
-      digestTransparent: 'rtransparent',
-      digestWhite: 'rwhite',
-      digestPigment: 'rpigment',
       ...reference,
+      ...digests,
     })
     const result = spawnSync(process.execPath, [COMPARE_PATH, name, '--differs-from', `${name}-ref`], {
       encoding: 'utf8',
@@ -1546,7 +1566,8 @@ describe('the texture-tip A/B (64-29 task 3)', () => {
       const { status, output } = compareSyntheticDiffers(
         'nyquist-tip-ab-same',
         maskedTipCapture(3),
-        { ...validTipCapture(), digestPaper: 'dpaper', digestTransparent: 'dtransparent', digestWhite: 'dwhite', digestPigment: 'dpigment' },
+        validTipCapture(),
+        true,
       )
 
       expect(status, tipVerdict(status, output)).toBe(1)

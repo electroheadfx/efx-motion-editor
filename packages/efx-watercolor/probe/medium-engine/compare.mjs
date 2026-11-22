@@ -908,6 +908,149 @@ function bristleLineFailures(data) {
   return failures
 }
 
+/**
+ * 64-29: the mask the bristle-tip scenario registers itself (probe.ts).
+ *  Any other requested id is a deliberate unknown: the capture must show the
+ *  engine's own fallback, never a resolved tip.
+ */
+const PROBE_TIP_ID = 'probe/tip-ab'
+/** A masked capture must add at least this many dark bands over the plain
+ *  reference. The stripes eight-band mask resolves to several bands across
+ *  the dab; two is the floor that separates "the mask composed" from "the
+ *  capture merely shifted by a digest-irrelevant amount". */
+const TIP_BANDS_MIN_GAIN = 2
+/** The echo and band numbers every bristle-tip capture must carry. Exported
+ *  ids are legitimately null on the plain leg, so presence is checked as a
+ *  KEY (absent ⇒ the probe never recorded it), not as a truthiness test. */
+const TIP_ECHO_KEYS = ['tipRequestedId', 'tipTextureId']
+const TIP_NUMBER_KEYS = ['tipMix', 'tipBands', 'tipGapPx']
+
+/**
+ * 64-29: the texture-tip A/B. Bars (each names its reason):
+ *  - shape: both id echoes present (null is a legal plain-leg value; ABSENT is
+ *    a capture that never recorded the echo), tipMix / tipBands / tipGapPx
+ *    finite numbers, tipMix ∈ {0, 1}, tipBands ≥ 1, tipGapPx ≥ 0;
+ *  - plain leg (requested null): the capture must not report a carried id —
+ *    a plain capture echoing a texture id is proof the scenario wired one;
+ *  - either leg: the carried id must equal the requested one; a request for
+ *    the probe's own `probe/tip-ab` must resolve (tipMix 1) or the mask did
+ *    not reach the brush; any id this probe never registers must fall back
+ *    (tipMix 0) WITH its named note, so a silent fallback cannot pass;
+ *  - A/B (only when the reference is the PLAIN bristle-tip capture and the
+ *    actual is masked): the masked capture must show at least
+ *    TIP_BANDS_MIN_GAIN more across-profile bands than the plain one.
+ *
+ * HEAD readings (2026-11-22, `--size 1080`, no baseline committed — this
+ * gate is proven by same-session A/B only):
+ *   bristle-tip-plain   requested null  carried null  tipMix 0  bands 1  gap 0
+ *   bristle-tip-mask    requested/carried "probe/tip-ab"  tipMix 1  bands 1  gap 0
+ *   bristle-tip-unknown requested/carried "probe/does-not-exist"  tipMix 0
+ *                       bands 1  gap 0 — and the capture's three digests are
+ *                       BYTE-IDENTICAL to the plain leg's: the engine's
+ *                       fallback is proven, not assumed
+ * The A/B (mask vs plain) finds 3 differing digests with equal dimensions and
+ * FIRES this band bar: 1 vs 1. The mask registers (tipMix 1) and moves the
+ * pixels, but adds no separated bands — the across profile is a uniformly
+ * attenuated copy of the plain one at every stripe period tried (row 64/256,
+ * column 64). That is 64-35's finding, recorded here for the gap-closure
+ * plan; the bar stays so the failing HEAD state can never pass silently.
+ */
+function bristleTipFailures(data, reference) {
+  const absent = [
+    ...TIP_ECHO_KEYS.filter((key) => !(key in data)),
+    ...TIP_NUMBER_KEYS.filter((key) => typeof data[key] !== 'number' || !Number.isFinite(data[key])),
+  ]
+  if (absent.length > 0) {
+    return [
+      `capture is missing ${absent.join(', ')}; re-run the bristle-tip probe ` +
+        '(a null echo is legal on the plain leg — an absent key is not)',
+    ]
+  }
+  const failures = []
+  const requested = data.tipRequestedId
+  const carried = data.tipTextureId
+  if (requested !== null && typeof requested !== 'string') {
+    failures.push(
+      `tipRequestedId ${JSON.stringify(requested)} is neither a string nor null ` +
+        '(the probe records the requested id or the plain-leg null)',
+    )
+  }
+  if (carried !== null && typeof carried !== 'string') {
+    failures.push(
+      `tipTextureId ${JSON.stringify(carried)} is neither a string nor null ` +
+        '(the probe records the carried id or the plain-leg null)',
+    )
+  }
+  const mix = data.tipMix
+  if (mix !== 0 && mix !== 1) {
+    failures.push(`tipMix ${mix} is neither 0 nor 1 (the mix is the engine registry boolean)`)
+  }
+  const bands = data.tipBands
+  if (!(bands >= 1)) {
+    failures.push(
+      `tipBands ${bands} is not a positive band count ` +
+        '(a blank across profile cannot certify a tip)',
+    )
+  }
+  const gap = data.tipGapPx
+  if (!(gap >= 0)) {
+    failures.push(`tipGapPx ${gap} is not a non-negative gap (px between band runs)`)
+  }
+  if (failures.length > 0) return failures
+
+  if (requested === null) {
+    if (carried !== null) {
+      failures.push(
+        `the plain capture already reports a texture id "${carried}" ` +
+          '(the request carried none — the scenario supplied a mask)',
+      )
+    }
+    return failures
+  }
+
+  if (carried !== requested) {
+    failures.push(
+      `the echoes disagree with the requested texture (requested "${requested}", ` +
+        `carried ${carried === null ? 'null' : `"${carried}"`})`,
+    )
+    return failures
+  }
+  if (requested === PROBE_TIP_ID) {
+    if (mix !== 1) {
+      failures.push(
+        `the probe mask did not compose: tipMix ${mix} for the registered mask ` +
+          `"${PROBE_TIP_ID}" (the registry resolved it, the brush did not)`,
+      )
+    }
+  } else if (mix === 1) {
+    failures.push(
+      `tipMix 1 for "${requested}", which this probe never registers ` +
+        `(only "${PROBE_TIP_ID}" is registered — an unknown id must fall back)`,
+    )
+  } else if (typeof data.tipNote !== 'string' || data.tipNote.length === 0) {
+    failures.push(
+      `the capture fell back from unknown texture "${requested}" without its fallback note ` +
+        '(the fallback is measured, never silent)',
+    )
+  }
+
+  if (
+    reference &&
+    reference.scenario === 'bristle-tip' &&
+    reference.tipMix === 0 &&
+    mix === 1 &&
+    typeof reference.tipBands === 'number' &&
+    Number.isFinite(reference.tipBands) &&
+    bands < reference.tipBands + TIP_BANDS_MIN_GAIN
+  ) {
+    failures.push(
+      `the masked capture has fewer bands than the plain one: ${bands} vs ${reference.tipBands} ` +
+        `(the A/B needs at least ${TIP_BANDS_MIN_GAIN} more bands from the mask)`,
+    )
+  }
+  return failures
+}
+
 const SCENARIO_INVARIANTS = {
   'white-over-blue': whiteOverBlueFailures,
   'cover-advect': coverAdvectFailures,
@@ -918,12 +1061,16 @@ const SCENARIO_INVARIANTS = {
   'bristle-wet': bristleWetFailures,
   'bristle-line': bristleLineFailures,
   'bristle-line-over': bristleLineFailures,
+  'bristle-tip': bristleTipFailures,
 }
 
-/** Run the scenario's invariant function, if it has one. */
-function scenarioInvariantFailures(data) {
+/** Run the scenario's invariant function, if it has one. `reference` is the
+ *  resolved counterpart capture (`--other` / `--differs-from` operand) and is
+ *  what makes the bristle-tip band bar reference-aware; every other scenario
+ *  ignores it. */
+function scenarioInvariantFailures(data, reference) {
   const invariants = SCENARIO_INVARIANTS[data.scenario]
-  return invariants ? invariants(data) : []
+  return invariants ? invariants(data, reference) : []
 }
 
 /** 64-23: print the census readings a bristle-edge capture recorded, if any. */
@@ -957,6 +1104,21 @@ function printBristleWet(data) {
   const parts = keys.filter((key) => typeof data[key] === 'number').map((key) => `${key} ${data[key]}`)
   if (parts.length === 0) return
   console.log(`wetness   : ${parts.join(' | ')}`)
+  console.log('')
+}
+
+/** 64-29: print the texture-tip echoes the A/B was judged on, if any. */
+function printBristleTip(data) {
+  if (data.scenario !== 'bristle-tip') return
+  const keys = ['tipMix', 'tipBands', 'tipGapPx']
+  const parts = keys.filter((key) => typeof data[key] === 'number').map((key) => `${key} ${data[key]}`)
+  if (parts.length === 0) return
+  const requested = data.tipRequestedId ?? '(plain)'
+  const carried = data.tipTextureId ?? '(none)'
+  console.log(`tip       : requested ${requested} | carried ${carried} | ${parts.join(' | ')}`)
+  if (typeof data.tipNote === 'string' && data.tipNote.length > 0) {
+    console.log(`tip note  : ${data.tipNote}`)
+  }
   console.log('')
 }
 
@@ -1148,8 +1310,11 @@ if (mode === 'differs') {
   // so a digest change with a broken medium cannot pass.
   const regionFailures = coverRegionFailures(actual)
   printCoverRegions(actual, refData)
+  printBristleTip(actual)
   // 64-17: the scenario-keyed invariants, in every mode before the verdict.
-  const invariantFailures = scenarioInvariantFailures(actual)
+  // 64-29: the reference rides along — the bristle-tip A/B bar needs the
+  // plain leg's band count.
+  const invariantFailures = scenarioInvariantFailures(actual, refData)
   for (const line of invariantFailures) console.log(`INVARIANT ${line}`)
   if (missing > 0 || equal > 0 || regionFailures.length > 0 || invariantFailures.length > 0) {
     for (const line of regionFailures) console.log(`REGION    ${line}`)
@@ -1210,10 +1375,11 @@ const regionFailures = coverRegionFailures(actual)
 printCoverRegions(actual, refData)
 printBristleEdge(actual)
 printBristleWet(actual)
+printBristleTip(actual)
 printCoverLifecycle(actual)
 // 64-17: the scenario-keyed invariants run in committed-baseline and
 // same-session mode too — every mode, before every verdict.
-const invariantFailures = scenarioInvariantFailures(actual)
+const invariantFailures = scenarioInvariantFailures(actual, refData)
 for (const line of invariantFailures) console.log(`INVARIANT ${line}`)
 
 console.log('')
