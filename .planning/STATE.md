@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-24-PLAN.md
-last_updated: "2026-11-22T15:44:42.037Z"
+stopped_at: Completed 64-25-PLAN.md
+last_updated: "2026-11-22T16:03:48.865Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 64 execution started
-state_head: f3dcd15ce7a97d707bd795fa5e3a046ac4c3524a
+state_head: 2c60ec1997d5fb782b3b07836b2f4f2b47af97e1
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 45
-  completed_plans: 41
+  completed_plans: 42
   percent: 50
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 
 ## Current Position
 
-Phase: 64 (Medium Engine) — READY TO EXECUTE
-Plan: 24 of 28
+Phase: 64 (Medium Engine) — EXECUTING
+Plan: 26 of 28
 Status: Ready to execute
-Last activity: 2026-11-22 - Completed quick task 261122-gys: Studio paint identity — Brush/Watercolor switch lands the family's last brush and applies its medium record; Reset restores the active medium record (wetSeconds included) in one undo batch
+Last activity: 2026-11-22 — Phase 64 execution started
 
 
 ## Performance Metrics
@@ -168,6 +168,7 @@ Last activity: 2026-11-22 - Completed quick task 261122-gys: Studio paint identi
 | Phase 64 P22 | 13min | 3 tasks | 18 files |
 | Phase 64 P23 | 26min | 3 tasks | 13 files |
 | Phase 64 P24 | 14min | 3 tasks | 22 files |
+| Phase 64 P25 | 8min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -562,6 +563,7 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: D-24: the last-touch field is a document-sized exact-float R32F pair cleared to -604800 s (one week old) and carried through the whole-document lifecycle as the sixth pool-0 layer; the §3.4 gate exp(-age/wetSeconds)*coverage multiplies PICKUP only on the virtual clock
 - [Phase 64]: D-25: the acrylic retune (water 26, bleed 22, flow 60, wetSeconds 12) is numbers in one record; D-22's Feather half is discharged by composition through the existing uSoftness band, no feather expression added
 - [Phase 64]: The bristle-wet acceptance measures band darkness on the transparent export: fresh 50.64 vs agedWet 250.16 luma, and the uncommitted --wet-mode 0 proxy differs on all three digests (paper e083b0e3 vs 9eaef5be); the sheet pair records 9,331,200 B at 1080² and 33,554,432 B at 2K, frame cache 0 B
+- [Phase 64]: 64-25 (CR-04): the coverage raster is read from its own 2D context (or a transparent scratch), never a white fill; the committed payload's alpha law is stated as OPAQUE TRANSMITTANCE (alpha 255 storage, coverage only in the 1 - cover exponent, display derivation 1 - min(rgb)), superseding 64-15 truth 4
 
 ### Pending Todos
 
@@ -693,8 +695,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-19T14:48:45.722Z
-Stopped at: Completed 64-24-PLAN.md
+Last session: 2026-11-22T16:03:47.844Z
+Stopped at: Completed 64-25-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
