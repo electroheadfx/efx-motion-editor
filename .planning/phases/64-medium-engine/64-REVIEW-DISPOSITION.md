@@ -3,6 +3,26 @@ phase: 64
 review: 64-REVIEW.md
 titles: json
 findings:
+  - id: WR-01
+    severity: warning
+    disposition: open
+    title: "64-27 — a relight request in the frame between playback start and the gate-effect flush is dropped, not parked"
+  - id: WR-02
+    severity: warning
+    disposition: open
+    title: "64-25 — the coverage read's dimension guard is vacuous; a mis-sized coverage raster is silently cropped instead of scaled"
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "the `pow` LUT size claim is wrong by 4× (64 KiB vs 256 KiB)"
+  - id: IN-02
+    severity: info
+    disposition: open
+    title: "`rememberSheet` can park a sheet that `restoreCachedSheet` can never take (empty event list)"
+  - id: IN-03
+    severity: info
+    disposition: open
+    title: "`travel()` is a whole-target last-touch write that does not invalidate the carry"
   - id: CR-03
     severity: critical
     disposition: open
@@ -43,50 +63,30 @@ findings:
     severity: critical
     disposition: open
     title: "One light-slider drag appends one document write and one ledger entry per pointermove, blowing through the 10-entry undo cap"
-  - id: WR-01
-    severity: warning
-    disposition: open
-    title: "Fixed draw extents clip the new relief and coverage passes for wide tips"
-  - id: WR-02
-    severity: warning
-    disposition: open
-    title: "The two-sheet coverage capture loses its alpha when the coverage export is fully opaque"
-  - id: IN-01
-    severity: info
-    disposition: open
-    title: "Dead `coeffsOpacity` in the shipped package with a false docstring"
-  - id: IN-02
-    severity: info
-    disposition: open
-    title: "`fillStep` applies scattering but no Body cover/thickness"
-  - id: IN-03
-    severity: info
-    disposition: open
-    title: "Azimuth 360 wraps to 0, making the slider knob snap to the left end on release"
 open: 15
 total: 15
-recorded: 2026-11-22T13:34:20.872Z
+recorded: 2026-11-22T16:44:50.062Z
 ---
 
 # Phase 64: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-03 | critical | open | - |
-| CR-04 | critical | open | - |
-| WR-03 | warning | open | - |
-| WR-04 | warning | open | - |
-| IN-04 | info | open | - |
-| IN-05 | info | open | - |
-| IN-06 | info | open | - |
-| IN-07 | info | open | - |
+| WR-01 | warning | open | - |
+| WR-02 | warning | open | - |
+| IN-01 | info | open | - |
+| IN-02 | info | open | - |
+| IN-03 | info | open | - |
+| CR-03 | critical | open | - (not in the current review) |
+| CR-04 | critical | open | - (not in the current review) |
+| WR-03 | warning | open | - (not in the current review) |
+| WR-04 | warning | open | - (not in the current review) |
+| IN-04 | info | open | - (not in the current review) |
+| IN-05 | info | open | - (not in the current review) |
+| IN-06 | info | open | - (not in the current review) |
+| IN-07 | info | open | - (not in the current review) |
 | CR-01 | critical | open | - (not in the current review) |
 | CR-02 | critical | open | - (not in the current review) |
-| WR-01 | warning | open | - (not in the current review) |
-| WR-02 | warning | open | - (not in the current review) |
-| IN-01 | info | open | - (not in the current review) |
-| IN-02 | info | open | - (not in the current review) |
-| IN-03 | info | open | - (not in the current review) |
 
 Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
 Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
