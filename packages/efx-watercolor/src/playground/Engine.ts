@@ -31,6 +31,7 @@ import { f32ToF16, fromHalf } from './half';
 // 64-26 (CR-03): the ping-pong carry law and its state machine, proven on the
 // CPU in lastTouchCarry.test.ts — the engine only feeds it rects.
 import { invalidateCarry, newLastTouchCarry, recordStamp, takeCarry } from './lastTouchCarry';
+import { agesToStamps, stampsToAges } from './lastTouchClock';
 import { engineScaleToSize } from './params';
 import { GL, type DoubleTarget, type Format, type Program, type Rect, type Target } from './gl';
 import { History, type StepInfo, type StepKind } from './history';
@@ -93,6 +94,10 @@ export type Tool = 'brush' | 'water' | 'pen' | 'lift';
  * (between the thickness and the coverage, so coverage stays last), and the
  * whole-document carry (captureWhole / uploadWhole / resizeDocument) carries it
  * as EXACT floats — `WholeDoc.layers` is a Uint16Array | Float32Array union.
+ * 64-26 (WR-03): inside a WholeDoc the last-touch layer travels as AGES
+ * (seconds before the capture), never raw stamps — a record captured on one
+ * engine clock must restore correctly on another, and uploadWhole re-stamps
+ * the ages on the receiving clock.
  */
 
 /** All sliders are normalised 0..1 — except `wetSeconds`, which is SECONDS. */
@@ -786,9 +791,16 @@ export class WatercolorEngine {
    * pair. `clearTarget` cannot be reused — it clears to 0, which this field
    * reads as "touched at t = 0". Called at the end of allocateTargets() and
    * immediately after every sheet wipe (clear / resetSheet).
+   *
+   * 64-26 (WR-03): this method does NOT re-anchor `timeBaseMs`. The base is a
+   * per-engine clock anchor, not per-sheet state, so the raw stamps the resize
+   * copy carries keep their meaning across `allocateTargets`; only `setClock`,
+   * which installs a DIFFERENT clock, may start a new base. The f32 precision
+   * bound is recorded in lastTouchClock.ts's header: at a 24-hour session
+   * (86400 s) relative f32 seconds resolve ~7.8 ms — far under the wetness
+   * law's shortest timescale (`wetSeconds`, whole seconds).
    */
   private clearLastTouch() {
-    this.timeBaseMs = null;
     const { gl } = this;
     for (const t of [this.lastTouch.read, this.lastTouch.write]) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
@@ -934,6 +946,9 @@ export class WatercolorEngine {
     // 64-24 (D-24): the last-touch layer is EXACT f32 — a half-float round-trip
     // would clamp the one-week sentinel and every restored sheet would read as
     // freshly touched.
+    // 64-26 (WR-03): the record is the CLOCK-FREE form — ages, not raw stamps —
+    // so capture and restore may live on different engine clocks. Upload
+    // re-stamps (uploadWhole); nothing else converts.
     const readF = (fb: WebGLFramebuffer) => (r ? g.readFloat(fb, dw, dh, r) : new Float32Array(0));
     return {
       w: dw, h: dh, rect: r ? { ...r } : null,
@@ -943,7 +958,7 @@ export class WatercolorEngine {
         wet: read(this.wet.read.views[0], 1),
         relief: read(this.relief.views[0], 1),
         cover: read(this.cover.read.views[0], 1),
-        lastTouch: readF(this.lastTouch.read.views[0]),
+        lastTouch: stampsToAges(readF(this.lastTouch.read.views[0]), this.nowSec()),
       },
     };
   }
@@ -975,8 +990,14 @@ export class WatercolorEngine {
     // 64-24: the last-touch memory restores into both halves too — but only
     // when the record actually carries exact floats (the narrowing guard keeps
     // a hypothetical half-float-era record from uploading garbage).
+    // 64-26 (WR-03): the record carries AGES; re-stamp them on THIS clock into
+    // a NEW array (the record is a cached snapshot restored repeatedly and must
+    // never be mutated) and upload the stamps into both halves.
     const lt = whole.layers.lastTouch;
-    if (lt instanceof Float32Array) for (const t of [this.lastTouch.read, this.lastTouch.write]) upF(t.tex[0], lt);
+    if (lt instanceof Float32Array) {
+      const stamps = agesToStamps(lt, this.nowSec());
+      for (const t of [this.lastTouch.read, this.lastTouch.write]) upF(t.tex[0], stamps);
+    }
     invalidateCarry(this.touchCarry);   // both halves were just written identically
     this.everPainted = { ...r };
   }
@@ -1052,46 +1073,32 @@ export class WatercolorEngine {
    * exact result to the live engine. This is a SHEET snapshot, not a
    * document one: no paper, no history, no view and no wet bookkeeping.
    *
-   * The last-touch layer is stored as AGES (seconds before the capture),
-   * never absolute stamps: the capture and the restore can live on
-   * different engine clocks (a re-bake runs a virtual clock from 0; the live
-   * engine runs real time), and a raw stamp would read as ancient on the
-   * other clock. Restoring `now - age` keeps the base's wetness exactly the
-   * same across clocks and lets it keep aging while away.
+   * The last-touch layer travels as AGES (seconds before the capture),
+   * never absolute stamps: `captureWhole` converts, so the whole-document
+   * record is the clock-free form whether a saved document, an undo step or
+   * this sheet cache carries it. This seam is PASS-THROUGH — the AGES law
+   * lives at one boundary, and a duplicate conversion here would age the
+   * values twice.
    */
   captureSheet(): SheetSnapshot {
     const whole = this.captureWhole();
-    const lastTouch = whole.layers.lastTouch;
-    if (lastTouch instanceof Float32Array && lastTouch.length > 0) {
-      const now = this.nowSec();
-      for (let i = 0; i < lastTouch.length; i += 1) {
-        lastTouch[i] = Math.max(now - lastTouch[i], 0);
-      }
-    }
     return { whole, bristleContent: this.bristleContent };
   }
 
   /**
    * Put a captured sheet back on a BLANK sheet of the same size (this method
    * wipes first, so it is always safe). Paper, history, view and the undo
-   * memory are untouched. The restored last-touch AGES are re-stamped on
-   * this engine's clock, so the base blends and picks up exactly as it did
-   * when captured. Returns false when the record cannot be applied (size
-   * mismatch) — every caller falls back to its committed image.
+   * memory are untouched. This seam is PASS-THROUGH: `uploadWhole` re-stamps
+   * the record's AGES on this engine's clock, so the base blends and picks
+   * up exactly as it did when captured. Returns false when the record cannot
+   * be applied (size mismatch) — every caller falls back to its committed
+   * image.
    */
   restoreSheet(s: SheetSnapshot): boolean {
     const whole = s.whole;
     if (whole.w !== this.dw || whole.h !== this.dh) return false;
     this.resetSheet();
-    let upload = whole;
-    const ages = whole.layers.lastTouch;
-    if (ages instanceof Float32Array && ages.length > 0) {
-      const now = this.nowSec();
-      const stamps = new Float32Array(ages.length);
-      for (let i = 0; i < ages.length; i += 1) stamps[i] = now - ages[i];
-      upload = { ...whole, layers: { ...whole.layers, lastTouch: stamps } };
-    }
-    this.uploadWhole(upload);
+    this.uploadWhole(whole);
     this.bristleContent = s.bristleContent;
     this.dirty = null;
     this.dirtyAll = true;
