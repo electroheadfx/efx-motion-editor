@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
@@ -8,9 +10,17 @@ const harness = vi.hoisted(() => ({
 }));
 
 vi.mock('./rotoCanvasFrames', () => ({ encodeRotoFrameFromCanvas: harness.encode }));
-vi.mock('../../../lib/rasterAlpha', () => ({ transmittanceSourceToPigmentAlpha: harness.convert }));
+// Only the DISPLAY seam is spied away: the real rect conversion must run over
+// the merged bytes (Task 2's end-to-end alpha proof).
+vi.mock('../../../lib/rasterAlpha', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../lib/rasterAlpha')>();
+  return { ...actual, transmittanceSourceToPigmentAlpha: harness.convert };
+});
 
 import { mergeCachedRotoAlphaFrame } from './physicsPaintRotoAlphaMerge';
+import { transmittanceRectToPigmentAlpha } from '../../../lib/rasterAlpha';
+
+const mergeSource = readFileSync(resolve(__dirname, './physicsPaintRotoAlphaMerge.ts'), 'utf8');
 
 type RecordedCanvasOp =
   | { type: 'clearRect'; x: number; y: number; w: number; h: number }
@@ -383,6 +393,19 @@ describe('mergeCachedRotoAlphaFrame', () => {
           return canvas as unknown as HTMLElement;
         },
       });
+      // The REAL transmittanceRectToPigmentAlpha allocates ImageData; same stub
+      // pattern as rasterAlpha.test.ts.
+      class FakeImageData {
+        data: Uint8ClampedArray;
+        width: number;
+        height: number;
+        constructor(width: number, height: number) {
+          this.width = width;
+          this.height = height;
+          this.data = new Uint8ClampedArray(width * height * 4);
+        }
+      }
+      vi.stubGlobal('ImageData', FakeImageData);
     });
 
     async function runMerge(scene: ModeledScene): Promise<Uint8ClampedArray> {
@@ -500,6 +523,58 @@ describe('mergeCachedRotoAlphaFrame', () => {
         expect(harness.convert).not.toHaveBeenCalled();
       }
     });
+
+    /**
+     * Task 2, the physically coherent scenario. The coverage channel is the
+     * union of every dab's coverage, so a texel with cover 0 carries NO
+     * pigment in the sheet (white = the no-pigment identity), and a partial
+     * deposit (255,255,96) sits between white and the full deposit (255,255,64).
+     */
+    const alphaScene: ModeledScene = {
+      width: 3,
+      height: 1,
+      base: [128, 128, 255, 255, 128, 128, 255, 255, 128, 128, 255, 255],
+      sheet: [255, 255, 255, 255, 255, 255, 96, 255, 255, 255, 64, 255],
+      cover: [0, 0, 0, 0, 128, 128, 128, 128, 255, 255, 255, 255],
+    };
+
+    /** Run the REAL rect conversion over the merged bytes and read the alphas. */
+    function derivedAlphas(merged: Uint8ClampedArray, width: number, height: number): number[] {
+      const converted = transmittanceRectToPigmentAlpha(merged, width, height, { x: 0, y: 0, width, height });
+      expect(converted).not.toBeNull();
+      return Array.from({ length: width * height }, (_, index) => converted!.data[index * 4 + 3]!);
+    }
+
+    it('stores opaque transmittance: alpha 255 at every pixel of both scenarios', async () => {
+      for (const scene of [lawScene(true), alphaScene]) {
+        const merged = await runMerge(scene);
+        expect(merged.length).toBe(scene.width * scene.height * 4);
+        for (let i = 3; i < merged.length; i += 4) expect(merged[i]).toBe(255);
+      }
+    });
+
+    it("derives Task 1's own alpha (191) at every cover from the uniform-sheet fixture", async () => {
+      // The uniform sheet's blue (64) is the minimum everywhere, so the sheet
+      // itself derives 191 at every cover — a law pin, not the discriminator.
+      const merged = await runMerge(lawScene(true));
+      expect(derivedAlphas(merged, 3, 1)).toEqual([191, 191, 191]);
+    });
+
+    it('derives the base alpha at cover 0, strictly between at cover 128, the sheet alpha at cover 255', async () => {
+      // The INDEPENDENT alpha discriminator: pre-fix the white-filled cover
+      // read turns cover 0 into 255, the merge emits the white sheet, and the
+      // derived alpha is 0 instead of the base's own 127.
+      const merged = await runMerge(alphaScene);
+      expect(Array.from(merged)).toEqual([
+        128, 128, 255, 255,
+        182, 182, 96, 255,
+        255, 255, 64, 255,
+      ]);
+      expect(derivedAlphas(merged, 3, 1)).toEqual([127, 159, 191]);
+      const [, middle] = derivedAlphas(merged, 3, 1);
+      expect(middle!).toBeGreaterThan(127);
+      expect(middle!).toBeLessThan(191);
+    });
   });
 
   it('COVERAGE-COMPOSITE: fails open to the raw sheet without a coverage readback', async () => {
@@ -550,5 +625,29 @@ describe('mergeCachedRotoAlphaFrame', () => {
 
     await expect(mergeCachedRotoAlphaFrame(makeBaseFrame(), makeLiveCanvas(), 12, { width: 320, height: 180 }))
       .rejects.toThrow('Could not merge cached Roto alpha frame: cached base image failed to load.');
+  });
+});
+
+describe('the stated alpha law (64-15 truth 4, superseded)', () => {
+  const baseLayerSource = readFileSync(resolve(__dirname, '../engine/AquarelleCachedBaseLayer.tsx'), 'utf8');
+
+  it('states OPAQUE TRANSMITTANCE storage and the display derivation in the module docstring', () => {
+    // The stored payload is the transmittance sheet: every stored pixel is
+    // alpha 255, coverage rides only the RGB exponent, and the visible paint
+    // alpha is derived at display, never stored. Boolean assertions keep a
+    // failing RED diagnostic small (a toContain dumps the whole module).
+    expect(mergeSource.includes('OPAQUE TRANSMITTANCE')).toBe(true);
+    expect(mergeSource.includes('alpha = 1 - min(rgb)')).toBe(true);
+    expect(mergeSource.includes('64-15 truth 4')).toBe(true);
+    // Named in prose WITHOUT a call paren, so the raw count below stays one.
+    expect(/transmittanceSourceToPigmentAlpha(?!\()/.test(mergeSource)).toBe(true);
+  });
+
+  it('keeps exactly one transmittanceSourceToPigmentAlpha( occurrence in the module', () => {
+    expect(mergeSource.split('transmittanceSourceToPigmentAlpha(').length - 1).toBe(1);
+  });
+
+  it('pins the display consumer: the committed base layer derives alpha when it draws', () => {
+    expect(baseLayerSource).toContain('transmittanceSourceToPigmentAlpha');
   });
 });
