@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-26-PLAN.md
-last_updated: "2026-11-22T16:14:01.458Z"
+stopped_at: Completed 64-27-PLAN.md
+last_updated: "2026-11-22T16:18:31.645Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 64 execution started
-state_head: 35e00e999dbf1fccb5d5aac4c5ba9d43da670277
+state_head: 2c41a9271ab1ab2271acebe2b2a429c452df5fc9
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 45
-  completed_plans: 43
+  completed_plans: 44
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 27 of 28
+Plan: 28 of 28
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 64 execution started
 
@@ -170,6 +170,7 @@ Last activity: 2026-11-22 — Phase 64 execution started
 | Phase 64 P24 | 14min | 3 tasks | 22 files |
 | Phase 64 P25 | 8min | 2 tasks | 2 files |
 | Phase 64 P26 | 6 | 3 tasks | 9 files |
+| Phase 64 P27 | 3 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -569,6 +570,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: WholeDoc.layers.lastTouch travels as AGES: captureWhole converts with stampsToAges, uploadWhole re-stamps with agesToStamps into a NEW array (never mutating the cached record), and captureSheet/restoreSheet are pass-through so the law lives at one boundary.
 - [Phase 64]: timeBaseMs is per-engine and monotonic: clearLastTouch writes the sentinel but never re-anchors; only setClock, which installs a different clock, starts a new base, so resizeDocument's raw-stamp copy keeps its meaning.
 - [Phase 64]: The dead uAmount uniform was deleted (IN-04): the 261119-pod measurement made the bare coverage channel the weight, superseding 64-24 truth 3's 'bounded by the dab amount' clause; the supersession is recorded in the shader comment and the suite header.
+- [Phase 64]: A refusal is the scheduler's knowledge, not a busy result: setBlocked parks ONE request while playback/Draft/wireframe holds and the blocked-to-idle edge drains it through the shipped single-run-in-flight path, spending no follow-up budget (64-27, WR-04)
+- [Phase 64]: The unblock edge never starts beside a live run — the parked request becomes the queued follow-up (maxActive stays 1) — and both resolveIdleWaiters and settle()'s early return treat a parked request as non-idle (64-27)
 
 ### Pending Todos
 
@@ -700,8 +703,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-22T16:14:00.610Z
-Stopped at: Completed 64-26-PLAN.md
+Last session: 2026-11-22T16:18:30.792Z
+Stopped at: Completed 64-27-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
