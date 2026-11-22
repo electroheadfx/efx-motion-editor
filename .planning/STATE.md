@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-29-PLAN.md
-last_updated: "2026-11-22T18:43:27.472Z"
+stopped_at: Completed 64-30-PLAN.md
+last_updated: "2026-11-22T18:48:38.840Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 64 execution started
-state_head: 36696cab933d31c3851905cd2f73bc9ee908425e
+state_head: 5d864d571585dc2cd862089c1fa16eb98b1c1f66
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 55
-  completed_plans: 46
+  completed_plans: 47
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 30 of 38
+Plan: 31 of 38
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 64 execution started
 
@@ -173,6 +173,7 @@ Last activity: 2026-11-22 — Phase 64 execution started
 | Phase 64 P27 | 3 min | 2 tasks | 4 files |
 | Phase 64 P28 | 5min | 2 tasks | 6 files |
 | Phase 64 P29 | 24min | 3 tasks | 4 files |
+| Phase 64 P30 | 3 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -580,6 +581,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: 64-29: tipMix is resolved through buildBrushForStroke (the engine's own fallback law); the tip band bar is reference-aware (masked actual + plain reference only)
 - [Phase 64]: 64-29: at HEAD the texture-tip mask registers (tipMix 1) but adds no separated bands (1 vs 1 at row 64/256 and column 64) — recorded for 64-35, no engine code touched
 - [Phase 64]: 64-29: the bristle-line gate fails its own bars at HEAD (halo peakRel 0.4628/0.4493 vs 0.4, runs 3/4 vs 2) on all three surfaces — the recorded defect for 64-32/64-33/64-34
+- [Phase 64]: Sheet-cache presence lives beside the digest: hasCacheableScript is the one predicate both remember sites and restoreCachedSheet ask, so the cache can no longer park a script it would refuse to restore (IN-02).
+- [Phase 64]: IN-06 stays as shipped; the deferral records the dead seed function, the adapter's injected engine/clock seam and the 8 ms yield constant, the test-only caller, and the reopen trigger.
 
 ### Pending Todos
 
@@ -711,8 +714,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-22T18:43:26.637Z
-Stopped at: Completed 64-29-PLAN.md
+Last session: 2026-11-22T18:48:37.984Z
+Stopped at: Completed 64-30-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

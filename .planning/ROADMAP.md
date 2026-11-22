@@ -272,7 +272,7 @@ Plans:
 **Visible-closure gap closure** *(from the four failed UAT rows + the artist's 2026-11-22 no-row mixer ruling; planned 2026-11-22; GAP-5 out of scope by that ruling)*
 **Visible-closure wave 1** *(the visible-closure DAG starts here — every earlier plan has a SUMMARY; 64-29 and 64-30 are file-disjoint)*
 - [x] 64-29-PLAN.md — The visible-gap instruments: the bristle-line rim/halo/enclosure gate with its overstory variant, the extended edge census, and the texture-tip A/B
-- [ ] 64-30-PLAN.md — Sheet-cache symmetry (closes IN-02) and the written IN-06 deferral
+- [x] 64-30-PLAN.md — Sheet-cache symmetry (closes IN-02) and the written IN-06 deferral
 
 **Visible-closure wave 2** *(blocked on 64-29 completion)*
 - [ ] 64-31-PLAN.md — Probe invariants on the shipped alpha law: coverage reads from the coverage raster, the law stated once, and two capture-level checks
@@ -315,7 +315,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 63. Brush Tip Pipeline | 17/17 | Complete | 2026-11-17 |
-| 64. Medium Engine | 29/38 | In Progress | - |
+| 64. Medium Engine | 30/38 | In Progress | - |
 
 ---
 
