@@ -28,23 +28,24 @@
 //  compositor's alpha is max(pigment-darkness, cover), so Body is
 //  invisible for every pigmented paint and only reads on near-white
 //  pigments). `size` is NOT here — the shared Size slider owns it
-//  (D-05). Hiding a row never removes its key: the Reset write set
-//  is the full row table minus Lift plus the hidden Body key.
+//  (D-05). Hiding a row never removes its key: Reset restores the
+//  active medium record's full fourteen-key set.
 //
-//  Reset restores playground DEFAULT_PARAMS (0..1) ×100 onto the
-//  app 0-100 slider band for every non-size row (and the hidden
-//  Body key) via the one record-path seam (setAquarelleParam),
-//  EXCEPT Refill in the acrylic context, which resets to 0 (the
-//  acrylic record's value — the row is hidden there, decision B).
-//  Never writes size (top-bar Brush size owns it, Q1a /
-//  T-261017-WMW-01) and never writes lift.
+//  Reset (quick 261122-gys) restores the ACTIVE MEDIUM RECORD — all
+//  fourteen keys including `wetSeconds` — through the one
+//  record-path seam (setAquarelleParam), then forwards the same
+//  values as ONE selection batch (one undo entry; no selection is a
+//  no-op). The ×100 playground DEFAULT_PARAMS law is retired. Never
+//  writes size (top-bar Brush size owns it, Q1a / T-261017-WMW-01)
+//  and never writes lift. No per-medium special case — the acrylic
+//  Refill 0 lives in its record, not in a Reset branch.
 //
 //  The Brush response block lives in BrushResponsePanel (I-02).
 // ============================================================
 
 import type { TargetedMouseEvent } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
-import { DEFAULT_PARAMS, DEFAULT_MEDIUM_ID, MEDIUMS, mediumById } from '@efxlab/efx-watercolor';
+import { DEFAULT_MEDIUM_ID, MEDIUMS, mediumById } from '@efxlab/efx-watercolor';
 import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import { SliderStepper } from '../../shared/SliderStepper';
 import {
@@ -58,21 +59,11 @@ import {
   setAquarelleParam,
   type AquarelleGlobalKey,
 } from './aquarelleRecordState';
-import {
-  AQUARELLE_PARAM_ROWS,
-  visibleAquarelleParamGroups,
-} from './aquarelleParamVisibility';
+import { visibleAquarelleParamGroups } from './aquarelleParamVisibility';
 import {
   commitAquarelleSelectionParam,
   commitAquarelleSelectionParams,
 } from './aquarellePaintControls';
-
-/** Keys with no visible row that the Reset law still restores. Body's
- *  opacity story is real for near-white pigments and the recorded bag must
- *  land back on the canonical default, even though its row is hidden.
- *  `lift` is the reverse: it HAS a row (Eraser context) but Reset never
- *  writes it (the eraser strength is not a global default). */
-const RESET_ONLY_KEYS: readonly AquarelleGlobalKey[] = Object.freeze(['body'] as const);
 
 const GLOBAL_MIN = 0;
 const GLOBAL_MAX = 100;
@@ -152,29 +143,18 @@ export function AquarelleGlobalsPanel() {
     void commitAquarelleSelectionParam(key, value);
   };
 
-  // I-01 Reset: playground DEFAULT_PARAMS (0..1) mapped onto the app 0-100
-  // slider band (×100), written once per non-size key through the one seam.
-  // quick 261121-mtu: the key set is the FULL row table minus Lift (decision
-  // B hides Refill for acrylic/watercolor, but a hidden row still owns its
-  // key — hiding is exposure, never storage). In the acrylic context Refill
-  // resets to 0, the record's own value; every other medium resets to the
-  // canonical 60, so a medium NEVER forces 0 outside the acrylic context.
-  // Never writes size (top-bar Brush size owns it, Q1a / T-261017-WMW-01).
-  // The hidden Body key resets too (RESET_ONLY_KEYS), so a medium pick's
-  // body never survives a Reset. The same values leave as ONE selection
-  // patch after the live writes, so Reset costs at most one undo entry and
-  // no selection is a no-op.
+  // I-01 Reset (quick 261122-gys): restores the ACTIVE MEDIUM RECORD — the
+  // same record the Medium label resolves — through the one record seam
+  // (setAquarelleParam), then forwards the same fourteen values as ONE
+  // selection patch (at most one undo entry; no selection is a no-op). This
+  // retires the ×100 playground DEFAULT_PARAMS law and the acrylic refill-0
+  // branch (Refill 0 lives in the Acrylic record). Never writes size (top-bar
+  // Brush size owns it, Q1a / T-261017-WMW-01) and never writes lift.
   const onReset = () => {
-    const next: Record<string, number> = {};
-    const acrylic = aquarelleSelectedMediumId.value === 'acrylic';
-    const keys = [
-      ...AQUARELLE_PARAM_ROWS.filter((row) => row.key !== 'lift').map((row) => row.key),
-      ...RESET_ONLY_KEYS,
-    ];
-    for (const key of keys) {
-      const value = acrylic && key === 'refill' ? 0 : Math.round(DEFAULT_PARAMS[key] * 100);
-      next[key] = value;
-      setAquarelleParam(key, value);
+    const record = mediumById(aquarelleSelectedMediumId.value ?? DEFAULT_MEDIUM_ID) ?? MEDIUMS[0];
+    const next: Record<string, number> = { ...record.params };
+    for (const [key, value] of Object.entries(next)) {
+      setAquarelleParam(key as AquarelleGlobalKey, value);
     }
     void commitAquarelleSelectionParams(next);
   };

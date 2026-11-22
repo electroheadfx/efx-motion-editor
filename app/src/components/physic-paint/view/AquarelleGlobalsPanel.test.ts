@@ -17,12 +17,13 @@
  *   old flat playground order is SUPERSEDED by the group order. Post-UAT
  *   2026-11-22: `body` rides the bag and the Reset law but has NO row — the
  *   compositor's alpha is max(pigment-darkness, cover), so Body only reads on
- *   near-white pigments. `wetSeconds` is a medium-record value with NO row —
- *   it is seconds, and the ×100 reset law would corrupt it.
+ *   near-white pigments. `wetSeconds` is a medium-record value with NO row.
  *   no Size control (top-bar owns it, Q1a) and no Hand row
- *   Reset writes playground DEFAULT_PARAMS ×100 for every non-lift row key
- *   (Body included; Refill 0 in the acrylic context) via setAquarelleParam
- *   and never writes size or lift (T-261017-WMW-01, quick 261121-mtu)
+ *   quick 261122-gys (supersedes quick 261121-mtu): Reset restores the ACTIVE
+ *   MEDIUM RECORD's fourteen keys including `wetSeconds`, through
+ *   setAquarelleParam and in ONE selection batch, and never writes size or
+ *   lift. The ×100 playground DEFAULT_PARAMS law and the acrylic refill-0
+ *   special case are retired — the acrylic 0 lives in its record.
  *   no Brush response chrome in this panel (I-02 puts it in BrushResponsePanel)
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
@@ -32,7 +33,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_MEDIUM_ID } from '@efxlab/efx-watercolor';
+import { DEFAULT_MEDIUM_ID, mediumById } from '@efxlab/efx-watercolor';
 import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   AQUARELLE_GLOBAL_KEYS,
@@ -204,29 +205,50 @@ const GLOBAL_LABELS = [
  *  "Chalk" deliberately — the id is not the label. */
 const MEDIUM_NAMES = ['Watercolor', 'Gouache', 'Chalk', 'Graphite', 'Acrylic'] as const;
 
-/** Playground DEFAULT_PARAMS ×100 for the twelve non-lift row keys plus the
- *  hidden Body key, in the panel's reset order — quick 261121-mtu: the row
- *  table order minus Lift; Body resets last (it has no row). The literal's
- *  KEY ORDER mirrors the loop because the batch is compared via
- *  JSON.stringify (order-sensitive); the key SET is unchanged. */
+/** quick 261122-gys — Reset restores the ACTIVE MEDIUM RECORD (supersedes
+ *  quick 261121-mtu's ×100 playground DEFAULT_PARAMS). This literal is the
+ *  Watercolor record in the `mediums.ts` RECORD KEY ORDER: the batch is
+ *  compared via JSON.stringify, which is order-sensitive. */
 const RESET_EXPECTED = {
-  viscosity: 0,
-  emboss: 0,
+  water: 50,
   load: 50,
-  // 261119-pod (D-A): the playground default opens Pickup at 100.
-  pickup: 100,
-  // Decision B hides the Refill row for acrylic/watercolor, but the key
-  // still resets — 60 here because the default context is watercolor.
-  refill: 60,
-  water: 60,
-  dry: 40,
-  feather: 0,
-  flow: 45,
+  flow: 50,
   bleed: 50,
+  dry: 50,
   edge: 50,
-  granulation: 45,
+  granulation: 50,
+  viscosity: 0,
   // Post-UAT 2026-11-22: hidden row, still restored by Reset.
   body: 0,
+  emboss: 0,
+  feather: 0,
+  // 261119-pod (D-A): the record opens Pickup at 100.
+  pickup: 100,
+  // Decision B hides the Refill row for watercolor, but the key still
+  // resets — 60 comes from the Watercolor record itself.
+  refill: 60,
+  // quick 261122-gys: no row, but part of the record — Reset restores it.
+  wetSeconds: 7,
+} as const;
+
+/** The Acrylic record, same key order — quick 261122-gys: Reset in the
+ *  acrylic context restores it whole; Refill 0 comes from the record, with
+ *  no acrylic special case in the Reset path. */
+const ACRYLIC_RESET_EXPECTED = {
+  water: 26,
+  load: 100,
+  flow: 60,
+  bleed: 22,
+  dry: 70,
+  edge: 65,
+  granulation: 25,
+  viscosity: 90,
+  body: 100,
+  emboss: 3,
+  feather: 85,
+  pickup: 100,
+  refill: 0,
+  wetSeconds: 12,
 } as const;
 
 beforeEach(() => {
@@ -290,7 +312,7 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(textContent(reset).trim()).toBe('Reset');
   });
 
-  it('Reset writes the ×100 playground defaults through setAquarelleParam and never writes size or lift', () => {
+  it('Reset restores the active medium record through setAquarelleParam and never writes size or lift', () => {
     setAquarelleParam('size', 77);
     setAquarelleParam('water', 1);
     setAquarelleParam('load', 2);
@@ -318,33 +340,33 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     onClick!();
 
     const params = aquarelleParams.value;
-    expect(params.water, 'water → 60').toBe(RESET_EXPECTED.water);
-    expect(params.load, 'load → 50').toBe(RESET_EXPECTED.load);
-    expect(params.flow, 'flow → 45').toBe(RESET_EXPECTED.flow);
-    expect(params.bleed, 'bleed → 50').toBe(RESET_EXPECTED.bleed);
-    expect(params.edge, 'edge → 50').toBe(RESET_EXPECTED.edge);
-    expect(params.granulation, 'granulation → 45').toBe(RESET_EXPECTED.granulation);
-    expect(params.dry, 'dry → 40').toBe(RESET_EXPECTED.dry);
-    expect(params.viscosity, 'viscosity → 0').toBe(RESET_EXPECTED.viscosity);
-    expect(params.body, 'body → 0').toBe(RESET_EXPECTED.body);
-    expect(params.feather, 'feather → 0').toBe(RESET_EXPECTED.feather);
-    expect(params.pickup, 'pickup → 100').toBe(RESET_EXPECTED.pickup);
-    // quick 261121-mtu, decision B: the Refill ROW is hidden for watercolor,
-    // but the key still resets — hidden is exposure, never storage, and only
-    // the acrylic context forces 0.
-    expect(params.refill, 'refill → 60 (hidden, not zeroed)').toBe(RESET_EXPECTED.refill);
-    expect(params.emboss, 'emboss → 0').toBe(RESET_EXPECTED.emboss);
+    expect(params.water, 'water → the watercolor record').toBe(RESET_EXPECTED.water);
+    expect(params.load, 'load → the record').toBe(RESET_EXPECTED.load);
+    expect(params.flow, 'flow → the record').toBe(RESET_EXPECTED.flow);
+    expect(params.bleed, 'bleed → the record').toBe(RESET_EXPECTED.bleed);
+    expect(params.edge, 'edge → the record').toBe(RESET_EXPECTED.edge);
+    expect(params.granulation, 'granulation → the record').toBe(RESET_EXPECTED.granulation);
+    expect(params.dry, 'dry → the record').toBe(RESET_EXPECTED.dry);
+    expect(params.viscosity, 'viscosity → the record').toBe(RESET_EXPECTED.viscosity);
+    expect(params.body, 'body → the record (hidden row)').toBe(RESET_EXPECTED.body);
+    expect(params.feather, 'feather → the record').toBe(RESET_EXPECTED.feather);
+    expect(params.pickup, 'pickup → the record').toBe(RESET_EXPECTED.pickup);
+    // quick 261122-gys: the Refill ROW is hidden for watercolor, but the key
+    // resets with the record — hidden is exposure, never storage.
+    expect(params.refill, 'refill → 60 (the record, hidden row)').toBe(RESET_EXPECTED.refill);
+    expect(params.emboss, 'emboss → the record').toBe(RESET_EXPECTED.emboss);
     // T-261017-WMW-01: Reset must never write size (top-bar Brush size owns it)
-    // and never touches the eraser strength. D-22: `wetSeconds` has no row,
-    // so Reset never touches it either — a ×100 reset would corrupt seconds.
+    // and never touches the eraser strength. quick 261122-gys: `wetSeconds`
+    // has no row but IS part of the record — Reset restores it (7 here; the
+    // retired ×100 law would have corrupted it to 2100).
     expect(params.size, 'size is untouched by Reset').toBe(77);
     expect(params.lift, 'lift is untouched by Reset').toBe(33);
-    expect(params.wetSeconds, 'wetSeconds is untouched by Reset').toBe(21);
+    expect(params.wetSeconds, 'wetSeconds → the record value').toBe(RESET_EXPECTED.wetSeconds);
   });
 
-  // 261119-pod (D-A): Pickup opens at 100 and Reset restores it. The panel's
-  // Reset path reads `Math.round(DEFAULT_PARAMS[row.key] * 100)`, so the engine
-  // default 1.0 lands as the canonical 100 the reference declares (§6).
+  // 261119-pod (D-A): Pickup opens at 100 and Reset restores it. quick
+  // 261122-gys: Reset is RECORD-driven — the Watercolor record states pickup
+  // 100, the canonical value the reference declares (§6).
   it('opens Pickup at 100 and resets it to 100 (D-A)', () => {
     expect(DEFAULT_AQUARELLE_PARAMS.pickup).toBe(100);
     setAquarelleParam('pickup', 55);
@@ -620,8 +642,9 @@ describe('261018-gqo spacing rhythm', () => {
 });
 
 // quick 261111-ucf — each global row commits at its release boundary and
-// Reset sends ONE thirteen-key batch after its thirteen live writes (64-22
-// grew the row set). Id band 10721+.
+// Reset sends ONE batch after its live writes. quick 261122-gys: the batch is
+// the active medium record's fourteen keys (wetSeconds included). Id band
+// 10721+.
 describe('quick 261111-ucf globals release commits + Reset batch', () => {
   afterEach(() => {
     setAquarelleSelectionEditPort(null);
@@ -629,7 +652,7 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     clearScriptStrokeSelection();
   });
 
-  it('Reset commits ONE thirteen-key params patch after the thirteen live writes', () => {
+  it('Reset commits ONE fourteen-key params patch after the fourteen live writes', () => {
     recordAquarelleStroke(10721, stroke10721([point10721(0.5, 0.5)]));
     const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
     const promise = Promise.resolve(true);
@@ -655,7 +678,7 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     // into the TAP diagnostic and breaks the RED evidence parser.
     expect(
       JSON.stringify(calls[0]!.patch),
-      'the batch is the full thirteen-key patch',
+      'the batch is the full fourteen-key record patch',
     ).toBe(JSON.stringify({ params: RESET_EXPECTED }));
     expect(Object.keys(calls[0]!.patch.params ?? {}), 'size is never committed').not.toContain('size');
     // quick 261121-mtu: Lift has a row (Eraser context) but Reset never
@@ -663,7 +686,7 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     expect(Object.keys(calls[0]!.patch.params ?? {}), 'lift is never committed').not.toContain('lift');
   });
 
-  it('Reset in the acrylic context writes Refill 0 and the batch carries 0 (decision B)', () => {
+  it('Reset in the acrylic context restores the whole acrylic record (Refill 0 from the record)', () => {
     recordAquarelleStroke(10722, stroke10721([point10721(0.4, 0.4)]));
     const calls: Array<{ ids: readonly number[]; patch: ScriptStrokeAppearancePatch }> = [];
     setAquarelleSelectionEditPort({
@@ -684,18 +707,25 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
     expect(reset, 'Reset control must render').toBeTruthy();
     (reset!.props as { onClick?: () => void }).onClick!();
 
-    expect(aquarelleParams.value.refill, 'live bag refill → 0').toBe(0);
-    expect(calls, 'one batch').toHaveLength(1);
-    expect(calls[0]!.patch.params?.refill, 'the batch carries refill 0').toBe(0);
-    // Every other key still resets to the canonical default — the acrylic
-    // zero lives in the Reset expression and nowhere else.
-    expect(calls[0]!.patch.params?.water, 'water keeps the canonical 60').toBe(
-      RESET_EXPECTED.water,
+    // quick 261122-gys: supersedes quick 261121-mtu's acrylic refill special
+    // case — the active record IS the acrylic record, Refill 0 included.
+    expect(aquarelleParams.value.refill, 'live bag refill → the record').toBe(
+      ACRYLIC_RESET_EXPECTED.refill,
     );
-    expect(calls[0]!.patch.params?.load, 'load keeps the canonical 50').toBe(RESET_EXPECTED.load);
+    expect(calls, 'one batch').toHaveLength(1);
+    expect(
+      JSON.stringify(calls[0]!.patch),
+      'the batch carries the whole acrylic record',
+    ).toBe(JSON.stringify({ params: ACRYLIC_RESET_EXPECTED }));
+    // The five values the artist named in the report, stated literally.
+    expect(aquarelleParams.value.body, 'body').toBe(100);
+    expect(aquarelleParams.value.feather, 'feather').toBe(85);
+    expect(aquarelleParams.value.viscosity, 'viscosity').toBe(90);
+    expect(aquarelleParams.value.water, 'water').toBe(26);
+    expect(aquarelleParams.value.wetSeconds, 'wetSeconds').toBe(12);
   });
 
-  it('Reset under every non-acrylic medium keeps Refill at 60 (hidden, not zeroed)', () => {
+  it("Reset under every medium restores that medium record's own Refill (active-record law)", () => {
     for (const medium of ['watercolor', 'gouache', 'pastel', 'graphite'] as const) {
       applyAquarelleMedium(medium);
       setAquarelleParam('refill', 55);
@@ -705,8 +735,41 @@ describe('quick 261111-ucf globals release commits + Reset batch', () => {
       );
       expect(reset, `Reset control must render (${medium})`).toBeTruthy();
       (reset!.props as { onClick?: () => void }).onClick!();
-      expect(aquarelleParams.value.refill, `${medium} resets refill to 60`).toBe(60);
+      // quick 261122-gys: Reset spreads the ACTIVE medium record — each of
+      // these four records states Refill 60, so none of them is zeroed.
+      expect(aquarelleParams.value.refill, `${medium} restores its record's refill`).toBe(
+        mediumById(medium)!.params.refill,
+      );
+      expect(aquarelleParams.value.refill, `${medium} record states 60`).toBe(60);
     }
+  });
+
+  // The artist's UAT row (quick 261122-gys): wetSeconds is restored from the
+  // active record in both contexts — 7 (watercolor) / 12 (acrylic). The
+  // retired ×100 DEFAULT_PARAMS law never touched it.
+  it('Reset restores wetSeconds from the active record in both contexts', () => {
+    setAquarelleParam('wetSeconds', 21);
+    let reset = [...walk(renderPanel())].find(
+      (n) => n.type === 'button' && n.props?.['data-testid'] === 'aquarelle-params-reset',
+    );
+    expect(reset, 'Reset control must render').toBeTruthy();
+    (reset!.props as { onClick?: () => void }).onClick!();
+    expect(aquarelleParams.value.wetSeconds, 'watercolor wetSeconds').toBe(
+      RESET_EXPECTED.wetSeconds,
+    );
+    expect(aquarelleParams.value.wetSeconds, 'the watercolor record states 7').toBe(7);
+
+    applyAquarelleMedium('acrylic');
+    setAquarelleParam('wetSeconds', 21);
+    reset = [...walk(renderPanel())].find(
+      (n) => n.type === 'button' && n.props?.['data-testid'] === 'aquarelle-params-reset',
+    );
+    expect(reset, 'Reset control must render (acrylic)').toBeTruthy();
+    (reset!.props as { onClick?: () => void }).onClick!();
+    expect(aquarelleParams.value.wetSeconds, 'acrylic wetSeconds').toBe(
+      ACRYLIC_RESET_EXPECTED.wetSeconds,
+    );
+    expect(aquarelleParams.value.wetSeconds, 'the acrylic record states 12').toBe(12);
   });
 
   it('source pins: the GlobalSlider passthrough and the ONE Reset batch', () => {

@@ -9,8 +9,10 @@
  *          Water, Dry speed, Flow, Bleed, Edges, Grain (keys stay
  *          load/water/dry/flow/bleed/edge/granulation). The old flat
  *          playground order is superseded by the group order.
- *   I-01   Reset restores playground DEFAULT_PARAMS ×100 for the 7 non-size
- *          globals via setAquarelleParam and never writes size (top-bar owns it)
+ *   I-01   quick 261122-gys: Reset restores the ACTIVE MEDIUM RECORD (all
+ *          fourteen keys, record order) via setAquarelleParam and never
+ *          writes size (top-bar owns it). The ×100 DEFAULT_PARAMS law is
+ *          retired.
  *   I-01   the Brush response block is NOT in this panel (I-02 owns that move)
  *   Record-path commit: a recorded stroke carries the live param bag in
  *   AquarelleStrokePayload.params and the selected multipliers in toolOverrides.
@@ -162,15 +164,17 @@ const GLOBAL_LABELS = [
   'Grain',
 ] as const;
 
-/** Playground DEFAULT_PARAMS ×100 for the 7 non-size keys. */
+/** quick 261122-gys: Reset is RECORD-driven — these seven keys come from the
+ *  Watercolor record (the context this suite pins), all 50. The retired
+ *  ×100 playground DEFAULT_PARAMS mapping is not restored here. */
 const RESET_EXPECTED = {
-  water: 60,
+  water: 50,
   load: 50,
-  flow: 45,
+  flow: 50,
   bleed: 50,
   edge: 50,
-  granulation: 45,
-  dry: 40,
+  granulation: 50,
+  dry: 50,
 } as const;
 
 // 2026-11-22: the fresh session now opens on Brush + Acrylic. This suite pins
@@ -230,8 +234,10 @@ describe('AquarelleParamsPanel Reset (I-01 / T-261017-WMW-01)', () => {
     expect(textContent(reset).trim()).toBe('Reset');
   });
 
-  it('Reset restores playground defaults for the 7 non-size globals and never writes size', () => {
+  it('Reset restores the active record values for the 7 non-size globals and never writes size', () => {
     // Non-default bag, including size — Reset must leave size alone (Q1a).
+    // quick 261122-gys: Reset now spreads the whole active medium record; the
+    // seven keys below are its record values (all 50 for Watercolor).
     setAquarelleParam('size', 77);
     setAquarelleParam('water', 1);
     setAquarelleParam('load', 2);
@@ -251,13 +257,15 @@ describe('AquarelleParamsPanel Reset (I-01 / T-261017-WMW-01)', () => {
     onClick!();
 
     const params = aquarelleParams.value;
-    expect(params.water, 'water resets to 60').toBe(RESET_EXPECTED.water);
-    expect(params.load, 'load resets to 50').toBe(RESET_EXPECTED.load);
-    expect(params.flow, 'flow resets to 45').toBe(RESET_EXPECTED.flow);
-    expect(params.bleed, 'bleed resets to 50').toBe(RESET_EXPECTED.bleed);
-    expect(params.edge, 'edge resets to 50').toBe(RESET_EXPECTED.edge);
-    expect(params.granulation, 'granulation resets to 45').toBe(RESET_EXPECTED.granulation);
-    expect(params.dry, 'dry resets to 40').toBe(RESET_EXPECTED.dry);
+    expect(params.water, "water resets to the record's 50").toBe(RESET_EXPECTED.water);
+    expect(params.load, "load resets to the record's 50").toBe(RESET_EXPECTED.load);
+    expect(params.flow, "flow resets to the record's 50").toBe(RESET_EXPECTED.flow);
+    expect(params.bleed, "bleed resets to the record's 50").toBe(RESET_EXPECTED.bleed);
+    expect(params.edge, "edge resets to the record's 50").toBe(RESET_EXPECTED.edge);
+    expect(params.granulation, "granulation resets to the record's 50").toBe(
+      RESET_EXPECTED.granulation,
+    );
+    expect(params.dry, "dry resets to the record's 50").toBe(RESET_EXPECTED.dry);
     // T-261017-WMW-01: Reset must never write size (top-bar Brush size owns it).
     expect(params.size, 'size is untouched by Reset').toBe(77);
   });
