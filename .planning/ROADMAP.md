@@ -197,7 +197,7 @@ Plans:
   6. The brush library groups the responses by medium in five sections; picking a brush applies its group's medium in one store write only when the group changes; the 15 existing responses are classified and the eight new ones ship.
   7. Export matches the screen on every `uMode` path, zooming produces no shimmer or crawl, and undo restores the eroded pigment and the eroded thickness exactly — where "matches" is the artist's 2026-11-21 darkness-only display derivation (visible alpha = 1 − min(RGB)); probes must instrument that law, not the coverage raster *(amended 2026-11-22: the parity law is named so the acceptance matrix measures what ships)*.
 
-**Plans:** 24 of 36 executed — 17 executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18), 3 gap-closure plans added 2026-11-18 from `64-VERIFICATION.md`, 4 acrylic-bristle extension plans (64-21…64-24) planned 2026-11-19 from `64-CONTEXT.md` + Spike 002, 4 re-review gap-closure plans (64-25…64-28) planned 2026-11-22 from `64-VERIFICATION.md` + `64-REVIEW.md`, and 8 visible-closure gap-closure plans (64-29…64-36) planned 2026-11-22 from the four failed UAT rows and the artist's no-row mixer ruling
+**Plans:** 24 of 38 executed — 17 executed (coverage-replacement addendum 64-13…64-17 planned 2026-11-18), 3 gap-closure plans added 2026-11-18 from `64-VERIFICATION.md`, 4 acrylic-bristle extension plans (64-21…64-24) planned 2026-11-19 from `64-CONTEXT.md` + Spike 002, 4 re-review gap-closure plans (64-25…64-28) planned 2026-11-22 from `64-VERIFICATION.md` + `64-REVIEW.md`, and 10 visible-closure gap-closure plans (64-29…64-38) planned 2026-11-22 from the four failed UAT rows and the artist's no-row mixer ruling (64-37 and 64-38 split out of 64-32 and 64-36 to keep each plan inside its file and token budget)
 
 Plans:
 **Wave 1**
@@ -270,25 +270,31 @@ Plans:
 - [x] 64-28-PLAN.md — Digest and floor: the canonical whole-event sheet signature, and the pickup floor derived from the recorded baseline gap (closes IN-05, IN-07)
 
 **Visible-closure gap closure** *(from the four failed UAT rows + the artist's 2026-11-22 no-row mixer ruling; planned 2026-11-22; GAP-5 out of scope by that ruling)*
-**Wave 20**
+**Visible-closure wave 1** *(the visible-closure DAG starts here — every earlier plan has a SUMMARY; 64-29 and 64-30 are file-disjoint)*
 - [ ] 64-29-PLAN.md — The visible-gap instruments: the bristle-line rim/halo/enclosure gate with its overstory variant, the extended edge census, and the texture-tip A/B
 - [ ] 64-30-PLAN.md — Sheet-cache symmetry (closes IN-02) and the written IN-06 deferral
 
-**Wave 21** *(blocked on 64-29 completion)*
+**Visible-closure wave 2** *(blocked on 64-29 completion)*
 - [ ] 64-31-PLAN.md — Probe invariants on the shipped alpha law: coverage reads from the coverage raster, the law stated once, and two capture-level checks
-- [ ] 64-32-PLAN.md — GAP-1 Body as the mixer, rowless: the rim blend falloff, the paint-alpha coverage target, and the UAT row-12 rewrite
 
-**Wave 22** *(blocked on 64-31 + 64-32 completion)*
+**Visible-closure wave 3** *(blocked on 64-29 + 64-31 completion)*
+- [ ] 64-32-PLAN.md — GAP-1 Body as the mixer, rowless: the rim blend falloff and the paint-alpha coverage target
+
+**Visible-closure wave 4** *(blocked on 64-32 completion; 64-33 and 64-37 are file-disjoint — the records and the engine work never share a file)*
 - [ ] 64-33-PLAN.md — GAP-2 Feather/Pickup visibility: the two discriminating pairs, the recorded law-or-measurement verdict, and the arm it names
+- [ ] 64-37-PLAN.md — The no-row mixer record: UAT row 12 rewritten with both defects kept, the tenth amendment and the resolved open item, ROADMAP criterion 5, and the rowlessness pin
 
-**Wave 23** *(blocked on 64-33 completion)*
+**Visible-closure wave 5** *(blocked on 64-33 completion)*
 - [ ] 64-34-PLAN.md — GAP-3 directional anti-aliasing and the acrylic wet gate, with the softness resolution pinned
 
-**Wave 24** *(blocked on 64-29 + 64-34 completion)*
+**Visible-closure wave 6** *(blocked on 64-29 + 64-34 completion)*
 - [ ] 64-35-PLAN.md — GAP-4 texture-tip composition verified on the final engine, and the texture-axis contract pinned
 
-**Wave 25** *(blocked on 64-29…64-35 completion; ends at a blocking-human checkpoint)*
-- [ ] 64-36-PLAN.md — Baselines and UAT: amendment 7's census relation, twenty baselines re-captured from the final engine, every gate green, and the artist's walkthrough of all fourteen rows
+**Visible-closure wave 7** *(blocked on 64-29 + 64-33 + 64-34 + 64-35 completion)*
+- [ ] 64-38-PLAN.md — Amendment 7's census relation: both softness widths recorded, each below its own stroke's half-width, with the direction claim retired and the support relation preserved
+
+**Visible-closure wave 8** *(blocked on 64-29…64-35 + 64-37 + 64-38 completion; ends at a blocking-human checkpoint)*
+- [ ] 64-36-PLAN.md — Baselines and UAT: twenty baselines re-captured from the final engine, every gate green, and the artist's walkthrough of all fourteen rows
 
 **Specs**: `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-03-viscosity.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-04-medium-profile.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-05-pigment-relief.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-06-coverage.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-07-brush-groups.md`, `SPECS/v2.2.0-medium-engine/GSD-QUICK-PROMPT-08-scattering.md`
 
