@@ -192,7 +192,8 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     );
     expect(frameChange).toContain('aquarelleSheetSeeded.value = restoreCachedSheet(playFrame, frameEvents);');
     // SHEET CACHE: the engine's exact layer set (an upload, not a replay),
-    // captured on leave and validated by the frame's script signature.
+    // captured on leave and validated by the frame's canonical whole-event
+    // script digest (64-28 IN-05 — never counts alone).
     expect(layer).toContain('engine.captureSheet()');
     expect(layer).toContain('engine.restoreSheet(cached)');
     expect(layer).toContain('const SHEET_CACHE_MAX_FRAMES = 3;');
@@ -234,6 +235,22 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(mount).toContain('onAdoptSheetReady={(adopt) => onAquarelleAdoptSheetReadyRef.current?.(adopt)}');
     expect(studio).toContain('onSheet: (sheet) => aquarelleAdoptSheetRef.current?.(target.appFrame, sheet)');
     expect(studio).toContain('onAquarelleAdoptSheetReady: handleAquarelleAdoptSheetReady,');
+  });
+
+  it('SHEET CACHE: the signature is the canonical whole-event digest (64-28 IN-05)', () => {
+    // IN-05: the shipped signature hashed `events.length`, each event's
+    // mutationId and each event's point count only, so a script edit that kept
+    // those three counts restored a STALE cached sheet. The identity is now a
+    // canonical digest of the whole event list, and the count-only walk is gone.
+    expect(layer).toContain("import { aquarelleSheetSignature } from './aquarelleSheetSignature';");
+    // Both capture paths and the restore path go through the ONE module.
+    expect(layer).toContain('rememberSheet(leavingFrame, aquarelleSheetSignature(leavingEvents), engine.captureSheet())');
+    expect(layer).toContain('rememberSheet(frame, aquarelleSheetSignature(events), sheet)');
+    expect(layer).toContain('takeSheet(frame, aquarelleSheetSignature(events))');
+    // The count-only walk is deleted, not merely unused.
+    expect(layer).not.toContain('const seedSignature');
+    expect(layer).not.toContain('mutationId + 0x9e3779b9');
+    expect(layer).not.toContain('pts?.length');
   });
 
   it('NAV FLUSH: navigation forces an aquarelle frame-leave capture BEFORE flushing live pixels', () => {
