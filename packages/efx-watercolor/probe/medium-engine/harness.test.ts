@@ -1067,3 +1067,203 @@ describe('the bristle-line rim/halo/enclosure gate (64-29 task 1)', () => {
     })
   })
 })
+
+// ============================================================
+//  Laws pinned here (64-29 task 2): the edge census gains irregularity,
+//  roughness, support and density.
+//
+//  28. `strokeEdgeCensus` emits four discriminating scalars per Feather level
+//      beside the existing widths: irregularity (median |Δ crossing position|,
+//      station to station), roughness (median |Δ² crossing position|), support
+//      (median distance from the 50 % crossing to the outermost row above 2 %
+//      of the plateau) and fringe density (share of measured stations whose
+//      support clears one device pixel). The existing softness/variation/
+//      plateau fields keep their names and values.
+//  29. The half-width is emitted per stroke (`edgeHalfWidthPxFeather0/100`)
+//      beside the compatibility mean (`edgeHalfWidthPx`) — amendment 7's
+//      "both widths are recorded evidence".
+//  30. compare.mjs requires the ten numbers, demands a strictly positive
+//      irregularity and support at BOTH Feather levels, and bounds roughness
+//      only by finiteness and non-negativity: 64-34 owns the roughness
+//      ceiling, so no ceiling is guessed here.
+//  31. The four synthetic profiles resolve to four distinct (irregularity,
+//      roughness, support) patterns when executed against the bars: straight
+//      anti-aliased (0, 0, positive) fails as a ruler, staircase (low, high,
+//      positive) passes, wavy (high, low, positive) passes, binary (positive,
+//      low, 0) fails as an ungraded edge.
+// ============================================================
+
+describe('the edge census separates irregular from aliased from graded (64-29 task 2)', () => {
+  function censusVerdict(status: number | null, output: string): string {
+    const invariant = output.split('\n').find((line) => line.startsWith('INVARIANT '))
+    return `status=${status} ${invariant ?? '(no INVARIANT line)'}`
+  }
+
+  function expectCensusText(output: string, needle: string): void {
+    expect(output.includes(needle), `missing report text: ${needle}`).toBe(true)
+  }
+
+  /** The clean graded fringe: every new bar passes. Absolute values are
+   *  evidence (they echo the recorded HEAD readings); the relations are the
+   *  contract. */
+  function validCensusCapture(): Record<string, unknown> {
+    return {
+      ...validEdgeCapture(),
+      edgeIrregularityPxFeather0: 0.62,
+      edgeIrregularityPxFeather100: 0.58,
+      edgeRoughnessPxFeather0: 0.35,
+      edgeRoughnessPxFeather100: 0.42,
+      edgeSupportPxFeather0: 3.6,
+      edgeSupportPxFeather100: 4.4,
+      edgeFringeDensityPctFeather0: 100,
+      edgeFringeDensityPctFeather100: 100,
+      edgeHalfWidthPxFeather0: 32.11,
+      edgeHalfWidthPxFeather100: 31.87,
+    }
+  }
+
+  describe('the probe derives and emits the four scalars per Feather level', () => {
+    it('keeps one shared per-stroke derivation', () => {
+      expectContains(PROBE, 'function edgeProfileStats(')
+      expectContains(PROBE, 'irregularityPx: number')
+      expectContains(PROBE, 'roughnessPx: number')
+      expectContains(PROBE, 'supportPx: number')
+      expectContains(PROBE, 'fringeDensityPct: number')
+      expectContains(PROBE, 'const EDGE_SUPPORT_FRACTION = 0.02')
+    })
+
+    it('emits every new field under its Feather-suffixed name', () => {
+      expectContains(PROBE, 'edgeIrregularityPxFeather0: round2(feather0.irregularityPx)')
+      expectContains(PROBE, 'edgeIrregularityPxFeather100: round2(feather100.irregularityPx)')
+      expectContains(PROBE, 'edgeRoughnessPxFeather0: round2(feather0.roughnessPx)')
+      expectContains(PROBE, 'edgeRoughnessPxFeather100: round2(feather100.roughnessPx)')
+      expectContains(PROBE, 'edgeSupportPxFeather0: round2(feather0.supportPx)')
+      expectContains(PROBE, 'edgeSupportPxFeather100: round2(feather100.supportPx)')
+      expectContains(PROBE, 'edgeFringeDensityPctFeather0: round2(feather0.fringeDensityPct)')
+      expectContains(PROBE, 'edgeFringeDensityPctFeather100: round2(feather100.fringeDensityPct)')
+    })
+
+    it('adds the per-stroke half-widths beside the compatibility mean', () => {
+      expectContains(PROBE, 'edgeHalfWidthPxFeather0: round2(feather0.halfWidthPx)')
+      expectContains(PROBE, 'edgeHalfWidthPxFeather100: round2(feather100.halfWidthPx)')
+      expectContains(
+        PROBE,
+        'edgeHalfWidthPx: round2((feather0.halfWidthPx + feather100.halfWidthPx) / 2)',
+      )
+    })
+  })
+
+  describe('the comparator names the new fields and their bars', () => {
+    it('requires all ten numbers', () => {
+      expectContains(COMPARE, 'edgeIrregularityPxFeather0')
+      expectContains(COMPARE, 'edgeIrregularityPxFeather100')
+      expectContains(COMPARE, 'edgeRoughnessPxFeather0')
+      expectContains(COMPARE, 'edgeRoughnessPxFeather100')
+      expectContains(COMPARE, 'edgeSupportPxFeather0')
+      expectContains(COMPARE, 'edgeSupportPxFeather100')
+      expectContains(COMPARE, 'edgeFringeDensityPctFeather0')
+      expectContains(COMPARE, 'edgeFringeDensityPctFeather100')
+      expectContains(COMPARE, 'edgeHalfWidthPxFeather0')
+      expectContains(COMPARE, 'edgeHalfWidthPxFeather100')
+    })
+
+    it('names the ruler, binary-edge and roughness failures', () => {
+      expectContains(COMPARE, 'a ruler-straight crossing')
+      expectContains(COMPARE, 'has no fringe beyond the crossing')
+      expectContains(COMPARE, 'is not a finite non-negative roughness')
+      expectContains(COMPARE, '64-34 owns the roughness ceiling')
+    })
+  })
+
+  describe('the four synthetic profiles resolve to four distinct patterns', () => {
+    it('passes a graded fringe', () => {
+      const { status, output } = compareSynthetic('nyquist-census-graded', validCensusCapture())
+
+      expect(status, censusVerdict(status, output)).toBe(0)
+      expectCensusText(output, 'scenario invariants hold')
+    })
+
+    it('fails a straight anti-aliased crossing as a ruler', () => {
+      const { status, output } = compareSynthetic('nyquist-census-straight', {
+        ...validCensusCapture(),
+        edgeIrregularityPxFeather0: 0,
+        edgeIrregularityPxFeather100: 0,
+        edgeRoughnessPxFeather0: 0,
+        edgeRoughnessPxFeather100: 0,
+        edgeSupportPxFeather0: 3.2,
+        edgeSupportPxFeather100: 3.4,
+      })
+
+      expect(status, censusVerdict(status, output)).toBe(1)
+      expectCensusText(output, 'a ruler-straight crossing')
+    })
+
+    it('passes a staircase crossing (high roughness, low irregularity)', () => {
+      const { status, output } = compareSynthetic('nyquist-census-staircase', {
+        ...validCensusCapture(),
+        edgeIrregularityPxFeather0: 0.3,
+        edgeIrregularityPxFeather100: 0.28,
+        edgeRoughnessPxFeather0: 1.9,
+        edgeRoughnessPxFeather100: 2.2,
+        edgeSupportPxFeather0: 2.4,
+        edgeSupportPxFeather100: 2.6,
+      })
+
+      expect(status, censusVerdict(status, output)).toBe(0)
+    })
+
+    it('passes a wavy crossing (high irregularity, low roughness)', () => {
+      const { status, output } = compareSynthetic('nyquist-census-wavy', {
+        ...validCensusCapture(),
+        edgeIrregularityPxFeather0: 1.9,
+        edgeIrregularityPxFeather100: 1.7,
+        edgeRoughnessPxFeather0: 0.2,
+        edgeRoughnessPxFeather100: 0.24,
+        edgeSupportPxFeather0: 3.1,
+        edgeSupportPxFeather100: 3.3,
+      })
+
+      expect(status, censusVerdict(status, output)).toBe(0)
+    })
+
+    it('fails a binary edge with no support', () => {
+      const { status, output } = compareSynthetic('nyquist-census-binary', {
+        ...validCensusCapture(),
+        edgeSupportPxFeather0: 0,
+        edgeSupportPxFeather100: 0,
+      })
+
+      expect(status, censusVerdict(status, output)).toBe(1)
+      expectCensusText(output, 'has no fringe beyond the crossing')
+    })
+
+    it('fails a negative roughness', () => {
+      const { status, output } = compareSynthetic('nyquist-census-roughness', {
+        ...validCensusCapture(),
+        edgeRoughnessPxFeather100: -0.1,
+      })
+
+      expect(status, censusVerdict(status, output)).toBe(1)
+      expectCensusText(output, 'is not a finite non-negative roughness')
+    })
+
+    it('fails a missing new field by name', () => {
+      const capture = validCensusCapture()
+      delete capture.edgeSupportPxFeather100
+      const { status, output } = compareSynthetic('nyquist-census-missing', capture)
+
+      expect(status, censusVerdict(status, output)).toBe(1)
+      expectCensusText(output, 'edgeSupportPxFeather100')
+    })
+
+    it('fails a fringe density outside the percentage range', () => {
+      const { status, output } = compareSynthetic('nyquist-census-density', {
+        ...validCensusCapture(),
+        edgeFringeDensityPctFeather0: 140,
+      })
+
+      expect(status, censusVerdict(status, output)).toBe(1)
+      expectCensusText(output, 'edgeFringeDensityPctFeather0')
+    })
+  })
+})
