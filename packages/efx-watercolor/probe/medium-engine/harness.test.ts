@@ -80,7 +80,7 @@ describe('the medium-engine probe harness (64-17)', () => {
       )
       expectContains(
         COMPARE,
-        "const FIELDS = [...DIGESTS, 'digestPigment', 'byteLength', 'width', 'height']",
+        "const FIELDS = [...DIGESTS, 'digestPigment', 'byteLength', 'width', 'height', 'opaqueExportMinAlpha', 'opaqueExportMinAlphaSurface', 'visibleAlphaMaxDelta', 'visibleAlphaSamples', 'visibleAlphaWorstAt']",
       )
     })
   })
@@ -367,6 +367,89 @@ describe('the coverage claims read the coverage raster (64-31 task 1)', () => {
     expectNotContains(COMPARE, 'coverAlpha')
     expectNotContains(PROBE, OLD_COVER_ALPHA_FIELD)
     expectNotContains(PROBE, 'coverAlpha')
+  })
+})
+
+// Laws pinned here (64-31 task 2): the shipped alpha law and its checks.
+//
+//  31. The law is stated in one voice in all three probe files: committed and
+//      exported storage alpha is OPAQUE; coverage lives only in the coverage
+//      raster, an instrument and never an export channel; and the display
+//      alpha is the DARKNESS of the visible pigment. No file composes an
+//      alpha out of a darkness term and a coverage term any more — the three
+//      old sentences are deleted, and the pins here read the RAW sources so a
+//      comment can neither satisfy nor trip the wrong pin.
+//  32. Every capture carries an opaque-export block (`opaqueExportMinAlpha`,
+//      `opaqueExportMinAlphaSurface`) and a visible-alpha block
+//      (`visibleAlphaMaxDelta`, `visibleAlphaSamples`, `visibleAlphaWorstAt`)
+//      — or, for a bristle capture, the same check reported as skipped with
+//      its film-blur reason (`visibleAlphaSkip`). Both are pure helpers over
+//      the already-read buffers, sampled on one fixed prime stride.
+//  33. compare.mjs enforces both blocks in every mode and carries the five
+//      numeric/string fields in the compared field list, so a capture cannot
+//      silently drop them.
+const LAW_OPAQUE = 'committed and exported storage alpha is OPAQUE'
+const LAW_DISPLAY = 'the display alpha is the DARKNESS of the visible pigment'
+
+describe('the shipped alpha law is stated once (64-31 task 2)', () => {
+  const RAW_PROBE = readFileSync(resolve(HERE, 'probe.ts'), 'utf8')
+  const RAW_RUN = readFileSync(resolve(HERE, 'run.mjs'), 'utf8')
+  const RAW_COMPARE = readFileSync(resolve(HERE, 'compare.mjs'), 'utf8')
+  const RAW_FILES: Record<string, string> = {
+    'probe.ts': RAW_PROBE,
+    'run.mjs': RAW_RUN,
+    'compare.mjs': RAW_COMPARE,
+  }
+
+  it('states the opaque-storage law in every probe file', () => {
+    for (const [name, source] of Object.entries(RAW_FILES)) {
+      expect(source.includes(LAW_OPAQUE), `missing law text in ${name}: ${LAW_OPAQUE}`).toBe(true)
+    }
+  })
+
+  it('states the darkness-only display law in every probe file', () => {
+    for (const [name, source] of Object.entries(RAW_FILES)) {
+      expect(source.includes(LAW_DISPLAY), `missing law text in ${name}: ${LAW_DISPLAY}`).toBe(true)
+    }
+  })
+
+  it('deletes every composition of an alpha with a coverage term', () => {
+    for (const [name, source] of Object.entries(RAW_FILES)) {
+      expect(source.includes('max(1 − min(rgb), cover)'), `${name} still composes alpha with cover`).toBe(false)
+      expect(source.includes('max(1 - min(rgb), cover)'), `${name} still composes alpha with cover`).toBe(false)
+      expect(source.includes('max(darkness, cover)'), `${name} still composes alpha with cover`).toBe(false)
+    }
+  })
+})
+
+describe('the capture-level alpha-law checks (64-31 task 2)', () => {
+  it('samples one fixed prime stride over the already-read buffers', () => {
+    expectContains(PROBE, 'const ALPHA_LAW_STRIDE = 4093')
+    expectContains(PROBE, 'function opaqueExportCheck(')
+    expectContains(PROBE, 'function visibleAlphaCheck(')
+  })
+
+  it('emits both blocks on every capture, with the bristle skip', () => {
+    expectContains(PROBE, 'opaqueExportMinAlpha: opaqueExport.minAlpha,')
+    expectContains(PROBE, 'opaqueExportMinAlphaSurface: opaqueExport.surface,')
+    expectContains(PROBE, '...visibleAlpha,')
+    expectContains(PROBE, 'visibleAlphaMaxDelta:')
+    expectContains(PROBE, 'visibleAlphaSamples:')
+    expectContains(PROBE, 'visibleAlphaWorstAt:')
+    expectContains(PROBE, 'visibleAlphaSkip:')
+    expectContains(PROBE, "scenario.startsWith('bristle-')")
+  })
+
+  it('compares the transparent darkness against the pigment alpha', () => {
+    expectContains(PROBE, '255 - Math.min(data[i]!, data[i + 1]!, data[i + 2]!)')
+  })
+
+  it('enforces both blocks in the comparator, in every mode', () => {
+    expectContains(COMPARE, 'function alphaLawFailures(')
+    expectContains(COMPARE, 'is not the opaque maximum 255')
+    expectContains(COMPARE, 'exceeds one 8-bit step')
+    expectContains(COMPARE, 'the visible-alpha check cannot be skipped for this scenario')
+    expectContains(COMPARE, 'alphaLawFailures(actual)')
   })
 })
 
@@ -727,9 +810,10 @@ describe('the bristle-wet acceptance (64-24)', () => {
 //  wetness gap must all exit 1, while the recorded relation set exits 0.
 //
 //  Every fixture carries a unique `nyquist-` name (the real capture names are
-//  never touched) and all 7 compared FIELDS match on both sides, so a failing
-//  test fails on the INVARIANT, never on field equality. Nothing here reads or
-//  writes a committed baseline.
+//  never touched) and all twelve compared FIELDS match on both sides (64-31
+//  task 2 added the five alpha-law fields), so a failing test fails on the
+//  INVARIANT, never on field equality. Nothing here reads or writes a
+//  committed baseline.
 // ============================================================
 
 const TMP_DIR = '/tmp/medium-engine'
@@ -743,6 +827,10 @@ afterAll(() => {
 })
 
 function baseCapture(scenario: string, gate: string): Record<string, unknown> {
+  // 64-31: every compare mode now requires the alpha-law block, and a
+  // bristle capture reports the visible-alpha check as skipped with its
+  // reason (the display film blur makes RGB and alpha disagree at the fringe).
+  const bristle = scenario.startsWith('bristle-')
   return {
     scenario,
     gate,
@@ -753,6 +841,21 @@ function baseCapture(scenario: string, gate: string): Record<string, unknown> {
     byteLength: 4096,
     width: 1080,
     height: 1080,
+    opaqueExportMinAlpha: 255,
+    opaqueExportMinAlphaSurface: 'paper',
+    ...(bristle
+      ? {
+          visibleAlphaMaxDelta: null,
+          visibleAlphaSamples: 0,
+          visibleAlphaWorstAt: null,
+          visibleAlphaSkip:
+            'bristle film blur: the display film blur makes the exported RGB and alpha intentionally disagree at the fringe',
+        }
+      : {
+          visibleAlphaMaxDelta: 0,
+          visibleAlphaSamples: 1000,
+          visibleAlphaWorstAt: 'x=0,y=0',
+        }),
   }
 }
 
@@ -772,9 +875,9 @@ function compareSynthetic(
   actual: Record<string, unknown>,
 ): { status: number | null; output: string } {
   writeCapture(name, actual)
-  // Same 7 compared fields on every fixture pair: digest/byteLength/width/
-  // height are copied from the actual, so the field loop can never be the
-  // reason a failure test fails.
+  // Same compared fields on every fixture pair (64-31: twelve, including the
+  // alpha-law block): they are copied from the actual, so the field loop can
+  // never be the reason a failure test fails.
   writeCapture(`${name}-ref`, { ...baseCapture(String(actual.scenario), `${name}-ref`), ...actual })
   const result = spawnSync(process.execPath, [COMPARE_PATH, name, '--other', `${name}-ref`], {
     encoding: 'utf8',
@@ -791,6 +894,24 @@ function compareSynthetic(
  */
 function invariantLine(output: string): string {
   return output.split('\n').find((line) => line.includes('INVARIANT')) ?? ''
+}
+
+/** One-line verdict evidence for a failing assertion message: a multi-line
+ *  message would emit column-0 continuation lines and break the TAP report
+ *  the TDD gate parses (the 64-23/64-29 lesson). */
+function lawVerdict(status: number | null, output: string): string {
+  const line = output
+    .split('\n')
+    .find((entry) => entry.startsWith('RESULT') || entry.startsWith('INVARIANT'))
+  return `status=${status} ${line ?? '(no verdict line)'}`
+}
+
+function expectLawText(output: string, needle: string): void {
+  expect(output.includes(needle), `missing report text: ${needle}`).toBe(true)
+}
+
+function fieldsLine(output: string): string {
+  return output.split('\n').find((line) => line.includes('fields equal')) ?? ''
 }
 
 function validEdgeCapture(): Record<string, unknown> {
@@ -826,11 +947,13 @@ describe('the bristle-edge invariants discriminate (64-23, executed)', () => {
   it('passes a capture whose Feather-100 band is wider, brushed and inside the stroke', () => {
     const { status, output } = compareSynthetic('nyquist-edge-pass', validEdgeCapture())
 
-    expect(status, output).toBe(0)
-    expect(output).toContain('all 7 fields equal')
+    // One-line assertion messages only: the TAP diagnostic must stay parseable
+    // for the TDD gate (a multi-line scalar emits column-0 continuation lines).
+    expect(status, invariantLine(output)).toBe(0)
+    expect(fieldsLine(output)).toContain('all 12 fields equal')
     // The dispatch map is load-bearing: a capture that never reached
     // bristleEdgeFailures would pass the fields without this note.
-    expect(output).toContain('scenario invariants hold')
+    expect(fieldsLine(output)).toContain('scenario invariants hold')
   })
 
   it('fails a feather-blind edge (Feather-100 not wider than Feather-0)', () => {
@@ -839,8 +962,8 @@ describe('the bristle-edge invariants discriminate (64-23, executed)', () => {
       edgeSoftnessPxFeather100: 20.25,
     })
 
-    expect(status, output).toBe(1)
-    expect(output).toContain('Feather is not widening the band')
+    expect(status, invariantLine(output)).toBe(1)
+    expect(invariantLine(output)).toContain('Feather is not widening the band')
   })
 
   it('fails a perfectly smooth edge (zero crossing variation)', () => {
@@ -849,8 +972,8 @@ describe('the bristle-edge invariants discriminate (64-23, executed)', () => {
       edgeVariationPxFeather0: 0,
     })
 
-    expect(status, output).toBe(1)
-    expect(output).toContain('perfectly smooth')
+    expect(status, invariantLine(output)).toBe(1)
+    expect(invariantLine(output)).toContain('perfectly smooth')
   })
 
   it('fails a band as wide as the stroke (softness not narrower than the half-width)', () => {
@@ -859,8 +982,8 @@ describe('the bristle-edge invariants discriminate (64-23, executed)', () => {
       edgeSoftnessPxFeather100: 32.14,
     })
 
-    expect(status, output).toBe(1)
-    expect(output).toContain('not an edge but the stroke')
+    expect(status, invariantLine(output)).toBe(1)
+    expect(invariantLine(output)).toContain('not an edge but the stroke')
   })
 
   it('fails a capture missing an invariant field by name', () => {
@@ -868,8 +991,8 @@ describe('the bristle-edge invariants discriminate (64-23, executed)', () => {
     delete capture.edgeHalfWidthPx
     const { status, output } = compareSynthetic('nyquist-edge-missing', capture)
 
-    expect(status, output).toBe(1)
-    expect(output).toContain('capture is missing edgeHalfWidthPx')
+    expect(status, invariantLine(output)).toBe(1)
+    expect(invariantLine(output)).toContain('capture is missing edgeHalfWidthPx')
   })
 
   it("propagates the probe's own named degeneracies verbatim", () => {
@@ -878,8 +1001,8 @@ describe('the bristle-edge invariants discriminate (64-23, executed)', () => {
       edgeFailures: ['stroke not found at y 300'],
     })
 
-    expect(status, output).toBe(1)
-    expect(output).toContain('stroke not found at y 300')
+    expect(status, invariantLine(output)).toBe(1)
+    expect(invariantLine(output)).toContain('stroke not found at y 300')
   })
 })
 
@@ -1721,5 +1844,114 @@ describe('the texture-tip A/B (64-29 task 3)', () => {
       expect(status, tipVerdict(status, output)).toBe(1)
       expectTipText(output, 'digest(s) did not differ')
     })
+  })
+})
+
+// The shipped alpha law is checked on captures, not only narrated: every
+// non-bristle capture must prove its exports opaque and its display alpha equal
+// to the darkness of the exported film, and a bristle capture must report the
+// check as skipped with its reason. These run compare.mjs as a real process
+// against synthetic captures, so each rule must actually discriminate.
+describe('the alpha-law blocks discriminate (64-31 task 2, executed)', () => {
+  function lawCapture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    // Scenario `cover` carries no scenario invariant, so a law failure is the
+    // only INVARIANT line in the report.
+    return { ...baseCapture('cover', 'nyquist'), ...overrides }
+  }
+
+  it('passes a capture whose exports are opaque and whose display alpha is darkness', () => {
+    const { status, output } = compareSynthetic('nyquist-law-pass', lawCapture())
+
+    expect(status, lawVerdict(status, output)).toBe(0)
+    expectLawText(output, 'all 12 fields equal')
+  })
+
+  it('passes a one-step darkness/alpha disagreement (8-bit rounding)', () => {
+    const { status, output } = compareSynthetic(
+      'nyquist-law-one-step',
+      lawCapture({ visibleAlphaMaxDelta: 1, visibleAlphaWorstAt: 'x=41,y=7' }),
+    )
+
+    expect(status, lawVerdict(status, output)).toBe(0)
+  })
+
+  it('fails one translucent pixel, naming the surface', () => {
+    const { status, output } = compareSynthetic(
+      'nyquist-law-translucent',
+      lawCapture({ opaqueExportMinAlpha: 254, opaqueExportMinAlphaSurface: 'transparent' }),
+    )
+
+    expect(status, lawVerdict(status, output)).toBe(1)
+    const invariant = invariantLine(output)
+    expect(invariant).toContain('opaqueExportMinAlpha 254')
+    expect(invariant).toContain('transparent')
+  })
+
+  it('fails a two-step darkness/alpha disagreement, naming the coordinate', () => {
+    const { status, output } = compareSynthetic(
+      'nyquist-law-two-step',
+      lawCapture({ visibleAlphaMaxDelta: 2, visibleAlphaWorstAt: 'x=17,y=203' }),
+    )
+
+    expect(status, lawVerdict(status, output)).toBe(1)
+    const invariant = invariantLine(output)
+    expect(invariant).toContain('2 steps')
+    expect(invariant).toContain('x=17,y=203')
+  })
+
+  it('fails a capture that omits the opaque-export block', () => {
+    const capture = lawCapture()
+    delete capture.opaqueExportMinAlpha
+    const { status, output } = compareSynthetic('nyquist-law-noopaque', capture)
+
+    expect(status, lawVerdict(status, output)).toBe(1)
+    const invariant = invariantLine(output)
+    expect(invariant).toContain('opaqueExportMinAlpha')
+    expect(invariant).toContain('re-run the probe')
+  })
+
+  it('fails a capture that omits the visible-alpha block', () => {
+    const capture = lawCapture()
+    delete capture.visibleAlphaMaxDelta
+    const { status, output } = compareSynthetic('nyquist-law-novisible', capture)
+
+    expect(status, lawVerdict(status, output)).toBe(1)
+    expect(invariantLine(output)).toContain('visibleAlphaMaxDelta')
+  })
+
+  it('fails a non-bristle capture that opts out of the visible-alpha check', () => {
+    const { status, output } = compareSynthetic(
+      'nyquist-law-opts-out',
+      lawCapture({ visibleAlphaMaxDelta: null, visibleAlphaSkip: 'not measured' }),
+    )
+
+    expect(status, lawVerdict(status, output)).toBe(1)
+    expect(invariantLine(output)).toContain('cannot be skipped')
+  })
+
+  it('passes a bristle capture that reports the skip with its reason', () => {
+    const { status, output } = compareSynthetic('nyquist-law-bristle-pass', {
+      ...baseCapture('bristle-wet', 'nyquist'),
+      pickupFreshMean: 50.64,
+      pickupAgedWetMean: 250.16,
+      wetMode: 1,
+    })
+
+    expect(status, lawVerdict(status, output)).toBe(0)
+    expectLawText(output, 'scenario invariants hold')
+  })
+
+  it('fails a bristle capture that drops the skip reason', () => {
+    const capture: Record<string, unknown> = {
+      ...baseCapture('bristle-wet', 'nyquist'),
+      pickupFreshMean: 50.64,
+      pickupAgedWetMean: 250.16,
+      wetMode: 1,
+    }
+    delete capture.visibleAlphaSkip
+    const { status, output } = compareSynthetic('nyquist-law-bristle-noskip', capture)
+
+    expect(status, lawVerdict(status, output)).toBe(1)
+    expect(invariantLine(output)).toContain('visibleAlphaSkip')
   })
 })
