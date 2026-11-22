@@ -3,10 +3,12 @@
 //  parameter groups + Reset. This is the Paint-tab content.
 //
 //  Phase 64 (D-01/D-07/D-22): the panel LEADS with the five-item
-//  medium dropdown, then the slider rows below it. A pick
-//  applies the whole record in one move (applyAquarelleMedium)
-//  and closes; the selected name is shown truthfully, with no
-//  "edited" marker.
+//  medium dropdown, then the slider rows below it. quick 261122-gys:
+//  a pick binds a preset of the picked group AND applies the whole
+//  record in one move (pickAquarelleMedium), then closes — the
+//  label, the rows and the brush always describe the same medium,
+//  and the selected name is shown truthfully, with no "edited"
+//  marker.
 //
 //  quick 261121-mtu: the flat twelve-row list is gone. The rows
 //  and their six group headings come from ONE pure selector,
@@ -51,7 +53,7 @@ import {
   aquarelleMediumMenuOpen,
   aquarelleParams,
   aquarelleSelectedMediumId,
-  applyAquarelleMedium,
+  pickAquarelleMedium,
   setAquarelleMediumMenuOpen,
   setAquarelleParam,
   type AquarelleGlobalKey,
@@ -251,9 +253,10 @@ export function AquarelleGlobalsPanel() {
                   class={`physics-paint-brush-menu-item${active ? ' active' : ''}`}
                   data-testid={`aquarelle-medium-item-${medium.id}`}
                   onClick={() => {
-                    // D-03: a pick always applies — the store decides whether
-                    // anything is written, so re-picking restores the record.
-                    applyAquarelleMedium(medium.id);
+                    // quick 261122-gys: a pick binds a preset of the picked
+                    // group AND applies its record (D-03: re-picking restores
+                    // a drifted record — the store decides what is written).
+                    pickAquarelleMedium(medium.id);
                     setAquarelleMediumMenuOpen(false);
                   }}
                 >

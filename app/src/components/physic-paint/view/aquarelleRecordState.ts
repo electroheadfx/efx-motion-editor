@@ -57,7 +57,6 @@ import {
   type KeyIdentityFrameRecord,
 } from '../roto/keyIdentityFrameMap';
 import { disarmAquarellePicker } from './aquarelleColorPicker';
-import { firstBrushPresetForTool } from './brushToolFamily';
 import { exitRailMotionEditing } from './railMotionEditingMode';
 import { reorderForStackPosition, targetIndexForStackPosition } from './stackOrder';
 import {
@@ -169,6 +168,13 @@ export const MULTIPLIER_DEFAULT = 1.0;
  */
 const DEFAULT_TIP_ID = 'bristle-round';
 const INITIAL_MEDIUM_ID: MediumId = 'acrylic';
+/**
+ * quick 261122-gys (artist decision 2026-11-22): the Acrylic family's landing
+ * brush. The acrylic group's table order is `bristle-flat` THEN `bristle-round`,
+ * so "the group's first preset" would land the wrong brush — the acrylic
+ * default is stated here instead of derived from the table.
+ */
+const ACRYLIC_DEFAULT_TIP_ID = 'bristle-round';
 
 export const aquarelleParams = signal<AquarelleGlobalParams>({
   ...DEFAULT_AQUARELLE_PARAMS,
@@ -233,6 +239,83 @@ export function applyAquarelleMedium(id: string): void {
   }
   if (aquarelleSelectedMediumId.value !== record.id) {
     aquarelleSelectedMediumId.value = record.id;
+  }
+}
+
+/**
+ * quick 261122-gys — the session family memory, studio-only, NEVER persisted.
+ * `aquarelleLastTipByGroup` remembers the last preset picked in each medium
+ * group; `aquarelleLastBrushFamilyTipId` remembers the Brush family's last
+ * pick (every non-watercolor group). A Studio launch starts empty, so the
+ * family defaults are the acrylic landing brush.
+ */
+export const aquarelleLastTipByGroup = signal<Readonly<Partial<Record<MediumId, string>>>>({});
+export const aquarelleLastBrushFamilyTipId = signal<string>(ACRYLIC_DEFAULT_TIP_ID);
+
+/**
+ * The group of a preset id, resolved from the ONE preset table (64-11's
+ * `brushGroupOf`). Catalog / TIPS / unknown ids have no entry and therefore no
+ * group — they never invent one.
+ */
+function presetGroupOfId(presetId: string | null): MediumId | null {
+  if (presetId === null) return null;
+  const preset = BRUSH_PRESETS.find((candidate) => candidate.id === presetId);
+  return preset ? brushGroupOf(preset) : null;
+}
+
+/**
+ * The landing tip of a group with no remembered pick: its first table entry,
+ * except acrylic — whose table order would land `bristle-flat` — which lands
+ * on the stated `ACRYLIC_DEFAULT_TIP_ID` (Bristle Round).
+ */
+function firstTipIdInGroup(group: MediumId): string | null {
+  if (group === 'acrylic') {
+    const preferred = BRUSH_PRESETS.find((entry) => entry.id === ACRYLIC_DEFAULT_TIP_ID);
+    if (preferred && brushGroupOf(preferred) === 'acrylic') return preferred.id;
+  }
+  const first = BRUSH_PRESETS.find((entry) => brushGroupOf(entry) === group);
+  return first ? first.id : null;
+}
+
+/**
+ * A group's remembered pick, validated back into that group; a stale or
+ * cross-group id falls back to the group's landing preset.
+ */
+function lastTipIdInGroup(group: MediumId): string | null {
+  const remembered = aquarelleLastTipByGroup.value[group] ?? null;
+  return presetGroupOfId(remembered) === group ? remembered : firstTipIdInGroup(group);
+}
+
+/**
+ * The Brush family's remembered pick, validated as a non-watercolor preset.
+ * The fallback chain is the acrylic landing brush (Bristle Round), then the
+ * first non-watercolor table entry.
+ */
+function lastBrushFamilyTipId(): string | null {
+  const remembered = aquarelleLastBrushFamilyTipId.value;
+  const group = presetGroupOfId(remembered);
+  if (group !== null && group !== 'watercolor') return remembered;
+  return (
+    firstTipIdInGroup('acrylic') ??
+    (BRUSH_PRESETS.find((entry) => brushGroupOf(entry) !== 'watercolor')?.id ?? null)
+  );
+}
+
+/**
+ * Remember a picked preset: its group slot always, and the Brush family slot
+ * for every non-watercolor group. Compare-then-write so an unchanged pick
+ * wakes no subscriber (efx-preact-reactivity rule 3); a no-group id records
+ * nothing.
+ */
+function rememberAquarelleTipPick(presetId: string): void {
+  const group = presetGroupOfId(presetId);
+  if (group === null) return;
+  const byGroup = aquarelleLastTipByGroup.value;
+  if (byGroup[group] !== presetId) {
+    aquarelleLastTipByGroup.value = { ...byGroup, [group]: presetId };
+  }
+  if (group !== 'watercolor' && aquarelleLastBrushFamilyTipId.value !== presetId) {
+    aquarelleLastBrushFamilyTipId.value = presetId;
   }
 }
 
@@ -498,15 +581,25 @@ export function paintToolForTip(tipId: string | null): AquarelleTool {
 }
 
 /**
- * quick 261121-mtu: the ONE tool-pick seam for every tool surface (the live
+ * quick 261122-gys — the ONE tool-pick seam for every tool surface (the live
  * rail, the test-only tool row, the Studio's `selectAquarelleTool`).
  *
- * - `'watercolor'`: the paint tool whose family is the watercolor group.
- *   Binds that family — when the selected tip is outside it (or there is
- *   none), the group's first preset (`round`) is selected through
- *   `selectAquarelleTip`; then the Watercolor medium is applied and the tool
- *   is set. A tip already in the group is kept.
- * - `'brush'`: sets the tool only — never touches the tip or the medium.
+ * ONE invariant, superseding quick 261121-mtu's "a Brush press changes neither
+ * tip nor medium" (which produced the artist's gouache brush with watercolor
+ * params): the selected medium equals the selected preset's group.
+ *
+ * - `'watercolor'`: binds the Watercolor family. A watercolor tip is kept and
+ *   remembered; any other tip crosses to the family's last picked tip
+ *   (`round` on a fresh session) through `selectAquarelleTip`. The Watercolor
+ *   record is then applied unconditionally — a tool press IS a medium apply —
+ *   and the tool is set.
+ * - `'brush'`: binds the Brush family. A non-watercolor preset tip is kept
+ *   and remembered, and its group's record repairs a disagreeing label (a
+ *   staying press whose label already agrees never wipes manual globals —
+ *   MED-13). A watercolor tip (or none) crosses to the family's last picked
+ *   tip (`bristle-round` / acrylic by default) and applies the landing
+ *   group's record by law. A no-group tip (catalog / TIPS / unknown) keeps
+ *   both the tip and the medium: it has no group to apply.
  * - Everything else: a plain tool write (the Water dry-sheet gate lives in
  *   the surfaces, not here).
  *
@@ -516,39 +609,59 @@ export function paintToolForTip(tipId: string | null): AquarelleTool {
 export function selectAquarellePaintTool(tool: AquarelleTool): void {
   if (tool === 'watercolor') {
     const current = aquarelleSelectedTipId.value;
-    const currentPreset = current === null
-      ? undefined
-      : BRUSH_PRESETS.find((entry) => entry.id === current);
-    if (!currentPreset || brushGroupOf(currentPreset) !== 'watercolor') {
-      // The law, not a hardcoded id: the group's FIRST preset is `round`
-      // today, but the lookup is the authority if the catalog order moves.
-      const first = BRUSH_PRESETS.find((entry) => brushGroupOf(entry) === 'watercolor');
-      if (first) selectAquarelleTip(first.id);
+    if (presetGroupOfId(current) === 'watercolor') {
+      rememberAquarelleTipPick(current!);
+    } else {
+      const landing = lastTipIdInGroup('watercolor');
+      if (landing !== null) selectAquarelleTip(landing);
     }
     applyAquarelleMedium('watercolor');
     setAquarelleTool('watercolor');
     return;
   }
   if (tool === 'brush') {
-    // quick 261121-mtu (rev 2): the Brush tool exposes the NON-watercolor
-    // family (the response grid and the top-bar popover both filter to it).
-    // A pick that leaves a WATERCOLOR preset active would paint a brush its
-    // own list no longer shows, so it lands on the family's first preset —
-    // derived from brushGroupOrder, never a hardcoded id. A catalog/unknown
-    // tip is left alone (the Brush tool can use it), and the medium is never
-    // touched: only a brush PICK applies a medium.
     const current = aquarelleSelectedTipId.value;
-    const currentPreset = current === null
-      ? undefined
-      : BRUSH_PRESETS.find((entry) => entry.id === current);
-    if (currentPreset && brushGroupOf(currentPreset) === 'watercolor') {
-      const first = firstBrushPresetForTool('brush');
-      if (first) selectAquarelleTip(first.id);
+    const currentGroup = presetGroupOfId(current);
+    const crossing = current === null || currentGroup === 'watercolor';
+    if (crossing) {
+      const landing = lastBrushFamilyTipId();
+      if (landing !== null) selectAquarelleTip(landing);
+    } else if (currentGroup !== null) {
+      rememberAquarelleTipPick(current!);
+    }
+    const group = crossing ? presetGroupOfId(aquarelleSelectedTipId.value) : currentGroup;
+    // A crossing press applies the landing record by law; a staying press
+    // only repairs a disagreeing label (MED-13 keeps same-group tweaks).
+    if (
+      group !== null &&
+      group !== 'watercolor' &&
+      (crossing || aquarelleSelectedMediumId.value !== group)
+    ) {
+      applyAquarelleMedium(group);
     }
     setAquarelleTool('brush');
     return;
   }
   setAquarelleTool(tool);
+}
+
+/**
+ * quick 261122-gys — the Medium dropdown's ONE handler. A pick binds a preset
+ * of the picked group so the label, the rows and the brush can never
+ * disagree: the current in-group tip is kept, else the group's last picked
+ * tip lands, else the group's first preset (acrylic → Bristle Round). The
+ * record is then applied — unconditionally, so a re-pick of a drifted record
+ * restores it (D-03). A medium pick edits no recorded stroke (D-03/D-04), so
+ * there is no selection commit here. An unknown id is a total no-op.
+ */
+export function pickAquarelleMedium(id: string): void {
+  const record = mediumById(id);
+  if (record === null) return;
+  if (presetGroupOfId(aquarelleSelectedTipId.value) !== record.id) {
+    const landing = lastTipIdInGroup(record.id);
+    if (landing !== null) selectAquarelleTip(landing);
+  }
+  applyAquarelleMedium(record.id);
 }
 
 /**
@@ -569,6 +682,12 @@ export function selectAquarellePaintTool(tool: AquarelleTool): void {
  * `findTip(TIPS)` and `BRUSH_PRESETS` lookups, so those id spaces keep
  * winning. Only this selection path is extended — `setAquarelleLiftTipId`
  * below stays preset-only by design (D-04).
+ *
+ * quick 261122-gys: a successful pick records the session family memory
+ * (`rememberAquarelleTipPick`) before the same-id early return, so a re-pick
+ * and every tool switch land on the artist's last brush. A no-group id
+ * records nothing, and this function never writes the medium — the medium
+ * seams stay `pickAquarelleBrush`, `pickAquarelleMedium` and the tool switch.
  */
 export function selectAquarelleTip(tipId: string | null): void {
   const tip = tipId ? findTip(tipId) : undefined;
@@ -583,6 +702,10 @@ export function selectAquarelleTip(tipId: string | null): void {
   // Watercolor, any other group or no preset → Brush); the old blanket
   // `brush` flip is gone, so an acrylic pick still returns to Brush.
   if (nextId !== null) setAquarelleTool(paintToolForTip(nextId));
+  // quick 261122-gys: record the pick for the family memory — before the
+  // same-id early return, like the tool write above, so a re-pick still
+  // records. A no-group id records nothing.
+  if (nextId !== null) rememberAquarelleTipPick(nextId);
   const currentId = aquarelleSelectedTipId.value;
   if (currentId === nextId) return;
 

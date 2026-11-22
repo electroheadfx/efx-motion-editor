@@ -20,7 +20,6 @@
 import type { AquarelleToolOverrides } from '@efxlab/efx-watercolor/brushes';
 import {
   BRUSH_PRESETS,
-  DEFAULT_MEDIUM_ID,
   brushGroupOf,
   type MediumId,
 } from '@efxlab/efx-watercolor';
@@ -28,7 +27,7 @@ import {
   MULTIPLIER_MAX,
   MULTIPLIER_MIN,
   applyAquarelleMedium,
-  aquarelleSelectedTipId,
+  aquarelleSelectedMediumId,
   aquarelleToolOverrides,
   selectAquarelleTip,
   type AquarelleGlobalKey,
@@ -65,25 +64,25 @@ function groupOfPreset(presetId: string | null): MediumId | null {
  * the pick would stamp the OUTGOING bag onto the strokes. The bag is spread
  * into a snapshot: a later live write can never rewrite the patch in flight.
  *
- * MED-28: the response group IS the medium. The outgoing group is read BEFORE
- * the live pick, because the pick rewrites `aquarelleSelectedTipId`; a
- * no-preset selection reads as the neutral medium (the same law that makes an
- * untagged preset watercolor). A pick whose group differs applies that
- * group's record through the SAME `applyAquarelleMedium` the Paint-tab
- * dropdown uses — one spread write plus the id, never `size`/`lift`, never
- * the selection-edit path. A pick inside the same group writes nothing, so
- * the artist's manual global tweaks survive (MED-13). The committed patch
- * stays `{ brushId, toolOverrides }`: a card pick never edits an
- * already-recorded stroke's params (MED-11).
+ * MED-28: the response group IS the medium. quick 261122-gys closes the
+ * invariant hole: the comparison is the SELECTED MEDIUM against the incoming
+ * preset's group, never the outgoing tip's group — a catalog / TIPS tip in
+ * between (no group) used to read as watercolor and suppress a needed apply.
+ * A pick whose group differs applies that group's record through the SAME
+ * `applyAquarelleMedium` the Medium dropdown uses — one spread write plus the
+ * id, never `size`/`lift`, never the selection-edit path. A pick inside the
+ * same group writes nothing (id equality), so the artist's manual global
+ * tweaks survive (MED-13). The committed patch stays `{ brushId,
+ * toolOverrides }`: a card pick never edits an already-recorded stroke's
+ * params (MED-11).
  *
  * An unknown id still updates the live surface exactly as today — the record
  * door refuses the patch, and this returns its refusal.
  */
 export function pickAquarelleBrush(presetId: string): Promise<boolean> | null {
-  const outgoingGroup = groupOfPreset(aquarelleSelectedTipId.peek()) ?? DEFAULT_MEDIUM_ID;
   selectAquarelleTip(presetId);
   const incomingGroup = groupOfPreset(presetId);
-  if (incomingGroup !== null && incomingGroup !== outgoingGroup) {
+  if (incomingGroup !== null && aquarelleSelectedMediumId.peek() !== incomingGroup) {
     applyAquarelleMedium(incomingGroup);
   }
   return commitAquarelleSelectionAppearance(

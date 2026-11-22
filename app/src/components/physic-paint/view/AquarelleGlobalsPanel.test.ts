@@ -5,6 +5,9 @@
  *   Phase 64 (D-01/D-07): the medium dropdown is the FIRST child row and names
  *   the selected medium; five items render in the fixed D-18 order
  *   (Watercolor, Gouache, Chalk, Graphite, Acrylic)
+ *   quick 261122-gys: a dropdown pick binds a preset of the picked group —
+ *   the in-group tip is kept, else the family's last pick, else the group's
+ *   first (acrylic falls back to Bristle Round)
  *   quick 261121-mtu: the panel renders the six context groups from the ONE
  *   pure selector (`aquarelleParamVisibility.ts`, spec §8), driven by the
  *   active TOOL plus the selected MEDIUM. Default context (Brush + Watercolor)
@@ -35,12 +38,16 @@ import {
   AQUARELLE_GLOBAL_KEYS,
   DEFAULT_AQUARELLE_PARAMS,
   aquarelleActiveTool,
+  aquarelleLastBrushFamilyTipId,
+  aquarelleLastTipByGroup,
   aquarelleMediumMenuAnchor,
   aquarelleMediumMenuOpen,
   aquarelleParams,
   aquarelleSelectedMediumId,
+  aquarelleSelectedTipId,
   applyAquarelleMedium,
   recordAquarelleStroke,
+  selectAquarelleTip,
   setAquarelleMediumMenuOpen,
   setAquarelleParam,
 } from './aquarelleRecordState';
@@ -230,6 +237,11 @@ beforeEach(() => {
   aquarelleActiveTool.value = 'brush';
   aquarelleMediumMenuOpen.value = false;
   aquarelleMediumMenuAnchor.value = null;
+  // quick 261122-gys: the dropdown binds a preset of the picked group, so the
+  // tip and its session memory are part of this suite's fixture.
+  aquarelleSelectedTipId.value = null;
+  aquarelleLastTipByGroup.value = {};
+  aquarelleLastBrushFamilyTipId.value = 'bristle-round';
 });
 
 function findTestId(tree: TestVNode, testId: string): TestVNode | undefined {
@@ -515,6 +527,41 @@ describe('Phase 64 medium dropdown', () => {
     expect(aquarelleSelectedMediumId.value).toBe('watercolor');
   });
 
+  // quick 261122-gys — the dropdown binds a preset of the picked group, so
+  // the label, the panel rows and the brush can never disagree.
+  it('a dropdown pick of Acrylic selects Bristle Round and the acrylic record', () => {
+    selectAquarelleTip('gouache-round');
+    applyAquarelleMedium('gouache');
+    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-medium-item-acrylic');
+    (item!.props?.['onClick'] as () => void)();
+    expect(aquarelleSelectedTipId.value, 'the acrylic landing brush').toBe('bristle-round');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
+    expect(aquarelleParams.value.body).toBe(100);
+    expect(aquarelleParams.value.feather).toBe(85);
+    expect(aquarelleParams.value.viscosity).toBe(90);
+    expect(aquarelleParams.value.water).toBe(26);
+    expect(aquarelleParams.value.wetSeconds).toBe(12);
+  });
+
+  it('a dropdown pick of Watercolor keeps an in-group tip (detail)', () => {
+    selectAquarelleTip('detail');
+    aquarelleSelectedMediumId.value = 'gouache';
+    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-medium-item-watercolor');
+    (item!.props?.['onClick'] as () => void)();
+    expect(aquarelleSelectedTipId.value, 'the in-group tip is kept').toBe('detail');
+    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+  });
+
+  it('a first-ever dropdown pick of Watercolor lands on Round', () => {
+    setAquarelleMediumMenuOpen(true, { left: 20, top: 200 });
+    const item = findTestId(renderPanel(), 'aquarelle-medium-item-watercolor');
+    (item!.props?.['onClick'] as () => void)();
+    expect(aquarelleSelectedTipId.value, 'the watercolor family default').toBe('round');
+    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+  });
+
   it('draws no edited marker after a manual global tweak', () => {
     setAquarelleParam('water', 91);
     expect(/\bedited\b/i.test(textContent(renderPanel())), 'no edited marker').toBe(false);
@@ -535,7 +582,12 @@ describe('Phase 64 medium dropdown', () => {
     expect(body).toContain('}, [menuOpen]);');
     expect(body, 'signals only — never useState').not.toContain('useState');
     expect(body).toContain('data-aquarelle-medium-trigger');
-    expect(body).toContain('applyAquarelleMedium(medium.id);');
+    // quick 261122-gys: the dropdown binds a preset of the picked group AND
+    // applies the record through the ONE store handler.
+    expect(body).toContain('pickAquarelleMedium(medium.id);');
+    expect(body, 'the panel never calls the record applier itself').not.toContain(
+      'applyAquarelleMedium(',
+    );
     expect(body.split('MEDIUMS.map(').length - 1, 'one item list').toBe(1);
     expect(body).toContain('role="menuitemradio"');
     expect(body).toContain('aria-checked={active}');

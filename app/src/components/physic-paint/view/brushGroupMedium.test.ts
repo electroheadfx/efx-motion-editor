@@ -17,8 +17,13 @@
 //      medium id and the fourteen globals — and a texture selection
 //      changes neither.
 //   6. One seam: every response surface calls pickAquarelleBrush, and
-//      only the Paint-tab dropdown and the seam call the medium
-//      handler.
+//      only the pick seam and the store's own `pickAquarelleMedium`
+//      (the Paint-tab dropdown's handler) call the medium handler.
+//
+//  quick 261122-gys supersedes the outgoing-group comparison this file
+//  originally pinned: the seam now compares the SELECTED MEDIUM with the
+//  incoming preset's group, so a no-group tip in between cannot suppress a
+//  needed apply. Law 6's audit counts follow that shape.
 //
 //  Node env, real signals, fake selection port. Id band 10901+.
 // ============================================================
@@ -41,6 +46,8 @@ import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/pay
 import {
   DEFAULT_AQUARELLE_PARAMS,
   aquarelleBrushResponseMemory,
+  aquarelleLastBrushFamilyTipId,
+  aquarelleLastTipByGroup,
   aquarelleParams,
   aquarelleSelectedMediumId,
   aquarelleSelectedTextureId,
@@ -152,6 +159,9 @@ function resetState(): void {
   aquarelleSelectedTipId.value = 'filbert';
   aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES };
   aquarelleBrushResponseMemory.value = {};
+  // quick 261122-gys: the session family memory must not leak across cases.
+  aquarelleLastTipByGroup.value = {};
+  aquarelleLastBrushFamilyTipId.value = 'bristle-round';
   setAquarelleSelectionEditPort(null);
   setAquarelleSelectMode(false);
   clearScriptStrokeSelection();
@@ -373,6 +383,38 @@ describe('the Paint tab agrees after a cross-group pick (64-12 MED-28)', () => {
   });
 });
 
+// quick 261122-gys — the invariant: the selected medium equals the selected
+// preset's group. The seam compares the selected MEDIUM with the incoming
+// group, so a no-group tip (catalog / TIPS) can no longer masquerade as the
+// neutral medium and suppress a needed apply.
+describe('the pick seam holds the identity invariant (quick 261122-gys)', () => {
+  it('a no-group TIPS pick between two groups no longer suppresses the needed apply', async () => {
+    await pickAquarelleBrush('bristle-round');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
+
+    await pickAquarelleBrush('wc/texture-sponge');
+    expect(aquarelleSelectedTipId.value, 'the TIPS pick lands').toBe('wc/texture-sponge');
+    expect(aquarelleSelectedMediumId.value, 'a no-group tip keeps the medium').toBe('acrylic');
+
+    await pickAquarelleBrush('round');
+    expect(aquarelleSelectedMediumId.value, 'the watercolor pick applies its record').toBe(
+      'watercolor',
+    );
+    const watercolor = mediumById('watercolor')!;
+    for (const key of MEDIUM_KEYS) {
+      expect(aquarelleParams.value[key], key).toBe(watercolor.params[key]);
+    }
+  });
+
+  it('the selected medium equals the selected preset\'s group after every pick', async () => {
+    for (const preset of BRUSH_PRESETS) {
+      await pickAquarelleBrush(preset.id);
+      expect(aquarelleSelectedMediumId.value, preset.id).toBe(brushGroupOf(preset));
+      expect(aquarelleSelectedTipId.value, `tip ${preset.id}`).toBe(preset.id);
+    }
+  });
+});
+
 describe('the seam audit (64-12 MED-28)', () => {
   function stripComments(source: string): string {
     return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
@@ -405,16 +447,23 @@ describe('the seam audit (64-12 MED-28)', () => {
     return source!.split(needle).length - 1;
   }
 
-  it('keeps one tip-pick caller and two medium-handler callers', () => {
+  it('keeps one tip-pick caller and one medium-handler caller per surface', () => {
     const sources = viewSources();
     expect(filesMatching(sources, 'selectAquarelleTip('), 'the definition and the one seam').toEqual([
       'aquarellePaintControls.ts',
       'aquarelleRecordState.ts',
     ]);
+    // quick 261122-gys: the Paint-tab dropdown no longer calls the medium
+    // handler directly — it calls `pickAquarelleMedium`, which binds a preset
+    // of the picked group and then applies the record in the store.
     expect(
       filesMatching(sources, 'applyAquarelleMedium('),
-      'the definition, the seam and the Paint-tab dropdown',
-    ).toEqual(['AquarelleGlobalsPanel.tsx', 'aquarellePaintControls.ts', 'aquarelleRecordState.ts']);
+      'the definition and the pick seam only (no panel)',
+    ).toEqual(['aquarellePaintControls.ts', 'aquarelleRecordState.ts']);
+    expect(
+      filesMatching(sources, 'pickAquarelleMedium('),
+      'the definition and exactly one dropdown caller',
+    ).toEqual(['AquarelleGlobalsPanel.tsx', 'aquarelleRecordState.ts']);
     expect(
       filesMatching(sources, 'setAquarelleParam('),
       'no view writes medium keys outside the record module and the shipped globals surfaces',
@@ -424,16 +473,19 @@ describe('the seam audit (64-12 MED-28)', () => {
       'aquarelleRecordState.ts',
     ]);
     // "Each beside its definition": one definition, the ONE tool-pick seam
-    // (quick 261121-mtu: selectAquarellePaintTool calls both — a Watercolor
-    // press binds the family's first preset and the watercolor medium), and
-    // one dropdown call — never a second pathway. rev 2 adds the mirror
-    // Brush press (a watercolor tip lands in the non-watercolor family), so
-    // the tip-pick count is 3: definition + Watercolor seam + Brush seam.
-    expect(countOf(sources, 'aquarelleRecordState.ts', 'selectAquarelleTip(')).toBe(3);
+    // (selectAquarellePaintTool calls it from BOTH branches — a Watercolor
+    // press binds the family's remembered tip, a crossing Brush press the
+    // non-watercolor family's), plus the dropdown handler — never a second
+    // pathway. quick 261122-gys: 4 = definition + Watercolor branch + Brush
+    // branch + pickAquarelleMedium.
+    expect(countOf(sources, 'aquarelleRecordState.ts', 'selectAquarelleTip(')).toBe(4);
     expect(countOf(sources, 'aquarellePaintControls.ts', 'selectAquarelleTip(')).toBe(1);
-    expect(countOf(sources, 'aquarelleRecordState.ts', 'applyAquarelleMedium(')).toBe(2);
+    // 4 = definition + Watercolor branch + Brush branch + pickAquarelleMedium.
+    expect(countOf(sources, 'aquarelleRecordState.ts', 'applyAquarelleMedium(')).toBe(4);
     expect(countOf(sources, 'aquarellePaintControls.ts', 'applyAquarelleMedium(')).toBe(1);
-    expect(countOf(sources, 'AquarelleGlobalsPanel.tsx', 'applyAquarelleMedium(')).toBe(1);
+    expect(countOf(sources, 'AquarelleGlobalsPanel.tsx', 'applyAquarelleMedium(')).toBe(0);
+    expect(countOf(sources, 'aquarelleRecordState.ts', 'pickAquarelleMedium(')).toBe(1);
+    expect(countOf(sources, 'AquarelleGlobalsPanel.tsx', 'pickAquarelleMedium(')).toBe(1);
   });
 
   it('routes every response surface through the one pick seam', () => {

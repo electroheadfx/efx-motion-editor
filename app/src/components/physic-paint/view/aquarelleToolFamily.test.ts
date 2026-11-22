@@ -1,14 +1,21 @@
 /**
  * quick 261121-mtu — the paint tool's brush-family law.
+ * quick 261122-gys — supersedes part of it: the paint family is now an
+ * IDENTITY, not a one-way filter. The selected medium equals the selected
+ * preset's group, and Brush <-> Watercolor land on the family's last brush.
  *
  * Laws pinned here:
  *   a watercolor-group brush pick selects the Watercolor tool
  *   an acrylic / gouache / pastel / graphite pick selects the Brush tool
  *   an unknown id clears the selection and never flips the tool (the shipped
  *     `nextId !== null` guard — an unknown pick is a clear, not a family pick)
- *   the Watercolor tool applies the Watercolor medium and selects the
- *     group's first preset (`round`) only when the tip is outside the group
- *   the Brush tool changes neither the selected tip nor the medium
+ *   the Watercolor tool applies the Watercolor medium and lands on the
+ *     family's last picked tip (`round` on a fresh session)
+ *   the Brush tool keeps a non-watercolor tip and repairs a disagreeing
+ *     medium label; a watercolor tip crosses to the family's last picked tip
+ *     (`bristle-round` / acrylic by default) and applies that record
+ *   a no-group tip (catalog / TIPS / unknown) keeps the current medium
+ *   a second press of the active paint tool writes no signal at all
  *   the Water tool is a plain tool write (no family or medium change)
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
@@ -16,11 +23,13 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BRUSH_PRESETS, brushGroupOf, mediumById } from '@efxlab/efx-watercolor';
+import { BRUSH_PRESETS, brushGroupOf, mediumById, type MediumId } from '@efxlab/efx-watercolor';
 import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
 import {
   aquarelleActiveTool,
   aquarelleBrushResponseMemory,
+  aquarelleLastBrushFamilyTipId,
+  aquarelleLastTipByGroup,
   aquarelleParams,
   aquarelleSelectedMediumId,
   aquarelleSelectedTipId,
@@ -29,10 +38,19 @@ import {
   paintToolForTip,
   selectAquarellePaintTool,
   selectAquarelleTip,
+  setAquarelleParam,
 } from './aquarelleRecordState';
 
 const WATERCOLOR_FIRST = BRUSH_PRESETS.find((preset) => brushGroupOf(preset) === 'watercolor')!;
 const STORE_SOURCE = readFileSync(resolve(__dirname, './aquarelleRecordState.ts'), 'utf8');
+
+/** The identity law's assertion: all fourteen medium keys equal the record. */
+function expectRecordApplied(group: MediumId): void {
+  const record = mediumById(group)!;
+  for (const [key, value] of Object.entries(record.params)) {
+    expect(aquarelleParams.value[key as keyof typeof record.params], `${group}.${key}`).toBe(value);
+  }
+}
 
 describe('the opening tool follows the default brush (2026-11-22)', () => {
   it('the default brush is Bristle Round and its family tool is Brush', () => {
@@ -58,6 +76,18 @@ describe('the opening tool follows the default brush (2026-11-22)', () => {
     );
     expect(STORE_SOURCE).toContain('...mediumById(INITIAL_MEDIUM_ID)!.params,');
   });
+
+  it('a fresh Studio is unchanged: Brush, Bristle Round, Acrylic, the acrylic record', () => {
+    // quick 261122-gys must_haves row 1 — runs before any case mutates state.
+    expect(aquarelleSelectedTipId.value).toBe('bristle-round');
+    expect(aquarelleActiveTool.value).toBe('brush');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
+    expectRecordApplied('acrylic');
+    // Session memory starts empty; the Brush family defaults to Bristle Round
+    // (the acrylic group's table order would land bristle-flat).
+    expect(aquarelleLastTipByGroup.value).toEqual({});
+    expect(aquarelleLastBrushFamilyTipId.value).toBe('bristle-round');
+  });
 });
 
 function resetFamily(): void {
@@ -66,6 +96,8 @@ function resetFamily(): void {
   aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES };
   aquarelleBrushResponseMemory.value = {};
   aquarelleSelectedMediumId.value = null;
+  aquarelleLastTipByGroup.value = {};
+  aquarelleLastBrushFamilyTipId.value = 'bristle-round';
 }
 
 describe('brush pick → paint tool family (quick 261121-mtu)', () => {
@@ -100,13 +132,39 @@ describe('brush pick → paint tool family (quick 261121-mtu)', () => {
   });
 });
 
-describe('selectAquarellePaintTool (quick 261121-mtu)', () => {
+// quick 261122-gys supersedes quick 261121-mtu's rev-2 Brush law ("the Brush
+// tool changes neither the selected tip nor the medium"): that law produced
+// the artist's gouache brush carrying watercolor params.
+describe('selectAquarellePaintTool — the identity law (quick 261122-gys)', () => {
   beforeEach(() => {
     resetFamily();
-    applyAquarelleMedium('acrylic');
   });
 
-  it('the Watercolor tool applies the Watercolor medium and selects the first watercolor preset when the tip is outside the group', () => {
+  it('A -> W -> B lands Bristle Round with the Acrylic record (the artist report)', () => {
+    // Start from the acrylic family, as a fresh Studio does.
+    selectAquarelleTip('bristle-round');
+    applyAquarelleMedium('acrylic');
+
+    selectAquarellePaintTool('watercolor');
+    expect(aquarelleActiveTool.value).toBe('watercolor');
+    expect(aquarelleSelectedTipId.value).toBe('round');
+    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+    expectRecordApplied('watercolor');
+
+    selectAquarellePaintTool('brush');
+    expect(aquarelleActiveTool.value).toBe('brush');
+    expect(aquarelleSelectedTipId.value).toBe('bristle-round');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
+    expectRecordApplied('acrylic');
+    // The five values the artist named in the report, stated literally.
+    expect(aquarelleParams.value.body).toBe(100);
+    expect(aquarelleParams.value.feather).toBe(85);
+    expect(aquarelleParams.value.viscosity).toBe(90);
+    expect(aquarelleParams.value.water).toBe(26);
+    expect(aquarelleParams.value.wetSeconds).toBe(12);
+  });
+
+  it('the Watercolor tool applies the Watercolor medium and lands on the family default when the tip is outside the group', () => {
     aquarelleSelectedTipId.value = 'bristle-flat';
     selectAquarellePaintTool('watercolor');
     // The law, not a hardcoded id: the group's first preset is `round` today.
@@ -114,10 +172,7 @@ describe('selectAquarellePaintTool (quick 261121-mtu)', () => {
     expect(aquarelleSelectedTipId.value).toBe(WATERCOLOR_FIRST.id);
     expect(aquarelleSelectedMediumId.value).toBe('watercolor');
     expect(aquarelleActiveTool.value).toBe('watercolor');
-    const record = mediumById('watercolor')!;
-    for (const [key, value] of Object.entries(record.params)) {
-      expect(aquarelleParams.value[key as keyof typeof record.params], key).toBe(value);
-    }
+    expectRecordApplied('watercolor');
   });
 
   it('the Watercolor tool keeps a tip already inside the watercolor group', () => {
@@ -125,29 +180,103 @@ describe('selectAquarellePaintTool (quick 261121-mtu)', () => {
     selectAquarellePaintTool('watercolor');
     expect(aquarelleSelectedTipId.value).toBe('hake');
     expect(aquarelleActiveTool.value).toBe('watercolor');
+    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
   });
 
-  // quick 261121-mtu (rev 2): the Brush tool exposes the NON-watercolor family.
-  // A non-watercolor tip is left alone (mid-pick on a family brush is not a
-  // family change); a watercolor tip lands on the family's first preset —
-  // derived from brushGroupOrder, never a hardcoded id — and the medium is
-  // untouched in both cases.
-  it('the Brush tool leaves a non-watercolor tip alone and never touches the medium', () => {
+  it('the Watercolor tool lands on the family\'s remembered pick (hake)', () => {
+    selectAquarelleTip('hake');
+    selectAquarelleTip('chalk');
+    selectAquarellePaintTool('watercolor');
+    expect(aquarelleSelectedTipId.value).toBe('hake');
+    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+    expectRecordApplied('watercolor');
+  });
+
+  // Supersedes quick 261121-mtu rev 2: "the Brush tool leaves a non-watercolor
+  // tip alone and never touches the medium".
+  it('the Brush tool keeps a non-watercolor tip and repairs a disagreeing label', () => {
+    applyAquarelleMedium('acrylic');
     aquarelleSelectedTipId.value = 'chalk';
-    const medium = aquarelleSelectedMediumId.value;
+    expect(aquarelleSelectedMediumId.value, 'the label disagrees before the press').toBe('acrylic');
     selectAquarellePaintTool('brush');
     expect(aquarelleActiveTool.value).toBe('brush');
-    expect(aquarelleSelectedTipId.value).toBe('chalk');
-    expect(aquarelleSelectedMediumId.value).toBe(medium);
+    expect(aquarelleSelectedTipId.value, 'the tip is kept').toBe('chalk');
+    expect(aquarelleSelectedMediumId.value, 'the label is repaired').toBe('pastel');
+    expectRecordApplied('pastel');
   });
 
-  it('the Brush tool moves a watercolor tip into the brush family', () => {
+  it('a staying Brush press never wipes a manual global tweak (MED-13)', () => {
+    selectAquarelleTip('chalk');
+    applyAquarelleMedium('pastel');
+    setAquarelleParam('water', 71);
+    const bag = aquarelleParams.value;
+    selectAquarellePaintTool('brush');
+    expect(aquarelleSelectedTipId.value).toBe('chalk');
+    expect(aquarelleSelectedMediumId.value).toBe('pastel');
+    expect(aquarelleParams.value, 'the bag reference is untouched').toBe(bag);
+    expect(aquarelleParams.value.water).toBe(71);
+  });
+
+  // Supersedes quick 261121-mtu rev 2: "the Brush tool moves a watercolor tip
+  // into the brush family" (gouache-round) and "never touches the medium".
+  it('the Brush tool crosses a watercolor tip to Bristle Round and the Acrylic record', () => {
+    applyAquarelleMedium('watercolor');
     aquarelleSelectedTipId.value = 'hake';
-    const medium = aquarelleSelectedMediumId.value;
+    aquarelleActiveTool.value = 'watercolor';
     selectAquarellePaintTool('brush');
     expect(aquarelleActiveTool.value).toBe('brush');
-    expect(aquarelleSelectedTipId.value).toBe('gouache-round');
+    expect(aquarelleSelectedTipId.value).toBe('bristle-round');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
+    expectRecordApplied('acrylic');
+  });
+
+  it('the Brush tool lands on the family\'s remembered pick (chalk)', () => {
+    selectAquarelleTip('hake');
+    selectAquarelleTip('chalk');
+    selectAquarellePaintTool('watercolor');
+    selectAquarellePaintTool('brush');
+    expect(aquarelleSelectedTipId.value).toBe('chalk');
+    expect(aquarelleSelectedMediumId.value).toBe('pastel');
+    expectRecordApplied('pastel');
+  });
+
+  it('a no-group tip keeps the medium on a Brush press and crosses on a Watercolor press', () => {
+    selectAquarelleTip('bristle-round');
+    applyAquarelleMedium('acrylic');
+    selectAquarelleTip('wc/texture-sponge');
+    expect(aquarelleSelectedTipId.value, 'the TIPS id resolves as a pick').toBe('wc/texture-sponge');
+    expect(aquarelleSelectedMediumId.value).toBe('acrylic');
+    selectAquarellePaintTool('brush');
+    expect(aquarelleSelectedTipId.value, 'a no-group tip is kept').toBe('wc/texture-sponge');
+    expect(aquarelleSelectedMediumId.value, 'and its medium is kept too').toBe('acrylic');
+    selectAquarellePaintTool('watercolor');
+    expect(aquarelleSelectedTipId.value).toBe('round');
+    expect(aquarelleSelectedMediumId.value).toBe('watercolor');
+  });
+
+  it('a second press of the active paint tool writes no signal at all', () => {
+    selectAquarellePaintTool('watercolor');
+    const params = aquarelleParams.value;
+    const tip = aquarelleSelectedTipId.value;
+    const medium = aquarelleSelectedMediumId.value;
+    const tool = aquarelleActiveTool.value;
+    let writes = 0;
+    const stops = [
+      aquarelleParams.subscribe(() => { writes += 1; }),
+      aquarelleSelectedTipId.subscribe(() => { writes += 1; }),
+      aquarelleSelectedMediumId.subscribe(() => { writes += 1; }),
+      aquarelleActiveTool.subscribe(() => { writes += 1; }),
+      aquarelleLastTipByGroup.subscribe(() => { writes += 1; }),
+      aquarelleLastBrushFamilyTipId.subscribe(() => { writes += 1; }),
+    ];
+    writes = 0;
+    selectAquarellePaintTool('watercolor');
+    for (const stop of stops) stop();
+    expect(writes, 'a no-op press wakes no subscriber').toBe(0);
+    expect(aquarelleParams.value).toBe(params);
+    expect(aquarelleSelectedTipId.value).toBe(tip);
     expect(aquarelleSelectedMediumId.value).toBe(medium);
+    expect(aquarelleActiveTool.value).toBe(tool);
   });
 
   it('the Water tool is a plain tool write (no family or medium change)', () => {
