@@ -1279,3 +1279,278 @@ describe('the edge census separates irregular from aliased from graded (64-29 ta
     })
   })
 })
+
+// ============================================================
+//  Laws pinned here (64-29 task 3): the texture-tip A/B.
+//
+//  32. `bristle-tip` is a scenario in BOTH closed lists, one bristle line per
+//      capture. `--texture <id>` is a bristle-tip-only operand; probe.ts reads
+//      it and every capture registers the deterministic `probe/tip-ab` mask
+//      (exactly TIP_MASK_BYTES, index arithmetic only) through the shipped
+//      `registerMask` BEFORE the first stroke; a refused registration throws.
+//  33. `ScriptEntry` gains optional `textureId` (projected through the existing
+//      toStudioStroke path, never a new payload shape) and `pickup` (folded
+//      into the per-stroke params bag). A stroke setting neither records
+//      exactly as today.
+//  34. The report echoes the REQUESTED id, the id the stroke record actually
+//      carried, `tipMix` (1 only when the mask registry resolves the carried
+//      id — the engine's own fallback law), the across-profile band count and
+//      its median gap, and a named fallback note when an unknown id resolved
+//      to nothing.
+//  35. `bristleTipFailures` requires the echoes and numbers, fails a carried id
+//      that disagrees with the request, a plain capture that already reports an
+//      id, an unknown-id capture without its note, a `probe/tip-ab` capture
+//      whose tipMix is not 1, a tipMix outside 0/1, and — when the reference is
+//      the plain A/B capture — a masked capture carrying fewer than two extra
+//      bands.
+//  36. The band metric walks the same across-profile stations the line census
+//      uses: runs of stations at or above half the profile peak, count and
+//      median gap, so a stripes-forged mask reads as several bands and a
+//      plain line as one.
+//  37. `--differs-from` still fails two identical digest triples and unequal
+//      dimensions; the A/B rides that existing law, never a new one.
+// ============================================================
+
+describe('the texture-tip A/B (64-29 task 3)', () => {
+  function tipVerdict(status: number | null, output: string): string {
+    const invariant = output.split('\n').find((line) => line.startsWith('INVARIANT '))
+    return `status=${status} ${invariant ?? '(no INVARIANT line)'}`
+  }
+
+  function expectTipText(output: string, needle: string): void {
+    expect(output.includes(needle), `missing report text: ${needle}`).toBe(true)
+  }
+
+  /** Write `actual` and a DIFFERENT reference (three digests differ, equal
+   *  dimensions), then run `compare.mjs <name> --differs-from <name>-ref` —
+   *  the A/B mode the scenario is judged in. */
+  function compareSyntheticDiffers(
+    name: string,
+    actual: Record<string, unknown>,
+    reference: Record<string, unknown>,
+  ): { status: number | null; output: string } {
+    writeCapture(name, actual)
+    writeCapture(`${name}-ref`, {
+      ...baseCapture(String(reference.scenario), `${name}-ref`),
+      digestPaper: 'rpaper',
+      digestTransparent: 'rtransparent',
+      digestWhite: 'rwhite',
+      digestPigment: 'rpigment',
+      ...reference,
+    })
+    const result = spawnSync(process.execPath, [COMPARE_PATH, name, '--differs-from', `${name}-ref`], {
+      encoding: 'utf8',
+    })
+    return { status: result.status, output: `${result.stdout}${result.stderr}` }
+  }
+
+  function validTipCapture(): Record<string, unknown> {
+    return {
+      ...baseCapture('bristle-tip', 'nyquist'),
+      tipRequestedId: null,
+      tipTextureId: null,
+      tipMix: 0,
+      tipBands: 1,
+      tipGapPx: 0,
+      tipNote: null,
+    }
+  }
+
+  function maskedTipCapture(bands: number): Record<string, unknown> {
+    return {
+      ...validTipCapture(),
+      tipRequestedId: 'probe/tip-ab',
+      tipTextureId: 'probe/tip-ab',
+      tipMix: 1,
+      tipBands: bands,
+      tipGapPx: 4.5,
+    }
+  }
+
+  describe('the scenario, the operand and the deterministic mask', () => {
+    it('declares bristle-tip in both closed lists', () => {
+      expectContains(RUN, "scenarioRaw !== 'bristle-tip'")
+      expectContains(RUN, 'or "bristle-tip")')
+      expectContains(PROBE, "raw !== 'bristle-tip'")
+      expectContains(PROBE, 'or "bristle-tip")')
+    })
+
+    it('parses --texture as a bristle-tip-only operand', () => {
+      expectContains(RUN, "const textureFlag = args.indexOf('--texture')")
+      expectContains(RUN, 'invalid --texture "${textureRaw}" (expected a non-empty mask id)')
+      expectContains(RUN, '--texture is only valid with --scenario bristle-tip')
+      expectContains(RUN, '`&texture=${encodeURIComponent(texture)}`')
+      expectContains(PROBE, 'function readTipTexture(): string | undefined {')
+    })
+
+    it('builds the mask by index arithmetic at the exact byte length', () => {
+      expectContains(PROBE, "const TIP_PROBE_ID = 'probe/tip-ab'")
+      expectContains(PROBE, 'new Uint8Array(TIP_MASK_BYTES)')
+      expectContains(PROBE, 'mask.fill(value, row * TIP_MASK_EDGE, (row + 1) * TIP_MASK_EDGE)')
+      expectContains(PROBE, 'function probeTipMask(): Uint8Array {')
+    })
+
+    it('registers it through the shipped registry and fails loudly when refused', () => {
+      expectContains(PROBE, "import { registerMask } from '../../src/brushes/maskRegistry'")
+      expectContains(PROBE, "import { TIP_MASK_BYTES, TIP_MASK_EDGE } from '../../src/brushes/deriveMask'")
+      expectContains(PROBE, 'function registerProbeTip(): void {')
+      expectContains(PROBE, 'registerMask(TIP_PROBE_ID, probeTipMask())')
+      expectContains(PROBE, 'bristle-tip: registerMask refused')
+      expectContains(PROBE, 'if (scenario === \'bristle-tip\') registerProbeTip()')
+    })
+
+    it('carries textureId and pickup only when an entry sets them', () => {
+      expectContains(PROBE, 'readonly textureId?: string')
+      expectContains(PROBE, 'readonly pickup?: number')
+      expectContains(PROBE, "if (entry.pickup !== undefined) bag['pickup'] = entry.pickup")
+      expectContains(PROBE, '...(entry.textureId !== undefined ? { textureId: entry.textureId } : {})')
+    })
+  })
+
+  describe('the report and the comparator name the echoes and the band metric', () => {
+    it('echoes the requested and carried ids, tipMix and the bands', () => {
+      expectContains(PROBE, 'tipRequestedId:')
+      expectContains(PROBE, 'tipTextureId:')
+      expectContains(PROBE, 'tipMix:')
+      expectContains(PROBE, 'tipBands:')
+      expectContains(PROBE, 'tipGapPx:')
+      expectContains(PROBE, 'tipNote:')
+      expectContains(PROBE, 'scenario === \'bristle-tip\'')
+    })
+
+    it('derives the bands in one across-profile walk', () => {
+      expectContains(PROBE, 'const TIP_BAND_FRACTION = 0.5')
+      expectContains(PROBE, 'function acrossBandStats(')
+      expectContains(PROBE, 'lineProfileSet(engine)')
+    })
+
+    it('dispatches bristle-tip to its own failure function', () => {
+      expectContains(COMPARE, "'bristle-tip': bristleTipFailures,")
+      expectContains(COMPARE, 'function bristleTipFailures(')
+    })
+
+    it('names every echo and the band bar', () => {
+      expectContains(COMPARE, 'tipRequestedId')
+      expectContains(COMPARE, 'tipTextureId')
+      expectContains(COMPARE, 'tipMix')
+      expectContains(COMPARE, 'tipBands')
+      expectContains(COMPARE, 'tipGapPx')
+      expectContains(COMPARE, "const PROBE_TIP_ID = 'probe/tip-ab'")
+      expectContains(COMPARE, 'const TIP_BANDS_MIN_GAIN = 2')
+    })
+
+    it('names the echo, fallback and band failures', () => {
+      expectContains(COMPARE, 'the echoes disagree with the requested texture')
+      expectContains(COMPARE, 'already reports a texture id')
+      expectContains(COMPARE, 'without its fallback note')
+      expectContains(COMPARE, 'the probe mask did not compose')
+      expectContains(COMPARE, 'the masked capture has fewer bands than the plain one')
+    })
+  })
+
+  describe('the synthetic captures split pass from fail (executed)', () => {
+    it('passes the plain capture', () => {
+      const { status, output } = compareSynthetic('nyquist-tip-plain', validTipCapture())
+
+      expect(status, tipVerdict(status, output)).toBe(0)
+      expectTipText(output, 'scenario invariants hold')
+    })
+
+    it('passes the unknown-id fallback with its note', () => {
+      const { status, output } = compareSynthetic('nyquist-tip-unknown', {
+        ...validTipCapture(),
+        tipRequestedId: 'probe/missing',
+        tipTextureId: 'probe/missing',
+        tipMix: 0,
+        tipNote: 'unknown texture "probe/missing": the engine falls back to the response tip',
+      })
+
+      expect(status, tipVerdict(status, output)).toBe(0)
+    })
+
+    it('fails a plain capture that already reports a texture id', () => {
+      const { status, output } = compareSynthetic('nyquist-tip-plain-id', {
+        ...validTipCapture(),
+        tipTextureId: 'probe/tip-ab',
+      })
+
+      expect(status, tipVerdict(status, output)).toBe(1)
+      expectTipText(output, 'already reports a texture id')
+    })
+
+    it('fails an unknown id with no fallback note', () => {
+      const { status, output } = compareSynthetic('nyquist-tip-no-note', {
+        ...validTipCapture(),
+        tipRequestedId: 'probe/missing',
+        tipTextureId: 'probe/missing',
+        tipMix: 0,
+      })
+
+      expect(status, tipVerdict(status, output)).toBe(1)
+      expectTipText(output, 'without its fallback note')
+    })
+
+    it('fails the probe mask that did not compose', () => {
+      const { status, output } = compareSynthetic('nyquist-tip-unmixed', {
+        ...maskedTipCapture(3),
+        tipMix: 0,
+        tipNote: 'unknown texture "probe/tip-ab"',
+      })
+
+      expect(status, tipVerdict(status, output)).toBe(1)
+      expectTipText(output, 'the probe mask did not compose')
+    })
+
+    it('fails echoes that disagree with the request', () => {
+      const { status, output } = compareSynthetic('nyquist-tip-disagree', {
+        ...maskedTipCapture(3),
+        tipTextureId: 'probe/other',
+      })
+
+      expect(status, tipVerdict(status, output)).toBe(1)
+      expectTipText(output, 'the echoes disagree with the requested texture')
+    })
+
+    it('fails a missing band number by name', () => {
+      const capture = validTipCapture()
+      delete capture.tipBands
+      const { status, output } = compareSynthetic('nyquist-tip-missing', capture)
+
+      expect(status, tipVerdict(status, output)).toBe(1)
+      expectTipText(output, 'tipBands')
+    })
+
+    it('passes an A/B whose masked capture adds two bands', () => {
+      const { status, output } = compareSyntheticDiffers(
+        'nyquist-tip-ab-pass',
+        maskedTipCapture(3),
+        validTipCapture(),
+      )
+
+      expect(status, tipVerdict(status, output)).toBe(0)
+      expectTipText(output, 'all 3 digests differ')
+    })
+
+    it('fails an A/B whose masked capture adds no bands', () => {
+      const { status, output } = compareSyntheticDiffers(
+        'nyquist-tip-ab-flat',
+        maskedTipCapture(1),
+        validTipCapture(),
+      )
+
+      expect(status, tipVerdict(status, output)).toBe(1)
+      expectTipText(output, 'the masked capture has fewer bands than the plain one')
+    })
+
+    it('fails an A/B on two identical digest triples', () => {
+      const { status, output } = compareSyntheticDiffers(
+        'nyquist-tip-ab-same',
+        maskedTipCapture(3),
+        { ...validTipCapture(), digestPaper: 'dpaper', digestTransparent: 'dtransparent', digestWhite: 'dwhite', digestPigment: 'dpigment' },
+      )
+
+      expect(status, tipVerdict(status, output)).toBe(1)
+      expectTipText(output, 'digest(s) did not differ')
+    })
+  })
+})
