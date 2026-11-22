@@ -106,11 +106,12 @@
 //  64-24 adds `'bristle-wet'`: the wetness acceptance on one sheet and one
 //  brush — a fresh crossing over a right-hand band versus a thirty-second-old,
 //  re-wetted crossing over a left-hand band. Both pickup means must be finite,
-//  positive and inside [0, 255], and their gap must reach PICKUP_MIN_DELTA
-//  (1 luma unit): the age gate has to change the crossing, or Dry is
-//  decorative. The direction is recorded evidence, never asserted. The A/B is
-//  a capture comparison (`--differs-from` against the `--wet-mode 0` proxy),
-//  never a committed baseline.
+//  positive and inside [0, 255], and their gap must reach PICKUP_MIN_DELTA,
+//  derived at half the recorded gap of the committed `bristle-wet-1080`
+//  capture (199.52 luma): a response collapsed to a fraction of what the age
+//  gate recorded is not the feature (64-28, IN-07). The direction is recorded
+//  evidence, never asserted. The A/B is a capture comparison (`--differs-from`
+//  against the `--wet-mode 0` proxy), never a committed baseline.
 //
 //  Exit codes: 0 = pass, 1 = fail or missing data, 2 = bad usage.
 //  Unknown flags are rejected loudly — a later plan adding an operand must
@@ -584,8 +585,17 @@ function bristleEdgeFailures(data) {
  * crossing reads darker is recorded in the SUMMARY as evidence, not asserted
  * (the two bands differ in age by construction, so the direction is a
  * measurement, not a contract).
+ *
+ * 64-28 (IN-07): the floor is not a decorative round number. The committed
+ * `baselines/bristle-wet-1080.json` capture records pickupFreshMean 50.64
+ * against pickupAgedWetMean 250.16 — a recorded gap of 199.52 luma units. A
+ * response that collapses to half of that gap no longer carries the feature,
+ * so the floor is derived at fifty percent. Re-authoring the baseline (a new
+ * capture) REQUIRES re-deriving the floor from the new recorded pair; never
+ * leave an old derivation behind a new baseline.
  */
-const PICKUP_MIN_DELTA = 1
+const RECORDED_PICKUP_GAP = 199.52 // |50.64 - 250.16| in baselines/bristle-wet-1080.json
+const PICKUP_MIN_DELTA = RECORDED_PICKUP_GAP / 2 // 99.76 luma units
 
 function bristleWetFailures(data) {
   const fields = ['pickupFreshMean', 'pickupAgedWetMean']
@@ -617,7 +627,8 @@ function bristleWetFailures(data) {
   if (!(Math.abs(fresh - aged) >= PICKUP_MIN_DELTA)) {
     failures.push(
       `|pickupFreshMean ${fresh} - pickupAgedWetMean ${aged}| is below ${PICKUP_MIN_DELTA} luma ` +
-        '(the age gate did not change the crossing: Dry is not load-bearing)',
+        `(derived as half the recorded ${RECORDED_PICKUP_GAP}-luma gap of bristle-wet-1080; ` +
+        'the age gate did not change the crossing: Dry is not load-bearing)',
     )
   }
   return failures
