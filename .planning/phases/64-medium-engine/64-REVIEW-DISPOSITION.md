@@ -33,21 +33,21 @@ findings:
     title: "Azimuth 360 wraps to 0, making the slider knob snap to the left end on release"
 open: 7
 total: 7
-recorded: 2026-11-18T19:45:33.404Z
-
+unparsed: 8
+recorded: 2026-11-22T13:34:07.078Z
 ---
 
 # Phase 64: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
-| CR-02 | critical | open | - |
-| WR-01 | warning | open | - |
-| WR-02 | warning | open | - |
-| IN-01 | info | open | - |
-| IN-02 | info | open | - |
-| IN-03 | info | open | - |
+| CR-01 | critical | open | - (not in the current review) |
+| CR-02 | critical | open | - (not in the current review) |
+| WR-01 | warning | open | - (not in the current review) |
+| WR-02 | warning | open | - (not in the current review) |
+| IN-01 | info | open | - (not in the current review) |
+| IN-02 | info | open | - (not in the current review) |
+| IN-03 | info | open | - (not in the current review) |
 
 Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
 Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
