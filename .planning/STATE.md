@@ -4,17 +4,17 @@ milestone: v2.2.0
 milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
-status: ready_to_execute
-stopped_at: Gap-closure plans 64-29..64-38 created — run /gsd-execute-phase 64 --gaps-only
-last_updated: "2026-11-22T18:45:00.000Z"
+status: executing
+stopped_at: Completed 64-29-PLAN.md
+last_updated: "2026-11-22T18:43:27.472Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 64 execution started
-state_head: c6124eee8d7eabb0e437676c51c04899887d6af1
+state_head: 36696cab933d31c3851905cd2f73bc9ee908425e
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 55
-  completed_plans: 45
+  completed_plans: 46
   percent: 50
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 
 ## Current Position
 
-Phase: 64 (Medium Engine) — READY TO EXECUTE
-Plan: 28 of 38 executed; gap-closure plans 64-29..64-38 planned
-Status: ready to execute
-Last activity: 2026-11-22 — gap-closure planning complete
+Phase: 64 (Medium Engine) — EXECUTING
+Plan: 30 of 38
+Status: Ready to execute
+Last activity: 2026-11-22 — Phase 64 execution started
 
 
 ## Performance Metrics
@@ -172,6 +172,7 @@ Last activity: 2026-11-22 — gap-closure planning complete
 | Phase 64 P26 | 6 | 3 tasks | 9 files |
 | Phase 64 P27 | 3 min | 2 tasks | 4 files |
 | Phase 64 P28 | 5min | 2 tasks | 6 files |
+| Phase 64 P29 | 24min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -575,6 +576,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: The unblock edge never starts beside a live run — the parked request becomes the queued follow-up (maxActive stays 1) — and both resolveIdleWaiters and settle()'s early return treat a parked request as non-idle (64-27)
 - [Phase 64]: Sheet-cache identity is a canonical whole-event FNV-1a digest (sorted keys, typed length-framed encoding, total on malformed payloads); the count-only seedSignature walk is deleted — KEY = CACHE now restores only under the exact script. IN-05.
 - [Phase 64]: The bristle-wet pickup floor is derived in source at half the committed baseline's recorded gap (199.52 to 99.76 luma); re-authoring the baseline requires re-deriving the floor, and a 49/50 collapsed response is now a named failure. IN-07.
+- [Phase 64]: 64-29: the bristle-line gate is judged against a same-session twin, never a committed baseline (none exists until 64-36)
+- [Phase 64]: 64-29: tipMix is resolved through buildBrushForStroke (the engine's own fallback law); the tip band bar is reference-aware (masked actual + plain reference only)
+- [Phase 64]: 64-29: at HEAD the texture-tip mask registers (tipMix 1) but adds no separated bands (1 vs 1 at row 64/256 and column 64) — recorded for 64-35, no engine code touched
+- [Phase 64]: 64-29: the bristle-line gate fails its own bars at HEAD (halo peakRel 0.4628/0.4493 vs 0.4, runs 3/4 vs 2) on all three surfaces — the recorded defect for 64-32/64-33/64-34
 
 ### Pending Todos
 
@@ -706,8 +711,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-22T16:26:32.661Z
-Stopped at: Verification found gaps — ready for /gsd-plan-phase 64 --gaps
+Last session: 2026-11-22T18:43:26.637Z
+Stopped at: Completed 64-29-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

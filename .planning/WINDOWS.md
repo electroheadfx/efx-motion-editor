@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 20
+open_count: 22
 waived_count: 18
 fixed_count: 92
-total_count: 130
-last_updated: 2026-11-19T14:22:41.996Z
+total_count: 132
+last_updated: 2026-11-22T18:42:57.020Z
 ---
 
 # Broken Windows Ledger
@@ -145,6 +145,8 @@ last_updated: 2026-11-19T14:22:41.996Z
 | 128 | 64 | deviation | packages/efx-watercolor/src/playground/Engine.ts |  | 64-13: the docTargets SPIKE comment moved above return [] so the array-entry splitter sees pure entries | open |  | 2026-11-18T17:38:46.302Z |  |
 | 129 | 64 | deviation | packages/efx-watercolor/probe/medium-engine/compare.mjs | 1 | 64-16 calibration: the provisional coverAlphaP90 >= 0.5 band became a measured floor of 0 (chalk core occupies 8% of the mandated box; P90 reads 0 on bare paper) | open |  | 2026-11-18T19:09:47.816Z |  |
 | 130 | 64 | deviation | packages/efx-watercolor/probe/medium-engine/probe.ts |  | 64-23: the bristle-edge census reads the transparent export's deposited darkness, not the mode-4 alpha, because the coverage union saturates (measured 0.8 px at Feather 0 and 100) | open |  | 2026-11-19T14:22:41.996Z |  |
+| 131 | 64 | unmet-truth | packages/efx-watercolor/probe/medium-engine/compare.mjs |  | bristle-tip A/B: the probe mask registers (tipMix 1) but adds no separated bands at HEAD (1 vs 1); recorded for 64-35, not fixed | open |  | 2026-11-22T18:42:54.249Z |  |
+| 132 | 64 | unmet-truth | packages/efx-watercolor/probe/medium-engine/compare.mjs |  | bristle-line gate fails its own bars at HEAD on all three surfaces (halo peakRel 0.4628/0.4493 vs 0.4; runs 3/4 vs 2) — recorded in 64-29 for 64-32/64-33/64-34 | open |  | 2026-11-22T18:42:57.020Z |  |
 
 ````json
 [
@@ -1763,6 +1765,32 @@ last_updated: 2026-11-19T14:22:41.996Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-19T14:22:41.996Z",
+    "resolved_at": null,
+    "milestone": "v2.2.0"
+  },
+  {
+    "id": 131,
+    "kind": "unmet-truth",
+    "phase": "64",
+    "file": "packages/efx-watercolor/probe/medium-engine/compare.mjs",
+    "line": null,
+    "description": "bristle-tip A/B: the probe mask registers (tipMix 1) but adds no separated bands at HEAD (1 vs 1); recorded for 64-35, not fixed",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-22T18:42:54.249Z",
+    "resolved_at": null,
+    "milestone": "v2.2.0"
+  },
+  {
+    "id": 132,
+    "kind": "unmet-truth",
+    "phase": "64",
+    "file": "packages/efx-watercolor/probe/medium-engine/compare.mjs",
+    "line": null,
+    "description": "bristle-line gate fails its own bars at HEAD on all three surfaces (halo peakRel 0.4628/0.4493 vs 0.4; runs 3/4 vs 2) — recorded in 64-29 for 64-32/64-33/64-34",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-22T18:42:57.020Z",
     "resolved_at": null,
     "milestone": "v2.2.0"
   }
