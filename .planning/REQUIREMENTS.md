@@ -55,7 +55,7 @@
 - [x] **MED-22**: The cover pass touches the settled layer and the thickness only — standing water and mobile pigment are untouched, so a light stroke over a still-wet dark area mixes with it (declared behaviour, not a defect), and covering is destructive to the settled sheet while hide/show and undo stay consistent
 - [x] **MED-23**: A stroke snapshots its `Body` with its params the way `lift` and `viscosity` are snapshotted; live pass, bake and replay read the same value and produce the same raster, and the medium record carries the value (`watercolor` 0, `pastel` low, `graphite` 0, `gouache` mid, `acrylic` high)
 - [ ] **MED-24**: Undo and redo restore both the settled-layer region and the thickness a covering stamp eroded — both pools protected before the cover pass's first draw, verified rather than assumed
-- [x] **MED-25**: `Body` adds no render target, no texture allocation and no shader program beyond the thickness channel of MED-14 (the cover pass reuses the Lift program), and export matches the screen on both `uMode` paths
+- [ ] **MED-25**: `Body` adds no render target, no texture allocation and no shader program beyond the thickness channel of MED-14 (the cover pass reuses the Lift program), and export matches the screen on both `uMode` paths
 - [ ] **MED-26**: `BrushPreset` carries a compile-time `group` with five values (`watercolor`, `gouache`, `pastel`, `graphite`, `acrylic`); absent reads `watercolor`, nothing is persisted and there is no Rust or format change
 - [ ] **MED-27**: The brush library renders one section per group in the fixed order Watercolor · Gouache · Chalk/pastel · Graphite · Acrylic/oil, with no filter and no search; a group with no reachable response is not rendered
 - [ ] **MED-28**: Selecting a response applies its group's medium params in exactly one store write, only when the group changes; switching brushes inside the same group keeps the user's manual global tweaks
@@ -68,7 +68,7 @@
 - [ ] **MED-35**: At `S = 0` the render is bit-identical, verified by a pixel-buffer comparison, with a numerically stable small-argument branch and a recorded epsilon
 - [ ] **MED-36**: Scattering and order compose — high `Body` both scatters and erases; low `Body` scatters without erasing, so a semi-opaque glaze lightens without destroying the pigment underneath
 - [ ] **MED-37**: The white-gouache channel is retired from the deposit, settle and composite paths, and a check confirms no shipped project writes it
-- [x] **MED-38**: Replay determinism holds for `S` (live = bake = replay) and export matches the screen on every `uMode` path
+- [ ] **MED-38**: Replay determinism holds for `S` (live = bake = replay) and export matches the screen on every `uMode` path
 
 ## v2 Requirements
 
@@ -151,7 +151,7 @@ Which phases cover which requirements.
 | MED-22 | Phase 64 | Complete |
 | MED-23 | Phase 64 | Complete |
 | MED-24 | Phase 64 | Gaps Found |
-| MED-25 | Phase 64 | Complete |
+| MED-25 | Phase 64 | Gaps Found |
 | MED-26 | Phase 64 | Gaps Found |
 | MED-27 | Phase 64 | Gaps Found |
 | MED-28 | Phase 64 | Gaps Found |
@@ -164,7 +164,7 @@ Which phases cover which requirements.
 | MED-35 | Phase 64 | Gaps Found |
 | MED-36 | Phase 64 | Gaps Found |
 | MED-37 | Phase 64 | Gaps Found |
-| MED-38 | Phase 64 | Complete |
+| MED-38 | Phase 64 | Gaps Found |
 
 **Coverage:**
 - v1 requirements: 55 total (17 TIP + 38 MED)
