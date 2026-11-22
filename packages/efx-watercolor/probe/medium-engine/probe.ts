@@ -103,12 +103,13 @@
 //
 //  64-17 also adds `white-over-blue` (Spike 001 criterion 1): a saturated
 //  #0044dd band at Body 0, fixed, then a #f0f0f0 diagonal at the Body knob
-//  (default 100) crossing it. The pigment export's alpha IS the compositor
-//  alpha (mode 4: alpha = max(1 − min(rgb), cover)), so a coverage claim can
-//  be measured from an export at all; `crossDarkAlpha` is measured on the
-//  TRANSPARENT export on purpose — it is the exact alpha the pre-coverage
-//  commit derived from the sheet, so `crossCoverAlpha − crossDarkAlpha` is the
-//  change the model makes to the committed payload.
+//  (default 100) crossing it. Since the 2026-11-21 law the pigment export's
+//  alpha is the pigment's darkness ALONE — it carries no coverage term — so
+//  64-31 measures the coverage claim on the COVERAGE raster, the only channel
+//  that carries coverage. `crossDarkAlpha` stays measured on the TRANSPARENT
+//  export on purpose: it is the darkness the pre-coverage commit derived from
+//  the sheet, so `crossCoverage − crossDarkAlpha` is the coverage that exists
+//  beyond that darkness.
 //
 //  64-20 adds the offender census beside the criterion-1 percentage:
 //  `coveredPaperWhiteBox` reports the covered count, the offending count and
@@ -120,10 +121,10 @@
 //  64-14 adds `cover-advect`: the cover geometry with the covering stroke left
 //  WET (`fixAfter: false`), so the gate can watch the coverage channel travel
 //  with its pigment through the wet simulation. The report carries the
-//  crossing box's mean and peak alpha on the PIGMENT export before and after
-//  eight extra wet ticks, plus the covered-paper-white scan after them; the
-//  mode-4 alpha is max(darkness, cover), and at Body 100 the white pigment's
-//  own darkness alpha is a few percent, so the crossing alpha is ~cover.
+//  crossing box's mean and peak COVERAGE on the COVERAGE raster before and
+//  after eight extra wet ticks, plus the covered-paper-white scan after them
+//  (64-31: the raster is the instrument; no export's alpha is re-derived into
+//  a coverage claim).
 //
 //  64-14 also adds `cover-lift`: the cover geometry fully fixed, then a LIFT
 //  stroke (the same tool through the same applyStroke seam at pressure 0.8)
@@ -451,7 +452,14 @@ function bandStats(
   return { mean, blueExcess: mean[2] - mean[0] }
 }
 
-/** Mean alpha, 0..1, over a box on the mode-4 pigment export. */
+/**
+ * Mean alpha byte, 0..1, over a box — channel-agnostic arithmetic. Given the
+ * coverage raster it reads coverage (`exportCoverageCanvas` writes the value
+ * to rgb AND alpha); given a premultiplied export it reads a genuine alpha.
+ * 64-31: the two meanings never merge again — coverage claims call the
+ * coverage-named wrappers below, and nothing calls this with a pigment export
+ * to infer coverage.
+ */
 function alphaMean(canvas: HTMLCanvasElement, box: BandBox): number {
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('alpha mean: exported canvas has no 2D context')
@@ -471,7 +479,10 @@ function alphaMean(canvas: HTMLCanvasElement, box: BandBox): number {
   return n > 0 ? sum / n / 255 : 0
 }
 
-/** Mean and peak alpha, 0..1, over a box on the mode-4 pigment export (64-14). */
+/**
+ * Mean and peak alpha byte, 0..1, over a box — channel-agnostic arithmetic
+ * (64-14), shared by the coverage wrapper and any genuine alpha reading.
+ */
 function alphaStats(canvas: HTMLCanvasElement, box: BandBox): { mean: number; peak: number } {
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('alpha stats: exported canvas has no 2D context')
@@ -493,8 +504,26 @@ function alphaStats(canvas: HTMLCanvasElement, box: BandBox): { mean: number; pe
   return { mean: n > 0 ? sum / n / 255 : 0, peak: peak / 255 }
 }
 
+/** 64-31: mean COVERAGE, 0..1, over a box on the coverage raster. The only
+ *  accessor a coverage claim may use; the value lives in every exported
+ *  channel, so the generic alpha arithmetic reads it unchanged. The committed
+ *  cover baselines predate this vocabulary and are stale by design — 64-36
+ *  re-captures them; this plan edits no baseline. */
+function coverageMean(canvas: HTMLCanvasElement, box: BandBox): number {
+  return alphaMean(canvas, box)
+}
+
+/** 64-31: mean and peak COVERAGE, 0..1, over a box on the coverage raster —
+ *  the lifecycle gates' accessor (see `coverageMean` for the stale-baseline
+ *  note). */
+function coverageStats(canvas: HTMLCanvasElement, box: BandBox): { mean: number; peak: number } {
+  return alphaStats(canvas, box)
+}
+
 /** Mean of 1 − min(r, g, b)/255 over a box on the transparent export — the
- *  alpha the pre-coverage commit derived from the sheet. */
+ *  darkness the display derives its alpha from. This stays the DARKNESS claim:
+ *  after the 2026-11-21 law it carries no coverage term, and no coverage claim
+ *  may read it as one. */
 function darkAlphaMean(canvas: HTMLCanvasElement, box: BandBox): number {
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('dark alpha mean: exported canvas has no 2D context')
@@ -516,7 +545,7 @@ function darkAlphaMean(canvas: HTMLCanvasElement, box: BandBox): number {
 
 /** The covered-paper-white census: which texels a failing scan counts. */
 interface CoveredPaperWhiteCensus {
-  /** Texels the pigment layer claims to cover (mode-4 alpha ≥ threshold). */
+  /** Texels the coverage raster claims to cover (coverage ≥ threshold). */
   readonly covered: number
   /** Of those, texels whose transparent sheet still reads as bare paper. */
   readonly count: number
@@ -527,26 +556,30 @@ interface CoveredPaperWhiteCensus {
 /**
  * The offender census behind `coveredPaperWhitePct` — one texel loop serves
  * both readings, so the percentage can never disagree with the census it
- * reports. Counts the texels the pigment layer claims to COVER (mode-4 alpha
- * ≥ threshold) and, among them, the texels that still read as bare paper
- * (≥ 250 luma) on the transparent export; returns the offending texels' union
- * bbox in document uv (y up), or `null` when no texel offends.
+ * reports. Counts the texels the COVERAGE raster claims to cover (coverage ≥
+ * threshold — 64-31: never the pigment export's alpha, which after the
+ * 2026-11-21 law carries no coverage term) and, among them, the texels that
+ * still read as bare paper (≥ 250 luma) on the transparent export; returns
+ * the offending texels' union bbox in document uv (y up), or `null` when no
+ * texel offends.
  *
  * 64-20 exists so a failing scan NAMES its texels: the percentage alone said
- * "0.88" while the four exported digests said nothing about where.
+ * "0.88" while the four exported digests said nothing about where. The
+ * committed cover baselines predate this vocabulary and are stale by design —
+ * 64-36 re-captures them; this plan edits no baseline.
  */
 function coveredPaperWhiteBox(
   transparent: HTMLCanvasElement,
-  pigment: HTMLCanvasElement,
+  coverage: HTMLCanvasElement,
   threshold = 0.5,
 ): CoveredPaperWhiteCensus | null {
   const ctxT = transparent.getContext('2d')
-  const ctxP = pigment.getContext('2d')
-  if (!ctxT || !ctxP) throw new Error('covered paper white: canvas has no 2D context')
+  const ctxC = coverage.getContext('2d')
+  if (!ctxT || !ctxC) throw new Error('covered paper white: canvas has no 2D context')
   const w = transparent.width
   const h = transparent.height
   const t = ctxT.getImageData(0, 0, w, h).data
-  const a = ctxP.getImageData(0, 0, pigment.width, pigment.height).data
+  const a = ctxC.getImageData(0, 0, coverage.width, coverage.height).data
   let covered = 0
   let count = 0
   let minX = w
@@ -585,16 +618,18 @@ function coveredPaperWhiteBox(
 }
 
 /**
- * Percentage of texels the pigment layer claims to COVER (mode-4 alpha ≥
+ * Percentage of texels the COVERAGE raster claims to cover (coverage ≥
  * threshold) that still read as bare paper (≥ 250 luma) on the transparent
- * export — Spike 001's criterion-1 failure scan. 0 is the bar.
+ * export — Spike 001's criterion-1 failure scan. 0 is the bar. The name is
+ * unchanged (it says white paper covered); 64-31 only moves the input to the
+ * raster that carries coverage.
  */
 function coveredPaperWhitePct(
   transparent: HTMLCanvasElement,
-  pigment: HTMLCanvasElement,
+  coverage: HTMLCanvasElement,
   threshold = 0.5,
 ): number {
-  const census = coveredPaperWhiteBox(transparent, pigment, threshold)
+  const census = coveredPaperWhiteBox(transparent, coverage, threshold)
   return census && census.covered > 0 ? (100 * census.count) / census.covered : 0
 }
 
@@ -883,14 +918,18 @@ function whiteOverBlueScript(body: number): readonly ScriptEntry[] {
 /**
  * 64-17: Spike 001 criterion 1 on the crossing box — the seven reported
  * metrics. `crossDarkAlpha` reads the transparent export (the pre-coverage
- * alpha); `crossCoverAlpha` reads the pigment export (the compositor alpha).
+ * darkness); `crossCoverage` reads the coverage raster captured in the same
+ * run (64-31: the only channel that carries coverage since the 2026-11-21
+ * law made the pigment export's alpha darkness-only). Their difference keeps
+ * its meaning: coverage that exists beyond the pigment's own darkness.
  * 64-20 adds `coveredPaperWhiteBox` beside the percentage: the census names
  * the offending texels (count, covered, union bbox) or is `null` when the
- * scan is clean.
+ * scan is clean. The committed cover baselines predate this vocabulary and
+ * are stale by design — 64-36 re-captures them; this plan edits no baseline.
  */
 function whiteOverBlueMetrics(
   transparent: HTMLCanvasElement,
-  pigment: HTMLCanvasElement,
+  coverage: HTMLCanvasElement,
 ): Record<string, number | CoveredPaperWhiteCensus | null> {
   const cross = WHITE_OVER_BLUE_BOXES.crossing
   const stats = bandStats(transparent, cross)
@@ -899,10 +938,10 @@ function whiteOverBlueMetrics(
     crossG: round2(stats.mean[1]),
     crossB: round2(stats.mean[2]),
     crossBlueExcess: round2(stats.blueExcess),
-    crossCoverAlpha: round2(alphaMean(pigment, cross)),
+    crossCoverage: round2(coverageMean(coverage, cross)),
     crossDarkAlpha: round2(darkAlphaMean(transparent, cross)),
-    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
-    coveredPaperWhiteBox: coveredPaperWhiteBox(transparent, pigment, 0.5),
+    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, coverage, 0.5)),
+    coveredPaperWhiteBox: coveredPaperWhiteBox(transparent, coverage, 0.5),
   }
 }
 
@@ -911,10 +950,10 @@ function whiteOverBlueMetrics(
 // brush: a chalk stroke must cover through its own crumbly tip mask, not as a
 // solid disc. The dark band is `round` at Body 0 — a plain watercolour
 // underlayer, identical at every knob — so the measured spread belongs to the
-// covering stroke's tip alone. The alpha is the coverage alpha BY
-// CONSTRUCTION on the pigment export (mode 4: alpha = max(1 − min(rgb),
-// cover)), which is why a coverage claim can be measured from an export at
-// all.
+// covering stroke's tip alone. The spread is read from the COVERAGE raster
+// (`engine.exportCanvas('coverage')`), the only channel that carries coverage:
+// 64-31 removed the old derivation through the pigment export, whose alpha is
+// darkness alone since the 2026-11-21 law.
 
 /**
  * 64-16: the covering diagonal's MID-SHEET segment, where the light stroke's
@@ -925,11 +964,12 @@ function whiteOverBlueMetrics(
 const TEXTURED_BOX: BandBox = { x0: 0.44, y0: 0.41, x1: 0.58, y1: 0.55 }
 
 /**
- * 64-16: the alpha distribution over a box on the mode-4 pigment export — a
- * 256-bin histogram, so P10/P90 need no sort and a crumbly tip mask's spread
- * is measurable. `coveredFraction` is the share of sampled pixels at or above
- * the 0.5 coverage threshold (bin 128), the same threshold the paper-white
- * scan uses.
+ * 64-16: the alpha-byte distribution over a box — a 256-bin histogram, so
+ * P10/P90 need no sort. Channel-agnostic arithmetic (64-31): given the
+ * coverage raster it measures coverage, whose export writes the value to
+ * every channel; no coverage claim calls it with a pigment export any more.
+ * `coveredFraction` is the share of sampled pixels at or above the 0.5
+ * coverage threshold (bin 128), the same threshold the paper-white scan uses.
  */
 function alphaSpread(
   canvas: HTMLCanvasElement,
@@ -970,6 +1010,16 @@ function alphaSpread(
   }
 }
 
+/** 64-31: the COVERAGE distribution over a box on the coverage raster — the
+ *  spread the textured-tip gate bars. Named for the quantity it measures, so
+ *  a coverage claim can never again be written as an alpha claim. */
+function coverageSpread(
+  canvas: HTMLCanvasElement,
+  box: BandBox,
+): { p10: number; p90: number; coveredFraction: number } {
+  return alphaSpread(canvas, box)
+}
+
 /**
  * 64-16: the textured-tip scene — the `cover` geometry with the covering
  * stroke stamped by `brushId`. Only the light diagonal carries the brush and
@@ -1008,32 +1058,37 @@ function coverTexturedScript(emboss?: number, body?: number, brushId?: string): 
 }
 
 /**
- * 64-16: the textured-tip readings. The mean, the blue-excess reader and the
- * paper-white scan are 64-17's helpers — consumed, never forked.
+ * 64-16: the textured-tip readings. The coverage mean/spread, the
+ * blue-excess reader and the paper-white scan are 64-17's helpers — consumed,
+ * never forked; 64-31 moves the coverage reads onto the coverage raster and
+ * keeps the pigment export only for its own RGB. The committed cover
+ * baselines predate this vocabulary and are stale by design — 64-36
+ * re-captures them; this plan edits no baseline.
  */
 function coverTexturedMetrics(
   transparent: HTMLCanvasElement,
   pigment: HTMLCanvasElement,
+  coverage: HTMLCanvasElement,
 ): Record<string, number> {
-  const spread = alphaSpread(pigment, TEXTURED_BOX)
-  const alpha = alphaMean(pigment, TEXTURED_BOX)
+  const spread = coverageSpread(coverage, TEXTURED_BOX)
+  const cover = coverageMean(coverage, TEXTURED_BOX)
   // Post-UAT descriptor (the bristle deposit must CARRY the paint): the
-  // pigment export's own RGB beside the film's darkness and the layer alpha.
-  // A washed deposit solves to near-white RGB while the film stays pale; a
-  // real deposit reads its pigment colour, and alpha never runs further ahead
-  // of the film than the carried opacity allows.
+  // pigment export's own RGB beside the film's darkness and the layer
+  // coverage. A washed deposit solves to near-white RGB while the film stays
+  // pale; a real deposit reads its pigment colour, and coverage never runs
+  // further ahead of the film than the carried opacity allows.
   const coreMean = bandStats(pigment, TEXTURED_BOX).mean
   const filmDarkness = darkAlphaMean(transparent, TEXTURED_BOX)
   return {
-    coverAlphaMean: round2(alpha),
-    coverAlphaP10: round2(spread.p10),
-    coverAlphaP90: round2(spread.p90),
-    coverAlphaCoveredFraction: round2(spread.coveredFraction),
+    coverCoverageMean: round2(cover),
+    coverCoverageP10: round2(spread.p10),
+    coverCoverageP90: round2(spread.p90),
+    coverCoverageCoveredFraction: round2(spread.coveredFraction),
     coverCorePigmentMean: round2((coreMean[0] + coreMean[1] + coreMean[2]) / 3),
     coverCoreFilmDarkness: round2(filmDarkness),
-    coverCoreAlphaMinusFilm: round2(alpha - filmDarkness),
+    coverCoreCoverageMinusFilm: round2(cover - filmDarkness),
     coverCrossBlueExcess: round2(bandStats(pigment, COVER_BOXES.crossing).blueExcess),
-    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
+    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, coverage, 0.5)),
   }
 }
 
@@ -1112,12 +1167,14 @@ function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: n
  * 64-16: Spike 001 criterion 2 as reported numbers — the red field's mean luma
  * and hue against the fresh-red reference stroke's, both measured on the
  * PIGMENT export's rgb, plus the whole-sheet paper-white scan (64-17's,
- * reused). `lumaRatio` is finalLuma / referenceLuma; `deltaHue` is signed
- * degrees, wrapped to (−180, 180].
+ * reused) whose covered set is the COVERAGE raster (64-31). `lumaRatio` is
+ * finalLuma / referenceLuma; `deltaHue` is signed degrees, wrapped to
+ * (−180, 180].
  */
 function redOverBlueMetrics(
   transparent: HTMLCanvasElement,
   pigment: HTMLCanvasElement,
+  coverage: HTMLCanvasElement,
 ): Record<string, number> {
   const field = bandStats(pigment, RED_FIELD_BOX).mean
   const reference = bandStats(pigment, RED_REFERENCE_BOX).mean
@@ -1133,7 +1190,7 @@ function redOverBlueMetrics(
     referenceLuma: round2(referenceLuma),
     lumaRatio: round2(finalLuma / referenceLuma),
     deltaHue: round2(deltaHue),
-    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),
+    coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, coverage, 0.5)),
   }
 }
 
@@ -2679,18 +2736,20 @@ function run(
       // post-read follows — the medium is the only thing that moved.
       if (entry.captureCover === 'advect') {
         const captureStart = performance.now()
-        const before = alphaStats(engine.exportCanvas('pigment'), COVER_LIFECYCLE_BOXES.crossing)
+        // 64-31: the coverage channel is the coverage raster, read directly —
+        // never re-derived from any export's alpha.
+        const before = coverageStats(engine.exportCanvas('coverage'), COVER_LIFECYCLE_BOXES.crossing)
         for (let tick = 0; tick < ADVECT_TICKS; tick += 1) adapter.stepTick(tick)
         const advectedTransparent = engine.exportCanvas('transparent')
-        const advectedPigment = engine.exportCanvas('pigment')
-        const after = alphaStats(advectedPigment, COVER_LIFECYCLE_BOXES.crossing)
+        const advectedCoverage = engine.exportCanvas('coverage')
+        const after = coverageStats(advectedCoverage, COVER_LIFECYCLE_BOXES.crossing)
         captureMs += performance.now() - captureStart
-        coverLifecycle['coverAlphaBeforeAdvect'] = round2(before.mean)
-        coverLifecycle['coverAlphaPeakBefore'] = round2(before.peak)
-        coverLifecycle['coverAlphaAfterAdvect'] = round2(after.mean)
-        coverLifecycle['coverAlphaPeakAfter'] = round2(after.peak)
+        coverLifecycle['coverCoverageBeforeAdvect'] = round2(before.mean)
+        coverLifecycle['coverCoveragePeakBefore'] = round2(before.peak)
+        coverLifecycle['coverCoverageAfterAdvect'] = round2(after.mean)
+        coverLifecycle['coverCoveragePeakAfter'] = round2(after.peak)
         coverLifecycle['coveredPaperWhitePct'] = round2(
-          coveredPaperWhitePct(advectedTransparent, advectedPigment, 0.5),
+          coveredPaperWhitePct(advectedTransparent, advectedCoverage, 0.5),
         )
       }
       // quick-261117-tq7: `fixAfter: false` skips the settle so the stroke
@@ -2703,14 +2762,16 @@ function run(
       if (entry.captureCover === 'beforeLift' || entry.captureCover === 'afterLift') {
         const captureStart = performance.now()
         const transparent = engine.exportCanvas('transparent')
-        const pigment = engine.exportCanvas('pigment')
-        const stats = alphaStats(pigment, COVER_LIFECYCLE_BOXES.crossing)
+        // 64-31: Lift destroys COVERAGE, so the reading is the coverage
+        // raster's, never a pigment export's alpha.
+        const coverage = engine.exportCanvas('coverage')
+        const stats = coverageStats(coverage, COVER_LIFECYCLE_BOXES.crossing)
         captureMs += performance.now() - captureStart
         if (entry.captureCover === 'beforeLift') {
-          coverLifecycle['coverAlphaBeforeLift'] = round2(stats.mean)
+          coverLifecycle['coverCoverageBeforeLift'] = round2(stats.mean)
         } else {
-          coverLifecycle['coverAlphaAfterLift'] = round2(stats.mean)
-          coverLifecycle['coveredPaperWhitePct'] = round2(coveredPaperWhitePct(transparent, pigment, 0.5))
+          coverLifecycle['coverCoverageAfterLift'] = round2(stats.mean)
+          coverLifecycle['coveredPaperWhitePct'] = round2(coveredPaperWhitePct(transparent, coverage, 0.5))
         }
       }
       // 64-17 / spike probe.ts:603-618: fix every tenth rapid stroke, so the
@@ -2731,18 +2792,22 @@ function run(
     // reproduce the unlit baseline. Omitted leaves DEFAULT_LIGHT (intensity 1).
     if (light !== undefined) engine.setLight({ intensity: light })
 
-    // 64-10: renderMs is the render phase proper — the three exports through
+    // 64-10: renderMs is the render phase proper — the four exports through
     // the display shader plus their readbacks — recorded beside the digests so
     // a body pair reports both halves of the cost (bake + render). Durations
-    // are reported, never tuned into the law.
+    // are reported, never tuned into the law. 64-31 adds the coverage raster
+    // export: a probe-only instrument readback (no draw, no pass, no document
+    // target), so it is capture cost like the other readbacks.
     const renderStart = performance.now()
     const paperCanvas = engine.exportCanvas('paper')
     const transparentCanvas = engine.exportCanvas('transparent')
     const whiteCanvas = engine.exportCanvas('white')
-    // 64-17: the mode-4 coverage-aware compositor sheet. Its alpha is
-    // max(1 − min(rgb), cover) — the exact alpha 64-15 carries into the app
-    // commit — so a covering stroke carries real opacity in this export.
+    // 64-17: the mode-4 display sheet. Since the 2026-11-21 law its alpha is
+    // the pigment's darkness alone — it carries NO coverage term. The coverage
+    // claims below read `coverageCanvas`, never this export's alpha.
     const pigmentCanvas = engine.exportCanvas('pigment')
+    // 64-31: the coverage raster, captured once beside the other surfaces.
+    const coverageCanvas = engine.exportCanvas('coverage')
     const paper = digestCanvas(paperCanvas)
     const transparent = digestCanvas(transparentCanvas)
     const white = digestCanvas(whiteCanvas)
@@ -2766,17 +2831,23 @@ function run(
     // 64-17: Spike 001 criterion 1, only for its scenario, so every other
     // report shape is unchanged apart from digestPigment.
     const whiteOverBlueReport =
-      scenario === 'white-over-blue' ? whiteOverBlueMetrics(transparentCanvas, pigmentCanvas) : {}
+      scenario === 'white-over-blue' ? whiteOverBlueMetrics(transparentCanvas, coverageCanvas) : {}
 
     // 64-16: the textured-tip spread, only for its scenario, so every other
-    // report shape is unchanged.
+    // report shape is unchanged. 64-31: the spread reads the coverage raster;
+    // the pigment export stays the source of its own RGB readings.
     const coverTexturedReport =
-      scenario === 'cover-textured' ? coverTexturedMetrics(transparentCanvas, pigmentCanvas) : {}
+      scenario === 'cover-textured'
+        ? coverTexturedMetrics(transparentCanvas, pigmentCanvas, coverageCanvas)
+        : {}
 
     // 64-16: Spike 001 criterion 2 — luma, hue and paper-white, only for its
-    // scenario, so every other report shape is unchanged.
+    // scenario, so every other report shape is unchanged. 64-31: the
+    // paper-white scan's covered set is the coverage raster.
     const redOverBlueReport =
-      scenario === 'red-over-blue-50' ? redOverBlueMetrics(transparentCanvas, pigmentCanvas) : {}
+      scenario === 'red-over-blue-50'
+        ? redOverBlueMetrics(transparentCanvas, pigmentCanvas, coverageCanvas)
+        : {}
 
     // 64-23: the bristle-edge census — the two strokes' measured edge
     // softness and variation, only for its scenario, so every other report

@@ -568,16 +568,16 @@ console.log(`emboss    : ${result.emboss === null ? '(absent)' : result.emboss}`
 console.log(`body      : ${result.body === null ? '(absent)' : result.body}`)
 console.log(`light     : ${result.light === null ? '(default)' : result.light}`)
 console.log(`bake      : ${result.bakeMs ?? 'n/a'} ms (script + settle, exports excluded)`)
-console.log(`render    : ${result.renderMs ?? 'n/a'} ms (three exports + readbacks)`)
+console.log(`render    : ${result.renderMs ?? 'n/a'} ms (exports + readbacks)`)
 console.log(`sheet     : ${result.width}x${result.height} (${result.byteLength} bytes/export)`)
 console.log(`renderer  : ${result.renderer ?? 'n/a'}`)
 console.log(`paper     : ${result.digestPaper}`)
 console.log(`transparent: ${result.digestTransparent}`)
 console.log(`white     : ${result.digestWhite}`)
 console.log(`pigment   : ${result.digestPigment}`)
-if (typeof result.coverAlphaP10 === 'number') {
+if (typeof result.coverCoverageP10 === 'number') {
   console.log(
-    `spread    : P10 ${result.coverAlphaP10} | P90 ${result.coverAlphaP90} | covered ${result.coverAlphaCoveredFraction} | blue ${result.coverCrossBlueExcess} | mean ${result.coverAlphaMean} | paperWhite ${result.coveredPaperWhitePct}%`,
+    `spread    : P10 ${result.coverCoverageP10} | P90 ${result.coverCoverageP90} | covered ${result.coverCoverageCoveredFraction} | blue ${result.coverCrossBlueExcess} | mean ${result.coverCoverageMean} | paperWhite ${result.coveredPaperWhitePct}%`,
   )
 }
 if (typeof result.lumaRatio === 'number') {

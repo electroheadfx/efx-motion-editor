@@ -210,10 +210,13 @@ function round2(value) {
 }
 
 /**
- * Spike 001 criterion 1 as a standing gate. `crossCoverAlpha` is the pigment
- * export's mean alpha over the crossing; `crossDarkAlpha` is the alpha the
- * pre-coverage commit would have derived from the transparent sheet, so the
- * gap is the coverage model's contribution to the committed payload.
+ * Spike 001 criterion 1 as a standing gate. `crossCoverage` is the coverage
+ * raster's mean coverage over the crossing (64-31: never the pigment export's
+ * alpha, which since the 2026-11-21 law is darkness alone); `crossDarkAlpha`
+ * is the alpha the pre-coverage commit would have derived from the transparent
+ * sheet, so the gap is the coverage model's contribution beyond the darkness
+ * conversion. A capture missing the coverage readings fails by name rather
+ * than passing with a vacuum where a measurement belongs.
  */
 function whiteOverBlueFailures(data) {
   const fields = [
@@ -221,7 +224,7 @@ function whiteOverBlueFailures(data) {
     'crossG',
     'crossB',
     'crossBlueExcess',
-    'crossCoverAlpha',
+    'crossCoverage',
     'crossDarkAlpha',
     'coveredPaperWhitePct',
   ]
@@ -229,7 +232,13 @@ function whiteOverBlueFailures(data) {
   if (missing.length > 0) {
     return [`capture is missing ${missing.join(', ')}; re-run the white-over-blue probe`]
   }
-  const gap = data.crossCoverAlpha - data.crossDarkAlpha
+  if (!('coveredPaperWhiteBox' in data)) {
+    return [
+      'capture is missing the covered-paper-white census block (coveredPaperWhiteBox); ' +
+        're-run the white-over-blue probe',
+    ]
+  }
+  const gap = data.crossCoverage - data.crossDarkAlpha
   const failures = []
   if (data.coveredPaperWhitePct !== 0) {
     failures.push(
@@ -240,13 +249,13 @@ function whiteOverBlueFailures(data) {
   if (data.body === 100) {
     if (!(gap >= 0.6)) {
       failures.push(
-        `crossCoverAlpha - crossDarkAlpha ${round2(gap)} is below 0.60 ` +
-          '(the committed alpha is the darkness conversion, not coverage)',
+        `crossCoverage - crossDarkAlpha ${round2(gap)} is below 0.60 ` +
+          '(the coverage raster reports no coverage beyond the darkness conversion)',
       )
     }
-    if (!(data.crossCoverAlpha >= 0.9)) {
+    if (!(data.crossCoverage >= 0.9)) {
       failures.push(
-        `crossCoverAlpha ${data.crossCoverAlpha} is below 0.90 ` +
+        `crossCoverage ${data.crossCoverage} is below 0.90 ` +
           '(the covering stroke did not cover)',
       )
     }
@@ -257,16 +266,16 @@ function whiteOverBlueFailures(data) {
       )
     }
   } else if (data.body === 60) {
-    if (!(data.crossCoverAlpha < 0.5)) {
+    if (!(data.crossCoverage < 0.5)) {
       failures.push(
-        `crossCoverAlpha ${data.crossCoverAlpha} is not below 0.50 ` +
+        `crossCoverage ${data.crossCoverage} is not below 0.50 ` +
           '(the partial cover went opaque)',
       )
     }
     if (!(gap >= 0.04)) {
       failures.push(
-        `crossCoverAlpha - crossDarkAlpha ${round2(gap)} is below 0.04 ` +
-          '(no coverage contribution at Body 60)',
+        `crossCoverage - crossDarkAlpha ${round2(gap)} is below 0.04 ` +
+          '(the coverage raster reports no contribution at Body 60)',
       )
     }
     if (!(data.crossBlueExcess >= 15 && data.crossBlueExcess <= 38)) {
@@ -284,8 +293,8 @@ function whiteOverBlueFailures(data) {
     }
     if (!(gap <= 0.03)) {
       failures.push(
-        `crossCoverAlpha - crossDarkAlpha ${round2(gap)} is above 0.03 ` +
-          '(the cover must be inert at Body 30)',
+        `crossCoverage - crossDarkAlpha ${round2(gap)} is above 0.03 ` +
+          '(the coverage raster must read inert at Body 30)',
       )
     }
   } else {
@@ -300,15 +309,16 @@ function whiteOverBlueFailures(data) {
 /**
  * 64-14: the advect gate — the coverage channel travels with its pigment
  * without losing mass, without sharpening, and without raising paper-white.
- * `coverAlphaPeakBefore` / `coverAlphaPeakAfter` bracket the eight extra wet
- * ticks the probe runs between its two captures.
+ * `coverCoveragePeakBefore` / `coverCoveragePeakAfter` bracket the eight extra
+ * wet ticks the probe runs between its two captures. 64-31: the readings come
+ * from the coverage raster itself, never from a pigment export's alpha.
  */
 function coverAdvectFailures(data) {
   const fields = [
-    'coverAlphaBeforeAdvect',
-    'coverAlphaAfterAdvect',
-    'coverAlphaPeakBefore',
-    'coverAlphaPeakAfter',
+    'coverCoverageBeforeAdvect',
+    'coverCoverageAfterAdvect',
+    'coverCoveragePeakBefore',
+    'coverCoveragePeakAfter',
     'coveredPaperWhitePct',
   ]
   const missing = fields.filter((field) => typeof data[field] !== 'number')
@@ -316,21 +326,21 @@ function coverAdvectFailures(data) {
     return [`capture is missing ${missing.join(', ')}; re-run the cover-advect probe`]
   }
   const failures = []
-  if (!(data.coverAlphaAfterAdvect >= 0.9 * data.coverAlphaBeforeAdvect)) {
+  if (!(data.coverCoverageAfterAdvect >= 0.9 * data.coverCoverageBeforeAdvect)) {
     failures.push(
-      `coverAlphaAfterAdvect ${data.coverAlphaAfterAdvect} lost more than 10% of ` +
-        `coverAlphaBeforeAdvect ${data.coverAlphaBeforeAdvect} (the field lost mass)`,
+      `coverCoverageAfterAdvect ${data.coverCoverageAfterAdvect} lost more than 10% of ` +
+        `coverCoverageBeforeAdvect ${data.coverCoverageBeforeAdvect} (the field lost mass)`,
     )
   }
-  if (!(data.coverAlphaPeakAfter <= data.coverAlphaPeakBefore)) {
+  if (!(data.coverCoveragePeakAfter <= data.coverCoveragePeakBefore)) {
     failures.push(
-      `coverAlphaPeakAfter ${data.coverAlphaPeakAfter} is above coverAlphaPeakBefore ` +
-        `${data.coverAlphaPeakBefore} (advection sharpened the field)`,
+      `coverCoveragePeakAfter ${data.coverCoveragePeakAfter} is above coverCoveragePeakBefore ` +
+        `${data.coverCoveragePeakBefore} (advection sharpened the field)`,
     )
   }
-  if (!(data.coverAlphaAfterAdvect >= 0.6)) {
+  if (!(data.coverCoverageAfterAdvect >= 0.6)) {
     failures.push(
-      `coverAlphaAfterAdvect ${data.coverAlphaAfterAdvect} is below 0.60 ` +
+      `coverCoverageAfterAdvect ${data.coverCoverageAfterAdvect} is below 0.60 ` +
         '(the advected covering stroke stopped covering)',
     )
   }
@@ -353,25 +363,26 @@ function coverAdvectFailures(data) {
  */
 /**
  * 64-14: the lift gate — Lift destroys coverage like it destroys paint, so a
- * lift stroke across a fresh covering stroke must take the crossing alpha to
- * at most 60% of its pre-lift value, and no covered texel may read as paper.
+ * lift stroke across a fresh covering stroke must take the crossing coverage
+ * to at most 60% of its pre-lift value, and no covered texel may read as
+ * paper. 64-31: both readings come from the coverage raster.
  */
 function coverLiftFailures(data) {
-  const fields = ['coverAlphaBeforeLift', 'coverAlphaAfterLift', 'coveredPaperWhitePct']
+  const fields = ['coverCoverageBeforeLift', 'coverCoverageAfterLift', 'coveredPaperWhitePct']
   const missing = fields.filter((field) => typeof data[field] !== 'number')
   if (missing.length > 0) {
     return [`capture is missing ${missing.join(', ')}; re-run the cover-lift probe`]
   }
   const failures = []
-  if (!(data.coverAlphaBeforeLift >= 0.9)) {
+  if (!(data.coverCoverageBeforeLift >= 0.9)) {
     failures.push(
-      `coverAlphaBeforeLift ${data.coverAlphaBeforeLift} is below 0.90 (the covering stroke never covered)`,
+      `coverCoverageBeforeLift ${data.coverCoverageBeforeLift} is below 0.90 (the covering stroke never covered)`,
     )
   }
-  if (!(data.coverAlphaAfterLift <= 0.6 * data.coverAlphaBeforeLift)) {
+  if (!(data.coverCoverageAfterLift <= 0.6 * data.coverCoverageBeforeLift)) {
     failures.push(
-      `coverAlphaAfterLift ${data.coverAlphaAfterLift} is above 60% of coverAlphaBeforeLift ` +
-        `${data.coverAlphaBeforeLift} (Lift did not reduce coverage)`,
+      `coverCoverageAfterLift ${data.coverCoverageAfterLift} is above 60% of coverCoverageBeforeLift ` +
+        `${data.coverCoverageBeforeLift} (Lift did not reduce coverage)`,
     )
   }
   if (data.coveredPaperWhitePct !== 0) {
@@ -386,7 +397,8 @@ function coverLiftFailures(data) {
 /**
  * 64-16 CALIBRATION FINDING — the P90 floor.
  *
- * The plan's provisional band was `coverAlphaP90 >= 0.5`. The first
+ * The plan's provisional band was `coverCoverageP90 >= 0.5` (reported then
+ * under the pre-64-31 name `coverAlphaP90`). The first
  * measurement capture (2026-11-18, `--gate cover-textured-calibrate
  * --scenario cover-textured --size 512 --body 100 --brush chalk`) reported
  * P90 0, P10 0, covered fraction 0.08, blue excess -0.55, mean 0.07 and
@@ -412,20 +424,20 @@ const COVER_TEXTURED_P90_FLOOR = 0
 
 /**
  * 64-16: the textured-tip gate — a chalk covering stroke must read as a
- * SPREAD, not a solid disc. On the alpha distribution over the covering
- * diagonal's mid-sheet box: the calibrated high decile, a low decile
- * (P10 <= 0.5), a covered share inside [0.02, 0.80], at most 5 units of blue
- * excess at the crossing, and no covered texel reading as bare paper. The
- * first four bands are the calibration envelope, set from the first capture's
- * measured distribution (recorded in the 64-16 SUMMARY);
- * `coveredPaperWhitePct === 0` is the model's absolute contract and is never
- * calibratable.
+ * SPREAD, not a solid disc. On the COVERAGE distribution over the covering
+ * diagonal's mid-sheet box (64-31: the coverage raster, never a pigment
+ * export's alpha): the calibrated high decile, a low decile (P10 <= 0.5), a
+ * covered share inside [0.02, 0.80], at most 5 units of blue excess at the
+ * crossing, and no covered texel reading as bare paper. The first four bands
+ * are the calibration envelope, set from the first capture's measured
+ * distribution (recorded in the 64-16 SUMMARY); `coveredPaperWhitePct === 0`
+ * is the model's absolute contract and is never calibratable.
  */
 function coverTexturedFailures(data) {
   const fields = [
-    'coverAlphaP10',
-    'coverAlphaP90',
-    'coverAlphaCoveredFraction',
+    'coverCoverageP10',
+    'coverCoverageP90',
+    'coverCoverageCoveredFraction',
     'coverCrossBlueExcess',
     'coveredPaperWhitePct',
   ]
@@ -434,21 +446,21 @@ function coverTexturedFailures(data) {
     return [`capture is missing ${missing.join(', ')}; re-run the cover-textured probe`]
   }
   const failures = []
-  if (!(data.coverAlphaP90 >= COVER_TEXTURED_P90_FLOOR)) {
+  if (!(data.coverCoverageP90 >= COVER_TEXTURED_P90_FLOOR)) {
     failures.push(
-      `coverAlphaP90 ${data.coverAlphaP90} is below the calibrated floor ` +
+      `coverCoverageP90 ${data.coverCoverageP90} is below the calibrated floor ` +
         `${COVER_TEXTURED_P90_FLOOR} (the tip deposited nothing)`,
     )
   }
-  if (!(data.coverAlphaP10 <= 0.5)) {
+  if (!(data.coverCoverageP10 <= 0.5)) {
     failures.push(
-      `coverAlphaP10 ${data.coverAlphaP10} is above 0.50 ` +
+      `coverCoverageP10 ${data.coverCoverageP10} is above 0.50 ` +
         '(every sampled texel is covered: the textured tip reads as a solid disc)',
     )
   }
-  if (!(data.coverAlphaCoveredFraction >= 0.02 && data.coverAlphaCoveredFraction <= 0.8)) {
+  if (!(data.coverCoverageCoveredFraction >= 0.02 && data.coverCoverageCoveredFraction <= 0.8)) {
     failures.push(
-      `coverAlphaCoveredFraction ${data.coverAlphaCoveredFraction} is outside [0.02, 0.80] ` +
+      `coverCoverageCoveredFraction ${data.coverCoverageCoveredFraction} is outside [0.02, 0.80] ` +
         '(the tip mask covered the wrong share of its box)',
     )
   }
@@ -1122,15 +1134,15 @@ function printBristleTip(data) {
   console.log('')
 }
 
-/** 64-14: print the lifecycle readings a capture recorded, if any. */
+/** 64-14: print the lifecycle coverage readings a capture recorded, if any. */
 function printCoverLifecycle(data) {
   const keys = [
-    'coverAlphaBeforeAdvect',
-    'coverAlphaAfterAdvect',
-    'coverAlphaPeakBefore',
-    'coverAlphaPeakAfter',
-    'coverAlphaBeforeLift',
-    'coverAlphaAfterLift',
+    'coverCoverageBeforeAdvect',
+    'coverCoverageAfterAdvect',
+    'coverCoveragePeakBefore',
+    'coverCoveragePeakAfter',
+    'coverCoverageBeforeLift',
+    'coverCoverageAfterLift',
     'coveredPaperWhitePct',
   ]
   const parts = keys.filter((key) => typeof data[key] === 'number').map((key) => `${key} ${data[key]}`)
