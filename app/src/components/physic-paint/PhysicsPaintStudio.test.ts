@@ -8567,6 +8567,12 @@ describe('64-09 — the right panel is fed by the document light', () => {
 // created once over refs, refuses while playing / Draft / wireframe,
 // calls the light-resolving Apply lane only, and is requested from the
 // gesture release and the undo/redo sync — nowhere else.
+//
+// 64-27 (WR-04): a refusal is PARKED, not dropped. ONE narrow gate effect
+// (a preact `effect` over isPlaying / draftMode / wireframeMode, created in
+// a [isPlaying]-dependent lifecycle effect) tells the scheduler about the
+// blocking state, so the request parks and the blocked-to-idle edge drains
+// it exactly once — no timer, no polling, no render-body write.
 // ============================================================
 describe('64-19 committed-frame relight wiring (CR-01)', () => {
   const RELIGHT_START = 'committedFrameRelightRef.current = createSingleFlightRelight(';
@@ -8651,5 +8657,35 @@ describe('64-19 committed-frame relight wiring (CR-01)', () => {
     expect(studio, 'the last-seen light is a signature string').toContain(
       'const lastSyncedLightSignatureRef = useRef<string | null>(null);',
     );
+  });
+
+  it('the WR-04 gate is ONE narrow subscription effect over the three refusal states', () => {
+    const setBlockedAt = studio.indexOf('committedFrameRelightRef.current?.setBlocked(');
+    expect(setBlockedAt, 'the gate calls the ref-held controller').toBeGreaterThan(-1);
+    // The gate effect sits AFTER the controller's creation and BEFORE the
+    // gesture handler — the shipped creation block is untouched.
+    expect(studio.indexOf(RELIGHT_START), 'the controller creation still exists').toBeGreaterThan(-1);
+    expect(studio.indexOf(RELIGHT_START), 'the gate follows the creation').toBeLessThan(setBlockedAt);
+    const gateStart = studio.lastIndexOf('const dispose = effect(() =>', setBlockedAt);
+    expect(gateStart, 'the gate is a preact effect').toBeGreaterThan(-1);
+    const gateEnd = studio.indexOf(RELIGHT_END, setBlockedAt);
+    expect(gateEnd, 'the gate sits before the gesture handler').toBeGreaterThan(setBlockedAt);
+    const gate = studio.slice(gateStart, gateEnd);
+    expect(gate, 'one blocking expression over the three refusal states').toContain(
+      'isPlaying || draftMode.value || wireframeMode.value',
+    );
+    expect(gate, 'the signals subscribe through .value, never .peek()').not.toContain('.peek()');
+    expect(gate, 'no timer joins the subscription').not.toContain('setTimeout');
+    expect(gate, 'no interval joins the subscription').not.toContain('setInterval');
+    expect(gate, 'the subscription disposes on cleanup').toContain('return () => dispose();');
+    expect(gate, 'the only render-state dependency is playing').toContain('}, [isPlaying]);');
+    // Exactly ONE gate call site in the file; the creation and both request
+    // sites (gesture release + sync) stay as shipped.
+    expect(studio.split('setBlocked(').length - 1, 'one gate call site').toBe(1);
+    expect(studio.split(RELIGHT_START).length - 1, 'still one controller creation').toBe(1);
+    expect(
+      studio.split('committedFrameRelightRef.current?.request()').length - 1,
+      'still two request sites',
+    ).toBe(2);
   });
 });
