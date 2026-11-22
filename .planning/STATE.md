@@ -5,16 +5,16 @@ milestone_name: Brush Tips & Medium Engine (Planned)
 current_phase: 64
 current_phase_name: Medium Engine
 status: executing
-stopped_at: Completed 64-25-PLAN.md
-last_updated: "2026-11-22T16:03:48.865Z"
+stopped_at: Completed 64-26-PLAN.md
+last_updated: "2026-11-22T16:14:01.458Z"
 last_activity: 2026-11-22
 last_activity_desc: Phase 64 execution started
-state_head: 2c60ec1997d5fb782b3b07836b2f4f2b47af97e1
+state_head: 35e00e999dbf1fccb5d5aac4c5ba9d43da670277
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 45
-  completed_plans: 42
+  completed_plans: 43
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — EXECUTING
-Plan: 26 of 28
+Plan: 27 of 28
 Status: Ready to execute
 Last activity: 2026-11-22 — Phase 64 execution started
 
@@ -169,6 +169,7 @@ Last activity: 2026-11-22 — Phase 64 execution started
 | Phase 64 P23 | 26min | 3 tasks | 13 files |
 | Phase 64 P24 | 14min | 3 tasks | 22 files |
 | Phase 64 P25 | 8min | 2 tasks | 2 files |
+| Phase 64 P26 | 6 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -564,6 +565,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 64]: D-25: the acrylic retune (water 26, bleed 22, flow 60, wetSeconds 12) is numbers in one record; D-22's Feather half is discharged by composition through the existing uSoftness band, no feather expression added
 - [Phase 64]: The bristle-wet acceptance measures band darkness on the transparent export: fresh 50.64 vs agedWet 250.16 luma, and the uncommitted --wet-mode 0 proxy differs on all three digests (paper e083b0e3 vs 9eaef5be); the sheet pair records 9,331,200 B at 1080² and 33,554,432 B at 2K, frame cache 0 B
 - [Phase 64]: 64-25 (CR-04): the coverage raster is read from its own 2D context (or a transparent scratch), never a white fill; the committed payload's alpha law is stated as OPAQUE TRANSMITTANCE (alpha 255 storage, coverage only in the 1 - cover exponent, display derivation 1 - min(rgb)), superseding 64-15 truth 4
+- [Phase 64]: The last-touch carry is one rect-sized blit per dab: after a stamp-and-swap the halves differ only inside the just-stamped rect, so carrying that rect read-to-write restores the invariant without a document-sized copy (D-29).
+- [Phase 64]: WholeDoc.layers.lastTouch travels as AGES: captureWhole converts with stampsToAges, uploadWhole re-stamps with agesToStamps into a NEW array (never mutating the cached record), and captureSheet/restoreSheet are pass-through so the law lives at one boundary.
+- [Phase 64]: timeBaseMs is per-engine and monotonic: clearLastTouch writes the sentinel but never re-anchors; only setClock, which installs a different clock, starts a new base, so resizeDocument's raw-stamp copy keeps its meaning.
+- [Phase 64]: The dead uAmount uniform was deleted (IN-04): the 261119-pod measurement made the bare coverage channel the weight, superseding 64-24 truth 3's 'bounded by the dab amount' clause; the supersession is recorded in the shader comment and the suite header.
 
 ### Pending Todos
 
@@ -695,8 +700,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-22T16:03:47.844Z
-Stopped at: Completed 64-25-PLAN.md
+Last session: 2026-11-22T16:14:00.610Z
+Stopped at: Completed 64-26-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

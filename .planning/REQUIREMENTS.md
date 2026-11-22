@@ -35,7 +35,7 @@
 - [ ] **MED-02**: At its neutral default, a project painted before this milestone renders bit-identically after it
 - [ ] **MED-03**: Viscosity only ever raises the dissipation coefficient — it never lowers the existing floor and never replaces `flow` — and is applied at exactly those two engine sites and nowhere else
 - [ ] **MED-04**: Spread becomes `0.12 × (1 − viscosity × 0.9)`, landing near `0.012` at maximum viscosity
-- [ ] **MED-05**: A stroke snapshots its viscosity the way it already snapshots `lift`; strokes without the key keep the default, and live pass, bake and replay read the same value
+- [x] **MED-05**: A stroke snapshots its viscosity the way it already snapshots `lift`; strokes without the key keep the default, and live pass, bake and replay read the same value
 - [ ] **MED-06**: Changing Viscosity after a stroke has settled does not re-process the settled pigment
 - [ ] **MED-07**: A medium record `{ id, name, params }` exists as plain serializable data — no functions, no class
 - [ ] **MED-08**: `watercolor` ships as today's `DEFAULT_AQUARELLE_PARAMS`, unchanged, and remains the selected medium on a fresh session
@@ -53,7 +53,7 @@
 - [ ] **MED-20**: At `Body` 0 the engine takes no cover pass at all — a project painted before this milestone renders bit-identically, and a recorded stroke without the key keeps 0
 - [ ] **MED-21**: A brush stroke with `Body` above 0 erodes the settled pigment under each dab with the Lift program and the stroke's own tip footprint (aspect, rotation, texture rotation, round), scaled by `Body` and therefore full at the core and partial at the edges, **before** that dab deposits its own pigment
 - [x] **MED-22**: The cover pass touches the settled layer and the thickness only — standing water and mobile pigment are untouched, so a light stroke over a still-wet dark area mixes with it (declared behaviour, not a defect), and covering is destructive to the settled sheet while hide/show and undo stay consistent
-- [ ] **MED-23**: A stroke snapshots its `Body` with its params the way `lift` and `viscosity` are snapshotted; live pass, bake and replay read the same value and produce the same raster, and the medium record carries the value (`watercolor` 0, `pastel` low, `graphite` 0, `gouache` mid, `acrylic` high)
+- [x] **MED-23**: A stroke snapshots its `Body` with its params the way `lift` and `viscosity` are snapshotted; live pass, bake and replay read the same value and produce the same raster, and the medium record carries the value (`watercolor` 0, `pastel` low, `graphite` 0, `gouache` mid, `acrylic` high)
 - [ ] **MED-24**: Undo and redo restore both the settled-layer region and the thickness a covering stamp eroded — both pools protected before the cover pass's first draw, verified rather than assumed
 - [x] **MED-25**: `Body` adds no render target, no texture allocation and no shader program beyond the thickness channel of MED-14 (the cover pass reuses the Lift program), and export matches the screen on both `uMode` paths
 - [ ] **MED-26**: `BrushPreset` carries a compile-time `group` with five values (`watercolor`, `gouache`, `pastel`, `graphite`, `acrylic`); absent reads `watercolor`, nothing is persisted and there is no Rust or format change
@@ -131,7 +131,7 @@ Which phases cover which requirements.
 | MED-02 | Phase 64 | Gaps Found |
 | MED-03 | Phase 64 | Gaps Found |
 | MED-04 | Phase 64 | Gaps Found |
-| MED-05 | Phase 64 | Gaps Found |
+| MED-05 | Phase 64 | Complete |
 | MED-06 | Phase 64 | Gaps Found |
 | MED-07 | Phase 64 | Gaps Found |
 | MED-08 | Phase 64 | Gaps Found |
@@ -149,7 +149,7 @@ Which phases cover which requirements.
 | MED-20 | Phase 64 | Gaps Found |
 | MED-21 | Phase 64 | Gaps Found |
 | MED-22 | Phase 64 | Complete |
-| MED-23 | Phase 64 | Gaps Found |
+| MED-23 | Phase 64 | Complete |
 | MED-24 | Phase 64 | Gaps Found |
 | MED-25 | Phase 64 | Complete |
 | MED-26 | Phase 64 | Gaps Found |
