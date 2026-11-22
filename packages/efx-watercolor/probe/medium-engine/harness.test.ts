@@ -34,6 +34,12 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
+import {
+  BRISTLE_VISIBLE_ALPHA_SKIP,
+  opaqueExportCheck,
+  visibleAlphaCheck,
+  visibleAlphaSkipped,
+} from './alphaLaw'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
@@ -311,13 +317,14 @@ describe('the white-over-blue coverage claims discriminate (64-31, executed)', (
 //      compare.mjs follows every rename at its one consumer, and a capture
 //      missing the covered-paper-white census block fails by name.
 //  30. The lifecycle readings move with the same channel: the advect/lift
-//      statistics are `coverageStats` on the coverage raster, and the
-//      paper-white scan takes that raster as its covered-set source. The
-//      film-darkness claims stay on the transparent export.
+//      statistics are `coverageStats` on the coverage raster. The film-darkness
+//      claims stay on the transparent export, and the paper-white census reads
+//      the engine-CLEARED pigment alpha (the coverage raster is not closed by
+//      coverClearFS — review CR-02).
 describe('the coverage claims read the coverage raster (64-31 task 1)', () => {
   it('captures the coverage canvas once beside the other surfaces', () => {
     expectContains(PROBE, "const coverageCanvas = engine.exportCanvas('coverage')")
-    expectContains(PROBE, 'whiteOverBlueMetrics(transparentCanvas, coverageCanvas)')
+    expectContains(PROBE, 'whiteOverBlueMetrics(transparentCanvas, coverageCanvas, pigmentCanvas)')
     expectContains(PROBE, 'coverTexturedMetrics(transparentCanvas, pigmentCanvas, coverageCanvas)')
     expectContains(PROBE, 'redOverBlueMetrics(transparentCanvas, pigmentCanvas, coverageCanvas)')
   })
@@ -327,7 +334,7 @@ describe('the coverage claims read the coverage raster (64-31 task 1)', () => {
     expectContains(PROBE, 'function coverageStats(')
     expectContains(PROBE, 'function coverageSpread(')
     expectContains(PROBE, 'crossCoverage: round2(coverageMean(coverage, cross)),')
-    expectContains(PROBE, 'coveredPaperWhiteBox(transparent, coverage, 0.5)')
+    expectContains(PROBE, 'coveredPaperWhiteBox(transparent, pigment, 0.5)')
     // The pigment export's alpha is never read as coverage again.
     expectNotContains(PROBE, 'alphaMean(pigment,')
     expectNotContains(PROBE, 'alphaSpread(pigment,')
@@ -344,7 +351,7 @@ describe('the coverage claims read the coverage raster (64-31 task 1)', () => {
     expectContains(PROBE, "coverLifecycle['coverCoverageAfterAdvect']")
     expectContains(PROBE, "coverLifecycle['coverCoverageBeforeLift']")
     expectContains(PROBE, "coverLifecycle['coverCoverageAfterLift']")
-    expectContains(PROBE, 'coveredPaperWhitePct(advectedTransparent, advectedCoverage, 0.5)')
+    expectContains(PROBE, 'coveredPaperWhitePct(advectedTransparent, advectedPigment, 0.5)')
   })
 
   it('keeps the film-darkness claims on the transparent export', () => {
@@ -384,7 +391,8 @@ describe('the coverage claims read the coverage raster (64-31 task 1)', () => {
 //      (`visibleAlphaMaxDelta`, `visibleAlphaSamples`, `visibleAlphaWorstAt`)
 //      — or, for a bristle capture, the same check reported as skipped with
 //      its film-blur reason (`visibleAlphaSkip`). Both are pure helpers over
-//      the already-read buffers, sampled on one fixed prime stride.
+//      the already-read buffers, scanning EVERY texel (a fixed prime stride
+//      walks a right-edge lattice on power-of-two sheets — CR-01).
 //  33. compare.mjs enforces both blocks in every mode and carries the five
 //      numeric/string fields in the compared field list, so a capture cannot
 //      silently drop them.
@@ -423,25 +431,30 @@ describe('the shipped alpha law is stated once (64-31 task 2)', () => {
 })
 
 describe('the capture-level alpha-law checks (64-31 task 2)', () => {
-  it('samples one fixed prime stride over the already-read buffers', () => {
-    expectContains(PROBE, 'const ALPHA_LAW_STRIDE = 4093')
-    expectContains(PROBE, 'function opaqueExportCheck(')
-    expectContains(PROBE, 'function visibleAlphaCheck(')
+  const ALPHA_LAW = readFileSync(resolve(HERE, 'alphaLaw.ts'), 'utf8')
+
+  it('scans every texel of the already-read buffers', () => {
+    expectContains(ALPHA_LAW, 'function opaqueExportCheck(')
+    expectContains(ALPHA_LAW, 'function visibleAlphaCheck(')
+    expectContains(ALPHA_LAW, 'for (let p = 0; p < pixels; p += 1)')
+    // CR-01: the fixed stride is gone — it sampled a right-edge lattice.
+    expectNotContains(PROBE, 'ALPHA_LAW_STRIDE')
+    expectNotContains(ALPHA_LAW, 'ALPHA_LAW_STRIDE')
   })
 
   it('emits both blocks on every capture, with the bristle skip', () => {
     expectContains(PROBE, 'opaqueExportMinAlpha: opaqueExport.minAlpha,')
     expectContains(PROBE, 'opaqueExportMinAlphaSurface: opaqueExport.surface,')
     expectContains(PROBE, '...visibleAlpha,')
-    expectContains(PROBE, 'visibleAlphaMaxDelta:')
-    expectContains(PROBE, 'visibleAlphaSamples:')
-    expectContains(PROBE, 'visibleAlphaWorstAt:')
-    expectContains(PROBE, 'visibleAlphaSkip:')
+    expectContains(ALPHA_LAW, 'visibleAlphaMaxDelta:')
+    expectContains(ALPHA_LAW, 'visibleAlphaSamples:')
+    expectContains(ALPHA_LAW, 'visibleAlphaWorstAt:')
+    expectContains(ALPHA_LAW, 'visibleAlphaSkip:')
     expectContains(PROBE, "scenario.startsWith('bristle-')")
   })
 
   it('compares the transparent darkness against the pigment alpha', () => {
-    expectContains(PROBE, '255 - Math.min(data[i]!, data[i + 1]!, data[i + 2]!)')
+    expectContains(ALPHA_LAW, '255 - Math.min(transparent[i]!, transparent[i + 1]!, transparent[i + 2]!)')
   })
 
   it('enforces both blocks in the comparator, in every mode', () => {
@@ -450,6 +463,77 @@ describe('the capture-level alpha-law checks (64-31 task 2)', () => {
     expectContains(COMPARE, 'exceeds one 8-bit step')
     expectContains(COMPARE, 'the visible-alpha check cannot be skipped for this scenario')
     expectContains(COMPARE, 'alphaLawFailures(actual)')
+  })
+
+  // CR-01 regression: the old fixed stride (4093 = 2^n·w − 3 for every
+  // power-of-two width) sampled only a right-edge lattice, so a 256² neutral
+  // capture read 0 painted texels and failed its own law check. These execute
+  // the real helpers over synthetic buffers.
+  it('sees paint anywhere on a 256 sheet and finds a planted disagreement', () => {
+    const width = 256
+    const height = 256
+    const transparent = new Uint8ClampedArray(width * height * 4)
+    const pigment = new Uint8ClampedArray(width * height * 4)
+    // The canonical neutral stroke's region: x 77..179, rows 97..179.
+    let painted = 0
+    for (let y = 97; y <= 179; y += 1) {
+      for (let x = 77; x <= 179; x += 1) {
+        const i = (y * width + x) * 4
+        const dark = 40 + ((x + y) % 20)
+        transparent[i] = 255 - dark
+        transparent[i + 1] = 255 - dark
+        transparent[i + 2] = 255 - dark
+        transparent[i + 3] = 255
+        pigment[i + 3] = dark
+        painted += 1
+      }
+    }
+    const block = visibleAlphaCheck(pigment, transparent, width)
+    expect(block.visibleAlphaSamples).toBe(painted)
+    expect(block.visibleAlphaMaxDelta).toBe(0)
+
+    const bad = (150 * width + 150) * 4
+    pigment[bad + 3] = 255 - transparent[bad]! + 2
+    const found = visibleAlphaCheck(pigment, transparent, width)
+    expect(found.visibleAlphaMaxDelta).toBe(2)
+    expect(found.visibleAlphaWorstAt).toBe('x=150,y=150')
+  })
+
+  it('finds a single translucent texel and names its surface', () => {
+    const size = 256 * 256 * 4
+    const opaque = (): Uint8ClampedArray => {
+      const buf = new Uint8ClampedArray(size)
+      for (let i = 3; i < buf.length; i += 4) buf[i] = 255
+      return buf
+    }
+    const paper = opaque()
+    const white = opaque()
+    const transparent = opaque()
+    expect(
+      opaqueExportCheck([
+        { surface: 'paper', pixels: paper },
+        { surface: 'white', pixels: white },
+        { surface: 'transparent', pixels: transparent },
+      ]),
+    ).toEqual({ minAlpha: 255, surface: 'paper' })
+
+    transparent[12345 * 4 + 3] = 254
+    expect(
+      opaqueExportCheck([
+        { surface: 'paper', pixels: paper },
+        { surface: 'white', pixels: white },
+        { surface: 'transparent', pixels: transparent },
+      ]),
+    ).toEqual({ minAlpha: 254, surface: 'transparent' })
+  })
+
+  it('reports a bristle skip as a delta-free block', () => {
+    expect(visibleAlphaSkipped(BRISTLE_VISIBLE_ALPHA_SKIP)).toEqual({
+      visibleAlphaMaxDelta: null,
+      visibleAlphaSamples: 0,
+      visibleAlphaWorstAt: null,
+      visibleAlphaSkip: BRISTLE_VISIBLE_ALPHA_SKIP,
+    })
   })
 })
 
@@ -524,7 +608,7 @@ describe('the textured-tip gate (64-16 task 1)', () => {
       expectContains(PROBE, 'coverCoverageP90: round2(spread.p90),')
       expectContains(PROBE, 'coverCoverageCoveredFraction: round2(spread.coveredFraction),')
       expectContains(PROBE, 'coverCrossBlueExcess: round2(bandStats(pigment, COVER_BOXES.crossing).blueExcess),')
-      expectContains(PROBE, 'coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, coverage, 0.5)),')
+      expectContains(PROBE, 'coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),')
     })
   })
 
@@ -602,7 +686,7 @@ describe('the red-over-blue-50 criterion-2 gate (64-16 task 2)', () => {
       expectContains(PROBE, 'referenceLuma: round2(referenceLuma),')
       expectContains(PROBE, 'lumaRatio: round2(finalLuma / referenceLuma),')
       expectContains(PROBE, 'deltaHue: round2(deltaHue),')
-      expectContains(PROBE, 'coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, coverage, 0.5)),')
+      expectContains(PROBE, 'coveredPaperWhitePct: round2(coveredPaperWhitePct(transparent, pigment, 0.5)),')
       expectContains(PROBE, 'if (deltaHue > 180) deltaHue -= 360')
       expectContains(PROBE, "scenario === 'red-over-blue-50'")
     })
@@ -1939,6 +2023,31 @@ describe('the alpha-law blocks discriminate (64-31 task 2, executed)', () => {
 
     expect(status, lawVerdict(status, output)).toBe(0)
     expectLawText(output, 'scenario invariants hold')
+  })
+
+  it('fails a non-bristle capture that claims a zero-sample pass', () => {
+    const { status, output } = compareSynthetic(
+      'nyquist-law-zero-samples',
+      lawCapture({ visibleAlphaMaxDelta: 0, visibleAlphaSamples: 0 }),
+    )
+
+    expect(status, lawVerdict(status, output)).toBe(1)
+    expect(invariantLine(output)).toContain('cannot be skipped')
+  })
+
+  it('fails a bristle capture that reports a delta beside its skip', () => {
+    const capture: Record<string, unknown> = {
+      ...baseCapture('bristle-wet', 'nyquist'),
+      pickupFreshMean: 50.64,
+      pickupAgedWetMean: 250.16,
+      wetMode: 1,
+      visibleAlphaMaxDelta: 3,
+      visibleAlphaSamples: 12,
+    }
+    const { status, output } = compareSynthetic('nyquist-law-bristle-delta', capture)
+
+    expect(status, lawVerdict(status, output)).toBe(1)
+    expect(invariantLine(output)).toContain('a skipped check records no delta')
   })
 
   it('fails a bristle capture that drops the skip reason', () => {
