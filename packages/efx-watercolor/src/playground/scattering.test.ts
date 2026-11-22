@@ -1092,14 +1092,15 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     expectContains(touchSrc, '${HEADER}')
     expectContains(touchSrc, 'uniform sampler2D uTimes, uCover;')
     expectContains(touchSrc, 'uniform float uNow;')
-    // `uAmount` stays declared and bound (the signature is unchanged), but it
-    // is not the weight: 261119-pod measured that `cover * uAmount` (~0.01)
-    // leaves the one-week sentinel at ~-48000 s after a whole stroke, so
-    // §3.4's exp(-age/7) was always 0 and pickup was inert at every Body. The
-    // reference mixes the last touch toward `now` by the dab's DEPOSIT weight
-    // (order 1 at the core); the coverage channel this pass samples is its
-    // accumulated analogue, so the bare channel is the weight.
-    expectContains(touchSrc, 'uniform float uAmount;')
+    // 64-26 (IN-04): `uAmount` was declared and uploaded but never read.
+    // 261119-pod measured that `cover * uAmount` (~0.01) leaves the one-week
+    // sentinel at ~-48000 s after a whole stroke, so §3.4's exp(-age/7) was
+    // always 0 and pickup was inert at every Body; the reference mixes the
+    // last touch toward `now` by the dab's DEPOSIT weight, and the coverage
+    // channel this pass samples is its accumulated analogue. The bare channel
+    // IS the weight, so the dead uniform is removed — a declared-but-unread
+    // uniform is a trap for the next reader.
+    expectNotContains(touchSrc, 'uAmount')
     expectContains(touchSrc, 'float weight = clamp(texture(uCover, vUv).x, 0.0, 1.0);')
     expectContains(touchSrc, 'o0 = vec4(mix(texture(uTimes, vUv).r, uNow, weight));')
     // No gather: the coverage write is the weight, so the touch pass stays
@@ -1140,18 +1141,32 @@ describe('64-24 — the wetness gate and the touch refresh (D-24)', () => {
     expectContains(stamp, 'gl.uniform1i(t.u.uTimes!, g.bindTex(0, this.lastTouch.read.tex[0]!));')
     expectContains(stamp, 'gl.uniform1i(t.u.uCover!, g.bindTex(1, this.cover.read.tex[0]!));')
     expectContains(stamp, 'gl.uniform1f(t.u.uNow!, this.nowSec());')
+    // 64-26 (IN-04): the touch path declares, uploads and passes NO amount.
+    expectNotContains(stamp, 'uAmount')
     expectContains(stamp, 'g.draw(this.lastTouch.write, rect);')
     expectContains(stamp, 'this.lastTouch.swap();')
+    // 64-26 (CR-03): the previous dab's rect is carried read-to-write BEFORE
+    // the stamp, so the scissored draw is the only change to the write half;
+    // the dab's own rect is recorded after the swap as the next pending carry.
+    expectContains(stamp, 'const carry = takeCarry(this.touchCarry);')
+    expectContains(stamp, 'if (carry) g.blit(this.lastTouch.read.views[0]!, carry.x0, carry.y0, this.lastTouch.write.views[0]!, carry.x0, carry.y0, carry.x1 - carry.x0, carry.y1 - carry.y0);')
+    expectContains(stamp, 'recordStamp(this.touchCarry, rect);')
+    const carryAt = stamp.indexOf('takeCarry(this.touchCarry)')
+    const bindAt = stamp.indexOf('t.bind();')
     const drawAt = stamp.indexOf('g.draw(this.lastTouch.write, rect);')
     const swapAt = stamp.indexOf('this.lastTouch.swap();')
-    expect(drawAt, 'the write half is drawn').toBeGreaterThan(-1)
+    const recordAt = stamp.indexOf('recordStamp(this.touchCarry, rect);')
+    expect(carryAt, 'the pending carry is taken').toBeGreaterThan(-1)
+    expect(bindAt, 'the carry precedes the bind').toBeGreaterThan(carryAt)
+    expect(drawAt, 'the write half is drawn').toBeGreaterThan(bindAt)
     expect(swapAt, 'the pair swaps after the write').toBeGreaterThan(drawAt)
+    expect(recordAt, 'the stamp is recorded after the swap').toBeGreaterThan(swapAt)
     // The call site: deposit first, then touch, then anything else the dab does.
     const brush = sliceBetween(ENGINE_SOURCE, "case 'brush': {", "case 'water': {")
     const depositAt = brush.indexOf('this.bristleInk(')
     const touchAt = brush.indexOf('this.bristleTouch(')
     const reliefAt = brush.indexOf('this.brushRelief(')
-    expectContains(brush, 'if (bristle) this.bristleTouch(dx, dy, dr, angle, amount);')
+    expectContains(brush, 'if (bristle) this.bristleTouch(dx, dy, dr, angle);')
     expect(depositAt, 'the deposit runs inside eachDab').toBeGreaterThan(-1)
     expect(touchAt, 'the touch follows the deposit').toBeGreaterThan(depositAt)
     expect(reliefAt, 'the relief follows the touch').toBeGreaterThan(touchAt)

@@ -28,6 +28,12 @@
 //   5. Memory is recorded, not gated: D-24 measured +26.1 MB at 1080² and
 //      +67.1 MB at 2K; the sheet pair recomputes to 9,331,200 B and
 //      33,554,432 B (2 · side² · 4) below.
+//   6. 64-26 (CR-03): the pair is a ping-pong of INDEPENDENT textures, so a
+//      rect-sized read-to-write carry runs before every stamp and every
+//      whole-target write (clear, uploadWhole, resize) invalidates it.
+//      64-24 truth 3's "bounded by the dab amount" clause is SUPERSEDED by
+//      the 261119-pod measurement — the bare coverage channel is the weight
+//      — and 64-26 removes the dead `uAmount` uniform (IN-04).
 // ============================================================
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -210,6 +216,68 @@ describe('the eight lifecycle sites (D-24)', () => {
     const body = sliceBetween(ENGINE_SOURCE, 'resizeDocument(w: number, h: number) {', 'const shift = ')
     expect(body).toContain('lastTouch: this.lastTouch.read')
     expect(body).toContain('copy(old.lastTouch, [this.lastTouch.read, this.lastTouch.write]);')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2b. The ping-pong carry and its invalidations (64-26 / CR-03)
+// ---------------------------------------------------------------------------
+
+describe('the last-touch carry (CR-03)', () => {
+  // Source pins report the missing LITERAL, never the whole source: a raw
+  // `toContain` dumps Engine.ts into the RED report and breaks its format.
+  const engineContains = (needle: string): void => {
+    expect(ENGINE_SOURCE.includes(needle), `missing engine text: ${needle}`).toBe(true)
+  }
+
+  it('imports the carry module and holds one pending-rect state beside the pair', () => {
+    expect(
+      /import \{[^}]*\bnewLastTouchCarry\b[^}]*\} from '\.\/lastTouchCarry'/.test(ENGINE_SOURCE),
+      'the engine imports the carry module',
+    ).toBe(true)
+    engineContains('private touchCarry = newLastTouchCarry();')
+    // One state, created with the engine — never a per-stamp allocation.
+    expect((ENGINE_SOURCE.match(/newLastTouchCarry\(\)/g) ?? [])).toHaveLength(1)
+  })
+
+  it('carries the previous rect before the stamp and records the new one after the swap', () => {
+    const body = sliceBetween(ENGINE_SOURCE, 'private bristleTouch(', 'readBristles(): Uint16Array {')
+    const carryAt = body.indexOf('takeCarry(this.touchCarry)')
+    const drawAt = body.indexOf('g.draw(this.lastTouch.write, rect);')
+    const swapAt = body.indexOf('this.lastTouch.swap();')
+    const recordAt = body.indexOf('recordStamp(this.touchCarry, rect);')
+    expect(carryAt, 'the pending carry is taken').toBeGreaterThan(-1)
+    expect(carryAt, 'the carry precedes the scissored draw').toBeLessThan(drawAt)
+    expect(drawAt, 'the write half is drawn').toBeGreaterThan(-1)
+    expect(swapAt, 'the pair swaps after the write').toBeGreaterThan(drawAt)
+    expect(recordAt, 'the stamp is recorded after the swap').toBeGreaterThan(swapAt)
+  })
+
+  it('invalidates the carry at every whole-target write', () => {
+    const clear = sliceBetween(ENGINE_SOURCE, 'private clearLastTouch() {', 'private allocateHistory()')
+    expect(clear.includes('invalidateCarry(this.touchCarry);'), 'clear invalidates the carry').toBe(true)
+
+    const whole = sliceBetween(ENGINE_SOURCE, 'private uploadWhole(whole: WholeDoc) {', 'private applyWhole(')
+    expect(whole.includes('invalidateCarry(this.touchCarry);'), 'uploadWhole invalidates the carry').toBe(true)
+
+    const resize = sliceBetween(ENGINE_SOURCE, 'resizeDocument(w: number, h: number) {', 'const shift = ')
+    const copyAt = resize.indexOf('copy(old.lastTouch, [this.lastTouch.read, this.lastTouch.write]);')
+    const invalidAt = resize.indexOf('invalidateCarry(this.touchCarry);')
+    expect(copyAt, 'a resize carries the raw stamps').toBeGreaterThan(-1)
+    expect(invalidAt, 'the resized pair is invalidated after the copy').toBeGreaterThan(copyAt)
+  })
+
+  it('states the carry law where the false docstring stood', () => {
+    expect(
+      ENGINE_SOURCE.includes('Texels outside the dab rect keep their age untouched.'),
+      'the false docstring is gone',
+    ).toBe(false)
+    const doc = sliceBetween(ENGINE_SOURCE, '64-26 (CR-03): the pair is a PING-PONG', 'private bristleTouch(')
+    expect(doc.includes('the engine carries the previous dab'), 'the docstring names the carry').toBe(true)
+    expect(
+      doc.includes('only then do texels outside the current dab keep their age'),
+      'the docstring states the real law',
+    ).toBe(true)
   })
 })
 
