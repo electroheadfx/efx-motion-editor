@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-17 after Phase 63)
 ## Current Position
 
 Phase: 64 (Medium Engine) — READY TO EXECUTE
-Plan: 24 of 24
+Plan: 24 of 28
 Status: Ready to execute
 Last activity: 2026-11-22 - Completed quick task 261122-gys: Studio paint identity — Brush/Watercolor switch lands the family's last brush and applies its medium record; Reset restores the active medium record (wetSeconds included) in one undo batch
 
