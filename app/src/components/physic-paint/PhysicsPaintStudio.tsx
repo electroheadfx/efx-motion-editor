@@ -2953,6 +2953,22 @@ export function PhysicsPaintStudio() {
       return applied;
     });
   }
+  // 64-27 (WR-04): the relight gate. Playing, Draft and wireframe are the
+  // persistent refusal states, so the scheduler is TOLD about them instead of
+  // discovering a busy `false`: a request made during one parks (ONE pending
+  // request, no timer, no polling) and the blocked-to-idle edge drains it
+  // exactly once through the same single-run-in-flight path a request takes.
+  // A narrow lifecycle subscription — the signals are read through their
+  // subscribing `.value` inside the effect, never in the render body and
+  // never through `.peek()` — and the runner's three guards stay as defense
+  // in depth for a state that flips back before the drain's run body runs.
+  useEffect(() => {
+    const dispose = effect(() => {
+      const blocked = isPlaying || draftMode.value || wireframeMode.value;
+      committedFrameRelightRef.current?.setBlocked(blocked);
+    });
+    return () => dispose();
+  }, [isPlaying]);
   // 64-18 (CR-02): the per-move write keeps the live sheet re-lighting, but
   // records NOTHING — one drag would otherwise evict the ledger and clear
   // redo on every emitted value.
